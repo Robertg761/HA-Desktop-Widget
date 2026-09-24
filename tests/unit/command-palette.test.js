@@ -287,6 +287,143 @@ describe('command palette recents', () => {
     expect(stored.join()).not.toContain('secret');
   });
 
+  describe('keeping the highlight where the keyboard put it', () => {
+    const highlightedName = () =>
+      document.querySelector('.command-palette-result.highlighted .command-palette-result-name')
+        ?.textContent;
+    const pointerAt = (row, x, y) =>
+      row.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, screenX: x, screenY: y }));
+
+    it('ignores rows that render under a pointer that has not moved', () => {
+      const { palette, paletteState } = load();
+      paletteState.setStates({
+        'light.bed_light': bedLight('off'),
+        'light.desk': { entity_id: 'light.desk', state: 'off', attributes: {} },
+      });
+      palette.openCommandPalette();
+      const input = document.querySelector('.command-palette-input');
+      input.value = 'turn on';
+      input.dispatchEvent(new Event('input'));
+      const first = highlightedName();
+      const rows = () => document.querySelectorAll('.command-palette-result');
+
+      // A still pointer over the second row, reported again after every re-render.
+      pointerAt(rows()[1], 40, 40);
+      expect(highlightedName()).toBe(first);
+      input.value = 'turn on ';
+      input.dispatchEvent(new Event('input'));
+      pointerAt(rows()[1], 40, 40);
+      expect(highlightedName()).toBe(first);
+
+      // A real move does take the highlight.
+      pointerAt(rows()[1], 44, 41);
+      expect(highlightedName()).not.toBe(first);
+      expect(rows()[1].classList).toContain('highlighted');
+    });
+  });
+
+  describe('locks and alarm panels', () => {
+    const frontDoor = (lockState) => ({
+      entity_id: 'lock.front_door',
+      state: lockState,
+      attributes: { friendly_name: 'Front Door' },
+    });
+    const loadLocks = () => {
+      const loaded = load();
+      loaded.paletteState.setServices({ lock: { lock: {}, unlock: {} } });
+      return loaded;
+    };
+    const search = (query) => {
+      const input = document.querySelector('.command-palette-input');
+      input.value = query;
+      input.dispatchEvent(new Event('input'));
+      return input;
+    };
+    const press = (input, key) =>
+      input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    const highlightedName = () =>
+      document.querySelector('.command-palette-result.highlighted .command-palette-result-name')
+        ?.textContent;
+    const paletteOpen = () =>
+      !document.querySelector('.command-palette-overlay').classList.contains('hidden');
+
+    it('never offers Unlock from recents, only for a matching query', async () => {
+      const { palette, paletteState } = loadLocks();
+      paletteState.setStates({ 'lock.front_door': frontDoor('unlocked') });
+      palette.openCommandPalette();
+      await run('Lock Front Door');
+
+      paletteState.setStates({ 'lock.front_door': frontDoor('locked') });
+      palette.openCommandPalette();
+      expect(resultNames()).not.toContain('Unlock Front Door');
+      expect(highlightedName()).not.toBe('Unlock Front Door');
+
+      search('unlock');
+      expect(resultNames()).toContain('Unlock Front Door');
+    });
+
+    it('keeps Lock commands rankable from recents', async () => {
+      const { palette, paletteState } = loadLocks();
+      paletteState.setStates({ 'lock.front_door': frontDoor('locked') });
+      palette.openCommandPalette();
+      search('unlock');
+      await run('Unlock Front Door');
+
+      paletteState.setStates({ 'lock.front_door': frontDoor('unlocked') });
+      palette.openCommandPalette();
+      expect(resultNames()[0]).toBe('Lock Front Door');
+    });
+
+    it('moves Enter on a lock row to its command instead of closing silently', async () => {
+      const { palette, paletteState } = loadLocks();
+      const websocket = require('../../src/websocket.js').default;
+      paletteState.setStates({ 'lock.front_door': frontDoor('locked') });
+      palette.openCommandPalette();
+      const input = search('front door');
+      expect(highlightedName()).toBe('Front Door');
+
+      press(input, 'Enter');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(paletteOpen()).toBe(true);
+      expect(highlightedName()).toBe('Unlock Front Door');
+      expect(websocket.callService).not.toHaveBeenCalled();
+    });
+
+    it('explains how to find the command when it is not listed', () => {
+      const { palette, paletteState } = loadLocks();
+      paletteState.setStates({ 'lock.front_door': frontDoor('locked') });
+      palette.openCommandPalette();
+      const input = document.querySelector('.command-palette-input');
+      expect(highlightedName()).toBe('Front Door');
+
+      press(input, 'Enter');
+      expect(paletteOpen()).toBe(true);
+      const hint = document.querySelector('.command-palette-hint');
+      expect(hint.hidden).toBe(false);
+      expect(hint.textContent).toBe('To control Front Door, type "lock" or "unlock".');
+
+      search('unl');
+      expect(hint.hidden).toBe(true);
+    });
+
+    it('says so when an alarm panel has no command here', () => {
+      const { palette, paletteState } = loadLocks();
+      paletteState.setStates({
+        'alarm_control_panel.home': {
+          entity_id: 'alarm_control_panel.home',
+          state: 'armed_away',
+          attributes: { friendly_name: 'Home alarm' },
+        },
+      });
+      palette.openCommandPalette();
+      press(document.querySelector('.command-palette-input'), 'Enter');
+      expect(paletteOpen()).toBe(true);
+      expect(document.querySelector('.command-palette-hint').textContent).toBe(
+        'No command is available for Home alarm.'
+      );
+    });
+  });
+
   it('shows commands, labels, and entity states in the active language', () => {
     const { palette, paletteState } = load();
     const i18n = require('../../src/i18n.js');

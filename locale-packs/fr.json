@@ -786,6 +786,8 @@
     "No matching results": "Aucun résultat correspondant",
     "Lock {{name}}": "Verrouiller {{name}}",
     "Unlock {{name}}": "Déverrouiller {{name}}",
+    "To control {{name}}, type \"lock\" or \"unlock\".": "Pour contrôler {{name}}, tapez « verrouiller » ou « déverrouiller ».",
+    "No command is available for {{name}}.": "Aucune commande n'est disponible pour {{name}}.",
     "Authorization was declined in Home Assistant.": "L'autorisation a été refusée dans Home Assistant.",
     "Home Assistant authorization timed out. Try again.": "Le délai d'autorisation Home Assistant a expiré. Réessayez.",
     "Home Assistant sent back an authorization that does not match this request. Try again.": "Home Assistant a renvoyé une autorisation qui ne correspond pas à cette demande. Réessayez.",

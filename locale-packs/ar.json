@@ -786,6 +786,8 @@
     "No matching results": "لا توجد نتائج مطابقة",
     "Lock {{name}}": "قفل {{name}}",
     "Unlock {{name}}": "فتح قفل {{name}}",
+    "To control {{name}}, type \"lock\" or \"unlock\".": "للتحكم في {{name}}، اكتب \"قفل\" أو \"فتح قفل\".",
+    "No command is available for {{name}}.": "لا يتوفر أمر لـ {{name}}.",
     "Authorization was declined in Home Assistant.": "رُفض التفويض في Home Assistant.",
     "Home Assistant authorization timed out. Try again.": "انتهت مهلة تفويض Home Assistant. حاول مرة أخرى.",
     "Home Assistant sent back an authorization that does not match this request. Try again.": "أعاد Home Assistant تفويضًا لا يطابق هذا الطلب. حاول مرة أخرى.",

@@ -779,6 +779,8 @@
   "No matching results": "No matching results",
   "Lock {{name}}": "Lock {{name}}",
   "Unlock {{name}}": "Unlock {{name}}",
+  "To control {{name}}, type \"lock\" or \"unlock\".": "To control {{name}}, type \"lock\" or \"unlock\".",
+  "No command is available for {{name}}.": "No command is available for {{name}}.",
   "Authorization was declined in Home Assistant.": "Authorization was declined in Home Assistant.",
   "Home Assistant authorization timed out. Try again.": "Home Assistant authorization timed out. Try again.",
   "Home Assistant sent back an authorization that does not match this request. Try again.": "Home Assistant sent back an authorization that does not match this request. Try again.",

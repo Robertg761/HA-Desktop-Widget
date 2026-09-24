@@ -786,6 +786,8 @@
     "No matching results": "没有匹配的结果",
     "Lock {{name}}": "锁定 {{name}}",
     "Unlock {{name}}": "解锁 {{name}}",
+    "To control {{name}}, type \"lock\" or \"unlock\".": "要控制 {{name}}，请输入“锁定”或“解锁”。",
+    "No command is available for {{name}}.": "{{name}} 没有可用的命令。",
     "Authorization was declined in Home Assistant.": "授权已在 Home Assistant 中被拒绝。",
     "Home Assistant authorization timed out. Try again.": "Home Assistant 授权超时。请重试。",
     "Home Assistant sent back an authorization that does not match this request. Try again.": "Home Assistant 返回的授权与此请求不匹配。请重试。",
