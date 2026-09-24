@@ -39,12 +39,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Show each tile's Controls action as a small sliders button in the tile corner. It stays visible and keyboard accessible.
 - Match native context menus and macOS pop-up menus to the app's theme, and draw Windows and Linux dropdown lists and scrollbars in dark mode when the app is dark.
 - Hide the Follow Omarchy theme switch on desktops where it cannot turn on.
+- Translate the rest of the interface: pop-ups, the colour editor, desktop pins, toasts, confirmations, hotkeys, alerts, notifications, weather conditions, and entity states now follow the chosen language. Settings labels use sentence case.
+- Give Manage Quick Access one scrolling list under the search box, quiet Remove buttons, a no-matches message, and the comparison graph action in the footer. The comparison graph editor gets a Done button.
+- Show a proper empty state with an Open Settings button when Quick Access has no connection yet.
+- Keep the camera viewer a fixed 16:9 frame, with a "Preview unavailable" message instead of a broken image, and a readable state and update time.
+- Pick black or white text on accent-coloured buttons per accent, so dark custom accents stay readable.
 
 - Show the Primary Cards entity picker 50 entities per page and wait for a pause in typing before filtering. Keyboard focus and scroll position stay put when a card is assigned or a desktop pin is toggled.
 - Update the media player details dialog when the player's state changes instead of polling twice a second. The track title and artist now follow the current song, and the progress timer only runs while media is playing and the window is visible.
 
 ### Fixed
 
+- Show which Quick Access tile has keyboard focus. The focus outline was clipped by the tile and never visible.
+- Say when an entity is unavailable in its pop-up and disable the controls, instead of showing "Off". A fan without speed control can now be turned on and off from its pop-up.
+- Raise muted and accent-coloured text in the light theme above 4.5:1 contrast, and 10px status text to 11px.
+- Mirror switches, corner buttons, margins, and text alignment in Arabic, and keep readings like "21.4 °C" in order.
+- Keep "on" tiles, selected tabs, and switches visible in Windows High Contrast mode.
 - Keep the humidity and wind icons on the weather card after the primary cards are re-rendered.
 - Show an unavailable camera preview tile as a dimmed tile instead of a black block with orange text, and keep camera names readable in the light theme before the first frame arrives.
 - Lay out the pinned light tile across the whole pin window, with its power button beside the name and an unclipped brightness slider.
