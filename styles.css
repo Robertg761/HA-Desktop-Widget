@@ -7275,7 +7275,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .comparison-graph-modal-footer {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  gap: var(--space-2);
   margin-top: 12px;
 }
 
@@ -12851,9 +12852,15 @@ body.high-contrast .tile-primary-button,
   -webkit-app-region: no-drag;
 }
 
-.tile-primary-button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -3px;
+/* An inset ring rather than an outline. The global [tabindex]:focus-visible rule outranked the
+   old one and pushed the outline 2px outside the button, where the tile's overflow clipped it,
+   so keyboard focus on a tile was invisible. The id keeps this rule ahead of that one; the
+   inner gap keeps the ring distinct from an "on" tile's accent border. */
+#quick-controls .tile-primary-button:focus-visible {
+  outline: none;
+  box-shadow:
+    inset 0 0 0 2px var(--accent),
+    inset 0 0 0 4px rgb(var(--window-bg-rgb));
 }
 
 /* Editing keeps the tile itself as the drag target and its editing actions on top. */
@@ -12869,7 +12876,7 @@ body.high-contrast .tile-primary-button,
 }
 
 body.high-contrast .tile-primary-button:focus-visible {
-  outline-offset: -3px !important;
+  outline: none !important;
 }
 
 /* ============================================
@@ -14762,6 +14769,12 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   transform: scaleX(-1);
 }
 
+/* Keep a reading and its unit in their written order ("21.4 °C", "12 km/h") inside RTL text. */
+[dir='rtl'] :is(.control-sensor-readout, .detail-value, .media-tile-time) {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
 /* Windows High Contrast replaces backgrounds with system colours, which erases the accent fills
    that mark "on" tiles, selected tabs and switches. Draw those states with outlines instead. */
 @media (forced-colors: active) {
@@ -14803,5 +14816,10 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
 
   .entity-line-icon {
     stroke: currentColor;
+  }
+
+  /* Forced colours drop box-shadows, which carry the tile focus ring. */
+  #quick-controls .tile-primary-button:focus-visible {
+    border: 3px solid Highlight;
   }
 }
