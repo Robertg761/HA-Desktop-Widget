@@ -2808,20 +2808,22 @@ function wireUI() {
       document.getElementById('weather-card'),
       document.getElementById('time-card'),
     ];
+    // The picker's focus trap returns focus to the card when it closes.
+    const openWeatherPicker = () => {
+      const modal = document.getElementById('weather-config-modal');
+      if (!modal) return;
+      ui.populateWeatherEntitiesList();
+      uiUtils.openModal(modal);
+      uiUtils.trapFocus(modal);
+    };
     statusCards.forEach((card) => {
       if (!card) return;
       let pressTimer = null;
+      const isWeatherCard = () =>
+        card.dataset.primaryType === 'weather' || card.classList.contains('weather-card');
       const startPress = () => {
-        if (card.dataset.primaryType !== 'weather' && !card.classList.contains('weather-card'))
-          return;
-        pressTimer = setTimeout(() => {
-          const modal = document.getElementById('weather-config-modal');
-          if (modal) {
-            ui.populateWeatherEntitiesList();
-            uiUtils.openModal(modal);
-            uiUtils.trapFocus(modal);
-          }
-        }, 500);
+        if (!isWeatherCard()) return;
+        pressTimer = setTimeout(openWeatherPicker, 500);
       };
       const cancelPress = () => {
         clearTimeout(pressTimer);
@@ -2829,6 +2831,15 @@ function wireUI() {
       card.addEventListener('mousedown', startPress);
       card.addEventListener('mouseup', cancelPress);
       card.addEventListener('mouseleave', cancelPress);
+      card.addEventListener('keydown', (event) => {
+        if (event.target !== card || !isWeatherCard()) return;
+        const opensPicker =
+          ['Enter', ' ', 'ContextMenu'].includes(event.key) ||
+          (event.key === 'F10' && event.shiftKey);
+        if (!opensPicker || event.ctrlKey || event.metaKey || event.altKey) return;
+        event.preventDefault();
+        openWeatherPicker();
+      });
     });
 
     // Wire up alerts management

@@ -1499,6 +1499,9 @@ function renderPrimaryCard(cardEl, selection, slotIndex) {
   );
   cardEl.removeAttribute('data-entity-id');
   cardEl.removeAttribute('data-state');
+  ['tabindex', 'role', 'aria-haspopup', 'aria-keyshortcuts'].forEach((name) =>
+    cardEl.removeAttribute(name)
+  );
   cardEl.title = '';
 
   if (selection === PRIMARY_CARD_NONE) {
@@ -1513,6 +1516,11 @@ function renderPrimaryCard(cardEl, selection, slotIndex) {
     cardEl.classList.add('weather-card');
     cardEl.title = t('Long-press to configure weather');
     cardEl.innerHTML = weatherCardTemplate || '';
+    // Keyboard users open the weather picker with Enter, Space, Shift+Enter or the menu key.
+    cardEl.tabIndex = 0;
+    cardEl.setAttribute('role', 'button');
+    cardEl.setAttribute('aria-haspopup', 'dialog');
+    cardEl.setAttribute('aria-keyshortcuts', 'Enter Space Shift+Enter');
     return;
   }
 
@@ -11186,7 +11194,7 @@ function populateWeatherEntitiesList() {
 
       item.innerHTML = `
         <div class="entity-item-main">
-          <span class="entity-icon">${utils.escapeHtml(icon)}</span>
+          <span class="entity-icon" aria-hidden="true">${utils.escapeHtml(icon)}</span>
           <div class="entity-item-info">
             <span class="entity-name">${utils.escapeHtml(displayName)}</span>
             <span class="entity-id">${utils.escapeHtml(entityId)}</span>
@@ -11194,6 +11202,10 @@ function populateWeatherEntitiesList() {
         </div>
         ${isSelected ? `<span class="selected-badge">${utils.escapeHtml(t('✓ Selected'))}</span>` : ''}
       `;
+      // Show each entity's current condition, like the weather card, unless it has its own icon.
+      if (!state.CONFIG?.customEntityIcons?.[entityId] && !entity.attributes?.icon) {
+        renderWeatherIcon(item.querySelector('.entity-icon'), entity.state, { size: 22 });
+      }
 
       // Add click handler to select this entity
       item.onclick = () => {

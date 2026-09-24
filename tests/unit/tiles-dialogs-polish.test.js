@@ -253,6 +253,33 @@ describe('tile and device dialog polish', () => {
     expect(labels()).toEqual(['Controls', 'Controls', 'Controls']);
   });
 
+  it('lets keyboard users reach the weather card, and only the weather card', () => {
+    const card = document.getElementById('weather-card');
+    state.setConfig({ ...state.CONFIG, primaryCards: ['weather', 'none'] });
+    renderTiles([]);
+    expect(card.tabIndex).toBe(0);
+    expect(card.getAttribute('role')).toBe('button');
+    expect(card.getAttribute('aria-haspopup')).toBe('dialog');
+
+    state.setConfig({ ...state.CONFIG, primaryCards: ['light.desk', 'none'] });
+    renderTiles([entity('light.desk', 'off')]);
+    expect(card.hasAttribute('tabindex')).toBe(false);
+    expect(card.hasAttribute('role')).toBe(false);
+  });
+
+  it('shows each weather entity with its condition icon in the picker', () => {
+    document.body.insertAdjacentHTML('beforeend', '<div id="weather-entities-list"></div>');
+    state.setStates({
+      'weather.home': entity('weather.home', 'rainy'),
+      'weather.cabin': entity('weather.cabin', 'sunny'),
+    });
+    ui.populateWeatherEntitiesList();
+    const icons = [...document.querySelectorAll('#weather-entities-list .entity-icon')];
+    expect(icons.map((icon) => icon.textContent)).not.toContain('❓');
+    // The weather icon renderer is stubbed here; it records the condition it drew.
+    expect(icons.map((icon) => icon.dataset.weatherCondition)).toEqual(['sunny', 'rainy']);
+  });
+
   describe('device tile state line', () => {
     it.each([
       [
