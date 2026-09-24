@@ -5018,6 +5018,11 @@ body.first-run-active .widget-content > * {
   opacity: 0.7;
 }
 
+/* The picked card's button is inert too, but it shows a selection, not an unavailable action. */
+.primary-cards-list-actions .btn-primary[aria-disabled='true'] {
+  opacity: 1;
+}
+
 /* Rows scroll under the sticky pager, so it is painted opaque: the list tint layered over the
    solid settings panel colour, which matches the list look in every theme (--surface-2 alone is
    translucent in frosted glass). */
@@ -13004,11 +13009,27 @@ body.opaque-panels
   -webkit-backdrop-filter: none !important;
 }
 
-/* Ranges are handled below; :where keeps this rule's specificity unchanged. */
-body.high-contrast :is(button, input, select, textarea):not(:where([type='range'])) {
+/* Ranges are handled below; :where keeps this rule's specificity unchanged. Section headers and
+   tabs are text-like buttons: a fill would draw a bar across the panel, and their own hover,
+   active and focus styles stay visible without it. */
+body.high-contrast
+  :is(button, input, select, textarea):not(:where([type='range'], .section-toggle, .tab-link)) {
   color: #fff !important;
   background: #202020 !important;
   border-color: #aaa !important;
+}
+
+/* The primary fill marks the main action and the selected choice (Primary Cards), so it stays a
+   solid accent fill with dark text instead of the grey fill every other button gets. */
+body.high-contrast .btn-primary {
+  color: #141414 !important;
+  background: var(--accent) !important;
+  border-color: #fff !important;
+}
+
+body.high-contrast :is(#settings-modal, .quick-access-tabs) .tab-link.active {
+  border-color: var(--accent);
+  color: #fff;
 }
 
 /* A range input's background is its track: give it one that stands out from the #141414 panels.

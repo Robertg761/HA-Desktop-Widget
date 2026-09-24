@@ -123,14 +123,34 @@ function specificity(selector) {
   return result;
 }
 
+/** jsdom cannot parse :is() inside :not(), so `:not(:is(a, b))` becomes the equivalent `:not(a, b)`. */
+function unwrapIsInsideNot(selector) {
+  let result = selector;
+  let index = result.indexOf(':not(:is(');
+  while (index !== -1) {
+    const isStart = index + ':not('.length;
+    const close = findClosing(result, isStart + ':is'.length);
+    result =
+      result.slice(0, isStart) +
+      result.slice(isStart + ':is('.length, close) +
+      result.slice(close + 1);
+    index = result.indexOf(':not(:is(');
+  }
+  return result;
+}
+
 /** Rewrites a selector so jsdom can match it, or returns null when it targets a pseudo-element. */
 function toMatchableSelector(selector) {
   if (/::|:(before|after|first-line|first-letter)\b/.test(selector)) return null;
-  return selector
-    .replace(/:where\(/g, ':is(')
-    .replace(/:(focus-visible|focus|hover)(?![\w-])/g, (match, name) => {
-      return `[data-${STATE_PSEUDO_CLASSES[name]}]`;
-    });
+  // Prettier wraps long selectors, and jsdom rejects the line breaks.
+  return unwrapIsInsideNot(
+    selector
+      .replace(/\s+/g, ' ')
+      .replace(/:where\(/g, ':is(')
+      .replace(/:(focus-visible|focus|hover)(?![\w-])/g, (match, name) => {
+        return `[data-${STATE_PSEUDO_CLASSES[name]}]`;
+      })
+  );
 }
 
 function selectorMatches(element, selector) {
