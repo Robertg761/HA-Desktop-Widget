@@ -2578,6 +2578,15 @@ async function init() {
   }
 }
 
+// Disabling a toggle while main applies it drops keyboard focus to the page. Put it back unless
+// the user has moved on meanwhile.
+function reenableSettingsToggle(toggle, hadFocus) {
+  toggle.disabled = false;
+  if (hadFocus && (!document.activeElement || document.activeElement === document.body)) {
+    toggle.focus();
+  }
+}
+
 /**
  * Attach event listeners and wire up interactive UI controls, modals, and settings handlers.
  *
@@ -2872,6 +2881,7 @@ function wireUI() {
         const requestedEnabled = !!e.target.checked;
         const previousEnabled = !!state.CONFIG.globalHotkeys?.enabled;
         const hotkeysSection = document.getElementById('hotkeys-section');
+        const hadFocus = document.activeElement === e.target;
         e.target.disabled = true;
         try {
           const success = await hotkeys.toggleHotkeys(requestedEnabled);
@@ -2881,7 +2891,7 @@ function wireUI() {
             hotkeysSection.style.display = appliedEnabled ? 'block' : 'none';
           }
         } finally {
-          e.target.disabled = false;
+          reenableSettingsToggle(e.target, hadFocus);
         }
       };
     }
@@ -2892,6 +2902,7 @@ function wireUI() {
         const requestedEnabled = !!e.target.checked;
         const previousEnabled = !!state.CONFIG.entityAlerts?.enabled;
         const alertsSection = document.getElementById('alerts-section');
+        const hadFocus = document.activeElement === e.target;
         e.target.disabled = true;
         try {
           const success = await alerts.toggleAlerts(requestedEnabled);
@@ -2904,7 +2915,7 @@ function wireUI() {
             settings.renderAlertsListInline();
           }
         } finally {
-          e.target.disabled = false;
+          reenableSettingsToggle(e.target, hadFocus);
         }
       };
     }

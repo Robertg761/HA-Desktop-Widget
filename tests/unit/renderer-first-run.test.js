@@ -935,6 +935,38 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(document.getElementById('alerts-section').style.display).toBe('none');
   });
 
+  it('keeps keyboard focus on the hotkey and alert toggles while main applies them', async () => {
+    await loadRenderer({
+      bodyHtml: `
+        <main class="widget-content"></main>
+        <input id="global-hotkeys-enabled" type="checkbox">
+        <input id="entity-alerts-enabled" type="checkbox">
+      `,
+    });
+    // Chromium moves focus off a control when it is disabled; jsdom does not (and ignores blur()
+    // on a disabled control), so the mocks drop it while main is applying the change.
+    const dropFocus = async () => {
+      const toggle = document.activeElement;
+      toggle.disabled = false;
+      toggle.blur();
+      toggle.disabled = true;
+      return true;
+    };
+    mockHotkeys.toggleHotkeys.mockImplementation(dropFocus);
+    mockAlerts.toggleAlerts.mockImplementation(dropFocus);
+
+    for (const id of ['global-hotkeys-enabled', 'entity-alerts-enabled']) {
+      const toggle = document.getElementById(id);
+      toggle.focus();
+      toggle.checked = true;
+      toggle.dispatchEvent(new Event('change'));
+      await flushAsync();
+
+      expect(toggle.checked).toBe(true);
+      expect(document.activeElement).toBe(toggle);
+    }
+  });
+
   it('keeps a hotkey visible and authoritative when clearing it fails', async () => {
     const config = unconfiguredConfig();
     config.globalHotkeys.hotkeys['light.office'] = {
