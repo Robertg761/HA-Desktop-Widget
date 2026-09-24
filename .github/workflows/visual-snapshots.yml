@@ -63,12 +63,20 @@ jobs:
       - name: Build renderer
         run: npm run build:renderer
 
+      # Electron downloads its binary on first use rather than at install time; fetch it now so
+      # the Linux sandbox helper below exists and the snapshot timeouts don't include a download.
+      - name: Download Electron
+        run: node -e "require('electron')"
+
       - name: Take snapshots (Linux)
         if: runner.os == 'Linux'
         run: |
           # The npm-installed Electron's sandbox helper lacks the setuid bit.
-          sudo chown root:root node_modules/electron/dist/chrome-sandbox
-          sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+          sandbox=node_modules/electron/dist/chrome-sandbox
+          if [ -f "$sandbox" ]; then
+            sudo chown root:root "$sandbox"
+            sudo chmod 4755 "$sandbox"
+          fi
           xvfb-run -a -s "-screen 0 1280x900x24" dbus-run-session -- \
             node scripts/visual-snapshots/run.cjs visual-snapshots
 
