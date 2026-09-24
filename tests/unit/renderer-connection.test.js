@@ -258,6 +258,8 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       await loadRenderer({
         configureApi(api) {
           api.refreshHomeAssistantOAuth.mockImplementation(async () => {
+            // Main's config broadcast arrives as its own IPC event, after the call was made.
+            await Promise.resolve();
             triggerMockEvent('configUpdated', oauthConfig({ token: 'access-token-2' }));
             return { success: true, oauthStatus: 'connected' };
           });
@@ -553,6 +555,32 @@ describe('Renderer Home Assistant connection lifecycle', () => {
 
       expect(mockWebsocket.close).not.toHaveBeenCalled();
       expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips the appearance pass when only the access token rotates', async () => {
+      await loadRenderer();
+      connectSuccessfully();
+      const appearanceCalls = () =>
+        ['applyTheme', 'applyAccentTheme', 'applyUiPreferences', 'applyWindowEffects'].map(
+          (name) => mockUiUtils[name].mock.calls.length
+        );
+      const before = appearanceCalls();
+
+      triggerMockEvent(
+        'configUpdated',
+        oauthConfig({ token: 'access-token-2', oauthExpiresAt: Date.now() + 30 * 60_000 })
+      );
+      await flushAsync();
+      expect(appearanceCalls()).toEqual(before);
+
+      // A real appearance change in the same kind of echo still repaints.
+      triggerMockEvent('configUpdated', {
+        ...oauthConfig({ token: 'access-token-3' }),
+        ui: { theme: 'light' },
+      });
+      await flushAsync();
+      expect(mockUiUtils.applyTheme).toHaveBeenLastCalledWith('light');
+      expect(mockUiUtils.applyWindowEffects.mock.calls.length).toBe(before[3] + 1);
     });
 
     it('reconnects a socket that is down as soon as a new access token arrives', async () => {

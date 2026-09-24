@@ -1404,15 +1404,26 @@ const QUICK_ACCESS_CONFIG_KEYS = [
   'favoriteEntities',
   'comparisonGraphs',
 ];
+// Main replaces the OAuth access token about every half hour. The token, its expiry and the
+// authorization id are connection state that the config-updated handler reconnects on by itself;
+// on their own they need no theme, locale or tile refresh.
+const OAUTH_RUNTIME_CONNECTION_KEYS = ['token', 'oauthExpiresAt', 'oauthAuthorizationId'];
 // The config as of the previous applyRendererConfig call. Persistence paths in ui.js and
 // settings.js store their result in state before the echo arrives, so state alone cannot tell
 // whether the appearance pass has already run for it.
 let lastAppliedRendererConfig = null;
 
+function withoutOAuthRuntimeConnection(config) {
+  if (config?.homeAssistant?.authMethod !== 'oauth') return config;
+  const homeAssistant = { ...config.homeAssistant };
+  OAUTH_RUNTIME_CONNECTION_KEYS.forEach((key) => delete homeAssistant[key]);
+  return { ...config, homeAssistant };
+}
+
 function describeRendererConfigChange(renderedConfig, appliedConfig, nextConfig) {
   const serialize = (config, quickAccess) =>
     JSON.stringify(
-      Object.entries(config || {})
+      Object.entries(withoutOAuthRuntimeConnection(config) || {})
         .filter(([key]) => QUICK_ACCESS_CONFIG_KEYS.includes(key) === quickAccess)
         .sort(([a], [b]) => a.localeCompare(b))
     );
