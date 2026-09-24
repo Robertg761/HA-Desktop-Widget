@@ -1401,6 +1401,50 @@ describe('Settings + Config Integration', () => {
       expect(state.CONFIG.ui.language).toBe('en');
     });
 
+    test('keeps the language selector usable while saves run one after another', async () => {
+      state.CONFIG.ui.language = 'auto';
+      window.electronAPI.getLocalePacks.mockResolvedValue([
+        { locale: 'fr', displayName: 'Français', version: '1.0.0', installed: true },
+      ]);
+      await settings.openSettings();
+      await waitForLanguagePackRefresh();
+      let finishFirstSave;
+      window.electronAPI.updateConfig.mockClear();
+      window.electronAPI.updateConfig
+        .mockImplementationOnce(
+          (patch) =>
+            new Promise((resolve) => {
+              finishFirstSave = () => resolve({ ...state.CONFIG, ui: patch.ui });
+            })
+        )
+        .mockImplementationOnce(async (patch) => ({ ...state.CONFIG, ui: patch.ui }));
+
+      const languageSelect = document.getElementById('language-select');
+      languageSelect.focus();
+      languageSelect.value = 'en';
+      const firstSave = languageSelect.onchange();
+      await Promise.resolve();
+      expect(languageSelect.disabled).toBe(false);
+      expect(document.activeElement).toBe(languageSelect);
+
+      // Two more arrow presses while the first save is still running: only the last one is saved.
+      languageSelect.value = 'auto';
+      languageSelect.onchange();
+      languageSelect.value = 'fr';
+      const lastSave = languageSelect.onchange();
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledTimes(1);
+      finishFirstSave();
+      await firstSave;
+      await lastSave;
+
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledTimes(2);
+      expect(window.electronAPI.updateConfig).toHaveBeenLastCalledWith(
+        expect.objectContaining({ ui: expect.objectContaining({ language: 'fr' }) })
+      );
+      expect(state.CONFIG.ui.language).toBe('fr');
+      expect(document.activeElement).toBe(languageSelect);
+    });
+
     test('language pack load failures surface an error while still showing installed packs', async () => {
       const installedPacks = [
         {

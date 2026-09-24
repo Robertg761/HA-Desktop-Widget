@@ -71,6 +71,7 @@ let lastValidCustomColorHex = '#64B5F6';
 let hasDraftColorPreview = false;
 let isCustomEditorActive = false;
 let settingsUiHooks = null;
+let languageSaveQueue = Promise.resolve();
 // The Start at login state shown when Settings opened, so Save only writes a real change.
 let loadedStartAtLogin = null;
 let profileSyncStatusCache = null;
@@ -3760,24 +3761,27 @@ function bindLanguageSettingsUi() {
   const languageSelect = document.getElementById('language-select');
   if (languageSelect) {
     languageSelect.value = state.CONFIG?.ui?.language || 'auto';
-    languageSelect.onchange = async () => {
-      const previousLanguage = state.CONFIG?.ui?.language || 'auto';
-      const nextLanguage = languageSelect.value || previousLanguage;
+    // Saves run one at a time instead of disabling the select, which would drop keyboard focus
+    // while someone arrows through the languages. A choice already replaced by a newer one is
+    // skipped.
+    languageSelect.onchange = () => {
       updateLanguageSummaryText();
-
-      if (nextLanguage === previousLanguage) return;
-
-      languageSelect.disabled = true;
-      try {
-        await persistLanguageSelection(nextLanguage);
-      } catch (error) {
-        log.error('Failed to update language selection:', error);
-        languageSelect.value = previousLanguage;
-        updateLanguageSummaryText();
-        showToast(t('Failed to save language selection'), 'error', 2600);
-      } finally {
-        languageSelect.disabled = false;
-      }
+      languageSaveQueue = languageSaveQueue.then(async () => {
+        const previousLanguage = state.CONFIG?.ui?.language || 'auto';
+        const nextLanguage = languageSelect.value || previousLanguage;
+        if (nextLanguage === previousLanguage) return;
+        try {
+          await persistLanguageSelection(nextLanguage);
+        } catch (error) {
+          log.error('Failed to update language selection:', error);
+          if (languageSelect.value === nextLanguage) {
+            languageSelect.value = previousLanguage;
+            updateLanguageSummaryText();
+          }
+          showToast(t('Failed to save language selection'), 'error', 2600);
+        }
+      });
+      return languageSaveQueue;
     };
   }
 
