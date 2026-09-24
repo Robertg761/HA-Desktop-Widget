@@ -722,10 +722,28 @@ function dismissToast(toast) {
  * @param {number} [timeout=2000] - Time in milliseconds before the toast begins animating out.
  * @returns {HTMLElement|undefined} The toast element, or undefined when it could not be shown.
  */
+// Toasts sit at the bottom of the window, where an open dialog keeps its footer buttons (Close,
+// Save, Turn On). While a dialog is open, stack them just above its footer instead.
+const TOAST_FOOTER_GAP_PX = 8;
+function placeToastContainer(container) {
+  const footerTops = Array.from(
+    document.querySelectorAll('.modal:not(.hidden):not(.modal-closing) .modal-footer')
+  )
+    .filter((footer) => footer.getClientRects().length > 0)
+    .map((footer) => footer.getBoundingClientRect().top);
+  if (!footerTops.length) {
+    container.style.removeProperty('bottom');
+    return;
+  }
+  const bottom = Math.max(0, window.innerHeight - Math.min(...footerTops)) + TOAST_FOOTER_GAP_PX;
+  container.style.bottom = `${Math.round(bottom)}px`;
+}
+
 function showToast(message, type = 'success', timeout = 2000) {
   try {
     const container = document.getElementById('toast-container');
     if (!container) return undefined;
+    placeToastContainer(container);
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
 
@@ -1027,7 +1045,8 @@ function trapFocus(modal, { initialFocus } = {}) {
     focusTrapPreviousFocus.set(modal, document.activeElement);
     focusTrapPreviousTile.set(modal, describeTileFocusTarget(document.activeElement));
     const handler = (e) => {
-      if (e.key !== 'Tab') return;
+      // Overlays with their own Tab order (camera preview, command palette) already moved focus.
+      if (e.key !== 'Tab' || e.defaultPrevented) return;
       const focusable = getFocusableElements(modal);
       if (focusable.length === 0) return;
       const first = focusable[0];
@@ -1081,7 +1100,13 @@ function canRestorePreviousFocus(modal) {
   }
 }
 
-function releaseFocusTrap(modal) {
+/**
+ * Release a focus trap started by {@link trapFocus} and hand focus back to where it was.
+ * @param {HTMLElement} [modal] - The modal to release; the top trapped modal when omitted.
+ * @param {Object} [options] - Release behaviour.
+ * @param {boolean} [options.restoreFocus=true] - False when the caller moves focus itself.
+ */
+function releaseFocusTrap(modal, { restoreFocus = true } = {}) {
   try {
     let targetModal = modal;
     if (!targetModal) {
@@ -1107,7 +1132,7 @@ function releaseFocusTrap(modal) {
     const previousTile = focusTrapPreviousTile.get(targetModal);
     focusTrapPreviousFocus.delete(targetModal);
     focusTrapPreviousTile.delete(targetModal);
-    if (previousFocus?.focus && (previousFocus.isConnected || previousTile)) {
+    if (restoreFocus && previousFocus?.focus && (previousFocus.isConnected || previousTile)) {
       setTimeout(() => {
         const target = previousFocus.isConnected
           ? previousFocus

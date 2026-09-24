@@ -326,6 +326,7 @@ function createMockElectronAPI() {
 
     // Utility Operations
     getAppVersion: jest.fn(() => Promise.resolve('1.0.0-test')),
+    getOsInfo: jest.fn(() => Promise.resolve({ platform: 'linux', release: '6.0.0-test' })),
     openLogs: jest.fn(() => Promise.resolve()),
     openExternal: jest.fn(() => Promise.resolve({ success: true })),
     writeClipboardText: jest.fn(() => Promise.resolve({ success: true })),

@@ -13,15 +13,17 @@ const { sampleStates } = require('../fixtures/ha-data.js');
 jest.mock('../../src/ui-utils.js', () => ({
   showToast: jest.fn(),
   // Mirrors the real shared modal helper, which settles synchronously under NODE_ENV=test.
-  closeModal: jest.fn((modal, { remove = false, onClosed } = {}) => {
+  closeModal: jest.fn((modal, { remove = false, releaseFocus = false, onClosed } = {}) => {
     if (modal) {
       modal.classList.remove('modal-closing');
       if (remove) modal.remove();
       else modal.classList.add('hidden');
+      if (releaseFocus) jest.requireActual('../../src/ui-utils.js').releaseFocusTrap(modal);
       onClosed?.();
     }
     return Promise.resolve();
   }),
+  trapFocus: jest.fn((...args) => jest.requireActual('../../src/ui-utils.js').trapFocus(...args)),
 }));
 
 jest.mock('../../src/utils.js', () => ({
@@ -461,6 +463,38 @@ describe('hotkeys module', () => {
       // This test is mainly to ensure the error handling works
       // Testing the full modal interaction is complex in jest/jsdom
       expect(typeof hotkeys.captureHotkey).toBe('function');
+    });
+
+    it('cancels itself, not the Settings dialog under it, on Escape with focus on the page', async () => {
+      const uiUtils = jest.requireActual('../../src/ui-utils.js');
+      const settings = document.createElement('div');
+      settings.className = 'modal';
+      settings.innerHTML = '<div class="modal-content"><button>Save</button></div>';
+      document.body.appendChild(settings);
+      const settingsEscape = jest.fn();
+      settings.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') settingsEscape();
+      });
+      uiUtils.trapFocus(settings, { initialFocus: false });
+
+      const capture = hotkeys.captureHotkey();
+      // A click on the overlay's text leaves focus on <body>.
+      document.activeElement?.blur();
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+      );
+
+      await expect(capture).resolves.toBeNull();
+      expect(document.querySelector('.hotkey-capture-modal')).toBeNull();
+      expect(settingsEscape).not.toHaveBeenCalled();
+
+      // With the overlay gone, Escape reaches Settings again.
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+      );
+      expect(settingsEscape).toHaveBeenCalledTimes(1);
+      uiUtils.releaseFocusTrap(settings);
+      settings.remove();
     });
   });
 

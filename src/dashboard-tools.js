@@ -10,6 +10,7 @@ import { applyCloseButtonIcons, setIconContent } from './icons.js';
 const MAX_RECENT_ISSUES = 5;
 const connection = {
   appVersion: null,
+  operatingSystem: null,
   homeAssistantVersion: null,
   lastConnectedAt: null,
   lastUpdateAt: null,
@@ -18,9 +19,23 @@ const connection = {
   recentIssues: [],
 };
 
-// The operating system part of the user agent, e.g. "X11; Linux x86_64".
+// The system and its version from the main process, e.g. "Ubuntu 24.04 LTS (linux 6.8.0-45)".
+// Until that arrives, the operating system part of the user agent ("X11; Linux x86_64").
 function operatingSystem() {
-  return /\(([^)]+)\)/.exec(globalThis.navigator?.userAgent || '')?.[1] || null;
+  return (
+    connection.operatingSystem ||
+    /\(([^)]+)\)/.exec(globalThis.navigator?.userAgent || '')?.[1] ||
+    null
+  );
+}
+
+function describeOperatingSystem(info) {
+  const text = (value) => (typeof value === 'string' ? value.trim().slice(0, 128) : '');
+  const platform = text(info?.platform);
+  if (!platform) return null;
+  const system = [platform, text(info.release)].filter(Boolean).join(' ');
+  const distro = text(info.distro);
+  return distro ? `${distro} (${system})` : system;
 }
 
 function diagnosticsReport() {
@@ -265,6 +280,12 @@ function initializeDashboardTools() {
       if (typeof version === 'string') connection.appVersion = version.slice(0, 64);
     })
     .catch(() => {});
+  window.electronAPI
+    ?.getOsInfo?.()
+    ?.then((info) => {
+      connection.operatingSystem = describeOperatingSystem(info);
+    })
+    .catch(() => {});
   websocket.on('connect-attempt', () => {
     if (connection.outage) connection.outage.reconnectAttempts += 1;
   });
@@ -336,6 +357,9 @@ function initializeDashboardTools() {
 
 export {
   initializeDashboardTools,
+  // For failures seen without a socket event, such as an OAuth authorization that could not be
+  // restored because Home Assistant was down at launch.
+  recordIssue as recordConnectionIssue,
   refreshDashboardUndoState,
   showDashboardHistory,
   diagnosticsReport,

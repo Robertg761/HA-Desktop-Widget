@@ -180,6 +180,7 @@ function createElectronApi(ipcRenderer, platform) {
     quitAndInstall: () => invoke('quit-and-install'),
 
     getAppVersion: () => invoke('get-app-version'),
+    getOsInfo: () => invoke('get-os-info'),
     openLogs: () => invoke('open-logs'),
     openExternal: (url) => invoke('open-external', url),
     writeClipboardText: (text) => invokeChecked('write-clipboard-text', text),

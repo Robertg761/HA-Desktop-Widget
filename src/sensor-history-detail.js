@@ -100,7 +100,15 @@ function mountSensorHistoryDetail({ body, modal, entity, websocket, normalize, r
         }) + (unit ? ` ${unit}` : '');
       frame.hidden = false;
       render(frame, data.series, { start: data.start, end: data.end });
-      dates.textContent = `${formatDateTime(data.start)} – ${formatDateTime(data.end)}`;
+      // Minutes are precise enough for a history period; seconds only add noise.
+      const period = {
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      };
+      dates.textContent = `${formatDateTime(data.start, period)} – ${formatDateTime(data.end, period)}`;
       refresh.textContent = t('Refresh');
     } catch (error) {
       console.warn('Sensor history request failed:', error);

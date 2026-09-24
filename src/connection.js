@@ -34,7 +34,11 @@ function normalizeBaseUrl(rawUrl) {
   }
 
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
-  if (!parsed.hostname) return null;
+  // Chromium's URL parser percent-encodes spaces and other characters no host name can contain
+  // ("ha local" becomes "ha%20local") instead of rejecting them. Accept only real host names
+  // (letters, digits, dots, hyphens, underscores; international names arrive as punycode) and
+  // bracketed IPv6 addresses.
+  if (!/^(?:[a-z0-9_.-]+|\[[0-9a-f:.]+\])$/i.test(parsed.hostname)) return null;
   return parsed.origin.replace(/\/+$/, '');
 }
 
@@ -65,6 +69,23 @@ async function startHomeAssistantPairing(api, url) {
     throw error;
   }
   return result;
+}
+
+// Pairing failures that are ordinary outcomes (declined, canceled, an old browser tab, a mistyped
+// or unreachable server) rather than faults; callers log them as warnings.
+const EXPECTED_PAIRING_FAILURE_CODES = new Set([
+  'OAUTH_AUTHORIZATION_CANCELED',
+  'OAUTH_AUTHORIZATION_DECLINED',
+  'OAUTH_AUTHORIZATION_TIMEOUT',
+  'OAUTH_INVALID_URL',
+  'OAUTH_SERVER_UNREACHABLE',
+  'OAUTH_STATE_MISMATCH',
+  'OAUTH_TOKEN_NETWORK',
+  'OAUTH_TOKEN_TIMEOUT',
+]);
+
+function isExpectedPairingFailure(error) {
+  return EXPECTED_PAIRING_FAILURE_CODES.has(error?.result?.code);
 }
 
 function buildHomeAssistantPathUrl(baseUrl, path) {
@@ -102,6 +123,7 @@ export {
   isPlaceholderOrEmptyToken,
   getConnectionIdentity,
   startHomeAssistantPairing,
+  isExpectedPairingFailure,
   buildHomeAssistantPathUrl,
   classifyConnectionError,
 };

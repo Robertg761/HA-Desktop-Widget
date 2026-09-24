@@ -4097,6 +4097,12 @@ body.first-run-active .widget-content > * {
   flex-shrink: 0;
 }
 
+/* A weather picker entry borrows the weather card's icon colours, at list size. */
+.entity-item .entity-icon.weather-icon {
+  width: 28px;
+  height: 28px;
+}
+
 .entity-item .entity-name {
   font-weight: 600;
   color: var(--text-primary);
@@ -13116,4 +13122,11 @@ body.high-contrast .tile-primary-button,
 
 body.high-contrast .tile-primary-button:focus-visible {
   outline-offset: -3px !important;
+}
+
+/* A primary card tile with a single action (lock, switch, scene, button) takes focus itself, and
+   the card clips its overflow, so its ring sits inside too. */
+.status-card.primary-entity-card .control-item:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -3px;
 }

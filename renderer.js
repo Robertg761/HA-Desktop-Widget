@@ -2,7 +2,11 @@ import { applyDesktopAppearance } from './src/desktop-appearance.js';
 import { installLayerDrag } from './src/layer-drag.js';
 // Load all required modules (ES Modules)
 import log from './src/logger.js';
-import { initializeDashboardTools, refreshDashboardUndoState } from './src/dashboard-tools.js';
+import {
+  initializeDashboardTools,
+  recordConnectionIssue,
+  refreshDashboardUndoState,
+} from './src/dashboard-tools.js';
 import state from './src/state.js';
 import websocket from './src/websocket.js';
 import * as hotkeys from './src/hotkeys.js';
@@ -42,11 +46,13 @@ import {
 import {
   getConnectionIdentity,
   isConfigured,
+  isExpectedPairingFailure,
   normalizeBaseUrl,
   startHomeAssistantPairing,
 } from './src/connection.js';
 import {
   describeHomeAssistantOAuthFailure,
+  describeHomeAssistantOAuthReauthReason,
   describeHomeAssistantOAuthRefreshError,
   renderConnectionStatus,
   setConnectionStatusBusy,
@@ -247,6 +253,14 @@ function clearReconnectTimer() {
 function connectWebSocket() {
   if (IS_DESKTOP_PIN_MODE) return;
   clearReconnectTimer();
+  // An OAuth setup without a usable access token (restore pending, offline, or expired) has
+  // nothing to connect with; trying would only report the placeholder token. Main reconnects
+  // through the config broadcast once it has a token.
+  if (usesOAuth() && !isConfigured(state.CONFIG)) {
+    setOAuthRestoreStatus();
+    renderMainWidgetState();
+    return;
+  }
   updateMainConnectionState('connecting');
   setDisconnectedStatus(t('Waiting for live Home Assistant data...'));
   renderMainWidgetState();
@@ -325,10 +339,15 @@ function getOAuthReauthRequiredStatus() {
 function setOAuthRestoreStatus() {
   const homeAssistant = state.CONFIG?.homeAssistant || {};
   if (homeAssistant.oauthStatus === 'reauth_required') {
+    recordConnectionIssue('authorization_failed');
     if (mainConnectionState !== 'auth-failed') updateMainConnectionState('auth-failed');
-    setDisconnectedStatus(getOAuthReauthRequiredStatus());
+    setDisconnectedStatus(
+      describeHomeAssistantOAuthReauthReason(homeAssistant) || getOAuthReauthRequiredStatus()
+    );
     return;
   }
+  // Without an access token there is no socket to report the outage, so record it here.
+  if (homeAssistant.oauthStatus !== 'restoring') recordConnectionIssue('authorization_unavailable');
   setDisconnectedStatus(
     homeAssistant.oauthStatus === 'restoring'
       ? t('Restoring Home Assistant authorization...')
@@ -662,7 +681,10 @@ async function reauthorizeHomeAssistant() {
     }
   } catch (error) {
     if (error?.result?.code !== 'OAUTH_AUTHORIZATION_CANCELED') {
-      log.error('Failed to reconnect Home Assistant authorization:', error);
+      log[isExpectedPairingFailure(error) ? 'warn' : 'error'](
+        'Failed to reconnect Home Assistant authorization:',
+        error
+      );
       oauthReauthorization.error = describeHomeAssistantOAuthFailure(error);
     }
   } finally {
@@ -697,6 +719,7 @@ function getOAuthStatePanel() {
       message: pending
         ? t('Opening Home Assistant for authorization...')
         : error ||
+          describeHomeAssistantOAuthReauthReason(state.CONFIG.homeAssistant) ||
           t(
             'Home Assistant no longer accepts the authorization for this app. It may have expired or been revoked. Reconnect with Home Assistant to continue.'
           ),
@@ -735,7 +758,7 @@ function getOAuthStatePanel() {
   return {
     tone: 'error',
     title: t('Home Assistant is disconnected'),
-    message: t('Home Assistant is offline. Authorization will retry automatically.'),
+    message: describeHomeAssistantOAuthRefreshError(state.CONFIG.homeAssistant),
     actions: [
       { label: t('Open Settings'), className: 'btn btn-primary', onClick: openSettingsModal },
       { label: t('Retry'), className: 'btn btn-secondary', onClick: retryOAuthRestore },
@@ -1105,7 +1128,10 @@ async function finishFirstRunWizard() {
       setWizardStatus('', '');
     } else {
       const message = describeHomeAssistantOAuthFailure(error);
-      log.error('Failed to finish first-run setup:', error);
+      log[isExpectedPairingFailure(error) ? 'warn' : 'error'](
+        'Failed to finish first-run setup:',
+        error
+      );
       setWizardStatus(message, 'error');
       uiUtils.showToast(message, 'error', 6000);
     }
@@ -1540,13 +1566,36 @@ function showConfigRecoveryNotice(recovery) {
   uiUtils.showToast(message, 'error', 20000);
 }
 
+// The language the window was last drawn in; null until the first locale is applied.
+let appliedLocale = null;
 async function refreshLocaleBootstrap() {
   if (!window?.electronAPI?.getLocaleBootstrap) return null;
   const bootstrap = await window.electronAPI.getLocaleBootstrap();
   setLocaleBootstrap(bootstrap || {});
   if (!IS_DESKTOP_PIN_MODE) refreshTrayEntityIcons({ force: true });
   translateDocument(document);
+  const locale = bootstrap?.activeLocale || '';
+  if (appliedLocale !== null && locale !== appliedLocale) refreshConnectionStatusLanguage();
+  appliedLocale = locale;
   return bootstrap;
+}
+
+// The connection indicator's label and tooltip are written when the connection changes. After a
+// language change, write them again in the new language. A failure's own explanation was
+// translated when it happened and stays until the next connection change.
+function refreshConnectionStatusLanguage() {
+  if (IS_DESKTOP_PIN_MODE) return;
+  if (mainConnectionState === 'demo') {
+    setConnectedStatus(t('Development climate demo — no Home Assistant connection'));
+  } else if (mainConnectionState === 'connected') {
+    setConnectedStatus();
+  } else if (usesOAuth() && !isConfigured(state.CONFIG)) {
+    setOAuthRestoreStatus();
+  } else if (mainConnectionState === 'connecting') {
+    setDisconnectedStatus(t('Waiting for live Home Assistant data...'));
+  } else {
+    setDisconnectedStatus();
+  }
 }
 
 function renderCurrentMode() {
@@ -2110,6 +2159,10 @@ websocket.on('message', (msg) => {
         } else if (msg.id === getConfigId) {
           // get_config response
           log.debug('Received config from Home Assistant:', JSON.stringify(msg.result, null, 2));
+          const previousTimeZone = state.TIME_ZONE;
+          state.setTimeZone(msg.result?.time_zone);
+          // Calendar tiles read Home Assistant's offset-less times in its zone.
+          if (state.TIME_ZONE !== previousTimeZone && !IS_SPECIAL_PIN_MODE) ui.renderActiveTab();
           if (msg.result && msg.result.unit_system) {
             log.debug('Unit system found:', JSON.stringify(msg.result.unit_system, null, 2));
             state.setUnitSystem(msg.result.unit_system);
@@ -2796,20 +2849,22 @@ function wireUI() {
       document.getElementById('weather-card'),
       document.getElementById('time-card'),
     ];
+    // The picker's focus trap returns focus to the card when it closes.
+    const openWeatherPicker = () => {
+      const modal = document.getElementById('weather-config-modal');
+      if (!modal) return;
+      ui.populateWeatherEntitiesList();
+      uiUtils.openModal(modal);
+      uiUtils.trapFocus(modal);
+    };
     statusCards.forEach((card) => {
       if (!card) return;
       let pressTimer = null;
+      const isWeatherCard = () =>
+        card.dataset.primaryType === 'weather' || card.classList.contains('weather-card');
       const startPress = () => {
-        if (card.dataset.primaryType !== 'weather' && !card.classList.contains('weather-card'))
-          return;
-        pressTimer = setTimeout(() => {
-          const modal = document.getElementById('weather-config-modal');
-          if (modal) {
-            ui.populateWeatherEntitiesList();
-            uiUtils.openModal(modal);
-            uiUtils.trapFocus(modal);
-          }
-        }, 500);
+        if (!isWeatherCard()) return;
+        pressTimer = setTimeout(openWeatherPicker, 500);
       };
       const cancelPress = () => {
         clearTimeout(pressTimer);
@@ -2817,6 +2872,15 @@ function wireUI() {
       card.addEventListener('mousedown', startPress);
       card.addEventListener('mouseup', cancelPress);
       card.addEventListener('mouseleave', cancelPress);
+      card.addEventListener('keydown', (event) => {
+        if (event.target !== card || !isWeatherCard()) return;
+        const opensPicker =
+          ['Enter', ' ', 'ContextMenu'].includes(event.key) ||
+          (event.key === 'F10' && event.shiftKey);
+        if (!opensPicker || event.ctrlKey || event.metaKey || event.altKey) return;
+        event.preventDefault();
+        openWeatherPicker();
+      });
     });
 
     // Wire up alerts management

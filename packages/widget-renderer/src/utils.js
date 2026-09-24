@@ -323,6 +323,8 @@ function getEntityIcon(entity, options = {}) {
         return '✅';
       case 'calendar':
         return '📅';
+      case 'weather':
+        return '🌤️';
       default:
         return '❓';
     }

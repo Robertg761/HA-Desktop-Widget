@@ -225,6 +225,32 @@ describe('tile and device dialog polish', () => {
       );
     });
 
+    it.each([
+      ['Asia/Tokyo', '2026-09-23 20:00:00', '2026-09-23T11:00:00Z'],
+      // Just after the spring-forward change, the new offset applies.
+      ['America/New_York', '2026-03-08 03:30:00', '2026-03-08T07:30:00Z'],
+      ['America/New_York', '2026-03-07 23:30:00', '2026-03-08T04:30:00Z'],
+    ])(
+      "reads start times in Home Assistant's time zone (%s %s)",
+      (timeZone, startTime, instant) => {
+        state.setTimeZone(timeZone);
+        try {
+          renderTiles([
+            entity('calendar.work', 'on', { message: 'Standup', start_time: startTime }),
+          ]);
+          const expected = new Date(instant).toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+          });
+          expect(tile('calendar.work').querySelector('.calendar-next-event').textContent).toBe(
+            `Standup · ${expected}`
+          );
+        } finally {
+          state.setTimeZone(null);
+        }
+      }
+    );
+
     it('shows timed events without seconds in the active locale', () => {
       const start = '2026-09-23 20:23:50';
       renderTiles([entity('calendar.work', 'on', { message: 'Standup', start_time: start })]);
@@ -251,6 +277,33 @@ describe('tile and device dialog polish', () => {
     i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
     ui.renderActiveTab();
     expect(labels()).toEqual(['Controls', 'Controls', 'Controls']);
+  });
+
+  it('lets keyboard users reach the weather card, and only the weather card', () => {
+    const card = document.getElementById('weather-card');
+    state.setConfig({ ...state.CONFIG, primaryCards: ['weather', 'none'] });
+    renderTiles([]);
+    expect(card.tabIndex).toBe(0);
+    expect(card.getAttribute('role')).toBe('button');
+    expect(card.getAttribute('aria-haspopup')).toBe('dialog');
+
+    state.setConfig({ ...state.CONFIG, primaryCards: ['light.desk', 'none'] });
+    renderTiles([entity('light.desk', 'off')]);
+    expect(card.hasAttribute('tabindex')).toBe(false);
+    expect(card.hasAttribute('role')).toBe(false);
+  });
+
+  it('shows each weather entity with its condition icon in the picker', () => {
+    document.body.insertAdjacentHTML('beforeend', '<div id="weather-entities-list"></div>');
+    state.setStates({
+      'weather.home': entity('weather.home', 'rainy'),
+      'weather.cabin': entity('weather.cabin', 'sunny'),
+    });
+    ui.populateWeatherEntitiesList();
+    const icons = [...document.querySelectorAll('#weather-entities-list .entity-icon')];
+    expect(icons.map((icon) => icon.textContent)).not.toContain('❓');
+    // The weather icon renderer is stubbed here; it records the condition it drew.
+    expect(icons.map((icon) => icon.dataset.weatherCondition)).toEqual(['sunny', 'rainy']);
   });
 
   describe('device tile state line', () => {
@@ -364,6 +417,8 @@ describe('tile and device dialog polish', () => {
       const dates = modal.querySelectorAll('.sensor-history-summary')[1];
       expect(frame.hidden).toBe(false);
       expect(dates.textContent).not.toBe('');
+      // Hours and minutes only.
+      expect(dates.textContent).not.toMatch(/\d:\d{2}:\d{2}/);
 
       const period = modal.querySelector('select');
       period.value = '1';
@@ -541,6 +596,81 @@ describe('tile and device dialog polish', () => {
     expect(document.querySelector('#fan-speed-value').textContent).toBe('67%');
   });
 
+  describe('live device dialogs', () => {
+    // Every dialog subscribes to its entity while open and must let go once closed.
+    const trackSubscriptions = () => {
+      const subscribe = state.subscribeEntity;
+      const unsubscribes = [];
+      jest.spyOn(state, 'subscribeEntity').mockImplementation((entityId, listener) => {
+        const unsubscribe = jest.fn(subscribe(entityId, listener));
+        unsubscribes.push(unsubscribe);
+        return unsubscribe;
+      });
+      return unsubscribes;
+    };
+
+    it('updates the light dialog on state changes and stops after close', () => {
+      const unsubscribes = trackSubscriptions();
+      const light = (brightness) =>
+        entity('light.desk', 'on', { brightness, supported_color_modes: ['brightness'] });
+      state.setStates({ 'light.desk': light(128) });
+      ui.openEntityDetailModal(light(128));
+      const value = document.querySelector('#brightness-value-large');
+      expect(value.textContent).toBe('50%');
+
+      state.setEntityState(light(255));
+      expect(value.textContent).toBe('100%');
+      expect(document.querySelector('#brightness-slider').value).toBe('100');
+
+      document.querySelector('#brightness-close').click();
+      jest.runOnlyPendingTimers();
+      expect(unsubscribes).toHaveLength(1);
+      expect(unsubscribes[0]).toHaveBeenCalled();
+      state.setEntityState(light(26));
+      expect(value.textContent).toBe('100%');
+    });
+
+    it('updates the cover dialog on state changes and stops after close', () => {
+      const unsubscribes = trackSubscriptions();
+      const cover = (position) =>
+        entity('cover.blind', 'open', { current_position: position, supported_features: 15 });
+      state.setStates({ 'cover.blind': cover(40) });
+      ui.openEntityDetailModal(cover(40));
+      const value = document.querySelector('#cover-position-value');
+      expect(value.textContent).toBe('40%');
+
+      state.setEntityState(cover(75));
+      expect(value.textContent).toBe('75%');
+      expect(document.querySelector('#cover-slider').value).toBe('75');
+
+      document.querySelector('#cover-close').click();
+      jest.runOnlyPendingTimers();
+      expect(unsubscribes).toHaveLength(1);
+      expect(unsubscribes[0]).toHaveBeenCalled();
+      state.setEntityState(cover(10));
+      expect(value.textContent).toBe('75%');
+    });
+
+    it('updates the fan dialog on state changes and stops after close', () => {
+      const unsubscribes = trackSubscriptions();
+      const fan = (percentage) =>
+        entity('fan.ceiling', 'on', { percentage, supported_features: 1 });
+      state.setStates({ 'fan.ceiling': fan(33) });
+      ui.openEntityDetailModal(fan(33));
+      const value = document.querySelector('#fan-speed-value');
+
+      state.setEntityState(fan(67));
+      expect(value.textContent).toBe('67%');
+
+      document.querySelector('#fan-close').click();
+      jest.runOnlyPendingTimers();
+      expect(unsubscribes).toHaveLength(1);
+      expect(unsubscribes[0]).toHaveBeenCalled();
+      state.setEntityState(fan(100));
+      expect(value.textContent).toBe('67%');
+    });
+  });
+
   it('follows fan speed changes made outside the dialog', () => {
     const fan = entity('fan.ceiling', 'on', { percentage: 33, supported_features: 1 });
     state.setStates({ [fan.entity_id]: fan });
@@ -620,6 +750,63 @@ describe('tile and device dialog polish', () => {
       inputValue('[data-climate-range="low"]', 30);
       expect(low.value).toBe('24');
       expect(high.value).toBe('24');
+    });
+
+    describe('heat/cool targets during live updates', () => {
+      const range = (low, high) =>
+        climate(
+          {
+            temperature: null,
+            target_temp_low: low,
+            target_temp_high: high,
+            supported_features: 2,
+            hvac_modes: ['heat_cool', 'off'],
+          },
+          'heat_cool'
+        );
+      const open = () => {
+        state.setStates({ 'climate.hvac': range(21, 24) });
+        ui.openEntityDetailModal(range(21, 24));
+        return {
+          low: document.querySelector('[data-climate-range="low"]'),
+          high: document.querySelector('[data-climate-range="high"]'),
+        };
+      };
+
+      it('leaves the focused target alone and catches it up on blur', () => {
+        const { low, high } = open();
+        low.focus();
+        liveUpdate(range(19, 26));
+        expect(low.value).toBe('21');
+        expect(high.value).toBe('26');
+
+        low.blur();
+        expect(low.value).toBe('19');
+      });
+
+      it('leaves the dragged target alone and catches it up when released', () => {
+        const { low, high } = open();
+        high.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+        liveUpdate(range(20, 27));
+        expect(high.value).toBe('24');
+        expect(low.value).toBe('20');
+
+        high.dispatchEvent(new Event('pointerup', { bubbles: true }));
+        expect(high.value).toBe('27');
+      });
+
+      it('keeps a keyboard change and follows Home Assistant once the user moves on', async () => {
+        const { low } = open();
+        low.focus();
+        inputValue('[data-climate-range="low"]', 22);
+        await jest.advanceTimersByTimeAsync(300);
+        liveUpdate(range(22, 24));
+        // Another client changes it while the user is still on the slider.
+        liveUpdate(range(18, 24));
+        expect(low.value).toBe('22');
+        low.blur();
+        expect(low.value).toBe('18');
+      });
     });
   });
 });

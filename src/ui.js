@@ -328,20 +328,18 @@ function scheduleOnOffToggleConfirmationTimeout(entityId, domain, desiredState) 
 
 // Socket-level failures reach here as transport jargon ("WebSocket not connected"); say what they
 // mean for the user instead. Home Assistant's own service errors are already readable.
+const CONNECTION_SERVICE_ERRORS = new Set([
+  'WebSocket not connected',
+  'WebSocket not authenticated',
+  'WebSocket connection closed',
+  'WebSocket connection replaced',
+  'Home Assistant connection lost',
+]);
+
 function describeServiceErrorMessage(error) {
   const message = error?.message || '';
   if (message === 'WebSocket request timeout') return t('Home Assistant did not respond');
-  if (
-    [
-      'WebSocket not connected',
-      'WebSocket not authenticated',
-      'WebSocket connection closed',
-      'WebSocket connection replaced',
-      'Home Assistant connection lost',
-    ].includes(message)
-  ) {
-    return t('Not connected to Home Assistant');
-  }
+  if (CONNECTION_SERVICE_ERRORS.has(message)) return t('Not connected to Home Assistant');
   return message || t('Unknown error');
 }
 
@@ -356,7 +354,10 @@ function handleServiceError(error, entityName = null) {
     ? t('Failed to control {{entityName}}: {{errorMessage}}', { entityName, errorMessage })
     : t('Service call failed: {{errorMessage}}', { errorMessage });
 
-  console.error('WebSocket service call failed:', error);
+  // A control used during an outage is an expected outcome, not a fault in the widget.
+  const outage =
+    CONNECTION_SERVICE_ERRORS.has(error?.message) || error?.message === 'WebSocket request timeout';
+  console[outage ? 'warn' : 'error']('WebSocket service call failed:', error);
   emitUiDebug('service.error', {
     entityName: entityName || null,
     message: error?.message || 'Unknown error',
@@ -523,7 +524,7 @@ function renderQuickAccessConfigState() {
   renderQuickControls();
   // The manage list holds a row for every entity in the install, so rebuilding it on each page
   // switch is the most expensive part of the render. It is rebuilt again when the dialog opens.
-  if (isQuickAccessManageModalOpen()) populateQuickControlsList();
+  if (isQuickAccessManageModalOpen()) populateQuickControlsList({ resetSearch: false });
 }
 
 function buildQuickAccessConfigPatch(config) {
@@ -814,24 +815,43 @@ async function deleteQuickAccessPage(tabId) {
   if (!confirmed) return;
 
   const nextConfig = deleteQuickAccessView(state.CONFIG, tabId);
-  const result = await setQuickAccessConfig(nextConfig);
+  const pending = setQuickAccessConfig(nextConfig);
+  // The deleted page's tab took the focused button with it.
+  focusActiveQuickAccessPage();
+  const result = await pending;
   if (result.success) {
     uiUtils.showToast(t('Page deleted'), 'info', 1600);
   }
+}
+
+// After the control that changed the pages is gone (a deleted tab, a closed starter), keep
+// keyboard focus on the page now on screen: its tab when the tab bar shows, else its first tile.
+function focusActiveQuickAccessPage() {
+  setTimeout(() => {
+    const active = document.activeElement;
+    // Focus still in a dialog that is animating out (the delete confirmation) is about to drop.
+    if (active && active !== document.body && !active.closest('.modal-closing')) return;
+    const target =
+      document.querySelector('#quick-access-tabs:not(.hidden) .quick-access-tab-link.active') ||
+      document.querySelector(
+        '#quick-controls button:not([disabled]), #quick-controls [tabindex]:not([tabindex="-1"])'
+      );
+    target?.focus();
+  }, 0);
 }
 
 function createQuickAccessPage(name, entityIds = [], { fillEmptyPage = false } = {}) {
   // First-run setup starts from the empty default page; fill that page rather than leaving it
   // empty beside the new one, still inviting the user to set up a page.
   const activePage = fillEmptyPage ? getActiveQuickAccessTab(state.CONFIG) : null;
-  const nextConfig =
-    activePage && !activePage.entityIds.length
-      ? renameQuickAccessView(state.CONFIG, activePage.id, name)
-      : addQuickAccessView(state.CONFIG, name, { idFactory: generateQuickAccessViewId });
+  const fillsActivePage = !!activePage && !activePage.entityIds.length;
+  const nextConfig = fillsActivePage
+    ? renameQuickAccessView(state.CONFIG, activePage.id, name)
+    : addQuickAccessView(state.CONFIG, name, { idFactory: generateQuickAccessViewId });
   nextConfig.customTabs.find((tab) => tab.id === nextConfig.activeTabId).entityIds = entityIds;
   return setQuickAccessConfig(nextConfig).then((result) => {
     if (result.success) {
-      uiUtils.showToast(t('Page added'), 'success', 1600);
+      uiUtils.showToast(fillsActivePage ? t('Page updated') : t('Page added'), 'success', 1600);
     }
     return result;
   });
@@ -910,12 +930,22 @@ function showAddPageModal({ starter = false } = {}) {
   deviceSearch.setAttribute('aria-label', t('Search devices'));
   const filterDevices = () => {
     const query = deviceSearch.value.trim().toLocaleLowerCase();
-    roomEntities.querySelectorAll('label').forEach((label) => {
+    const labels = [...roomEntities.querySelectorAll('label')];
+    labels.forEach((label) => {
       label.hidden = !`${label.textContent} ${label.querySelector('input').value}`
         .toLocaleLowerCase()
         .includes(query);
     });
+    // Say so when the search hides every device, and bring the previous hint back after.
+    if (labels.length && labels.every((label) => label.hidden)) {
+      statusBeforeNoMatches ??= roomStatus.textContent;
+      roomStatus.textContent = t('No matching entities found.');
+    } else if (statusBeforeNoMatches !== null) {
+      roomStatus.textContent = statusBeforeNoMatches;
+      statusBeforeNoMatches = null;
+    }
   };
+  let statusBeforeNoMatches = null;
   deviceSearch.addEventListener('input', filterDevices);
   deviceSearch.hidden = true;
   roomGroup.insertBefore(deviceSearch, roomEntities);
@@ -1030,6 +1060,7 @@ function showAddPageModal({ starter = false } = {}) {
     if (!starter) availableStates = state.STATES;
     roomEntities.replaceChildren();
     preview.replaceChildren();
+    statusBeforeNoMatches = null;
     if ((!roomSelect.value && !starter) || !registry) {
       roomStatus.textContent = '';
       deviceSearch.hidden = true;
@@ -1096,7 +1127,10 @@ function showAddPageModal({ starter = false } = {}) {
   const restoreLauncherFocus = () => {
     setTimeout(() => {
       if (document.activeElement && document.activeElement !== document.body) return;
-      document.querySelector('.qa-tab-add')?.focus();
+      const addPage = document.querySelector('.qa-tab-add');
+      // Outside reorganize mode (the first-run starter) there is no Add page control.
+      if (addPage) addPage.focus();
+      else focusActiveQuickAccessPage();
     }, 0);
   };
   const closeOptions = { remove: true, releaseFocus: true, onClosed: restoreLauncherFocus };
@@ -1468,6 +1502,9 @@ function renderPrimaryCard(cardEl, selection, slotIndex) {
   );
   cardEl.removeAttribute('data-entity-id');
   cardEl.removeAttribute('data-state');
+  ['tabindex', 'role', 'aria-haspopup', 'aria-keyshortcuts'].forEach((name) =>
+    cardEl.removeAttribute(name)
+  );
   cardEl.title = '';
 
   if (selection === PRIMARY_CARD_NONE) {
@@ -1482,6 +1519,11 @@ function renderPrimaryCard(cardEl, selection, slotIndex) {
     cardEl.classList.add('weather-card');
     cardEl.title = t('Long-press to configure weather');
     cardEl.innerHTML = weatherCardTemplate || '';
+    // Keyboard users open the weather picker with Enter, Space, Shift+Enter or the menu key.
+    cardEl.tabIndex = 0;
+    cardEl.setAttribute('role', 'button');
+    cardEl.setAttribute('aria-haspopup', 'dialog');
+    cardEl.setAttribute('aria-keyshortcuts', 'Enter Space Shift+Enter');
     return;
   }
 
@@ -2562,6 +2604,56 @@ function getEventDateValue(value) {
   return null;
 }
 
+const timeZoneFormatters = new Map();
+// How far a time zone's wall clock is ahead of UTC at an instant, in milliseconds.
+function getTimeZoneOffset(instant, timeZone) {
+  let formatter = timeZoneFormatters.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+    });
+    timeZoneFormatters.set(timeZone, formatter);
+  }
+  const parts = Object.fromEntries(
+    formatter.formatToParts(instant).map(({ type, value }) => [type, Number(value)])
+  );
+  const wallClock = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second
+  );
+  return wallClock - (instant - (((instant % 1000) + 1000) % 1000));
+}
+
+// Calendar entities report start_time as Home Assistant's wall-clock time without an offset. Read
+// it in Home Assistant's time zone, so a computer set to another zone still shows the right time.
+// Times with an offset, and everything before get_config arrives, parse as usual.
+function parseHomeAssistantDateTime(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+  const timeZone = state.TIME_ZONE;
+  if (!match || !timeZone) return new Date(value);
+  const [, year, month, day, hour, minute, second = '0'] = match.map(Number);
+  const wallClock = Date.UTC(year, month - 1, day, hour, minute, second);
+  try {
+    // Twice, so a time next to a daylight-saving change uses the offset in force at that time.
+    let instant = wallClock - getTimeZoneOffset(wallClock, timeZone);
+    instant = wallClock - getTimeZoneOffset(instant, timeZone);
+    return new Date(instant);
+  } catch {
+    return new Date(value);
+  }
+}
+
 function parseCalendarDate(value) {
   const dateValue = getEventDateValue(value);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateValue || '')) return null;
@@ -2569,12 +2661,17 @@ function parseCalendarDate(value) {
   return new Date(year, month - 1, day);
 }
 
-function formatDateTimeValue(value) {
+// Event times read in hours and minutes, following the clock's 12/24-hour setting.
+function formatEventTime(date) {
+  return formatTime(date, { hour: 'numeric', minute: '2-digit', ...getClockTimeOptions() });
+}
+
+function formatDateTimeValue(value, { timeOnly = false } = {}) {
   const dateValue = getEventDateValue(value);
   if (!dateValue) return '--';
-  const date = new Date(dateValue);
+  const date = parseHomeAssistantDateTime(dateValue);
   if (Number.isNaN(date.getTime())) return String(dateValue);
-  return `${formatDate(date)} ${formatTime(date)}`;
+  return timeOnly ? formatEventTime(date) : `${formatDate(date)} ${formatEventTime(date)}`;
 }
 
 function formatCalendarTileStart(startTime, { allDay = false } = {}) {
@@ -2582,9 +2679,9 @@ function formatCalendarTileStart(startTime, { allDay = false } = {}) {
   if (!dateValue) return '';
   // Calendar entities report all-day events as a midnight start_time plus all_day: true.
   if (allDay || parseCalendarDate(dateValue)) return t('All day');
-  const date = new Date(dateValue);
+  const date = parseHomeAssistantDateTime(dateValue);
   if (Number.isNaN(date.getTime())) return String(dateValue);
-  return formatTime(date, { hour: 'numeric', minute: '2-digit' });
+  return formatEventTime(date);
 }
 
 function formatCalendarEventRange(event) {
@@ -2598,8 +2695,17 @@ function formatCalendarEventRange(event) {
         : formatDate(startDate);
     return `${dates} · ${t('All day')}`;
   }
-  const start = formatDateTimeValue(event?.start || event?.start_time);
-  const end = formatDateTimeValue(event?.end || event?.end_time);
+  const startValue = event?.start || event?.start_time;
+  const endValue = event?.end || event?.end_time;
+  const startAt = parseHomeAssistantDateTime(getEventDateValue(startValue) || NaN);
+  const endAt = parseHomeAssistantDateTime(getEventDateValue(endValue) || NaN);
+  // An event that ends the same day shows its date once.
+  const sameDay =
+    !Number.isNaN(startAt.getTime()) &&
+    !Number.isNaN(endAt.getTime()) &&
+    startAt.toDateString() === endAt.toDateString();
+  const start = formatDateTimeValue(startValue);
+  const end = formatDateTimeValue(endValue, { timeOnly: sameDay });
   if (!end || end === '--') return start;
   return `${start} - ${end}`;
 }
@@ -11138,7 +11244,7 @@ function populateWeatherEntitiesList() {
 
       item.innerHTML = `
         <div class="entity-item-main">
-          <span class="entity-icon">${utils.escapeHtml(icon)}</span>
+          <span class="entity-icon" aria-hidden="true">${utils.escapeHtml(icon)}</span>
           <div class="entity-item-info">
             <span class="entity-name">${utils.escapeHtml(displayName)}</span>
             <span class="entity-id">${utils.escapeHtml(entityId)}</span>
@@ -11146,6 +11252,14 @@ function populateWeatherEntitiesList() {
         </div>
         ${isSelected ? `<span class="selected-badge">${utils.escapeHtml(t('✓ Selected'))}</span>` : ''}
       `;
+      // Show each entity's current condition, like the weather card, unless it has its own icon.
+      if (!state.CONFIG?.customEntityIcons?.[entityId] && !entity.attributes?.icon) {
+        const iconEl = item.querySelector('.entity-icon');
+        const condition = normalizeWeatherCondition(entity.state);
+        // The card's classes carry the colours for each condition.
+        iconEl.classList.add('weather-icon', 'weather-icon-svg', `weather-icon-${condition}`);
+        renderWeatherIcon(iconEl, condition, { size: 24 });
+      }
 
       // Add click handler to select this entity
       item.onclick = () => {
@@ -11677,8 +11791,8 @@ function showBrightnessSlider(light) {
             <div class="brightness-icon-wrapper">
               <div class="brightness-icon" id="brightness-icon">💡</div>
             </div>
-            <div class="brightness-value-large" id="brightness-value-large">${canSetBrightness ? `${currentBrightness}%` : t(light.state === 'on' ? 'On' : 'Off')}</div>
-            <div class="brightness-label">${t(canSetBrightness ? 'Brightness' : 'State')}</div>
+            <div class="brightness-value-large" id="brightness-value-large">${canSetBrightness ? `${currentBrightness}%` : utils.escapeHtml(t(light.state === 'on' ? 'On' : 'Off'))}</div>
+            <div class="brightness-label">${utils.escapeHtml(t(canSetBrightness ? 'Brightness' : 'State'))}</div>
             ${
               canSetBrightness
                 ? `<div class="brightness-slider-wrapper">
@@ -12079,18 +12193,28 @@ function bindClimateRangeControls(root, entity, capabilities, onChange) {
   let timer;
   let pending = false;
   let displayedRange = confirmed;
+  let draggedInput = null;
   const apply = (range) => {
     displayedRange = range;
     low.value = String(range.low);
     high.value = String(range.high);
     onChange(range);
   };
+  // A thumb the user is dragging or has focused keeps its value when Home Assistant reports a
+  // change; it catches up once released or left.
+  const isHeld = (input) => input === draggedInput || document.activeElement === input;
+  const applyAroundHeld = (range) => {
+    apply({
+      low: isHeld(low) ? Number(low.value) : range.low,
+      high: isHeld(high) ? Number(high.value) : range.high,
+    });
+  };
   const controller = {
     sync(range) {
       if (pending) onChange(displayedRange);
       else {
         confirmed = range;
-        apply(range);
+        applyAroundHeld(range);
       }
     },
     cancel() {
@@ -12100,6 +12224,16 @@ function bindClimateRangeControls(root, entity, capabilities, onChange) {
     },
   };
   [low, high].forEach((input) => {
+    const release = () => {
+      if (draggedInput === input) draggedInput = null;
+      if (!pending) applyAroundHeld(confirmed);
+    };
+    input.addEventListener('pointerdown', () => {
+      draggedInput = input;
+    });
+    input.addEventListener('pointerup', release);
+    input.addEventListener('pointercancel', release);
+    input.addEventListener('blur', release);
     input.addEventListener('input', (event) => {
       event.stopPropagation();
       // The bounds cannot cross: the dragged thumb stops at the other one.
@@ -12996,7 +13130,9 @@ function showCoverControls(coverEntity) {
   }
 }
 
-function populateQuickControlsList() {
+// Opening the dialog starts a fresh search; a rebuild after Add or Remove keeps the search, and
+// focus on the same row's button.
+function populateQuickControlsList({ resetSearch = true } = {}) {
   try {
     const list = document.getElementById('quick-controls-list');
     const searchInput = document.getElementById('quick-controls-search');
@@ -13092,12 +13228,20 @@ function populateQuickControlsList() {
       });
     };
 
-    // Initial render
+    if (searchInput && resetSearch) searchInput.value = '';
+    const focusedEntityId = list.contains(document.activeElement)
+      ? document.activeElement.dataset.entityId
+      : null;
     renderList();
+    if (focusedEntityId) {
+      const button = [...list.querySelectorAll('.entity-selector-btn')].find(
+        (candidate) => candidate.dataset.entityId === focusedEntityId
+      );
+      (button || searchInput)?.focus();
+    }
 
     // Set up search with proper scoring
     if (searchInput) {
-      searchInput.value = '';
       searchInput.oninput = () => renderList();
       // Note: Focus is managed by trapFocus() in renderer.js when modal opens
     }

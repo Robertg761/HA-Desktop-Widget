@@ -22,6 +22,7 @@ import {
 import { cleanupHotkeyEventListeners } from './hotkeys.js';
 import {
   describeHomeAssistantOAuthFailure,
+  describeHomeAssistantOAuthReauthReason,
   describeHomeAssistantOAuthRefreshError,
   renderConnectionStatus,
   setConnectionStatusBusy,
@@ -3025,7 +3026,7 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
       if (remoteButton) remoteButton.classList.add('hidden');
     } else {
       if (resolutionHelp) {
-        resolutionHelp.innerHTML = `<strong>${t('First-time conflict:')}</strong> ${t('Both local and remote profiles have data.')}`;
+        resolutionHelp.innerHTML = `<strong>${utils.escapeHtml(t('First-time conflict:'))}</strong> ${utils.escapeHtml(t('Both local and remote profiles have data.'))}`;
       }
       if (uploadButton) uploadButton.textContent = t('Keep Local (Upload)');
       if (remoteButton) remoteButton.classList.remove('hidden');
@@ -4404,20 +4405,41 @@ function getHomeAssistantAuthState(homeAssistant) {
   ]);
 }
 
+// A new sign-in is only offered when one is needed: no authorization yet, an expired one, or a URL
+// edited to another server. While the saved authorization is good but Home Assistant cannot be
+// reached, the button retries restoring it; once connected there is nothing to do.
+function getHomeAssistantConnectAction() {
+  const homeAssistant = state.CONFIG?.homeAssistant || {};
+  if (homeAssistant.authMethod !== 'oauth') return 'connect';
+  const typedUrl = normalizeBaseUrl(document.getElementById('ha-url')?.value || '');
+  const sameServer = !typedUrl || typedUrl === normalizeBaseUrl(homeAssistant.url || '');
+  if (!sameServer || homeAssistant.oauthStatus === 'reauth_required') return 'reconnect';
+  return homeAssistant.oauthStatus === 'connected' ? 'none' : 'retry';
+}
+
+function updateHomeAssistantConnectButton() {
+  const connectButton = document.getElementById('connect-ha-oauth-btn');
+  if (!connectButton) return;
+  const action = getHomeAssistantConnectAction();
+  connectButton.dataset.action = action;
+  connectButton.classList.toggle('hidden', action === 'none');
+  connectButton.textContent =
+    action === 'retry'
+      ? t('Retry')
+      : action === 'connect'
+        ? t('Connect with Home Assistant')
+        : t('Reconnect with Home Assistant');
+}
+
 function updateHomeAssistantAuthUi() {
   const homeAssistant = state.CONFIG?.homeAssistant || {};
   const usesOAuth = homeAssistant.authMethod === 'oauth';
   renderedHomeAssistantAuthState = getHomeAssistantAuthState(homeAssistant);
-  const connectButton = document.getElementById('connect-ha-oauth-btn');
   const disconnectButton = document.getElementById('disconnect-ha-oauth-btn');
   const tokenInput = document.getElementById('ha-token');
   const legacySettings = document.getElementById('legacy-ha-token-settings');
 
-  if (connectButton) {
-    connectButton.textContent = usesOAuth
-      ? t('Reconnect with Home Assistant')
-      : t('Connect with Home Assistant');
-  }
+  updateHomeAssistantConnectButton();
   disconnectButton?.classList.toggle('hidden', !usesOAuth);
   if (tokenInput) {
     tokenInput.disabled = usesOAuth;
@@ -4436,9 +4458,10 @@ function updateHomeAssistantAuthUi() {
     setHomeAssistantOAuthStatus(t('Restoring Home Assistant authorization...'), 'pending');
   } else if (homeAssistant.oauthStatus === 'reauth_required') {
     setHomeAssistantOAuthStatus(
-      t(
-        'Home Assistant no longer accepts the authorization for this app. It may have expired or been revoked. Reconnect with Home Assistant to continue.'
-      ),
+      describeHomeAssistantOAuthReauthReason(homeAssistant) ||
+        t(
+          'Home Assistant no longer accepts the authorization for this app. It may have expired or been revoked. Reconnect with Home Assistant to continue.'
+        ),
       'error'
     );
   } else {
@@ -4458,6 +4481,19 @@ function refreshHomeAssistantAuthStatus() {
   )
     return;
   updateHomeAssistantAuthUi();
+}
+
+async function retryHomeAssistantOAuthFromSettings() {
+  setHomeAssistantOAuthBusy(true);
+  setHomeAssistantOAuthStatus(t('Restoring Home Assistant authorization...'), 'pending');
+  try {
+    await window.electronAPI.refreshHomeAssistantOAuth();
+  } catch (error) {
+    log.warn('Retrying Home Assistant authorization failed:', error);
+  } finally {
+    setHomeAssistantOAuthBusy(false);
+    updateHomeAssistantAuthUi();
+  }
 }
 
 async function startHomeAssistantOAuthFromSettings() {
@@ -4540,8 +4576,13 @@ function bindHomeAssistantOAuthUi() {
     cancelButton.dataset.initialized = 'true';
   }
   if (connectButton && connectButton.dataset.initialized !== 'true') {
-    connectButton.addEventListener('click', () => void startHomeAssistantOAuthFromSettings());
+    connectButton.addEventListener('click', () =>
+      getHomeAssistantConnectAction() === 'retry'
+        ? void retryHomeAssistantOAuthFromSettings()
+        : void startHomeAssistantOAuthFromSettings()
+    );
     connectButton.dataset.initialized = 'true';
+    document.getElementById('ha-url')?.addEventListener('input', updateHomeAssistantConnectButton);
   }
   if (disconnectButton && disconnectButton.dataset.initialized !== 'true') {
     disconnectButton.addEventListener(

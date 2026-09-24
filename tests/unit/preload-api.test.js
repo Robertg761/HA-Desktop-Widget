@@ -126,6 +126,7 @@ describe('preload Electron API', () => {
       ['checkForUpdates', [], 'check-for-updates', []],
       ['quitAndInstall', [], 'quit-and-install', []],
       ['getAppVersion', [], 'get-app-version', []],
+      ['getOsInfo', [], 'get-os-info', []],
       ['openLogs', [], 'open-logs', []],
       ['openExternal', ['https://example.test'], 'open-external', ['https://example.test']],
       ['writeClipboardText', ['report'], 'write-clipboard-text', ['report']],

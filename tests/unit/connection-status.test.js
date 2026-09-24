@@ -15,6 +15,7 @@ jest.mock('../../src/i18n.js', () => ({
 const {
   describeHomeAssistantOAuthError,
   describeHomeAssistantOAuthFailure,
+  describeHomeAssistantOAuthReauthReason,
   describeHomeAssistantOAuthRefreshError,
 } = require('../../src/connection-status.js');
 
@@ -87,6 +88,18 @@ describe('Home Assistant authorization failure messages', () => {
       ).toBe(
         '[fr] The saved Home Assistant authorization could not be read. Reconnect with Home Assistant.'
       );
+    });
+
+    it('explains a reconnect needed for an unreadable authorization, not a revoked one', () => {
+      expect(
+        describeHomeAssistantOAuthReauthReason({ oauthLastErrorCode: 'OAUTH_STORE_INVALID' })
+      ).toBe(
+        '[fr] The saved Home Assistant authorization could not be read. Reconnect with Home Assistant.'
+      );
+      expect(
+        describeHomeAssistantOAuthReauthReason({ oauthLastErrorCode: 'OAUTH_INVALID_GRANT' })
+      ).toBe('');
+      expect(describeHomeAssistantOAuthReauthReason({})).toBe('');
     });
 
     it('wraps an uncoded failure in a translated sentence', () => {

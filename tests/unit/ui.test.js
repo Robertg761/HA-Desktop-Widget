@@ -402,6 +402,50 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ]);
     });
 
+    it('says the first page was updated and lands focus on it after filling it', async () => {
+      state.setConfig({
+        ...state.CONFIG,
+        customTabs: [{ id: 'default', name: 'All', entityIds: [] }],
+        activeTabId: 'default',
+      });
+      state.setStates({
+        'light.stove': { entity_id: 'light.stove', state: 'off', attributes: {} },
+      });
+      registryResponses();
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      document.querySelector('#add-page-save-btn').click();
+      await flush();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(uiUtils.showToast).toHaveBeenCalledWith('Page updated', 'success', 1600);
+      expect(uiUtils.showToast).not.toHaveBeenCalledWith('Page added', 'success', 1600);
+      // The launcher (the empty-dashboard button) is gone; focus lands on the new page's tile.
+      expect(document.activeElement).not.toBe(document.body);
+      expect(
+        document.activeElement.closest('[data-entity-id="light.stove"]') ||
+          document.activeElement.closest('#quick-controls')
+      ).not.toBeNull();
+    });
+
+    it('says when the device search matches nothing, then brings the hint back', async () => {
+      registryResponses();
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      const status = document.querySelector('.room-dashboard [role="status"]');
+      const hint = status.textContent;
+      const search = document.querySelector('.room-device-search');
+
+      search.value = 'nothing like this';
+      search.dispatchEvent(new Event('input'));
+      expect(status.textContent).toBe('No matching entities found.');
+
+      search.value = 'sto';
+      search.dispatchEvent(new Event('input'));
+      expect(status.textContent).toBe(hint);
+    });
+
     it('makes a quick pick choose the matching room, not just the name', async () => {
       registryResponses();
       ui.showAddPageModal({ starter: true });
@@ -1225,6 +1269,35 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         'error',
         4000
       );
+    });
+
+    it.each([
+      ['WebSocket not connected', 'warn'],
+      ['WebSocket request timeout', 'warn'],
+      ['Entity is read-only', 'error'],
+    ])('logs a failed control (%s) at %s level', async (rawMessage, level) => {
+      state.setConfig({
+        ...sampleConfig,
+        ui: { ...sampleConfig.ui },
+        favoriteEntities: ['light.bedroom'],
+      });
+      state.setStates({ 'light.bedroom': getBedroomLightOnState() });
+      ui.renderActiveTab();
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        mockCallService.mockRejectedValueOnce(new Error(rawMessage));
+        ui.executeHotkeyAction(state.STATES['light.bedroom'], 'toggle');
+        await flushAsync();
+        await flushAsync();
+        const logged = (spy) =>
+          spy.mock.calls.some(([label]) => label === 'WebSocket service call failed:');
+        expect(logged(warn)).toBe(level === 'warn');
+        expect(logged(error)).toBe(level === 'error');
+      } finally {
+        warn.mockRestore();
+        error.mockRestore();
+      }
     });
 
     it.each([
@@ -6232,6 +6305,38 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(inactive.querySelector('.qa-tab-rename')).toBeNull();
     });
 
+    it('moves focus to the page now shown after deleting a page', async () => {
+      setPages(
+        [
+          { id: 'default', name: 'All', entityIds: [] },
+          { id: 'bedroom', name: 'Bedroom', entityIds: [] },
+        ],
+        'bedroom'
+      );
+      ui.toggleReorganizeMode();
+      // Like the real confirmation, it is still animating out, with focus on its Delete button.
+      const confirmation = document.createElement('div');
+      confirmation.className = 'modal modal-closing';
+      confirmation.innerHTML = '<button>Delete</button>';
+      uiUtils.showConfirm.mockImplementationOnce(async () => {
+        document.body.appendChild(confirmation);
+        confirmation.querySelector('button').focus();
+        return true;
+      });
+      const deleteButton = tabBar.querySelector('.qa-tab-delete');
+      deleteButton.focus();
+      deleteButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(state.CONFIG.customTabs.map((page) => page.id)).toEqual(['default']);
+      expect(document.activeElement).toBe(
+        tabBar.querySelector('.quick-access-tab-link[data-tab="default"]')
+      );
+      confirmation.remove();
+    });
+
     it('opens a themed add-page modal and creates a page from a preset chip', async () => {
       setPages([{ id: 'default', name: 'All', entityIds: [] }]);
       ui.toggleReorganizeMode();
@@ -6604,6 +6709,49 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       expect(document.getElementById('quick-controls-target-hint').textContent).toContain('All');
       expect(document.querySelector('.quick-access-entity-view-select')).toBeNull();
+    });
+
+    it('keeps the search and focus on the same row after Add and Remove', () => {
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        `
+        <div id="quick-controls-modal" class="modal" style="display: flex">
+          <input id="quick-controls-search" />
+          <div id="quick-controls-target-hint"></div>
+          <div id="quick-controls-list"></div>
+        </div>
+      `
+      );
+      state.setStates({
+        'light.bedroom': sampleStates['light.bedroom'],
+        'switch.coffee': { entity_id: 'switch.coffee', state: 'off', attributes: {} },
+      });
+      setPages([{ id: 'default', name: 'All', entityIds: [] }], 'default');
+      const search = document.getElementById('quick-controls-search');
+      search.value = 'stale';
+      ui.populateQuickControlsList();
+      // Opening starts a fresh search, before the list is drawn.
+      expect(search.value).toBe('');
+      expect(document.querySelectorAll('#quick-controls-list .entity-item').length).toBe(2);
+
+      search.value = 'coffee';
+      search.dispatchEvent(new Event('input'));
+      const rowButton = () =>
+        document.querySelector('#quick-controls-list [data-entity-id="switch.coffee"]');
+      rowButton().focus();
+      rowButton().click();
+
+      expect(state.CONFIG.customTabs[0].entityIds).toEqual(['switch.coffee']);
+      expect(search.value).toBe('coffee');
+      expect(document.querySelectorAll('#quick-controls-list .entity-item').length).toBe(1);
+      expect(document.activeElement).toBe(rowButton());
+      expect(rowButton().textContent).toBe('Remove');
+
+      rowButton().click();
+      expect(search.value).toBe('coffee');
+      expect(document.activeElement).toBe(rowButton());
+      expect(rowButton().textContent).toBe('Add');
+      document.getElementById('quick-controls-modal').remove();
     });
 
     it('leaves the manage list alone while its dialog is closed', async () => {

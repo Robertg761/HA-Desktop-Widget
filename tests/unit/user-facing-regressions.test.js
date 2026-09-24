@@ -612,6 +612,21 @@ describe('User-facing audit regressions', () => {
     await jest.advanceTimersByTimeAsync(0);
     expect(document.querySelector('.calendar-event-time').textContent).toBe(expected);
   });
+  it.each([
+    ['2026-09-24T14:30:45', '2026-09-24T15:15:00', '9/24/2026 2:30 PM - 3:15 PM'],
+    ['2026-09-24T22:00:00', '2026-09-25T01:30:00', '9/24/2026 10:00 PM - 9/25/2026 1:30 AM'],
+  ])(
+    'shows timed calendar events in minutes, with one date per day',
+    async (start, end, expected) => {
+      mockCallServiceWithResponse.mockResolvedValue({
+        'calendar.times': { events: [{ summary: 'Meeting', start, end }] },
+      });
+      ui.openEntityDetailModal(entity('calendar.times', 'on'));
+      await jest.advanceTimersByTimeAsync(0);
+      expect(document.querySelector('.calendar-event-time').textContent).toBe(expected);
+    }
+  );
+
   it('cancels pending movement when Stop is pressed on a desktop pin', async () => {
     const cover = entity('cover.pin_stop', 'open', {
       current_position: 40,

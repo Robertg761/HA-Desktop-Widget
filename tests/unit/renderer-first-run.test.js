@@ -205,6 +205,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       applyUiPreferences: jest.fn(),
       applyWindowEffects: jest.fn(),
       closeModal: (...args) => jest.requireActual('../../src/ui-utils.js').closeModal(...args),
+      openModal: (...args) => jest.requireActual('../../src/ui-utils.js').openModal(...args),
       trapFocus: jest.fn((...args) =>
         jest.requireActual('../../src/ui-utils.js').trapFocus(...args)
       ),
@@ -370,6 +371,40 @@ describe('Renderer first-run Home Assistant authorization', () => {
       expect(modal.classList.contains('hidden')).toBe(true);
       expect(pageEscape).not.toHaveBeenCalled();
       document.removeEventListener('keydown', pageEscape);
+    }
+  );
+
+  it.each(['Enter', ' ', 'ContextMenu'])(
+    'opens the weather picker from the keyboard (%p) and returns focus to the card',
+    async (key) => {
+      const page = new DOMParser().parseFromString(
+        fs.readFileSync(path.join(__dirname, '../../index.html'), 'utf8'),
+        'text/html'
+      );
+      await loadRenderer({
+        bodyHtml:
+          '<main class="widget-content"><div class="status-grid">' +
+          '<div id="weather-card" class="status-card weather-card" data-primary-type="weather"' +
+          ' tabindex="0" role="button"></div><div id="time-card" class="status-card"></div>' +
+          `</div></main>${page.getElementById('weather-config-modal').outerHTML}`,
+      });
+      const card = document.getElementById('weather-card');
+      const modal = document.getElementById('weather-config-modal');
+      card.focus();
+      card.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+      await flushAsync();
+      expect(modal.classList.contains('hidden')).toBe(false);
+      expect(require('../../src/ui.js').populateWeatherEntitiesList).toHaveBeenCalled();
+
+      modal
+        .querySelector('.close-btn')
+        .dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+        );
+      await flushAsync();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(modal.classList.contains('hidden')).toBe(true);
+      expect(document.activeElement).toBe(card);
     }
   );
 

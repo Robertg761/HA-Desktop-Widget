@@ -96,6 +96,24 @@ describe('UI Utilities', () => {
       uiUtils.__forceAnimatedModalTransitions(false);
     });
 
+    it('stacks toasts above an open dialog footer and back at the bottom once it closes', () => {
+      const modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.innerHTML = '<div class="modal-content"><div class="modal-footer"></div></div>';
+      document.body.appendChild(modal);
+      const footer = modal.querySelector('.modal-footer');
+      footer.getClientRects = () => [{}];
+      footer.getBoundingClientRect = () => ({ top: window.innerHeight - 60 });
+
+      uiUtils.showToast('Failed to control Bed Light', 'error', 2000);
+      expect(toastContainer.style.bottom).toBe('68px');
+
+      modal.classList.add('hidden');
+      uiUtils.showToast('Saved', 'success', 2000);
+      expect(toastContainer.style.bottom).toBe('');
+      modal.remove();
+    });
+
     it('should display toast with message', () => {
       uiUtils.showToast('Test message', 'success', 2000);
 
@@ -739,6 +757,38 @@ describe('UI Utilities', () => {
 
       focusSpy.mockRestore();
       document.body.removeChild(externalButton);
+    });
+
+    it('leaves focus to the caller when asked not to restore it', () => {
+      const externalButton = document.createElement('button');
+      document.body.appendChild(externalButton);
+      externalButton.focus();
+      uiUtils.trapFocus(modal);
+      jest.advanceTimersByTime(0);
+      const focusSpy = jest.spyOn(externalButton, 'focus');
+
+      modal.querySelector('#first').blur();
+      uiUtils.releaseFocusTrap(modal, { restoreFocus: false });
+      jest.advanceTimersByTime(0);
+
+      expect(focusSpy).not.toHaveBeenCalled();
+      focusSpy.mockRestore();
+      externalButton.remove();
+    });
+
+    it('leaves a Tab the dialog already handled alone', () => {
+      uiUtils.trapFocus(modal);
+      const last = modal.querySelector('#last');
+      last.focus();
+      // The dialog's own Tab order moved focus and claimed the key.
+      modal.addEventListener('keydown', (event) => event.preventDefault(), {
+        capture: true,
+        once: true,
+      });
+      const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+      last.dispatchEvent(tab);
+      expect(document.activeElement).toBe(last);
+      uiUtils.releaseFocusTrap(modal);
     });
 
     it('does not steal focus back when another dialog has already claimed it', () => {

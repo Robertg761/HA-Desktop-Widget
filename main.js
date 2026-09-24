@@ -18,6 +18,7 @@ const {
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const nodeCrypto = require('crypto');
 const { pathToFileURL, fileURLToPath } = require('url');
 
@@ -5302,6 +5303,14 @@ function setupProfileSyncWakeTriggers() {
       requestOpportunisticProfileSync('resume');
       invalidateHaConnectionState('connecting');
       const requestReconnect = () => {
+        // An expired authorization (also one the refresh below just found revoked) waits for
+        // the user to reconnect; a reconnect could only fail on the placeholder token.
+        if (
+          config?.homeAssistant?.authMethod === 'oauth' &&
+          config.homeAssistant.oauthStatus === 'reauth_required'
+        ) {
+          return;
+        }
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('tray-entities-refresh-needed', { reconnect: true });
         }
@@ -6703,13 +6712,21 @@ async function refreshHomeAssistantOAuthSession() {
     }
     return applyHomeAssistantOAuthSession(session);
   } catch (error) {
+    // Retrying cannot fix a rejected grant or a saved authorization this system cannot read;
+    // only a new authorization can.
+    const reauthRequired = [
+      'OAUTH_INVALID_GRANT',
+      'OAUTH_STORE_READ',
+      'OAUTH_STORE_INVALID',
+      'OAUTH_STORE_DECRYPT',
+      'OAUTH_SECURE_STORAGE_UNAVAILABLE',
+    ].includes(error?.code);
     config.homeAssistant = config.homeAssistant || {};
-    config.homeAssistant.oauthStatus =
-      error?.code === 'OAUTH_INVALID_GRANT' ? 'reauth_required' : 'offline';
+    config.homeAssistant.oauthStatus = reauthRequired ? 'reauth_required' : 'offline';
     config.homeAssistant.oauthLastError = String(error?.message || error).slice(0, 512);
     // The renderer shows a translated message for known codes; the text is the fallback.
     config.homeAssistant.oauthLastErrorCode = String(error?.code || '');
-    if (error?.code === 'OAUTH_INVALID_GRANT') {
+    if (reauthRequired) {
       config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER;
       delete config.homeAssistant.oauthAuthorizationId;
       delete config.homeAssistant.oauthExpiresAt;
@@ -8381,6 +8398,29 @@ ipcMain.handle('get-app-version', (event) => {
   const sender = authorizeIpcSender(event, 'get-app-version');
   if (!sender) return rejectUnauthorizedIpc('get-app-version');
   return app.getVersion();
+});
+
+// For the diagnostics report: the system and its version, never the computer or user name.
+function describeOperatingSystem() {
+  const info = { platform: os.platform(), release: os.release() };
+  if (info.platform === 'linux') {
+    try {
+      const prettyName = /^PRETTY_NAME=(.*)$/m
+        .exec(fs.readFileSync('/etc/os-release', 'utf8'))?.[1]
+        ?.trim()
+        .replace(/^(["'])(.*)\1$/, '$2');
+      if (prettyName) info.distro = prettyName.slice(0, 128);
+    } catch {
+      // Not every distribution ships /etc/os-release; the kernel release still identifies it.
+    }
+  }
+  return info;
+}
+
+ipcMain.handle('get-os-info', (event) => {
+  const sender = authorizeIpcSender(event, 'get-os-info');
+  if (!sender) return rejectUnauthorizedIpc('get-os-info');
+  return describeOperatingSystem();
 });
 
 // Log file viewer functionality
