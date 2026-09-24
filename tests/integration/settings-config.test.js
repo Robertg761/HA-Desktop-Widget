@@ -353,7 +353,7 @@ function createSettingsModalDOM() {
               <option value="accent">Accent Color</option>
               <option value="background">Background Color</option>
             </select>
-            <label id="theme-options-label">Color Options</label>
+            <label id="theme-options-label">Accent colors</label>
             <div id="theme-options"></div>
             <div id="theme-current-selection"></div>
             <input id="custom-color-picker" type="color" value="#64B5F6" />
@@ -449,7 +449,7 @@ function createSettingsModalDOM() {
       </div>
 
       <div id="popup-hotkey-container">
-        <label id="popup-hotkey-mode-label">Popup Hotkey (Hold to Bring Window to Front)</label>
+        <label id="popup-hotkey-mode-label">Popup hotkey</label>
         <p id="popup-hotkey-help-text"></p>
         <p id="popup-hotkey-platform-notice" hidden></p>
         <input type="text" id="popup-hotkey-input" />
@@ -818,9 +818,7 @@ describe('Settings + Config Integration', () => {
       await Promise.resolve();
       await Promise.resolve();
 
-      expect(document.getElementById('popup-hotkey-mode-label').textContent).toBe(
-        'Popup Hotkey (Press to Bring Window to Front)'
-      );
+      expect(document.getElementById('popup-hotkey-mode-label').textContent).toBe('Popup hotkey');
       expect(document.getElementById('popup-hotkey-platform-notice').hidden).toBe(false);
       expect(document.getElementById('popup-hotkey-platform-notice').textContent).toContain(
         'Linux uses the desktop shortcut service'

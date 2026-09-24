@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 // HA 2026.9 returns child devices alongside regular ones. A child device with no area
 // of its own belongs to its parent's area, and children cannot nest, so one hop is enough.
 function effectiveDeviceAreas(devices) {
@@ -32,7 +34,7 @@ async function loadRoomRegistry(websocket) {
   if (
     responses.some((response) => response?.success === false || !Array.isArray(response?.result))
   ) {
-    throw new Error('Room information is unavailable. Check your Home Assistant permissions.');
+    throw new Error(t('Room information is unavailable. Check your Home Assistant permissions.'));
   }
   return {
     areas: responses[0].result,
@@ -56,7 +58,7 @@ async function waitForRoomConnection(websocket, isActive, timeoutMs = 15000) {
   const deadline = Date.now() + timeoutMs;
   while (isActive()) {
     if (websocket.isConnected()) return true;
-    if (Date.now() >= deadline) throw new Error('Connection is not ready');
+    if (Date.now() >= deadline) throw new Error(t('Connection is not ready'));
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   return false;

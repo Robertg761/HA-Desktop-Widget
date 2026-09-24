@@ -1,13 +1,15 @@
 import state from './state.js';
 import { createAlertEvaluator } from './alert-rules.js';
 import { showToast } from './ui-utils.js';
-import { getEntityDisplayName, getEntityIcon } from './utils.js';
+import { getEntityDisplayName, getEntityIcon, getStateDisplayLabel } from './utils.js';
 import { t } from './i18n.js';
 
 const evaluator = createAlertEvaluator({
   getConfig: () => state.CONFIG?.entityAlerts,
-  notify: (entityId, previousState, newState, rule) => {
+  notify: (entityId, previousRawState, newRawState, rule) => {
     const name = getEntityDisplayName(state.STATES[entityId]);
+    const previousState = getStateDisplayLabel(previousRawState);
+    const newState = getStateDisplayLabel(newRawState);
     const message = rule.onStateChange
       ? t('{{name}} changed from {{previousState}} to {{newState}}', {
           name,

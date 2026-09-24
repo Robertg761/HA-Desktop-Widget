@@ -1120,9 +1120,9 @@ function showConfigPersistenceWarnings(persistenceWarnings = []) {
   if (now - lastTokenPersistenceWarningAt < 5000) return;
   lastTokenPersistenceWarningAt = now;
   uiUtils.showToast(
-    `${t('Your Home Assistant token needs to be re-entered. ')}${t(
-      'Token encryption is not available on this system.'
-    )}`,
+    t(
+      'Your Home Assistant token needs to be re-entered. Token encryption is not available on this system.'
+    ),
     'warning',
     20000
   );
@@ -2169,15 +2169,19 @@ async function init() {
       }
       delete state.CONFIG.tokenResetReason;
 
-      let message = t('Your Home Assistant token needs to be re-entered. ');
+      let message = t('Your Home Assistant token needs to be re-entered.');
       let detailMessage = '';
       if (reason === 'encryption_unavailable') {
-        message += t('Token encryption is not available on this system.');
+        message = t(
+          'Your Home Assistant token needs to be re-entered. Token encryption is not available on this system.'
+        );
         detailMessage = t(
           'Your encrypted token from a previous installation cannot be decrypted on this system. The encrypted token has been preserved in case you move back to a system with encryption support. Please re-enter your token in Settings to continue.'
         );
       } else if (reason === 'decryption_failed') {
-        message += t('The stored token could not be decrypted.');
+        message = t(
+          'Your Home Assistant token needs to be re-entered. The stored token could not be decrypted.'
+        );
         detailMessage = t(
           'The encrypted token appears to be corrupted and cannot be decrypted. The encrypted token has been preserved for recovery attempts. Please re-enter your token in Settings to continue.'
         );
@@ -2187,7 +2191,11 @@ async function init() {
       log.info('[Init]', detailMessage);
 
       // Show prominent warning message with extended duration
-      uiUtils.showToast(message + t(' Click the gear icon to open Settings.'), 'warning', 20000);
+      uiUtils.showToast(
+        t('{{message}} Click the gear icon to open Settings.', { message }),
+        'warning',
+        20000
+      );
     }
 
     if (!isConfigured(state.CONFIG)) {

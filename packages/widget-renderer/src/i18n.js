@@ -47,8 +47,14 @@ export function getLocaleState() {
   return localeState;
 }
 
+// A key may end in "::context" when the same English word needs different translations
+// (German "Open" is "Offen" as a state but "Öffnen" as a button). English drops the suffix.
+const CONTEXT_SUFFIX_PATTERN = /::[a-z-]+$/;
+
 export function t(key, vars = {}) {
-  const template = localeState.messages?.[key] || key;
+  const template =
+    localeState.messages?.[key] ||
+    (typeof key === 'string' ? key.replace(CONTEXT_SUFFIX_PATTERN, '') : key);
   return formatTemplate(template, vars);
 }
 

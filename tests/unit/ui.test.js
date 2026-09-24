@@ -116,6 +116,8 @@ jest.mock('../../src/icons.js', () => ({
 }));
 
 jest.mock('../../src/weather-icons.js', () => ({
+  getWeatherConditionLabel: jest.requireActual('../../src/weather-icons.js')
+    .getWeatherConditionLabel,
   normalizeWeatherCondition: jest.requireActual('../../src/weather-icons.js')
     .normalizeWeatherCondition,
   renderWeatherIcon: jest.fn((element, condition) => {
@@ -1596,7 +1598,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
       expect(state.CONFIG.selectedWeatherEntity).toBe('weather.authoritative');
       expect(state.CONFIG.opacity).toBe(0.68);
-      expect(document.getElementById('weather-condition').textContent).toBe('rainy');
+      expect(document.getElementById('weather-condition').textContent).toBe('Rainy');
       expect(uiUtils.showToast).toHaveBeenCalledWith(
         'Failed to save weather entity selection',
         'error',
@@ -1688,7 +1690,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.updateWeatherFromHA();
 
       const conditionEl = document.getElementById('weather-condition');
-      expect(conditionEl.textContent).toBe('sunny');
+      expect(conditionEl.textContent).toBe('Sunny');
     });
 
     it('should update humidity display', () => {
@@ -1831,7 +1833,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.updateWeatherFromHA();
 
       const conditionEl = document.getElementById('weather-condition');
-      expect(conditionEl.textContent).toBe('sunny');
+      expect(conditionEl.textContent).toBe('Sunny');
     });
 
     it('should fallback to alphabetically first weather entity', () => {
@@ -1856,7 +1858,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       // Should use weather.forecast (alphabetically first)
       const conditionEl = document.getElementById('weather-condition');
-      expect(conditionEl.textContent).toBe('cloudy');
+      expect(conditionEl.textContent).toBe('Cloudy');
     });
 
     it('falls back to an available weather entity when the saved source is unavailable', () => {
@@ -1879,7 +1881,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       ui.updateWeatherFromHA();
 
-      expect(document.getElementById('weather-condition').textContent).toBe('cloudy');
+      expect(document.getElementById('weather-condition').textContent).toBe('Cloudy');
     });
 
     it('keeps weather visibility target aligned with displayed fallback entity', () => {
@@ -1915,7 +1917,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.renderActiveTab();
 
       const conditionEl = document.getElementById('weather-condition');
-      expect(conditionEl.textContent).toBe('cloudy');
+      expect(conditionEl.textContent).toBe('Cloudy');
       expect(ui.isEntityVisible('weather.alpha')).toBe(true);
       expect(ui.isEntityVisible('weather.zeta')).toBe(false);
     });
@@ -5438,7 +5440,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         selector: '.desktop-pin-presence-control',
         assertUpdated: (control) => {
           expect(control?.dataset.state).toBe('not_home');
-          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('Not_home');
+          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('Away');
         },
       },
       {

@@ -1111,7 +1111,7 @@ describe('Camera Module', () => {
       await camera.openCamera('camera.front_door', { sourceTile: tile });
 
       expect(visual.getAttribute('aria-hidden')).toBeNull();
-      expect(image.getAttribute('alt')).toBe('Front Door Camera Preview');
+      expect(image.getAttribute('alt')).toBe('Front Door Camera preview');
 
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 

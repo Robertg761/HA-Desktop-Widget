@@ -15,6 +15,8 @@ describe('renderer i18n helpers', () => {
         'Selected language: {{language}}': 'Langue choisie : {{language}}',
         Title: 'Titre',
         Placeholder: 'Valeur',
+        Open: 'Ouvert',
+        'Open::action': 'Ouvrir',
       },
     });
   });
@@ -26,6 +28,13 @@ describe('renderer i18n helpers', () => {
 
   it('falls back to source text when a key is missing', () => {
     expect(i18n.t('Missing string')).toBe('Missing string');
+  });
+
+  it('tells apart one English word used as a state and as an action', () => {
+    expect(i18n.t('Open')).toBe('Ouvert');
+    expect(i18n.t('Open::action')).toBe('Ouvrir');
+    // Without a translation the context suffix never reaches the screen.
+    expect(i18n.t('Close::action')).toBe('Close');
   });
 
   it('translates DOM text and attributes', () => {

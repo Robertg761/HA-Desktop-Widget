@@ -1,4 +1,5 @@
 import state from './state.js';
+import { t } from './i18n.js';
 const graphemeSegmenter =
   typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
     ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
@@ -86,9 +87,100 @@ function normalizeEntityIconGlyph(icon) {
   return countGraphemes(trimmed) === 1 ? trimmed : null;
 }
 
+// Display labels for well-known Home Assistant states. Each value is a literal t() call so the
+// catalog key collector sees it; states outside this map keep the capitalised raw value.
+const STATE_DISPLAY_LABELS = Object.freeze({
+  on: () => t('On'),
+  off: () => t('Off'),
+  open: () => t('Open'),
+  opening: () => t('Opening'),
+  closed: () => t('Closed'),
+  closing: () => t('Closing'),
+  stopped: () => t('Stopped'),
+  locked: () => t('Locked'),
+  unlocked: () => t('Unlocked'),
+  locking: () => t('Locking'),
+  unlocking: () => t('Unlocking'),
+  jammed: () => t('Jammed'),
+  home: () => t('Home'),
+  not_home: () => t('Away'),
+  playing: () => t('Playing'),
+  paused: () => t('Paused'),
+  idle: () => t('Idle'),
+  standby: () => t('Standby'),
+  buffering: () => t('Buffering'),
+  active: () => t('Active'),
+  unavailable: () => t('Unavailable'),
+  unknown: () => t('Unknown'),
+  heat: () => t('Heat'),
+  cool: () => t('Cool'),
+  auto: () => t('Auto'),
+  dry: () => t('Dry'),
+  fan_only: () => t('Fan only'),
+  heat_cool: () => t('Heat/Cool'),
+  disarmed: () => t('Disarmed'),
+  disarming: () => t('Disarming'),
+  armed_home: () => t('Armed at home'),
+  armed_away: () => t('Armed away'),
+  armed_night: () => t('Armed at night'),
+  armed_vacation: () => t('Armed on vacation'),
+  armed_custom_bypass: () => t('Armed'),
+  arming: () => t('Arming'),
+  pending: () => t('Pending'),
+  triggered: () => t('Triggered'),
+  above_horizon: () => t('Above horizon'),
+  below_horizon: () => t('Below horizon'),
+  docked: () => t('Docked'),
+  cleaning: () => t('Cleaning'),
+  returning: () => t('Returning'),
+  error: () => t('Error'),
+  charging: () => t('Charging'),
+});
+
+function capitalizeState(rawState) {
+  const value = String(rawState ?? '');
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+/**
+ * Localised label for a raw Home Assistant state ("on" -> "On", "not_home" -> "Away").
+ * Unrecognised states come back capitalised but otherwise untouched.
+ * @param {string} rawState - The raw entity state.
+ * @returns {string} - The display label in the active language.
+ */
+function getStateDisplayLabel(rawState) {
+  const normalized = String(rawState ?? '').toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(STATE_DISPLAY_LABELS, normalized)) {
+    return STATE_DISPLAY_LABELS[normalized]();
+  }
+  return capitalizeState(rawState);
+}
+
+// Title-case domain names shown as a tile's type caption. `light` is left out on purpose:
+// the "Light" catalog key already means the light-level sensor state (de "Hell").
+const DOMAIN_DISPLAY_LABELS = {
+  alarm_control_panel: () => t('Alarm Control Panel'),
+  automation: () => t('Automation'),
+  binary_sensor: () => t('Binary Sensor'),
+  button: () => t('Button'),
+  camera: () => t('Camera'),
+  climate: () => t('Climate'),
+  cover: () => t('Cover'),
+  fan: () => t('Fan'),
+  lock: () => t('Lock'),
+  media_player: () => t('Media Player'),
+  scene: () => t('Scene'),
+  script: () => t('Script'),
+  sensor: () => t('Sensor'),
+  switch: () => t('Switch'),
+  timer: () => t('Timer'),
+  vacuum: () => t('Vacuum'),
+  weather: () => t('Weather'),
+};
+
 function getEntityDisplayName(entity) {
   try {
-    if (!entity) return 'Unknown';
+    if (!entity) return t('Unknown');
 
     // Check for custom name first
     const customName = state.CONFIG?.customEntityNames?.[entity.entity_id];
@@ -98,18 +190,21 @@ function getEntityDisplayName(entity) {
     return entity.attributes?.friendly_name || entity.entity_id;
   } catch (error) {
     console.error('Error getting entity display name:', error);
-    return 'Unknown';
+    return t('Unknown');
   }
 }
 
 function getEntityTypeDescription(entity) {
   try {
-    if (!entity) return 'Unknown';
+    if (!entity) return t('Unknown');
     const domain = entity.entity_id.split('.')[0];
+    if (Object.prototype.hasOwnProperty.call(DOMAIN_DISPLAY_LABELS, domain)) {
+      return DOMAIN_DISPLAY_LABELS[domain]();
+    }
     return domain.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
   } catch (error) {
     console.error('Error getting entity type description:', error);
-    return 'Unknown';
+    return t('Unknown');
   }
 }
 
@@ -273,7 +368,7 @@ function getSearchScore(text, query) {
 
 function getEntityDisplayState(entity) {
   try {
-    if (!entity) return 'Unknown';
+    if (!entity) return t('Unknown');
 
     // Check if sensor is a timer (has timer-related attributes, timer in name, or timestamp as state)
     const hasTimerAttributes =
@@ -317,12 +412,12 @@ function getEntityDisplayState(entity) {
 
     // For binary sensors
     if (entity.entity_id.startsWith('binary_sensor.')) {
-      return entity.state === 'on' ? 'Detected' : 'Clear';
+      return entity.state === 'on' ? t('Detected') : t('Clear');
     }
 
     // For scenes - just show "Ready" or hide the state
     if (entity.entity_id.startsWith('scene.')) {
-      return 'Ready';
+      return t('Ready');
     }
 
     // For lights with brightness
@@ -341,11 +436,11 @@ function getEntityDisplayState(entity) {
       if (temp) return `${temp}°`;
     }
 
-    // Default: capitalize first letter
-    return entity.state.charAt(0).toUpperCase() + entity.state.slice(1);
+    // Default: a localised label for well-known states, else the capitalised raw state
+    return getStateDisplayLabel(entity.state);
   } catch (error) {
     console.error('Error getting entity display state:', error);
-    return 'Unknown';
+    return t('Unknown');
   }
 }
 
@@ -448,7 +543,8 @@ function getTimerRemainingFraction(entity) {
 }
 
 /**
- * Short, human-readable run status for a timer entity ("Running", "Paused", ...).
+ * Short run status for a timer entity ("Running", "Paused", ...), always in English so callers
+ * can compare it. Show it through getTimerStatusDisplayLabel.
  * Never returns a raw timestamp, so it is safe to show as a compact badge.
  * @param {object} entity - The timer (or timer-like sensor) entity.
  * @returns {string} - The status label.
@@ -482,6 +578,26 @@ function getTimerStatusLabel(entity) {
   }
 }
 
+const TIMER_STATUS_DISPLAY_LABELS = Object.freeze({
+  Running: () => t('Running'),
+  Paused: () => t('Paused'),
+  Idle: () => t('Idle'),
+  Finished: () => t('Finished'),
+  Unavailable: () => t('Unavailable'),
+});
+
+/**
+ * getTimerStatusLabel in the active language, for display.
+ * @param {object} entity - The timer (or timer-like sensor) entity.
+ * @returns {string} - The localised status label.
+ */
+function getTimerStatusDisplayLabel(entity) {
+  const label = getTimerStatusLabel(entity);
+  return Object.prototype.hasOwnProperty.call(TIMER_STATUS_DISPLAY_LABELS, label)
+    ? TIMER_STATUS_DISPLAY_LABELS[label]()
+    : getStateDisplayLabel(label);
+}
+
 function getTimerDisplay(entity) {
   try {
     if (!entity) return '--:--';
@@ -495,7 +611,7 @@ function getTimerDisplay(entity) {
         const now = Date.now();
 
         if (endTime <= now) {
-          return 'Finished';
+          return t('Finished');
         }
 
         const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
@@ -515,7 +631,7 @@ function getTimerDisplay(entity) {
 
     // Handle timer.* entities
     if (entity.state === 'idle') {
-      return 'Idle';
+      return t('Idle');
     }
 
     if (entity.state === 'paused') {
@@ -537,7 +653,7 @@ function getTimerDisplay(entity) {
       return remaining.substring(0, 5); // Fallback to HH:MM
     }
 
-    return entity.state.charAt(0).toUpperCase() + entity.state.slice(1);
+    return getStateDisplayLabel(entity.state);
   } catch (error) {
     console.error('Error getting timer display:', error);
     return '--:--';
@@ -896,6 +1012,8 @@ export {
   getEntityDisplayState,
   getTimerDisplay,
   getTimerStatusLabel,
+  getTimerStatusDisplayLabel,
+  getStateDisplayLabel,
   getTimerRemainingSeconds,
   getTimerRemainingFraction,
   escapeHtml,

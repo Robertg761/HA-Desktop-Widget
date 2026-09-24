@@ -553,7 +553,7 @@
               <h4 class="settings-group-caption" data-i18n="Home Assistant">Home Assistant</h4>
               <div class="settings-group-body">
                 <div class="form-group">
-                  <label for="ha-url" data-i18n="Home Assistant URL:">Home Assistant URL:</label>
+                  <label for="ha-url" data-i18n="Home Assistant URL">Home Assistant URL</label>
                   <input
                     type="text"
                     id="ha-url"
@@ -599,7 +599,7 @@
                   </summary>
                   <div class="settings-details-body">
                     <div class="form-group">
-                      <label for="ha-token" data-i18n="Access Token:">Access Token:</label>
+                      <label for="ha-token" data-i18n="Access token">Access token</label>
                       <input
                         type="password"
                         id="ha-token"
@@ -684,7 +684,7 @@
               </h4>
               <div class="settings-group-body">
                 <div class="form-group language-section">
-                  <label for="language-select" data-i18n="Language Mode">Language Mode</label>
+                  <label for="language-select" data-i18n="Language">Language</label>
                   <select id="language-select">
                     <option value="auto" data-i18n="Auto (System Default)">
                       Auto (System Default)
@@ -708,7 +708,7 @@
                   </p>
                 </div>
                 <details class="settings-details settings-disclosure">
-                  <summary data-i18n="Offline Language Packs">Offline Language Packs</summary>
+                  <summary data-i18n="Offline language packs">Offline language packs</summary>
                   <div class="settings-details-body">
                     <p
                       class="help-text"
@@ -794,15 +794,17 @@
               <h4 class="settings-group-caption" data-i18n="Colors">Colors</h4>
               <div class="settings-group-body">
                 <div class="form-group">
-                  <label id="color-target-label">Editing</label>
+                  <label id="color-target-label" data-i18n="Edit colors for">Edit colors for</label>
                   <select
                     id="color-target-select"
                     class="color-target-select-native"
                     aria-hidden="true"
                     tabindex="-1"
                   >
-                    <option value="accent">Accent Color</option>
-                    <option value="background">Background Color</option>
+                    <option value="accent" data-i18n="Accent color">Accent color</option>
+                    <option value="background" data-i18n="Background color">
+                      Background color
+                    </option>
                   </select>
                   <div
                     class="color-target-control"
@@ -823,8 +825,10 @@
                         aria-hidden="true"
                       ></span>
                       <span class="color-target-copy">
-                        <span class="color-target-name">Accent</span>
-                        <span class="color-target-note">Buttons, focus, active states</span>
+                        <span class="color-target-name" data-i18n="Accent">Accent</span>
+                        <span class="color-target-note" data-i18n="Buttons, focus, active states"
+                          >Buttons, focus, active states</span
+                        >
                       </span>
                     </button>
                     <button
@@ -841,30 +845,36 @@
                         aria-hidden="true"
                       ></span>
                       <span class="color-target-copy">
-                        <span class="color-target-name">Background</span>
-                        <span class="color-target-note">Window, panels, cards</span>
+                        <span class="color-target-name" data-i18n="Background">Background</span>
+                        <span class="color-target-note" data-i18n="Window, panels, cards"
+                          >Window, panels, cards</span
+                        >
                       </span>
                     </button>
                   </div>
                 </div>
                 <div class="form-group">
-                  <label id="theme-options-label">Color Options</label>
+                  <label id="theme-options-label">Accent colors</label>
                   <div
                     id="theme-options"
                     class="accent-theme-grid"
                     role="radiogroup"
                     aria-label="Theme colors"
+                    data-i18n-aria-label="Theme colors"
                   ></div>
                   <div class="form-help" id="theme-current-selection"></div>
                 </div>
                 <details class="settings-details settings-disclosure" id="custom-color-details">
-                  <summary>Custom color</summary>
+                  <summary data-i18n="Custom color">Custom color</summary>
                   <div class="settings-details-body">
                     <div class="form-group custom-color-editor">
-                      <label for="custom-color-picker">Custom Color</label>
+                      <label for="custom-color-picker" data-i18n="Custom color">Custom color</label>
                       <div class="custom-color-editor-grid">
                         <div class="custom-color-field">
-                          <label for="custom-color-picker" class="custom-color-field-label"
+                          <label
+                            for="custom-color-picker"
+                            class="custom-color-field-label"
+                            data-i18n="Picker"
                             >Picker</label
                           >
                           <input
@@ -872,10 +882,14 @@
                             type="color"
                             value="#64B5F6"
                             aria-label="Color picker"
+                            data-i18n-aria-label="Color picker"
                           />
                         </div>
                         <div class="custom-color-field">
-                          <label for="custom-color-r" class="custom-color-field-label"
+                          <label
+                            for="custom-color-r"
+                            class="custom-color-field-label"
+                            data-i18n="Red (R)"
                             >Red (R)</label
                           >
                           <input
@@ -887,10 +901,14 @@
                             placeholder="0-255"
                             inputmode="numeric"
                             aria-label="Red channel"
+                            data-i18n-aria-label="Red channel"
                           />
                         </div>
                         <div class="custom-color-field">
-                          <label for="custom-color-g" class="custom-color-field-label"
+                          <label
+                            for="custom-color-g"
+                            class="custom-color-field-label"
+                            data-i18n="Green (G)"
                             >Green (G)</label
                           >
                           <input
@@ -902,10 +920,14 @@
                             placeholder="0-255"
                             inputmode="numeric"
                             aria-label="Green channel"
+                            data-i18n-aria-label="Green channel"
                           />
                         </div>
                         <div class="custom-color-field">
-                          <label for="custom-color-b" class="custom-color-field-label"
+                          <label
+                            for="custom-color-b"
+                            class="custom-color-field-label"
+                            data-i18n="Blue (B)"
                             >Blue (B)</label
                           >
                           <input
@@ -917,21 +939,39 @@
                             placeholder="0-255"
                             inputmode="numeric"
                             aria-label="Blue channel"
+                            data-i18n-aria-label="Blue channel"
                           />
                         </div>
                         <div class="custom-color-field">
-                          <label for="custom-color-hex" class="custom-color-field-label">Hex</label>
+                          <label
+                            for="custom-color-hex"
+                            class="custom-color-field-label"
+                            data-i18n="Hex"
+                            >Hex</label
+                          >
                           <input
                             id="custom-color-hex"
                             type="text"
                             maxlength="7"
                             placeholder="#RRGGBB"
+                            data-i18n-placeholder="#RRGGBB"
                             aria-label="Hex color"
+                            data-i18n-aria-label="Hex color"
                           />
                         </div>
                         <div class="custom-color-action">
-                          <span class="custom-color-field-label" aria-hidden="true">Action</span>
-                          <button type="button" id="save-custom-color-btn" class="btn btn-primary">
+                          <span
+                            class="custom-color-field-label"
+                            aria-hidden="true"
+                            data-i18n="Action"
+                            >Action</span
+                          >
+                          <button
+                            type="button"
+                            id="save-custom-color-btn"
+                            class="btn btn-primary"
+                            data-i18n="Save Custom Color"
+                          >
                             Save Custom Color
                           </button>
                         </div>
@@ -939,6 +979,7 @@
                       <div
                         id="custom-editor-save-lock-hint"
                         class="form-help custom-editor-save-lock-hint hidden"
+                        data-i18n="Main Save is temporarily disabled while editing custom color. Click outside these fields to continue."
                       >
                         Main Save is temporarily disabled while editing custom color. Click outside
                         these fields to continue.
@@ -948,23 +989,33 @@
                       class="form-group custom-theme-management hidden"
                       id="custom-theme-management"
                     >
-                      <label for="custom-color-name-input">Selected Custom Color</label>
+                      <label for="custom-color-name-input" data-i18n="Selected custom color"
+                        >Selected custom color</label
+                      >
                       <div class="custom-theme-management-row">
                         <input
                           id="custom-color-name-input"
                           type="text"
                           maxlength="48"
                           placeholder="Custom color name"
+                          data-i18n-placeholder="Custom color name"
                           aria-label="Custom color name"
+                          data-i18n-aria-label="Custom color name"
                         />
                         <button
                           type="button"
                           id="rename-custom-color-btn"
                           class="btn btn-secondary"
+                          data-i18n="Rename"
                         >
                           Rename
                         </button>
-                        <button type="button" id="remove-custom-color-btn" class="btn btn-danger">
+                        <button
+                          type="button"
+                          id="remove-custom-color-btn"
+                          class="btn btn-danger"
+                          data-i18n="Remove"
+                        >
                           Remove
                         </button>
                       </div>
@@ -978,8 +1029,13 @@
               <div class="settings-group-body">
                 <div class="form-group setting-row">
                   <div class="setting-text">
-                    <label for="frosted-glass">Frosted glass background</label>
-                    <p class="form-help">
+                    <label for="frosted-glass" data-i18n="Frosted glass background"
+                      >Frosted glass background</label
+                    >
+                    <p
+                      class="form-help"
+                      data-i18n="Blurs what's behind the widget to keep it readable while transparent."
+                    >
                       Blurs what's behind the widget to keep it readable while transparent.
                     </p>
                   </div>
@@ -987,8 +1043,11 @@
                 </div>
                 <div class="form-group setting-row setting-row-stacked">
                   <div class="setting-text">
-                    <label for="opacity-slider">Window opacity</label>
-                    <p class="form-help">
+                    <label for="opacity-slider" data-i18n="Window opacity">Window opacity</label>
+                    <p
+                      class="form-help"
+                      data-i18n="Adjusts background panels and glass strength without fading controls."
+                    >
                       Adjusts background panels and glass strength without fading controls.
                     </p>
                   </div>
@@ -1014,8 +1073,14 @@
                 </div>
                 <div class="form-group setting-row">
                   <div class="setting-text">
-                    <label for="weather-effects-enabled">Subtle weather effects</label>
-                    <p class="form-help" id="weather-effects-help">
+                    <label for="weather-effects-enabled" data-i18n="Subtle weather effects"
+                      >Subtle weather effects</label
+                    >
+                    <p
+                      class="form-help"
+                      id="weather-effects-help"
+                      data-i18n="Ambient background animations based on the current weather."
+                    >
                       Ambient background animations based on the current weather.
                     </p>
                     <div
@@ -1033,16 +1098,25 @@
                   />
                 </div>
                 <div class="form-group" id="weather-override-group" style="display: none">
-                  <label for="weather-override-select">Weather Effect Override:</label>
+                  <label for="weather-override-select" data-i18n="Weather effect override"
+                    >Weather effect override</label
+                  >
                   <select id="weather-override-select">
-                    <option value="auto">Auto (Home Assistant)</option>
-                    <option value="sunny">Sunny</option>
-                    <option value="cloudy">Cloudy</option>
-                    <option value="rainy">Rainy</option>
-                    <option value="snowy">Snowy</option>
-                    <option value="stormy">Stormy</option>
+                    <option value="auto" data-i18n="Auto (Home Assistant)">
+                      Auto (Home Assistant)
+                    </option>
+                    <option value="sunny" data-i18n="Sunny">Sunny</option>
+                    <option value="cloudy" data-i18n="Cloudy">Cloudy</option>
+                    <option value="rainy" data-i18n="Rainy">Rainy</option>
+                    <option value="snowy" data-i18n="Snowy">Snowy</option>
+                    <option value="stormy" data-i18n="Stormy">Stormy</option>
                   </select>
-                  <div class="form-help">Manually override the weather effect for testing</div>
+                  <div
+                    class="form-help"
+                    data-i18n="Manually override the weather effect for testing"
+                  >
+                    Manually override the weather effect for testing
+                  </div>
                 </div>
               </div>
             </section>
@@ -1106,14 +1180,19 @@
             <section class="settings-group">
               <div class="settings-group-caption-row">
                 <h4 class="settings-group-caption" data-i18n="Primary Cards">Primary Cards</h4>
-                <button id="primary-cards-reset" class="btn btn-link btn-sm" type="button">
+                <button
+                  id="primary-cards-reset"
+                  class="btn btn-link btn-sm"
+                  type="button"
+                  data-i18n="Reset"
+                >
                   Reset
                 </button>
               </div>
               <div class="settings-group-body">
                 <div class="form-group setting-row primary-card-row">
                   <div class="setting-text">
-                    <span class="setting-label">Card 1</span
+                    <span class="setting-label" data-i18n="Card 1">Card 1</span
                     ><span class="form-help primary-card-value" id="primary-card-1-current"
                       >Weather (default)</span
                     >
@@ -1124,6 +1203,7 @@
                       type="button"
                       data-primary-card="0"
                       data-primary-value="weather"
+                      data-i18n="Weather"
                     >
                       Weather
                     </button>
@@ -1132,6 +1212,7 @@
                       type="button"
                       data-primary-card="0"
                       data-primary-value="time"
+                      data-i18n="Time"
                     >
                       Time
                     </button>
@@ -1140,6 +1221,7 @@
                       type="button"
                       data-primary-card="0"
                       data-primary-value="none"
+                      data-i18n="Hide"
                     >
                       Hide
                     </button>
@@ -1147,7 +1229,7 @@
                 </div>
                 <div class="form-group setting-row primary-card-row">
                   <div class="setting-text">
-                    <span class="setting-label">Card 2</span
+                    <span class="setting-label" data-i18n="Card 2">Card 2</span
                     ><span class="form-help primary-card-value" id="primary-card-2-current"
                       >Time (default)</span
                     >
@@ -1158,6 +1240,7 @@
                       type="button"
                       data-primary-card="1"
                       data-primary-value="weather"
+                      data-i18n="Weather"
                     >
                       Weather
                     </button>
@@ -1166,6 +1249,7 @@
                       type="button"
                       data-primary-card="1"
                       data-primary-value="time"
+                      data-i18n="Time"
                     >
                       Time
                     </button>
@@ -1174,6 +1258,7 @@
                       type="button"
                       data-primary-card="1"
                       data-primary-value="none"
+                      data-i18n="Hide"
                     >
                       Hide
                     </button>
@@ -1190,7 +1275,7 @@
                     aria-expanded="false"
                     aria-controls="primary-cards-body"
                   >
-                    <span>Show an entity on a card</span>
+                    <span data-i18n="Show an entity on a card">Show an entity on a card</span>
                     <svg
                       class="section-toggle-icon"
                       width="1em"
@@ -1208,18 +1293,24 @@
                   </button>
                   <div id="primary-cards-body" class="section-body">
                     <div class="form-group">
-                      <label for="primary-cards-search">Search Entities</label>
+                      <label for="primary-cards-search" data-i18n="Search entities"
+                        >Search entities</label
+                      >
                       <input
                         type="text"
                         id="primary-cards-search"
                         placeholder="Search entities..."
+                        data-i18n-placeholder="Search entities..."
                       />
                     </div>
                     <div class="form-group">
-                      <label>Available Entities</label>
+                      <label data-i18n="Available entities">Available entities</label>
                       <div id="primary-cards-list" class="entity-selector-list"></div>
                     </div>
-                    <div class="form-help">
+                    <div
+                      class="form-help"
+                      data-i18n="Weather and Time are the defaults. Choose an entity below to pin it to a card."
+                    >
                       Weather and Time are the defaults. Choose an entity below to pin it to a card.
                     </div>
                   </div>
@@ -1278,7 +1369,9 @@
               <h4 class="settings-group-caption" data-i18n="Media Tile">Media Tile</h4>
               <div class="settings-group-body">
                 <div class="form-group">
-                  <label for="primary-media-player-trigger">Primary media player</label>
+                  <label for="primary-media-player-trigger" data-i18n="Primary media player">
+                    Primary media player
+                  </label>
                   <div class="custom-dropdown" id="primary-media-player-dropdown">
                     <button
                       type="button"
@@ -1311,7 +1404,9 @@
                       </div>
                     </div>
                   </div>
-                  <p class="form-help">Shown in the media bar under the top cards.</p>
+                  <p class="form-help" data-i18n="Shown in the media bar under the top cards.">
+                    Shown in the media bar under the top cards.
+                  </p>
                 </div>
               </div>
             </section>
@@ -1331,7 +1426,7 @@
                     aria-expanded="false"
                     aria-controls="custom-entity-icons-body"
                   >
-                    <span>Edit entity icons</span>
+                    <span data-i18n="Edit entity icons">Edit entity icons</span>
                     <svg
                       class="section-toggle-icon"
                       width="1em"
@@ -1350,33 +1445,43 @@
                   <div id="custom-entity-icons-body" class="section-body">
                     <div class="custom-entity-icons-toolbar">
                       <div class="form-group">
-                        <label for="custom-entity-icons-search">Search Entities</label>
+                        <label for="custom-entity-icons-search" data-i18n="Search entities"
+                          >Search entities</label
+                        >
                         <input
                           type="text"
                           id="custom-entity-icons-search"
                           placeholder="Search entities..."
+                          data-i18n-placeholder="Search entities..."
                         />
                       </div>
                       <button
                         id="custom-entity-icons-reset-all"
                         class="btn btn-secondary btn-sm"
                         type="button"
+                        data-i18n="Reset all custom icons"
                       >
                         Reset all custom icons
                       </button>
                     </div>
                     <div class="form-group">
-                      <label>Entity Icon Overrides</label>
+                      <label data-i18n="Entity icon overrides">Entity icon overrides</label>
                       <div id="custom-entity-icons-list" class="entity-selector-list"></div>
                     </div>
                     <div class="form-help" id="custom-entity-icons-summary">
                       No custom icons configured.
                     </div>
-                    <div class="form-help">
+                    <div
+                      class="form-help"
+                      data-i18n="Type keywords in each row to search the full emoji picker, or paste one emoji/glyph and click Apply."
+                    >
                       Type keywords in each row to search the full emoji picker, or paste one
                       emoji/glyph and click Apply.
                     </div>
-                    <div class="form-help">
+                    <div
+                      class="form-help"
+                      data-i18n="Custom icons change icon appearance only. They do not add entities to Quick Access tiles automatically."
+                    >
                       Custom icons change icon appearance only. They do not add entities to Quick
                       Access tiles automatically.
                     </div>
@@ -1462,34 +1567,32 @@
               </h4>
               <div class="settings-group-body">
                 <div class="form-group">
-                  <label id="popup-hotkey-mode-label" for="popup-hotkey-input"
-                    >Popup Hotkey (Hold to Bring Window to Front)</label
-                  >
+                  <label id="popup-hotkey-mode-label" for="popup-hotkey-input">Popup hotkey</label>
                   <p id="popup-hotkey-help-text" class="form-help">
                     Configure a global hotkey that brings the window to front while held down. When
                     released, the window returns to normal z-order.
                   </p>
                   <p id="popup-hotkey-platform-notice" class="form-help" hidden></p>
                   <div class="popup-hotkey-config">
-                    <input
-                      type="text"
-                      id="popup-hotkey-input"
-                      placeholder="Not set (click Set Hotkey)"
-                      readonly
-                    />
-                    <button id="popup-hotkey-set-btn" class="btn btn-secondary btn-small">
+                    <input type="text" id="popup-hotkey-input" readonly />
+                    <button
+                      id="popup-hotkey-set-btn"
+                      class="btn btn-secondary btn-small"
+                      data-i18n="Set Hotkey"
+                    >
                       Set Hotkey
                     </button>
                     <button
                       id="popup-hotkey-clear-btn"
                       class="btn btn-danger btn-small"
                       style="display: none"
+                      data-i18n="Remove"
                     >
-                      Clear
+                      Remove
                     </button>
                   </div>
                   <div class="preset-hotkey-row">
-                    <span class="setting-label">Suggestions</span>
+                    <span class="setting-label" data-i18n="Suggestions">Suggestions</span>
                     <button
                       class="btn btn-secondary btn-small preset-hotkey-btn"
                       data-hotkey="Ctrl+Shift+Space"
@@ -1512,10 +1615,16 @@
                 </div>
                 <div class="form-group setting-row">
                   <div class="setting-text">
-                    <label id="popup-hotkey-toggle-mode-label" for="popup-hotkey-toggle-mode"
+                    <label
+                      id="popup-hotkey-toggle-mode-label"
+                      for="popup-hotkey-toggle-mode"
+                      data-i18n="Press to toggle"
                       >Press to toggle</label
                     >
-                    <p class="form-help">
+                    <p
+                      class="form-help"
+                      data-i18n="Press once to show the window and again to hide it, instead of holding."
+                    >
                       Press once to show the window and again to hide it, instead of holding.
                     </p>
                   </div>
@@ -1526,9 +1635,13 @@
                     <label
                       id="popup-hotkey-hide-on-release-label"
                       for="popup-hotkey-hide-on-release"
+                      data-i18n="Hide when released"
                       >Hide when released</label
                     >
-                    <p class="form-help">
+                    <p
+                      class="form-help"
+                      data-i18n="Hide the window when you let go of the hotkey, instead of only sending it back."
+                    >
                       Hide the window when you let go of the hotkey, instead of only sending it
                       back.
                     </p>
@@ -1542,8 +1655,13 @@
               <div class="settings-group-body">
                 <div class="form-group setting-row">
                   <div class="setting-text">
-                    <label for="global-hotkeys-enabled">Entity hotkeys</label>
-                    <p class="form-help">
+                    <label for="global-hotkeys-enabled" data-i18n="Entity hotkeys"
+                      >Entity hotkeys</label
+                    >
+                    <p
+                      class="form-help"
+                      data-i18n-html="Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Command, Super (for example <code>Ctrl+Shift+A</code>)."
+                    >
                       Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift,
                       Command, Super (for example <code>Ctrl+Shift+A</code>).
                     </p>
@@ -1556,6 +1674,7 @@
                       type="text"
                       id="hotkey-entity-search"
                       placeholder="Search entities to assign hotkeys..."
+                      data-i18n-placeholder="Search entities to assign hotkeys..."
                     />
                   </div>
                   <div id="hotkeys-list"></div>
@@ -1580,8 +1699,13 @@
               <div class="settings-group-body">
                 <div class="form-group setting-row">
                   <div class="setting-text">
-                    <label for="entity-alerts-enabled">Entity alerts</label>
-                    <p class="form-help">
+                    <label for="entity-alerts-enabled" data-i18n="Entity alerts"
+                      >Entity alerts</label
+                    >
+                    <p
+                      class="form-help"
+                      data-i18n="Choose which entities send a desktop notification when they change."
+                    >
                       Choose which entities send a desktop notification when they change.
                     </p>
                   </div>
@@ -1613,7 +1737,7 @@
                 <div class="form-group setting-row update-section">
                   <div class="setting-text">
                     <span class="setting-label"
-                      ><span data-i18n="Current Version:">Current Version:</span>
+                      ><span data-i18n="Version">Version</span>
                       <strong id="current-version">Loading...</strong></span
                     >
                     <p class="form-help update-status" id="update-status">
@@ -1658,13 +1782,19 @@
                 <div class="form-group profile-sync-group">
                   <label>
                     <input type="checkbox" id="profile-sync-enabled" />
-                    Enable Profile Sync (Opt-in)
+                    <span data-i18n="Profile sync">Profile sync</span>
                   </label>
-                  <p class="help-text">
+                  <p
+                    class="help-text"
+                    data-i18n="Sync your widget profile across devices using a shared JSON file in iCloud, Dropbox, OneDrive, or similar."
+                  >
                     Sync your widget profile across devices using a shared JSON file in iCloud,
                     Dropbox, OneDrive, or similar.
                   </p>
-                  <p class="help-text profile-sync-warning">
+                  <p
+                    class="help-text profile-sync-warning"
+                    data-i18n-html="<strong>Warning:</strong> Profile Sync is still experimental. Use it at your own risk, and please report bugs in the <a href='https://github.com/Robertg761/HA-Desktop-Widget/issues' target='_blank' rel='noopener noreferrer'>Issues section</a>."
+                  >
                     <strong>Warning:</strong> Profile Sync is still experimental. Use it at your own
                     risk, and please report bugs in the
                     <a
@@ -1677,9 +1807,13 @@
 
                   <div id="profile-sync-settings" class="profile-sync-settings hidden">
                     <div class="form-group">
-                      <label for="profile-sync-provider">Sync Provider</label>
+                      <label for="profile-sync-provider" data-i18n="Sync provider"
+                        >Sync provider</label
+                      >
                       <select id="profile-sync-provider">
-                        <option value="cloudFile">Cloud Folder File (Free)</option>
+                        <option value="cloudFile" data-i18n="Cloud Folder File (Free)">
+                          Cloud Folder File (Free)
+                        </option>
                         <option value="syncthing">Syncthing</option>
                         <option value="dropbox">Dropbox</option>
                         <option value="oneDrive">OneDrive</option>
@@ -1689,35 +1823,52 @@
                       <p class="help-text" id="profile-sync-provider-hint"></p>
                     </div>
                     <div class="form-group">
-                      <label for="profile-sync-folder-path">Sync Folder</label>
+                      <label for="profile-sync-folder-path" data-i18n="Sync folder"
+                        >Sync folder</label
+                      >
                       <div class="profile-sync-file-row">
                         <input
                           type="text"
                           id="profile-sync-folder-path"
                           class="form-control"
                           placeholder="Choose a synced folder..."
+                          data-i18n-placeholder="Choose a synced folder..."
                           readonly
                         />
                         <button
                           type="button"
                           id="profile-sync-choose-folder"
                           class="btn btn-secondary btn-small"
+                          data-i18n="Choose Folder..."
                         >
                           Choose Folder...
                         </button>
                       </div>
-                      <p class="help-text">
+                      <p
+                        class="help-text"
+                        data-i18n="Defaults to this device's local app data folder. Change it to a shared cloud/sync folder when you want cross-device sync."
+                      >
                         Defaults to this device's local app data folder. Change it to a shared
                         cloud/sync folder when you want cross-device sync.
                       </p>
                     </div>
                     <div class="form-group profile-sync-scope-group">
-                      <label for="profile-sync-scope-preset">Sync Scope</label>
+                      <label for="profile-sync-scope-preset" data-i18n="Sync scope"
+                        >Sync scope</label
+                      >
                       <select id="profile-sync-scope-preset">
-                        <option value="all">All Syncable Settings</option>
-                        <option value="visual">Visual Personalization Only</option>
-                        <option value="quick_access">Quick Access/Layout Only</option>
-                        <option value="custom">Custom (Advanced)</option>
+                        <option value="all" data-i18n="All Syncable Settings">
+                          All Syncable Settings
+                        </option>
+                        <option value="visual" data-i18n="Visual Personalization Only">
+                          Visual Personalization Only
+                        </option>
+                        <option value="quick_access" data-i18n="Quick Access/Layout Only">
+                          Quick Access/Layout Only
+                        </option>
+                        <option value="custom" data-i18n="Custom (Advanced)">
+                          Custom (Advanced)
+                        </option>
                       </select>
                       <div
                         id="profile-sync-scope-advanced"
@@ -1725,24 +1876,38 @@
                       >
                         <label class="profile-sync-scope-option">
                           <input type="checkbox" id="profile-sync-scope-quick-access-layout" />
-                          Quick Access/Layout (favorites, desktop pins, custom names/icons, tabs,
-                          primary cards)
+                          <span
+                            data-i18n="Quick Access/Layout (favorites, desktop pins, custom names/icons, tabs, primary cards)"
+                            >Quick Access/Layout (favorites, desktop pins, custom names/icons, tabs,
+                            primary cards)</span
+                          >
                         </label>
                         <label class="profile-sync-scope-option">
                           <input type="checkbox" id="profile-sync-scope-visual-personalization" />
-                          Visual Personalization (theme, accent/background, opacity, frosted glass,
-                          always-on-top)
+                          <span
+                            data-i18n="Visual Personalization (theme, accent/background, opacity, frosted glass, always-on-top)"
+                            >Visual Personalization (theme, accent/background, opacity, frosted
+                            glass, always-on-top)</span
+                          >
                         </label>
                         <label class="profile-sync-scope-option">
                           <input type="checkbox" id="profile-sync-scope-automation-alerts" />
-                          Automation & Alerts (global hotkeys, alerts, popup hotkey behavior)
+                          <span
+                            data-i18n="Automation & Alerts (global hotkeys, alerts, popup hotkey behavior)"
+                            >Automation & Alerts (global hotkeys, alerts, popup hotkey
+                            behavior)</span
+                          >
                         </label>
                         <label class="profile-sync-scope-option">
                           <input
                             type="checkbox"
                             id="profile-sync-scope-connection-media-preferences"
                           />
-                          Connection/Media Preferences (weather entity and primary media player)
+                          <span
+                            data-i18n="Connection/Media Preferences (weather entity and primary media player)"
+                            >Connection/Media Preferences (weather entity and primary media
+                            player)</span
+                          >
                         </label>
                       </div>
                     </div>
@@ -1751,40 +1916,53 @@
                         type="button"
                         id="profile-sync-help-btn"
                         class="btn btn-secondary btn-small"
+                        data-i18n="Need Help?"
                       >
                         Need Help?
                       </button>
-                      <p class="help-text">Open setup instructions for profile sync.</p>
+                      <p class="help-text" data-i18n="Open setup instructions for profile sync.">
+                        Open setup instructions for profile sync.
+                      </p>
                     </div>
                     <div class="form-group">
-                      <label for="profile-sync-interval">Background Sync Interval</label>
+                      <label for="profile-sync-interval" data-i18n="Background sync interval"
+                        >Background sync interval</label
+                      >
                       <select id="profile-sync-interval">
-                        <option value="1">Every 1 minute</option>
-                        <option value="5">Every 5 minutes</option>
-                        <option value="15">Every 15 minutes</option>
+                        <option value="1" data-i18n="Every 1 minute">Every 1 minute</option>
+                        <option value="5" data-i18n="Every 5 minutes">Every 5 minutes</option>
+                        <option value="15" data-i18n="Every 15 minutes">Every 15 minutes</option>
                       </select>
                     </div>
                     <div class="form-group">
                       <label>
                         <input type="checkbox" id="profile-sync-encryption-enabled" />
-                        Encrypt synced profile with passphrase
+                        <span data-i18n="Encrypt synced profile with passphrase"
+                          >Encrypt synced profile with passphrase</span
+                        >
                       </label>
                     </div>
                     <div class="form-group" id="profile-sync-passphrase-group">
-                      <label for="profile-sync-passphrase">Sync Passphrase</label>
+                      <label for="profile-sync-passphrase" data-i18n="Sync passphrase"
+                        >Sync passphrase</label
+                      >
                       <input
                         type="password"
                         id="profile-sync-passphrase"
                         placeholder="Enter passphrase (min 8 chars)"
+                        data-i18n-placeholder="Enter passphrase (min 8 chars)"
                       />
                       <label class="profile-sync-remember">
                         <input type="checkbox" id="profile-sync-remember-passphrase" />
-                        Remember passphrase on this device
+                        <span data-i18n="Remember passphrase on this device"
+                          >Remember passphrase on this device</span
+                        >
                       </label>
                       <button
                         type="button"
                         id="profile-sync-clear-passphrase"
                         class="btn btn-secondary btn-small"
+                        data-i18n="Clear Saved Passphrase"
                       >
                         Clear Saved Passphrase
                       </button>
@@ -1794,6 +1972,7 @@
                         type="button"
                         id="profile-sync-pull-now"
                         class="btn btn-secondary btn-small"
+                        data-i18n="Sync Down"
                       >
                         Sync Down
                       </button>
@@ -1801,6 +1980,7 @@
                         type="button"
                         id="profile-sync-push-now"
                         class="btn btn-secondary btn-small"
+                        data-i18n="Sync Up"
                       >
                         Sync Up
                       </button>
@@ -1825,6 +2005,7 @@
                           type="button"
                           id="profile-sync-resolve-remote"
                           class="btn btn-secondary btn-small"
+                          data-i18n="Use Remote (Download)"
                         >
                           Use Remote (Download)
                         </button>
@@ -1832,6 +2013,7 @@
                           type="button"
                           id="profile-sync-resolve-cancel"
                           class="btn btn-danger btn-small"
+                          data-i18n="Cancel Setup"
                         >
                           Cancel Setup
                         </button>
@@ -1852,8 +2034,15 @@
               <div class="settings-group-body">
                 <div class="form-group setting-row">
                   <div class="setting-text">
-                    <label for="enable-interaction-debug-logs">Interaction diagnostics logs</label>
-                    <p class="form-help">
+                    <label
+                      for="enable-interaction-debug-logs"
+                      data-i18n="Interaction diagnostics logs"
+                      >Interaction diagnostics logs</label
+                    >
+                    <p
+                      class="form-help"
+                      data-i18n="Writes detailed UI interaction events to the log. Keep off for normal use."
+                    >
                       Writes detailed UI interaction events to the log. Keep off for normal use.
                     </p>
                   </div>
@@ -1871,6 +2060,8 @@
                     id="view-logs-btn"
                     class="btn btn-secondary"
                     title="Opens the log file location in your file explorer"
+                    data-i18n-title="Opens the log file location in your file explorer"
+                    data-i18n="View logs"
                   >
                     View logs
                   </button>
@@ -2105,7 +2296,7 @@
     >
       <div class="modal-content">
         <div class="modal-header">
-          <h2 id="weather-config-title">Configure Weather</h2>
+          <h2 id="weather-config-title" data-i18n="Configure Weather">Configure Weather</h2>
           <button
             id="close-weather-config"
             class="close-btn"
@@ -2118,16 +2309,18 @@
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label>Select Weather Entity:</label>
+            <label data-i18n="Select weather entity">Select weather entity</label>
             <div id="weather-entities-list" class="entity-selector-list">
               <!-- Available weather entities will be loaded here -->
             </div>
           </div>
           <div class="form-group">
-            <label>Current Weather Entity:</label>
+            <label data-i18n="Current weather entity">Current weather entity</label>
             <div id="current-weather-info" class="weather-info">
               <span id="current-weather-name">None selected</span>
-              <button id="clear-weather" class="btn btn-secondary btn-sm">Clear</button>
+              <button id="clear-weather" class="btn btn-secondary btn-sm" data-i18n="Remove">
+                Remove
+              </button>
             </div>
           </div>
         </div>
@@ -2144,7 +2337,7 @@
     >
       <div class="modal-content">
         <div class="modal-header">
-          <h2 id="hotkeys-title">Manage Global Hotkeys</h2>
+          <h2 id="hotkeys-title" data-i18n="Manage Global Hotkeys">Manage Global Hotkeys</h2>
           <button
             id="close-hotkeys"
             class="close-btn"
@@ -2161,28 +2354,33 @@
               type="text"
               id="hotkey-search"
               placeholder="Search entities..."
+              data-i18n-placeholder="Search entities..."
               class="form-control"
             />
           </div>
           <div class="form-group">
-            <label>Configure Hotkeys:</label>
+            <label data-i18n="Configure hotkeys">Configure hotkeys</label>
             <div id="hotkeys-list" class="hotkeys-list">
               <!-- Hotkey configurations will be loaded here -->
             </div>
           </div>
           <div class="form-group">
-            <label>Existing Hotkeys:</label>
+            <label data-i18n="Existing hotkeys">Existing hotkeys</label>
             <div id="existing-hotkeys-list" class="existing-hotkeys-list">
               <!-- Existing hotkey configurations will be loaded here -->
             </div>
           </div>
           <div class="hotkey-help">
-            <h4>Hotkey Format:</h4>
-            <p>
+            <h4 data-i18n="Hotkey format">Hotkey format</h4>
+            <p
+              data-i18n-html="Use combinations like: <code>Ctrl+Alt+L</code>, <code>Ctrl+Shift+1</code>, <code>Alt+F1</code>"
+            >
               Use combinations like: <code>Ctrl+Alt+L</code>, <code>Ctrl+Shift+1</code>,
               <code>Alt+F1</code>
             </p>
-            <p>
+            <p
+              data-i18n-html="Available modifiers: <code>Ctrl</code>, <code>Alt</code>, <code>Shift</code>, <code>Win</code>"
+            >
               Available modifiers: <code>Ctrl</code>, <code>Alt</code>, <code>Shift</code>,
               <code>Win</code>
             </p>
@@ -2201,7 +2399,7 @@
     >
       <div class="modal-content">
         <div class="modal-header">
-          <h2 id="alerts-title">Manage Entity Alerts</h2>
+          <h2 id="alerts-title" data-i18n="Manage Entity Alerts">Manage Entity Alerts</h2>
           <button
             id="close-alerts"
             class="close-btn"
@@ -2218,25 +2416,36 @@
               type="text"
               id="alert-search"
               placeholder="Search entities..."
+              data-i18n-placeholder="Search entities..."
               class="form-control"
             />
           </div>
           <div class="form-group">
-            <label>Configure Alerts:</label>
+            <label data-i18n="Configure alerts">Configure alerts</label>
             <div id="alerts-list" class="alerts-list">
               <!-- Alert configurations will be loaded here -->
             </div>
           </div>
           <div class="form-group">
-            <label>Existing Alerts:</label>
+            <label data-i18n="Existing alerts">Existing alerts</label>
             <div id="existing-alerts-list" class="existing-alerts-list">
               <!-- Existing alert configurations will be loaded here -->
             </div>
           </div>
           <div class="alert-help">
-            <h4>Alert Types:</h4>
-            <p><strong>State Change:</strong> Notify when entity state changes</p>
-            <p><strong>Specific State:</strong> Notify when entity reaches a specific state</p>
+            <h4 data-i18n="Alert types">Alert types</h4>
+            <p>
+              <strong data-i18n="State Change:">State Change:</strong>
+              <span data-i18n="Notify when entity state changes"
+                >Notify when entity state changes</span
+              >
+            </p>
+            <p>
+              <strong data-i18n="Specific State:">Specific State:</strong>
+              <span data-i18n="Notify when entity reaches a specific state"
+                >Notify when entity reaches a specific state</span
+              >
+            </p>
           </div>
         </div>
       </div>
@@ -2252,7 +2461,7 @@
     >
       <div class="modal-content">
         <div class="modal-header">
-          <h2 id="hotkey-config-title">Configure Hotkey</h2>
+          <h2 id="hotkey-config-title" data-i18n="Configure Hotkey">Configure Hotkey</h2>
           <button
             id="close-hotkey-config"
             class="close-btn"
@@ -2265,19 +2474,26 @@
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label for="hotkey-input">Hotkey Combination:</label>
-            <button id="hotkey-input" class="form-control hotkey-capture-btn">
+            <label for="hotkey-input" data-i18n="Hotkey combination">Hotkey combination</label>
+            <button
+              id="hotkey-input"
+              class="form-control hotkey-capture-btn"
+              data-i18n="Click to set hotkey"
+            >
               Click to set hotkey
             </button>
-            <div class="form-help">
+            <div
+              class="form-help"
+              data-i18n-html="Click the button and press your desired key combination. Press <code>ESC</code> to clear."
+            >
               Click the button and press your desired key combination. Press <code>ESC</code> to
               clear.
             </div>
           </div>
         </div>
         <div class="modal-footer">
-          <button id="save-hotkey" class="btn btn-primary">Save</button>
-          <button id="cancel-hotkey" class="btn btn-secondary">Cancel</button>
+          <button id="save-hotkey" class="btn btn-primary" data-i18n="Save">Save</button>
+          <button id="cancel-hotkey" class="btn btn-secondary" data-i18n="Cancel">Cancel</button>
         </div>
       </div>
     </div>
@@ -2345,38 +2561,45 @@
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label>Alert Type:</label>
+            <label data-i18n="Alert type">Alert type</label>
             <div class="alert-type-options">
               <label class="radio-option">
                 <input type="radio" name="alert-type" value="state-change" checked />
                 <span class="radio-label">
-                  <strong>State Change</strong>
-                  <small>Notify when entity state changes</small>
+                  <strong data-i18n="State Change">State Change</strong>
+                  <small data-i18n="Notify when entity state changes"
+                    >Notify when entity state changes</small
+                  >
                 </span>
               </label>
               <label class="radio-option">
                 <input type="radio" name="alert-type" value="specific-state" />
                 <span class="radio-label">
-                  <strong>Specific State</strong>
-                  <small>Notify when entity reaches a specific state</small>
+                  <strong data-i18n="Specific State">Specific State</strong>
+                  <small data-i18n="Notify when entity reaches a specific state"
+                    >Notify when entity reaches a specific state</small
+                  >
                 </span>
               </label>
             </div>
           </div>
           <div class="form-group" id="specific-state-group" style="display: none">
-            <label for="target-state-input">Target State:</label>
+            <label for="target-state-input" data-i18n="Target state">Target state</label>
             <input
               type="text"
               id="target-state-input"
               placeholder="e.g., on, off, open, closed"
+              data-i18n-placeholder="e.g., on, off, open, closed"
               class="form-control"
             />
-            <div class="form-help">Enter the state you want to be notified about</div>
+            <div class="form-help" data-i18n="Enter the state you want to be notified about">
+              Enter the state you want to be notified about
+            </div>
           </div>
         </div>
         <div class="modal-footer">
-          <button id="save-alert" class="btn btn-primary">Save</button>
-          <button id="cancel-alert" class="btn btn-secondary">Cancel</button>
+          <button id="save-alert" class="btn btn-primary" data-i18n="Save">Save</button>
+          <button id="cancel-alert" class="btn btn-secondary" data-i18n="Cancel">Cancel</button>
         </div>
       </div>
     </div>
@@ -2391,7 +2614,7 @@
     >
       <div class="modal-content">
         <div class="modal-header">
-          <h2 id="alert-entity-picker-title">Add Alert</h2>
+          <h2 id="alert-entity-picker-title" data-i18n="Add Alert">Add Alert</h2>
           <button
             id="close-alert-entity-picker"
             class="close-btn"
@@ -2408,11 +2631,12 @@
               type="text"
               id="alert-entity-picker-search"
               placeholder="Search entities..."
+              data-i18n-placeholder="Search entities..."
               class="form-control"
             />
           </div>
           <div class="form-group">
-            <label>Select Entity to Configure Alert:</label>
+            <label data-i18n="Select an entity for the alert">Select an entity for the alert</label>
             <div id="alert-entity-picker-list" class="entity-selector-list">
               <!-- Available entities will be loaded here -->
             </div>

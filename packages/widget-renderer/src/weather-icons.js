@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 const WEATHER_CONDITION_ALIASES = new Map([
@@ -265,7 +267,7 @@ function createWeatherIcon(condition, options = {}) {
     svg.setAttribute('aria-hidden', 'true');
   } else {
     svg.setAttribute('role', 'img');
-    svg.setAttribute('aria-label', WEATHER_LABELS[normalizedCondition]);
+    svg.setAttribute('aria-label', t(WEATHER_LABELS[normalizedCondition]));
   }
 
   drawWeatherGlyph(svg, normalizedCondition);
@@ -281,4 +283,22 @@ function renderWeatherIcon(container, condition, options = {}) {
   return icon;
 }
 
-export { createWeatherIcon, normalizeWeatherCondition, renderWeatherIcon, WEATHER_LABELS };
+/**
+ * Returns the translated, human-readable label for a Home Assistant weather state. Conditions the
+ * widget does not recognise fall back to the raw state so provider-specific text is not hidden.
+ */
+function getWeatherConditionLabel(condition) {
+  const raw = String(condition || '').trim();
+  if (!raw) return '--';
+  const normalizedCondition = normalizeWeatherCondition(raw);
+  if (normalizedCondition === 'unknown') return raw;
+  return t(WEATHER_LABELS[normalizedCondition]);
+}
+
+export {
+  createWeatherIcon,
+  getWeatherConditionLabel,
+  normalizeWeatherCondition,
+  renderWeatherIcon,
+  WEATHER_LABELS,
+};

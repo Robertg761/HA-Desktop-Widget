@@ -18,6 +18,7 @@ jest.mock('../../src/ui-utils.js', () => ({
 }));
 
 jest.mock('../../src/utils.js', () => ({
+  getStateDisplayLabel: jest.fn((rawState) => rawState),
   getEntityDisplayName: jest.fn((entity) => {
     if (!entity) return 'Unknown Entity';
     return entity.attributes?.friendly_name || entity.entity_id;

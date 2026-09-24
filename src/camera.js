@@ -1038,7 +1038,7 @@ function openExpandedCameraPreview(record, camera) {
   overlay.dataset.cameraPreviewSource = record.previewSource || 'image';
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
-  overlay.setAttribute('aria-label', `${displayName} ${t('Camera preview')}`);
+  overlay.setAttribute('aria-label', t('{{name}} camera preview', { name: displayName }));
   overlay.innerHTML = `
     <div class="camera-expanded-preview-shell">
       <header class="camera-expanded-preview-header">
@@ -1076,7 +1076,7 @@ function openExpandedCameraPreview(record, camera) {
   // Inside the tile the visual is decorative, but it is the dialog's only content once expanded.
   const wasVisualHidden = visual.getAttribute('aria-hidden') === 'true';
   visual.removeAttribute('aria-hidden');
-  const previewAltText = `${displayName} ${t('Preview')}`;
+  const previewAltText = t('{{name}} preview', { name: displayName });
   getCameraPreviewImages(record).forEach((image) => image.setAttribute('alt', previewAltText));
 
   const expandedPreview = {
@@ -1257,7 +1257,10 @@ async function openCamera(cameraId, options = {}) {
     modal.className = 'modal camera-modal';
     modal.setAttribute('role', 'dialog');
     modal.setAttribute('aria-modal', 'true');
-    modal.setAttribute('aria-label', `${getEntityDisplayName(camera)} ${t('Camera preview')}`);
+    modal.setAttribute(
+      'aria-label',
+      t('{{name}} camera preview', { name: getEntityDisplayName(camera) })
+    );
     modal.innerHTML = `
       <div class="modal-content camera-content">
         <div class="modal-header">
@@ -1279,7 +1282,7 @@ async function openCamera(cameraId, options = {}) {
           <div class="camera-toolbar">
             <p class="camera-info">
               <span class="camera-info-state">${escapeHtml(getCameraStateLabel(camera.state))}</span>
-              <span class="camera-info-updated" title="${escapeHtmlAttribute(t('Last Updated:'))} ${escapeHtmlAttribute(formatDateTime(camera.last_updated))}">${escapeHtml(getCameraUpdatedLabel(camera.last_updated))}</span>
+              <span class="camera-info-updated" title="${escapeHtmlAttribute(t('Last updated: {{time}}', { time: formatDateTime(camera.last_updated) }))}">${escapeHtml(getCameraUpdatedLabel(camera.last_updated))}</span>
             </p>
             <div class="camera-mode-buttons">
               <button class="btn btn-secondary" id="snapshot-btn">${escapeHtml(t('Snapshot'))}</button>
