@@ -11255,7 +11255,11 @@ function populateWeatherEntitiesList() {
       `;
       // Show each entity's current condition, like the weather card, unless it has its own icon.
       if (!state.CONFIG?.customEntityIcons?.[entityId] && !entity.attributes?.icon) {
-        renderWeatherIcon(item.querySelector('.entity-icon'), entity.state, { size: 22 });
+        const iconEl = item.querySelector('.entity-icon');
+        const condition = normalizeWeatherCondition(entity.state);
+        // The card's classes carry the colours for each condition.
+        iconEl.classList.add('weather-icon', 'weather-icon-svg', `weather-icon-${condition}`);
+        renderWeatherIcon(iconEl, condition, { size: 24 });
       }
 
       // Add click handler to select this entity

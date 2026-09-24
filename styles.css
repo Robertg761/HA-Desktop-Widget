@@ -4097,6 +4097,12 @@ body.first-run-active .widget-content > * {
   flex-shrink: 0;
 }
 
+/* A weather picker entry borrows the weather card's icon colours, at list size. */
+.entity-item .entity-icon.weather-icon {
+  width: 28px;
+  height: 28px;
+}
+
 .entity-item .entity-name {
   font-weight: 600;
   color: var(--text-primary);
