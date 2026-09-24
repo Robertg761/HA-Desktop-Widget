@@ -628,6 +628,25 @@ describe('Renderer Home Assistant connection lifecycle', () => {
     });
   });
 
+  describe('connection indicator language', () => {
+    it('rewrites the indicator label in the new language after a language change', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      connectSuccessfully();
+      expect(mockUiUtils.setStatus).toHaveBeenLastCalledWith(true, 'Real-time updates active.');
+
+      const i18n = require('../../src/i18n.js');
+      i18n.t.mockImplementation((key) => `[de] ${key}`);
+      mockElectronAPI.getLocaleBootstrap.mockResolvedValue({ activeLocale: 'de', messages: {} });
+      triggerMockEvent('configUpdated', { ...tokenConfig(), ui: { language: 'de' } });
+      await flushAsync();
+
+      expect(mockUiUtils.setStatus).toHaveBeenLastCalledWith(
+        true,
+        '[de] Real-time updates active.'
+      );
+    });
+  });
+
   describe('OAuth access token refresh', () => {
     it('keeps a healthy socket when only the access token rotates', async () => {
       await loadRenderer();

@@ -1552,13 +1552,36 @@ function showConfigRecoveryNotice(recovery) {
   uiUtils.showToast(message, 'error', 20000);
 }
 
+// The language the window was last drawn in; null until the first locale is applied.
+let appliedLocale = null;
 async function refreshLocaleBootstrap() {
   if (!window?.electronAPI?.getLocaleBootstrap) return null;
   const bootstrap = await window.electronAPI.getLocaleBootstrap();
   setLocaleBootstrap(bootstrap || {});
   if (!IS_DESKTOP_PIN_MODE) refreshTrayEntityIcons({ force: true });
   translateDocument(document);
+  const locale = bootstrap?.activeLocale || '';
+  if (appliedLocale !== null && locale !== appliedLocale) refreshConnectionStatusLanguage();
+  appliedLocale = locale;
   return bootstrap;
+}
+
+// The connection indicator's label and tooltip are written when the connection changes. After a
+// language change, write them again in the new language. A failure's own explanation was
+// translated when it happened and stays until the next connection change.
+function refreshConnectionStatusLanguage() {
+  if (IS_DESKTOP_PIN_MODE) return;
+  if (mainConnectionState === 'demo') {
+    setConnectedStatus(t('Development climate demo — no Home Assistant connection'));
+  } else if (mainConnectionState === 'connected') {
+    setConnectedStatus();
+  } else if (usesOAuth() && !isConfigured(state.CONFIG)) {
+    setOAuthRestoreStatus();
+  } else if (mainConnectionState === 'connecting') {
+    setDisconnectedStatus(t('Waiting for live Home Assistant data...'));
+  } else {
+    setDisconnectedStatus();
+  }
 }
 
 function renderCurrentMode() {
