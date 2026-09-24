@@ -345,6 +345,7 @@ const {
   supportsAutoUpdater,
 } = require('./src/platform.cjs');
 const { clampPositionToWorkAreas } = require('./src/window-placement.cjs');
+const { onWindowBoundsChanged } = require('./src/window-bounds-events.cjs');
 const { attachEditHandlers, installApplicationMenu } = require('./src/application-menu.cjs');
 const {
   createLinuxPopupHotkeyController,
@@ -2606,6 +2607,7 @@ function createDesktopPinWindow(entityId, options = {}) {
   const persistBounds = () => {
     if (
       usesCompositorOwnedPlacement ||
+      isLayerShellChildProcess ||
       !desktopPinEditMode ||
       pinWindow.__desktopPinApplyingBounds
     ) {
@@ -2613,6 +2615,23 @@ function createDesktopPinWindow(entityId, options = {}) {
     }
     if (pinWindow.__desktopPinSaveTimer) {
       clearTimeout(pinWindow.__desktopPinSaveTimer);
+    }
+    // Linux also reports moves the app made (creation, a scale change, keeping the pin on
+    // screen). A pin that sits where its saved bounds put it has not been moved.
+    const { x, y, width, height } = pinWindow.getBounds();
+    const placedBounds = getDesktopPinWindowBounds(
+      normalizedEntityId,
+      config?.desktopPins?.[normalizedEntityId] || {}
+    );
+    if (
+      x === placedBounds.x &&
+      y === placedBounds.y &&
+      width === placedBounds.width &&
+      height === placedBounds.height
+    ) {
+      pinWindow.__desktopPinSaveTimer = null;
+      pinWindow.__desktopPinPendingBounds = null;
+      return;
     }
     pinWindow.__desktopPinPendingBounds = getDesktopPinBoundsFromWindow(
       normalizedEntityId,
@@ -2636,7 +2655,7 @@ function createDesktopPinWindow(entityId, options = {}) {
     }, 180);
   };
 
-  pinWindow.on('moved', persistBounds);
+  onWindowBoundsChanged(pinWindow, { platform: process.platform, onMove: persistBounds });
 
   pinWindow.on('close', (event) => {
     if (isQuitting || pinWindow.__desktopPinProgrammaticClose) return;
@@ -5381,6 +5400,65 @@ function applyFrostedGlass(override) {
  * such as always-on-top, resizability, and the configured icon. This function updates in-memory
  * configuration (e.g., clamped opacity) and calls saveConfig() when position/size changes.
  */
+function mainWindowMatchesSavedBounds(bounds) {
+  const positionMatches =
+    usesCompositorOwnedPlacement ||
+    (config.windowPosition?.x === bounds.x && config.windowPosition?.y === bounds.y);
+  return (
+    positionMatches &&
+    config.windowSize?.width === bounds.width &&
+    config.windowSize?.height === bounds.height
+  );
+}
+
+/** Save the main window's position and size after the user moves or resizes it. */
+function watchMainWindowBounds(targetWindow) {
+  const changeWin = () => {
+    const bounds = targetWindow.getBounds();
+    // Linux reports programmatic moves too (restoring the saved position after a show,
+    // resetting it, restoring the saved size). Landing on the saved bounds leaves nothing to
+    // save, and drops any position still queued from a drag that ended back there.
+    if (mainWindowMatchesSavedBounds(bounds)) {
+      if (windowStateSaveTimer) clearTimeout(windowStateSaveTimer);
+      windowStateSaveTimer = null;
+      pendingWindowBounds = null;
+      return;
+    }
+    pendingWindowBounds = bounds;
+    if (windowStateSaveTimer) {
+      clearTimeout(windowStateSaveTimer);
+    }
+    windowStateSaveTimer = setTimeout(() => {
+      windowStateSaveTimer = null;
+      const boundsToPersist = pendingWindowBounds;
+      pendingWindowBounds = null;
+      if (!boundsToPersist) return;
+      runBackgroundConfigMutation(() => {
+        // Native Wayland compositors own placement and report coordinates that are not
+        // stable app-controlled positions. Persisting those values during a resize makes
+        // the next XWayland/X11 launch jump to compositor bookkeeping coordinates.
+        if (!usesCompositorOwnedPlacement) {
+          config.windowPosition = { x: boundsToPersist.x, y: boundsToPersist.y };
+        }
+        config.windowSize = {
+          width: boundsToPersist.width,
+          height: boundsToPersist.height,
+        };
+        saveConfig();
+      }, 'window bounds save');
+    }, 400);
+  };
+
+  // A layer surface is placed by the app and moved through its own drag path, which saves
+  // layerPositions when the drag ends; its bounds events are never user moves.
+  if (isLayerShellChildProcess) return;
+  onWindowBoundsChanged(targetWindow, {
+    platform: process.platform,
+    onMove: changeWin,
+    onResize: changeWin,
+  });
+}
+
 function createWindow() {
   log.info('Creating main window');
   appliedHideOnBlur = config?.hideOnBlur === true;
@@ -5513,41 +5591,7 @@ function createWindow() {
     });
   }
 
-  const changeWin = () => {
-    const bounds = mainWindow.getBounds();
-    pendingWindowBounds = bounds;
-    if (windowStateSaveTimer) {
-      clearTimeout(windowStateSaveTimer);
-    }
-    windowStateSaveTimer = setTimeout(() => {
-      windowStateSaveTimer = null;
-      const boundsToPersist = pendingWindowBounds;
-      pendingWindowBounds = null;
-      if (!boundsToPersist) return;
-      runBackgroundConfigMutation(() => {
-        // Native Wayland compositors own placement and report coordinates that are not
-        // stable app-controlled positions. Persisting those values during a resize makes
-        // the next XWayland/X11 launch jump to compositor bookkeeping coordinates.
-        if (!usesCompositorOwnedPlacement) {
-          config.windowPosition = { x: boundsToPersist.x, y: boundsToPersist.y };
-        }
-        config.windowSize = {
-          width: boundsToPersist.width,
-          height: boundsToPersist.height,
-        };
-        saveConfig();
-      }, 'window bounds save');
-    }, 400);
-  };
-
-  // Save position when window is moved
-  mainWindow.on('moved', changeWin);
-
-  // Save size when window is resized
-  mainWindow.on('resized', () => {
-    changeWin();
-    if (isLayerShellChildProcess) placeLayerWindow(mainWindow);
-  });
+  watchMainWindowBounds(mainWindow);
 
   // Hide to tray when minimizing
   mainWindow.on('minimize', (event) => {
