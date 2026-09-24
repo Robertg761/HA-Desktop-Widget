@@ -123,6 +123,132 @@ describe('stylesheet cascade regressions', () => {
     });
   });
 
+  describe('controls that turned their focus outline off', () => {
+    const uiUtils = require('../../src/ui-utils.js');
+    // Each of these once replaced the ring with a faint translucent border or glow (or nothing).
+    const controlMarkup = `
+      <div class="command-palette-panel">
+        <input class="command-palette-input" data-focus>
+        <div class="command-palette-results">
+          <button class="command-palette-result highlighted"></button>
+          <button class="command-palette-result" data-focus-visible></button>
+        </div>
+      </div>
+      <button class="command-palette-close" data-focus-visible></button>
+      <div class="reorganize-mode"><div class="control-item">
+        <button class="desktop-pin-quick-toggle" data-focus-visible>Pin</button>
+      </div></div>
+      <input class="qa-tab-rename-input" type="text" data-focus data-focus-visible>
+      <div class="add-page-modal"><button class="qa-add-chip" data-focus-visible></button></div>
+      <div class="form-group"><input type="checkbox" data-focus data-focus-visible></div>
+      <button class="desktop-pin-light-power" data-focus-visible></button>
+      <input class="desktop-pin-light-slider" type="range" data-focus data-focus-visible>
+      <button class="desktop-pin-light-preset" data-focus-visible></button>
+      <button class="desktop-pin-panel-button" data-focus-visible></button>`;
+    const cameraMarkup = `
+      <div class="camera-expanded-preview"><div class="camera-expanded-preview-footer">
+        <button class="camera-expanded-preview-close" data-focus-visible></button>
+        <button class="camera-expanded-preview-reconnect" data-focus-visible></button>
+      </div></div>`;
+    const ring = (element) => {
+      const [width, style, ...color] = (resolvedValue(element, 'outline') || '').split(/\s+/);
+      return { width: parseFloat(width), style, color: color.join(' ') };
+    };
+    const rows = () =>
+      [...document.querySelectorAll('.command-palette-result, [data-focus-visible]')].filter(
+        (element, index, all) => all.indexOf(element) === index
+      );
+
+    afterEach(() => {
+      document.documentElement.removeAttribute('style');
+    });
+
+    it.each([
+      ...uiUtils.getAccentThemes().map((theme) => [theme.id, theme.color]),
+      ['custom white', '#ffffff'],
+    ])('draws a solid 3:1 ring in the light theme with the %s accent', (_, accent) => {
+      render(THEMES.light, controlMarkup + cameraMarkup);
+      uiUtils.applyAccentThemeFromColor(accent);
+      const lightSurfaces = ['#ffffff', `rgb(${resolvedValue(document.body, '--window-bg-rgb')})`];
+      // The camera viewer stays dark in every theme.
+      const cameraSurface = 'rgb(13, 18, 25)';
+
+      for (const element of rows()) {
+        const { width, style, color } = ring(element);
+        const surfaces = element.closest('.camera-expanded-preview')
+          ? [cameraSurface]
+          : lightSurfaces;
+        for (const surface of surfaces) {
+          expect({
+            element: element.className || element.type,
+            ring: width >= 2 && style === 'solid' && contrastRatio(color, surface) >= 3,
+          }).toEqual({ element: element.className || element.type, ring: true });
+        }
+      }
+    });
+
+    it('uses the accent in the dark theme and white under the readable preset', () => {
+      render(THEMES.dark, controlMarkup + cameraMarkup);
+      uiUtils.applyAccentThemeFromColor('#64b5f6');
+      for (const element of rows()) {
+        const { width, style, color } = ring(element);
+        expect({
+          element: element.className || element.type,
+          width,
+          style,
+          color: parseColor(color),
+        }).toEqual({
+          element: element.className || element.type,
+          width: 2,
+          style: 'solid',
+          color: parseColor('#64b5f6'),
+        });
+      }
+
+      document.body.className = THEMES['readable light'];
+      for (const element of document.querySelectorAll('[data-focus-visible]')) {
+        expect(parseColor(ring(element).color)).toEqual([255, 255, 255, 1]);
+      }
+    });
+
+    it.each(THEME_CASES)('keeps the Pin label readable on its dark pill (%s)', (_, theme) => {
+      render(
+        theme,
+        `<div class="reorganize-mode"><div class="control-item">
+          <button class="desktop-pin-quick-toggle">Pin</button>
+          <button class="desktop-pin-quick-toggle" data-hover>Pin</button>
+          <button class="desktop-pin-quick-toggle" data-focus-visible>Pin</button>
+        </div></div>`
+      );
+      for (const toggle of document.querySelectorAll('.desktop-pin-quick-toggle')) {
+        const pill = resolvedValue(toggle, 'background');
+        expect(contrastRatio(resolvedValue(toggle, 'color'), pill)).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    it('rings the highlighted palette row only while the search field has focus', () => {
+      const palette = (inputState) => `
+        <div class="command-palette-panel">
+          <input class="command-palette-input" ${inputState}>
+          <button class="command-palette-close" data-focus-visible></button>
+          <div class="command-palette-results">
+            <button class="command-palette-result highlighted"></button>
+            <button class="command-palette-result" data-hover></button>
+          </div>
+        </div>`;
+      render(THEMES.dark, palette('data-focus'));
+      const [highlighted, hovered] = document.querySelectorAll('.command-palette-result');
+      expect(ring(highlighted).style).toBe('solid');
+      expect(ring(hovered).style).not.toBe('solid');
+
+      // Tabbing on to the close button leaves one ring, on the button.
+      render(THEMES.dark, palette(''));
+      expect(ring(document.querySelector('.command-palette-result.highlighted')).style).not.toBe(
+        'solid'
+      );
+    });
+  });
+
   describe('hidden rows in workflow pick lists', () => {
     it('hides device rows filtered out by the starter search', () => {
       render(
