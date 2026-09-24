@@ -210,7 +210,12 @@ async function main() {
     }
   } finally {
     cdp?.close();
+    // The app hides to the tray instead of quitting on SIGTERM (macOS especially), and its open
+    // socket to the mock server would keep this process alive, so escalate to SIGKILL.
     app.kill();
+    await sleep(1500);
+    if (app.exitCode === null && app.signalCode === null) app.kill('SIGKILL');
+    server.closeAllConnections?.();
     server.close();
     await sleep(500);
     fs.rmSync(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 250 });
@@ -218,7 +223,9 @@ async function main() {
   console.log(`Snapshots written to ${OUT_DIR}`);
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });

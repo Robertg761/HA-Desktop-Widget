@@ -69,6 +69,7 @@ jobs:
         run: node -e "require('electron')"
 
       - name: Take snapshots (Linux)
+        timeout-minutes: 8
         if: runner.os == 'Linux'
         run: |
           # The npm-installed Electron's sandbox helper lacks the setuid bit.
@@ -81,6 +82,7 @@ jobs:
             node scripts/visual-snapshots/run.cjs visual-snapshots
 
       - name: Take snapshots (Windows, macOS)
+        timeout-minutes: 8
         if: runner.os != 'Linux'
         run: node scripts/visual-snapshots/run.cjs visual-snapshots
 

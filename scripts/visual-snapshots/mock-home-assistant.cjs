@@ -101,7 +101,18 @@ function startMockHomeAssistant({ port = 0, token, states }) {
     response.end('{"message":"Not found"}');
   });
 
+  // Upgraded WebSocket sockets are not tracked by server.closeAllConnections(), so do it here.
+  const sockets = new Set();
+  const closeAllConnections = server.closeAllConnections?.bind(server);
+  server.closeAllConnections = () => {
+    closeAllConnections?.();
+    sockets.forEach((socket) => socket.destroy());
+    sockets.clear();
+  };
+
   server.on('upgrade', (request, socket) => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
     if (request.url !== '/api/websocket') {
       socket.destroy();
       return;
