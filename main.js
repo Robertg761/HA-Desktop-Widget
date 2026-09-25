@@ -356,6 +356,7 @@ const {
 } = require('./src/linux-popup-hotkey.cjs');
 const { createPopupWindowPresenter } = require('./src/popup-window-presenter.cjs');
 const { createWindowAutoHideController } = require('./src/window-auto-hide.cjs');
+const { installSystemShutdownHandlers } = require('./src/system-shutdown.cjs');
 const { createKWinWindowRaiser } = require('./src/kwin-window-raise.cjs');
 const { installSessionPermissionPolicy } = require('./src/session-permissions.cjs');
 const {
@@ -651,6 +652,9 @@ let smokeTestRendererReady = false;
 let smokeTestTrayReady = false;
 const CONFIG_SAVE_DEBOUNCE_MS = 120;
 const QUIT_FINALIZATION_TIMEOUT_MS = 15000;
+// Inside logind's default 5 s shutdown delay, and far inside systemd's stop timeout.
+const SYSTEM_SHUTDOWN_EXIT_DEADLINE_MS = 4000;
+let systemShutdownRequested = false;
 let configWriteTimer = null;
 let configWriteInFlight = false;
 let pendingConfigSnapshot = null;
@@ -10484,6 +10488,35 @@ function shutDownRuntimeAfterConfigFlush() {
   kwinWindowRaiser?.close();
 }
 
+// A logout or shutdown cannot wait out the bounded save a user's quit waits on, and must never
+// stop on the error dialog: the session is gone either way, and a dialog only holds it open until
+// systemd kills the process. So quit through the normal path, but exit regardless at a deadline.
+function quitForSystemShutdown(reason) {
+  systemShutdownRequested = true;
+  isQuitting = true;
+  const deadline = setTimeout(
+    () => exitForSystemShutdown(`${reason}: clean quit did not finish in time`),
+    SYSTEM_SHUTDOWN_EXIT_DEADLINE_MS
+  );
+  deadline.unref?.();
+  app.quit();
+}
+
+function exitForSystemShutdown(reason) {
+  log.warn(`Exiting for system shutdown without a clean quit (${reason})`);
+  if (config && !quitFinalized) {
+    try {
+      const persistence = flushPendingConfigWriteSync({ shutdown: true });
+      if (!persistence.success) {
+        log.error('Could not save configuration before exiting:', persistence.error);
+      }
+    } catch (error) {
+      log.error('Could not save configuration before exiting:', error);
+    }
+  }
+  app.exit(0);
+}
+
 app.on('before-quit', (event) => {
   if (!gotSingleInstanceLock || !config) return;
   if (quitFinalized) return;
@@ -10497,6 +10530,10 @@ app.on('before-quit', (event) => {
       app.quit();
     })
     .catch((error) => {
+      if (systemShutdownRequested) {
+        exitForSystemShutdown(error?.message || String(error));
+        return;
+      }
       log.error('Quit canceled because configuration could not be saved:', error);
       dialog.showErrorBox(
         mainT('Could not save settings'),
@@ -10536,6 +10573,13 @@ app
     // inherit a display that dies with this process and a marker that skips the
     // handoff.
     if (isLayerShellChildProcess) restoreLayerShellParentEnv();
+
+    installSystemShutdownHandlers({
+      powerMonitor,
+      onShutdownRequested: quitForSystemShutdown,
+      onForceExit: (signal) => exitForSystemShutdown(`repeated ${signal}`),
+      log,
+    });
 
     startSmokeTestTimeout();
 

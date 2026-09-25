@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Quit cleanly when Linux shuts down, restarts, or logs out, instead of holding up the session until the system kills the widget. The settings are saved first, and the widget never stops on a save-error dialog during shutdown.
 - Lay pinned desktop tiles out as designed again: the Quick Access tile rules had been overriding their padding, corners and alignment, so text ran into the rounded corners, a large label spilled over the top-right corner, and bottom buttons were cut off. Pins also stay readable in the light theme, where their text had turned white on light panels.
 - Calm the Quick Access edit mode: the pin, rename and remove buttons are small glass circles that take their colour on hover, the pin chip is an icon so longer translations fit, and sensor icons no longer sit under the buttons.
 - Keep the camera's live view visible after a failed snapshot, and disable every control (including climate modes and presets) in an unavailable entity's pop-up.
