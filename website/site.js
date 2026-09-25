@@ -143,24 +143,35 @@ function showSteps(assetKey) {
 
 if (rec) {
   const help = document.getElementById('install-help');
+  // Resolves true when there's no build for this CPU, so nothing is offered.
+  const noBuild = info
+    ? detectArm().then((arm) => {
+      const text = arm && {
+        windows: 'Runs on Windows on Arm through emulation.',
+        linux: 'There’s no ARM build for Linux yet. The files below are for x86_64 PCs.',
+      }[platform.os];
+      if (text) {
+        const el = document.getElementById('rec-arch');
+        el.textContent = text;
+        el.hidden = false;
+      }
+      return arm && platform.os === 'linux';
+    })
+    : Promise.resolve(true);
+
   if (info) {
     const button = document.getElementById('rec-primary');
     button.dataset.asset = info.primary;
     button.href = `https://github.com/${REPO}/releases/latest`;
     showSteps(info.primary);
-    release.then((rel) => {
-      const asset = rel?.assets?.find((a) => ASSET_PATTERNS[info.primary].test(a.name));
-      if (asset) button.href = asset.browser_download_url;
+    noBuild.then((none) => {
+      if (!none) return;
+      button.hidden = true;
+      help.hidden = true;
     });
-    detectArm().then((arm) => {
-      const text = arm && {
-        windows: 'Runs on Windows on Arm through emulation.',
-        linux: 'There’s no ARM build for Linux yet.',
-      }[platform.os];
-      if (!text) return;
-      const el = document.getElementById('rec-arch');
-      el.textContent = text;
-      el.hidden = false;
+    Promise.all([release, noBuild]).then(([rel, none]) => {
+      const asset = rel?.assets?.find((a) => ASSET_PATTERNS[info.primary].test(a.name));
+      if (asset && !none) button.href = asset.browser_download_url;
     });
   } else {
     rec.hidden = true;
@@ -168,8 +179,8 @@ if (rec) {
   }
 
   /* Offer a newer beta, quietly, for the visitor's own platform. */
-  beta.then((rel) => {
-    if (!rel || !info) return;
+  Promise.all([beta, noBuild]).then(([rel, none]) => {
+    if (!rel || none) return;
     const asset = rel.assets?.find((a) => ASSET_PATTERNS[info.primary].test(a.name));
     const link = document.getElementById('beta-link');
     const [major, minor] = coreVersion(rel.tag_name);
@@ -183,6 +194,7 @@ if (rec) {
   document.querySelectorAll('main [data-asset], #beta-link').forEach((link) => {
     link.addEventListener('click', () => {
       rec.hidden = false;
+      help.hidden = false;
       showSteps(link.dataset.asset || link.dataset.betaAsset);
       document.getElementById('install-started').hidden = false;
       document.getElementById('install-foot').hidden = false;
