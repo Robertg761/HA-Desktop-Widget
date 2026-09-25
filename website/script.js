@@ -1,8 +1,11 @@
-// The hero widget is a working demo: shared entity state renders into the grid
-// and into any pinned copies, so a pinned lamp keeps toggling wherever you drop it.
+// The hero widget is a working demo of the 4.0 main window: shared entity state
+// renders into the grid and into any pinned copies, so a pinned lamp keeps
+// toggling wherever you drop it.
 import { WeatherEffectsManager } from '/weather-effects.js';
+import '/site.js'; // nav, reveals and download links
 
-const REPO = 'Robertg761/HA-Desktop-Widget';
+const stage = document.getElementById('stage');
+
 const store = {
   get(key, fallback) {
     try { return JSON.parse(localStorage.getItem('hdw-' + key)) ?? fallback; }
@@ -14,16 +17,26 @@ const store = {
 };
 const narrowQuery = matchMedia('(max-width: 760px)');
 const finePointer = matchMedia('(pointer: fine)');
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const icon = (name) => `<svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-${name}"/></svg>`;
 
 /* ---------------- Demo entities ---------------- */
 
 const ENTITIES = {
-  'light.desk': { icon: '💡', name: 'Desk lamp', type: 'light', on: true, bri: 80 },
-  'light.shelf': { icon: '✨', name: 'Shelf LEDs', type: 'light', on: false, bri: 60 },
-  'switch.coffee': { icon: '☕', name: 'Coffee maker', type: 'switch', on: false },
-  'sensor.office': { icon: '🌡️', name: 'Office temp', type: 'sensor', val: 21.4, unit: '°C' },
-  'binary.door': { icon: '🚪', name: 'Front door', type: 'binary', on: false },
-  'scene.movie': { icon: '🎬', name: 'Movie time', type: 'scene' },
+  'light.desk': { icon: 'bulb', name: 'Desk lamp', type: 'light', on: true, bri: 80 },
+  'light.shelf': { icon: 'bulb', name: 'Shelf LEDs', type: 'light', on: false, bri: 60 },
+  'switch.coffee': { icon: 'plug', name: 'Coffee maker', type: 'switch', on: false },
+  'sensor.office': { icon: 'thermo', name: 'Office temp', type: 'sensor', val: 21.4, unit: '°C' },
+  'binary.door': { icon: 'door-closed', iconOn: 'door-open', name: 'Front door', type: 'binary', on: false },
+  'scene.movie': { icon: 'sparkles', name: 'Movie time', type: 'scene' },
+  'light.bedside': { icon: 'bulb', name: 'Bedside lamp', type: 'light', on: false, bri: 35 },
+  'fan.bedroom': { icon: 'fan', name: 'Ceiling fan', type: 'switch', on: true },
+  'cover.blinds': { icon: 'blinds', name: 'Blinds', type: 'cover', on: false },
+  'sensor.bedroom': { icon: 'thermo', name: 'Bedroom temp', type: 'sensor', val: 19.6, unit: '°C' },
+};
+const PAGES = {
+  home: ['light.desk', 'light.shelf', 'switch.coffee', 'sensor.office', 'binary.door', 'scene.movie'],
+  bedroom: ['light.bedside', 'fan.bedroom', 'cover.blinds', 'sensor.bedroom'],
 };
 Object.entries(store.get('ents', {})).forEach(([id, saved]) => {
   if (ENTITIES[id]) Object.assign(ENTITIES[id], saved);
@@ -33,15 +46,14 @@ function saveEntities() {
   const out = {};
   for (const [id, e] of Object.entries(ENTITIES)) {
     if (e.type === 'light') out[id] = { on: e.on, bri: e.bri };
-    else if (e.type === 'switch') out[id] = { on: e.on };
+    else if (e.type === 'switch' || e.type === 'cover') out[id] = { on: e.on };
   }
   store.set('ents', out);
 }
 
 function stateText(e) {
-  if (e.type === 'sensor') return `${e.val.toFixed(1)}${e.unit}`;
-  if (e.type === 'binary') return e.on ? 'Open' : 'Closed';
-  if (e.type === 'scene') return e.flash ? 'Activated' : 'Scene';
+  if (e.type === 'binary' || e.type === 'cover') return e.on ? 'Open' : 'Closed';
+  if (e.type === 'scene') return e.flash ? 'Activated' : '';
   if (e.type === 'light' && e.on) return `${e.bri}%`;
   return e.on ? 'On' : 'Off';
 }
@@ -53,12 +65,23 @@ function accentRgb() {
 function paint(id, pulse = false) {
   const e = ENTITIES[id];
   document.querySelectorAll(`.qa[data-id="${CSS.escape(id)}"]`).forEach((el) => {
-    if (e.type !== 'sensor') {
+    if (e.type === 'sensor') {
+      el.querySelector('.qa-num').textContent = e.val.toFixed(1);
+    } else {
       const active = e.type === 'scene' ? !!e.flash : !!e.on;
+      const was = el.getAttribute('aria-pressed') === 'true';
       el.setAttribute('aria-pressed', String(active));
+      el.querySelector('.qa-state').textContent = stateText(e);
+      if (e.iconOn) el.querySelector('use').setAttribute('href', `/assets/icons.svg#i-${e.on ? e.iconOn : e.icon}`);
+      // A short swell when something turns on, like the app.
+      if (active && !was && !reducedMotion.matches) {
+        el.querySelector('.qa-icon').animate(
+          [{ transform: 'scale(1)' }, { transform: 'scale(1.18)' }, { transform: 'scale(1)' }],
+          { duration: 420, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' }
+        );
+      }
     }
-    el.querySelector('.qa-state').textContent = stateText(e);
-    if (pulse && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (pulse && !reducedMotion.matches) {
       el.animate(
         [{ boxShadow: `0 0 0 2px rgba(${accentRgb()}, 0.6)` }, { boxShadow: 'none' }],
         { duration: 600, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' }
@@ -67,41 +90,56 @@ function paint(id, pulse = false) {
   });
 }
 
-/* A tile is a slot holding the entity control plus a sibling pin button, so no
-   interactive element is nested inside another. Sensors are readouts, not buttons. */
+/* A tile is a slot holding the entity control plus sibling buttons (controls,
+   pin), so no interactive element is nested inside another. Sensors are
+   readouts, not buttons. */
 function renderTile(id, pinned = false) {
   const e = ENTITIES[id];
   const slot = document.createElement('div');
   slot.className = 'qa-slot' + (pinned ? ' pinned' : '');
 
   const el = document.createElement(e.type === 'sensor' ? 'div' : 'button');
-  el.className = 'qa';
+  el.className = 'qa' + (e.type === 'sensor' ? ' qa-sensor' : '');
   el.dataset.id = id;
   if (e.type === 'sensor') el.setAttribute('role', 'status');
   else {
     el.type = 'button';
     el.setAttribute('aria-pressed', 'false');
   }
-  if (e.type === 'light') el.title = 'Click to toggle · hold or right-click for brightness';
-  el.innerHTML = `
-    <span class="qa-icon" aria-hidden="true">${e.icon}</span>
-    <span class="qa-name">${e.name}</span>
-    <span class="qa-state"></span>`;
+  if (e.type === 'light') el.title = 'Click to toggle · hold for brightness';
+  el.innerHTML = e.type === 'sensor'
+    ? `<span class="qa-icon">${icon(e.icon)}</span>
+       <span class="qa-name">${e.name}</span>
+       <span class="qa-value"><span class="qa-num"></span><span class="qa-unit">${e.unit}</span></span>`
+    : `<span class="qa-icon">${icon(e.icon)}</span>
+       <span class="qa-name">${e.name}</span>
+       <span class="qa-state"></span>`;
+  slot.append(el);
+
+  if (e.type === 'light') {
+    const controls = document.createElement('button');
+    controls.type = 'button';
+    controls.className = 'tile-ctl';
+    controls.setAttribute('aria-label', `${e.name} controls`);
+    controls.title = 'Controls';
+    controls.innerHTML = icon('sliders');
+    controls.addEventListener('click', () => { markInteracted(); openBrightness(id, controls); });
+    slot.append(controls);
+  }
 
   const pinBtn = document.createElement('button');
   pinBtn.type = 'button';
   pinBtn.className = 'pin-btn';
-  pinBtn.setAttribute('aria-label', pinned ? 'Unpin tile' : 'Pin tile to the page');
-  pinBtn.title = pinned ? 'Unpin' : 'Pin to page';
-  pinBtn.textContent = pinned ? '✕' : '📌';
+  pinBtn.setAttribute('aria-label', pinned ? 'Unpin tile' : 'Pin tile to the desktop');
+  pinBtn.title = pinned ? 'Unpin' : 'Pin to desktop';
+  pinBtn.innerHTML = icon(pinned ? 'x' : 'pin');
+  slot.append(pinBtn);
 
-  slot.append(el, pinBtn);
   wireTile(slot, el, pinBtn, id, pinned);
   return slot;
 }
 
 const hint = document.getElementById('demo-hint');
-if (hint && narrowQuery.matches) hint.textContent = 'Go on, tap one. Hold a light to dim it.';
 let interacted = false;
 function markInteracted() {
   if (!interacted && hint) { interacted = true; hint.classList.add('dim'); }
@@ -117,27 +155,35 @@ function toggleEntity(id) {
     setTimeout(() => { e.flash = false; paint(id); }, 1400);
     return;
   }
-  if (e.type === 'binary') { e.on = !e.on; paint(id); return; }
   e.on = !e.on;
   paint(id);
-  saveEntities();
+  if (e.type !== 'binary') saveEntities();
 }
 
-/* Long-press (or right-click) a light for the brightness popover, like the app. */
+/* ---------------- Brightness dialog ---------------- */
+
+/* Hold a light, right-click it, or use its controls button, like the app. */
 const pop = document.getElementById('bright-pop');
 const popName = document.getElementById('bright-name');
 const popValue = document.getElementById('bright-value');
 const popSlider = document.getElementById('bright-slider');
+const popPower = document.getElementById('bright-power');
 let popTarget = null;
 let popOpener = null;
 
+function syncBrightness() {
+  const e = ENTITIES[popTarget];
+  popValue.textContent = e.on ? `${e.bri}%` : 'Off';
+  popSlider.value = e.bri;
+  popSlider.style.setProperty('--fill', `${e.bri}%`);
+  popPower.textContent = e.on ? 'Turn off' : 'Turn on';
+  pop.classList.toggle('is-off', !e.on);
+}
 function openBrightness(id, opener) {
-  const e = ENTITIES[id];
   popTarget = id;
   popOpener = opener || null;
-  popName.textContent = e.name;
-  popValue.textContent = `${e.bri}%`;
-  popSlider.value = e.bri;
+  popName.textContent = ENTITIES[id].name;
+  syncBrightness();
   pop.hidden = false;
   if (finePointer.matches) popSlider.focus();
 }
@@ -151,19 +197,23 @@ function applyBrightness(bri) {
   const e = ENTITIES[popTarget];
   e.bri = bri;
   e.on = bri > 0;
-  popValue.textContent = `${bri}%`;
+  syncBrightness();
   paint(popTarget);
   saveEntities();
 }
 popSlider.addEventListener('input', () => applyBrightness(Number(popSlider.value)));
 document.querySelectorAll('.bright-presets button').forEach((b) =>
-  b.addEventListener('click', () => {
-    popSlider.value = b.dataset.preset;
-    applyBrightness(Number(b.dataset.preset));
-  })
+  b.addEventListener('click', () => applyBrightness(Number(b.dataset.preset)))
 );
-document.getElementById('bright-close').addEventListener('click', closeBrightness);
-/* Tap the empty glass to dismiss: phones have no Escape key. */
+popPower.addEventListener('click', () => {
+  const e = ENTITIES[popTarget];
+  e.on = !e.on;
+  paint(popTarget);
+  saveEntities();
+  closeBrightness();
+});
+document.querySelectorAll('[data-close-bright]').forEach((b) => b.addEventListener('click', closeBrightness));
+/* Tap the dimmed backdrop to dismiss: phones have no Escape key. */
 pop.addEventListener('pointerdown', (ev) => {
   if (ev.target === pop) closeBrightness();
 });
@@ -193,7 +243,6 @@ function wireTile(slot, el, pinBtn, id, pinned) {
     el.addEventListener('pointerup', cancel);
     el.addEventListener('pointerleave', cancel);
     el.addEventListener('pointercancel', cancel);
-    /* Right-click, or Shift+F10 / the menu key with the tile focused. */
     el.addEventListener('contextmenu', (ev) => {
       ev.preventDefault();
       clearTimeout(holdTimer);
@@ -219,15 +268,13 @@ function wireTile(slot, el, pinBtn, id, pinned) {
   if (pinned) {
     el.addEventListener('pointerdown', (ev) => {
       ev.preventDefault();
-      const rect = slot.getBoundingClientRect();
-      const dx = ev.clientX - rect.left;
-      const dy = ev.clientY - rect.top;
+      const dx = ev.clientX - slot.offsetLeft;
+      const dy = ev.clientY - slot.offsetTop;
       let moved = false;
       el.setPointerCapture(ev.pointerId);
       const move = (mv) => {
         if (Math.abs(mv.clientX - ev.clientX) + Math.abs(mv.clientY - ev.clientY) > 4) moved = true;
-        slot.style.left = Math.max(0, Math.min(innerWidth - rect.width, mv.clientX - dx)) + 'px';
-        slot.style.top = Math.max(0, Math.min(innerHeight - rect.height, mv.clientY - dy)) + 'px';
+        placePinned(slot, mv.clientX - dx, mv.clientY - dy);
       };
       el.addEventListener('pointermove', move);
       el.addEventListener('pointerup', () => {
@@ -241,8 +288,7 @@ function wireTile(slot, el, pinBtn, id, pinned) {
       const step = { ArrowLeft: [-10, 0], ArrowRight: [10, 0], ArrowUp: [0, -10], ArrowDown: [0, 10] }[ev.key];
       if (!step) return;
       ev.preventDefault();
-      slot.style.left = Math.max(0, Math.min(innerWidth - slot.offsetWidth, slot.offsetLeft + step[0])) + 'px';
-      slot.style.top = Math.max(0, Math.min(innerHeight - slot.offsetHeight, slot.offsetTop + step[1])) + 'px';
+      placePinned(slot, slot.offsetLeft + step[0], slot.offsetTop + step[1]);
       savePins();
     });
   }
@@ -250,15 +296,25 @@ function wireTile(slot, el, pinBtn, id, pinned) {
 
 /* ---------------- Desktop pins ---------------- */
 
+/* Pins sit on the demo wallpaper, not the page, so they stay with the desktop. */
+const STAGE_BAR = 38;
 const pinnedEls = new Map();
+
+function placePinned(slot, x, y) {
+  const maxX = stage.clientWidth - slot.offsetWidth - 8;
+  const maxY = stage.clientHeight - slot.offsetHeight - 8;
+  slot.style.left = Math.max(8, Math.min(maxX, x)) + 'px';
+  slot.style.top = Math.max(STAGE_BAR, Math.min(maxY, y)) + 'px';
+}
 
 function pin(id, x, y) {
   if (pinnedEls.has(id) || narrowQuery.matches) return;
   const slot = renderTile(id, true);
-  const demo = document.getElementById('widget-demo').getBoundingClientRect();
-  slot.style.left = (x ?? Math.min(demo.right + 24, innerWidth - 130)) + 'px';
-  slot.style.top = (y ?? demo.top + 40 + pinnedEls.size * 30) + 'px';
-  document.body.appendChild(slot);
+  stage.appendChild(slot);
+  const n = pinnedEls.size;
+  // Two columns fit left of the widget on a wide stage; one column otherwise.
+  const cols = stage.clientWidth >= 1020 ? 2 : 1;
+  placePinned(slot, x ?? 24 + (n % cols) * 128, y ?? 54 + Math.floor(n / cols) * 118);
   pinnedEls.set(id, slot);
   paint(id);
   savePins();
@@ -273,39 +329,99 @@ function savePins() {
   for (const [id, slot] of pinnedEls) out[id] = { x: slot.offsetLeft, y: slot.offsetTop };
   store.set('pins', out);
 }
-/* A desktop window narrowed past the breakpoint would strand fixed tiles offscreen. */
+/* Below the breakpoint the stage stacks vertically and has no room for pins. */
 narrowQuery.addEventListener('change', (ev) => {
   if (ev.matches) for (const [id, slot] of [...pinnedEls]) unpin(id, slot);
 });
 
-/* ---------------- Build the grid ---------------- */
+/* ---------------- Pages ---------------- */
 
 const grid = document.getElementById('qa-grid');
-Object.keys(ENTITIES).forEach((id) => {
-  grid.appendChild(renderTile(id));
-  paint(id);
+const tabs = document.querySelector('.page-tabs');
+let currentPage = null;
+
+function showPage(page) {
+  if (page === currentPage) return;
+  const from = Object.keys(PAGES).indexOf(currentPage);
+  const to = Object.keys(PAGES).indexOf(page);
+  currentPage = page;
+  grid.replaceChildren(...PAGES[page].map((id) => renderTile(id)));
+  PAGES[page].forEach((id) => paint(id));
+  tabs.querySelectorAll('button').forEach((b) => {
+    const on = b.dataset.page === page;
+    b.classList.toggle('is-on', on);
+    b.setAttribute('aria-selected', String(on));
+  });
+  tabs.style.setProperty('--pill-x', `${to * 100}%`);
+  // Tiles slide in from the side of the page you picked.
+  if (from !== -1 && !reducedMotion.matches) {
+    const dir = to > from ? 1 : -1;
+    grid.animate(
+      [{ opacity: 0, transform: `translateX(${dir * 18}px)` }, { opacity: 1, transform: 'none' }],
+      { duration: 320, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' }
+    );
+  }
+}
+tabs.addEventListener('click', (ev) => {
+  const b = ev.target.closest('button');
+  if (!b) return;
+  markInteracted();
+  showPage(b.dataset.page);
 });
+showPage('home');
+
 if (!narrowQuery.matches) {
   Object.entries(store.get('pins', {})).forEach(([id, p]) => {
-    if (ENTITIES[id]) pin(id, Math.min(p.x, innerWidth - 120), Math.min(p.y, innerHeight - 120));
+    if (ENTITIES[id]) pin(id, p.x, p.y);
   });
 }
 
-/* The office sensor drifts, so the "real-time" claim is visible. The ring only
+/* The sensors drift, so the "real-time" claim is visible. The ring only
    pulses the first couple of times; after that it would just be blinking. */
 let sensorPulses = 0;
 setInterval(() => {
-  const s = ENTITIES['sensor.office'];
-  s.val = Math.round((s.val + (Math.random() - 0.5) * 0.4) * 10) / 10;
-  s.val = Math.max(18, Math.min(26, s.val));
-  paint('sensor.office', sensorPulses++ < 2);
+  for (const id of ['sensor.office', 'sensor.bedroom']) {
+    const s = ENTITIES[id];
+    s.val = Math.max(17, Math.min(26, Math.round((s.val + (Math.random() - 0.5) * 0.4) * 10) / 10));
+  }
+  paint('sensor.office', sensorPulses < 2);
+  paint('sensor.bedroom');
+  sensorPulses++;
 }, 4000);
+
+/* ---------------- Media card ---------------- */
+
+const media = { playing: true, pos: 82, len: 243 };
+const mediaPlay = document.getElementById('media-play');
+const mediaPos = document.getElementById('media-pos');
+const mediaBar = document.getElementById('media-bar');
+const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+function paintMedia() {
+  mediaPos.textContent = fmt(media.pos);
+  mediaBar.style.width = `${(media.pos / media.len) * 100}%`;
+  mediaPlay.innerHTML = icon(media.playing ? 'pause' : 'play');
+  mediaPlay.setAttribute('aria-label', media.playing ? 'Pause' : 'Play');
+}
+mediaPlay.addEventListener('click', () => { markInteracted(); media.playing = !media.playing; paintMedia(); });
+document.querySelectorAll('[data-skip]').forEach((b) =>
+  b.addEventListener('click', () => {
+    markInteracted();
+    media.pos = b.dataset.skip === 'back' ? 0 : media.len - 1;
+    paintMedia();
+  })
+);
+setInterval(() => {
+  if (!media.playing) return;
+  media.pos = (media.pos + 1) % media.len;
+  paintMedia();
+}, 1000);
+paintMedia();
 
 /* ---------------- Clocks ---------------- */
 
 const timeEl = document.getElementById('clock-time');
 const dateEl = document.getElementById('clock-date');
-const tbClock = document.getElementById('tb-clock');
+const stageClock = document.getElementById('stage-clock');
 function tick() {
   const now = new Date();
   const t = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -314,7 +430,9 @@ function tick() {
   dateEl.textContent = now
     .toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
     .toUpperCase();
-  if (tbClock) tbClock.textContent = t;
+  if (stageClock) {
+    stageClock.textContent = `${now.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}  ${t}`;
+  }
 }
 tick();
 setTimeout(function align() {
@@ -325,22 +443,20 @@ setTimeout(function align() {
 /* Connection dot: click for the readout self-hosters check for. */
 const connDot = document.getElementById('conn-dot');
 const connMeta = document.getElementById('conn-meta');
-let connDefault = connMeta.textContent;
 connDot.addEventListener('click', () => {
   markInteracted();
-  connMeta.textContent = 'homeassistant.local:8123 · 6 entities · 18 ms';
-  setTimeout(() => { connMeta.textContent = connDefault; }, 3200);
+  connMeta.textContent = 'homeassistant.local · 10 entities · 18 ms';
+  connMeta.parentElement.classList.add('show-meta');
+  setTimeout(() => connMeta.parentElement.classList.remove('show-meta'), 3200);
 });
 
 /* ---------------- Personalization: accent + weather ---------------- */
 
-const accentReadout = document.getElementById('accent-readout');
 function applyAccent(sw) {
   const root = document.documentElement.style;
   root.setProperty('--accent', sw.c);
   root.setProperty('--accent-rgb', sw.rgb);
   root.setProperty('--accent-hover', sw.hover);
-  if (accentReadout) accentReadout.textContent = sw.c;
   document.querySelectorAll('.swatch').forEach((b) => {
     const on = b.dataset.c === sw.c;
     b.classList.toggle('is-on', on);
@@ -360,98 +476,73 @@ if (savedAccent) applyAccent(savedAccent);
 
 /* Weather: the app's own engine (src/weather-effects.js, copied verbatim),
    running behind the frosted windows. Off by default; the visitor turns it on. */
-const fx = new WeatherEffectsManager('weather-canvas');
-const fxBar = document.querySelector('.fx-switch');
-function applyFx(effect) {
-  fx.setEffect(effect || null);
+class StageWeather extends WeatherEffectsManager {
+  resizeCanvas() {
+    if (!this.canvas) return;
+    this.canvas.width = stage.clientWidth;
+    this.canvas.height = stage.clientHeight;
+    if (this.sun) {
+      this.sun.x = this.canvas.width * 0.15;
+      this.sun.y = this.canvas.height * 0.15;
+    }
+    if (this.activeEffect && this.prefersReducedMotion()) this.renderStaticFrame();
+  }
+}
+const fx = new StageWeather('weather-canvas');
+new ResizeObserver(() => fx.resizeCanvas()).observe(stage);
+const fxBar = document.querySelector('.dock .seg');
+const fxCanvas = document.getElementById('weather-canvas');
+let currentFx = '';
+function applyFx(effect, { fade = false } = {}) {
+  currentFx = effect || '';
+  const swap = () => {
+    fx.setEffect(currentFx || null);
+    fxCanvas.style.opacity = '1';
+  };
+  if (fade) {
+    fxCanvas.style.opacity = '0';
+    setTimeout(swap, 450);
+  } else {
+    swap();
+  }
   fxBar.querySelectorAll('button').forEach((b) => {
-    const on = b.dataset.fx === (effect || '');
+    const on = b.dataset.fx === currentFx;
     b.classList.toggle('is-on', on);
     b.setAttribute('aria-pressed', String(on));
   });
 }
+
+/* The weather cycles on its own so visitors see every effect. Picking one by
+   hand holds it for 45 seconds before the cycle picks up again from there. */
+const FX_CYCLE = [...fxBar.querySelectorAll('button')].map((b) => b.dataset.fx);
+const FX_STEP_MS = 7000;
+const FX_HOLD_MS = 45000;
+let fxNextAt = Date.now() + 3500;
 fxBar.addEventListener('click', (ev) => {
   const b = ev.target.closest('button');
   if (!b) return;
   markInteracted();
   applyFx(b.dataset.fx);
-  store.set('fx', b.dataset.fx);
+  fxNextAt = Date.now() + FX_HOLD_MS;
 });
-const savedFx = store.get('fx', '');
-if (savedFx) applyFx(savedFx);
+setInterval(() => {
+  if (fx.prefersReducedMotion() || document.hidden || !stageVisible) return;
+  if (Date.now() < fxNextAt) return;
+  const next = FX_CYCLE[(FX_CYCLE.indexOf(currentFx) + 1) % FX_CYCLE.length];
+  applyFx(next, { fade: true });
+  fxNextAt = Date.now() + FX_STEP_MS;
+}, 500);
 
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) fx.stopAnimation();
+let stageVisible = true;
+function syncFxLoop() {
+  if (document.hidden || !stageVisible) fx.stopAnimation();
   else if (fx.activeEffect && !fx.prefersReducedMotion()) fx.startAnimation();
-});
-
-/* ---------------- OS detection + latest release ---------------- */
-
-const ASSET_PATTERNS = {
-  'win-setup': /win-x64-Setup\.exe$/,
-  'win-portable': /win-x64-Portable\.exe$/,
-  'mac-dmg': /universal\.dmg$/,
-  'mac-zip': /universal-mac\.zip$/,
-  'linux-appimage': /x86_64\.AppImage$/,
-  'linux-deb': /amd64\.deb$/,
-};
-
-function detectOS() {
-  const ua = navigator.userAgent;
-  // Android UAs contain "Linux" and desktop-mode iPads say "Macintosh": a phone
-  // gets no direct installer link, just the download section.
-  if (/Android|iPhone|iPad|iPod/i.test(ua)) return null;
-  if (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) return null;
-  if (/Windows/i.test(ua)) return { os: 'windows', label: 'Windows', arch: 'x64' };
-  if (/Macintosh|Mac OS X/i.test(ua)) return { os: 'mac', label: 'macOS', arch: 'universal' };
-  if (/Linux|X11/i.test(ua)) return { os: 'linux', label: 'Linux', arch: 'x64' };
-  return null;
 }
-
-const detected = detectOS();
-const osReadout = document.getElementById('os-readout');
-if (detected) {
-  osReadout.textContent = `${detected.os} · ${detected.arch}`;
-  const card = document.querySelector(`.os-card[data-os="${detected.os}"]`);
-  if (card) {
-    card.classList.add('detected');
-    const primary = card.querySelector('.btn-primary');
-    const hero = document.getElementById('hero-download');
-    if (primary && hero) {
-      hero.textContent = `Download for ${detected.label}`;
-      hero.dataset.follow = primary.dataset.asset;
-    }
-  }
-} else {
-  osReadout.textContent = 'unknown os';
-}
-
-// Fallback hrefs point at /releases/latest (never stale, never 404). The API
-// call upgrades them to direct asset links and fills in the version string.
-fetch(`https://api.github.com/repos/${REPO}/releases/latest`)
-  .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-  .then((release) => {
-    const tag = release.tag_name || '';
-    if (tag) {
-      document.getElementById('version-label').textContent = tag;
-      document.getElementById('tb-version').textContent = tag;
-      connDefault = tag;
-      if (!connMeta.textContent.includes('·')) connMeta.textContent = tag;
-    }
-    const assets = release.assets || [];
-    for (const [key, pattern] of Object.entries(ASSET_PATTERNS)) {
-      const asset = assets.find((a) => pattern.test(a.name));
-      if (!asset) continue;
-      document.querySelectorAll(`[data-asset="${key}"]`).forEach((el) => {
-        el.href = asset.browser_download_url;
-      });
-      const hero = document.getElementById('hero-download');
-      if (hero && hero.dataset.follow === key) hero.href = asset.browser_download_url;
-    }
-  })
-  .catch(() => {
-    document.getElementById('tb-version').textContent = 'v3.9.1';
-  });
+document.addEventListener('visibilitychange', syncFxLoop);
+new IntersectionObserver(([entry]) => {
+  stageVisible = entry.isIntersecting;
+  syncFxLoop();
+}).observe(stage);
 
 /* ---------------- Ghost hand-off ---------------- */
 
@@ -493,7 +584,7 @@ fetch(`https://api.github.com/repos/${REPO}/releases/latest`)
   const tr = target.getBoundingClientRect();
   const tx = tr.left + tr.width / 2 + 4;
   const ty = tr.top + tr.height / 2 + 6;
-  place(wr.right - 30, wr.bottom + 24);
+  place(wr.left - 40, wr.bottom + 10);
   document.body.appendChild(ghost);
   requestAnimationFrame(() => {
     ghost?.classList.add('show');
@@ -523,9 +614,6 @@ fetch(`https://api.github.com/repos/${REPO}/releases/latest`)
   if (cancelled) return;
   ghost.classList.remove('show');
   setTimeout(() => ghost?.remove(), 400);
-  if (!interacted && hint) {
-    hint.textContent = narrowQuery.matches
-      ? 'Your turn. Hold a light to dim it.'
-      : 'Your turn. Hold a light to dim it, pin one to the page.';
-  }
+  if (!interacted && hint) hint.textContent = 'Your turn. Hold a light to dim it, or pin one to the desktop.';
 })();
+

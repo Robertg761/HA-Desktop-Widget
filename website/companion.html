@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Companion integration | HA Desktop Widget</title>
+  <meta name="description" content="A Home Assistant integration that turns each desktop running HA Desktop Widget into a device automations can show, hide, switch pages on, or push profiles to.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a0c10">
+  <link rel="canonical" href="https://ha-desktop-widget.vercel.app/companion">
+  <link rel="icon" type="image/png" href="/assets/icon.png">
+  <link rel="apple-touch-icon" href="/assets/icon-180.png">
+  <meta property="og:title" content="Companion integration | HA Desktop Widget">
+  <meta property="og:description" content="A Home Assistant integration that turns each desktop running HA Desktop Widget into a device automations can show, hide, switch pages on, or push profiles to.">
+  <meta property="og:image" content="https://ha-desktop-widget.vercel.app/assets/og.png">
+  <meta property="og:url" content="https://ha-desktop-widget.vercel.app/companion">
+  <meta property="og:site_name" content="HA Desktop Widget">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preconnect" href="https://api.github.com" crossorigin>
+  <link rel="preload" href="/assets/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/assets/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/styles.css">
+  <script>document.documentElement.classList.add('js')</script>
+</head>
+<body>
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="/" aria-label="HA Desktop Widget home">
+        <img src="/assets/icon.png" alt="" width="26" height="26">
+        <span>HA Desktop Widget</span>
+      </a>
+      <nav class="nav-links" aria-label="Site">
+        <a href="/#features">Features</a>
+        <a href="/#screenshots">Screenshots</a>
+        <a href="/companion" aria-current="page">Companion</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="nav-icon" href="https://github.com/Robertg761/HA-Desktop-Widget" target="_blank" rel="noopener" aria-label="GitHub repository">
+          <svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-github"/></svg>
+        </a>
+        <a class="btn btn-primary btn-sm" href="/download">
+          <svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-download"/></svg>
+          Download
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="page-hero">
+      <h1>Your desktops, inside Home Assistant.</h1>
+      <p class="lede">An optional integration that lets your automations control the widget on every computer.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#install">Install</a>
+        <a class="btn btn-quiet" href="https://github.com/Robertg761/HA-Desktop-Widget-Companion" target="_blank" rel="noopener">
+          <svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-github"/></svg>
+          GitHub
+        </a>
+      </div>
+
+      <div class="ha-device reveal" aria-label="Example of a desktop as a Home Assistant device">
+        <div class="ha-device-head">
+          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-monitor"/></svg></span>
+          <div>
+            <strong>Office desktop</strong>
+            <span>HA Desktop Widget</span>
+          </div>
+        </div>
+        <ul class="ha-rows">
+          <li><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-check"/></svg>Connected<span class="v on">Connected</span></li>
+          <li><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-eye"/></svg>Widget<span class="toggle" aria-label="On"></span></li>
+          <li><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-layers"/></svg>Current page<span class="v">Home</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="bento">
+        <article class="tile t-half reveal">
+          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-monitor"/></svg></span>
+          <h3>Every desktop is a device</h3>
+          <p>It shows up in Home Assistant on its own, with a switch to show or hide the widget.</p>
+        </article>
+        <article class="tile t-half reveal">
+          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-zap"/></svg></span>
+          <h3>Automate it</h3>
+          <p>Show, hide or switch pages from any automation, on one desktop or all of them.</p>
+        </article>
+        <article class="tile t-half reveal">
+          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-palette"/></svg></span>
+          <h3>Profiles</h3>
+          <p>Save a look and layout once, then push it to any desktop.</p>
+        </article>
+        <article class="tile t-half reveal">
+          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-shield"/></svg></span>
+          <h3>Safe by design</h3>
+          <p>Home Assistant can only send those few actions. Never commands, files or links.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <header class="section-head reveal">
+        <h2>For example.</h2>
+      </header>
+      <figure class="example reveal">
+        <div class="code">
+          <div class="code-head"><span>Show the media page when the TV starts</span>
+            <button class="copy-btn" data-copy="ex1" aria-label="Copy">
+              <svg class="ico ico-copy" aria-hidden="true"><use href="/assets/icons.svg#i-copy"/></svg>
+              <svg class="ico ico-done" aria-hidden="true"><use href="/assets/icons.svg#i-check"/></svg>
+            </button>
+          </div>
+<pre id="ex1"><span class="k">triggers:</span>
+  - <span class="k">trigger:</span> state
+    <span class="k">entity_id:</span> media_player.living_room_tv
+    <span class="k">to:</span> <span class="s">playing</span>
+<span class="k">actions:</span>
+  - <span class="k">action:</span> ha_desktop_widget.switch_page
+    <span class="k">data:</span>
+      <span class="k">device_id:</span> <span class="c">your_desktop</span>
+      <span class="k">page_id:</span> <span class="s">media</span></pre>
+        </div>
+      </figure>
+    </section>
+
+    <section id="install" class="section">
+      <header class="section-head reveal">
+        <h2>Install it.</h2>
+      </header>
+      <ol class="steps">
+        <li class="reveal">
+          <span class="step-n">1</span>
+          <h3>Add it to HACS</h3>
+          <p>In HACS, open <strong>Custom repositories</strong> and add <code>Robertg761/HA-Desktop-Widget-Companion</code> as an Integration.</p>
+        </li>
+        <li class="reveal">
+          <span class="step-n">2</span>
+          <h3>Install and restart</h3>
+          <p>Install <strong>HA Desktop Widget</strong>, then restart Home Assistant.</p>
+        </li>
+        <li class="reveal">
+          <span class="step-n">3</span>
+          <h3>Turn it on</h3>
+          <p>In <strong>Settings › Devices &amp; services</strong>, add HA Desktop Widget. Your desktops appear next time they connect.</p>
+        </li>
+      </ol>
+      <p class="fine reveal">Needs Home Assistant 2026.7 or newer. Currently in beta. No HACS? <a href="https://github.com/Robertg761/HA-Desktop-Widget-Companion#manual-installation" target="_blank" rel="noopener">Install it manually.</a></p>
+    </section>
+
+    <section class="section closing reveal">
+      <h2>Don’t have the widget yet?</h2>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="/download">
+          <svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-download"/></svg>
+          <span data-download-label>Download</span>
+        </a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <img src="/assets/icon.png" alt="" width="20" height="20">
+        <span>HA Desktop Widget</span>
+        <span class="footer-version" data-version>v3.11.0</span>
+      </div>
+      <nav class="footer-links" aria-label="Project links">
+        <a href="/download">Download</a>
+        <a href="/companion">Companion</a>
+        <a href="https://github.com/Robertg761/HA-Desktop-Widget" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/Robertg761/HA-Desktop-Widget/issues" target="_blank" rel="noopener">Issues</a>
+        <a href="https://github.com/Robertg761/HA-Desktop-Widget/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
+        <a href="https://github.com/sponsors/robertg761" target="_blank" rel="noopener">Sponsor</a>
+      </nav>
+    </div>
+    <p class="fine-print">MIT licensed. HA Desktop Widget is an independent project and is not affiliated with or endorsed by Home Assistant or the Open Home Foundation.</p>
+  </footer>
+
+  <script type="module" src="/site.js"></script>
+</body>
+</html>
