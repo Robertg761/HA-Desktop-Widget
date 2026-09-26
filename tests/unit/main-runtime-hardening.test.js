@@ -855,7 +855,10 @@ describe('profile sync runtime safeguards', () => {
     // merged and pruned but before the merged config is treated as authoritative.
     const handlerStart = mainSource.indexOf("'update-config'");
     const merge = mainSource.indexOf('config = { ...config, ...newConfig', handlerStart);
-    const guard = mainSource.indexOf('restoreProfileFromStalePullEcho(prevConfig)', handlerStart);
+    const guard = mainSource.indexOf(
+      'restoreProfileFromStalePullEcho(prevConfig, touchedSyncKeys)',
+      handlerStart
+    );
     const timestampOverride = mainSource.indexOf(
       'config.profileSync.profileUpdatedAt = prevConfig',
       handlerStart
