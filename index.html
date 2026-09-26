@@ -1832,247 +1832,352 @@
             <section class="settings-group">
               <h4 class="settings-group-caption" data-i18n="Profile Syncing">Profile Syncing</h4>
               <div class="settings-group-body">
-                <div class="form-group profile-sync-group">
-                  <label>
-                    <input type="checkbox" id="profile-sync-enabled" />
-                    <span data-i18n="Profile sync">Profile sync</span>
-                  </label>
-                  <p
-                    class="help-text"
-                    data-i18n="Sync your widget profile across devices using a shared JSON file in iCloud, Dropbox, OneDrive, or similar."
-                  >
-                    Sync your widget profile across devices using a shared JSON file in iCloud,
-                    Dropbox, OneDrive, or similar.
-                  </p>
-                  <p class="help-text profile-sync-warning">
-                    <strong>Warning:</strong> Profile Sync is still experimental. Use it at your own
-                    risk, and please report bugs in the
-                    <a
-                      href="https://github.com/Robertg761/HA-Desktop-Widget/issues"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      >Issues section</a
-                    >.
-                  </p>
-
-                  <div id="profile-sync-settings" class="profile-sync-settings hidden">
-                    <div class="form-group">
-                      <label for="profile-sync-provider" data-i18n="Sync provider"
-                        >Sync provider</label
-                      >
-                      <select id="profile-sync-provider">
-                        <option value="cloudFile" data-i18n="Cloud Folder File (Free)">
-                          Cloud Folder File (Free)
-                        </option>
-                        <option value="syncthing">Syncthing</option>
-                        <option value="dropbox">Dropbox</option>
-                        <option value="oneDrive">OneDrive</option>
-                        <option value="googleDrive">Google Drive</option>
-                        <option value="icloudDrive">iCloud Drive</option>
-                      </select>
-                      <p class="help-text" id="profile-sync-provider-hint"></p>
+                <div class="form-group setting-row">
+                  <div class="setting-text">
+                    <label for="profile-sync-enabled" data-i18n="Profile sync">Profile sync</label>
+                    <p
+                      class="form-help"
+                      data-i18n="Keep Quick Access, appearance, alerts, and weather and media choices the same on every computer through a folder your cloud or sync app already keeps in sync. The Home Assistant connection, desktop pins, hotkeys and window position stay on each computer."
+                    >
+                      Keep Quick Access, appearance, alerts, and weather and media choices the same
+                      on every computer through a folder your cloud or sync app already keeps in
+                      sync. The Home Assistant connection, desktop pins, hotkeys and window position
+                      stay on each computer.
+                    </p>
+                  </div>
+                  <input type="checkbox" id="profile-sync-enabled" />
+                </div>
+                <div id="profile-sync-settings" class="profile-sync-settings hidden">
+                  <div class="form-group setting-row">
+                    <div class="setting-text">
+                      <span class="setting-label" data-i18n="Sync status">Sync status</span>
+                      <p
+                        id="profile-sync-status"
+                        class="form-help profile-sync-status"
+                        aria-live="polite"
+                      ></p>
+                      <p
+                        id="profile-sync-error"
+                        class="form-help profile-sync-error hidden"
+                        aria-live="polite"
+                      ></p>
                     </div>
-                    <div class="form-group">
+                    <button
+                      type="button"
+                      id="profile-sync-now"
+                      class="btn btn-secondary"
+                      data-i18n="Sync now"
+                    >
+                      Sync now
+                    </button>
+                  </div>
+                  <div
+                    class="form-group setting-row setting-row-stacked profile-sync-resolution hidden"
+                    id="profile-sync-resolution"
+                  >
+                    <div class="setting-text">
+                      <span
+                        class="setting-label"
+                        id="profile-sync-resolution-title"
+                        data-i18n="Choose which settings to keep"
+                        >Choose which settings to keep</span
+                      >
+                      <p class="form-help" id="profile-sync-resolution-text" aria-live="polite"></p>
+                    </div>
+                    <div class="profile-sync-actions">
+                      <button
+                        type="button"
+                        id="profile-sync-resolve-upload"
+                        class="btn btn-primary"
+                        data-i18n="Keep Local (Upload)"
+                      >
+                        Keep Local (Upload)
+                      </button>
+                      <button
+                        type="button"
+                        id="profile-sync-resolve-remote"
+                        class="btn btn-secondary"
+                        data-i18n="Use Remote (Download)"
+                      >
+                        Use Remote (Download)
+                      </button>
+                      <button
+                        type="button"
+                        id="profile-sync-resolve-cancel"
+                        class="btn btn-secondary"
+                        data-i18n="Cancel Setup"
+                      >
+                        Cancel Setup
+                      </button>
+                    </div>
+                  </div>
+                  <div class="form-group setting-row">
+                    <div class="setting-text">
+                      <label for="profile-sync-provider" data-i18n="Sync app">Sync app</label>
+                      <p
+                        class="form-help"
+                        data-i18n="Used to suggest its usual folder and to recognize its conflict copies."
+                      >
+                        Used to suggest its usual folder and to recognize its conflict copies.
+                      </p>
+                    </div>
+                    <select id="profile-sync-provider">
+                      <option value="cloudFile" data-i18n="Other synced folder">
+                        Other synced folder
+                      </option>
+                      <option value="dropbox">Dropbox</option>
+                      <option value="oneDrive">OneDrive</option>
+                      <option value="icloudDrive">iCloud Drive</option>
+                      <option value="googleDrive">Google Drive</option>
+                      <option value="syncthing">Syncthing</option>
+                    </select>
+                  </div>
+                  <div class="form-group setting-row setting-row-stacked">
+                    <div class="setting-text">
                       <label for="profile-sync-folder-path" data-i18n="Sync folder"
                         >Sync folder</label
                       >
-                      <div class="profile-sync-file-row">
-                        <input
-                          type="text"
-                          id="profile-sync-folder-path"
-                          class="form-control"
-                          placeholder="Choose a synced folder..."
-                          data-i18n-placeholder="Choose a synced folder..."
-                          readonly
-                        />
-                        <button
-                          type="button"
-                          id="profile-sync-choose-folder"
-                          class="btn btn-secondary btn-small"
-                          data-i18n="Choose Folder..."
-                        >
-                          Choose Folder...
-                        </button>
-                      </div>
                       <p
-                        class="help-text"
-                        data-i18n="Defaults to this device's local app data folder. Change it to a shared cloud/sync folder when you want cross-device sync."
+                        class="form-help"
+                        data-i18n="Choose the same folder on every computer. Other computers pick up changes once your sync app has copied the file."
                       >
-                        Defaults to this device's local app data folder. Change it to a shared
-                        cloud/sync folder when you want cross-device sync.
+                        Choose the same folder on every computer. Other computers pick up changes
+                        once your sync app has copied the file.
                       </p>
                     </div>
-                    <div class="form-group profile-sync-scope-group">
+                    <div class="profile-sync-file-row">
+                      <input
+                        type="text"
+                        id="profile-sync-folder-path"
+                        class="form-control"
+                        placeholder="Choose a synced folder..."
+                        data-i18n-placeholder="Choose a synced folder..."
+                        readonly
+                      />
+                      <button
+                        type="button"
+                        id="profile-sync-choose-folder"
+                        class="btn btn-secondary"
+                        data-i18n="Choose Folder..."
+                      >
+                        Choose Folder...
+                      </button>
+                    </div>
+                    <p
+                      class="form-help form-warning hidden"
+                      id="profile-sync-provider-hint"
+                      aria-live="polite"
+                    ></p>
+                  </div>
+                  <div class="form-group setting-row">
+                    <div class="setting-text">
                       <label for="profile-sync-scope-preset" data-i18n="Sync scope"
                         >Sync scope</label
                       >
-                      <select id="profile-sync-scope-preset">
-                        <option value="all" data-i18n="All Syncable Settings">
-                          All Syncable Settings
-                        </option>
-                        <option value="visual" data-i18n="Visual Personalization Only">
-                          Visual Personalization Only
-                        </option>
-                        <option value="quick_access" data-i18n="Quick Access/Layout Only">
-                          Quick Access/Layout Only
-                        </option>
-                        <option value="custom" data-i18n="Custom (Advanced)">
-                          Custom (Advanced)
-                        </option>
-                      </select>
-                      <div
-                        id="profile-sync-scope-advanced"
-                        class="profile-sync-scope-advanced hidden"
+                      <p
+                        class="form-help"
+                        data-i18n="Each computer chooses what it sends and receives."
                       >
-                        <label class="profile-sync-scope-option">
-                          <input type="checkbox" id="profile-sync-scope-quick-access-layout" />
-                          <span
-                            data-i18n="Quick Access/Layout (favorites, desktop pins, custom names/icons, tabs, primary cards)"
-                            >Quick Access/Layout (favorites, desktop pins, custom names/icons, tabs,
-                            primary cards)</span
-                          >
-                        </label>
-                        <label class="profile-sync-scope-option">
-                          <input type="checkbox" id="profile-sync-scope-visual-personalization" />
-                          <span
-                            data-i18n="Visual Personalization (theme, accent/background, opacity, frosted glass, always-on-top)"
-                            >Visual Personalization (theme, accent/background, opacity, frosted
-                            glass, always-on-top)</span
-                          >
-                        </label>
-                        <label class="profile-sync-scope-option">
-                          <input type="checkbox" id="profile-sync-scope-automation-alerts" />
-                          <span
-                            data-i18n="Automation & Alerts (global hotkeys, alerts, popup hotkey behavior)"
-                            >Automation & Alerts (global hotkeys, alerts, popup hotkey
-                            behavior)</span
-                          >
-                        </label>
-                        <label class="profile-sync-scope-option">
-                          <input
-                            type="checkbox"
-                            id="profile-sync-scope-connection-media-preferences"
-                          />
-                          <span
-                            data-i18n="Connection/Media Preferences (weather entity and primary media player)"
-                            >Connection/Media Preferences (weather entity and primary media
-                            player)</span
-                          >
-                        </label>
-                      </div>
-                    </div>
-                    <div class="form-group">
-                      <button
-                        type="button"
-                        id="profile-sync-help-btn"
-                        class="btn btn-secondary btn-small"
-                        data-i18n="Need Help?"
-                      >
-                        Need Help?
-                      </button>
-                      <p class="help-text" data-i18n="Open setup instructions for profile sync.">
-                        Open setup instructions for profile sync.
+                        Each computer chooses what it sends and receives.
                       </p>
                     </div>
-                    <div class="form-group">
+                    <select id="profile-sync-scope-preset">
+                      <option value="all" data-i18n="All Syncable Settings">
+                        All Syncable Settings
+                      </option>
+                      <option value="visual" data-i18n="Visual Personalization Only">
+                        Visual Personalization Only
+                      </option>
+                      <option value="quick_access" data-i18n="Quick Access/Layout Only">
+                        Quick Access/Layout Only
+                      </option>
+                      <option value="custom" data-i18n="Custom (Advanced)">
+                        Custom (Advanced)
+                      </option>
+                    </select>
+                  </div>
+                  <div
+                    id="profile-sync-scope-advanced"
+                    class="form-group profile-sync-scope-advanced hidden"
+                  >
+                    <label class="profile-sync-scope-option">
+                      <input type="checkbox" id="profile-sync-scope-quick-access-layout" />
+                      <span class="setting-text">
+                        <span class="setting-label" data-i18n="Quick Access and layout"
+                          >Quick Access and layout</span
+                        >
+                        <span
+                          class="form-help"
+                          data-i18n="Favorites, pages, tile options, custom names and icons, primary cards, comparison graphs and tray values."
+                          >Favorites, pages, tile options, custom names and icons, primary cards,
+                          comparison graphs and tray values.</span
+                        >
+                      </span>
+                    </label>
+                    <label class="profile-sync-scope-option">
+                      <input type="checkbox" id="profile-sync-scope-visual-personalization" />
+                      <span class="setting-text">
+                        <span class="setting-label" data-i18n="Appearance">Appearance</span>
+                        <span
+                          class="form-help"
+                          data-i18n="Theme, colors, density, language, date and time formats, weather effects, opacity, frosted glass, always on top and hide on focus loss."
+                          >Theme, colors, density, language, date and time formats, weather effects,
+                          opacity, frosted glass, always on top and hide on focus loss.</span
+                        >
+                      </span>
+                    </label>
+                    <label class="profile-sync-scope-option">
+                      <input type="checkbox" id="profile-sync-scope-automation-alerts" />
+                      <span class="setting-text">
+                        <span class="setting-label" data-i18n="Alerts">Alerts</span>
+                        <span class="form-help" data-i18n="Entity alert notifications."
+                          >Entity alert notifications.</span
+                        >
+                      </span>
+                    </label>
+                    <label class="profile-sync-scope-option">
+                      <input type="checkbox" id="profile-sync-scope-connection-media-preferences" />
+                      <span class="setting-text">
+                        <span class="setting-label" data-i18n="Weather and media"
+                          >Weather and media</span
+                        >
+                        <span class="form-help" data-i18n="Weather source and primary media player."
+                          >Weather source and primary media player.</span
+                        >
+                      </span>
+                    </label>
+                  </div>
+                  <div class="form-group setting-row">
+                    <div class="setting-text">
                       <label for="profile-sync-interval" data-i18n="Background sync interval"
                         >Background sync interval</label
                       >
-                      <select id="profile-sync-interval">
-                        <option value="1" data-i18n="Every 1 minute">Every 1 minute</option>
-                        <option value="5" data-i18n="Every 5 minutes">Every 5 minutes</option>
-                        <option value="15" data-i18n="Every 15 minutes">Every 15 minutes</option>
-                      </select>
-                    </div>
-                    <div class="form-group">
-                      <label>
-                        <input type="checkbox" id="profile-sync-encryption-enabled" />
-                        <span data-i18n="Encrypt synced profile with passphrase"
-                          >Encrypt synced profile with passphrase</span
-                        >
-                      </label>
-                    </div>
-                    <div class="form-group" id="profile-sync-passphrase-group">
-                      <label for="profile-sync-passphrase" data-i18n="Sync passphrase"
-                        >Sync passphrase</label
+                      <p
+                        class="form-help"
+                        data-i18n="Sync also runs shortly after you change a setting, when the widget regains focus, and after the computer wakes."
                       >
-                      <input
-                        type="password"
-                        id="profile-sync-passphrase"
-                        placeholder="Enter passphrase (min 8 chars)"
-                        data-i18n-placeholder="Enter passphrase (min 8 chars)"
-                      />
-                      <label class="profile-sync-remember">
-                        <input type="checkbox" id="profile-sync-remember-passphrase" />
-                        <span data-i18n="Remember passphrase on this device"
-                          >Remember passphrase on this device</span
-                        >
-                      </label>
+                        Sync also runs shortly after you change a setting, when the widget regains
+                        focus, and after the computer wakes.
+                      </p>
+                    </div>
+                    <select id="profile-sync-interval">
+                      <option value="1" data-i18n="Every 1 minute">Every 1 minute</option>
+                      <option value="5" data-i18n="Every 5 minutes">Every 5 minutes</option>
+                      <option value="15" data-i18n="Every 15 minutes">Every 15 minutes</option>
+                      <option value="30" data-i18n="Every 30 minutes">Every 30 minutes</option>
+                      <option value="60" data-i18n="Every hour">Every hour</option>
+                    </select>
+                  </div>
+                  <div class="form-group setting-row">
+                    <div class="setting-text">
+                      <label
+                        for="profile-sync-encryption-enabled"
+                        data-i18n="Encrypt synced profile with passphrase"
+                        >Encrypt synced profile with passphrase</label
+                      >
+                      <p
+                        class="form-help"
+                        data-i18n="Encrypts the sync file with AES-256-GCM. Every computer needs the same passphrase."
+                      >
+                        Encrypts the sync file with AES-256-GCM. Every computer needs the same
+                        passphrase.
+                      </p>
+                    </div>
+                    <input type="checkbox" id="profile-sync-encryption-enabled" />
+                  </div>
+                  <div
+                    class="form-group setting-row setting-row-stacked profile-sync-passphrase-group"
+                    id="profile-sync-passphrase-group"
+                  >
+                    <label for="profile-sync-passphrase" data-i18n="Sync passphrase"
+                      >Sync passphrase</label
+                    >
+                    <input
+                      type="password"
+                      id="profile-sync-passphrase"
+                      placeholder="Enter passphrase (min 8 chars)"
+                      data-i18n-placeholder="Enter passphrase (min 8 chars)"
+                    />
+                    <label class="profile-sync-remember">
+                      <input type="checkbox" id="profile-sync-remember-passphrase" />
+                      <span data-i18n="Remember passphrase on this device"
+                        >Remember passphrase on this device</span
+                      >
+                    </label>
+                    <div class="profile-sync-actions">
                       <button
                         type="button"
                         id="profile-sync-clear-passphrase"
-                        class="btn btn-secondary btn-small"
+                        class="btn btn-secondary hidden"
                         data-i18n="Clear Saved Passphrase"
                       >
                         Clear Saved Passphrase
                       </button>
                     </div>
-                    <div class="form-group profile-sync-actions">
+                  </div>
+                  <div class="form-group setting-row setting-row-stacked">
+                    <div class="setting-text">
+                      <span class="setting-label" data-i18n="Replace one side"
+                        >Replace one side</span
+                      >
+                      <p
+                        class="form-help"
+                        data-i18n="Sync now keeps changes from both sides. Sync Up replaces the sync file with this computer's settings, and Sync Down replaces this computer's settings with the file's. Whatever is replaced is backed up first."
+                      >
+                        Sync now keeps changes from both sides. Sync Up replaces the sync file with
+                        this computer's settings, and Sync Down replaces this computer's settings
+                        with the file's. Whatever is replaced is backed up first.
+                      </p>
+                    </div>
+                    <div class="profile-sync-actions">
+                      <button
+                        type="button"
+                        id="profile-sync-push-now"
+                        class="btn btn-secondary"
+                        data-i18n="Sync Up"
+                      >
+                        Sync Up
+                      </button>
                       <button
                         type="button"
                         id="profile-sync-pull-now"
-                        class="btn btn-secondary btn-small"
+                        class="btn btn-secondary"
                         data-i18n="Sync Down"
                       >
                         Sync Down
                       </button>
                       <button
                         type="button"
-                        id="profile-sync-push-now"
-                        class="btn btn-secondary btn-small"
-                        data-i18n="Sync Up"
+                        id="profile-sync-help-btn"
+                        class="btn btn-secondary"
+                        data-i18n="Need Help?"
                       >
-                        Sync Up
+                        Need Help?
                       </button>
                     </div>
-                    <div
-                      class="form-group profile-sync-resolution hidden"
-                      id="profile-sync-resolution"
-                    >
-                      <p class="help-text">
-                        <strong>First-time conflict:</strong> Both local and remote profiles have
-                        data.
+                  </div>
+                  <div class="form-group setting-row setting-row-stacked">
+                    <div class="setting-text">
+                      <label for="profile-sync-backup-select" data-i18n="Backups">Backups</label>
+                      <p
+                        class="form-help"
+                        data-i18n="Settings a sync replaced, newest first. Restoring one applies it on this computer, and it then syncs to your other computers."
+                      >
+                        Settings a sync replaced, newest first. Restoring one applies it on this
+                        computer, and it then syncs to your other computers.
                       </p>
-                      <div class="profile-sync-resolution-actions">
-                        <button
-                          type="button"
-                          id="profile-sync-resolve-upload"
-                          class="btn btn-primary btn-small"
-                        >
-                          Keep Local (Upload)
-                        </button>
-                        <button
-                          type="button"
-                          id="profile-sync-resolve-remote"
-                          class="btn btn-secondary btn-small"
-                          data-i18n="Use Remote (Download)"
-                        >
-                          Use Remote (Download)
-                        </button>
-                        <button
-                          type="button"
-                          id="profile-sync-resolve-cancel"
-                          class="btn btn-danger btn-small"
-                          data-i18n="Cancel Setup"
-                        >
-                          Cancel Setup
-                        </button>
-                      </div>
                     </div>
-                    <div id="profile-sync-status" class="help-text profile-sync-status">
-                      Status: Disabled
+                    <div class="profile-sync-file-row profile-sync-backup-row">
+                      <select id="profile-sync-backup-select"></select>
+                      <button
+                        type="button"
+                        id="profile-sync-restore-backup"
+                        class="btn btn-secondary"
+                        data-i18n="Restore"
+                      >
+                        Restore
+                      </button>
                     </div>
-                    <div id="profile-sync-error" class="help-text profile-sync-error hidden"></div>
                   </div>
                 </div>
               </div>

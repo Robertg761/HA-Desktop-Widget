@@ -48,10 +48,14 @@ describe('index.html static Settings text', () => {
     expect(toggle.querySelector('svg.section-toggle-icon')).not.toBeNull();
   });
 
-  test('keeps checkboxes inside labels whose text is translated', () => {
+  test('keeps switches labelled by translated text', () => {
     const checkbox = document.getElementById('profile-sync-enabled');
-    expect(checkbox.parentElement.textContent).toContain('Profilsynchronisierung');
-    expect(checkbox.closest('label')).not.toBeNull();
+    expect(document.querySelector('label[for="profile-sync-enabled"]').textContent).toBe(
+      'Profilsynchronisierung'
+    );
+    const remember = document.getElementById('profile-sync-remember-passphrase');
+    expect(remember.closest('label').querySelector('[data-i18n]')).not.toBeNull();
+    expect(checkbox.closest('.setting-row')).not.toBeNull();
   });
 
   test('translates placeholders, aria labels, titles and templated labels', () => {

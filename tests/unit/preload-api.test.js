@@ -90,6 +90,13 @@ describe('preload Electron API', () => {
       ],
       ['clearProfileSyncPassphrase', [], 'clear-profile-sync-passphrase', []],
       ['resolveProfileSyncFirstEnable', ['merge'], 'resolve-profile-sync-first-enable', ['merge']],
+      ['listProfileSyncBackups', [], 'list-profile-sync-backups', []],
+      [
+        'restoreProfileSyncBackup',
+        ['local-profile-1.json'],
+        'restore-profile-sync-backup',
+        ['local-profile-1.json'],
+      ],
       ['setOpacity', [0.8], 'set-opacity', [0.8]],
       ['previewWindowEffects', [objectArg], 'preview-window-effects', [objectArg]],
       ['setAlwaysOnTop', [true], 'set-always-on-top', [true]],
@@ -263,6 +270,59 @@ describe('preload Electron API', () => {
 
     ipcRenderer.emit('config-updated', {}, { homeAssistant: {}, configRevision: 1 });
     expect(callback).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells main which config revision each update was built from', async () => {
+    const ipcRenderer = createIpcRenderer();
+    ipcRenderer.invoke.mockImplementation(async (channel) =>
+      channel === 'get-config' ? { homeAssistant: {}, configRevision: 3 } : { configRevision: 9 }
+    );
+    const api = createElectronApi(ipcRenderer, 'test-platform');
+    api.onConfigUpdated(jest.fn());
+
+    await api.getConfig();
+    await api.updateConfig({ opacity: 0.5 });
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('update-config', {
+      opacity: 0.5,
+      configBaseRevision: 3,
+    });
+
+    // A delivered update (such as a profile sync pull) moves the base forward.
+    ipcRenderer.emit('config-updated', {}, { homeAssistant: {}, configRevision: 12 });
+    await api.updateConfig({ opacity: 0.6 });
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('update-config', {
+      opacity: 0.6,
+      configBaseRevision: 12,
+    });
+  });
+
+  it('stamps a kept snapshot with the revision it was taken at, not the latest', async () => {
+    const ipcRenderer = createIpcRenderer();
+    ipcRenderer.invoke.mockImplementation(async (channel) =>
+      channel === 'get-config' ? { homeAssistant: {}, configRevision: 3 } : { configRevision: 4 }
+    );
+    const api = createElectronApi(ipcRenderer, 'test-platform');
+    api.onConfigUpdated(jest.fn());
+
+    expect(api.getConfigRevision()).toBeNull();
+    await api.getConfig();
+    expect(api.getConfigRevision()).toBe(3);
+    const rollback = { opacity: 0.5, configRevision: api.getConfigRevision() };
+
+    // A profile sync pull lands before the rollback is sent.
+    ipcRenderer.emit('config-updated', {}, { homeAssistant: {}, configRevision: 12 });
+    expect(api.getConfigRevision()).toBe(12);
+    await api.updateConfig(rollback);
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('update-config', {
+      opacity: 0.5,
+      configBaseRevision: 3,
+    });
+
+    // Anything that is not a config object goes to main untouched, for it to reject.
+    await api.updateConfig(null);
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('update-config', null);
+    await api.updateConfig(['not', 'a', 'config']);
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('update-config', ['not', 'a', 'config']);
   });
 
   it('tracks the authoritative revision returned by an atomic entity replacement', async () => {

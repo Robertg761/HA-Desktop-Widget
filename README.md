@@ -85,7 +85,7 @@ See the [Omarchy guide](docs/omarchy.md) for native desktop layers, independent 
 - **Comparison Graphs**: Plot several entities on one 24-hour chart to compare them at a glance (e.g. every room temperature against the outside temperature)
 - **Per-Tile Charts**: Give each numeric sensor tile a line chart, a gauge with an automatic or custom range, or no chart at all
 - **Media Tile**: Choose a primary media player or hide the tile
-- **Profile Sync (Opt-in)**: Keep personalization/settings in sync across devices via a shared cloud-folder JSON file
+- **Profile Sync (Opt-in)**: Keep Quick Access, appearance, alerts, and weather and media choices the same on every computer through a folder you already sync (see [Profile sync](#profile-sync))
 
 ## Live tray values (beta only)
 
@@ -162,9 +162,9 @@ local to each machine. The desktop reports which profile revision it last applie
 Assistant can flag out-of-date desktops.
 
 > [!NOTE]
-> A Home Assistant profile overwrites the sections it contains. If the folder-based profile sync
-> feature is also enabled for the same sections, whichever mechanism writes last wins — avoid
-> managing the same settings with both at once.
+> A Home Assistant profile overwrites the sections it contains. If [profile sync](#profile-sync) is
+> also on for the same sections, the applied profile counts as a local change and syncs to your
+> other computers — avoid managing the same settings with both at once.
 
 ## How to Use
 
@@ -234,7 +234,7 @@ power controls without a brightness slider.
 
 ### Settings Highlights
 
-- **General**: Configure Home Assistant connection, always-on-top, startup behavior, language packs, profile sync, and updates
+- **General**: Configure Home Assistant connection, always-on-top, startup behavior, and language packs
 - **Themes**: Choose built-in or custom accent and background colors
 - **Window Effects**: Adjust opacity, toggle frosted glass, and enable subtle weather effects
 - **Primary Cards**: Pin weather/time or any entity to the top two cards
@@ -242,7 +242,7 @@ power controls without a brightness slider.
 - **Media Tile**: Select the primary media player or hide the tile
 - **Hotkeys**: Configure global entity hotkeys, action-specific shortcuts, and a popup hotkey (hold/toggle on macOS and Windows; press/toggle on Linux)
 - **Alerts**: Enable desktop notifications for entity state changes or target states
-- **Advanced**: Open logs and enable detailed interaction diagnostics when troubleshooting
+- **Advanced**: Updates, [profile sync](#profile-sync), logs, and interaction diagnostics for troubleshooting
 
 ## Advanced Usage
 
@@ -326,19 +326,90 @@ New GitHub releases automatically generate notes from merged pull requests and c
   unavailable. Legacy tokens are encrypted at rest when supported by the OS and are never stored in
   plaintext as a fallback.
 
-### Profile Sync (Opt-in)
+### Profile sync
 
-- **Providers**: `cloudFile` (generic), `googleDrive`, `icloudDrive`, and `syncthing` all use the same cloud-folder JSON sync file model.
-- **Default sync folder**: Starts in the app's local data folder (`userData`) and stores profile data in `ha-widget-profile-sync.json`.
-- **Folder changes**: When switching folders, the app can copy the existing sync file to the new location or keep the current folder.
-- **Sync scope controls**: Choose presets (`All`, `Visual`, `Quick Access`) or use advanced custom sections for Quick Access/layout, visual personalization, automation/alerts, and connection/media preferences.
-- **Need help button**: Opens profile sync setup instructions in your browser.
-- **Sync behavior**: On startup the newer side wins (offline edits on this device are pushed instead of discarded), pushes on profile changes (debounced), and periodic sync every 5 minutes (default).
-- **Conflict handling**: First-time setup prompts you to keep local profile or use remote profile; ongoing conflicts use last-write-wins on the whole profile (no per-field merge). The sync file is re-read immediately before it is overwritten, so a write that landed from another device in the meantime is not discarded. Because direction is chosen by timestamp, large clock skew between devices can still pick the wrong winner. Conflict copies created by cloud sync clients (e.g. Syncthing `.sync-conflict-` or Dropbox "conflicted copy" files) are detected and reported in Settings, but resolving them is left to you — the app never deletes them.
-- **Safety net**: Before a remote profile is applied, the previous local profile is backed up to `profile-sync-backups/` in the app's data folder (the last 5 are kept).
-- **Encryption**: Optional passphrase encryption for synced payloads (`AES-256-GCM` with `scrypt` key derivation); passphrases must be at least 8 characters.
-- **Schema compatibility**: Sync writes use profile sync schema v2; older app versions must update to participate in sync.
-- **Local-only data**: Home Assistant authorization, desktop installation ID, window position/size, startup setting, and profile-sync internals remain local.
+Profile sync keeps your widget set up the same way on every computer. It writes one file,
+`ha-widget-profile-sync.json`, into a folder that Dropbox, OneDrive, iCloud Drive, Google Drive,
+Syncthing, or any similar app already keeps in sync. There is no server and no account.
+
+**Set up the first computer**
+
+1. Open **Settings → Advanced → Profile Syncing** and turn on **Profile sync**.
+2. Pick your **Sync app**, then **Choose Folder...** and select a folder inside it.
+3. Optionally turn on **Encrypt synced profile with passphrase** and enter a passphrase of at
+   least 8 characters.
+4. Choose **Save**. The sync file is created.
+
+**Add another computer**
+
+Do the same with the same folder (and the same passphrase if you encrypt). If both computers
+already have different settings, Settings lists which ones differ and asks which to keep:
+**Keep Local (Upload)** or **Use Remote (Download)**. The side you replace is backed up.
+
+**What syncs**
+
+Each computer chooses its own **Sync scope**. Changing it on one computer never changes another.
+
+| Section                 | Contains                                                                                                                            |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Quick Access and layout | Favorites, pages, tile options, custom names and icons, primary cards, comparison graphs, tray values                               |
+| Appearance              | Theme, colors, density, language, date and time formats, weather effects, opacity, frosted glass, always on top, hide on focus loss |
+| Alerts                  | Entity alert notifications                                                                                                          |
+| Weather and media       | Weather source and primary media player                                                                                             |
+
+These always stay on each computer: the Home Assistant connection and credentials, desktop pins,
+hotkeys and the popup hotkey, the open Quick Access page, text and control size, Omarchy theme
+following, window position and size, startup, updates, and diagnostics settings.
+
+**How changes are merged**
+
+Sync runs shortly after you change a setting, on the interval you choose (1 minute to 1 hour),
+when the widget regains focus, after the computer wakes, and when you choose **Sync now**.
+
+Each section is compared with how it looked the last time this computer synced. A section that
+changed on only one side is copied to the other side, whatever either computer's clock says, so
+changes to different sections on two computers are both kept. Only when two computers changed
+the same section does the newer change win. The other version is then backed up and Settings
+says so.
+
+**Sync Up** replaces the file with this computer's settings, and **Sync Down** replaces this
+computer's settings with the file. Both ask first and back up what they replace.
+
+**Backups**
+
+Before sync replaces settings on this computer, or replaces another computer's settings in the
+file, it saves a copy to `profile-sync-backups/` in the app data folder. The last five of each
+kind are kept. Restore one from **Backups** in Settings: it is applied here and then syncs to
+your other computers, and the settings it replaces are backed up in turn.
+
+**Encryption**
+
+With encryption on, the whole file is encrypted with AES-256-GCM, using a key derived from your
+passphrase with scrypt. Every computer needs the same passphrase. **Remember passphrase on this
+device** stores it encrypted with the operating system's credential protection; where that is
+unavailable, it is kept only until the app closes. Turning encryption on or off, or
+changing the passphrase, rewrites the file in a way that recovers from a crash partway through.
+A computer whose settings do not match the file (encryption off, or an old passphrase) stops with
+an explanation instead of writing to it.
+
+**Troubleshooting**
+
+- _Nothing reaches the other computer_: check that both use the same folder and that your sync
+  app has finished copying. A folder inside the app's own data folder syncs with nothing, and
+  Settings warns about it.
+- _"Found conflict copy files"_: your sync app saw two computers save at the same moment and kept
+  both, such as Syncthing `.sync-conflict-` or Dropbox "conflicted copy" files. Profile sync
+  already merged the main file. Delete the copies you do not need.
+- _Google Drive on Linux_: there is no official client. Use a third-party client such as Insync
+  or rclone, or Syncthing.
+- _"The sync file was written by a newer version"_: update this computer.
+
+**Compatibility**
+
+Version 4.0 writes version 3 of the sync file, which stores each section with its own timestamp.
+It reads files from 3.x and upgrades them the first time it saves a change. Versions 3.x cannot
+read the new file. They stop with an error rather than overwriting it, so update every computer
+to 4.0.
 
 ## Troubleshooting
 

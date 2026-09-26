@@ -508,6 +508,9 @@ describe('main-process wiring safeguards', () => {
 
     expect(updateSource).toContain('const previousPassphraseMetadata = {');
     expect(updateSource).toContain('Object.assign(profileSync, previousPassphraseMetadata)');
+    expect(updateSource).toContain(
+      'keepMainOwnedProfileSyncResults(profileSync, config.profileSync)'
+    );
     expect(updateSource).toContain('resolveProfileSyncEncryptionRequest({');
     expect(mainSource).toContain('encryptionChangePending');
   });
@@ -855,7 +858,10 @@ describe('profile sync runtime safeguards', () => {
     // merged and pruned but before the merged config is treated as authoritative.
     const handlerStart = mainSource.indexOf("'update-config'");
     const merge = mainSource.indexOf('config = { ...config, ...newConfig', handlerStart);
-    const guard = mainSource.indexOf('restoreProfileFromStalePullEcho(prevConfig)', handlerStart);
+    const guard = mainSource.indexOf(
+      'restoreProfileFromStalePullEcho(prevConfig, touchedSyncKeys, baseRevision)',
+      handlerStart
+    );
     const timestampOverride = mainSource.indexOf(
       'config.profileSync.profileUpdatedAt = prevConfig',
       handlerStart
@@ -877,7 +883,7 @@ describe('profile sync runtime safeguards', () => {
   });
 
   it('re-checks the remote file before overwriting it on push', () => {
-    const pushBranch = mainSource.indexOf("if (finalDirection === 'push')");
+    const pushBranch = mainSource.indexOf('if (pushKeys.length > 0 || rewriteRequired)');
     const compare = mainSource.indexOf('hasRemoteSyncEnvelopeChanged(remoteResult)', pushBranch);
     const write = mainSource.indexOf('writeConfiguredSyncEnvelope(envelopeToWrite)', pushBranch);
 
@@ -885,6 +891,35 @@ describe('profile sync runtime safeguards', () => {
     expect(compare).toBeGreaterThanOrEqual(0);
     // The compare must precede the write, or it is not a compare-and-swap.
     expect(compare).toBeLessThan(write);
+  });
+
+  it('repairs damaged first-sync sections on their own, then asks again about the rest', () => {
+    const handlerStart = mainSource.indexOf("'resolve-profile-sync-first-enable',");
+    const handler = mainSource.slice(handlerStart, mainSource.indexOf('\n);', handlerStart));
+    const repair = handler.slice(
+      handler.indexOf("if (choice === 'upload_local' && damagedSections.length > 0)"),
+      handler.indexOf("if (choice === 'upload_local') {")
+    );
+
+    expect(repair).toContain('forceSections: damagedSections');
+    expect(repair).toContain('onlySections: damagedSections');
+    expect(repair).toContain('await prepareProfileSyncFirstEnableResolution()');
+  });
+
+  it('limits a first-sync choice to the listed sections, even when none remain', () => {
+    const handlerStart = mainSource.indexOf("'resolve-profile-sync-first-enable',");
+    const handler = mainSource.slice(handlerStart, mainSource.indexOf('\n);', handlerStart));
+
+    expect(handler).toContain('const chosenSections = [...profileSyncRuntime.conflictSections];');
+    expect(handler.match(/forceSections: chosenSections/g)).toHaveLength(2);
+  });
+
+  it('syncs local edits with a merge run instead of a forced push', () => {
+    const fnStart = mainSource.indexOf('function scheduleDebouncedProfileSyncPush');
+    const fn = mainSource.slice(fnStart, mainSource.indexOf('\n}', fnStart));
+
+    expect(fn).toContain("runProfileSync('auto', source)");
+    expect(fn).not.toContain("runProfileSync('push'");
   });
 
   it('treats an unreadable remote file as changed rather than overwriting it', () => {
@@ -976,10 +1011,15 @@ describe('profile sync runtime safeguards', () => {
 
   it('backs up the local profile before applying a remote profile', () => {
     expect(mainSource).toContain('async function backupLocalProfileBeforePullApply');
-    expect(mainSource).toContain('await backupLocalProfileBeforePullApply(remoteSyncScope);');
+    const pullApply = mainSource.indexOf(
+      'await applySyncedProfileToConfig(pickSections(remoteSections, plan.pull));'
+    );
+    const backup = mainSource.indexOf('await backupLocalProfileBeforePullApply(plan.pull);');
+    expect(backup).toBeGreaterThanOrEqual(0);
+    expect(backup).toBeLessThan(pullApply);
     expect(mainSource).toContain("const PROFILE_SYNC_BACKUP_DIR_NAME = 'profile-sync-backups'");
     expect(mainSource).toContain(
-      'Created local profile backup, but failed to prune older profile backups:'
+      'Created a profile sync backup, but failed to prune older backups:'
     );
   });
 
