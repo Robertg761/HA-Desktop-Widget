@@ -147,7 +147,7 @@ function createDevice(name, { content = baseContent(), profileSync = {}, clockOf
     `${PROFILE_SYNC_CONSTANTS}
      var profileSyncRuntime = {
        inFlight: false, pushDebounceTimer: null, intervalTimer: null, pendingPullEchoHash: null,
-       pendingPulls: [], damagedConflictSections: [],
+       pendingPullEchoProfile: null, pendingPulls: [], damagedConflictSections: [],
        conflictCopies: [], lastOpportunisticSyncAt: 0, needsResolution: false,
        pendingRemoteEnvelope: null, pendingRemoteIdentity: null, localProfileHash: null,
        localProfileUpdatedAt: null, localSectionHashes: {}, conflictSections: [],
@@ -313,6 +313,22 @@ describe('profile sync engine', () => {
     await desktop.sync();
     expect(desktop.config.opacity).toBe(0.8);
     expect(desktop.backups('local-profile')[0].sections.visualPersonalization.opacity).toBe(0.6);
+  });
+
+  test('Sync Up stops rather than merging when the file changes while it runs', async () => {
+    const { laptop } = await createSyncedPair();
+    laptop.edit((config) => {
+      config.opacity = 0.4;
+    });
+    const before = fs.readFileSync(syncFilePath(), 'utf8');
+    const realCheck = laptop.context.hasRemoteSyncEnvelopeChanged;
+    laptop.context.hasRemoteSyncEnvelopeChanged = async () => true;
+    await expect(laptop.sync('push', 'manual')).rejects.toThrow(
+      'Sync file kept changing on the other device; try again'
+    );
+    laptop.context.hasRemoteSyncEnvelopeChanged = realCheck;
+    expect(fs.readFileSync(syncFilePath(), 'utf8')).toBe(before);
+    expect(laptop.config.opacity).toBe(0.4);
   });
 
   test('Sync Up backs up the file’s version of every section it replaces', async () => {
@@ -797,6 +813,57 @@ describe('profile sync engine', () => {
     expect(context.config.ui.accent).toBe('teal');
     expect(context.config.opacity).toBe(0.7);
     expect(context.config.entityAlerts.enabled).toBe(true);
+  });
+
+  test('every queued update built before a pull is repaired, not just the first', async () => {
+    const { desktop, laptop } = await createSyncedPair();
+    const { context } = desktop;
+    const beforePull = context.configSnapshotVersion;
+    laptop.edit((config) => {
+      config.ui = { ...config.ui, accent: 'teal' };
+    });
+    await laptop.sync();
+    await desktop.sync();
+    const pulled = context.config;
+
+    context.config = { ...pulled, ui: { ...pulled.ui, accent: 'original' }, opacity: 0.8 };
+    expect(context.restoreProfileFromStalePullEcho(pulled, [], beforePull)).toBe(true);
+    context.saveConfig();
+    const afterFirst = context.config;
+    expect(afterFirst.ui.accent).toBe('teal');
+
+    // An update made after the pull does not end it for older ones still to come,
+    // such as a rollback snapshot.
+    context.config = { ...afterFirst, alwaysOnTop: false };
+    expect(
+      context.restoreProfileFromStalePullEcho(afterFirst, [], context.configSnapshotVersion)
+    ).toBe(false);
+    context.saveConfig();
+    const afterSecond = context.config;
+
+    context.config = {
+      ...afterSecond,
+      ui: { ...afterSecond.ui, accent: 'original' },
+      entityAlerts: { enabled: true, alerts: {} },
+    };
+    expect(context.restoreProfileFromStalePullEcho(afterSecond, [], beforePull)).toBe(true);
+    expect(context.config.ui.accent).toBe('teal');
+    expect(context.config.opacity).toBe(0.8);
+    expect(context.config.alwaysOnTop).toBe(false);
+    expect(context.config.entityAlerts.enabled).toBe(true);
+  });
+
+  test('remembers a bounded number of pulls', () => {
+    const desktop = createDevice('desktop');
+    const { context } = desktop;
+    let pulls = [];
+    for (let revision = 1; revision <= 20; revision += 1) {
+      pulls = context.appendPendingPull(pulls, { profile: { opacity: revision / 100 }, revision });
+    }
+    expect(pulls).toHaveLength(16);
+    // The oldest state survives; merged entries answer to the later revision.
+    expect(pulls[0]).toEqual({ profile: { opacity: 0.01 }, revision: 5 });
+    expect(pulls[pulls.length - 1].revision).toBe(20);
   });
 
   test('an update built between two pulls is compared with the state it saw', async () => {

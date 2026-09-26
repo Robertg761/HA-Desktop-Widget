@@ -705,6 +705,8 @@ const PROFILE_SYNC_MIN_PASSPHRASE_LENGTH = 8;
 const PROFILE_SYNC_OPPORTUNISTIC_MIN_GAP_MS = 60 * 1000;
 const PROFILE_SYNC_BACKUP_DIR_NAME = 'profile-sync-backups';
 const PROFILE_SYNC_BACKUP_KEEP = 5;
+// Pulls remembered for recognising config updates built before them.
+const PROFILE_SYNC_PULL_HISTORY_LIMIT = 16;
 const PROFILE_SYNC_MAX_APPROVED_COPY_FOLDERS = 10;
 const PROFILE_SYNC_RESOLUTION_CHOICES = new Set(['upload_local', 'use_remote', 'cancel']);
 const PROFILE_SYNC_SUPPORTED_PROVIDERS = new Set([
@@ -738,10 +740,14 @@ const profileSyncRuntime = {
   // config echo can be recognised by content rather than by timing; see
   // updateLocalProfileSyncTracking.
   pendingPullEchoHash: null,
-  // Every pull applied since the guard was armed, oldest first: the synced
-  // profile as it stood before the pull, and the config revision the renderer
-  // first sees the pull in. An update built from an older revision is compared
-  // with the profile before the first pull it missed.
+  // The synced profile as it stood before that pull, for updates that carry no
+  // config revision.
+  pendingPullEchoProfile: null,
+  // Pulls applied this session, oldest first: the synced profile as it stood
+  // before each, and the config revision the renderer first sees it in. An
+  // update built from an older revision is compared with the profile before the
+  // first pull it missed. Kept after an update is answered, since another one
+  // built earlier (a rollback snapshot) can still follow.
   pendingPulls: [],
   // Conflict-copy filenames found beside the sync file on the last run. Refreshed
   // by sync runs because the check needs the filesystem.
@@ -1074,6 +1080,7 @@ function refreshProfileSyncRuntimeTracking({ decodePassphrase = true } = {}) {
   profileSyncRuntime.localProfileHash = computeScopedProfileHash(initialProfile, activeScope);
   profileSyncRuntime.localSectionHashes = computeLocalSectionHashes(activeScope);
   profileSyncRuntime.pendingPullEchoHash = null;
+  profileSyncRuntime.pendingPullEchoProfile = null;
   profileSyncRuntime.pendingPulls = [];
   // Seed from the persisted content-change timestamp. lastSyncAt is only a
   // fallback for configs written before profileUpdatedAt existed — it tracks
@@ -3790,6 +3797,7 @@ async function applySyncedProfileToConfig(pulledSections) {
     localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
     localSectionHashes: profileSyncRuntime.localSectionHashes,
     pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
+    pendingPullEchoProfile: profileSyncRuntime.pendingPullEchoProfile,
     pendingPulls: profileSyncRuntime.pendingPulls,
   };
   const previousEncryptedTokenForRecovery = preservedEncryptedTokenForRecovery;
@@ -3833,17 +3841,15 @@ async function applySyncedProfileToConfig(pulledSections) {
   profileSyncRuntime.localProfileHash = computeScopedProfileHash(projected, scope);
   profileSyncRuntime.localSectionHashes = computeLocalSectionHashes(scope);
   profileSyncRuntime.localProfileUpdatedAt = config.profileSync.profileUpdatedAt;
-  // A pull that lands before anything answered the previous one extends the
-  // guard: a stale snapshot may predate both.
-  const guardArmed = profileSyncRuntime.pendingPullEchoHash !== null;
   const pull = { profile: profileSyncCore.projectSyncProfile(previous, scope), revision: null };
-  if (!guardArmed) {
+  // A pull that lands before anything answered the previous one leaves the
+  // content guard on the state before the first: a stale snapshot may predate both.
+  if (profileSyncRuntime.pendingPullEchoHash === null) {
     profileSyncRuntime.pendingPullEchoHash =
       prePullHash === profileSyncRuntime.localProfileHash ? null : prePullHash;
+    profileSyncRuntime.pendingPullEchoProfile = pull.profile;
   }
-  profileSyncRuntime.pendingPulls = guardArmed
-    ? [...(profileSyncRuntime.pendingPulls || []), pull]
-    : [pull];
+  profileSyncRuntime.pendingPulls = appendPendingPull(profileSyncRuntime.pendingPulls, pull);
 
   const persistence = await saveConfigDurably({ allowDebouncedPush: false });
   if (!persistence.success) {
@@ -3857,6 +3863,19 @@ async function applySyncedProfileToConfig(pulledSections) {
   pull.revision = configSnapshotVersion;
 
   return applySyncedConfigSideEffects(previous, persistence);
+}
+
+/**
+ * Adds a pull to the history, merging the two oldest entries once it is full:
+ * an update built before either is still compared with the older state.
+ */
+function appendPendingPull(pulls, pull) {
+  let next = [...(pulls || []), pull];
+  while (next.length > PROFILE_SYNC_PULL_HISTORY_LIMIT) {
+    const [oldest, following, ...rest] = next;
+    next = [{ profile: oldest.profile, revision: following.revision }, ...rest];
+  }
+  return next;
 }
 
 /**
@@ -3981,12 +4000,14 @@ async function restoreProfileSyncBackup(id) {
     localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
     localSectionHashes: profileSyncRuntime.localSectionHashes,
     pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
-    pendingPulls: profileSyncRuntime.pendingPulls,
+    pendingPullEchoProfile: profileSyncRuntime.pendingPullEchoProfile,
   };
   // Restoring what the last pull replaced reproduces the pre-pull profile exactly,
-  // which the stale-echo guard would otherwise drop instead of syncing it.
+  // which the content guard would otherwise drop as a stale echo instead of
+  // syncing it. The pull history stays: an update built before the pull is
+  // still stale.
   profileSyncRuntime.pendingPullEchoHash = null;
-  profileSyncRuntime.pendingPulls = [];
+  profileSyncRuntime.pendingPullEchoProfile = null;
   config = profileSyncCore.mergeSectionsIntoConfig(config, backup.sections);
   pruneConfig(config);
   ensureDateTimeFormatConfigDefaults(config);
@@ -4030,23 +4051,34 @@ function clearProfileSyncTimers() {
  * @returns {boolean} whether a stale update was detected and reversed
  */
 function restoreProfileFromStalePullEcho(pulledConfig, touchedKeys = [], baseRevision = null) {
-  const prePullHash = profileSyncRuntime.pendingPullEchoHash;
-  if (prePullHash === null || !pulledConfig) return false;
+  if (!pulledConfig) return false;
+  const pulls = profileSyncRuntime.pendingPulls || [];
+  const revisionKnown = baseRevision !== null && pulls.length > 0;
+  let prePullProfile;
+  if (revisionKnown) {
+    // The profile the update was built from: before the first pull it missed. A
+    // pull still being saved has no revision yet, and nothing has seen it.
+    const missedPull = pulls.find(
+      (entry) => entry.revision === null || entry.revision > baseRevision
+    );
+    if (!missedPull) {
+      // Built after the renderer saw every pull: every value in it is deliberate.
+      profileSyncRuntime.pendingPullEchoHash = null;
+      return false;
+    }
+    prePullProfile = missedPull.profile;
+  } else {
+    // No revision (an older renderer): checked once, against the last pull.
+    if (profileSyncRuntime.pendingPullEchoHash === null) return false;
+    prePullProfile = profileSyncRuntime.pendingPullEchoProfile;
+    if (!prePullProfile) return false;
+  }
 
   // Scope comes from the pulled config, not the merged one: the stale update may
   // carry a stale syncScope too.
   const scope = getNormalizedProfileSyncScopeValue(pulledConfig?.profileSync?.syncScope);
   const touched = new Set(touchedKeys);
   const incomingProfile = profileSyncCore.projectSyncProfile(config, scope);
-  const pulls = profileSyncRuntime.pendingPulls || [];
-  const latestPull = pulls[pulls.length - 1] || null;
-  const revisionKnown =
-    baseRevision !== null && latestPull !== null && latestPull.revision !== null;
-  // The profile the update was built from: before the first pull it missed.
-  const missedPull = revisionKnown
-    ? pulls.find((entry) => entry.revision === null || entry.revision > baseRevision)
-    : pulls[0];
-  const prePullProfile = missedPull?.profile || null;
   const same = (a, b) =>
     profileSyncCore.computeProfileHash({ value: a }) ===
     profileSyncCore.computeProfileHash({ value: b });
@@ -4064,12 +4096,6 @@ function restoreProfileFromStalePullEcho(pulledConfig, touchedKeys = [], baseRev
 
   let keep = touched;
   if (revisionKnown) {
-    if (!missedPull) {
-      // Built after the renderer saw every pull: every value in it is deliberate.
-      profileSyncRuntime.pendingPullEchoHash = null;
-      profileSyncRuntime.pendingPulls = [];
-      return false;
-    }
     // Built before the pull. Whatever it changed relative to the pre-pull
     // profile is a deliberate edit; everything else is stale.
     keep = new Set(touched);
@@ -4077,15 +4103,12 @@ function restoreProfileFromStalePullEcho(pulledConfig, touchedKeys = [], baseRev
       if (!same(incomingValue, prePullValue)) keep.add(key);
       return true;
     });
-  } else if (prePullProfile) {
-    // No revision (an older renderer): stale when every setting the user did
-    // not touch still holds its pre-pull value.
+  } else {
+    // Stale when every setting the user did not touch still holds its pre-pull value.
     const stale = eachSyncedSetting(
       (key, incomingValue, prePullValue) => touched.has(key) || same(incomingValue, prePullValue)
     );
     if (!stale) return false;
-  } else if (computeScopedProfileHash(incomingProfile, scope) !== prePullHash) {
-    return false;
   }
 
   const incoming = config;
@@ -5719,10 +5742,12 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       // Overwriting blind would silently drop it, so re-check and re-resolve.
       if (await hasRemoteSyncEnvelopeChanged(remoteResult)) {
         log.info('Remote sync file changed while preparing a push; re-resolving direction');
-        if (source === 'conflict_recheck') {
+        await persistProfileSyncBaseline(nextBaseline, scopeKeys);
+        // Sync Up and a conflict choice were decided against the file as it was;
+        // an automatic merge must not stand in for them, so the user is asked again.
+        if (source === 'conflict_recheck' || direction !== 'auto') {
           throw new Error(mainT('Sync file kept changing on the other device; try again'));
         }
-        await persistProfileSyncBaseline(nextBaseline, scopeKeys);
         void runProfileSync('auto', 'conflict_recheck');
         const status = buildProfileSyncStatus();
         emitProfileSyncStatus();
