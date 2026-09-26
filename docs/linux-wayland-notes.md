@@ -273,26 +273,14 @@ Operational notes:
   the tray's "Reset Position" deletes that file and restarts, returning to
   the default corner. Dragging cannot cross outputs — a layer surface is
   bound to one `wl_output` — which is what the tray menu below is for.
-  On Hyprland the app also disables the animation nodes that move a layer
-  surface (`disableHyprlandLayerMoveAnimation`, tried via both the classic
-  `hyprctl keyword animation <node>,...` and the Lua-config
-  `hyprctl eval 'hl.animation({ leaf = "<node>", ... })'` syntaxes): with the
-  animation on, the compositor glides the surface under the pointer between
-  the helper's measurements, which destabilizes the drag into a feedback
-  loop that flings the widget across the screen. Hyprland resolves a mapped
-  layer surface's position animation through the `layersIn` node, so both
-  `layers` and `layersIn` are disabled — the parent alone is not enough on
-  distros like Omarchy that configure `layersIn` explicitly. `layersOut` and
-  the `fadeLayersIn`/`fadeLayersOut` alpha fades stay; the only visible side
-  effect is that other layer surfaces (panels, launchers) lose slide/popin
-  open animations for the session. Set
-  `HA_WIDGET_LAYER_SHELL_KEEP_LAYER_ANIMATIONS=1` to keep the animations (the
-  helper's inject rate limit dampens the loop, but the drag stays unusable
-  with a fast mouse). The tweak is session-scoped and does not edit any config
-  file; Hyprland re-applies its configured animations on every config reload,
-  so the app follows the compositor's event socket
-  (`watchHyprlandConfigReloads`) and repeats the tweak after each
-  `configreloaded` event.
+  On Hyprland the helper follows the compositor's absolute cursor position
+  (`hyprctl cursorpos`) rather than pointer coordinates relative to the
+  surface, so Hyprland's layer animations can stay enabled while dragging.
+  Earlier releases disabled the `layers`/`layersIn` animation nodes for the
+  whole session to stop an animated surface from destabilizing the drag;
+  that changed other applications' panels and launchers, and was removed.
+  `disableHyprlandLayerMoveAnimation` remains only as a no-op, and a
+  regression test forbids the old `hyprctl` animation commands.
 - Moving the widget to another monitor happens through the tray menu, not by
   dragging (a layer surface cannot leave its output). The tray's "Move to
   Monitor" submenu asks the helper for the session's monitors (`outputs`
@@ -304,13 +292,31 @@ Operational notes:
   handled helper-side: it warns and falls back to the compositor's choice
   rather than killing the connection. `HA_WIDGET_LAYER_SHELL_OUTPUT` still
   outranks the saved choice as a debugging knob.
-- Desktop pin windows pass through the same helper and become bottom-layer surfaces
-  with the same anchor, so they stack in the same corner as the widget instead of
-  taking their saved positions. Pins already cannot position themselves on native
-  Wayland (above); layer mode keeps them behind normal windows at least. Per-pin
-  placement in layer mode is an open follow-up.
-- If the helper binary is missing, the app logs a warning and continues as a normal
-  floating toplevel. For that degraded case (or an older release), a Hyprland rule can
-  at least park the widget in dead screen space:
-  `windowrule = move 100%-w-20 100%-h-20, class:^(com\.github\.robertg761\.hadesktopwidget)$`
-  (plus `float` and `noinitialfocus` rules with the same class match).
+- Desktop pin windows pass through the same helper and become bottom-layer surfaces.
+  The helper identifies each surface by its stable title, so every pin keeps its own
+  position per output, and new pins avoid existing pins when there is room. Popup
+  elevation targets the main widget only.
+- If the helper binary is missing, or `HA_WIDGET_LINUX_LAYER_SHELL=0` is set, the app
+  logs a warning and continues as a normal toplevel. Hyprland then tiles the resizable
+  main window, and Omarchy's default window opacity applies to it. Rules matching the
+  app id `com.github.robertg761.hadesktopwidget` can float it instead. For Hyprland 0.56
+  Lua configuration, such as Omarchy 4's `~/.config/hypr/hyprland.lua`:
+
+  ```lua
+  hl.window_rule({
+    match = { class = "^com\\.github\\.robertg761\\.hadesktopwidget$" },
+    float = true,
+    no_initial_focus = true,
+    opacity = "1 1",
+  })
+  ```
+
+  For Hyprland 0.53 or later with hyprlang configuration, such as Omarchy 3's
+  `~/.config/hypr/hyprland.conf`:
+
+  ```
+  windowrule = float on, match:class ^(com\\.github\\.robertg761\\.hadesktopwidget)$
+  windowrule = no_initial_focus on, match:class ^(com\\.github\\.robertg761\\.hadesktopwidget)$
+  ```
+
+  Omit `opacity` to keep Omarchy's default window transparency.
