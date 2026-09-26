@@ -709,17 +709,24 @@ function separateMalformedLegacySections(sections) {
   return malformed;
 }
 
-function normalizeSectionEntry(entry, fallback) {
-  if (!isObject(entry) || !isObject(entry.data)) return null;
-  const updatedAt =
-    typeof entry.updatedAt === 'string' && !Number.isNaN(Date.parse(entry.updatedAt))
-      ? entry.updatedAt
-      : fallback.updatedAt;
+function isValidTimestamp(value) {
+  return typeof value === 'string' && !Number.isNaN(Date.parse(value));
+}
+
+/**
+ * A known section entry as the planner uses it, or null when it is damaged: no
+ * data object, or no valid edit time. The writer is only informational, so a
+ * missing one falls back to the file's.
+ */
+function normalizeSectionEntry(entry, fallbackDeviceId) {
+  if (!isObject(entry) || !isObject(entry.data) || !isValidTimestamp(entry.updatedAt)) {
+    return null;
+  }
   const updatedByDeviceId =
     typeof entry.updatedByDeviceId === 'string' && entry.updatedByDeviceId.trim()
       ? entry.updatedByDeviceId
-      : fallback.updatedByDeviceId;
-  return { ...deepClone(entry), updatedAt, updatedByDeviceId };
+      : fallbackDeviceId;
+  return { ...deepClone(entry), updatedByDeviceId };
 }
 
 /**
@@ -776,10 +783,6 @@ async function decodeEnvelopeSections(envelope, passphrase) {
   if (!isObject(decoded.sections)) {
     throw new Error('Sync payload is missing sections');
   }
-  const fallback = {
-    updatedAt: envelope.updatedAt,
-    updatedByDeviceId: envelope.updatedByDeviceId,
-  };
   const sections = {};
   // Known sections that are damaged are reported, not dropped: treating them as
   // missing would let the next sync overwrite them without a backup.
@@ -791,7 +794,9 @@ async function decodeEnvelopeSections(envelope, passphrase) {
       sections[key] = deepClone(entry);
       return;
     }
-    const normalized = normalizeSectionEntry(entry, fallback);
+    // A known section's edit time decides conflicts, so one without a valid time
+    // is damage rather than something to borrow the file's time for.
+    const normalized = normalizeSectionEntry(entry, envelope.updatedByDeviceId);
     if (normalized && hasValidSectionFields(key, normalized.data)) sections[key] = normalized;
     else malformed[key] = deepClone(entry);
   });

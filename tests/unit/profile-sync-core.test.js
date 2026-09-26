@@ -604,6 +604,32 @@ describe('profile-sync-core', () => {
       expect(legacy.sections.visualPersonalization.data).toEqual({ opacity: 0.8 });
     });
 
+    test('reports a known section without a valid edit time as damaged', async () => {
+      const decoded = await decodeEnvelopeSections({
+        schemaVersion: 3,
+        minReaderVersion: 3,
+        updatedAt: '2026-02-23T08:00:00.000Z',
+        updatedByDeviceId: 'device-a',
+        payload: {
+          sections: {
+            quickAccessLayout: { data: { favoriteEntities: [] } },
+            visualPersonalization: { updatedAt: 'yesterday', data: { opacity: 0.8 } },
+            // The writer is only informational, so the file's stands in for it.
+            automationAlerts: { updatedAt: '2026-02-23T07:00:00.000Z', data: {} },
+          },
+        },
+      });
+      expect(Object.keys(decoded.malformed).sort()).toEqual([
+        'quickAccessLayout',
+        'visualPersonalization',
+      ]);
+      expect(decoded.sections.automationAlerts).toEqual({
+        updatedAt: '2026-02-23T07:00:00.000Z',
+        updatedByDeviceId: 'device-a',
+        data: {},
+      });
+    });
+
     test('checks the alert fields the app reads directly', async () => {
       const decodeAlerts = (entityAlerts) =>
         decodeEnvelopeSections({
