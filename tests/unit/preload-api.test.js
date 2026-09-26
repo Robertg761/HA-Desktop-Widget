@@ -317,6 +317,12 @@ describe('preload Electron API', () => {
       opacity: 0.5,
       configBaseRevision: 3,
     });
+
+    // Anything that is not a config object goes to main untouched, for it to reject.
+    await api.updateConfig(null);
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('update-config', null);
+    await api.updateConfig(['not', 'a', 'config']);
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('update-config', ['not', 'a', 'config']);
   });
 
   it('tracks the authoritative revision returned by an atomic entity replacement', async () => {
