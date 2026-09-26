@@ -67,6 +67,10 @@ let trayHostWatch = null;
 let omarchyBarPublisher = null;
 let omarchyBarEntry = { present: false, entities: null, barEntities: null };
 const omarchyBarStates = new Map();
+// A bar click can start a fresh widget with `--entity-toggle` when the status file outlived a
+// crashed one. That request waits here until the renderer has the entity's state.
+let pendingOmarchyBarToggle = null;
+const OMARCHY_BAR_PENDING_TOGGLE_MS = 60000;
 const {
   readHyprlandMonitors,
   chooseLayerMonitor,
@@ -580,6 +584,10 @@ if (usesLinuxPopupHotkeyBackend) {
 // climate demo and unpackaged dev runs redirect that above, so an isolated demo or a dev build
 // still runs alongside the real widget.
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (gotSingleInstanceLock) {
+  const entityToggle = getEntityToggleRequest(process.argv);
+  if (entityToggle) pendingOmarchyBarToggle = { entityId: entityToggle, requestedAt: Date.now() };
+}
 if (!gotSingleInstanceLock) {
   log.info('Another instance already owns this profile; handing the request to it and exiting');
   app.quit();
@@ -6905,6 +6913,22 @@ function stopOmarchyBarIntegration() {
   omarchyBarPublisher = null;
 }
 
+/**
+ * Deliver an `--entity-toggle` this process was started with, once connected and holding the
+ * entity's state. Dropped after a minute so a slow start never toggles something unexpectedly.
+ */
+function deliverPendingOmarchyBarToggle(now = Date.now()) {
+  const pending = pendingOmarchyBarToggle;
+  if (!pending) return;
+  if (now - pending.requestedAt > OMARCHY_BAR_PENDING_TOGGLE_MS) {
+    pendingOmarchyBarToggle = null;
+    return;
+  }
+  if (latestHaConnectionState !== 'connected' || !omarchyBarStates.has(pending.entityId)) return;
+  pendingOmarchyBarToggle = null;
+  handleOmarchyBarEntityToggle(pending.entityId);
+}
+
 /** `--entity-toggle=<id>` from the bar plugin: only entities the bar shows, and only toggles. */
 function handleOmarchyBarEntityToggle(entityId) {
   if (!isAllowedOmarchyBarToggle(entityId, getOmarchyBarEntities())) {
@@ -7995,6 +8019,7 @@ ipcMain.handle('publish-ha-connection-state', (event, status) => {
     sendDesktopPinUpdate(entityId, { type: 'connection' });
   });
   omarchyBarPublisher?.update();
+  deliverPendingOmarchyBarToggle();
   return { success: true };
 });
 
@@ -8014,6 +8039,7 @@ ipcMain.handle('publish-omarchy-bar-states', (event, states) => {
     });
   }
   omarchyBarPublisher.update();
+  deliverPendingOmarchyBarToggle();
   return { success: true, count: omarchyBarStates.size };
 });
 
