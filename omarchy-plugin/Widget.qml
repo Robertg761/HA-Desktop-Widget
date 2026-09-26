@@ -204,7 +204,9 @@ Panel {
               width: column.width
               height: Style.space(30)
               radius: Style.cornerRadius
-              color: rowMouse.containsMouse && modelData.toggleable ? Style.hoverFill : "transparent"
+              // Toggles only work through a connected widget; offline rows are read-only.
+              readonly property bool actionable: root.connected && modelData.toggleable
+              color: rowMouse.containsMouse && actionable ? Style.hoverFill : "transparent"
 
               Text {
                 anchors.left: parent.left
@@ -234,8 +236,8 @@ Panel {
                 id: rowMouse
                 anchors.fill: parent
                 hoverEnabled: true
-                enabled: row.modelData.toggleable
-                cursorShape: row.modelData.toggleable ? Qt.PointingHandCursor : Qt.ArrowCursor
+                enabled: row.actionable
+                cursorShape: row.actionable ? Qt.PointingHandCursor : Qt.ArrowCursor
                 onClicked: root.toggleEntity(row.modelData.id)
               }
             }

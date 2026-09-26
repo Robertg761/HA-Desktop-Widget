@@ -62,6 +62,11 @@ describe('Omarchy bar plugin package', () => {
     expect(qml).toContain('"--entity-toggle=" + entityId');
     // It reads the fields buildOmarchyBarStatus writes.
     expect(qml).toContain('parsed.version === 1');
+    // Device rows are only clickable through a connected widget.
+    expect(qml).toContain(
+      'readonly property bool actionable: root.connected && modelData.toggleable'
+    );
+    expect(qml).toContain('enabled: row.actionable');
     // The launch command it keeps for a widget that has quit.
     expect(qml).toContain('"/ha-desktop-widget/omarchy-bar-launch.json"');
     expect(qml).toContain('parsed.launch');

@@ -63,6 +63,11 @@ const {
 } = require('./src/linux-desktop-entry.cjs');
 let omarchyThemeWatcher = null;
 let trayHostWatch = null;
+// When the tray or bar click (or `--toggle`) meant to lower a raised desktop-layer widget takes
+// focus first, the widget's blur has already lowered it by the time the toggle arrives. The
+// toggle consumes that recent release instead of raising the widget straight back up.
+const LAYER_BLUR_TOGGLE_GRACE_MS = 500;
+let layerBlurReleasedAt = null;
 // Omarchy 4 bar plugin support; see src/omarchy-bar.cjs. Null unless the Omarchy shell exists.
 let omarchyBarPublisher = null;
 let omarchyBarEntry = { present: false, entities: null, barEntities: null };
@@ -2531,12 +2536,16 @@ function showMainWindowFromTray() {
  * under tiled windows, so being visible says nothing about whether the user can see it: raise
  * it above them, and lower it back on the next press, as the popup shortcut does.
  */
-function toggleRaisedLayerWidget() {
+function toggleRaisedLayerWidget(now = Date.now()) {
+  const releasedByBlur =
+    layerBlurReleasedAt !== null && now - layerBlurReleasedAt < LAYER_BLUR_TOGGLE_GRACE_MS;
+  layerBlurReleasedAt = null;
   if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
     if (popupWindowPresenter.isElevated()) {
       popupWindowPresenter.releaseElevation(mainWindow);
       return;
     }
+    if (releasedByBlur) return;
   }
   showMainWindowFromTray();
 }
@@ -6378,7 +6387,8 @@ function createWindow() {
     notifyDesktopCompanionStateChanged();
   });
   mainWindow.on('blur', () => {
-    popupWindowPresenter.handleWindowBlur(mainWindow);
+    const released = popupWindowPresenter.handleWindowBlur(mainWindow);
+    if (released && isLayerShellChildProcess) layerBlurReleasedAt = Date.now();
     windowAutoHide.handleBlur();
   });
 

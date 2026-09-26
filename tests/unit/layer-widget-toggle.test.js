@@ -6,6 +6,8 @@ const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'ut
 function loadShowRuntime({ layerMode, visible = true, elevated = false }) {
   const context = {
     isLayerShellChildProcess: layerMode,
+    LAYER_BLUR_TOGGLE_GRACE_MS: 500,
+    layerBlurReleasedAt: null,
     config: { windowSize: { width: 400, height: 600 } },
     DEFAULT_WINDOW_SIZE: { width: 400, height: 600 },
     log: { warn: jest.fn() },
@@ -75,5 +77,24 @@ describe('showing the widget from the tray, launcher or --toggle', () => {
       runtime.mainWindow,
       { keepElevated: true }
     );
+  });
+
+  it('leaves the widget lowered when the toggle click itself blurred it', () => {
+    // The tray or bar took focus, the blur lowered the widget, then the click arrived.
+    const runtime = loadShowRuntime({ layerMode: true, elevated: false });
+    runtime.layerBlurReleasedAt = 10_000;
+    runtime.toggleRaisedLayerWidget(10_300);
+    expect(runtime.popupWindowPresenter.showAboveFullScreen).not.toHaveBeenCalled();
+    expect(runtime.layerBlurReleasedAt).toBeNull();
+    // A later toggle raises it as usual.
+    runtime.toggleRaisedLayerWidget(20_000);
+    expect(runtime.popupWindowPresenter.showAboveFullScreen).toHaveBeenCalledTimes(1);
+  });
+
+  it('raises the widget when the blur was long before the toggle', () => {
+    const runtime = loadShowRuntime({ layerMode: true, elevated: false });
+    runtime.layerBlurReleasedAt = 10_000;
+    runtime.toggleRaisedLayerWidget(15_000);
+    expect(runtime.popupWindowPresenter.showAboveFullScreen).toHaveBeenCalledTimes(1);
   });
 });
