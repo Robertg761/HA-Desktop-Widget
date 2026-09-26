@@ -738,6 +738,9 @@ const profileSyncRuntime = {
   // config echo can be recognised by content rather than by timing; see
   // updateLocalProfileSyncTracking.
   pendingPullEchoHash: null,
+  // The synced profile as it stood before that pull, to tell a stale snapshot
+  // from a Settings save that also carries deliberate edits.
+  pendingPullEchoProfile: null,
   // Conflict-copy filenames found beside the sync file on the last run. Refreshed
   // by sync runs because the check needs the filesystem.
   conflictCopies: [],
@@ -754,6 +757,9 @@ const profileSyncRuntime = {
   // Sections that differ between this device and the file while a first-sync
   // choice is pending, for the conflict prompt.
   conflictSections: [],
+  // The subset of conflictSections that are damaged in the file, where only
+  // keeping this device's settings can resolve the conflict.
+  damagedConflictSections: [],
   // What the last successful run moved, for the status line.
   lastRunSummary: null,
   lastRemote: null,
@@ -2995,6 +3001,9 @@ function buildProfileSyncStatus(extra = {}) {
     conflictSections: profileSyncRuntime.needsResolution
       ? [...profileSyncRuntime.conflictSections]
       : [],
+    damagedConflictSections: profileSyncRuntime.needsResolution
+      ? [...profileSyncRuntime.damagedConflictSections]
+      : [],
     lastSyncStatus: profileSync.lastSyncStatus || 'idle',
     lastSyncError: mainTError(profileSync.lastSyncError || ''),
     inFlight: !!profileSyncRuntime.inFlight,
@@ -3778,6 +3787,7 @@ async function applySyncedProfileToConfig(pulledSections) {
     localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
     localSectionHashes: profileSyncRuntime.localSectionHashes,
     pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
+    pendingPullEchoProfile: profileSyncRuntime.pendingPullEchoProfile,
   };
   const previousEncryptedTokenForRecovery = preservedEncryptedTokenForRecovery;
   const scope = getActiveProfileSyncScope();
@@ -3822,6 +3832,7 @@ async function applySyncedProfileToConfig(pulledSections) {
   profileSyncRuntime.localProfileUpdatedAt = config.profileSync.profileUpdatedAt;
   profileSyncRuntime.pendingPullEchoHash =
     prePullHash === profileSyncRuntime.localProfileHash ? null : prePullHash;
+  profileSyncRuntime.pendingPullEchoProfile = profileSyncCore.projectSyncProfile(previous, scope);
 
   const persistence = await saveConfigDurably({ allowDebouncedPush: false });
   if (!persistence.success) {
@@ -3992,8 +4003,9 @@ function clearProfileSyncTimers() {
  * applySyncedProfileToConfig pushes the pulled profile out to the renderer, but a
  * config update already in flight arrives afterwards still carrying the pre-pull
  * values, and the update-config merge would silently revert the pull. The stale
- * update is recognised by content — it reproduces the pre-pull profile exactly —
- * and the pulled fields are merged back over it.
+ * update is recognised by content — every setting the user did not touch still
+ * holds its pre-pull value — and the pulled fields are merged back over it,
+ * keeping the ones the user touched.
  *
  * @param {object} pulledConfig config as it stood before this update, i.e. the pulled state
  * @param {string[]} [touchedKeys] settings the user changed ('key' or 'ui.key'), kept as sent
@@ -4006,11 +4018,30 @@ function restoreProfileFromStalePullEcho(pulledConfig, touchedKeys = []) {
   // Scope comes from the pulled config, not the merged one: the stale update may
   // carry a stale syncScope too.
   const scope = getNormalizedProfileSyncScopeValue(pulledConfig?.profileSync?.syncScope);
-  const incomingHash = computeScopedProfileHash(
-    profileSyncCore.projectSyncProfile(config, scope),
-    scope
-  );
-  if (incomingHash !== prePullHash) return false;
+  const touched = new Set(touchedKeys);
+  const incomingProfile = profileSyncCore.projectSyncProfile(config, scope);
+  const prePullProfile = profileSyncRuntime.pendingPullEchoProfile;
+  let stale;
+  if (prePullProfile) {
+    // Stale when every setting the user did not touch still holds its pre-pull
+    // value, so a Settings save carrying deliberate edits is still recognised.
+    const same = (a, b) =>
+      profileSyncCore.computeProfileHash({ value: a }) ===
+      profileSyncCore.computeProfileHash({ value: b });
+    const fields = new Set([...Object.keys(prePullProfile), ...Object.keys(incomingProfile)]);
+    stale = [...fields].every((field) => {
+      if (field !== 'ui')
+        return touched.has(field) || same(incomingProfile[field], prePullProfile[field]);
+      const incomingUi = incomingProfile.ui || {};
+      const prePullUi = prePullProfile.ui || {};
+      return [...new Set([...Object.keys(incomingUi), ...Object.keys(prePullUi)])].every(
+        (key) => touched.has(`ui.${key}`) || same(incomingUi[key], prePullUi[key])
+      );
+    });
+  } else {
+    stale = computeScopedProfileHash(incomingProfile, scope) === prePullHash;
+  }
+  if (!stale) return false;
 
   const incoming = config;
   config = profileSyncCore.mergeSyncedProfileIntoConfig(
@@ -4020,7 +4051,7 @@ function restoreProfileFromStalePullEcho(pulledConfig, touchedKeys = []) {
   );
   // Settings the user deliberately set (Settings reports them) are not stale,
   // even when they equal the pre-pull values.
-  touchedKeys.forEach((key) => {
+  touched.forEach((key) => {
     const [owner, field] = key.startsWith('ui.') ? [incoming.ui, key.slice(3)] : [incoming, key];
     const target = key.startsWith('ui.') ? (config.ui = { ...(config.ui || {}) }) : config;
     if (owner && Object.prototype.hasOwnProperty.call(owner, field)) {
@@ -5237,17 +5268,19 @@ async function findProfileSyncConflictSections(envelope) {
   const localSections = profileSyncCore.buildLocalSections(config, getActiveProfileSyncScope());
   const baseline = getProfileSyncConfig().syncBaseline || {};
   // A damaged section also needs a choice: Keep Local replaces it after backing
-  // it up, where an automatic run would only stop.
-  return Object.entries(localSections)
+  // it up, where an automatic run would only stop. Use Remote cannot apply it.
+  const isDamaged = (key) => !!malformed && Object.prototype.hasOwnProperty.call(malformed, key);
+  const sections = Object.entries(localSections)
     .filter(
       ([key, data]) =>
-        (malformed && Object.prototype.hasOwnProperty.call(malformed, key)) ||
+        isDamaged(key) ||
         (!baseline[key] &&
           remoteSections[key] &&
           profileSyncCore.computeSectionHash(key, data) !==
             profileSyncCore.computeSectionHash(key, remoteSections[key].data))
     )
     .map(([key]) => key);
+  return { sections, damaged: sections.filter(isDamaged) };
 }
 
 /**
@@ -5262,6 +5295,7 @@ async function prepareProfileSyncFirstEnableResolution() {
   profileSyncRuntime.pendingRemoteEnvelope = null;
   profileSyncRuntime.pendingRemoteIdentity = null;
   profileSyncRuntime.conflictSections = [];
+  profileSyncRuntime.damagedConflictSections = [];
 
   if (!profileSync.enabled || !profileSync.cloudFilePath) {
     return { needsResolution: false };
@@ -5273,13 +5307,16 @@ async function prepareProfileSyncFirstEnableResolution() {
     return { needsResolution: false };
   }
 
-  const conflictSections = await findProfileSyncConflictSections(readResult.envelope);
+  const { sections: conflictSections, damaged } = await findProfileSyncConflictSections(
+    readResult.envelope
+  );
   if (conflictSections.length === 0) {
     return { needsResolution: false };
   }
 
   profileSyncRuntime.needsResolution = true;
   profileSyncRuntime.conflictSections = conflictSections;
+  profileSyncRuntime.damagedConflictSections = damaged;
   profileSyncRuntime.pendingRemoteEnvelope = readResult.envelope;
   profileSyncRuntime.pendingRemoteIdentity = getSyncEnvelopeIdentity(readResult);
   updateProfileSyncStatus(
@@ -5318,9 +5355,11 @@ async function verifyPendingRemoteEnvelopeUnchanged() {
     profileSyncRuntime.pendingRemoteEnvelope = currentResult.envelope;
     profileSyncRuntime.pendingRemoteIdentity = currentIdentity;
     profileSyncRuntime.needsResolution = true;
-    profileSyncRuntime.conflictSections = currentResult.envelope
-      ? await findProfileSyncConflictSections(currentResult.envelope).catch(() => [])
-      : [];
+    const refreshed = currentResult.envelope
+      ? await findProfileSyncConflictSections(currentResult.envelope).catch(() => null)
+      : null;
+    profileSyncRuntime.conflictSections = refreshed?.sections || [];
+    profileSyncRuntime.damagedConflictSections = refreshed?.damaged || [];
     updateProfileSyncStatus(
       'needs_resolution',
       mainT('The remote profile changed while waiting for a choice. Review it and choose again.')

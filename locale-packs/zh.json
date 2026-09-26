@@ -1590,6 +1590,7 @@
     "Replace the sync file with this computer’s settings? Your other computers receive them on their next sync. The file’s current settings are backed up on this computer.": "用此电脑的设置替换同步文件？你的其他电脑会在下次同步时收到这些设置。文件当前的设置会备份在此电脑上。",
     "Replace this computer’s settings with the sync file’s? This computer’s current settings are backed up first.": "用同步文件中的设置替换此电脑的设置？会先备份此电脑当前的设置。",
     "Profile sync complete.": "配置同步完成。",
-    "The sync file's {{sections}} settings are damaged. Use Sync Up to replace them with this computer's; the damaged copy is backed up first.": "同步文件中的{{sections}}设置已损坏。请使用“向上同步”用此电脑的设置替换；损坏的副本会先备份。"
+    "The sync file's {{sections}} settings are damaged. Use Sync Up to replace them with this computer's; the damaged copy is backed up first.": "同步文件中的{{sections}}设置已损坏。请使用“向上同步”用此电脑的设置替换；损坏的副本会先备份。",
+    "The sync file's {{sections}} settings are damaged. Keep this computer's to repair them; the damaged copy is backed up first.": "同步文件中的{{sections}}设置已损坏。保留此电脑的设置即可修复；损坏的副本会先备份。"
   }
 }

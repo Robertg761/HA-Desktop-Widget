@@ -147,6 +147,7 @@ function createDevice(name, { content = baseContent(), profileSync = {}, clockOf
     `${PROFILE_SYNC_CONSTANTS}
      var profileSyncRuntime = {
        inFlight: false, pushDebounceTimer: null, intervalTimer: null, pendingPullEchoHash: null,
+       pendingPullEchoProfile: null, damagedConflictSections: [],
        conflictCopies: [], lastOpportunisticSyncAt: 0, needsResolution: false,
        pendingRemoteEnvelope: null, pendingRemoteIdentity: null, localProfileHash: null,
        localProfileUpdatedAt: null, localSectionHashes: {}, conflictSections: [],
@@ -600,6 +601,7 @@ describe('profile sync engine', () => {
     const resolution = await laptop.firstEnable();
     expect(resolution.needsResolution).toBe(true);
     expect(laptop.status().conflictSections).toEqual(['visualPersonalization']);
+    expect(laptop.status().damagedConflictSections).toEqual(['visualPersonalization']);
 
     // Keep Local, as the resolve handler runs it.
     await laptop.context.runProfileSyncInternal('push', 'first_enable_resolution', {
@@ -650,7 +652,9 @@ describe('profile sync engine', () => {
 
     const laptop = createDevice('laptop', { profileSync: { syncScope: { preset: 'visual' } } });
     // Not a first-sync conflict for this device...
-    expect(await laptop.context.findProfileSyncConflictSections(readSyncFile())).toEqual([]);
+    expect((await laptop.context.findProfileSyncConflictSections(readSyncFile())).sections).toEqual(
+      []
+    );
     // ...and not a reason to stop syncing.
     laptop.edit((config) => {
       config.opacity = 0.4;
@@ -660,6 +664,28 @@ describe('profile sync engine', () => {
     const written = readSyncFile();
     expect(written.payload.sections.quickAccessLayout.data).toBe('garbage');
     expect(written.payload.sections.visualPersonalization.data.opacity).toBe(0.4);
+  });
+
+  test('a stale Settings save that also carries a deliberate edit keeps both the pull and the edit', async () => {
+    const { desktop, laptop } = await createSyncedPair();
+    laptop.edit((config) => {
+      config.ui = { ...config.ui, accent: 'teal' };
+    });
+    await laptop.sync();
+    await desktop.sync();
+    const { context } = desktop;
+    expect(context.config.ui.accent).toBe('teal');
+
+    const pulled = context.config;
+    // A save made after the pull (accent already teal), changing only opacity, is not stale.
+    context.config = { ...pulled, opacity: 0.6 };
+    expect(context.restoreProfileFromStalePullEcho(pulled, ['opacity'])).toBe(false);
+
+    // A Settings save built before the pull arrived: old accent, new opacity.
+    context.config = { ...pulled, opacity: 0.5, ui: { ...pulled.ui, accent: 'original' } };
+    expect(context.restoreProfileFromStalePullEcho(pulled, ['opacity'])).toBe(true);
+    expect(context.config.ui.accent).toBe('teal');
+    expect(context.config.opacity).toBe(0.5);
   });
 
   test('refuses to push plaintext over an encrypted file', async () => {

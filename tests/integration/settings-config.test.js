@@ -3546,6 +3546,21 @@ describe('Settings + Config Integration', () => {
       );
     });
 
+    test('offers only Keep Local when the conflicting sections are damaged', () => {
+      settings.handleProfileSyncStatusUpdate(
+        buildProfileSyncStatus({
+          enabled: true,
+          needsResolution: true,
+          conflictSections: ['visualPersonalization'],
+          damagedConflictSections: ['visualPersonalization'],
+        })
+      );
+      expect(document.getElementById('profile-sync-resolution-text').textContent).toContain(
+        "The sync file's Appearance settings are damaged."
+      );
+      expect(document.getElementById('profile-sync-resolve-remote').classList).toContain('hidden');
+    });
+
     test('lists sync backups and restores the chosen one', async () => {
       mockElectronAPI.listProfileSyncBackups = jest.fn().mockResolvedValue({
         success: true,

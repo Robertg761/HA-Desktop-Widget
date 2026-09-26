@@ -1590,6 +1590,7 @@
     "Replace the sync file with this computer’s settings? Your other computers receive them on their next sync. The file’s current settings are backed up on this computer.": "هل تريد استبدال ملف المزامنة بإعدادات هذا الكمبيوتر؟ ستتلقاها أجهزة الكمبيوتر الأخرى في مزامنتها التالية. تُنسخ إعدادات الملف الحالية احتياطيًا على هذا الكمبيوتر.",
     "Replace this computer’s settings with the sync file’s? This computer’s current settings are backed up first.": "هل تريد استبدال إعدادات هذا الكمبيوتر بإعدادات ملف المزامنة؟ تُنسخ الإعدادات الحالية لهذا الكمبيوتر احتياطيًا أولًا.",
     "Profile sync complete.": "اكتملت مزامنة الملف الشخصي.",
-    "The sync file's {{sections}} settings are damaged. Use Sync Up to replace them with this computer's; the damaged copy is backed up first.": "إعدادات {{sections}} في ملف المزامنة تالفة. استخدم «مزامنة للأعلى» لاستبدالها بإعدادات هذا الكمبيوتر؛ تُنسخ النسخة التالفة احتياطيًا أولًا."
+    "The sync file's {{sections}} settings are damaged. Use Sync Up to replace them with this computer's; the damaged copy is backed up first.": "إعدادات {{sections}} في ملف المزامنة تالفة. استخدم «مزامنة للأعلى» لاستبدالها بإعدادات هذا الكمبيوتر؛ تُنسخ النسخة التالفة احتياطيًا أولًا.",
+    "The sync file's {{sections}} settings are damaged. Keep this computer's to repair them; the damaged copy is backed up first.": "إعدادات {{sections}} في ملف المزامنة تالفة. احتفظ بإعدادات هذا الكمبيوتر لإصلاحها؛ تُنسخ النسخة التالفة احتياطيًا أولًا."
   }
 }

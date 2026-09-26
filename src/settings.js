@@ -3147,6 +3147,16 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
       }
       if (uploadButton) uploadButton.textContent = t('Retry Conflict Check');
       if (remoteButton) remoteButton.classList.add('hidden');
+    } else if (status.damagedConflictSections?.length) {
+      // The file's copy is unreadable, so only this computer's can be kept.
+      if (resolutionHelp) {
+        resolutionHelp.textContent = t(
+          "The sync file's {{sections}} settings are damaged. Keep this computer's to repair them; the damaged copy is backed up first.",
+          { sections: formatProfileSyncSectionList(status.damagedConflictSections) }
+        );
+      }
+      if (uploadButton) uploadButton.textContent = t('Keep Local (Upload)');
+      if (remoteButton) remoteButton.classList.add('hidden');
     } else {
       if (resolutionHelp) {
         const sections = formatProfileSyncSectionList(status.conflictSections);
