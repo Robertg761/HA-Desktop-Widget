@@ -3228,10 +3228,25 @@ async function decodeRemoteFileWithPassphrase(readResult, passphrase) {
     return { sections: {}, malformed: {}, extensions: null };
   }
   const decoded = await profileSyncCore.decodeEnvelopeSections(readResult.envelope, passphrase);
-  // A key rewrite copies sections as they are, so it must not run over damage.
-  const damaged = Object.keys(decoded.malformed || {});
+  // A key rewrite copies sections as they are, so it must not run over damage
+  // in sections this device syncs. Damaged sections it doesn't sync are carried
+  // through untouched.
+  const { inScope, outOfScope } = splitDamagedSyncSections(
+    decoded.malformed,
+    profileSyncCore.getScopeSectionKeys(getActiveProfileSyncScope())
+  );
+  const damaged = Object.keys(inScope);
   if (damaged.length > 0) throw createDamagedSyncSectionsError(damaged);
-  return decoded;
+  return { ...decoded, sections: { ...outOfScope, ...decoded.sections } };
+}
+
+function splitDamagedSyncSections(malformed, sectionKeys) {
+  const inScope = {};
+  const outOfScope = {};
+  Object.entries(malformed || {}).forEach(([key, entry]) => {
+    (sectionKeys.includes(key) ? inScope : outOfScope)[key] = entry;
+  });
+  return { inScope, outOfScope };
 }
 
 async function decodeRemoteSectionsWithPassphrase(readResult, passphrase) {
@@ -5516,14 +5531,20 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
           getActiveProfileSyncPassphrase()
         )
       : { sections: {}, malformed: {}, extensions: null };
-    const damagedSections = Object.keys(remoteMalformed || {});
+    const syncScope = getActiveProfileSyncScope();
+    const sectionKeys = profileSyncCore.getScopeSectionKeys(syncScope);
+    // Damage only matters in sections this device syncs; the rest are written
+    // back exactly as found.
+    const { inScope: damagedInScope, outOfScope: damagedOutOfScope } = splitDamagedSyncSections(
+      remoteMalformed,
+      sectionKeys
+    );
+    const damagedSections = Object.keys(damagedInScope);
     if (damagedSections.length > 0) {
       // Only an explicit Sync Up may replace damaged sections, after keeping them.
       if (direction !== 'push') throw createDamagedSyncSectionsError(damagedSections);
-      await backupRemoteSectionsBeforePush(remoteMalformed);
+      await backupRemoteSectionsBeforePush(damagedInScope);
     }
-    const syncScope = getActiveProfileSyncScope();
-    const sectionKeys = profileSyncCore.getScopeSectionKeys(syncScope);
     const localSections = profileSyncCore.buildLocalSections(config, syncScope);
     const localUpdatedAt = Object.fromEntries(
       sectionKeys.map((key) => [
@@ -5579,7 +5600,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
         await backupRemoteSectionsBeforePush(replacedRemoteSections);
       }
       const now = new Date().toISOString();
-      const nextSections = { ...remoteSections };
+      const nextSections = { ...damagedOutOfScope, ...remoteSections };
       pushKeys.forEach((key) => {
         nextSections[key] = profileSyncCore.buildPushedSectionEntry(
           key,

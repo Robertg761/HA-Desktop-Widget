@@ -641,6 +641,27 @@ describe('profile sync engine', () => {
     expect(context.config.opacity).toBe(0.5);
   });
 
+  test('damage in a section this device does not sync is left alone', async () => {
+    const desktop = createDevice('desktop');
+    await desktop.sync();
+    const file = readSyncFile();
+    file.payload.sections.quickAccessLayout.data = 'garbage';
+    fs.writeFileSync(syncFilePath(), JSON.stringify(file));
+
+    const laptop = createDevice('laptop', { profileSync: { syncScope: { preset: 'visual' } } });
+    // Not a first-sync conflict for this device...
+    expect(await laptop.context.findProfileSyncConflictSections(readSyncFile())).toEqual([]);
+    // ...and not a reason to stop syncing.
+    laptop.edit((config) => {
+      config.opacity = 0.4;
+    });
+    expect((await laptop.sync()).pushed).toEqual(['visualPersonalization']);
+
+    const written = readSyncFile();
+    expect(written.payload.sections.quickAccessLayout.data).toBe('garbage');
+    expect(written.payload.sections.visualPersonalization.data.opacity).toBe(0.4);
+  });
+
   test('refuses to push plaintext over an encrypted file', async () => {
     const desktop = createDevice('desktop', {
       profileSync: { encryptionEnabled: true, __passphrase: 'correct horse' },
