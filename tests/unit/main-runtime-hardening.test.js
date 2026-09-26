@@ -145,6 +145,19 @@ describe('main-process wiring safeguards', () => {
     );
   });
 
+  it('logs how long each stage of a quit takes', () => {
+    const start = mainSource.indexOf("app.on('before-quit'");
+    const handler = mainSource.slice(start, mainSource.indexOf('\n});\n', start));
+    expect(handler).toContain("log.info('Quit requested; saving settings before exit');");
+    expect(handler).toContain(
+      'Quit is waiting for an in-progress settings or profile-sync operation'
+    );
+    expect(handler).toContain('Quit: settings saved after');
+    expect(handler).toContain('Quit: runtime shut down after');
+    expect(mainSource).toContain("app.on('will-quit', () => {");
+    expect(mainSource).toContain("Quit: handing over to Chromium's exit after");
+  });
+
   it('runs one widget per profile and shows the existing window on a second launch', () => {
     expect(mainSource).toContain('const gotSingleInstanceLock = app.requestSingleInstanceLock()');
     expect(mainSource).toContain("app.on('second-instance'");

@@ -180,3 +180,15 @@ test('recreates the icons when only some of them registered', async () => {
     1
   );
 });
+
+test('leaves the tray alone when the host lists items without an owner', async () => {
+  // Chromium registers a bare object path; a host that stores it unprefixed says nothing
+  // about whose item it is.
+  const bus = createFakeBus({
+    watcherPresent: true,
+    registeredItems: ['/org/chromium/StatusNotifierItem/1'],
+  });
+  const onAppeared = jest.fn();
+  await watch(bus, onAppeared).ready;
+  expect(onAppeared).not.toHaveBeenCalled();
+});

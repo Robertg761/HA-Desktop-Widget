@@ -85,7 +85,10 @@ function watchForStatusNotifierWatcher({
     for (const item of items) {
       if (typeof item !== 'string' || !item) continue;
       const service = item.split('/')[0];
-      if (!service) continue;
+      // A bare object path names no owner. The spec has the watcher prefix the sender, but a
+      // host that does not leaves nothing to attribute, so leave the tray alone rather than
+      // recreate icons that may be working.
+      if (!service) return null;
       if (service.includes(ownNameMarker)) {
         owned += 1;
       } else {
