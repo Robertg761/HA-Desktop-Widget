@@ -565,7 +565,9 @@ if (!gotSingleInstanceLock) {
       initialLaunchAction = action;
       return;
     }
-    if (action === 'hide' || (action === 'toggle' && mainWindow?.isVisible())) {
+    if (action === 'toggle' && isLayerShellChildProcess) {
+      toggleRaisedLayerWidget();
+    } else if (action === 'hide' || (action === 'toggle' && mainWindow?.isVisible())) {
       hideMainWindowToTray();
     } else {
       showMainWindowFromTray();
@@ -2428,7 +2430,7 @@ function broadcastDesktopPinConfigUpdate() {
   });
 }
 
-function focusMainWindow() {
+function focusMainWindow({ keepElevated = false } = {}) {
   if (!mainWindow || mainWindow.isDestroyed()) {
     createWindow();
   }
@@ -2438,7 +2440,7 @@ function focusMainWindow() {
 
   // A one-off raise: it clears full-screen windows the same way the popup hotkey does,
   // then settles back to the user's always-on-top preference.
-  popupWindowPresenter.showAboveFullScreen(mainWindow, { keepElevated: false });
+  popupWindowPresenter.showAboveFullScreen(mainWindow, { keepElevated });
 
   return { focused: mainWindow.isFocused() };
 }
@@ -2459,7 +2461,24 @@ function showMainWindowFromTray() {
       log.warn('Failed to restore window size before showing:', error.message);
     }
   }
-  return focusMainWindow();
+  // A desktop-layer widget settles back under tiled windows, where a one-off raise is only
+  // a flash, so an explicit show keeps it raised until toggled back or focus moves away.
+  return focusMainWindow({ keepElevated: isLayerShellChildProcess });
+}
+
+/**
+ * Tray click and `--toggle` on a desktop layer. The widget there is always mapped, normally
+ * under tiled windows, so being visible says nothing about whether the user can see it: raise
+ * it above them, and lower it back on the next press, as the popup shortcut does.
+ */
+function toggleRaisedLayerWidget() {
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+    if (popupWindowPresenter.isElevated()) {
+      popupWindowPresenter.releaseElevation(mainWindow);
+      return;
+    }
+  }
+  showMainWindowFromTray();
 }
 
 /** Hide the widget to the tray, ending any raise still in flight. */
@@ -6378,6 +6397,10 @@ function toggleMainWindowFromTrayEntity({ fromTrayClick = false, trayBounds } = 
     fromTrayClick ? trayBounds : undefined
   );
   if (fromTrayClick && recentlyHidden) return;
+  if (fromTrayClick && isLayerShellChildProcess) {
+    toggleRaisedLayerWidget();
+    return;
+  }
   if (mainWindow?.isVisible()) {
     hideMainWindowToTray();
   } else {
@@ -6582,6 +6605,8 @@ function buildTrayContextMenu() {
     {
       label: mainT('Always on Top'),
       type: 'checkbox',
+      // A desktop layer cannot be kept on top; Settings disables the same option there.
+      enabled: !isLayerShellChildProcess,
       checked: !isLayerShellChildProcess && config.alwaysOnTop,
       click: (menuItem) => {
         const requestedValue = !!menuItem.checked;
