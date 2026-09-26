@@ -1596,6 +1596,20 @@ function getDefaultProfileSyncConfig() {
   };
 }
 
+/**
+ * Gives entityAlerts its full shape after a sync pull or backup restore, which
+ * can bring a partial object or clear it altogether.
+ */
+function ensureEntityAlertsConfigDefaults(target) {
+  const current = isPlainObject(target.entityAlerts) ? target.entityAlerts : {};
+  target.entityAlerts = {
+    ...current,
+    enabled: current.enabled === true,
+    alerts: isPlainObject(current.alerts) ? current.alerts : {},
+  };
+  return target;
+}
+
 function ensureProfileSyncConfigDefaults(target) {
   if (!target || typeof target !== 'object') return target;
   const defaults = getDefaultProfileSyncConfig();
@@ -3860,6 +3874,7 @@ async function applySyncedProfileToConfig(pulledSections) {
   pruneConfig(config);
   ensureDateTimeFormatConfigDefaults(config);
   ensureProfileSyncConfigDefaults(config);
+  ensureEntityAlertsConfigDefaults(config);
   normalizeDesktopPinsConfig(config);
   normalizeTrayEntitiesConfigInPlace(config);
 
@@ -4050,6 +4065,7 @@ async function restoreProfileSyncBackup(id) {
   pruneConfig(config);
   ensureDateTimeFormatConfigDefaults(config);
   ensureProfileSyncConfigDefaults(config);
+  ensureEntityAlertsConfigDefaults(config);
   normalizeDesktopPinsConfig(config);
   normalizeTrayEntitiesConfigInPlace(config);
   const persistence = await saveConfigDurably();

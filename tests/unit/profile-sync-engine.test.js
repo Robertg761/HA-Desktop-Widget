@@ -629,6 +629,23 @@ describe('profile sync engine', () => {
     expect(repaired.sections.visualPersonalization.data.opacity).toBe(0.3);
   });
 
+  test('a partial or cleared alert section arrives with its full shape', async () => {
+    const { desktop, laptop } = await createSyncedPair();
+    laptop.edit((config) => {
+      config.entityAlerts = { enabled: true };
+    });
+    await laptop.sync();
+    await desktop.sync();
+    expect(desktop.config.entityAlerts).toEqual({ enabled: true, alerts: {} });
+
+    laptop.edit((config) => {
+      delete config.entityAlerts;
+    });
+    await laptop.sync();
+    await desktop.sync();
+    expect(desktop.config.entityAlerts).toEqual({ enabled: false, alerts: {} });
+  });
+
   test('a backup of a damaged section is kept but never offered for restore', async () => {
     const desktop = createDevice('desktop');
     await desktop.sync();

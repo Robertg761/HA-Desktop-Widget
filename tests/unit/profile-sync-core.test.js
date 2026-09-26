@@ -604,6 +604,29 @@ describe('profile-sync-core', () => {
       expect(legacy.sections.visualPersonalization.data).toEqual({ opacity: 0.8 });
     });
 
+    test('checks the alert fields the app reads directly', async () => {
+      const decodeAlerts = (entityAlerts) =>
+        decodeEnvelopeSections({
+          schemaVersion: 3,
+          minReaderVersion: 3,
+          updatedAt: '2026-02-23T08:00:00.000Z',
+          updatedByDeviceId: 'device-a',
+          payload: {
+            sections: {
+              automationAlerts: { updatedAt: '2026-02-23T08:00:00.000Z', data: { entityAlerts } },
+            },
+          },
+        });
+      expect(Object.keys((await decodeAlerts({ enabled: true, alerts: [] })).malformed)).toEqual([
+        'automationAlerts',
+      ]);
+      expect(Object.keys((await decodeAlerts({ enabled: 'yes' })).malformed)).toEqual([
+        'automationAlerts',
+      ]);
+      // Left out is fine: the receiving device fills in its default.
+      expect((await decodeAlerts({ enabled: true })).malformed).toEqual({});
+    });
+
     test('refuses a file that requires a newer reader whatever schema it claims', () => {
       const file = JSON.stringify({
         schemaVersion: SYNC_SCHEMA_VERSION,

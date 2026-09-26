@@ -51,6 +51,11 @@ const SYNC_FIELD_TYPES = {
   selectedWeatherEntity: 'string',
   primaryMediaPlayer: 'string',
 };
+// Fields inside an object field that the app reads directly. Each may be left
+// out (the receiving device fills in its default) but not hold another type.
+const SYNC_NESTED_FIELD_TYPES = {
+  entityAlerts: { enabled: 'boolean', alerts: 'object' },
+};
 // ui keys that describe this machine or session rather than the shared look.
 // Keep in step with LOCAL_ONLY_UI_KEYS in packages/widget-renderer/src/profile-schema.js,
 // plus the text size and Omarchy theme following, which depend on the display and desktop.
@@ -654,8 +659,14 @@ function hasValidSectionFields(sectionKey, data) {
   if (!isObject(data) || !SYNC_SCOPE_SECTION_FIELDS[sectionKey]) return false;
   return SYNC_SCOPE_SECTION_FIELDS[sectionKey].every((field) => {
     if (!Object.prototype.hasOwnProperty.call(data, field)) return true;
-    const type = getJsonType(data[field]);
-    return type === 'null' || type === SYNC_FIELD_TYPES[field];
+    const value = data[field];
+    const type = getJsonType(value);
+    if (type === 'null') return true;
+    if (type !== SYNC_FIELD_TYPES[field]) return false;
+    return Object.entries(SYNC_NESTED_FIELD_TYPES[field] || {}).every(
+      ([key, expected]) =>
+        !Object.prototype.hasOwnProperty.call(value, key) || getJsonType(value[key]) === expected
+    );
   });
 }
 
