@@ -3166,7 +3166,13 @@ function unsealProfileSyncTransitionSecret(encryptedSecret) {
  */
 async function buildProfileSyncEnvelopeForConfig(
   sourceConfig,
-  { encrypt, passphrase, remoteSections = {}, updatedAt = new Date().toISOString() }
+  {
+    encrypt,
+    passphrase,
+    remoteSections = {},
+    remoteExtensions = null,
+    updatedAt = new Date().toISOString(),
+  }
 ) {
   const profileSync = sourceConfig?.profileSync || getProfileSyncConfig();
   const syncScope = getNormalizedProfileSyncScopeValue(profileSync.syncScope);
@@ -3185,16 +3191,17 @@ async function buildProfileSyncEnvelopeForConfig(
     updatedByDeviceId: profileSync.deviceId,
     encrypt: encrypt === true,
     passphrase: passphrase || '',
+    extensions: remoteExtensions,
   });
 }
 
+async function decodeRemoteFileWithPassphrase(readResult, passphrase) {
+  if (!readResult?.exists || !readResult.envelope) return { sections: {}, extensions: null };
+  return profileSyncCore.decodeEnvelopeSections(readResult.envelope, passphrase);
+}
+
 async function decodeRemoteSectionsWithPassphrase(readResult, passphrase) {
-  if (!readResult?.exists || !readResult.envelope) return {};
-  const { sections } = await profileSyncCore.decodeEnvelopeSections(
-    readResult.envelope,
-    passphrase
-  );
-  return sections;
+  return (await decodeRemoteFileWithPassphrase(readResult, passphrase)).sections;
 }
 
 /**
@@ -3247,13 +3254,15 @@ async function stageProfileSyncRewrite({
   const oldPassphraseEncrypted = sealProfileSyncTransitionSecret(oldPassphrase);
   const newPassphraseEncrypted = sealProfileSyncTransitionSecret(newPassphrase);
   const baselineRemote = remoteResult || (await readConfiguredSyncEnvelope());
-  const remoteSections = await decodeRemoteSectionsWithPassphrase(baselineRemote, oldPassphrase);
+  const { sections: remoteSections, extensions: remoteExtensions } =
+    await decodeRemoteFileWithPassphrase(baselineRemote, oldPassphrase);
   assertRemoteSectionsMatchConfig(remoteSections, baselineConfig);
 
   const targetEnvelope = await buildProfileSyncEnvelopeForConfig(targetConfig, {
     encrypt: targetEncryptionEnabled,
     passphrase: newPassphrase,
     remoteSections,
+    remoteExtensions,
   });
   const targetEnvelopeSerialized = profileSyncCore.serializeSyncEnvelope(targetEnvelope);
   const transaction = createProfileSyncRewriteTransaction({
@@ -5438,7 +5447,12 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       );
     }
 
-    const remoteSections = remoteEnvelope ? await decodeRemoteSections(remoteEnvelope) : {};
+    const { sections: remoteSections, extensions: remoteExtensions } = remoteEnvelope
+      ? await profileSyncCore.decodeEnvelopeSections(
+          remoteEnvelope,
+          getActiveProfileSyncPassphrase()
+        )
+      : { sections: {}, extensions: null };
     const syncScope = getActiveProfileSyncScope();
     const sectionKeys = profileSyncCore.getScopeSectionKeys(syncScope);
     const localSections = profileSyncCore.buildLocalSections(config, syncScope);
@@ -5519,6 +5533,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
         updatedByDeviceId: profileSync.deviceId,
         encrypt,
         passphrase,
+        extensions: remoteExtensions,
       });
 
       // Best-effort compare-before-write: encryption and provider replication take time, so

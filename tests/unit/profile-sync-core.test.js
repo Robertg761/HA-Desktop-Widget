@@ -422,6 +422,42 @@ describe('profile-sync-core', () => {
       });
     });
 
+    test('writes back what a newer version added, inside the encryption too', async () => {
+      const newer = await buildSyncEnvelope({
+        sections,
+        updatedByDeviceId: 'device-b',
+        encrypt: true,
+        passphrase: 'strong-passphrase',
+        extensions: {
+          schemaVersion: SYNC_SCHEMA_VERSION + 1,
+          minReaderVersion: SYNC_SCHEMA_VERSION,
+          envelopeFields: { hint: 'plain' },
+          payloadFields: { secretExtra: 'kept' },
+        },
+      });
+      const decoded = await decodeEnvelopeSections(newer, 'strong-passphrase');
+      expect(decoded.extensions).toEqual({
+        schemaVersion: SYNC_SCHEMA_VERSION + 1,
+        minReaderVersion: SYNC_SCHEMA_VERSION,
+        envelopeFields: { hint: 'plain' },
+        payloadFields: { secretExtra: 'kept' },
+      });
+
+      const rewritten = await buildSyncEnvelope({
+        sections: decoded.sections,
+        updatedByDeviceId: 'device-a',
+        encrypt: true,
+        passphrase: 'strong-passphrase',
+        extensions: decoded.extensions,
+      });
+      expect(rewritten.schemaVersion).toBe(SYNC_SCHEMA_VERSION + 1);
+      expect(rewritten.minReaderVersion).toBe(SYNC_SCHEMA_VERSION);
+      expect(rewritten.hint).toBe('plain');
+      expect(JSON.stringify(rewritten)).not.toContain('secretExtra');
+      const again = await decodeEnvelopeSections(rewritten, 'strong-passphrase');
+      expect(again.extensions.payloadFields).toEqual({ secretExtra: 'kept' });
+    });
+
     test('refuses files that require a newer reader', () => {
       const tooNew = JSON.stringify({
         schemaVersion: SYNC_SCHEMA_VERSION + 1,

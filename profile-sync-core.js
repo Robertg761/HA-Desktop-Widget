@@ -426,21 +426,63 @@ function getLatestSectionTimestamp(sections) {
   return latest;
 }
 
+const KNOWN_ENVELOPE_KEYS = new Set([
+  'schemaVersion',
+  'minReaderVersion',
+  'updatedAt',
+  'updatedByDeviceId',
+  'payload',
+]);
+
+/**
+ * Collects what a version-3-or-later file holds beyond what this version writes:
+ * its version numbers, unknown top-level fields and unknown payload fields. A
+ * rewrite passes them back to buildSyncEnvelope so a newer writer's additions
+ * survive an older device's push.
+ */
+function extractEnvelopeExtensions(envelope, decodedPayload) {
+  if (!isObject(envelope) || envelope.schemaVersion < 3) return null;
+  const envelopeFields = {};
+  Object.entries(envelope).forEach(([key, value]) => {
+    if (!KNOWN_ENVELOPE_KEYS.has(key)) envelopeFields[key] = deepClone(value);
+  });
+  const payloadFields = {};
+  Object.entries(isObject(decodedPayload) ? decodedPayload : {}).forEach(([key, value]) => {
+    if (key !== 'sections') payloadFields[key] = deepClone(value);
+  });
+  return {
+    schemaVersion: envelope.schemaVersion,
+    minReaderVersion:
+      typeof envelope.minReaderVersion === 'number' ? envelope.minReaderVersion : null,
+    envelopeFields,
+    payloadFields,
+  };
+}
+
 async function buildSyncEnvelope({
   sections,
   updatedAt,
   updatedByDeviceId,
   encrypt = false,
   passphrase = '',
+  extensions = null,
 }) {
   if (!isObject(sections)) {
     throw new Error('Profile sections must be an object');
   }
 
-  const payload = { sections: deepClone(sections) };
+  const payload = { ...deepClone(extensions?.payloadFields || {}), sections: deepClone(sections) };
+  // Never label a file as older than the one it replaces: a newer writer set
+  // these, and its readers rely on them.
+  const schemaVersion = Math.max(SYNC_SCHEMA_VERSION, Number(extensions?.schemaVersion) || 0);
+  const minReaderVersion = Math.max(
+    SYNC_MIN_READER_VERSION,
+    Number(extensions?.minReaderVersion) || 0
+  );
   return {
-    schemaVersion: SYNC_SCHEMA_VERSION,
-    minReaderVersion: SYNC_MIN_READER_VERSION,
+    ...deepClone(extensions?.envelopeFields || {}),
+    schemaVersion,
+    minReaderVersion,
     updatedAt: updatedAt || getLatestSectionTimestamp(sections) || new Date().toISOString(),
     updatedByDeviceId: updatedByDeviceId || 'unknown-device',
     payload: encrypt ? await encryptProfilePayload(payload, passphrase) : payload,
@@ -542,9 +584,11 @@ function convertLegacyProfileToSections(envelope, profile) {
 
 /**
  * Decodes a sync file into its sections. Sections this version does not know are
- * kept, untouched, so they can be written back unchanged.
+ * kept, untouched, so they can be written back unchanged, and `extensions` holds
+ * the rest of what a newer writer added (see extractEnvelopeExtensions).
  *
- * @returns {Promise<{sections: Object<string, object>, legacy: boolean}>}
+ * @returns {Promise<{sections: Object<string, object>, legacy: boolean,
+ *   extensions: object|null}>}
  */
 async function decodeEnvelopeSections(envelope, passphrase) {
   validateEnvelopeShape(envelope);
@@ -557,7 +601,11 @@ async function decodeEnvelopeSections(envelope, passphrase) {
   }
 
   if (envelope.schemaVersion < 3) {
-    return { sections: convertLegacyProfileToSections(envelope, decoded), legacy: true };
+    return {
+      sections: convertLegacyProfileToSections(envelope, decoded),
+      legacy: true,
+      extensions: null,
+    };
   }
 
   if (!isObject(decoded.sections)) {
@@ -572,7 +620,7 @@ async function decodeEnvelopeSections(envelope, passphrase) {
     const normalized = normalizeSectionEntry(entry, fallback);
     if (normalized) sections[key] = normalized;
   });
-  return { sections, legacy: false };
+  return { sections, legacy: false, extensions: extractEnvelopeExtensions(envelope, decoded) };
 }
 
 module.exports = {

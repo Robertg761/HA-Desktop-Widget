@@ -558,6 +558,9 @@ describe('profile sync engine', () => {
     await desktop.sync();
     const file = readSyncFile();
     file.schemaVersion = 4;
+    file.minReaderVersion = 3;
+    file.futureEnvelopeField = { mode: 'x' };
+    file.payload.futurePayloadField = [1, 2];
     file.payload.sections.futureSection = {
       updatedAt: file.updatedAt,
       updatedByDeviceId: 'future-device',
@@ -572,6 +575,11 @@ describe('profile sync engine', () => {
     await desktop.sync();
 
     const written = readSyncFile();
+    // Still labelled as the newer version, with everything that version added.
+    expect(written.schemaVersion).toBe(4);
+    expect(written.minReaderVersion).toBe(3);
+    expect(written.futureEnvelopeField).toEqual({ mode: 'x' });
+    expect(written.payload.futurePayloadField).toEqual([1, 2]);
     expect(written.payload.sections.futureSection.data).toEqual({ novel: true });
     expect(written.payload.sections.visualPersonalization.data).toMatchObject({
       opacity: 0.55,
