@@ -45,6 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Show an unavailable camera preview tile as a dimmed tile instead of a black block with orange text, and keep camera names readable in the light theme before the first frame arrives.
 - Lay out the pinned light tile across the whole pin window, with its power button beside the name and an unclipped brightness slider.
 - Keep an on light without a brightness value from reading "Off" after the first live update.
+- Stop the Home Assistant panel preview from showing "Waiting for live Home Assistant data..." over a working layout. Its virtual connection now answers requests the way Home Assistant does, so the preview reaches the connected state.
+- Tell the Home Assistant panel when tiles are added, removed, or reordered in the preview, so those edits can be saved like appearance changes.
 
 ### Beta features
 
