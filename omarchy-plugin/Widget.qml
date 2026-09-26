@@ -55,6 +55,7 @@ Panel {
 
   function statusLine() {
     if (!running) return "HA Desktop Widget is not running"
+    if (status.issue === "keyring") return "Keyring locked. Unlock it, then restart the widget."
     if (status.connection === "connected") return "Connected"
     if (status.connection === "auth-failed") return "Sign-in needed. Open the widget to reconnect."
     if (status.connection === "connecting") return "Connecting…"

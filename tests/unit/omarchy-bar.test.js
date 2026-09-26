@@ -62,6 +62,8 @@ describe('Omarchy bar plugin package', () => {
     expect(qml).toContain('"--entity-toggle=" + entityId');
     // It reads the fields buildOmarchyBarStatus writes.
     expect(qml).toContain('parsed.version === 1');
+    // A locked keyring gets its own advice rather than the generic sign-in text.
+    expect(qml).toContain('status.issue === "keyring"');
     // Device rows are only clickable through a connected widget.
     expect(qml).toContain(
       'readonly property bool actionable: root.connected && modelData.toggleable'
@@ -149,6 +151,24 @@ describe('Omarchy bar status', () => {
     expect(
       describeOmarchyBarEntity('switch.gone', { state: 'unavailable', attributes: {} })
     ).toMatchObject({ available: false, toggleable: false });
+    // Scenes and buttons only hold the time they last ran; timestamp sensors read relatively.
+    const now = Date.parse('2026-09-26T20:00:00Z');
+    expect(
+      describeOmarchyBarEntity(
+        'scene.movie',
+        { state: '2026-09-26T18:52:26.628525+00:00', attributes: {} },
+        '',
+        now
+      ).value
+    ).toBe('');
+    const lastSeen = describeOmarchyBarEntity(
+      'sensor.last_seen',
+      { state: '2026-09-26T17:00:00+00:00', attributes: {} },
+      '',
+      now
+    ).value;
+    expect(lastSeen).not.toContain('2026-09-26');
+    expect(lastSeen).toMatch(/3/);
     expect(describeOmarchyBarEntity('light.missing', undefined)).toMatchObject({
       name: 'light.missing',
       value: '',
@@ -173,6 +193,10 @@ describe('Omarchy bar status', () => {
     });
     expect(status.panel[0]).toMatchObject({ id: 'light.desk', value: 'Off' });
     expect(buildOmarchyBarStatus({ launch: [] }).launch).toBeNull();
+    expect(buildOmarchyBarStatus({}).issue).toBe('');
+    expect(buildOmarchyBarStatus({ connection: 'auth-failed', issue: 'keyring' }).issue).toBe(
+      'keyring'
+    );
   });
 
   it('writes the status privately, refreshes it, and removes it on stop', () => {

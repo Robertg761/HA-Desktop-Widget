@@ -41,6 +41,12 @@ const {
 } = require('./src/linux-desktop.cjs');
 const IS_ISOLATED_PROFILE = hasIsolatedProfile();
 let initialLaunchAction = process.env.HA_WIDGET_LAUNCH_VISIBILITY || getLaunchAction();
+// Started by an explicit --show or --toggle (the Omarchy bar, a launcher or a key binding) rather
+// than by autostart or a restart: a desktop-layer widget then comes up raised above the windows
+// covering it, as it would for the same command sent to a running widget.
+let initialLaunchRaise =
+  !process.env.HA_WIDGET_LAUNCH_VISIBILITY &&
+  (process.argv.includes('--show') || process.argv.includes('--toggle'));
 const { createOmarchyThemeWatcher } = require('./src/omarchy-theme.cjs');
 const { watchForStatusNotifierWatcher } = require('./src/linux-tray-host.cjs');
 const {
@@ -6343,6 +6349,8 @@ function createWindow() {
     refreshLayerPlacement();
     pushConfigToRenderer();
     if (initialLaunchAction === 'hide') mainWindow.hide();
+    else if (initialLaunchRaise && isLayerShellChildProcess) showMainWindowFromTray();
+    initialLaunchRaise = false;
     delete process.env.HA_WIDGET_LAUNCH_VISIBILITY;
     if (IS_SMOKE_TEST_MODE) {
       smokeTestRendererLoaded = true;
@@ -6853,6 +6861,14 @@ function getOmarchyBarEntities() {
   return resolveOmarchyBarEntities(omarchyBarEntry, config?.favoriteEntities);
 }
 
+/** What the bar should tell the user to fix, when the widget cannot fix it by itself. */
+function getOmarchyBarIssue() {
+  const keyringLocked =
+    config?.homeAssistant?.oauthLastErrorCode === 'OAUTH_KEYRING_UNAVAILABLE' ||
+    config?.tokenResetReason === 'encryption_unavailable';
+  return keyringLocked ? 'keyring' : '';
+}
+
 /** The command the bar plugin runs to reach this widget, or null to use its default. */
 function getOmarchyBarLaunchArgv() {
   if (process.env.APPIMAGE) return [process.env.APPIMAGE];
@@ -6914,6 +6930,7 @@ function startOmarchyBarIntegration() {
         entities: getOmarchyBarEntities(),
         customEntityNames: config?.customEntityNames,
         launch: getOmarchyBarLaunchArgv(),
+        issue: getOmarchyBarIssue(),
       }),
   });
   if (!omarchyBarPublisher) return;

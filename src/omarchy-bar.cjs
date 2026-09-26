@@ -98,7 +98,29 @@ function capitalize(text) {
   return text ? text.charAt(0).toUpperCase() + text.slice(1).replace(/_/g, ' ') : '';
 }
 
-function describeOmarchyBarEntity(entityId, entity, customName = '') {
+// Domains whose state is only the time they last fired, which reads as noise in a panel row.
+const STATELESS_DOMAINS = new Set(['button', 'event', 'input_button', 'scene']);
+const ISO_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+const RELATIVE_TIME_STEPS = [
+  ['day', 86400000],
+  ['hour', 3600000],
+  ['minute', 60000],
+];
+
+/** "5 minutes ago" in the system locale, or '' for anything that is not a timestamp. */
+function describeTimestamp(state, now) {
+  if (!ISO_TIMESTAMP_PATTERN.test(state)) return '';
+  const time = Date.parse(state);
+  if (!Number.isFinite(time)) return '';
+  const elapsed = time - now;
+  const format = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto', style: 'short' });
+  for (const [unit, size] of RELATIVE_TIME_STEPS) {
+    if (Math.abs(elapsed) >= size) return format.format(Math.round(elapsed / size), unit);
+  }
+  return format.format(0, 'minute');
+}
+
+function describeOmarchyBarEntity(entityId, entity, customName = '', now = Date.now()) {
   const attributes =
     entity?.attributes && typeof entity.attributes === 'object' ? entity.attributes : {};
   const name =
@@ -109,8 +131,14 @@ function describeOmarchyBarEntity(entityId, entity, customName = '') {
   const unit =
     typeof attributes.unit_of_measurement === 'string' ? attributes.unit_of_measurement : '';
   const numeric = state !== '' && Number.isFinite(Number(state));
-  const value = !entity ? '' : numeric ? `${state}${unit ? ` ${unit}` : ''}` : capitalize(state);
   const domain = entityId.split('.')[0];
+  const timestamp = describeTimestamp(state, now);
+  const value =
+    !entity || STATELESS_DOMAINS.has(domain)
+      ? ''
+      : numeric
+        ? `${state}${unit ? ` ${unit}` : ''}`
+        : timestamp || capitalize(state);
   return {
     id: entityId,
     name: name.slice(0, 80),
@@ -128,14 +156,17 @@ function buildOmarchyBarStatus({
   entities = { panel: [], bar: [] },
   customEntityNames = {},
   launch = null,
+  issue = '',
   now = Date.now(),
 } = {}) {
   const describe = (entityId) =>
-    describeOmarchyBarEntity(entityId, states.get(entityId), customEntityNames?.[entityId]);
+    describeOmarchyBarEntity(entityId, states.get(entityId), customEntityNames?.[entityId], now);
   return {
     version: OMARCHY_BAR_STATUS_VERSION,
     updatedAt: now,
     connection,
+    // Why the widget cannot connect, when it is something the user must fix ('keyring').
+    issue: issue || '',
     launch: Array.isArray(launch) && launch.length ? launch : null,
     panel: entities.panel.map(describe),
     bar: entities.bar.map(describe),

@@ -121,4 +121,33 @@ describe('Omarchy bar requests in the main process', () => {
       expect(connectionHandler).toContain('deliverPendingOmarchyBarToggle();');
     });
   });
+
+  it('tells the bar about a locked keyring', () => {
+    const context = { config: {} };
+    vm.runInNewContext(block('function getOmarchyBarIssue'), context);
+    expect(context.getOmarchyBarIssue()).toBe('');
+    context.config = { homeAssistant: { oauthLastErrorCode: 'OAUTH_KEYRING_UNAVAILABLE' } };
+    expect(context.getOmarchyBarIssue()).toBe('keyring');
+    context.config = { tokenResetReason: 'encryption_unavailable' };
+    expect(context.getOmarchyBarIssue()).toBe('keyring');
+    context.config = { homeAssistant: { oauthLastErrorCode: 'OAUTH_STORE_DECRYPT' } };
+    expect(context.getOmarchyBarIssue()).toBe('');
+  });
+
+  it('raises a desktop-layer widget started by an explicit --show or --toggle', () => {
+    const declaration = mainSource.slice(
+      mainSource.indexOf('let initialLaunchRaise'),
+      mainSource.indexOf(';', mainSource.indexOf('let initialLaunchRaise'))
+    );
+    // Autostart passes no flag, and a restart carries HA_WIDGET_LAUNCH_VISIBILITY.
+    expect(declaration).toContain('!process.env.HA_WIDGET_LAUNCH_VISIBILITY');
+    expect(declaration).toContain("process.argv.includes('--toggle')");
+    const loaded = mainSource.slice(
+      mainSource.indexOf("mainWindow.webContents.on('did-finish-load'"),
+      mainSource.indexOf('delete process.env.HA_WIDGET_LAUNCH_VISIBILITY')
+    );
+    expect(loaded).toContain(
+      'else if (initialLaunchRaise && isLayerShellChildProcess) showMainWindowFromTray();'
+    );
+  });
 });
