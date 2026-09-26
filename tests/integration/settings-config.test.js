@@ -296,8 +296,24 @@ function createSettingsModalDOM() {
           <option value="icloudDrive">iCloud Drive</option>
           <option value="syncthing">Syncthing</option>
         </select>
-        <input type="text" id="profile-sync-folder-path" />
-        <button type="button" id="profile-sync-choose-folder">Choose Folder</button>
+        <div id="profile-sync-cloud-account" class="hidden">
+          <p id="profile-sync-cloud-summary"></p>
+          <div id="profile-sync-cloud-signed-out">
+            <button type="button" id="profile-sync-cloud-google">Google</button>
+            <button type="button" id="profile-sync-cloud-github">GitHub</button>
+            <button type="button" id="profile-sync-cloud-cancel" class="hidden">Cancel</button>
+          </div>
+          <div id="profile-sync-cloud-signed-in" class="hidden">
+            <button type="button" id="profile-sync-cloud-billing">Subscribe</button>
+            <button type="button" id="profile-sync-cloud-sign-out">Sign Out</button>
+            <button type="button" id="profile-sync-cloud-delete">Delete</button>
+          </div>
+        </div>
+        <div id="profile-sync-folder-row">
+          <input type="text" id="profile-sync-folder-path" />
+          <button type="button" id="profile-sync-choose-folder">Choose Folder</button>
+        </div>
+        <p id="profile-sync-cloud-encryption-help" class="hidden"></p>
         <select id="profile-sync-scope-preset">
           <option value="all">All Syncable Settings</option>
           <option value="visual">Visual</option>
@@ -3107,6 +3123,151 @@ describe('Settings + Config Integration', () => {
       await document.getElementById('desktop-integration-refresh').onclick();
       expect(output.value).toBe('legacy binding');
       delete window.electronAPI.getDesktopIntegration;
+    });
+
+    describe('Cloud Sync', () => {
+      const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+      const hidden = (id) => document.getElementById(id).classList.contains('hidden');
+      const resetCloudAccount = () =>
+        mockElectronAPI.getCloudSyncAccount.mockResolvedValue({
+          success: true,
+          available: false,
+          signedIn: false,
+          providers: [],
+        });
+      beforeEach(resetCloudAccount);
+      afterEach(resetCloudAccount);
+      const cloudAccount = (overrides = {}) => ({
+        success: true,
+        available: true,
+        signedIn: true,
+        email: 'me@x.io',
+        provider: 'google',
+        providers: ['google', 'github'],
+        billingAvailable: true,
+        account: {
+          entitled: true,
+          entitlementReason: 'trial',
+          trialEndsAt: Date.UTC(2026, 8, 15),
+          hasBillingAccount: false,
+        },
+        error: '',
+        ...overrides,
+      });
+
+      test('is offered only when this build knows the service', async () => {
+        await settings.openSettings();
+        await flush();
+        const option = () =>
+          document.querySelector('#profile-sync-provider option[value="hostedAccount"]');
+        expect(option()).toBeNull();
+
+        mockElectronAPI.getCloudSyncAccount.mockResolvedValue(
+          cloudAccount({ signedIn: false, account: null })
+        );
+        await settings.openSettings();
+        await flush();
+        expect(option().textContent).toBe('HA Desktop Widget Cloud');
+      });
+
+      test('replaces the folder with sign-in, and signs in with the chosen account', async () => {
+        mockElectronAPI.getCloudSyncAccount.mockResolvedValue(
+          cloudAccount({ signedIn: false, account: null, providers: ['google'] })
+        );
+        await settings.openSettings();
+        await flush();
+        const provider = document.getElementById('profile-sync-provider');
+        provider.value = 'hostedAccount';
+        provider.dispatchEvent(new Event('change'));
+        await flush();
+
+        expect(hidden('profile-sync-folder-row')).toBe(true);
+        expect(hidden('profile-sync-cloud-account')).toBe(false);
+        expect(hidden('profile-sync-cloud-encryption-help')).toBe(false);
+        expect(hidden('profile-sync-cloud-google')).toBe(false);
+        // Not offered by this service.
+        expect(hidden('profile-sync-cloud-github')).toBe(true);
+        expect(document.getElementById('profile-sync-cloud-summary').textContent).toContain(
+          'Sign in to keep your settings in sync'
+        );
+
+        mockElectronAPI.getCloudSyncAccount.mockResolvedValue(cloudAccount());
+        document.getElementById('profile-sync-cloud-google').click();
+        await flush();
+        await flush();
+        expect(mockElectronAPI.signInToCloudSync).toHaveBeenCalledWith('google');
+        expect(hidden('profile-sync-cloud-signed-in')).toBe(false);
+        const summary = document.getElementById('profile-sync-cloud-summary').textContent;
+        expect(summary).toContain('Signed in as me@x.io.');
+        expect(summary).toContain('Free trial until');
+        expect(document.getElementById('profile-sync-cloud-billing').textContent).toBe('Subscribe');
+      });
+
+      test('shows the subscription and opens its billing page', async () => {
+        mockElectronAPI.getCloudSyncAccount.mockResolvedValue(
+          cloudAccount({
+            account: {
+              entitled: true,
+              entitlementReason: 'subscription',
+              subscriptionStatus: 'active',
+              currentPeriodEnd: Date.UTC(2027, 8, 1),
+              hasBillingAccount: true,
+            },
+          })
+        );
+        state.CONFIG.profileSync = buildProfileSync({ enabled: true, provider: 'hostedAccount' });
+        await settings.openSettings();
+        await flush();
+        expect(document.getElementById('profile-sync-provider').value).toBe('hostedAccount');
+        expect(document.getElementById('profile-sync-cloud-summary').textContent).toContain(
+          'Subscribed through'
+        );
+        const billing = document.getElementById('profile-sync-cloud-billing');
+        expect(billing.textContent).toBe('Manage Subscription');
+        billing.click();
+        await flush();
+        expect(mockElectronAPI.openCloudSyncBilling).toHaveBeenCalled();
+      });
+
+      test('keeps a saved Cloud Sync choice even before the service answers', async () => {
+        state.CONFIG.profileSync = buildProfileSync({
+          enabled: true,
+          provider: 'hostedAccount',
+          cloudFilePath: '/tmp/old-folder/ha-widget-profile-sync.json',
+        });
+        await settings.openSettings();
+        expect(document.getElementById('profile-sync-provider').value).toBe('hostedAccount');
+        await flush();
+        expect(document.getElementById('profile-sync-cloud-summary').textContent).toBe(
+          'Cloud Sync is not available in this version of the app.'
+        );
+
+        await settings.saveSettings();
+        const saved = mockElectronAPI.updateConfig.mock.calls.at(-1)[0].profileSync;
+        // No folder is needed, and the folder-sync path is kept for switching back.
+        expect(saved).toMatchObject({
+          provider: 'hostedAccount',
+          cloudFilePath: '/tmp/old-folder/ha-widget-profile-sync.json',
+        });
+      });
+
+      test('signing out and deleting the account ask first', async () => {
+        mockElectronAPI.getCloudSyncAccount.mockResolvedValue(cloudAccount());
+        state.CONFIG.profileSync = buildProfileSync({ enabled: true, provider: 'hostedAccount' });
+        await settings.openSettings();
+        await flush();
+
+        mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+        document.getElementById('profile-sync-cloud-delete').click();
+        await flush();
+        expect(mockElectronAPI.deleteCloudSyncAccount).not.toHaveBeenCalled();
+
+        mockUiUtils.showConfirm.mockResolvedValueOnce(true);
+        document.getElementById('profile-sync-cloud-sign-out').click();
+        await flush();
+        await flush();
+        expect(mockElectronAPI.signOutOfCloudSync).toHaveBeenCalled();
+      });
     });
 
     test('handles a sync status event before renderer configuration has loaded', () => {

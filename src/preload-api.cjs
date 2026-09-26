@@ -173,6 +173,12 @@ function createElectronApi(ipcRenderer, platform) {
     resolveProfileSyncFirstEnable: (choice) => invoke('resolve-profile-sync-first-enable', choice),
     listProfileSyncBackups: () => invoke('list-profile-sync-backups'),
     restoreProfileSyncBackup: (id) => invoke('restore-profile-sync-backup', id),
+    getCloudSyncAccount: () => invoke('get-cloud-sync-account'),
+    signInToCloudSync: (provider) => invoke('cloud-sync-sign-in', provider),
+    cancelCloudSyncSignIn: () => invoke('cloud-sync-cancel-sign-in'),
+    signOutOfCloudSync: () => invoke('cloud-sync-sign-out'),
+    openCloudSyncBilling: () => invoke('cloud-sync-open-billing'),
+    deleteCloudSyncAccount: () => invoke('cloud-sync-delete-account'),
 
     setOpacity: (opacity) => invokeChecked('set-opacity', opacity),
     previewWindowEffects: (effects) => invoke('preview-window-effects', effects),

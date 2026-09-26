@@ -3099,6 +3099,13 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
     statusEl.textContent = describeProfileSyncStatus(status);
   }
 
+  if (status.cloudSync) {
+    cloudSyncInfo = { ...(cloudSyncInfo || {}), ...status.cloudSync };
+    if (!status.cloudSync.signedIn) cloudSyncInfo.account = null;
+    syncCloudSyncProviderOption(!!status.cloudSync.available);
+    if (isCloudSyncSelected()) renderCloudSyncAccount();
+  }
+
   if (errorEl) {
     const warning = status.passphraseWarning || '';
     const errorText = status.lastSyncError || '';
@@ -3306,6 +3313,7 @@ function applyProfileSyncConfigToForm() {
   const passphraseInput = document.getElementById('profile-sync-passphrase');
 
   if (enabled) enabled.checked = !!profileSync.enabled;
+  syncCloudSyncProviderOption(!!cloudSyncInfo?.available);
   if (provider) {
     const providerValue = profileSync.provider || 'cloudFile';
     provider.value = providerValue;
@@ -3588,7 +3596,220 @@ async function restoreSelectedProfileSyncBackup() {
   await refreshProfileSyncBackups();
 }
 
+const CLOUD_SYNC_PROVIDER = 'hostedAccount';
+// What the settings know about the Cloud Sync account: local status from main,
+// plus details (trial, subscription) fetched when Settings opens.
+let cloudSyncInfo = null;
+
+function isCloudSyncSelected() {
+  return document.getElementById('profile-sync-provider')?.value === CLOUD_SYNC_PROVIDER;
+}
+
+/**
+ * Offers Cloud Sync in the Sync app list when this build knows the service, or
+ * when it is already the saved choice (so the form never silently changes it).
+ */
+function syncCloudSyncProviderOption(available) {
+  const select = document.getElementById('profile-sync-provider');
+  if (!select) return;
+  let option = select.querySelector(`option[value="${CLOUD_SYNC_PROVIDER}"]`);
+  const keep = available || state.CONFIG?.profileSync?.provider === CLOUD_SYNC_PROVIDER;
+  if (keep && !option) {
+    option = document.createElement('option');
+    option.value = CLOUD_SYNC_PROVIDER;
+    select.prepend(option);
+  } else if (!keep && option && select.value !== CLOUD_SYNC_PROVIDER) {
+    option.remove();
+    option = null;
+  }
+  if (option) option.textContent = t('HA Desktop Widget Cloud');
+}
+
+function describeCloudSyncAccount(info = {}) {
+  if (!info.available) return t('Cloud Sync is not available in this version of the app.');
+  if (!info.signedIn) {
+    return t(
+      'Sign in to keep your settings in sync on every computer, with no sync app or folder to set up. Cloud Sync is a paid service with a free trial.'
+    );
+  }
+  const parts = [t('Signed in as {{email}}.', { email: info.email || t('your account') })];
+  const account = info.account;
+  const date = (value) => formatDateTime(value, { dateStyle: 'medium' });
+  if (account?.entitlementReason === 'trial' && account.trialEndsAt) {
+    parts.push(t('Free trial until {{date}}.', { date: date(account.trialEndsAt) }));
+  } else if (account?.entitlementReason === 'subscription') {
+    if (account.subscriptionStatus === 'past_due') {
+      parts.push(t('The last payment failed. Update your payment details to keep syncing.'));
+    } else if (account.currentPeriodEnd) {
+      parts.push(t('Subscribed through {{date}}.', { date: date(account.currentPeriodEnd) }));
+    } else {
+      parts.push(t('Subscribed.'));
+    }
+  } else if (account?.entitlementReason === 'none') {
+    parts.push(
+      t(
+        'Your trial has ended. Subscribe to keep syncing changes; your synced settings can still be downloaded.'
+      )
+    );
+  }
+  if (info.error) parts.push(info.error);
+  return parts.join(' ');
+}
+
+function renderCloudSyncAccount() {
+  const info = cloudSyncInfo || {};
+  const summary = document.getElementById('profile-sync-cloud-summary');
+  if (summary) summary.textContent = describeCloudSyncAccount(info);
+  const signedIn = !!info.signedIn;
+  const pending = !!info.signInPending;
+  document
+    .getElementById('profile-sync-cloud-signed-out')
+    ?.classList.toggle('hidden', signedIn || !info.available);
+  document.getElementById('profile-sync-cloud-signed-in')?.classList.toggle('hidden', !signedIn);
+  // Until the service says which sign-in methods it offers, show both.
+  const providers = info.providers?.length ? info.providers : ['google', 'github'];
+  [
+    ['profile-sync-cloud-google', 'google'],
+    ['profile-sync-cloud-github', 'github'],
+  ].forEach(([id, provider]) => {
+    const button = document.getElementById(id);
+    if (!button) return;
+    button.classList.toggle('hidden', pending || !providers.includes(provider));
+  });
+  document.getElementById('profile-sync-cloud-cancel')?.classList.toggle('hidden', !pending);
+  const billing = document.getElementById('profile-sync-cloud-billing');
+  if (billing) {
+    const account = info.account;
+    billing.classList.toggle(
+      'hidden',
+      !account || !info.billingAvailable || account.entitlementReason === 'open'
+    );
+    billing.textContent = account?.hasBillingAccount ? t('Manage Subscription') : t('Subscribe');
+  }
+}
+
+function updateProfileSyncProviderRows() {
+  const cloud = isCloudSyncSelected();
+  document.getElementById('profile-sync-folder-row')?.classList.toggle('hidden', cloud);
+  document.getElementById('profile-sync-cloud-account')?.classList.toggle('hidden', !cloud);
+  document.getElementById('profile-sync-cloud-encryption-help')?.classList.toggle('hidden', !cloud);
+  if (cloud) renderCloudSyncAccount();
+}
+
+async function refreshCloudSyncAccount() {
+  if (!window.electronAPI?.getCloudSyncAccount) return;
+  try {
+    const info = await window.electronAPI.getCloudSyncAccount();
+    // A full answer replaces what was known, so nothing from an earlier account lingers.
+    if (info) cloudSyncInfo = { ...info, signInPending: !!cloudSyncInfo?.signInPending };
+  } catch (error) {
+    log.error('Failed to load Cloud Sync account:', error);
+  }
+  syncCloudSyncProviderOption(!!cloudSyncInfo?.available);
+  updateProfileSyncProviderRows();
+}
+
+async function signInToCloudSync(provider) {
+  cloudSyncInfo = { ...(cloudSyncInfo || {}), signInPending: true, error: '' };
+  renderCloudSyncAccount();
+  try {
+    const result = await window.electronAPI.signInToCloudSync(provider);
+    if (result?.success) {
+      showToast(t('Signed in to Cloud Sync.'), 'success', 2500);
+    } else if (result?.code !== 'CLOUD_SYNC_SIGN_IN_CANCELED') {
+      showToast(result?.error || t('Sign-in did not complete. Try again.'), 'error', 3500);
+    }
+    if (result?.status) updateProfileSyncStatusUi(result.status);
+  } catch (error) {
+    log.error('Cloud Sync sign-in failed:', error);
+    showToast(t('Sign-in did not complete. Try again.'), 'error', 3500);
+  } finally {
+    cloudSyncInfo = { ...(cloudSyncInfo || {}), signInPending: false };
+    await refreshCloudSyncAccount();
+  }
+}
+
+async function signOutOfCloudSync() {
+  const confirmed = await showConfirm(
+    t('Sign Out'),
+    t(
+      'Sign out of Cloud Sync? This computer stops syncing until you sign in again. Your synced settings stay in your account.'
+    ),
+    { confirmText: t('Sign Out'), confirmClass: 'btn-primary' }
+  );
+  if (!confirmed) return;
+  try {
+    const result = await window.electronAPI.signOutOfCloudSync();
+    if (result?.status) updateProfileSyncStatusUi(result.status);
+  } catch (error) {
+    log.error('Cloud Sync sign-out failed:', error);
+  }
+  cloudSyncInfo = { ...(cloudSyncInfo || {}), account: null };
+  await refreshCloudSyncAccount();
+}
+
+async function openCloudSyncBilling() {
+  try {
+    const result = await window.electronAPI.openCloudSyncBilling();
+    if (!result?.success) {
+      showToast(result?.error || t('The subscription page could not be opened.'), 'error', 3500);
+      return;
+    }
+    showToast(t('Finish in your browser, then come back here.'), 'info', 3500);
+    // The subscription changes in the browser; pick it up when the app is back.
+    window.addEventListener('focus', () => void refreshCloudSyncAccount(), { once: true });
+  } catch (error) {
+    log.error('Failed to open Cloud Sync billing:', error);
+    showToast(t('The subscription page could not be opened.'), 'error', 3500);
+  }
+}
+
+async function deleteCloudSyncAccount() {
+  const confirmed = await showConfirm(
+    t('Delete Account'),
+    t(
+      'Delete your Cloud Sync account? Your synced settings are deleted from the service and any subscription is cancelled. The settings on this computer are kept.'
+    ),
+    { confirmText: t('Delete Account'), confirmClass: 'btn-danger' }
+  );
+  if (!confirmed) return;
+  try {
+    const result = await window.electronAPI.deleteCloudSyncAccount();
+    if (!result?.success) {
+      showToast(result?.error || t('The account could not be deleted.'), 'error', 4000);
+      return;
+    }
+    showToast(t('Your Cloud Sync account was deleted.'), 'success', 3000);
+    if (result.status) updateProfileSyncStatusUi(result.status);
+  } catch (error) {
+    log.error('Failed to delete Cloud Sync account:', error);
+    showToast(t('The account could not be deleted.'), 'error', 4000);
+  }
+  cloudSyncInfo = { ...(cloudSyncInfo || {}), account: null };
+  await refreshCloudSyncAccount();
+}
+
 function bindProfileSyncSettingsUi() {
+  const providerSelect = document.getElementById('profile-sync-provider');
+  if (providerSelect) {
+    providerSelect.onchange = () => {
+      updateProfileSyncProviderRows();
+      if (isCloudSyncSelected()) void refreshCloudSyncAccount();
+    };
+  }
+  const cloudButtons = {
+    'profile-sync-cloud-google': () => signInToCloudSync('google'),
+    'profile-sync-cloud-github': () => signInToCloudSync('github'),
+    'profile-sync-cloud-cancel': () => window.electronAPI.cancelCloudSyncSignIn(),
+    'profile-sync-cloud-billing': () => openCloudSyncBilling(),
+    'profile-sync-cloud-sign-out': () => signOutOfCloudSync(),
+    'profile-sync-cloud-delete': () => deleteCloudSyncAccount(),
+  };
+  Object.entries(cloudButtons).forEach(([id, handler]) => {
+    const button = document.getElementById(id);
+    if (button) button.onclick = () => void handler();
+  });
+
   const enabled = document.getElementById('profile-sync-enabled');
   if (enabled) {
     enabled.onchange = () => {
@@ -4480,7 +4701,9 @@ async function openSettings(uiHooks) {
     bindProfileSyncSettingsUi();
     bindSupportDevelopmentUi();
     await refreshProfileSyncStatusUi({ syncFormState: true });
+    updateProfileSyncProviderRows();
     void refreshProfileSyncBackups();
+    void refreshCloudSyncAccount();
 
     const storedOpacity = Math.max(0.5, Math.min(1, state.CONFIG.opacity || 0.95));
     const sliderScale = opacityToSliderValue(storedOpacity);
@@ -5164,8 +5387,12 @@ async function saveSettings() {
     const nextProfileSync = ensureProfileSyncConfig(nextConfig);
     nextProfileSync.enabled = !!profileSyncEnabled?.checked;
     nextProfileSync.provider = profileSyncProvider?.value || 'cloudFile';
+    // Cloud Sync has no folder; the folder-sync path is kept for switching back.
+    const usesCloudSync = nextProfileSync.provider === CLOUD_SYNC_PROVIDER;
     const syncFolderPath = (profileSyncFolderPath?.value || '').trim();
-    nextProfileSync.cloudFilePath = buildProfileSyncFilePathFromFolder(syncFolderPath);
+    nextProfileSync.cloudFilePath = usesCloudSync
+      ? prevProfileSync.cloudFilePath || ''
+      : buildProfileSyncFilePathFromFolder(syncFolderPath);
     nextProfileSync.syncScope = readProfileSyncScopeFromForm();
     const parsedIntervalMinutes = Number.parseInt(profileSyncInterval?.value || '', 10);
     nextProfileSync.intervalMinutes =
@@ -5177,14 +5404,18 @@ async function saveSettings() {
       nextProfileSync.encryptionEnabled && !!profileSyncRememberPassphrase?.checked;
     nextProfileSync.passphraseEncrypted = false;
 
-    if (nextProfileSync.enabled && !nextProfileSync.cloudFilePath) {
+    if (nextProfileSync.enabled && !usesCloudSync && !nextProfileSync.cloudFilePath) {
       showToast(t('Choose a sync folder before enabling profile sync.'), 'error', 3200);
       return;
+    }
+    if (nextProfileSync.enabled && usesCloudSync && !cloudSyncInfo?.signedIn) {
+      showToast(t('Sign in to Cloud Sync to start syncing.'), 'warning', 3200);
     }
 
     const previousSyncFilePath = (prevProfileSync.cloudFilePath || '').trim();
     const nextSyncFilePath = (nextProfileSync.cloudFilePath || '').trim();
     const syncPathChanged =
+      !usesCloudSync &&
       nextProfileSync.enabled &&
       !!previousSyncFilePath &&
       !!nextSyncFilePath &&

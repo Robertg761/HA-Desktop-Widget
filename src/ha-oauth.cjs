@@ -744,4 +744,6 @@ module.exports = {
   parseTokenResponse,
   probeHomeAssistantWithElectronNet,
   requestFormWithElectronNet,
+  sendCallbackPage,
+  statesMatch,
 };

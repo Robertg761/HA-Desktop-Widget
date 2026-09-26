@@ -1932,7 +1932,73 @@
                       <option value="syncthing">Syncthing</option>
                     </select>
                   </div>
-                  <div class="form-group setting-row setting-row-stacked">
+                  <div
+                    class="form-group setting-row setting-row-stacked hidden"
+                    id="profile-sync-cloud-account"
+                  >
+                    <div class="setting-text">
+                      <span class="setting-label" data-i18n="Cloud Sync account"
+                        >Cloud Sync account</span
+                      >
+                      <p class="form-help" id="profile-sync-cloud-summary" aria-live="polite"></p>
+                    </div>
+                    <div class="profile-sync-actions" id="profile-sync-cloud-signed-out">
+                      <button
+                        type="button"
+                        id="profile-sync-cloud-google"
+                        class="btn btn-secondary"
+                        data-i18n="Sign in with Google"
+                      >
+                        Sign in with Google
+                      </button>
+                      <button
+                        type="button"
+                        id="profile-sync-cloud-github"
+                        class="btn btn-secondary"
+                        data-i18n="Sign in with GitHub"
+                      >
+                        Sign in with GitHub
+                      </button>
+                      <button
+                        type="button"
+                        id="profile-sync-cloud-cancel"
+                        class="btn btn-secondary hidden"
+                        data-i18n="Cancel Sign-in"
+                      >
+                        Cancel Sign-in
+                      </button>
+                    </div>
+                    <div class="profile-sync-actions hidden" id="profile-sync-cloud-signed-in">
+                      <button
+                        type="button"
+                        id="profile-sync-cloud-billing"
+                        class="btn btn-primary"
+                        data-i18n="Subscribe"
+                      >
+                        Subscribe
+                      </button>
+                      <button
+                        type="button"
+                        id="profile-sync-cloud-sign-out"
+                        class="btn btn-secondary"
+                        data-i18n="Sign Out"
+                      >
+                        Sign Out
+                      </button>
+                      <button
+                        type="button"
+                        id="profile-sync-cloud-delete"
+                        class="btn btn-secondary"
+                        data-i18n="Delete Account..."
+                      >
+                        Delete Account...
+                      </button>
+                    </div>
+                  </div>
+                  <div
+                    class="form-group setting-row setting-row-stacked"
+                    id="profile-sync-folder-row"
+                  >
                     <div class="setting-text">
                       <label for="profile-sync-folder-path" data-i18n="Sync folder"
                         >Sync folder</label
@@ -2081,6 +2147,15 @@
                       >
                         Encrypts the sync file with AES-256-GCM. Every computer needs the same
                         passphrase.
+                      </p>
+                      <p
+                        class="form-help hidden"
+                        id="profile-sync-cloud-encryption-help"
+                        data-i18n="With Cloud Sync, encryption means the service stores only data it cannot read, and nobody can recover it if the passphrase is lost. Without it, your settings are stored readable on the service."
+                      >
+                        With Cloud Sync, encryption means the service stores only data it cannot
+                        read, and nobody can recover it if the passphrase is lost. Without it, your
+                        settings are stored readable on the service.
                       </p>
                     </div>
                     <input type="checkbox" id="profile-sync-encryption-enabled" />

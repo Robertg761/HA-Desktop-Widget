@@ -91,6 +91,12 @@ describe('preload Electron API', () => {
       ['clearProfileSyncPassphrase', [], 'clear-profile-sync-passphrase', []],
       ['resolveProfileSyncFirstEnable', ['merge'], 'resolve-profile-sync-first-enable', ['merge']],
       ['listProfileSyncBackups', [], 'list-profile-sync-backups', []],
+      ['getCloudSyncAccount', [], 'get-cloud-sync-account', []],
+      ['signInToCloudSync', ['google'], 'cloud-sync-sign-in', ['google']],
+      ['cancelCloudSyncSignIn', [], 'cloud-sync-cancel-sign-in', []],
+      ['signOutOfCloudSync', [], 'cloud-sync-sign-out', []],
+      ['openCloudSyncBilling', [], 'cloud-sync-open-billing', []],
+      ['deleteCloudSyncAccount', [], 'cloud-sync-delete-account', []],
       [
         'restoreProfileSyncBackup',
         ['local-profile-1.json'],

@@ -246,6 +246,14 @@ function createMockElectronAPI() {
     ),
     clearProfileSyncPassphrase: jest.fn(() => Promise.resolve({ success: true })),
     resolveProfileSyncFirstEnable: jest.fn((_choice) => Promise.resolve({ success: true })),
+    getCloudSyncAccount: jest.fn(() =>
+      Promise.resolve({ success: true, available: false, signedIn: false, providers: [] })
+    ),
+    signInToCloudSync: jest.fn((_provider) => Promise.resolve({ success: true })),
+    cancelCloudSyncSignIn: jest.fn(() => Promise.resolve({ success: true })),
+    signOutOfCloudSync: jest.fn(() => Promise.resolve({ success: true })),
+    openCloudSyncBilling: jest.fn(() => Promise.resolve({ success: true, opened: 'checkout' })),
+    deleteCloudSyncAccount: jest.fn(() => Promise.resolve({ success: true })),
 
     // Window Operations
     setOpacity: jest.fn((_opacity) => Promise.resolve()),

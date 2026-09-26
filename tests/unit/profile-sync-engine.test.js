@@ -16,6 +16,11 @@ const profileSyncCore = require('../../profile-sync-core.js');
 const { requireExistingSyncParentDirectory } = require('../../src/cloud-sync-path.cjs');
 const rewriteTransaction = require('../../src/profile-sync-rewrite-transaction.cjs');
 const { formatTemplate } = require('../../src/i18n-main.cjs');
+const {
+  DAY,
+  createSignedInClient,
+  createWorld: createCloudWorld,
+} = require('../helpers/cloud-sync-world.js');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
@@ -100,7 +105,10 @@ function baseContent() {
  * @param {object} [options.profileSync] profileSync overrides
  * @param {number} [options.clockOffsetMs] how far this device's clock is ahead
  */
-function createDevice(name, { content = baseContent(), profileSync = {}, clockOffsetMs = 0 } = {}) {
+function createDevice(
+  name,
+  { content = baseContent(), profileSync = {}, clockOffsetMs = 0, cloudClient = null } = {}
+) {
   const userData = path.join(tempRoot, `${name}-userData`);
   fs.mkdirSync(userData);
   const RealDate = Date;
@@ -138,6 +146,14 @@ function createDevice(name, { content = baseContent(), profileSync = {}, clockOf
     isPlainObject: (value) => !!value && typeof value === 'object' && !Array.isArray(value),
     isPathInsideDirectory: (target, dir) => !path.relative(dir, target).startsWith('..'),
     preservedEncryptedTokenForRecovery: null,
+    // Cloud Sync: a real client against the test service, or a build without it.
+    getCloudSyncClient: () =>
+      cloudClient || {
+        isAvailable: () => false,
+        getStoredAccount: () => null,
+        serviceUrl: '',
+        signInController: null,
+      },
     mainWindow: null,
     pushes: [],
     savedSnapshots: 0,
@@ -147,7 +163,8 @@ function createDevice(name, { content = baseContent(), profileSync = {}, clockOf
     `${PROFILE_SYNC_CONSTANTS}
      var profileSyncRuntime = {
        inFlight: false, pushDebounceTimer: null, intervalTimer: null, pendingPullEchoHash: null,
-       pendingPullEchoProfile: null, pendingPulls: [], damagedConflictSections: [],
+       pendingPullEchoProfile: null, pendingPulls: [], hostedRevision: null,
+       damagedConflictSections: [],
        conflictCopies: [], lastOpportunisticSyncAt: 0, needsResolution: false,
        pendingRemoteEnvelope: null, pendingRemoteIdentity: null, localProfileHash: null,
        localProfileUpdatedAt: null, localSectionHashes: {}, conflictSections: [],
@@ -1165,5 +1182,110 @@ describe('profile sync engine', () => {
     expect(status.lastRemoteUpdatedByThisDevice).toBe(false);
     expect(status.lastSuccessfulSyncAt).toEqual(expect.any(String));
     expect(status.lastRunSummary.pulled).toEqual(['visualPersonalization']);
+  });
+});
+
+describe('profile sync through Cloud Sync', () => {
+  async function createCloudPair({ profileSync = {} } = {}) {
+    const world = createCloudWorld();
+    world.googleUsers.set('g-code', { sub: 'google-1', email: 'me@x.io', email_verified: true });
+    const clientFor = async (name) => {
+      const userDataPath = path.join(tempRoot, `${name}-cloud`);
+      fs.mkdirSync(userDataPath);
+      return createSignedInClient(world, { userDataPath });
+    };
+    const desktopClient = await clientFor('desktop');
+    const laptopClient = await clientFor('laptop');
+    const options = (cloudClient) => ({
+      cloudClient,
+      profileSync: { provider: 'hostedAccount', ...profileSync },
+    });
+    const desktop = createDevice('desktop', options(desktopClient));
+    const laptop = createDevice('laptop', options(laptopClient));
+    await desktop.sync();
+    await laptop.sync();
+    const stored = () => {
+      const row = world.env.DB.raw.prepare('SELECT revision, body FROM profiles').get();
+      return row ? { revision: row.revision, envelope: JSON.parse(row.body) } : null;
+    };
+    return { world, desktop, laptop, desktopClient, laptopClient, stored };
+  }
+
+  test('two computers signed in to one account keep each other up to date', async () => {
+    const { desktop, laptop, stored } = await createCloudPair();
+    const before = stored().revision;
+    laptop.edit((config) => {
+      config.opacity = 0.7;
+    });
+    expect((await laptop.sync()).pushed).toEqual(['visualPersonalization']);
+    expect(stored().revision).toBe(before + 1);
+
+    await desktop.sync();
+    expect(desktop.config.opacity).toBe(0.7);
+    // No sync folder, so no folder warnings or conflict copies.
+    expect(desktop.status()).toMatchObject({ folderWarnings: [], conflictCopies: [] });
+    expect(desktop.status().cloudSync).toMatchObject({ signedIn: true, email: 'me@x.io' });
+  });
+
+  test('an encrypted profile reaches the service only as ciphertext', async () => {
+    const { desktop, laptop, stored } = await createCloudPair({
+      profileSync: { encryptionEnabled: true, __passphrase: 'correct horse battery' },
+    });
+    desktop.edit((config) => {
+      config.opacity = 0.55;
+    });
+    await desktop.sync();
+    const { envelope } = stored();
+    expect(envelope.payload.encrypted).toBe(true);
+    expect(JSON.stringify(envelope)).not.toContain('0.55');
+    await laptop.sync();
+    expect(laptop.config.opacity).toBe(0.55);
+  });
+
+  test('a write that loses a race is reported, not forced over the other device', async () => {
+    const { desktop, laptop, desktopClient, stored } = await createCloudPair();
+    laptop.edit((config) => {
+      config.opacity = 0.6;
+    });
+    desktop.edit((config) => {
+      config.favoriteEntities = ['light.kitchen', 'light.porch'];
+    });
+    // The laptop's push lands between the desktop's last read and its write.
+    const realWrite = desktopClient.writeProfile.bind(desktopClient);
+    desktopClient.writeProfile = async (...args) => {
+      desktopClient.writeProfile = realWrite;
+      await laptop.sync();
+      return realWrite(...args);
+    };
+    await expect(desktop.sync()).rejects.toThrow(
+      'Sync file kept changing on the other device; try again'
+    );
+    expect(stored().envelope.payload.sections.visualPersonalization.data.opacity).toBe(0.6);
+
+    // The next run merges both edits.
+    await desktop.sync();
+    const { sections } = stored().envelope.payload;
+    expect(sections.visualPersonalization.data.opacity).toBe(0.6);
+    expect(sections.quickAccessLayout.data.favoriteEntities).toEqual([
+      'light.kitchen',
+      'light.porch',
+    ]);
+    expect(desktop.config.opacity).toBe(0.6);
+  });
+
+  test('a signed-out computer stops syncing and says why', async () => {
+    const { desktop, desktopClient } = await createCloudPair();
+    await desktopClient.signOut();
+    await expect(desktop.sync()).rejects.toThrow('Sign in to Cloud Sync to keep syncing');
+    expect(desktop.status().cloudSync).toMatchObject({ signedIn: false });
+  });
+
+  test('after the trial, saving says a subscription is needed', async () => {
+    const { world, desktop } = await createCloudPair();
+    world.advance(15 * DAY);
+    desktop.edit((config) => {
+      config.opacity = 0.5;
+    });
+    await expect(desktop.sync()).rejects.toThrow('Cloud Sync needs a subscription to save changes');
   });
 });

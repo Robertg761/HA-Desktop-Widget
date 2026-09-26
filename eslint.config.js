@@ -26,6 +26,7 @@ module.exports = [
       'babel.config.js',
       'scripts/*.cjs',
       'scripts/**/*.cjs',
+      'src/cloud-sync-client.cjs',
       'src/desktop-pin-ipc.cjs',
       'src/ha-oauth.cjs',
       'src/ha-protocol.cjs',
