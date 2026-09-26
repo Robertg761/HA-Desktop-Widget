@@ -12,7 +12,8 @@ import qs.Ui
 // Settings, inline on this widget's entry in ~/.config/omarchy/shell.json:
 //   "entities":    entity ids listed in the panel (default: the widget's Quick Access favorites)
 //   "barEntities": up to four entity ids whose values are shown in the bar itself
-//   "command":     the widget's command when it is not running (default: ha-desktop-widget)
+//   "command":     the widget's command when it is not running (default: the command the
+//                  widget last saved, then ha-desktop-widget)
 Panel {
   id: root
   moduleName: "com.github.robertg761.hadesktopwidget"
@@ -62,12 +63,17 @@ Panel {
 
   // Runs the widget's own command line. A running widget receives it through its
   // single-instance handler; otherwise the command starts the widget.
+  // A running widget is reached through its own command. Otherwise an explicit "command"
+  // setting wins over the remembered one, so a wrapper or replacement can be configured.
   function launch(extraArgs) {
+    var configured = String(setting("command", "")).trim()
     var argv = running && Array.isArray(status.launch) && status.launch.length > 0
       ? status.launch.slice()
-      : Array.isArray(savedLaunch) && savedLaunch.length > 0
-        ? savedLaunch.slice()
-        : [String(setting("command", "ha-desktop-widget"))]
+      : configured !== ""
+        ? [configured]
+        : Array.isArray(savedLaunch) && savedLaunch.length > 0
+          ? savedLaunch.slice()
+          : ["ha-desktop-widget"]
     Quickshell.execDetached(argv.concat(extraArgs))
   }
 

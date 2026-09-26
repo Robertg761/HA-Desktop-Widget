@@ -30,6 +30,8 @@ The panel lists the first twelve Quick Access favorites until you choose entitie
 }
 ```
 
+To start the widget through a wrapper or a different executable when it is not running, add `"command"` to the same entry; otherwise the bar uses the command the widget last saved, then `ha-desktop-widget`.
+
 The widget must be running for the plugin to show values; the plugin never receives Home Assistant credentials. The widget publishes the chosen entities to `$XDG_RUNTIME_DIR/ha-desktop-widget/omarchy-bar.json`, and the plugin sends its actions through the widget's command line. Updating the widget also updates an installed plugin. Omarchy 3 uses waybar, which cannot load these plugins; the tray icon is available there instead.
 
 ## Shortcuts

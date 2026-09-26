@@ -70,6 +70,13 @@ describe('Omarchy bar plugin package', () => {
     // The launch command it keeps for a widget that has quit.
     expect(qml).toContain('"/ha-desktop-widget/omarchy-bar-launch.json"');
     expect(qml).toContain('parsed.launch');
+    // Offline, an explicit command setting wins over the remembered one.
+    const launchBody = qml.slice(
+      qml.indexOf('function launch('),
+      qml.indexOf('function toggleWidget')
+    );
+    expect(launchBody.indexOf('configured !== ""')).toBeGreaterThan(-1);
+    expect(launchBody.indexOf('configured !== ""')).toBeLessThan(launchBody.indexOf('savedLaunch'));
     ['updatedAt', 'connection', 'launch', 'panel', 'bar'].forEach((field) =>
       expect(qml).toContain(`status.${field}`)
     );
