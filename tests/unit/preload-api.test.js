@@ -105,6 +105,7 @@ describe('preload Electron API', () => {
       ['setLoginItemSettings', [true], 'set-login-item-settings', [true]],
       ['minimizeWindow', [], 'minimize-window', []],
       ['focusWindow', [], 'focus-window', []],
+      ['showWindow', [], 'show-window', []],
       ['focusDesktopPin', ['light.office'], 'focus-desktop-pin', ['light.office']],
       ['restartApp', [], 'restart-app', []],
       ['quitApp', [], 'quit-app', []],

@@ -9154,6 +9154,14 @@ ipcMain.handle('minimize-window', (event) => {
   }
 });
 
+// A click on one of the widget's desktop notifications. Shows it the way the tray does, which
+// also brings back a widget hidden to the tray and keeps a desktop-layer widget raised.
+ipcMain.handle('show-window', (event) => {
+  const sender = authorizeIpcSender(event, 'show-window');
+  if (!sender) return rejectUnauthorizedIpc('show-window');
+  return showMainWindowFromTray();
+});
+
 ipcMain.handle('focus-window', (event) => {
   const sender = authorizeIpcSender(event, 'focus-window');
   if (!sender) return rejectUnauthorizedIpc('focus-window');

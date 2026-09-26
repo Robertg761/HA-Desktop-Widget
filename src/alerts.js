@@ -65,12 +65,17 @@ function showEntityAlert(message, entityId) {
     if (Notification.permission === 'granted') {
       const entity = state.STATES[entityId];
       const icon = entity ? getEntityIcon(entity) : '❓';
-      new Notification(t('Home Assistant Alert'), {
+      const notification = new Notification(t('Home Assistant Alert'), {
         body: message,
         icon: icon,
         tag: `ha-alert-${entityId}`,
         requireInteraction: false,
       });
+      notification.onclick = () => {
+        window.electronAPI?.showWindow?.().catch((error) => {
+          console.error('Error showing widget from alert:', error);
+        });
+      };
     }
 
     showToast(message, 'info', 4000);
