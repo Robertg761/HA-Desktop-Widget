@@ -623,8 +623,47 @@ describe('profile-sync-core', () => {
       expect(Object.keys((await decodeAlerts({ enabled: 'yes' })).malformed)).toEqual([
         'automationAlerts',
       ]);
+      expect(
+        Object.keys(
+          (await decodeAlerts({ enabled: true, alerts: { 'sensor.temp': null } })).malformed
+        )
+      ).toEqual(['automationAlerts']);
       // Left out is fine: the receiving device fills in its default.
       expect((await decodeAlerts({ enabled: true })).malformed).toEqual({});
+      expect(
+        (await decodeAlerts({ enabled: true, alerts: { 'sensor.temp': { onStateChange: true } } }))
+          .malformed
+      ).toEqual({});
+    });
+
+    test('checks the items of lists and maps the app reads directly', async () => {
+      const decodeLayout = (data) =>
+        decodeEnvelopeSections({
+          schemaVersion: 3,
+          minReaderVersion: 3,
+          updatedAt: '2026-02-23T08:00:00.000Z',
+          updatedByDeviceId: 'device-a',
+          payload: {
+            sections: {
+              quickAccessLayout: { updatedAt: '2026-02-23T08:00:00.000Z', data },
+            },
+          },
+        });
+      const damaged = async (data) =>
+        Object.keys((await decodeLayout(data)).malformed).includes('quickAccessLayout');
+      expect(await damaged({ favoriteEntities: ['light.kitchen', 7] })).toBe(true);
+      expect(await damaged({ customTabs: [null] })).toBe(true);
+      expect(await damaged({ customEntityNames: { 'light.kitchen': { name: 'x' } } })).toBe(true);
+      expect(await damaged({ quickAccessTileOptions: { 'light.kitchen': 'wide' } })).toBe(true);
+      expect(
+        await damaged({
+          favoriteEntities: ['light.kitchen'],
+          customTabs: [{ id: 'home', entities: [] }],
+          customEntityNames: { 'light.kitchen': 'Kitchen' },
+          quickAccessTileOptions: { 'light.kitchen': { size: 'wide' } },
+          tileSpans: { 'light.kitchen': 2 },
+        })
+      ).toBe(false);
     });
 
     test('refuses a file that requires a newer reader whatever schema it claims', () => {
