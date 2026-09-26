@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Show a status line on every Quick Access tile, such as Off, Closed, Locked, or Home, and keep it current as states change.
 - Add subtle motion: a highlight slides between Quick Access pages and settings sections, tiles slide in from the side of the page you pick, a tile's icon swells briefly when it turns on, and settings pages and disclosures ease in. All of it is off when the system asks for reduced motion.
 - Add a visual snapshot workflow that screenshots the real app on Windows, macOS, and Linux against a mock Home Assistant, and `npm run snapshots` to run it locally.
+- Restore what profile sync replaced from Settings → Advanced → Backups. A restore applies on this computer and then syncs to the others, and the settings it replaces are backed up in turn.
+- Add Sync now, which merges both sides, and 30-minute and hourly sync intervals.
 
 ### Changed
 
@@ -28,9 +30,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Show a proper empty state with an Open Settings button when Quick Access has no connection yet.
 - Keep the camera viewer a fixed 16:9 frame, with a "Preview unavailable" message instead of a broken image, and a readable state and update time.
 - Pick black or white text on accent-coloured buttons per accent, so dark custom accents stay readable.
+- Profile sync is no longer experimental. It merges section by section (Quick Access and layout, appearance, alerts, weather and media): a section changed on one computer reaches the others whatever their clocks say, and changes to different sections on two computers are both kept. When two computers change the same section, the newer change wins and the other is backed up.
+- Each computer chooses its own sync scope. Pulling no longer switches this computer to another computer's scope, and pushing leaves the sections other computers sync untouched.
+- Keep desktop pins, hotkeys, the open Quick Access page, text and control size, and Omarchy theme following on each computer instead of syncing them.
+- Rebuild the Profile Syncing settings as rows like the rest of Settings, with a status line in plain sentences, the sections that differ named in the first-sync choice, and confirmations before Sync Up and Sync Down replace one side.
+- Write version 3 of the sync file. 4.0 reads 3.x sync files and upgrades them on its first change; 3.x cannot read version 3 and stops rather than overwriting it, so update every computer.
 
 ### Fixed
 
+- Stop a settings change from overwriting another computer's newer sync change that had not arrived yet, and stop a computer whose clock runs ahead from undoing other computers' changes.
+- Refuse to write the sync file unencrypted, or with an old passphrase, from a computer whose encryption settings no longer match it; say what to change instead.
+- Keep background sync running after a failed first sync at login, such as when the sync folder is not mounted yet.
+- Keep a 30- or 60-minute sync interval when saving Settings; it was reset to 5 minutes.
+- Keep changes another computer made while Settings was open when you save.
+- Refuse to write a sync file larger than every computer will read.
+- Show warnings in Settings in the warning colour; they had taken the help text's colour.
 - Quit cleanly when Linux shuts down, restarts, or logs out, instead of holding up the session until the system kills the widget. The settings are saved first, and the widget never stops on a save-error dialog during shutdown.
 - Lay pinned desktop tiles out as designed again: the Quick Access tile rules had been overriding their padding, corners and alignment, so text ran into the rounded corners, a large label spilled over the top-right corner, and bottom buttons were cut off. Pins also stay readable in the light theme, where their text had turned white on light panels.
 - Calm the Quick Access edit mode: the pin, rename and remove buttons are small glass circles that take their colour on hover, the pin chip is an icon so longer translations fit, and sensor icons no longer sit under the buttons.
