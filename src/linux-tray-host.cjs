@@ -14,8 +14,6 @@ const DBUS_OBJECT_PATH = '/org/freedesktop/DBus';
 const DBUS_INTERFACE = 'org.freedesktop.DBus';
 const WATCHER_OBJECT_PATH = '/StatusNotifierWatcher';
 const PROPERTIES_INTERFACE = 'org.freedesktop.DBus.Properties';
-// Chromium registers each tray icon under org.kde.StatusNotifierItem-<pid>-<n>.
-const OWN_ITEM_MARKER = `StatusNotifierItem-${process.pid}-`;
 
 /**
  * Call `onAppeared` once if the StatusNotifierWatcher is absent now and shows up later, or if it
@@ -35,7 +33,7 @@ function watchForStatusNotifierWatcher({
     return require('dbus-next').sessionBus({ busAddress, negotiateUnixFd: false });
   },
   dbus = null,
-  ownItemMarker = OWN_ITEM_MARKER,
+  ownPid = process.pid,
   verifyDelayMs = 3000,
   delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 } = {}) {
@@ -56,6 +54,7 @@ function watchForStatusNotifierWatcher({
 
   // true or false when the watcher lists its items, null when it cannot say.
   async function isOwnItemRegistered(dbusModule) {
+    let items;
     try {
       const reply = await bus.call(
         new dbusModule.Message({
@@ -67,12 +66,37 @@ function watchForStatusNotifierWatcher({
           body: [WATCHER_BUS_NAME, 'RegisteredStatusNotifierItems'],
         })
       );
-      const items = reply?.body?.[0]?.value ?? reply?.body?.[0];
-      if (!Array.isArray(items)) return null;
-      return items.some((item) => typeof item === 'string' && item.includes(ownItemMarker));
+      items = reply?.body?.[0]?.value ?? reply?.body?.[0];
     } catch {
       return null;
     }
+    if (!Array.isArray(items)) return null;
+    // Items are "<bus name>/<object path>". Older Chromium owns a well-known name carrying its
+    // pid (org.kde.StatusNotifierItem-<pid>-<n>); current Chromium registers from its unique
+    // connection name (":1.42/org/chromium/StatusNotifierItem/1"), so ask the bus who owns it.
+    const ownNameMarker = `StatusNotifierItem-${ownPid}-`;
+    for (const item of items) {
+      if (typeof item !== 'string' || !item) continue;
+      const service = item.split('/')[0];
+      if (!service) continue;
+      if (service.includes(ownNameMarker)) return true;
+      try {
+        const reply = await bus.call(
+          new dbusModule.Message({
+            destination: DBUS_BUS_NAME,
+            path: DBUS_OBJECT_PATH,
+            interface: DBUS_INTERFACE,
+            member: 'GetConnectionUnixProcessID',
+            signature: 's',
+            body: [service],
+          })
+        );
+        if (Number(reply?.body?.[0]) === ownPid) return true;
+      } catch {
+        // The item's owner has left the bus, so it is not this running process.
+      }
+    }
+    return false;
   }
 
   async function start() {

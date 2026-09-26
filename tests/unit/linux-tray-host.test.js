@@ -12,7 +12,7 @@ const dbus = {
   },
 };
 
-function createFakeBus({ watcherPresent, registeredItems }) {
+function createFakeBus({ watcherPresent, registeredItems, owners = {} }) {
   const bus = new EventEmitter();
   bus.calls = [];
   bus.disconnect = jest.fn();
@@ -22,6 +22,11 @@ function createFakeBus({ watcherPresent, registeredItems }) {
     if (message.member === 'Get') {
       if (registeredItems === undefined) throw new Error('No such property');
       return { body: [{ signature: 'as', value: registeredItems }] };
+    }
+    if (message.member === 'GetConnectionUnixProcessID') {
+      const pid = owners[message.body[0]];
+      if (pid === undefined) throw new Error('The connection does not exist');
+      return { body: [pid] };
     }
     return { body: [] };
   });
@@ -38,14 +43,14 @@ function ownerChanged(newOwner) {
 }
 
 const log = { info: jest.fn(), debug: jest.fn() };
-const ownItemMarker = 'StatusNotifierItem-4242-';
+const ownPid = 4242;
 const watch = (bus, onAppeared) =>
   watchForStatusNotifierWatcher({
     createBus: () => bus,
     dbus,
     log,
     onAppeared,
-    ownItemMarker,
+    ownPid,
     delay: () => Promise.resolve(),
   });
 
@@ -61,6 +66,24 @@ test('does nothing when the tray icon registered with a running bar', async () =
   expect(onAppeared).not.toHaveBeenCalled();
   expect(bus.disconnect).toHaveBeenCalled();
   bus.emit('message', ownerChanged(':1.42'));
+  expect(onAppeared).not.toHaveBeenCalled();
+});
+
+test('recognises an icon Chromium registered from its unique bus name', async () => {
+  // Electron 43 registers ":<unique name>/org/chromium/StatusNotifierItem/<n>", with no pid in
+  // the string, so the owner has to be looked up.
+  const bus = createFakeBus({
+    watcherPresent: true,
+    registeredItems: [
+      'org.freedesktop.StatusNotifierItem-777-1/StatusNotifierItem',
+      ':1.2505/org/ayatana/NotificationItem/steam',
+      ':1.15887/org/chromium/StatusNotifierItem/2',
+    ],
+    owners: { 'org.freedesktop.StatusNotifierItem-777-1': 777, ':1.15887': ownPid },
+  });
+  const onAppeared = jest.fn();
+  expect(await watch(bus, onAppeared).ready).toBe(false);
+  expect(bus.calls.filter((member) => member === 'GetConnectionUnixProcessID')).toHaveLength(3);
   expect(onAppeared).not.toHaveBeenCalled();
 });
 
@@ -111,7 +134,12 @@ test('a bus error ends the watch without throwing', async () => {
 test('recreates a tray icon that missed a bar appearing during startup', async () => {
   // The watcher arrived between the Tray's creation and this check, so Electron fell back
   // to XEmbed and our item is not among the registered ones.
-  const bus = createFakeBus({ watcherPresent: true, registeredItems: [':1.9/other'] });
+  const bus = createFakeBus({
+    watcherPresent: true,
+    // Another app's icon, and a stale entry whose owner has left the bus.
+    registeredItems: [':1.9/other', ':1.7/org/chromium/StatusNotifierItem/1'],
+    owners: { ':1.9': 99 },
+  });
   const onAppeared = jest.fn();
   expect(await watch(bus, onAppeared).ready).toBe(false);
   expect(onAppeared).toHaveBeenCalledTimes(1);
