@@ -5,6 +5,7 @@ const {
   resolveNativeThemeSource,
   hasGlobalShortcutFallback,
   isLinuxAppImage,
+  mergeChromiumFeatureList,
   resolveLinuxPasswordStoreBackend,
   shouldForceX11OzonePlatform,
   shouldUseCompositorOwnedPlacement,
@@ -453,5 +454,20 @@ describe('resolveNativeThemeSource', () => {
     );
     expect(resolveNativeThemeSource({ ui: { theme: 'dark' } }, palette)).toBe('dark');
     expect(resolveNativeThemeSource({ ui: { followOmarchy: true } }, null)).toBe('system');
+  });
+});
+
+describe('mergeChromiumFeatureList', () => {
+  it('keeps features a launcher already enabled', () => {
+    expect(mergeChromiumFeatureList('', 'GlobalShortcutsPortal')).toBe('GlobalShortcutsPortal');
+    expect(
+      mergeChromiumFeatureList(
+        'UseOzonePlatform, WaylandWindowDecorations',
+        'GlobalShortcutsPortal'
+      )
+    ).toBe('UseOzonePlatform,WaylandWindowDecorations,GlobalShortcutsPortal');
+    expect(mergeChromiumFeatureList('GlobalShortcutsPortal', 'GlobalShortcutsPortal')).toBe(
+      'GlobalShortcutsPortal'
+    );
   });
 });

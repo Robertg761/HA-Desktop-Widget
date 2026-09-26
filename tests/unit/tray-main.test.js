@@ -28,6 +28,9 @@ function loadTrayRuntime(platform) {
     },
     hideMainWindowToTray: jest.fn(),
     showMainWindowFromTray: jest.fn(),
+    toggleRaisedLayerWidget: jest.fn(),
+    isLayerShellChildProcess: false,
+    omarchyBarPublisher: null,
     mainT: (key) => key,
     resolveTrayIcon: () => 'app-icon',
     nativeImage: { createEmpty: createImage },
@@ -88,6 +91,27 @@ describe('native tray integration', () => {
     icon.on.mock.calls.find(([event]) => event === 'click')[1]({}, bounds);
     expect(runtime.windowAutoHide.consumeTrayDismissal).toHaveBeenCalledWith(bounds);
     expect(runtime.showMainWindowFromTray).not.toHaveBeenCalled();
+  });
+
+  it('raises a covered desktop-layer widget on tray click instead of hiding it', () => {
+    const runtime = loadTrayRuntime('linux');
+    runtime.isLayerShellChildProcess = true;
+    const icon = runtime.createTrayEntityIcon('sensor.office');
+    icon.on.mock.calls.find(([event]) => event === 'click')[1]({}, undefined);
+    expect(runtime.toggleRaisedLayerWidget).toHaveBeenCalledTimes(1);
+    expect(runtime.hideMainWindowToTray).not.toHaveBeenCalled();
+    // The explicit menu item still hides a visible widget.
+    const menu = runtime.buildTrayEntityContextMenu('sensor.office');
+    menu.find((item) => item.label === 'Show/Hide').click();
+    expect(runtime.hideMainWindowToTray).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps visibility-based tray clicks outside desktop-layer mode', () => {
+    const runtime = loadTrayRuntime('linux');
+    const icon = runtime.createTrayEntityIcon('sensor.office');
+    icon.on.mock.calls.find(([event]) => event === 'click')[1]({}, undefined);
+    expect(runtime.toggleRaisedLayerWidget).not.toHaveBeenCalled();
+    expect(runtime.hideMainWindowToTray).toHaveBeenCalledTimes(1);
   });
 
   it('keeps saved beta preferences dormant in stable builds', () => {
@@ -164,6 +188,7 @@ describe('owner connection lifecycle', () => {
     ['unresponsive', 'disconnected'],
   ])('marks cached pins and tray stale on %s', (eventName, expectedState) => {
     const runtime = loadTrayRuntime('linux');
+    runtime.omarchyBarPublisher = { update: jest.fn() };
     runtime.config.desktopPins = { 'light.office': {} };
     runtime.syncTrayEntitiesWithConfig();
     const handlers = new Map();
@@ -180,6 +205,8 @@ describe('owner connection lifecycle', () => {
     expect(runtime.trayEntityIcons.get('sensor.office').setToolTip).toHaveBeenLastCalledWith(
       'Office: Offline'
     );
+    // The Omarchy bar hears about it at once, not at its next heartbeat.
+    expect(runtime.omarchyBarPublisher.update).toHaveBeenCalled();
   });
 
   it('reconnects on wake even when no tray values are configured', () => {

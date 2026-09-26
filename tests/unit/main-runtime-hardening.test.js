@@ -150,8 +150,12 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).toContain("app.on('second-instance'");
     // The second launch is a request to see the widget, not to build another one.
     const secondInstanceStart = mainSource.indexOf("app.on('second-instance'");
-    const secondInstanceSource = mainSource.slice(secondInstanceStart, secondInstanceStart + 400);
+    const secondInstanceSource = mainSource.slice(secondInstanceStart, secondInstanceStart + 600);
     expect(secondInstanceSource).toContain('showMainWindowFromTray()');
+    // `--toggle` on a desktop layer raises or lowers the widget rather than hiding it.
+    expect(secondInstanceSource).toContain(
+      "if (action === 'toggle' && isLayerShellChildProcess) {\n      toggleRaisedLayerWidget();"
+    );
     expect(secondInstanceSource).not.toContain('createWindow()');
     // The losing instance must not load config, take the tray, or claim the hotkeys.
     expect(mainSource).toContain('if (!gotSingleInstanceLock) return;');
@@ -182,7 +186,7 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).toContain('Using Electron globalShortcut for Linux popup hotkeys');
     expect(mainSource).toContain('usesLinuxPopupHotkeyBackend');
     expect(mainSource).toContain(
-      "app.commandLine.appendSwitch('enable-features', 'GlobalShortcutsPortal')"
+      "app.commandLine.getSwitchValue('enable-features'),\n      'GlobalShortcutsPortal'"
     );
     expect(mainSource).toContain('linuxPopupHotkeyController.register(config.popupHotkey)');
     expect(mainSource).toContain('registeredEntityHotkeyAccelerators');

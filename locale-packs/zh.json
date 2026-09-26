@@ -2,7 +2,7 @@
   "locale": "zh",
   "displayName": "简体中文",
   "englishName": "Chinese (Simplified)",
-  "version": "1.2.37",
+  "version": "1.2.38",
   "minAppVersion": "3.4.1",
   "notes": "Simplified Chinese language pack for HA Desktop Widget.",
   "messages": {
@@ -1591,6 +1591,13 @@
     "Replace this computer’s settings with the sync file’s? This computer’s current settings are backed up first.": "用同步文件中的设置替换此电脑的设置？会先备份此电脑当前的设置。",
     "Profile sync complete.": "配置同步完成。",
     "The sync file's {{sections}} settings are damaged. Use Sync Up to replace them with this computer's; the damaged copy is backed up first.": "同步文件中的{{sections}}设置已损坏。请使用“向上同步”用此电脑的设置替换；损坏的副本会先备份。",
-    "The sync file's {{sections}} settings are damaged. Keep this computer's to repair them; the damaged copy is backed up first.": "同步文件中的{{sections}}设置已损坏。保留此电脑的设置即可修复；损坏的副本会先备份。"
+    "The sync file's {{sections}} settings are damaged. Keep this computer's to repair them; the damaged copy is backed up first.": "同步文件中的{{sections}}设置已损坏。保留此电脑的设置即可修复；损坏的副本会先备份。",
+    "Your system keyring is locked or not running, so the saved Home Assistant authorization cannot be read. Unlock the keyring, then restart the widget.": "系统密钥环已锁定或未运行，因此无法读取已保存的 Home Assistant 授权。请解锁密钥环，然后重新启动小组件。",
+    "System keyring is locked": "系统密钥环已锁定",
+    "Restart Widget": "重新启动小组件",
+    "Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.": "系统密钥环已锁定或未运行，因此无法读取已保存的 Home Assistant 令牌。请解锁密钥环，然后重新启动小组件。",
+    "The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.": "加密的令牌已保留。解锁密钥环后，重新启动小组件即可再次读取，或者你也可以在设置中重新输入令牌。",
+    "Add to Omarchy Bar": "添加到 Omarchy 栏",
+    "Could not add Home Assistant to the Omarchy bar": "无法将 Home Assistant 添加到 Omarchy 栏"
   }
 }

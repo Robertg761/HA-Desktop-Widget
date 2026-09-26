@@ -197,6 +197,76 @@ test('parses bounded theme data without executing TOML content', () => {
   expect(parseOmarchyColors('background = "oops"')).toBeNull();
   expect(parseOmarchyColors('x'.repeat(65537))).toBeNull();
 });
+// Stock Omarchy 3.8 tokyo-night: no mode, selection or light_foreground keys.
+const omarchy3TokyoNight = `accent = "#7aa2f7"
+cursor = "#c0caf5"
+foreground = "#a9b1d6"
+background = "#1a1b26"
+selection_foreground = "#c0caf5"
+selection_background = "#33467c"
+
+color0 = "#32344a"
+color15 = "#acb0d0"
+`;
+// Stock Omarchy 4 flexoki-light: uppercase hex and a mode key.
+const omarchy4FlexokiLight = `mode = "light"
+
+accent = "#205EA6"
+selection = "#CECDC3"
+muted = "#B7B5AC"
+
+background = "#FFFCF0"
+foreground = "#100F0F"
+light_foreground = "#6F6E69"
+`;
+test('reads the selection colour from Omarchy 3 and Omarchy 4 themes', () => {
+  expect(parseOmarchyColors(omarchy3TokyoNight)).toEqual({
+    background: '#1a1b26',
+    foreground: '#a9b1d6',
+    accent: '#7aa2f7',
+    selection: '#33467c',
+    border: '#a9b1d6',
+    mode: 'dark',
+  });
+  expect(parseOmarchyColors(omarchy4FlexokiLight)).toEqual({
+    background: '#fffcf0',
+    foreground: '#100f0f',
+    accent: '#205ea6',
+    selection: '#cecdc3',
+    border: '#6f6e69',
+    mode: 'light',
+  });
+});
+test('resolves theme mode in the same order as Omarchy', () => {
+  // Omarchy 3 marks light themes with a light.mode file instead of a key.
+  const latte3 = 'background = "#eff1f5"\nforeground = "#4c4f69"\naccent = "#1e66f5"\n';
+  expect(parseOmarchyColors(latte3, { lightModeMarker: true }).mode).toBe('light');
+  // An explicit key wins over the marker file.
+  expect(parseOmarchyColors(`mode = "dark"\n${latte3}`, { lightModeMarker: true }).mode).toBe(
+    'dark'
+  );
+  expect(parseOmarchyColors(`theme_type = "light"\n${palette}`).mode).toBe('light');
+  // Without either, bright backgrounds are light by summed luminance, not the red channel.
+  expect(parseOmarchyColors(latte3).mode).toBe('light');
+  expect(parseOmarchyColors(palette.replace('#112233', '#c02020')).mode).toBe('dark');
+});
+test('theme watcher picks up an Omarchy 3 light.mode marker', async () => {
+  const dir = path.join(root, 'config/omarchy/current/theme');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'colors.toml'), palette);
+  const watcher = createOmarchyThemeWatcher({
+    home: root,
+    env: { XDG_STATE_HOME: path.join(root, 'state'), XDG_CONFIG_HOME: path.join(root, 'config') },
+  });
+  try {
+    expect(watcher.get().mode).toBe('dark');
+    fs.writeFileSync(path.join(dir, 'light.mode'), '');
+    await new Promise((resolve) => setTimeout(resolve, 1800));
+    expect(watcher.get().mode).toBe('light');
+  } finally {
+    watcher.stop();
+  }
+});
 test('theme watcher follows atomic replacement and stops cleanly', async () => {
   const file = path.join(root, 'state/omarchy/current/theme/colors.toml');
   fs.mkdirSync(path.dirname(file), { recursive: true });

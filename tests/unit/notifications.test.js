@@ -132,4 +132,46 @@ describe('persistent notification helpers', () => {
     document.getElementById('close-persistent-notifications').click();
     expect(releaseFocusTrap).toHaveBeenCalledWith(modal);
   });
+
+  test('clicking a desktop notification opens the widget on its notification list', async () => {
+    document.body.innerHTML = `
+      <button id="persistent-notifications-btn"></button>
+      <span id="persistent-notifications-count"></span>
+      <div id="persistent-notifications-modal" class="modal hidden">
+        <div id="persistent-notifications-list"></div>
+        <div id="persistent-notifications-empty"></div>
+      </div>
+    `;
+    const created = [];
+    global.Notification = class {
+      constructor(title, options) {
+        this.title = title;
+        this.options = options;
+        created.push(this);
+      }
+    };
+    global.Notification.permission = 'granted';
+    window.electronAPI = { showWindow: jest.fn(() => Promise.resolve()) };
+    const websocket = require('../../src/websocket.js').default;
+
+    initializePersistentNotifications();
+    const handler = websocket.subscribeMessage.mock.calls.at(-1)[1];
+    handler({
+      type: 'added',
+      notifications: {
+        garage: {
+          notification_id: 'garage',
+          title: 'Garage',
+          message: 'Door open',
+          created_at: '2026-07-06T10:00:00Z',
+        },
+      },
+    });
+
+    expect(created).toHaveLength(1);
+    created[0].onclick();
+    expect(window.electronAPI.showWindow).toHaveBeenCalledTimes(1);
+    const modal = document.getElementById('persistent-notifications-modal');
+    expect(modal.classList.contains('hidden')).toBe(false);
+  });
 });

@@ -1584,5 +1584,12 @@
   "Replace this computer’s settings with the sync file’s? This computer’s current settings are backed up first.": "Replace this computer’s settings with the sync file’s? This computer’s current settings are backed up first.",
   "Profile sync complete.": "Profile sync complete.",
   "The sync file's {{sections}} settings are damaged. Use Sync Up to replace them with this computer's; the damaged copy is backed up first.": "The sync file's {{sections}} settings are damaged. Use Sync Up to replace them with this computer's; the damaged copy is backed up first.",
-  "The sync file's {{sections}} settings are damaged. Keep this computer's to repair them; the damaged copy is backed up first.": "The sync file's {{sections}} settings are damaged. Keep this computer's to repair them; the damaged copy is backed up first."
+  "The sync file's {{sections}} settings are damaged. Keep this computer's to repair them; the damaged copy is backed up first.": "The sync file's {{sections}} settings are damaged. Keep this computer's to repair them; the damaged copy is backed up first.",
+  "Your system keyring is locked or not running, so the saved Home Assistant authorization cannot be read. Unlock the keyring, then restart the widget.": "Your system keyring is locked or not running, so the saved Home Assistant authorization cannot be read. Unlock the keyring, then restart the widget.",
+  "System keyring is locked": "System keyring is locked",
+  "Restart Widget": "Restart Widget",
+  "Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.": "Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.",
+  "The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.": "The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.",
+  "Add to Omarchy Bar": "Add to Omarchy Bar",
+  "Could not add Home Assistant to the Omarchy bar": "Could not add Home Assistant to the Omarchy bar"
 }
