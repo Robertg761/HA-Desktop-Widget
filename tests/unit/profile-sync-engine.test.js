@@ -877,9 +877,48 @@ describe('profile sync engine', () => {
       pulls = context.appendPendingPull(pulls, { profile: { opacity: revision / 100 }, revision });
     }
     expect(pulls).toHaveLength(16);
-    // The oldest state survives; merged entries answer to the later revision.
-    expect(pulls[0]).toEqual({ profile: { opacity: 0.01 }, revision: 5 });
+    // The oldest state survives; merged entries answer to the later revision and
+    // remember where their range began.
+    expect(pulls[0]).toEqual({ profile: { opacity: 0.01 }, revision: 5, compactedFrom: 1 });
     expect(pulls[pulls.length - 1].revision).toBe(20);
+  });
+
+  test('an update built inside a compacted stretch of pulls keeps only what was touched', async () => {
+    const { desktop, laptop } = await createSyncedPair();
+    const { context } = desktop;
+    const beforePulls = context.configSnapshotVersion;
+    laptop.edit((config) => {
+      config.opacity = 0.8;
+    });
+    await laptop.sync();
+    await desktop.sync();
+    const afterFirstPull = context.configSnapshotVersion;
+    laptop.edit((config) => {
+      config.opacity = 0.7;
+    });
+    await laptop.sync();
+    await desktop.sync();
+    const pulled = context.config;
+    // Squeeze the history so both pulls share one entry, as a full history would.
+    const [first, second] = context.profileSyncRuntime.pendingPulls;
+    context.profileSyncRuntime.pendingPulls = [
+      { profile: first.profile, revision: second.revision, compactedFrom: first.revision },
+    ];
+
+    // Built after the first pull, it carries that pull's opacity. The state it
+    // started from is gone, so only the setting the user touched is kept.
+    context.config = { ...pulled, opacity: 0.8, alwaysOnTop: false };
+    expect(context.restoreProfileFromStalePullEcho(pulled, ['alwaysOnTop'], afterFirstPull)).toBe(
+      true
+    );
+    expect(context.config.opacity).toBe(0.7);
+    expect(context.config.alwaysOnTop).toBe(false);
+
+    // One built before the whole stretch is still compared exactly.
+    context.config = { ...pulled, opacity: 0.9, entityAlerts: { enabled: true, alerts: {} } };
+    expect(context.restoreProfileFromStalePullEcho(pulled, [], beforePulls)).toBe(true);
+    expect(context.config.entityAlerts.enabled).toBe(true);
+    expect(context.config.opacity).toBe(0.7);
   });
 
   test('an update built between two pulls is compared with the state it saw', async () => {

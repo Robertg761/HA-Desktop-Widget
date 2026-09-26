@@ -3892,14 +3892,24 @@ async function applySyncedProfileToConfig(pulledSections) {
 }
 
 /**
- * Adds a pull to the history, merging the two oldest entries once it is full:
- * an update built before either is still compared with the older state.
+ * Adds a pull to the history, merging the two oldest entries once it is full.
+ * The merged entry keeps the older state and where its range began: an update
+ * built before the range is still compared exactly, and one built inside it,
+ * whose starting state is gone, is handled conservatively.
  */
 function appendPendingPull(pulls, pull) {
   let next = [...(pulls || []), pull];
   while (next.length > PROFILE_SYNC_PULL_HISTORY_LIMIT) {
     const [oldest, following, ...rest] = next;
-    next = [{ profile: oldest.profile, revision: following.revision }, ...rest];
+    next = [
+      {
+        profile: oldest.profile,
+        revision: following.revision,
+        compactedFrom:
+          typeof oldest.compactedFrom === 'number' ? oldest.compactedFrom : oldest.revision,
+      },
+      ...rest,
+    ];
   }
   return next;
 }
@@ -4083,6 +4093,7 @@ function restoreProfileFromStalePullEcho(pulledConfig, touchedKeys = [], baseRev
   const pulls = profileSyncRuntime.pendingPulls || [];
   const revisionKnown = baseRevision !== null && pulls.length > 0;
   let prePullProfile;
+  let startingStateLost = false;
   if (revisionKnown) {
     // The profile the update was built from: before the first pull it missed. A
     // pull still being saved has no revision yet, and nothing has seen it.
@@ -4095,6 +4106,8 @@ function restoreProfileFromStalePullEcho(pulledConfig, touchedKeys = [], baseRev
       return false;
     }
     prePullProfile = missedPull.profile;
+    startingStateLost =
+      typeof missedPull.compactedFrom === 'number' && baseRevision >= missedPull.compactedFrom;
   } else {
     // No revision (an older renderer): checked once, against the last pull.
     if (profileSyncRuntime.pendingPullEchoHash === null) return false;
@@ -4127,10 +4140,14 @@ function restoreProfileFromStalePullEcho(pulledConfig, touchedKeys = [], baseRev
     // Built before the pull. Whatever it changed relative to the pre-pull
     // profile is a deliberate edit; everything else is stale.
     keep = new Set(touched);
-    eachSyncedSetting((key, incomingValue, prePullValue) => {
-      if (!same(incomingValue, prePullValue)) keep.add(key);
-      return true;
-    });
+    // Built inside a compacted stretch of history, the state it started from is
+    // unknown, so only settings the user touched are taken from it.
+    if (!startingStateLost) {
+      eachSyncedSetting((key, incomingValue, prePullValue) => {
+        if (!same(incomingValue, prePullValue)) keep.add(key);
+        return true;
+      });
+    }
   } else {
     // Stale when every setting the user did not touch still holds its pre-pull value.
     const stale = eachSyncedSetting(
