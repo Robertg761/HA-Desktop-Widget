@@ -44,13 +44,14 @@ function ownerChanged(newOwner) {
 
 const log = { info: jest.fn(), debug: jest.fn() };
 const ownPid = 4242;
-const watch = (bus, onAppeared) =>
+const watch = (bus, onAppeared, expectedItems = 1) =>
   watchForStatusNotifierWatcher({
     createBus: () => bus,
     dbus,
     log,
     onAppeared,
     ownPid,
+    getExpectedItemCount: () => expectedItems,
     delay: () => Promise.resolve(),
   });
 
@@ -151,4 +152,31 @@ test('leaves the tray alone when the watcher cannot list its items', async () =>
   const onAppeared = jest.fn();
   await watch(bus, onAppeared).ready;
   expect(onAppeared).not.toHaveBeenCalled();
+});
+
+test('recreates the icons when only some of them registered', async () => {
+  // A bar that appeared midway through creating the main icon and two value icons saw only
+  // the last one; the earlier two fell back to XEmbed.
+  const registeredItems = [':1.15887/org/chromium/StatusNotifierItem/3', ':1.9/other'];
+  const owners = { ':1.15887': ownPid, ':1.9': 99 };
+  const partial = createFakeBus({ watcherPresent: true, registeredItems, owners });
+  const recreate = jest.fn();
+  await watch(partial, recreate, 3).ready;
+  expect(recreate).toHaveBeenCalledTimes(1);
+  // One lookup per owner, however many icons it registered.
+  const complete = createFakeBus({
+    watcherPresent: true,
+    registeredItems: [
+      ':1.15887/org/chromium/StatusNotifierItem/1',
+      ':1.15887/org/chromium/StatusNotifierItem/2',
+      ':1.15887/org/chromium/StatusNotifierItem/3',
+    ],
+    owners,
+  });
+  const untouched = jest.fn();
+  await watch(complete, untouched, 3).ready;
+  expect(untouched).not.toHaveBeenCalled();
+  expect(complete.calls.filter((member) => member === 'GetConnectionUnixProcessID')).toHaveLength(
+    1
+  );
 });

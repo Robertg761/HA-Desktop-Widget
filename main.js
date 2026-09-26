@@ -7015,6 +7015,8 @@ function startTrayHostWatch() {
   trayHostWatch?.stop();
   trayHostWatch = watchForStatusNotifierWatcher({
     log,
+    getExpectedItemCount: () =>
+      1 + Array.from(trayEntityIcons.values()).filter((icon) => !icon.isDestroyed?.()).length,
     onAppeared: () => {
       trayHostWatch = null;
       // The bar claims the watcher name before its host registers; give it a moment.

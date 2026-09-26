@@ -34,6 +34,9 @@ function watchForStatusNotifierWatcher({
   },
   dbus = null,
   ownPid = process.pid,
+  // How many tray icons this process created: the main icon plus any live value icons. All of
+  // them must be registered, since a bar can appear midway through creating them.
+  getExpectedItemCount = () => 1,
   verifyDelayMs = 3000,
   delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 } = {}) {
@@ -53,7 +56,7 @@ function watchForStatusNotifierWatcher({
   }
 
   // true or false when the watcher lists its items, null when it cannot say.
-  async function isOwnItemRegistered(dbusModule) {
+  async function areOwnItemsRegistered(dbusModule) {
     let items;
     try {
       const reply = await bus.call(
@@ -75,26 +78,39 @@ function watchForStatusNotifierWatcher({
     // pid (org.kde.StatusNotifierItem-<pid>-<n>); current Chromium registers from its unique
     // connection name (":1.42/org/chromium/StatusNotifierItem/1"), so ask the bus who owns it.
     const ownNameMarker = `StatusNotifierItem-${ownPid}-`;
+    const expected = Math.max(1, Number(getExpectedItemCount()) || 1);
+    // Every icon of one process usually shares its connection, so ask about each owner once.
+    const ownerPids = new Map();
+    let owned = 0;
     for (const item of items) {
       if (typeof item !== 'string' || !item) continue;
       const service = item.split('/')[0];
       if (!service) continue;
-      if (service.includes(ownNameMarker)) return true;
-      try {
-        const reply = await bus.call(
-          new dbusModule.Message({
-            destination: DBUS_BUS_NAME,
-            path: DBUS_OBJECT_PATH,
-            interface: DBUS_INTERFACE,
-            member: 'GetConnectionUnixProcessID',
-            signature: 's',
-            body: [service],
-          })
-        );
-        if (Number(reply?.body?.[0]) === ownPid) return true;
-      } catch {
-        // The item's owner has left the bus, so it is not this running process.
+      if (service.includes(ownNameMarker)) {
+        owned += 1;
+      } else {
+        if (!ownerPids.has(service)) {
+          let pid = null;
+          try {
+            const reply = await bus.call(
+              new dbusModule.Message({
+                destination: DBUS_BUS_NAME,
+                path: DBUS_OBJECT_PATH,
+                interface: DBUS_INTERFACE,
+                member: 'GetConnectionUnixProcessID',
+                signature: 's',
+                body: [service],
+              })
+            );
+            pid = Number(reply?.body?.[0]);
+          } catch {
+            // The item's owner has left the bus, so it is not this running process.
+          }
+          ownerPids.set(service, pid);
+        }
+        if (ownerPids.get(service) === ownPid) owned += 1;
       }
+      if (owned >= expected) return true;
     }
     return false;
   }
@@ -141,10 +157,10 @@ function watchForStatusNotifierWatcher({
       // Give Chromium time to register, then make sure it did; an XEmbed fallback never will.
       await delay(verifyDelayMs);
       if (stopped) return false;
-      const registered = await isOwnItemRegistered(dbusModule);
+      const registered = await areOwnItemsRegistered(dbusModule);
       stop();
       if (registered === false) {
-        log.info?.('The tray icon did not register with the StatusNotifier host; recreating it');
+        log.info?.('Tray icons did not all register with the StatusNotifier host; recreating them');
         onAppeared();
       }
       return false;
