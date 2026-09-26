@@ -55,7 +55,9 @@ describe('Omarchy bar requests in the main process', () => {
     expect(handler.indexOf('getEntityToggleRequest(argv)')).toBeLessThan(
       handler.indexOf('getLaunchAction(argv)')
     );
-    expect(handler).toContain('handleOmarchyBarEntityToggle(entityToggle);\n      return;');
+    // A request during startup waits in the same queue a first-instance request uses.
+    expect(handler).toContain('pendingOmarchyBarToggle = { entityId: entityToggle');
+    expect(handler).toContain('deliverPendingOmarchyBarToggle();\n      return;');
   });
 
   it('never keeps the runtime entity list in the saved config', () => {

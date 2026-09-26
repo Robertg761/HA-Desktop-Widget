@@ -603,7 +603,9 @@ if (!gotSingleInstanceLock) {
   app.on('second-instance', (_event, argv) => {
     const entityToggle = getEntityToggleRequest(argv);
     if (entityToggle) {
-      handleOmarchyBarEntityToggle(entityToggle);
+      // Delivered at once when ready, or once startup has the connection and the entity's state.
+      pendingOmarchyBarToggle = { entityId: entityToggle, requestedAt: Date.now() };
+      deliverPendingOmarchyBarToggle();
       return;
     }
     const action = getLaunchAction(argv);
@@ -4609,6 +4611,7 @@ function loadConfig(options = {}) {
         ensureProfileSyncConfigDefaults(config);
         ensureUpdateConfigDefaults(config);
         ensureHaProfileConfigDefaults(config);
+        ensureFollowOmarchyDefault(config);
         normalizeDesktopPinsConfig(config);
         normalizeTrayEntitiesConfigInPlace(config);
 
@@ -4878,6 +4881,7 @@ function loadConfig(options = {}) {
     ensureDateTimeFormatConfigDefaults(config);
     ensureProfileSyncConfigDefaults(config);
     ensureUpdateConfigDefaults(config);
+    ensureFollowOmarchyDefault(config);
     normalizeDesktopPinsConfig(config);
     normalizeTrayEntitiesConfigInPlace(config);
   }

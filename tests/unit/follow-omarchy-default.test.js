@@ -38,6 +38,7 @@ describe('Follow Omarchy theme default', () => {
     expect(mainSource).toMatch(
       /enableInteractionDebugLogs: false,\n[^\n]*\n\s+followOmarchy: true,/
     );
-    expect(mainSource.match(/ensureFollowOmarchyDefault\(config\);/g)).toHaveLength(2);
+    // Normal load, first run or legacy migration, corrupt-config recovery, and the outer fallback.
+    expect(mainSource.match(/ensureFollowOmarchyDefault\(config\);/g)).toHaveLength(4);
   });
 });

@@ -150,7 +150,10 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).toContain("app.on('second-instance'");
     // The second launch is a request to see the widget, not to build another one.
     const secondInstanceStart = mainSource.indexOf("app.on('second-instance'");
-    const secondInstanceSource = mainSource.slice(secondInstanceStart, secondInstanceStart + 600);
+    const secondInstanceSource = mainSource.slice(
+      secondInstanceStart,
+      mainSource.indexOf('\n  });\n', secondInstanceStart)
+    );
     expect(secondInstanceSource).toContain('showMainWindowFromTray()');
     // `--toggle` on a desktop layer raises or lowers the widget rather than hiding it.
     expect(secondInstanceSource).toContain(
