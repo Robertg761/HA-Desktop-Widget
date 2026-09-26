@@ -3690,14 +3690,6 @@ function computeLocalSectionHashes(syncScope = getActiveProfileSyncScope(), sour
   );
 }
 
-async function decodeRemoteSections(envelope) {
-  const { sections } = await profileSyncCore.decodeEnvelopeSections(
-    envelope,
-    getActiveProfileSyncPassphrase()
-  );
-  return sections;
-}
-
 function pickSections(sections, keys) {
   return Object.fromEntries(keys.filter((key) => sections[key]).map((key) => [key, sections[key]]));
 }
@@ -3989,9 +3981,10 @@ function clearProfileSyncTimers() {
  * and the pulled fields are merged back over it.
  *
  * @param {object} pulledConfig config as it stood before this update, i.e. the pulled state
+ * @param {string[]} [touchedKeys] settings the user changed ('key' or 'ui.key'), kept as sent
  * @returns {boolean} whether a stale update was detected and reversed
  */
-function restoreProfileFromStalePullEcho(pulledConfig) {
+function restoreProfileFromStalePullEcho(pulledConfig, touchedKeys = []) {
   const prePullHash = profileSyncRuntime.pendingPullEchoHash;
   if (prePullHash === null || !pulledConfig) return false;
 
@@ -4004,11 +3997,23 @@ function restoreProfileFromStalePullEcho(pulledConfig) {
   );
   if (incomingHash !== prePullHash) return false;
 
+  const incoming = config;
   config = profileSyncCore.mergeSyncedProfileIntoConfig(
     config,
     profileSyncCore.projectSyncProfile(pulledConfig, scope),
     scope
   );
+  // Settings the user deliberately set (Settings reports them) are not stale,
+  // even when they equal the pre-pull values.
+  touchedKeys.forEach((key) => {
+    const [owner, field] = key.startsWith('ui.') ? [incoming.ui, key.slice(3)] : [incoming, key];
+    const target = key.startsWith('ui.') ? (config.ui = { ...(config.ui || {}) }) : config;
+    if (owner && Object.prototype.hasOwnProperty.call(owner, field)) {
+      target[field] = owner[field];
+    } else {
+      delete target[field];
+    }
+  });
   ensureProfileSyncConfigDefaults(config);
   config.profileSync.syncScope = scope;
   profileSyncRuntime.pendingPullEchoHash = null;
@@ -5210,16 +5215,22 @@ function setupProfileSyncInterval() {
  * shared history to merge from.
  */
 async function findProfileSyncConflictSections(envelope) {
-  const remoteSections = await decodeRemoteSections(envelope);
+  const { sections: remoteSections, malformed } = await profileSyncCore.decodeEnvelopeSections(
+    envelope,
+    getActiveProfileSyncPassphrase()
+  );
   const localSections = profileSyncCore.buildLocalSections(config, getActiveProfileSyncScope());
   const baseline = getProfileSyncConfig().syncBaseline || {};
+  // A damaged section also needs a choice: Keep Local replaces it after backing
+  // it up, where an automatic run would only stop.
   return Object.entries(localSections)
     .filter(
       ([key, data]) =>
-        !baseline[key] &&
-        remoteSections[key] &&
-        profileSyncCore.computeSectionHash(key, data) !==
-          profileSyncCore.computeSectionHash(key, remoteSections[key].data)
+        (malformed && Object.prototype.hasOwnProperty.call(malformed, key)) ||
+        (!baseline[key] &&
+          remoteSections[key] &&
+          profileSyncCore.computeSectionHash(key, data) !==
+            profileSyncCore.computeSectionHash(key, remoteSections[key].data))
     )
     .map(([key]) => key);
 }
@@ -6808,6 +6819,14 @@ ipcMain.handle(
     // Development demo state is an IPC-only marker. Never let an overlay renderer
     // write it back into the user's real configuration.
     delete newConfig.developmentDemo;
+    // Settings lists the synced settings the user changed, for the stale-echo
+    // guard below. It is never stored.
+    const touchedSyncKeys = Array.isArray(newConfig.profileSyncTouchedKeys)
+      ? newConfig.profileSyncTouchedKeys
+          .filter((key) => typeof key === 'string' && /^(ui\.)?[A-Za-z0-9_]{1,64}$/.test(key))
+          .slice(0, 100)
+      : [];
+    delete newConfig.profileSyncTouchedKeys;
     pruneConfig(newConfig);
     const customTabs = Array.isArray(newConfig.customTabs)
       ? newConfig.customTabs
@@ -6943,7 +6962,7 @@ ipcMain.handle(
     normalizeDesktopPinsConfig(config);
     normalizeTrayEntitiesConfigInPlace(config);
     pruneConfig(config);
-    restoreProfileFromStalePullEcho(prevConfig);
+    restoreProfileFromStalePullEcho(prevConfig, touchedSyncKeys);
     // The renderer's echo of profileSync may be stale; the content-change
     // timestamp is main-process-authoritative (saveConfig advances it on real
     // profile changes).

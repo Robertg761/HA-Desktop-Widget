@@ -382,6 +382,15 @@ describe('profile-sync-core', () => {
     );
     expect(entry.data.ui).toEqual({ theme: 'dark', futureSetting: true });
 
+    // A newer key this device pulled earlier still follows the file.
+    const again = buildPushedSectionEntry(
+      'visualPersonalization',
+      { ui: { theme: 'dark', futureSetting: 'old' } },
+      { data: { ui: { theme: 'light', futureSetting: 'new' } } },
+      { updatedAt: '2026-01-01T00:00:00.000Z', deviceId: 'device-a' }
+    );
+    expect(again.data.ui).toEqual({ theme: 'dark', futureSetting: 'new' });
+
     const layout = buildPushedSectionEntry(
       'quickAccessLayout',
       { customEntityNames: { 'light.a': 'A' } },

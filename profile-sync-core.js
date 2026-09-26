@@ -39,6 +39,26 @@ const LOCAL_ONLY_UI_KEYS = new Set([
   'followOmarchy',
 ]);
 
+// ui keys this version reads and writes. Any other ui key came from a newer
+// version, so the file's value is authoritative for it.
+const KNOWN_UI_KEYS = new Set([
+  'theme',
+  'accent',
+  'background',
+  'language',
+  'customColors',
+  'density',
+  'activeTileGlow',
+  'highContrast',
+  'opaquePanels',
+  'use24HourClock',
+  'timeFormat',
+  'dateFormat',
+  'weatherEffectsEnabled',
+  'weatherOverride',
+  ...LOCAL_ONLY_UI_KEYS,
+]);
+
 function deepClone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
@@ -379,14 +399,13 @@ function buildPushedSectionEntry(sectionKey, localData, remoteEntry, { updatedAt
     });
   }
   const data = { ...carried, ...deepClone(localData || {}) };
-  // ui is a bag of settings, so keys this device lacks come from a newer
-  // version and ride along. The other fields map entity ids, where a missing key
-  // is a deletion and must stay deleted.
+  // ui is a bag of settings: keys this version does not own come from a newer
+  // one, whose value in the file wins even if this device pulled an older copy.
+  // The other fields map entity ids, where a missing key is a deletion and must
+  // stay deleted.
   if (isObject(remoteEntry?.data?.ui) && isObject(data.ui)) {
     Object.entries(remoteEntry.data.ui).forEach(([key, value]) => {
-      if (!Object.prototype.hasOwnProperty.call(data.ui, key) && !LOCAL_ONLY_UI_KEYS.has(key)) {
-        data.ui[key] = deepClone(value);
-      }
+      if (!KNOWN_UI_KEYS.has(key)) data.ui[key] = deepClone(value);
     });
   }
   return {
@@ -688,6 +707,7 @@ module.exports = {
   SYNC_SCOPE_SECTION_FIELDS,
   SYNC_SCOPE_SECTION_KEYS,
   LOCAL_ONLY_UI_KEYS,
+  KNOWN_UI_KEYS,
   getDefaultSyncScope,
   normalizeSyncScope,
   getScopeSectionKeys,

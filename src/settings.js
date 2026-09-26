@@ -5312,6 +5312,8 @@ async function saveSettings() {
     }
 
     keepNewerSyncedSettings(nextConfig, settingsFormBaseConfig, state.CONFIG, settingsTouchedKeys);
+    // Tells main which values are deliberate, so its stale-echo guard keeps them.
+    nextConfig.profileSyncTouchedKeys = [...settingsTouchedKeys];
     const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
     applyPersistedConfigResponse(updatedConfig);
     configPersisted = true;

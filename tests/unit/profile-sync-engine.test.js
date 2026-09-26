@@ -589,6 +589,58 @@ describe('profile sync engine', () => {
     expect(repaired.sections.visualPersonalization.data.opacity).toBe(0.3);
   });
 
+  test('a damaged section on first enable is offered as a choice, and Keep Local repairs it', async () => {
+    const desktop = createDevice('desktop');
+    await desktop.sync();
+    const file = readSyncFile();
+    file.payload.sections.visualPersonalization.data = 'garbage';
+    fs.writeFileSync(syncFilePath(), JSON.stringify(file));
+
+    const laptop = createDevice('laptop');
+    const resolution = await laptop.firstEnable();
+    expect(resolution.needsResolution).toBe(true);
+    expect(laptop.status().conflictSections).toEqual(['visualPersonalization']);
+
+    // Keep Local, as the resolve handler runs it.
+    await laptop.context.runProfileSyncInternal('push', 'first_enable_resolution', {
+      expectedRemoteIdentity: laptop.context.profileSyncRuntime.pendingRemoteIdentity,
+      forceSections: [...laptop.context.profileSyncRuntime.conflictSections],
+    });
+    expect(laptop.backups('remote-profile')[0].sections.visualPersonalization.data).toBe('garbage');
+    expect((await profileSyncCore.decodeEnvelopeSections(readSyncFile())).malformed).toEqual({});
+  });
+
+  test('a deliberate revert to the pre-pull value survives the stale-echo guard', async () => {
+    const { desktop, laptop } = await createSyncedPair();
+    laptop.edit((config) => {
+      config.opacity = 0.65;
+    });
+    await laptop.sync();
+    await desktop.sync();
+    const { context } = desktop;
+
+    // Settings saves opacity 0.9 again, and says the user set it.
+    const pulled = context.config;
+    context.config = { ...pulled, opacity: 0.9 };
+    expect(context.restoreProfileFromStalePullEcho(pulled, ['opacity'])).toBe(true);
+    expect(context.config.opacity).toBe(0.9);
+    context.saveConfig();
+    await desktop.sync();
+    await laptop.sync();
+    expect(laptop.config.opacity).toBe(0.9);
+
+    // Without that, the same payload is a stale snapshot and the pull is kept.
+    laptop.edit((config) => {
+      config.opacity = 0.5;
+    });
+    await laptop.sync();
+    await desktop.sync();
+    const again = context.config;
+    context.config = { ...again, opacity: 0.9 };
+    context.restoreProfileFromStalePullEcho(again);
+    expect(context.config.opacity).toBe(0.5);
+  });
+
   test('refuses to push plaintext over an encrypted file', async () => {
     const desktop = createDevice('desktop', {
       profileSync: { encryptionEnabled: true, __passphrase: 'correct horse' },

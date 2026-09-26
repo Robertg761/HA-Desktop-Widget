@@ -628,7 +628,11 @@ describe('Settings + Config Integration', () => {
       await settings.saveSettings();
 
       expect(window.electronAPI.updateConfig).toHaveBeenLastCalledWith(
-        expect.objectContaining({ hideOnBlur: false })
+        expect.objectContaining({
+          hideOnBlur: false,
+          // So main's stale-echo guard keeps it too.
+          profileSyncTouchedKeys: expect.arrayContaining(['hideOnBlur']),
+        })
       );
     });
 
