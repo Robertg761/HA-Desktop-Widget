@@ -220,8 +220,12 @@ function projectFields(source, fields, { markCleared = false } = {}) {
   return projected;
 }
 
-function projectSyncProfile(config, syncScope = getDefaultSyncScope()) {
-  return projectFields(config, getSyncedFieldsForScope(syncScope));
+/**
+ * The synced fields of a config under a scope. With `markCleared`, fields the
+ * config lacks come out as null, so merging the result clears them too.
+ */
+function projectSyncProfile(config, syncScope = getDefaultSyncScope(), options = {}) {
+  return projectFields(config, getSyncedFieldsForScope(syncScope), options);
 }
 
 function mergeFieldsIntoConfig(target, incoming, fields) {

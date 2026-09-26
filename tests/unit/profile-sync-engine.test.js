@@ -817,6 +817,27 @@ describe('profile sync engine', () => {
     expect(context.config.entityAlerts.enabled).toBe(true);
   });
 
+  test('a setting cleared by a pull stays cleared when an older update arrives', async () => {
+    const { desktop, laptop } = await createSyncedPair({
+      desktop: { content: { ...baseContent(), selectedWeatherEntity: 'weather.home' } },
+      laptop: { content: { ...baseContent(), selectedWeatherEntity: 'weather.home' } },
+    });
+    const { context } = desktop;
+    const beforePull = context.configSnapshotVersion;
+    laptop.edit((config) => {
+      delete config.selectedWeatherEntity;
+    });
+    await laptop.sync();
+    await desktop.sync();
+    const pulled = context.config;
+    expect(pulled.selectedWeatherEntity).toBeUndefined();
+
+    context.config = { ...pulled, selectedWeatherEntity: 'weather.home', alwaysOnTop: false };
+    expect(context.restoreProfileFromStalePullEcho(pulled, [], beforePull)).toBe(true);
+    expect(context.config).not.toHaveProperty('selectedWeatherEntity');
+    expect(context.config.alwaysOnTop).toBe(false);
+  });
+
   test('an update that predates two pulls keeps both of them', async () => {
     const { desktop, laptop } = await createSyncedPair();
     const { context } = desktop;

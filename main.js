@@ -4175,7 +4175,9 @@ function restoreProfileFromStalePullEcho(pulledConfig, touchedKeys = [], baseRev
   const incoming = config;
   config = profileSyncCore.mergeSyncedProfileIntoConfig(
     config,
-    profileSyncCore.projectSyncProfile(pulledConfig, scope),
+    // Cleared fields come through as null, so a setting the pull removed is
+    // removed from the stale update too rather than left as it was.
+    profileSyncCore.projectSyncProfile(pulledConfig, scope, { markCleared: true }),
     scope
   );
   // Deliberate values from the update survive, even ones equal to the pre-pull value.
