@@ -315,4 +315,30 @@ describe('bar requests and installation', () => {
     expect(rememberOmarchyBarLaunch({ launchFile, launch: null })).toBe(false);
     expect(JSON.parse(fs.readFileSync(launchFile, 'utf8')).launch).toEqual(launch);
   });
+
+  it('writes the manifest only after the plugin files, so a failed upgrade is retried', () => {
+    const target = path.join(root, 'plugins', appId);
+    installOmarchyBarPluginFiles({ sourceDir: pluginDir, pluginDir: target });
+    const manifestPath = path.join(target, 'manifest.json');
+    const old = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    fs.writeFileSync(manifestPath, JSON.stringify({ ...old, version: '0.0.1' }));
+    const failingFs = {
+      ...fs,
+      copyFileSync: (from, to) => {
+        if (from.endsWith('Widget.qml')) throw new Error('disk full');
+        return fs.copyFileSync(from, to);
+      },
+    };
+    expect(() =>
+      updateInstalledOmarchyBarPlugin({
+        sourceDir: pluginDir,
+        pluginDir: target,
+        fsImpl: failingFs,
+      })
+    ).toThrow('disk full');
+    // The old version still stands, and no temporary copy is left behind.
+    expect(JSON.parse(fs.readFileSync(manifestPath, 'utf8')).version).toBe('0.0.1');
+    expect(fs.readdirSync(target).filter((file) => file.startsWith('.'))).toEqual([]);
+    expect(updateInstalledOmarchyBarPlugin({ sourceDir: pluginDir, pluginDir: target })).toBe(true);
+  });
 });

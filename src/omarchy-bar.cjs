@@ -278,8 +278,24 @@ function rememberOmarchyBarLaunch({ launchFile, launch, fsImpl = fs } = {}) {
 /** Copy the bundled plugin into the user's Omarchy plugins directory. */
 function installOmarchyBarPluginFiles({ sourceDir, pluginDir, fsImpl = fs } = {}) {
   fsImpl.mkdirSync(pluginDir, { recursive: true });
-  for (const file of PLUGIN_FILES) {
-    fsImpl.copyFileSync(path.join(sourceDir, file), path.join(pluginDir, file));
+  // The payload goes first and the manifest last, so an interrupted upgrade never leaves a
+  // manifest claiming a version whose files did not all arrive, and the next start retries it.
+  // Each file lands through a dot-named temporary copy, which Omarchy's plugin reload ignores.
+  const ordered = [...PLUGIN_FILES.filter((file) => file !== 'manifest.json'), 'manifest.json'];
+  for (const file of ordered) {
+    const target = path.join(pluginDir, file);
+    const temp = path.join(pluginDir, `.${file}.${process.pid}.tmp`);
+    try {
+      fsImpl.copyFileSync(path.join(sourceDir, file), temp);
+      fsImpl.renameSync(temp, target);
+    } catch (error) {
+      try {
+        fsImpl.rmSync(temp, { force: true });
+      } catch {
+        // best-effort cleanup
+      }
+      throw error;
+    }
   }
 }
 
