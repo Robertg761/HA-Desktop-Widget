@@ -1,0 +1,30 @@
+# Copy to wrangler.toml and fill in the values marked below.
+# See docs/cloud-sync-setup.md for the full walkthrough.
+
+name = "ha-desktop-widget-cloud-sync"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ha-widget-cloud-sync"
+# Printed by: npx wrangler d1 create ha-widget-cloud-sync
+database_id = "REPLACE_WITH_DATABASE_ID"
+migrations_dir = "migrations"
+
+[vars]
+# The address the service is reachable at. Google and GitHub redirect back to
+# <PUBLIC_URL>/v1/auth/callback/<provider>, so it must match what you register there.
+PUBLIC_URL = "https://sync.example.com"
+# Days a new account can sync before it needs a subscription.
+TRIAL_DAYS = "14"
+# "subscription" requires a trial or subscription to save changes.
+# "open" lets every signed-in account sync (useful for a free beta).
+ENTITLEMENT_MODE = "subscription"
+# The Stripe price for the yearly plan (price_...).
+STRIPE_PRICE_ID = "REPLACE_WITH_STRIPE_PRICE_ID"
+
+# Secrets are not kept in this file. Set each with: npx wrangler secret put <NAME>
+#   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+#   GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
+#   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET

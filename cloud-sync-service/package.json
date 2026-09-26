@@ -1,0 +1,11 @@
+{
+  "name": "ha-desktop-widget-cloud-sync",
+  "private": true,
+  "description": "Hosted profile sync for HA Desktop Widget (Cloudflare Worker + D1).",
+  "scripts": {
+    "dev": "wrangler dev",
+    "migrate:local": "wrangler d1 migrations apply ha-widget-cloud-sync --local",
+    "migrate": "wrangler d1 migrations apply ha-widget-cloud-sync --remote",
+    "deploy": "wrangler deploy"
+  }
+}
