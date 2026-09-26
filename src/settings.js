@@ -1417,6 +1417,7 @@ function getPendingTheme(target) {
  * @param {boolean} [options.preview=true] - If `true`, apply the selected accent immediately as a live preview.
  */
 function selectAccentTheme(accentKey, { preview = true } = {}) {
+  if (preview) markSettingsTouched('ui.accent');
   const resolvedAccent = resolveThemeId(accentKey);
   pendingAccent = resolvedAccent;
   hasDraftColorPreview = false;
@@ -1441,6 +1442,7 @@ function selectAccentTheme(accentKey, { preview = true } = {}) {
  * @param {boolean} [options.preview=true] - If true, apply the selected background as a live preview.
  */
 function selectBackgroundTheme(backgroundKey, { preview = true } = {}) {
+  if (preview) markSettingsTouched('ui.background');
   const resolvedBackground = resolveThemeId(backgroundKey, { preferSlate: true });
   pendingBackground = resolvedBackground;
   hasDraftColorPreview = false;
@@ -4274,6 +4276,45 @@ const PROFILE_SYNCED_SETTINGS = [
 ];
 // The config the open form was filled from.
 let settingsFormBaseConfig = null;
+// Synced settings the user has interacted with since the form opened ('key' or
+// 'ui.key'). An explicit choice wins even when it equals the value the form
+// opened with.
+let settingsTouchedKeys = new Set();
+const SETTINGS_CONTROL_KEYS = [
+  ['#always-on-top', ['alwaysOnTop']],
+  ['#hide-on-blur', ['hideOnBlur']],
+  ['#opacity-slider', ['opacity']],
+  ['#frosted-glass', ['frostedGlass']],
+  ['#weather-entity-select', ['selectedWeatherEntity']],
+  ['#entity-alerts-enabled', ['entityAlerts']],
+  ['#primary-media-player-dropdown', ['primaryMediaPlayer']],
+  ['#primary-cards-section, #primary-cards-reset', ['primaryCards']],
+  ['#custom-entity-icons-section', ['customEntityIcons']],
+  ['#weather-effects-enabled', ['ui.weatherEffectsEnabled']],
+  ['#weather-override-select', ['ui.weatherOverride']],
+  ['#language-select', ['ui.language']],
+  ['#readable-preset', ['ui.highContrast', 'ui.opaquePanels']],
+  ['#density-select', ['ui.density']],
+  ['#active-tile-glow', ['ui.activeTileGlow']],
+  ['#ui-scale-select', ['ui.scale']],
+  ['#follow-omarchy', ['ui.followOmarchy']],
+  ['#time-format', ['ui.timeFormat', 'ui.use24HourClock']],
+  ['#date-format', ['ui.dateFormat']],
+  ['#theme-mode-control', ['ui.theme']],
+  ['#custom-color-details', ['ui.customColors']],
+];
+
+function markSettingsTouched(...keys) {
+  keys.forEach((key) => settingsTouchedKeys.add(key));
+}
+
+function trackSettingsControlInteraction(event) {
+  const target = event.target;
+  if (!target || typeof target.closest !== 'function') return;
+  SETTINGS_CONTROL_KEYS.forEach(([selector, keys]) => {
+    if (target.closest(selector)) markSettingsTouched(...keys);
+  });
+}
 
 function cloneConfigValue(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
@@ -4283,11 +4324,13 @@ function cloneConfigValue(value) {
  * A control the user left alone still holds the value the form opened with.
  * Saving that value would quietly undo a change profile sync brought in from
  * another computer meanwhile, so those settings keep the latest value instead.
+ * Settings the user touched keep the form's value, even one equal to the base.
  */
-function keepNewerSyncedSettings(nextConfig, formBase, latest) {
+function keepNewerSyncedSettings(nextConfig, formBase, latest, touched = new Set()) {
   if (!formBase || !latest) return nextConfig;
   const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
-  const keepLatest = (target, base, current, key) => {
+  const keepLatest = (target, base, current, key, touchedKey = key) => {
+    if (touched.has(touchedKey)) return;
     if (same(target[key], base[key]) && !same(base[key], current[key])) {
       if (current[key] === undefined) delete target[key];
       else target[key] = cloneConfigValue(current[key]);
@@ -4298,7 +4341,7 @@ function keepNewerSyncedSettings(nextConfig, formBase, latest) {
   const baseUi = formBase.ui || {};
   const latestUi = latest.ui || {};
   new Set([...Object.keys(nextUi), ...Object.keys(baseUi), ...Object.keys(latestUi)]).forEach(
-    (key) => keepLatest(nextUi, baseUi, latestUi, key)
+    (key) => keepLatest(nextUi, baseUi, latestUi, key, `ui.${key}`)
   );
   nextConfig.ui = nextUi;
   return nextConfig;
@@ -4308,6 +4351,7 @@ async function openSettings(uiHooks) {
   try {
     settingsUiHooks = uiHooks || null;
     settingsFormBaseConfig = cloneConfigValue(state.CONFIG || {});
+    settingsTouchedKeys = new Set();
     settingsLocaleSignature = getSettingsLocaleSignature();
     observeSettingsLocale();
     hydratedPersonalizationSections.clear();
@@ -4319,6 +4363,12 @@ async function openSettings(uiHooks) {
 
     const modal = document.getElementById('settings-modal');
     if (!modal) return;
+    if (!modal.dataset.touchTracking) {
+      modal.dataset.touchTracking = 'true';
+      ['input', 'change', 'click'].forEach((type) =>
+        modal.addEventListener(type, trackSettingsControlInteraction, true)
+      );
+    }
 
     // Populate fields
     const haUrl = document.getElementById('ha-url');
@@ -5254,11 +5304,12 @@ async function saveSettings() {
       }
     }
 
-    keepNewerSyncedSettings(nextConfig, settingsFormBaseConfig, state.CONFIG);
+    keepNewerSyncedSettings(nextConfig, settingsFormBaseConfig, state.CONFIG, settingsTouchedKeys);
     const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
     applyPersistedConfigResponse(updatedConfig);
     configPersisted = true;
     settingsFormBaseConfig = cloneConfigValue(state.CONFIG || {});
+    settingsTouchedKeys = new Set();
     setCustomThemes(state.CONFIG.ui?.customColors || []);
 
     // Store the sync passphrase only now that the config is safely persisted. If this

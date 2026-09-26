@@ -614,6 +614,24 @@ describe('Settings + Config Integration', () => {
       );
     });
 
+    test('keeps a setting the user deliberately set back to its original value', async () => {
+      state.setConfig({ ...state.CONFIG, hideOnBlur: false });
+      await settings.openSettings();
+      const hideOnBlur = document.getElementById('hide-on-blur');
+      // Another computer turns it on while the form is open...
+      state.setConfig({ ...state.CONFIG, hideOnBlur: true });
+      // ...and the user switches it on and back off again here.
+      hideOnBlur.click();
+      hideOnBlur.click();
+      expect(hideOnBlur.checked).toBe(false);
+
+      await settings.saveSettings();
+
+      expect(window.electronAPI.updateConfig).toHaveBeenLastCalledWith(
+        expect.objectContaining({ hideOnBlur: false })
+      );
+    });
+
     test('OAuth settings hide the access token and preserve authorization on unrelated saves', async () => {
       state.CONFIG.homeAssistant = {
         url: 'https://ha.example.test',
