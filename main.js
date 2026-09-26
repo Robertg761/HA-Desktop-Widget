@@ -8432,14 +8432,18 @@ async function startHostedProfileSyncAfterSignIn(previousAccount, account) {
   return 'prepared';
 }
 
-/** Stops syncing to an account this device is no longer signed in to. */
+/** Stops syncing to an account this device is no longer signed in to, and says so. */
 function stopHostedProfileSyncAfterSignOut() {
-  if (!isHostedProfileSyncProvider(getProfileSyncConfig().provider)) return;
+  const profileSync = getProfileSyncConfig();
+  if (!isHostedProfileSyncProvider(profileSync.provider)) return;
   clearProfileSyncTimers();
   profileSyncRuntime.needsResolution = false;
   profileSyncRuntime.pendingRemoteEnvelope = null;
   profileSyncRuntime.pendingRemoteIdentity = null;
   profileSyncRuntime.hostedRevision = null;
+  if (profileSync.enabled) {
+    updateProfileSyncStatus('error', mainT('Sign in to Cloud Sync to keep syncing'));
+  }
 }
 
 function cloudSyncFailure(error) {

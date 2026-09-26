@@ -332,6 +332,12 @@ Profile sync keeps your widget set up the same way on every computer. It writes 
 `ha-widget-profile-sync.json`, into a folder that Dropbox, OneDrive, iCloud Drive, Google Drive,
 Syncthing, or any similar app already keeps in sync. There is no server and no account.
 
+Builds that include **Cloud Sync** also offer **HA Desktop Widget Cloud** as the sync app: sign
+in with Google or GitHub on each computer instead of choosing a folder. It is a paid service
+with a free trial, and everything below about scope, merging, backups and encryption works the
+same way. With encryption on, the service only ever holds data it cannot read. Running the
+service yourself is covered in [docs/cloud-sync-setup.md](docs/cloud-sync-setup.md).
+
 **Set up the first computer**
 
 1. Open **Settings → Advanced → Profile Syncing** and turn on **Profile sync**.

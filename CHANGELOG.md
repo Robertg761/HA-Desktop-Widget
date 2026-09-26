@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add a visual snapshot workflow that screenshots the real app on Windows, macOS, and Linux against a mock Home Assistant, and `npm run snapshots` to run it locally.
 - Restore what profile sync replaced from Settings → Advanced → Backups. A restore applies on this computer and then syncs to the others, and the settings it replaces are backed up in turn.
 - Add Sync now, which merges both sides, and 30-minute and hourly sync intervals.
+- Add Cloud Sync, a paid alternative to folder sync: choose HA Desktop Widget Cloud as the sync app and sign in with Google or GitHub on each computer. It keeps the same merging, backups and optional encryption (with encryption on, the service holds only data it cannot read), and Settings shows the trial or subscription with Subscribe, Manage Subscription, Sign Out and Delete Account. It appears in builds configured with the service address; the service itself is in `cloud-sync-service/`.
 
 ### Changed
 
