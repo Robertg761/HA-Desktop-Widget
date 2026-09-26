@@ -159,7 +159,7 @@ describe('main-process Home Assistant authorization recovery', () => {
     expect(context.config.homeAssistant.oauthStatus).toBe('reauth_required');
     // Linux reports an unusable keyring separately so the renderer can offer a restart.
     const code = context.config.homeAssistant.oauthLastErrorCode;
-    if (_label.includes('OAUTH_STORE_DECRYPT') || _label.includes('SECURE_STORAGE')) {
+    if (_label.includes('SECURE_STORAGE')) {
       expect(code).toBe('OAUTH_KEYRING_UNAVAILABLE');
     } else {
       expect(code).not.toBe('OAUTH_KEYRING_UNAVAILABLE');
@@ -239,11 +239,12 @@ describe('main-process Home Assistant authorization recovery', () => {
     vm.runInNewContext(extractBlock('function describeLinuxKeyringOAuthError'), context);
     const describeCode = context.describeLinuxKeyringOAuthError;
 
-    it('reports an unavailable or unreadable Linux keyring as a keyring problem', () => {
+    it('reports an unavailable Linux keyring as a keyring problem', () => {
       expect(describeCode('OAUTH_SECURE_STORAGE_UNAVAILABLE', 'linux')).toBe(
         'OAUTH_KEYRING_UNAVAILABLE'
       );
-      expect(describeCode('OAUTH_STORE_DECRYPT', 'linux')).toBe('OAUTH_KEYRING_UNAVAILABLE');
+      // An available store that cannot decrypt the saved authorization needs a reconnect.
+      expect(describeCode('OAUTH_STORE_DECRYPT', 'linux')).toBe('OAUTH_STORE_DECRYPT');
       expect(describeCode('OAUTH_INVALID_GRANT', 'linux')).toBe('OAUTH_INVALID_GRANT');
     });
 

@@ -7679,17 +7679,15 @@ async function applyHomeAssistantOAuthSession(session, options = {}) {
 }
 
 /**
- * On Linux, a credential store that is unavailable or cannot decrypt the saved authorization
- * usually means the Secret Service keyring was locked or not running yet when the widget
- * started. Chromium keeps that answer until the app restarts, so reconnecting would fail the
- * same way: report it as a keyring problem, which the renderer resolves with a restart.
+ * On Linux, an unavailable credential store usually means the Secret Service keyring was locked
+ * or not running yet when the widget started. Chromium keeps that answer until the app
+ * restarts, so reconnecting would fail the same way: report it as a keyring problem, which the
+ * renderer resolves with a restart. A decrypt failure is left alone: the store was available,
+ * so the saved authorization itself is unreadable and only reconnecting can replace it.
  */
 function describeLinuxKeyringOAuthError(code, platform = process.platform) {
   const value = String(code || '');
-  if (
-    platform === 'linux' &&
-    (value === 'OAUTH_SECURE_STORAGE_UNAVAILABLE' || value === 'OAUTH_STORE_DECRYPT')
-  ) {
+  if (platform === 'linux' && value === 'OAUTH_SECURE_STORAGE_UNAVAILABLE') {
     return 'OAUTH_KEYRING_UNAVAILABLE';
   }
   return value;
