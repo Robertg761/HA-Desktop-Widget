@@ -7490,6 +7490,23 @@ async function applyHomeAssistantOAuthSession(session, options = {}) {
   return sanitizeConfigForRenderer(config);
 }
 
+/**
+ * On Linux, a credential store that is unavailable or cannot decrypt the saved authorization
+ * usually means the Secret Service keyring was locked or not running yet when the widget
+ * started. Chromium keeps that answer until the app restarts, so reconnecting would fail the
+ * same way: report it as a keyring problem, which the renderer resolves with a restart.
+ */
+function describeLinuxKeyringOAuthError(code, platform = process.platform) {
+  const value = String(code || '');
+  if (
+    platform === 'linux' &&
+    (value === 'OAUTH_SECURE_STORAGE_UNAVAILABLE' || value === 'OAUTH_STORE_DECRYPT')
+  ) {
+    return 'OAUTH_KEYRING_UNAVAILABLE';
+  }
+  return value;
+}
+
 async function refreshHomeAssistantOAuthSession() {
   if (config?.homeAssistant?.authMethod !== 'oauth') return null;
   try {
@@ -7516,7 +7533,7 @@ async function refreshHomeAssistantOAuthSession() {
     config.homeAssistant.oauthStatus = reauthRequired ? 'reauth_required' : 'offline';
     config.homeAssistant.oauthLastError = String(error?.message || error).slice(0, 512);
     // The renderer shows a translated message for known codes; the text is the fallback.
-    config.homeAssistant.oauthLastErrorCode = String(error?.code || '');
+    config.homeAssistant.oauthLastErrorCode = describeLinuxKeyringOAuthError(error?.code);
     if (reauthRequired) {
       config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER;
       delete config.homeAssistant.oauthAuthorizationId;
@@ -7550,7 +7567,7 @@ ipcMain.handle('start-home-assistant-oauth', async (event, rawUrl) => {
   } catch (error) {
     return {
       success: false,
-      code: error?.code || 'OAUTH_PAIRING_FAILED',
+      code: describeLinuxKeyringOAuthError(error?.code || 'OAUTH_PAIRING_FAILED'),
       error: error?.message || 'Home Assistant authorization failed',
     };
   }

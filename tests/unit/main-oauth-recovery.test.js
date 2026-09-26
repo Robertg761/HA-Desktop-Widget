@@ -148,10 +148,22 @@ describe('main-process Home Assistant authorization recovery', () => {
       pushConfigToRenderer: jest.fn(),
       broadcastDesktopPinConfigUpdate: jest.fn(),
     };
-    vm.runInNewContext(extractBlock('async function refreshHomeAssistantOAuthSession'), context);
+    vm.runInNewContext(
+      `const process = { platform: 'linux' };\n` +
+        extractBlock('function describeLinuxKeyringOAuthError') +
+        extractBlock('async function refreshHomeAssistantOAuthSession'),
+      context
+    );
     await vm.runInNewContext('refreshHomeAssistantOAuthSession()', context);
 
     expect(context.config.homeAssistant.oauthStatus).toBe('reauth_required');
+    // Linux reports an unusable keyring separately so the renderer can offer a restart.
+    const code = context.config.homeAssistant.oauthLastErrorCode;
+    if (_label.includes('OAUTH_STORE_DECRYPT') || _label.includes('SECURE_STORAGE')) {
+      expect(code).toBe('OAUTH_KEYRING_UNAVAILABLE');
+    } else {
+      expect(code).not.toBe('OAUTH_KEYRING_UNAVAILABLE');
+    }
     expect(context.config.homeAssistant.token).toBe('YOUR_LONG_LIVED_ACCESS_TOKEN');
     expect(context.config.homeAssistant.oauthExpiresAt).toBeUndefined();
     expect(context.config.homeAssistant.oauthAuthorizationId).toBeUndefined();
@@ -176,7 +188,12 @@ describe('main-process Home Assistant authorization recovery', () => {
       pushConfigToRenderer: jest.fn(),
       broadcastDesktopPinConfigUpdate: jest.fn(),
     };
-    vm.runInNewContext(extractBlock('async function refreshHomeAssistantOAuthSession'), context);
+    vm.runInNewContext(
+      `const process = { platform: 'linux' };\n` +
+        extractBlock('function describeLinuxKeyringOAuthError') +
+        extractBlock('async function refreshHomeAssistantOAuthSession'),
+      context
+    );
     await vm.runInNewContext('refreshHomeAssistantOAuthSession()', context);
 
     expect(context.config.homeAssistant).toMatchObject({
@@ -215,5 +232,27 @@ describe('main-process Home Assistant authorization recovery', () => {
       oauthStatus: 'reauth_required',
     });
     expect(context.refreshHomeAssistantOAuthSession).not.toHaveBeenCalled();
+  });
+
+  describe('credential store failures on Linux', () => {
+    const context = {};
+    vm.runInNewContext(extractBlock('function describeLinuxKeyringOAuthError'), context);
+    const describeCode = context.describeLinuxKeyringOAuthError;
+
+    it('reports an unavailable or unreadable Linux keyring as a keyring problem', () => {
+      expect(describeCode('OAUTH_SECURE_STORAGE_UNAVAILABLE', 'linux')).toBe(
+        'OAUTH_KEYRING_UNAVAILABLE'
+      );
+      expect(describeCode('OAUTH_STORE_DECRYPT', 'linux')).toBe('OAUTH_KEYRING_UNAVAILABLE');
+      expect(describeCode('OAUTH_INVALID_GRANT', 'linux')).toBe('OAUTH_INVALID_GRANT');
+    });
+
+    it('keeps the original codes on Windows and macOS', () => {
+      expect(describeCode('OAUTH_SECURE_STORAGE_UNAVAILABLE', 'win32')).toBe(
+        'OAUTH_SECURE_STORAGE_UNAVAILABLE'
+      );
+      expect(describeCode('OAUTH_STORE_DECRYPT', 'darwin')).toBe('OAUTH_STORE_DECRYPT');
+      expect(describeCode(undefined, 'linux')).toBe('');
+    });
   });
 });

@@ -704,6 +704,17 @@ async function cancelOAuthReauthorization() {
   }
 }
 
+// The keyring holding the saved authorization was locked or not running when the widget started.
+function isKeyringUnavailable() {
+  return state.CONFIG?.homeAssistant?.oauthLastErrorCode === 'OAUTH_KEYRING_UNAVAILABLE';
+}
+
+function restartWidget() {
+  window.electronAPI.restartApp().catch((error) => {
+    log.error('Failed to restart widget:', error);
+  });
+}
+
 // OAuth setups whose saved authorization is not usable right now. They are configured (never
 // onboarding), so they get a connection state rather than setup instructions.
 function getOAuthStatePanel() {
@@ -716,6 +727,21 @@ function getOAuthStatePanel() {
   const oauthStatus = getOAuthStatus();
   if (oauthStatus === 'reauth_required') {
     const { pending, error } = oauthReauthorization;
+    if (!pending && !error && isKeyringUnavailable()) {
+      return {
+        tone: 'error',
+        title: t('System keyring is locked'),
+        message: describeHomeAssistantOAuthReauthReason(state.CONFIG.homeAssistant),
+        actions: [
+          { label: t('Restart Widget'), className: 'btn btn-primary', onClick: restartWidget },
+          {
+            label: t('Reconnect with Home Assistant'),
+            className: 'btn btn-secondary',
+            onClick: reauthorizeHomeAssistant,
+          },
+        ],
+      };
+    }
     return {
       tone: 'error',
       title: t('Home Assistant authorization expired'),
@@ -2600,7 +2626,15 @@ async function init() {
         'Your Home Assistant token needs to be re-entered. Click the gear icon to open Settings.'
       );
       let detailMessage = '';
-      if (reason === 'encryption_unavailable') {
+      if (reason === 'encryption_unavailable' && window.electronAPI?.platform === 'linux') {
+        // The encrypted token is kept, so unlocking the keyring and restarting brings it back.
+        message = t(
+          'Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.'
+        );
+        detailMessage = t(
+          'The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.'
+        );
+      } else if (reason === 'encryption_unavailable') {
         message = t(
           'Your Home Assistant token needs to be re-entered. Token encryption is not available on this system. Click the gear icon to open Settings.'
         );

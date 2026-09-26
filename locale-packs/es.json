@@ -1591,6 +1591,11 @@
     "Replace this computer’s settings with the sync file’s? This computer’s current settings are backed up first.": "¿Reemplazar los ajustes de este equipo con los del archivo de sincronización? Los ajustes actuales de este equipo se guardan antes en una copia de seguridad.",
     "Profile sync complete.": "Sincronización del perfil completada.",
     "The sync file's {{sections}} settings are damaged. Use Sync Up to replace them with this computer's; the damaged copy is backed up first.": "Los ajustes de {{sections}} del archivo de sincronización están dañados. Usa Subir sincronización para reemplazarlos con los de este equipo; antes se guarda una copia de seguridad de la versión dañada.",
-    "The sync file's {{sections}} settings are damaged. Keep this computer's to repair them; the damaged copy is backed up first.": "Los ajustes de {{sections}} del archivo de sincronización están dañados. Conserva los de este equipo para repararlos; antes se guarda una copia de seguridad de la versión dañada."
+    "The sync file's {{sections}} settings are damaged. Keep this computer's to repair them; the damaged copy is backed up first.": "Los ajustes de {{sections}} del archivo de sincronización están dañados. Conserva los de este equipo para repararlos; antes se guarda una copia de seguridad de la versión dañada.",
+    "Your system keyring is locked or not running, so the saved Home Assistant authorization cannot be read. Unlock the keyring, then restart the widget.": "El llavero del sistema está bloqueado o no se está ejecutando, por lo que no se puede leer la autorización guardada de Home Assistant. Desbloquea el llavero y reinicia el widget.",
+    "System keyring is locked": "El llavero del sistema está bloqueado",
+    "Restart Widget": "Reiniciar widget",
+    "Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.": "El llavero del sistema está bloqueado o no se está ejecutando, por lo que no se puede leer el token guardado de Home Assistant. Desbloquea el llavero y reinicia el widget.",
+    "The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.": "El token cifrado se ha conservado. Cuando desbloquees el llavero, al reiniciar el widget se volverá a leer, o puedes volver a introducir tu token en Configuración."
   }
 }
