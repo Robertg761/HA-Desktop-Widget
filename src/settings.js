@@ -310,9 +310,7 @@ const CUSTOM_ENTITY_ICON_SEARCH_ALIASES = {
   '🚿': ['bathroom', 'shower'],
 };
 const PROFILE_SYNC_DEFAULT_FILE_NAME = 'ha-widget-profile-sync.json';
-// Replace this with your hosted docs URL when your help site is live.
-const PROFILE_SYNC_HELP_URL = 'https://github.com/Robertg761/HA-Desktop-Widget#profile-sync-opt-in';
-const PROFILE_SYNC_ISSUES_URL = 'https://github.com/Robertg761/HA-Desktop-Widget/issues';
+const PROFILE_SYNC_HELP_URL = 'https://github.com/Robertg761/HA-Desktop-Widget#profile-sync';
 const GITHUB_SPONSORS_URL = 'https://github.com/sponsors/robertg761';
 // GitHub Sponsors caps custom amounts at $12,000; higher values 404 the checkout page.
 const GITHUB_SPONSORS_MAX_AMOUNT = 12000;
@@ -2992,58 +2990,62 @@ function formatProfileSyncTimestamp(isoString) {
   if (!isoString) return t('never');
   const value = Date.parse(isoString);
   if (Number.isNaN(value)) return t('never');
-  return formatDateTime(value);
+  return formatDateTime(value, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-function getProfileSyncStateLabel(status = {}) {
-  if (status.inFlight) return t('Sync in progress...');
-  // The keys carry a "Profile sync: " context prefix because bare words such as "error" are too
-  // generic to translate once. English (no catalog entry) shows the plain lowercase word.
-  const withoutContext = (label) => label.replace(/^Profile sync: /, '');
-  switch (status.lastSyncStatus || 'idle') {
-    case 'idle':
-      return withoutContext(t('Profile sync: idle'));
-    case 'success':
-      return withoutContext(t('Profile sync: success'));
-    case 'error':
-      return withoutContext(t('Profile sync: error'));
-    case 'needs_resolution':
-      return withoutContext(t('Profile sync: needs resolution'));
-    default:
-      return String(status.lastSyncStatus);
-  }
+const PROFILE_SYNC_SECTION_LABEL_KEYS = {
+  quickAccessLayout: 'Quick Access and layout',
+  visualPersonalization: 'Appearance',
+  automationAlerts: 'Alerts',
+  connectionMediaPreferences: 'Weather and media',
+};
+
+function formatProfileSyncSectionList(sectionKeys = []) {
+  return sectionKeys
+    .map((key) =>
+      PROFILE_SYNC_SECTION_LABEL_KEYS[key] ? t(PROFILE_SYNC_SECTION_LABEL_KEYS[key]) : ''
+    )
+    .filter(Boolean)
+    .join(', ');
 }
 
 /**
- * Render the experimental Profile Sync warning in the active language. The sentence and its
- * "Issues section" link text are separate catalog entries; the link wraps the matching part of
- * the translated sentence, or follows it when a translation words the link differently.
+ * The status line: what sync is doing, when it last worked, and who last changed
+ * the file, in sentences rather than raw state codes.
  */
-function renderProfileSyncWarning() {
-  const warningEl = document.querySelector('.profile-sync-warning');
-  if (!warningEl) return;
-  const sentence = t(
-    'Profile Sync is still experimental. Use it at your own risk, and please report bugs in the Issues section.'
-  );
-  const linkText = t('Issues section');
-  const link = document.createElement('a');
-  link.href = PROFILE_SYNC_ISSUES_URL;
-  link.target = '_blank';
-  link.rel = 'noopener noreferrer';
-  link.textContent = linkText;
-  const label = document.createElement('strong');
-  label.textContent = t('Warning:');
-  const linkIndex = linkText ? sentence.indexOf(linkText) : -1;
-  if (linkIndex >= 0) {
-    warningEl.replaceChildren(
-      label,
-      ` ${sentence.slice(0, linkIndex)}`,
-      link,
-      sentence.slice(linkIndex + linkText.length)
-    );
+function describeProfileSyncStatus(status = {}) {
+  if (status.inFlight) return t('Sync in progress...');
+  const lastSuccess = formatProfileSyncTimestamp(status.lastSuccessfulSyncAt);
+  if (status.needsResolution) return t('Waiting for your choice below.');
+  const parts = [];
+  if (status.lastSyncStatus === 'error') {
+    parts.push(t('The last sync failed. Last successful sync: {{time}}.', { time: lastSuccess }));
+  } else if (status.lastSuccessfulSyncAt) {
+    parts.push(t('Up to date. Last synced {{time}}.', { time: lastSuccess }));
   } else {
-    warningEl.replaceChildren(label, ` ${sentence} `, link);
+    parts.push(t('Not synced yet.'));
   }
+  if (status.lastRemoteUpdatedAt && status.lastSyncStatus !== 'error') {
+    const time = formatProfileSyncTimestamp(status.lastRemoteUpdatedAt);
+    parts.push(
+      status.lastRemoteUpdatedByThisDevice
+        ? t('This computer last changed the sync file {{time}}.', { time })
+        : t('Another computer last changed the sync file {{time}}.', { time })
+    );
+  }
+  const summary = status.lastRunSummary;
+  const replaced = [
+    ...new Set([...(summary?.replacedLocal || []), ...(summary?.replacedRemote || [])]),
+  ];
+  if (replaced.length > 0 && status.lastSyncStatus !== 'error') {
+    parts.push(
+      t(
+        'Both computers changed {{sections}}, so the newer change was kept and the other was backed up.',
+        { sections: formatProfileSyncSectionList(replaced) }
+      )
+    );
+  }
+  return parts.join(' ');
 }
 
 function setProfileSyncSettingsVisibility() {
@@ -3076,10 +3078,7 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
   }
 
   if (statusEl) {
-    statusEl.textContent = t('Status: {{state}} | Last sync: {{time}}', {
-      state: getProfileSyncStateLabel(status),
-      time: formatProfileSyncTimestamp(status.lastSyncAt),
-    });
+    statusEl.textContent = describeProfileSyncStatus(status);
   }
 
   if (errorEl) {
@@ -3107,16 +3106,25 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
             'A protected sync-key recovery is pending. Use Sync Up to resume it; sync remains paused if the remote changed.'
           )
         : '';
-    const composed = [warning, errorText, rewriteWarning, pendingEncryptionWarning, recoveryWarning]
-      .filter(Boolean)
-      .join(' ');
-    errorEl.textContent = composed;
-    errorEl.classList.toggle('hidden', !composed);
+    const messages = [
+      warning,
+      errorText,
+      rewriteWarning,
+      pendingEncryptionWarning,
+      recoveryWarning,
+    ].filter(Boolean);
+    // One line per message: run together they read as a single garbled sentence.
+    errorEl.replaceChildren(
+      ...messages.flatMap((message, index) =>
+        index === 0 ? [message] : [document.createElement('br'), message]
+      )
+    );
+    errorEl.classList.toggle('hidden', messages.length === 0);
   }
 
   if (resolutionEl) {
     resolutionEl.classList.toggle('hidden', !status.needsResolution);
-    const resolutionHelp = resolutionEl.querySelector('.help-text');
+    const resolutionHelp = resolutionEl.querySelector('#profile-sync-resolution-text');
     const uploadButton = resolutionEl.querySelector('#profile-sync-resolve-upload');
     const remoteButton = resolutionEl.querySelector('#profile-sync-resolve-remote');
     if (status.resolutionRetryRequired) {
@@ -3129,7 +3137,15 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
       if (remoteButton) remoteButton.classList.add('hidden');
     } else {
       if (resolutionHelp) {
-        resolutionHelp.innerHTML = `<strong>${utils.escapeHtml(t('First-time conflict:'))}</strong> ${utils.escapeHtml(t('Both local and remote profiles have data.'))}`;
+        const sections = formatProfileSyncSectionList(status.conflictSections);
+        resolutionHelp.textContent = sections
+          ? t(
+              'This computer and the sync file have different settings for {{sections}}. Keep this computer’s and upload them, or replace them with the file’s. Either way, the replaced settings are backed up.',
+              { sections }
+            )
+          : t(
+              'This computer and the sync file have different settings. Keep this computer’s and upload them, or replace them with the file’s. Either way, the replaced settings are backed up.'
+            );
       }
       if (uploadButton) uploadButton.textContent = t('Keep Local (Upload)');
       if (remoteButton) remoteButton.classList.remove('hidden');
@@ -3137,6 +3153,11 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
   }
 
   renderProfileSyncFolderWarnings(status);
+
+  const clearPassphraseButton = document.getElementById('profile-sync-clear-passphrase');
+  if (clearPassphraseButton) {
+    clearPassphraseButton.classList.toggle('hidden', !status.passphraseStored);
+  }
 
   if (passphraseHint) {
     const profileSync = ensureProfileSyncConfig();
@@ -3193,7 +3214,6 @@ function renderProfileSyncFolderWarnings(status) {
 
   hintEl.textContent = messages.join(' ');
   hintEl.classList.toggle('hidden', messages.length === 0);
-  hintEl.classList.toggle('profile-sync-hint-warning', messages.length > 0);
 }
 
 async function refreshProfileSyncStatusUi(options = {}) {
@@ -3284,7 +3304,39 @@ function applyProfileSyncConfigToForm() {
   setProfileSyncSettingsVisibility();
 }
 
+const PROFILE_SYNC_REPLACE_CONFIRMATIONS = {
+  push: {
+    title: 'Sync Up',
+    message:
+      'Replace the sync file with this computer’s settings? Your other computers receive them on their next sync. The file’s current settings are backed up on this computer.',
+  },
+  pull: {
+    title: 'Sync Down',
+    message:
+      'Replace this computer’s settings with the sync file’s? This computer’s current settings are backed up first.',
+  },
+};
+
+function applyConfigFromProfileSync(nextConfig) {
+  state.setConfig(nextConfig);
+  applyProfileSyncConfigToForm();
+  applyTheme(state.CONFIG.ui?.theme || 'auto');
+  applyAccentTheme(state.CONFIG.ui?.accent || 'original');
+  applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
+  applyUiPreferences(state.CONFIG.ui || {});
+  applyWindowEffects(state.CONFIG || {});
+  applyDesktopAppearance(state.CONFIG);
+}
+
 async function runManualProfileSync(direction) {
+  const confirmation = PROFILE_SYNC_REPLACE_CONFIRMATIONS[direction];
+  if (confirmation) {
+    const confirmed = await showConfirm(t(confirmation.title), t(confirmation.message), {
+      confirmText: t(confirmation.title),
+      confirmClass: 'btn-primary',
+    });
+    if (!confirmed) return;
+  }
   try {
     const result = await window.electronAPI.runProfileSync(direction);
     if (!result?.ok) {
@@ -3297,29 +3349,19 @@ async function runManualProfileSync(direction) {
       return;
     }
 
-    if (result?.config) {
-      state.setConfig(result.config);
-      applyProfileSyncConfigToForm();
-      applyTheme(state.CONFIG.ui?.theme || 'auto');
-      applyAccentTheme(state.CONFIG.ui?.accent || 'original');
-      applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
-      applyUiPreferences(state.CONFIG.ui || {});
-      applyWindowEffects(state.CONFIG || {});
-      applyDesktopAppearance(state.CONFIG);
-    }
+    if (result?.config) applyConfigFromProfileSync(result.config);
 
     if (result?.status) {
       updateProfileSyncStatusUi(result.status);
     } else {
       await refreshProfileSyncStatusUi();
     }
-    showToast(
-      direction === 'push'
-        ? t('Profile sync upload complete.')
-        : t('Profile sync download complete.'),
-      'success',
-      2200
-    );
+    void refreshProfileSyncBackups();
+    const completeMessage = {
+      push: 'Profile sync upload complete.',
+      pull: 'Profile sync download complete.',
+    }[direction];
+    showToast(t(completeMessage || 'Profile sync complete.'), 'success', 2200);
   } catch (error) {
     log.error('Manual profile sync failed:', error);
     showToast(error?.message || t('Profile sync failed.'), 'error', 3500);
@@ -3445,6 +3487,79 @@ function bindSupportDevelopmentUi() {
   }
 }
 
+let profileSyncBackupsCache = [];
+
+function renderProfileSyncBackups() {
+  const select = document.getElementById('profile-sync-backup-select');
+  const restore = document.getElementById('profile-sync-restore-backup');
+  if (!select) return;
+  const previous = select.value;
+  if (profileSyncBackupsCache.length === 0) {
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = t('No backups yet');
+    select.replaceChildren(empty);
+    select.disabled = true;
+    if (restore) restore.disabled = true;
+    return;
+  }
+  select.replaceChildren(
+    ...profileSyncBackupsCache.map((backup) => {
+      const option = document.createElement('option');
+      option.value = backup.id;
+      const time = formatProfileSyncTimestamp(backup.createdAt);
+      const sections = formatProfileSyncSectionList(backup.sections);
+      option.textContent =
+        backup.kind === 'remote'
+          ? t('{{time}}: the sync file’s {{sections}}', { time, sections })
+          : t('{{time}}: this computer’s {{sections}}', { time, sections });
+      return option;
+    })
+  );
+  if (profileSyncBackupsCache.some((backup) => backup.id === previous)) select.value = previous;
+  select.disabled = false;
+  if (restore) restore.disabled = false;
+}
+
+async function refreshProfileSyncBackups() {
+  if (!window.electronAPI?.listProfileSyncBackups) return;
+  try {
+    const result = await window.electronAPI.listProfileSyncBackups();
+    profileSyncBackupsCache = Array.isArray(result?.backups) ? result.backups : [];
+  } catch (error) {
+    log.error('Failed to list profile sync backups:', error);
+    profileSyncBackupsCache = [];
+  }
+  renderProfileSyncBackups();
+}
+
+async function restoreSelectedProfileSyncBackup() {
+  const select = document.getElementById('profile-sync-backup-select');
+  const id = select?.value;
+  if (!id) return;
+  const confirmed = await showConfirm(
+    t('Restore'),
+    t(
+      'Apply this backup on this computer? Your current settings are backed up first, and the restored ones then sync to your other computers.'
+    ),
+    { confirmText: t('Restore'), confirmClass: 'btn-primary' }
+  );
+  if (!confirmed) return;
+  try {
+    const result = await window.electronAPI.restoreProfileSyncBackup(id);
+    if (!result?.success) {
+      showToast(result?.error || t('Failed to restore the backup.'), 'error', 3500);
+      return;
+    }
+    if (result.config) applyConfigFromProfileSync(result.config);
+    showToast(t('Backup restored.'), 'success', 2200);
+  } catch (error) {
+    log.error('Failed to restore profile sync backup:', error);
+    showToast(t('Failed to restore the backup.'), 'error', 3500);
+  }
+  await refreshProfileSyncBackups();
+}
+
 function bindProfileSyncSettingsUi() {
   const enabled = document.getElementById('profile-sync-enabled');
   if (enabled) {
@@ -3543,6 +3658,12 @@ function bindProfileSyncSettingsUi() {
       }
     };
   }
+
+  const syncNow = document.getElementById('profile-sync-now');
+  if (syncNow) syncNow.onclick = () => runManualProfileSync('auto');
+
+  const restoreBackup = document.getElementById('profile-sync-restore-backup');
+  if (restoreBackup) restoreBackup.onclick = () => restoreSelectedProfileSyncBackup();
 
   const pullNow = document.getElementById('profile-sync-pull-now');
   if (pullNow) pullNow.onclick = () => runManualProfileSync('pull');
@@ -4065,8 +4186,8 @@ function relocalizeOpenSettings({ force = false } = {}) {
     syncLanguageSelectOptions();
     renderLanguagePackList();
     updateLanguageSummaryText();
-    renderProfileSyncWarning();
     if (profileSyncStatusCache) updateProfileSyncStatusUi(profileSyncStatusCache);
+    renderProfileSyncBackups();
     renderUpdateButtonLabels();
     settingsUiHooks?.relocalizeUpdateStatus?.();
     syncWeatherEffectsAvailability();
@@ -4132,9 +4253,61 @@ function observeSettingsLocale() {
  * @param {Function} [uiHooks.updateMediaTile] - Fallback hook called after save to refresh media tile state.
  * @param {Function} [uiHooks.renderPrimaryCards] - Fallback hook called after save to refresh primary cards.
  */
+// Settings profile sync can change on another computer while this form is open.
+const PROFILE_SYNCED_SETTINGS = [
+  'alwaysOnTop',
+  'hideOnBlur',
+  'opacity',
+  'frostedGlass',
+  'favoriteEntities',
+  'trayEntities',
+  'customEntityNames',
+  'customEntityIcons',
+  'tileSpans',
+  'quickAccessTileOptions',
+  'primaryCards',
+  'customTabs',
+  'comparisonGraphs',
+  'entityAlerts',
+  'selectedWeatherEntity',
+  'primaryMediaPlayer',
+];
+// The config the open form was filled from.
+let settingsFormBaseConfig = null;
+
+function cloneConfigValue(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
+/**
+ * A control the user left alone still holds the value the form opened with.
+ * Saving that value would quietly undo a change profile sync brought in from
+ * another computer meanwhile, so those settings keep the latest value instead.
+ */
+function keepNewerSyncedSettings(nextConfig, formBase, latest) {
+  if (!formBase || !latest) return nextConfig;
+  const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  const keepLatest = (target, base, current, key) => {
+    if (same(target[key], base[key]) && !same(base[key], current[key])) {
+      if (current[key] === undefined) delete target[key];
+      else target[key] = cloneConfigValue(current[key]);
+    }
+  };
+  PROFILE_SYNCED_SETTINGS.forEach((key) => keepLatest(nextConfig, formBase, latest, key));
+  const nextUi = nextConfig.ui || {};
+  const baseUi = formBase.ui || {};
+  const latestUi = latest.ui || {};
+  new Set([...Object.keys(nextUi), ...Object.keys(baseUi), ...Object.keys(latestUi)]).forEach(
+    (key) => keepLatest(nextUi, baseUi, latestUi, key)
+  );
+  nextConfig.ui = nextUi;
+  return nextConfig;
+}
+
 async function openSettings(uiHooks) {
   try {
     settingsUiHooks = uiHooks || null;
+    settingsFormBaseConfig = cloneConfigValue(state.CONFIG || {});
     settingsLocaleSignature = getSettingsLocaleSignature();
     observeSettingsLocale();
     hydratedPersonalizationSections.clear();
@@ -4230,11 +4403,11 @@ async function openSettings(uiHooks) {
     updateLanguageSummaryText();
     refreshLanguagePackListInBackground(true);
 
-    renderProfileSyncWarning();
     applyProfileSyncConfigToForm();
     bindProfileSyncSettingsUi();
     bindSupportDevelopmentUi();
     await refreshProfileSyncStatusUi({ syncFormState: true });
+    void refreshProfileSyncBackups();
 
     const storedOpacity = Math.max(0.5, Math.min(1, state.CONFIG.opacity || 0.95));
     const sliderScale = opacityToSliderValue(storedOpacity);
@@ -5081,9 +5254,11 @@ async function saveSettings() {
       }
     }
 
+    keepNewerSyncedSettings(nextConfig, settingsFormBaseConfig, state.CONFIG);
     const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
     applyPersistedConfigResponse(updatedConfig);
     configPersisted = true;
+    settingsFormBaseConfig = cloneConfigValue(state.CONFIG || {});
     setCustomThemes(state.CONFIG.ui?.customColors || []);
 
     // Store the sync passphrase only now that the config is safely persisted. If this

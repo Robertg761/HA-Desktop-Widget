@@ -315,6 +315,8 @@ function createSettingsModalDOM() {
           <option value="1">1</option>
           <option value="5" selected>5</option>
           <option value="15">15</option>
+          <option value="30">30</option>
+          <option value="60">60</option>
         </select>
         <label for="profile-sync-encryption-enabled">
           <input type="checkbox" id="profile-sync-encryption-enabled" />
@@ -328,9 +330,13 @@ function createSettingsModalDOM() {
           </label>
           <button type="button" id="profile-sync-clear-passphrase">Clear Saved Passphrase</button>
         </div>
+        <button type="button" id="profile-sync-now">Sync now</button>
         <button type="button" id="profile-sync-pull-now">Sync Down</button>
         <button type="button" id="profile-sync-push-now">Sync Up</button>
+        <select id="profile-sync-backup-select"></select>
+        <button type="button" id="profile-sync-restore-backup">Restore</button>
         <div id="profile-sync-resolution" class="hidden">
+          <p id="profile-sync-resolution-text"></p>
           <button type="button" id="profile-sync-resolve-upload">Keep Local</button>
           <button type="button" id="profile-sync-resolve-remote">Use Remote</button>
           <button type="button" id="profile-sync-resolve-cancel">Cancel</button>
@@ -576,6 +582,36 @@ describe('Settings + Config Integration', () => {
       checkbox.checked = false;
       await settings.saveSettings();
       expect(state.CONFIG.hideOnBlur).toBe(false);
+    });
+
+    test('keeps settings another computer changed while the form was open', async () => {
+      // Main always sends these filled in with their defaults.
+      state.setConfig({
+        ...state.CONFIG,
+        hideOnBlur: false,
+        ui: { ...state.CONFIG.ui, accent: 'original' },
+      });
+      await settings.openSettings();
+      expect(document.getElementById('always-on-top').checked).toBe(true);
+      document.getElementById('always-on-top').checked = false;
+      // A profile sync pull lands while Settings is open.
+      state.setConfig({
+        ...state.CONFIG,
+        hideOnBlur: true,
+        ui: { ...state.CONFIG.ui, accent: 'teal' },
+      });
+
+      await settings.saveSettings();
+
+      expect(window.electronAPI.updateConfig).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          // Changed here by the user.
+          alwaysOnTop: false,
+          // Changed on the other computer, untouched in the form.
+          hideOnBlur: true,
+          ui: expect.objectContaining({ accent: 'teal' }),
+        })
+      );
     });
 
     test('OAuth settings hide the access token and preserve authorization on unrelated saves', async () => {
@@ -3025,7 +3061,9 @@ describe('Settings + Config Integration', () => {
 
       state.setConfig(config);
       settings.handleProfileSyncStatusUpdate(status);
-      expect(document.getElementById('profile-sync-status').textContent).toContain('Status:');
+      expect(document.getElementById('profile-sync-status').textContent).toContain(
+        'Not synced yet.'
+      );
     });
 
     test('should hydrate profile sync controls and status', async () => {
@@ -3069,6 +3107,9 @@ describe('Settings + Config Integration', () => {
           passphraseEncrypted: true,
           passphraseStored: true,
           lastSyncAt: '2026-02-23T10:00:00.000Z',
+          lastSuccessfulSyncAt: '2026-02-23T10:00:00.000Z',
+          lastRemoteUpdatedAt: '2026-02-23T09:00:00.000Z',
+          lastRemoteUpdatedByThisDevice: false,
           lastSyncStatus: 'success',
           lastSyncError: '',
           needsResolution: false,
@@ -3086,9 +3127,12 @@ describe('Settings + Config Integration', () => {
       expect(document.getElementById('profile-sync-settings').classList.contains('hidden')).toBe(
         false
       );
-      expect(document.getElementById('profile-sync-status').textContent).toContain(
-        'Status: success'
-      );
+      const statusText = document.getElementById('profile-sync-status').textContent;
+      expect(statusText).toContain('Up to date. Last synced');
+      expect(statusText).toContain('Another computer last changed the sync file');
+      expect(
+        document.getElementById('profile-sync-clear-passphrase').classList.contains('hidden')
+      ).toBe(false);
     });
 
     test('should derive root folder when sync file is at POSIX root', async () => {
@@ -3429,6 +3473,75 @@ describe('Settings + Config Integration', () => {
       expect(mockElectronAPI.chooseProfileSyncFolder).toHaveBeenCalledWith('syncthing');
     });
 
+    test('asks before Sync Up replaces the sync file', async () => {
+      await settings.openSettings();
+      mockElectronAPI.runProfileSync = jest.fn().mockResolvedValue({ ok: true });
+      mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+
+      document.getElementById('profile-sync-push-now').click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
+        'Sync Up',
+        expect.stringContaining('Replace the sync file'),
+        expect.objectContaining({ confirmText: 'Sync Up' })
+      );
+      expect(mockElectronAPI.runProfileSync).not.toHaveBeenCalled();
+
+      document.getElementById('profile-sync-now').click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(mockElectronAPI.runProfileSync).toHaveBeenCalledWith('auto');
+    });
+
+    test('names the differing sections in the first-sync choice', () => {
+      settings.handleProfileSyncStatusUpdate(
+        buildProfileSyncStatus({
+          enabled: true,
+          needsResolution: true,
+          conflictSections: ['quickAccessLayout', 'visualPersonalization'],
+        })
+      );
+      expect(document.getElementById('profile-sync-resolution').classList).not.toContain('hidden');
+      expect(document.getElementById('profile-sync-resolution-text').textContent).toContain(
+        'different settings for Quick Access and layout, Appearance'
+      );
+      expect(document.getElementById('profile-sync-status').textContent).toBe(
+        'Waiting for your choice below.'
+      );
+    });
+
+    test('lists sync backups and restores the chosen one', async () => {
+      mockElectronAPI.listProfileSyncBackups = jest.fn().mockResolvedValue({
+        success: true,
+        backups: [
+          {
+            id: 'remote-profile-1771840800000.json',
+            kind: 'remote',
+            createdAt: '2026-02-23T10:00:00.000Z',
+            sections: ['visualPersonalization'],
+          },
+        ],
+      });
+      mockElectronAPI.restoreProfileSyncBackup = jest.fn().mockResolvedValue({
+        success: true,
+        restored: ['visualPersonalization'],
+        config: { ...state.CONFIG, opacity: 0.6 },
+      });
+      await settings.openSettings();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const select = document.getElementById('profile-sync-backup-select');
+      expect(select.disabled).toBe(false);
+      expect(select.options[0].textContent).toContain('the sync file’s Appearance');
+
+      document.getElementById('profile-sync-restore-backup').click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(mockElectronAPI.restoreProfileSyncBackup).toHaveBeenCalledWith(
+        'remote-profile-1771840800000.json'
+      );
+      expect(state.CONFIG.opacity).toBe(0.6);
+    });
+
     test('should open profile sync instructions from need help button', async () => {
       await settings.openSettings();
 
@@ -3436,7 +3549,7 @@ describe('Settings + Config Integration', () => {
       await Promise.resolve();
 
       expect(mockElectronAPI.openExternal).toHaveBeenCalledWith(
-        'https://github.com/Robertg761/HA-Desktop-Widget#profile-sync-opt-in'
+        'https://github.com/Robertg761/HA-Desktop-Widget#profile-sync'
       );
     });
 
@@ -3700,8 +3813,7 @@ describe('Settings + Config Integration', () => {
       'Card {{index}} ✓': 'Karte {{index}} ✓',
       'Weather (default)': 'Wetter (Standard)',
       'Time (default)': 'Uhrzeit (Standard)',
-      'Status: {{state}} | Last sync: {{time}}': 'Status: {{state}} | Letzte Sync: {{time}}',
-      'Profile sync: success': 'erfolgreich',
+      'Not synced yet.': 'Noch nicht synchronisiert.',
       never: 'nie',
       '1 custom icon configured.': '1 eigenes Symbol festgelegt.',
       '{{count}} custom icons configured.': '{{count}} eigene Symbole festgelegt.',
@@ -3757,14 +3869,14 @@ describe('Settings + Config Integration', () => {
       await settings.openSettings();
       const status = document.getElementById('profile-sync-status');
       const summary = document.getElementById('custom-entity-icons-summary');
-      expect(status.textContent).toBe('Status: success | Last sync: never');
+      expect(status.textContent).toBe('Not synced yet.');
       expect(summary.textContent).toBe('2 custom icons configured.');
 
       i18n.setLocaleBootstrap({ activeLocale: 'de', messages: GERMAN });
       // The locale observer runs as a microtask after <html lang> changes.
       await Promise.resolve();
 
-      expect(status.textContent).toBe('Status: erfolgreich | Letzte Sync: nie');
+      expect(status.textContent).toBe('Noch nicht synchronisiert.');
       expect(summary.textContent).toBe('2 eigene Symbole festgelegt.');
       expect(document.getElementById('primary-card-1-current').textContent).toBe(
         'Wetter (Standard)'
@@ -3786,7 +3898,7 @@ describe('Settings + Config Integration', () => {
         buildProfileSyncStatus({ enabled: true, lastSyncStatus: 'success', lastSyncAt: null })
       );
       expect(document.getElementById('profile-sync-status').textContent).toBe(
-        'Status: erfolgreich | Letzte Sync: nie'
+        'Noch nicht synchronisiert.'
       );
     });
 

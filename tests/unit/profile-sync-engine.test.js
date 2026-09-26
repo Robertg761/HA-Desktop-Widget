@@ -312,6 +312,37 @@ describe('profile sync engine', () => {
     expect(desktop.backups('local-profile')[0].sections.visualPersonalization.opacity).toBe(0.6);
   });
 
+  test('restoring a backup applies it here and syncs it to the other devices', async () => {
+    const { desktop, laptop } = await createSyncedPair();
+    desktop.edit((config) => {
+      config.opacity = 0.6;
+    });
+    await desktop.sync();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    laptop.edit((config) => {
+      config.opacity = 0.8;
+    });
+    await laptop.sync();
+
+    const backups = await laptop.context.listProfileSyncBackups();
+    const replacedRemote = backups.find((backup) => backup.kind === 'remote');
+    expect(replacedRemote.sections).toContain('visualPersonalization');
+
+    await laptop.context.restoreProfileSyncBackup(replacedRemote.id);
+    expect(laptop.config.opacity).toBe(0.6);
+    expect(laptop.context.pushes).toContain('config_change');
+    // The settings the restore replaced are backed up too, so it can be undone.
+    expect(laptop.backups('local-profile').length).toBeGreaterThan(0);
+
+    await laptop.sync();
+    await desktop.sync();
+    expect(desktop.config.opacity).toBe(0.6);
+
+    await expect(laptop.context.restoreProfileSyncBackup('../config.json')).rejects.toThrow(
+      'That backup is no longer available'
+    );
+  });
+
   test('scope belongs to each device and pushes keep sections other devices sync', async () => {
     const desktop = createDevice('desktop');
     await desktop.sync();

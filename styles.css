@@ -9164,12 +9164,6 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
-.profile-sync-group {
-  border-top: 1px solid var(--border-color);
-  padding-top: 16px;
-  margin-top: 16px;
-}
-
 .connection-test-row {
   display: flex;
   /* Wraps so the connect/disconnect/cancel trio never collides: the modal is
@@ -9523,117 +9517,6 @@ body.widget-state-active #quick-controls .status-message {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-}
-
-.profile-sync-settings {
-  margin-top: 12px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--surface-1);
-  padding: 12px;
-}
-
-.profile-sync-settings.hidden {
-  display: none;
-}
-
-.profile-sync-warning {
-  color: var(--warning);
-}
-
-.profile-sync-warning a {
-  color: var(--accent-text);
-  text-decoration: underline;
-}
-
-.profile-sync-warning a:hover {
-  color: var(--accent-text-hover);
-}
-
-/* Sync setups that look healthy but share nothing, so this has to read as a
-   problem rather than as ordinary help text. */
-.profile-sync-hint-warning {
-  color: var(--warning);
-}
-
-.profile-sync-file-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.profile-sync-file-row input {
-  flex: 1;
-  min-width: 200px;
-}
-
-.profile-sync-remember {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.profile-sync-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.profile-sync-scope-group {
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 10px;
-  background: var(--surface-2);
-}
-
-.profile-sync-scope-advanced {
-  margin-top: 10px;
-  display: grid;
-  gap: 8px;
-}
-
-.profile-sync-scope-advanced.hidden {
-  display: none;
-}
-
-.profile-sync-scope-option {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-
-.profile-sync-resolution {
-  border: 1px dashed rgba(var(--accent-rgb), 0.35);
-  border-radius: var(--radius-md);
-  padding: 10px;
-  background: rgba(var(--accent-rgb), 0.08);
-}
-
-.profile-sync-resolution.hidden {
-  display: none;
-}
-
-.profile-sync-resolution-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.profile-sync-status {
-  margin-top: 4px;
-  font-weight: 600;
-}
-
-.profile-sync-error {
-  color: var(--danger);
-}
-
-.profile-sync-error.hidden {
-  display: none;
 }
 
 /* Update section styles (from previous implementation) */
@@ -14195,6 +14078,11 @@ body.theme-light #settings-modal .modal-footer {
   color: var(--text-faint);
 }
 
+/* Warnings share the help text's spot but must still read as warnings. */
+#settings-modal .form-help.form-warning {
+  color: var(--warning);
+}
+
 #settings-modal .setting-text > .form-help:first-of-type {
   margin-top: 2px;
 }
@@ -14245,7 +14133,7 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
-/* Switches still wrapped in their label (Hotkeys, Alerts, Updates, Sync) read as rows too. */
+/* Switches still wrapped in their label (Hotkeys, Alerts, sync options) read as rows too. */
 #settings-modal .form-group > label:has(> input[type='checkbox']) {
   display: flex;
   flex-direction: row-reverse;
@@ -14564,25 +14452,72 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
   background: rgba(var(--accent-rgb), 0.12);
 }
 
-/* Profile sync reveals its options inside one row; flatten the old nested boxes
-   into the row rhythm. */
-#settings-modal .profile-sync-settings,
-#settings-modal .profile-sync-scope-group {
+/* Profile sync reveals its options as rows of their own, under the switch that
+   turns it on. */
+#settings-modal .settings-group-body > .profile-sync-settings {
   padding: 0;
-  border: none;
-  border-radius: 0;
-  background: transparent;
 }
 
-#settings-modal .profile-sync-settings > .form-group,
-#settings-modal .profile-sync-settings > .help-text {
-  margin-top: 12px;
-  padding-top: 12px;
+#settings-modal .profile-sync-settings > * {
+  margin: 0;
+  padding: 12px 0;
+}
+
+#settings-modal .profile-sync-settings > * + * {
   border-top: 1px solid var(--tile-border);
 }
 
-#settings-modal .profile-sync-file-row input {
+.profile-sync-file-row,
+.profile-sync-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+#settings-modal .profile-sync-file-row > input,
+#settings-modal .profile-sync-file-row > select {
+  flex: 1 1 220px;
   min-width: 0;
+  margin: 0;
+}
+
+/* Backup names are long; give them the whole line and put Restore under them. */
+#settings-modal .profile-sync-backup-row > select {
+  flex-basis: 100%;
+}
+
+.profile-sync-status {
+  color: var(--text-secondary);
+}
+
+#settings-modal .profile-sync-error {
+  color: var(--danger);
+}
+
+#settings-modal .profile-sync-settings > .profile-sync-resolution {
+  padding-inline-start: 12px;
+  border-inline-start: 3px solid var(--accent);
+}
+
+#settings-modal .profile-sync-scope-advanced {
+  display: grid;
+  gap: 12px;
+}
+
+#settings-modal .profile-sync-scope-advanced.hidden,
+.profile-sync-settings.hidden {
+  display: none;
+}
+
+#settings-modal .profile-sync-scope-advanced > label.profile-sync-scope-option {
+  align-items: center;
+  font-weight: var(--font-weight-normal);
+}
+
+.profile-sync-scope-option .setting-label,
+.profile-sync-scope-option .form-help {
+  display: block;
 }
 
 /* Update status reads as the version row's second line, not a boxed field. */

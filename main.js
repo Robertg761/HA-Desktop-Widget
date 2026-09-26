@@ -3769,6 +3769,14 @@ async function applySyncedProfileToConfig(pulledSections) {
     );
   }
 
+  return applySyncedConfigSideEffects(previous, persistence);
+}
+
+/**
+ * Carries a config change that did not come from the renderer (a pull or a
+ * backup restore) out to the windows, tray and runtime.
+ */
+async function applySyncedConfigSideEffects(previous, persistence) {
   const runtimeWarnings = [];
   await runPostSaveSideEffect(runtimeWarnings, 'synced main window settings', () =>
     applyMainWindowSettingSideEffects(previous, config)
@@ -3792,6 +3800,115 @@ async function applySyncedProfileToConfig(pulledSections) {
     })
   );
   return { runtimeWarnings };
+}
+
+const PROFILE_SYNC_BACKUP_FILE_PATTERN = /^(local|remote)-profile-(\d+)\.json$/;
+
+function extractProfileSyncBackupSections(backup, kind) {
+  if (isPlainObject(backup?.sections)) {
+    return Object.fromEntries(
+      Object.entries(backup.sections)
+        .filter(([key]) => profileSyncCore.SYNC_SCOPE_SECTION_KEYS.includes(key))
+        .map(([key, value]) => [key, kind === 'remote' ? value?.data : value])
+        .filter(([, data]) => isPlainObject(data))
+    );
+  }
+  // Backups written before sections existed hold one flat profile.
+  if (isPlainObject(backup?.profile)) {
+    const scope = profileSyncCore.normalizeSyncScope(backup.syncScope);
+    return Object.fromEntries(
+      profileSyncCore
+        .getScopeSectionKeys(scope)
+        .map((key) => [key, profileSyncCore.projectSection(backup.profile, key)])
+    );
+  }
+  return {};
+}
+
+async function readProfileSyncBackup(id) {
+  const match = typeof id === 'string' ? id.match(PROFILE_SYNC_BACKUP_FILE_PATTERN) : null;
+  if (!match) {
+    throw new Error(mainT('That backup is no longer available'));
+  }
+  const backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
+  let backup;
+  try {
+    backup = JSON.parse(await fs.promises.readFile(path.join(backupDir, id), 'utf8'));
+  } catch {
+    throw new Error(mainT('That backup is no longer available'));
+  }
+  return {
+    id,
+    kind: match[1],
+    createdAt: new Date(Number(match[2])).toISOString(),
+    sections: extractProfileSyncBackupSections(backup, match[1]),
+  };
+}
+
+/**
+ * Lists the backups sync keeps before replacing settings, newest first:
+ * `local` ones hold this device's settings before a pull replaced them, and
+ * `remote` ones hold the file's settings before this device's push replaced them.
+ */
+async function listProfileSyncBackups() {
+  const backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
+  let entries;
+  try {
+    entries = await fs.promises.readdir(backupDir);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return [];
+    throw error;
+  }
+  const backups = await Promise.all(
+    entries
+      .filter((name) => PROFILE_SYNC_BACKUP_FILE_PATTERN.test(name))
+      .map((name) => readProfileSyncBackup(name).catch(() => null))
+  );
+  return backups
+    .filter((backup) => backup && Object.keys(backup.sections).length > 0)
+    .map(({ id, kind, createdAt, sections }) => ({
+      id,
+      kind,
+      createdAt,
+      sections: Object.keys(sections),
+    }))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/**
+ * Applies a backup on this device as an ordinary local change, so the next merge
+ * run carries it to the other devices. The settings it replaces are backed up
+ * first, which keeps the restore itself undoable.
+ */
+async function restoreProfileSyncBackup(id) {
+  const backup = await readProfileSyncBackup(id);
+  const sectionKeys = Object.keys(backup.sections);
+  if (sectionKeys.length === 0) {
+    throw new Error(mainT('That backup is no longer available'));
+  }
+  await backupLocalProfileBeforePullApply(sectionKeys);
+
+  const previous = config;
+  const previousRuntimeTracking = {
+    localProfileHash: profileSyncRuntime.localProfileHash,
+    localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
+    localSectionHashes: profileSyncRuntime.localSectionHashes,
+    pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
+  };
+  config = profileSyncCore.mergeSectionsIntoConfig(config, backup.sections);
+  pruneConfig(config);
+  ensureDateTimeFormatConfigDefaults(config);
+  ensureProfileSyncConfigDefaults(config);
+  normalizeDesktopPinsConfig(config);
+  normalizeTrayEntitiesConfigInPlace(config);
+  const persistence = await saveConfigDurably();
+  if (!persistence.success) {
+    config = previous;
+    Object.assign(profileSyncRuntime, previousRuntimeTracking);
+    throw new Error(mainT('Failed to restore the backup: {{error}}', { error: persistence.error }));
+  }
+  await applySyncedConfigSideEffects(previous, persistence);
+  return { restored: sectionKeys };
 }
 
 function clearProfileSyncTimers() {
@@ -7816,6 +7933,30 @@ ipcMain.handle('run-profile-sync', async (event, direction = 'auto') => {
     return { ok: false, error: mainTError(error), status: buildProfileSyncStatus() };
   }
 });
+
+ipcMain.handle('list-profile-sync-backups', async (event) => {
+  const sender = authorizeIpcSender(event, 'list-profile-sync-backups');
+  if (!sender) return rejectUnauthorizedIpc('list-profile-sync-backups');
+  try {
+    return { success: true, backups: await listProfileSyncBackups() };
+  } catch (error) {
+    return { success: false, error: mainTError(error), backups: [] };
+  }
+});
+
+ipcMain.handle(
+  'restore-profile-sync-backup',
+  serializeConfigMutationHandler(async (event, id) => {
+    const sender = authorizeIpcSender(event, 'restore-profile-sync-backup');
+    if (!sender) return rejectUnauthorizedIpc('restore-profile-sync-backup');
+    try {
+      const result = await restoreProfileSyncBackup(id);
+      return { success: true, ...result, config: sanitizeConfigForRenderer(config) };
+    } catch (error) {
+      return { success: false, error: mainTError(error) };
+    }
+  })
+);
 
 ipcMain.handle(
   'set-profile-sync-passphrase',

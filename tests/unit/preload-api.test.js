@@ -90,6 +90,13 @@ describe('preload Electron API', () => {
       ],
       ['clearProfileSyncPassphrase', [], 'clear-profile-sync-passphrase', []],
       ['resolveProfileSyncFirstEnable', ['merge'], 'resolve-profile-sync-first-enable', ['merge']],
+      ['listProfileSyncBackups', [], 'list-profile-sync-backups', []],
+      [
+        'restoreProfileSyncBackup',
+        ['local-profile-1.json'],
+        'restore-profile-sync-backup',
+        ['local-profile-1.json'],
+      ],
       ['setOpacity', [0.8], 'set-opacity', [0.8]],
       ['previewWindowEffects', [objectArg], 'preview-window-effects', [objectArg]],
       ['setAlwaysOnTop', [true], 'set-always-on-top', [true]],

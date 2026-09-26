@@ -145,6 +145,8 @@ function createElectronApi(ipcRenderer, platform) {
       invoke('set-profile-sync-passphrase', passphrase, remember, encryptionEnabled),
     clearProfileSyncPassphrase: () => invokeChecked('clear-profile-sync-passphrase'),
     resolveProfileSyncFirstEnable: (choice) => invoke('resolve-profile-sync-first-enable', choice),
+    listProfileSyncBackups: () => invoke('list-profile-sync-backups'),
+    restoreProfileSyncBackup: (id) => invoke('restore-profile-sync-backup', id),
 
     setOpacity: (opacity) => invokeChecked('set-opacity', opacity),
     previewWindowEffects: (effects) => invoke('preview-window-effects', effects),
