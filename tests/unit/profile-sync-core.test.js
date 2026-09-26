@@ -181,6 +181,17 @@ describe('profile-sync-core', () => {
       );
     });
 
+    test('treats undefined values as absent, as they are once written', () => {
+      const cleared = { selectedWeatherEntity: undefined, primaryMediaPlayer: 'media_player.tv' };
+      const roundTripped = JSON.parse(JSON.stringify(cleared));
+      expect(computeSectionHash('connectionMediaPreferences', cleared)).toBe(
+        computeSectionHash('connectionMediaPreferences', roundTripped)
+      );
+      expect(computeProfileHash({ list: [1, undefined] })).toBe(
+        computeProfileHash({ list: [1, null] })
+      );
+    });
+
     test('ignores fields a newer version added to a section', () => {
       expect(computeSectionHash('quickAccessLayout', { favoriteEntities: ['a'] })).toBe(
         computeSectionHash('quickAccessLayout', { favoriteEntities: ['a'], futureField: 2 })

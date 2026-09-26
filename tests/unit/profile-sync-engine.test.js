@@ -530,6 +530,22 @@ describe('profile sync engine', () => {
     expect(decoded.sections.visualPersonalization.data.opacity).toBe(0.42);
   });
 
+  test('clearing a setting to undefined does not make the next sync pull it back', async () => {
+    const desktop = createDevice('desktop', {
+      content: { ...baseContent(), selectedWeatherEntity: 'weather.home' },
+    });
+    await desktop.sync();
+    // Clear Weather leaves the key in place with an undefined value.
+    desktop.edit((config) => {
+      config.selectedWeatherEntity = undefined;
+    });
+    expect((await desktop.sync()).pushed).toEqual(['connectionMediaPreferences']);
+
+    const next = await desktop.sync();
+    expect(next.action).toBe('none');
+    expect(desktop.backups('local-profile')).toHaveLength(0);
+  });
+
   test('refuses to push plaintext over an encrypted file', async () => {
     const desktop = createDevice('desktop', {
       profileSync: { encryptionEnabled: true, __passphrase: 'correct horse' },

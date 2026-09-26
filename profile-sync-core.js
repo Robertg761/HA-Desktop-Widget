@@ -47,13 +47,18 @@ function isObject(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+// Mirrors what JSON.stringify keeps, so a hash of in-memory settings matches the
+// same settings after a round trip through the sync file: object keys holding
+// undefined are left out, and undefined array items become null.
 function stableStringify(value) {
   if (Array.isArray(value)) {
-    return `[${value.map(stableStringify).join(',')}]`;
+    return `[${value.map((item) => (item === undefined ? 'null' : stableStringify(item))).join(',')}]`;
   }
 
   if (isObject(value)) {
-    const keys = Object.keys(value).sort();
+    const keys = Object.keys(value)
+      .filter((key) => value[key] !== undefined)
+      .sort();
     const serialized = keys.map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`);
     return `{${serialized.join(',')}}`;
   }
@@ -153,7 +158,11 @@ function projectFields(source, fields) {
   const projected = {};
   const safeSource = isObject(source) ? source : {};
   fields.forEach((field) => {
-    if (Object.prototype.hasOwnProperty.call(safeSource, field)) {
+    // An undefined value is absent once written, so it is absent here too.
+    if (
+      Object.prototype.hasOwnProperty.call(safeSource, field) &&
+      safeSource[field] !== undefined
+    ) {
       projected[field] = projectField(safeSource, field);
     }
   });
