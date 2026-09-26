@@ -6508,6 +6508,7 @@ function createTrayEntityIcon(entityId) {
 function invalidateHaConnectionState(status) {
   latestHaConnectionState = status;
   invalidateTrayEntityIcons();
+  omarchyBarPublisher?.update();
   Object.keys(config?.desktopPins || {}).forEach((entityId) => {
     sendDesktopPinUpdate(entityId, { type: 'connection' });
   });

@@ -18,7 +18,7 @@ omarchy-shell shell rescanPlugins
 omarchy plugin enable com.github.robertg761.hadesktopwidget
 ```
 
-The bar shows a Home Assistant icon, dimmed while the widget is disconnected or not running. Click it to open a panel listing your devices and their values. Clicking a light, switch, fan, input boolean, automation, siren, or humidifier there toggles it. Right-click the icon to show or hide the widget. When the panel has nothing to list, a click shows or hides the widget too.
+The bar shows a Home Assistant icon, dimmed while the widget is disconnected or not running. Click it to open a panel listing your devices and their values. Clicking a light, switch, fan, or input boolean there toggles it. Right-click the icon to show or hide the widget. When the panel has nothing to list, a click shows or hides the widget too.
 
 The panel lists the first twelve Quick Access favorites until you choose entities. Choose them, and up to four whose values appear in the bar itself, on the plugin's entry in `~/.config/omarchy/shell.json`:
 

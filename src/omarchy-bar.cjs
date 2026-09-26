@@ -18,16 +18,8 @@ const MAX_PANEL_ENTITIES = 24;
 const DEFAULT_PANEL_FAVORITES = 12;
 const MAX_BAR_ENTITIES = 4;
 const ENTITY_ID_PATTERN = /^[a-z0-9_]+\.[a-z0-9_]+$/;
-// Domains Home Assistant can toggle with a single service call.
-const TOGGLEABLE_DOMAINS = new Set([
-  'automation',
-  'fan',
-  'humidifier',
-  'input_boolean',
-  'light',
-  'siren',
-  'switch',
-]);
+// Domains the widget's toggle action (src/ui.js toggleEntity) turns on and off.
+const TOGGLEABLE_DOMAINS = new Set(['fan', 'input_boolean', 'light', 'switch']);
 const ENTITY_TOGGLE_ARG = '--entity-toggle';
 
 function getOmarchyBarPaths({ env = process.env, home = os.homedir() } = {}) {

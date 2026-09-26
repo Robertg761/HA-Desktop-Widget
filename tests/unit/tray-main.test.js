@@ -30,6 +30,7 @@ function loadTrayRuntime(platform) {
     showMainWindowFromTray: jest.fn(),
     toggleRaisedLayerWidget: jest.fn(),
     isLayerShellChildProcess: false,
+    omarchyBarPublisher: null,
     mainT: (key) => key,
     resolveTrayIcon: () => 'app-icon',
     nativeImage: { createEmpty: createImage },
@@ -187,6 +188,7 @@ describe('owner connection lifecycle', () => {
     ['unresponsive', 'disconnected'],
   ])('marks cached pins and tray stale on %s', (eventName, expectedState) => {
     const runtime = loadTrayRuntime('linux');
+    runtime.omarchyBarPublisher = { update: jest.fn() };
     runtime.config.desktopPins = { 'light.office': {} };
     runtime.syncTrayEntitiesWithConfig();
     const handlers = new Map();
@@ -203,6 +205,8 @@ describe('owner connection lifecycle', () => {
     expect(runtime.trayEntityIcons.get('sensor.office').setToolTip).toHaveBeenLastCalledWith(
       'Office: Offline'
     );
+    // The Omarchy bar hears about it at once, not at its next heartbeat.
+    expect(runtime.omarchyBarPublisher.update).toHaveBeenCalled();
   });
 
   it('reconnects on wake even when no tray values are configured', () => {

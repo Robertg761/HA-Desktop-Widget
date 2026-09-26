@@ -200,6 +200,13 @@ describe('bar requests and installation', () => {
     const entities = { all: ['light.desk', 'lock.front', 'sensor.temp'] };
     expect(isAllowedOmarchyBarToggle('light.desk', entities)).toBe(true);
     expect(isAllowedOmarchyBarToggle('lock.front', entities)).toBe(false);
+    // Only domains the widget's own toggle action handles.
+    expect(isAllowedOmarchyBarToggle('automation.lights', { all: ['automation.lights'] })).toBe(
+      false
+    );
+    expect(
+      describeOmarchyBarEntity('siren.alarm', { state: 'off', attributes: {} }).toggleable
+    ).toBe(false);
     expect(isAllowedOmarchyBarToggle('sensor.temp', entities)).toBe(false);
     expect(isAllowedOmarchyBarToggle('light.kitchen', entities)).toBe(false);
   });

@@ -1,4 +1,4 @@
-/* global console, process */
+/* global console, process, setTimeout */
 
 const { getNetSessionBusAddress } = require('./portal-global-shortcuts.cjs');
 
@@ -12,10 +12,16 @@ const WATCHER_BUS_NAME = 'org.kde.StatusNotifierWatcher';
 const DBUS_BUS_NAME = 'org.freedesktop.DBus';
 const DBUS_OBJECT_PATH = '/org/freedesktop/DBus';
 const DBUS_INTERFACE = 'org.freedesktop.DBus';
+const WATCHER_OBJECT_PATH = '/StatusNotifierWatcher';
+const PROPERTIES_INTERFACE = 'org.freedesktop.DBus.Properties';
+// Chromium registers each tray icon under org.kde.StatusNotifierItem-<pid>-<n>.
+const OWN_ITEM_MARKER = `StatusNotifierItem-${process.pid}-`;
 
 /**
- * Call `onAppeared` once if the StatusNotifierWatcher is absent now and shows up later.
- * Stops by itself when the watcher is already present, after it appears, or on bus failure.
+ * Call `onAppeared` once if the StatusNotifierWatcher is absent now and shows up later, or if it
+ * is present but this process's tray icon never registered with it (the watcher appeared after
+ * the Tray was created but before this check). Stops by itself once it has decided, or on bus
+ * failure.
  * @returns {{ stop: () => void, ready: Promise<boolean> }} `ready` resolves to whether the
  *   watcher was missing (and is therefore being waited for).
  */
@@ -29,6 +35,9 @@ function watchForStatusNotifierWatcher({
     return require('dbus-next').sessionBus({ busAddress, negotiateUnixFd: false });
   },
   dbus = null,
+  ownItemMarker = OWN_ITEM_MARKER,
+  verifyDelayMs = 3000,
+  delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 } = {}) {
   let bus = null;
   let stopped = false;
@@ -43,6 +52,27 @@ function watchForStatusNotifierWatcher({
       // best-effort cleanup
     }
     bus = null;
+  }
+
+  // true or false when the watcher lists its items, null when it cannot say.
+  async function isOwnItemRegistered(dbusModule) {
+    try {
+      const reply = await bus.call(
+        new dbusModule.Message({
+          destination: WATCHER_BUS_NAME,
+          path: WATCHER_OBJECT_PATH,
+          interface: PROPERTIES_INTERFACE,
+          member: 'Get',
+          signature: 'ss',
+          body: [WATCHER_BUS_NAME, 'RegisteredStatusNotifierItems'],
+        })
+      );
+      const items = reply?.body?.[0]?.value ?? reply?.body?.[0];
+      if (!Array.isArray(items)) return null;
+      return items.some((item) => typeof item === 'string' && item.includes(ownItemMarker));
+    } catch {
+      return null;
+    }
   }
 
   async function start() {
@@ -84,7 +114,15 @@ function watchForStatusNotifierWatcher({
     const reply = await call({ member: 'NameHasOwner', signature: 's', body: [WATCHER_BUS_NAME] });
     if (stopped) return false;
     if (reply?.body?.[0] === true) {
+      // Give Chromium time to register, then make sure it did; an XEmbed fallback never will.
+      await delay(verifyDelayMs);
+      if (stopped) return false;
+      const registered = await isOwnItemRegistered(dbusModule);
       stop();
+      if (registered === false) {
+        log.info?.('The tray icon did not register with the StatusNotifier host; recreating it');
+        onAppeared();
+      }
       return false;
     }
     waiting = true;
