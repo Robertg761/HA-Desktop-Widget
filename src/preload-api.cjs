@@ -67,7 +67,16 @@ function createElectronApi(ipcRenderer, platform) {
       flushDeferredConfigUpdate();
     }
   };
-  const updateConfig = (config) => invokeConfigMutation('update-config', config);
+  // Every update says which config revision it was built from, so main can tell
+  // a snapshot taken before a profile sync pull from a change made after it.
+  const updateConfig = (config) => {
+    const baseRevision = Math.max(latestSettledConfigRevision, latestDeliveredConfigRevision);
+    const payload =
+      config && typeof config === 'object' && !Array.isArray(config) && baseRevision >= 0
+        ? { ...config, configBaseRevision: baseRevision }
+        : config;
+    return invokeConfigMutation('update-config', payload);
+  };
   const replaceConfigEntityId = (oldEntityId, newEntityId) =>
     invokeConfigMutation('replace-config-entity-id', oldEntityId, newEntityId);
   const subscribeConfigUpdated = (callback) => {
@@ -108,7 +117,14 @@ function createElectronApi(ipcRenderer, platform) {
     platform,
 
     signalRendererReady: () => invoke('renderer-ready'),
-    getConfig: () => invoke('get-config'),
+    getConfig: async () => {
+      const result = await invoke('get-config');
+      const revision = getConfigRevision(result);
+      if (revision !== null) {
+        latestDeliveredConfigRevision = Math.max(latestDeliveredConfigRevision, revision);
+      }
+      return result;
+    },
     getLocaleBootstrap: () => invoke('get-locale-bootstrap'),
     getLocalePacks: (forceRefresh = false) => invoke('get-locale-packs', forceRefresh),
     downloadLocalePack: (locale) => invoke('download-locale-pack', locale),

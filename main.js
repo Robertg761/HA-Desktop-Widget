@@ -741,6 +741,9 @@ const profileSyncRuntime = {
   // The synced profile as it stood before that pull, to tell a stale snapshot
   // from a Settings save that also carries deliberate edits.
   pendingPullEchoProfile: null,
+  // The config revision the renderer first sees the pull in; an update built from
+  // an older revision predates the pull.
+  pendingPullRevision: null,
   // Conflict-copy filenames found beside the sync file on the last run. Refreshed
   // by sync runs because the check needs the filesystem.
   conflictCopies: [],
@@ -3843,6 +3846,7 @@ async function applySyncedProfileToConfig(pulledSections) {
       mainT('Failed to persist pulled profile: {{error}}', { error: persistence.error })
     );
   }
+  profileSyncRuntime.pendingPullRevision = configSnapshotVersion;
 
   return applySyncedConfigSideEffects(previous, persistence);
 }
@@ -4009,9 +4013,10 @@ function clearProfileSyncTimers() {
  *
  * @param {object} pulledConfig config as it stood before this update, i.e. the pulled state
  * @param {string[]} [touchedKeys] settings the user changed ('key' or 'ui.key'), kept as sent
+ * @param {number|null} [baseRevision] config revision the renderer built the update from
  * @returns {boolean} whether a stale update was detected and reversed
  */
-function restoreProfileFromStalePullEcho(pulledConfig, touchedKeys = []) {
+function restoreProfileFromStalePullEcho(pulledConfig, touchedKeys = [], baseRevision = null) {
   const prePullHash = profileSyncRuntime.pendingPullEchoHash;
   if (prePullHash === null || !pulledConfig) return false;
 
@@ -4021,27 +4026,46 @@ function restoreProfileFromStalePullEcho(pulledConfig, touchedKeys = []) {
   const touched = new Set(touchedKeys);
   const incomingProfile = profileSyncCore.projectSyncProfile(config, scope);
   const prePullProfile = profileSyncRuntime.pendingPullEchoProfile;
-  let stale;
-  if (prePullProfile) {
-    // Stale when every setting the user did not touch still holds its pre-pull
-    // value, so a Settings save carrying deliberate edits is still recognised.
-    const same = (a, b) =>
-      profileSyncCore.computeProfileHash({ value: a }) ===
-      profileSyncCore.computeProfileHash({ value: b });
+  const pullRevision = profileSyncRuntime.pendingPullRevision;
+  const same = (a, b) =>
+    profileSyncCore.computeProfileHash({ value: a }) ===
+    profileSyncCore.computeProfileHash({ value: b });
+  const eachSyncedSetting = (visit) => {
     const fields = new Set([...Object.keys(prePullProfile), ...Object.keys(incomingProfile)]);
-    stale = [...fields].every((field) => {
-      if (field !== 'ui')
-        return touched.has(field) || same(incomingProfile[field], prePullProfile[field]);
+    return [...fields].every((field) => {
+      if (field !== 'ui') return visit(field, incomingProfile[field], prePullProfile[field]);
       const incomingUi = incomingProfile.ui || {};
       const prePullUi = prePullProfile.ui || {};
-      return [...new Set([...Object.keys(incomingUi), ...Object.keys(prePullUi)])].every(
-        (key) => touched.has(`ui.${key}`) || same(incomingUi[key], prePullUi[key])
+      return [...new Set([...Object.keys(incomingUi), ...Object.keys(prePullUi)])].every((key) =>
+        visit(`ui.${key}`, incomingUi[key], prePullUi[key])
       );
     });
-  } else {
-    stale = computeScopedProfileHash(incomingProfile, scope) === prePullHash;
+  };
+
+  let keep = touched;
+  if (baseRevision !== null && pullRevision !== null && prePullProfile) {
+    if (baseRevision >= pullRevision) {
+      // Built after the renderer saw the pull: every value in it is deliberate.
+      profileSyncRuntime.pendingPullEchoHash = null;
+      return false;
+    }
+    // Built before the pull. Whatever it changed relative to the pre-pull
+    // profile is a deliberate edit; everything else is stale.
+    keep = new Set(touched);
+    eachSyncedSetting((key, incomingValue, prePullValue) => {
+      if (!same(incomingValue, prePullValue)) keep.add(key);
+      return true;
+    });
+  } else if (prePullProfile) {
+    // No revision (an older renderer): stale when every setting the user did
+    // not touch still holds its pre-pull value.
+    const stale = eachSyncedSetting(
+      (key, incomingValue, prePullValue) => touched.has(key) || same(incomingValue, prePullValue)
+    );
+    if (!stale) return false;
+  } else if (computeScopedProfileHash(incomingProfile, scope) !== prePullHash) {
+    return false;
   }
-  if (!stale) return false;
 
   const incoming = config;
   config = profileSyncCore.mergeSyncedProfileIntoConfig(
@@ -4049,9 +4073,8 @@ function restoreProfileFromStalePullEcho(pulledConfig, touchedKeys = []) {
     profileSyncCore.projectSyncProfile(pulledConfig, scope),
     scope
   );
-  // Settings the user deliberately set (Settings reports them) are not stale,
-  // even when they equal the pre-pull values.
-  touched.forEach((key) => {
+  // Deliberate values from the update survive, even ones equal to the pre-pull value.
+  keep.forEach((key) => {
     const [owner, field] = key.startsWith('ui.') ? [incoming.ui, key.slice(3)] : [incoming, key];
     const target = key.startsWith('ui.') ? (config.ui = { ...(config.ui || {}) }) : config;
     if (owner && Object.prototype.hasOwnProperty.call(owner, field)) {
@@ -4063,7 +4086,7 @@ function restoreProfileFromStalePullEcho(pulledConfig, touchedKeys = []) {
   ensureProfileSyncConfigDefaults(config);
   config.profileSync.syncScope = scope;
   profileSyncRuntime.pendingPullEchoHash = null;
-  log.debug('Reverted a renderer config update that predates the last profile sync pull');
+  log.debug('Reverted the stale part of a renderer config update that predates the last pull');
   return true;
 }
 
@@ -6887,6 +6910,11 @@ ipcMain.handle(
           .slice(0, 100)
       : [];
     delete newConfig.profileSyncTouchedKeys;
+    // The config revision the renderer built this update from (added by preload).
+    const baseRevision = Number.isInteger(newConfig.configBaseRevision)
+      ? newConfig.configBaseRevision
+      : null;
+    delete newConfig.configBaseRevision;
     pruneConfig(newConfig);
     const customTabs = Array.isArray(newConfig.customTabs)
       ? newConfig.customTabs
@@ -7022,7 +7050,7 @@ ipcMain.handle(
     normalizeDesktopPinsConfig(config);
     normalizeTrayEntitiesConfigInPlace(config);
     pruneConfig(config);
-    restoreProfileFromStalePullEcho(prevConfig, touchedSyncKeys);
+    restoreProfileFromStalePullEcho(prevConfig, touchedSyncKeys, baseRevision);
     // The renderer's echo of profileSync may be stale; the content-change
     // timestamp is main-process-authoritative (saveConfig advances it on real
     // profile changes).

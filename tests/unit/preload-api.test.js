@@ -272,6 +272,30 @@ describe('preload Electron API', () => {
     expect(callback).toHaveBeenCalledTimes(1);
   });
 
+  it('tells main which config revision each update was built from', async () => {
+    const ipcRenderer = createIpcRenderer();
+    ipcRenderer.invoke.mockImplementation(async (channel) =>
+      channel === 'get-config' ? { homeAssistant: {}, configRevision: 3 } : { configRevision: 9 }
+    );
+    const api = createElectronApi(ipcRenderer, 'test-platform');
+    api.onConfigUpdated(jest.fn());
+
+    await api.getConfig();
+    await api.updateConfig({ opacity: 0.5 });
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('update-config', {
+      opacity: 0.5,
+      configBaseRevision: 3,
+    });
+
+    // A delivered update (such as a profile sync pull) moves the base forward.
+    ipcRenderer.emit('config-updated', {}, { homeAssistant: {}, configRevision: 12 });
+    await api.updateConfig({ opacity: 0.6 });
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('update-config', {
+      opacity: 0.6,
+      configBaseRevision: 12,
+    });
+  });
+
   it('tracks the authoritative revision returned by an atomic entity replacement', async () => {
     const ipcRenderer = createIpcRenderer();
     let resolveReplacement;

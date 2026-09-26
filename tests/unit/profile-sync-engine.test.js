@@ -147,7 +147,7 @@ function createDevice(name, { content = baseContent(), profileSync = {}, clockOf
     `${PROFILE_SYNC_CONSTANTS}
      var profileSyncRuntime = {
        inFlight: false, pushDebounceTimer: null, intervalTimer: null, pendingPullEchoHash: null,
-       pendingPullEchoProfile: null, damagedConflictSections: [],
+       pendingPullEchoProfile: null, pendingPullRevision: null, damagedConflictSections: [],
        conflictCopies: [], lastOpportunisticSyncAt: 0, needsResolution: false,
        pendingRemoteEnvelope: null, pendingRemoteIdentity: null, localProfileHash: null,
        localProfileUpdatedAt: null, localSectionHashes: {}, conflictSections: [],
@@ -155,9 +155,11 @@ function createDevice(name, { content = baseContent(), profileSync = {}, clockOf
        approvedCopyDestinationFolders: [],
      };
      ${ENGINE_SOURCE}
+     var configSnapshotVersion = 0;
      function saveConfig(options = {}) {
        updateLocalProfileSyncTracking({ allowDebouncedPush: options.allowDebouncedPush !== false });
        savedSnapshots += 1;
+       configSnapshotVersion += 1;
        return {};
      }
      async function saveConfigDurably(options = {}) {
@@ -686,6 +688,49 @@ describe('profile sync engine', () => {
     expect(context.restoreProfileFromStalePullEcho(pulled, ['opacity'])).toBe(true);
     expect(context.config.ui.accent).toBe('teal');
     expect(context.config.opacity).toBe(0.5);
+  });
+
+  test('any update built before a pull keeps only what it changed', async () => {
+    const { desktop, laptop } = await createSyncedPair();
+    const { context } = desktop;
+    const beforePull = context.configSnapshotVersion;
+    laptop.edit((config) => {
+      config.ui = { ...config.ui, accent: 'teal' };
+    });
+    await laptop.sync();
+    await desktop.sync();
+    const pulled = context.config;
+
+    // An alert save built from the pre-pull snapshot: old accent, new alert, and
+    // favorites set back to what they were, which is no change at all for it.
+    context.config = {
+      ...pulled,
+      ui: { ...pulled.ui, accent: 'original' },
+      entityAlerts: { enabled: true, alerts: { 'light.kitchen': { onStateChange: true } } },
+    };
+    expect(context.restoreProfileFromStalePullEcho(pulled, [], beforePull)).toBe(true);
+    expect(context.config.ui.accent).toBe('teal');
+    expect(context.config.entityAlerts.enabled).toBe(true);
+  });
+
+  test('an update built after the pull is taken as it is, even a revert to the old value', async () => {
+    const { desktop, laptop } = await createSyncedPair();
+    const { context } = desktop;
+    laptop.edit((config) => {
+      config.favoriteEntities = ['light.kitchen', 'light.porch'];
+    });
+    await laptop.sync();
+    await desktop.sync();
+    const pulled = context.config;
+
+    // The user removes the favorite that just arrived.
+    context.config = { ...pulled, favoriteEntities: ['light.kitchen'] };
+    expect(context.restoreProfileFromStalePullEcho(pulled, [], context.configSnapshotVersion)).toBe(
+      false
+    );
+    expect(context.config.favoriteEntities).toEqual(['light.kitchen']);
+    context.saveConfig();
+    expect((await desktop.sync()).pushed).toEqual(['quickAccessLayout']);
   });
 
   test('refuses to push plaintext over an encrypted file', async () => {

@@ -856,7 +856,7 @@ describe('profile sync runtime safeguards', () => {
     const handlerStart = mainSource.indexOf("'update-config'");
     const merge = mainSource.indexOf('config = { ...config, ...newConfig', handlerStart);
     const guard = mainSource.indexOf(
-      'restoreProfileFromStalePullEcho(prevConfig, touchedSyncKeys)',
+      'restoreProfileFromStalePullEcho(prevConfig, touchedSyncKeys, baseRevision)',
       handlerStart
     );
     const timestampOverride = mainSource.indexOf(
