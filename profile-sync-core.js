@@ -749,13 +749,15 @@ async function decodeEnvelopeSections(envelope, passphrase) {
   // missing would let the next sync overwrite them without a backup.
   const malformed = {};
   Object.entries(decoded.sections).forEach(([key, entry]) => {
-    const normalized = normalizeSectionEntry(entry, fallback);
-    if (SYNC_SCOPE_SECTION_KEYS.includes(key)) {
-      if (normalized && hasValidSectionFields(key, normalized.data)) sections[key] = normalized;
-      else malformed[key] = deepClone(entry);
+    // A section only a newer version knows is kept exactly as it is, metadata
+    // included: its schema is not ours to fill in.
+    if (!SYNC_SCOPE_SECTION_KEYS.includes(key)) {
+      sections[key] = deepClone(entry);
+      return;
     }
-    // A section only a newer version knows is kept as it is.
-    else sections[key] = normalized || deepClone(entry);
+    const normalized = normalizeSectionEntry(entry, fallback);
+    if (normalized && hasValidSectionFields(key, normalized.data)) sections[key] = normalized;
+    else malformed[key] = deepClone(entry);
   });
   return {
     sections,

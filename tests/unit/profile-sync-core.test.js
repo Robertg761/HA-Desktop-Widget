@@ -553,13 +553,19 @@ describe('profile-sync-core', () => {
           sections: {
             visualPersonalization: { updatedAt: '2026-02-23T08:00:00.000Z', data: 'garbage' },
             futureSection: 'opaque',
+            // Its metadata follows a schema this version does not know, so no
+            // timestamp or writer is filled in.
+            futureObjectSection: { updatedAt: null, data: { novel: true } },
           },
         },
       });
       expect(decoded.malformed).toEqual({
         visualPersonalization: { updatedAt: '2026-02-23T08:00:00.000Z', data: 'garbage' },
       });
-      expect(decoded.sections).toEqual({ futureSection: 'opaque' });
+      expect(decoded.sections).toStrictEqual({
+        futureSection: 'opaque',
+        futureObjectSection: { updatedAt: null, data: { novel: true } },
+      });
     });
 
     test('reports known sections whose fields have the wrong types as damaged', async () => {
