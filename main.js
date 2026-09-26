@@ -1583,7 +1583,15 @@ function getDefaultProfileSyncConfig() {
 function ensureProfileSyncConfigDefaults(target) {
   if (!target || typeof target !== 'object') return target;
   const defaults = getDefaultProfileSyncConfig();
-  target.profileSync = { ...defaults, ...(target.profileSync || {}) };
+  // Fill in place rather than replacing the object: code that holds on to
+  // config.profileSync across a helper that calls this again would otherwise
+  // write to a detached copy, and those writes (a staged key rewrite, a
+  // completion marker) would never be saved.
+  const profileSync = isPlainObject(target.profileSync) ? target.profileSync : {};
+  Object.keys(defaults).forEach((key) => {
+    if (!Object.prototype.hasOwnProperty.call(profileSync, key)) profileSync[key] = defaults[key];
+  });
+  target.profileSync = profileSync;
   target.profileSync.intervalMinutes = Number.isFinite(Number(target.profileSync.intervalMinutes))
     ? Math.max(1, Math.min(60, Number(target.profileSync.intervalMinutes)))
     : PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES;
@@ -3346,6 +3354,21 @@ async function executePendingProfileSyncRewrite() {
         await writeConfiguredSyncEnvelope(targetEnvelope);
       },
       promoteLocal: async () => {
+        // The baseline is what the file now holds, not the current config:
+        // settings edited while recovery was pending still differ from the staged
+        // file, and have to merge as local changes afterwards.
+        const writtenSections = (
+          await profileSyncCore.decodeEnvelopeSections(targetEnvelope, newPassphrase)
+        ).sections;
+        const writtenBaseline = {};
+        profileSyncCore.getScopeSectionKeys(getActiveProfileSyncScope()).forEach((key) => {
+          if (writtenSections[key]) {
+            writtenBaseline[key] = profileSyncCore.computeSectionHash(
+              key,
+              writtenSections[key].data
+            );
+          }
+        });
         const previous = {
           rememberPassphrase: profileSync.rememberPassphrase,
           passphraseEncrypted: profileSync.passphraseEncrypted,
@@ -3389,8 +3412,7 @@ async function executePendingProfileSyncRewrite() {
         profileSync.lastSyncError = '';
         profileSyncRuntime.localProfileUpdatedAt = targetEnvelope.updatedAt;
         profileSync.profileUpdatedAt = targetEnvelope.updatedAt;
-        // The staged target was checked to match every in-scope section.
-        profileSync.syncBaseline = computeLocalSectionHashes(getActiveProfileSyncScope());
+        profileSync.syncBaseline = writtenBaseline;
         profileSync.lastSuccessfulSyncAt = profileSync.lastSyncAt;
 
         const persistence = await saveConfigDurably({ allowDebouncedPush: false });

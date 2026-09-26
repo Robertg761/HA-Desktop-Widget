@@ -14,9 +14,7 @@ const vm = require('vm');
 const nodeCrypto = require('crypto');
 const profileSyncCore = require('../../profile-sync-core.js');
 const { requireExistingSyncParentDirectory } = require('../../src/cloud-sync-path.cjs');
-const {
-  normalizeProfileSyncRewriteTransaction,
-} = require('../../src/profile-sync-rewrite-transaction.cjs');
+const rewriteTransaction = require('../../src/profile-sync-rewrite-transaction.cjs');
 const { formatTemplate } = require('../../src/i18n-main.cjs');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
@@ -37,11 +35,7 @@ const ENGINE_SOURCE = [
   ),
   sliceMain('function generateProfileSyncDeviceId(', 'function ensureUpdateConfigDefaults('),
   sliceMain('function getProfileSyncConfig(', 'function hasDeferredSecureConfigWork('),
-  sliceMain('function buildProfileSyncStatus(', 'function sealProfileSyncTransitionSecret('),
-  sliceMain(
-    'async function buildProfileSyncEnvelopeForConfig(',
-    'async function stageProfileSyncRewrite({'
-  ),
+  sliceMain('function buildProfileSyncStatus(', 'async function readCloudFileEnvelope('),
   sliceMain(
     'async function readCloudFileEnvelope(',
     '/**\n * Selects and returns an appropriate tray icon'
@@ -129,10 +123,16 @@ function createDevice(name, { content = baseContent(), profileSync = {}, clockOf
     nodeCrypto,
     profileSyncCore,
     requireExistingSyncParentDirectory,
-    normalizeProfileSyncRewriteTransaction,
+    ...rewriteTransaction,
     app: { getPath: () => userData },
     log: { warn: () => {}, info: () => {}, debug: () => {}, error: () => {} },
-    safeStorage: { isEncryptionAvailable: () => false },
+    // Stands in for the OS credential store the rewrite transaction seals secrets with.
+    safeStorage: {
+      isEncryptionAvailable: () => true,
+      getSelectedStorageBackend: () => 'gnome_libsecret',
+      encryptString: (value) => Buffer.from(`sealed:${value}`),
+      decryptString: (buffer) => buffer.toString().slice('sealed:'.length),
+    },
     mainT: (key, vars) => formatTemplate(key, vars),
     mainTError: (error) => (typeof error === 'string' ? error : error?.message || ''),
     isPlainObject: (value) => !!value && typeof value === 'object' && !Array.isArray(value),
@@ -487,6 +487,47 @@ describe('profile sync engine', () => {
       forceSections: [...laptop.context.profileSyncRuntime.conflictSections],
     });
     expect(laptop.config.opacity).toBe(0.5);
+  });
+
+  test('keeps one profileSync object, so writes made across helper calls are saved', async () => {
+    const { context } = createDevice('desktop');
+    const held = context.getProfileSyncConfig();
+    await context.readConfiguredSyncEnvelope();
+    held.remoteRewritePending = true;
+    expect(context.getProfileSyncConfig()).toBe(held);
+    expect(context.config.profileSync.remoteRewritePending).toBe(true);
+  });
+
+  test('an edit made while an encryption change awaited recovery is not lost', async () => {
+    const desktop = createDevice('desktop');
+    await desktop.sync();
+    const { context } = desktop;
+
+    // Encryption is staged, but the rewrite does not run yet (crash, folder offline).
+    await context.stageProfileSyncRewrite({
+      oldPassphrase: '',
+      newPassphrase: 'new passphrase',
+      rememberNewPassphrase: false,
+      targetEncryptionEnabled: true,
+      changeCredential: true,
+      baselineConfig: context.config,
+      targetConfig: {
+        ...context.config,
+        profileSync: { ...context.config.profileSync, encryptionEnabled: true },
+      },
+      reason: 'encryption_transition',
+    });
+    desktop.edit((config) => {
+      config.opacity = 0.42;
+    });
+
+    await context.executePendingProfileSyncRewrite();
+    const result = await desktop.sync();
+
+    expect(result.pushed).toEqual(['visualPersonalization']);
+    expect(desktop.config.opacity).toBe(0.42);
+    const decoded = await profileSyncCore.decodeEnvelopeSections(readSyncFile(), 'new passphrase');
+    expect(decoded.sections.visualPersonalization.data.opacity).toBe(0.42);
   });
 
   test('refuses to push plaintext over an encrypted file', async () => {
