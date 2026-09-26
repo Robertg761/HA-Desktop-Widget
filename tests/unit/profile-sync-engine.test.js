@@ -312,6 +312,20 @@ describe('profile sync engine', () => {
     expect(desktop.backups('local-profile')[0].sections.visualPersonalization.opacity).toBe(0.6);
   });
 
+  test('Sync Up backs up the file’s version of every section it replaces', async () => {
+    const { laptop } = await createSyncedPair();
+    // Only this computer changed the section, so a merge would not count it as a conflict.
+    laptop.edit((config) => {
+      config.opacity = 0.4;
+    });
+
+    await laptop.sync('push', 'manual');
+
+    const backups = laptop.backups('remote-profile');
+    expect(backups).toHaveLength(1);
+    expect(backups[0].sections.visualPersonalization.data.opacity).toBe(0.9);
+  });
+
   test('restoring a backup applies it here and syncs it to the other devices', async () => {
     const { desktop, laptop } = await createSyncedPair();
     desktop.edit((config) => {

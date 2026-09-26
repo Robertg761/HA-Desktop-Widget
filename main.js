@@ -5488,8 +5488,12 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
     const rewriteRequired = !!profileSync.remoteRewritePending && mayChangeEncryption;
     let wroteEnvelope = null;
     if (pushKeys.length > 0 || rewriteRequired) {
-      if (plan.discardsRemote.length > 0) {
-        await backupRemoteSectionsBeforePush(pickSections(remoteSections, plan.discardsRemote));
+      // A merge only replaces remote edits it reports as discarded. Sync Up replaces
+      // whatever the file holds for the sections it pushes, so it keeps all of them.
+      const replacedRemoteKeys = direction === 'push' ? plan.push : plan.discardsRemote;
+      const replacedRemoteSections = pickSections(remoteSections, replacedRemoteKeys);
+      if (Object.keys(replacedRemoteSections).length > 0) {
+        await backupRemoteSectionsBeforePush(replacedRemoteSections);
       }
       const now = new Date().toISOString();
       const nextSections = { ...remoteSections };
