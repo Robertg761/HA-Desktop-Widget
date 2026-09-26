@@ -28,7 +28,7 @@ A launcher binding can also use `ha-desktop-widget --toggle`. `--show` and `--hi
 
 ## Appearance and startup
 
-Enable Follow Omarchy theme under Settings → Appearance to follow the active palette. Disabling it restores your own color choices. Theme changes apply without restarting. Omarchy 4 palettes and Omarchy 3.3 and later palettes are both read, including light themes such as Catppuccin Latte, Rose Pine, and Flexoki Light, which Omarchy 3 marks with a `light.mode` file. Omarchy releases before 3.3 have no `colors.toml`, so the option does not appear there.
+The widget follows the active Omarchy palette by default. Turn off Follow Omarchy theme under Settings → Appearance to use your own color choices again. Theme changes apply without restarting. Omarchy 4 palettes and Omarchy 3.3 and later palettes are both read, including light themes such as Catppuccin Latte, Rose Pine, and Flexoki Light, which Omarchy 3 marks with a `light.mode` file. Omarchy releases before 3.3 have no `colors.toml`, so the option does not appear there.
 
 Notifications carry the desktop entry `com.github.robertg761.hadesktopwidget`. On Omarchy 3, a mako section such as `[desktop-entry=com.github.robertg761.hadesktopwidget]` can style them separately.
 

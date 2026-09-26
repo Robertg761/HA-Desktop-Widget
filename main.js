@@ -1752,6 +1752,24 @@ function ensureDateTimeFormatConfigDefaults(target, options = {}) {
   return target;
 }
 
+/**
+ * Following the Omarchy palette is on by default. It used to be off, and Settings wrote that
+ * unticked default back on every save on Omarchy, so a saved `false` from before is not a
+ * choice anyone made: turn it on once, then keep whatever the user picks afterwards. The
+ * marker is top-level config, which a Settings save keeps even though it never sends it.
+ */
+function ensureFollowOmarchyDefault(target) {
+  if (!target || typeof target !== 'object') return target;
+  target.ui = target.ui && typeof target.ui === 'object' ? target.ui : {};
+  if (target.omarchyThemeDefaultApplied !== true) {
+    target.ui.followOmarchy = true;
+    target.omarchyThemeDefaultApplied = true;
+  } else if (typeof target.ui.followOmarchy !== 'boolean') {
+    target.ui.followOmarchy = true;
+  }
+  return target;
+}
+
 function getProfileSyncConfig() {
   ensureProfileSyncConfigDefaults(config);
   return config.profileSync;
@@ -4488,6 +4506,8 @@ function loadConfig(options = {}) {
       weatherEffectsEnabled: false,
       weatherOverride: 'auto',
       enableInteractionDebugLogs: false,
+      // Only takes effect where an Omarchy palette exists.
+      followOmarchy: true,
     },
     primaryCards: ['weather', 'time'],
     favoriteEntities: [],
@@ -4609,6 +4629,7 @@ function loadConfig(options = {}) {
       ensureProfileSyncConfigDefaults(config);
       ensureUpdateConfigDefaults(config);
       ensureHaProfileConfigDefaults(config);
+      ensureFollowOmarchyDefault(config);
 
       // OAuth access tokens are short-lived runtime state. Ignore any stale copy
       // that an earlier development build may have put in config.json.
@@ -4786,6 +4807,7 @@ function loadConfig(options = {}) {
       ensureDateTimeFormatConfigDefaults(config);
       ensureProfileSyncConfigDefaults(config);
       ensureUpdateConfigDefaults(config);
+      ensureFollowOmarchyDefault(config);
       normalizeDesktopPinsConfig(config);
       normalizeTrayEntitiesConfigInPlace(config);
       // Ensure directory exists and persist
