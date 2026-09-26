@@ -564,6 +564,31 @@ describe('profile sync engine', () => {
     expect(desktop.config.selectedWeatherEntity).toBeUndefined();
   });
 
+  test('a damaged section stops sync until Sync Up replaces it, keeping a copy', async () => {
+    const desktop = createDevice('desktop');
+    await desktop.sync();
+    const file = readSyncFile();
+    file.payload.sections.visualPersonalization.data = 'garbage';
+    fs.writeFileSync(syncFilePath(), JSON.stringify(file));
+    const damaged = fs.readFileSync(syncFilePath(), 'utf8');
+
+    desktop.edit((config) => {
+      config.opacity = 0.3;
+    });
+    await expect(desktop.sync()).rejects.toThrow(
+      "The sync file's Appearance settings are damaged. Use Sync Up"
+    );
+    expect(fs.readFileSync(syncFilePath(), 'utf8')).toBe(damaged);
+
+    await desktop.sync('push', 'manual');
+    expect(desktop.backups('remote-profile')[0].sections.visualPersonalization.data).toBe(
+      'garbage'
+    );
+    const repaired = await profileSyncCore.decodeEnvelopeSections(readSyncFile());
+    expect(repaired.malformed).toEqual({});
+    expect(repaired.sections.visualPersonalization.data.opacity).toBe(0.3);
+  });
+
   test('refuses to push plaintext over an encrypted file', async () => {
     const desktop = createDevice('desktop', {
       profileSync: { encryptionEnabled: true, __passphrase: 'correct horse' },

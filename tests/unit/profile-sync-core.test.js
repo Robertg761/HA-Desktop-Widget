@@ -368,6 +368,29 @@ describe('profile-sync-core', () => {
     expect(nothingForced.pull).toEqual([]);
   });
 
+  test('pushed ui keeps settings only a newer version knows, but other maps stay as sent', () => {
+    const entry = buildPushedSectionEntry(
+      'visualPersonalization',
+      { opacity: 0.5, ui: { theme: 'dark' } },
+      {
+        data: {
+          opacity: 0.9,
+          ui: { theme: 'light', futureSetting: true, scale: 2 },
+        },
+      },
+      { updatedAt: '2026-01-01T00:00:00.000Z', deviceId: 'device-a' }
+    );
+    expect(entry.data.ui).toEqual({ theme: 'dark', futureSetting: true });
+
+    const layout = buildPushedSectionEntry(
+      'quickAccessLayout',
+      { customEntityNames: { 'light.a': 'A' } },
+      { data: { customEntityNames: { 'light.a': 'A', 'light.deleted': 'Gone' } } },
+      { updatedAt: '2026-01-01T00:00:00.000Z', deviceId: 'device-a' }
+    );
+    expect(layout.data.customEntityNames).toEqual({ 'light.a': 'A' });
+  });
+
   test('pushed sections keep fields a newer version wrote', () => {
     const entry = buildPushedSectionEntry(
       'quickAccessLayout',
@@ -490,6 +513,25 @@ describe('profile-sync-core', () => {
       expect(JSON.stringify(rewritten)).not.toContain('secretExtra');
       const again = await decodeEnvelopeSections(rewritten, 'strong-passphrase');
       expect(again.extensions.payloadFields).toEqual({ secretExtra: 'kept' });
+    });
+
+    test('reports damaged known sections and keeps unknown ones as they are', async () => {
+      const decoded = await decodeEnvelopeSections({
+        schemaVersion: 3,
+        minReaderVersion: 3,
+        updatedAt: '2026-02-23T08:00:00.000Z',
+        updatedByDeviceId: 'device-a',
+        payload: {
+          sections: {
+            visualPersonalization: { updatedAt: '2026-02-23T08:00:00.000Z', data: 'garbage' },
+            futureSection: 'opaque',
+          },
+        },
+      });
+      expect(decoded.malformed).toEqual({
+        visualPersonalization: { updatedAt: '2026-02-23T08:00:00.000Z', data: 'garbage' },
+      });
+      expect(decoded.sections).toEqual({ futureSection: 'opaque' });
     });
 
     test('refuses files that require a newer reader', () => {

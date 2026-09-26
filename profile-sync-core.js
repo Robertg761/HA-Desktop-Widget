@@ -378,11 +378,22 @@ function buildPushedSectionEntry(sectionKey, localData, remoteEntry, { updatedAt
       }
     });
   }
+  const data = { ...carried, ...deepClone(localData || {}) };
+  // ui is a bag of settings, so keys this device lacks come from a newer
+  // version and ride along. The other fields map entity ids, where a missing key
+  // is a deletion and must stay deleted.
+  if (isObject(remoteEntry?.data?.ui) && isObject(data.ui)) {
+    Object.entries(remoteEntry.data.ui).forEach(([key, value]) => {
+      if (!Object.prototype.hasOwnProperty.call(data.ui, key) && !LOCAL_ONLY_UI_KEYS.has(key)) {
+        data.ui[key] = deepClone(value);
+      }
+    });
+  }
   return {
     ...entryExtras,
     updatedAt: updatedAt || new Date().toISOString(),
     updatedByDeviceId: deviceId || 'unknown-device',
-    data: { ...carried, ...deepClone(localData || {}) },
+    data,
   };
 }
 
@@ -624,7 +635,7 @@ function convertLegacyProfileToSections(envelope, profile) {
  * the rest of what a newer writer added (see extractEnvelopeExtensions).
  *
  * @returns {Promise<{sections: Object<string, object>, legacy: boolean,
- *   extensions: object|null}>}
+ *   malformed: Object<string, *>, extensions: object|null}>}
  */
 async function decodeEnvelopeSections(envelope, passphrase) {
   validateEnvelopeShape(envelope);
@@ -640,6 +651,7 @@ async function decodeEnvelopeSections(envelope, passphrase) {
     return {
       sections: convertLegacyProfileToSections(envelope, decoded),
       legacy: true,
+      malformed: {},
       extensions: null,
     };
   }
@@ -652,11 +664,22 @@ async function decodeEnvelopeSections(envelope, passphrase) {
     updatedByDeviceId: envelope.updatedByDeviceId,
   };
   const sections = {};
+  // Known sections that are damaged are reported, not dropped: treating them as
+  // missing would let the next sync overwrite them without a backup.
+  const malformed = {};
   Object.entries(decoded.sections).forEach(([key, entry]) => {
     const normalized = normalizeSectionEntry(entry, fallback);
     if (normalized) sections[key] = normalized;
+    else if (SYNC_SCOPE_SECTION_KEYS.includes(key)) malformed[key] = deepClone(entry);
+    // A section only a newer version knows is kept as it is.
+    else sections[key] = deepClone(entry);
   });
-  return { sections, legacy: false, extensions: extractEnvelopeExtensions(envelope, decoded) };
+  return {
+    sections,
+    legacy: false,
+    malformed,
+    extensions: extractEnvelopeExtensions(envelope, decoded),
+  };
 }
 
 module.exports = {

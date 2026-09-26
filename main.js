@@ -3203,9 +3203,35 @@ async function buildProfileSyncEnvelopeForConfig(
   });
 }
 
+const PROFILE_SYNC_SECTION_LABELS = {
+  quickAccessLayout: 'Quick Access and layout',
+  visualPersonalization: 'Appearance',
+  automationAlerts: 'Alerts',
+  connectionMediaPreferences: 'Weather and media',
+};
+
+function createDamagedSyncSectionsError(sectionKeys) {
+  return new Error(
+    mainT(
+      "The sync file's {{sections}} settings are damaged. Use Sync Up to replace them with this computer's; the damaged copy is backed up first.",
+      {
+        sections: sectionKeys
+          .map((key) => mainT(PROFILE_SYNC_SECTION_LABELS[key] || key))
+          .join(', '),
+      }
+    )
+  );
+}
+
 async function decodeRemoteFileWithPassphrase(readResult, passphrase) {
-  if (!readResult?.exists || !readResult.envelope) return { sections: {}, extensions: null };
-  return profileSyncCore.decodeEnvelopeSections(readResult.envelope, passphrase);
+  if (!readResult?.exists || !readResult.envelope) {
+    return { sections: {}, malformed: {}, extensions: null };
+  }
+  const decoded = await profileSyncCore.decodeEnvelopeSections(readResult.envelope, passphrase);
+  // A key rewrite copies sections as they are, so it must not run over damage.
+  const damaged = Object.keys(decoded.malformed || {});
+  if (damaged.length > 0) throw createDamagedSyncSectionsError(damaged);
+  return decoded;
 }
 
 async function decodeRemoteSectionsWithPassphrase(readResult, passphrase) {
@@ -5469,12 +5495,22 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       );
     }
 
-    const { sections: remoteSections, extensions: remoteExtensions } = remoteEnvelope
+    const {
+      sections: remoteSections,
+      malformed: remoteMalformed,
+      extensions: remoteExtensions,
+    } = remoteEnvelope
       ? await profileSyncCore.decodeEnvelopeSections(
           remoteEnvelope,
           getActiveProfileSyncPassphrase()
         )
-      : { sections: {}, extensions: null };
+      : { sections: {}, malformed: {}, extensions: null };
+    const damagedSections = Object.keys(remoteMalformed || {});
+    if (damagedSections.length > 0) {
+      // Only an explicit Sync Up may replace damaged sections, after keeping them.
+      if (direction !== 'push') throw createDamagedSyncSectionsError(damagedSections);
+      await backupRemoteSectionsBeforePush(remoteMalformed);
+    }
     const syncScope = getActiveProfileSyncScope();
     const sectionKeys = profileSyncCore.getScopeSectionKeys(syncScope);
     const localSections = profileSyncCore.buildLocalSections(config, syncScope);
