@@ -4,6 +4,7 @@
 
 const {
   SYNC_SCHEMA_VERSION,
+  SYNC_SCOPE_SECTION_FIELDS,
   projectSyncProfile,
   mergeSyncedProfileIntoConfig,
   buildLocalSections,
@@ -102,12 +103,28 @@ describe('profile-sync-core', () => {
 
     test('handles missing configs', () => {
       expect(projectSyncProfile(null)).toEqual({});
+      // Sections list every field, with unset ones as null.
       expect(buildLocalSections(undefined)).toEqual({
-        quickAccessLayout: {},
-        visualPersonalization: {},
-        automationAlerts: {},
-        connectionMediaPreferences: {},
+        quickAccessLayout: Object.fromEntries(
+          SYNC_SCOPE_SECTION_FIELDS.quickAccessLayout.map((field) => [field, null])
+        ),
+        visualPersonalization: Object.fromEntries(
+          SYNC_SCOPE_SECTION_FIELDS.visualPersonalization.map((field) => [field, null])
+        ),
+        automationAlerts: { entityAlerts: null },
+        connectionMediaPreferences: { selectedWeatherEntity: null, primaryMediaPlayer: null },
       });
+    });
+
+    test('a null field clears the setting; an absent one leaves it alone', () => {
+      const merged = mergeSectionsIntoConfig(
+        { selectedWeatherEntity: 'weather.home', primaryMediaPlayer: 'media_player.tv', ui: {} },
+        {
+          connectionMediaPreferences: { selectedWeatherEntity: null },
+          visualPersonalization: { ui: null },
+        }
+      );
+      expect(merged).toEqual({ primaryMediaPlayer: 'media_player.tv', ui: {} });
     });
   });
 

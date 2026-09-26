@@ -546,6 +546,24 @@ describe('profile sync engine', () => {
     expect(desktop.backups('local-profile')).toHaveLength(0);
   });
 
+  test('clearing a setting on one computer clears it on the others', async () => {
+    const { desktop, laptop } = await createSyncedPair({
+      desktop: { content: { ...baseContent(), selectedWeatherEntity: 'weather.home' } },
+      laptop: { content: { ...baseContent(), selectedWeatherEntity: 'weather.home' } },
+    });
+    desktop.edit((config) => {
+      config.selectedWeatherEntity = undefined;
+    });
+    await desktop.sync();
+
+    await laptop.sync();
+    expect(laptop.config.selectedWeatherEntity).toBeUndefined();
+    // Both sides now agree, so nothing flows back.
+    expect((await laptop.sync()).action).toBe('none');
+    expect((await desktop.sync()).action).toBe('none');
+    expect(desktop.config.selectedWeatherEntity).toBeUndefined();
+  });
+
   test('refuses to push plaintext over an encrypted file', async () => {
     const desktop = createDevice('desktop', {
       profileSync: { encryptionEnabled: true, __passphrase: 'correct horse' },

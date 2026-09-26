@@ -154,16 +154,20 @@ function projectField(source, field) {
   return field === 'ui' ? stripLocalOnlyUiKeys(source.ui) : deepClone(source[field]);
 }
 
-function projectFields(source, fields) {
+/**
+ * Copies the given fields. An undefined value counts as unset, as it is once
+ * written. With `markCleared`, unset fields are written as null so the other
+ * side can tell a setting was cleared from one an older writer never sent.
+ */
+function projectFields(source, fields, { markCleared = false } = {}) {
   const projected = {};
   const safeSource = isObject(source) ? source : {};
   fields.forEach((field) => {
-    // An undefined value is absent once written, so it is absent here too.
-    if (
-      Object.prototype.hasOwnProperty.call(safeSource, field) &&
-      safeSource[field] !== undefined
-    ) {
-      projected[field] = projectField(safeSource, field);
+    const value = safeSource[field];
+    if (Object.prototype.hasOwnProperty.call(safeSource, field) && value !== undefined) {
+      projected[field] = value === null ? null : projectField(safeSource, field);
+    } else if (markCleared) {
+      projected[field] = null;
     }
   });
   return projected;
@@ -175,7 +179,14 @@ function projectSyncProfile(config, syncScope = getDefaultSyncScope()) {
 
 function mergeFieldsIntoConfig(target, incoming, fields) {
   fields.forEach((field) => {
+    // An absent field was never sent (an older writer), so it stays as it is.
     if (!Object.prototype.hasOwnProperty.call(incoming, field)) return;
+    if (incoming[field] === null) {
+      // Null means the other side has the setting cleared. The ui object is
+      // never cleared as a whole.
+      if (field !== 'ui') delete target[field];
+      return;
+    }
     if (field === 'ui' && isObject(incoming.ui)) {
       // Keys the other device does not know about, and this machine's own ui
       // keys, stay as they are here.
@@ -202,7 +213,9 @@ function mergeSyncedProfileIntoConfig(
 }
 
 function projectSection(config, sectionKey) {
-  return projectFields(config, SYNC_SCOPE_SECTION_FIELDS[sectionKey] || []);
+  return projectFields(config, SYNC_SCOPE_SECTION_FIELDS[sectionKey] || [], {
+    markCleared: true,
+  });
 }
 
 function buildLocalSections(config, syncScope = getDefaultSyncScope()) {
@@ -238,7 +251,10 @@ function computeProfileHash(profile) {
  */
 function computeSectionHash(sectionKey, data) {
   const fields = SYNC_SCOPE_SECTION_FIELDS[sectionKey] || [];
-  return computeProfileHash({ section: sectionKey, data: projectFields(data, fields) });
+  return computeProfileHash({
+    section: sectionKey,
+    data: projectFields(data, fields, { markCleared: true }),
+  });
 }
 
 function compareIsoTimestamps(a, b) {
@@ -590,7 +606,8 @@ function convertLegacyProfileToSections(envelope, profile) {
       : getDefaultSyncScope();
   const sections = {};
   getScopeSectionKeys(scope).forEach((key) => {
-    const data = projectSection(profile, key);
+    // Fields the old file lacks stay absent: its writer may not have known them.
+    const data = projectFields(profile, SYNC_SCOPE_SECTION_FIELDS[key]);
     if (Object.keys(data).length === 0) return;
     sections[key] = {
       updatedAt: envelope.updatedAt,
