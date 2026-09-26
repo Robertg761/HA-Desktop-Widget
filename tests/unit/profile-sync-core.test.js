@@ -303,6 +303,30 @@ describe('profile-sync-core', () => {
     });
   });
 
+  test('a forced direction can be limited to some sections', () => {
+    const base = { visualPersonalization: { opacity: 0.9 } };
+    const plan = planSectionSync({
+      sectionKeys: ['quickAccessLayout', 'visualPersonalization'],
+      localSections: {
+        quickAccessLayout: { favoriteEntities: ['light.local'] },
+        visualPersonalization: { opacity: 0.5 },
+      },
+      remoteSections: {
+        quickAccessLayout: {
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          data: { favoriteEntities: ['light.remote'] },
+        },
+        visualPersonalization: { updatedAt: '2026-01-01T00:00:00.000Z', data: { opacity: 0.9 } },
+      },
+      baseline: hashesFor(base),
+      direction: 'pull',
+      forceSections: ['quickAccessLayout'],
+    });
+    // Only the named section is forced; the other still merges and keeps the local edit.
+    expect(plan.pull).toEqual(['quickAccessLayout']);
+    expect(plan.push).toEqual(['visualPersonalization']);
+  });
+
   test('pushed sections keep fields a newer version wrote', () => {
     const entry = buildPushedSectionEntry(
       'quickAccessLayout',

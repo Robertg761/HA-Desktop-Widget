@@ -5149,6 +5149,25 @@ function setupProfileSyncInterval() {
 }
 
 /**
+ * Sections this computer and the file both hold, with different content and no
+ * shared history to merge from.
+ */
+async function findProfileSyncConflictSections(envelope) {
+  const remoteSections = await decodeRemoteSections(envelope);
+  const localSections = profileSyncCore.buildLocalSections(config, getActiveProfileSyncScope());
+  const baseline = getProfileSyncConfig().syncBaseline || {};
+  return Object.entries(localSections)
+    .filter(
+      ([key, data]) =>
+        !baseline[key] &&
+        remoteSections[key] &&
+        profileSyncCore.computeSectionHash(key, data) !==
+          profileSyncCore.computeSectionHash(key, remoteSections[key].data)
+    )
+    .map(([key]) => key);
+}
+
+/**
  * Before the first sync against a file (or of a section newly added to this
  * device's scope), finds sections where this device and the file already hold
  * different content with no shared history to merge from. Those need the user to
@@ -5171,18 +5190,7 @@ async function prepareProfileSyncFirstEnableResolution() {
     return { needsResolution: false };
   }
 
-  const remoteSections = await decodeRemoteSections(readResult.envelope);
-  const localSections = profileSyncCore.buildLocalSections(config, getActiveProfileSyncScope());
-  const baseline = profileSync.syncBaseline || {};
-  const conflictSections = Object.entries(localSections)
-    .filter(
-      ([key, data]) =>
-        !baseline[key] &&
-        remoteSections[key] &&
-        profileSyncCore.computeSectionHash(key, data) !==
-          profileSyncCore.computeSectionHash(key, remoteSections[key].data)
-    )
-    .map(([key]) => key);
+  const conflictSections = await findProfileSyncConflictSections(readResult.envelope);
   if (conflictSections.length === 0) {
     return { needsResolution: false };
   }
@@ -5227,6 +5235,9 @@ async function verifyPendingRemoteEnvelopeUnchanged() {
     profileSyncRuntime.pendingRemoteEnvelope = currentResult.envelope;
     profileSyncRuntime.pendingRemoteIdentity = currentIdentity;
     profileSyncRuntime.needsResolution = true;
+    profileSyncRuntime.conflictSections = currentResult.envelope
+      ? await findProfileSyncConflictSections(currentResult.envelope).catch(() => [])
+      : [];
     updateProfileSyncStatus(
       'needs_resolution',
       mainT('The remote profile changed while waiting for a choice. Review it and choose again.')
@@ -5444,6 +5455,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       baseline: profileSync.syncBaseline,
       localUpdatedAt,
       direction,
+      forceSections: options.forceSections || null,
     });
     const nextBaseline = {};
     plan.unchanged.forEach((key) => {
@@ -8481,10 +8493,16 @@ ipcMain.handle(
         };
       }
 
+      // The choice covers only the sections the prompt named; sections this
+      // computer already shares a history with keep merging normally.
+      const chosenSections = profileSyncRuntime.conflictSections.length
+        ? [...profileSyncRuntime.conflictSections]
+        : null;
       if (choice === 'upload_local') {
         const remoteResult = await verifyPendingRemoteEnvelopeUnchanged();
         const result = await runProfileSyncInternal('push', 'first_enable_resolution', {
           expectedRemoteIdentity: getSyncEnvelopeIdentity(remoteResult),
+          forceSections: chosenSections,
         });
         if (result?.ok !== true || result?.reason === 'remote_changed') {
           throw new Error(
@@ -8518,6 +8536,7 @@ ipcMain.handle(
         // change is pending, the same run rewrites the file in the new mode.
         const result = await runProfileSyncInternal('pull', 'first_enable_resolution', {
           expectedRemoteIdentity: getSyncEnvelopeIdentity(remoteResult),
+          forceSections: chosenSections,
         });
         if (result?.ok !== true || result?.reason === 'remote_changed') {
           throw new Error(

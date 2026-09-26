@@ -256,6 +256,8 @@ function compareIsoTimestamps(a, b) {
  * @param {Object<string, string>} [options.baseline] section hashes at the last sync
  * @param {Object<string, string>} [options.localUpdatedAt] when each local section last changed
  * @param {'auto'|'push'|'pull'} [options.direction] push and pull force every differing section
+ * @param {string[]|null} [options.forceSections] limits a forced direction to these sections;
+ *   the rest merge as in 'auto'
  * @returns {{push: string[], pull: string[], unchanged: string[], discardsRemote: string[],
  *   discardsLocal: string[], localHashes: Object<string, string>, remoteHashes: Object<string, string>}}
  */
@@ -266,6 +268,7 @@ function planSectionSync({
   baseline = {},
   localUpdatedAt = {},
   direction = 'auto',
+  forceSections = null,
 }) {
   const plan = {
     push: [],
@@ -283,7 +286,9 @@ function planSectionSync({
     plan.localHashes[key] = localHash;
     const remoteEntry = isObject(remoteSections) ? remoteSections[key] : null;
     if (!isObject(remoteEntry)) {
-      (direction === 'pull' ? plan.unchanged : plan.push).push(key);
+      const pullOnly =
+        direction === 'pull' && (!Array.isArray(forceSections) || forceSections.includes(key));
+      (pullOnly ? plan.unchanged : plan.push).push(key);
       return;
     }
 
@@ -297,8 +302,11 @@ function planSectionSync({
     const base = typeof safeBaseline[key] === 'string' ? safeBaseline[key] : null;
     const localChanged = localHash !== base;
     const remoteChanged = remoteHash !== base;
+    const forced =
+      (direction === 'push' || direction === 'pull') &&
+      (!Array.isArray(forceSections) || forceSections.includes(key));
     let winner;
-    if (direction === 'push' || direction === 'pull') {
+    if (forced) {
       winner = direction;
     } else if (base && localChanged && !remoteChanged) {
       winner = 'push';

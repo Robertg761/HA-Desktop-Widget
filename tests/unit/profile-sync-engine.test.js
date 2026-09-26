@@ -47,7 +47,7 @@ const ENGINE_SOURCE = [
     '/**\n * Selects and returns an appropriate tray icon'
   ),
   sliceMain(
-    'async function prepareProfileSyncFirstEnableResolution(',
+    'async function findProfileSyncConflictSections(',
     'function scheduleDebouncedProfileSyncPush('
   ),
   sliceMain(
@@ -410,6 +410,36 @@ describe('profile sync engine', () => {
     const resolution = await laptop.firstEnable();
     expect(resolution.needsResolution).toBe(true);
     expect(laptop.status().conflictSections).toEqual(['quickAccessLayout']);
+  });
+
+  test('choosing a side for a newly added section leaves other pending edits alone', async () => {
+    const desktop = createDevice('desktop');
+    await desktop.sync();
+    const laptop = createDevice('laptop', {
+      content: { ...baseContent(), favoriteEntities: ['switch.fan'] },
+      profileSync: { syncScope: { preset: 'visual' } },
+    });
+    await laptop.sync();
+
+    // The laptop changes its opacity offline, then starts syncing layout too.
+    laptop.edit((config) => {
+      config.opacity = 0.5;
+    });
+    laptop.config.profileSync.syncScope = profileSyncCore.normalizeSyncScope({ preset: 'all' });
+    const resolution = await laptop.firstEnable();
+    expect(resolution.needsResolution).toBe(true);
+    expect(laptop.status().conflictSections).toEqual(['quickAccessLayout']);
+
+    // Use Remote for the section the prompt named.
+    await laptop.context.runProfileSyncInternal('pull', 'first_enable_resolution', {
+      expectedRemoteIdentity: laptop.context.profileSyncRuntime.pendingRemoteIdentity,
+      forceSections: [...laptop.context.profileSyncRuntime.conflictSections],
+    });
+
+    expect(laptop.config.favoriteEntities).toEqual(['light.kitchen']);
+    expect(laptop.config.opacity).toBe(0.5);
+    await desktop.sync();
+    expect(desktop.config.opacity).toBe(0.5);
   });
 
   test('refuses to push plaintext over an encrypted file', async () => {
