@@ -890,6 +890,19 @@ describe('profile sync runtime safeguards', () => {
     expect(compare).toBeLessThan(write);
   });
 
+  it('repairs damaged first-sync sections on their own, then asks again about the rest', () => {
+    const handlerStart = mainSource.indexOf("'resolve-profile-sync-first-enable',");
+    const handler = mainSource.slice(handlerStart, mainSource.indexOf('\n);', handlerStart));
+    const repair = handler.slice(
+      handler.indexOf("if (choice === 'upload_local' && damagedSections.length > 0)"),
+      handler.indexOf("if (choice === 'upload_local') {")
+    );
+
+    expect(repair).toContain('forceSections: damagedSections');
+    expect(repair).toContain('onlySections: damagedSections');
+    expect(repair).toContain('await prepareProfileSyncFirstEnableResolution()');
+  });
+
   it('limits a first-sync choice to the listed sections, even when none remain', () => {
     const handlerStart = mainSource.indexOf("'resolve-profile-sync-first-enable',");
     const handler = mainSource.slice(handlerStart, mainSource.indexOf('\n);', handlerStart));

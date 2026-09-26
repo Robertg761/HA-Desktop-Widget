@@ -645,6 +645,40 @@ describe('profile sync engine', () => {
     expect(context.config.opacity).toBe(0.5);
   });
 
+  test('repairing a damaged section leaves a valid conflict for its own choice', async () => {
+    const desktop = createDevice('desktop');
+    await desktop.sync();
+    const file = readSyncFile();
+    file.payload.sections.visualPersonalization.data = 'garbage';
+    fs.writeFileSync(syncFilePath(), JSON.stringify(file));
+
+    const laptop = createDevice('laptop', {
+      content: { ...baseContent(), favoriteEntities: ['switch.fan'] },
+    });
+    await laptop.firstEnable();
+    expect(laptop.status().conflictSections).toEqual([
+      'quickAccessLayout',
+      'visualPersonalization',
+    ]);
+    expect(laptop.status().damagedConflictSections).toEqual(['visualPersonalization']);
+
+    // Keep Local repairs only the damaged section, as the resolve handler runs it.
+    const damaged = [...laptop.context.profileSyncRuntime.damagedConflictSections];
+    await laptop.context.runProfileSyncInternal('push', 'first_enable_resolution', {
+      expectedRemoteIdentity: laptop.context.profileSyncRuntime.pendingRemoteIdentity,
+      forceSections: damaged,
+      onlySections: damaged,
+    });
+    const written = await profileSyncCore.decodeEnvelopeSections(readSyncFile());
+    expect(written.malformed).toEqual({});
+    expect(written.sections.quickAccessLayout.data.favoriteEntities).toEqual(['light.kitchen']);
+
+    // The valid conflict comes back as its own choice.
+    expect((await laptop.firstEnable()).needsResolution).toBe(true);
+    expect(laptop.status().conflictSections).toEqual(['quickAccessLayout']);
+    expect(laptop.status().damagedConflictSections).toEqual([]);
+  });
+
   test('damage in a section this device does not sync is left alone', async () => {
     const desktop = createDevice('desktop');
     await desktop.sync();

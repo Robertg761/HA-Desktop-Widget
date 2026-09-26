@@ -5594,8 +5594,13 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
         )
       : { sections: {}, malformed: {}, extensions: null };
     const syncScope = getActiveProfileSyncScope();
-    const sectionKeys = profileSyncCore.getScopeSectionKeys(syncScope);
-    // Damage only matters in sections this device syncs; the rest are written
+    const scopeKeys = profileSyncCore.getScopeSectionKeys(syncScope);
+    // A run can be limited to some sections (repairing damage on first enable);
+    // the others are left exactly as they are on both sides.
+    const sectionKeys = Array.isArray(options.onlySections)
+      ? scopeKeys.filter((key) => options.onlySections.includes(key))
+      : scopeKeys;
+    // Damage only matters in sections this run syncs; the rest are written
     // back exactly as found.
     const { inScope: damagedInScope, outOfScope: damagedOutOfScope } = splitDamagedSyncSections(
       remoteMalformed,
@@ -5696,7 +5701,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
         if (source === 'conflict_recheck') {
           throw new Error(mainT('Sync file kept changing on the other device; try again'));
         }
-        await persistProfileSyncBaseline(nextBaseline, sectionKeys);
+        await persistProfileSyncBaseline(nextBaseline, scopeKeys);
         void runProfileSync('auto', 'conflict_recheck');
         const status = buildProfileSyncStatus();
         emitProfileSyncStatus();
@@ -5744,7 +5749,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       }
     }
 
-    await persistProfileSyncBaseline(nextBaseline, sectionKeys);
+    await persistProfileSyncBaseline(nextBaseline, scopeKeys);
     const finalEnvelope = wroteEnvelope || remoteEnvelope;
     profileSyncRuntime.lastRemote = finalEnvelope
       ? {
@@ -8681,6 +8686,34 @@ ipcMain.handle(
       // computer already shares a history with keep merging normally. An empty
       // list (the file changed and no longer conflicts) forces nothing.
       const chosenSections = [...profileSyncRuntime.conflictSections];
+      const damagedSections = [...profileSyncRuntime.damagedConflictSections];
+      if (choice === 'upload_local' && damagedSections.length > 0) {
+        // Repair the damaged sections only; valid conflicts are then offered again
+        // with both choices instead of being overwritten along with them.
+        const remoteResult = await verifyPendingRemoteEnvelopeUnchanged();
+        const repair = await runProfileSyncInternal('push', 'first_enable_resolution', {
+          expectedRemoteIdentity: getSyncEnvelopeIdentity(remoteResult),
+          forceSections: damagedSections,
+          onlySections: damagedSections,
+        });
+        if (repair?.ok !== true || repair?.reason === 'remote_changed') {
+          throw new Error(
+            repair?.reason === 'remote_changed'
+              ? mainT('The remote profile changed during upload; review the conflict and try again')
+              : repair?.error || repair?.reason || mainT('Profile upload did not complete')
+          );
+        }
+        const next = await prepareProfileSyncFirstEnableResolution();
+        const result = next?.needsResolution
+          ? repair
+          : await completeProfileSyncFirstEnablePreparation('first_enable_resolution_retry');
+        return {
+          success: true,
+          ...result,
+          status: buildProfileSyncStatus(),
+          config: sanitizeConfigForRenderer(config),
+        };
+      }
       if (choice === 'upload_local') {
         const remoteResult = await verifyPendingRemoteEnvelopeUnchanged();
         const result = await runProfileSyncInternal('push', 'first_enable_resolution', {
