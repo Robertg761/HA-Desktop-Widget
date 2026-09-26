@@ -271,10 +271,15 @@ function computeProfileHash(profile) {
  */
 function computeSectionHash(sectionKey, data) {
   const fields = SYNC_SCOPE_SECTION_FIELDS[sectionKey] || [];
-  return computeProfileHash({
-    section: sectionKey,
-    data: projectFields(data, fields, { markCleared: true }),
-  });
+  const projected = projectFields(data, fields, { markCleared: true });
+  // ui keys this version doesn't own are the file's business (they ride along on
+  // push), so a change to one alone must not look like an edit of the section.
+  if (isObject(projected.ui)) {
+    projected.ui = Object.fromEntries(
+      Object.entries(projected.ui).filter(([key]) => KNOWN_UI_KEYS.has(key))
+    );
+  }
+  return computeProfileHash({ section: sectionKey, data: projected });
 }
 
 function compareIsoTimestamps(a, b) {

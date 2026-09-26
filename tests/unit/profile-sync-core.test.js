@@ -209,6 +209,25 @@ describe('profile-sync-core', () => {
       );
     });
 
+    test('a change only to a newer version’s ui setting is not an edit of the section', () => {
+      const base = { opacity: 0.9, ui: { theme: 'dark', futureSetting: 'A' } };
+      const plan = planSectionSync({
+        sectionKeys: ['visualPersonalization'],
+        // This device changed opacity; a newer writer changed only futureSetting.
+        localSections: { visualPersonalization: { ...base, opacity: 0.5 } },
+        remoteSections: {
+          visualPersonalization: {
+            updatedAt: '2030-01-01T00:00:00.000Z',
+            data: { ...base, ui: { theme: 'dark', futureSetting: 'B' } },
+          },
+        },
+        baseline: { visualPersonalization: computeSectionHash('visualPersonalization', base) },
+        localUpdatedAt: { visualPersonalization: '2026-01-01T00:00:00.000Z' },
+      });
+      expect(plan.push).toEqual(['visualPersonalization']);
+      expect(plan.discardsLocal).toEqual([]);
+    });
+
     test('ignores fields a newer version added to a section', () => {
       expect(computeSectionHash('quickAccessLayout', { favoriteEntities: ['a'] })).toBe(
         computeSectionHash('quickAccessLayout', { favoriteEntities: ['a'], futureField: 2 })
