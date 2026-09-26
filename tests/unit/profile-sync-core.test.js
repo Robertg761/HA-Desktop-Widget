@@ -344,10 +344,16 @@ describe('profile-sync-core', () => {
     const entry = buildPushedSectionEntry(
       'quickAccessLayout',
       { favoriteEntities: ['light.local'] },
-      { data: { favoriteEntities: ['light.remote'], futureField: { a: 1 } } },
+      {
+        updatedAt: '2025-01-01T00:00:00.000Z',
+        updatedByDeviceId: 'device-b',
+        futureEntryField: 'kept',
+        data: { favoriteEntities: ['light.remote'], futureField: { a: 1 } },
+      },
       { updatedAt: '2026-01-01T00:00:00.000Z', deviceId: 'device-a' }
     );
     expect(entry).toEqual({
+      futureEntryField: 'kept',
       updatedAt: '2026-01-01T00:00:00.000Z',
       updatedByDeviceId: 'device-a',
       data: { favoriteEntities: ['light.local'], futureField: { a: 1 } },

@@ -332,9 +332,9 @@ function planSectionSync({
 }
 
 /**
- * Builds the entry written for a pushed section. Fields this version does not
- * know (written by a newer version) are carried over from the remote entry so
- * pushing from here never deletes them.
+ * Builds the entry written for a pushed section. Data fields and entry metadata
+ * this version does not know (written by a newer version) are carried over from
+ * the remote entry so pushing from here never deletes them.
  */
 function buildPushedSectionEntry(sectionKey, localData, remoteEntry, { updatedAt, deviceId }) {
   const fields = new Set(SYNC_SCOPE_SECTION_FIELDS[sectionKey] || []);
@@ -344,7 +344,17 @@ function buildPushedSectionEntry(sectionKey, localData, remoteEntry, { updatedAt
       if (!fields.has(field)) carried[field] = deepClone(value);
     });
   }
+  // Entry-level metadata a newer version added rides along too.
+  const entryExtras = {};
+  if (isObject(remoteEntry)) {
+    Object.entries(remoteEntry).forEach(([field, value]) => {
+      if (!['updatedAt', 'updatedByDeviceId', 'data'].includes(field)) {
+        entryExtras[field] = deepClone(value);
+      }
+    });
+  }
   return {
+    ...entryExtras,
     updatedAt: updatedAt || new Date().toISOString(),
     updatedByDeviceId: deviceId || 'unknown-device',
     data: { ...carried, ...deepClone(localData || {}) },
