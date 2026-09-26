@@ -186,7 +186,7 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).toContain('Using Electron globalShortcut for Linux popup hotkeys');
     expect(mainSource).toContain('usesLinuxPopupHotkeyBackend');
     expect(mainSource).toContain(
-      "app.commandLine.appendSwitch('enable-features', 'GlobalShortcutsPortal')"
+      "app.commandLine.getSwitchValue('enable-features'),\n      'GlobalShortcutsPortal'"
     );
     expect(mainSource).toContain('linuxPopupHotkeyController.register(config.popupHotkey)');
     expect(mainSource).toContain('registeredEntityHotkeyAccelerators');

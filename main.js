@@ -340,6 +340,7 @@ const {
   NATIVE_WAYLAND_ENV_OVERRIDE,
   getAppIconPath,
   getMainWindowVisualOptions,
+  mergeChromiumFeatureList,
   resolveLinuxPasswordStoreBackend,
   resolveNativeThemeSource,
   shouldForceX11OzonePlatform,
@@ -499,7 +500,14 @@ function forwardRendererConsole(webContents, label = 'renderer') {
 
 const usesLinuxPopupHotkeyBackend = isLinuxPopupHotkeyPlatform(process.platform);
 if (usesLinuxPopupHotkeyBackend) {
-  app.commandLine.appendSwitch('enable-features', 'GlobalShortcutsPortal');
+  // appendSwitch replaces an existing value, so keep features the launcher already enabled.
+  app.commandLine.appendSwitch(
+    'enable-features',
+    mergeChromiumFeatureList(
+      app.commandLine.getSwitchValue('enable-features'),
+      'GlobalShortcutsPortal'
+    )
+  );
 }
 
 // Chromium only knows how to find the OS keyring on the desktops in its own table, and silently
