@@ -590,16 +590,16 @@ function validateEnvelopeShape(envelope) {
     throw new Error('Sync envelope is missing schemaVersion');
   }
 
-  if (envelope.schemaVersion > SYNC_SCHEMA_VERSION) {
-    const minReaderVersion =
-      typeof envelope.minReaderVersion === 'number'
-        ? envelope.minReaderVersion
-        : envelope.schemaVersion;
-    if (minReaderVersion > SYNC_SCHEMA_VERSION) {
-      throw new Error(
-        'The sync file was written by a newer version of HA Desktop Widget. Update this device to keep syncing.'
-      );
-    }
+  // A writer that says it needs a newer reader is believed whatever schema it
+  // claims; without that field, the schema version is the requirement.
+  const minReaderVersion =
+    typeof envelope.minReaderVersion === 'number'
+      ? envelope.minReaderVersion
+      : envelope.schemaVersion;
+  if (minReaderVersion > SYNC_SCHEMA_VERSION) {
+    throw new Error(
+      'The sync file was written by a newer version of HA Desktop Widget. Update this device to keep syncing.'
+    );
   }
   if (envelope.schemaVersion === 2) {
     if (!isObject(envelope.syncScope)) {
@@ -646,7 +646,12 @@ function getJsonType(value) {
   return typeof value;
 }
 
+/**
+ * Whether a known section's data has the shape this version applies: an object
+ * whose synced fields each hold their expected JSON type (or null).
+ */
 function hasValidSectionFields(sectionKey, data) {
+  if (!isObject(data) || !SYNC_SCOPE_SECTION_FIELDS[sectionKey]) return false;
   return SYNC_SCOPE_SECTION_FIELDS[sectionKey].every((field) => {
     if (!Object.prototype.hasOwnProperty.call(data, field)) return true;
     const type = getJsonType(data[field]);
@@ -787,4 +792,5 @@ module.exports = {
   parseSyncEnvelope,
   serializeSyncEnvelope,
   decodeEnvelopeSections,
+  hasValidSectionFields,
 };

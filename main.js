@@ -3916,7 +3916,8 @@ function extractProfileSyncBackupSections(backup, kind) {
       Object.entries(backup.sections)
         .filter(([key]) => profileSyncCore.SYNC_SCOPE_SECTION_KEYS.includes(key))
         .map(([key, value]) => [key, kind === 'remote' ? value?.data : value])
-        .filter(([, data]) => isPlainObject(data))
+        // A damaged section is kept in the file for reference but never restored.
+        .filter(([key, data]) => profileSyncCore.hasValidSectionFields(key, data))
     );
   }
   // Backups written before sections existed hold one flat profile.
@@ -3926,6 +3927,7 @@ function extractProfileSyncBackupSections(backup, kind) {
       profileSyncCore
         .getScopeSectionKeys(scope)
         .map((key) => [key, profileSyncCore.projectSection(backup.profile, key)])
+        .filter(([key, data]) => profileSyncCore.hasValidSectionFields(key, data))
     );
   }
   return {};

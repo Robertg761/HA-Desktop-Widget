@@ -629,6 +629,22 @@ describe('profile sync engine', () => {
     expect(repaired.sections.visualPersonalization.data.opacity).toBe(0.3);
   });
 
+  test('a backup of a damaged section is kept but never offered for restore', async () => {
+    const desktop = createDevice('desktop');
+    await desktop.sync();
+    const file = readSyncFile();
+    file.payload.sections.quickAccessLayout.data.favoriteEntities = { 'light.kitchen': true };
+    fs.writeFileSync(syncFilePath(), JSON.stringify(file));
+
+    await desktop.sync('push', 'manual');
+    const [backup] = desktop.backups('remote-profile');
+    expect(backup.sections.quickAccessLayout.data.favoriteEntities).toEqual({
+      'light.kitchen': true,
+    });
+    const listed = await desktop.context.listProfileSyncBackups();
+    expect(listed.flatMap((entry) => entry.sections)).not.toContain('quickAccessLayout');
+  });
+
   test('a damaged section on first enable is offered as a choice, and Keep Local repairs it', async () => {
     const desktop = createDevice('desktop');
     await desktop.sync();

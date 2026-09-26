@@ -598,6 +598,19 @@ describe('profile-sync-core', () => {
       expect(legacy.sections.visualPersonalization.data).toEqual({ opacity: 0.8 });
     });
 
+    test('refuses a file that requires a newer reader whatever schema it claims', () => {
+      const file = JSON.stringify({
+        schemaVersion: SYNC_SCHEMA_VERSION,
+        minReaderVersion: SYNC_SCHEMA_VERSION + 1,
+        updatedAt: '2026-02-23T08:00:00.000Z',
+        updatedByDeviceId: 'device-b',
+        payload: { sections: {} },
+      });
+      expect(() => parseSyncEnvelope(file)).toThrow(
+        'The sync file was written by a newer version of HA Desktop Widget.'
+      );
+    });
+
     test('refuses files that require a newer reader', () => {
       const tooNew = JSON.stringify({
         schemaVersion: SYNC_SCHEMA_VERSION + 1,
