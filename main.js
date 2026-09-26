@@ -738,12 +738,11 @@ const profileSyncRuntime = {
   // config echo can be recognised by content rather than by timing; see
   // updateLocalProfileSyncTracking.
   pendingPullEchoHash: null,
-  // The synced profile as it stood before that pull, to tell a stale snapshot
-  // from a Settings save that also carries deliberate edits.
-  pendingPullEchoProfile: null,
-  // The config revision the renderer first sees the pull in; an update built from
-  // an older revision predates the pull.
-  pendingPullRevision: null,
+  // Every pull applied since the guard was armed, oldest first: the synced
+  // profile as it stood before the pull, and the config revision the renderer
+  // first sees the pull in. An update built from an older revision is compared
+  // with the profile before the first pull it missed.
+  pendingPulls: [],
   // Conflict-copy filenames found beside the sync file on the last run. Refreshed
   // by sync runs because the check needs the filesystem.
   conflictCopies: [],
@@ -1075,6 +1074,7 @@ function refreshProfileSyncRuntimeTracking({ decodePassphrase = true } = {}) {
   profileSyncRuntime.localProfileHash = computeScopedProfileHash(initialProfile, activeScope);
   profileSyncRuntime.localSectionHashes = computeLocalSectionHashes(activeScope);
   profileSyncRuntime.pendingPullEchoHash = null;
+  profileSyncRuntime.pendingPulls = [];
   // Seed from the persisted content-change timestamp. lastSyncAt is only a
   // fallback for configs written before profileUpdatedAt existed — it tracks
   // sync *attempts* (including failures), so it must not be preferred here or
@@ -3790,7 +3790,7 @@ async function applySyncedProfileToConfig(pulledSections) {
     localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
     localSectionHashes: profileSyncRuntime.localSectionHashes,
     pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
-    pendingPullEchoProfile: profileSyncRuntime.pendingPullEchoProfile,
+    pendingPulls: profileSyncRuntime.pendingPulls,
   };
   const previousEncryptedTokenForRecovery = preservedEncryptedTokenForRecovery;
   const scope = getActiveProfileSyncScope();
@@ -3833,9 +3833,17 @@ async function applySyncedProfileToConfig(pulledSections) {
   profileSyncRuntime.localProfileHash = computeScopedProfileHash(projected, scope);
   profileSyncRuntime.localSectionHashes = computeLocalSectionHashes(scope);
   profileSyncRuntime.localProfileUpdatedAt = config.profileSync.profileUpdatedAt;
-  profileSyncRuntime.pendingPullEchoHash =
-    prePullHash === profileSyncRuntime.localProfileHash ? null : prePullHash;
-  profileSyncRuntime.pendingPullEchoProfile = profileSyncCore.projectSyncProfile(previous, scope);
+  // A pull that lands before anything answered the previous one extends the
+  // guard: a stale snapshot may predate both.
+  const guardArmed = profileSyncRuntime.pendingPullEchoHash !== null;
+  const pull = { profile: profileSyncCore.projectSyncProfile(previous, scope), revision: null };
+  if (!guardArmed) {
+    profileSyncRuntime.pendingPullEchoHash =
+      prePullHash === profileSyncRuntime.localProfileHash ? null : prePullHash;
+  }
+  profileSyncRuntime.pendingPulls = guardArmed
+    ? [...(profileSyncRuntime.pendingPulls || []), pull]
+    : [pull];
 
   const persistence = await saveConfigDurably({ allowDebouncedPush: false });
   if (!persistence.success) {
@@ -3846,7 +3854,7 @@ async function applySyncedProfileToConfig(pulledSections) {
       mainT('Failed to persist pulled profile: {{error}}', { error: persistence.error })
     );
   }
-  profileSyncRuntime.pendingPullRevision = configSnapshotVersion;
+  pull.revision = configSnapshotVersion;
 
   return applySyncedConfigSideEffects(previous, persistence);
 }
@@ -3973,14 +3981,12 @@ async function restoreProfileSyncBackup(id) {
     localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
     localSectionHashes: profileSyncRuntime.localSectionHashes,
     pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
-    pendingPullEchoProfile: profileSyncRuntime.pendingPullEchoProfile,
-    pendingPullRevision: profileSyncRuntime.pendingPullRevision,
+    pendingPulls: profileSyncRuntime.pendingPulls,
   };
   // Restoring what the last pull replaced reproduces the pre-pull profile exactly,
   // which the stale-echo guard would otherwise drop instead of syncing it.
   profileSyncRuntime.pendingPullEchoHash = null;
-  profileSyncRuntime.pendingPullEchoProfile = null;
-  profileSyncRuntime.pendingPullRevision = null;
+  profileSyncRuntime.pendingPulls = [];
   config = profileSyncCore.mergeSectionsIntoConfig(config, backup.sections);
   pruneConfig(config);
   ensureDateTimeFormatConfigDefaults(config);
@@ -4032,8 +4038,15 @@ function restoreProfileFromStalePullEcho(pulledConfig, touchedKeys = [], baseRev
   const scope = getNormalizedProfileSyncScopeValue(pulledConfig?.profileSync?.syncScope);
   const touched = new Set(touchedKeys);
   const incomingProfile = profileSyncCore.projectSyncProfile(config, scope);
-  const prePullProfile = profileSyncRuntime.pendingPullEchoProfile;
-  const pullRevision = profileSyncRuntime.pendingPullRevision;
+  const pulls = profileSyncRuntime.pendingPulls || [];
+  const latestPull = pulls[pulls.length - 1] || null;
+  const revisionKnown =
+    baseRevision !== null && latestPull !== null && latestPull.revision !== null;
+  // The profile the update was built from: before the first pull it missed.
+  const missedPull = revisionKnown
+    ? pulls.find((entry) => entry.revision === null || entry.revision > baseRevision)
+    : pulls[0];
+  const prePullProfile = missedPull?.profile || null;
   const same = (a, b) =>
     profileSyncCore.computeProfileHash({ value: a }) ===
     profileSyncCore.computeProfileHash({ value: b });
@@ -4050,10 +4063,11 @@ function restoreProfileFromStalePullEcho(pulledConfig, touchedKeys = [], baseRev
   };
 
   let keep = touched;
-  if (baseRevision !== null && pullRevision !== null && prePullProfile) {
-    if (baseRevision >= pullRevision) {
-      // Built after the renderer saw the pull: every value in it is deliberate.
+  if (revisionKnown) {
+    if (!missedPull) {
+      // Built after the renderer saw every pull: every value in it is deliberate.
       profileSyncRuntime.pendingPullEchoHash = null;
+      profileSyncRuntime.pendingPulls = [];
       return false;
     }
     // Built before the pull. Whatever it changed relative to the pre-pull

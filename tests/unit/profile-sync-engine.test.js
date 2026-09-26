@@ -147,7 +147,7 @@ function createDevice(name, { content = baseContent(), profileSync = {}, clockOf
     `${PROFILE_SYNC_CONSTANTS}
      var profileSyncRuntime = {
        inFlight: false, pushDebounceTimer: null, intervalTimer: null, pendingPullEchoHash: null,
-       pendingPullEchoProfile: null, pendingPullRevision: null, damagedConflictSections: [],
+       pendingPulls: [], damagedConflictSections: [],
        conflictCopies: [], lastOpportunisticSyncAt: 0, needsResolution: false,
        pendingRemoteEnvelope: null, pendingRemoteIdentity: null, localProfileHash: null,
        localProfileUpdatedAt: null, localSectionHashes: {}, conflictSections: [],
@@ -766,6 +766,61 @@ describe('profile sync engine', () => {
     expect(context.restoreProfileFromStalePullEcho(pulled, [], beforePull)).toBe(true);
     expect(context.config.ui.accent).toBe('teal');
     expect(context.config.entityAlerts.enabled).toBe(true);
+  });
+
+  test('an update that predates two pulls keeps both of them', async () => {
+    const { desktop, laptop } = await createSyncedPair();
+    const { context } = desktop;
+    const beforePulls = context.configSnapshotVersion;
+    laptop.edit((config) => {
+      config.ui = { ...config.ui, accent: 'teal' };
+    });
+    await laptop.sync();
+    await desktop.sync();
+    laptop.edit((config) => {
+      config.opacity = 0.7;
+    });
+    await laptop.sync();
+    await desktop.sync();
+    const pulled = context.config;
+    expect(pulled.ui.accent).toBe('teal');
+    expect(pulled.opacity).toBe(0.7);
+
+    // An alert save built before either pull.
+    context.config = {
+      ...pulled,
+      opacity: 0.9,
+      ui: { ...pulled.ui, accent: 'original' },
+      entityAlerts: { enabled: true, alerts: {} },
+    };
+    expect(context.restoreProfileFromStalePullEcho(pulled, [], beforePulls)).toBe(true);
+    expect(context.config.ui.accent).toBe('teal');
+    expect(context.config.opacity).toBe(0.7);
+    expect(context.config.entityAlerts.enabled).toBe(true);
+  });
+
+  test('an update built between two pulls is compared with the state it saw', async () => {
+    const { desktop, laptop } = await createSyncedPair();
+    const { context } = desktop;
+    laptop.edit((config) => {
+      config.ui = { ...config.ui, accent: 'teal' };
+    });
+    await laptop.sync();
+    await desktop.sync();
+    const betweenPulls = context.configSnapshotVersion;
+    laptop.edit((config) => {
+      config.opacity = 0.7;
+    });
+    await laptop.sync();
+    await desktop.sync();
+    const pulled = context.config;
+
+    // Built after the first pull: setting the accent back is deliberate, the
+    // opacity is simply stale.
+    context.config = { ...pulled, opacity: 0.9, ui: { ...pulled.ui, accent: 'original' } };
+    expect(context.restoreProfileFromStalePullEcho(pulled, [], betweenPulls)).toBe(true);
+    expect(context.config.ui.accent).toBe('original');
+    expect(context.config.opacity).toBe(0.7);
   });
 
   test('an update built after the pull is taken as it is, even a revert to the old value', async () => {

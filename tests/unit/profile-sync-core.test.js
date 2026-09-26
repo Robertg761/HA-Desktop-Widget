@@ -562,6 +562,42 @@ describe('profile-sync-core', () => {
       expect(decoded.sections).toEqual({ futureSection: 'opaque' });
     });
 
+    test('reports known sections whose fields have the wrong types as damaged', async () => {
+      const entry = (data) => ({ updatedAt: '2026-02-23T08:00:00.000Z', data });
+      const decoded = await decodeEnvelopeSections({
+        schemaVersion: 3,
+        minReaderVersion: 3,
+        updatedAt: '2026-02-23T08:00:00.000Z',
+        updatedByDeviceId: 'device-a',
+        payload: {
+          sections: {
+            quickAccessLayout: entry({ favoriteEntities: {} }),
+            visualPersonalization: entry({ opacity: '0.5', ui: { theme: 'dark' } }),
+            automationAlerts: entry({ entityAlerts: [] }),
+            // Cleared fields and fields left out are both fine.
+            connectionMediaPreferences: entry({ selectedWeatherEntity: null }),
+          },
+        },
+      });
+      expect(Object.keys(decoded.malformed).sort()).toEqual([
+        'automationAlerts',
+        'quickAccessLayout',
+        'visualPersonalization',
+      ]);
+      // Kept exactly as found, so it can be backed up or written back unchanged.
+      expect(decoded.malformed.quickAccessLayout).toEqual(entry({ favoriteEntities: {} }));
+      expect(Object.keys(decoded.sections)).toEqual(['connectionMediaPreferences']);
+
+      const legacy = await decodeEnvelopeSections({
+        schemaVersion: 1,
+        updatedAt: '2026-02-23T08:00:00.000Z',
+        updatedByDeviceId: 'device-a',
+        payload: { favoriteEntities: 'light.kitchen', opacity: 0.8 },
+      });
+      expect(Object.keys(legacy.malformed)).toEqual(['quickAccessLayout']);
+      expect(legacy.sections.visualPersonalization.data).toEqual({ opacity: 0.8 });
+    });
+
     test('refuses files that require a newer reader', () => {
       const tooNew = JSON.stringify({
         schemaVersion: SYNC_SCHEMA_VERSION + 1,

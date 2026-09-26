@@ -29,6 +29,28 @@ const SYNC_SCOPE_SECTION_FIELDS = {
   connectionMediaPreferences: ['selectedWeatherEntity', 'primaryMediaPlayer'],
 };
 const SYNC_SCOPE_SECTION_KEYS = Object.keys(SYNC_SCOPE_SECTION_FIELDS);
+// The JSON type each synced field must have. A section holding anything else in
+// one of these is damaged, not applied: the rest of the app relies on these
+// shapes. null is always allowed, since it clears the field.
+const SYNC_FIELD_TYPES = {
+  favoriteEntities: 'array',
+  trayEntities: 'object',
+  customEntityNames: 'object',
+  customEntityIcons: 'object',
+  tileSpans: 'object',
+  quickAccessTileOptions: 'object',
+  primaryCards: 'array',
+  customTabs: 'array',
+  comparisonGraphs: 'array',
+  alwaysOnTop: 'boolean',
+  hideOnBlur: 'boolean',
+  opacity: 'number',
+  frostedGlass: 'boolean',
+  ui: 'object',
+  entityAlerts: 'object',
+  selectedWeatherEntity: 'string',
+  primaryMediaPlayer: 'string',
+};
 // ui keys that describe this machine or session rather than the shared look.
 // Keep in step with LOCAL_ONLY_UI_KEYS in packages/widget-renderer/src/profile-schema.js,
 // plus the text size and Omarchy theme following, which depend on the display and desktop.
@@ -617,6 +639,35 @@ function serializeSyncEnvelope(envelope) {
   return `${JSON.stringify(envelope, null, 2)}\n`;
 }
 
+function getJsonType(value) {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return 'array';
+  if (typeof value === 'number') return Number.isFinite(value) ? 'number' : 'invalid';
+  return typeof value;
+}
+
+function hasValidSectionFields(sectionKey, data) {
+  return SYNC_SCOPE_SECTION_FIELDS[sectionKey].every((field) => {
+    if (!Object.prototype.hasOwnProperty.call(data, field)) return true;
+    const type = getJsonType(data[field]);
+    return type === 'null' || type === SYNC_FIELD_TYPES[field];
+  });
+}
+
+/**
+ * Moves sections of a converted version 1 or 2 file whose fields have the wrong
+ * types out of `sections`, returning them as the damaged ones.
+ */
+function separateMalformedLegacySections(sections) {
+  const malformed = {};
+  Object.keys(sections).forEach((key) => {
+    if (hasValidSectionFields(key, sections[key].data)) return;
+    malformed[key] = sections[key];
+    delete sections[key];
+  });
+  return malformed;
+}
+
 function normalizeSectionEntry(entry, fallback) {
   if (!isObject(entry) || !isObject(entry.data)) return null;
   const updatedAt =
@@ -672,10 +723,11 @@ async function decodeEnvelopeSections(envelope, passphrase) {
   }
 
   if (envelope.schemaVersion < 3) {
+    const sections = convertLegacyProfileToSections(envelope, decoded);
     return {
-      sections: convertLegacyProfileToSections(envelope, decoded),
+      sections,
       legacy: true,
-      malformed: {},
+      malformed: separateMalformedLegacySections(sections),
       extensions: null,
     };
   }
@@ -693,10 +745,12 @@ async function decodeEnvelopeSections(envelope, passphrase) {
   const malformed = {};
   Object.entries(decoded.sections).forEach(([key, entry]) => {
     const normalized = normalizeSectionEntry(entry, fallback);
-    if (normalized) sections[key] = normalized;
-    else if (SYNC_SCOPE_SECTION_KEYS.includes(key)) malformed[key] = deepClone(entry);
+    if (SYNC_SCOPE_SECTION_KEYS.includes(key)) {
+      if (normalized && hasValidSectionFields(key, normalized.data)) sections[key] = normalized;
+      else malformed[key] = deepClone(entry);
+    }
     // A section only a newer version knows is kept as it is.
-    else sections[key] = deepClone(entry);
+    else sections[key] = normalized || deepClone(entry);
   });
   return {
     sections,
