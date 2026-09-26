@@ -264,6 +264,8 @@ function createMockElectronAPI() {
     ),
     minimizeWindow: jest.fn(() => Promise.resolve()),
     focusWindow: jest.fn(() => Promise.resolve()),
+    showWindow: jest.fn(() => Promise.resolve()),
+    publishOmarchyBarStates: jest.fn(() => Promise.resolve({ success: true })),
     focusDesktopPin: jest.fn((_entityId) => Promise.resolve({ focused: true, exists: true })),
     pinEntityToDesktop: jest.fn((_entityId) =>
       Promise.resolve({

@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.37",
+  "version": "1.2.38",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1591,6 +1591,13 @@
     "Replace this computer’s settings with the sync file’s? This computer’s current settings are backed up first.": "Remplacer les paramètres de cet ordinateur par ceux du fichier de synchronisation ? Les paramètres actuels de cet ordinateur sont d'abord sauvegardés.",
     "Profile sync complete.": "Synchronisation du profil terminée.",
     "The sync file's {{sections}} settings are damaged. Use Sync Up to replace them with this computer's; the damaged copy is backed up first.": "Les paramètres {{sections}} du fichier de synchronisation sont endommagés. Utilisez Synchroniser vers le haut pour les remplacer par ceux de cet ordinateur ; la copie endommagée est d'abord sauvegardée.",
-    "The sync file's {{sections}} settings are damaged. Keep this computer's to repair them; the damaged copy is backed up first.": "Les paramètres {{sections}} du fichier de synchronisation sont endommagés. Gardez ceux de cet ordinateur pour les réparer ; la copie endommagée est d'abord sauvegardée."
+    "The sync file's {{sections}} settings are damaged. Keep this computer's to repair them; the damaged copy is backed up first.": "Les paramètres {{sections}} du fichier de synchronisation sont endommagés. Gardez ceux de cet ordinateur pour les réparer ; la copie endommagée est d'abord sauvegardée.",
+    "Your system keyring is locked or not running, so the saved Home Assistant authorization cannot be read. Unlock the keyring, then restart the widget.": "Le trousseau de clés du système est verrouillé ou ne fonctionne pas, l'autorisation Home Assistant enregistrée ne peut donc pas être lue. Déverrouillez le trousseau, puis redémarrez le widget.",
+    "System keyring is locked": "Le trousseau de clés du système est verrouillé",
+    "Restart Widget": "Redémarrer le widget",
+    "Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.": "Le trousseau de clés du système est verrouillé ou ne fonctionne pas, le jeton Home Assistant enregistré ne peut donc pas être lu. Déverrouillez le trousseau, puis redémarrez le widget.",
+    "The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.": "Le jeton chiffré a été conservé. Une fois le trousseau déverrouillé, redémarrer le widget le relit, ou vous pouvez saisir à nouveau votre jeton dans les Paramètres.",
+    "Add to Omarchy Bar": "Ajouter à la barre Omarchy",
+    "Could not add Home Assistant to the Omarchy bar": "Impossible d'ajouter Home Assistant à la barre Omarchy"
   }
 }

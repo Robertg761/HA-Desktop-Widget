@@ -102,6 +102,17 @@ describe('Home Assistant authorization failure messages', () => {
       expect(describeHomeAssistantOAuthReauthReason({})).toBe('');
     });
 
+    it('asks for an unlocked keyring and a restart when the Linux keyring is unavailable', () => {
+      const keyringMessage =
+        '[fr] Your system keyring is locked or not running, so the saved Home Assistant authorization cannot be read. Unlock the keyring, then restart the widget.';
+      expect(
+        describeHomeAssistantOAuthReauthReason({ oauthLastErrorCode: 'OAUTH_KEYRING_UNAVAILABLE' })
+      ).toBe(keyringMessage);
+      expect(
+        describeHomeAssistantOAuthFailure({ result: { code: 'OAUTH_KEYRING_UNAVAILABLE' } })
+      ).toBe(keyringMessage);
+    });
+
     it('wraps an uncoded failure in a translated sentence', () => {
       expect(describeHomeAssistantOAuthRefreshError({ oauthLastError: 'EPERM' })).toBe(
         '[fr] Could not connect to Home Assistant. EPERM'

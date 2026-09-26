@@ -99,6 +99,10 @@ linux:
       to: helpers/windowtolayer
     - from: vendor/windowtolayer/COPYING
       to: helpers/windowtolayer-COPYING
+    # Omarchy 4 bar plugin, copied into ~/.config/omarchy/plugins by the tray's
+    # "Add to Omarchy Bar" item (src/omarchy-bar.cjs).
+    - from: omarchy-plugin
+      to: omarchy-plugin
   # Match Electron's runtime app id, the installed launcher, and the app's
   # existing XDG autostart file so desktop environments associate its windows.
   syncDesktopName: true

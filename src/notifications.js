@@ -89,11 +89,17 @@ function showPersistentDesktopNotification(notification) {
   try {
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
     const title = notification.title || DEFAULT_NOTIFICATION_TITLE;
-    new Notification(title, {
+    const desktopNotification = new Notification(title, {
       body: notification.message,
       tag: `ha-persistent-notification-${notification.notification_id}`,
       requireInteraction: false,
     });
+    desktopNotification.onclick = () => {
+      openPersistentNotificationsPanel();
+      window.electronAPI?.showWindow?.().catch((error) => {
+        console.error('Error showing widget from notification:', error);
+      });
+    };
   } catch (error) {
     console.error('Error showing persistent notification:', error);
   }

@@ -41,12 +41,47 @@ const {
 } = require('./src/linux-desktop.cjs');
 const IS_ISOLATED_PROFILE = hasIsolatedProfile();
 let initialLaunchAction = process.env.HA_WIDGET_LAUNCH_VISIBILITY || getLaunchAction();
+// Started by an explicit --show or --toggle (the Omarchy bar, a launcher or a key binding) rather
+// than by autostart or a restart: a desktop-layer widget then comes up raised above the windows
+// covering it, as it would for the same command sent to a running widget.
+let initialLaunchRaise =
+  !process.env.HA_WIDGET_LAUNCH_VISIBILITY &&
+  (process.argv.includes('--show') || process.argv.includes('--toggle'));
 const { createOmarchyThemeWatcher } = require('./src/omarchy-theme.cjs');
+const { watchForStatusNotifierWatcher } = require('./src/linux-tray-host.cjs');
+const {
+  OMARCHY_BAR_PLUGIN_ID,
+  buildOmarchyBarStatus,
+  createOmarchyBarPublisher,
+  getEntityToggleRequest,
+  getOmarchyBarPaths,
+  installOmarchyBarPluginFiles,
+  isAllowedOmarchyBarToggle,
+  isOmarchyShellInstalled,
+  readOmarchyBarEntry,
+  rememberOmarchyBarLaunch,
+  resolveOmarchyBarEntities,
+  updateInstalledOmarchyBarPlugin,
+} = require('./src/omarchy-bar.cjs');
 const {
   ensureAppImageDesktopEntry,
   repairStaleAppImageLaunchers,
 } = require('./src/linux-desktop-entry.cjs');
 let omarchyThemeWatcher = null;
+let trayHostWatch = null;
+// When the tray or bar click (or `--toggle`) meant to lower a raised desktop-layer widget takes
+// focus first, the widget's blur has already lowered it by the time the toggle arrives. The
+// toggle consumes that recent release instead of raising the widget straight back up.
+const LAYER_BLUR_TOGGLE_GRACE_MS = 500;
+let layerBlurReleasedAt = null;
+// Omarchy 4 bar plugin support; see src/omarchy-bar.cjs. Null unless the Omarchy shell exists.
+let omarchyBarPublisher = null;
+let omarchyBarEntry = { present: false, entities: null, barEntities: null };
+const omarchyBarStates = new Map();
+// A bar click can start a fresh widget with `--entity-toggle` when the status file outlived a
+// crashed one. That request waits here until the renderer has the entity's state.
+let pendingOmarchyBarToggle = null;
+const OMARCHY_BAR_PENDING_TOGGLE_MS = 60000;
 const {
   readHyprlandMonitors,
   chooseLayerMonitor,
@@ -338,6 +373,7 @@ const {
   NATIVE_WAYLAND_ENV_OVERRIDE,
   getAppIconPath,
   getMainWindowVisualOptions,
+  mergeChromiumFeatureList,
   resolveLinuxPasswordStoreBackend,
   resolveNativeThemeSource,
   shouldForceX11OzonePlatform,
@@ -497,7 +533,14 @@ function forwardRendererConsole(webContents, label = 'renderer') {
 
 const usesLinuxPopupHotkeyBackend = isLinuxPopupHotkeyPlatform(process.platform);
 if (usesLinuxPopupHotkeyBackend) {
-  app.commandLine.appendSwitch('enable-features', 'GlobalShortcutsPortal');
+  // appendSwitch replaces an existing value, so keep features the launcher already enabled.
+  app.commandLine.appendSwitch(
+    'enable-features',
+    mergeChromiumFeatureList(
+      app.commandLine.getSwitchValue('enable-features'),
+      'GlobalShortcutsPortal'
+    )
+  );
 }
 
 // Chromium only knows how to find the OS keyring on the desktops in its own table, and silently
@@ -552,6 +595,10 @@ if (usesLinuxPopupHotkeyBackend) {
 // climate demo and unpackaged dev runs redirect that above, so an isolated demo or a dev build
 // still runs alongside the real widget.
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (gotSingleInstanceLock) {
+  const entityToggle = getEntityToggleRequest(process.argv);
+  if (entityToggle) pendingOmarchyBarToggle = { entityId: entityToggle, requestedAt: Date.now() };
+}
 if (!gotSingleInstanceLock) {
   log.info('Another instance already owns this profile; handing the request to it and exiting');
   app.quit();
@@ -560,12 +607,21 @@ if (!gotSingleInstanceLock) {
   // popup hotkey do. This is also the only way back for a window hidden to the tray on a desktop
   // whose tray is missing or broken.
   app.on('second-instance', (_event, argv) => {
+    const entityToggle = getEntityToggleRequest(argv);
+    if (entityToggle) {
+      // Delivered at once when ready, or once startup has the connection and the entity's state.
+      pendingOmarchyBarToggle = { entityId: entityToggle, requestedAt: Date.now() };
+      deliverPendingOmarchyBarToggle();
+      return;
+    }
     const action = getLaunchAction(argv);
     if (!mainWindow) {
       initialLaunchAction = action;
       return;
     }
-    if (action === 'hide' || (action === 'toggle' && mainWindow?.isVisible())) {
+    if (action === 'toggle' && isLayerShellChildProcess) {
+      toggleRaisedLayerWidget();
+    } else if (action === 'hide' || (action === 'toggle' && mainWindow?.isVisible())) {
       hideMainWindowToTray();
     } else {
       showMainWindowFromTray();
@@ -1740,6 +1796,24 @@ function ensureDateTimeFormatConfigDefaults(target, options = {}) {
   return target;
 }
 
+/**
+ * Following the Omarchy palette is on by default. It used to be off, and Settings wrote that
+ * unticked default back on every save on Omarchy, so a saved `false` from before is not a
+ * choice anyone made: turn it on once, then keep whatever the user picks afterwards. The
+ * marker is top-level config, which a Settings save keeps even though it never sends it.
+ */
+function ensureFollowOmarchyDefault(target) {
+  if (!target || typeof target !== 'object') return target;
+  target.ui = target.ui && typeof target.ui === 'object' ? target.ui : {};
+  if (target.omarchyThemeDefaultApplied !== true) {
+    target.ui.followOmarchy = true;
+    target.omarchyThemeDefaultApplied = true;
+  } else if (typeof target.ui.followOmarchy !== 'boolean') {
+    target.ui.followOmarchy = true;
+  }
+  return target;
+}
+
 function getProfileSyncConfig() {
   ensureProfileSyncConfigDefaults(config);
   return config.profileSync;
@@ -1770,6 +1844,7 @@ function sanitizeConfigForRenderer(inputConfig) {
     cloned.developmentDemo = { climate: true, mode: 'overlay' };
   }
   cloned.desktopAppearance = omarchyThemeWatcher?.get() || null;
+  cloned.omarchyBarEntities = getOmarchyBarEntities().all;
   cloned.desktopCapabilities = {
     layerMode: isLayerShellChildProcess,
     canDrag: isLayerShellChildProcess && isHyprland(),
@@ -2428,7 +2503,7 @@ function broadcastDesktopPinConfigUpdate() {
   });
 }
 
-function focusMainWindow() {
+function focusMainWindow({ keepElevated = false } = {}) {
   if (!mainWindow || mainWindow.isDestroyed()) {
     createWindow();
   }
@@ -2438,7 +2513,7 @@ function focusMainWindow() {
 
   // A one-off raise: it clears full-screen windows the same way the popup hotkey does,
   // then settles back to the user's always-on-top preference.
-  popupWindowPresenter.showAboveFullScreen(mainWindow, { keepElevated: false });
+  popupWindowPresenter.showAboveFullScreen(mainWindow, { keepElevated });
 
   return { focused: mainWindow.isFocused() };
 }
@@ -2459,7 +2534,28 @@ function showMainWindowFromTray() {
       log.warn('Failed to restore window size before showing:', error.message);
     }
   }
-  return focusMainWindow();
+  // A desktop-layer widget settles back under tiled windows, where a one-off raise is only
+  // a flash, so an explicit show keeps it raised until toggled back or focus moves away.
+  return focusMainWindow({ keepElevated: isLayerShellChildProcess });
+}
+
+/**
+ * Tray click and `--toggle` on a desktop layer. The widget there is always mapped, normally
+ * under tiled windows, so being visible says nothing about whether the user can see it: raise
+ * it above them, and lower it back on the next press, as the popup shortcut does.
+ */
+function toggleRaisedLayerWidget(now = Date.now()) {
+  const releasedByBlur =
+    layerBlurReleasedAt !== null && now - layerBlurReleasedAt < LAYER_BLUR_TOGGLE_GRACE_MS;
+  layerBlurReleasedAt = null;
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+    if (popupWindowPresenter.isElevated()) {
+      popupWindowPresenter.releaseElevation(mainWindow);
+      return;
+    }
+    if (releasedByBlur) return;
+  }
+  showMainWindowFromTray();
 }
 
 /** Hide the widget to the tray, ending any raise still in flight. */
@@ -4347,6 +4443,7 @@ function pruneConfig(target) {
   delete target.secureStoragePending;
   delete target.desktopCapabilities;
   delete target.desktopAppearance;
+  delete target.omarchyBarEntities;
   delete target.configRevision;
   delete target.configRecovery;
   delete target.persistenceWarnings;
@@ -4459,6 +4556,8 @@ function loadConfig(options = {}) {
       weatherEffectsEnabled: false,
       weatherOverride: 'auto',
       enableInteractionDebugLogs: false,
+      // Only takes effect where an Omarchy palette exists.
+      followOmarchy: true,
     },
     primaryCards: ['weather', 'time'],
     favoriteEntities: [],
@@ -4518,6 +4617,7 @@ function loadConfig(options = {}) {
         ensureProfileSyncConfigDefaults(config);
         ensureUpdateConfigDefaults(config);
         ensureHaProfileConfigDefaults(config);
+        ensureFollowOmarchyDefault(config);
         normalizeDesktopPinsConfig(config);
         normalizeTrayEntitiesConfigInPlace(config);
 
@@ -4580,6 +4680,7 @@ function loadConfig(options = {}) {
       ensureProfileSyncConfigDefaults(config);
       ensureUpdateConfigDefaults(config);
       ensureHaProfileConfigDefaults(config);
+      ensureFollowOmarchyDefault(config);
 
       // OAuth access tokens are short-lived runtime state. Ignore any stale copy
       // that an earlier development build may have put in config.json.
@@ -4757,6 +4858,7 @@ function loadConfig(options = {}) {
       ensureDateTimeFormatConfigDefaults(config);
       ensureProfileSyncConfigDefaults(config);
       ensureUpdateConfigDefaults(config);
+      ensureFollowOmarchyDefault(config);
       normalizeDesktopPinsConfig(config);
       normalizeTrayEntitiesConfigInPlace(config);
       // Ensure directory exists and persist
@@ -4785,6 +4887,7 @@ function loadConfig(options = {}) {
     ensureDateTimeFormatConfigDefaults(config);
     ensureProfileSyncConfigDefaults(config);
     ensureUpdateConfigDefaults(config);
+    ensureFollowOmarchyDefault(config);
     normalizeDesktopPinsConfig(config);
     normalizeTrayEntitiesConfigInPlace(config);
   }
@@ -6246,6 +6349,8 @@ function createWindow() {
     refreshLayerPlacement();
     pushConfigToRenderer();
     if (initialLaunchAction === 'hide') mainWindow.hide();
+    else if (initialLaunchRaise && isLayerShellChildProcess) showMainWindowFromTray();
+    initialLaunchRaise = false;
     delete process.env.HA_WIDGET_LAUNCH_VISIBILITY;
     if (IS_SMOKE_TEST_MODE) {
       smokeTestRendererLoaded = true;
@@ -6294,7 +6399,8 @@ function createWindow() {
     notifyDesktopCompanionStateChanged();
   });
   mainWindow.on('blur', () => {
-    popupWindowPresenter.handleWindowBlur(mainWindow);
+    const released = popupWindowPresenter.handleWindowBlur(mainWindow);
+    if (released && isLayerShellChildProcess) layerBlurReleasedAt = Date.now();
     windowAutoHide.handleBlur();
   });
 
@@ -6378,6 +6484,10 @@ function toggleMainWindowFromTrayEntity({ fromTrayClick = false, trayBounds } = 
     fromTrayClick ? trayBounds : undefined
   );
   if (fromTrayClick && recentlyHidden) return;
+  if (fromTrayClick && isLayerShellChildProcess) {
+    toggleRaisedLayerWidget();
+    return;
+  }
   if (mainWindow?.isVisible()) {
     hideMainWindowToTray();
   } else {
@@ -6428,6 +6538,7 @@ function createTrayEntityIcon(entityId) {
 function invalidateHaConnectionState(status) {
   latestHaConnectionState = status;
   invalidateTrayEntityIcons();
+  omarchyBarPublisher?.update();
   Object.keys(config?.desktopPins || {}).forEach((entityId) => {
     sendDesktopPinUpdate(entityId, { type: 'connection' });
   });
@@ -6582,6 +6693,8 @@ function buildTrayContextMenu() {
     {
       label: mainT('Always on Top'),
       type: 'checkbox',
+      // A desktop layer cannot be kept on top; Settings disables the same option there.
+      enabled: !isLayerShellChildProcess,
       checked: !isLayerShellChildProcess && config.alwaysOnTop,
       click: (menuItem) => {
         const requestedValue = !!menuItem.checked;
@@ -6673,6 +6786,9 @@ function buildTrayContextMenu() {
           },
         ]
       : []),
+    ...(omarchyBarPublisher && !omarchyBarEntry.present
+      ? [{ label: mainT('Add to Omarchy Bar'), click: () => void addOmarchyBarPlugin() }]
+      : []),
     { type: 'separator' },
     {
       label: mainT('DevTools'),
@@ -6740,6 +6856,183 @@ function buildTrayContextMenu() {
   return protectAutoHideDuringMenu(menu);
 }
 
+function getOmarchyBarEntities() {
+  if (!omarchyBarPublisher || !omarchyBarEntry.present) return { panel: [], bar: [], all: [] };
+  return resolveOmarchyBarEntities(omarchyBarEntry, config?.favoriteEntities);
+}
+
+/** What the bar should tell the user to fix, when the widget cannot fix it by itself. */
+function getOmarchyBarIssue() {
+  const keyringLocked =
+    config?.homeAssistant?.oauthLastErrorCode === 'OAUTH_KEYRING_UNAVAILABLE' ||
+    config?.tokenResetReason === 'encryption_unavailable';
+  return keyringLocked ? 'keyring' : '';
+}
+
+/** The command the bar plugin runs to reach this widget, or null to use its default. */
+function getOmarchyBarLaunchArgv() {
+  if (process.env.APPIMAGE) return [process.env.APPIMAGE];
+  return app.isPackaged ? [process.execPath] : null;
+}
+
+function readOmarchyBarShellEntry() {
+  try {
+    return readOmarchyBarEntry(fs.readFileSync(getOmarchyBarPaths().shellConfig, 'utf8'));
+  } catch {
+    return { present: false, entities: null, barEntities: null };
+  }
+}
+
+function refreshOmarchyBarEntry() {
+  const next = readOmarchyBarShellEntry();
+  if (JSON.stringify(next) === JSON.stringify(omarchyBarEntry)) return;
+  const wasPresent = omarchyBarEntry.present;
+  omarchyBarEntry = next;
+  // The renderer publishes the states of whatever the bar now asks for.
+  pushConfigToRenderer();
+  omarchyBarPublisher?.update();
+  if (wasPresent !== next.present && tray && !tray.isDestroyed?.()) createTray();
+}
+
+/**
+ * Publish status for the Omarchy 4 bar plugin while the Omarchy shell is installed. An isolated
+ * profile stays out of it: it would overwrite the status of the user's real widget.
+ */
+function startOmarchyBarIntegration() {
+  if (process.platform !== 'linux' || IS_SMOKE_TEST_MODE || IS_ISOLATED_PROFILE) return;
+  if (!isOmarchyShellInstalled()) return;
+  const paths = getOmarchyBarPaths();
+  try {
+    if (
+      updateInstalledOmarchyBarPlugin({
+        sourceDir: getBundledOmarchyBarPluginDir(),
+        pluginDir: paths.pluginDir,
+      })
+    ) {
+      log.info('Updated the Omarchy bar plugin to the version bundled with this widget');
+    }
+  } catch (error) {
+    log.warn('Could not update the Omarchy bar plugin:', error.message);
+  }
+  try {
+    rememberOmarchyBarLaunch({ launchFile: paths.launchFile, launch: getOmarchyBarLaunchArgv() });
+  } catch (error) {
+    log.warn('Could not save the Omarchy bar launch command:', error.message);
+  }
+  omarchyBarEntry = readOmarchyBarShellEntry();
+  omarchyBarPublisher = createOmarchyBarPublisher({
+    statusFile: paths.statusFile,
+    log,
+    getStatus: () =>
+      buildOmarchyBarStatus({
+        connection: latestHaConnectionState,
+        states: omarchyBarStates,
+        entities: getOmarchyBarEntities(),
+        customEntityNames: config?.customEntityNames,
+        launch: getOmarchyBarLaunchArgv(),
+        issue: getOmarchyBarIssue(),
+      }),
+  });
+  if (!omarchyBarPublisher) return;
+  fs.watchFile(paths.shellConfig, { interval: 2000, persistent: false }, refreshOmarchyBarEntry);
+}
+
+function stopOmarchyBarIntegration() {
+  if (!omarchyBarPublisher) return;
+  fs.unwatchFile(getOmarchyBarPaths().shellConfig, refreshOmarchyBarEntry);
+  omarchyBarPublisher.stop();
+  omarchyBarPublisher = null;
+}
+
+/**
+ * Deliver an `--entity-toggle` this process was started with, once connected and holding the
+ * entity's state. Dropped after a minute so a slow start never toggles something unexpectedly.
+ */
+function deliverPendingOmarchyBarToggle(now = Date.now()) {
+  const pending = pendingOmarchyBarToggle;
+  if (!pending) return;
+  if (now - pending.requestedAt > OMARCHY_BAR_PENDING_TOGGLE_MS) {
+    pendingOmarchyBarToggle = null;
+    return;
+  }
+  if (latestHaConnectionState !== 'connected' || !omarchyBarStates.has(pending.entityId)) return;
+  pendingOmarchyBarToggle = null;
+  handleOmarchyBarEntityToggle(pending.entityId);
+}
+
+/** `--entity-toggle=<id>` from the bar plugin: only entities the bar shows, and only toggles. */
+function handleOmarchyBarEntityToggle(entityId) {
+  if (!isAllowedOmarchyBarToggle(entityId, getOmarchyBarEntities())) {
+    log.warn(`Ignoring an Omarchy bar toggle for ${entityId}, which the bar does not show`);
+    return;
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('hotkey-triggered', { entityId, action: 'toggle' });
+  }
+}
+
+function getBundledOmarchyBarPluginDir() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'omarchy-plugin')
+    : path.join(__dirname, 'omarchy-plugin');
+}
+
+/** Tray action: copy the bundled plugin into Omarchy and place it in the bar. */
+async function addOmarchyBarPlugin() {
+  const omarchyBin = path.join(process.env.OMARCHY_PATH || '/usr/share/omarchy', 'bin');
+  const env = { ...process.env, PATH: `${omarchyBin}:${process.env.PATH || ''}` };
+  const run = (command, args) =>
+    new Promise((resolve, reject) => {
+      require('child_process').execFile(
+        path.join(omarchyBin, command),
+        args,
+        { env, timeout: 15000 },
+        (error, _stdout, stderr) =>
+          error ? reject(new Error(String(stderr || error.message).trim())) : resolve()
+      );
+    });
+  try {
+    installOmarchyBarPluginFiles({
+      sourceDir: getBundledOmarchyBarPluginDir(),
+      pluginDir: getOmarchyBarPaths().pluginDir,
+    });
+    await run('omarchy-shell', ['shell', 'rescanPlugins']);
+    await run('omarchy-plugin-enable', [OMARCHY_BAR_PLUGIN_ID]);
+    log.info('Added the Home Assistant widget to the Omarchy bar');
+    refreshOmarchyBarEntry();
+  } catch (error) {
+    log.warn('Could not add the Omarchy bar plugin:', error.message);
+    dialog.showErrorBox(mainT('Could not add Home Assistant to the Omarchy bar'), error.message);
+  }
+}
+
+/**
+ * A Wayland bar that starts after the widget at login never sees its tray icon, because
+ * Electron falls back to an XEmbed icon that no Wayland bar shows. Recreate the icons once a
+ * StatusNotifier host turns up; see src/linux-tray-host.cjs.
+ */
+function startTrayHostWatch() {
+  trayHostWatch?.stop();
+  trayHostWatch = watchForStatusNotifierWatcher({
+    log,
+    getExpectedItemCount: () =>
+      1 + Array.from(trayEntityIcons.values()).filter((icon) => !icon.isDestroyed?.()).length,
+    onAppeared: () => {
+      trayHostWatch = null;
+      // The bar claims the watcher name before its host registers; give it a moment.
+      setTimeout(() => {
+        if (isQuitting || !tray) return;
+        log.info('StatusNotifier host appeared; recreating tray icons');
+        if (!tray.isDestroyed?.()) tray.destroy();
+        tray = null;
+        destroyTrayEntityIcons();
+        createTray();
+        syncTrayEntitiesWithConfig();
+      }, 1000);
+    },
+  });
+}
+
 function createTray() {
   log.info('Creating system tray icon');
   if (!tray || tray.isDestroyed?.()) {
@@ -6788,6 +7081,9 @@ function schedulePostWindowStartupTasks() {
     } catch (error) {
       log.warn('Tray startup initialization failed:', error.message);
       finishSmokeTest(false, `Tray startup initialization failed: ${error.message}`);
+    }
+    if (process.platform === 'linux' && waylandSession && !IS_SMOKE_TEST_MODE) {
+      startTrayHostWatch();
     }
 
     try {
@@ -7405,6 +7701,21 @@ async function applyHomeAssistantOAuthSession(session, options = {}) {
   return sanitizeConfigForRenderer(config);
 }
 
+/**
+ * On Linux, an unavailable credential store usually means the Secret Service keyring was locked
+ * or not running yet when the widget started. Chromium keeps that answer until the app
+ * restarts, so reconnecting would fail the same way: report it as a keyring problem, which the
+ * renderer resolves with a restart. A decrypt failure is left alone: the store was available,
+ * so the saved authorization itself is unreadable and only reconnecting can replace it.
+ */
+function describeLinuxKeyringOAuthError(code, platform = process.platform) {
+  const value = String(code || '');
+  if (platform === 'linux' && value === 'OAUTH_SECURE_STORAGE_UNAVAILABLE') {
+    return 'OAUTH_KEYRING_UNAVAILABLE';
+  }
+  return value;
+}
+
 async function refreshHomeAssistantOAuthSession() {
   if (config?.homeAssistant?.authMethod !== 'oauth') return null;
   try {
@@ -7431,7 +7742,7 @@ async function refreshHomeAssistantOAuthSession() {
     config.homeAssistant.oauthStatus = reauthRequired ? 'reauth_required' : 'offline';
     config.homeAssistant.oauthLastError = String(error?.message || error).slice(0, 512);
     // The renderer shows a translated message for known codes; the text is the fallback.
-    config.homeAssistant.oauthLastErrorCode = String(error?.code || '');
+    config.homeAssistant.oauthLastErrorCode = describeLinuxKeyringOAuthError(error?.code);
     if (reauthRequired) {
       config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER;
       delete config.homeAssistant.oauthAuthorizationId;
@@ -7465,7 +7776,7 @@ ipcMain.handle('start-home-assistant-oauth', async (event, rawUrl) => {
   } catch (error) {
     return {
       success: false,
-      code: error?.code || 'OAUTH_PAIRING_FAILED',
+      code: describeLinuxKeyringOAuthError(error?.code || 'OAUTH_PAIRING_FAILED'),
       error: error?.message || 'Home Assistant authorization failed',
     };
   }
@@ -7738,7 +8049,29 @@ ipcMain.handle('publish-ha-connection-state', (event, status) => {
   Object.keys(config?.desktopPins || {}).forEach((entityId) => {
     sendDesktopPinUpdate(entityId, { type: 'connection' });
   });
+  omarchyBarPublisher?.update();
+  deliverPendingOmarchyBarToggle();
   return { success: true };
+});
+
+// The renderer sends the states of exactly the entities the Omarchy bar asked for
+// (config.omarchyBarEntities), as a full set each time.
+ipcMain.handle('publish-omarchy-bar-states', (event, states) => {
+  const sender = authorizeIpcSender(event, 'publish-omarchy-bar-states');
+  if (!sender) return rejectUnauthorizedIpc('publish-omarchy-bar-states');
+  if (!omarchyBarPublisher) return { success: true, discarded: true };
+  const wanted = new Set(getOmarchyBarEntities().all);
+  omarchyBarStates.clear();
+  if (isPlainObject(states)) {
+    Object.entries(states).forEach(([entityId, entity]) => {
+      const normalizedEntityId = normalizeEntityId(entityId);
+      if (!wanted.has(normalizedEntityId) || !isPlainObject(entity)) return;
+      omarchyBarStates.set(normalizedEntityId, entity);
+    });
+  }
+  omarchyBarPublisher.update();
+  deliverPendingOmarchyBarToggle();
+  return { success: true, count: omarchyBarStates.size };
 });
 
 ipcMain.handle('publish-ha-snapshot', (event, states) => {
@@ -9067,6 +9400,14 @@ ipcMain.handle('minimize-window', (event) => {
       mainWindow.minimize();
     }
   }
+});
+
+// A click on one of the widget's desktop notifications. Shows it the way the tray does, which
+// also brings back a widget hidden to the tray and keeps a desktop-layer widget raised.
+ipcMain.handle('show-window', (event) => {
+  const sender = authorizeIpcSender(event, 'show-window');
+  if (!sender) return rejectUnauthorizedIpc('show-window');
+  return showMainWindowFromTray();
 });
 
 ipcMain.handle('focus-window', (event) => {
@@ -11217,6 +11558,9 @@ function shutDownRuntimeAfterConfigFlush() {
   closeLegacyPortalShortcutsControllers();
   unregisterGlobalHotkeys();
   unregisterPopupHotkey();
+  trayHostWatch?.stop();
+  trayHostWatch = null;
+  stopOmarchyBarIntegration();
   kwinWindowRaiser?.close();
 }
 
@@ -11412,6 +11756,7 @@ app
       });
     }
     applyNativeThemeSource();
+    startOmarchyBarIntegration();
     enableDevelopmentClimateDemo();
     startDevLiveReloadWatchers();
 

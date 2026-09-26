@@ -58,7 +58,7 @@ beforeAll(() => {
   // Mock Notification API
   global.Notification = class MockNotification {
     constructor(title, options) {
-      MockNotification.lastNotification = { title, options };
+      MockNotification.lastNotification = { title, options, instance: this };
     }
 
     static requestPermission() {
@@ -576,6 +576,12 @@ describe('alerts module', () => {
       expect(global.Notification.lastNotification.title).toBe('Home Assistant Alert');
       expect(global.Notification.lastNotification.options.body).toContain('Living Room Light');
       expect(global.Notification.lastNotification.options.tag).toBe('ha-alert-light.living_room');
+    });
+
+    it('opens the widget when the notification is clicked', () => {
+      alerts.checkEntityAlerts('light.living_room', 'off');
+      global.Notification.lastNotification.instance.onclick();
+      expect(mockElectronAPI.showWindow).toHaveBeenCalledTimes(1);
     });
 
     it('should include entity icon in notification', () => {

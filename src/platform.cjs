@@ -303,6 +303,16 @@ function resolveNativeThemeSource(config, desktopAppearance = null) {
   return mode === 'dark' || mode === 'light' ? mode : 'system';
 }
 
+/** Add a feature to a comma-separated Chromium feature list without dropping the others. */
+function mergeChromiumFeatureList(existing, feature) {
+  const features = String(existing || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (!features.includes(feature)) features.push(feature);
+  return features.join(',');
+}
+
 module.exports = {
   LINUX_PASSWORD_STORE_ENV_OVERRIDE,
   NATIVE_WAYLAND_ENV_OVERRIDE,
@@ -314,6 +324,7 @@ module.exports = {
   isDisabledEnvFlag,
   isEnabledEnvFlag,
   isLinuxAppImage,
+  mergeChromiumFeatureList,
   resolveLinuxPasswordStoreBackend,
   resolveNativeThemeSource,
   shouldForceX11OzonePlatform,
