@@ -67,14 +67,20 @@ function createElectronApi(ipcRenderer, platform) {
       flushDeferredConfigUpdate();
     }
   };
+  const getLatestConfigRevision = () =>
+    Math.max(latestSettledConfigRevision, latestDeliveredConfigRevision);
   // Every update says which config revision it was built from, so main can tell
-  // a snapshot taken before a profile sync pull from a change made after it.
+  // a snapshot taken before a profile sync pull from a change made after it. A
+  // snapshot that carries its own configRevision (one kept for a later rollback)
+  // is stamped with that; anything else is taken to be built from the latest.
   const updateConfig = (config) => {
-    const baseRevision = Math.max(latestSettledConfigRevision, latestDeliveredConfigRevision);
-    const payload =
-      config && typeof config === 'object' && !Array.isArray(config) && baseRevision >= 0
-        ? { ...config, configBaseRevision: baseRevision }
-        : config;
+    if (!config || typeof config !== 'object' || Array.isArray(config)) {
+      return invokeConfigMutation('update-config', config);
+    }
+    const { configRevision: _snapshotRevision, ...payload } = config;
+    const snapshotRevision = getConfigRevision(config);
+    const baseRevision = snapshotRevision ?? getLatestConfigRevision();
+    if (baseRevision >= 0) payload.configBaseRevision = baseRevision;
     return invokeConfigMutation('update-config', payload);
   };
   const replaceConfigEntityId = (oldEntityId, newEntityId) =>
@@ -130,6 +136,10 @@ function createElectronApi(ipcRenderer, platform) {
     downloadLocalePack: (locale) => invoke('download-locale-pack', locale),
     removeLocalePack: (locale) => invoke('remove-locale-pack', locale),
     updateConfig,
+    getConfigRevision: () => {
+      const revision = getLatestConfigRevision();
+      return revision >= 0 ? revision : null;
+    },
     replaceConfigEntityId,
     clearTokenResetReason: () => invokeChecked('clear-token-reset-reason'),
     saveConfig: (config) => invokeChecked('save-config', config),

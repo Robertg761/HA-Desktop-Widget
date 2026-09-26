@@ -467,6 +467,10 @@ function setupHotkeyEventListenersInternal() {
         const hotkeyConfig = state.CONFIG.globalHotkeys.hotkeys[entityId];
         if (hotkeyConfig) {
           const previousConfig = JSON.parse(JSON.stringify(state.CONFIG));
+          // The rollback below may be sent after a profile sync pull has landed, so
+          // it names the revision it was taken at and main keeps the pulled values.
+          const previousRevision = window.electronAPI.getConfigRevision?.();
+          if (Number.isFinite(previousRevision)) previousConfig.configRevision = previousRevision;
           const nextConfig = JSON.parse(JSON.stringify(state.CONFIG));
           const nextHotkeyConfig = nextConfig.globalHotkeys.hotkeys[entityId];
           nextConfig.globalHotkeys.hotkeys[entityId] =

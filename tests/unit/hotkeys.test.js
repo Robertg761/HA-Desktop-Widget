@@ -282,6 +282,36 @@ describe('hotkeys module', () => {
       );
     });
 
+    it('stamps the rollback with the revision taken before a sync pull could land', async () => {
+      const container = document.createElement('div');
+      const searchInput = document.createElement('input');
+      container.id = 'hotkeys-list';
+      searchInput.id = 'hotkey-entity-search';
+      searchInput.value = 'living';
+      document.body.appendChild(container);
+      document.body.appendChild(searchInput);
+
+      let revision = 5;
+      mockElectronAPI.getConfigRevision = jest.fn(() => revision);
+      mockElectronAPI.updateConfig.mockImplementation((nextConfig) => Promise.resolve(nextConfig));
+      mockElectronAPI.registerHotkeys.mockImplementationOnce(async () => {
+        revision = 9;
+        return { success: false, error: 'Portal binding failed' };
+      });
+
+      hotkeys.renderHotkeysTab();
+      container
+        .querySelector(
+          '[data-entity-id="light.living_room"] .custom-dropdown-option[data-value="turn_on"]'
+        )
+        .click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(2);
+      expect(mockElectronAPI.updateConfig.mock.calls[0][0].configRevision).toBeUndefined();
+      expect(mockElectronAPI.updateConfig.mock.calls[1][0].configRevision).toBe(5);
+    });
+
     it('translates action labels and the action-updated toast', async () => {
       const i18n = require('../../src/i18n.js');
       i18n.setLocaleBootstrap({

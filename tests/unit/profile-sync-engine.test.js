@@ -360,6 +360,27 @@ describe('profile sync engine', () => {
     );
   });
 
+  test('restoring the backup a pull just made syncs it instead of reading as a stale echo', async () => {
+    const { desktop, laptop } = await createSyncedPair();
+    desktop.edit((config) => {
+      config.opacity = 0.6;
+    });
+    await desktop.sync();
+    await laptop.sync();
+    expect(laptop.config.opacity).toBe(0.6);
+
+    // Restoring what that pull replaced reproduces the pre-pull profile exactly.
+    const [pullBackup] = await laptop.context.listProfileSyncBackups();
+    expect(pullBackup.kind).toBe('local');
+    await laptop.context.restoreProfileSyncBackup(pullBackup.id);
+    expect(laptop.config.opacity).toBe(0.9);
+
+    await laptop.sync();
+    expect(laptop.config.opacity).toBe(0.9);
+    await desktop.sync();
+    expect(desktop.config.opacity).toBe(0.9);
+  });
+
   test('scope belongs to each device and pushes keep sections other devices sync', async () => {
     const desktop = createDevice('desktop');
     await desktop.sync();

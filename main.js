@@ -3973,7 +3973,14 @@ async function restoreProfileSyncBackup(id) {
     localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
     localSectionHashes: profileSyncRuntime.localSectionHashes,
     pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
+    pendingPullEchoProfile: profileSyncRuntime.pendingPullEchoProfile,
+    pendingPullRevision: profileSyncRuntime.pendingPullRevision,
   };
+  // Restoring what the last pull replaced reproduces the pre-pull profile exactly,
+  // which the stale-echo guard would otherwise drop instead of syncing it.
+  profileSyncRuntime.pendingPullEchoHash = null;
+  profileSyncRuntime.pendingPullEchoProfile = null;
+  profileSyncRuntime.pendingPullRevision = null;
   config = profileSyncCore.mergeSectionsIntoConfig(config, backup.sections);
   pruneConfig(config);
   ensureDateTimeFormatConfigDefaults(config);
