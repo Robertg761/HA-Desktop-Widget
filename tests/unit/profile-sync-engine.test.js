@@ -456,6 +456,39 @@ describe('profile sync engine', () => {
     expect(desktop.config.opacity).toBe(0.5);
   });
 
+  test('a choice made after the file stopped conflicting forces nothing', async () => {
+    const desktop = createDevice('desktop');
+    await desktop.sync();
+    const laptop = createDevice('laptop', {
+      content: { ...baseContent(), favoriteEntities: ['switch.fan'] },
+      profileSync: { syncScope: { preset: 'visual' } },
+    });
+    await laptop.sync();
+    laptop.edit((config) => {
+      config.opacity = 0.5;
+    });
+    laptop.config.profileSync.syncScope = profileSyncCore.normalizeSyncScope({ preset: 'all' });
+    await laptop.firstEnable();
+    expect(laptop.status().conflictSections).toEqual(['quickAccessLayout']);
+
+    // While the prompt is open, the desktop adopts the laptop's favorites.
+    desktop.edit((config) => {
+      config.favoriteEntities = ['switch.fan'];
+    });
+    await desktop.sync();
+    await expect(laptop.context.verifyPendingRemoteEnvelopeUnchanged()).rejects.toThrow(
+      'The remote profile changed while waiting for conflict resolution'
+    );
+    expect(laptop.context.profileSyncRuntime.conflictSections).toEqual([]);
+
+    // Retrying Use Remote, as the resolve handler does, keeps the unrelated local edit.
+    await laptop.context.runProfileSyncInternal('pull', 'first_enable_resolution', {
+      expectedRemoteIdentity: laptop.context.profileSyncRuntime.pendingRemoteIdentity,
+      forceSections: [...laptop.context.profileSyncRuntime.conflictSections],
+    });
+    expect(laptop.config.opacity).toBe(0.5);
+  });
+
   test('refuses to push plaintext over an encrypted file', async () => {
     const desktop = createDevice('desktop', {
       profileSync: { encryptionEnabled: true, __passphrase: 'correct horse' },

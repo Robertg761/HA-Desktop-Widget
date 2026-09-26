@@ -887,6 +887,14 @@ describe('profile sync runtime safeguards', () => {
     expect(compare).toBeLessThan(write);
   });
 
+  it('limits a first-sync choice to the listed sections, even when none remain', () => {
+    const handlerStart = mainSource.indexOf("'resolve-profile-sync-first-enable',");
+    const handler = mainSource.slice(handlerStart, mainSource.indexOf('\n);', handlerStart));
+
+    expect(handler).toContain('const chosenSections = [...profileSyncRuntime.conflictSections];');
+    expect(handler.match(/forceSections: chosenSections/g)).toHaveLength(2);
+  });
+
   it('syncs local edits with a merge run instead of a forced push', () => {
     const fnStart = mainSource.indexOf('function scheduleDebouncedProfileSyncPush');
     const fn = mainSource.slice(fnStart, mainSource.indexOf('\n}', fnStart));

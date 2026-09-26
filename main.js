@@ -8498,10 +8498,9 @@ ipcMain.handle(
       }
 
       // The choice covers only the sections the prompt named; sections this
-      // computer already shares a history with keep merging normally.
-      const chosenSections = profileSyncRuntime.conflictSections.length
-        ? [...profileSyncRuntime.conflictSections]
-        : null;
+      // computer already shares a history with keep merging normally. An empty
+      // list (the file changed and no longer conflicts) forces nothing.
+      const chosenSections = [...profileSyncRuntime.conflictSections];
       if (choice === 'upload_local') {
         const remoteResult = await verifyPendingRemoteEnvelopeUnchanged();
         const result = await runProfileSyncInternal('push', 'first_enable_resolution', {

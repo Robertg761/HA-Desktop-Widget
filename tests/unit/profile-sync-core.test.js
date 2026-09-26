@@ -325,6 +325,19 @@ describe('profile-sync-core', () => {
     // Only the named section is forced; the other still merges and keeps the local edit.
     expect(plan.pull).toEqual(['quickAccessLayout']);
     expect(plan.push).toEqual(['visualPersonalization']);
+
+    const nothingForced = planSectionSync({
+      sectionKeys: ['visualPersonalization'],
+      localSections: { visualPersonalization: { opacity: 0.5 } },
+      remoteSections: {
+        visualPersonalization: { updatedAt: '2026-01-01T00:00:00.000Z', data: { opacity: 0.9 } },
+      },
+      baseline: hashesFor(base),
+      direction: 'pull',
+      forceSections: [],
+    });
+    expect(nothingForced.push).toEqual(['visualPersonalization']);
+    expect(nothingForced.pull).toEqual([]);
   });
 
   test('pushed sections keep fields a newer version wrote', () => {
