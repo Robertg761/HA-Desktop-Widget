@@ -4,7 +4,7 @@ Use the Arch package for a stable `ha-desktop-widget` command and launcher entry
 
 On Hyprland the widget uses a native Wayland desktop layer. Normal windows cover it. Drag the title area to move it within its monitor, or use the tray's Move to Monitor menu. Desktop pins keep their own positions on each monitor. Pins move in desktop-pin edit mode.
 
-Always on top and Hide on focus loss are unavailable in desktop layer mode. Use the popup shortcut, a tray click, or `ha-desktop-widget --toggle` to raise the main widget above your windows. The same action, or clicking elsewhere after using the widget, lowers it back to the desktop. Pins stay on the desktop. The tray menu's Show/Hide still hides the widget completely.
+Always on top and Hide on focus loss are unavailable in desktop layer mode. Use the popup shortcut, a tray click, or `ha-desktop-widget --toggle` to raise the main widget above your windows. The same action, or clicking elsewhere after using the widget, lowers it back to the desktop. Starting the widget with `--show` or `--toggle`, as app launchers and the Omarchy bar do, also raises it once it appears; autostart leaves it on the desktop. Pins stay on the desktop. The tray menu's Show/Hide still hides the widget completely.
 
 If the widget starts at login before the bar, its tray icon appears as soon as the bar does.
 
@@ -32,7 +32,7 @@ The panel lists the first twelve Quick Access favorites until you choose entitie
 
 To start the widget through a wrapper or a different executable when it is not running, add `"command"` to the same entry; otherwise the bar uses the command the widget last saved, then `ha-desktop-widget`.
 
-The widget must be running for the plugin to show values; the plugin never receives Home Assistant credentials. The widget publishes the chosen entities to `$XDG_RUNTIME_DIR/ha-desktop-widget/omarchy-bar.json`, and the plugin sends its actions through the widget's command line. Updating the widget also updates an installed plugin. Omarchy 3 uses waybar, which cannot load these plugins; the tray icon is available there instead.
+The widget must be running for the plugin to show values; the plugin never receives Home Assistant credentials. The widget publishes the chosen entities to `$XDG_RUNTIME_DIR/ha-desktop-widget/omarchy-bar.json`, and the plugin sends its actions through the widget's command line. Updating the widget also updates an installed plugin. The Omarchy shell keeps running the old version of a changed plugin until it restarts, at your next login or with `omarchy-restart-shell`. Omarchy 3 uses waybar, which cannot load these plugins; the tray icon is available there instead.
 
 ## Shortcuts
 
