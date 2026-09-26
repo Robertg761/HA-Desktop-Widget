@@ -592,6 +592,15 @@ describe('profile-sync-core', () => {
       ]);
       // Kept exactly as found, so it can be backed up or written back unchanged.
       expect(decoded.malformed.quickAccessLayout).toEqual(entry({ favoriteEntities: {} }));
+      // Appearance is never cleared as a whole, so a null ui cannot be applied.
+      const nullUi = await decodeEnvelopeSections({
+        schemaVersion: 3,
+        minReaderVersion: 3,
+        updatedAt: '2026-02-23T08:00:00.000Z',
+        updatedByDeviceId: 'device-a',
+        payload: { sections: { visualPersonalization: entry({ ui: null, opacity: 0.8 }) } },
+      });
+      expect(Object.keys(nullUi.malformed)).toEqual(['visualPersonalization']);
       expect(Object.keys(decoded.sections)).toEqual(['connectionMediaPreferences']);
 
       const legacy = await decodeEnvelopeSections({

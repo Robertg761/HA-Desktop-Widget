@@ -682,7 +682,9 @@ function hasValidSectionFields(sectionKey, data) {
     if (!Object.prototype.hasOwnProperty.call(data, field)) return true;
     const value = data[field];
     const type = getJsonType(value);
-    if (type === 'null') return true;
+    // null clears a field, except ui: that is never cleared as a whole, so a
+    // null one could not be applied and would be pushed straight back.
+    if (type === 'null') return field !== 'ui';
     if (type !== SYNC_FIELD_TYPES[field]) return false;
     if (SYNC_FIELD_ITEM_TYPES[field] && !hasItemsOfType(value, SYNC_FIELD_ITEM_TYPES[field])) {
       return false;
