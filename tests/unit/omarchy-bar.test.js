@@ -15,6 +15,7 @@ const {
   isAllowedOmarchyBarToggle,
   isOmarchyShellInstalled,
   readOmarchyBarEntry,
+  rememberOmarchyBarLaunch,
   resolveOmarchyBarEntities,
 } = require('../../src/omarchy-bar.cjs');
 const { appId } = require('../../package.json');
@@ -61,6 +62,9 @@ describe('Omarchy bar plugin package', () => {
     expect(qml).toContain('"--entity-toggle=" + entityId');
     // It reads the fields buildOmarchyBarStatus writes.
     expect(qml).toContain('parsed.version === 1');
+    // The launch command it keeps for a widget that has quit.
+    expect(qml).toContain('"/ha-desktop-widget/omarchy-bar-launch.json"');
+    expect(qml).toContain('parsed.launch');
     ['updatedAt', 'connection', 'launch', 'panel', 'bar'].forEach((field) =>
       expect(qml).toContain(`status.${field}`)
     );
@@ -170,7 +174,9 @@ describe('Omarchy bar status', () => {
         heartbeatMs: 60000,
       });
       expect(JSON.parse(fs.readFileSync(statusFile, 'utf8'))).toEqual({ connection: 'connecting' });
-      expect(fs.statSync(statusFile).mode & 0o777).toBe(0o600);
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(statusFile).mode & 0o777).toBe(0o600);
+      }
       connection = 'connected';
       publisher.update();
       publisher.update();
@@ -202,16 +208,23 @@ describe('bar requests and installation', () => {
     expect(
       isOmarchyShellInstalled({
         env: { OMARCHY_PATH: '/opt/omarchy' },
-        exists: (file) => file === '/opt/omarchy/shell/shell.qml',
+        exists: (file) => file === path.join('/opt/omarchy', 'shell', 'shell.qml'),
       })
     ).toBe(true);
     expect(isOmarchyShellInstalled({ env: {}, exists: () => false })).toBe(false);
     expect(
       getOmarchyBarPaths({ env: { XDG_RUNTIME_DIR: '/run/user/1000' }, home: '/home/me' })
     ).toEqual({
-      shellConfig: '/home/me/.config/omarchy/shell.json',
-      pluginDir: `/home/me/.config/omarchy/plugins/${appId}`,
-      statusFile: '/run/user/1000/ha-desktop-widget/omarchy-bar.json',
+      shellConfig: path.join('/home/me', '.config', 'omarchy', 'shell.json'),
+      pluginDir: path.join('/home/me', '.config', 'omarchy', 'plugins', appId),
+      statusFile: path.join('/run/user/1000', 'ha-desktop-widget', 'omarchy-bar.json'),
+      launchFile: path.join(
+        '/home/me',
+        '.local',
+        'state',
+        'ha-desktop-widget',
+        'omarchy-bar-launch.json'
+      ),
     });
     expect(getOmarchyBarPaths({ env: {}, home: '/home/me' }).statusFile).toBe('');
   });
@@ -244,5 +257,19 @@ describe('bar requests and installation', () => {
     expect(updateInstalledOmarchyBarPlugin({ sourceDir: pluginDir, pluginDir: target })).toBe(
       false
     );
+  });
+
+  it('keeps the launch command after the widget quits, rewriting it only when it changes', () => {
+    const launchFile = path.join(root, 'state', 'ha-desktop-widget', 'omarchy-bar-launch.json');
+    const launch = ['/home/me/Apps/HA-Desktop-Widget.AppImage'];
+    expect(rememberOmarchyBarLaunch({ launchFile, launch })).toBe(true);
+    expect(JSON.parse(fs.readFileSync(launchFile, 'utf8'))).toEqual({ version: 1, launch });
+    if (process.platform !== 'win32') {
+      expect(fs.statSync(launchFile).mode & 0o777).toBe(0o600);
+    }
+    expect(rememberOmarchyBarLaunch({ launchFile, launch })).toBe(false);
+    // A development run has no launch command and leaves the saved one alone.
+    expect(rememberOmarchyBarLaunch({ launchFile, launch: null })).toBe(false);
+    expect(JSON.parse(fs.readFileSync(launchFile, 'utf8')).launch).toEqual(launch);
   });
 });

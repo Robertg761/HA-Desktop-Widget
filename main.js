@@ -53,6 +53,7 @@ const {
   isAllowedOmarchyBarToggle,
   isOmarchyShellInstalled,
   readOmarchyBarEntry,
+  rememberOmarchyBarLaunch,
   resolveOmarchyBarEntities,
   updateInstalledOmarchyBarPlugin,
 } = require('./src/omarchy-bar.cjs');
@@ -6873,6 +6874,11 @@ function startOmarchyBarIntegration() {
     }
   } catch (error) {
     log.warn('Could not update the Omarchy bar plugin:', error.message);
+  }
+  try {
+    rememberOmarchyBarLaunch({ launchFile: paths.launchFile, launch: getOmarchyBarLaunchArgv() });
+  } catch (error) {
+    log.warn('Could not save the Omarchy bar launch command:', error.message);
   }
   omarchyBarEntry = readOmarchyBarShellEntry();
   omarchyBarPublisher = createOmarchyBarPublisher({

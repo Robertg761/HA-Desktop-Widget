@@ -23,10 +23,17 @@ Panel {
     var runtimeDir = Quickshell.env("XDG_RUNTIME_DIR")
     return runtimeDir ? runtimeDir + "/ha-desktop-widget/omarchy-bar.json" : ""
   }
+  // Written by the widget on start and kept after it quits, so the bar can start it again even
+  // when it is an AppImage with no ha-desktop-widget command on PATH.
+  readonly property string launchPath: {
+    var stateHome = Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")
+    return stateHome + "/ha-desktop-widget/omarchy-bar-launch.json"
+  }
   // The widget rewrites the file every minute; older than this means it is not running.
   readonly property int staleAfterMs: 150000
 
   property var status: null
+  property var savedLaunch: null
   property double now: Date.now()
 
   readonly property bool running: status !== null && now - status.updatedAt < staleAfterMs
@@ -58,8 +65,21 @@ Panel {
   function launch(extraArgs) {
     var argv = running && Array.isArray(status.launch) && status.launch.length > 0
       ? status.launch.slice()
-      : [String(setting("command", "ha-desktop-widget"))]
+      : Array.isArray(savedLaunch) && savedLaunch.length > 0
+        ? savedLaunch.slice()
+        : [String(setting("command", "ha-desktop-widget"))]
     Quickshell.execDetached(argv.concat(extraArgs))
+  }
+
+  function applySavedLaunch(text) {
+    try {
+      var parsed = JSON.parse(text)
+      root.savedLaunch = parsed && parsed.version === 1 && Array.isArray(parsed.launch)
+        ? parsed.launch
+        : null
+    } catch (error) {
+      root.savedLaunch = null
+    }
   }
 
   function toggleWidget() {
@@ -92,6 +112,16 @@ Panel {
     onFileChanged: reload()
     onLoaded: root.applyStatus(text())
     onLoadFailed: root.status = null
+  }
+
+  FileView {
+    id: launchFile
+    path: root.launchPath
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.applySavedLaunch(text())
+    onLoadFailed: root.savedLaunch = null
   }
 
   // Catches a widget that starts after the shell, and ages out one that stopped.

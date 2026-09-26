@@ -32,11 +32,14 @@ const ENTITY_TOGGLE_ARG = '--entity-toggle';
 
 function getOmarchyBarPaths({ env = process.env, home = os.homedir() } = {}) {
   const configHome = env.XDG_CONFIG_HOME || path.join(home, '.config');
+  const stateHome = env.XDG_STATE_HOME || path.join(home, '.local', 'state');
   const runtimeDir = env.XDG_RUNTIME_DIR || '';
   return {
     shellConfig: path.join(configHome, 'omarchy', 'shell.json'),
     pluginDir: path.join(configHome, 'omarchy', 'plugins', OMARCHY_BAR_PLUGIN_ID),
     statusFile: runtimeDir ? path.join(runtimeDir, 'ha-desktop-widget', 'omarchy-bar.json') : '',
+    // Outlives the widget and the session, so the bar can start an AppImage after a quit.
+    launchFile: path.join(stateHome, 'ha-desktop-widget', 'omarchy-bar-launch.json'),
   };
 }
 
@@ -229,6 +232,26 @@ function createOmarchyBarPublisher({
   };
 }
 
+/**
+ * Remember how to start this widget for the bar plugin. The status file disappears when the
+ * widget quits, and an AppImage has no `ha-desktop-widget` command to fall back to.
+ * @returns {boolean} whether the file was written
+ */
+function rememberOmarchyBarLaunch({ launchFile, launch, fsImpl = fs } = {}) {
+  if (!launchFile || !Array.isArray(launch) || !launch.length) return false;
+  const content = `${JSON.stringify({ version: 1, launch })}\n`;
+  try {
+    if (fsImpl.readFileSync(launchFile, 'utf8') === content) return false;
+  } catch {
+    // not written yet
+  }
+  fsImpl.mkdirSync(path.dirname(launchFile), { recursive: true, mode: 0o700 });
+  const temp = `${launchFile}.${process.pid}.tmp`;
+  fsImpl.writeFileSync(temp, content, { mode: 0o600 });
+  fsImpl.renameSync(temp, launchFile);
+  return true;
+}
+
 /** Copy the bundled plugin into the user's Omarchy plugins directory. */
 function installOmarchyBarPluginFiles({ sourceDir, pluginDir, fsImpl = fs } = {}) {
   fsImpl.mkdirSync(pluginDir, { recursive: true });
@@ -273,6 +296,7 @@ module.exports = {
   isAllowedOmarchyBarToggle,
   isOmarchyShellInstalled,
   readOmarchyBarEntry,
+  rememberOmarchyBarLaunch,
   resolveOmarchyBarEntities,
   updateInstalledOmarchyBarPlugin,
 };
