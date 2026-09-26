@@ -1556,6 +1556,14 @@
     "Home Assistant can't reach it right now. Close this and try again once it's back.": "Home Assistant अभी इससे संपर्क नहीं कर पा रहा है। इसे बंद करें और वापस उपलब्ध होने पर फिर से कोशिश करें।",
     "Check for updates": "अपडेट जांचें",
     "Install update": "अपडेट इंस्टॉल करें",
-    "Set hotkey": "हॉटकी सेट करें"
+    "Set hotkey": "हॉटकी सेट करें",
+    "Failed to save profile sync state: {{error}}": "प्रोफ़ाइल सिंक की स्थिति सहेजी नहीं जा सकी: {{error}}",
+    "The sync file is encrypted. Turn on encryption and enter the passphrase your other devices use.": "सिंक फ़ाइल एन्क्रिप्टेड है। एन्क्रिप्शन चालू करें और वही पासफ़्रेज़ डालें जो आपके दूसरे डिवाइस उपयोग करते हैं।",
+    "The sync file is not encrypted, but encryption is on for this device. If another device turned encryption off, turn it off here too.": "सिंक फ़ाइल एन्क्रिप्टेड नहीं है, लेकिन इस डिवाइस पर एन्क्रिप्शन चालू है। अगर किसी दूसरे डिवाइस ने एन्क्रिप्शन बंद किया है, तो इसे यहाँ भी बंद करें।",
+    "The sync file was not updated because its backup failed: {{error}}": "सिंक फ़ाइल अपडेट नहीं की गई क्योंकि उसका बैकअप विफल रहा: {{error}}",
+    "Unsupported profile sync provider": "असमर्थित सिंक प्रदाता",
+    "The sync passphrase does not match the one used to encrypt the sync file.": "सिंक पासफ़्रेज़ उस पासफ़्रेज़ से मेल नहीं खाता जिससे सिंक फ़ाइल एन्क्रिप्ट की गई थी।",
+    "The sync file was written by a newer version of HA Desktop Widget. Update this device to keep syncing.": "सिंक फ़ाइल HA Desktop Widget के नए संस्करण ने लिखी है। सिंक जारी रखने के लिए इस डिवाइस को अपडेट करें।",
+    "Sync payload is missing sections": "सिंक डेटा में अनुभाग नहीं हैं"
   }
 }

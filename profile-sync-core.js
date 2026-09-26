@@ -3,12 +3,18 @@ const { promisify } = require('util');
 
 const scryptAsync = promisify(nodeCrypto.scrypt);
 
-const SYNC_SCHEMA_VERSION = 2;
+// Version 3 stores the profile as independent sections, each with its own
+// timestamp, so two devices editing different sections both keep their edits.
+// A reader accepts any file whose minReaderVersion it meets, which lets a later
+// version add fields or sections without locking this one out.
+const SYNC_SCHEMA_VERSION = 3;
+const SYNC_MIN_READER_VERSION = 3;
 const PROFILE_SYNC_SCOPE_PRESETS = new Set(['all', 'visual', 'quick_access', 'custom']);
+// Desktop pins, hotkeys and the open Quick Access page describe one machine, so
+// they never sync (matching Home Assistant profiles in profile-schema.js).
 const SYNC_SCOPE_SECTION_FIELDS = {
   quickAccessLayout: [
     'favoriteEntities',
-    'desktopPins',
     'trayEntities',
     'customEntityNames',
     'customEntityIcons',
@@ -16,20 +22,22 @@ const SYNC_SCOPE_SECTION_FIELDS = {
     'quickAccessTileOptions',
     'primaryCards',
     'customTabs',
-    'activeTabId',
     'comparisonGraphs',
   ],
   visualPersonalization: ['alwaysOnTop', 'hideOnBlur', 'opacity', 'frostedGlass', 'ui'],
-  automationAlerts: [
-    'globalHotkeys',
-    'entityAlerts',
-    'popupHotkey',
-    'popupHotkeyHideOnRelease',
-    'popupHotkeyToggleMode',
-  ],
+  automationAlerts: ['entityAlerts'],
   connectionMediaPreferences: ['selectedWeatherEntity', 'primaryMediaPlayer'],
 };
 const SYNC_SCOPE_SECTION_KEYS = Object.keys(SYNC_SCOPE_SECTION_FIELDS);
+// ui keys that describe this machine or session rather than the shared look.
+// Keep in step with LOCAL_ONLY_UI_KEYS in packages/widget-renderer/src/profile-schema.js,
+// plus the text size and Omarchy theme following, which depend on the display and desktop.
+const LOCAL_ONLY_UI_KEYS = new Set([
+  'personalizationSectionsCollapsed',
+  'enableInteractionDebugLogs',
+  'scale',
+  'followOmarchy',
+]);
 
 function deepClone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
@@ -119,28 +127,59 @@ function normalizeSyncScope(inputScope) {
   };
 }
 
-function getSyncedFieldsForScope(scope) {
+function getScopeSectionKeys(scope) {
   const normalizedScope = normalizeSyncScope(scope);
-  const fields = [];
-  SYNC_SCOPE_SECTION_KEYS.forEach((sectionKey) => {
-    if (!normalizedScope.sections[sectionKey]) return;
-    fields.push(...SYNC_SCOPE_SECTION_FIELDS[sectionKey]);
+  return SYNC_SCOPE_SECTION_KEYS.filter((key) => normalizedScope.sections[key]);
+}
+
+function getSyncedFieldsForScope(scope) {
+  return getScopeSectionKeys(scope).flatMap((key) => SYNC_SCOPE_SECTION_FIELDS[key]);
+}
+
+function stripLocalOnlyUiKeys(ui) {
+  if (!isObject(ui)) return deepClone(ui);
+  return Object.fromEntries(
+    Object.entries(ui)
+      .filter(([key]) => !LOCAL_ONLY_UI_KEYS.has(key))
+      .map(([key, value]) => [key, deepClone(value)])
+  );
+}
+
+function projectField(source, field) {
+  return field === 'ui' ? stripLocalOnlyUiKeys(source.ui) : deepClone(source[field]);
+}
+
+function projectFields(source, fields) {
+  const projected = {};
+  const safeSource = isObject(source) ? source : {};
+  fields.forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(safeSource, field)) {
+      projected[field] = projectField(safeSource, field);
+    }
   });
-  return fields;
+  return projected;
 }
 
 function projectSyncProfile(config, syncScope = getDefaultSyncScope()) {
-  const source = isObject(config) ? config : {};
-  const normalizedScope = normalizeSyncScope(syncScope);
-  const profile = {};
+  return projectFields(config, getSyncedFieldsForScope(syncScope));
+}
 
-  getSyncedFieldsForScope(normalizedScope).forEach((field) => {
-    if (Object.prototype.hasOwnProperty.call(source, field)) {
-      profile[field] = deepClone(source[field]);
+function mergeFieldsIntoConfig(target, incoming, fields) {
+  fields.forEach((field) => {
+    if (!Object.prototype.hasOwnProperty.call(incoming, field)) return;
+    if (field === 'ui' && isObject(incoming.ui)) {
+      // Keys the other device does not know about, and this machine's own ui
+      // keys, stay as they are here.
+      const localUi = isObject(target.ui) ? target.ui : {};
+      const localOnly = Object.fromEntries(
+        Object.entries(localUi).filter(([key]) => LOCAL_ONLY_UI_KEYS.has(key))
+      );
+      target.ui = { ...localUi, ...stripLocalOnlyUiKeys(incoming.ui), ...localOnly };
+      return;
     }
+    target[field] = deepClone(incoming[field]);
   });
-
-  return profile;
+  return target;
 }
 
 function mergeSyncedProfileIntoConfig(
@@ -150,13 +189,32 @@ function mergeSyncedProfileIntoConfig(
 ) {
   const target = isObject(baseConfig) ? deepClone(baseConfig) : {};
   const incoming = isObject(syncedProfile) ? syncedProfile : {};
-  const normalizedScope = normalizeSyncScope(syncScope);
-  getSyncedFieldsForScope(normalizedScope).forEach((field) => {
-    if (Object.prototype.hasOwnProperty.call(incoming, field)) {
-      target[field] = deepClone(incoming[field]);
-    }
-  });
+  return mergeFieldsIntoConfig(target, incoming, getSyncedFieldsForScope(syncScope));
+}
 
+function projectSection(config, sectionKey) {
+  return projectFields(config, SYNC_SCOPE_SECTION_FIELDS[sectionKey] || []);
+}
+
+function buildLocalSections(config, syncScope = getDefaultSyncScope()) {
+  return getScopeSectionKeys(syncScope).reduce((acc, key) => {
+    acc[key] = projectSection(config, key);
+    return acc;
+  }, {});
+}
+
+/**
+ * Applies whole sections to a copy of the config. Only fields this version
+ * knows are applied, so a section written by a newer version cannot plant
+ * arbitrary keys in the config.
+ */
+function mergeSectionsIntoConfig(baseConfig, sectionData) {
+  const target = isObject(baseConfig) ? deepClone(baseConfig) : {};
+  Object.entries(isObject(sectionData) ? sectionData : {}).forEach(([key, data]) => {
+    const fields = SYNC_SCOPE_SECTION_FIELDS[key];
+    if (!fields || !isObject(data)) return;
+    mergeFieldsIntoConfig(target, data, fields);
+  });
   return target;
 }
 
@@ -165,12 +223,124 @@ function computeProfileHash(profile) {
   return nodeCrypto.createHash('sha256').update(serialized).digest('hex');
 }
 
+/**
+ * Hashes only the fields this version knows, so fields a newer version adds to a
+ * section never make the two sides look different.
+ */
+function computeSectionHash(sectionKey, data) {
+  const fields = SYNC_SCOPE_SECTION_FIELDS[sectionKey] || [];
+  return computeProfileHash({ section: sectionKey, data: projectFields(data, fields) });
+}
+
 function compareIsoTimestamps(a, b) {
   const aMs = Date.parse(a || 0) || 0;
   const bMs = Date.parse(b || 0) || 0;
 
   if (aMs === bMs) return 0;
   return aMs > bMs ? 1 : -1;
+}
+
+/**
+ * Decides, section by section, which side each in-scope section should come from.
+ *
+ * `baseline` holds each section's hash as it stood after this device's last
+ * successful sync. Against it, a section that changed on only one side flows to
+ * the other with no clock involved. Only when both sides changed the same
+ * section (or no baseline exists yet) do timestamps decide, and the losing side
+ * is reported so it can be backed up.
+ *
+ * @param {object} options
+ * @param {string[]} options.sectionKeys in-scope sections on this device
+ * @param {Object<string, object>} options.localSections section data from this device
+ * @param {Object<string, {updatedAt: string, data: object}>} options.remoteSections decoded remote entries
+ * @param {Object<string, string>} [options.baseline] section hashes at the last sync
+ * @param {Object<string, string>} [options.localUpdatedAt] when each local section last changed
+ * @param {'auto'|'push'|'pull'} [options.direction] push and pull force every differing section
+ * @returns {{push: string[], pull: string[], unchanged: string[], discardsRemote: string[],
+ *   discardsLocal: string[], localHashes: Object<string, string>, remoteHashes: Object<string, string>}}
+ */
+function planSectionSync({
+  sectionKeys,
+  localSections = {},
+  remoteSections = {},
+  baseline = {},
+  localUpdatedAt = {},
+  direction = 'auto',
+}) {
+  const plan = {
+    push: [],
+    pull: [],
+    unchanged: [],
+    discardsRemote: [],
+    discardsLocal: [],
+    localHashes: {},
+    remoteHashes: {},
+  };
+  const safeBaseline = isObject(baseline) ? baseline : {};
+
+  sectionKeys.forEach((key) => {
+    const localHash = computeSectionHash(key, localSections[key]);
+    plan.localHashes[key] = localHash;
+    const remoteEntry = isObject(remoteSections) ? remoteSections[key] : null;
+    if (!isObject(remoteEntry)) {
+      (direction === 'pull' ? plan.unchanged : plan.push).push(key);
+      return;
+    }
+
+    const remoteHash = computeSectionHash(key, remoteEntry.data);
+    plan.remoteHashes[key] = remoteHash;
+    if (localHash === remoteHash) {
+      plan.unchanged.push(key);
+      return;
+    }
+
+    const base = typeof safeBaseline[key] === 'string' ? safeBaseline[key] : null;
+    const localChanged = localHash !== base;
+    const remoteChanged = remoteHash !== base;
+    let winner;
+    if (direction === 'push' || direction === 'pull') {
+      winner = direction;
+    } else if (base && localChanged && !remoteChanged) {
+      winner = 'push';
+    } else if (base && remoteChanged && !localChanged) {
+      winner = 'pull';
+    } else {
+      // Both sides changed this section, or there is no record of agreeing on
+      // it. The newer edit wins; ties go to the file so every device converges.
+      winner =
+        compareIsoTimestamps(localUpdatedAt?.[key], remoteEntry.updatedAt) > 0 ? 'push' : 'pull';
+    }
+
+    if (winner === 'push') {
+      plan.push.push(key);
+      if (remoteChanged) plan.discardsRemote.push(key);
+    } else {
+      plan.pull.push(key);
+      if (localChanged) plan.discardsLocal.push(key);
+    }
+  });
+
+  return plan;
+}
+
+/**
+ * Builds the entry written for a pushed section. Fields this version does not
+ * know (written by a newer version) are carried over from the remote entry so
+ * pushing from here never deletes them.
+ */
+function buildPushedSectionEntry(sectionKey, localData, remoteEntry, { updatedAt, deviceId }) {
+  const fields = new Set(SYNC_SCOPE_SECTION_FIELDS[sectionKey] || []);
+  const carried = {};
+  if (isObject(remoteEntry?.data)) {
+    Object.entries(remoteEntry.data).forEach(([field, value]) => {
+      if (!fields.has(field)) carried[field] = deepClone(value);
+    });
+  }
+  return {
+    updatedAt: updatedAt || new Date().toISOString(),
+    updatedByDeviceId: deviceId || 'unknown-device',
+    data: { ...carried, ...deepClone(localData || {}) },
+  };
 }
 
 async function encryptProfilePayload(profile, passphrase) {
@@ -203,7 +373,9 @@ async function decryptProfilePayload(payload, passphrase) {
   }
 
   if (!passphrase || typeof passphrase !== 'string') {
-    throw new Error('Passphrase is required to decrypt profile payload');
+    throw new Error(
+      'The sync file is encrypted. Turn on encryption and enter the passphrase your other devices use.'
+    );
   }
 
   if (payload.algorithm !== 'aes-256-gcm' || payload.kdf !== 'scrypt') {
@@ -222,7 +394,7 @@ async function decryptProfilePayload(payload, passphrase) {
   try {
     plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
   } catch {
-    throw new Error('Failed to decrypt synced profile payload');
+    throw new Error('The sync passphrase does not match the one used to encrypt the sync file.');
   }
 
   const parsed = JSON.parse(plaintext);
@@ -233,27 +405,37 @@ async function decryptProfilePayload(payload, passphrase) {
   return parsed;
 }
 
+function isEnvelopeEncrypted(envelope) {
+  return isObject(envelope?.payload) && envelope.payload.encrypted === true;
+}
+
+function getLatestSectionTimestamp(sections) {
+  let latest = null;
+  Object.values(isObject(sections) ? sections : {}).forEach((entry) => {
+    if (typeof entry?.updatedAt !== 'string') return;
+    if (!latest || compareIsoTimestamps(entry.updatedAt, latest) > 0) latest = entry.updatedAt;
+  });
+  return latest;
+}
+
 async function buildSyncEnvelope({
-  profile,
+  sections,
   updatedAt,
   updatedByDeviceId,
-  syncScope = getDefaultSyncScope(),
   encrypt = false,
   passphrase = '',
 }) {
-  if (!isObject(profile)) {
-    throw new Error('Profile payload must be an object');
+  if (!isObject(sections)) {
+    throw new Error('Profile sections must be an object');
   }
 
-  const normalizedUpdatedAt = updatedAt || new Date().toISOString();
-  const normalizedScope = normalizeSyncScope(syncScope);
-
+  const payload = { sections: deepClone(sections) };
   return {
     schemaVersion: SYNC_SCHEMA_VERSION,
-    updatedAt: normalizedUpdatedAt,
+    minReaderVersion: SYNC_MIN_READER_VERSION,
+    updatedAt: updatedAt || getLatestSectionTimestamp(sections) || new Date().toISOString(),
     updatedByDeviceId: updatedByDeviceId || 'unknown-device',
-    syncScope: normalizedScope,
-    payload: encrypt ? await encryptProfilePayload(profile, passphrase) : deepClone(profile),
+    payload: encrypt ? await encryptProfilePayload(payload, passphrase) : payload,
   };
 }
 
@@ -267,13 +449,20 @@ function validateEnvelopeShape(envelope) {
   }
 
   if (envelope.schemaVersion > SYNC_SCHEMA_VERSION) {
-    throw new Error(`Unsupported sync schemaVersion ${envelope.schemaVersion}`);
+    const minReaderVersion =
+      typeof envelope.minReaderVersion === 'number'
+        ? envelope.minReaderVersion
+        : envelope.schemaVersion;
+    if (minReaderVersion > SYNC_SCHEMA_VERSION) {
+      throw new Error(
+        'The sync file was written by a newer version of HA Desktop Widget. Update this device to keep syncing.'
+      );
+    }
   }
-  if (envelope.schemaVersion >= 2) {
+  if (envelope.schemaVersion === 2) {
     if (!isObject(envelope.syncScope)) {
       throw new Error('Sync envelope is missing syncScope');
     }
-    normalizeSyncScope(envelope.syncScope);
   }
 
   if (typeof envelope.updatedAt !== 'string' || Number.isNaN(Date.parse(envelope.updatedAt))) {
@@ -308,56 +497,100 @@ function serializeSyncEnvelope(envelope) {
   return `${JSON.stringify(envelope, null, 2)}\n`;
 }
 
-async function decodeEnvelopeProfile(envelope, passphrase) {
+function normalizeSectionEntry(entry, fallback) {
+  if (!isObject(entry) || !isObject(entry.data)) return null;
+  const updatedAt =
+    typeof entry.updatedAt === 'string' && !Number.isNaN(Date.parse(entry.updatedAt))
+      ? entry.updatedAt
+      : fallback.updatedAt;
+  const updatedByDeviceId =
+    typeof entry.updatedByDeviceId === 'string' && entry.updatedByDeviceId.trim()
+      ? entry.updatedByDeviceId
+      : fallback.updatedByDeviceId;
+  return { ...deepClone(entry), updatedAt, updatedByDeviceId };
+}
+
+/**
+ * Converts a version 1 or 2 file (one flat profile) into sections, keeping only
+ * the fields each section still syncs.
+ */
+function convertLegacyProfileToSections(envelope, profile) {
+  const scope =
+    envelope.schemaVersion >= 2 && isObject(envelope.syncScope)
+      ? normalizeSyncScope(envelope.syncScope)
+      : getDefaultSyncScope();
+  const sections = {};
+  getScopeSectionKeys(scope).forEach((key) => {
+    const data = projectSection(profile, key);
+    if (Object.keys(data).length === 0) return;
+    sections[key] = {
+      updatedAt: envelope.updatedAt,
+      updatedByDeviceId: envelope.updatedByDeviceId,
+      data,
+    };
+  });
+  return sections;
+}
+
+/**
+ * Decodes a sync file into its sections. Sections this version does not know are
+ * kept, untouched, so they can be written back unchanged.
+ *
+ * @returns {Promise<{sections: Object<string, object>, legacy: boolean}>}
+ */
+async function decodeEnvelopeSections(envelope, passphrase) {
   validateEnvelopeShape(envelope);
 
-  if (isObject(envelope.payload) && envelope.payload.encrypted === true) {
-    return decryptProfilePayload(envelope.payload, passphrase);
-  }
-
-  if (!isObject(envelope.payload)) {
+  const decoded = isEnvelopeEncrypted(envelope)
+    ? await decryptProfilePayload(envelope.payload, passphrase)
+    : deepClone(envelope.payload);
+  if (!isObject(decoded)) {
     throw new Error('Sync payload must be an object');
   }
 
-  return deepClone(envelope.payload);
-}
-
-function extractSyncScopeFromEnvelope(envelope) {
-  validateEnvelopeShape(envelope);
-  if (envelope.schemaVersion >= 2 && isObject(envelope.syncScope)) {
-    return normalizeSyncScope(envelope.syncScope);
-  }
-  return getDefaultSyncScope();
-}
-
-function chooseSyncDirection({ localUpdatedAt, remoteUpdatedAt, remoteExists }) {
-  if (!remoteExists) {
-    return 'push';
+  if (envelope.schemaVersion < 3) {
+    return { sections: convertLegacyProfileToSections(envelope, decoded), legacy: true };
   }
 
-  const timestampComparison = compareIsoTimestamps(localUpdatedAt, remoteUpdatedAt);
-  if (timestampComparison === 0) {
-    return 'none';
+  if (!isObject(decoded.sections)) {
+    throw new Error('Sync payload is missing sections');
   }
-
-  return timestampComparison > 0 ? 'push' : 'pull';
+  const fallback = {
+    updatedAt: envelope.updatedAt,
+    updatedByDeviceId: envelope.updatedByDeviceId,
+  };
+  const sections = {};
+  Object.entries(decoded.sections).forEach(([key, entry]) => {
+    const normalized = normalizeSectionEntry(entry, fallback);
+    if (normalized) sections[key] = normalized;
+  });
+  return { sections, legacy: false };
 }
 
 module.exports = {
   SYNC_SCHEMA_VERSION,
+  SYNC_MIN_READER_VERSION,
   SYNC_SCOPE_SECTION_FIELDS,
+  SYNC_SCOPE_SECTION_KEYS,
+  LOCAL_ONLY_UI_KEYS,
   getDefaultSyncScope,
   normalizeSyncScope,
+  getScopeSectionKeys,
   projectSyncProfile,
   mergeSyncedProfileIntoConfig,
+  projectSection,
+  buildLocalSections,
+  mergeSectionsIntoConfig,
   computeProfileHash,
+  computeSectionHash,
   compareIsoTimestamps,
+  planSectionSync,
+  buildPushedSectionEntry,
   encryptProfilePayload,
   decryptProfilePayload,
+  isEnvelopeEncrypted,
   buildSyncEnvelope,
   parseSyncEnvelope,
   serializeSyncEnvelope,
-  decodeEnvelopeProfile,
-  extractSyncScopeFromEnvelope,
-  chooseSyncDirection,
+  decodeEnvelopeSections,
 };

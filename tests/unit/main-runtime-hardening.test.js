@@ -877,7 +877,7 @@ describe('profile sync runtime safeguards', () => {
   });
 
   it('re-checks the remote file before overwriting it on push', () => {
-    const pushBranch = mainSource.indexOf("if (finalDirection === 'push')");
+    const pushBranch = mainSource.indexOf('if (pushKeys.length > 0 || rewriteRequired)');
     const compare = mainSource.indexOf('hasRemoteSyncEnvelopeChanged(remoteResult)', pushBranch);
     const write = mainSource.indexOf('writeConfiguredSyncEnvelope(envelopeToWrite)', pushBranch);
 
@@ -885,6 +885,14 @@ describe('profile sync runtime safeguards', () => {
     expect(compare).toBeGreaterThanOrEqual(0);
     // The compare must precede the write, or it is not a compare-and-swap.
     expect(compare).toBeLessThan(write);
+  });
+
+  it('syncs local edits with a merge run instead of a forced push', () => {
+    const fnStart = mainSource.indexOf('function scheduleDebouncedProfileSyncPush');
+    const fn = mainSource.slice(fnStart, mainSource.indexOf('\n}', fnStart));
+
+    expect(fn).toContain("runProfileSync('auto', source)");
+    expect(fn).not.toContain("runProfileSync('push'");
   });
 
   it('treats an unreadable remote file as changed rather than overwriting it', () => {
@@ -976,10 +984,15 @@ describe('profile sync runtime safeguards', () => {
 
   it('backs up the local profile before applying a remote profile', () => {
     expect(mainSource).toContain('async function backupLocalProfileBeforePullApply');
-    expect(mainSource).toContain('await backupLocalProfileBeforePullApply(remoteSyncScope);');
+    const pullApply = mainSource.indexOf(
+      'await applySyncedProfileToConfig(pickSections(remoteSections, plan.pull));'
+    );
+    const backup = mainSource.indexOf('await backupLocalProfileBeforePullApply(plan.pull);');
+    expect(backup).toBeGreaterThanOrEqual(0);
+    expect(backup).toBeLessThan(pullApply);
     expect(mainSource).toContain("const PROFILE_SYNC_BACKUP_DIR_NAME = 'profile-sync-backups'");
     expect(mainSource).toContain(
-      'Created local profile backup, but failed to prune older profile backups:'
+      'Created a profile sync backup, but failed to prune older backups:'
     );
   });
 

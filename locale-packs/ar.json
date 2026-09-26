@@ -1556,6 +1556,14 @@
     "Home Assistant can't reach it right now. Close this and try again once it's back.": "لا يستطيع Home Assistant الوصول إليه حاليًا. أغلق هذه النافذة وحاول مرة أخرى عند عودته.",
     "Check for updates": "تحقق من التحديثات",
     "Install update": "تثبيت التحديث",
-    "Set hotkey": "تعيين الاختصار"
+    "Set hotkey": "تعيين الاختصار",
+    "Failed to save profile sync state: {{error}}": "تعذّر حفظ حالة المزامنة: {{error}}",
+    "The sync file is encrypted. Turn on encryption and enter the passphrase your other devices use.": "ملف المزامنة مشفّر. فعّل التشفير وأدخل عبارة المرور التي تستخدمها أجهزتك الأخرى.",
+    "The sync file is not encrypted, but encryption is on for this device. If another device turned encryption off, turn it off here too.": "ملف المزامنة غير مشفّر، لكن التشفير مفعّل على هذا الجهاز. إذا أوقف جهاز آخر التشفير، فأوقفه هنا أيضًا.",
+    "The sync file was not updated because its backup failed: {{error}}": "لم يُحدَّث ملف المزامنة لأن نسخه الاحتياطي فشل: {{error}}",
+    "Unsupported profile sync provider": "مزوّد مزامنة غير مدعوم",
+    "The sync passphrase does not match the one used to encrypt the sync file.": "عبارة مرور المزامنة لا تطابق العبارة المستخدمة لتشفير ملف المزامنة.",
+    "The sync file was written by a newer version of HA Desktop Widget. Update this device to keep syncing.": "كُتب ملف المزامنة بإصدار أحدث من HA Desktop Widget. حدّث هذا الجهاز لمواصلة المزامنة.",
+    "Sync payload is missing sections": "بيانات المزامنة تفتقد الأقسام"
   }
 }

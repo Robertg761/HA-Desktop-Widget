@@ -1556,6 +1556,14 @@
     "Home Assistant can't reach it right now. Close this and try again once it's back.": "Home Assistant no puede acceder a él ahora mismo. Cierra esto y vuelve a intentarlo cuando vuelva a estar disponible.",
     "Check for updates": "Buscar actualizaciones",
     "Install update": "Instalar actualización",
-    "Set hotkey": "Configurar atajo"
+    "Set hotkey": "Configurar atajo",
+    "Failed to save profile sync state: {{error}}": "No se pudo guardar el estado de la sincronización: {{error}}",
+    "The sync file is encrypted. Turn on encryption and enter the passphrase your other devices use.": "El archivo de sincronización está cifrado. Activa el cifrado e introduce la frase de contraseña que usan tus otros dispositivos.",
+    "The sync file is not encrypted, but encryption is on for this device. If another device turned encryption off, turn it off here too.": "El archivo de sincronización no está cifrado, pero el cifrado está activado en este dispositivo. Si otro dispositivo lo desactivó, desactívalo también aquí.",
+    "The sync file was not updated because its backup failed: {{error}}": "El archivo de sincronización no se actualizó porque falló su copia de seguridad: {{error}}",
+    "Unsupported profile sync provider": "Proveedor de sincronización no compatible",
+    "The sync passphrase does not match the one used to encrypt the sync file.": "La frase de contraseña de sincronización no coincide con la que se usó para cifrar el archivo de sincronización.",
+    "The sync file was written by a newer version of HA Desktop Widget. Update this device to keep syncing.": "El archivo de sincronización lo escribió una versión más reciente de HA Desktop Widget. Actualiza este dispositivo para seguir sincronizando.",
+    "Sync payload is missing sections": "A los datos de sincronización les faltan las secciones"
   }
 }

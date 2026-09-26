@@ -1556,6 +1556,14 @@
     "Home Assistant can't reach it right now. Close this and try again once it's back.": "Home Assistant 目前无法连接到它。请关闭此窗口，待其恢复后再试。",
     "Check for updates": "检查更新",
     "Install update": "安装更新",
-    "Set hotkey": "设置快捷键"
+    "Set hotkey": "设置快捷键",
+    "Failed to save profile sync state: {{error}}": "无法保存配置同步状态：{{error}}",
+    "The sync file is encrypted. Turn on encryption and enter the passphrase your other devices use.": "同步文件已加密。请开启加密并输入其他设备使用的密码短语。",
+    "The sync file is not encrypted, but encryption is on for this device. If another device turned encryption off, turn it off here too.": "同步文件未加密，但此设备已开启加密。如果是其他设备关闭了加密，请在此设备上也将其关闭。",
+    "The sync file was not updated because its backup failed: {{error}}": "由于备份失败，未更新同步文件：{{error}}",
+    "Unsupported profile sync provider": "不支持的同步提供商",
+    "The sync passphrase does not match the one used to encrypt the sync file.": "同步密码短语与加密同步文件时使用的不一致。",
+    "The sync file was written by a newer version of HA Desktop Widget. Update this device to keep syncing.": "同步文件由更新版本的 HA Desktop Widget 写入。请更新此设备以继续同步。",
+    "Sync payload is missing sections": "同步数据缺少分区"
   }
 }

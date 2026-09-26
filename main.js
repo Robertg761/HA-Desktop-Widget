@@ -747,6 +747,16 @@ const profileSyncRuntime = {
   pendingRemoteIdentity: null,
   localProfileHash: null,
   localProfileUpdatedAt: null,
+  // Hash of each in-scope section as last seen locally. A save that changes a
+  // section stamps profileSync.sectionUpdatedAt for it, which only matters when
+  // two devices changed the same section and the newer edit has to win.
+  localSectionHashes: {},
+  // Sections that differ between this device and the file while a first-sync
+  // choice is pending, for the conflict prompt.
+  conflictSections: [],
+  // What the last successful run moved, for the status line.
+  lastRunSummary: null,
+  lastRemote: null,
   passphraseSession: '',
   passphraseWarning: '',
   approvedCopyDestinationFolders: [],
@@ -1054,6 +1064,7 @@ function refreshProfileSyncRuntimeTracking({ decodePassphrase = true } = {}) {
   const activeScope = getActiveProfileSyncScope();
   const initialProfile = profileSyncCore.projectSyncProfile(config, activeScope);
   profileSyncRuntime.localProfileHash = computeScopedProfileHash(initialProfile, activeScope);
+  profileSyncRuntime.localSectionHashes = computeLocalSectionHashes(activeScope);
   profileSyncRuntime.pendingPullEchoHash = null;
   // Seed from the persisted content-change timestamp. lastSyncAt is only a
   // fallback for configs written before profileUpdatedAt existed — it tracks
@@ -1530,6 +1541,16 @@ function getNormalizedProfileSyncScopeValue(value) {
   return profileSyncCore.normalizeSyncScope(value);
 }
 
+function normalizeProfileSyncStringMap(value) {
+  if (!isPlainObject(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      ([key, entry]) =>
+        profileSyncCore.SYNC_SCOPE_SECTION_KEYS.includes(key) && typeof entry === 'string'
+    )
+  );
+}
+
 function getDefaultProfileSyncConfig() {
   return {
     enabled: false,
@@ -1543,9 +1564,14 @@ function getDefaultProfileSyncConfig() {
     passphraseEncrypted: false,
     storedPassphrase: '',
     lastSyncAt: null,
+    lastSuccessfulSyncAt: null,
     lastSyncStatus: 'idle',
     lastSyncError: '',
     profileUpdatedAt: null,
+    // Main-process-owned merge state: each section's hash after the last
+    // successful sync, and when each section last changed on this device.
+    syncBaseline: {},
+    sectionUpdatedAt: {},
     firstEnableResolutionPending: false,
     remoteRewritePending: false,
     passphraseTransition: null,
@@ -1579,6 +1605,13 @@ function ensureProfileSyncConfigDefaults(target) {
   ) {
     target.profileSync.profileUpdatedAt = null;
   }
+  if (typeof target.profileSync.lastSuccessfulSyncAt !== 'string') {
+    target.profileSync.lastSuccessfulSyncAt = null;
+  }
+  target.profileSync.syncBaseline = normalizeProfileSyncStringMap(target.profileSync.syncBaseline);
+  target.profileSync.sectionUpdatedAt = normalizeProfileSyncStringMap(
+    target.profileSync.sectionUpdatedAt
+  );
   target.profileSync.firstEnableResolutionPending =
     target.profileSync.firstEnableResolutionPending === true;
   target.profileSync.remoteRewritePending = target.profileSync.remoteRewritePending === true;
@@ -1687,6 +1720,8 @@ function sanitizeConfigForRenderer(inputConfig) {
   if (cloned.profileSync) {
     delete cloned.profileSync.storedPassphrase;
     delete cloned.profileSync.passphraseTransition;
+    delete cloned.profileSync.syncBaseline;
+    delete cloned.profileSync.sectionUpdatedAt;
   }
   // The marker is runtime-only. It is never read from or written to a user
   // profile, including when the connected overlay is active.
@@ -2943,6 +2978,15 @@ function buildProfileSyncStatus(extra = {}) {
     // Stored messages may be English text from shared helpers or older versions.
     passphraseWarning: mainTError(profileSyncRuntime.passphraseWarning || ''),
     lastSyncAt: profileSync.lastSyncAt || null,
+    lastSuccessfulSyncAt: profileSync.lastSuccessfulSyncAt || null,
+    lastRemoteUpdatedAt: profileSyncRuntime.lastRemote?.updatedAt || null,
+    lastRemoteUpdatedByThisDevice: profileSyncRuntime.lastRemote
+      ? profileSyncRuntime.lastRemote.updatedByDeviceId === profileSync.deviceId
+      : null,
+    lastRunSummary: profileSyncRuntime.lastRunSummary,
+    conflictSections: profileSyncRuntime.needsResolution
+      ? [...profileSyncRuntime.conflictSections]
+      : [],
     lastSyncStatus: profileSync.lastSyncStatus || 'idle',
     lastSyncError: mainTError(profileSync.lastSyncError || ''),
     inFlight: !!profileSyncRuntime.inFlight,
@@ -3012,6 +3056,9 @@ function updateProfileSyncStatus(status, errorMessage = '') {
   profileSync.lastSyncAt = new Date().toISOString();
   profileSync.lastSyncStatus = status;
   profileSync.lastSyncError = errorMessage || '';
+  if (status === 'success') {
+    profileSync.lastSuccessfulSyncAt = profileSync.lastSyncAt;
+  }
   saveConfig();
 }
 
@@ -3111,40 +3158,60 @@ function unsealProfileSyncTransitionSecret(encryptedSecret) {
   }
 }
 
+/**
+ * Builds a sync file from a config for the rewrite transaction (encryption and
+ * passphrase changes). Sections already in the file are carried over as they
+ * are, including ones this device does not sync; in-scope sections the file
+ * lacks are added from the config.
+ */
 async function buildProfileSyncEnvelopeForConfig(
   sourceConfig,
-  { encrypt, passphrase, updatedAt = new Date().toISOString() }
+  { encrypt, passphrase, remoteSections = {}, updatedAt = new Date().toISOString() }
 ) {
   const profileSync = sourceConfig?.profileSync || getProfileSyncConfig();
   const syncScope = getNormalizedProfileSyncScopeValue(profileSync.syncScope);
+  const localSections = profileSyncCore.buildLocalSections(sourceConfig, syncScope);
+  const sections = { ...remoteSections };
+  Object.entries(localSections).forEach(([key, data]) => {
+    if (sections[key]) return;
+    sections[key] = profileSyncCore.buildPushedSectionEntry(key, data, null, {
+      updatedAt: profileSync.sectionUpdatedAt?.[key] || updatedAt,
+      deviceId: profileSync.deviceId,
+    });
+  });
   return profileSyncCore.buildSyncEnvelope({
-    profile: profileSyncCore.projectSyncProfile(sourceConfig, syncScope),
+    sections,
     updatedAt,
     updatedByDeviceId: profileSync.deviceId,
-    syncScope,
     encrypt: encrypt === true,
     passphrase: passphrase || '',
   });
 }
 
-async function decodeRemoteProfileWithPassphrase(readResult, passphrase) {
-  if (!readResult?.exists || !readResult.envelope) {
-    return { profile: null, syncScope: null };
-  }
-  const profile = await profileSyncCore.decodeEnvelopeProfile(readResult.envelope, passphrase);
-  return {
-    profile,
-    syncScope: profileSyncCore.extractSyncScopeFromEnvelope(readResult.envelope),
-  };
+async function decodeRemoteSectionsWithPassphrase(readResult, passphrase) {
+  if (!readResult?.exists || !readResult.envelope) return {};
+  const { sections } = await profileSyncCore.decodeEnvelopeSections(
+    readResult.envelope,
+    passphrase
+  );
+  return sections;
 }
 
-function assertRemoteProfileMatchesConfig(decodedRemote, baselineConfig) {
-  if (!decodedRemote?.profile || !decodedRemote.syncScope) return;
-  const localProfile = profileSyncCore.projectSyncProfile(baselineConfig, decodedRemote.syncScope);
-  if (
-    computeScopedProfileHash(decodedRemote.profile, decodedRemote.syncScope) !==
-    computeScopedProfileHash(localProfile, decodedRemote.syncScope)
-  ) {
+/**
+ * Throws when a section this device syncs differs between the file and the
+ * given config, so a rewrite never publishes stale local content or hides
+ * unsynced remote changes behind a new key.
+ */
+function assertRemoteSectionsMatchConfig(remoteSections, baselineConfig) {
+  const syncScope = getNormalizedProfileSyncScopeValue(baselineConfig?.profileSync?.syncScope);
+  const localSections = profileSyncCore.buildLocalSections(baselineConfig, syncScope);
+  const differs = Object.entries(localSections).some(
+    ([key, data]) =>
+      remoteSections[key] &&
+      profileSyncCore.computeSectionHash(key, data) !==
+        profileSyncCore.computeSectionHash(key, remoteSections[key].data)
+  );
+  if (differs) {
     throw new Error(
       mainT(
         'The remote profile has changes that are not present locally. Sync or resolve them before changing encryption.'
@@ -3180,12 +3247,13 @@ async function stageProfileSyncRewrite({
   const oldPassphraseEncrypted = sealProfileSyncTransitionSecret(oldPassphrase);
   const newPassphraseEncrypted = sealProfileSyncTransitionSecret(newPassphrase);
   const baselineRemote = remoteResult || (await readConfiguredSyncEnvelope());
-  const decodedRemote = await decodeRemoteProfileWithPassphrase(baselineRemote, oldPassphrase);
-  assertRemoteProfileMatchesConfig(decodedRemote, baselineConfig);
+  const remoteSections = await decodeRemoteSectionsWithPassphrase(baselineRemote, oldPassphrase);
+  assertRemoteSectionsMatchConfig(remoteSections, baselineConfig);
 
   const targetEnvelope = await buildProfileSyncEnvelopeForConfig(targetConfig, {
     encrypt: targetEncryptionEnabled,
     passphrase: newPassphrase,
+    remoteSections,
   });
   const targetEnvelopeSerialized = profileSyncCore.serializeSyncEnvelope(targetEnvelope);
   const transaction = createProfileSyncRewriteTransaction({
@@ -3260,7 +3328,7 @@ async function executePendingProfileSyncRewrite() {
       readRemoteIdentity: async () => getSyncEnvelopeIdentity(await readConfiguredSyncEnvelope()),
       verifyOldRemote: async () => {
         const currentRemote = await readConfiguredSyncEnvelope();
-        await decodeRemoteProfileWithPassphrase(currentRemote, oldPassphrase);
+        await decodeRemoteSectionsWithPassphrase(currentRemote, oldPassphrase);
       },
       writeExactTarget: async (serializedTarget) => {
         if (serializedTarget !== transaction.targetEnvelopeSerialized) {
@@ -3284,6 +3352,8 @@ async function executePendingProfileSyncRewrite() {
           lastSyncError: profileSync.lastSyncError,
           profileUpdatedAt: profileSync.profileUpdatedAt,
           localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
+          syncBaseline: profileSync.syncBaseline,
+          lastSuccessfulSyncAt: profileSync.lastSuccessfulSyncAt,
         };
 
         if (transaction.changeCredential) {
@@ -3310,6 +3380,9 @@ async function executePendingProfileSyncRewrite() {
         profileSync.lastSyncError = '';
         profileSyncRuntime.localProfileUpdatedAt = targetEnvelope.updatedAt;
         profileSync.profileUpdatedAt = targetEnvelope.updatedAt;
+        // The staged target was checked to match every in-scope section.
+        profileSync.syncBaseline = computeLocalSectionHashes(getActiveProfileSyncScope());
+        profileSync.lastSuccessfulSyncAt = profileSync.lastSyncAt;
 
         const persistence = await saveConfigDurably({ allowDebouncedPush: false });
         if (!persistence.success) {
@@ -3327,6 +3400,8 @@ async function executePendingProfileSyncRewrite() {
           profileSync.lastSyncError = previous.lastSyncError;
           profileSync.profileUpdatedAt = previous.profileUpdatedAt;
           profileSyncRuntime.localProfileUpdatedAt = previous.localProfileUpdatedAt;
+          profileSync.syncBaseline = previous.syncBaseline;
+          profileSync.lastSuccessfulSyncAt = previous.lastSuccessfulSyncAt;
           const error = new Error(
             mainT(
               'The remote rewrite committed, but local key promotion could not be saved: {{error}}',
@@ -3385,6 +3460,11 @@ async function writeCloudFileEnvelope(filePath, envelope) {
     throw new Error(mainT('Sync file path is not configured'));
   }
   const serialized = profileSyncCore.serializeSyncEnvelope(envelope);
+  // Readers refuse files over the limit, so writing one would stop every device
+  // syncing, this one included.
+  if (Buffer.byteLength(serialized, 'utf8') > PROFILE_SYNC_MAX_FILE_BYTES) {
+    throw new Error(mainT('Sync file exceeds size limit (512 KB)'));
+  }
   await requireExistingSyncParentDirectory(filePath, fs);
   const tempPath = `${filePath}.tmp-${Date.now()}`;
   try {
@@ -3452,7 +3532,7 @@ async function copyProfileSyncFile(fromPath, toPath, overwrite = false) {
 async function readConfiguredSyncEnvelope() {
   const profileSync = getProfileSyncConfig();
   if (!isProfileSyncProviderSupported(profileSync.provider)) {
-    throw new Error('Unsupported profile sync provider');
+    throw new Error(mainT('Unsupported profile sync provider'));
   }
   return readCloudFileEnvelope(profileSync.cloudFilePath);
 }
@@ -3460,7 +3540,7 @@ async function readConfiguredSyncEnvelope() {
 async function writeConfiguredSyncEnvelope(envelope) {
   const profileSync = getProfileSyncConfig();
   if (!isProfileSyncProviderSupported(profileSync.provider)) {
-    throw new Error('Unsupported profile sync provider');
+    throw new Error(mainT('Unsupported profile sync provider'));
   }
   return writeCloudFileEnvelope(profileSync.cloudFilePath, envelope);
 }
@@ -3543,50 +3623,58 @@ function computeScopedProfileHash(profile, syncScope) {
   });
 }
 
-async function buildLocalProfileEnvelope(
-  updatedAt = profileSyncRuntime.localProfileUpdatedAt || new Date().toISOString()
-) {
-  const profileSync = getProfileSyncConfig();
-  const syncScope = getActiveProfileSyncScope();
-  const profile = profileSyncCore.projectSyncProfile(config, syncScope);
-  const encrypt = !!profileSync.encryptionEnabled;
-  const passphrase = getActiveProfileSyncPassphrase();
-  if (encrypt && !passphrase) {
-    throw new Error(mainT('A passphrase is required to sync encrypted profiles'));
-  }
-  return profileSyncCore.buildSyncEnvelope({
-    profile,
-    updatedAt,
-    updatedByDeviceId: profileSync.deviceId,
-    syncScope,
-    encrypt,
-    passphrase,
-  });
+function computeLocalSectionHashes(syncScope = getActiveProfileSyncScope(), source = config) {
+  const sections = profileSyncCore.buildLocalSections(source, syncScope);
+  return Object.fromEntries(
+    Object.entries(sections).map(([key, data]) => [
+      key,
+      profileSyncCore.computeSectionHash(key, data),
+    ])
+  );
 }
 
-async function decodeEnvelopeProfile(envelope) {
-  const passphrase = getActiveProfileSyncPassphrase();
-  const profile = await profileSyncCore.decodeEnvelopeProfile(envelope, passphrase);
-  const syncScope = profileSyncCore.extractSyncScopeFromEnvelope(envelope);
-  return { profile, syncScope };
+async function decodeRemoteSections(envelope) {
+  const { sections } = await profileSyncCore.decodeEnvelopeSections(
+    envelope,
+    getActiveProfileSyncPassphrase()
+  );
+  return sections;
 }
 
-async function backupLocalProfileBeforePullApply(syncScope) {
-  let backupDir;
+function pickSections(sections, keys) {
+  return Object.fromEntries(keys.filter((key) => sections[key]).map((key) => [key, sections[key]]));
+}
+
+async function writeProfileSyncBackup(prefix, contents) {
+  const backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
+  await fs.promises.mkdir(backupDir, { recursive: true });
+  await fs.promises.writeFile(
+    path.join(backupDir, `${prefix}-${Date.now()}.json`),
+    JSON.stringify({ backedUpAt: new Date().toISOString(), ...contents }, null, 2),
+    'utf8'
+  );
+
   try {
-    backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
-    await fs.promises.mkdir(backupDir, { recursive: true });
-    const normalizedScope = getNormalizedProfileSyncScopeValue(syncScope);
-    const backup = {
-      backedUpAt: new Date().toISOString(),
-      syncScope: normalizedScope,
-      profile: profileSyncCore.projectSyncProfile(config, normalizedScope),
-    };
-    await fs.promises.writeFile(
-      path.join(backupDir, `local-profile-${Date.now()}.json`),
-      JSON.stringify(backup, null, 2),
-      'utf8'
-    );
+    const pattern = new RegExp(`^${prefix}-\\d+\\.json$`);
+    const entries = (await fs.promises.readdir(backupDir))
+      .filter((name) => pattern.test(name))
+      .sort();
+    while (entries.length > PROFILE_SYNC_BACKUP_KEEP) {
+      const oldest = entries.shift();
+      await fs.promises.unlink(path.join(backupDir, oldest));
+    }
+  } catch (error) {
+    log.warn('Created a profile sync backup, but failed to prune older backups:', error.message);
+  }
+}
+
+async function backupLocalProfileBeforePullApply(sectionKeys) {
+  try {
+    const sections = profileSyncCore.buildLocalSections(config, {
+      preset: 'custom',
+      sections: Object.fromEntries(sectionKeys.map((key) => [key, true])),
+    });
+    await writeProfileSyncBackup('local-profile', { sections });
   } catch (error) {
     log.warn('Failed to back up local profile before applying remote sync:', error.message);
     throw new Error(
@@ -3595,47 +3683,67 @@ async function backupLocalProfileBeforePullApply(syncScope) {
       })
     );
   }
+}
 
+/**
+ * Keeps a copy of sections another device wrote before this device's newer
+ * edits replace them in the file. Pushing without one would lose them for good.
+ */
+async function backupRemoteSectionsBeforePush(remoteSections) {
   try {
-    const entries = (await fs.promises.readdir(backupDir))
-      .filter((name) => /^local-profile-\d+\.json$/.test(name))
-      .sort();
-    while (entries.length > PROFILE_SYNC_BACKUP_KEEP) {
-      const oldest = entries.shift();
-      await fs.promises.unlink(path.join(backupDir, oldest));
-    }
+    await writeProfileSyncBackup('remote-profile', { sections: remoteSections });
   } catch (error) {
-    log.warn(
-      'Created local profile backup, but failed to prune older profile backups:',
-      error.message
+    log.warn('Failed to back up remote profile sections before pushing:', error.message);
+    throw new Error(
+      mainT('The sync file was not updated because its backup failed: {{error}}', {
+        error: error?.message || String(error),
+      })
     );
   }
 }
 
-async function applySyncedProfileToConfig(syncedProfile, updatedAt, syncScopeValue = null) {
+/**
+ * Applies pulled sections to the config and runtime.
+ *
+ * @param {Object<string, {updatedAt: string, data: object}>} pulledSections remote entries to apply
+ */
+async function applySyncedProfileToConfig(pulledSections) {
   const previous = config;
   const previousRuntimeTracking = {
     localProfileHash: profileSyncRuntime.localProfileHash,
     localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
+    localSectionHashes: profileSyncRuntime.localSectionHashes,
     pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
   };
   const previousEncryptedTokenForRecovery = preservedEncryptedTokenForRecovery;
-  const nextScope = getNormalizedProfileSyncScopeValue(
-    syncScopeValue || previous?.profileSync?.syncScope
-  );
-  // Captured under nextScope (not the pre-pull scope) so it is directly
-  // comparable to the hashes updateLocalProfileSyncTracking computes afterwards.
+  const scope = getActiveProfileSyncScope();
+  // Captured under the active scope so it is directly comparable to the hashes
+  // updateLocalProfileSyncTracking computes afterwards.
   const prePullHash = computeScopedProfileHash(
-    profileSyncCore.projectSyncProfile(previous, nextScope),
-    nextScope
+    profileSyncCore.projectSyncProfile(previous, scope),
+    scope
   );
-  const merged = profileSyncCore.mergeSyncedProfileIntoConfig(config, syncedProfile, nextScope);
-  ensureDateTimeFormatConfigDefaults(merged);
-  ensureProfileSyncConfigDefaults(merged);
+  const sectionData = Object.fromEntries(
+    Object.entries(pulledSections).map(([key, entry]) => [key, entry.data])
+  );
+  const merged = profileSyncCore.mergeSectionsIntoConfig(config, sectionData);
+  const latestPulledAt = Object.values(pulledSections)
+    .map((entry) => entry.updatedAt)
+    .reduce(
+      (latest, value) => (profileSyncCore.compareIsoTimestamps(value, latest) > 0 ? value : latest),
+      null
+    );
   merged.profileSync = {
     ...previous.profileSync,
-    syncScope: nextScope,
-    profileUpdatedAt: updatedAt || new Date().toISOString(),
+    // A pulled section counts as changed when the other device changed it, so a
+    // later conflict on it compares against that edit rather than this pull.
+    sectionUpdatedAt: {
+      ...(previous.profileSync?.sectionUpdatedAt || {}),
+      ...Object.fromEntries(
+        Object.entries(pulledSections).map(([key, entry]) => [key, entry.updatedAt])
+      ),
+    },
+    profileUpdatedAt: latestPulledAt || new Date().toISOString(),
   };
   config = merged;
   pruneConfig(config);
@@ -3644,12 +3752,10 @@ async function applySyncedProfileToConfig(syncedProfile, updatedAt, syncScopeVal
   normalizeDesktopPinsConfig(config);
   normalizeTrayEntitiesConfigInPlace(config);
 
-  const projected = profileSyncCore.projectSyncProfile(config, getActiveProfileSyncScope());
-  profileSyncRuntime.localProfileHash = computeScopedProfileHash(
-    projected,
-    getActiveProfileSyncScope()
-  );
-  profileSyncRuntime.localProfileUpdatedAt = updatedAt || new Date().toISOString();
+  const projected = profileSyncCore.projectSyncProfile(config, scope);
+  profileSyncRuntime.localProfileHash = computeScopedProfileHash(projected, scope);
+  profileSyncRuntime.localSectionHashes = computeLocalSectionHashes(scope);
+  profileSyncRuntime.localProfileUpdatedAt = config.profileSync.profileUpdatedAt;
   profileSyncRuntime.pendingPullEchoHash =
     prePullHash === profileSyncRuntime.localProfileHash ? null : prePullHash;
 
@@ -3737,8 +3843,15 @@ function restoreProfileFromStalePullEcho(pulledConfig) {
 }
 
 function updateLocalProfileSyncTracking({ allowDebouncedPush = true } = {}) {
-  const profile = profileSyncCore.projectSyncProfile(config, getActiveProfileSyncScope());
-  const nextHash = computeScopedProfileHash(profile, getActiveProfileSyncScope());
+  const scope = getActiveProfileSyncScope();
+  const profile = profileSyncCore.projectSyncProfile(config, scope);
+  const nextHash = computeScopedProfileHash(profile, scope);
+  const previousSectionHashes = profileSyncRuntime.localSectionHashes || {};
+  const nextSectionHashes = computeLocalSectionHashes(scope);
+  profileSyncRuntime.localSectionHashes = nextSectionHashes;
+  const changedSections = Object.keys(nextSectionHashes).filter(
+    (key) => previousSectionHashes[key] !== nextSectionHashes[key]
+  );
   if (profileSyncRuntime.localProfileHash === null) {
     profileSyncRuntime.localProfileHash = nextHash;
     profileSyncRuntime.localProfileUpdatedAt = new Date().toISOString();
@@ -3761,9 +3874,15 @@ function updateLocalProfileSyncTracking({ allowDebouncedPush = true } = {}) {
   ) {
     profileSyncRuntime.pendingPullEchoHash = null;
     profileSyncRuntime.localProfileHash = nextHash;
-    // localProfileUpdatedAt deliberately stays on the pulled envelope's
-    // timestamp: leaving it behind keeps the next auto sync from treating the
-    // stale echo as the newer side and pushing it out.
+    // The edit times deliberately stay on the pulled sections' timestamps, and
+    // their baseline is dropped: the next run then sees a tie with the file,
+    // which the file wins, so the pulled content comes back instead of the
+    // stale echo being pushed out.
+    if (config?.profileSync?.syncBaseline) {
+      changedSections.forEach((key) => {
+        delete config.profileSync.syncBaseline[key];
+      });
+    }
     return;
   }
 
@@ -3772,6 +3891,12 @@ function updateLocalProfileSyncTracking({ allowDebouncedPush = true } = {}) {
   profileSyncRuntime.localProfileUpdatedAt = new Date().toISOString();
   if (config?.profileSync) {
     config.profileSync.profileUpdatedAt = profileSyncRuntime.localProfileUpdatedAt;
+    config.profileSync.sectionUpdatedAt = {
+      ...(config.profileSync.sectionUpdatedAt || {}),
+      ...Object.fromEntries(
+        changedSections.map((key) => [key, profileSyncRuntime.localProfileUpdatedAt])
+      ),
+    };
   }
 
   if (allowDebouncedPush) {
@@ -4821,6 +4946,7 @@ async function saveConfigDurably(options = {}) {
     localProfileHash: profileSyncRuntime.localProfileHash,
     localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
     pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
+    localSectionHashes: profileSyncRuntime.localSectionHashes,
   };
   const previousProfileUpdatedAt = config?.profileSync?.profileUpdatedAt ?? null;
   const hadTokenResetReason = Object.prototype.hasOwnProperty.call(
@@ -4905,11 +5031,18 @@ function setupProfileSyncInterval() {
   }, intervalMs);
 }
 
+/**
+ * Before the first sync against a file (or of a section newly added to this
+ * device's scope), finds sections where this device and the file already hold
+ * different content with no shared history to merge from. Those need the user to
+ * choose a side; everything else can sync normally.
+ */
 async function prepareProfileSyncFirstEnableResolution() {
   const profileSync = getProfileSyncConfig();
   profileSyncRuntime.needsResolution = false;
   profileSyncRuntime.pendingRemoteEnvelope = null;
   profileSyncRuntime.pendingRemoteIdentity = null;
+  profileSyncRuntime.conflictSections = [];
 
   if (!profileSync.enabled || !profileSync.cloudFilePath) {
     return { needsResolution: false };
@@ -4921,15 +5054,24 @@ async function prepareProfileSyncFirstEnableResolution() {
     return { needsResolution: false };
   }
 
-  const { profile: remoteProfile, syncScope } = await decodeEnvelopeProfile(readResult.envelope);
-  const localProfile = profileSyncCore.projectSyncProfile(config, syncScope);
-  const localHash = computeScopedProfileHash(localProfile, syncScope);
-  const remoteHash = computeScopedProfileHash(remoteProfile, syncScope);
-  if (remoteHash === localHash) {
+  const remoteSections = await decodeRemoteSections(readResult.envelope);
+  const localSections = profileSyncCore.buildLocalSections(config, getActiveProfileSyncScope());
+  const baseline = profileSync.syncBaseline || {};
+  const conflictSections = Object.entries(localSections)
+    .filter(
+      ([key, data]) =>
+        !baseline[key] &&
+        remoteSections[key] &&
+        profileSyncCore.computeSectionHash(key, data) !==
+          profileSyncCore.computeSectionHash(key, remoteSections[key].data)
+    )
+    .map(([key]) => key);
+  if (conflictSections.length === 0) {
     return { needsResolution: false };
   }
 
   profileSyncRuntime.needsResolution = true;
+  profileSyncRuntime.conflictSections = conflictSections;
   profileSyncRuntime.pendingRemoteEnvelope = readResult.envelope;
   profileSyncRuntime.pendingRemoteIdentity = getSyncEnvelopeIdentity(readResult);
   updateProfileSyncStatus(
@@ -4950,24 +5092,8 @@ function getSyncEnvelopeIdentity(readResult) {
 
 async function prepareRemoteRewriteBaseline(passphrase, baselineConfig = config) {
   const readResult = await readConfiguredSyncEnvelope();
-  if (readResult.exists && readResult.envelope) {
-    const remoteProfile = await profileSyncCore.decodeEnvelopeProfile(
-      readResult.envelope,
-      passphrase
-    );
-    const syncScope = profileSyncCore.extractSyncScopeFromEnvelope(readResult.envelope);
-    const localProfile = profileSyncCore.projectSyncProfile(baselineConfig, syncScope);
-    if (
-      computeScopedProfileHash(remoteProfile, syncScope) !==
-      computeScopedProfileHash(localProfile, syncScope)
-    ) {
-      throw new Error(
-        mainT(
-          'The remote profile has changes that are not present locally. Sync or resolve them before changing encryption.'
-        )
-      );
-    }
-  }
+  const remoteSections = await decodeRemoteSectionsWithPassphrase(readResult, passphrase);
+  assertRemoteSectionsMatchConfig(remoteSections, baselineConfig);
   return getSyncEnvelopeIdentity(readResult);
 }
 
@@ -5024,8 +5150,10 @@ async function completeProfileSyncFirstEnablePreparation(source) {
   // Keep the durable gate armed through the first identity-checked write. If the
   // provider changes or fails, retry remains available and no conflict is
   // silently bypassed.
+  // No section conflicts remain, so a merge run syncs each section the right way:
+  // matching ones only record their baseline, missing ones are uploaded.
   const expectedRemoteIdentity = profileSyncRuntime.pendingRemoteIdentity;
-  const result = await runProfileSyncInternal('push', source, { expectedRemoteIdentity });
+  const result = await runProfileSyncInternal('auto', source, { expectedRemoteIdentity });
   if (result?.ok !== true || result?.reason === 'remote_changed') {
     throw new Error(
       result?.error || result?.reason || mainT('Initial profile sync did not complete')
@@ -5055,7 +5183,9 @@ function scheduleDebouncedProfileSyncPush(source = 'config_change') {
   }
   profileSyncRuntime.pushDebounceTimer = setTimeout(() => {
     profileSyncRuntime.pushDebounceTimer = null;
-    runProfileSync('push', source).catch((error) => {
+    // A merge, not a forced push: another device may have changed other
+    // sections since the last run, and those have to come in, not be overwritten.
+    runProfileSync('auto', source).catch((error) => {
       log.warn('Debounced profile sync push failed:', error.message);
     });
   }, PROFILE_SYNC_PUSH_DEBOUNCE_MS);
@@ -5072,13 +5202,14 @@ function runProfileSync(direction = 'auto', source = 'manual') {
 }
 
 async function runProfileSyncInternal(direction = 'auto', source = 'manual', options = {}) {
-  const profileSync = getProfileSyncConfig();
+  // Reassigned after a pull: applying one replaces config, and with it this object.
+  let profileSync = getProfileSyncConfig();
 
   if (!profileSync.enabled) {
     return { ok: false, reason: 'disabled', status: buildProfileSyncStatus() };
   }
   if (!isProfileSyncProviderSupported(profileSync.provider)) {
-    throw new Error('Unsupported profile sync provider');
+    throw new Error(mainT('Unsupported profile sync provider'));
   }
   if (!profileSync.cloudFilePath) {
     throw new Error(mainT('Profile sync file is not configured'));
@@ -5139,7 +5270,6 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
   emitProfileSyncStatus();
 
   try {
-    const localUpdatedAt = profileSyncRuntime.localProfileUpdatedAt || new Date().toISOString();
     const remoteResult = await readConfiguredSyncEnvelope();
     if (
       options.expectedRemoteIdentity &&
@@ -5156,56 +5286,107 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       throw error;
     }
     profileSyncRuntime.conflictCopies = await findProfileSyncConflictCopies();
-    let finalDirection = direction;
 
-    if (direction === 'auto') {
-      finalDirection = profileSyncCore.chooseSyncDirection({
-        localUpdatedAt,
-        remoteUpdatedAt: remoteResult.envelope?.updatedAt || null,
-        remoteExists: remoteResult.exists,
+    // A routine run never changes the file's encryption. Only the rewrite and
+    // first-sync flows (which pin the exact remote they checked) may, so a
+    // device with stale settings cannot publish the profile unencrypted or
+    // re-encrypt it under a passphrase another device has replaced.
+    const remoteEnvelope = remoteResult.exists ? remoteResult.envelope : null;
+    const mayChangeEncryption =
+      !!options.expectedRemoteIdentity || !!profileSync.remoteRewritePending;
+    if (
+      remoteEnvelope &&
+      !mayChangeEncryption &&
+      profileSyncCore.isEnvelopeEncrypted(remoteEnvelope) !== !!profileSync.encryptionEnabled
+    ) {
+      throw new Error(
+        profileSync.encryptionEnabled
+          ? mainT(
+              'The sync file is not encrypted, but encryption is on for this device. If another device turned encryption off, turn it off here too.'
+            )
+          : mainT(
+              'The sync file is encrypted. Turn on encryption and enter the passphrase your other devices use.'
+            )
+      );
+    }
+
+    const remoteSections = remoteEnvelope ? await decodeRemoteSections(remoteEnvelope) : {};
+    const syncScope = getActiveProfileSyncScope();
+    const sectionKeys = profileSyncCore.getScopeSectionKeys(syncScope);
+    const localSections = profileSyncCore.buildLocalSections(config, syncScope);
+    const localUpdatedAt = Object.fromEntries(
+      sectionKeys.map((key) => [
+        key,
+        profileSync.sectionUpdatedAt?.[key] || profileSync.profileUpdatedAt || null,
+      ])
+    );
+    const plan = profileSyncCore.planSectionSync({
+      sectionKeys,
+      localSections,
+      remoteSections,
+      baseline: profileSync.syncBaseline,
+      localUpdatedAt,
+      direction,
+    });
+    const nextBaseline = {};
+    plan.unchanged.forEach((key) => {
+      if (plan.localHashes[key] === plan.remoteHashes[key]) {
+        nextBaseline[key] = plan.localHashes[key];
+      }
+    });
+
+    let currentLocalSections = localSections;
+    const pushKeys = [...plan.push];
+    if (plan.pull.length > 0) {
+      await backupLocalProfileBeforePullApply(plan.pull);
+      await applySyncedProfileToConfig(pickSections(remoteSections, plan.pull));
+      profileSync = getProfileSyncConfig();
+      currentLocalSections = profileSyncCore.buildLocalSections(config, syncScope);
+      plan.pull.forEach((key) => {
+        const appliedHash = profileSyncCore.computeSectionHash(key, currentLocalSections[key]);
+        if (appliedHash === plan.remoteHashes[key]) {
+          nextBaseline[key] = appliedHash;
+        } else {
+          // The file lacked fields this version keeps (an older writer), so the
+          // applied section still differs; write it back so both sides agree.
+          pushKeys.push(key);
+        }
       });
     }
 
-    if (finalDirection === 'none') {
-      updateProfileSyncStatus('idle', '');
-      const status = buildProfileSyncStatus();
-      emitProfileSyncStatus();
-      return { ok: true, action: 'none', status };
-    }
-
-    if (finalDirection === 'pull') {
-      if (!remoteResult.exists || !remoteResult.envelope) {
-        updateProfileSyncStatus('idle', '');
-        const status = buildProfileSyncStatus();
-        emitProfileSyncStatus();
-        return { ok: true, action: 'none', status };
+    // Changing the encryption mode rewrites the whole file even when no section
+    // content changed.
+    const rewriteRequired = !!profileSync.remoteRewritePending && mayChangeEncryption;
+    let wroteEnvelope = null;
+    if (pushKeys.length > 0 || rewriteRequired) {
+      if (plan.discardsRemote.length > 0) {
+        await backupRemoteSectionsBeforePush(pickSections(remoteSections, plan.discardsRemote));
       }
-
-      const { profile: remoteProfile, syncScope: remoteSyncScope } = await decodeEnvelopeProfile(
-        remoteResult.envelope
-      );
-      const localProfile = profileSyncCore.projectSyncProfile(config, remoteSyncScope);
-      const localHash = computeScopedProfileHash(localProfile, remoteSyncScope);
-      const remoteHash = computeScopedProfileHash(remoteProfile, remoteSyncScope);
-      if (remoteHash !== localHash || source === 'first_enable_resolution') {
-        await backupLocalProfileBeforePullApply(remoteSyncScope);
-        await applySyncedProfileToConfig(
-          remoteProfile,
-          remoteResult.envelope.updatedAt,
-          remoteSyncScope
+      const now = new Date().toISOString();
+      const nextSections = { ...remoteSections };
+      pushKeys.forEach((key) => {
+        nextSections[key] = profileSyncCore.buildPushedSectionEntry(
+          key,
+          currentLocalSections[key],
+          remoteSections[key],
+          {
+            updatedAt: profileSync.sectionUpdatedAt?.[key] || now,
+            deviceId: profileSync.deviceId,
+          }
         );
+      });
+      const encrypt = !!profileSync.encryptionEnabled;
+      const passphrase = getActiveProfileSyncPassphrase();
+      if (encrypt && !passphrase) {
+        throw new Error(mainT('A passphrase is required to sync encrypted profiles'));
       }
-      profileSyncRuntime.localProfileUpdatedAt = remoteResult.envelope.updatedAt;
-      getProfileSyncConfig().profileUpdatedAt = remoteResult.envelope.updatedAt;
-      updateProfileSyncStatus('success', '');
-      setupProfileSyncInterval();
-      const status = buildProfileSyncStatus();
-      emitProfileSyncStatus();
-      return { ok: true, action: 'pull', status, config: sanitizeConfigForRenderer(config) };
-    }
-
-    if (finalDirection === 'push') {
-      const envelopeToWrite = await buildLocalProfileEnvelope(new Date().toISOString());
+      const envelopeToWrite = await profileSyncCore.buildSyncEnvelope({
+        sections: nextSections,
+        updatedAt: now,
+        updatedByDeviceId: profileSync.deviceId,
+        encrypt,
+        passphrase,
+      });
 
       // Best-effort compare-before-write: encryption and provider replication take time, so
       // another device can land a write between the read above and this one.
@@ -5215,6 +5396,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
         if (source === 'conflict_recheck') {
           throw new Error(mainT('Sync file kept changing on the other device; try again'));
         }
+        await persistProfileSyncBaseline(nextBaseline, sectionKeys);
         void runProfileSync('auto', 'conflict_recheck');
         const status = buildProfileSyncStatus();
         emitProfileSyncStatus();
@@ -5222,6 +5404,10 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       }
 
       await writeConfiguredSyncEnvelope(envelopeToWrite);
+      wroteEnvelope = envelopeToWrite;
+      pushKeys.forEach((key) => {
+        nextBaseline[key] = profileSyncCore.computeSectionHash(key, currentLocalSections[key]);
+      });
       if (profileSync.remoteRewritePending) {
         const previousCredential = {
           rememberPassphrase: profileSync.rememberPassphrase,
@@ -5256,22 +5442,67 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
           throw markerError;
         }
       }
-      profileSyncRuntime.localProfileUpdatedAt = envelopeToWrite.updatedAt;
-      getProfileSyncConfig().profileUpdatedAt = envelopeToWrite.updatedAt;
-      updateProfileSyncStatus('success', '');
-      setupProfileSyncInterval();
-      const status = buildProfileSyncStatus();
-      emitProfileSyncStatus();
-      return { ok: true, action: 'push', status };
     }
 
-    throw new Error(`Unknown profile sync direction: ${finalDirection}`);
+    await persistProfileSyncBaseline(nextBaseline, sectionKeys);
+    const finalEnvelope = wroteEnvelope || remoteEnvelope;
+    profileSyncRuntime.lastRemote = finalEnvelope
+      ? {
+          updatedAt: finalEnvelope.updatedAt,
+          updatedByDeviceId: finalEnvelope.updatedByDeviceId,
+        }
+      : null;
+    profileSyncRuntime.lastRunSummary = {
+      at: new Date().toISOString(),
+      pushed: pushKeys,
+      pulled: plan.pull,
+      replacedLocal: plan.discardsLocal,
+      replacedRemote: plan.discardsRemote,
+    };
+    updateProfileSyncStatus('success', '');
+    setupProfileSyncInterval();
+    const status = buildProfileSyncStatus();
+    emitProfileSyncStatus();
+    const pushed = pushKeys.length > 0 || !!wroteEnvelope;
+    const pulled = plan.pull.length > 0;
+    const action = pushed && pulled ? 'merge' : pushed ? 'push' : pulled ? 'pull' : 'none';
+    return {
+      ok: true,
+      action,
+      pushed: pushKeys,
+      pulled: plan.pull,
+      status,
+      ...(pulled ? { config: sanitizeConfigForRenderer(config) } : {}),
+    };
   } catch (error) {
     updateProfileSyncStatus('error', error.message);
     emitProfileSyncStatus();
     throw error;
   } finally {
     profileSyncRuntime.inFlight = false;
+  }
+}
+
+/**
+ * Records which sections this device and the file now agree on. Sections that
+ * are out of scope are forgotten, and ones whose outcome is still open (a
+ * re-check is queued) keep their previous baseline.
+ */
+async function persistProfileSyncBaseline(agreedHashes, sectionKeys) {
+  const profileSync = getProfileSyncConfig();
+  const previous = profileSync.syncBaseline || {};
+  const next = {};
+  sectionKeys.forEach((key) => {
+    if (agreedHashes[key]) next[key] = agreedHashes[key];
+    else if (previous[key]) next[key] = previous[key];
+  });
+  profileSync.syncBaseline = next;
+  const persistence = await saveConfigDurably({ allowDebouncedPush: false });
+  if (!persistence.success) {
+    profileSync.syncBaseline = previous;
+    throw new Error(
+      mainT('Failed to save profile sync state: {{error}}', { error: persistence.error })
+    );
   }
 }
 
@@ -5387,7 +5618,11 @@ async function initializeProfileSyncOnStartupInternal() {
     // forced pull.
     await runProfileSyncInternal('auto', 'startup');
   } catch (error) {
+    // Keep the interval: at login the sync folder is often not mounted yet
+    // (OneDrive, a Google Drive letter) and a later run succeeds on its own.
+    // setupProfileSyncInterval stays off while a choice or recovery is pending.
     clearProfileSyncTimers();
+    setupProfileSyncInterval();
     log.warn('Profile sync startup run failed:', error.message);
   }
 }
@@ -6273,6 +6508,7 @@ ipcMain.handle(
       localProfileHash: profileSyncRuntime.localProfileHash,
       localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
       pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
+      localSectionHashes: profileSyncRuntime.localSectionHashes,
     };
     const replacement = replaceConfigEntityIdReferences(config, oldEntityId, newEntityId);
     if (!replacement.changed) {
@@ -6357,6 +6593,7 @@ ipcMain.handle(
       localProfileHash: profileSyncRuntime.localProfileHash,
       localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
       pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
+      localSectionHashes: profileSyncRuntime.localSectionHashes,
     };
     const previousEncryptedTokenForRecovery = preservedEncryptedTokenForRecovery;
     const prevSyncEnabled = !!config?.profileSync?.enabled;
@@ -6422,6 +6659,22 @@ ipcMain.handle(
     }
     const requiresInitialPreparation =
       !!profileSync.enabled && (!prevSyncEnabled || remoteTargetChanged);
+    // Merge state is main-process-owned and describes the file it was built
+    // against: a new file or a fresh enable starts with no shared history, and a
+    // narrower scope forgets sections this device no longer syncs.
+    const syncFileChanged =
+      !prevSyncEnabled ||
+      normalizedNextProvider !== previousProvider ||
+      normalizedNextPath !== previousCloudFilePath;
+    const nextScopeKeys = new Set(profileSyncCore.getScopeSectionKeys(normalizedNextScope));
+    profileSync.syncBaseline = syncFileChanged
+      ? {}
+      : Object.fromEntries(
+          Object.entries(config.profileSync?.syncBaseline || {}).filter(([key]) =>
+            nextScopeKeys.has(key)
+          )
+        );
+    profileSync.sectionUpdatedAt = { ...(config.profileSync?.sectionUpdatedAt || {}) };
     if (requiresInitialPreparation) {
       profileSync.firstEnableResolutionPending = true;
     } else if (!profileSync.enabled) {
@@ -7811,7 +8064,7 @@ ipcMain.handle(
         let candidateUnlocksRemote = !remoteResult.exists || !remoteResult.envelope;
         if (remoteResult.exists && remoteResult.envelope) {
           try {
-            await decodeRemoteProfileWithPassphrase(
+            await decodeRemoteSectionsWithPassphrase(
               remoteResult,
               candidatePassphrase || activePassphrase
             );
@@ -8114,34 +8367,27 @@ ipcMain.handle(
 
       if (choice === 'use_remote') {
         const remoteResult = await verifyPendingRemoteEnvelopeUnchanged();
-        const envelope = remoteResult.envelope;
-        if (!envelope) {
+        if (!remoteResult.envelope) {
           throw new Error(mainT('Remote profile is no longer available'));
         }
-        const { profile: remoteProfile, syncScope: remoteSyncScope } =
-          await decodeEnvelopeProfile(envelope);
         profileSyncRuntime.needsResolution = false;
         profileSyncRuntime.pendingRemoteEnvelope = null;
         profileSyncRuntime.pendingRemoteIdentity = null;
-        await backupLocalProfileBeforePullApply(remoteSyncScope);
-        await applySyncedProfileToConfig(remoteProfile, envelope.updatedAt, remoteSyncScope);
-        if (getProfileSyncConfig().remoteRewritePending) {
-          const rewriteResult = await runProfileSyncInternal('push', 'first_enable_resolution', {
-            expectedRemoteIdentity: getSyncEnvelopeIdentity(remoteResult),
-          });
-          if (rewriteResult?.ok !== true || rewriteResult?.reason === 'remote_changed') {
-            throw new Error(
-              rewriteResult?.reason === 'remote_changed'
-                ? mainT(
-                    'The remote profile changed before encryption could be applied; review it again'
-                  )
-                : rewriteResult?.error ||
-                    mainT('The accepted remote profile could not be rewritten safely')
-            );
-          }
+        // A forced pull of the exact file the user reviewed. When an encryption
+        // change is pending, the same run rewrites the file in the new mode.
+        const result = await runProfileSyncInternal('pull', 'first_enable_resolution', {
+          expectedRemoteIdentity: getSyncEnvelopeIdentity(remoteResult),
+        });
+        if (result?.ok !== true || result?.reason === 'remote_changed') {
+          throw new Error(
+            result?.reason === 'remote_changed'
+              ? mainT(
+                  'The remote profile changed before encryption could be applied; review it again'
+                )
+              : result?.error || mainT('The accepted remote profile could not be rewritten safely')
+          );
         }
         await clearProfileSyncFirstEnableResolutionPending();
-        updateProfileSyncStatus('success', '');
         setupProfileSyncInterval();
         emitProfileSyncStatus();
         return {
