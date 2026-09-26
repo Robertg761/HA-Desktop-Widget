@@ -1420,8 +1420,11 @@ function getPendingTheme(target) {
  * @param {boolean} [options.preview=true] - If `true`, apply the selected accent immediately as a live preview.
  */
 function selectAccentTheme(accentKey, { preview = true } = {}) {
-  if (preview) markSettingsTouched('ui.accent');
   const resolvedAccent = resolveThemeId(accentKey);
+  // Picking the accent already chosen is not an edit, and must not pin it over a sync.
+  if (preview && resolvedAccent !== getPendingTheme(COLOR_TARGETS.accent)) {
+    markSettingsTouched('ui.accent');
+  }
   pendingAccent = resolvedAccent;
   hasDraftColorPreview = false;
   if (preview) {
@@ -1445,8 +1448,10 @@ function selectAccentTheme(accentKey, { preview = true } = {}) {
  * @param {boolean} [options.preview=true] - If true, apply the selected background as a live preview.
  */
 function selectBackgroundTheme(backgroundKey, { preview = true } = {}) {
-  if (preview) markSettingsTouched('ui.background');
   const resolvedBackground = resolveThemeId(backgroundKey, { preferSlate: true });
+  if (preview && resolvedBackground !== getPendingTheme(COLOR_TARGETS.background)) {
+    markSettingsTouched('ui.background');
+  }
   pendingBackground = resolvedBackground;
   hasDraftColorPreview = false;
   if (preview) {
@@ -1781,8 +1786,9 @@ function updateThemeModeControl() {
  * @param {string} mode - 'auto', 'dark' or 'light'.
  */
 function previewThemeMode(mode) {
-  markSettingsTouched('ui.theme');
-  pendingThemeMode = normalizeThemeMode(mode);
+  const nextMode = normalizeThemeMode(mode);
+  if (nextMode !== (pendingThemeMode || getSavedThemeMode())) markSettingsTouched('ui.theme');
+  pendingThemeMode = nextMode;
   applyTheme(pendingThemeMode);
   applyAccentTheme(pendingAccent || getCurrentAccentTheme());
   refreshBackgroundTheme();

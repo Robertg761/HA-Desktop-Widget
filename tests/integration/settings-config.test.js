@@ -636,6 +636,28 @@ describe('Settings + Config Integration', () => {
       );
     });
 
+    test('picking the accent or theme already chosen does not count as an edit', async () => {
+      state.setConfig({
+        ...state.CONFIG,
+        ui: { ...state.CONFIG.ui, accent: 'original', theme: 'dark' },
+      });
+      await settings.openSettings();
+      document.querySelector('#theme-options [data-theme="original"]').click();
+      document.querySelector('#theme-mode-control [data-theme-mode="dark"]').click();
+      // A profile sync pull lands before Save.
+      state.setConfig({
+        ...state.CONFIG,
+        ui: { ...state.CONFIG.ui, accent: 'teal', theme: 'light' },
+      });
+
+      await settings.saveSettings();
+
+      const saved = window.electronAPI.updateConfig.mock.calls.at(-1)[0];
+      expect(saved.ui).toEqual(expect.objectContaining({ accent: 'teal', theme: 'light' }));
+      expect(saved.profileSyncTouchedKeys || []).not.toContain('ui.accent');
+      expect(saved.profileSyncTouchedKeys || []).not.toContain('ui.theme');
+    });
+
     test('opening a picker without changing it does not count as an edit', async () => {
       state.setConfig({ ...state.CONFIG, ui: { ...state.CONFIG.ui, density: 'comfortable' } });
       await settings.openSettings();
