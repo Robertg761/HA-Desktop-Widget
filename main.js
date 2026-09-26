@@ -42,11 +42,13 @@ const {
 const IS_ISOLATED_PROFILE = hasIsolatedProfile();
 let initialLaunchAction = process.env.HA_WIDGET_LAUNCH_VISIBILITY || getLaunchAction();
 const { createOmarchyThemeWatcher } = require('./src/omarchy-theme.cjs');
+const { watchForStatusNotifierWatcher } = require('./src/linux-tray-host.cjs');
 const {
   ensureAppImageDesktopEntry,
   repairStaleAppImageLaunchers,
 } = require('./src/linux-desktop-entry.cjs');
 let omarchyThemeWatcher = null;
+let trayHostWatch = null;
 const {
   readHyprlandMonitors,
   chooseLayerMonitor,
@@ -6765,6 +6767,31 @@ function buildTrayContextMenu() {
   return protectAutoHideDuringMenu(menu);
 }
 
+/**
+ * A Wayland bar that starts after the widget at login never sees its tray icon, because
+ * Electron falls back to an XEmbed icon that no Wayland bar shows. Recreate the icons once a
+ * StatusNotifier host turns up; see src/linux-tray-host.cjs.
+ */
+function startTrayHostWatch() {
+  trayHostWatch?.stop();
+  trayHostWatch = watchForStatusNotifierWatcher({
+    log,
+    onAppeared: () => {
+      trayHostWatch = null;
+      // The bar claims the watcher name before its host registers; give it a moment.
+      setTimeout(() => {
+        if (isQuitting || !tray) return;
+        log.info('StatusNotifier host appeared; recreating tray icons');
+        if (!tray.isDestroyed?.()) tray.destroy();
+        tray = null;
+        destroyTrayEntityIcons();
+        createTray();
+        syncTrayEntitiesWithConfig();
+      }, 1000);
+    },
+  });
+}
+
 function createTray() {
   log.info('Creating system tray icon');
   if (!tray || tray.isDestroyed?.()) {
@@ -6813,6 +6840,9 @@ function schedulePostWindowStartupTasks() {
     } catch (error) {
       log.warn('Tray startup initialization failed:', error.message);
       finishSmokeTest(false, `Tray startup initialization failed: ${error.message}`);
+    }
+    if (process.platform === 'linux' && waylandSession && !IS_SMOKE_TEST_MODE) {
+      startTrayHostWatch();
     }
 
     try {
@@ -11242,6 +11272,8 @@ function shutDownRuntimeAfterConfigFlush() {
   closeLegacyPortalShortcutsControllers();
   unregisterGlobalHotkeys();
   unregisterPopupHotkey();
+  trayHostWatch?.stop();
+  trayHostWatch = null;
   kwinWindowRaiser?.close();
 }
 
