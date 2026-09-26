@@ -632,6 +632,20 @@ describe('Settings + Config Integration', () => {
       );
     });
 
+    test('opening a picker without changing it does not count as an edit', async () => {
+      state.setConfig({ ...state.CONFIG, ui: { ...state.CONFIG.ui, density: 'comfortable' } });
+      await settings.openSettings();
+      // Opening and closing the select changes nothing.
+      document.getElementById('density-select').click();
+      state.setConfig({ ...state.CONFIG, ui: { ...state.CONFIG.ui, density: 'compact' } });
+
+      await settings.saveSettings();
+
+      expect(window.electronAPI.updateConfig).toHaveBeenLastCalledWith(
+        expect.objectContaining({ ui: expect.objectContaining({ density: 'compact' }) })
+      );
+    });
+
     test('OAuth settings hide the access token and preserve authorization on unrelated saves', async () => {
       state.CONFIG.homeAssistant = {
         url: 'https://ha.example.test',

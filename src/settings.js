@@ -1129,6 +1129,7 @@ function saveCustomColorFromEditor() {
   };
 
   pendingCustomColors = [...pendingCustomColors, customColor];
+  markSettingsTouched('ui.customColors');
   setCustomThemes(pendingCustomColors);
   persistCustomColorsImmediately();
   selectThemeForActiveTarget(customColor.id);
@@ -1150,6 +1151,7 @@ function renameSelectedCustomColor() {
     return;
   }
 
+  markSettingsTouched('ui.customColors');
   pendingCustomColors = pendingCustomColors.map((entry) => {
     if (entry.id !== selectedTheme.id) return entry;
     return {
@@ -1170,6 +1172,7 @@ function removeSelectedCustomColor() {
   if (!selectedTheme?.isCustom) return;
 
   pendingCustomColors = pendingCustomColors.filter((entry) => entry.id !== selectedTheme.id);
+  markSettingsTouched('ui.customColors');
   setCustomThemes(pendingCustomColors);
   persistCustomColorsImmediately();
 
@@ -1778,6 +1781,7 @@ function updateThemeModeControl() {
  * @param {string} mode - 'auto', 'dark' or 'light'.
  */
 function previewThemeMode(mode) {
+  markSettingsTouched('ui.theme');
   pendingThemeMode = normalizeThemeMode(mode);
   applyTheme(pendingThemeMode);
   applyAccentTheme(pendingAccent || getCurrentAccentTheme());
@@ -2209,6 +2213,7 @@ function initPrimaryCardsUI() {
   const resetBtn = document.getElementById('primary-cards-reset');
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
+      markSettingsTouched('primaryCards');
       setPendingPrimaryCards(PRIMARY_CARD_DEFAULTS);
     });
   }
@@ -2223,6 +2228,7 @@ function initPrimaryCardsUI() {
       const value = actionBtn.dataset.primaryValue;
       const selections = getPendingPrimaryCards();
       selections[cardIndex] = value;
+      markSettingsTouched('primaryCards');
       setPendingPrimaryCards(selections);
       return;
     }
@@ -2234,6 +2240,7 @@ function initPrimaryCardsUI() {
       const entityId = assignBtn.dataset.entityId;
       const selections = getPendingPrimaryCards();
       selections[cardIndex] = entityId;
+      markSettingsTouched('primaryCards');
       setPendingPrimaryCards(selections);
     }
   });
@@ -2506,6 +2513,7 @@ function applyCustomEntityIconFromInput(entityId, rawIcon) {
     showToast(t('Custom icon cleared. Click Save to persist changes.'), 'info', 2200);
   }
   pendingCustomEntityIcons = next;
+  markSettingsTouched('customEntityIcons');
   setCustomEntityIconPickerQuery(entityId, '');
   activeCustomEntityIconPickerEntityId = null;
   renderCustomEntityIconsList();
@@ -2519,6 +2527,7 @@ function resetCustomEntityIcon(entityId) {
   lastCustomEntityIconAction = { entityId, action: 'reset' };
   showToast(t('Custom icon reset. Click Save to persist changes.'), 'info', 2200);
   pendingCustomEntityIcons = next;
+  markSettingsTouched('customEntityIcons');
   setCustomEntityIconPickerQuery(entityId, '');
   activeCustomEntityIconPickerEntityId = null;
   renderCustomEntityIconsList();
@@ -2526,6 +2535,7 @@ function resetCustomEntityIcon(entityId) {
 
 function resetAllCustomEntityIcons() {
   pendingCustomEntityIcons = {};
+  markSettingsTouched('customEntityIcons');
   customEntityIconPickerQueryByEntityId = {};
   activeCustomEntityIconPickerEntityId = null;
   lastCustomEntityIconAction = null;
@@ -4276,9 +4286,11 @@ const PROFILE_SYNCED_SETTINGS = [
 ];
 // The config the open form was filled from.
 let settingsFormBaseConfig = null;
-// Synced settings the user has interacted with since the form opened ('key' or
+// Synced settings the user has changed since the form opened ('key' or
 // 'ui.key'). An explicit choice wins even when it equals the value the form
-// opened with.
+// opened with. Native controls are tracked through their input and change
+// events (SETTINGS_CONTROL_KEYS); button-style pickers mark themselves where
+// they change their pending value, so merely opening a picker counts as nothing.
 let settingsTouchedKeys = new Set();
 const SETTINGS_CONTROL_KEYS = [
   ['#always-on-top', ['alwaysOnTop']],
@@ -4287,9 +4299,6 @@ const SETTINGS_CONTROL_KEYS = [
   ['#frosted-glass', ['frostedGlass']],
   ['#weather-entity-select', ['selectedWeatherEntity']],
   ['#entity-alerts-enabled', ['entityAlerts']],
-  ['#primary-media-player-dropdown', ['primaryMediaPlayer']],
-  ['#primary-cards-section, #primary-cards-reset', ['primaryCards']],
-  ['#custom-entity-icons-section', ['customEntityIcons']],
   ['#weather-effects-enabled', ['ui.weatherEffectsEnabled']],
   ['#weather-override-select', ['ui.weatherOverride']],
   ['#language-select', ['ui.language']],
@@ -4300,8 +4309,6 @@ const SETTINGS_CONTROL_KEYS = [
   ['#follow-omarchy', ['ui.followOmarchy']],
   ['#time-format', ['ui.timeFormat', 'ui.use24HourClock']],
   ['#date-format', ['ui.dateFormat']],
-  ['#theme-mode-control', ['ui.theme']],
-  ['#custom-color-details', ['ui.customColors']],
 ];
 
 function markSettingsTouched(...keys) {
@@ -4365,7 +4372,7 @@ async function openSettings(uiHooks) {
     if (!modal) return;
     if (!modal.dataset.touchTracking) {
       modal.dataset.touchTracking = 'true';
-      ['input', 'change', 'click'].forEach((type) =>
+      ['input', 'change'].forEach((type) =>
         modal.addEventListener(type, trackSettingsControlInteraction, true)
       );
     }
@@ -6112,6 +6119,7 @@ function populateMediaPlayerDropdown() {
       option.addEventListener('click', () => {
         const value = option.getAttribute('data-value');
         const displayText = option.textContent;
+        markSettingsTouched('primaryMediaPlayer');
         setCustomDropdownValue(value, displayText);
         closeCustomDropdown();
       });
