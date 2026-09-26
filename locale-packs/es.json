@@ -1596,6 +1596,8 @@
     "System keyring is locked": "El llavero del sistema está bloqueado",
     "Restart Widget": "Reiniciar widget",
     "Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.": "El llavero del sistema está bloqueado o no se está ejecutando, por lo que no se puede leer el token guardado de Home Assistant. Desbloquea el llavero y reinicia el widget.",
-    "The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.": "El token cifrado se ha conservado. Cuando desbloquees el llavero, al reiniciar el widget se volverá a leer, o puedes volver a introducir tu token en Configuración."
+    "The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.": "El token cifrado se ha conservado. Cuando desbloquees el llavero, al reiniciar el widget se volverá a leer, o puedes volver a introducir tu token en Configuración.",
+    "Add to Omarchy Bar": "Añadir a la barra de Omarchy",
+    "Could not add Home Assistant to the Omarchy bar": "No se pudo añadir Home Assistant a la barra de Omarchy"
   }
 }

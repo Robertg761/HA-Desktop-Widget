@@ -1596,6 +1596,8 @@
     "System keyring is locked": "Le trousseau de clés du système est verrouillé",
     "Restart Widget": "Redémarrer le widget",
     "Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.": "Le trousseau de clés du système est verrouillé ou ne fonctionne pas, le jeton Home Assistant enregistré ne peut donc pas être lu. Déverrouillez le trousseau, puis redémarrez le widget.",
-    "The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.": "Le jeton chiffré a été conservé. Une fois le trousseau déverrouillé, redémarrer le widget le relit, ou vous pouvez saisir à nouveau votre jeton dans les Paramètres."
+    "The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.": "Le jeton chiffré a été conservé. Une fois le trousseau déverrouillé, redémarrer le widget le relit, ou vous pouvez saisir à nouveau votre jeton dans les Paramètres.",
+    "Add to Omarchy Bar": "Ajouter à la barre Omarchy",
+    "Could not add Home Assistant to the Omarchy bar": "Impossible d'ajouter Home Assistant à la barre Omarchy"
   }
 }

@@ -25,7 +25,7 @@ Light, climate, fan, cover, and media tiles include a **Controls** button (the s
 
 ## Omarchy and Arch Linux
 
-See the [Omarchy guide](docs/omarchy.md) for native desktop layers, independent desktop pins, Hyprland shortcut setup, live theme following, and Arch packaging. Build a local pacman package with `npm run dist:arch` followed by `makepkg --nodeps` in `dist/arch`.
+See the [Omarchy guide](docs/omarchy.md) for native desktop layers, independent desktop pins, the Omarchy 4 bar plugin, Hyprland shortcut setup, live theme following, and Arch packaging. Build a local pacman package with `npm run dist:arch` followed by `makepkg --nodeps` in `dist/arch`.
 
 ## Weather Effects
 

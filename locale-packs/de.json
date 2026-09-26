@@ -1596,6 +1596,8 @@
     "System keyring is locked": "Systemschlüsselbund ist gesperrt",
     "Restart Widget": "Widget neu starten",
     "Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.": "Der Systemschlüsselbund ist gesperrt oder läuft nicht, daher kann das gespeicherte Home Assistant-Token nicht gelesen werden. Entsperre den Schlüsselbund und starte das Widget dann neu.",
-    "The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.": "Das verschlüsselte Token wurde aufbewahrt. Nach dem Entsperren des Schlüsselbunds liest ein Neustart des Widgets es wieder ein, oder du gibst dein Token in den Einstellungen neu ein."
+    "The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.": "Das verschlüsselte Token wurde aufbewahrt. Nach dem Entsperren des Schlüsselbunds liest ein Neustart des Widgets es wieder ein, oder du gibst dein Token in den Einstellungen neu ein.",
+    "Add to Omarchy Bar": "Zur Omarchy-Leiste hinzufügen",
+    "Could not add Home Assistant to the Omarchy bar": "Home Assistant konnte nicht zur Omarchy-Leiste hinzugefügt werden"
   }
 }

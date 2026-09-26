@@ -186,6 +186,7 @@ function createElectronApi(ipcRenderer, platform) {
     minimizeWindow: () => invoke('minimize-window'),
     focusWindow: () => invoke('focus-window'),
     showWindow: () => invoke('show-window'),
+    publishOmarchyBarStates: (states) => invoke('publish-omarchy-bar-states', states),
     focusDesktopPin: (entityId) => invoke('focus-desktop-pin', entityId),
     restartApp: () => invokeChecked('restart-app'),
     quitApp: () => invoke('quit-app'),

@@ -1596,6 +1596,8 @@
     "System keyring is locked": "سلسلة مفاتيح النظام مقفلة",
     "Restart Widget": "إعادة تشغيل الأداة",
     "Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.": "سلسلة مفاتيح النظام مقفلة أو لا تعمل، لذا لا يمكن قراءة رمز Home Assistant المحفوظ. افتح قفل سلسلة المفاتيح، ثم أعد تشغيل الأداة.",
-    "The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.": "تم الاحتفاظ بالرمز المشفّر. بعد فتح قفل سلسلة المفاتيح، تؤدي إعادة تشغيل الأداة إلى قراءته مجددًا، أو يمكنك إعادة إدخال الرمز في الإعدادات."
+    "The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.": "تم الاحتفاظ بالرمز المشفّر. بعد فتح قفل سلسلة المفاتيح، تؤدي إعادة تشغيل الأداة إلى قراءته مجددًا، أو يمكنك إعادة إدخال الرمز في الإعدادات.",
+    "Add to Omarchy Bar": "إضافة إلى شريط Omarchy",
+    "Could not add Home Assistant to the Omarchy bar": "تعذّرت إضافة Home Assistant إلى شريط Omarchy"
   }
 }

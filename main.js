@@ -44,11 +44,28 @@ let initialLaunchAction = process.env.HA_WIDGET_LAUNCH_VISIBILITY || getLaunchAc
 const { createOmarchyThemeWatcher } = require('./src/omarchy-theme.cjs');
 const { watchForStatusNotifierWatcher } = require('./src/linux-tray-host.cjs');
 const {
+  OMARCHY_BAR_PLUGIN_ID,
+  buildOmarchyBarStatus,
+  createOmarchyBarPublisher,
+  getEntityToggleRequest,
+  getOmarchyBarPaths,
+  installOmarchyBarPluginFiles,
+  isAllowedOmarchyBarToggle,
+  isOmarchyShellInstalled,
+  readOmarchyBarEntry,
+  resolveOmarchyBarEntities,
+  updateInstalledOmarchyBarPlugin,
+} = require('./src/omarchy-bar.cjs');
+const {
   ensureAppImageDesktopEntry,
   repairStaleAppImageLaunchers,
 } = require('./src/linux-desktop-entry.cjs');
 let omarchyThemeWatcher = null;
 let trayHostWatch = null;
+// Omarchy 4 bar plugin support; see src/omarchy-bar.cjs. Null unless the Omarchy shell exists.
+let omarchyBarPublisher = null;
+let omarchyBarEntry = { present: false, entities: null, barEntities: null };
+const omarchyBarStates = new Map();
 const {
   readHyprlandMonitors,
   chooseLayerMonitor,
@@ -570,6 +587,11 @@ if (!gotSingleInstanceLock) {
   // popup hotkey do. This is also the only way back for a window hidden to the tray on a desktop
   // whose tray is missing or broken.
   app.on('second-instance', (_event, argv) => {
+    const entityToggle = getEntityToggleRequest(argv);
+    if (entityToggle) {
+      handleOmarchyBarEntityToggle(entityToggle);
+      return;
+    }
     const action = getLaunchAction(argv);
     if (!mainWindow) {
       initialLaunchAction = action;
@@ -1800,6 +1822,7 @@ function sanitizeConfigForRenderer(inputConfig) {
     cloned.developmentDemo = { climate: true, mode: 'overlay' };
   }
   cloned.desktopAppearance = omarchyThemeWatcher?.get() || null;
+  cloned.omarchyBarEntities = getOmarchyBarEntities().all;
   cloned.desktopCapabilities = {
     layerMode: isLayerShellChildProcess,
     canDrag: isLayerShellChildProcess && isHyprland(),
@@ -4394,6 +4417,7 @@ function pruneConfig(target) {
   delete target.secureStoragePending;
   delete target.desktopCapabilities;
   delete target.desktopAppearance;
+  delete target.omarchyBarEntities;
   delete target.configRevision;
   delete target.configRecovery;
   delete target.persistenceWarnings;
@@ -6730,6 +6754,9 @@ function buildTrayContextMenu() {
           },
         ]
       : []),
+    ...(omarchyBarPublisher && !omarchyBarEntry.present
+      ? [{ label: mainT('Add to Omarchy Bar'), click: () => void addOmarchyBarPlugin() }]
+      : []),
     { type: 'separator' },
     {
       label: mainT('DevTools'),
@@ -6795,6 +6822,126 @@ function buildTrayContextMenu() {
     },
   ]);
   return protectAutoHideDuringMenu(menu);
+}
+
+function getOmarchyBarEntities() {
+  if (!omarchyBarPublisher || !omarchyBarEntry.present) return { panel: [], bar: [], all: [] };
+  return resolveOmarchyBarEntities(omarchyBarEntry, config?.favoriteEntities);
+}
+
+/** The command the bar plugin runs to reach this widget, or null to use its default. */
+function getOmarchyBarLaunchArgv() {
+  if (process.env.APPIMAGE) return [process.env.APPIMAGE];
+  return app.isPackaged ? [process.execPath] : null;
+}
+
+function readOmarchyBarShellEntry() {
+  try {
+    return readOmarchyBarEntry(fs.readFileSync(getOmarchyBarPaths().shellConfig, 'utf8'));
+  } catch {
+    return { present: false, entities: null, barEntities: null };
+  }
+}
+
+function refreshOmarchyBarEntry() {
+  const next = readOmarchyBarShellEntry();
+  if (JSON.stringify(next) === JSON.stringify(omarchyBarEntry)) return;
+  const wasPresent = omarchyBarEntry.present;
+  omarchyBarEntry = next;
+  // The renderer publishes the states of whatever the bar now asks for.
+  pushConfigToRenderer();
+  omarchyBarPublisher?.update();
+  if (wasPresent !== next.present && tray && !tray.isDestroyed?.()) createTray();
+}
+
+/**
+ * Publish status for the Omarchy 4 bar plugin while the Omarchy shell is installed. An isolated
+ * profile stays out of it: it would overwrite the status of the user's real widget.
+ */
+function startOmarchyBarIntegration() {
+  if (process.platform !== 'linux' || IS_SMOKE_TEST_MODE || IS_ISOLATED_PROFILE) return;
+  if (!isOmarchyShellInstalled()) return;
+  const paths = getOmarchyBarPaths();
+  try {
+    if (
+      updateInstalledOmarchyBarPlugin({
+        sourceDir: getBundledOmarchyBarPluginDir(),
+        pluginDir: paths.pluginDir,
+      })
+    ) {
+      log.info('Updated the Omarchy bar plugin to the version bundled with this widget');
+    }
+  } catch (error) {
+    log.warn('Could not update the Omarchy bar plugin:', error.message);
+  }
+  omarchyBarEntry = readOmarchyBarShellEntry();
+  omarchyBarPublisher = createOmarchyBarPublisher({
+    statusFile: paths.statusFile,
+    log,
+    getStatus: () =>
+      buildOmarchyBarStatus({
+        connection: latestHaConnectionState,
+        states: omarchyBarStates,
+        entities: getOmarchyBarEntities(),
+        customEntityNames: config?.customEntityNames,
+        launch: getOmarchyBarLaunchArgv(),
+      }),
+  });
+  if (!omarchyBarPublisher) return;
+  fs.watchFile(paths.shellConfig, { interval: 2000, persistent: false }, refreshOmarchyBarEntry);
+}
+
+function stopOmarchyBarIntegration() {
+  if (!omarchyBarPublisher) return;
+  fs.unwatchFile(getOmarchyBarPaths().shellConfig, refreshOmarchyBarEntry);
+  omarchyBarPublisher.stop();
+  omarchyBarPublisher = null;
+}
+
+/** `--entity-toggle=<id>` from the bar plugin: only entities the bar shows, and only toggles. */
+function handleOmarchyBarEntityToggle(entityId) {
+  if (!isAllowedOmarchyBarToggle(entityId, getOmarchyBarEntities())) {
+    log.warn(`Ignoring an Omarchy bar toggle for ${entityId}, which the bar does not show`);
+    return;
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('hotkey-triggered', { entityId, action: 'toggle' });
+  }
+}
+
+function getBundledOmarchyBarPluginDir() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'omarchy-plugin')
+    : path.join(__dirname, 'omarchy-plugin');
+}
+
+/** Tray action: copy the bundled plugin into Omarchy and place it in the bar. */
+async function addOmarchyBarPlugin() {
+  const omarchyBin = path.join(process.env.OMARCHY_PATH || '/usr/share/omarchy', 'bin');
+  const env = { ...process.env, PATH: `${omarchyBin}:${process.env.PATH || ''}` };
+  const run = (command, args) =>
+    new Promise((resolve, reject) => {
+      require('child_process').execFile(
+        path.join(omarchyBin, command),
+        args,
+        { env, timeout: 15000 },
+        (error, _stdout, stderr) =>
+          error ? reject(new Error(String(stderr || error.message).trim())) : resolve()
+      );
+    });
+  try {
+    installOmarchyBarPluginFiles({
+      sourceDir: getBundledOmarchyBarPluginDir(),
+      pluginDir: getOmarchyBarPaths().pluginDir,
+    });
+    await run('omarchy-shell', ['shell', 'rescanPlugins']);
+    await run('omarchy-plugin-enable', [OMARCHY_BAR_PLUGIN_ID]);
+    log.info('Added the Home Assistant widget to the Omarchy bar');
+    refreshOmarchyBarEntry();
+  } catch (error) {
+    log.warn('Could not add the Omarchy bar plugin:', error.message);
+    dialog.showErrorBox(mainT('Could not add Home Assistant to the Omarchy bar'), error.message);
+  }
 }
 
 /**
@@ -7840,7 +7987,27 @@ ipcMain.handle('publish-ha-connection-state', (event, status) => {
   Object.keys(config?.desktopPins || {}).forEach((entityId) => {
     sendDesktopPinUpdate(entityId, { type: 'connection' });
   });
+  omarchyBarPublisher?.update();
   return { success: true };
+});
+
+// The renderer sends the states of exactly the entities the Omarchy bar asked for
+// (config.omarchyBarEntities), as a full set each time.
+ipcMain.handle('publish-omarchy-bar-states', (event, states) => {
+  const sender = authorizeIpcSender(event, 'publish-omarchy-bar-states');
+  if (!sender) return rejectUnauthorizedIpc('publish-omarchy-bar-states');
+  if (!omarchyBarPublisher) return { success: true, discarded: true };
+  const wanted = new Set(getOmarchyBarEntities().all);
+  omarchyBarStates.clear();
+  if (isPlainObject(states)) {
+    Object.entries(states).forEach(([entityId, entity]) => {
+      const normalizedEntityId = normalizeEntityId(entityId);
+      if (!wanted.has(normalizedEntityId) || !isPlainObject(entity)) return;
+      omarchyBarStates.set(normalizedEntityId, entity);
+    });
+  }
+  omarchyBarPublisher.update();
+  return { success: true, count: omarchyBarStates.size };
 });
 
 ipcMain.handle('publish-ha-snapshot', (event, states) => {
@@ -11329,6 +11496,7 @@ function shutDownRuntimeAfterConfigFlush() {
   unregisterPopupHotkey();
   trayHostWatch?.stop();
   trayHostWatch = null;
+  stopOmarchyBarIntegration();
   kwinWindowRaiser?.close();
 }
 
@@ -11524,6 +11692,7 @@ app
       });
     }
     applyNativeThemeSource();
+    startOmarchyBarIntegration();
     enableDevelopmentClimateDemo();
     startDevLiveReloadWatchers();
 

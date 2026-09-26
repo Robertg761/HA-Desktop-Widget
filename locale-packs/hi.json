@@ -1596,6 +1596,8 @@
     "System keyring is locked": "सिस्टम कीरिंग लॉक है",
     "Restart Widget": "विजेट पुनः आरंभ करें",
     "Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.": "सिस्टम कीरिंग लॉक है या नहीं चल रही है, इसलिए सहेजा गया Home Assistant टोकन पढ़ा नहीं जा सकता। कीरिंग अनलॉक करें, फिर विजेट को पुनः आरंभ करें।",
-    "The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.": "एन्क्रिप्ट किया गया टोकन सुरक्षित रखा गया है। कीरिंग अनलॉक होने के बाद विजेट को पुनः आरंभ करने पर वह फिर से पढ़ लिया जाएगा, या आप सेटिंग्स में अपना टोकन फिर से दर्ज कर सकते हैं।"
+    "The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.": "एन्क्रिप्ट किया गया टोकन सुरक्षित रखा गया है। कीरिंग अनलॉक होने के बाद विजेट को पुनः आरंभ करने पर वह फिर से पढ़ लिया जाएगा, या आप सेटिंग्स में अपना टोकन फिर से दर्ज कर सकते हैं।",
+    "Add to Omarchy Bar": "Omarchy बार में जोड़ें",
+    "Could not add Home Assistant to the Omarchy bar": "Home Assistant को Omarchy बार में नहीं जोड़ा जा सका"
   }
 }

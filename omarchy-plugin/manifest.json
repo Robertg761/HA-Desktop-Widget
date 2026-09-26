@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "com.github.robertg761.hadesktopwidget",
+  "name": "Home Assistant",
+  "version": "1.0.0",
+  "author": "Robertg761",
+  "license": "MIT",
+  "description": "Home Assistant status, values, and quick toggles from HA Desktop Widget in the Omarchy bar.",
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "Widget.qml" },
+  "barWidget": {
+    "displayName": "Home Assistant",
+    "description": "Shows Home Assistant values and toggles devices through HA Desktop Widget.",
+    "category": "Home",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

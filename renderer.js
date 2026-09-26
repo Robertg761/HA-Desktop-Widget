@@ -242,6 +242,8 @@ const pendingStateChangedEntities = new Map();
 let pendingStateChangedFlushId = null;
 let desktopPinStatePublishingActive = false;
 let haStatesSnapshotReceived = false;
+// Entity ids whose states were last sent for the Omarchy bar plugin, joined.
+let publishedOmarchyBarEntities = '';
 const UI_TICK_ACTIVE_INTERVAL_MS = 1000;
 const UI_TICK_IDLE_POLL_INTERVAL_MS = 15000;
 const UI_TICK_MINUTE_BUFFER_MS = 50;
@@ -417,6 +419,30 @@ function refreshDesktopPinStatePublishing({ force = false, coalesce = true } = {
   publishDesktopPinSnapshot({ coalesce });
 }
 
+/**
+ * The Omarchy bar plugin shows a handful of entities, which main names in
+ * config.omarchyBarEntities (empty everywhere else). Send main their states as a full set when
+ * that list changes, on a fresh snapshot (force), or when one of them changes (force).
+ */
+function publishOmarchyBarStates({ force = false } = {}) {
+  if (IS_DESKTOP_PIN_MODE) return;
+  const ids = Array.isArray(state.CONFIG?.omarchyBarEntities)
+    ? state.CONFIG.omarchyBarEntities
+    : [];
+  const key = ids.join(',');
+  if (!ids.length && !publishedOmarchyBarEntities) return;
+  if (!force && key === publishedOmarchyBarEntities) return;
+  if (ids.length && !haStatesSnapshotReceived) return;
+  publishedOmarchyBarEntities = key;
+  const states = {};
+  ids.forEach((entityId) => {
+    if (state.STATES?.[entityId]) states[entityId] = state.STATES[entityId];
+  });
+  window.electronAPI.publishOmarchyBarStates?.(states)?.catch((error) => {
+    log.warn('Failed to publish Omarchy bar states:', error);
+  });
+}
+
 function flushPendingStateChangedEntities() {
   pendingStateChangedFlushId = null;
   const changedEntityIds = Array.from(pendingStateChangedEntities.keys());
@@ -424,6 +450,13 @@ function flushPendingStateChangedEntities() {
   pendingStateChangedEntities.clear();
   const hasDeletion = changes.some(({ entity }) => !entity);
   const publishForDesktopPins = hasDesktopPinsConfigured();
+  const omarchyBarEntities = state.CONFIG?.omarchyBarEntities;
+  if (
+    Array.isArray(omarchyBarEntities) &&
+    changedEntityIds.some((entityId) => omarchyBarEntities.includes(entityId))
+  ) {
+    publishOmarchyBarStates({ force: true });
+  }
 
   if (hasDeletion && publishForDesktopPins) {
     // A full snapshot is the only renderer-to-main IPC operation that can remove
@@ -1518,6 +1551,7 @@ function applyRendererConfig(nextConfig) {
   });
   const renderedConfig = state.CONFIG;
   state.setConfig(normalizedGraphs.config);
+  publishOmarchyBarStates();
   // Kept local: the migration write below can echo back synchronously and re-enter this function
   // before the appearance pass runs, and that inner call must not decide the outer pass.
   const change = describeRendererConfigChange(
@@ -2119,6 +2153,7 @@ websocket.on('message', (msg) => {
             // No coalescing: this map is fresh from get_states and may drop deleted
             // entities that an in-flight publish still carries.
             refreshDesktopPinStatePublishing({ force: true, coalesce: false });
+            publishOmarchyBarStates({ force: true });
             updateMainConnectionState('connected');
             setConnectedStatus();
             if (!IS_DESKTOP_PIN_MODE) {

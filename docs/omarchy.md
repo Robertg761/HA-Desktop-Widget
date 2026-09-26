@@ -8,6 +8,30 @@ Always on top and Hide on focus loss are unavailable in desktop layer mode. Use 
 
 If the widget starts at login before the bar, its tray icon appears as soon as the bar does.
 
+## Omarchy bar
+
+On Omarchy 4, choose Add to Omarchy Bar in the widget's tray menu. It copies the bundled plugin into `~/.config/omarchy/plugins/com.github.robertg761.hadesktopwidget` and places it on the right side of the bar. To add it by hand from the Arch package instead:
+
+```sh
+cp -r /opt/ha-desktop-widget/resources/omarchy-plugin ~/.config/omarchy/plugins/com.github.robertg761.hadesktopwidget
+omarchy-shell shell rescanPlugins
+omarchy plugin enable com.github.robertg761.hadesktopwidget
+```
+
+The bar shows a Home Assistant icon, dimmed while the widget is disconnected or not running. Click it to open a panel listing your devices and their values. Clicking a light, switch, fan, input boolean, automation, siren, or humidifier there toggles it. Right-click the icon to show or hide the widget. When the panel has nothing to list, a click shows or hides the widget too.
+
+The panel lists the first twelve Quick Access favorites until you choose entities. Choose them, and up to four whose values appear in the bar itself, on the plugin's entry in `~/.config/omarchy/shell.json`:
+
+```json
+{
+  "id": "com.github.robertg761.hadesktopwidget",
+  "entities": ["light.office", "switch.coffee_maker", "sensor.living_room_temperature"],
+  "barEntities": ["sensor.living_room_temperature"]
+}
+```
+
+The widget must be running for the plugin to show values; the plugin never receives Home Assistant credentials. The widget publishes the chosen entities to `$XDG_RUNTIME_DIR/ha-desktop-widget/omarchy-bar.json`, and the plugin sends its actions through the widget's command line. Updating the widget also updates an installed plugin. Omarchy 3 uses waybar, which cannot load these plugins; the tray icon is available there instead.
+
 ## Shortcuts
 
 First-run setup explains desktop-layer visibility and offers a popup shortcut check. Use Set up shortcuts to open the Hotkeys settings, configure a popup shortcut, and copy its binding into Hyprland. Return to setup, press the shortcut, then choose Check popup shortcut. Setup can also continue without a shortcut.

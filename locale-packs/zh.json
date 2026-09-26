@@ -1596,6 +1596,8 @@
     "System keyring is locked": "系统密钥环已锁定",
     "Restart Widget": "重新启动小组件",
     "Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.": "系统密钥环已锁定或未运行，因此无法读取已保存的 Home Assistant 令牌。请解锁密钥环，然后重新启动小组件。",
-    "The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.": "加密的令牌已保留。解锁密钥环后，重新启动小组件即可再次读取，或者你也可以在设置中重新输入令牌。"
+    "The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.": "加密的令牌已保留。解锁密钥环后，重新启动小组件即可再次读取，或者你也可以在设置中重新输入令牌。",
+    "Add to Omarchy Bar": "添加到 Omarchy 栏",
+    "Could not add Home Assistant to the Omarchy bar": "无法将 Home Assistant 添加到 Omarchy 栏"
   }
 }
