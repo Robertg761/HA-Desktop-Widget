@@ -508,6 +508,9 @@ describe('main-process wiring safeguards', () => {
 
     expect(updateSource).toContain('const previousPassphraseMetadata = {');
     expect(updateSource).toContain('Object.assign(profileSync, previousPassphraseMetadata)');
+    expect(updateSource).toContain(
+      'keepMainOwnedProfileSyncResults(profileSync, config.profileSync)'
+    );
     expect(updateSource).toContain('resolveProfileSyncEncryptionRequest({');
     expect(mainSource).toContain('encryptionChangePending');
   });

@@ -1052,6 +1052,30 @@ describe('profile sync engine', () => {
     expect(fs.existsSync(syncFilePath())).toBe(false);
   });
 
+  test('a settings snapshot from before a sync cannot roll back its result', async () => {
+    const { desktop, laptop } = await createSyncedPair();
+    const staleSnapshot = JSON.parse(JSON.stringify(desktop.config.profileSync));
+    staleSnapshot.lastSyncStatus = 'error';
+    staleSnapshot.lastSyncError = 'Old failure';
+    staleSnapshot.lastSuccessfulSyncAt = null;
+    laptop.edit((config) => {
+      config.opacity = 0.7;
+    });
+    await laptop.sync();
+    await desktop.sync();
+    const current = desktop.config.profileSync;
+
+    const next = desktop.context.keepMainOwnedProfileSyncResults(
+      { ...current, ...staleSnapshot },
+      current
+    );
+    expect(next.lastSyncStatus).toBe('success');
+    expect(next.lastSyncError).toBe('');
+    expect(next.lastSuccessfulSyncAt).toBe(current.lastSuccessfulSyncAt);
+    expect(next.lastSuccessfulSyncAt).toEqual(expect.any(String));
+    expect(next.deviceId).toBe(current.deviceId);
+  });
+
   test('reports when the file was last written and by whom', async () => {
     const { desktop, laptop } = await createSyncedPair();
     laptop.edit((config) => {

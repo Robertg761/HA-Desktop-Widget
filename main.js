@@ -3078,6 +3078,32 @@ function collectProfileSyncFolderWarnings() {
   return warnings;
 }
 
+// Written by main as syncs run and as settings change. A renderer snapshot taken
+// before the last run would roll them back, so update-config keeps main's.
+const PROFILE_SYNC_MAIN_OWNED_RESULT_FIELDS = [
+  'lastSyncAt',
+  'lastSuccessfulSyncAt',
+  'lastSyncStatus',
+  'lastSyncError',
+  'profileUpdatedAt',
+  'deviceId',
+];
+
+/**
+ * Replaces the sync-result fields of an incoming profileSync object with the
+ * values main holds.
+ */
+function keepMainOwnedProfileSyncResults(nextProfileSync, currentProfileSync) {
+  PROFILE_SYNC_MAIN_OWNED_RESULT_FIELDS.forEach((field) => {
+    if (currentProfileSync && Object.prototype.hasOwnProperty.call(currentProfileSync, field)) {
+      nextProfileSync[field] = currentProfileSync[field];
+    } else {
+      delete nextProfileSync[field];
+    }
+  });
+  return nextProfileSync;
+}
+
 function updateProfileSyncStatus(status, errorMessage = '') {
   const profileSync = getProfileSyncConfig();
   profileSync.lastSyncAt = new Date().toISOString();
@@ -7041,6 +7067,7 @@ ipcMain.handle(
           )
         );
     profileSync.sectionUpdatedAt = { ...(config.profileSync?.sectionUpdatedAt || {}) };
+    keepMainOwnedProfileSyncResults(profileSync, config.profileSync);
     if (requiresInitialPreparation) {
       profileSync.firstEnableResolutionPending = true;
     } else if (!profileSync.enabled) {
