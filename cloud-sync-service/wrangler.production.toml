@@ -14,6 +14,7 @@ migrations_dir = "migrations"
 [vars]
 PUBLIC_URL = "https://sync.hadesktopwidget.com"
 LAUNCH_MODE = "prelaunch"
+PRIVATE_TEST_EMAILS = "robertgordon761@gmail.com"
 TRIAL_DAYS = "14"
 ENTITLEMENT_MODE = "subscription"
 STRIPE_AUTOMATIC_TAX = "false"

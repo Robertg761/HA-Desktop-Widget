@@ -14,6 +14,7 @@ import { createSession, findOrCreateUser } from './accounts.js';
 import {
   errorResponse,
   htmlPage,
+  isAllowedEmail,
   json,
   publicBaseUrl,
   randomToken,
@@ -242,6 +243,12 @@ export async function handleAuthCallback(request, env, deps, provider) {
   } catch {
     return appRedirect(pending.redirect_uri, {
       error: 'sign_in_failed',
+      state: pending.app_state,
+    });
+  }
+  if (!isAllowedEmail(env, identity.email)) {
+    return appRedirect(pending.redirect_uri, {
+      error: 'access_denied',
       state: pending.app_state,
     });
   }

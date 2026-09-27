@@ -41,6 +41,38 @@ describe('cloud sync service', () => {
     expect(world.calls).toHaveLength(0);
   });
 
+  test('private mode admits only verified allowlisted email and blocks old sessions', async () => {
+    const world = createWorld({
+      LAUNCH_MODE: 'private',
+      PRIVATE_TEST_EMAILS: 'robert@example.com',
+    });
+    world.googleUsers.set('allowed', {
+      sub: 'google-allowed', email: 'Robert@Example.com', email_verified: true,
+    });
+    const { body } = await world.signIn('google', 'allowed');
+    expect(body.user.email).toBe('robert@example.com');
+    expect((await world.authed(body.token, '/v1/account')).status).toBe(200);
+
+    world.googleUsers.set('denied', {
+      sub: 'google-denied', email: 'other@example.com', email_verified: true,
+    });
+    const { challenge } = world.pkce();
+    const start = await world.request(
+      `/v1/auth/start?${new URLSearchParams({
+        provider: 'google', redirect_uri: world.appRedirect,
+        state: 'app-state-0123456789', code_challenge: challenge,
+        code_challenge_method: 'S256',
+      })}`
+    );
+    const state = new URL(start.headers.get('Location')).searchParams.get('state');
+    const denied = await world.request(`/v1/auth/callback/google?code=denied&state=${state}`);
+    expect(new URL(denied.headers.get('Location')).searchParams.get('error')).toBe('access_denied');
+    expect(world.env.DB.raw.prepare('SELECT * FROM users').all()).toHaveLength(1);
+
+    world.env.PRIVATE_TEST_EMAILS = 'someone-else@example.com';
+    expect((await world.authed(body.token, '/v1/account')).status).toBe(401);
+  });
+
   describe('sign-in', () => {
     test('Google sign-in hands the app a session only for the matching verifier', async () => {
       const world = createWorld();

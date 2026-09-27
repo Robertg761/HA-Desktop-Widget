@@ -182,8 +182,11 @@ with `npx wrangler deploy --config wrangler.production.toml`. Its `LAUNCH_MODE =
 setting lets `/v1/health` respond but rejects all other requests with 503, including sign-in,
 profile writes, Checkout, and webhooks. Configure the live secrets on this Worker before
 moving `sync.hadesktopwidget.com` to it. Changing `LAUNCH_MODE` to `public` requires a new
-deployment; an unknown nonempty value remains closed. Keep the Stripe live webhook disabled
-until the public route points to the live Worker.
+deployment. Set it to `private` with `PRIVATE_TEST_EMAILS` as a comma-separated list of
+verified emails for a release rehearsal. Private mode denies other sign-ins and existing
+sessions; it still accepts signed Stripe webhooks for allowlisted customers. An unknown
+nonempty launch mode remains closed. Keep the Stripe live webhook disabled until the
+public route points to the live Worker.
 
 ## 6. Point the app at the service
 
@@ -205,7 +208,8 @@ The app only accepts `https` addresses, plus `http` on this computer for local d
 | Setting                        | Where    | Meaning                                                                                           |
 | ------------------------------ | -------- | ------------------------------------------------------------------------------------------------- |
 | `PUBLIC_URL`                   | `[vars]` | The service's public address. Must match the callback URLs registered with Google and GitHub.     |
-| `LAUNCH_MODE`                  | `[vars]` | `prelaunch` closes all routes except health; `public` opens the service. Omit for an existing sandbox. |
+| `LAUNCH_MODE`                  | `[vars]` | `prelaunch` closes all routes except health; `private` allows listed emails; `public` opens the service. Omit for an existing sandbox. |
+| `PRIVATE_TEST_EMAILS`          | `[vars]` | Verified email addresses allowed when `LAUNCH_MODE` is `private`, separated by commas. |
 | `TRIAL_DAYS`                   | `[vars]` | Days a new account can save changes without a subscription (default 14).                          |
 | `ENTITLEMENT_MODE`             | `[vars]` | `subscription` (default), or `open` to let every signed-in account sync, such as for a free beta. |
 | `STRIPE_PRICE_ID`              | `[vars]` | The yearly price.                                                                                 |

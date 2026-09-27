@@ -64,6 +64,16 @@ export function errorResponse(status, code, message, headers = {}) {
   return json({ error: code, message }, status, headers);
 }
 
+/** In private mode, only explicitly listed verified emails may use an account. */
+export function isAllowedEmail(env, email) {
+  if (env.LAUNCH_MODE !== 'private') return true;
+  if (!email) return false;
+  const normalized = String(email).trim().toLowerCase();
+  return String(env.PRIVATE_TEST_EMAILS || '')
+    .split(',')
+    .some((entry) => entry.trim().toLowerCase() === normalized);
+}
+
 function escapeHtml(value) {
   return String(value).replace(
     /[&<>"']/g,

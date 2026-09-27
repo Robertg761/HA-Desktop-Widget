@@ -1,4 +1,4 @@
-import { errorResponse, json, randomToken, sha256Hex } from './util.js';
+import { errorResponse, isAllowedEmail, json, randomToken, sha256Hex } from './util.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 // A session unused for this long stops working; signing in again replaces it.
@@ -34,6 +34,7 @@ export async function authenticate(request, env, deps) {
     .bind(tokenHash)
     .first();
   if (!session) return null;
+  if (!isAllowedEmail(env, session.email)) return null;
   const now = deps.now();
   if (now - session.last_used_at > SESSION_IDLE_LIMIT_MS) {
     await env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(tokenHash).run();
