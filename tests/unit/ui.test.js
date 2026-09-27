@@ -7045,4 +7045,153 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(typeof ui.updateWeatherEffects).toBe('function');
     });
   });
+
+  describe('describeQuickAccessTile', () => {
+    it('describes a tile the way the widget draws it, for the Omarchy bar', () => {
+      state.setStates({
+        'light.desk': {
+          entity_id: 'light.desk',
+          state: 'on',
+          attributes: { friendly_name: 'Desk', brightness: 217 },
+        },
+        'scene.movie': {
+          entity_id: 'scene.movie',
+          state: '2026-09-26T18:52:26+00:00',
+          attributes: { friendly_name: 'Movie' },
+        },
+        'calendar.home': {
+          entity_id: 'calendar.home',
+          state: 'off',
+          attributes: { friendly_name: 'Home', message: 'Dentist' },
+        },
+        'switch.gone': {
+          entity_id: 'switch.gone',
+          state: 'unavailable',
+          attributes: { friendly_name: 'Gone' },
+        },
+        'binary_sensor.door': {
+          entity_id: 'binary_sensor.door',
+          state: 'on',
+          attributes: { friendly_name: 'Door', device_class: 'door' },
+        },
+      });
+
+      expect(ui.describeQuickAccessTile('light.desk')).toMatchObject({
+        id: 'light.desk',
+        name: 'Desk',
+        value: '85%',
+        icon: { kind: 'line', name: 'lightbulb' },
+        active: true,
+        available: true,
+        action: 'toggle',
+        controls: true,
+      });
+      // A scene runs on click and has no status line, however recently it ran.
+      expect(ui.describeQuickAccessTile('scene.movie')).toMatchObject({
+        value: '',
+        action: 'activate',
+        active: false,
+        controls: false,
+      });
+      // A calendar opens its dialog in the widget and shows the next event.
+      expect(ui.describeQuickAccessTile('calendar.home')).toMatchObject({ action: 'dialog' });
+      expect(ui.describeQuickAccessTile('calendar.home').value).toContain('Dentist');
+      expect(ui.describeQuickAccessTile('switch.gone')).toMatchObject({
+        value: 'Unavailable',
+        available: false,
+        action: 'none',
+        controls: false,
+      });
+      // Read-only tiles show their state and do nothing on click, as in the widget.
+      expect(ui.describeQuickAccessTile('binary_sensor.door')).toMatchObject({
+        value: 'Open',
+        action: 'none',
+      });
+      // An entity Home Assistant no longer has keeps its tile, as the widget's repair tile does.
+      expect(ui.describeQuickAccessTile('light.removed_lamp')).toMatchObject({
+        name: 'removed lamp',
+        missing: true,
+        available: false,
+        icon: { kind: 'line', name: 'triangle-alert' },
+      });
+    });
+  });
+
+  describe('Quick Access tile controls outside the widget', () => {
+    const light = {
+      entity_id: 'light.desk',
+      state: 'on',
+      attributes: {
+        friendly_name: 'Desk',
+        brightness: 128,
+        supported_color_modes: ['color_temp', 'hs'],
+        min_color_temp_kelvin: 2200,
+        max_color_temp_kelvin: 6500,
+        color_temp_kelvin: 4000,
+      },
+    };
+    const switchEntity = {
+      entity_id: 'switch.plug',
+      state: 'off',
+      attributes: { friendly_name: 'Plug' },
+    };
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      mockCallService.mockClear();
+      state.setStates({ 'light.desk': light, 'switch.plug': switchEntity });
+    });
+
+    afterEach(() => jest.useRealTimers());
+
+    it('describes what the controls popup can adjust', () => {
+      expect(ui.describeQuickAccessTile('light.desk').controlState).toMatchObject({
+        kind: 'light',
+        on: true,
+        brightness: 50,
+        canSetBrightness: true,
+        colorTemp: { kelvin: 4000, min: 2200, max: 6500 },
+      });
+      expect(ui.describeQuickAccessTile('light.desk').controlState.colors.length).toBeGreaterThan(
+        0
+      );
+      expect(ui.describeQuickAccessTile('switch.plug').controlState).toBeNull();
+    });
+
+    it('applies popup changes with the same service calls as the widget', () => {
+      expect(ui.executeQuickAccessControl(light, 'brightness', 30)).toBe(true);
+      expect(ui.executeQuickAccessControl(light, 'brightness', 40)).toBe(true);
+      jest.advanceTimersByTime(200);
+      // Dragging sends many values; the debounce sends the last.
+      expect(mockCallService).toHaveBeenCalledTimes(1);
+      expect(mockCallService).toHaveBeenCalledWith('light', 'turn_on', {
+        entity_id: 'light.desk',
+        brightness_pct: 40,
+      });
+
+      mockCallService.mockClear();
+      expect(ui.executeQuickAccessControl(light, 'color_temp', 9000)).toBe(true);
+      jest.advanceTimersByTime(200);
+      expect(mockCallService).toHaveBeenCalledWith('light', 'turn_on', {
+        entity_id: 'light.desk',
+        color_temp_kelvin: 6500,
+      });
+
+      mockCallService.mockClear();
+      expect(ui.executeQuickAccessControl(light, 'color', '#FF6B9D')).toBe(true);
+      expect(mockCallService).toHaveBeenCalledWith('light', 'turn_on', {
+        entity_id: 'light.desk',
+        rgb_color: [255, 107, 157],
+      });
+    });
+
+    it('refuses what the entity cannot do', () => {
+      expect(ui.executeQuickAccessControl(switchEntity, 'brightness', 50)).toBe(false);
+      expect(ui.executeQuickAccessControl(light, 'position', 50)).toBe(false);
+      expect(ui.executeQuickAccessControl(light, 'brightness', 'bright')).toBe(false);
+      expect(ui.executeQuickAccessControl(light, 'color', 'not a colour')).toBe(false);
+      jest.advanceTimersByTime(500);
+      expect(mockCallService).not.toHaveBeenCalled();
+    });
+  });
 });

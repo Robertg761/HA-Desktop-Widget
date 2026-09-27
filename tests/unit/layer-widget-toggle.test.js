@@ -135,3 +135,18 @@ describe('showing the widget from the tray, launcher or --toggle', () => {
     expect(runtime.popupWindowPresenter.showAboveFullScreen).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('a raised layer widget on Hyprland losing focus', () => {
+  it('waits for the pointer to move off instead of lowering on the first blur', () => {
+    const start = mainSource.indexOf("mainWindow.on('blur'");
+    const blur = mainSource.slice(start, mainSource.indexOf('\n  });\n', start));
+    expect(blur).toContain('isHyprland()');
+    expect(blur).toContain('popupWindowPresenter.isElevated()');
+    // Only when the watch could start; otherwise the old immediate release runs.
+    expect(blur.indexOf('layerPointerRelease.start()')).toBeLessThan(
+      blur.indexOf('popupWindowPresenter.handleWindowBlur(mainWindow)')
+    );
+    const focusStart = mainSource.indexOf("mainWindow.on('focus'");
+    expect(mainSource.slice(focusStart, focusStart + 120)).toContain('layerPointerRelease.stop();');
+  });
+});
