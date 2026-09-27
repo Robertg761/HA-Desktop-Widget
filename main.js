@@ -53,10 +53,13 @@ const {
   OMARCHY_BAR_PLUGIN_ID,
   buildOmarchyBarStatus,
   createOmarchyBarPublisher,
-  getEntityToggleRequest,
+  cleanLineIconSvg,
+  cleanOmarchyBarTile,
+  createOmarchyBarCommandServer,
+  getOmarchyBarActionRequest,
   getOmarchyBarPaths,
   installOmarchyBarPluginFiles,
-  isAllowedOmarchyBarToggle,
+  isAllowedOmarchyBarAction,
   isOmarchyShellInstalled,
   readOmarchyBarEntry,
   rememberOmarchyBarLaunch,
@@ -78,12 +81,16 @@ const LAYER_STARTUP_RAISE_FALLBACK_MS = 1500;
 let layerBlurReleasedAt = null;
 // Omarchy 4 bar plugin support; see src/omarchy-bar.cjs. Null unless the Omarchy shell exists.
 let omarchyBarPublisher = null;
+// Listens for the bar's clicks and control changes; null while the integration is off.
+let omarchyBarCommandServer = null;
 let omarchyBarEntry = { present: false, entities: null, barEntities: null };
-const omarchyBarStates = new Map();
-// A bar click can start a fresh widget with `--entity-toggle` when the status file outlived a
-// crashed one. That request waits here until the renderer has the entity's state.
-let pendingOmarchyBarToggle = null;
-const OMARCHY_BAR_PENDING_TOGGLE_MS = 60000;
+// The renderer's descriptions of the Quick Access tiles the bar shows, and their line icons.
+const omarchyBarTiles = new Map();
+const omarchyBarIcons = new Map();
+// A bar click can start a fresh widget with `--entity-action` when the status file outlived a
+// crashed one. That request waits here until the renderer has described the entity's tile.
+let pendingOmarchyBarAction = null;
+const OMARCHY_BAR_PENDING_ACTION_MS = 60000;
 const {
   readHyprlandMonitors,
   chooseLayerMonitor,
@@ -598,8 +605,8 @@ if (usesLinuxPopupHotkeyBackend) {
 // still runs alongside the real widget.
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (gotSingleInstanceLock) {
-  const entityToggle = getEntityToggleRequest(process.argv);
-  if (entityToggle) pendingOmarchyBarToggle = { entityId: entityToggle, requestedAt: Date.now() };
+  const barAction = getOmarchyBarActionRequest(process.argv);
+  if (barAction) pendingOmarchyBarAction = { ...barAction, requestedAt: Date.now() };
 }
 if (!gotSingleInstanceLock) {
   log.info('Another instance already owns this profile; handing the request to it and exiting');
@@ -609,11 +616,11 @@ if (!gotSingleInstanceLock) {
   // popup hotkey do. This is also the only way back for a window hidden to the tray on a desktop
   // whose tray is missing or broken.
   app.on('second-instance', (_event, argv) => {
-    const entityToggle = getEntityToggleRequest(argv);
-    if (entityToggle) {
-      // Delivered at once when ready, or once startup has the connection and the entity's state.
-      pendingOmarchyBarToggle = { entityId: entityToggle, requestedAt: Date.now() };
-      deliverPendingOmarchyBarToggle();
+    const barAction = getOmarchyBarActionRequest(argv);
+    if (barAction) {
+      // Delivered at once when ready, or once startup has the connection and the entity's tile.
+      pendingOmarchyBarAction = { ...barAction, requestedAt: Date.now() };
+      deliverPendingOmarchyBarAction();
       return;
     }
     const action = getLaunchAction(argv);
@@ -6878,7 +6885,7 @@ function buildTrayContextMenu() {
 
 function getOmarchyBarEntities() {
   if (!omarchyBarPublisher || !omarchyBarEntry.present) return { panel: [], bar: [], all: [] };
-  return resolveOmarchyBarEntities(omarchyBarEntry, config?.favoriteEntities);
+  return resolveOmarchyBarEntities(omarchyBarEntry, config);
 }
 
 /** What the bar should tell the user to fix, when the widget cannot fix it by itself. */
@@ -6940,55 +6947,85 @@ function startOmarchyBarIntegration() {
     log.warn('Could not save the Omarchy bar launch command:', error.message);
   }
   omarchyBarEntry = readOmarchyBarShellEntry();
+  // Listening before the first status write, so a bar that sees the widget running can connect.
+  omarchyBarCommandServer = createOmarchyBarCommandServer({
+    socketPath: paths.socket,
+    log,
+    onRequest: handleOmarchyBarEntityAction,
+  });
   omarchyBarPublisher = createOmarchyBarPublisher({
     statusFile: paths.statusFile,
     log,
     getStatus: () =>
       buildOmarchyBarStatus({
         connection: latestHaConnectionState,
-        states: omarchyBarStates,
+        tiles: omarchyBarTiles,
+        icons: omarchyBarIcons,
         entities: getOmarchyBarEntities(),
-        customEntityNames: config?.customEntityNames,
         launch: getOmarchyBarLaunchArgv(),
         issue: getOmarchyBarIssue(),
       }),
   });
-  if (!omarchyBarPublisher) return;
+  if (!omarchyBarPublisher) {
+    omarchyBarCommandServer?.stop();
+    omarchyBarCommandServer = null;
+    return;
+  }
   fs.watchFile(paths.shellConfig, { interval: 2000, persistent: false }, refreshOmarchyBarEntry);
 }
 
 function stopOmarchyBarIntegration() {
   if (!omarchyBarPublisher) return;
   fs.unwatchFile(getOmarchyBarPaths().shellConfig, refreshOmarchyBarEntry);
+  omarchyBarCommandServer?.stop();
+  omarchyBarCommandServer = null;
   omarchyBarPublisher.stop();
   omarchyBarPublisher = null;
 }
 
 /**
- * Deliver an `--entity-toggle` this process was started with, once connected and holding the
- * entity's state. Dropped after a minute so a slow start never toggles something unexpectedly.
+ * Deliver a bar request this process was started with, once connected and holding the entity's
+ * tile. Dropped after a minute so a slow start never acts on something unexpectedly.
  */
-function deliverPendingOmarchyBarToggle(now = Date.now()) {
-  const pending = pendingOmarchyBarToggle;
+function deliverPendingOmarchyBarAction(now = Date.now()) {
+  const pending = pendingOmarchyBarAction;
   if (!pending) return;
-  if (now - pending.requestedAt > OMARCHY_BAR_PENDING_TOGGLE_MS) {
-    pendingOmarchyBarToggle = null;
+  if (now - pending.requestedAt > OMARCHY_BAR_PENDING_ACTION_MS) {
+    pendingOmarchyBarAction = null;
     return;
   }
-  if (latestHaConnectionState !== 'connected' || !omarchyBarStates.has(pending.entityId)) return;
-  pendingOmarchyBarToggle = null;
-  handleOmarchyBarEntityToggle(pending.entityId);
+  if (latestHaConnectionState !== 'connected' || !omarchyBarTiles.has(pending.entityId)) return;
+  pendingOmarchyBarAction = null;
+  handleOmarchyBarEntityAction(pending);
 }
 
-/** `--entity-toggle=<id>` from the bar plugin: only entities the bar shows, and only toggles. */
-function handleOmarchyBarEntityToggle(entityId) {
-  if (!isAllowedOmarchyBarToggle(entityId, getOmarchyBarEntities())) {
-    log.warn(`Ignoring an Omarchy bar toggle for ${entityId}, which the bar does not show`);
+/**
+ * A request from the Omarchy bar's panel, through its socket or the command line: a click on a
+ * tile (primary), the widget's controls dialog for it (controls), or a change made in the panel's
+ * own controls popup (set). Each does what the same thing does on the widget's own tile. A request
+ * that opens one of the widget's dialogs brings the widget up first, so the dialog is in view.
+ */
+function handleOmarchyBarEntityAction(request) {
+  const tile = omarchyBarTiles.get(request?.entityId);
+  if (!isAllowedOmarchyBarAction(request, getOmarchyBarEntities(), tile)) {
+    log.warn(`Ignoring an Omarchy bar request for ${request?.entityId}, which its tile cannot do`);
     return;
   }
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('hotkey-triggered', { entityId, action: 'toggle' });
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (request.kind === 'set') {
+    mainWindow.webContents.send('omarchy-bar-entity-action', {
+      entityId: request.entityId,
+      kind: 'set',
+      command: request.command,
+      value: request.value,
+    });
+    return;
   }
+  if (request.kind === 'controls' || tile.action === 'dialog') showMainWindowFromTray();
+  mainWindow.webContents.send('omarchy-bar-entity-action', {
+    entityId: request.entityId,
+    kind: request.kind,
+  });
 }
 
 function getBundledOmarchyBarPluginDir() {
@@ -8070,28 +8107,36 @@ ipcMain.handle('publish-ha-connection-state', (event, status) => {
     sendDesktopPinUpdate(entityId, { type: 'connection' });
   });
   omarchyBarPublisher?.update();
-  deliverPendingOmarchyBarToggle();
+  deliverPendingOmarchyBarAction();
   return { success: true };
 });
 
-// The renderer sends the states of exactly the entities the Omarchy bar asked for
-// (config.omarchyBarEntities), as a full set each time.
-ipcMain.handle('publish-omarchy-bar-states', (event, states) => {
-  const sender = authorizeIpcSender(event, 'publish-omarchy-bar-states');
-  if (!sender) return rejectUnauthorizedIpc('publish-omarchy-bar-states');
+// The renderer describes exactly the tiles the Omarchy bar asked for (config.omarchyBarEntities),
+// as a full set each time, with the line icons they use.
+ipcMain.handle('publish-omarchy-bar-tiles', (event, payload) => {
+  const sender = authorizeIpcSender(event, 'publish-omarchy-bar-tiles');
+  if (!sender) return rejectUnauthorizedIpc('publish-omarchy-bar-tiles');
   if (!omarchyBarPublisher) return { success: true, discarded: true };
   const wanted = new Set(getOmarchyBarEntities().all);
-  omarchyBarStates.clear();
-  if (isPlainObject(states)) {
-    Object.entries(states).forEach(([entityId, entity]) => {
+  omarchyBarTiles.clear();
+  omarchyBarIcons.clear();
+  if (isPlainObject(payload?.tiles)) {
+    Object.entries(payload.tiles).forEach(([entityId, tile]) => {
       const normalizedEntityId = normalizeEntityId(entityId);
-      if (!wanted.has(normalizedEntityId) || !isPlainObject(entity)) return;
-      omarchyBarStates.set(normalizedEntityId, entity);
+      if (!wanted.has(normalizedEntityId)) return;
+      const cleaned = cleanOmarchyBarTile(normalizedEntityId, tile);
+      if (cleaned) omarchyBarTiles.set(normalizedEntityId, cleaned);
+    });
+  }
+  if (isPlainObject(payload?.icons)) {
+    Object.entries(payload.icons).forEach(([name, svg]) => {
+      const cleaned = cleanLineIconSvg(svg);
+      if (cleaned && /^[a-z0-9-]{1,40}$/.test(name)) omarchyBarIcons.set(name, cleaned);
     });
   }
   omarchyBarPublisher.update();
-  deliverPendingOmarchyBarToggle();
-  return { success: true, count: omarchyBarStates.size };
+  deliverPendingOmarchyBarAction();
+  return { success: true, count: omarchyBarTiles.size };
 });
 
 ipcMain.handle('publish-ha-snapshot', (event, states) => {

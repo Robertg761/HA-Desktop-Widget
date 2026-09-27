@@ -18,9 +18,9 @@ omarchy-shell shell rescanPlugins
 omarchy plugin enable com.github.robertg761.hadesktopwidget
 ```
 
-The bar shows a Home Assistant icon, dimmed while the widget is disconnected or not running. Click it to open a panel listing your devices and their values. Clicking a light, switch, fan, or input boolean there toggles it. Right-click the icon to show or hide the widget. When the panel has nothing to list, a click shows or hides the widget too.
+The bar shows a Home Assistant icon, dimmed while the widget is disconnected or not running. Click it to open a panel with your Quick Access tiles, drawn like the widget's: the same names, icons, and status lines, lit in the accent color while on. Clicking a tile does what clicking it in the widget does: a light, switch, fan, lock, cover, or player toggles, a scene or script runs, and a camera, sensor, thermostat, or calendar opens its dialog in the widget, which comes forward. Hold a light, fan, cover, thermostat, or player tile, or use its adjust button or a right-click, to adjust it right in the panel: brightness, color temperature and colors, fan speed, cover position, target temperature and mode, or volume and tracks. Changes apply as you drag, and Open in widget brings up the widget's full controls. Arrow keys move between tiles, and Enter or Space clicks one; in a tile's controls, Left and Right move its slider, Enter switches it on or off, and Escape goes back. Right-click the bar icon to show or hide the widget. When the panel has nothing to list, a click shows or hides the widget too.
 
-The panel lists the first twelve Quick Access favorites until you choose entities. Choose them, and up to four whose values appear in the bar itself, on the plugin's entry in `~/.config/omarchy/shell.json`:
+The panel shows every Quick Access tile, under page headings when Quick Access has more than one page. To show other entities, and up to four whose values appear in the bar itself, list them on the plugin's entry in `~/.config/omarchy/shell.json`:
 
 ```json
 {
@@ -32,7 +32,7 @@ The panel lists the first twelve Quick Access favorites until you choose entitie
 
 To start the widget through a wrapper or a different executable when it is not running, add `"command"` to the same entry; otherwise the bar uses the command the widget last saved, then `ha-desktop-widget`.
 
-The widget must be running for the plugin to show values; the plugin never receives Home Assistant credentials. The widget publishes the chosen entities to `$XDG_RUNTIME_DIR/ha-desktop-widget/omarchy-bar.json`, and the plugin sends its actions through the widget's command line. Updating the widget also updates an installed plugin. The Omarchy shell keeps running the old version of a changed plugin until it restarts, at your next login or with `omarchy-restart-shell`. Omarchy 3 uses waybar, which cannot load these plugins; the tray icon is available there instead.
+The widget must be running for the plugin to show values; the plugin never receives Home Assistant credentials. The widget publishes the tiles to `$XDG_RUNTIME_DIR/ha-desktop-widget/omarchy-bar.json`, and the plugin sends its actions over the widget's socket, `omarchy-bar.sock` in the same directory, which only your user can open. When the widget is not running, the plugin starts it through its command line. Updating the widget also updates an installed plugin. The Omarchy shell keeps running the old version of a changed plugin until it restarts, at your next login or with `omarchy-restart-shell`. Omarchy 3 uses waybar, which cannot load these plugins; the tray icon is available there instead.
 
 ## Shortcuts
 

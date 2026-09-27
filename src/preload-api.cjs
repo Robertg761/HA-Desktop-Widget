@@ -186,7 +186,7 @@ function createElectronApi(ipcRenderer, platform) {
     minimizeWindow: () => invoke('minimize-window'),
     focusWindow: () => invoke('focus-window'),
     showWindow: () => invoke('show-window'),
-    publishOmarchyBarStates: (states) => invoke('publish-omarchy-bar-states', states),
+    publishOmarchyBarTiles: (payload) => invoke('publish-omarchy-bar-tiles', payload),
     focusDesktopPin: (entityId) => invoke('focus-desktop-pin', entityId),
     restartApp: () => invokeChecked('restart-app'),
     quitApp: () => invoke('quit-app'),
@@ -229,6 +229,7 @@ function createElectronApi(ipcRenderer, platform) {
     debugLog: (payload) => invoke('debug-log', payload),
 
     onHotkeyTriggered: (callback) => subscribe('hotkey-triggered', callback),
+    onOmarchyBarEntityAction: (callback) => subscribe('omarchy-bar-entity-action', callback),
     onHotkeyRegistrationFailed: (callback) => subscribe('hotkey-registration-failed', callback),
     onAutoUpdate: (callback) => subscribe('auto-update', callback),
     onOpenSettings: (callback) => subscribe('open-settings', callback, { includeData: false }),
