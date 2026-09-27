@@ -147,7 +147,7 @@ describe('Omarchy bar requests in the main process', () => {
       mainSource.indexOf('delete process.env.HA_WIDGET_LAUNCH_VISIBILITY')
     );
     expect(loaded).toContain(
-      'else if (initialLaunchRaise && isLayerShellChildProcess) showMainWindowFromTray();'
+      'else if (initialLaunchRaise && isLayerShellChildProcess) raiseLayerWidgetOnceMapped();'
     );
   });
 });
