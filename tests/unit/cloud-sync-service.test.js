@@ -18,6 +18,29 @@ const envelope = (extra = {}) =>
   });
 
 describe('cloud sync service', () => {
+  test('prelaunch mode exposes health but blocks sign-in, account data, and billing', async () => {
+    const world = createWorld({ LAUNCH_MODE: 'prelaunch' });
+    expect(await (await world.request('/v1/health')).json()).toEqual({ ok: true });
+    for (const [path, init] of [
+      ['/'],
+      ['/v1/config'],
+      ['/v1/auth/start'],
+      ['/v1/auth/callback/google'],
+      ['/v1/auth/token', { method: 'POST' }],
+      ['/v1/account'],
+      ['/v1/profile'],
+      ['/v1/billing/checkout', { method: 'POST' }],
+      ['/v1/billing/portal', { method: 'POST' }],
+      ['/v1/billing/webhook', { method: 'POST' }],
+    ]) {
+      const response = await world.request(path, init);
+      expect(response.status).toBe(503);
+      expect((await response.json()).error).toBe('not_launched');
+    }
+    expect(world.env.DB.raw.prepare('SELECT * FROM users').all()).toHaveLength(0);
+    expect(world.calls).toHaveLength(0);
+  });
+
   describe('sign-in', () => {
     test('Google sign-in hands the app a session only for the matching verifier', async () => {
       const world = createWorld();

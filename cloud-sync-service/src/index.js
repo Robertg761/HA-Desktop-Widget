@@ -32,6 +32,12 @@ export async function handleRequest(request, env, deps = defaultDeps()) {
   const { pathname } = url;
   const method = request.method;
   try {
+    // A production Worker can be deployed before its public route is moved
+    // from the sandbox. Keep every account and billing endpoint closed until
+    // the 4.0 release is ready. The sandbox omits this setting.
+    if (env.LAUNCH_MODE && env.LAUNCH_MODE !== 'public' && pathname !== '/v1/health') {
+      return errorResponse(503, 'not_launched', 'Cloud Sync is not available yet.');
+    }
     if (pathname === '/' && method === 'GET') {
       return htmlPage(
         'HA Desktop Widget Cloud Sync',

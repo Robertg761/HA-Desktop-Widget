@@ -176,6 +176,15 @@ curl <PUBLIC_URL>/v1/health     # {"ok":true}
 curl <PUBLIC_URL>/v1/config     # lists the sign-in providers you configured
 ```
 
+For HA Desktop Widget 4.0, `cloud-sync-service/wrangler.production.toml` stages the live
+Worker on its own D1 database. It has no public route and disables `workers.dev`. Deploy it
+with `npx wrangler deploy --config wrangler.production.toml`. Its `LAUNCH_MODE = "prelaunch"`
+setting lets `/v1/health` respond but rejects all other requests with 503, including sign-in,
+profile writes, Checkout, and webhooks. Configure the live secrets on this Worker before
+moving `sync.hadesktopwidget.com` to it. Changing `LAUNCH_MODE` to `public` requires a new
+deployment; an unknown nonempty value remains closed. Keep the Stripe live webhook disabled
+until the public route points to the live Worker.
+
 ## 6. Point the app at the service
 
 Set `DEFAULT_CLOUD_SYNC_SERVICE_URL` in `src/cloud-sync-client.cjs` to your `PUBLIC_URL` and
@@ -196,6 +205,7 @@ The app only accepts `https` addresses, plus `http` on this computer for local d
 | Setting                        | Where    | Meaning                                                                                           |
 | ------------------------------ | -------- | ------------------------------------------------------------------------------------------------- |
 | `PUBLIC_URL`                   | `[vars]` | The service's public address. Must match the callback URLs registered with Google and GitHub.     |
+| `LAUNCH_MODE`                  | `[vars]` | `prelaunch` closes all routes except health; `public` opens the service. Omit for an existing sandbox. |
 | `TRIAL_DAYS`                   | `[vars]` | Days a new account can save changes without a subscription (default 14).                          |
 | `ENTITLEMENT_MODE`             | `[vars]` | `subscription` (default), or `open` to let every signed-in account sync, such as for a free beta. |
 | `STRIPE_PRICE_ID`              | `[vars]` | The yearly price.                                                                                 |
