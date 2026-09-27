@@ -29,6 +29,7 @@ import {
 import {
   createLineIcon,
   entityIconMarkup,
+  getEntityIconDescriptor,
   lineIconMarkup,
   renderEntityIcon,
   setLineIconContent,
@@ -2603,6 +2604,308 @@ function getQuickAccessTileStateText(entity) {
       if (entityState === 'on') return t('On');
       if (entityState === 'off') return t('Off');
       return utils.getEntityDisplayState(entity);
+  }
+}
+
+// What a Quick Access tile's click does, for surfaces outside the widget (the Omarchy bar):
+// change the entity, run it, or open one of the widget's dialogs. Mirrors
+// executeEntityPrimaryAction and toggleEntity; domains missing here do nothing on click.
+const QUICK_ACCESS_TOGGLE_DOMAINS = new Set([
+  'cover',
+  'fan',
+  'input_boolean',
+  'light',
+  'lock',
+  'media_player',
+  'switch',
+  'timer',
+]);
+const QUICK_ACCESS_ACTIVATE_DOMAINS = new Set(['button', 'input_button', 'scene', 'script']);
+const QUICK_ACCESS_DIALOG_DOMAINS = new Set(['calendar', 'camera', 'climate', 'sensor', 'todo']);
+// Tiles that carry the adjust button (openEntityControls).
+const QUICK_ACCESS_CONTROLS_DOMAINS = new Set(['climate', 'cover', 'fan', 'light', 'media_player']);
+
+function getQuickAccessMediaText(entity) {
+  const attributes = entity?.attributes || {};
+  if (attributes.media_title) {
+    return [attributes.media_title, attributes.media_artist || attributes.media_album_name]
+      .filter(Boolean)
+      .join(' · ');
+  }
+  return entity?.state === 'off' || entity?.state === 'idle' ? t('No media') : t('Ready');
+}
+
+/**
+ * The line under a Quick Access tile's name, as the tile itself shows it, in plain text.
+ * @param {Object} entity - Home Assistant entity state object.
+ * @returns {string}
+ */
+function getQuickAccessTileSummaryText(entity) {
+  const domain = getEntityDomain(entity?.entity_id);
+  if (entity?.state === 'unavailable') return t('Unavailable');
+  if (domain === 'timer' || isTimerLikeSensorEntity(entity)) {
+    return utils.getTimerDisplay
+      ? utils.getTimerDisplay(entity)
+      : utils.getEntityDisplayState(entity);
+  }
+  switch (domain) {
+    case 'sensor':
+      return getQuickAccessSensorDisplayParts(entity)?.text || utils.getEntityDisplayState(entity);
+    case 'light':
+    case 'cover':
+    case 'fan':
+    case 'lock':
+      return getDeviceTileStateText(entity);
+    case 'climate': {
+      const temp = entity.attributes?.current_temperature || entity.attributes?.temperature;
+      return temp ? `${formatNumber(temp)}°` : '';
+    }
+    case 'media_player':
+      return getQuickAccessMediaText(entity);
+    case 'todo':
+      return getTodoTileCountLabel(entity);
+    case 'calendar':
+      return getCalendarNextEventSummary(entity);
+    default:
+      return getQuickAccessTileStateText(entity);
+  }
+}
+
+/**
+ * Describe a Quick Access tile for another surface (the Omarchy bar plugin), so it can draw the
+ * same tile: name, icon, status line, active and unavailable states, and what a click does.
+ * @param {string} entityId - A Quick Access entity id.
+ * @returns {Object|null} - Null for ids that are not entities (comparison graphs).
+ */
+function describeQuickAccessTile(entityId) {
+  if (typeof entityId !== 'string' || isComparisonGraphId(entityId)) return null;
+  const resolvedId = utils.resolveEntityId(entityId, state.STATES) || entityId;
+  const entity = getEntityForDisplay(state.STATES?.[resolvedId]);
+  if (!entity) {
+    return {
+      id: entityId,
+      name:
+        state.CONFIG?.customEntityNames?.[entityId] || entityId.split('.').pop().replace(/_/g, ' '),
+      state: '',
+      value: t('Unavailable'),
+      icon: { kind: 'line', name: 'triangle-alert' },
+      available: false,
+      missing: true,
+      active: false,
+      action: 'dialog',
+      controls: false,
+    };
+  }
+  const domain = getEntityDomain(entity.entity_id);
+  const unavailable = entity.state === 'unavailable';
+  let action = 'none';
+  if (!unavailable) {
+    if (QUICK_ACCESS_DIALOG_DOMAINS.has(domain)) action = 'dialog';
+    else if (QUICK_ACCESS_TOGGLE_DOMAINS.has(domain)) action = 'toggle';
+    else if (QUICK_ACCESS_ACTIVATE_DOMAINS.has(domain)) action = 'activate';
+  }
+  return {
+    id: entityId,
+    name: utils.getEntityDisplayName(entity),
+    state: typeof entity.state === 'string' ? entity.state : '',
+    value: getQuickAccessTileSummaryText(entity),
+    icon: getEntityIconDescriptor(entity),
+    available: !unavailable && entity.state !== 'unknown',
+    missing: false,
+    active: isQuickAccessTileActive(entity),
+    action,
+    controls: !unavailable && QUICK_ACCESS_CONTROLS_DOMAINS.has(domain),
+    controlState: unavailable ? null : getQuickAccessTileControls(entity),
+  };
+}
+
+function finiteOrNull(value) {
+  const number = Number(value);
+  return value !== null && value !== '' && Number.isFinite(number) ? number : null;
+}
+
+/**
+ * What a tile's controls can adjust, and where each control stands, for a compact controls popup
+ * outside the widget (the Omarchy bar). Covers what the widget's own controls dialog offers.
+ * @param {Object} entity - Home Assistant entity state object.
+ * @returns {Object|null} - Null for domains without controls.
+ */
+function getQuickAccessTileControls(entity) {
+  const domain = getEntityDomain(entity?.entity_id);
+  const attributes = entity?.attributes || {};
+  const capabilities = getDesktopPinCapabilities(entity);
+  const on = entity?.state === 'on';
+  switch (domain) {
+    case 'light': {
+      const brightness = finiteOrNull(attributes.brightness);
+      let colorTemp = null;
+      if (supportsLightColorTemp(attributes)) {
+        const range = getLightColorTempRange(attributes);
+        colorTemp = {
+          kelvin: getInitialLightColorTempKelvin(attributes, range),
+          min: range.min,
+          max: range.max,
+        };
+      }
+      return {
+        kind: 'light',
+        on,
+        brightness: on && brightness > 0 ? Math.max(1, Math.round((brightness / 255) * 100)) : 0,
+        canSetBrightness: !!capabilities.canSetBrightness,
+        colorTemp,
+        colors: supportsLightColor(attributes) ? [...LIGHT_COLOR_PRESETS] : [],
+      };
+    }
+    case 'fan':
+      return {
+        kind: 'fan',
+        on,
+        percentage: on ? finiteOrNull(attributes.percentage) || 0 : 0,
+        canSetPercentage: !!capabilities.canSetPercentage,
+      };
+    case 'cover':
+      return {
+        kind: 'cover',
+        state: entity.state,
+        position: finiteOrNull(attributes.current_position),
+        canSetPosition: !!capabilities.canSetPosition,
+        canOpen: !!capabilities.canOpen,
+        canClose: !!capabilities.canClose,
+        canStop: !!capabilities.canStop,
+      };
+    case 'climate': {
+      const climate = getClimateControlCapabilities(entity);
+      return {
+        kind: 'climate',
+        mode: entity.state,
+        current: climate.currentTemp,
+        target: climate.targetTemp,
+        min: climate.minTemp,
+        max: climate.maxTemp,
+        step: climate.temperatureStep,
+        canSetTemperature: !!climate.canSetTemperature,
+        modes: Array.isArray(climate.hvacModes) ? climate.hvacModes.slice(0, 8) : [],
+      };
+    }
+    case 'media_player': {
+      const volume = finiteOrNull(attributes.volume_level);
+      const features = attributes.supported_features;
+      return {
+        kind: 'media',
+        playing: entity.state === 'playing',
+        title: attributes.media_title || '',
+        artist: attributes.media_artist || attributes.media_album_name || '',
+        canPlay: !!capabilities.canPlay,
+        canPause: !!capabilities.canPause,
+        canPrevious: !!capabilities.canPreviousTrack,
+        canNext: !!capabilities.canNextTrack,
+        volume: volume === null ? null : Math.round(clampRange(volume, 0, 1) * 100),
+        canSetVolume: uiUtils.hasSupportedFeature(features, MEDIA_PLAYER_SUPPORT_VOLUME_SET),
+        muted: attributes.is_volume_muted === true,
+        canMute: uiUtils.hasSupportedFeature(features, MEDIA_PLAYER_SUPPORT_VOLUME_MUTE),
+      };
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Apply one control from a tile's controls popup outside the widget: the same service calls,
+ * capability checks and debouncing the widget's own controls use. Slider values arrive as they
+ * are dragged; the debounce sends the last one.
+ * @param {Object} entity - Home Assistant entity state object.
+ * @param {string} command - e.g. 'brightness', 'color_temp', 'position', 'volume'.
+ * @param {*} value - The command's value; main has already checked its type and range.
+ * @returns {boolean} - Whether the command applied to this entity.
+ */
+function executeQuickAccessControl(entity, command, value) {
+  const liveEntity = state.STATES?.[entity?.entity_id] || entity;
+  const entityId = liveEntity?.entity_id;
+  const controls = entityId ? getQuickAccessTileControls(liveEntity) : null;
+  if (!controls || liveEntity.state === 'unavailable') return false;
+  const number = Number(value);
+  switch (`${controls.kind}:${command}`) {
+    case 'light:power':
+    case 'fan:power':
+      if (!!value !== (liveEntity.state === 'on')) toggleEntity(liveEntity);
+      return true;
+    case 'light:brightness':
+      if (!controls.canSetBrightness || !Number.isFinite(number)) return false;
+      queueDesktopPinLightBrightness(liveEntity, number);
+      return true;
+    case 'light:color_temp': {
+      if (!controls.colorTemp || !Number.isFinite(number)) return false;
+      const kelvin = clampRange(Math.round(number), controls.colorTemp.min, controls.colorTemp.max);
+      queueDesktopPinServiceCall(
+        `light:${entityId}:color_temp`,
+        () => callEntityDomainService(liveEntity, 'turn_on', { color_temp_kelvin: kelvin }),
+        150
+      );
+      return true;
+    }
+    case 'light:color': {
+      const rgb = controls.colors.length ? uiUtils.hexToRgb(String(value)) : null;
+      if (!rgb) return false;
+      callEntityDomainService(liveEntity, 'turn_on', { rgb_color: [rgb.r, rgb.g, rgb.b] });
+      return true;
+    }
+    case 'fan:percentage':
+      if (!controls.canSetPercentage || !Number.isFinite(number)) return false;
+      queueDesktopPinFanPercentage(liveEntity, clampRange(Math.round(number), 0, 100));
+      return true;
+    case 'cover:position':
+      if (!controls.canSetPosition || !Number.isFinite(number)) return false;
+      queueDesktopPinCoverPosition(liveEntity, clampRange(Math.round(number), 0, 100));
+      return true;
+    case 'cover:open':
+    case 'cover:close':
+    case 'cover:stop': {
+      const allowed = { open: controls.canOpen, close: controls.canClose, stop: controls.canStop };
+      if (!allowed[command]) return false;
+      cancelDesktopPinServiceCall(`cover:${entityId}:position`);
+      callEntityDomainService(liveEntity, `${command}_cover`);
+      return true;
+    }
+    case 'climate:temperature': {
+      if (!controls.canSetTemperature || !Number.isFinite(number)) return false;
+      const temperature = clampRange(number, controls.min, controls.max);
+      queueDesktopPinServiceCall(
+        `climate:${entityId}:temperature`,
+        () => callEntityDomainService(liveEntity, 'set_temperature', { temperature }),
+        300
+      );
+      return true;
+    }
+    case 'climate:mode':
+      if (!controls.modes.includes(value)) return false;
+      callEntityDomainService(liveEntity, 'set_hvac_mode', { hvac_mode: value });
+      return true;
+    case 'media:play_pause':
+      executeEntityPrimaryAction(liveEntity, { source: 'quick-access-controls' });
+      return true;
+    case 'media:next':
+    case 'media:previous':
+      if (!(command === 'next' ? controls.canNext : controls.canPrevious)) return false;
+      callMediaPlayerService(entityId, command === 'next' ? 'next_track' : 'previous_track');
+      return true;
+    case 'media:volume':
+      if (!controls.canSetVolume || !Number.isFinite(number)) return false;
+      queueDesktopPinServiceCall(
+        `media:${entityId}:volume`,
+        () =>
+          callMediaPlayerService(entityId, 'volume_set', {
+            volumeLevel: clampRange(number, 0, 100) / 100,
+          }),
+        150
+      );
+      return true;
+    case 'media:mute':
+      if (!controls.canMute) return false;
+      callMediaPlayerService(entityId, 'volume_mute', { isVolumeMuted: !!value });
+      return true;
+    default:
+      return false;
   }
 }
 
@@ -13816,6 +14119,10 @@ export {
   refreshVisibleEntityCache,
   executeHotkeyAction,
   executeEntityPrimaryAction,
+  openEntityControls,
+  describeQuickAccessTile,
+  getQuickAccessTileControls,
+  executeQuickAccessControl,
   openEntityDetailModal,
   getEntityDomain,
   handleDesktopPinActionRequest,

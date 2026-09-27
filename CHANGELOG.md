@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add a visual snapshot workflow that screenshots the real app on Windows, macOS, and Linux against a mock Home Assistant, and `npm run snapshots` to run it locally.
 - Restore what profile sync replaced from Settings → Advanced → Backups. A restore applies on this computer and then syncs to the others, and the settings it replaces are backed up in turn.
 - Add Sync now, which merges both sides, and 30-minute and hourly sync intervals.
+- Add Home Assistant to the Omarchy 4 bar from the tray menu. Its panel shows your Quick Access tiles as the widget draws them, and clicking one does what clicking it in the widget does. Hold a light, fan, cover, thermostat, or player tile to adjust it right in the panel.
 
 ### Changed
 
@@ -38,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- On Hyprland, a widget brought forward from the tray, the Omarchy bar, or the popup shortcut no longer drops behind your windows as the pointer crosses them on its way to it. It lowers once the pointer moves off to something else.
 - Stop a settings change from overwriting another computer's newer sync change that had not arrived yet, and stop a computer whose clock runs ahead from undoing other computers' changes.
 - Refuse to write the sync file unencrypted, or with an old passphrase, from a computer whose encryption settings no longer match it; say what to change instead.
 - Keep background sync running after a failed first sync at login, such as when the sync folder is not mounted yet.

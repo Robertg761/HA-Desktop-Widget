@@ -106,7 +106,7 @@ describe('preload Electron API', () => {
       ['minimizeWindow', [], 'minimize-window', []],
       ['focusWindow', [], 'focus-window', []],
       ['showWindow', [], 'show-window', []],
-      ['publishOmarchyBarStates', [objectArg], 'publish-omarchy-bar-states', [objectArg]],
+      ['publishOmarchyBarTiles', [objectArg], 'publish-omarchy-bar-tiles', [objectArg]],
       ['focusDesktopPin', ['light.office'], 'focus-desktop-pin', ['light.office']],
       ['restartApp', [], 'restart-app', []],
       ['quitApp', [], 'quit-app', []],
@@ -173,6 +173,7 @@ describe('preload Electron API', () => {
     const api = createElectronApi(ipcRenderer, 'test-platform');
     const listeners = [
       ['onHotkeyTriggered', 'hotkey-triggered'],
+      ['onOmarchyBarEntityAction', 'omarchy-bar-entity-action'],
       ['onHotkeyRegistrationFailed', 'hotkey-registration-failed'],
       ['onAutoUpdate', 'auto-update'],
       ['onProfileSyncStatus', 'profile-sync-status'],

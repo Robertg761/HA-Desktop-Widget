@@ -19,7 +19,7 @@ import * as uiUtils from './src/ui-utils.js';
 import * as utils from './src/utils.js';
 import { setLocaleBootstrap, t, translateDocument } from './src/i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './src/icons.js';
-import { setLineIconContent } from './src/entity-icons.js';
+import { lineIconMarkup, setLineIconContent } from './src/entity-icons.js';
 import { animateEnter, syncSlidingIndicator } from './src/motion.js';
 import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
 import { WeatherEffectsManager } from './src/weather-effects.js';
@@ -242,8 +242,8 @@ const pendingStateChangedEntities = new Map();
 let pendingStateChangedFlushId = null;
 let desktopPinStatePublishingActive = false;
 let haStatesSnapshotReceived = false;
-// Entity ids whose states were last sent for the Omarchy bar plugin, joined.
-let publishedOmarchyBarEntities = '';
+// The Omarchy bar tiles last sent to main, serialized, so unchanged sets are not sent again.
+let publishedOmarchyBarTiles = '';
 const UI_TICK_ACTIVE_INTERVAL_MS = 1000;
 const UI_TICK_IDLE_POLL_INTERVAL_MS = 15000;
 const UI_TICK_MINUTE_BUFFER_MS = 50;
@@ -420,26 +420,38 @@ function refreshDesktopPinStatePublishing({ force = false, coalesce = true } = {
 }
 
 /**
- * The Omarchy bar plugin shows a handful of entities, which main names in
- * config.omarchyBarEntities (empty everywhere else). Send main their states as a full set when
- * that list changes, on a fresh snapshot (force), or when one of them changes (force).
+ * The Omarchy bar plugin mirrors the Quick Access tiles main names in config.omarchyBarEntities
+ * (empty everywhere else). Describe those tiles for it, with the line icons they use, and send the
+ * set whenever it differs from the last one sent: the list changed, a fresh snapshot arrived
+ * (force), or one of the entities, its name or its icon changed.
  */
-function publishOmarchyBarStates({ force = false } = {}) {
+function publishOmarchyBarTiles({ force = false } = {}) {
   if (IS_DESKTOP_PIN_MODE) return;
   const ids = Array.isArray(state.CONFIG?.omarchyBarEntities)
     ? state.CONFIG.omarchyBarEntities
     : [];
-  const key = ids.join(',');
-  if (!ids.length && !publishedOmarchyBarEntities) return;
-  if (!force && key === publishedOmarchyBarEntities) return;
+  if (!ids.length && !publishedOmarchyBarTiles) return;
   if (ids.length && !haStatesSnapshotReceived) return;
-  publishedOmarchyBarEntities = key;
-  const states = {};
+  const tiles = {};
+  const icons = {};
   ids.forEach((entityId) => {
-    if (state.STATES?.[entityId]) states[entityId] = state.STATES[entityId];
+    const tile = ui.describeQuickAccessTile(entityId);
+    if (!tile) return;
+    tiles[entityId] = tile;
+    if (tile.icon?.kind === 'line' && !icons[tile.icon.name]) {
+      // Sized in pixels: the shell draws it as an image, where 1em means nothing.
+      icons[tile.icon.name] = lineIconMarkup(tile.icon.name).replace(
+        'width="1em" height="1em"',
+        'width="24" height="24"'
+      );
+    }
   });
-  window.electronAPI.publishOmarchyBarStates?.(states)?.catch((error) => {
-    log.warn('Failed to publish Omarchy bar states:', error);
+  const payload = { tiles, icons };
+  const serialized = JSON.stringify(payload);
+  if (!force && serialized === publishedOmarchyBarTiles) return;
+  publishedOmarchyBarTiles = serialized;
+  window.electronAPI.publishOmarchyBarTiles?.(payload)?.catch((error) => {
+    log.warn('Failed to publish Omarchy bar tiles:', error);
   });
 }
 
@@ -455,7 +467,7 @@ function flushPendingStateChangedEntities() {
     Array.isArray(omarchyBarEntities) &&
     changedEntityIds.some((entityId) => omarchyBarEntities.includes(entityId))
   ) {
-    publishOmarchyBarStates({ force: true });
+    publishOmarchyBarTiles();
   }
 
   if (hasDeletion && publishForDesktopPins) {
@@ -1551,7 +1563,7 @@ function applyRendererConfig(nextConfig) {
   });
   const renderedConfig = state.CONFIG;
   state.setConfig(normalizedGraphs.config);
-  publishOmarchyBarStates();
+  publishOmarchyBarTiles();
   // Kept local: the migration write below can echo back synchronously and re-enter this function
   // before the appearance pass runs, and that inner call must not decide the outer pass.
   const change = describeRendererConfigChange(
@@ -2153,7 +2165,7 @@ websocket.on('message', (msg) => {
             // No coalescing: this map is fresh from get_states and may drop deleted
             // entities that an in-flight publish still carries.
             refreshDesktopPinStatePublishing({ force: true, coalesce: false });
-            publishOmarchyBarStates({ force: true });
+            publishOmarchyBarTiles({ force: true });
             updateMainConnectionState('connected');
             setConnectedStatus();
             if (!IS_DESKTOP_PIN_MODE) {
@@ -2356,6 +2368,18 @@ window.electronAPI.onHotkeyTriggered(({ entityId, action }) => {
     const finalAction = action || 'toggle';
     ui.executeHotkeyAction(entity, finalAction);
   }
+});
+
+// A click on a tile in the Omarchy bar's panel, its adjust button, or a change in the panel's
+// controls popup: the same as that on the widget's own Quick Access tile. Main has already
+// checked the tile can do it.
+window.electronAPI.onOmarchyBarEntityAction?.(({ entityId, kind, command, value } = {}) => {
+  const resolvedEntityId = utils.resolveEntityId(entityId, state.STATES) || entityId;
+  const entity = state.STATES[resolvedEntityId];
+  if (!entity) return;
+  if (kind === 'set') ui.executeQuickAccessControl(entity, command, value);
+  else if (kind === 'controls') ui.openEntityControls(entity);
+  else ui.executeEntityPrimaryAction(entity, { source: 'omarchy-bar' });
 });
 
 // Listen for open-settings event from tray menu

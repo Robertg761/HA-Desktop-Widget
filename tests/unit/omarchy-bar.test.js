@@ -7,13 +7,17 @@ const {
   PLUGIN_FILES,
   buildOmarchyBarStatus,
   createOmarchyBarPublisher,
-  describeOmarchyBarEntity,
-  getEntityToggleRequest,
+  cleanLineIconSvg,
+  cleanOmarchyBarTile,
+  createOmarchyBarCommandServer,
+  getOmarchyBarActionRequest,
+  getQuickAccessPages,
   getOmarchyBarPaths,
   installOmarchyBarPluginFiles,
   updateInstalledOmarchyBarPlugin,
-  isAllowedOmarchyBarToggle,
+  isAllowedOmarchyBarAction,
   isOmarchyShellInstalled,
+  parseOmarchyBarSocketLine,
   readOmarchyBarEntry,
   rememberOmarchyBarLaunch,
   resolveOmarchyBarEntities,
@@ -26,6 +30,18 @@ beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'ha-omarchy-bar-'));
 });
 afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
+
+const lightTile = {
+  name: 'Desk lamp',
+  state: 'on',
+  value: '85%',
+  icon: { kind: 'line', name: 'lightbulb' },
+  available: true,
+  missing: false,
+  active: true,
+  action: 'toggle',
+  controls: true,
+};
 
 describe('Omarchy bar plugin package', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(pluginDir, 'manifest.json'), 'utf8'));
@@ -59,16 +75,26 @@ describe('Omarchy bar plugin package', () => {
     expect(qml).toContain('"/ha-desktop-widget/omarchy-bar.json"');
     // Actions go through the widget's command line, which main handles.
     expect(qml).toContain('launch(["--toggle"])');
-    expect(qml).toContain('"--entity-toggle=" + entityId');
+    expect(qml).toContain('"--entity-action=" + tile.id');
+    expect(qml).toContain('"--entity-controls=" + tile.id');
     // It reads the fields buildOmarchyBarStatus writes.
     expect(qml).toContain('parsed.version === 1');
     // A locked keyring gets its own advice rather than the generic sign-in text.
     expect(qml).toContain('status.issue === "keyring"');
-    // Device rows are only clickable through a connected widget.
+    // Tiles only act through a connected widget, and only as the widget's own tile would.
     expect(qml).toContain(
-      'readonly property bool actionable: root.connected && modelData.toggleable'
+      'return connected && tile && tile.action !== undefined && tile.action !== "none"'
     );
-    expect(qml).toContain('enabled: row.actionable');
+    expect(qml).toContain('return connected && tile && tile.controls === true');
+    // Clicks and control changes go over the widget's socket; the command line is the fallback.
+    expect(qml).toContain('"/ha-desktop-widget/omarchy-bar.sock"');
+    expect(qml).toContain('commandSocket.write(JSON.stringify(request) + "\\n")');
+    expect(qml).toContain('if (!sendRequest({ id: tile.id, kind: "primary" }))');
+    // Holding a tile opens its controls in the panel, as holding it in the widget does.
+    expect(qml).toContain('pressAndHoldInterval: 500');
+    expect(qml).toContain('var request = { id: controlsTile.id, kind: "set", command: command }');
+    // Line icons are the widget's own SVGs, recoloured from currentColor.
+    expect(qml).toContain('svg.split("currentColor").join(hex)');
     // The launch command it keeps for a widget that has quit.
     expect(qml).toContain('"/ha-desktop-widget/omarchy-bar-launch.json"');
     expect(qml).toContain('parsed.launch');
@@ -79,7 +105,7 @@ describe('Omarchy bar plugin package', () => {
     );
     expect(launchBody.indexOf('configured !== ""')).toBeGreaterThan(-1);
     expect(launchBody.indexOf('configured !== ""')).toBeLessThan(launchBody.indexOf('savedLaunch'));
-    ['updatedAt', 'connection', 'launch', 'panel', 'bar'].forEach((field) =>
+    ['updatedAt', 'connection', 'launch', 'panel', 'bar', 'sections', 'icons'].forEach((field) =>
       expect(qml).toContain(`status.${field}`)
     );
   });
@@ -117,70 +143,119 @@ describe('Omarchy bar settings in shell.json', () => {
     expect(readOmarchyBarEntry('{}').present).toBe(false);
   });
 
-  it('lists Quick Access favorites until entities are chosen', () => {
+  it('lists every Quick Access tile, by page, until entities are chosen', () => {
+    const entry = { present: true, entities: null, barEntities: null };
     const favorites = Array.from({ length: 20 }, (_, index) => `light.l${index}`);
-    const byDefault = resolveOmarchyBarEntities(
-      { present: true, entities: null, barEntities: null },
-      favorites
-    );
-    expect(byDefault.panel).toHaveLength(12);
-    expect(byDefault.bar).toEqual([]);
+    // A config from before pages holds favoriteEntities alone: one untitled page, all of it.
+    const legacy = resolveOmarchyBarEntities(entry, { favoriteEntities: favorites });
+    expect(legacy.panel).toHaveLength(20);
+    expect(legacy.sections).toEqual([{ name: '', ids: favorites }]);
+    expect(legacy.bar).toEqual([]);
+    // One page needs no heading; several keep their names, in order, without repeats.
+    const onePage = resolveOmarchyBarEntities(entry, {
+      customTabs: [{ name: 'All', entityIds: ['light.a', 'switch.b'] }],
+    });
+    expect(onePage.sections).toEqual([{ name: '', ids: ['light.a', 'switch.b'] }]);
+    const pages = resolveOmarchyBarEntities(entry, {
+      customTabs: [
+        { name: 'Living room', entityIds: ['light.a', 'switch.b'] },
+        { name: 'Empty', entityIds: [] },
+        { name: 'Office', entityIds: ['switch.b', 'sensor.temp', 'not an id'] },
+      ],
+    });
+    expect(pages.sections).toEqual([
+      { name: 'Living room', ids: ['light.a', 'switch.b'] },
+      { name: 'Office', ids: ['sensor.temp'] },
+    ]);
+    expect(pages.panel).toEqual(['light.a', 'switch.b', 'sensor.temp']);
+    expect(getQuickAccessPages({})).toEqual([]);
+    // Entities chosen on the shell.json entry replace the pages with one list.
     const chosen = resolveOmarchyBarEntities(
       { present: true, entities: ['switch.fan'], barEntities: ['sensor.temp'] },
-      favorites
+      { favoriteEntities: favorites }
     );
     expect(chosen).toEqual({
       panel: ['switch.fan'],
       bar: ['sensor.temp'],
+      sections: [{ name: '', ids: ['switch.fan'] }],
       all: ['sensor.temp', 'switch.fan'],
     });
   });
 });
 
 describe('Omarchy bar status', () => {
-  it('describes values, names and what can be toggled', () => {
-    expect(
-      describeOmarchyBarEntity('sensor.temp', {
-        state: '21.5',
-        attributes: { friendly_name: 'Office', unit_of_measurement: '°C' },
-      })
-    ).toMatchObject({ name: 'Office', value: '21.5 °C', toggleable: false, available: true });
-    expect(
-      describeOmarchyBarEntity('light.desk', { state: 'on', attributes: {} }, 'Desk lamp')
-    ).toMatchObject({ name: 'Desk lamp', value: 'On', active: true, toggleable: true });
-    expect(
-      describeOmarchyBarEntity('switch.gone', { state: 'unavailable', attributes: {} })
-    ).toMatchObject({ available: false, toggleable: false });
-    // Scenes and buttons only hold the time they last ran; timestamp sensors read relatively.
-    const now = Date.parse('2026-09-26T20:00:00Z');
-    expect(
-      describeOmarchyBarEntity(
-        'scene.movie',
-        { state: '2026-09-26T18:52:26.628525+00:00', attributes: {} },
-        '',
-        now
-      ).value
-    ).toBe('');
-    const lastSeen = describeOmarchyBarEntity(
-      'sensor.last_seen',
-      { state: '2026-09-26T17:00:00+00:00', attributes: {} },
-      '',
-      now
-    ).value;
-    expect(lastSeen).not.toContain('2026-09-26');
-    expect(lastSeen).toMatch(/3/);
-    expect(describeOmarchyBarEntity('light.missing', undefined)).toMatchObject({
-      name: 'light.missing',
-      value: '',
-      toggleable: false,
+  it('keeps only the tile fields the plugin reads', () => {
+    expect(cleanOmarchyBarTile('light.desk', { ...lightTile, extra: 'dropped' })).toEqual({
+      id: 'light.desk',
+      ...lightTile,
+      controlState: null,
     });
+    const withControls = cleanOmarchyBarTile('light.desk', {
+      ...lightTile,
+      controlState: {
+        kind: 'light',
+        on: true,
+        brightness: 250,
+        canSetBrightness: true,
+        colorTemp: { kelvin: 4000, min: 2200, max: 6500 },
+        colors: ['#FFB347', 'red', '#12345'],
+        script: 'dropped',
+      },
+    });
+    expect(withControls.controlState).toEqual({
+      kind: 'light',
+      on: true,
+      brightness: 100,
+      canSetBrightness: true,
+      colorTemp: { kelvin: 4000, min: 2200, max: 6500 },
+      colors: ['#FFB347'],
+    });
+    expect(
+      cleanOmarchyBarTile('light.desk', { ...lightTile, controlState: { kind: 'oven' } })
+        .controlState
+    ).toBeNull();
+    const odd = cleanOmarchyBarTile('scene.movie', {
+      name: `  Movie\n${'x'.repeat(200)}`,
+      icon: { kind: 'mdi', glyph: '\u{F0510}' },
+      action: 'explode',
+      active: 'yes',
+    });
+    expect(odd.name).toHaveLength(80);
+    expect(odd.name.startsWith('Movie x')).toBe(true);
+    expect(odd.icon).toEqual({ kind: 'glyph', glyph: '\u{F0510}' });
+    expect(odd.action).toBe('none');
+    expect(odd.active).toBe(false);
+    expect(
+      cleanOmarchyBarTile('sensor.x', { icon: { kind: 'line', name: '../../x' } }).icon
+    ).toEqual({ kind: 'line', name: 'box' });
+    expect(cleanOmarchyBarTile('sensor.x', null)).toBeNull();
+  });
+
+  it('accepts only plain line-icon SVGs', () => {
+    const svg =
+      '<svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor"><path d="M9 18h6"></path></svg>';
+    expect(cleanLineIconSvg(svg)).toBe(svg);
+    expect(cleanLineIconSvg(`<svg><script>alert(1)</script></svg>`)).toBe('');
+    expect(cleanLineIconSvg('<svg onload="x()"></svg>')).toBe('');
+    expect(cleanLineIconSvg('<svg><image href="file:///etc/passwd"/></svg>')).toBe('');
+    expect(cleanLineIconSvg('<div></div>')).toBe('');
+    expect(cleanLineIconSvg(`<svg>${'x'.repeat(5000)}</svg>`)).toBe('');
   });
 
   it('builds the file the plugin reads', () => {
+    const tile = cleanOmarchyBarTile('light.desk', lightTile);
     const status = buildOmarchyBarStatus({
       connection: 'connected',
-      states: new Map([['light.desk', { state: 'off', attributes: {} }]]),
-      entities: { panel: ['light.desk'], bar: [] },
+      tiles: new Map([['light.desk', tile]]),
+      icons: new Map([
+        ['lightbulb', '<svg>bulb</svg>'],
+        ['plug', '<svg>unused</svg>'],
+      ]),
+      entities: {
+        panel: ['light.desk', 'switch.later'],
+        bar: [],
+        sections: [{ name: '', ids: ['light.desk', 'switch.later'] }],
+      },
       launch: ['/opt/ha-desktop-widget/home-assistant-widget'],
       now: 42,
     });
@@ -190,8 +265,24 @@ describe('Omarchy bar status', () => {
       connection: 'connected',
       launch: ['/opt/ha-desktop-widget/home-assistant-widget'],
       bar: [],
+      sections: [{ name: '', ids: ['light.desk', 'switch.later'] }],
+      // Only the icons the tiles use.
+      icons: { lightbulb: '<svg>bulb</svg>' },
     });
-    expect(status.panel[0]).toMatchObject({ id: 'light.desk', value: 'Off' });
+    // Plugin 1.0.x reads value, active, available and toggleable from the same entries.
+    expect(status.panel[0]).toMatchObject({
+      id: 'light.desk',
+      value: '85%',
+      active: true,
+      toggleable: true,
+      action: 'toggle',
+    });
+    // A tile the renderer has not described yet reads as inert.
+    expect(status.panel[1]).toMatchObject({
+      id: 'switch.later',
+      action: 'none',
+      toggleable: false,
+    });
     expect(buildOmarchyBarStatus({ launch: [] }).launch).toBeNull();
     expect(buildOmarchyBarStatus({}).issue).toBe('');
     expect(buildOmarchyBarStatus({ connection: 'auth-failed', issue: 'keyring' }).issue).toBe(
@@ -228,24 +319,173 @@ describe('Omarchy bar status', () => {
 });
 
 describe('bar requests and installation', () => {
-  it('reads --entity-toggle and allows only shown, toggleable entities', () => {
-    expect(getEntityToggleRequest(['widget', '--entity-toggle=Light.Desk'])).toBe('light.desk');
-    expect(getEntityToggleRequest(['widget', '--entity-toggle', 'switch.fan'])).toBe('switch.fan');
-    expect(getEntityToggleRequest(['widget', '--entity-toggle=rm -rf'])).toBe('');
-    expect(getEntityToggleRequest(['widget', '--toggle'])).toBe('');
-    const entities = { all: ['light.desk', 'lock.front', 'sensor.temp'] };
-    expect(isAllowedOmarchyBarToggle('light.desk', entities)).toBe(true);
-    expect(isAllowedOmarchyBarToggle('lock.front', entities)).toBe(false);
-    // Only domains the widget's own toggle action handles.
-    expect(isAllowedOmarchyBarToggle('automation.lights', { all: ['automation.lights'] })).toBe(
+  it('reads tile requests and allows only what the shown tile can do', () => {
+    expect(getOmarchyBarActionRequest(['widget', '--entity-action=Light.Desk'])).toEqual({
+      entityId: 'light.desk',
+      kind: 'primary',
+    });
+    expect(getOmarchyBarActionRequest(['widget', '--entity-controls', 'fan.bedroom'])).toEqual({
+      entityId: 'fan.bedroom',
+      kind: 'controls',
+    });
+    // What plugin 1.0.x runs.
+    expect(getOmarchyBarActionRequest(['widget', '--entity-toggle=switch.fan'])).toEqual({
+      entityId: 'switch.fan',
+      kind: 'primary',
+    });
+    expect(getOmarchyBarActionRequest(['widget', '--entity-action=rm -rf'])).toBeNull();
+    expect(getOmarchyBarActionRequest(['widget', '--toggle'])).toBeNull();
+
+    const entities = { all: ['light.desk', 'sensor.status'] };
+    const light = { action: 'toggle', controls: true };
+    const status = { action: 'none', controls: false };
+    const primary = (entityId) => ({ entityId, kind: 'primary' });
+    const controls = (entityId) => ({ entityId, kind: 'controls' });
+    expect(isAllowedOmarchyBarAction(primary('light.desk'), entities, light)).toBe(true);
+    expect(isAllowedOmarchyBarAction(controls('light.desk'), entities, light)).toBe(true);
+    // A tile whose click does nothing, one without controls, one the bar does not show, or one
+    // the renderer has not described.
+    expect(isAllowedOmarchyBarAction(primary('sensor.status'), entities, status)).toBe(false);
+    expect(isAllowedOmarchyBarAction(controls('sensor.status'), entities, status)).toBe(false);
+    expect(isAllowedOmarchyBarAction(primary('light.kitchen'), entities, light)).toBe(false);
+    expect(isAllowedOmarchyBarAction(primary('light.desk'), entities, undefined)).toBe(false);
+    expect(isAllowedOmarchyBarAction({ entityId: 'light.desk', kind: 'x' }, entities, light)).toBe(
       false
     );
-    expect(
-      describeOmarchyBarEntity('siren.alarm', { state: 'off', attributes: {} }).toggleable
-    ).toBe(false);
-    expect(isAllowedOmarchyBarToggle('sensor.temp', entities)).toBe(false);
-    expect(isAllowedOmarchyBarToggle('light.kitchen', entities)).toBe(false);
   });
+
+  it('allows controls-popup commands only within what the tile offers', () => {
+    const entities = { all: ['light.desk', 'climate.hall', 'media_player.den'] };
+    const set = (entityId, command, value) => ({ entityId, kind: 'set', command, value });
+    const light = cleanOmarchyBarTile('light.desk', {
+      ...lightTile,
+      controlState: {
+        kind: 'light',
+        on: true,
+        brightness: 40,
+        canSetBrightness: true,
+        colorTemp: { kelvin: 4000, min: 2200, max: 6500 },
+        colors: ['#FFB347'],
+      },
+    });
+    expect(isAllowedOmarchyBarAction(set('light.desk', 'brightness', 55), entities, light)).toBe(
+      true
+    );
+    expect(isAllowedOmarchyBarAction(set('light.desk', 'brightness', 101), entities, light)).toBe(
+      false
+    );
+    expect(isAllowedOmarchyBarAction(set('light.desk', 'color_temp', 1000), entities, light)).toBe(
+      false
+    );
+    expect(isAllowedOmarchyBarAction(set('light.desk', 'color', '#00ff00'), entities, light)).toBe(
+      true
+    );
+    expect(isAllowedOmarchyBarAction(set('light.desk', 'power', 'yes'), entities, light)).toBe(
+      false
+    );
+    expect(isAllowedOmarchyBarAction(set('light.desk', 'position', 5), entities, light)).toBe(
+      false
+    );
+    const climate = cleanOmarchyBarTile('climate.hall', {
+      ...lightTile,
+      controlState: {
+        kind: 'climate',
+        mode: 'heat',
+        target: 21,
+        min: 7,
+        max: 30,
+        step: 0.5,
+        canSetTemperature: true,
+        modes: ['off', 'heat'],
+      },
+    });
+    expect(
+      isAllowedOmarchyBarAction(set('climate.hall', 'temperature', 22.5), entities, climate)
+    ).toBe(true);
+    expect(
+      isAllowedOmarchyBarAction(set('climate.hall', 'temperature', 45), entities, climate)
+    ).toBe(false);
+    expect(isAllowedOmarchyBarAction(set('climate.hall', 'mode', 'cool'), entities, climate)).toBe(
+      false
+    );
+    const media = cleanOmarchyBarTile('media_player.den', {
+      ...lightTile,
+      controlState: { kind: 'media', canNext: false, canSetVolume: true, canPlay: true },
+    });
+    expect(isAllowedOmarchyBarAction(set('media_player.den', 'volume', 30), entities, media)).toBe(
+      true
+    );
+    expect(isAllowedOmarchyBarAction(set('media_player.den', 'next', null), entities, media)).toBe(
+      false
+    );
+    // A tile without controls takes no commands at all.
+    expect(
+      isAllowedOmarchyBarAction(set('light.desk', 'brightness', 50), entities, {
+        ...light,
+        controls: false,
+      })
+    ).toBe(false);
+  });
+
+  it('reads socket request lines', () => {
+    expect(parseOmarchyBarSocketLine('{"id":"Light.Desk","kind":"primary"}')).toEqual({
+      entityId: 'light.desk',
+      kind: 'primary',
+    });
+    expect(
+      parseOmarchyBarSocketLine(
+        '{"id":"light.desk","kind":"set","command":"brightness","value":40}'
+      )
+    ).toEqual({ entityId: 'light.desk', kind: 'set', command: 'brightness', value: 40 });
+    expect(parseOmarchyBarSocketLine('{"id":"light.desk","kind":"set","command":"stop"}')).toEqual({
+      entityId: 'light.desk',
+      kind: 'set',
+      command: 'stop',
+      value: null,
+    });
+    [
+      'not json',
+      '{"id":"rm -rf","kind":"primary"}',
+      '{"id":"light.desk","kind":"delete"}',
+      '{"id":"light.desk","kind":"set","command":"Bad Command"}',
+      '{"id":"light.desk","kind":"set","command":"brightness","value":{"x":1}}',
+      `{"id":"light.desk","kind":"primary","pad":"${'x'.repeat(600)}"}`,
+    ].forEach((line) => expect(parseOmarchyBarSocketLine(line)).toBeNull());
+  });
+
+  (process.platform === 'win32' ? it.skip : it)(
+    'listens on a private socket and passes each request line on',
+    async () => {
+      const socketPath = path.join(root, 'run', 'ha-desktop-widget', 'omarchy-bar.sock');
+      const received = [];
+      const server = createOmarchyBarCommandServer({
+        socketPath,
+        onRequest: (request) => received.push(request),
+        log: { warn: jest.fn() },
+      });
+      await new Promise((resolve) => {
+        const wait = () => (fs.existsSync(socketPath) ? resolve() : setTimeout(wait, 10));
+        wait();
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(fs.statSync(socketPath).mode & 0o777).toBe(0o600);
+      expect(fs.statSync(path.dirname(socketPath)).mode & 0o777).toBe(0o700);
+      const client = require('net').createConnection(socketPath);
+      await new Promise((resolve) => client.on('connect', resolve));
+      // Split across writes, with a junk line between two real ones.
+      client.write('{"id":"light.desk","ki');
+      client.write('nd":"primary"}\nnot json\n{"id":"light.desk","kind":"controls"}\n');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(received).toEqual([
+        { entityId: 'light.desk', kind: 'primary' },
+        { entityId: 'light.desk', kind: 'controls' },
+      ]);
+      client.destroy();
+      server.stop();
+      expect(fs.existsSync(socketPath)).toBe(false);
+      expect(createOmarchyBarCommandServer({ socketPath: '', onRequest: () => {} })).toBeNull();
+    }
+  );
 
   it('finds Omarchy 4 and the paths it uses', () => {
     expect(
@@ -261,6 +501,7 @@ describe('bar requests and installation', () => {
       shellConfig: path.join('/home/me', '.config', 'omarchy', 'shell.json'),
       pluginDir: path.join('/home/me', '.config', 'omarchy', 'plugins', appId),
       statusFile: path.join('/run/user/1000', 'ha-desktop-widget', 'omarchy-bar.json'),
+      socket: path.join('/run/user/1000', 'ha-desktop-widget', 'omarchy-bar.sock'),
       launchFile: path.join(
         '/home/me',
         '.local',
@@ -270,6 +511,7 @@ describe('bar requests and installation', () => {
       ),
     });
     expect(getOmarchyBarPaths({ env: {}, home: '/home/me' }).statusFile).toBe('');
+    expect(getOmarchyBarPaths({ env: {}, home: '/home/me' }).socket).toBe('');
   });
 
   it('copies the bundled plugin into the Omarchy plugins directory', () => {

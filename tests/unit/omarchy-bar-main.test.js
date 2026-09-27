@@ -10,115 +10,191 @@ function block(startMarker) {
   return mainSource.slice(start, end + 3);
 }
 
-function loadRuntime({ enabled = true, present = true } = {}) {
+const lightTile = {
+  action: 'toggle',
+  controls: true,
+  controlState: {
+    kind: 'light',
+    on: true,
+    brightness: 40,
+    canSetBrightness: true,
+    colorTemp: null,
+    colors: [],
+  },
+};
+const calendarTile = { action: 'dialog', controls: false };
+const statusTile = { action: 'none', controls: false };
+
+function loadRuntime({ enabled = true, present = true, tiles = {} } = {}) {
   const send = jest.fn();
   const context = {
     ...omarchyBar,
     omarchyBarPublisher: enabled ? {} : null,
-    omarchyBarEntry: { present, entities: ['light.desk', 'sensor.temp'], barEntities: [] },
+    omarchyBarEntry: {
+      present,
+      entities: ['light.desk', 'calendar.home', 'sensor.status'],
+      barEntities: [],
+    },
+    omarchyBarTiles: new Map(
+      Object.entries({
+        'light.desk': lightTile,
+        'calendar.home': calendarTile,
+        'sensor.status': statusTile,
+        ...tiles,
+      })
+    ),
     config: { favoriteEntities: [] },
     mainWindow: { isDestroyed: () => false, webContents: { send } },
+    showMainWindowFromTray: jest.fn(),
     log: { warn: jest.fn() },
   };
   vm.runInNewContext(
-    block('function getOmarchyBarEntities') + block('function handleOmarchyBarEntityToggle'),
+    block('function getOmarchyBarEntities') + block('function handleOmarchyBarEntityAction'),
     context
   );
   return { context, send };
 }
 
+const primary = (entityId) => ({ entityId, kind: 'primary' });
+const controls = (entityId) => ({ entityId, kind: 'controls' });
+
 describe('Omarchy bar requests in the main process', () => {
-  it('toggles an entity the bar shows through the hotkey path', () => {
+  it('passes a tile click to the renderer, which does what the widget tile does', () => {
     const { context, send } = loadRuntime();
-    context.handleOmarchyBarEntityToggle('light.desk');
-    expect(send).toHaveBeenCalledWith('hotkey-triggered', {
+    context.handleOmarchyBarEntityAction(primary('light.desk'));
+    expect(send).toHaveBeenCalledWith('omarchy-bar-entity-action', {
       entityId: 'light.desk',
-      action: 'toggle',
+      kind: 'primary',
     });
+    // A toggle happens in place; the widget stays where it is.
+    expect(context.showMainWindowFromTray).not.toHaveBeenCalled();
+  });
+
+  it('brings the widget up for a dialog or the adjust controls', () => {
+    const { context, send } = loadRuntime();
+    context.handleOmarchyBarEntityAction(primary('calendar.home'));
+    context.handleOmarchyBarEntityAction(controls('light.desk'));
+    expect(context.showMainWindowFromTray).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenCalledWith('omarchy-bar-entity-action', {
+      entityId: 'light.desk',
+      kind: 'controls',
+    });
+  });
+
+  it('applies a controls-popup change in place, without bringing the widget up', () => {
+    const { context, send } = loadRuntime();
+    const set = { entityId: 'light.desk', kind: 'set', command: 'brightness', value: 65 };
+    context.handleOmarchyBarEntityAction(set);
+    expect(send).toHaveBeenCalledWith('omarchy-bar-entity-action', {
+      entityId: 'light.desk',
+      kind: 'set',
+      command: 'brightness',
+      value: 65,
+    });
+    expect(context.showMainWindowFromTray).not.toHaveBeenCalled();
+    send.mockClear();
+    // Out of range, a command the tile lacks, and a tile without controls.
+    context.handleOmarchyBarEntityAction({ ...set, value: 140 });
+    context.handleOmarchyBarEntityAction({ ...set, command: 'color_temp', value: 3000 });
+    context.handleOmarchyBarEntityAction({ ...set, entityId: 'sensor.status' });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('listens on the bar socket while the integration runs', () => {
+    const start = block('function startOmarchyBarIntegration');
+    expect(start).toContain('socketPath: paths.socket');
+    expect(start).toContain('onRequest: handleOmarchyBarEntityAction');
+    expect(block('function stopOmarchyBarIntegration')).toContain(
+      'omarchyBarCommandServer?.stop();'
+    );
   });
 
   it('ignores anything else', () => {
     const { context, send } = loadRuntime();
-    context.handleOmarchyBarEntityToggle('sensor.temp');
-    context.handleOmarchyBarEntityToggle('light.kitchen');
+    context.handleOmarchyBarEntityAction(primary('sensor.status'));
+    context.handleOmarchyBarEntityAction(controls('calendar.home'));
+    context.handleOmarchyBarEntityAction(primary('light.kitchen'));
     expect(send).not.toHaveBeenCalled();
+    expect(context.showMainWindowFromTray).not.toHaveBeenCalled();
     const off = loadRuntime({ enabled: false });
-    off.context.handleOmarchyBarEntityToggle('light.desk');
+    off.context.handleOmarchyBarEntityAction(primary('light.desk'));
     expect(off.send).not.toHaveBeenCalled();
     const removed = loadRuntime({ present: false });
     expect(removed.context.getOmarchyBarEntities().all).toEqual([]);
   });
 
-  it('handles --entity-toggle before any show or hide action on a second launch', () => {
+  it('handles a bar request before any show or hide action on a second launch', () => {
     const start = mainSource.indexOf("app.on('second-instance'");
     const handler = mainSource.slice(start, mainSource.indexOf('\n  });\n', start));
-    expect(handler.indexOf('getEntityToggleRequest(argv)')).toBeLessThan(
+    expect(handler.indexOf('getOmarchyBarActionRequest(argv)')).toBeLessThan(
       handler.indexOf('getLaunchAction(argv)')
     );
     // A request during startup waits in the same queue a first-instance request uses.
-    expect(handler).toContain('pendingOmarchyBarToggle = { entityId: entityToggle');
-    expect(handler).toContain('deliverPendingOmarchyBarToggle();\n      return;');
+    expect(handler).toContain('pendingOmarchyBarAction = { ...barAction');
+    expect(handler).toContain('deliverPendingOmarchyBarAction();\n      return;');
   });
 
   it('never keeps the runtime entity list in the saved config', () => {
     expect(block('function pruneConfig')).toContain('delete target.omarchyBarEntities;');
   });
 
-  describe('a toggle that started a fresh widget', () => {
+  describe('a request that started a fresh widget', () => {
     function loadPending(requestedAt) {
       const { context, send } = loadRuntime();
-      vm.runInNewContext(block('function deliverPendingOmarchyBarToggle'), context);
+      vm.runInNewContext(block('function deliverPendingOmarchyBarAction'), context);
       Object.assign(context, {
-        OMARCHY_BAR_PENDING_TOGGLE_MS: 60000,
-        pendingOmarchyBarToggle: { entityId: 'light.desk', requestedAt },
+        OMARCHY_BAR_PENDING_ACTION_MS: 60000,
+        pendingOmarchyBarAction: { ...primary('light.desk'), requestedAt },
         latestHaConnectionState: 'connecting',
-        omarchyBarStates: new Map(),
       });
+      context.omarchyBarTiles.clear();
       return { context, send };
     }
 
-    it('waits for the connection and the entity state, then toggles once', () => {
+    it('waits for the connection and the tile, then acts once', () => {
       const { context, send } = loadPending(1000);
-      context.deliverPendingOmarchyBarToggle(2000);
+      context.deliverPendingOmarchyBarAction(2000);
       expect(send).not.toHaveBeenCalled();
-      context.omarchyBarStates.set('light.desk', { state: 'off' });
-      context.deliverPendingOmarchyBarToggle(3000);
+      context.omarchyBarTiles.set('light.desk', lightTile);
+      context.deliverPendingOmarchyBarAction(3000);
       expect(send).not.toHaveBeenCalled();
       context.latestHaConnectionState = 'connected';
-      context.deliverPendingOmarchyBarToggle(4000);
-      context.deliverPendingOmarchyBarToggle(5000);
+      context.deliverPendingOmarchyBarAction(4000);
+      context.deliverPendingOmarchyBarAction(5000);
       expect(send).toHaveBeenCalledTimes(1);
-      expect(send).toHaveBeenCalledWith('hotkey-triggered', {
+      expect(send).toHaveBeenCalledWith('omarchy-bar-entity-action', {
         entityId: 'light.desk',
-        action: 'toggle',
+        kind: 'primary',
       });
     });
 
     it('drops a request that could not be delivered within a minute', () => {
       const { context, send } = loadPending(1000);
       context.latestHaConnectionState = 'connected';
-      context.omarchyBarStates.set('light.desk', { state: 'off' });
-      context.deliverPendingOmarchyBarToggle(62000);
+      context.omarchyBarTiles.set('light.desk', lightTile);
+      context.deliverPendingOmarchyBarAction(62000);
       expect(send).not.toHaveBeenCalled();
-      expect(context.pendingOmarchyBarToggle).toBeNull();
+      expect(context.pendingOmarchyBarAction).toBeNull();
     });
 
     it('is read from the first instance command line and delivered from both publish paths', () => {
       const lockStart = mainSource.indexOf('const gotSingleInstanceLock');
       expect(mainSource.slice(lockStart, lockStart + 300)).toContain(
-        'getEntityToggleRequest(process.argv)'
+        'getOmarchyBarActionRequest(process.argv)'
       );
-      const statesHandler = mainSource.slice(
-        mainSource.indexOf("ipcMain.handle('publish-omarchy-bar-states'"),
+      const tilesHandler = mainSource.slice(
+        mainSource.indexOf("ipcMain.handle('publish-omarchy-bar-tiles'"),
         mainSource.indexOf("ipcMain.handle('publish-ha-snapshot'")
       );
-      expect(statesHandler).toContain('deliverPendingOmarchyBarToggle();');
+      expect(tilesHandler).toContain('deliverPendingOmarchyBarAction();');
+      expect(tilesHandler).toContain('cleanOmarchyBarTile(normalizedEntityId, tile)');
+      expect(tilesHandler).toContain('cleanLineIconSvg(svg)');
       const connectionStart = mainSource.indexOf("ipcMain.handle('publish-ha-connection-state'");
       const connectionHandler = mainSource.slice(
         connectionStart,
         mainSource.indexOf('\n});\n', connectionStart)
       );
-      expect(connectionHandler).toContain('deliverPendingOmarchyBarToggle();');
+      expect(connectionHandler).toContain('deliverPendingOmarchyBarAction();');
     });
   });
 
