@@ -400,6 +400,11 @@ const {
   isLinuxPopupHotkeyPlatform,
 } = require('./src/linux-popup-hotkey.cjs');
 const { createPopupWindowPresenter } = require('./src/popup-window-presenter.cjs');
+const {
+  createLayerPointerRelease,
+  getHyprlandRequestSocket,
+  readHyprlandCursorFromSocket,
+} = require('./src/layer-pointer-release.cjs');
 const { createWindowAutoHideController } = require('./src/window-auto-hide.cjs');
 const { installSystemShutdownHandlers } = require('./src/system-shutdown.cjs');
 const { createKWinWindowRaiser } = require('./src/kwin-window-raise.cjs');
@@ -1005,6 +1010,40 @@ const popupWindowPresenter = createPopupWindowPresenter({
   requestCompositorRestore: layerShellRaiser ? () => layerShellRaiser.restore() : null,
   log,
 });
+// Where the main widget is on screen, in Hyprland's global coordinates, while it is a layer.
+function getMainLayerRect() {
+  const position = layerPositions.get('main');
+  if (!layerActualMonitor || !position || !mainWindow || mainWindow.isDestroyed()) return null;
+  const { width, height } = mainWindow.getBounds();
+  return {
+    x: layerActualMonitor.x + position.x,
+    y: layerActualMonitor.y + position.y,
+    width,
+    height,
+  };
+}
+
+// With focus-follows-mouse, a raised layer widget loses focus the moment the pointer crosses a
+// window on its way to it. On Hyprland the widget waits for the pointer to move off elsewhere
+// instead; see src/layer-pointer-release.cjs.
+let hyprlandRequestSocket = null;
+const layerPointerRelease = createLayerPointerRelease({
+  readCursor: () => {
+    if (hyprlandRequestSocket === null) hyprlandRequestSocket = getHyprlandRequestSocket();
+    return readHyprlandCursorFromSocket({ socketPath: hyprlandRequestSocket });
+  },
+  getRect: getMainLayerRect,
+  shouldKeepWatching: () =>
+    !!mainWindow &&
+    !mainWindow.isDestroyed() &&
+    !mainWindow.isFocused() &&
+    popupWindowPresenter.isElevated(),
+  onRelease: () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (popupWindowPresenter.handleWindowBlur(mainWindow)) layerBlurReleasedAt = Date.now();
+  },
+});
+
 const linuxPopupHotkeyController = createLinuxPopupHotkeyController({
   globalShortcut,
   getConfig: () => config,
@@ -6426,14 +6465,25 @@ function createWindow() {
     notifyDesktopCompanionStateChanged();
   });
   mainWindow.on('blur', () => {
+    windowAutoHide.handleBlur();
+    // On Hyprland a raised layer widget follows the pointer rather than focus; see
+    // layerPointerRelease. Elsewhere, or where its position is unknown, it lowers now.
+    if (
+      isLayerShellChildProcess &&
+      isHyprland() &&
+      popupWindowPresenter.isElevated() &&
+      layerPointerRelease.start()
+    ) {
+      return;
+    }
     const released = popupWindowPresenter.handleWindowBlur(mainWindow);
     if (released && isLayerShellChildProcess) layerBlurReleasedAt = Date.now();
-    windowAutoHide.handleBlur();
   });
 
   // Coming back to the widget is the moment a stale profile is most visible, and
   // the provider has usually finished replicating by then.
   mainWindow.on('focus', () => {
+    layerPointerRelease.stop();
     windowAutoHide.handleFocus();
     requestOpportunisticProfileSync('focus');
   });

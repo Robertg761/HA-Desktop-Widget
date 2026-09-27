@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- On Hyprland, a widget brought forward from the tray, the Omarchy bar, or the popup shortcut no longer drops behind your windows as the pointer crosses them on its way to it. It lowers once the pointer moves off to something else.
 - Stop a settings change from overwriting another computer's newer sync change that had not arrived yet, and stop a computer whose clock runs ahead from undoing other computers' changes.
 - Refuse to write the sync file unencrypted, or with an old passphrase, from a computer whose encryption settings no longer match it; say what to change instead.
 - Keep background sync running after a failed first sync at login, such as when the sync folder is not mounted yet.
