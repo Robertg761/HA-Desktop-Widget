@@ -218,3 +218,19 @@ test('does nothing when the icon registered alongside an ownerless Chromium-shap
   await watch(bus, onAppeared).ready;
   expect(onAppeared).not.toHaveBeenCalled();
 });
+
+test('recreates the tray icons when too few ownerless items could account for the missing ones', async () => {
+  // Three icons expected, one attributed to this process, one ownerless candidate: at least
+  // one is certainly missing.
+  const bus = createFakeBus({
+    watcherPresent: true,
+    registeredItems: [
+      '/org/chromium/StatusNotifierItem/1',
+      ':1.7/org/chromium/StatusNotifierItem/2',
+    ],
+    owners: { ':1.7': ownPid },
+  });
+  const onAppeared = jest.fn();
+  await watch(bus, onAppeared, 3).ready;
+  expect(onAppeared).toHaveBeenCalledTimes(1);
+});

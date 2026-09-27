@@ -84,15 +84,15 @@ function watchForStatusNotifierWatcher({
     // Every icon of one process usually shares its connection, so ask about each owner once.
     const ownerPids = new Map();
     let owned = 0;
-    let unattributable = false;
+    let unattributable = 0;
     for (const item of items) {
       if (typeof item !== 'string' || !item) continue;
       const service = item.split('/')[0];
       // A bare object path names no owner. The spec has the watcher prefix the sender, but a
       // host that does not leaves nothing to attribute. One shaped like Chromium's item may be
-      // this process's, so the answer is unknown; any other bare path is some other app's.
+      // this process's; any other bare path is some other app's.
       if (!service) {
-        if (item.startsWith(CHROMIUM_ITEM_PATH_PREFIX)) unattributable = true;
+        if (item.startsWith(CHROMIUM_ITEM_PATH_PREFIX)) unattributable += 1;
         continue;
       }
       if (service.includes(ownNameMarker)) {
@@ -121,9 +121,10 @@ function watchForStatusNotifierWatcher({
       }
       if (owned >= expected) return true;
     }
-    // Rather than recreate icons that may be working, leave the tray alone when some of them
-    // could be registered under a path no one can attribute.
-    return unattributable ? null : false;
+    // Rather than recreate icons that may be working, leave the tray alone when the ones not
+    // found could all be registered under paths no one can attribute. Too few such paths
+    // means at least one icon is certainly missing.
+    return owned + unattributable >= expected ? null : false;
   }
 
   async function start() {
