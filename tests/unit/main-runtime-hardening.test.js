@@ -154,6 +154,9 @@ describe('main-process wiring safeguards', () => {
     );
     expect(handler).toContain('Quit: settings saved after');
     expect(handler).toContain('Quit: runtime shut down after');
+    // A canceled quit leaves the app open; its start time must not carry over to a later exit.
+    const canceled = handler.slice(handler.indexOf('Quit canceled because'));
+    expect(canceled).toContain('quitRequestedAt = null;');
     expect(mainSource).toContain("app.on('will-quit', () => {");
     expect(mainSource).toContain("Quit: handing over to Chromium's exit after");
   });

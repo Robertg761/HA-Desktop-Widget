@@ -11742,6 +11742,8 @@ app.on('before-quit', (event) => {
         return;
       }
       log.error('Quit canceled because configuration could not be saved:', error);
+      // The app stays open, so a later exit that skips this handler must not time from here.
+      quitRequestedAt = null;
       dialog.showErrorBox(
         mainT('Could not save settings'),
         `${mainT('The app stayed open because its configuration could not be saved.')}\n\n${
