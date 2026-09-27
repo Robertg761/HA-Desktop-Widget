@@ -30,6 +30,43 @@ function loadShowRuntime({ layerMode, visible = true, elevated = false }) {
   return context;
 }
 
+describe('raising a desktop-layer widget that was just launched to be seen', () => {
+  const { EventEmitter } = require('events');
+  function loadStartup() {
+    const runtime = loadShowRuntime({ layerMode: true });
+    runtime.mainWindow = Object.assign(new EventEmitter(), runtime.mainWindow);
+    Object.assign(runtime, { LAYER_STARTUP_RAISE_FALLBACK_MS: 1500, setTimeout, clearTimeout });
+    return runtime;
+  }
+
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('waits for the first focus, when the surface is mapped, and raises once', () => {
+    const runtime = loadStartup();
+    runtime.raiseLayerWidgetOnceMapped();
+    expect(runtime.popupWindowPresenter.showAboveFullScreen).not.toHaveBeenCalled();
+    runtime.mainWindow.emit('focus');
+    runtime.mainWindow.emit('focus');
+    jest.advanceTimersByTime(5000);
+    expect(runtime.popupWindowPresenter.showAboveFullScreen).toHaveBeenCalledTimes(1);
+    expect(runtime.popupWindowPresenter.showAboveFullScreen).toHaveBeenCalledWith(
+      runtime.mainWindow,
+      { keepElevated: true }
+    );
+  });
+
+  it('raises anyway when no focus arrives', () => {
+    const runtime = loadStartup();
+    runtime.raiseLayerWidgetOnceMapped();
+    jest.advanceTimersByTime(1499);
+    expect(runtime.popupWindowPresenter.showAboveFullScreen).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1);
+    runtime.mainWindow.emit('focus');
+    expect(runtime.popupWindowPresenter.showAboveFullScreen).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('showing the widget from the tray, launcher or --toggle', () => {
   it('keeps the one-off raise everywhere outside a desktop layer', () => {
     const runtime = loadShowRuntime({ layerMode: false });

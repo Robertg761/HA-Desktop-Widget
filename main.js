@@ -73,6 +73,8 @@ let trayHostWatch = null;
 // focus first, the widget's blur has already lowered it by the time the toggle arrives. The
 // toggle consumes that recent release instead of raising the widget straight back up.
 const LAYER_BLUR_TOGGLE_GRACE_MS = 500;
+// How long a freshly started desktop-layer widget waits for its first focus before raising anyway.
+const LAYER_STARTUP_RAISE_FALLBACK_MS = 1500;
 let layerBlurReleasedAt = null;
 // Omarchy 4 bar plugin support; see src/omarchy-bar.cjs. Null unless the Omarchy shell exists.
 let omarchyBarPublisher = null;
@@ -2537,6 +2539,24 @@ function showMainWindowFromTray() {
   // A desktop-layer widget settles back under tiled windows, where a one-off raise is only
   // a flash, so an explicit show keeps it raised until toggled back or focus moves away.
   return focusMainWindow({ keepElevated: isLayerShellChildProcess });
+}
+
+/**
+ * Raise a desktop-layer widget that has just started. The helper cannot move its surface until
+ * Electron has mapped it, which happens around the first focus, well after the page loads; a
+ * raise sent before then is lost. Raise on that focus, or after a fallback delay without one.
+ */
+function raiseLayerWidgetOnceMapped() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const targetWindow = mainWindow;
+  let fallback = null;
+  const raise = () => {
+    clearTimeout(fallback);
+    targetWindow.removeListener('focus', raise);
+    if (targetWindow === mainWindow && !targetWindow.isDestroyed()) showMainWindowFromTray();
+  };
+  targetWindow.once('focus', raise);
+  fallback = setTimeout(raise, LAYER_STARTUP_RAISE_FALLBACK_MS);
 }
 
 /**
@@ -6349,7 +6369,7 @@ function createWindow() {
     refreshLayerPlacement();
     pushConfigToRenderer();
     if (initialLaunchAction === 'hide') mainWindow.hide();
-    else if (initialLaunchRaise && isLayerShellChildProcess) showMainWindowFromTray();
+    else if (initialLaunchRaise && isLayerShellChildProcess) raiseLayerWidgetOnceMapped();
     initialLaunchRaise = false;
     delete process.env.HA_WIDGET_LAUNCH_VISIBILITY;
     if (IS_SMOKE_TEST_MODE) {
