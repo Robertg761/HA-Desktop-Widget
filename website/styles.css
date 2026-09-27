@@ -997,6 +997,16 @@ kbd {
 .callout a { color: var(--text); text-underline-offset: 3px; text-decoration-color: rgba(var(--accent-rgb), 0.6); }
 
 /* ---------------- Closing + footer ---------------- */
+.cloud-sync-info { max-width: 760px; }
+.cloud-sync-info p { color: var(--muted); }
+.cloud-sync-info a { color: var(--text); text-underline-offset: 3px; }
+.legal-page { max-width: 820px; margin: 0 auto; padding: 96px 28px 24px; }
+.legal-page h1 { font: 700 clamp(2.2rem, 5vw, 3.6rem)/1.12 var(--font-display); letter-spacing: -0.04em; }
+.legal-page h2 { margin: 48px 0 12px; font: 650 1.45rem/1.25 var(--font-display); }
+.legal-page p, .legal-page li { color: var(--muted); }
+.legal-page a { color: var(--text); text-underline-offset: 3px; }
+.legal-page ul { padding-left: 22px; }
+.legal-meta { color: var(--faint); font-size: 14px; }
 
 .closing {
   display: flex;

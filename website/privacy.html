@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy | HA Desktop Widget</title>
+  <meta name="description" content="How HA Desktop Widget Cloud Sync handles account, profile and subscription information.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a0c10">
+  <link rel="canonical" href="https://hadesktopwidget.com/privacy">
+  <link rel="icon" type="image/png" href="/assets/icon.png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="/" aria-label="HA Desktop Widget home">
+        <img src="/assets/icon.png" alt="" width="26" height="26">
+        <span>HA Desktop Widget</span>
+      </a>
+      <nav class="nav-links" aria-label="Site"><a href="/">Home</a><a href="/download">Download</a><a href="/terms">Terms</a></nav>
+    </div>
+  </header>
+  <main class="legal-page">
+    <h1>Privacy policy</h1>
+    <p class="legal-meta">Effective 26 September 2026 · Operator: Robert Gordon · <a href="mailto:robertgordon761@gmail.com">robertgordon761@gmail.com</a></p>
+    <p>Cloud Sync is an optional service for HA Desktop Widget. It keeps the settings you choose to sync available across your computers. You can use the desktop app without Cloud Sync.</p>
+
+    <h2>Information we handle</h2>
+    <ul>
+      <li>When you sign in with Google or GitHub, we receive your verified email address and that provider's user ID. We use these to identify your Cloud Sync account. We do not receive your provider password.</li>
+      <li>We store your synced profile and a revision number. A profile may include your widget appearance, Quick Access layout, alerts, and connection or media preferences. If you enable the app's profile encryption, the service stores the encrypted profile and cannot read its contents. Without it, the service can read the profile.</li>
+      <li>We store a hash of each Cloud Sync session token, the device name supplied during sign-in, and session creation and last-use times. The app encrypts its local copy of the token using Electron's secure storage API.</li>
+      <li>If you subscribe, we store your Stripe customer and subscription IDs, subscription status, and billing period information. Stripe handles payment details; Cloud Sync does not store your card number.</li>
+      <li>Service providers may process network and account information needed to deliver Cloud Sync.</li>
+    </ul>
+
+    <h2>How we use it</h2>
+    <p>We use this information to sign you in, sync your settings, prevent conflicting saves, determine whether your account can save changes, manage subscriptions, and respond to support or security issues. Google and GitHub sign-in is used for identity and email only. We do not use Google or GitHub account data for advertising.</p>
+
+    <h2>Providers and sharing</h2>
+    <p>Cloudflare hosts the Cloud Sync service and database. Google or GitHub provides sign-in, and Stripe processes subscriptions. We share information with these providers as needed for those functions. We may also disclose information when required by law or to protect the service and its users. Each provider may handle data under its own privacy policy.</p>
+
+    <h2>Retention and your choices</h2>
+    <p>Signing out removes that device's service session. A session also expires after 180 days without use. The app's Delete Account action first tries to cancel an active subscription. If cancellation fails, the account stays in place so billing is not left running without an account. After successful cancellation, the service deletes your identities, sessions, profile, and subscription record from its active database. Copies may remain temporarily in Cloudflare backup and recovery systems, and Stripe may retain payment records under its own legal obligations.</p>
+    <p>If your trial or subscription ends, you can still download your stored profile. Saving new changes requires an active entitlement. You can also use the app's free folder sync instead of Cloud Sync.</p>
+
+    <h2>Security and requests</h2>
+    <p>The service uses HTTPS, stores only hashes of service session tokens, and checks profile revisions before accepting changes. Optional profile encryption is available in the app. To request access, correction, account deletion help, or to report a privacy or security issue, email <a href="mailto:robertgordon761@gmail.com">robertgordon761@gmail.com</a>.</p>
+
+    <h2>Changes</h2>
+    <p>We will post changes to this page and update its effective date. We will give additional notice when required by applicable law.</p>
+  </main>
+  <footer class="footer"><div class="footer-inner"><div class="footer-brand"><img src="/assets/icon.png" alt="" width="20" height="20"><span>HA Desktop Widget</span></div><nav class="footer-links" aria-label="Project links"><a href="/">Home</a><a href="/download">Download</a><a href="/privacy" aria-current="page">Privacy</a><a href="/terms">Terms</a><a href="mailto:robertgordon761@gmail.com">Contact</a></nav></div></footer>
+</body>
+</html>
