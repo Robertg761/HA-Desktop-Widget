@@ -192,3 +192,29 @@ test('leaves the tray alone when the host lists items without an owner', async (
   await watch(bus, onAppeared).ready;
   expect(onAppeared).not.toHaveBeenCalled();
 });
+
+test('recreates the tray icon when the only ownerless items belong to other apps', async () => {
+  // A bare path that is not Chromium's cannot be this process's icon, so it must not hide
+  // that the icon failed to register.
+  const bus = createFakeBus({
+    watcherPresent: true,
+    registeredItems: ['/StatusNotifierItem', ':1.9/other'],
+  });
+  const onAppeared = jest.fn();
+  await watch(bus, onAppeared).ready;
+  expect(onAppeared).toHaveBeenCalledTimes(1);
+});
+
+test('does nothing when the icon registered alongside an ownerless Chromium-shaped item', async () => {
+  const bus = createFakeBus({
+    watcherPresent: true,
+    registeredItems: [
+      '/org/chromium/StatusNotifierItem/1',
+      ':1.7/org/chromium/StatusNotifierItem/2',
+    ],
+    owners: { ':1.7': ownPid },
+  });
+  const onAppeared = jest.fn();
+  await watch(bus, onAppeared).ready;
+  expect(onAppeared).not.toHaveBeenCalled();
+});
