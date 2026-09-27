@@ -3597,6 +3597,8 @@ async function restoreSelectedProfileSyncBackup() {
 }
 
 const CLOUD_SYNC_PROVIDER = 'hostedAccount';
+const CLOUD_SYNC_PRIVACY_URL = 'https://hadesktopwidget.com/privacy';
+const CLOUD_SYNC_TERMS_URL = 'https://hadesktopwidget.com/terms';
 // What the settings know about the Cloud Sync account: local status from main,
 // plus details (trial, subscription) fetched when Settings opens.
 let cloudSyncInfo = null;
@@ -3802,6 +3804,8 @@ function bindProfileSyncSettingsUi() {
     'profile-sync-cloud-github': () => signInToCloudSync('github'),
     'profile-sync-cloud-cancel': () => window.electronAPI.cancelCloudSyncSignIn(),
     'profile-sync-cloud-billing': () => openCloudSyncBilling(),
+    'profile-sync-cloud-privacy': () => window.electronAPI.openExternal(CLOUD_SYNC_PRIVACY_URL),
+    'profile-sync-cloud-terms': () => window.electronAPI.openExternal(CLOUD_SYNC_TERMS_URL),
     'profile-sync-cloud-sign-out': () => signOutOfCloudSync(),
     'profile-sync-cloud-delete': () => deleteCloudSyncAccount(),
   };

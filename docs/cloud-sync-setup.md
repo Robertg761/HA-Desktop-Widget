@@ -14,7 +14,7 @@ option stays hidden, so nothing here affects users until you ship a build that h
   It has no runtime dependencies.
 - **Sign-in** happens in the user's browser with Google or GitHub. The service then hands the
   app a one-time code on a local loopback address. The app redeems it, with a PKCE verifier,
-  for a session token that it keeps in the operating system's credential store. The service
+  for a session token that it encrypts locally with Electron's secure storage API. The service
   stores only a hash of each token.
 - **The synced profile** is the same file folder sync writes. The service stores it exactly as
   the app sends it. If the user turns on encryption, it is ciphertext the service cannot read.
@@ -157,6 +157,11 @@ to use it with Checkout; if that needs an extra checkout-session parameter, add 
 in `cloud-sync-service/src/billing.js` and its webhook, so switching providers means replacing
 that file; nothing else reads anything but the `subscriptions` table.
 
+If using Stripe Tax, set `STRIPE_AUTOMATIC_TAX = "true"` after configuring the appropriate
+Stripe Tax registrations. Checkout will collect a billing address and calculate tax for new
+subscriptions. Existing customers' billing address is updated when they check out again.
+This setting does not register the business with tax authorities or replace tax advice.
+
 **Pricing.** A single yearly price keeps card fees small relative to the payment. Per-payment
 fixed fees take a large share of small monthly charges.
 
@@ -194,6 +199,7 @@ The app only accepts `https` addresses, plus `http` on this computer for local d
 | `TRIAL_DAYS`                   | `[vars]` | Days a new account can save changes without a subscription (default 14).                          |
 | `ENTITLEMENT_MODE`             | `[vars]` | `subscription` (default), or `open` to let every signed-in account sync, such as for a free beta. |
 | `STRIPE_PRICE_ID`              | `[vars]` | The yearly price.                                                                                 |
+| `STRIPE_AUTOMATIC_TAX`         | `[vars]` | `true` adds Stripe Tax to new Checkout subscriptions after registrations are configured.         |
 | `GOOGLE_CLIENT_ID` / `_SECRET` | secret   | Google sign-in.                                                                                   |
 | `GITHUB_CLIENT_ID` / `_SECRET` | secret   | GitHub sign-in.                                                                                   |
 | `STRIPE_SECRET_KEY`            | secret   | Creating checkout and portal sessions, cancelling on account deletion.                            |
@@ -219,7 +225,7 @@ in-memory SQLite database, with Google, GitHub and Stripe simulated. They need n
 
 - **Privacy policy.** It must describe what is stored:
   - each account's email address and Google or GitHub user ID;
-  - a hash of each session token and which operating system the session came from;
+  - a hash of each session token, the device name supplied during sign-in, and session times;
   - the synced profile, which is readable by the service unless the user turned on
     encryption;
   - the Stripe customer and subscription IDs.

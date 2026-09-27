@@ -333,7 +333,38 @@ describe('cloud sync service', () => {
       expect(params.get('client_reference_id')).toBe(userId);
       expect(params.get('subscription_data[metadata][user_id]')).toBe(userId);
       expect(params.get('customer_email')).toBe('a@b.c');
+      expect(params.has('automatic_tax[enabled]')).toBe(false);
       expect(call.headers.Authorization).toBe('Bearer sk_test');
+    });
+
+    test('Stripe Tax requires an address when enabled for a new subscriber', async () => {
+      const world = createWorld({ STRIPE_AUTOMATIC_TAX: 'true' });
+      world.googleUsers.set('tax-code', { sub: 'google-tax', email: 'tax@b.c', email_verified: true });
+      const { body } = await world.signIn('google', 'tax-code');
+      await world.authed(body.token, '/v1/billing/checkout', { method: 'POST' });
+      const call = world.calls.find((entry) => entry.url.endsWith('/checkout/sessions'));
+      const params = new URLSearchParams(call.body);
+      expect(params.get('automatic_tax[enabled]')).toBe('true');
+      expect(params.get('billing_address_collection')).toBe('required');
+      expect(params.has('customer_update[address]')).toBe(false);
+    });
+
+    test('Stripe Tax updates an existing customer address during checkout', async () => {
+      const world = createWorld({ STRIPE_AUTOMATIC_TAX: 'true' });
+      world.googleUsers.set('return-code', {
+        sub: 'google-return',
+        email: 'return@b.c',
+        email_verified: true,
+      });
+      const { body } = await world.signIn('google', 'return-code');
+      await world.env.DB.prepare(
+        'INSERT INTO subscriptions (user_id, stripe_customer_id, updated_at) VALUES (?, ?, ?)'
+      ).bind(body.user.id, 'cus_existing', world.now()).run();
+      await world.authed(body.token, '/v1/billing/checkout', { method: 'POST' });
+      const call = world.calls.find((entry) => entry.url.endsWith('/checkout/sessions'));
+      const params = new URLSearchParams(call.body);
+      expect(params.get('customer')).toBe('cus_existing');
+      expect(params.get('customer_update[address]')).toBe('auto');
     });
 
     test('a signed subscription event unlocks saving, and a late older event cannot undo it', async () => {

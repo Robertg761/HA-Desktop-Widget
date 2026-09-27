@@ -23,6 +23,8 @@ TRIAL_DAYS = "14"
 ENTITLEMENT_MODE = "subscription"
 # The Stripe price for the yearly plan (price_...).
 STRIPE_PRICE_ID = "REPLACE_WITH_STRIPE_PRICE_ID"
+# Enable after Stripe Tax and all required tax registrations are configured.
+STRIPE_AUTOMATIC_TAX = "false"
 
 # Secrets are not kept in this file. Set each with: npx wrangler secret put <NAME>
 #   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET

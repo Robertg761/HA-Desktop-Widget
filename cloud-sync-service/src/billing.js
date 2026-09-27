@@ -78,6 +78,11 @@ export async function handleCheckout(request, env, deps) {
   };
   if (existing?.stripe_customer_id) params.customer = existing.stripe_customer_id;
   else if (session.email) params.customer_email = session.email;
+  if (env.STRIPE_AUTOMATIC_TAX === 'true') {
+    params.automatic_tax = { enabled: true };
+    params.billing_address_collection = 'required';
+    if (existing?.stripe_customer_id) params.customer_update = { address: 'auto' };
+  }
   try {
     const checkout = await stripeRequest(env, deps, 'POST', '/checkout/sessions', params);
     return json({ url: checkout.url });
