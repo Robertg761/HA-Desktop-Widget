@@ -7194,4 +7194,36 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(mockCallService).not.toHaveBeenCalled();
     });
   });
+
+  describe('calendar event descriptions', () => {
+    it('shows HTML descriptions as plain text, keeping their line breaks', () => {
+      expect(
+        ui.getCalendarDescriptionText(
+          '<p>Montreal Canadiens 2026-27 regular-season game. Away game.</p>'
+        )
+      ).toBe('Montreal Canadiens 2026-27 regular-season game. Away game.');
+      expect(
+        ui.getCalendarDescriptionText(
+          '<p>Bring&nbsp;snacks &amp; drinks</p><p>Line one<br>Line two</p><ul><li>First</li><li>Second</li></ul>'
+        )
+      ).toBe('Bring snacks & drinks\nLine one\nLine two\nFirst\nSecond');
+      expect(
+        ui.getCalendarDescriptionText('<a href="https://example.com/meet">Join the meeting</a>')
+      ).toBe('Join the meeting');
+    });
+
+    it('leaves plain descriptions alone and never runs what an HTML one carries', () => {
+      expect(ui.getCalendarDescriptionText('  Just text, 3 < 4\nSecond line ')).toBe(
+        'Just text, 3 < 4\nSecond line'
+      );
+      expect(ui.getCalendarDescriptionText(undefined)).toBe('');
+      window.__calendarDescriptionRan = false;
+      expect(
+        ui.getCalendarDescriptionText(
+          '<p>Safe</p><img src=x onerror="window.__calendarDescriptionRan = true"><script>window.__calendarDescriptionRan = true</script>'
+        )
+      ).toBe('Safe');
+      expect(window.__calendarDescriptionRan).toBe(false);
+    });
+  });
 });

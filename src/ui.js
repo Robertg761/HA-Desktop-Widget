@@ -10141,6 +10141,33 @@ function showTodoDetails(entity) {
   }
 }
 
+// Line breaks that HTML event descriptions (Google Calendar's among them) mark with tags.
+const CALENDAR_DESCRIPTION_BREAK_TAGS = /<br\s*\/?>|<\/(?:p|div|li|h[1-6]|tr)>/gi;
+
+/**
+ * An event description as plain text. Some calendars send HTML, which the dialog would otherwise
+ * show tag by tag. Tags become the line breaks they stood for and entities are decoded; the text
+ * is parsed into an inert document, so nothing in it runs or loads.
+ * @param {string} description - The event's description as Home Assistant reports it.
+ * @returns {string}
+ */
+function getCalendarDescriptionText(description) {
+  if (typeof description !== 'string') return '';
+  if (!/<[a-z!/][^>]*>|&[#a-z0-9]+;/i.test(description)) return description.trim();
+  const marked = description.replace(CALENDAR_DESCRIPTION_BREAK_TAGS, (tag) => `${tag}\n`);
+  const { body } = new DOMParser().parseFromString(marked, 'text/html');
+  // Code, not words, even though textContent would include it.
+  body.querySelectorAll('script, style, template').forEach((element) => element.remove());
+  const text = body.textContent || '';
+  return text
+    .replace(/\u00a0/g, ' ')
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+/g, ' ').trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function renderCalendarEventsInto(container, events) {
   if (!container) return;
   container.innerHTML = '';
@@ -10168,10 +10195,11 @@ function renderCalendarEventsInto(container, events) {
     item.appendChild(summary);
     item.appendChild(time);
 
-    if (event.description) {
+    const descriptionText = getCalendarDescriptionText(event.description);
+    if (descriptionText) {
       const description = document.createElement('div');
       description.className = 'calendar-event-description';
-      description.textContent = event.description;
+      description.textContent = descriptionText;
       item.appendChild(description);
     }
 
@@ -14121,6 +14149,7 @@ export {
   executeEntityPrimaryAction,
   openEntityControls,
   describeQuickAccessTile,
+  getCalendarDescriptionText,
   getQuickAccessTileControls,
   executeQuickAccessControl,
   openEntityDetailModal,
