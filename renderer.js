@@ -1360,7 +1360,8 @@ function maybeShowFirstRunWizard() {
   // detour open and preserve the wizard draft until Settings actually closes.
   if (firstRunSettingsObserver) return false;
   ensureFirstRunWizard();
-  firstRunWizard.step = 0;
+  // Every config broadcast re-checks onboarding; only a fresh showing starts at the first step.
+  if (!firstRunWizard.visible) firstRunWizard.step = 0;
   renderWizardStep();
   setFirstRunWizardVisible(true);
   return true;
