@@ -34,7 +34,9 @@ describe('SeasonalEffectsManager', () => {
   let canvas;
   let drawing;
   let reducedMotion;
+  let forcedColors;
   let motionListeners;
+  let forcedColorsListeners;
   let manager;
 
   beforeEach(() => {
@@ -47,14 +49,20 @@ describe('SeasonalEffectsManager', () => {
       .spyOn(document, 'getElementById')
       .mockImplementation((id) => (id === 'seasonal-effects-canvas' ? canvas : null));
     reducedMotion = false;
+    forcedColors = false;
     motionListeners = [];
-    window.matchMedia = jest.fn(() => ({
-      get matches() {
-        return reducedMotion;
-      },
-      addEventListener: (type, listener) => motionListeners.push(listener),
-      removeEventListener: jest.fn(),
-    }));
+    forcedColorsListeners = [];
+    window.matchMedia = jest.fn((query) => {
+      const forced = query.includes('forced-colors');
+      return {
+        get matches() {
+          return forced ? forcedColors : reducedMotion;
+        },
+        addEventListener: (type, listener) =>
+          (forced ? forcedColorsListeners : motionListeners).push(listener),
+        removeEventListener: jest.fn(),
+      };
+    });
     window.requestAnimationFrame = jest.fn(() => 1);
     window.cancelAnimationFrame = jest.fn();
     setSeasonalColors.mockClear();
@@ -128,6 +136,26 @@ describe('SeasonalEffectsManager', () => {
     expect(document.body.dataset.season).toBe('christmas');
     expect(window.requestAnimationFrame).not.toHaveBeenCalled();
     expect(drawing.calls.some(([method]) => method === 'arc' || method === 'stroke')).toBe(true);
+  });
+
+  test('stops drawing while forced colours hide the canvas, and resumes after', () => {
+    forcedColors = true;
+    manager.apply({ seasonal: { show: 'halloween' } });
+    // The holiday still applies (the stylesheet hides its art), but nothing is drawn.
+    expect(document.body.dataset.season).toBe('halloween');
+    expect(window.requestAnimationFrame).not.toHaveBeenCalled();
+    drawing.calls.length = 0;
+    manager.renderFrame(1000);
+    expect(drawing.calls).toEqual([]);
+
+    forcedColors = false;
+    forcedColorsListeners.forEach((listener) => listener());
+    expect(manager.animationFrameId).toBe(1);
+
+    forcedColors = true;
+    forcedColorsListeners.forEach((listener) => listener());
+    expect(window.cancelAnimationFrame).toHaveBeenCalledWith(1);
+    expect(manager.animationFrameId).toBeNull();
   });
 
   test('pauses while the window is hidden', () => {

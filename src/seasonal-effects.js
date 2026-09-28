@@ -46,6 +46,8 @@ export class SeasonalEffectsManager {
     this.pixelRatio = 1;
     this.reducedMotionQuery = null;
     this.reducedMotionChangeHandler = null;
+    this.forcedColorsQuery = null;
+    this.forcedColorsChangeHandler = null;
     this.frostCanvas = null;
     this.frostCtx = null;
     this.frostRects = [];
@@ -64,11 +66,11 @@ export class SeasonalEffectsManager {
       document.addEventListener(type, this.handleLayoutChange, { capture: true, passive: true });
     }
     this.resizeCanvas();
-    this.setupReducedMotionListener();
+    this.setupMediaListeners();
     this.recheckTimer = setInterval(this.refresh, RECHECK_INTERVAL_MS);
   }
 
-  setupReducedMotionListener() {
+  setupMediaListeners() {
     if (typeof window.matchMedia !== 'function') return;
     try {
       this.reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -79,6 +81,28 @@ export class SeasonalEffectsManager {
       this.reducedMotionQuery = null;
       this.reducedMotionChangeHandler = null;
     }
+    try {
+      // Forced colours hide the canvas (see styles.css), so drawing it would only cost frames.
+      this.forcedColorsQuery = window.matchMedia('(forced-colors: active)');
+      this.forcedColorsChangeHandler = () => {
+        if (this.isForcedColors()) {
+          this.stopAnimation();
+          this.clearCanvas();
+        } else if (this.prefersReducedMotion()) {
+          this.renderFrame(performance.now());
+        } else {
+          this.startAnimation();
+        }
+      };
+      this.forcedColorsQuery.addEventListener?.('change', this.forcedColorsChangeHandler);
+    } catch {
+      this.forcedColorsQuery = null;
+      this.forcedColorsChangeHandler = null;
+    }
+  }
+
+  isForcedColors() {
+    return !!this.forcedColorsQuery?.matches;
   }
 
   prefersReducedMotion() {
@@ -262,7 +286,9 @@ export class SeasonalEffectsManager {
   }
 
   startAnimation() {
-    if (this.animationFrameId || !this.layers.length || document.hidden) return;
+    if (this.animationFrameId || !this.layers.length || document.hidden || this.isForcedColors()) {
+      return;
+    }
     this.lastTime = performance.now();
     this.animationFrameId = requestAnimationFrame(this.loop);
   }
@@ -279,7 +305,7 @@ export class SeasonalEffectsManager {
   }
 
   renderFrame(time) {
-    if (!this.ctx || !this.canvas || !this.layers.length) return;
+    if (!this.ctx || !this.canvas || !this.layers.length || this.isForcedColors()) return;
     const frame = {
       time,
       light: !!document.body?.classList.contains('theme-light'),
@@ -324,5 +350,6 @@ export class SeasonalEffectsManager {
     clearTimeout(this.stillFrameTimer);
     this.stopAnimation();
     this.reducedMotionQuery?.removeEventListener?.('change', this.reducedMotionChangeHandler);
+    this.forcedColorsQuery?.removeEventListener?.('change', this.forcedColorsChangeHandler);
   }
 }
