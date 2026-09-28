@@ -509,6 +509,27 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockElectronAPI.quitApp).not.toHaveBeenCalled();
   });
 
+  it('keeps the open wizard on its step when a config update arrives', async () => {
+    await loadRenderer();
+    await clickButton('Next');
+    enterInput('#first-run-ha-url', 'http://draft.local:8123');
+    triggerMockEvent('configUpdated', {
+      ...unconfiguredConfig(),
+      ui: { ...unconfiguredConfig().ui, theme: 'dark' },
+    });
+    await flushAsync();
+    expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 2 of 4');
+    expect(document.getElementById('first-run-ha-url').value).toBe('http://draft.local:8123');
+
+    await clickButton('Next');
+    triggerMockEvent('configUpdated', {
+      ...unconfiguredConfig(),
+      homeAssistant: { ...unconfiguredConfig().homeAssistant, url: 'http://draft.local:8123' },
+    });
+    await flushAsync();
+    expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 3 of 4');
+  });
+
   it('distinguishes Quit from the Settings Close action', async () => {
     await loadRenderer({ bodyHtml: settingsNavigationHtml() });
     expect(document.querySelector('button[aria-label="Close"]').id).toBe('close-settings');
