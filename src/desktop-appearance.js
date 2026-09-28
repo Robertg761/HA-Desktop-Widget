@@ -4,6 +4,7 @@ import {
   applyAccentThemeFromColor,
   applyBackgroundThemeFromColor,
   applyTheme,
+  getSeasonalColors,
 } from './ui-utils.js';
 
 let currentConfig = null;
@@ -32,19 +33,31 @@ export function applyDesktopAppearance(config) {
   paletteApplied = true;
   const palette = config.desktopAppearance;
   applyTheme(palette.mode);
-  applyAccentThemeFromColor(palette.accent);
-  applyBackgroundThemeFromColor(palette.background);
-  const rgb = palette.background
-    .slice(1)
-    .match(/../g)
-    .map((value) => parseInt(value, 16))
-    .join(', ');
-  document.documentElement.style.setProperty('--window-bg-rgb', rgb);
-  body.style.setProperty('--frosted-bg-rgb', rgb);
+  if (getSeasonalColors()) {
+    // Holiday colours win over the palette while a holiday lasts. The theme calls paint them in
+    // the palette's light or dark mode; the palette still sets text, borders and selection.
+    applyAccentTheme(config.ui?.accent || 'original');
+    applyBackgroundTheme(config.ui?.background || 'original');
+  } else {
+    applyAccentThemeFromColor(palette.accent);
+    applyBackgroundThemeFromColor(palette.background);
+    const rgb = palette.background
+      .slice(1)
+      .match(/../g)
+      .map((value) => parseInt(value, 16))
+      .join(', ');
+    document.documentElement.style.setProperty('--window-bg-rgb', rgb);
+    body.style.setProperty('--frosted-bg-rgb', rgb);
+  }
   for (const name of paletteProperties.slice(0, 5))
     body.style.setProperty(name, palette.foreground);
   body.style.setProperty('--border-color', palette.border);
   body.style.setProperty('--selection-bg', palette.selection);
+}
+
+/** Re-apply the last config, for when something it depends on (the holiday colours) changes. */
+export function reapplyDesktopAppearance() {
+  if (currentConfig) applyDesktopAppearance(currentConfig);
 }
 
 // System auto mode should react immediately rather than waiting for a config save.

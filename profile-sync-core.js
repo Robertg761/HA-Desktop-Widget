@@ -100,6 +100,7 @@ const KNOWN_UI_KEYS = new Set([
   'dateFormat',
   'weatherEffectsEnabled',
   'weatherOverride',
+  'seasonal',
   ...LOCAL_ONLY_UI_KEYS,
 ]);
 

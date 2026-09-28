@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.38",
+  "version": "1.2.39",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1598,6 +1598,27 @@
     "Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.": "سلسلة مفاتيح النظام مقفلة أو لا تعمل، لذا لا يمكن قراءة رمز Home Assistant المحفوظ. افتح قفل سلسلة المفاتيح، ثم أعد تشغيل الأداة.",
     "The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.": "تم الاحتفاظ بالرمز المشفّر. بعد فتح قفل سلسلة المفاتيح، تؤدي إعادة تشغيل الأداة إلى قراءته مجددًا، أو يمكنك إعادة إدخال الرمز في الإعدادات.",
     "Add to Omarchy Bar": "إضافة إلى شريط Omarchy",
-    "Could not add Home Assistant to the Omarchy bar": "تعذّرت إضافة Home Assistant إلى شريط Omarchy"
+    "Could not add Home Assistant to the Omarchy bar": "تعذّرت إضافة Home Assistant إلى شريط Omarchy",
+    "Seasonal Themes": "سمات موسمية",
+    "Holiday decorations": "زينة الأعياد",
+    "Cobwebs and bats all October, snow all December, and a week of hearts, shamrocks and more around other holidays. Starts off when your system asks for reduced motion or high contrast is on.": "خيوط عنكبوت وخفافيش طوال أكتوبر، وثلج طوال ديسمبر، وأسبوع من القلوب والنفل وغير ذلك حول الأعياد الأخرى. تكون متوقفة في البداية إذا طلب نظامك تقليل الحركة أو كان التباين العالي مفعّلًا.",
+    "Holiday colors": "ألوان الأعياد",
+    "Swaps in the holiday's colors for your accent and background while it lasts. Yours come back afterwards.": "تستبدل لوني التمييز والخلفية بألوان العيد طوال مدته. وتعود ألوانك بعد ذلك.",
+    "Holiday to show": "العيد المعروض",
+    "Pick one to see it now, whatever the date. The calendar takes over again a day later.": "اختر عيدًا لتراه الآن، أيًّا كان التاريخ. يعود التقويم للعمل بعد يوم.",
+    "By date": "حسب التاريخ",
+    "Holidays": "الأعياد",
+    "New Year": "رأس السنة",
+    "Lunar New Year": "رأس السنة القمرية",
+    "Valentine's Day": "عيد الحب",
+    "St. Patrick's Day": "عيد القديس باتريك",
+    "Easter": "عيد الفصح",
+    "Halloween": "الهالوين",
+    "Thanksgiving": "عيد الشكر",
+    "Christmas": "عيد الميلاد",
+    "Showing {{holiday}} until {{time}}.": "يُعرض {{holiday}} حتى {{time}}.",
+    "{{holiday}} is on until {{date}}.": "يستمر {{holiday}} حتى {{date}}.",
+    "Nothing right now. {{holiday}} starts {{date}}.": "لا شيء الآن. يبدأ {{holiday}} في {{date}}.",
+    "No holidays are picked.": "لم يتم اختيار أي عيد."
   }
 }

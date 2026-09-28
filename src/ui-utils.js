@@ -42,6 +42,17 @@ const BUILTIN_ACCENT_THEME_MAP = ACCENT_THEMES.reduce((acc, theme) => {
   return acc;
 }, {});
 let CUSTOM_THEMES = [];
+// Holiday colours from the seasonal themes. They stand in for the saved accent and background
+// without replacing them, so the user's own choice comes back when the holiday ends.
+let seasonalColors = null;
+// While Settings previews a colour the user just picked, holiday colours step aside so the pick
+// shows. They stay recorded and come back when Settings resumes them.
+let seasonalColorsSuspended = false;
+// The theme keys last applied, so a change of holiday can repaint with them. Null when the colour
+// came in raw (the Omarchy palette or a Settings draft), which seasonal colours leave alone.
+let lastAccentKey = null;
+let lastBackgroundKey = null;
+let uiPreferencesObserver = null;
 let connectionStatusTooltip = null;
 let connectionStatusTooltipTarget = null;
 let connectionStatusTooltipPinned = false;
@@ -408,6 +419,11 @@ function applyAccentColor(color, accentId = 'custom-preview') {
  */
 function applyAccentTheme(accentKey) {
   try {
+    lastAccentKey = accentKey ?? '';
+    if (seasonalColors && !seasonalColorsSuspended) {
+      applyAccentColor(seasonalColors.accent, 'seasonal');
+      return;
+    }
     const resolvedKey = resolveAccentThemeId(accentKey);
     const theme = getThemeMap()[resolvedKey];
     if (!theme) return;
@@ -424,6 +440,7 @@ function applyAccentTheme(accentKey) {
  */
 function applyAccentThemeFromColor(hex) {
   try {
+    lastAccentKey = null;
     return applyAccentColor(hex, 'custom-preview');
   } catch (error) {
     console.error('Error applying accent preview color:', error);
@@ -504,6 +521,11 @@ function applyBackgroundColor(
  */
 function applyBackgroundTheme(backgroundKey) {
   try {
+    lastBackgroundKey = backgroundKey ?? '';
+    if (seasonalColors && !seasonalColorsSuspended) {
+      applyBackgroundColor(seasonalColors.background, 'seasonal');
+      return;
+    }
     const resolvedKey = resolveBackgroundThemeId(backgroundKey);
     const theme = getThemeMap()[resolvedKey];
     if (!theme) return;
@@ -520,11 +542,57 @@ function applyBackgroundTheme(backgroundKey) {
  */
 function applyBackgroundThemeFromColor(hex) {
   try {
+    lastBackgroundKey = null;
     return applyBackgroundColor(hex, 'custom-preview');
   } catch (error) {
     console.error('Error applying background preview color:', error);
     return false;
   }
+}
+
+/**
+ * Show holiday colours in place of the saved accent and background, or pass null to go back.
+ * Repaints straight away unless the current colours came in raw; the Omarchy palette repaints
+ * itself through desktop-appearance.js, and a Settings draft is left alone.
+ * @param {{accent: string, background: string} | null} colors
+ * @returns {boolean} True when the holiday colours changed.
+ */
+function setSeasonalColors(colors) {
+  const next = colors?.accent && colors?.background ? { ...colors } : null;
+  if (next?.accent === seasonalColors?.accent && next?.background === seasonalColors?.background) {
+    return false;
+  }
+  seasonalColors = next;
+  if (lastAccentKey !== null) applyAccentTheme(lastAccentKey);
+  if (lastBackgroundKey !== null) applyBackgroundTheme(lastBackgroundKey);
+  return true;
+}
+
+/**
+ * Let Settings show a colour the user is picking even while a holiday's colours are on, or bring
+ * the holiday colours back. Repaints either way.
+ * @param {boolean} suspended
+ */
+function suspendSeasonalColors(suspended) {
+  const next = !!suspended;
+  if (next === seasonalColorsSuspended) return;
+  seasonalColorsSuspended = next;
+  if (!seasonalColors) return;
+  if (lastAccentKey !== null) applyAccentTheme(lastAccentKey);
+  if (lastBackgroundKey !== null) applyBackgroundTheme(lastBackgroundKey);
+}
+
+function getSeasonalColors() {
+  return seasonalColors ? { ...seasonalColors } : null;
+}
+
+/**
+ * Register one callback that runs after every applyUiPreferences call, with the same `ui`.
+ * The seasonal themes use it so Settings previews and saves reach them without extra wiring.
+ * @param {((ui: object) => void) | null} observer
+ */
+function setUiPreferencesObserver(observer) {
+  uiPreferencesObserver = typeof observer === 'function' ? observer : null;
 }
 
 /**
@@ -858,6 +926,11 @@ function applyUiPreferences(ui = {}) {
     body.classList.toggle('active-tile-glow', ui.activeTileGlow !== false);
   } catch (error) {
     console.error('Error applying UI preferences:', error);
+  }
+  try {
+    uiPreferencesObserver?.(ui);
+  } catch (error) {
+    console.error('Error applying seasonal theme:', error);
   }
 }
 
@@ -1545,6 +1618,10 @@ export {
   getAccentThemes,
   getBackgroundThemes,
   applyUiPreferences,
+  setSeasonalColors,
+  suspendSeasonalColors,
+  getSeasonalColors,
+  setUiPreferencesObserver,
   applyWindowEffects,
   trapFocus,
   releaseFocusTrap,
