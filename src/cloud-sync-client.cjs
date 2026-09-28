@@ -514,14 +514,18 @@ class CloudSyncClient {
   /** Opens checkout for a new subscriber, or the billing portal for an existing one. */
   async openBilling() {
     const account = await this.getAccount();
-    const pathname = account.hasBillingAccount ? '/v1/billing/portal' : '/v1/billing/checkout';
+    const manageExisting =
+      account.hasBillingAccount &&
+      account.subscriptionStatus !== 'canceled' &&
+      account.subscriptionStatus !== 'incomplete_expired';
+    const pathname = manageExisting ? '/v1/billing/portal' : '/v1/billing/checkout';
     const response = await this.authedRequest(pathname, { method: 'POST' });
     const body = CloudSyncClient.parseJson(response);
     if (response.status !== 200 || typeof body.url !== 'string' || !/^https:\/\//.test(body.url)) {
       throw CloudSyncClient.failure(response, 'The subscription page could not be opened');
     }
     await this.openExternal(body.url);
-    return { opened: account.hasBillingAccount ? 'portal' : 'checkout' };
+    return { opened: manageExisting ? 'portal' : 'checkout' };
   }
 
   async deleteAccount() {

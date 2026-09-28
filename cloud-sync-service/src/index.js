@@ -4,6 +4,9 @@
 import { handleDeleteAccount, handleGetAccount, handleSignOut } from './accounts.js';
 import {
   cancelSubscription,
+  acquireBillingLock,
+  releaseBillingLock,
+  expirePendingCheckout,
   handleBillingDone,
   handleCheckout,
   handlePortal,
@@ -74,7 +77,12 @@ export async function handleRequest(request, env, deps = defaultDeps()) {
       return await handleGetAccount(request, env, deps);
     }
     if (pathname === '/v1/account' && method === 'DELETE') {
-      return await handleDeleteAccount(request, env, deps, { cancelSubscription });
+      return await handleDeleteAccount(request, env, deps, {
+        cancelSubscription,
+        acquireBillingLock,
+        releaseBillingLock,
+        expirePendingCheckout,
+      });
     }
     if (pathname === '/v1/profile' && method === 'GET') {
       return await handleGetProfile(request, env, deps);

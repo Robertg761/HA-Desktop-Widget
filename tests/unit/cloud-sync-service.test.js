@@ -5,6 +5,7 @@
 // Runs the Cloud Sync Worker end to end (see tests/helpers/cloud-sync-world.js).
 
 const { encodeStripeParams } = require('../../cloud-sync-service/src/billing.js');
+const { readTextBody } = require('../../cloud-sync-service/src/util.js');
 const { BASE, DAY, createWorld } = require('../helpers/cloud-sync-world.js');
 
 const envelope = (extra = {}) =>
@@ -47,20 +48,26 @@ describe('cloud sync service', () => {
       PRIVATE_TEST_EMAILS: 'robert@example.com',
     });
     world.googleUsers.set('allowed', {
-      sub: 'google-allowed', email: 'Robert@Example.com', email_verified: true,
+      sub: 'google-allowed',
+      email: 'Robert@Example.com',
+      email_verified: true,
     });
     const { body } = await world.signIn('google', 'allowed');
     expect(body.user.email).toBe('robert@example.com');
     expect((await world.authed(body.token, '/v1/account')).status).toBe(200);
 
     world.googleUsers.set('denied', {
-      sub: 'google-denied', email: 'other@example.com', email_verified: true,
+      sub: 'google-denied',
+      email: 'other@example.com',
+      email_verified: true,
     });
     const { challenge } = world.pkce();
     const start = await world.request(
       `/v1/auth/start?${new URLSearchParams({
-        provider: 'google', redirect_uri: world.appRedirect,
-        state: 'app-state-0123456789', code_challenge: challenge,
+        provider: 'google',
+        redirect_uri: world.appRedirect,
+        state: 'app-state-0123456789',
+        code_challenge: challenge,
         code_challenge_method: 'S256',
       })}`
     );
@@ -74,6 +81,41 @@ describe('cloud sync service', () => {
   });
 
   describe('sign-in', () => {
+    test('concurrent callbacks and code redemptions are each single use', async () => {
+      const world = createWorld();
+      world.googleUsers.set('race', {
+        sub: 'google-race',
+        email: 'race@b.c',
+        email_verified: true,
+      });
+      const { verifier, challenge } = world.pkce();
+      const start = await world.request(
+        `/v1/auth/start?${new URLSearchParams({
+          provider: 'google',
+          redirect_uri: world.appRedirect,
+          state: 'app-state-0123456789',
+          code_challenge: challenge,
+          code_challenge_method: 'S256',
+        })}`
+      );
+      const state = new URL(start.headers.get('Location')).searchParams.get('state');
+      const callbacks = await Promise.all(
+        [0, 1].map(() => world.request(`/v1/auth/callback/google?code=race&state=${state}`))
+      );
+      expect(callbacks.map((r) => r.status).sort()).toEqual([302, 400]);
+      const code = new URL(
+        callbacks.find((r) => r.status === 302).headers.get('Location')
+      ).searchParams.get('code');
+      const redeem = (proof) =>
+        world.request('/v1/auth/token', {
+          method: 'POST',
+          body: JSON.stringify({ code, code_verifier: proof, redirect_uri: world.appRedirect }),
+        });
+      expect((await redeem(world.pkce().verifier)).status).toBe(400);
+      const tokens = await Promise.all([redeem(verifier), redeem(verifier)]);
+      expect(tokens.map((r) => r.status).sort()).toEqual([200, 400]);
+      expect(world.env.DB.raw.prepare('SELECT * FROM sessions').all()).toHaveLength(1);
+    });
     test('Google sign-in hands the app a session only for the matching verifier', async () => {
       const world = createWorld();
       world.googleUsers.set('g-code', {
@@ -392,9 +434,124 @@ describe('cloud sync service', () => {
       expect(call.headers.Authorization).toBe('Bearer sk_test');
     });
 
+    test('checkout retries reuse one payment page and simultaneous requests cannot create two', async () => {
+      const { world, token } = await signedIn();
+      const start = () => world.authed(token, '/v1/billing/checkout', { method: 'POST' });
+      const concurrent = await Promise.all([start(), start()]);
+      expect(concurrent.some((r) => r.status === 200)).toBe(true);
+      expect(concurrent.every((r) => r.status === 200 || r.status === 409)).toBe(true);
+      expect((await start()).status).toBe(200);
+      expect(world.calls.filter((call) => call.url.endsWith('/checkout/sessions'))).toHaveLength(1);
+      expect(world.stripe.checkouts.size).toBe(1);
+    });
+
+    test('a lost Stripe response is retried with the same idempotency key', async () => {
+      const { world, token } = await signedIn();
+      const fetch = world.deps.fetch;
+      let drop = true;
+      world.deps.fetch = async (...args) => {
+        const response = await fetch(...args);
+        if (args[0].endsWith('/checkout/sessions') && drop) {
+          drop = false;
+          throw new Error('Connection lost after creation');
+        }
+        return response;
+      };
+      const start = () => world.authed(token, '/v1/billing/checkout', { method: 'POST' });
+      expect((await start()).status).toBe(502);
+      expect((await start()).status).toBe(200);
+      const calls = world.calls.filter((call) => call.url.endsWith('/checkout/sessions'));
+      expect(calls).toHaveLength(2);
+      expect(calls[0].headers['Idempotency-Key']).toBe(calls[1].headers['Idempotency-Key']);
+      expect(calls[0].body).toBe(calls[1].body);
+      expect(world.stripe.checkouts.size).toBe(1);
+    });
+
+    test('account deletion expires unpaid checkout and keeps the account if expiry fails', async () => {
+      const { world, token } = await signedIn();
+      await world.authed(token, '/v1/billing/checkout', { method: 'POST' });
+      world.stripe.failExpire = true;
+      expect((await world.authed(token, '/v1/account', { method: 'DELETE' })).status).toBe(502);
+      expect(world.env.DB.raw.prepare('SELECT * FROM users').all()).toHaveLength(1);
+      world.stripe.failExpire = false;
+      expect((await world.authed(token, '/v1/account', { method: 'DELETE' })).status).toBe(200);
+      expect(world.stripe.checkouts.get('cs_1').status).toBe('expired');
+      expect(world.env.DB.raw.prepare('SELECT * FROM billing_checkouts').all()).toHaveLength(0);
+    });
+
+    test('account deletion cancels a completed checkout before its webhook arrives', async () => {
+      const { world, token } = await signedIn();
+      await world.authed(token, '/v1/billing/checkout', { method: 'POST' });
+      Object.assign(world.stripe.checkouts.get('cs_1'), {
+        status: 'complete',
+        subscription: 'sub_awaiting_webhook',
+      });
+      expect((await world.authed(token, '/v1/billing/checkout', { method: 'POST' })).status).toBe(
+        409
+      );
+      expect((await world.authed(token, '/v1/account', { method: 'DELETE' })).status).toBe(200);
+      expect(
+        world.calls.some(
+          (call) =>
+            call.method === 'DELETE' && call.url.endsWith('/subscriptions/sub_awaiting_webhook')
+        )
+      ).toBe(true);
+    });
+
+    test('account deletion cannot race a checkout being created', async () => {
+      const { world, token } = await signedIn();
+      let ready;
+      let release;
+      const paused = new Promise((resolve) => {
+        ready = resolve;
+      });
+      const resumed = new Promise((resolve) => {
+        release = resolve;
+      });
+      const fetch = world.deps.fetch;
+      world.deps.fetch = async (...args) => {
+        if (args[0].endsWith('/checkout/sessions')) {
+          ready();
+          await resumed;
+        }
+        return fetch(...args);
+      };
+      const checkout = world.authed(token, '/v1/billing/checkout', { method: 'POST' });
+      await paused;
+      expect((await world.authed(token, '/v1/account', { method: 'DELETE' })).status).toBe(409);
+      release();
+      expect((await checkout).status).toBe(200);
+      expect((await world.authed(token, '/v1/account', { method: 'DELETE' })).status).toBe(200);
+      expect(world.stripe.checkouts.get('cs_1').status).toBe('expired');
+    });
+
+    test('account deletion confirms cancellation after a lost Stripe reply', async () => {
+      const { world, token, userId } = await signedIn();
+      await world.sendWebhook(
+        subscriptionEvent('customer.subscription.created', userId, 'active', 1)
+      );
+      const fetch = world.deps.fetch;
+      world.deps.fetch = async (...args) => {
+        const response = await fetch(...args);
+        if (args[1]?.method === 'DELETE') throw new Error('Cancellation reply lost');
+        return response;
+      };
+      expect((await world.authed(token, '/v1/account', { method: 'DELETE' })).status).toBe(200);
+      expect(
+        world.calls.some(
+          (call) => call.method === 'GET' && call.url.endsWith('/subscriptions/sub_1')
+        )
+      ).toBe(true);
+      expect(world.env.DB.raw.prepare('SELECT * FROM users').all()).toHaveLength(0);
+    });
+
     test('Stripe Tax requires an address when enabled for a new subscriber', async () => {
       const world = createWorld({ STRIPE_AUTOMATIC_TAX: 'true' });
-      world.googleUsers.set('tax-code', { sub: 'google-tax', email: 'tax@b.c', email_verified: true });
+      world.googleUsers.set('tax-code', {
+        sub: 'google-tax',
+        email: 'tax@b.c',
+        email_verified: true,
+      });
       const { body } = await world.signIn('google', 'tax-code');
       await world.authed(body.token, '/v1/billing/checkout', { method: 'POST' });
       const call = world.calls.find((entry) => entry.url.endsWith('/checkout/sessions'));
@@ -414,7 +571,9 @@ describe('cloud sync service', () => {
       const { body } = await world.signIn('google', 'return-code');
       await world.env.DB.prepare(
         'INSERT INTO subscriptions (user_id, stripe_customer_id, updated_at) VALUES (?, ?, ?)'
-      ).bind(body.user.id, 'cus_existing', world.now()).run();
+      )
+        .bind(body.user.id, 'cus_existing', world.now())
+        .run();
       await world.authed(body.token, '/v1/billing/checkout', { method: 'POST' });
       const call = world.calls.find((entry) => entry.url.endsWith('/checkout/sessions'));
       const params = new URLSearchParams(call.body);
@@ -485,6 +644,116 @@ describe('cloud sync service', () => {
       expect(world.env.DB.raw.prepare('SELECT * FROM subscriptions').all()).toHaveLength(0);
     });
 
+    test('an older webhook write cannot overwrite a newer concurrent update', async () => {
+      const { world, userId } = await signedIn();
+      const t = Math.floor(world.now() / 1000);
+      let releaseOld;
+      let oldReady;
+      const paused = new Promise((resolve) => {
+        oldReady = resolve;
+      });
+      const release = new Promise((resolve) => {
+        releaseOld = resolve;
+      });
+      const prepare = world.env.DB.prepare;
+      world.env.DB.prepare = (sql) => {
+        const stmt = prepare(sql);
+        if (!sql.includes('INSERT INTO subscriptions')) return stmt;
+        return {
+          bind: (...args) => {
+            const bound = stmt.bind(...args);
+            return {
+              ...bound,
+              run: async () => {
+                if (args[5] === t) {
+                  oldReady();
+                  await release;
+                }
+                return bound.run();
+              },
+            };
+          },
+        };
+      };
+      const older = world.sendWebhook(
+        subscriptionEvent('customer.subscription.created', userId, 'incomplete', t)
+      );
+      await paused;
+      await world.sendWebhook(
+        subscriptionEvent('customer.subscription.updated', userId, 'active', t + 1)
+      );
+      releaseOld();
+      await older;
+      expect(world.env.DB.raw.prepare('SELECT status FROM subscriptions').get().status).toBe(
+        'active'
+      );
+    });
+
+    test('a same-second update cannot revive a canceled subscription', async () => {
+      const { world, userId } = await signedIn();
+      const t = Math.floor(world.now() / 1000);
+      await world.sendWebhook(
+        subscriptionEvent('customer.subscription.deleted', userId, 'canceled', t)
+      );
+      await world.sendWebhook(
+        subscriptionEvent('customer.subscription.updated', userId, 'active', t)
+      );
+      expect(world.env.DB.raw.prepare('SELECT status FROM subscriptions').get().status).toBe(
+        'canceled'
+      );
+    });
+
+    test('a late cancellation for an old subscription cannot cancel its replacement', async () => {
+      const { world, userId } = await signedIn();
+      const t = Math.floor(world.now() / 1000);
+      await world.sendWebhook(
+        subscriptionEvent('customer.subscription.updated', userId, 'active', t, { id: 'sub_new' })
+      );
+      await world.sendWebhook(
+        subscriptionEvent('customer.subscription.deleted', userId, 'canceled', t + 1, {
+          id: 'sub_old',
+        })
+      );
+      expect(
+        world.env.DB.raw.prepare('SELECT status, stripe_subscription_id FROM subscriptions').get()
+      ).toMatchObject({ status: 'active', stripe_subscription_id: 'sub_new' });
+    });
+
+    test('an existing subscription cannot start another checkout', async () => {
+      const { world, token, userId } = await signedIn();
+      await world.sendWebhook(
+        subscriptionEvent('customer.subscription.created', userId, 'active', 1)
+      );
+      expect((await world.authed(token, '/v1/billing/checkout', { method: 'POST' })).status).toBe(
+        409
+      );
+      expect(world.calls.some((call) => call.url.endsWith('/checkout/sessions'))).toBe(false);
+    });
+
+    test('account deletion cancels even while the subscription status webhook is pending', async () => {
+      const { world, token, userId } = await signedIn();
+      await world.sendWebhook({
+        type: 'checkout.session.completed',
+        created: 1,
+        data: {
+          object: {
+            mode: 'subscription',
+            client_reference_id: userId,
+            customer: 'cus_pending',
+            subscription: 'sub_pending',
+          },
+        },
+      });
+      world.stripe.failCancel = true;
+      expect((await world.authed(token, '/v1/account', { method: 'DELETE' })).status).toBe(502);
+      expect(world.env.DB.raw.prepare('SELECT * FROM users').all()).toHaveLength(1);
+      world.stripe.failCancel = false;
+      expect((await world.authed(token, '/v1/account', { method: 'DELETE' })).status).toBe(200);
+      expect(world.calls.some((call) => call.url.endsWith('/subscriptions/sub_pending'))).toBe(
+        true
+      );
+    });
+
     test('billing reports itself unavailable until it is configured', async () => {
       const world = createWorld({ STRIPE_SECRET_KEY: '', STRIPE_WEBHOOK_SECRET: '' });
       world.googleUsers.set('g-code', { sub: 'google-1', email: 'a@b.c', email_verified: true });
@@ -494,6 +763,20 @@ describe('cloud sync service', () => {
       ).toBe(501);
       expect((await world.request('/v1/billing/webhook', { method: 'POST' })).status).toBe(501);
       expect((await (await world.request('/v1/config')).json()).billingAvailable).toBe(false);
+    });
+
+    test('checkout remains disabled without webhook verification configured', async () => {
+      const world = createWorld({ STRIPE_WEBHOOK_SECRET: '' });
+      world.googleUsers.set('g-code', { sub: 'google-1', email: 'a@b.c', email_verified: true });
+      const { body } = await world.signIn('google', 'g-code');
+      expect(
+        (await world.authed(body.token, '/v1/billing/checkout', { method: 'POST' })).status
+      ).toBe(501);
+      expect((await (await world.request('/v1/config')).json()).billingAvailable).toBe(false);
+      expect((await (await world.authed(body.token, '/v1/account')).json()).billingAvailable).toBe(
+        false
+      );
+      expect(world.calls.some((call) => call.url.endsWith('/checkout/sessions'))).toBe(false);
     });
 
     test('deleting the account cancels the subscription first and removes everything', async () => {
@@ -530,6 +813,36 @@ describe('cloud sync service', () => {
     expect(
       encodeStripeParams({ a: 1, b: [{ c: 'd' }], e: { f: { g: true } }, h: null }).toString()
     ).toBe('a=1&b%5B0%5D%5Bc%5D=d&e%5Bf%5D%5Bg%5D=true');
+  });
+
+  test('body limits stop an oversized undeclared stream before reading it all', async () => {
+    let cancelled = false;
+    let chunks = 0;
+    const body = new ReadableStream({
+      pull(controller) {
+        chunks += 1;
+        controller.enqueue(new Uint8Array(8));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    expect(
+      await readTextBody(new Request(BASE, { method: 'POST', body, duplex: 'half' }), 10)
+    ).toBeNull();
+    expect(cancelled).toBe(true);
+    expect(chunks).toBeLessThan(5);
+    const bytes = new TextEncoder().encode('a€b');
+    const split = new ReadableStream({
+      start(controller) {
+        controller.enqueue(bytes.slice(0, 2));
+        controller.enqueue(bytes.slice(2));
+        controller.close();
+      },
+    });
+    expect(
+      await readTextBody(new Request(BASE, { method: 'POST', body: split, duplex: 'half' }), 5)
+    ).toBe('a€b');
   });
 
   test('unknown routes are not found and pages carry safe headers', async () => {

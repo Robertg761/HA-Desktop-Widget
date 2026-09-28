@@ -115,9 +115,25 @@ export async function readJsonBody(request, maxBytes = 16 * 1024) {
 export async function readTextBody(request, maxBytes) {
   const declared = Number(request.headers.get('Content-Length'));
   if (Number.isFinite(declared) && declared > maxBytes) return null;
-  const buffer = await request.arrayBuffer();
-  if (buffer.byteLength > maxBytes) return null;
-  return new TextDecoder().decode(buffer);
+  if (!request.body) return '';
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let bytes = 0;
+  let text = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return text + decoder.decode();
+      bytes += value.byteLength;
+      if (bytes > maxBytes) {
+        await reader.cancel();
+        return null;
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 export function publicBaseUrl(request, env) {

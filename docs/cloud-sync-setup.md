@@ -96,8 +96,10 @@ runs through `npx`, so there is nothing to install globally.
    npx wrangler secret put GOOGLE_CLIENT_SECRET
    ```
 
-5. Publish the consent screen when you are ready for real users. Until then, only the test
-   users you list can sign in.
+5. Publish the consent screen when you are ready for real users. Google's basic sign-in
+   scopes have an exception to the test-user restriction even in Testing mode. Use the
+   Worker's `LAUNCH_MODE` and private email allowlist to control access before launch.
+   See [Google's audience requirements](https://support.google.com/cloud/answer/15549945).
 
 ## 3. GitHub sign-in
 
@@ -177,7 +179,7 @@ curl <PUBLIC_URL>/v1/config     # lists the sign-in providers you configured
 ```
 
 For HA Desktop Widget 4.0, `cloud-sync-service/wrangler.production.toml` stages the live
-Worker on its own D1 database. It has no public route and disables `workers.dev`. Deploy it
+Worker on its own D1 database. It has no public route and disables `workers.dev` and preview URLs. Deploy it
 with `npx wrangler deploy --config wrangler.production.toml`. Its `LAUNCH_MODE = "prelaunch"`
 setting lets `/v1/health` respond but rejects all other requests with 503, including sign-in,
 profile writes, Checkout, and webhooks. Configure the live secrets on this Worker before
@@ -187,6 +189,20 @@ verified emails for a release rehearsal. Private mode denies other sign-ins and 
 sessions; it still accepts signed Stripe webhooks for allowlisted customers. An unknown
 nonempty launch mode remains closed. Keep the Stripe live webhook disabled until the
 public route points to the live Worker.
+
+Apply all pending D1 migrations before deploying an updated Worker:
+
+```sh
+npx wrangler d1 migrations apply ha-widget-cloud-sync-production --remote --config wrangler.production.toml
+```
+
+The billing tables introduced in `0002_billing_checkouts.sql` track pending payment pages.
+Checkout retries reuse the same page and Stripe idempotency key. New pages expire after
+31 minutes. Account deletion expires an unpaid page or cancels its completed subscription
+before removing the account. If a checkout request failed before its result could be
+stored, deletion waits for that page's expiry. Checkout creation and deletion cannot run
+at the same time for one account. Checkout stays unavailable until the API key, price ID,
+and webhook signing secret are all configured.
 
 ## 6. Point the app at the service
 
@@ -205,19 +221,19 @@ The app only accepts `https` addresses, plus `http` on this computer for local d
 
 ## Settings reference
 
-| Setting                        | Where    | Meaning                                                                                           |
-| ------------------------------ | -------- | ------------------------------------------------------------------------------------------------- |
-| `PUBLIC_URL`                   | `[vars]` | The service's public address. Must match the callback URLs registered with Google and GitHub.     |
+| Setting                        | Where    | Meaning                                                                                                                                |
+| ------------------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `PUBLIC_URL`                   | `[vars]` | The service's public address. Must match the callback URLs registered with Google and GitHub.                                          |
 | `LAUNCH_MODE`                  | `[vars]` | `prelaunch` closes all routes except health; `private` allows listed emails; `public` opens the service. Omit for an existing sandbox. |
-| `PRIVATE_TEST_EMAILS`          | `[vars]` | Verified email addresses allowed when `LAUNCH_MODE` is `private`, separated by commas. |
-| `TRIAL_DAYS`                   | `[vars]` | Days a new account can save changes without a subscription (default 14).                          |
-| `ENTITLEMENT_MODE`             | `[vars]` | `subscription` (default), or `open` to let every signed-in account sync, such as for a free beta. |
-| `STRIPE_PRICE_ID`              | `[vars]` | The yearly price.                                                                                 |
-| `STRIPE_AUTOMATIC_TAX`         | `[vars]` | `true` adds Stripe Tax to new Checkout subscriptions after registrations are configured.         |
-| `GOOGLE_CLIENT_ID` / `_SECRET` | secret   | Google sign-in.                                                                                   |
-| `GITHUB_CLIENT_ID` / `_SECRET` | secret   | GitHub sign-in.                                                                                   |
-| `STRIPE_SECRET_KEY`            | secret   | Creating checkout and portal sessions, cancelling on account deletion.                            |
-| `STRIPE_WEBHOOK_SECRET`        | secret   | Verifying webhook deliveries.                                                                     |
+| `PRIVATE_TEST_EMAILS`          | `[vars]` | Verified email addresses allowed when `LAUNCH_MODE` is `private`, separated by commas.                                                 |
+| `TRIAL_DAYS`                   | `[vars]` | Days a new account can save changes without a subscription (default 14).                                                               |
+| `ENTITLEMENT_MODE`             | `[vars]` | `subscription` (default), or `open` to let every signed-in account sync, such as for a free beta.                                      |
+| `STRIPE_PRICE_ID`              | `[vars]` | The yearly price.                                                                                                                      |
+| `STRIPE_AUTOMATIC_TAX`         | `[vars]` | `true` adds Stripe Tax to new Checkout subscriptions after registrations are configured.                                               |
+| `GOOGLE_CLIENT_ID` / `_SECRET` | secret   | Google sign-in.                                                                                                                        |
+| `GITHUB_CLIENT_ID` / `_SECRET` | secret   | GitHub sign-in.                                                                                                                        |
+| `STRIPE_SECRET_KEY`            | secret   | Creating checkout and portal sessions, cancelling on account deletion.                                                                 |
+| `STRIPE_WEBHOOK_SECRET`        | secret   | Verifying webhook deliveries.                                                                                                          |
 
 ## Running it locally
 

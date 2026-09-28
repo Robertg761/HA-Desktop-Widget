@@ -132,6 +132,34 @@ describe('cloud sync client', () => {
     await expect(client.readProfile()).rejects.toMatchObject({ code: 'CLOUD_SYNC_SIGNED_OUT' });
   });
 
+  test('a canceled subscriber can start checkout again using the existing customer', async () => {
+    const { world, client, opened } = setup();
+    await client.signIn('google');
+    await client.openBilling();
+    Object.assign(world.stripe.checkouts.get('cs_1'), {
+      status: 'complete',
+      subscription: 'sub_old',
+    });
+    const userId = world.env.DB.raw.prepare('SELECT id FROM users').get().id;
+    await world.sendWebhook({
+      type: 'customer.subscription.deleted',
+      created: 1,
+      data: {
+        object: {
+          id: 'sub_old',
+          customer: 'cus_returning',
+          metadata: { user_id: userId },
+          status: 'canceled',
+        },
+      },
+    });
+    await expect(client.openBilling()).resolves.toEqual({ opened: 'checkout' });
+    expect(opened.at(-1)).toBe('https://checkout.stripe.test/session');
+    const call = world.calls.filter((call) => call.url.endsWith('/checkout/sessions')).at(-1);
+    expect(new URLSearchParams(call.body).get('customer')).toBe('cus_returning');
+    expect(world.stripe.checkouts.size).toBe(2);
+  });
+
   test('signing out ends the session, even when the service cannot be reached', async () => {
     const { world, client } = setup();
     await client.signIn('google');

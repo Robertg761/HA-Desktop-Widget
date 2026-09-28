@@ -8,10 +8,13 @@ const nodeCrypto = require('crypto');
 const { handleRequest } = require('../../cloud-sync-service/src/index.js');
 
 const { DatabaseSync } = process.getBuiltinModule('node:sqlite');
-const MIGRATION = fs.readFileSync(
-  path.join(__dirname, '../../cloud-sync-service/migrations/0001_init.sql'),
-  'utf8'
-);
+const migrationDir = path.join(__dirname, '../../cloud-sync-service/migrations');
+const MIGRATION = fs
+  .readdirSync(migrationDir)
+  .filter((name) => name.endsWith('.sql'))
+  .sort()
+  .map((name) => fs.readFileSync(path.join(migrationDir, name), 'utf8'))
+  .join('\n');
 const BASE = 'https://sync.test';
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -58,7 +61,13 @@ function createWorld(envOverrides = {}) {
   const calls = [];
   const googleUsers = new Map();
   const githubUsers = new Map();
-  const stripe = { failCancel: false };
+  const stripe = {
+    failCancel: false,
+    failExpire: false,
+    checkouts: new Map(),
+    keys: new Map(),
+    canceled: new Set(),
+  };
   const fakeFetch = async (url, init = {}) => {
     const target = String(url);
     const body = init.body ? String(init.body) : '';
@@ -83,12 +92,37 @@ function createWorld(envOverrides = {}) {
       return jsonResponse(target.endsWith('/emails') ? user.emails : user.profile);
     }
     if (target === 'https://api.stripe.com/v1/checkout/sessions') {
-      return jsonResponse({ url: 'https://checkout.stripe.test/session' });
+      const key = init.headers['Idempotency-Key'];
+      const id = stripe.keys.get(key) || `cs_${stripe.checkouts.size + 1}`;
+      if (!stripe.checkouts.has(id)) {
+        stripe.keys.set(key, id);
+        stripe.checkouts.set(id, {
+          id,
+          url: 'https://checkout.stripe.test/session',
+          status: 'open',
+          expires_at: Number(new URLSearchParams(body).get('expires_at')),
+        });
+      }
+      return jsonResponse(stripe.checkouts.get(id));
+    }
+    if (target.startsWith('https://api.stripe.com/v1/checkout/sessions/')) {
+      const id = target.split('/')[6];
+      const checkout = stripe.checkouts.get(id);
+      if (!checkout) return jsonResponse({ error: { message: 'Missing Checkout' } }, 404);
+      if (target.endsWith('/expire')) {
+        if (stripe.failExpire || checkout.status !== 'open')
+          return jsonResponse({ error: { message: 'Cannot expire Checkout' } }, 400);
+        checkout.status = 'expired';
+      }
+      return jsonResponse(checkout);
     }
     if (target === 'https://api.stripe.com/v1/billing_portal/sessions') {
       return jsonResponse({ url: 'https://billing.stripe.test/portal' });
     }
     if (target.startsWith('https://api.stripe.com/v1/subscriptions/')) {
+      if (init.method === 'GET')
+        return jsonResponse({ status: stripe.canceled.has(target) ? 'canceled' : 'active' });
+      if (!stripe.failCancel) stripe.canceled.add(target);
       return stripe.failCancel
         ? jsonResponse({ error: { message: 'down' } }, 500)
         : jsonResponse({ id: 'sub_1', status: 'canceled' });
@@ -176,6 +210,7 @@ function createWorld(envOverrides = {}) {
 
   return {
     env,
+    deps,
     calls,
     stripe,
     googleUsers,

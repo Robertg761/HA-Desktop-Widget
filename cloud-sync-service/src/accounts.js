@@ -155,7 +155,7 @@ export async function handleGetAccount(request, env, deps) {
     user: { id: session.userId, email: session.email },
     providers: (identities.results || []).map((row) => row.provider),
     entitlement: await getEntitlement(env, deps, session),
-    billingAvailable: !!(env.STRIPE_SECRET_KEY && env.STRIPE_PRICE_ID),
+    billingAvailable: !!(env.STRIPE_SECRET_KEY && env.STRIPE_PRICE_ID && env.STRIPE_WEBHOOK_SECRET),
   });
 }
 
@@ -171,39 +171,62 @@ export async function handleSignOut(request, env, deps) {
  * cancelled first, and nothing is deleted if that fails, so nobody keeps paying
  * for an account that no longer exists.
  */
-export async function handleDeleteAccount(request, env, deps, { cancelSubscription }) {
+export async function handleDeleteAccount(
+  request,
+  env,
+  deps,
+  { cancelSubscription, acquireBillingLock, releaseBillingLock, expirePendingCheckout }
+) {
   const session = await authenticate(request, env, deps);
   if (!session) return unauthorized();
-  const subscription = await env.DB.prepare(
-    'SELECT stripe_subscription_id, status FROM subscriptions WHERE user_id = ?'
-  )
-    .bind(session.userId)
-    .first();
-  if (
-    subscription?.stripe_subscription_id &&
-    subscription.status &&
-    subscription.status !== 'canceled'
-  ) {
+  const lock = await acquireBillingLock(env, deps, session.userId);
+  if (!lock)
+    return errorResponse(
+      409,
+      'billing_busy',
+      'A billing change is in progress. Try again shortly.'
+    );
+  try {
+    const subscription = await env.DB.prepare(
+      'SELECT stripe_subscription_id, status FROM subscriptions WHERE user_id = ?'
+    )
+      .bind(session.userId)
+      .first();
     try {
-      await cancelSubscription(env, deps, subscription.stripe_subscription_id);
+      const pendingSubscription = await expirePendingCheckout(env, deps, session.userId);
+      const toCancel = new Set();
+      const ended =
+        subscription?.status === 'canceled' || subscription?.status === 'incomplete_expired';
+      if (subscription?.stripe_subscription_id && !ended)
+        toCancel.add(subscription.stripe_subscription_id);
+      if (
+        pendingSubscription &&
+        !(ended && pendingSubscription === subscription?.stripe_subscription_id)
+      )
+        toCancel.add(pendingSubscription);
+      for (const id of toCancel) await cancelSubscription(env, deps, id);
     } catch {
       return errorResponse(
         502,
         'billing_unavailable',
-        'Your subscription could not be cancelled, so the account was kept. Try again later.'
+        'Billing could not be closed, so the account was kept. Try again later.'
       );
     }
+    const userId = session.userId;
+    await env.DB.batch(
+      [
+        'DELETE FROM profiles WHERE user_id = ?',
+        'DELETE FROM sessions WHERE user_id = ?',
+        'DELETE FROM handoff_codes WHERE user_id = ?',
+        'DELETE FROM subscriptions WHERE user_id = ?',
+        'DELETE FROM billing_checkouts WHERE user_id = ?',
+        'DELETE FROM billing_operations WHERE user_id = ?',
+        'DELETE FROM identities WHERE user_id = ?',
+        'DELETE FROM users WHERE id = ?',
+      ].map((sql) => env.DB.prepare(sql).bind(userId))
+    );
+    return json({ ok: true });
+  } finally {
+    await releaseBillingLock(env, session.userId, lock);
   }
-  const userId = session.userId;
-  await env.DB.batch(
-    [
-      'DELETE FROM profiles WHERE user_id = ?',
-      'DELETE FROM sessions WHERE user_id = ?',
-      'DELETE FROM handoff_codes WHERE user_id = ?',
-      'DELETE FROM subscriptions WHERE user_id = ?',
-      'DELETE FROM identities WHERE user_id = ?',
-      'DELETE FROM users WHERE id = ?',
-    ].map((sql) => env.DB.prepare(sql).bind(userId))
-  );
-  return json({ ok: true });
 }

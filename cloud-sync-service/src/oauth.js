@@ -22,7 +22,6 @@ import {
   redirect,
   sha256Base64Url,
   sha256Hex,
-  timingSafeEqual,
 } from './util.js';
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
@@ -208,13 +207,10 @@ export async function handleAuthCallback(request, env, deps, provider) {
   const state = url.searchParams.get('state') || '';
   // The state is single use: it is removed before anything else happens.
   const pending = state
-    ? await env.DB.prepare('SELECT * FROM oauth_states WHERE id = ? AND provider = ?')
+    ? await env.DB.prepare('DELETE FROM oauth_states WHERE id = ? AND provider = ? RETURNING *')
         .bind(state, provider)
         .first()
     : null;
-  if (pending) {
-    await env.DB.prepare('DELETE FROM oauth_states WHERE id = ?').bind(state).run();
-  }
   if (!pending || pending.expires_at < deps.now()) {
     return htmlPage(
       'Sign-in expired',
@@ -279,19 +275,15 @@ export async function handleAuthToken(request, env, deps) {
     return errorResponse(400, 'invalid_request', 'The sign-in request was not valid.');
   }
   const codeHash = await sha256Hex(deps.crypto, code);
-  const handoff = await env.DB.prepare('SELECT * FROM handoff_codes WHERE code_hash = ?')
-    .bind(codeHash)
-    .first();
-  if (handoff) {
-    await env.DB.prepare('DELETE FROM handoff_codes WHERE code_hash = ?').bind(codeHash).run();
-  }
   const challenge = await sha256Base64Url(deps.crypto, verifier);
-  if (
-    !handoff ||
-    handoff.expires_at < deps.now() ||
-    handoff.redirect_uri !== redirectUri ||
-    !timingSafeEqual(handoff.code_challenge, challenge)
-  ) {
+  // Validate and consume in one statement so simultaneous redemptions cannot
+  // both create a session. An invalid verifier cannot consume the owner's code.
+  const handoff = await env.DB.prepare(
+    'DELETE FROM handoff_codes WHERE code_hash = ? AND code_challenge = ? AND redirect_uri = ? AND expires_at >= ? RETURNING user_id'
+  )
+    .bind(codeHash, challenge, redirectUri, deps.now())
+    .first();
+  if (!handoff) {
     return errorResponse(400, 'invalid_grant', 'The sign-in has expired. Try again.');
   }
   const token = await createSession(env, deps, handoff.user_id, deviceName);

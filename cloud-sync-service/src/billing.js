@@ -10,6 +10,7 @@ import {
   htmlPage,
   json,
   publicBaseUrl,
+  randomToken,
   readTextBody,
   timingSafeEqual,
 } from './util.js';
@@ -19,7 +20,7 @@ const STRIPE_API = 'https://api.stripe.com/v1';
 const WEBHOOK_TOLERANCE_SECONDS = 5 * 60;
 
 export function isBillingConfigured(env) {
-  return !!(env.STRIPE_SECRET_KEY && env.STRIPE_PRICE_ID);
+  return !!(env.STRIPE_SECRET_KEY && env.STRIPE_PRICE_ID && env.STRIPE_WEBHOOK_SECRET);
 }
 
 /** Flattens nested parameters into Stripe's form encoding (a[b][0]=c). */
@@ -33,13 +34,15 @@ export function encodeStripeParams(params, prefix = '', search = new URLSearchPa
   return search;
 }
 
-async function stripeRequest(env, deps, method, path, params) {
+async function stripeRequest(env, deps, method, path, params, idempotencyKey) {
   const response = await deps.fetch(`${STRIPE_API}${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
       'Content-Type': 'application/x-www-form-urlencoded',
+      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
     },
+    signal: AbortSignal.timeout(20 * 1000),
     body: params ? encodeStripeParams(params) : undefined,
   });
   const body = await response.json().catch(() => ({}));
@@ -51,7 +54,67 @@ async function stripeRequest(env, deps, method, path, params) {
 
 export async function cancelSubscription(env, deps, subscriptionId) {
   if (!env.STRIPE_SECRET_KEY) throw new Error('Billing is not configured');
-  await stripeRequest(env, deps, 'DELETE', `/subscriptions/${encodeURIComponent(subscriptionId)}`);
+  const path = `/subscriptions/${encodeURIComponent(subscriptionId)}`;
+  try {
+    await stripeRequest(env, deps, 'DELETE', path);
+  } catch (error) {
+    // A response can be lost after Stripe cancels successfully. Confirm the
+    // current state before deciding that account deletion must stay blocked.
+    const current = await stripeRequest(env, deps, 'GET', path);
+    if (current.status !== 'canceled' && current.status !== 'incomplete_expired') throw error;
+  }
+}
+
+export async function acquireBillingLock(env, deps, userId) {
+  const token = randomToken(deps.crypto);
+  const result = await env.DB.prepare(
+    `INSERT INTO billing_operations (user_id, token, expires_at)
+     SELECT id, ?, ? FROM users WHERE id = ?
+     ON CONFLICT(user_id) DO UPDATE SET token = excluded.token, expires_at = excluded.expires_at
+     WHERE billing_operations.expires_at < ?`
+  )
+    .bind(token, deps.now() + 5 * 60 * 1000, userId, deps.now())
+    .run();
+  return result.meta?.changes === 1 ? token : null;
+}
+
+export async function releaseBillingLock(env, userId, token) {
+  await env.DB.prepare('DELETE FROM billing_operations WHERE user_id = ? AND token = ?')
+    .bind(userId, token)
+    .run();
+}
+
+/** Returns a completed Checkout's subscription, or expires its unpaid page. */
+export async function expirePendingCheckout(env, deps, userId) {
+  const pending = await env.DB.prepare('SELECT * FROM billing_checkouts WHERE user_id = ?')
+    .bind(userId)
+    .first();
+  if (!pending) return null;
+  if (!pending.stripe_session_id) {
+    if (pending.expires_at > deps.now()) throw new Error('Checkout is still being prepared');
+    return null;
+  }
+  const checkout = await stripeRequest(
+    env,
+    deps,
+    'GET',
+    `/checkout/sessions/${encodeURIComponent(pending.stripe_session_id)}`
+  );
+  if (checkout.status === 'open') {
+    await stripeRequest(
+      env,
+      deps,
+      'POST',
+      `/checkout/sessions/${encodeURIComponent(pending.stripe_session_id)}/expire`
+    );
+  } else if (checkout.status === 'complete') {
+    if (typeof checkout.subscription !== 'string')
+      throw new Error('Completed Checkout has no subscription');
+    return checkout.subscription;
+  } else if (checkout.status !== 'expired') {
+    throw new Error('Unknown Checkout status');
+  }
+  return null;
 }
 
 export async function handleCheckout(request, env, deps) {
@@ -60,34 +123,110 @@ export async function handleCheckout(request, env, deps) {
   if (!isBillingConfigured(env)) {
     return errorResponse(501, 'billing_unavailable', 'Subscriptions are not available yet.');
   }
-  const existing = await env.DB.prepare(
-    'SELECT stripe_customer_id FROM subscriptions WHERE user_id = ?'
-  )
-    .bind(session.userId)
-    .first();
-  const base = publicBaseUrl(request, env);
-  const params = {
-    mode: 'subscription',
-    line_items: [{ price: env.STRIPE_PRICE_ID, quantity: 1 }],
-    client_reference_id: session.userId,
-    success_url: `${base}/billing/done?result=success`,
-    cancel_url: `${base}/billing/done?result=cancel`,
-    allow_promotion_codes: 'true',
-    metadata: { user_id: session.userId },
-    subscription_data: { metadata: { user_id: session.userId } },
-  };
-  if (existing?.stripe_customer_id) params.customer = existing.stripe_customer_id;
-  else if (session.email) params.customer_email = session.email;
-  if (env.STRIPE_AUTOMATIC_TAX === 'true') {
-    params.automatic_tax = { enabled: true };
-    params.billing_address_collection = 'required';
-    if (existing?.stripe_customer_id) params.customer_update = { address: 'auto' };
-  }
+  const lock = await acquireBillingLock(env, deps, session.userId);
+  if (!lock)
+    return errorResponse(
+      409,
+      'billing_busy',
+      'A billing change is in progress. Try again shortly.'
+    );
   try {
-    const checkout = await stripeRequest(env, deps, 'POST', '/checkout/sessions', params);
+    const existing = await env.DB.prepare(
+      'SELECT stripe_customer_id, stripe_subscription_id, status FROM subscriptions WHERE user_id = ?'
+    )
+      .bind(session.userId)
+      .first();
+    if (
+      existing?.stripe_subscription_id &&
+      existing.status !== 'canceled' &&
+      existing.status !== 'incomplete_expired'
+    ) {
+      return errorResponse(
+        409,
+        'subscription_exists',
+        'Manage your existing subscription from the billing portal.'
+      );
+    }
+    let pending = await env.DB.prepare('SELECT * FROM billing_checkouts WHERE user_id = ?')
+      .bind(session.userId)
+      .first();
+    if (pending?.stripe_session_id) {
+      const checkout = await stripeRequest(
+        env,
+        deps,
+        'GET',
+        `/checkout/sessions/${encodeURIComponent(pending.stripe_session_id)}`
+      );
+      if (checkout.status === 'open') return json({ url: checkout.url });
+      if (checkout.status === 'complete') {
+        if (checkout.subscription !== existing?.stripe_subscription_id) {
+          return errorResponse(
+            409,
+            'billing_pending',
+            'Your payment is being processed. Try again shortly.'
+          );
+        }
+        // The completed page belonged to the subscription that already ended.
+      } else if (checkout.status !== 'expired') throw new Error('Unknown Checkout status');
+      pending = null;
+    } else if (pending && pending.expires_at <= deps.now()) {
+      // Any session created for this persisted request has already expired.
+      pending = null;
+    }
+    const base = publicBaseUrl(request, env);
+    const params = {
+      mode: 'subscription',
+      line_items: [{ price: env.STRIPE_PRICE_ID, quantity: 1 }],
+      client_reference_id: session.userId,
+      success_url: `${base}/billing/done?result=success`,
+      cancel_url: `${base}/billing/done?result=cancel`,
+      allow_promotion_codes: 'true',
+      metadata: { user_id: session.userId },
+      subscription_data: { metadata: { user_id: session.userId } },
+      // Leave a minute above Stripe's 30-minute minimum for network transit.
+      expires_at: Math.floor(deps.now() / 1000) + 31 * 60,
+    };
+    if (existing?.stripe_customer_id) params.customer = existing.stripe_customer_id;
+    else if (session.email) params.customer_email = session.email;
+    if (env.STRIPE_AUTOMATIC_TAX === 'true') {
+      params.automatic_tax = { enabled: true };
+      params.billing_address_collection = 'required';
+      if (existing?.stripe_customer_id) params.customer_update = { address: 'auto' };
+    }
+    if (!pending) {
+      pending = {
+        request_key: randomToken(deps.crypto),
+        stripe_params: JSON.stringify(params),
+        expires_at: params.expires_at * 1000,
+      };
+      await env.DB.prepare(
+        `INSERT INTO billing_checkouts (user_id, request_key, stripe_params, expires_at)
+         VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET
+         request_key = excluded.request_key, stripe_params = excluded.stripe_params,
+         stripe_session_id = NULL, url = NULL, expires_at = excluded.expires_at`
+      )
+        .bind(session.userId, pending.request_key, pending.stripe_params, pending.expires_at)
+        .run();
+    }
+    const checkout = await stripeRequest(
+      env,
+      deps,
+      'POST',
+      '/checkout/sessions',
+      JSON.parse(pending.stripe_params),
+      pending.request_key
+    );
+    if (!checkout.id || !checkout.url) throw new Error('Checkout response is incomplete');
+    await env.DB.prepare(
+      'UPDATE billing_checkouts SET stripe_session_id = ?, url = ? WHERE user_id = ?'
+    )
+      .bind(checkout.id, checkout.url, session.userId)
+      .run();
     return json({ url: checkout.url });
   } catch {
     return errorResponse(502, 'billing_unavailable', 'Checkout could not be started.');
+  } finally {
+    await releaseBillingLock(env, session.userId, lock);
   }
 }
 
@@ -179,24 +318,30 @@ async function upsertSubscription(env, deps, userId, fields, eventCreated) {
   // newer one. Events without a status (checkout completing) only link the
   // customer and take no part in that ordering.
   const carriesStatus = !!fields.status;
-  if (carriesStatus) {
-    const existing = await env.DB.prepare(
-      'SELECT event_created FROM subscriptions WHERE user_id = ?'
-    )
-      .bind(userId)
-      .first();
-    if (existing && existing.event_created && eventCreated < existing.event_created) return;
-  }
   await env.DB.prepare(
     `INSERT INTO subscriptions (user_id, stripe_customer_id, stripe_subscription_id, status, current_period_end, event_created, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(user_id) DO UPDATE SET
-       stripe_customer_id = COALESCE(excluded.stripe_customer_id, subscriptions.stripe_customer_id),
-       stripe_subscription_id = COALESCE(excluded.stripe_subscription_id, subscriptions.stripe_subscription_id),
+       stripe_customer_id = CASE WHEN excluded.event_created IS NULL
+         THEN COALESCE(subscriptions.stripe_customer_id, excluded.stripe_customer_id)
+         ELSE COALESCE(excluded.stripe_customer_id, subscriptions.stripe_customer_id) END,
+       stripe_subscription_id = CASE WHEN excluded.event_created IS NULL
+         THEN COALESCE(subscriptions.stripe_subscription_id, excluded.stripe_subscription_id)
+         ELSE COALESCE(excluded.stripe_subscription_id, subscriptions.stripe_subscription_id) END,
        status = COALESCE(excluded.status, subscriptions.status),
        current_period_end = COALESCE(excluded.current_period_end, subscriptions.current_period_end),
        event_created = COALESCE(excluded.event_created, subscriptions.event_created),
-       updated_at = excluded.updated_at`
+       updated_at = excluded.updated_at
+     WHERE excluded.event_created IS NULL OR (
+       excluded.event_created >= COALESCE(subscriptions.event_created, 0)
+       AND NOT (COALESCE(subscriptions.status, '') = 'canceled'
+         AND subscriptions.stripe_subscription_id = excluded.stripe_subscription_id
+         AND excluded.status != 'canceled')
+       AND NOT (excluded.status = 'canceled'
+         AND subscriptions.stripe_subscription_id IS NOT NULL
+         AND subscriptions.stripe_subscription_id != excluded.stripe_subscription_id
+         AND COALESCE(subscriptions.status, '') NOT IN ('canceled', 'incomplete_expired'))
+     )`
   )
     .bind(
       userId,

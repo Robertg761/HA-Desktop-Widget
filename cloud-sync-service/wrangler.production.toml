@@ -4,6 +4,7 @@ name = "ha-desktop-widget-cloud-sync-production"
 main = "src/index.js"
 compatibility_date = "2026-09-01"
 workers_dev = false
+preview_urls = false
 
 [[d1_databases]]
 binding = "DB"
