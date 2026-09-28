@@ -15242,7 +15242,7 @@ body.desktop-pin-mode .desktop-pin-empty-action:hover {
      --season-art          corner art on tiles, primary cards and dialogs (::before)
      --season-tile-sit     a piece sitting in every third tile (::after)
      --season-weather-sit  sitting in the weather card; --season-time-sit in the other cards
-     --season-dialog-sit   sitting in the bottom corner of dialogs
+     --season-dialog-sit   sitting in the bottom corner of the Settings dialog
      --season-hat          perched on the window title
      --season-title-icon   after the window title; --season-label-icon after "Quick Access"
      --season-garland      hung from the bottom of the header, repeating
@@ -15348,7 +15348,9 @@ body[data-season] .weather-card {
   --season-sit: var(--season-weather-sit);
 }
 
-body[data-season] .modal-content {
+/* Only Settings has the room: in a short dialog, such as a confirmation, the piece would sit
+   behind the message. */
+body[data-season] #settings-modal .modal-content {
   --season-sit: var(--season-dialog-sit);
   --season-sit-size: 60px;
 }

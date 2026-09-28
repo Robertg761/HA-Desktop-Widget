@@ -67,6 +67,7 @@ const mockUiUtils = {
   applyBackgroundTheme: jest.fn(),
   applyBackgroundThemeFromColor: jest.fn(),
   applyUiPreferences: jest.fn(),
+  suspendSeasonalColors: jest.fn(),
   applyWindowEffects: jest.fn(),
   setCustomThemes: jest.fn((customColors = []) => {
     mockCustomThemes = (Array.isArray(customColors) ? customColors : [])
@@ -3012,25 +3013,58 @@ describe('Settings + Config Integration', () => {
 
       expect(mockUiUtils.applyUiPreferences).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          seasonal: { colors: false, holidays: { christmas: false }, show: 'halloween' },
+          seasonal: {
+            colors: false,
+            holidays: { christmas: false },
+            show: 'halloween',
+            showUntil: expect.any(Number),
+          },
         })
       );
-      expect(document.getElementById('seasonal-status').textContent).toBe(
-        'Showing Halloween whatever the date.'
+      // Picking a holiday shows it for a day.
+      const previewUntil = mockUiUtils.applyUiPreferences.mock.lastCall[0].seasonal.showUntil;
+      expect(previewUntil - Date.now()).toBeGreaterThan(23 * 60 * 60 * 1000);
+      expect(document.getElementById('seasonal-status').textContent).toMatch(
+        /^Showing Halloween until .+\.$/
       );
       expect(window.electronAPI.updateConfig).not.toHaveBeenCalled();
 
       await settings.saveSettings();
 
+      // The day counts from Save.
       expect(state.CONFIG.ui.seasonal).toEqual({
         colors: false,
         holidays: { christmas: false },
         show: 'halloween',
+        showUntil: expect.any(Number),
       });
+      const { showUntil } = state.CONFIG.ui.seasonal;
+      expect(showUntil).toBeGreaterThanOrEqual(previewUntil);
       await settings.openSettings();
       expect(colors.checked).toBe(false);
       expect(show.value).toBe('halloween');
       expect(christmas.checked).toBe(false);
+
+      // Saving again keeps the pick's original end time rather than extending it.
+      await settings.saveSettings();
+      expect(state.CONFIG.ui.seasonal.showUntil).toBe(showUntil);
+    });
+
+    test('a colour pick shows through holiday colours until a seasonal control is touched', async () => {
+      await settings.openSettings();
+      mockUiUtils.suspendSeasonalColors.mockClear();
+      document.querySelector('#theme-options [data-theme="rose"]').click();
+      expect(mockUiUtils.suspendSeasonalColors).toHaveBeenLastCalledWith(true);
+      expect(mockUiUtils.applyAccentTheme).toHaveBeenLastCalledWith('rose');
+
+      const colors = document.getElementById('seasonal-colors');
+      colors.checked = false;
+      change(colors);
+      expect(mockUiUtils.suspendSeasonalColors).toHaveBeenLastCalledWith(false);
+
+      mockUiUtils.suspendSeasonalColors.mockClear();
+      settings.closeSettings();
+      expect(mockUiUtils.suspendSeasonalColors).toHaveBeenCalledWith(false);
     });
 
     test('saves the switch once the user flips it, and greys out the options', async () => {

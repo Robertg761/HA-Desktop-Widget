@@ -1605,7 +1605,7 @@
     "Holiday colors": "Feiertagsfarben",
     "Swaps in the holiday's colors for your accent and background while it lasts. Yours come back afterwards.": "Ersetzt Akzent- und Hintergrundfarbe durch die Farben des Feiertags, solange er dauert. Danach kommen deine zurück.",
     "Holiday to show": "Angezeigter Feiertag",
-    "Pick one to see it now, whatever the date.": "Wähle einen aus, um ihn jetzt zu sehen, unabhängig vom Datum.",
+    "Pick one to see it now, whatever the date. The calendar takes over again a day later.": "Wähle einen aus, um ihn jetzt zu sehen, unabhängig vom Datum. Nach einem Tag übernimmt wieder der Kalender.",
     "By date": "Nach Datum",
     "Holidays": "Feiertage",
     "New Year": "Neujahr",
@@ -1616,7 +1616,7 @@
     "Halloween": "Halloween",
     "Thanksgiving": "Thanksgiving",
     "Christmas": "Weihnachten",
-    "Showing {{holiday}} whatever the date.": "{{holiday}} wird unabhängig vom Datum angezeigt.",
+    "Showing {{holiday}} until {{time}}.": "{{holiday}} wird bis {{time}} angezeigt.",
     "{{holiday}} is on until {{date}}.": "{{holiday}} läuft bis {{date}}.",
     "Nothing right now. {{holiday}} starts {{date}}.": "Gerade nichts. {{holiday}} beginnt am {{date}}.",
     "No holidays are picked.": "Keine Feiertage ausgewählt."

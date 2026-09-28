@@ -1605,7 +1605,7 @@
     "Holiday colors": "त्योहार के रंग",
     "Swaps in the holiday's colors for your accent and background while it lasts. Yours come back afterwards.": "त्योहार के दौरान आपके एक्सेंट और बैकग्राउंड रंगों की जगह उसके रंग दिखाता है। बाद में आपके रंग लौट आते हैं।",
     "Holiday to show": "दिखाने वाला त्योहार",
-    "Pick one to see it now, whatever the date.": "तारीख़ चाहे जो हो, अभी देखने के लिए कोई एक चुनें।",
+    "Pick one to see it now, whatever the date. The calendar takes over again a day later.": "तारीख़ चाहे जो हो, अभी देखने के लिए कोई एक चुनें। एक दिन बाद कैलेंडर फिर से लागू हो जाता है।",
     "By date": "तारीख़ के अनुसार",
     "Holidays": "त्योहार",
     "New Year": "नया साल",
@@ -1616,7 +1616,7 @@
     "Halloween": "हैलोवीन",
     "Thanksgiving": "थैंक्सगिविंग",
     "Christmas": "क्रिसमस",
-    "Showing {{holiday}} whatever the date.": "तारीख़ चाहे जो हो, {{holiday}} दिखाया जा रहा है।",
+    "Showing {{holiday}} until {{time}}.": "{{holiday}} {{time}} तक दिखाया जा रहा है।",
     "{{holiday}} is on until {{date}}.": "{{holiday}} {{date}} तक चलेगा।",
     "Nothing right now. {{holiday}} starts {{date}}.": "अभी कुछ नहीं। {{holiday}} {{date}} से शुरू होगा।",
     "No holidays are picked.": "कोई त्योहार नहीं चुना गया।"

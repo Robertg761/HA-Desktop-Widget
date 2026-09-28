@@ -9,6 +9,9 @@ const { setSeasonalColors } = require('../../src/ui-utils.js');
 const { reapplyDesktopAppearance } = require('../../src/desktop-appearance.js');
 const { SeasonalEffectsManager } = require('../../src/seasonal-effects.js');
 
+// A holiday picked under "Holiday to show", which lasts a day from now.
+const picked = (id) => ({ show: id, showUntil: Date.now() + 24 * 60 * 60 * 1000 });
+
 // Any drawing call is a no-op; gradients only need addColorStop.
 function createContext() {
   const calls = [];
@@ -37,6 +40,7 @@ describe('SeasonalEffectsManager', () => {
   let forcedColors;
   let motionListeners;
   let forcedColorsListeners;
+  let resolutionListeners;
   let manager;
 
   beforeEach(() => {
@@ -52,7 +56,15 @@ describe('SeasonalEffectsManager', () => {
     forcedColors = false;
     motionListeners = [];
     forcedColorsListeners = [];
+    resolutionListeners = [];
     window.matchMedia = jest.fn((query) => {
+      if (query.includes('resolution')) {
+        return {
+          matches: true,
+          addEventListener: (type, listener) => resolutionListeners.push(listener),
+          removeEventListener: jest.fn(),
+        };
+      }
       const forced = query.includes('forced-colors');
       return {
         get matches() {
@@ -131,7 +143,7 @@ describe('SeasonalEffectsManager', () => {
 
   test('draws one still frame instead of animating when reduced motion is on by choice', () => {
     reducedMotion = true;
-    manager.apply({ seasonal: { enabled: true, show: 'christmas' } });
+    manager.apply({ seasonal: { enabled: true, ...picked('christmas') } });
 
     expect(document.body.dataset.season).toBe('christmas');
     expect(window.requestAnimationFrame).not.toHaveBeenCalled();
@@ -140,7 +152,7 @@ describe('SeasonalEffectsManager', () => {
 
   test('redraws a still scene when light or dark mode changes', async () => {
     reducedMotion = true;
-    manager.apply({ seasonal: { enabled: true, show: 'christmas' } });
+    manager.apply({ seasonal: { enabled: true, ...picked('christmas') } });
     expect(window.requestAnimationFrame).not.toHaveBeenCalled();
 
     drawing.calls.length = 0;
@@ -158,7 +170,7 @@ describe('SeasonalEffectsManager', () => {
 
   test('stops drawing while forced colours hide the canvas, and resumes after', () => {
     forcedColors = true;
-    manager.apply({ seasonal: { show: 'halloween' } });
+    manager.apply({ seasonal: picked('halloween') });
     // The holiday still applies (the stylesheet hides its art), but nothing is drawn.
     expect(document.body.dataset.season).toBe('halloween');
     expect(window.requestAnimationFrame).not.toHaveBeenCalled();
@@ -219,7 +231,7 @@ describe('SeasonalEffectsManager', () => {
           : createElement(tag)
       );
 
-    manager.apply({ seasonal: { show: 'christmas' } });
+    manager.apply({ seasonal: picked('christmas') });
     drawing.calls.length = 0;
     manager.loop(1000);
 
@@ -253,6 +265,55 @@ describe('SeasonalEffectsManager', () => {
     expect(manager.findClearLane(20, 60)).toBe(20);
   });
 
+  test('holds no canvas pixels while no holiday runs', () => {
+    jest.setSystemTime(new Date(2026, 8, 20, 12));
+    manager.apply({});
+    expect([canvas.width, canvas.height]).toEqual([0, 0]);
+
+    manager.apply({ seasonal: picked('halloween') });
+    expect(canvas.width).toBe(Math.round(window.innerWidth * manager.pixelRatio));
+    expect(canvas.height).toBe(Math.round(window.innerHeight * manager.pixelRatio));
+
+    manager.apply({ seasonal: { enabled: false } });
+    expect([canvas.width, canvas.height]).toEqual([0, 0]);
+  });
+
+  test('redraws at the new resolution when the screen scale changes', () => {
+    manager.apply({ seasonal: picked('halloween') });
+    const before = canvas.width;
+    const original = window.devicePixelRatio;
+    Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: 2 });
+    resolutionListeners.at(-1)();
+    expect(canvas.width).toBe(Math.round(window.innerWidth * 2));
+    expect(canvas.width).not.toBe(before);
+    // The watch moves on to the new ratio.
+    expect(window.matchMedia).toHaveBeenLastCalledWith('(resolution: 2dppx)');
+    Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: original });
+  });
+
+  test('follows scrolling without re-measuring the tiles', () => {
+    const scroller = document.createElement('div');
+    scroller.className = 'widget-content';
+    document.body.appendChild(scroller);
+    const tile = document.createElement('div');
+    tile.className = 'control-item';
+    const measure = jest.fn(() => ({ left: 10, top: 300, width: 200, height: 80 }));
+    tile.getBoundingClientRect = measure;
+    scroller.appendChild(tile);
+
+    expect(manager.readFrostRects(1000)[0].y).toBe(300);
+    expect(measure).toHaveBeenCalledTimes(1);
+
+    scroller.scrollTop = 120;
+    scroller.dispatchEvent(new Event('scroll'));
+    expect(manager.readFrostRects(1100)[0].y).toBe(180);
+    expect(measure).toHaveBeenCalledTimes(1);
+
+    // The periodic re-measure still picks up anything else that moved.
+    manager.readFrostRects(1600);
+    expect(measure).toHaveBeenCalledTimes(2);
+  });
+
   test('every holiday scene can start, advance and draw, visitors and fireworks included', () => {
     const ids = [
       'new-year',
@@ -267,7 +328,7 @@ describe('SeasonalEffectsManager', () => {
     for (const light of [false, true]) {
       document.body.classList.toggle('theme-light', light);
       for (const id of ids) {
-        manager.apply({ seasonal: { show: id } });
+        manager.apply({ seasonal: picked(id) });
         expect(manager.getActiveHolidayId()).toBe(id);
         drawing.calls.length = 0;
         // A minute of frames: long enough for a witch, sleigh, bunny or turkey to cross.

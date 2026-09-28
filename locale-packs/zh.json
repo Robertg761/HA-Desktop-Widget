@@ -1605,7 +1605,7 @@
     "Holiday colors": "节日配色",
     "Swaps in the holiday's colors for your accent and background while it lasts. Yours come back afterwards.": "节日期间用节日配色替换你的强调色和背景色，结束后恢复你的颜色。",
     "Holiday to show": "显示的节日",
-    "Pick one to see it now, whatever the date.": "选择一个节日立即查看，不受日期限制。",
+    "Pick one to see it now, whatever the date. The calendar takes over again a day later.": "选择一个节日立即查看，不受日期限制。一天后恢复按日历显示。",
     "By date": "按日期",
     "Holidays": "节日",
     "New Year": "新年",
@@ -1616,7 +1616,7 @@
     "Halloween": "万圣节",
     "Thanksgiving": "感恩节",
     "Christmas": "圣诞节",
-    "Showing {{holiday}} whatever the date.": "正在显示{{holiday}}，不受日期限制。",
+    "Showing {{holiday}} until {{time}}.": "正在显示{{holiday}}，直到{{time}}。",
     "{{holiday}} is on until {{date}}.": "{{holiday}}持续到{{date}}。",
     "Nothing right now. {{holiday}} starts {{date}}.": "目前没有节日。{{holiday}}将于{{date}}开始。",
     "No holidays are picked.": "未选择任何节日。"

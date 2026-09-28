@@ -123,6 +123,18 @@ describe('seasonal settings', () => {
     ).toEqual({ enabled: null, colors: true, holidays: { halloween: false }, show: 'auto' });
   });
 
+  test('lets a picked holiday last only until its end time', () => {
+    const now = day(2026, 6, 1).getTime();
+    expect(normalizeSeasonalSettings({ show: 'easter', showUntil: now + 1 }, now)).toEqual(
+      expect.objectContaining({ show: 'easter', showUntil: now + 1 })
+    );
+    const expired = normalizeSeasonalSettings({ show: 'easter', showUntil: now }, now);
+    expect(expired.show).toBe('auto');
+    expect(expired).not.toHaveProperty('showUntil');
+    // A pick without an end time (an older or hand-edited config) is not a pick.
+    expect(normalizeSeasonalSettings({ show: 'easter' }, now).show).toBe('auto');
+  });
+
   test('starts on unless the system asks for reduced motion or high contrast is on', () => {
     const unset = normalizeSeasonalSettings({});
     expect(isSeasonalEnabled(unset)).toBe(true);
@@ -147,15 +159,24 @@ describe('seasonal settings', () => {
     expect(
       resolveSeasonalHoliday({ seasonal: { holidays: { halloween: false } } }, { date: october })
     ).toBeNull();
-    // A picked holiday shows whatever the date and whatever is switched off.
+    // A picked holiday shows whatever the date and whatever is switched off, until it runs out.
+    const june = day(2026, 6, 1);
+    const pickedChristmas = {
+      show: 'christmas',
+      showUntil: june.getTime() + 60000,
+      holidays: { christmas: false },
+    };
+    expect(resolveSeasonalHoliday({ seasonal: pickedChristmas }, { date: june }).id).toBe(
+      'christmas'
+    );
     expect(
       resolveSeasonalHoliday(
-        { seasonal: { show: 'christmas', holidays: { christmas: false } } },
-        { date: day(2026, 6, 1) }
-      ).id
-    ).toBe('christmas');
+        { seasonal: pickedChristmas },
+        { date: new Date(june.getTime() + 120000) }
+      )
+    ).toBeNull();
     expect(
-      resolveSeasonalHoliday({ seasonal: { enabled: false, show: 'christmas' } }, { date: october })
+      resolveSeasonalHoliday({ seasonal: { ...pickedChristmas, enabled: false } }, { date: june })
     ).toBeNull();
   });
 });

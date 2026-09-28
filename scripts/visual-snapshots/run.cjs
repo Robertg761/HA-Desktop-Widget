@@ -157,7 +157,7 @@ const SCENES = [
       const cfg = await window.electronAPI.getConfig();
       await window.electronAPI.updateConfig({
         frostedGlass: true,
-        ui: { ...cfg.ui, theme: 'dark', seasonal: { enabled: true, show: 'halloween' } },
+        ui: { ...cfg.ui, theme: 'dark', seasonal: { enabled: true, show: 'halloween', showUntil: Date.now() + 3600000 } },
       });
     })()`,
   },
@@ -166,7 +166,7 @@ const SCENES = [
     setup: `(async () => {
       const cfg = await window.electronAPI.getConfig();
       await window.electronAPI.updateConfig({
-        ui: { ...cfg.ui, theme: 'light', seasonal: { enabled: true, show: 'christmas' } },
+        ui: { ...cfg.ui, theme: 'light', seasonal: { enabled: true, show: 'christmas', showUntil: Date.now() + 3600000 } },
       });
     })()`,
   },

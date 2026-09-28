@@ -1598,7 +1598,7 @@
   "Holiday colors": "Holiday colors",
   "Swaps in the holiday's colors for your accent and background while it lasts. Yours come back afterwards.": "Swaps in the holiday's colors for your accent and background while it lasts. Yours come back afterwards.",
   "Holiday to show": "Holiday to show",
-  "Pick one to see it now, whatever the date.": "Pick one to see it now, whatever the date.",
+  "Pick one to see it now, whatever the date. The calendar takes over again a day later.": "Pick one to see it now, whatever the date. The calendar takes over again a day later.",
   "By date": "By date",
   "Holidays": "Holidays",
   "New Year": "New Year",
@@ -1609,7 +1609,7 @@
   "Halloween": "Halloween",
   "Thanksgiving": "Thanksgiving",
   "Christmas": "Christmas",
-  "Showing {{holiday}} whatever the date.": "Showing {{holiday}} whatever the date.",
+  "Showing {{holiday}} until {{time}}.": "Showing {{holiday}} until {{time}}.",
   "{{holiday}} is on until {{date}}.": "{{holiday}} is on until {{date}}.",
   "Nothing right now. {{holiday}} starts {{date}}.": "Nothing right now. {{holiday}} starts {{date}}.",
   "No holidays are picked.": "No holidays are picked."

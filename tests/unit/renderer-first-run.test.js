@@ -203,6 +203,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       applyAccentTheme: jest.fn(),
       applyBackgroundTheme: jest.fn(),
       applyUiPreferences: jest.fn(),
+      suspendSeasonalColors: jest.fn(),
       applyWindowEffects: jest.fn(),
       closeModal: (...args) => jest.requireActual('../../src/ui-utils.js').closeModal(...args),
       openModal: (...args) => jest.requireActual('../../src/ui-utils.js').openModal(...args),

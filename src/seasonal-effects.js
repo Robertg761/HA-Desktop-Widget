@@ -28,8 +28,11 @@ const FROST_BLUR_PX = 3;
 // How much of the scene still shows through a tile.
 const FROST_ALPHA = 0.5;
 // Tiles move without telling anyone (a tab switch, a new tile), so their outlines are re-read
-// this often as well as on scroll and resize.
+// this often, and after clicks, key presses and resizes. Scrolling only shifts them, which is
+// tracked from the scroll events rather than by re-measuring every frame.
 const FROST_REFRESH_MS = 500;
+// The scroller the tiles and cards move in.
+const SCROLLER_SELECTOR = '.widget-content';
 
 export class SeasonalEffectsManager {
   constructor(canvasId) {
@@ -52,21 +55,30 @@ export class SeasonalEffectsManager {
     this.frostCtx = null;
     this.frostRects = [];
     this.frostRectsReadAt = -Infinity;
+    // Corner radii come from the stylesheet and do not change while an element lives.
+    this.frostRadii = new WeakMap();
+    // Each scroller's scrollTop, as of its last scroll event.
+    this.scrollTops = new WeakMap();
+    this.pixelRatioQuery = null;
     this.stillFrameTimer = null;
     this.env = { findClearLane: (preferredY, band) => this.findClearLane(preferredY, band) };
 
     this.loop = this.loop.bind(this);
     this.handleLayoutChange = this.handleLayoutChange.bind(this);
+    this.handleScroll = this.handleScroll.bind(this);
+    this.handlePixelRatioChange = this.handlePixelRatioChange.bind(this);
     this.resizeCanvas = this.resizeCanvas.bind(this);
     this.refresh = this.refresh.bind(this);
     this.handleVisibilityChange = this.handleVisibilityChange.bind(this);
     window.addEventListener('resize', this.resizeCanvas);
     document.addEventListener('visibilitychange', this.handleVisibilityChange);
-    for (const type of ['scroll', 'click', 'keyup']) {
+    for (const type of ['click', 'keyup']) {
       document.addEventListener(type, this.handleLayoutChange, { capture: true, passive: true });
     }
+    document.addEventListener('scroll', this.handleScroll, { capture: true, passive: true });
     this.resizeCanvas();
     this.setupMediaListeners();
+    this.watchPixelRatio();
     this.watchThemeChanges();
     this.recheckTimer = setInterval(this.refresh, RECHECK_INTERVAL_MS);
   }
@@ -100,6 +112,28 @@ export class SeasonalEffectsManager {
       this.forcedColorsQuery = null;
       this.forcedColorsChangeHandler = null;
     }
+  }
+
+  /**
+   * Moving the window to a screen with another scale factor changes devicePixelRatio without a
+   * resize event, so watch the ratio itself. The query matches one ratio, so it is renewed on
+   * each change.
+   */
+  watchPixelRatio() {
+    this.pixelRatioQuery?.removeEventListener?.('change', this.handlePixelRatioChange);
+    this.pixelRatioQuery = null;
+    if (typeof window.matchMedia !== 'function') return;
+    try {
+      this.pixelRatioQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+      this.pixelRatioQuery.addEventListener?.('change', this.handlePixelRatioChange);
+    } catch {
+      this.pixelRatioQuery = null;
+    }
+  }
+
+  handlePixelRatioChange() {
+    this.resizeCanvas();
+    this.watchPixelRatio();
   }
 
   /**
@@ -169,8 +203,11 @@ export class SeasonalEffectsManager {
     this.stopAnimation();
     this.layers = (id && SCENES[id]) || [];
     this.states = [];
+    this.sizeBackingStore();
     if (!this.layers.length || !this.canvas || !this.ctx) {
-      this.clearCanvas();
+      // No holiday: give the backing stores back rather than hold them for months.
+      this.frostCanvas = null;
+      this.frostCtx = null;
       return;
     }
     this.states = this.layers.map((layer) => layer.init(this.width, this.height));
@@ -194,9 +231,7 @@ export class SeasonalEffectsManager {
     this.width = width;
     this.height = height;
     this.pixelRatio = pixelRatio;
-    this.canvas.width = Math.round(width * pixelRatio);
-    this.canvas.height = Math.round(height * pixelRatio);
-    this.ctx?.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    this.sizeBackingStore();
     for (const state of this.states) {
       for (const p of state?.particles || []) {
         p.x *= scaleX;
@@ -209,33 +244,81 @@ export class SeasonalEffectsManager {
   }
 
   /**
+   * Draw at device resolution while a scene runs, so the art stays crisp on HiDPI screens (past
+   * 2x costs more than it shows), and hold no pixels at all when there is nothing to draw.
+   */
+  sizeBackingStore() {
+    if (!this.canvas) return;
+    const active = this.layers.length > 0;
+    const width = active ? Math.round(this.width * this.pixelRatio) : 0;
+    const height = active ? Math.round(this.height * this.pixelRatio) : 0;
+    if (this.canvas.width !== width) this.canvas.width = width;
+    if (this.canvas.height !== height) this.canvas.height = height;
+    // Resizing a canvas resets its transform.
+    if (active) this.ctx?.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
+  }
+
+  /**
    * Something may have moved the tiles. An animating scene picks that up on its next frame; a
    * still one is redrawn once the page has settled.
    */
   handleLayoutChange() {
     this.frostRectsReadAt = -Infinity;
+    this.scheduleStillFrame();
+  }
+
+  // Scrolling moves the tiles by the scroll distance; note it without re-measuring anything.
+  handleScroll(event) {
+    const target = event?.target;
+    if (target && typeof target.scrollTop === 'number') {
+      this.scrollTops.set(target, target.scrollTop);
+    }
+    this.scheduleStillFrame();
+  }
+
+  scheduleStillFrame() {
     if (this.animationFrameId || !this.layers.length) return;
     clearTimeout(this.stillFrameTimer);
     this.stillFrameTimer = setTimeout(() => this.renderFrame(performance.now()), 150);
   }
 
+  /**
+   * The outlines of the frosted surfaces, in window coordinates. Measured at most every
+   * FROST_REFRESH_MS; in between, surfaces inside the scroller follow its scroll position.
+   */
   readFrostRects(time) {
-    if (time - this.frostRectsReadAt < FROST_REFRESH_MS) return this.frostRects;
-    this.frostRectsReadAt = time;
-    this.frostRects = [];
-    for (const element of document.querySelectorAll(FROSTED_SELECTOR)) {
-      const rect = element.getBoundingClientRect();
-      if (rect.width < 1 || rect.height < 1 || rect.bottom < 0 || rect.top > this.height) continue;
-      const radius = parseFloat(window.getComputedStyle(element).borderTopLeftRadius) || 0;
-      this.frostRects.push({
-        x: rect.left,
-        y: rect.top,
-        width: rect.width,
-        height: rect.height,
-        radius,
-      });
+    if (time - this.frostRectsReadAt >= FROST_REFRESH_MS) {
+      this.frostRectsReadAt = time;
+      this.frostRects = [];
+      for (const element of document.querySelectorAll(FROSTED_SELECTOR)) {
+        const rect = element.getBoundingClientRect();
+        if (rect.width < 1 || rect.height < 1) continue;
+        let radius = this.frostRadii.get(element);
+        if (radius === undefined) {
+          radius = parseFloat(window.getComputedStyle(element).borderTopLeftRadius) || 0;
+          this.frostRadii.set(element, radius);
+        }
+        const scroller = element.closest(SCROLLER_SELECTOR);
+        const scrollTop = scroller ? scroller.scrollTop : 0;
+        if (scroller) this.scrollTops.set(scroller, scrollTop);
+        this.frostRects.push({
+          x: rect.left,
+          y: rect.top,
+          width: rect.width,
+          height: rect.height,
+          radius,
+          scroller,
+          scrollTop,
+        });
+      }
     }
-    return this.frostRects;
+    return this.frostRects
+      .map((rect) => {
+        if (!rect.scroller) return rect;
+        const shift = rect.scrollTop - (this.scrollTops.get(rect.scroller) ?? rect.scrollTop);
+        return shift ? { ...rect, y: rect.y + shift } : rect;
+      })
+      .filter((rect) => rect.y + rect.height > 0 && rect.y < this.height);
   }
 
   /**
@@ -362,9 +445,11 @@ export class SeasonalEffectsManager {
   destroy() {
     window.removeEventListener('resize', this.resizeCanvas);
     document.removeEventListener('visibilitychange', this.handleVisibilityChange);
-    for (const type of ['scroll', 'click', 'keyup']) {
+    for (const type of ['click', 'keyup']) {
       document.removeEventListener(type, this.handleLayoutChange, { capture: true });
     }
+    document.removeEventListener('scroll', this.handleScroll, { capture: true });
+    this.pixelRatioQuery?.removeEventListener?.('change', this.handlePixelRatioChange);
     clearInterval(this.recheckTimer);
     clearTimeout(this.stillFrameTimer);
     this.stopAnimation();

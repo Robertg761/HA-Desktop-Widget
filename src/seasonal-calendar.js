@@ -244,12 +244,18 @@ function getUpcomingHolidayRange(id, date = new Date()) {
   return null;
 }
 
+// "Holiday to show" is a preview: a picked holiday lasts this long, then the calendar takes over.
+const SHOW_DURATION_MS = 24 * 60 * 60 * 1000;
+
 /**
  * Normalize `ui.seasonal`. `enabled` stays null until the user picks, so the default can follow
- * reduced motion and the readable preset. `holidays` only records the ones switched off.
+ * reduced motion and the readable preset. `holidays` only records the ones switched off. A picked
+ * `show` holiday counts only until `showUntil` (ms since the epoch); after that, or without one,
+ * `show` is 'auto'.
  * @param {object} [raw]
+ * @param {number} [now] The time to judge `showUntil` against.
  */
-function normalizeSeasonalSettings(raw) {
+function normalizeSeasonalSettings(raw, now = Date.now()) {
   const source = raw && typeof raw === 'object' ? raw : {};
   const holidays = {};
   if (source.holidays && typeof source.holidays === 'object') {
@@ -257,12 +263,16 @@ function normalizeSeasonalSettings(raw) {
       if (source.holidays[holiday.id] === false) holidays[holiday.id] = false;
     }
   }
-  return {
+  const showUntil = Number(source.showUntil);
+  const showing = HOLIDAY_BY_ID.has(source.show) && Number.isFinite(showUntil) && showUntil > now;
+  const settings = {
     enabled: typeof source.enabled === 'boolean' ? source.enabled : null,
     colors: source.colors !== false,
     holidays,
-    show: source.show === 'auto' || !HOLIDAY_BY_ID.has(source.show) ? 'auto' : source.show,
+    show: showing ? source.show : 'auto',
   };
+  if (showing) settings.showUntil = showUntil;
+  return settings;
 }
 
 /**
@@ -287,7 +297,7 @@ function getEnabledHolidayIds(settings) {
  * @returns {object|null} The holiday definition.
  */
 function resolveSeasonalHoliday(ui = {}, { date = new Date(), reducedMotion = false } = {}) {
-  const settings = normalizeSeasonalSettings(ui.seasonal);
+  const settings = normalizeSeasonalSettings(ui.seasonal, date.getTime());
   if (!isSeasonalEnabled(settings, { reducedMotion, highContrast: !!ui.highContrast })) {
     return null;
   }
@@ -297,6 +307,7 @@ function resolveSeasonalHoliday(ui = {}, { date = new Date(), reducedMotion = fa
 
 export {
   SEASONAL_HOLIDAYS,
+  SHOW_DURATION_MS,
   getEasterSunday,
   getHolidayById,
   findActiveHoliday,

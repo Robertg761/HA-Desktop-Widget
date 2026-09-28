@@ -1709,6 +1709,7 @@ describe('UI Utilities', () => {
     const accent = () => document.documentElement.style.getPropertyValue('--accent');
 
     afterEach(() => {
+      uiUtils.suspendSeasonalColors(false);
       uiUtils.setSeasonalColors(null);
       uiUtils.setUiPreferencesObserver(null);
     });
@@ -1731,6 +1732,20 @@ describe('UI Utilities', () => {
       expect(accent()).toBe('#10B981');
       expect(document.body.dataset.accent).toBe('emerald');
       expect(document.body.dataset.background).toBe('slate');
+    });
+
+    it('steps aside while Settings previews a picked colour, then comes back', () => {
+      uiUtils.applyAccentTheme('emerald');
+      uiUtils.setSeasonalColors({ accent: '#f97316', background: '#6d28d9' });
+      expect(accent()).toBe('#F97316');
+
+      uiUtils.suspendSeasonalColors(true);
+      expect(accent()).toBe('#10B981');
+      uiUtils.applyAccentTheme('rose');
+      expect(accent()).toBe('#F43F5E');
+
+      uiUtils.suspendSeasonalColors(false);
+      expect(accent()).toBe('#F97316');
     });
 
     it('leaves a raw colour for its owner to repaint', () => {

@@ -45,6 +45,9 @@ let CUSTOM_THEMES = [];
 // Holiday colours from the seasonal themes. They stand in for the saved accent and background
 // without replacing them, so the user's own choice comes back when the holiday ends.
 let seasonalColors = null;
+// While Settings previews a colour the user just picked, holiday colours step aside so the pick
+// shows. They stay recorded and come back when Settings resumes them.
+let seasonalColorsSuspended = false;
 // The theme keys last applied, so a change of holiday can repaint with them. Null when the colour
 // came in raw (the Omarchy palette or a Settings draft), which seasonal colours leave alone.
 let lastAccentKey = null;
@@ -417,7 +420,7 @@ function applyAccentColor(color, accentId = 'custom-preview') {
 function applyAccentTheme(accentKey) {
   try {
     lastAccentKey = accentKey ?? '';
-    if (seasonalColors) {
+    if (seasonalColors && !seasonalColorsSuspended) {
       applyAccentColor(seasonalColors.accent, 'seasonal');
       return;
     }
@@ -519,7 +522,7 @@ function applyBackgroundColor(
 function applyBackgroundTheme(backgroundKey) {
   try {
     lastBackgroundKey = backgroundKey ?? '';
-    if (seasonalColors) {
+    if (seasonalColors && !seasonalColorsSuspended) {
       applyBackgroundColor(seasonalColors.background, 'seasonal');
       return;
     }
@@ -563,6 +566,20 @@ function setSeasonalColors(colors) {
   if (lastAccentKey !== null) applyAccentTheme(lastAccentKey);
   if (lastBackgroundKey !== null) applyBackgroundTheme(lastBackgroundKey);
   return true;
+}
+
+/**
+ * Let Settings show a colour the user is picking even while a holiday's colours are on, or bring
+ * the holiday colours back. Repaints either way.
+ * @param {boolean} suspended
+ */
+function suspendSeasonalColors(suspended) {
+  const next = !!suspended;
+  if (next === seasonalColorsSuspended) return;
+  seasonalColorsSuspended = next;
+  if (!seasonalColors) return;
+  if (lastAccentKey !== null) applyAccentTheme(lastAccentKey);
+  if (lastBackgroundKey !== null) applyBackgroundTheme(lastBackgroundKey);
 }
 
 function getSeasonalColors() {
@@ -1602,6 +1619,7 @@ export {
   getBackgroundThemes,
   applyUiPreferences,
   setSeasonalColors,
+  suspendSeasonalColors,
   getSeasonalColors,
   setUiPreferencesObserver,
   applyWindowEffects,

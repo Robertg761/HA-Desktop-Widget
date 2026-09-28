@@ -1605,7 +1605,7 @@
     "Holiday colors": "ألوان الأعياد",
     "Swaps in the holiday's colors for your accent and background while it lasts. Yours come back afterwards.": "تستبدل لوني التمييز والخلفية بألوان العيد طوال مدته. وتعود ألوانك بعد ذلك.",
     "Holiday to show": "العيد المعروض",
-    "Pick one to see it now, whatever the date.": "اختر عيدًا لتراه الآن، أيًّا كان التاريخ.",
+    "Pick one to see it now, whatever the date. The calendar takes over again a day later.": "اختر عيدًا لتراه الآن، أيًّا كان التاريخ. يعود التقويم للعمل بعد يوم.",
     "By date": "حسب التاريخ",
     "Holidays": "الأعياد",
     "New Year": "رأس السنة",
@@ -1616,7 +1616,7 @@
     "Halloween": "الهالوين",
     "Thanksgiving": "عيد الشكر",
     "Christmas": "عيد الميلاد",
-    "Showing {{holiday}} whatever the date.": "يُعرض {{holiday}} أيًّا كان التاريخ.",
+    "Showing {{holiday}} until {{time}}.": "يُعرض {{holiday}} حتى {{time}}.",
     "{{holiday}} is on until {{date}}.": "يستمر {{holiday}} حتى {{date}}.",
     "Nothing right now. {{holiday}} starts {{date}}.": "لا شيء الآن. يبدأ {{holiday}} في {{date}}.",
     "No holidays are picked.": "لم يتم اختيار أي عيد."
