@@ -99,8 +99,9 @@ jobs:
           Get-ItemProperty -Path $key | Select-Object EnableTransparency
 
       # The Windows 11 image opens the first-run "Choose privacy settings for your device" window
-      # at sign-in, and it sits over the widget in the screen captures. Close it, and log what
-      # else has a window in case a later image changes what opens.
+      # (hosted by WWAHost) at sign-in, and closing it leaves the Start menu open; both sit over
+      # the widget in the screen captures. Close them (the Start menu host restarts hidden), and
+      # log what else has a window in case a later image changes what opens.
       - name: Close first-run windows (Windows 11)
         if: matrix.os == 'windows-11-arm'
         shell: pwsh
@@ -113,6 +114,13 @@ jobs:
             Write-Output "Closing $($_.ProcessName) ($($_.Id)): $($_.MainWindowTitle)"
             Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
           }
+          Start-Sleep -Seconds 2
+          Get-Process -Name StartMenuExperienceHost, SearchHost -ErrorAction SilentlyContinue |
+            ForEach-Object {
+              Write-Output "Closing $($_.ProcessName) ($($_.Id))"
+              Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+            }
+          Start-Sleep -Seconds 2
 
       - name: Take snapshots (Windows, macOS)
         timeout-minutes: 8
