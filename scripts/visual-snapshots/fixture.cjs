@@ -123,6 +123,8 @@ function buildConfig(haUrl) {
       language: 'en',
       density: 'comfortable',
       activeTileGlow: true,
+      // Seasonal themes follow the calendar; off so the screenshots do not change with the date.
+      seasonal: { enabled: false },
     },
   };
 }

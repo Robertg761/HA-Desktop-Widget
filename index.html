@@ -15,6 +15,7 @@
 
   <body>
     <canvas id="weather-effects-canvas"></canvas>
+    <canvas id="seasonal-effects-canvas" aria-hidden="true"></canvas>
     <div id="desktop-pin-app" class="desktop-pin-shell" aria-live="polite">
       <div class="desktop-pin-header">
         <div
@@ -1158,6 +1159,134 @@
                     Manually override the weather effect for testing
                   </div>
                 </div>
+              </div>
+            </section>
+            <section class="settings-group" id="seasonal-settings">
+              <h4 class="settings-group-caption" data-i18n="Seasonal Themes">Seasonal Themes</h4>
+              <div class="settings-group-body">
+                <div class="form-group setting-row">
+                  <div class="setting-text">
+                    <label for="seasonal-enabled" data-i18n="Holiday decorations"
+                      >Holiday decorations</label
+                    >
+                    <p
+                      class="form-help"
+                      id="seasonal-enabled-help"
+                      data-i18n="Cobwebs and bats all October, snow all December, and a week of hearts, shamrocks and more around other holidays. Starts off when your system asks for reduced motion or high contrast is on."
+                    >
+                      Cobwebs and bats all October, snow all December, and a week of hearts,
+                      shamrocks and more around other holidays. Starts off when your system asks for
+                      reduced motion or high contrast is on.
+                    </p>
+                    <p class="form-help" id="seasonal-status" aria-live="polite"></p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    id="seasonal-enabled"
+                    aria-describedby="seasonal-enabled-help seasonal-status"
+                  />
+                </div>
+                <div class="form-group setting-row seasonal-option">
+                  <div class="setting-text">
+                    <label for="seasonal-colors" data-i18n="Holiday colors">Holiday colors</label>
+                    <p
+                      class="form-help"
+                      data-i18n="Swaps in the holiday's colors for your accent and background while it lasts. Yours come back afterwards."
+                    >
+                      Swaps in the holiday's colors for your accent and background while it lasts.
+                      Yours come back afterwards.
+                    </p>
+                  </div>
+                  <input type="checkbox" id="seasonal-colors" />
+                </div>
+                <div class="form-group setting-row seasonal-option">
+                  <div class="setting-text">
+                    <label for="seasonal-show" data-i18n="Holiday to show">Holiday to show</label>
+                    <p
+                      class="form-help"
+                      data-i18n="Pick one to see it now, whatever the date. The calendar takes over again a day later."
+                    >
+                      Pick one to see it now, whatever the date. The calendar takes over again a day
+                      later.
+                    </p>
+                  </div>
+                  <select id="seasonal-show">
+                    <option value="auto" data-i18n="By date">By date</option>
+                    <option value="new-year" data-i18n="New Year">New Year</option>
+                    <option value="lunar-new-year" data-i18n="Lunar New Year">
+                      Lunar New Year
+                    </option>
+                    <option value="valentines" data-i18n="Valentine's Day">Valentine's Day</option>
+                    <option value="st-patricks" data-i18n="St. Patrick's Day">
+                      St. Patrick's Day
+                    </option>
+                    <option value="easter" data-i18n="Easter">Easter</option>
+                    <option value="halloween" data-i18n="Halloween">Halloween</option>
+                    <option value="thanksgiving" data-i18n="Thanksgiving">Thanksgiving</option>
+                    <option value="christmas" data-i18n="Christmas">Christmas</option>
+                  </select>
+                </div>
+                <fieldset class="form-group seasonal-option seasonal-holiday-list">
+                  <legend class="setting-label" data-i18n="Holidays">Holidays</legend>
+                  <label class="seasonal-holiday-option">
+                    <input type="checkbox" data-holiday="new-year" />
+                    <span class="setting-text">
+                      <span class="setting-label" data-i18n="New Year">New Year</span>
+                      <span class="form-help" data-holiday-dates="new-year"></span>
+                    </span>
+                  </label>
+                  <label class="seasonal-holiday-option">
+                    <input type="checkbox" data-holiday="lunar-new-year" />
+                    <span class="setting-text">
+                      <span class="setting-label" data-i18n="Lunar New Year">Lunar New Year</span>
+                      <span class="form-help" data-holiday-dates="lunar-new-year"></span>
+                    </span>
+                  </label>
+                  <label class="seasonal-holiday-option">
+                    <input type="checkbox" data-holiday="valentines" />
+                    <span class="setting-text">
+                      <span class="setting-label" data-i18n="Valentine's Day">Valentine's Day</span>
+                      <span class="form-help" data-holiday-dates="valentines"></span>
+                    </span>
+                  </label>
+                  <label class="seasonal-holiday-option">
+                    <input type="checkbox" data-holiday="st-patricks" />
+                    <span class="setting-text">
+                      <span class="setting-label" data-i18n="St. Patrick's Day"
+                        >St. Patrick's Day</span
+                      >
+                      <span class="form-help" data-holiday-dates="st-patricks"></span>
+                    </span>
+                  </label>
+                  <label class="seasonal-holiday-option">
+                    <input type="checkbox" data-holiday="easter" />
+                    <span class="setting-text">
+                      <span class="setting-label" data-i18n="Easter">Easter</span>
+                      <span class="form-help" data-holiday-dates="easter"></span>
+                    </span>
+                  </label>
+                  <label class="seasonal-holiday-option">
+                    <input type="checkbox" data-holiday="halloween" />
+                    <span class="setting-text">
+                      <span class="setting-label" data-i18n="Halloween">Halloween</span>
+                      <span class="form-help" data-holiday-dates="halloween"></span>
+                    </span>
+                  </label>
+                  <label class="seasonal-holiday-option">
+                    <input type="checkbox" data-holiday="thanksgiving" />
+                    <span class="setting-text">
+                      <span class="setting-label" data-i18n="Thanksgiving">Thanksgiving</span>
+                      <span class="form-help" data-holiday-dates="thanksgiving"></span>
+                    </span>
+                  </label>
+                  <label class="seasonal-holiday-option">
+                    <input type="checkbox" data-holiday="christmas" />
+                    <span class="setting-text">
+                      <span class="setting-label" data-i18n="Christmas">Christmas</span>
+                      <span class="form-help" data-holiday-dates="christmas"></span>
+                    </span>
+                  </label>
+                </fieldset>
               </div>
             </section>
             <section class="settings-group">

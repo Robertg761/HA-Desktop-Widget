@@ -11,6 +11,7 @@ import {
   getAccentThemes,
   setCustomThemes,
   applyUiPreferences,
+  suspendSeasonalColors,
   applyWindowEffects,
   trapFocus,
   closeModal,
@@ -35,7 +36,24 @@ import {
   PRIMARY_CARD_NONE,
   normalizePrimaryCards,
 } from './primary-cards.js';
-import { formatDateTime, formatNumber, getLanguageDisplayName, getLocaleState, t } from './i18n.js';
+import {
+  formatDate,
+  formatDateTime,
+  formatNumber,
+  getLanguageDisplayName,
+  getLocaleState,
+  t,
+} from './i18n.js';
+import {
+  SHOW_DURATION_MS,
+  findActiveHoliday,
+  findNextHoliday,
+  getEnabledHolidayIds,
+  getHolidayById,
+  getUpcomingHolidayRange,
+  isSeasonalEnabled,
+  normalizeSeasonalSettings,
+} from './seasonal-calendar.js';
 import {
   classifyConnectionError,
   isPlaceholderOrEmptyToken,
@@ -1428,6 +1446,8 @@ function selectAccentTheme(accentKey, { preview = true } = {}) {
   pendingAccent = resolvedAccent;
   hasDraftColorPreview = false;
   if (preview) {
+    // Show the pick even while a holiday's colours are on.
+    suspendSeasonalColors(true);
     applyAccentTheme(resolvedAccent);
   }
   if (activeColorTarget === COLOR_TARGETS.accent) {
@@ -1455,6 +1475,7 @@ function selectBackgroundTheme(backgroundKey, { preview = true } = {}) {
   pendingBackground = resolvedBackground;
   hasDraftColorPreview = false;
   if (preview) {
+    suspendSeasonalColors(true);
     applyBackgroundTheme(resolvedBackground);
   }
   if (activeColorTarget === COLOR_TARGETS.background) {
@@ -4022,11 +4043,178 @@ function getAppearanceFromInputs(ui = state.CONFIG?.ui || {}) {
   }
   if (density) next.density = density.value === 'compact' ? 'compact' : 'comfortable';
   if (activeTileGlow) next.activeTileGlow = !!activeTileGlow.checked;
+  const seasonal = readSeasonalInputs(ui.seasonal);
+  if (seasonal) next.seasonal = seasonal;
   return next;
 }
 
+// Set once the user flips the seasonal switch, so an untouched switch keeps following reduced
+// motion and high contrast instead of being saved as a fixed choice.
+let seasonalEnabledTouched = false;
+
+function prefersReducedMotionNow() {
+  try {
+    return !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Read the Seasonal Themes controls on top of the saved `ui.seasonal`.
+ * @returns {object|null} The next `ui.seasonal`, or null when the controls are missing.
+ */
+function readSeasonalInputs(saved) {
+  const enabled = document.getElementById('seasonal-enabled');
+  if (!enabled) return null;
+  const previous = normalizeSeasonalSettings(saved);
+  const next = { colors: previous.colors, holidays: {}, show: previous.show };
+  if (seasonalEnabledTouched || typeof previous.enabled === 'boolean') {
+    next.enabled = !!enabled.checked;
+  }
+  const colors = document.getElementById('seasonal-colors');
+  if (colors) next.colors = !!colors.checked;
+  const show = document.getElementById('seasonal-show');
+  if (show) next.show = show.value || 'auto';
+  // A picked holiday is a preview that lasts a day from when it was picked; keeping the same pick
+  // keeps its end time.
+  if (next.show !== 'auto') {
+    next.showUntil =
+      next.show === previous.show ? previous.showUntil : Date.now() + SHOW_DURATION_MS;
+  }
+  document.querySelectorAll('#seasonal-settings input[data-holiday]').forEach((input) => {
+    if (!input.checked) next.holidays[input.dataset.holiday] = false;
+  });
+  const normalized = normalizeSeasonalSettings(next);
+  if (normalized.enabled === null) delete normalized.enabled;
+  return normalized;
+}
+
+function formatSeasonalDate(date) {
+  return formatDate(date, { month: 'short', day: 'numeric' });
+}
+
+// "Dec 1 – 26" rather than "Dec 1 – Dec 26", in the order the language writes ranges.
+function formatSeasonalRange(range) {
+  try {
+    const formatter = new Intl.DateTimeFormat(getLocaleState().activeLocale || undefined, {
+      month: 'short',
+      day: 'numeric',
+    });
+    if (typeof formatter.formatRange === 'function') {
+      return formatter.formatRange(range.start, range.end);
+    }
+  } catch {
+    // Fall through to two separate dates.
+  }
+  return `${formatSeasonalDate(range.start)} – ${formatSeasonalDate(range.end)}`;
+}
+
+/**
+ * Bring the seasonal switch, its sub-options and the status line in line with a `ui` preview.
+ * @param {object} ui
+ */
+function syncSeasonalControls(ui) {
+  const enabledInput = document.getElementById('seasonal-enabled');
+  if (!enabledInput) return;
+  const settings = normalizeSeasonalSettings(ui.seasonal);
+  const enabled = isSeasonalEnabled(settings, {
+    reducedMotion: prefersReducedMotionNow(),
+    highContrast: !!ui.highContrast,
+  });
+  if (!seasonalEnabledTouched && settings.enabled === null) enabledInput.checked = enabled;
+  document
+    .querySelectorAll('#seasonal-settings .seasonal-option')
+    .forEach((element) => element.classList.toggle('is-disabled', !enabled));
+  document
+    .querySelectorAll(
+      '#seasonal-settings .seasonal-option input, #seasonal-settings .seasonal-option select'
+    )
+    .forEach((control) => {
+      control.disabled = !enabled;
+    });
+
+  const now = new Date();
+  document.querySelectorAll('#seasonal-settings [data-holiday-dates]').forEach((element) => {
+    const range = getUpcomingHolidayRange(element.dataset.holidayDates, now);
+    element.textContent = range ? formatSeasonalRange(range) : '';
+  });
+
+  const status = document.getElementById('seasonal-status');
+  if (!status) return;
+  let message = '';
+  if (enabled && settings.show !== 'auto') {
+    message = t('Showing {{holiday}} until {{time}}.', {
+      holiday: t(getHolidayById(settings.show).name),
+      time: formatDateTime(new Date(settings.showUntil), {
+        weekday: 'short',
+        hour: 'numeric',
+        minute: '2-digit',
+      }),
+    });
+  } else if (enabled) {
+    const enabledIds = getEnabledHolidayIds(settings);
+    const active = findActiveHoliday(now, enabledIds);
+    const next = active ? null : findNextHoliday(now, enabledIds);
+    if (active) {
+      message = t('{{holiday}} is on until {{date}}.', {
+        holiday: t(active.holiday.name),
+        date: formatSeasonalDate(active.end),
+      });
+    } else if (next) {
+      message = t('Nothing right now. {{holiday}} starts {{date}}.', {
+        holiday: t(next.holiday.name),
+        date: formatSeasonalDate(next.start),
+      });
+    } else {
+      message = t('No holidays are picked.');
+    }
+  }
+  // A live region: rewriting the same words would make some screen readers announce them again
+  // for every unrelated appearance change.
+  if (status.textContent !== message) status.textContent = message;
+  status.classList.toggle('hidden', !message);
+}
+
 function previewAppearance() {
-  applyUiPreferences(getAppearanceFromInputs());
+  const ui = getAppearanceFromInputs();
+  syncSeasonalControls(ui);
+  applyUiPreferences(ui);
+}
+
+function bindSeasonalSettingsUi(ui) {
+  const settings = normalizeSeasonalSettings(ui.seasonal);
+  seasonalEnabledTouched = false;
+  const enabled = document.getElementById('seasonal-enabled');
+  const colors = document.getElementById('seasonal-colors');
+  const show = document.getElementById('seasonal-show');
+  if (!enabled) return;
+  enabled.checked = isSeasonalEnabled(settings, {
+    reducedMotion: prefersReducedMotionNow(),
+    highContrast: !!ui.highContrast,
+  });
+  // Touching a seasonal control shows the holiday's colours again after a colour pick hid them.
+  const previewSeasonal = () => {
+    suspendSeasonalColors(false);
+    previewAppearance();
+  };
+  enabled.onchange = () => {
+    seasonalEnabledTouched = true;
+    previewSeasonal();
+  };
+  if (colors) {
+    colors.checked = settings.colors;
+    colors.onchange = previewSeasonal;
+  }
+  if (show) {
+    show.value = settings.show;
+    show.onchange = previewSeasonal;
+  }
+  document.querySelectorAll('#seasonal-settings input[data-holiday]').forEach((input) => {
+    input.checked = settings.holidays[input.dataset.holiday] !== false;
+    input.onchange = previewSeasonal;
+  });
+  syncSeasonalControls(ui);
 }
 
 function bindAppearanceSettingsUi() {
@@ -4042,6 +4230,7 @@ function bindAppearanceSettingsUi() {
   for (const control of [scale, preset, activeTileGlow, densitySelect].filter(Boolean)) {
     control.onchange = previewAppearance;
   }
+  bindSeasonalSettingsUi(ui);
 }
 
 function bindLanguageSettingsUi() {
@@ -4321,6 +4510,7 @@ const SETTINGS_CONTROL_KEYS = [
   ['#readable-preset', ['ui.highContrast', 'ui.opaquePanels']],
   ['#density-select', ['ui.density']],
   ['#active-tile-glow', ['ui.activeTileGlow']],
+  ['#seasonal-settings', ['ui.seasonal']],
   ['#ui-scale-select', ['ui.scale']],
   ['#follow-omarchy', ['ui.followOmarchy']],
   ['#time-format', ['ui.timeFormat', 'ui.use24HourClock']],
@@ -4650,6 +4840,8 @@ function closeSettings() {
   primaryCardPage = 0;
   try {
     setMainSettingsSaveLocked(false);
+    // Holiday colours come back with the saved or restored colours below.
+    suspendSeasonalColors(false);
     cancelPreviewWindowEffects();
     if (previewState) {
       restorePreviewWindowEffects();

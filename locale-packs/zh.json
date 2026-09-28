@@ -2,7 +2,7 @@
   "locale": "zh",
   "displayName": "简体中文",
   "englishName": "Chinese (Simplified)",
-  "version": "1.2.38",
+  "version": "1.2.39",
   "minAppVersion": "3.4.1",
   "notes": "Simplified Chinese language pack for HA Desktop Widget.",
   "messages": {
@@ -1598,6 +1598,27 @@
     "Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.": "系统密钥环已锁定或未运行，因此无法读取已保存的 Home Assistant 令牌。请解锁密钥环，然后重新启动小组件。",
     "The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.": "加密的令牌已保留。解锁密钥环后，重新启动小组件即可再次读取，或者你也可以在设置中重新输入令牌。",
     "Add to Omarchy Bar": "添加到 Omarchy 栏",
-    "Could not add Home Assistant to the Omarchy bar": "无法将 Home Assistant 添加到 Omarchy 栏"
+    "Could not add Home Assistant to the Omarchy bar": "无法将 Home Assistant 添加到 Omarchy 栏",
+    "Seasonal Themes": "节日主题",
+    "Holiday decorations": "节日装饰",
+    "Cobwebs and bats all October, snow all December, and a week of hearts, shamrocks and more around other holidays. Starts off when your system asks for reduced motion or high contrast is on.": "整个十月有蜘蛛网和蝙蝠，整个十二月有雪花，其他节日前后一周有爱心、三叶草等装饰。如果系统要求减少动态效果或已开启高对比度，则默认关闭。",
+    "Holiday colors": "节日配色",
+    "Swaps in the holiday's colors for your accent and background while it lasts. Yours come back afterwards.": "节日期间用节日配色替换你的强调色和背景色，结束后恢复你的颜色。",
+    "Holiday to show": "显示的节日",
+    "Pick one to see it now, whatever the date. The calendar takes over again a day later.": "选择一个节日立即查看，不受日期限制。一天后恢复按日历显示。",
+    "By date": "按日期",
+    "Holidays": "节日",
+    "New Year": "新年",
+    "Lunar New Year": "农历新年",
+    "Valentine's Day": "情人节",
+    "St. Patrick's Day": "圣帕特里克节",
+    "Easter": "复活节",
+    "Halloween": "万圣节",
+    "Thanksgiving": "感恩节",
+    "Christmas": "圣诞节",
+    "Showing {{holiday}} until {{time}}.": "正在显示{{holiday}}，直到{{time}}。",
+    "{{holiday}} is on until {{date}}.": "{{holiday}}持续到{{date}}。",
+    "Nothing right now. {{holiday}} starts {{date}}.": "目前没有节日。{{holiday}}将于{{date}}开始。",
+    "No holidays are picked.": "未选择任何节日。"
   }
 }

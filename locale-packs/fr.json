@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.38",
+  "version": "1.2.39",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1598,6 +1598,27 @@
     "Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.": "Le trousseau de clés du système est verrouillé ou ne fonctionne pas, le jeton Home Assistant enregistré ne peut donc pas être lu. Déverrouillez le trousseau, puis redémarrez le widget.",
     "The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.": "Le jeton chiffré a été conservé. Une fois le trousseau déverrouillé, redémarrer le widget le relit, ou vous pouvez saisir à nouveau votre jeton dans les Paramètres.",
     "Add to Omarchy Bar": "Ajouter à la barre Omarchy",
-    "Could not add Home Assistant to the Omarchy bar": "Impossible d'ajouter Home Assistant à la barre Omarchy"
+    "Could not add Home Assistant to the Omarchy bar": "Impossible d'ajouter Home Assistant à la barre Omarchy",
+    "Seasonal Themes": "Thèmes saisonniers",
+    "Holiday decorations": "Décorations de fête",
+    "Cobwebs and bats all October, snow all December, and a week of hearts, shamrocks and more around other holidays. Starts off when your system asks for reduced motion or high contrast is on.": "Des toiles d'araignée et des chauves-souris tout octobre, de la neige tout décembre, et une semaine de cœurs, de trèfles et plus encore autour des autres fêtes. Désactivé au départ si votre système demande moins d'animations ou si le contraste élevé est activé.",
+    "Holiday colors": "Couleurs de fête",
+    "Swaps in the holiday's colors for your accent and background while it lasts. Yours come back afterwards.": "Remplace vos couleurs d'accent et d'arrière-plan par celles de la fête tant qu'elle dure. Les vôtres reviennent ensuite.",
+    "Holiday to show": "Fête à afficher",
+    "Pick one to see it now, whatever the date. The calendar takes over again a day later.": "Choisissez-en une pour la voir maintenant, quelle que soit la date. Le calendrier reprend la main un jour plus tard.",
+    "By date": "Selon la date",
+    "Holidays": "Fêtes",
+    "New Year": "Nouvel An",
+    "Lunar New Year": "Nouvel An lunaire",
+    "Valentine's Day": "Saint-Valentin",
+    "St. Patrick's Day": "Saint-Patrick",
+    "Easter": "Pâques",
+    "Halloween": "Halloween",
+    "Thanksgiving": "Thanksgiving",
+    "Christmas": "Noël",
+    "Showing {{holiday}} until {{time}}.": "{{holiday}} est affiché jusqu'à {{time}}.",
+    "{{holiday}} is on until {{date}}.": "{{holiday}} dure jusqu'au {{date}}.",
+    "Nothing right now. {{holiday}} starts {{date}}.": "Rien pour l'instant. {{holiday}} commence le {{date}}.",
+    "No holidays are picked.": "Aucune fête n'est choisie."
   }
 }

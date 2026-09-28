@@ -6,8 +6,11 @@ name: Visual snapshots
 # (the real screen around the window: acrylic, vibrancy, shadows, native fonts).
 # See scripts/visual-snapshots/run.cjs. Informational only: nothing is compared.
 #
-# Caveat: windows-latest is Windows Server 2022, which has no acrylic backdrop
-# (that needs Windows 11), so Windows screen captures show the solid fallback.
+# windows-latest is Windows Server 2022. windows-11-arm is the only hosted Windows 11 image (free
+# for public repositories; ARM64 rather than x64), and its captures, in
+# visual-snapshots-Windows-11-arm, show the Windows 11 shell: rounded corners, taskbar, fonts.
+# Neither draws acrylic: hosted runners have no GPU, so both show the solid fallback even with
+# transparency effects on. Checking acrylic still needs a real Windows 11 machine.
 
 on:
   workflow_dispatch:
@@ -37,7 +40,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: [windows-latest, windows-11-arm, macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
@@ -81,6 +84,45 @@ jobs:
           xvfb-run -a -s "-screen 0 1280x900x24" dbus-run-session -- \
             node scripts/visual-snapshots/run.cjs visual-snapshots
 
+      # Windows 11 draws acrylic only while transparency effects are on, which a fresh VM may have
+      # off. Turn them on and tell running apps the setting changed.
+      - name: Turn on transparency effects (Windows 11)
+        if: matrix.os == 'windows-11-arm'
+        shell: pwsh
+        run: |
+          $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+          if (-not (Test-Path $key)) { New-Item -Path $key -Force | Out-Null }
+          Set-ItemProperty -Path $key -Name EnableTransparency -Value 1 -Type DWord
+          Add-Type -Namespace Win32 -Name Native -MemberDefinition '[DllImport("user32.dll", CharSet = CharSet.Auto)] public static extern System.IntPtr SendMessageTimeout(System.IntPtr hWnd, uint Msg, System.UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out System.UIntPtr lpdwResult);'
+          $result = [System.UIntPtr]::Zero
+          # HWND_BROADCAST, WM_SETTINGCHANGE, SMTO_ABORTIFHUNG
+          [Win32.Native]::SendMessageTimeout([System.IntPtr]0xffff, 0x1A, [System.UIntPtr]::Zero, 'ImmersiveColorSet', 2, 5000, [ref]$result) | Out-Null
+          Get-ItemProperty -Path $key | Select-Object EnableTransparency
+
+      # The Windows 11 image opens the first-run "Choose privacy settings for your device" window
+      # (hosted by WWAHost) at sign-in, and closing it leaves the Start menu open; both sit over
+      # the widget in the screen captures. Close them (the Start menu host restarts hidden), and
+      # log what else has a window in case a later image changes what opens.
+      - name: Close first-run windows (Windows 11)
+        if: matrix.os == 'windows-11-arm'
+        shell: pwsh
+        run: |
+          Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } |
+            Format-Table ProcessName, Id, MainWindowTitle -AutoSize | Out-String -Width 200
+          Get-Process | Where-Object {
+            $_.ProcessName -in @('WWAHost', 'CloudExperienceHostBroker') -or $_.MainWindowTitle -match 'privacy'
+          } | ForEach-Object {
+            Write-Output "Closing $($_.ProcessName) ($($_.Id)): $($_.MainWindowTitle)"
+            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+          }
+          Start-Sleep -Seconds 2
+          Get-Process -Name StartMenuExperienceHost, SearchHost -ErrorAction SilentlyContinue |
+            ForEach-Object {
+              Write-Output "Closing $($_.ProcessName) ($($_.Id))"
+              Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+            }
+          Start-Sleep -Seconds 2
+
       - name: Take snapshots (Windows, macOS)
         timeout-minutes: 8
         if: runner.os != 'Linux'
@@ -90,7 +132,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: visual-snapshots-${{ runner.os }}
+          # Both Windows images report runner.os Windows, so the Windows 11 one gets its own name.
+          name: visual-snapshots-${{ runner.os }}${{ matrix.os == 'windows-11-arm' && '-11-arm' || '' }}
           path: visual-snapshots/
           if-no-files-found: warn
           retention-days: 14

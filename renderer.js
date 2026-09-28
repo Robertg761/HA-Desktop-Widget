@@ -23,6 +23,7 @@ import { lineIconMarkup, setLineIconContent } from './src/entity-icons.js';
 import { animateEnter, syncSlidingIndicator } from './src/motion.js';
 import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
 import { WeatherEffectsManager } from './src/weather-effects.js';
+import { SeasonalEffectsManager } from './src/seasonal-effects.js';
 import { normalizeQuickAccessConfig } from './src/quick-access-tabs.js';
 import { normalizeComparisonGraphsConfig } from './src/comparison-graphs.js';
 import {
@@ -2612,6 +2613,15 @@ async function init() {
       window.weatherEffects = new WeatherEffectsManager('weather-effects-canvas');
     } catch (e) {
       log.error('Failed to initialize weather background effects:', e);
+    }
+
+    // Seasonal themes follow every applyUiPreferences call, which covers the first config,
+    // Settings previews and saves. Pin windows skip them with the weather canvas above.
+    try {
+      window.seasonalEffects = new SeasonalEffectsManager('seasonal-effects-canvas');
+      uiUtils.setUiPreferencesObserver((ui) => window.seasonalEffects.apply(ui));
+    } catch (e) {
+      log.error('Failed to initialize seasonal themes:', e);
     }
 
     uiUtils.initializeConnectionStatusTooltip();
