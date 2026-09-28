@@ -131,6 +131,24 @@ describe('SeasonalEffectsManager', () => {
     expect(document.body.dataset.season).toBe('christmas');
   });
 
+  test('hands everything back once a holiday ends', () => {
+    jest.setSystemTime(new Date(2026, 9, 31, 23, 55));
+    manager.apply({});
+    expect(document.body.dataset.season).toBe('halloween');
+    expect(setSeasonalColors).toHaveBeenLastCalledWith(
+      expect.objectContaining({ accent: '#f97316' })
+    );
+
+    // Past midnight into November, the next check drops the decorations and the holiday colours,
+    // so the user's own accent and background (or Omarchy palette) paint again.
+    jest.advanceTimersByTime(10 * 60 * 1000);
+    expect(document.body.dataset.season).toBeUndefined();
+    expect(setSeasonalColors).toHaveBeenLastCalledWith(null);
+    expect(reapplyDesktopAppearance).toHaveBeenCalled();
+    expect(manager.getParticleCount()).toBe(0);
+    expect([canvas.width, canvas.height]).toEqual([0, 0]);
+  });
+
   test('stays off by default under reduced motion and follows the system setting', () => {
     reducedMotion = true;
     manager.apply({});
