@@ -67,6 +67,7 @@ export class SeasonalEffectsManager {
     }
     this.resizeCanvas();
     this.setupMediaListeners();
+    this.watchThemeChanges();
     this.recheckTimer = setInterval(this.refresh, RECHECK_INTERVAL_MS);
   }
 
@@ -99,6 +100,24 @@ export class SeasonalEffectsManager {
       this.forcedColorsQuery = null;
       this.forcedColorsChangeHandler = null;
     }
+  }
+
+  /**
+   * An animating scene picks up light or dark mode on its next frame, but a still one (reduced
+   * motion) would keep the other mode's colours. Theme changes come from Settings, a config echo
+   * and the system theme, so the body's class is the one place they all meet.
+   */
+  watchThemeChanges() {
+    const body = document.body;
+    if (!body || typeof MutationObserver !== 'function') return;
+    this.lightTheme = body.classList.contains('theme-light');
+    this.themeObserver = new MutationObserver(() => {
+      const light = body.classList.contains('theme-light');
+      if (light === this.lightTheme) return;
+      this.lightTheme = light;
+      if (!this.animationFrameId && this.layers.length) this.renderFrame(performance.now());
+    });
+    this.themeObserver.observe(body, { attributes: true, attributeFilter: ['class'] });
   }
 
   isForcedColors() {
@@ -351,5 +370,6 @@ export class SeasonalEffectsManager {
     this.stopAnimation();
     this.reducedMotionQuery?.removeEventListener?.('change', this.reducedMotionChangeHandler);
     this.forcedColorsQuery?.removeEventListener?.('change', this.forcedColorsChangeHandler);
+    this.themeObserver?.disconnect();
   }
 }

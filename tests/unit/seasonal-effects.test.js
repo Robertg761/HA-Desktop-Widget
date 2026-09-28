@@ -138,6 +138,24 @@ describe('SeasonalEffectsManager', () => {
     expect(drawing.calls.some(([method]) => method === 'arc' || method === 'stroke')).toBe(true);
   });
 
+  test('redraws a still scene when light or dark mode changes', async () => {
+    reducedMotion = true;
+    manager.apply({ seasonal: { enabled: true, show: 'christmas' } });
+    expect(window.requestAnimationFrame).not.toHaveBeenCalled();
+
+    drawing.calls.length = 0;
+    document.body.classList.add('theme-light');
+    await Promise.resolve();
+    expect(drawing.calls.length).toBeGreaterThan(0);
+
+    // Other class changes leave the still frame alone.
+    drawing.calls.length = 0;
+    document.body.classList.add('density-compact');
+    await Promise.resolve();
+    expect(drawing.calls).toEqual([]);
+    document.body.classList.remove('theme-light', 'density-compact');
+  });
+
   test('stops drawing while forced colours hide the canvas, and resumes after', () => {
     forcedColors = true;
     manager.apply({ seasonal: { show: 'halloween' } });
