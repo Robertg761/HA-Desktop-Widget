@@ -8369,6 +8369,11 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   font-size: var(--font-size-sm);
 }
 
+/* Keep the paragraphs and line breaks of multi-line descriptions. */
+.calendar-event-description {
+  white-space: pre-line;
+}
+
 /* Horizontal rule separator */
 #settings-modal hr {
   height: 1px;
