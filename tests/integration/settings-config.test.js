@@ -268,6 +268,25 @@ function createSettingsModalDOM() {
         Glow tiles that are on
       </label>
 
+      <section id="seasonal-settings">
+        <input type="checkbox" id="seasonal-enabled" />
+        <p id="seasonal-status"></p>
+        <div class="seasonal-option"><input type="checkbox" id="seasonal-colors" /></div>
+        <div class="seasonal-option">
+          <select id="seasonal-show">
+            <option value="auto">By date</option>
+            <option value="halloween">Halloween</option>
+            <option value="christmas">Christmas</option>
+          </select>
+        </div>
+        <fieldset class="seasonal-option">
+          <input type="checkbox" data-holiday="halloween" />
+          <span data-holiday-dates="halloween"></span>
+          <input type="checkbox" data-holiday="christmas" />
+          <span data-holiday-dates="christmas"></span>
+        </fieldset>
+      </section>
+
       <label for="global-hotkeys-enabled">
         <input type="checkbox" id="global-hotkeys-enabled" />
         Enable Global Hotkeys
@@ -2960,6 +2979,96 @@ describe('Settings + Config Integration', () => {
       mockUiUtils.applyUiPreferences.mockClear();
       settings.reapplySettingsPreviews();
       expect(mockUiUtils.applyUiPreferences).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Seasonal themes', () => {
+    const change = (element) => element.dispatchEvent(new Event('change', { bubbles: true }));
+
+    test('an untouched switch follows the default and is not saved as a choice', async () => {
+      await settings.openSettings();
+      const enabled = document.getElementById('seasonal-enabled');
+      expect(enabled.checked).toBe(true);
+      expect(document.getElementById('seasonal-colors').checked).toBe(true);
+      expect(document.getElementById('seasonal-show').value).toBe('auto');
+      expect(document.querySelector('[data-holiday-dates="halloween"]').textContent).not.toBe('');
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG.ui.seasonal).toEqual({ colors: true, holidays: {}, show: 'auto' });
+    });
+
+    test('previews choices live and saves them, including holidays switched off', async () => {
+      await settings.openSettings();
+      const colors = document.getElementById('seasonal-colors');
+      const show = document.getElementById('seasonal-show');
+      const christmas = document.querySelector('input[data-holiday="christmas"]');
+      colors.checked = false;
+      change(colors);
+      show.value = 'halloween';
+      change(show);
+      christmas.checked = false;
+      change(christmas);
+
+      expect(mockUiUtils.applyUiPreferences).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          seasonal: { colors: false, holidays: { christmas: false }, show: 'halloween' },
+        })
+      );
+      expect(document.getElementById('seasonal-status').textContent).toBe(
+        'Showing Halloween whatever the date.'
+      );
+      expect(window.electronAPI.updateConfig).not.toHaveBeenCalled();
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG.ui.seasonal).toEqual({
+        colors: false,
+        holidays: { christmas: false },
+        show: 'halloween',
+      });
+      await settings.openSettings();
+      expect(colors.checked).toBe(false);
+      expect(show.value).toBe('halloween');
+      expect(christmas.checked).toBe(false);
+    });
+
+    test('saves the switch once the user flips it, and greys out the options', async () => {
+      await settings.openSettings();
+      const enabled = document.getElementById('seasonal-enabled');
+      enabled.checked = false;
+      change(enabled);
+
+      expect(document.getElementById('seasonal-colors').disabled).toBe(true);
+      expect(document.getElementById('seasonal-status').classList.contains('hidden')).toBe(true);
+
+      await settings.saveSettings();
+      expect(state.CONFIG.ui.seasonal.enabled).toBe(false);
+    });
+
+    test('turns the default off along with the high contrast preset', async () => {
+      await settings.openSettings();
+      const preset = document.getElementById('readable-preset');
+      preset.checked = true;
+      change(preset);
+
+      expect(document.getElementById('seasonal-enabled').checked).toBe(false);
+      await settings.saveSettings();
+      expect(state.CONFIG.ui.seasonal.enabled).toBeUndefined();
+    });
+
+    test('cancel puts the saved seasonal settings back', async () => {
+      state.CONFIG.ui.seasonal = { show: 'christmas' };
+      await settings.openSettings();
+      const show = document.getElementById('seasonal-show');
+      show.value = 'auto';
+      change(show);
+
+      settings.closeSettings();
+
+      expect(mockUiUtils.applyUiPreferences).toHaveBeenLastCalledWith(
+        expect.objectContaining({ seasonal: { show: 'christmas' } })
+      );
     });
   });
 

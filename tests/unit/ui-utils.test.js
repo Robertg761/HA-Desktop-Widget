@@ -1704,4 +1704,58 @@ describe('UI Utilities', () => {
       expect(uiUtils.getAccentTextOnLight({ r: 30, g: 41, b: 120 })).toBe('rgb(30, 41, 120)');
     });
   });
+
+  describe('seasonal colours', () => {
+    const accent = () => document.documentElement.style.getPropertyValue('--accent');
+
+    afterEach(() => {
+      uiUtils.setSeasonalColors(null);
+      uiUtils.setUiPreferencesObserver(null);
+    });
+
+    it('stands in for the saved accent and background, then gives them back', () => {
+      uiUtils.applyAccentTheme('emerald');
+      uiUtils.applyBackgroundTheme('slate');
+      expect(accent()).toBe('#10B981');
+
+      uiUtils.setSeasonalColors({ accent: '#f97316', background: '#6d28d9' });
+      expect(accent()).toBe('#F97316');
+      expect(document.body.dataset.accent).toBe('seasonal');
+      expect(document.body.dataset.background).toBe('seasonal');
+
+      // Re-applying the saved theme (a config echo, a theme mode change) keeps the holiday.
+      uiUtils.applyAccentTheme('emerald');
+      expect(accent()).toBe('#F97316');
+
+      uiUtils.setSeasonalColors(null);
+      expect(accent()).toBe('#10B981');
+      expect(document.body.dataset.accent).toBe('emerald');
+      expect(document.body.dataset.background).toBe('slate');
+    });
+
+    it('leaves a raw colour for its owner to repaint', () => {
+      uiUtils.applyAccentTheme('emerald');
+      uiUtils.applyAccentThemeFromColor('#123456');
+      expect(uiUtils.setSeasonalColors({ accent: '#f97316', background: '#6d28d9' })).toBe(true);
+      expect(accent()).toBe('#123456');
+      expect(uiUtils.getSeasonalColors()).toEqual({ accent: '#f97316', background: '#6d28d9' });
+      expect(uiUtils.setSeasonalColors({ accent: '#f97316', background: '#6d28d9' })).toBe(false);
+    });
+
+    it('passes every applied ui to the registered observer', () => {
+      const observer = jest.fn();
+      uiUtils.setUiPreferencesObserver(observer);
+      const ui = { density: 'compact', seasonal: { show: 'halloween' } };
+      uiUtils.applyUiPreferences(ui);
+      expect(observer).toHaveBeenCalledWith(ui);
+
+      observer.mockImplementation(() => {
+        throw new Error('boom');
+      });
+      jest.spyOn(console, 'error').mockImplementation(() => {});
+      expect(() => uiUtils.applyUiPreferences({})).not.toThrow();
+      expect(document.body.classList.contains('density-compact')).toBe(false);
+      console.error.mockRestore();
+    });
+  });
 });

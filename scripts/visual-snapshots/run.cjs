@@ -147,6 +147,27 @@ const SCENES = [
     name: 'main-light-solid',
     setup: `window.electronAPI.updateConfig({ frostedGlass: false })`,
   },
+  // The fixture turns seasonal themes off so the scenes above do not change with the date; these
+  // force a holiday on. The background scene is random, so they differ a little run to run.
+  {
+    name: 'halloween',
+    setup: `(async () => {
+      const cfg = await window.electronAPI.getConfig();
+      await window.electronAPI.updateConfig({
+        frostedGlass: true,
+        ui: { ...cfg.ui, theme: 'dark', seasonal: { show: 'halloween' } },
+      });
+    })()`,
+  },
+  {
+    name: 'christmas-light',
+    setup: `(async () => {
+      const cfg = await window.electronAPI.getConfig();
+      await window.electronAPI.updateConfig({
+        ui: { ...cfg.ui, theme: 'light', seasonal: { show: 'christmas' } },
+      });
+    })()`,
+  },
 ];
 
 async function main() {
