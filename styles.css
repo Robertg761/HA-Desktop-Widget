@@ -15731,10 +15731,6 @@ body[data-season='thanksgiving'] .control-item {
     animation: season-float 4s var(--ease-in-out) infinite alternate;
   }
 
-  body[data-season='christmas'] .widget-header::after {
-    animation: season-lights-twinkle 2.4s var(--ease-in-out) infinite alternate;
-  }
-
   body[data-season='valentines'] .drag-area::after {
     animation: season-heartbeat 1.6s var(--ease-in-out) infinite;
   }
@@ -15747,6 +15743,13 @@ body[data-season='thanksgiving'] .control-item {
 
   body[data-season] .widget-header::after {
     animation: season-garland-sway 4s var(--ease-in-out) infinite alternate;
+  }
+
+  /* After the rule above, which it would otherwise lose to: the lights twinkle as they sway. */
+  body[data-season='christmas'] .widget-header::after {
+    animation:
+      season-lights-twinkle 2.4s var(--ease-in-out) infinite alternate,
+      season-garland-sway 4s var(--ease-in-out) infinite alternate;
   }
 }
 
