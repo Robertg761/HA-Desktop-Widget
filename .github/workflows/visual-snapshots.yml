@@ -98,6 +98,22 @@ jobs:
           [Win32.Native]::SendMessageTimeout([System.IntPtr]0xffff, 0x1A, [System.UIntPtr]::Zero, 'ImmersiveColorSet', 2, 5000, [ref]$result) | Out-Null
           Get-ItemProperty -Path $key | Select-Object EnableTransparency
 
+      # The Windows 11 image opens the first-run "Choose privacy settings for your device" window
+      # at sign-in, and it sits over the widget in the screen captures. Close it, and log what
+      # else has a window in case a later image changes what opens.
+      - name: Close first-run windows (Windows 11)
+        if: matrix.os == 'windows-11-arm'
+        shell: pwsh
+        run: |
+          Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } |
+            Format-Table ProcessName, Id, MainWindowTitle -AutoSize | Out-String -Width 200
+          Get-Process | Where-Object {
+            $_.ProcessName -in @('WWAHost', 'CloudExperienceHostBroker') -or $_.MainWindowTitle -match 'privacy'
+          } | ForEach-Object {
+            Write-Output "Closing $($_.ProcessName) ($($_.Id)): $($_.MainWindowTitle)"
+            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Take snapshots (Windows, macOS)
         timeout-minutes: 8
         if: runner.os != 'Linux'
