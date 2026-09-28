@@ -11708,24 +11708,42 @@ function exitForSystemShutdown(reason) {
   app.exit(0);
 }
 
+// When the current quit started, for the timings logged at each stage. A quit that seems slow
+// can then be read off the log: the settings save, the runtime shutdown, or Chromium's own exit
+// after the 'quit' event.
+let quitRequestedAt = null;
+const QUIT_WAIT_NOTICE_MS = 1000;
+
 app.on('before-quit', (event) => {
   if (!gotSingleInstanceLock || !config) return;
   if (quitFinalized) return;
   event.preventDefault();
   if (quitFinalizationStarted) return;
 
+  quitRequestedAt = Date.now();
+  log.info('Quit requested; saving settings before exit');
+  const waitNotice = setTimeout(() => {
+    log.warn('Quit is waiting for an in-progress settings or profile-sync operation to finish');
+  }, QUIT_WAIT_NOTICE_MS);
+  waitNotice.unref?.();
   void flushConfigForBoundedExit('quitting')
     .then(() => {
+      clearTimeout(waitNotice);
+      log.info(`Quit: settings saved after ${Date.now() - quitRequestedAt} ms`);
       shutDownRuntimeAfterConfigFlush();
+      log.info(`Quit: runtime shut down after ${Date.now() - quitRequestedAt} ms`);
       quitFinalized = true;
       app.quit();
     })
     .catch((error) => {
+      clearTimeout(waitNotice);
       if (systemShutdownRequested) {
         exitForSystemShutdown(error?.message || String(error));
         return;
       }
       log.error('Quit canceled because configuration could not be saved:', error);
+      // The app stays open, so a later exit that skips this handler must not time from here.
+      quitRequestedAt = null;
       dialog.showErrorBox(
         mainT('Could not save settings'),
         `${mainT('The app stayed open because its configuration could not be saved.')}\n\n${
@@ -11733,6 +11751,17 @@ app.on('before-quit', (event) => {
         }`
       );
     });
+});
+
+app.on('will-quit', () => {
+  if (quitRequestedAt !== null) {
+    log.info(`Quit: windows closed after ${Date.now() - quitRequestedAt} ms`);
+  }
+});
+app.on('quit', () => {
+  if (quitRequestedAt !== null) {
+    log.info(`Quit: handing over to Chromium's exit after ${Date.now() - quitRequestedAt} ms`);
+  }
 });
 
 // Register custom protocol before creating window

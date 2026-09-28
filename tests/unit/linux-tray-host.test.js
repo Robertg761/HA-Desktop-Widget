@@ -180,3 +180,57 @@ test('recreates the icons when only some of them registered', async () => {
     1
   );
 });
+
+test('leaves the tray alone when the host lists items without an owner', async () => {
+  // Chromium registers a bare object path; a host that stores it unprefixed says nothing
+  // about whose item it is.
+  const bus = createFakeBus({
+    watcherPresent: true,
+    registeredItems: ['/org/chromium/StatusNotifierItem/1'],
+  });
+  const onAppeared = jest.fn();
+  await watch(bus, onAppeared).ready;
+  expect(onAppeared).not.toHaveBeenCalled();
+});
+
+test('recreates the tray icon when the only ownerless items belong to other apps', async () => {
+  // A bare path that is not Chromium's cannot be this process's icon, so it must not hide
+  // that the icon failed to register.
+  const bus = createFakeBus({
+    watcherPresent: true,
+    registeredItems: ['/StatusNotifierItem', ':1.9/other'],
+  });
+  const onAppeared = jest.fn();
+  await watch(bus, onAppeared).ready;
+  expect(onAppeared).toHaveBeenCalledTimes(1);
+});
+
+test('does nothing when the icon registered alongside an ownerless Chromium-shaped item', async () => {
+  const bus = createFakeBus({
+    watcherPresent: true,
+    registeredItems: [
+      '/org/chromium/StatusNotifierItem/1',
+      ':1.7/org/chromium/StatusNotifierItem/2',
+    ],
+    owners: { ':1.7': ownPid },
+  });
+  const onAppeared = jest.fn();
+  await watch(bus, onAppeared).ready;
+  expect(onAppeared).not.toHaveBeenCalled();
+});
+
+test('recreates the tray icons when too few ownerless items could account for the missing ones', async () => {
+  // Three icons expected, one attributed to this process, one ownerless candidate: at least
+  // one is certainly missing.
+  const bus = createFakeBus({
+    watcherPresent: true,
+    registeredItems: [
+      '/org/chromium/StatusNotifierItem/1',
+      ':1.7/org/chromium/StatusNotifierItem/2',
+    ],
+    owners: { ':1.7': ownPid },
+  });
+  const onAppeared = jest.fn();
+  await watch(bus, onAppeared, 3).ready;
+  expect(onAppeared).toHaveBeenCalledTimes(1);
+});
