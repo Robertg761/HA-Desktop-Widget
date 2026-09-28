@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.39",
+  "version": "1.2.40",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget, including German date and time formats.",
   "messages": {
@@ -1619,6 +1619,12 @@
     "Showing {{holiday}} until {{time}}.": "{{holiday}} wird bis {{time}} angezeigt.",
     "{{holiday}} is on until {{date}}.": "{{holiday}} läuft bis {{date}}.",
     "Nothing right now. {{holiday}} starts {{date}}.": "Gerade nichts. {{holiday}} beginnt am {{date}}.",
-    "No holidays are picked.": "Keine Feiertage ausgewählt."
+    "No holidays are picked.": "Keine Feiertage ausgewählt.",
+    "Hyprland blurs the widget. Other windows are not blurred.": "Hyprland zeichnet den Hintergrund des Widgets unscharf. Andere Fenster bleiben unverändert.",
+    "Hyprland's blur is off, so the widget is tinted but not frosted.": "Die Unschärfe von Hyprland ist aus, daher ist das Widget getönt, aber nicht mattiert.",
+    "Hyprland's blur is off, so the widget is tinted but not frosted. Set decoration:blur:enabled in your Hyprland config to frost it.": "Die Unschärfe von Hyprland ist aus, daher ist das Widget getönt, aber nicht mattiert. Setze decoration:blur:enabled in deiner Hyprland-Konfiguration, um es zu mattieren.",
+    "Turn off widget blur": "Unschärfe für das Widget ausschalten",
+    "Turn on blur for the widget": "Unschärfe für das Widget einschalten",
+    "Could not change Hyprland's blur.": "Die Unschärfe von Hyprland konnte nicht geändert werden."
   }
 }

@@ -1612,5 +1612,11 @@
   "Showing {{holiday}} until {{time}}.": "Showing {{holiday}} until {{time}}.",
   "{{holiday}} is on until {{date}}.": "{{holiday}} is on until {{date}}.",
   "Nothing right now. {{holiday}} starts {{date}}.": "Nothing right now. {{holiday}} starts {{date}}.",
-  "No holidays are picked.": "No holidays are picked."
+  "No holidays are picked.": "No holidays are picked.",
+  "Hyprland blurs the widget. Other windows are not blurred.": "Hyprland blurs the widget. Other windows are not blurred.",
+  "Hyprland's blur is off, so the widget is tinted but not frosted.": "Hyprland's blur is off, so the widget is tinted but not frosted.",
+  "Hyprland's blur is off, so the widget is tinted but not frosted. Set decoration:blur:enabled in your Hyprland config to frost it.": "Hyprland's blur is off, so the widget is tinted but not frosted. Set decoration:blur:enabled in your Hyprland config to frost it.",
+  "Turn off widget blur": "Turn off widget blur",
+  "Turn on blur for the widget": "Turn on blur for the widget",
+  "Could not change Hyprland's blur.": "Could not change Hyprland's blur."
 }

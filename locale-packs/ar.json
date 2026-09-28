@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.39",
+  "version": "1.2.40",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1619,6 +1619,12 @@
     "Showing {{holiday}} until {{time}}.": "يُعرض {{holiday}} حتى {{time}}.",
     "{{holiday}} is on until {{date}}.": "يستمر {{holiday}} حتى {{date}}.",
     "Nothing right now. {{holiday}} starts {{date}}.": "لا شيء الآن. يبدأ {{holiday}} في {{date}}.",
-    "No holidays are picked.": "لم يتم اختيار أي عيد."
+    "No holidays are picked.": "لم يتم اختيار أي عيد.",
+    "Hyprland blurs the widget. Other windows are not blurred.": "يطمس Hyprland ما خلف الأداة. لا تُطمس النوافذ الأخرى.",
+    "Hyprland's blur is off, so the widget is tinted but not frosted.": "الطمس في Hyprland متوقف، لذا الأداة ملوّنة لكنها ليست ضبابية.",
+    "Hyprland's blur is off, so the widget is tinted but not frosted. Set decoration:blur:enabled in your Hyprland config to frost it.": "الطمس في Hyprland متوقف، لذا الأداة ملوّنة لكنها ليست ضبابية. فعّل decoration:blur:enabled في إعدادات Hyprland لجعلها ضبابية.",
+    "Turn off widget blur": "إيقاف طمس الأداة",
+    "Turn on blur for the widget": "تشغيل الطمس للأداة",
+    "Could not change Hyprland's blur.": "تعذّر تغيير الطمس في Hyprland."
   }
 }

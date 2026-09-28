@@ -48,6 +48,11 @@ let initialLaunchRaise =
   !process.env.HA_WIDGET_LAUNCH_VISIBILITY &&
   (process.argv.includes('--show') || process.argv.includes('--toggle'));
 const { createOmarchyThemeWatcher } = require('./src/omarchy-theme.cjs');
+const {
+  applyWidgetBlurRule,
+  getDesktopBlurStatus,
+  setDesktopBlur,
+} = require('./src/hyprland-blur.cjs');
 const { watchForStatusNotifierWatcher } = require('./src/linux-tray-host.cjs');
 const {
   OMARCHY_BAR_PLUGIN_ID,
@@ -947,15 +952,21 @@ function placeLayerWindow(targetWindow) {
   layerPositions.set(id, position);
   layerShellRaiser.place(targetWindow.getTitle(), position);
 }
-const hyprlandConfigReloadWatcher = isLayerShellChildProcess
-  ? watchHyprlandConfigReloads({
-      log,
-      onReload: () => {
-        clearTimeout(layerRefreshTimer);
-        layerRefreshTimer = setTimeout(refreshLayerPlacement, 300);
-      },
-    })
-  : null;
+const hyprlandConfigReloadWatcher =
+  isLayerShellChildProcess || (process.platform === 'linux' && isHyprland())
+    ? watchHyprlandConfigReloads({
+        log,
+        onReload: (event) => {
+          // A reload drops the rules added at runtime, the widget's blur rule among them.
+          if (event === 'configreloaded') {
+            appliedWidgetBlurRule = null;
+            applyHyprlandWidgetBlur();
+          }
+          clearTimeout(layerRefreshTimer);
+          layerRefreshTimer = setTimeout(refreshLayerPlacement, 300);
+        },
+      })
+    : null;
 // Monitors the layer-shell helper reported, for the tray's "Move to Monitor"
 // submenu. A layer surface cannot be dragged between monitors (the compositor
 // owns its placement, so Super+drag falls through to the window behind it) —
@@ -6225,6 +6236,22 @@ function initializeProfileSyncOnStartup() {
 function applyFrostedGlass(override) {
   if (!mainWindow) return;
   applyWindowEffectsToWindow(mainWindow, config, override);
+  applyHyprlandWidgetBlur(override);
+}
+
+// Chromium cannot blur the desktop behind a Linux window, so on Hyprland the compositor does it
+// for the widget's own surface (src/hyprland-blur.cjs). null: not applied since the last reload.
+let appliedWidgetBlurRule = null;
+function applyHyprlandWidgetBlur(override) {
+  if (process.platform !== 'linux' || !isHyprland()) return;
+  const enabled = resolveFrostedGlassConfig(config, override);
+  if (appliedWidgetBlurRule === enabled) return;
+  appliedWidgetBlurRule = enabled;
+  applyWidgetBlurRule(enabled).then((accepted) => {
+    if (accepted) return;
+    if (appliedWidgetBlurRule === enabled) appliedWidgetBlurRule = null;
+    log.debug('Hyprland did not accept the widget blur rule');
+  });
 }
 
 /**
@@ -8580,6 +8607,25 @@ ipcMain.handle(
     return saveConfigDurably();
   })
 );
+
+ipcMain.handle('get-desktop-blur-status', async (event) => {
+  if (!authorizeIpcSender(event, 'get-desktop-blur-status'))
+    return rejectUnauthorizedIpc('get-desktop-blur-status');
+  if (process.platform !== 'linux' || !isHyprland()) return { supported: false };
+  return getDesktopBlurStatus();
+});
+
+ipcMain.handle('set-desktop-blur', async (event, enabled) => {
+  if (!authorizeIpcSender(event, 'set-desktop-blur'))
+    return rejectUnauthorizedIpc('set-desktop-blur');
+  if (process.platform !== 'linux' || !isHyprland() || typeof enabled !== 'boolean')
+    return { success: false, error: 'unsupported' };
+  const result = await setDesktopBlur(enabled);
+  log.info(
+    `Desktop blur for the widget ${enabled ? 'on' : 'off'}: ${result.success ? 'done' : result.error}`
+  );
+  return { ...result, status: await getDesktopBlurStatus() };
+});
 
 ipcMain.handle('get-desktop-integration', (event) => {
   if (!authorizeIpcSender(event, 'get-desktop-integration'))

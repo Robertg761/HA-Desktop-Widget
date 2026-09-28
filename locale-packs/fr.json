@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.39",
+  "version": "1.2.40",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1619,6 +1619,12 @@
     "Showing {{holiday}} until {{time}}.": "{{holiday}} est affiché jusqu'à {{time}}.",
     "{{holiday}} is on until {{date}}.": "{{holiday}} dure jusqu'au {{date}}.",
     "Nothing right now. {{holiday}} starts {{date}}.": "Rien pour l'instant. {{holiday}} commence le {{date}}.",
-    "No holidays are picked.": "Aucune fête n'est choisie."
+    "No holidays are picked.": "Aucune fête n'est choisie.",
+    "Hyprland blurs the widget. Other windows are not blurred.": "Hyprland floute l'arrière-plan du widget. Les autres fenêtres ne sont pas floutées.",
+    "Hyprland's blur is off, so the widget is tinted but not frosted.": "Le flou de Hyprland est désactivé : le widget est teinté mais pas dépoli.",
+    "Hyprland's blur is off, so the widget is tinted but not frosted. Set decoration:blur:enabled in your Hyprland config to frost it.": "Le flou de Hyprland est désactivé : le widget est teinté mais pas dépoli. Activez decoration:blur:enabled dans votre configuration Hyprland pour le dépolir.",
+    "Turn off widget blur": "Désactiver le flou du widget",
+    "Turn on blur for the widget": "Activer le flou pour le widget",
+    "Could not change Hyprland's blur.": "Impossible de modifier le flou de Hyprland."
   }
 }
