@@ -6,10 +6,11 @@ name: Visual snapshots
 # (the real screen around the window: acrylic, vibrancy, shadows, native fonts).
 # See scripts/visual-snapshots/run.cjs. Informational only: nothing is compared.
 #
-# windows-latest is Windows Server 2022, which has no acrylic backdrop, so its screen captures
-# show the solid fallback. windows-11-arm is the only hosted Windows 11 image (free for public
-# repositories); its captures, in visual-snapshots-Windows-11-arm, are where acrylic can show.
-# It is ARM64 rather than x64, which does not change how the window is drawn.
+# windows-latest is Windows Server 2022. windows-11-arm is the only hosted Windows 11 image (free
+# for public repositories; ARM64 rather than x64), and its captures, in
+# visual-snapshots-Windows-11-arm, show the Windows 11 shell: rounded corners, taskbar, fonts.
+# Neither draws acrylic: hosted runners have no GPU, so both show the solid fallback even with
+# transparency effects on. Checking acrylic still needs a real Windows 11 machine.
 
 on:
   workflow_dispatch:
