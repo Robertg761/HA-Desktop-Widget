@@ -15258,6 +15258,21 @@ body.desktop-pin-mode .desktop-pin-empty-action:hover {
   pointer-events: none;
 }
 
+/* A solid window paints its colour on the body and again on the header and content, and those
+   two would hide the canvas between them. During a holiday the body alone carries the colour, at
+   the strength both layers made together (1 - (1 - a)²), so the window looks the same. */
+body[data-season]:not(.desktop-pin-mode):not(.frosted-glass) {
+  background: rgba(
+    var(--window-bg-rgb),
+    calc(var(--window-bg-alpha, 1) * (2 - var(--window-bg-alpha, 1)))
+  ) !important;
+}
+
+body[data-season]:not(.desktop-pin-mode):not(.frosted-glass) .widget-header,
+body[data-season]:not(.desktop-pin-mode):not(.frosted-glass) .widget-content {
+  background: transparent !important;
+}
+
 /* The garland hangs over the top of the content, so the header stacks above it. */
 body[data-season] .widget-header {
   z-index: 3;
