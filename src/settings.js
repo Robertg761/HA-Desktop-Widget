@@ -6845,9 +6845,12 @@ function renderDesktopBlur(status) {
   const button = document.getElementById('desktop-blur-toggle');
   if (!row || !text || !button) return;
   const frosted = !!document.getElementById('frosted-glass')?.checked;
-  row.hidden = !frosted || !status?.supported || (status.enabled && !status.managed);
+  const needsRetry = status?.enabled && status.widgetRuleFailed;
+  row.hidden = !frosted || !status?.supported || (status.enabled && !status.managed && !needsRetry);
   if (row.hidden) return;
-  if (status.enabled) {
+  if (needsRetry) {
+    text.textContent = t("Could not change Hyprland's blur.");
+  } else if (status.enabled) {
     text.textContent = t('Hyprland blurs the widget. Other windows are not blurred.');
   } else if (status.canManage) {
     text.textContent = t("Hyprland's blur is off, so the widget is tinted but not frosted.");
@@ -6857,13 +6860,12 @@ function renderDesktopBlur(status) {
     );
   }
   button.classList.toggle('hidden', !status.canManage);
-  button.textContent = status.enabled
-    ? t('Turn off widget blur')
-    : t('Turn on blur for the widget');
+  button.textContent =
+    status.enabled && !needsRetry ? t('Turn off widget blur') : t('Turn on blur for the widget');
   button.onclick = async () => {
     button.disabled = true;
     try {
-      const result = await window.electronAPI.setDesktopBlur(!status.enabled);
+      const result = await window.electronAPI.setDesktopBlur(!status.enabled || needsRetry);
       if (!result?.success) showToast(t("Could not change Hyprland's blur."), 'error');
       renderDesktopBlur(result?.status || status);
     } finally {

@@ -48,7 +48,7 @@ let initialLaunchRaise =
   !process.env.HA_WIDGET_LAUNCH_VISIBILITY &&
   (process.argv.includes('--show') || process.argv.includes('--toggle'));
 const { createOmarchyThemeWatcher } = require('./src/omarchy-theme.cjs');
-const { createHyprlandBlurController, getDesktopBlurStatus } = require('./src/hyprland-blur.cjs');
+const { createHyprlandBlurController } = require('./src/hyprland-blur.cjs');
 const hyprlandBlur = createHyprlandBlurController();
 const { watchForStatusNotifierWatcher } = require('./src/linux-tray-host.cjs');
 const {
@@ -8604,7 +8604,7 @@ ipcMain.handle('get-desktop-blur-status', async (event) => {
   if (!authorizeIpcSender(event, 'get-desktop-blur-status'))
     return rejectUnauthorizedIpc('get-desktop-blur-status');
   if (process.platform !== 'linux' || !isHyprland()) return { supported: false };
-  return getDesktopBlurStatus();
+  return hyprlandBlur.getDesktopBlurStatus();
 });
 
 ipcMain.handle('set-desktop-blur', async (event, enabled) => {
@@ -8616,7 +8616,7 @@ ipcMain.handle('set-desktop-blur', async (event, enabled) => {
   log.info(
     `Desktop blur for the widget ${enabled ? 'on' : 'off'}: ${result.success ? 'done' : result.error}`
   );
-  return { ...result, status: await getDesktopBlurStatus() };
+  return { ...result, status: await hyprlandBlur.getDesktopBlurStatus() };
 });
 
 ipcMain.handle('get-desktop-integration', (event) => {

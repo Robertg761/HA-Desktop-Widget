@@ -50,6 +50,47 @@ describe('widgetBlurRuleLua', () => {
 });
 
 describe('applyWidgetBlurRule', () => {
+  it.each([true, false])(
+    'uses Hyprlang rules for preview %s when eval is unavailable',
+    async (enabled) => {
+      const { run, calls } = fakeHyprctl({ eval: 'unknown request', keyword: 'ok' });
+      await expect(applyWidgetBlurRule(enabled, { run })).resolves.toBe(true);
+      expect(calls).toEqual([
+        ['eval', widgetBlurRuleLua(enabled)],
+        [
+          'keyword',
+          'layerrule',
+          `blur ${enabled ? 'on' : 'off'}, ignore_alpha 0.1, match:namespace ^ha-widget$`,
+        ],
+        [
+          'keyword',
+          'windowrule',
+          `no_blur ${enabled ? 'off' : 'on'}, match:class ^com\\.github\\.robertg761\\.hadesktopwidget$`,
+        ],
+        ['keyword', 'windowrule[ha-desktop-widget-blur-refresh]:enable', '0'],
+      ]);
+    }
+  );
+
+  it('reports a failed Hyprlang rule and leaves an identical request retryable', async () => {
+    const { run } = fakeHyprctl({ eval: 'unknown request', keyword: 'invalid rule' });
+    const controller = createHyprlandBlurController({ run });
+    await expect(controller.applyWidgetBlur(true)).resolves.toBe(false);
+    await expect(controller.applyWidgetBlur(true)).resolves.toBe(false);
+    expect(run).toHaveBeenCalledTimes(4);
+  });
+
+  it('reports a failed rule-engine refresh on Hyprlang', async () => {
+    const run = jest.fn((_command, args, _options, callback) => {
+      callback(
+        null,
+        args[0] === 'eval' ? 'unknown request' : args[1].includes('refresh') ? 'invalid rule' : 'ok'
+      );
+    });
+    await expect(applyWidgetBlurRule(true, { run })).resolves.toBe(false);
+    expect(run).toHaveBeenCalledTimes(4);
+  });
+
   it('sends the rule through hyprctl eval and reports whether Hyprland accepted it', async () => {
     const accepted = fakeHyprctl({ eval: 'ok\n' });
     await expect(applyWidgetBlurRule(true, { run: accepted.run })).resolves.toBe(true);
@@ -203,6 +244,36 @@ describe('Hyprland blur controller', () => {
 
   afterEach(() => {
     fs.rmSync(home, { recursive: true, force: true });
+  });
+
+  it('reports a failed widget exception and clears that state after retrying enable', async () => {
+    let failException = false;
+    const run = jest.fn((_command, args, _options, callback) => {
+      if (args[0] === '-j') return callback(null, '{"bool": true}');
+      if (failException && args[1] === widgetBlurRuleLua(true)) {
+        return callback(new Error('timeout'), '');
+      }
+      callback(null, 'ok');
+    });
+    const controller = createHyprlandBlurController({ run, env, home });
+    await controller.applyWidgetBlur(true);
+    failException = true;
+    await expect(controller.setDesktopBlur(true)).resolves.toEqual({
+      success: false,
+      error: 'hyprctl failed',
+    });
+    await expect(controller.getDesktopBlurStatus()).resolves.toMatchObject({
+      enabled: true,
+      managed: true,
+      widgetRuleFailed: true,
+    });
+    failException = false;
+    await expect(controller.setDesktopBlur(true)).resolves.toEqual({ success: true });
+    await expect(controller.getDesktopBlurStatus()).resolves.toMatchObject({
+      enabled: true,
+      managed: true,
+      widgetRuleFailed: false,
+    });
   });
 
   it('waits for each preview before starting the next, including a return to the initial state', async () => {

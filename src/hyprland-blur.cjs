@@ -70,7 +70,23 @@ function runHyprctl(args, run = execFile) {
 
 /** Ask Hyprland to blur (or stop blurring) the widget. Resolves true when it accepted the rule. */
 async function applyWidgetBlurRule(enabled, { run } = {}) {
-  return (await runHyprctl(['eval', widgetBlurRuleLua(enabled)], run)) === 'ok';
+  const result = await runHyprctl(['eval', widgetBlurRuleLua(enabled)], run);
+  if (result !== 'unknown request') return result === 'ok';
+  // Hyprlang-based Hyprland releases have no eval command. Use their dynamic
+  // rules only when the compositor explicitly reports that eval is unavailable.
+  const on = enabled ? 'on' : 'off';
+  const windowClass = `^${escapeRegex(APP_ID)}$`;
+  const rules = [
+    ['layerrule', `blur ${on}, ignore_alpha ${IGNORE_ALPHA}, match:namespace ^${LAYER_NAMESPACE}$`],
+    ['windowrule', `no_blur ${enabled ? 'off' : 'on'}, match:class ${windowClass}`],
+    // Hyprland 0.53 caches inline layer rules until a named window rule update
+    // rebuilds the rule engine. This disabled rule refreshes both widget rules.
+    ['windowrule[ha-desktop-widget-blur-refresh]:enable', '0'],
+  ];
+  for (const [keyword, rule] of rules) {
+    if ((await runHyprctl(['keyword', keyword, rule], run)) !== 'ok') return false;
+  }
+  return true;
 }
 
 /** Hyprland's decoration:blur:enabled, or null when it cannot be read. */
@@ -140,15 +156,21 @@ function createHyprlandBlurController(options = {}) {
   const runSerialized = createSerializedTaskRunner();
   let desiredWidgetBlur = false;
   let appliedWidgetBlur = null;
+  let widgetRuleFailed = false;
 
   async function apply(enabled, force = false) {
     if (!force && appliedWidgetBlur === enabled) return true;
     const accepted = await applyWidgetBlurRule(enabled, options);
     appliedWidgetBlur = accepted ? enabled : null;
+    widgetRuleFailed = !accepted;
     return accepted;
   }
 
   return {
+    async getDesktopBlurStatus() {
+      const status = await getDesktopBlurStatus(options);
+      return { ...status, widgetRuleFailed: desiredWidgetBlur && widgetRuleFailed };
+    },
     applyWidgetBlur(enabled) {
       const requested = !!enabled;
       desiredWidgetBlur = requested;
@@ -163,7 +185,10 @@ function createHyprlandBlurController(options = {}) {
         // Even a failed command may have changed some compositor state.
         appliedWidgetBlur = null;
         const result = await setDesktopBlur(enabled, options);
-        if (!result.success) return result;
+        if (!result.success) {
+          widgetRuleFailed = desiredWidgetBlur;
+          return result;
+        }
         // Enabling adds a blanket no_blur rule; reloading discards runtime rules. In both
         // cases the widget exception must be sent again, even if its desired state is unchanged.
         const accepted = await apply(desiredWidgetBlur, true);
