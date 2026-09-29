@@ -489,7 +489,11 @@ class StageWeather extends WeatherEffectsManager {
   }
 }
 const fx = new StageWeather('weather-canvas');
-new ResizeObserver(() => fx.resizeCanvas()).observe(stage);
+new ResizeObserver(() => {
+  fx.resizeCanvas();
+  for (const slot of pinnedEls.values()) placePinned(slot, slot.offsetLeft, slot.offsetTop);
+  if (pinnedEls.size) savePins();
+}).observe(stage);
 const fxBar = document.querySelector('.dock .seg');
 const fxCanvas = document.getElementById('weather-canvas');
 let currentFx = '';
@@ -497,6 +501,7 @@ function applyFx(effect, { fade = false } = {}) {
   currentFx = effect || '';
   const swap = () => {
     fx.setEffect(currentFx || null);
+    syncFxLoop();
     fxCanvas.style.opacity = '1';
   };
   if (fade) {
