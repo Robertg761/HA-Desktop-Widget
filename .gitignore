@@ -75,6 +75,8 @@ testing-progress.md
 # Generated panel preview artifacts
 preview/preview.html
 dist-panel/
+.vercel
+.env*
 
 # Visual snapshot output (npm run snapshots)
 /visual-snapshots/
