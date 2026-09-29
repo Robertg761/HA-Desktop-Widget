@@ -2863,6 +2863,7 @@ function wireUI() {
         if (settings.previewWindowEffects) {
           settings.previewWindowEffects();
         }
+        void settings.refreshDesktopBlur?.();
       });
     }
 

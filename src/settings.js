@@ -6814,6 +6814,7 @@ export {
   closeSettings,
   saveSettings,
   previewWindowEffects,
+  refreshDesktopBlur,
   reapplySettingsPreviews,
   syncWeatherEffectsAvailability,
   renderAlertsListInline,
@@ -6829,7 +6830,54 @@ export {
   refreshHomeAssistantAuthStatus,
 };
 
+// Hyprland blurs the widget only while its own blur is on, and Omarchy ships with it off. Say so
+// under Frosted glass, and on Omarchy offer to turn it on for the widget alone.
+async function refreshDesktopBlur() {
+  const row = document.getElementById('desktop-blur-row');
+  if (!row || !window.electronAPI?.getDesktopBlurStatus) return;
+  const status = await window.electronAPI.getDesktopBlurStatus();
+  renderDesktopBlur(status);
+}
+
+function renderDesktopBlur(status) {
+  const row = document.getElementById('desktop-blur-row');
+  const text = document.getElementById('desktop-blur-status');
+  const button = document.getElementById('desktop-blur-toggle');
+  if (!row || !text || !button) return;
+  const frosted = !!document.getElementById('frosted-glass')?.checked;
+  const needsRetry = status?.enabled && status.widgetRuleFailed;
+  row.hidden = !frosted || !status?.supported || (status.enabled && !status.managed && !needsRetry);
+  if (row.hidden) return;
+  if (needsRetry) {
+    text.textContent = t("Could not change Hyprland's blur.");
+  } else if (status.enabled) {
+    text.textContent = t('Hyprland blurs the widget. Other windows are not blurred.');
+  } else if (status.canManage) {
+    text.textContent = t("Hyprland's blur is off, so the widget is tinted but not frosted.");
+  } else {
+    text.textContent = t(
+      "Hyprland's blur is off, so the widget is tinted but not frosted. Set decoration:blur:enabled in your Hyprland config to frost it."
+    );
+  }
+  button.classList.toggle('hidden', !status.canManage);
+  button.textContent =
+    status.enabled && !needsRetry ? t('Turn off widget blur') : t('Turn on blur for the widget');
+  button.onclick = async () => {
+    button.disabled = true;
+    try {
+      const result = await window.electronAPI.setDesktopBlur(!status.enabled || needsRetry);
+      if (!result?.success) showToast(t("Could not change Hyprland's blur."), 'error');
+      renderDesktopBlur(result?.status || status);
+    } finally {
+      button.disabled = false;
+    }
+  };
+}
+
 async function refreshDesktopIntegration() {
+  void refreshDesktopBlur().catch((error) => {
+    log.error('Failed to read Hyprland blur status:', error);
+  });
   const panel = document.getElementById('desktop-integration');
   if (!panel || !window.electronAPI.getDesktopIntegration) return;
   const output = document.getElementById('desktop-bindings');

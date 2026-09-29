@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.39",
+  "version": "1.2.40",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1619,6 +1619,12 @@
     "Showing {{holiday}} until {{time}}.": "{{holiday}} {{time}} तक दिखाया जा रहा है।",
     "{{holiday}} is on until {{date}}.": "{{holiday}} {{date}} तक चलेगा।",
     "Nothing right now. {{holiday}} starts {{date}}.": "अभी कुछ नहीं। {{holiday}} {{date}} से शुरू होगा।",
-    "No holidays are picked.": "कोई त्योहार नहीं चुना गया।"
+    "No holidays are picked.": "कोई त्योहार नहीं चुना गया।",
+    "Hyprland blurs the widget. Other windows are not blurred.": "Hyprland विजेट के पीछे धुंधला कर रहा है। दूसरी विंडो धुंधली नहीं होतीं।",
+    "Hyprland's blur is off, so the widget is tinted but not frosted.": "Hyprland का ब्लर बंद है, इसलिए विजेट रंगीन है पर फ्रॉस्टेड नहीं।",
+    "Hyprland's blur is off, so the widget is tinted but not frosted. Set decoration:blur:enabled in your Hyprland config to frost it.": "Hyprland का ब्लर बंद है, इसलिए विजेट रंगीन है पर फ्रॉस्टेड नहीं। इसे फ्रॉस्टेड बनाने के लिए अपने Hyprland कॉन्फ़िग में decoration:blur:enabled सेट करें।",
+    "Turn off widget blur": "विजेट ब्लर बंद करें",
+    "Turn on blur for the widget": "विजेट के लिए ब्लर चालू करें",
+    "Could not change Hyprland's blur.": "Hyprland का ब्लर बदला नहीं जा सका।"
   }
 }

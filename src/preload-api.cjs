@@ -180,6 +180,8 @@ function createElectronApi(ipcRenderer, platform) {
     beginLayerDrag: () => invoke('begin-layer-drag'),
     endLayerDrag: () => invoke('end-layer-drag'),
     getDesktopIntegration: () => invoke('get-desktop-integration'),
+    getDesktopBlurStatus: () => invoke('get-desktop-blur-status'),
+    setDesktopBlur: (enabled) => invoke('set-desktop-blur', enabled),
     getWindowState: () => invoke('get-window-state'),
     getLoginItemSettings: () => invoke('get-login-item-settings'),
     setLoginItemSettings: (openAtLogin) => invoke('set-login-item-settings', openAtLogin),

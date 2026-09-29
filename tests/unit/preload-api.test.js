@@ -23,6 +23,8 @@ describe('preload Electron API', () => {
       ['beginLayerDrag', [], 'begin-layer-drag', []],
       ['endLayerDrag', [], 'end-layer-drag', []],
       ['getDesktopIntegration', [], 'get-desktop-integration', []],
+      ['getDesktopBlurStatus', [], 'get-desktop-blur-status', []],
+      ['setDesktopBlur', [true], 'set-desktop-blur', [true]],
       ['signalRendererReady', [], 'renderer-ready', []],
       ['getConfig', [], 'get-config', []],
       ['getLocaleBootstrap', [], 'get-locale-bootstrap', []],
