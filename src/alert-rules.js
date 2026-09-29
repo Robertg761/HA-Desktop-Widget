@@ -72,9 +72,26 @@ function createAlertEvaluator({ getConfig, notify, now = () => Date.now() }) {
     // The reconnect snapshot arrives without state_changed events, so a condition that is still
     // true has to be re-armed here or its duration timer would never restart.
     records.forEach((record, id) => {
-      if (!record.resume) return;
-      delete record.resume;
-      if (states[id]) check(id, states[id].state);
+      if (record.resume) {
+        delete record.resume;
+        if (states[id]) check(id, states[id].state);
+        return;
+      }
+      // A fresh snapshot may end a condition while disconnected. Keep cooldowns and already
+      // notified matches that still hold, but take the snapshot as the new change baseline.
+      const value = states[id]?.state;
+      const rule = getConfig()?.alerts?.[id];
+      const valid =
+        value !== null && value !== undefined && !['unknown', 'unavailable'].includes(value);
+      if (
+        !valid ||
+        (rule?.onStateChange ? value !== record.previous : !matchesAlert(rule || {}, value))
+      ) {
+        clearTimeout(record.timer);
+        record.timer = null;
+        record.matched = false;
+      }
+      record.previous = value;
     });
   };
   const check = (id, value) => {

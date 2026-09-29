@@ -13,6 +13,19 @@ module.exports = {
     'packages/widget-renderer/src/**/*.js',
   ],
   roots: ['<rootDir>'],
+  // Local agent worktrees can contain duplicate packages and whole test suites.
+  // Exclude them from module discovery as well as test discovery.
+  modulePathIgnorePatterns: [
+    '<rootDir>/.claude/',
+    '<rootDir>/.codex/',
+    '<rootDir>/.worktrees/',
+    '<rootDir>/vendor/',
+    '<rootDir>/dist/',
+    '<rootDir>/dist-renderer/',
+    '<rootDir>/dist-preload/',
+    '<rootDir>/dist-panel/',
+    '<rootDir>/coverage/',
+  ],
   testPathIgnorePatterns: [
     '/node_modules/',
     '/AppData/',

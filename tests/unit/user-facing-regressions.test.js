@@ -190,6 +190,13 @@ describe('User-facing audit regressions', () => {
     jest.restoreAllMocks();
   });
 
+  it.each(['on', 'off'])('runs the automation Toggle hotkey while %s', (value) => {
+    ui.executeHotkeyAction(entity('automation.audit', value), 'toggle');
+    expect(mockCallService.mock.calls).toEqual([
+      ['automation', 'toggle', { entity_id: 'automation.audit' }],
+    ]);
+  });
+
   it.each(['stop_cover', 'open_cover', 'close_cover'])(
     'cancels queued movement before %s',
     async (action) => {

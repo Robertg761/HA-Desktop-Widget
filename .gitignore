@@ -24,6 +24,9 @@ Thumbs.db
 *.swp
 .idea/
 .vscode/
+.claude/
+.codex/
+.worktrees/
 
 # Local runtime config (do not commit tokens)
 config.json

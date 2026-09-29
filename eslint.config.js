@@ -6,6 +6,9 @@ module.exports = [
   // Global ignores (applied to all configs)
   {
     ignores: [
+      '.claude/**',
+      '.codex/**',
+      '.worktrees/**',
       'node_modules/**',
       'dist/**',
       'dist-renderer/**',

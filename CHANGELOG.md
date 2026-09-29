@@ -40,7 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Make automation hotkeys set to Toggle enable or disable the automation; they previously sent no command.
+- Refresh alert state after reconnecting, so an ended threshold condition can alert again and state-change alerts use the current reading as their baseline.
 - Frosted glass now actually blurs on Hyprland. The widget asks Hyprland to blur its own surface; before, it was only tinted, because an app cannot blur the desktop behind itself on Linux. Omarchy ships with Hyprland's blur off, so Settings → Appearance → Window Effects says so and offers a button that turns blur on for the widget alone. The button leaves every other window unblurred, and the same button turns it off again.
+- Update the packaged Electron runtime within version 43 to include current security fixes. CI and release checks now audit development dependencies too, so Electron advisories cannot slip past the production dependency check.
 - Show calendar event descriptions as text in the calendar dialog. Descriptions that arrive as HTML, as Google Calendar's do, showed their tags.
 - On Hyprland, a widget brought forward from the tray, the Omarchy bar, or the popup shortcut no longer drops behind your windows as the pointer crosses them on its way to it. It lowers once the pointer moves off to something else.
 - Stop a settings change from overwriting another computer's newer sync change that had not arrived yet, and stop a computer whose clock runs ahead from undoing other computers' changes.

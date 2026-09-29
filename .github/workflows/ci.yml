@@ -28,10 +28,9 @@ jobs:
           node-version: '20'
 
       - name: Audit dependency tree
-        # Production dependencies only: GHSA-mh99-v99m-4gvg has no fixed release
-        # for the electron-builder/jest/eslint toolchains, and forcing
-        # brace-expansion@5 tree-wide breaks the minimatch API packaging relies on.
-        run: npm audit --omit=dev --audit-level=high
+        # Electron is a devDependency, but its runtime ships in every package.
+        # Include the build toolchain so runtime advisories cannot be skipped.
+        run: npm audit --audit-level=high
 
       - name: Cancel remaining CI jobs
         if: failure()

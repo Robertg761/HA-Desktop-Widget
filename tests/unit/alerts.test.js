@@ -169,6 +169,31 @@ describe('alerts module', () => {
       expect(showToast).toHaveBeenCalledTimes(2);
     });
 
+    it('releases a notified threshold match when the reconnect snapshot is below it', () => {
+      reading('26');
+      jest.advanceTimersByTime(10000);
+      expect(showToast).toHaveBeenCalledTimes(1);
+      alerts.suspendEntityAlerts();
+      jest.advanceTimersByTime(60000);
+      mockState.STATES['sensor.temperature'].state = '24';
+      alerts.initializeEntityAlerts();
+      reading('26');
+      jest.advanceTimersByTime(10000);
+      expect(showToast).toHaveBeenCalledTimes(2);
+    });
+
+    it('uses the reconnect snapshot as the baseline for later state-change alerts', () => {
+      mockState.CONFIG.entityAlerts.alerts['sensor.temperature'] = { onStateChange: true };
+      alerts.initializeEntityAlerts();
+      alerts.suspendEntityAlerts();
+      mockState.STATES['sensor.temperature'].state = '26';
+      alerts.initializeEntityAlerts();
+      reading('26');
+      expect(showToast).not.toHaveBeenCalled();
+      reading('27');
+      expect(showToast).toHaveBeenCalledTimes(1);
+    });
+
     it('re-arms an interrupted duration timer from the reconnect snapshot', () => {
       reading('26');
       jest.advanceTimersByTime(5000);

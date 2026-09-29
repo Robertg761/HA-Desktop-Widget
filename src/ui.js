@@ -11292,6 +11292,9 @@ function toggleEntity(entity) {
       case 'input_boolean':
         queueOnOffToggle(entity);
         return;
+      case 'automation':
+        service = 'toggle';
+        break;
       case 'lock':
         service = entity.state === 'locked' ? 'unlock' : 'lock';
         break;
