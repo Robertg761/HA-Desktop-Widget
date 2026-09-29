@@ -109,10 +109,16 @@ async function readHyprlandBlurEnabled({ run } = {}) {
  */
 async function getDesktopBlurStatus({ run, env, home, exists = fs.existsSync } = {}) {
   const enabled = await readHyprlandBlurEnabled({ run });
+  let canManage = exists(getOmarchyToggleDir({ env, home }));
+  if (canManage) {
+    // Omarchy's managed toggle is a Lua file. Older compositors must use the
+    // manual config guidance even if this directory remains after a downgrade.
+    canManage = (await runHyprctl(['eval', 'return true'], run)) !== 'unknown request';
+  }
   return {
     supported: enabled !== null,
     enabled: !!enabled,
-    canManage: exists(getOmarchyToggleDir({ env, home })),
+    canManage,
     managed: exists(getBlurTogglePath({ env, home })),
   };
 }
@@ -128,9 +134,9 @@ async function setDesktopBlur(enabled, { run, env, home, fsApi = fs } = {}) {
   if (!fsApi.existsSync(dir)) return { success: false, error: 'unsupported' };
   let previousContent = null;
   try {
+    if (fsApi.existsSync(file)) previousContent = fsApi.readFileSync(file);
     if (enabled) fsApi.writeFileSync(file, TOGGLE_FILE_CONTENT);
     else {
-      if (fsApi.existsSync(file)) previousContent = fsApi.readFileSync(file);
       fsApi.rmSync(file, { force: true });
     }
   } catch (error) {
@@ -139,11 +145,12 @@ async function setDesktopBlur(enabled, { run, env, home, fsApi = fs } = {}) {
   const applied = enabled
     ? await runHyprctl(['eval', TOGGLE_LUA], run)
     : await runHyprctl(['reload'], run);
-  // A failed reload can leave the runtime rules active. Keep the toggle owned by the app
-  // so Settings still offers a way to retry instead of hiding the control.
-  if (applied !== 'ok' && previousContent !== null) {
+  // Restore the previous file state on failure. A failed enable must not leave
+  // new rules to be sourced later; a failed disable must remain owned and retryable.
+  if (applied !== 'ok') {
     try {
-      fsApi.writeFileSync(file, previousContent);
+      if (previousContent !== null) fsApi.writeFileSync(file, previousContent);
+      else if (enabled) fsApi.rmSync(file, { force: true });
     } catch (error) {
       return { success: false, error: `hyprctl failed; ${error?.message || String(error)}` };
     }

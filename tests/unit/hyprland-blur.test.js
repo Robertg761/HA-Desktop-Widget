@@ -193,6 +193,44 @@ describe('desktop blur toggle file', () => {
     });
   });
 
+  it('offers manual configuration on Hyprlang even when a toggle directory exists', async () => {
+    fs.mkdirSync(toggleDir, { recursive: true });
+    const { run } = fakeHyprctl({
+      eval: 'unknown request',
+      'getoption decoration:blur:enabled': '{"int": 0}',
+    });
+    await expect(getDesktopBlurStatus({ run, env, home })).resolves.toMatchObject({
+      supported: true,
+      enabled: false,
+      canManage: false,
+      managed: false,
+    });
+  });
+
+  it.each([new Error('timeout'), 'eval rejected', 'unknown request'])(
+    'removes a new toggle after enabling fails with %s',
+    async (failure) => {
+      fs.mkdirSync(toggleDir, { recursive: true });
+      const { run } = fakeHyprctl({ eval: failure });
+      await expect(setDesktopBlur(true, { run, env, home })).resolves.toMatchObject({
+        success: false,
+      });
+      expect(fs.existsSync(getBlurTogglePath({ env, home }))).toBe(false);
+    }
+  );
+
+  it('restores an existing toggle unchanged after enabling fails', async () => {
+    fs.mkdirSync(toggleDir, { recursive: true });
+    const file = getBlurTogglePath({ env, home });
+    const original = `${TOGGLE_FILE_CONTENT}\n-- Keep these existing rules.\n`;
+    fs.writeFileSync(file, original);
+    const { run } = fakeHyprctl({ eval: 'rejected' });
+    await expect(setDesktopBlur(true, { run, env, home })).resolves.toMatchObject({
+      success: false,
+    });
+    expect(fs.readFileSync(file, 'utf8')).toBe(original);
+  });
+
   it.each([new Error('timeout'), 'reload failed'])(
     'restores the toggle after %s',
     async (failure) => {
