@@ -15871,11 +15871,12 @@ body[data-season='thanksgiving'] .control-item {
   }
 }
 
-/* Settings: the holiday list reads as a two-column set of switches. */
+/* Settings: the holidays stack as ordinary rows. The shared rule for switches wrapped in their
+   label puts each switch on the right edge, in line with every other switch in Settings. */
 #settings-modal .seasonal-holiday-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 10px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -15883,17 +15884,15 @@ body[data-season='thanksgiving'] .control-item {
 }
 
 #settings-modal .seasonal-holiday-list > legend {
-  grid-column: 1 / -1;
-  margin-bottom: 2px;
+  float: left;
+  width: 100%;
+  margin-bottom: 4px;
   padding: 0;
 }
 
 #settings-modal .seasonal-holiday-option {
-  display: flex;
   align-items: center;
-  gap: 10px;
   font-weight: var(--font-weight-normal);
-  cursor: pointer;
 }
 
 #settings-modal .seasonal-holiday-option .setting-label,

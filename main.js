@@ -48,11 +48,8 @@ let initialLaunchRaise =
   !process.env.HA_WIDGET_LAUNCH_VISIBILITY &&
   (process.argv.includes('--show') || process.argv.includes('--toggle'));
 const { createOmarchyThemeWatcher } = require('./src/omarchy-theme.cjs');
-const {
-  applyWidgetBlurRule,
-  getDesktopBlurStatus,
-  setDesktopBlur,
-} = require('./src/hyprland-blur.cjs');
+const { createHyprlandBlurController, getDesktopBlurStatus } = require('./src/hyprland-blur.cjs');
+const hyprlandBlur = createHyprlandBlurController();
 const { watchForStatusNotifierWatcher } = require('./src/linux-tray-host.cjs');
 const {
   OMARCHY_BAR_PLUGIN_ID,
@@ -959,8 +956,7 @@ const hyprlandConfigReloadWatcher =
         onReload: (event) => {
           // A reload drops the rules added at runtime, the widget's blur rule among them.
           if (event === 'configreloaded') {
-            appliedWidgetBlurRule = null;
-            applyHyprlandWidgetBlur();
+            void hyprlandBlur.reapplyWidgetBlur();
           }
           clearTimeout(layerRefreshTimer);
           layerRefreshTimer = setTimeout(refreshLayerPlacement, 300);
@@ -6240,16 +6236,12 @@ function applyFrostedGlass(override) {
 }
 
 // Chromium cannot blur the desktop behind a Linux window, so on Hyprland the compositor does it
-// for the widget's own surface (src/hyprland-blur.cjs). null: not applied since the last reload.
-let appliedWidgetBlurRule = null;
+// for the widget's own surface (src/hyprland-blur.cjs).
 function applyHyprlandWidgetBlur(override) {
   if (process.platform !== 'linux' || !isHyprland()) return;
   const enabled = resolveFrostedGlassConfig(config, override);
-  if (appliedWidgetBlurRule === enabled) return;
-  appliedWidgetBlurRule = enabled;
-  applyWidgetBlurRule(enabled).then((accepted) => {
+  hyprlandBlur.applyWidgetBlur(enabled).then((accepted) => {
     if (accepted) return;
-    if (appliedWidgetBlurRule === enabled) appliedWidgetBlurRule = null;
     log.debug('Hyprland did not accept the widget blur rule');
   });
 }
@@ -8620,7 +8612,7 @@ ipcMain.handle('set-desktop-blur', async (event, enabled) => {
     return rejectUnauthorizedIpc('set-desktop-blur');
   if (process.platform !== 'linux' || !isHyprland() || typeof enabled !== 'boolean')
     return { success: false, error: 'unsupported' };
-  const result = await setDesktopBlur(enabled);
+  const result = await hyprlandBlur.setDesktopBlur(enabled);
   log.info(
     `Desktop blur for the widget ${enabled ? 'on' : 'off'}: ${result.success ? 'done' : result.error}`
   );

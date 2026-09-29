@@ -4,6 +4,7 @@ const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
 const { APP_ID } = require('./linux-desktop.cjs');
+const { createSerializedTaskRunner } = require('./serialized-task-runner.cjs');
 
 // Chromium cannot blur what is behind its own window: backdrop-filter only sees the page. On
 // Hyprland the compositor has to do it, which takes a rule for the widget's surface and blur
@@ -109,16 +110,67 @@ async function setDesktopBlur(enabled, { run, env, home, fsApi = fs } = {}) {
   const dir = getOmarchyToggleDir({ env, home });
   const file = getBlurTogglePath({ env, home });
   if (!fsApi.existsSync(dir)) return { success: false, error: 'unsupported' };
+  let previousContent = null;
   try {
     if (enabled) fsApi.writeFileSync(file, TOGGLE_FILE_CONTENT);
-    else fsApi.rmSync(file, { force: true });
+    else {
+      if (fsApi.existsSync(file)) previousContent = fsApi.readFileSync(file);
+      fsApi.rmSync(file, { force: true });
+    }
   } catch (error) {
     return { success: false, error: error?.message || String(error) };
   }
   const applied = enabled
     ? await runHyprctl(['eval', TOGGLE_LUA], run)
     : await runHyprctl(['reload'], run);
+  // A failed reload can leave the runtime rules active. Keep the toggle owned by the app
+  // so Settings still offers a way to retry instead of hiding the control.
+  if (applied !== 'ok' && previousContent !== null) {
+    try {
+      fsApi.writeFileSync(file, previousContent);
+    } catch (error) {
+      return { success: false, error: `hyprctl failed; ${error?.message || String(error)}` };
+    }
+  }
   return applied === 'ok' ? { success: true } : { success: false, error: 'hyprctl failed' };
+}
+
+/** Serialize previews, toggle changes and reload recovery so later rules win in request order. */
+function createHyprlandBlurController(options = {}) {
+  const runSerialized = createSerializedTaskRunner();
+  let desiredWidgetBlur = false;
+  let appliedWidgetBlur = null;
+
+  async function apply(enabled, force = false) {
+    if (!force && appliedWidgetBlur === enabled) return true;
+    const accepted = await applyWidgetBlurRule(enabled, options);
+    appliedWidgetBlur = accepted ? enabled : null;
+    return accepted;
+  }
+
+  return {
+    applyWidgetBlur(enabled) {
+      const requested = !!enabled;
+      desiredWidgetBlur = requested;
+      return runSerialized(() => apply(requested));
+    },
+    reapplyWidgetBlur() {
+      // Use the current preview, which can differ from saved config while Settings is open.
+      return runSerialized(() => apply(desiredWidgetBlur, true));
+    },
+    setDesktopBlur(enabled) {
+      return runSerialized(async () => {
+        // Even a failed command may have changed some compositor state.
+        appliedWidgetBlur = null;
+        const result = await setDesktopBlur(enabled, options);
+        if (!result.success) return result;
+        // Enabling adds a blanket no_blur rule; reloading discards runtime rules. In both
+        // cases the widget exception must be sent again, even if its desired state is unchanged.
+        const accepted = await apply(desiredWidgetBlur, true);
+        return accepted ? result : { success: false, error: 'hyprctl failed' };
+      });
+    },
+  };
 }
 
 module.exports = {
@@ -126,6 +178,7 @@ module.exports = {
   TOGGLE_FILE_CONTENT,
   TOGGLE_LUA,
   applyWidgetBlurRule,
+  createHyprlandBlurController,
   getBlurTogglePath,
   getDesktopBlurStatus,
   readHyprlandBlurEnabled,
