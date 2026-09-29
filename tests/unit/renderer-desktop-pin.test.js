@@ -142,7 +142,7 @@ describe('Renderer desktop pin waiting escape hatch', () => {
           : showUnsupportedState
             ? 'Desktop pin not supported yet'
             : showUnavailableState
-              ? 'Bedroom Light is unavailable'
+              ? 'Bedroom Light'
               : showMissingState
                 ? 'Pinned entity not found'
                 : showWaitingState
@@ -155,7 +155,7 @@ describe('Renderer desktop pin waiting escape hatch', () => {
           : showUnsupportedState
             ? `The ${entityDomain} domain does not have a desktop-pin profile yet.`
             : showUnavailableState
-              ? 'Latest Home Assistant data reports this entity as unavailable right now.'
+              ? "Home Assistant can't reach it right now."
               : showMissingState
                 ? 'This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.'
                 : showWaitingState
@@ -364,6 +364,32 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     expect(mockElectronAPI.getConfig).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['offline', 'disconnected', /^Disconnected from Home Assistant/],
+    ['reauth_required', 'disconnected', /authorization expired\. Reconnect with Home Assistant/],
+    ['connected', 'auth-failed', /rejected the authorization for this app/],
+  ])(
+    'never asks a Home Assistant authorization user for a token (%s, %s)',
+    async (oauthStatus, runtimeState, expected) => {
+      await loadRenderer({
+        bootstrapOverrides: {
+          connection: {
+            hasUrl: true,
+            hasToken: oauthStatus === 'connected',
+            secureStoragePending: false,
+            runtimeState,
+            authMethod: 'oauth',
+            oauthStatus,
+          },
+        },
+      });
+
+      const { connectionIssue } = mockUi.renderDesktopPinnedTile.mock.calls.at(-1)[2];
+      expect(connectionIssue).toMatch(expected);
+      expect(connectionIssue).not.toMatch(/token/i);
+    }
+  );
+
   it('clears the connection warning when main reports that credentials are ready', async () => {
     await loadRenderer({
       bootstrapOverrides: {
@@ -466,10 +492,8 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     const focusBtn = document.getElementById('desktop-pin-focus-btn');
 
     expect(emptyState?.dataset.state).toBe('unavailable');
-    expect(title?.textContent).toBe('Bedroom Light is unavailable');
-    expect(copy?.textContent).toBe(
-      'Latest Home Assistant data reports this entity as unavailable right now.'
-    );
+    expect(title?.textContent).toBe('Bedroom Light');
+    expect(copy?.textContent).toBe("Home Assistant can't reach it right now.");
     expect(focusActions?.classList.contains('hidden')).toBe(false);
     expect(focusBtn?.disabled).toBe(false);
   });
@@ -610,5 +634,51 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     await flushAsync();
 
     expect(mockUi.updateDesktopPinLiveDisplays).toHaveBeenCalled();
+  });
+  it('labels the edit-mode hint in the active language', async () => {
+    await loadRenderer();
+    const content = document.getElementById('desktop-pin-content');
+    expect(content.getAttribute('data-edit-hint')).toBe('Drag or resize');
+
+    require('../../src/i18n.js').setLocaleBootstrap({
+      activeLocale: 'de',
+      messages: { 'Drag or resize': 'Ziehen oder Größe ändern' },
+    });
+    triggerMockEvent('desktopPinUpdate', {
+      entityId: 'light.bedroom',
+      entity: { entity_id: 'light.bedroom', state: 'on', attributes: {} },
+    });
+    await flushAsync();
+
+    expect(content.getAttribute('data-edit-hint')).toBe('Ziehen oder Größe ändern');
+    const styles = require('fs').readFileSync(
+      require('path').join(__dirname, '../../styles.css'),
+      'utf8'
+    );
+    expect(styles).toMatch(
+      /\.desktop-pin-edit-mode \.desktop-pin-content::after \{[^}]*content: attr\(data-edit-hint\);/
+    );
+  });
+  it('reloads its translations when the language setting changes', async () => {
+    await loadRenderer();
+    const content = document.getElementById('desktop-pin-content');
+    expect(content.getAttribute('data-edit-hint')).toBe('Drag or resize');
+
+    mockElectronAPI.getLocaleBootstrap.mockResolvedValue({
+      languageSetting: 'de',
+      activeLocale: 'de',
+      messages: { 'Drag or resize': 'Ziehen oder Größe ändern' },
+    });
+    triggerMockEvent('desktopPinUpdate', {
+      type: 'config',
+      entityId: 'light.bedroom',
+      config: {
+        homeAssistant: { url: 'http://homeassistant.local:8123' },
+        ui: { language: 'de' },
+      },
+    });
+    await flushAsync();
+
+    expect(content.getAttribute('data-edit-hint')).toBe('Ziehen oder Größe ändern');
   });
 });

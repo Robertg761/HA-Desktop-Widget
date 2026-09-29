@@ -14,11 +14,12 @@ function runtime(platform = 'darwin', opaquePanels = false) {
   const context = {
     process: { platform, env: {} },
     shouldUseTransparentWindow: () => false,
-    OPAQUE_WINDOW_BACKGROUND_COLOR: '#28282d',
+    OPAQUE_WINDOW_BACKGROUND_COLOR: '#12161e',
     config: { opacity: 0.5, ui: { opaquePanels } },
     mainWindow,
     desktopPinWindows: new Map([['light.test', pin]]),
     log: { warn: jest.fn() },
+    mainT: (key, vars = {}) => key.replace(/\{\{(\w+)\}\}/g, (_match, name) => vars[name] ?? ''),
     applyAlwaysOnTopPreference: jest.fn(),
     applyFrostedGlass: jest.fn(),
     applyDesktopPinWindowEffects: jest.fn(),

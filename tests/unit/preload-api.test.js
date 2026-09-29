@@ -90,6 +90,13 @@ describe('preload Electron API', () => {
       ],
       ['clearProfileSyncPassphrase', [], 'clear-profile-sync-passphrase', []],
       ['resolveProfileSyncFirstEnable', ['merge'], 'resolve-profile-sync-first-enable', ['merge']],
+      ['listProfileSyncBackups', [], 'list-profile-sync-backups', []],
+      [
+        'restoreProfileSyncBackup',
+        ['local-profile-1.json'],
+        'restore-profile-sync-backup',
+        ['local-profile-1.json'],
+      ],
       ['setOpacity', [0.8], 'set-opacity', [0.8]],
       ['previewWindowEffects', [objectArg], 'preview-window-effects', [objectArg]],
       ['setAlwaysOnTop', [true], 'set-always-on-top', [true]],
@@ -98,6 +105,8 @@ describe('preload Electron API', () => {
       ['setLoginItemSettings', [true], 'set-login-item-settings', [true]],
       ['minimizeWindow', [], 'minimize-window', []],
       ['focusWindow', [], 'focus-window', []],
+      ['showWindow', [], 'show-window', []],
+      ['publishOmarchyBarTiles', [objectArg], 'publish-omarchy-bar-tiles', [objectArg]],
       ['focusDesktopPin', ['light.office'], 'focus-desktop-pin', ['light.office']],
       ['restartApp', [], 'restart-app', []],
       ['quitApp', [], 'quit-app', []],
@@ -126,8 +135,10 @@ describe('preload Electron API', () => {
       ['checkForUpdates', [], 'check-for-updates', []],
       ['quitAndInstall', [], 'quit-and-install', []],
       ['getAppVersion', [], 'get-app-version', []],
+      ['getOsInfo', [], 'get-os-info', []],
       ['openLogs', [], 'open-logs', []],
       ['openExternal', ['https://example.test'], 'open-external', ['https://example.test']],
+      ['writeClipboardText', ['report'], 'write-clipboard-text', ['report']],
       [
         'testHaConnection',
         ['https://ha.test', 'token'],
@@ -141,6 +152,7 @@ describe('preload Electron API', () => {
         ['https://ha.test'],
       ],
       ['cancelHomeAssistantOAuth', [], 'cancel-home-assistant-oauth', []],
+      ['refreshHomeAssistantOAuth', [], 'refresh-home-assistant-oauth', []],
       ['disconnectHomeAssistantOAuth', [], 'disconnect-home-assistant-oauth', []],
       ['getDesktopCompanionRegistration', [], 'get-desktop-companion-registration', []],
       ['getDesktopCompanionState', [], 'get-desktop-companion-state', []],
@@ -161,6 +173,7 @@ describe('preload Electron API', () => {
     const api = createElectronApi(ipcRenderer, 'test-platform');
     const listeners = [
       ['onHotkeyTriggered', 'hotkey-triggered'],
+      ['onOmarchyBarEntityAction', 'omarchy-bar-entity-action'],
       ['onHotkeyRegistrationFailed', 'hotkey-registration-failed'],
       ['onAutoUpdate', 'auto-update'],
       ['onProfileSyncStatus', 'profile-sync-status'],
@@ -262,6 +275,59 @@ describe('preload Electron API', () => {
     expect(callback).toHaveBeenCalledTimes(1);
   });
 
+  it('tells main which config revision each update was built from', async () => {
+    const ipcRenderer = createIpcRenderer();
+    ipcRenderer.invoke.mockImplementation(async (channel) =>
+      channel === 'get-config' ? { homeAssistant: {}, configRevision: 3 } : { configRevision: 9 }
+    );
+    const api = createElectronApi(ipcRenderer, 'test-platform');
+    api.onConfigUpdated(jest.fn());
+
+    await api.getConfig();
+    await api.updateConfig({ opacity: 0.5 });
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('update-config', {
+      opacity: 0.5,
+      configBaseRevision: 3,
+    });
+
+    // A delivered update (such as a profile sync pull) moves the base forward.
+    ipcRenderer.emit('config-updated', {}, { homeAssistant: {}, configRevision: 12 });
+    await api.updateConfig({ opacity: 0.6 });
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('update-config', {
+      opacity: 0.6,
+      configBaseRevision: 12,
+    });
+  });
+
+  it('stamps a kept snapshot with the revision it was taken at, not the latest', async () => {
+    const ipcRenderer = createIpcRenderer();
+    ipcRenderer.invoke.mockImplementation(async (channel) =>
+      channel === 'get-config' ? { homeAssistant: {}, configRevision: 3 } : { configRevision: 4 }
+    );
+    const api = createElectronApi(ipcRenderer, 'test-platform');
+    api.onConfigUpdated(jest.fn());
+
+    expect(api.getConfigRevision()).toBeNull();
+    await api.getConfig();
+    expect(api.getConfigRevision()).toBe(3);
+    const rollback = { opacity: 0.5, configRevision: api.getConfigRevision() };
+
+    // A profile sync pull lands before the rollback is sent.
+    ipcRenderer.emit('config-updated', {}, { homeAssistant: {}, configRevision: 12 });
+    expect(api.getConfigRevision()).toBe(12);
+    await api.updateConfig(rollback);
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('update-config', {
+      opacity: 0.5,
+      configBaseRevision: 3,
+    });
+
+    // Anything that is not a config object goes to main untouched, for it to reject.
+    await api.updateConfig(null);
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('update-config', null);
+    await api.updateConfig(['not', 'a', 'config']);
+    expect(ipcRenderer.invoke).toHaveBeenLastCalledWith('update-config', ['not', 'a', 'config']);
+  });
+
   it('tracks the authoritative revision returned by an atomic entity replacement', async () => {
     const ipcRenderer = createIpcRenderer();
     let resolveReplacement;
@@ -318,6 +384,16 @@ describe('preload Electron API', () => {
     expect(callback).toHaveBeenCalledWith({ theme: 'dark', configRevision: 6 });
   });
 
+  it('resolves a failed Home Assistant pairing with its code instead of throwing it', async () => {
+    // A thrown error crosses the context bridge with its message only, losing the code.
+    const ipcRenderer = createIpcRenderer();
+    const failure = { success: false, code: 'OAUTH_SERVER_UNREACHABLE', error: 'unreachable' };
+    ipcRenderer.invoke.mockResolvedValue(failure);
+    const api = createElectronApi(ipcRenderer, 'test-platform');
+
+    await expect(api.startHomeAssistantOAuth('https://ha.test')).resolves.toEqual(failure);
+  });
+
   it('uses an IPC channel fallback when a checked failure has no message', async () => {
     const ipcRenderer = createIpcRenderer();
     ipcRenderer.invoke.mockResolvedValue({ success: false });
@@ -335,12 +411,12 @@ describe('preload Electron API', () => {
     ['clearTokenResetReason', [], 'clear-token-reset-reason'],
     ['saveConfig', [{ theme: 'dark' }], 'save-config'],
     ['clearProfileSyncPassphrase', [], 'clear-profile-sync-passphrase'],
-    ['startHomeAssistantOAuth', ['https://ha.test'], 'start-home-assistant-oauth'],
     ['cancelHomeAssistantOAuth', [], 'cancel-home-assistant-oauth'],
     ['disconnectHomeAssistantOAuth', [], 'disconnect-home-assistant-oauth'],
     ['getDesktopCompanionRegistration', [], 'get-desktop-companion-registration'],
     ['applyDesktopCompanionCommand', ['show'], 'apply-desktop-companion-command'],
     ['restartApp', [], 'restart-app'],
+    ['writeClipboardText', ['report'], 'write-clipboard-text'],
   ])(
     'rejects %s when the main-process persistence contract reports failure',
     async (method, args, channel) => {

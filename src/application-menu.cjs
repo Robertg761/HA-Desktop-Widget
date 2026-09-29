@@ -9,17 +9,19 @@ function createApplicationMenuTemplate(platform = runtimePlatform) {
   ];
 }
 
-function createEditableContextMenuTemplate(editFlags = {}) {
+// Electron fills role labels with fixed English text, so the visible labels are set here.
+// The menu is built each time it opens, so a language change applies to the next one.
+function createEditableContextMenuTemplate(editFlags = {}, t = (text) => text) {
   return [
-    { role: 'undo', enabled: !!editFlags.canUndo },
-    { role: 'redo', enabled: !!editFlags.canRedo },
+    { role: 'undo', label: t('Undo'), enabled: !!editFlags.canUndo },
+    { role: 'redo', label: t('Redo'), enabled: !!editFlags.canRedo },
     { type: 'separator' },
-    { role: 'cut', enabled: !!editFlags.canCut },
-    { role: 'copy', enabled: !!editFlags.canCopy },
-    { role: 'paste', enabled: !!editFlags.canPaste },
-    { role: 'delete', enabled: !!editFlags.canDelete },
+    { role: 'cut', label: t('Cut'), enabled: !!editFlags.canCut },
+    { role: 'copy', label: t('Copy'), enabled: !!editFlags.canCopy },
+    { role: 'paste', label: t('Paste'), enabled: !!editFlags.canPaste },
+    { role: 'delete', label: t('Delete'), enabled: !!editFlags.canDelete },
     { type: 'separator' },
-    { role: 'selectAll', enabled: !!editFlags.canSelectAll },
+    { role: 'selectAll', label: t('Select All'), enabled: !!editFlags.canSelectAll },
   ];
 }
 
@@ -48,7 +50,9 @@ function attachEditHandlers(targetWindow, Menu, platform = runtimePlatform, opti
   webContents.on('context-menu', (event, params = {}) => {
     if (!params.isEditable) return;
     event?.preventDefault?.();
-    const menu = Menu.buildFromTemplate(createEditableContextMenuTemplate(params.editFlags));
+    const menu = Menu.buildFromTemplate(
+      createEditableContextMenuTemplate(params.editFlags, options.translate)
+    );
     const resumeAutoHide = options.suspendAutoHide?.();
     try {
       menu.popup({

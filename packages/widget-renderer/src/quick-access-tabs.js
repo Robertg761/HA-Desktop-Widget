@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 const DEFAULT_QUICK_ACCESS_TAB_ID = 'default';
 const DEFAULT_QUICK_ACCESS_TAB_NAME = 'All';
 
@@ -30,7 +32,8 @@ function getFavoriteEntityUnion(tabs) {
   }, []);
 }
 
-function normalizeTabName(name, fallback = DEFAULT_QUICK_ACCESS_TAB_NAME) {
+// Fallback names are only used for pages that have none, so they follow the active language.
+function normalizeTabName(name, fallback = t(DEFAULT_QUICK_ACCESS_TAB_NAME)) {
   if (typeof name !== 'string') return fallback;
   const trimmed = name.trim();
   return trimmed || fallback;
@@ -62,7 +65,7 @@ function normalizeExistingTabs(customTabs) {
     const id = makeUniqueTabId(baseId, usedIds);
     const name = normalizeTabName(
       rawTab.name,
-      index === 0 ? DEFAULT_QUICK_ACCESS_TAB_NAME : `View ${index + 1}`
+      index === 0 ? t(DEFAULT_QUICK_ACCESS_TAB_NAME) : t('View {{index}}', { index: index + 1 })
     );
     const entityIds = normalizeEntityIds(
       Array.isArray(rawTab.entityIds) ? rawTab.entityIds : rawTab.entities
@@ -80,7 +83,7 @@ function normalizeQuickAccessConfig(config, options = {}) {
     tabs = [
       {
         id: DEFAULT_QUICK_ACCESS_TAB_ID,
-        name: DEFAULT_QUICK_ACCESS_TAB_NAME,
+        name: t(DEFAULT_QUICK_ACCESS_TAB_NAME),
         entityIds: normalizeEntityIds(source.favoriteEntities),
       },
     ];
@@ -135,7 +138,7 @@ function addQuickAccessView(config, name, options = {}) {
     ...normalized.customTabs,
     {
       id: rawId,
-      name: normalizeTabName(name, 'New View'),
+      name: normalizeTabName(name, t('New View')),
       entityIds: [],
     },
   ];
@@ -163,7 +166,13 @@ function deleteQuickAccessView(config, tabId) {
   if (normalized.customTabs.length <= 1) return normalized;
   const nextTabs = normalized.customTabs.filter((tab) => tab.id !== tabId);
   if (nextTabs.length === normalized.customTabs.length) return normalized;
-  const activeTabId = normalized.activeTabId === tabId ? nextTabs[0].id : normalized.activeTabId;
+  // Deleting the page on screen moves to its neighbour (the next page, or the previous one when
+  // it was last) instead of jumping back to the first page.
+  const deletedIndex = normalized.customTabs.findIndex((tab) => tab.id === tabId);
+  const activeTabId =
+    normalized.activeTabId === tabId
+      ? nextTabs[Math.min(deletedIndex, nextTabs.length - 1)].id
+      : normalized.activeTabId;
   return normalizeQuickAccessConfig({
     ...normalized,
     customTabs: nextTabs,

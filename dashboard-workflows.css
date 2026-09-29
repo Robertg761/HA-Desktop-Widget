@@ -278,7 +278,26 @@
   margin: 0;
 }
 
-.alert-advanced-options label[hidden] {
+/* The target state field comes from the older alert markup; match the fields around it. */
+.alert-advanced-options > .form-group {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.alert-advanced-options > .form-group > label {
+  margin-bottom: 8px;
+  color: inherit;
+  font-weight: inherit;
+  letter-spacing: normal;
+}
+
+.alert-advanced-options > .form-group > .form-help {
+  margin-top: 8px;
+}
+
+.form-group.alert-advanced-options label[hidden] {
   display: none;
 }
 
@@ -312,7 +331,7 @@ body:not(.theme-light) .alert-advanced-options input[type='time'] {
 .room-dashboard :focus-visible,
 .sensor-history-controls :focus-visible,
 .alert-advanced-options :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
 }
 
@@ -366,7 +385,13 @@ body:not(.theme-light) .alert-advanced-options input[type='time'] {
   grid-column: 1 / -1;
 }
 
-.room-entity-list > label[hidden] {
+.room-device-search[hidden] {
+  display: none;
+}
+
+/* Search hides rows with the hidden attribute. `.form-group label:has(input[type='checkbox'])` in
+   styles.css sets display: flex at higher specificity, so this rule has to outrank it. */
+.room-dashboard .room-entity-list > label[hidden] {
   display: none;
 }
 

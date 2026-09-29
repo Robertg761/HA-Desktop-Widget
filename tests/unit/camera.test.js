@@ -35,6 +35,10 @@ jest.mock('hls.js', () => mockHls, { virtual: true });
 // Mock dependencies
 jest.mock('../../src/ui-utils.js', () => ({
   showToast: jest.fn(),
+  trapFocus: jest.fn((...args) => jest.requireActual('../../src/ui-utils.js').trapFocus(...args)),
+  releaseFocusTrap: jest.fn((...args) =>
+    jest.requireActual('../../src/ui-utils.js').releaseFocusTrap(...args)
+  ),
   // Mirrors the real shared modal helper, which settles synchronously under NODE_ENV=test.
   closeModal: jest.fn((modal, { remove = false, onClosed } = {}) => {
     if (modal) {
@@ -69,6 +73,10 @@ jest.mock('../../src/utils.js', () => ({
   getEntityDisplayName: jest.fn((entity) => {
     if (!entity) return 'Unknown Entity';
     return entity.attributes?.friendly_name || entity.entity_id;
+  }),
+  getLocalizedStateName: jest.fn((value) => {
+    const text = String(value || '');
+    return text.charAt(0).toUpperCase() + text.slice(1);
   }),
 }));
 
@@ -1111,7 +1119,7 @@ describe('Camera Module', () => {
       await camera.openCamera('camera.front_door', { sourceTile: tile });
 
       expect(visual.getAttribute('aria-hidden')).toBeNull();
-      expect(image.getAttribute('alt')).toBe('Front Door Camera Preview');
+      expect(image.getAttribute('alt')).toBe('Front Door Camera preview');
 
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
@@ -1120,6 +1128,79 @@ describe('Camera Module', () => {
       expect(image.parentNode).toBe(visual);
       expect(image.hasAttribute('src')).toBe(true);
       expect(image.getAttribute('alt')).toBe('');
+    });
+
+    it('shows the preview status in the current language when the expanded view opens', async () => {
+      const i18n = require('../../src/i18n.js');
+      const tile = createPreviewTile();
+      mockState.CONFIG = getMockConfig();
+      mockState.STATES = {
+        'camera.front_door': sampleStates['camera.front_door'],
+      };
+      camera.mountCameraPreview(tile, 'camera.front_door', '10s');
+      jest.advanceTimersByTime(0);
+      pendingImage(tile).onerror();
+      try {
+        // The language changes after the status was set.
+        i18n.setLocaleBootstrap({
+          activeLocale: 'de',
+          messages: { 'Preview unavailable': 'Vorschau nicht verfügbar' },
+        });
+        await camera.openCamera('camera.front_door', { sourceTile: tile });
+        expect(document.querySelector('.camera-expanded-preview-status').textContent).toBe(
+          'Vorschau nicht verfügbar'
+        );
+      } finally {
+        document.querySelector('.camera-expanded-preview-close')?.click();
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
+    });
+
+    it('closes the expanded view, not the dialog under it, on Escape with focus on the page', async () => {
+      const uiUtils = jest.requireActual('../../src/ui-utils.js');
+      const settings = document.createElement('div');
+      settings.className = 'modal';
+      settings.innerHTML = '<div class="modal-content"><button>Save</button></div>';
+      document.body.appendChild(settings);
+      const settingsEscape = jest.fn();
+      settings.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') settingsEscape();
+      });
+      uiUtils.trapFocus(settings, { initialFocus: false });
+
+      const tile = createPreviewTile();
+      mockState.CONFIG = getMockConfig();
+      mockState.STATES = {
+        'camera.front_door': sampleStates['camera.front_door'],
+      };
+      camera.mountCameraPreview(tile, 'camera.front_door', '10s');
+      jest.advanceTimersByTime(0);
+      pendingImage(tile).onload();
+      await camera.openCamera('camera.front_door', { sourceTile: tile });
+      const preview = document.querySelector('.camera-expanded-preview');
+      expect(preview).toBeTruthy();
+
+      // Tab with focus on the page comes back into the preview rather than Settings.
+      document.activeElement.blur();
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+      jest.advanceTimersByTime(0);
+      expect(preview.contains(document.activeElement)).toBe(true);
+
+      document.activeElement.blur();
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+      );
+      expect(document.querySelector('.camera-expanded-preview')).toBeNull();
+      expect(settingsEscape).not.toHaveBeenCalled();
+
+      // Focus went back to the tile; from the page, the next Escape is for Settings.
+      document.activeElement.blur();
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+      );
+      expect(settingsEscape).toHaveBeenCalledTimes(1);
+      uiUtils.releaseFocusTrap(settings);
+      settings.remove();
     });
 
     it('removes an expanded preview and its pending request when the tile is disposed', async () => {
@@ -1449,14 +1530,14 @@ describe('Camera Module', () => {
     });
 
     it('reports a failed snapshot instead of leaving a broken image', async () => {
-      const { showToast } = require('../../src/ui-utils.js');
       await camera.openCamera('camera.front_door');
       const img = document.querySelector('.camera-modal .camera-stream');
 
       expect(img.getAttribute('src')).toMatch(/^ha:\/\/camera\/camera\.front_door\?/);
       img.onerror();
 
-      expect(showToast).toHaveBeenCalledWith('Could not load camera snapshot', 'error', 2500);
+      // Said in the viewer itself; a toast would outlive the dialog it describes.
+      expect(document.getElementById('camera-viewer-message').hidden).toBe(false);
       expect(document.getElementById('camera-loading').classList.contains('show')).toBe(false);
     });
 
@@ -1570,8 +1651,51 @@ describe('Camera Module', () => {
       const modal = document.querySelector('.camera-modal');
       const cameraInfo = modal.querySelector('.camera-info');
 
-      expect(cameraInfo.textContent).toContain('Status:');
-      expect(cameraInfo.textContent).toContain('Last Updated:');
+      // A readable state label and when the frame was last updated, not the raw "idle".
+      expect(cameraInfo.querySelector('.camera-info-state').textContent).toMatch(/^[A-Z]/);
+      expect(cameraInfo.querySelector('.camera-info-updated').textContent).toMatch(/^Updated /);
+    });
+
+    it('shows a message in the viewer instead of a broken image when a frame fails', async () => {
+      await camera.openCamera('camera.front_door');
+      const modal = document.querySelector('.camera-modal');
+      const img = modal.querySelector('.camera-stream');
+      const message = modal.querySelector('#camera-viewer-message');
+      expect(message.hidden).toBe(true);
+
+      img.onerror();
+      expect(message.hidden).toBe(false);
+      expect(img.classList.contains('camera-img-failed')).toBe(true);
+
+      img.onload();
+      expect(message.hidden).toBe(true);
+    });
+
+    it('clears a failed-frame message when Live is started', async () => {
+      await camera.openCamera('camera.front_door');
+      const modal = document.querySelector('.camera-modal');
+      const img = modal.querySelector('.camera-stream');
+      const message = modal.querySelector('#camera-viewer-message');
+
+      img.onerror();
+      expect(message.hidden).toBe(false);
+
+      modal.querySelector('#live-btn').click();
+      expect(message.hidden).toBe(true);
+      expect(img.classList.contains('camera-img-failed')).toBe(false);
+    });
+
+    it('names the streaming camera state in the active language', () => {
+      const i18n = require('../../src/i18n.js');
+      try {
+        i18n.setLocaleBootstrap({ activeLocale: 'de', messages: { Streaming: 'Überträgt' } });
+        mockState.STATES['camera.front_door'].state = 'streaming';
+        camera.openCamera('camera.front_door');
+        const info = document.querySelector('.camera-modal .camera-info');
+        expect(info.textContent).toContain('Überträgt');
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
     });
   });
 

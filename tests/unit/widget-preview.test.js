@@ -117,4 +117,37 @@ describe('panel preview virtual desktop', () => {
     expect(api.getDocument().customTabs[0].entityIds).not.toContain('switch.fan');
     api.setEditing(false);
   });
+
+  test('tile edits report the edited document to the parent', async () => {
+    await api.applyProfile(PROFILE_DOCUMENT);
+    await flush();
+    const changes = [];
+    api.onDocumentChange = (doc) => changes.push(doc);
+    api.setEditing(true);
+    api.addEntity('switch.fan');
+    await flush();
+    expect(changes.at(-1).customTabs[0].entityIds).toContain('switch.fan');
+    api.removeEntity('switch.fan');
+    await flush();
+    expect(changes.at(-1).customTabs[0].entityIds).not.toContain('switch.fan');
+    api.setEditing(false);
+    api.onDocumentChange = null;
+  });
+
+  test('the virtual socket answers like Home Assistant so the app reports connected', async () => {
+    const websocket = require('../../src/websocket.js').default;
+    const messages = [];
+    const listener = (message) => messages.push(message);
+    websocket.on('message', listener);
+    const request = websocket.request({ type: 'get_states' });
+    expect(Number.isInteger(request.id)).toBe(true);
+    const response = await request;
+    await flush();
+    websocket.removeListener('message', listener);
+    expect(response).toMatchObject({ id: request.id, type: 'result', success: true });
+    expect(messages).toContainEqual(
+      expect.objectContaining({ id: request.id, type: 'result', success: true })
+    );
+    expect(document.getElementById('widget-state-panel')).toBeNull();
+  });
 });

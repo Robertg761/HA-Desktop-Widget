@@ -67,7 +67,22 @@ function createElectronApi(ipcRenderer, platform) {
       flushDeferredConfigUpdate();
     }
   };
-  const updateConfig = (config) => invokeConfigMutation('update-config', config);
+  const getLatestConfigRevision = () =>
+    Math.max(latestSettledConfigRevision, latestDeliveredConfigRevision);
+  // Every update says which config revision it was built from, so main can tell
+  // a snapshot taken before a profile sync pull from a change made after it. A
+  // snapshot that carries its own configRevision (one kept for a later rollback)
+  // is stamped with that; anything else is taken to be built from the latest.
+  const updateConfig = (config) => {
+    if (!config || typeof config !== 'object' || Array.isArray(config)) {
+      return invokeConfigMutation('update-config', config);
+    }
+    const { configRevision: _snapshotRevision, ...payload } = config;
+    const snapshotRevision = getConfigRevision(config);
+    const baseRevision = snapshotRevision ?? getLatestConfigRevision();
+    if (baseRevision >= 0) payload.configBaseRevision = baseRevision;
+    return invokeConfigMutation('update-config', payload);
+  };
   const replaceConfigEntityId = (oldEntityId, newEntityId) =>
     invokeConfigMutation('replace-config-entity-id', oldEntityId, newEntityId);
   const subscribeConfigUpdated = (callback) => {
@@ -108,12 +123,23 @@ function createElectronApi(ipcRenderer, platform) {
     platform,
 
     signalRendererReady: () => invoke('renderer-ready'),
-    getConfig: () => invoke('get-config'),
+    getConfig: async () => {
+      const result = await invoke('get-config');
+      const revision = getConfigRevision(result);
+      if (revision !== null) {
+        latestDeliveredConfigRevision = Math.max(latestDeliveredConfigRevision, revision);
+      }
+      return result;
+    },
     getLocaleBootstrap: () => invoke('get-locale-bootstrap'),
     getLocalePacks: (forceRefresh = false) => invoke('get-locale-packs', forceRefresh),
     downloadLocalePack: (locale) => invoke('download-locale-pack', locale),
     removeLocalePack: (locale) => invoke('remove-locale-pack', locale),
     updateConfig,
+    getConfigRevision: () => {
+      const revision = getLatestConfigRevision();
+      return revision >= 0 ? revision : null;
+    },
     replaceConfigEntityId,
     clearTokenResetReason: () => invokeChecked('clear-token-reset-reason'),
     saveConfig: (config) => invokeChecked('save-config', config),
@@ -145,6 +171,8 @@ function createElectronApi(ipcRenderer, platform) {
       invoke('set-profile-sync-passphrase', passphrase, remember, encryptionEnabled),
     clearProfileSyncPassphrase: () => invokeChecked('clear-profile-sync-passphrase'),
     resolveProfileSyncFirstEnable: (choice) => invoke('resolve-profile-sync-first-enable', choice),
+    listProfileSyncBackups: () => invoke('list-profile-sync-backups'),
+    restoreProfileSyncBackup: (id) => invoke('restore-profile-sync-backup', id),
 
     setOpacity: (opacity) => invokeChecked('set-opacity', opacity),
     previewWindowEffects: (effects) => invoke('preview-window-effects', effects),
@@ -157,6 +185,8 @@ function createElectronApi(ipcRenderer, platform) {
     setLoginItemSettings: (openAtLogin) => invoke('set-login-item-settings', openAtLogin),
     minimizeWindow: () => invoke('minimize-window'),
     focusWindow: () => invoke('focus-window'),
+    showWindow: () => invoke('show-window'),
+    publishOmarchyBarTiles: (payload) => invoke('publish-omarchy-bar-tiles', payload),
     focusDesktopPin: (entityId) => invoke('focus-desktop-pin', entityId),
     restartApp: () => invokeChecked('restart-app'),
     quitApp: () => invoke('quit-app'),
@@ -180,11 +210,16 @@ function createElectronApi(ipcRenderer, platform) {
     quitAndInstall: () => invoke('quit-and-install'),
 
     getAppVersion: () => invoke('get-app-version'),
+    getOsInfo: () => invoke('get-os-info'),
     openLogs: () => invoke('open-logs'),
     openExternal: (url) => invoke('open-external', url),
+    writeClipboardText: (text) => invokeChecked('write-clipboard-text', text),
     testHaConnection: (url, token) => invoke('test-ha-connection', url, token),
-    startHomeAssistantOAuth: (url) => invokeChecked('start-home-assistant-oauth', url),
+    // Resolves with { success: false, code } instead of throwing: an error thrown across the
+    // context bridge keeps only its message, and callers need the code (canceled, unreachable).
+    startHomeAssistantOAuth: (url) => invoke('start-home-assistant-oauth', url),
     cancelHomeAssistantOAuth: () => invokeChecked('cancel-home-assistant-oauth'),
+    refreshHomeAssistantOAuth: () => invoke('refresh-home-assistant-oauth'),
     disconnectHomeAssistantOAuth: () => invokeChecked('disconnect-home-assistant-oauth'),
     getDesktopCompanionRegistration: async () =>
       (await invokeChecked('get-desktop-companion-registration')).registration,
@@ -194,6 +229,7 @@ function createElectronApi(ipcRenderer, platform) {
     debugLog: (payload) => invoke('debug-log', payload),
 
     onHotkeyTriggered: (callback) => subscribe('hotkey-triggered', callback),
+    onOmarchyBarEntityAction: (callback) => subscribe('omarchy-bar-entity-action', callback),
     onHotkeyRegistrationFailed: (callback) => subscribe('hotkey-registration-failed', callback),
     onAutoUpdate: (callback) => subscribe('auto-update', callback),
     onOpenSettings: (callback) => subscribe('open-settings', callback, { includeData: false }),

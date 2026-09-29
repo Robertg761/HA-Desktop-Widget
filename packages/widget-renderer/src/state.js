@@ -116,6 +116,11 @@ export function setAreas(newAreas) {
     console.error('Error setting areas:', error);
   }
 }
+// Home Assistant's own time zone (get_config), for times it reports without an offset.
+let TIME_ZONE = null;
+export function setTimeZone(timeZone) {
+  TIME_ZONE = typeof timeZone === 'string' && timeZone ? timeZone : null;
+}
 export function setUnitSystem(newUnitSystem) {
   try {
     UNIT_SYSTEM = newUnitSystem;
@@ -146,6 +151,9 @@ const state = {
   get UNIT_SYSTEM() {
     return UNIT_SYSTEM;
   },
+  get TIME_ZONE() {
+    return TIME_ZONE;
+  },
   setConfig,
   setWs,
   setStates,
@@ -155,6 +163,7 @@ const state = {
   setServices,
   setAreas,
   setUnitSystem,
+  setTimeZone,
 };
 
 export default state;

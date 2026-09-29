@@ -8,6 +8,7 @@ const OAUTH_CREDENTIALS_FILE = 'home-assistant-oauth.json';
 const OAUTH_CALLBACK_PATH = '/oauth/callback';
 const OAUTH_PAIRING_TIMEOUT_MS = 5 * 60 * 1000;
 const OAUTH_HTTP_TIMEOUT_MS = 15 * 1000;
+const OAUTH_PROBE_TIMEOUT_MS = 8 * 1000;
 const OAUTH_MAX_RESPONSE_BYTES = 64 * 1024;
 
 function createOAuthError(message, code, status = 0) {
@@ -68,8 +69,19 @@ function statesMatch(expected, received) {
   );
 }
 
+function escapeCallbackPageText(value) {
+  return String(value).replace(
+    /[&<>"']/g,
+    (character) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]
+  );
+}
+
+// Title and message are already translated; language packs are downloaded data, so escape them.
 function sendCallbackPage(response, statusCode, title, message) {
-  const body = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>${title}</title></head><body style="font-family:system-ui,sans-serif;max-width:36rem;margin:4rem auto;padding:0 1rem"><h1>${title}</h1><p>${message}</p></body></html>`;
+  const safeTitle = escapeCallbackPageText(title);
+  const safeMessage = escapeCallbackPageText(message);
+  const body = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>${safeTitle}</title></head><body style="font-family:system-ui,sans-serif;max-width:36rem;margin:4rem auto;padding:0 1rem"><h1>${safeTitle}</h1><p>${safeMessage}</p></body></html>`;
   response.writeHead(statusCode, {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store',
@@ -87,6 +99,8 @@ async function authorizeWithLoopback({
   timeoutMs = OAUTH_PAIRING_TIMEOUT_MS,
   createServer = http.createServer,
   randomBytes = nodeCrypto.randomBytes,
+  // Translates the browser pages shown after Home Assistant redirects back to the app.
+  translate: t = (text) => text,
 }) {
   const normalizedBaseUrl = normalizeHomeAssistantBaseUrl(baseUrl);
   if (!normalizedBaseUrl) {
@@ -133,7 +147,7 @@ async function authorizeWithLoopback({
       return;
     }
     if (settled) {
-      sendCallbackPage(response, 409, 'Authorization already handled', 'Return to the app.');
+      sendCallbackPage(response, 409, t('Authorization already handled'), t('Return to the app.'));
       return;
     }
 
@@ -143,8 +157,8 @@ async function authorizeWithLoopback({
       sendCallbackPage(
         response,
         400,
-        'Authorization rejected',
-        'The authorization state did not match. Return to the app and try again.'
+        t('Authorization rejected'),
+        t('The authorization state did not match. Return to the app and try again.')
       );
       rejectCallback(
         createOAuthError('Home Assistant returned an invalid OAuth state', 'OAUTH_STATE_MISMATCH')
@@ -160,7 +174,12 @@ async function authorizeWithLoopback({
       .trim()
       .slice(0, 512);
     if (oauthError) {
-      sendCallbackPage(response, 400, 'Authorization declined', 'Return to the app to try again.');
+      sendCallbackPage(
+        response,
+        400,
+        t('Authorization declined'),
+        t('Return to the app to try again.')
+      );
       rejectCallback(createOAuthError(oauthError, 'OAUTH_AUTHORIZATION_DECLINED'));
       return;
     }
@@ -170,8 +189,8 @@ async function authorizeWithLoopback({
       sendCallbackPage(
         response,
         400,
-        'Authorization incomplete',
-        'Home Assistant did not return a valid authorization code.'
+        t('Authorization incomplete'),
+        t('Home Assistant did not return a valid authorization code.')
       );
       rejectCallback(
         createOAuthError(
@@ -185,8 +204,8 @@ async function authorizeWithLoopback({
     sendCallbackPage(
       response,
       200,
-      'HA Desktop Widget connected',
-      'You can close this browser tab and return to the desktop app.'
+      t('HA Desktop Widget connected'),
+      t('You can close this browser tab and return to the desktop app.')
     );
     settleCallback(code);
   });
@@ -312,6 +331,72 @@ function requestFormWithElectronNet(electronNet, url, fields, timeoutMs = OAUTH_
   });
 }
 
+// Reachability check made before a browser is opened. A URL that nothing answers on would
+// otherwise leave the user waiting out the whole pairing timeout for a page that never loads.
+// Any HTTP answer counts: only the transport failing means the address is wrong.
+function probeHomeAssistantWithElectronNet(
+  electronNet,
+  baseUrl,
+  { signal = null, timeoutMs = OAUTH_PROBE_TIMEOUT_MS } = {}
+) {
+  return new Promise((resolve, reject) => {
+    let completed = false;
+    let request = null;
+    const unreachable = () =>
+      createOAuthError('Could not reach Home Assistant at that URL', 'OAUTH_SERVER_UNREACHABLE');
+    const abortRequest = () => {
+      try {
+        request?.abort();
+      } catch {
+        // The request may already have completed.
+      }
+    };
+    const finish = (error) => {
+      if (completed) return;
+      completed = true;
+      clearTimeout(timeoutId);
+      signal?.removeEventListener('abort', onAbort);
+      if (error) reject(error);
+      else resolve();
+    };
+    const onAbort = () => {
+      abortRequest();
+      finish(
+        createOAuthError(
+          'Home Assistant authorization was canceled',
+          'OAUTH_AUTHORIZATION_CANCELED'
+        )
+      );
+    };
+    const timeoutId = setTimeout(() => {
+      abortRequest();
+      finish(unreachable());
+    }, timeoutMs);
+    timeoutId.unref?.();
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    signal?.addEventListener('abort', onAbort, { once: true });
+    try {
+      request = electronNet.request({
+        method: 'GET',
+        url: `${baseUrl}/auth/providers`,
+        redirect: 'follow',
+      });
+      request.setHeader('Accept', 'application/json');
+      request.on('response', () => {
+        finish(null);
+        abortRequest();
+      });
+      request.on('error', () => finish(unreachable()));
+      request.end();
+    } catch {
+      finish(unreachable());
+    }
+  });
+}
+
 function parseTokenResponse(response, { requireRefreshToken = false } = {}) {
   let parsed;
   try {
@@ -357,8 +442,10 @@ class HomeAssistantOAuthClient {
     openExternal,
     postForm,
     isSecureStorageAvailable,
+    probeServer = null,
     now = Date.now,
     log = console,
+    translate = (text) => text,
   }) {
     this.safeStorage = safeStorage;
     this.platform = platform;
@@ -366,13 +453,16 @@ class HomeAssistantOAuthClient {
     this.openExternal = openExternal;
     this.postForm = postForm;
     this.isSecureStorageAvailable = isSecureStorageAvailable;
+    this.probeServer = probeServer;
     this.now = now;
     this.log = log;
+    this.translate = translate;
     this.credentialsPath = path.join(userDataPath, OAUTH_CREDENTIALS_FILE);
     this.session = null;
     this.refreshPromise = null;
     this.pairingPromise = null;
     this.pairingController = null;
+    this.pairingBaseUrl = null;
   }
 
   assertSecureStorage() {
@@ -487,6 +577,13 @@ class HomeAssistantOAuthClient {
       refreshToken: credentials.refreshToken,
       accessToken: tokens.accessToken,
       expiresAt: this.now() + tokens.expiresIn * 1000,
+      // Stable for the life of one authorization while the access token rotates, so the app
+      // can tell a routine token refresh from a new sign-in. One-way, so it reveals nothing.
+      authorizationId: nodeCrypto
+        .createHash('sha256')
+        .update(`${credentials.clientId}\u0000${credentials.refreshToken}`)
+        .digest('hex')
+        .slice(0, 16),
     };
     return this.publicSession();
   }
@@ -497,39 +594,61 @@ class HomeAssistantOAuthClient {
       baseUrl: this.session.baseUrl,
       accessToken: this.session.accessToken,
       expiresAt: this.session.expiresAt,
+      authorizationId: this.session.authorizationId,
     };
   }
 
   async pair(baseUrl) {
-    if (this.pairingPromise) return this.pairingPromise;
+    const normalizedBaseUrl = normalizeHomeAssistantBaseUrl(baseUrl);
+    if (this.pairingPromise) {
+      // A second request for the same server joins the pairing already waiting in the browser.
+      // One for another server must not: it would silently wait on the old server's approval.
+      // A canceled pairing is only waiting to settle as canceled; a new request starts afresh.
+      if (this.pairingBaseUrl === normalizedBaseUrl && !this.pairingController?.signal.aborted) {
+        return this.pairingPromise;
+      }
+      this.cancelPairing();
+    }
     this.assertSecureStorage();
     const controller = new AbortController();
     this.pairingController = controller;
-    this.pairingPromise = authorizeWithLoopback({
-      baseUrl,
-      signal: controller.signal,
-      openExternal: this.openExternal,
-      exchangeCode: async ({ baseUrl: resolvedBaseUrl, clientId, redirectUri, code }) => {
-        const response = await this.postForm(`${resolvedBaseUrl}/auth/token`, {
-          grant_type: 'authorization_code',
-          code,
-          client_id: clientId,
-        });
-        const tokens = parseTokenResponse(response, { requireRefreshToken: true });
-        const credentials = {
-          baseUrl: resolvedBaseUrl,
-          clientId,
-          redirectUri,
-          refreshToken: tokens.refreshToken,
-        };
-        this.writeCredentials(credentials);
-        return this.createSession(credentials, tokens);
-      },
-    });
+    this.pairingBaseUrl = normalizedBaseUrl;
+    const pairing = (async () => {
+      if (normalizedBaseUrl && this.probeServer) {
+        await this.probeServer(normalizedBaseUrl, controller.signal);
+      }
+      return authorizeWithLoopback({
+        baseUrl,
+        signal: controller.signal,
+        openExternal: this.openExternal,
+        translate: this.translate,
+        exchangeCode: async ({ baseUrl: resolvedBaseUrl, clientId, redirectUri, code }) => {
+          const response = await this.postForm(`${resolvedBaseUrl}/auth/token`, {
+            grant_type: 'authorization_code',
+            code,
+            client_id: clientId,
+          });
+          const tokens = parseTokenResponse(response, { requireRefreshToken: true });
+          const credentials = {
+            baseUrl: resolvedBaseUrl,
+            clientId,
+            redirectUri,
+            refreshToken: tokens.refreshToken,
+          };
+          this.writeCredentials(credentials);
+          return this.createSession(credentials, tokens);
+        },
+      });
+    })();
+    this.pairingPromise = pairing;
     try {
-      return await this.pairingPromise;
+      return await pairing;
     } finally {
-      this.pairingPromise = null;
+      // A superseded pairing settles after its replacement started; leave the new one alone.
+      if (this.pairingPromise === pairing) {
+        this.pairingPromise = null;
+        this.pairingBaseUrl = null;
+      }
       if (this.pairingController === controller) this.pairingController = null;
     }
   }
@@ -539,6 +658,16 @@ class HomeAssistantOAuthClient {
     if (!controller || controller.signal.aborted) return false;
     controller.abort();
     return true;
+  }
+
+  // A pairing that finished while a refresh was in flight has replaced the saved authorization;
+  // the old refresh token being rejected says nothing about the new one.
+  isStoredRefreshToken(credentials) {
+    try {
+      return this.readCredentials()?.refreshToken === credentials.refreshToken;
+    } catch {
+      return false;
+    }
   }
 
   async restore() {
@@ -561,7 +690,10 @@ class HomeAssistantOAuthClient {
         const tokens = parseTokenResponse(response);
         return this.createSession(resolvedCredentials, tokens);
       } catch (error) {
-        if (error?.code === 'OAUTH_INVALID_GRANT') {
+        if (
+          error?.code === 'OAUTH_INVALID_GRANT' &&
+          this.isStoredRefreshToken(resolvedCredentials)
+        ) {
           this.clearCredentials();
         }
         throw error;
@@ -610,5 +742,6 @@ module.exports = {
   isLoopbackOAuthClient,
   normalizeHomeAssistantBaseUrl,
   parseTokenResponse,
+  probeHomeAssistantWithElectronNet,
   requestFormWithElectronNet,
 };

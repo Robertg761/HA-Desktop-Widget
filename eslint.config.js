@@ -25,6 +25,7 @@ module.exports = [
       'jest.config.js',
       'babel.config.js',
       'scripts/*.cjs',
+      'scripts/**/*.cjs',
       'src/desktop-pin-ipc.cjs',
       'src/ha-oauth.cjs',
       'src/ha-protocol.cjs',

@@ -3,6 +3,7 @@ const {
   getDesktopPinMinBounds,
   resolveDesktopPinMinBounds,
   clampDesktopPinBounds,
+  getDesktopPinWindowBounds,
 } = require('../../src/desktop-pin-bounds.js');
 
 describe('desktop pin bounds helpers', () => {
@@ -127,6 +128,73 @@ describe('desktop pin bounds helpers', () => {
       y: 72,
       width: 132,
       height: 118,
+    });
+  });
+
+  describe('Text and control size', () => {
+    const workArea = { x: 0, y: 0, width: 1280, height: 720 };
+
+    test('scales default and minimum bounds with the interface scale', () => {
+      expect(getDesktopPinBaseBounds('light.bedroom', 1.5)).toEqual({ width: 252, height: 222 });
+      expect(getDesktopPinBaseBounds('media_player.spotify', 1.3)).toEqual({
+        width: 427,
+        height: 203,
+      });
+      expect(getDesktopPinMinBounds('light.bedroom', 1.3)).toEqual({ width: 219, height: 193 });
+      expect(getDesktopPinMinBounds('switch.kettle', 1.5)).toEqual({ width: 234, height: 183 });
+      // Float noise (120 * 1.15 = 138.00000000000003) must not add a pixel.
+      expect(getDesktopPinMinBounds('switch.kettle', 1.15)).toEqual({ width: 180, height: 141 });
+      expect(resolveDesktopPinMinBounds('scene.relax', { width: 132, height: 118 }, 1.5)).toEqual({
+        width: 198,
+        height: 177,
+      });
+    });
+
+    test('ignores unsupported scale values', () => {
+      expect(getDesktopPinMinBounds('light.bedroom', 3)).toEqual({ width: 168, height: 148 });
+      expect(getDesktopPinBaseBounds('light.bedroom', 'large')).toEqual({
+        width: 168,
+        height: 148,
+      });
+    });
+
+    test('scales saved 100% bounds into window bounds from the saved position', () => {
+      const saved = { x: 200, y: 120, width: 168, height: 148 };
+      expect(getDesktopPinWindowBounds(saved, { entityId: 'light.bedroom', workArea })).toEqual(
+        saved
+      );
+      expect(
+        getDesktopPinWindowBounds(saved, { entityId: 'light.bedroom', workArea, scale: 1.3 })
+      ).toEqual({ x: 200, y: 120, width: 219, height: 193 });
+      expect(
+        getDesktopPinWindowBounds(
+          { x: 40, y: 40, width: 200, height: 160 },
+          { entityId: 'switch.kettle', workArea, scale: 1.5 }
+        )
+      ).toEqual({ x: 40, y: 40, width: 300, height: 240 });
+      expect(saved).toEqual({ x: 200, y: 120, width: 168, height: 148 });
+    });
+
+    test('keeps a scaled pin inside the work area without moving its saved position', () => {
+      const saved = { x: 1100, y: 560, width: 168, height: 148 };
+      expect(
+        getDesktopPinWindowBounds(saved, { entityId: 'light.bedroom', workArea, scale: 1.5 })
+      ).toEqual({ x: 1028, y: 498, width: 252, height: 222 });
+      expect(saved).toEqual({ x: 1100, y: 560, width: 168, height: 148 });
+    });
+
+    test('scales scene content minimums with the window', () => {
+      expect(
+        getDesktopPinWindowBounds(
+          { x: 0, y: 0, width: 97, height: 83 },
+          {
+            entityId: 'scene.relax',
+            contentMinBounds: { width: 132, height: 118 },
+            workArea,
+            scale: 1.5,
+          }
+        )
+      ).toEqual({ x: 0, y: 0, width: 198, height: 177 });
     });
   });
 });

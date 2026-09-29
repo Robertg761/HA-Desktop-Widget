@@ -616,4 +616,3 @@ new IntersectionObserver(([entry]) => {
   setTimeout(() => ghost?.remove(), 400);
   if (!interacted && hint) hint.textContent = 'Your turn. Hold a light to dim it, or pin one to the desktop.';
 })();
-

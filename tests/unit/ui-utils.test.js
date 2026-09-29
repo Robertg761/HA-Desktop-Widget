@@ -96,6 +96,24 @@ describe('UI Utilities', () => {
       uiUtils.__forceAnimatedModalTransitions(false);
     });
 
+    it('stacks toasts above an open dialog footer and back at the bottom once it closes', () => {
+      const modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.innerHTML = '<div class="modal-content"><div class="modal-footer"></div></div>';
+      document.body.appendChild(modal);
+      const footer = modal.querySelector('.modal-footer');
+      footer.getClientRects = () => [{}];
+      footer.getBoundingClientRect = () => ({ top: window.innerHeight - 60 });
+
+      uiUtils.showToast('Failed to control Bed Light', 'error', 2000);
+      expect(toastContainer.style.bottom).toBe('68px');
+
+      modal.classList.add('hidden');
+      uiUtils.showToast('Saved', 'success', 2000);
+      expect(toastContainer.style.bottom).toBe('');
+      modal.remove();
+    });
+
     it('should display toast with message', () => {
       uiUtils.showToast('Test message', 'success', 2000);
 
@@ -584,6 +602,85 @@ describe('UI Utilities', () => {
       document.body.removeChild(externalButton);
     });
 
+    it('wraps Tab using the controls present when Tab is pressed', () => {
+      uiUtils.trapFocus(modal);
+      const added = document.createElement('button');
+      modal.appendChild(added);
+      modal.querySelector('#last').disabled = true;
+      added.focus();
+      const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+      added.dispatchEvent(tab);
+      expect(tab.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(modal.querySelector('#first'));
+    });
+
+    it('focuses the requested element, or nothing, instead of the first control', () => {
+      const middle = modal.querySelector('#middle');
+      uiUtils.trapFocus(modal, { initialFocus: middle });
+      jest.advanceTimersByTime(0);
+      expect(document.activeElement).toBe(middle);
+
+      middle.blur();
+      uiUtils.trapFocus(modal, { initialFocus: false });
+      jest.advanceTimersByTime(0);
+      expect(document.activeElement).toBe(document.body);
+      uiUtils.releaseFocusTrap(modal);
+    });
+
+    it('keeps Tab and Escape working after focus has fallen back to the page', () => {
+      const behind = document.createElement('button');
+      document.body.prepend(behind);
+      modal.classList.add('modal');
+      const onEscape = jest.fn();
+      modal.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') onEscape();
+      });
+      uiUtils.trapFocus(modal);
+      jest.advanceTimersByTime(0);
+      // The focused control was disabled or re-rendered: the browser moves focus to <body>.
+      document.activeElement.blur();
+
+      // The browser's own Tab then lands on the page behind the dialog.
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+      behind.focus();
+      jest.advanceTimersByTime(0);
+      expect(document.activeElement).toBe(modal.querySelector('#first'));
+
+      document.activeElement.blur();
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true })
+      );
+      jest.advanceTimersByTime(0);
+      expect(document.activeElement).toBe(modal.querySelector('#last'));
+
+      // After a click on the dialog's text, Tab continues from there inside the dialog.
+      document.activeElement.blur();
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+      modal.querySelector('#middle').focus();
+      jest.advanceTimersByTime(0);
+      expect(document.activeElement).toBe(modal.querySelector('#middle'));
+
+      document.activeElement.blur();
+      const pageEscape = jest.fn();
+      document.addEventListener('keydown', pageEscape);
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+      );
+      expect(onEscape).toHaveBeenCalledTimes(1);
+      // Only the replayed event reaches page-level listeners, so nothing handles Escape twice.
+      expect(pageEscape).toHaveBeenCalledTimes(1);
+      document.removeEventListener('keydown', pageEscape);
+
+      // Once the dialog is hidden, keys on the page are left alone.
+      modal.classList.add('hidden');
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+      behind.focus();
+      jest.advanceTimersByTime(0);
+      expect(document.activeElement).toBe(behind);
+      uiUtils.releaseFocusTrap(modal);
+      behind.remove();
+    });
+
     it('should handle errors during focus trap', () => {
       const consoleError = jest.spyOn(console, 'error').mockImplementation();
 
@@ -662,6 +759,38 @@ describe('UI Utilities', () => {
       document.body.removeChild(externalButton);
     });
 
+    it('leaves focus to the caller when asked not to restore it', () => {
+      const externalButton = document.createElement('button');
+      document.body.appendChild(externalButton);
+      externalButton.focus();
+      uiUtils.trapFocus(modal);
+      jest.advanceTimersByTime(0);
+      const focusSpy = jest.spyOn(externalButton, 'focus');
+
+      modal.querySelector('#first').blur();
+      uiUtils.releaseFocusTrap(modal, { restoreFocus: false });
+      jest.advanceTimersByTime(0);
+
+      expect(focusSpy).not.toHaveBeenCalled();
+      focusSpy.mockRestore();
+      externalButton.remove();
+    });
+
+    it('leaves a Tab the dialog already handled alone', () => {
+      uiUtils.trapFocus(modal);
+      const last = modal.querySelector('#last');
+      last.focus();
+      // The dialog's own Tab order moved focus and claimed the key.
+      modal.addEventListener('keydown', (event) => event.preventDefault(), {
+        capture: true,
+        once: true,
+      });
+      const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+      last.dispatchEvent(tab);
+      expect(document.activeElement).toBe(last);
+      uiUtils.releaseFocusTrap(modal);
+    });
+
     it('does not steal focus back when another dialog has already claimed it', () => {
       const externalButton = document.createElement('button');
       externalButton.id = 'external';
@@ -686,6 +815,28 @@ describe('UI Utilities', () => {
       focusSpy.mockRestore();
       document.body.removeChild(externalButton);
       document.body.removeChild(nextDialogField);
+    });
+
+    it('returns focus to the rebuilt tile when the opener was replaced', () => {
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        `<div id="quick-controls"><div class="control-item" data-entity-id="light.hall">
+          <button class="tile-primary-button">Hall</button>
+          <button class="tile-details-button">Controls</button></div></div>`
+      );
+      const grid = document.getElementById('quick-controls');
+      grid.querySelector('.tile-details-button').focus();
+      uiUtils.trapFocus(modal);
+      jest.advanceTimersByTime(0);
+
+      // The entity changed while the dialog was open, so the tile was rebuilt.
+      grid.replaceChildren(grid.firstElementChild.cloneNode(true));
+      modal.remove();
+      uiUtils.releaseFocusTrap(modal);
+      jest.advanceTimersByTime(0);
+
+      expect(document.activeElement).toBe(grid.querySelector('.tile-details-button'));
+      grid.remove();
     });
 
     it('should handle modal without active trap', () => {
@@ -944,6 +1095,31 @@ describe('UI Utilities', () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       expect(tooltip.classList.contains('visible')).toBe(false);
       preventDefaultSpy.mockRestore();
+    });
+
+    it('builds the tooltip text in the language that is active when it opens', () => {
+      const i18n = require('../../src/i18n.js');
+      uiUtils.setStatus(true);
+      uiUtils.initializeConnectionStatusTooltip();
+      i18n.setLocaleBootstrap({
+        activeLocale: 'de',
+        messages: {
+          'Connected to Home Assistant': 'Mit Home Assistant verbunden',
+          'Real-time updates active.': 'Echtzeit-Updates aktiv.',
+        },
+      });
+      try {
+        statusIndicator.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+        const tooltip = document.getElementById('connection-status-tooltip');
+        expect(tooltip.querySelector('.connection-status-tooltip-title').textContent).toBe(
+          'Mit Home Assistant verbunden'
+        );
+        expect(tooltip.querySelector('.connection-status-tooltip-detail').textContent).toBe(
+          'Echtzeit-Updates aktiv.'
+        );
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
     });
 
     it('should not throw when status indicator is missing', () => {
@@ -1457,6 +1633,25 @@ describe('UI Utilities', () => {
     });
   });
 
+  describe('copyTextToClipboard', () => {
+    it('copies through the main-process bridge', async () => {
+      await expect(uiUtils.copyTextToClipboard('report')).resolves.toBe(true);
+      expect(window.electronAPI.writeClipboardText).toHaveBeenCalledWith('report');
+    });
+
+    it('reports failure instead of rejecting', async () => {
+      window.electronAPI.writeClipboardText.mockRejectedValueOnce(new Error('denied'));
+      await expect(uiUtils.copyTextToClipboard('report')).resolves.toBe(false);
+      const { writeClipboardText } = window.electronAPI;
+      delete window.electronAPI.writeClipboardText;
+      try {
+        await expect(uiUtils.copyTextToClipboard('report')).resolves.toBe(false);
+      } finally {
+        window.electronAPI.writeClipboardText = writeClipboardText;
+      }
+    });
+  });
+
   describe('Module exports', () => {
     it('should export all required functions', () => {
       expect(typeof uiUtils.showToast).toBe('function');
@@ -1474,6 +1669,108 @@ describe('UI Utilities', () => {
       expect(typeof uiUtils.showLoading).toBe('function');
       expect(typeof uiUtils.setStatus).toBe('function');
       expect(typeof uiUtils.showConfirm).toBe('function');
+    });
+  });
+
+  describe('accent text colours', () => {
+    const luminance = (r, g, b) => {
+      const linear = (c) => {
+        const v = c / 255;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+      };
+      return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+    };
+    const contrastOnLight = (rgbString) => {
+      const [r, g, b] = rgbString.match(/\d+/g).map(Number);
+      return (luminance(250, 250, 250) + 0.05) / (luminance(r, g, b) + 0.05);
+    };
+
+    it('puts dark text on light accents and white text on dark ones', () => {
+      expect(uiUtils.getReadableTextColor({ r: 100, g: 181, b: 246 })).toBe('#0a0c10');
+      expect(uiUtils.getReadableTextColor({ r: 250, g: 204, b: 21 })).toBe('#0a0c10');
+      expect(uiUtils.getReadableTextColor({ r: 30, g: 41, b: 120 })).toBe('#ffffff');
+    });
+
+    it('darkens any accent enough to read as text on the light theme', () => {
+      [
+        { r: 100, g: 181, b: 246 },
+        { r: 34, g: 211, b: 238 },
+        { r: 255, g: 235, b: 59 },
+        { r: 148, g: 163, b: 184 },
+      ].forEach((accent) => {
+        expect(contrastOnLight(uiUtils.getAccentTextOnLight(accent))).toBeGreaterThanOrEqual(4.8);
+      });
+      // An accent that already reads well is left alone.
+      expect(uiUtils.getAccentTextOnLight({ r: 30, g: 41, b: 120 })).toBe('rgb(30, 41, 120)');
+    });
+  });
+
+  describe('seasonal colours', () => {
+    const accent = () => document.documentElement.style.getPropertyValue('--accent');
+
+    afterEach(() => {
+      uiUtils.suspendSeasonalColors(false);
+      uiUtils.setSeasonalColors(null);
+      uiUtils.setUiPreferencesObserver(null);
+    });
+
+    it('stands in for the saved accent and background, then gives them back', () => {
+      uiUtils.applyAccentTheme('emerald');
+      uiUtils.applyBackgroundTheme('slate');
+      expect(accent()).toBe('#10B981');
+
+      uiUtils.setSeasonalColors({ accent: '#f97316', background: '#6d28d9' });
+      expect(accent()).toBe('#F97316');
+      expect(document.body.dataset.accent).toBe('seasonal');
+      expect(document.body.dataset.background).toBe('seasonal');
+
+      // Re-applying the saved theme (a config echo, a theme mode change) keeps the holiday.
+      uiUtils.applyAccentTheme('emerald');
+      expect(accent()).toBe('#F97316');
+
+      uiUtils.setSeasonalColors(null);
+      expect(accent()).toBe('#10B981');
+      expect(document.body.dataset.accent).toBe('emerald');
+      expect(document.body.dataset.background).toBe('slate');
+    });
+
+    it('steps aside while Settings previews a picked colour, then comes back', () => {
+      uiUtils.applyAccentTheme('emerald');
+      uiUtils.setSeasonalColors({ accent: '#f97316', background: '#6d28d9' });
+      expect(accent()).toBe('#F97316');
+
+      uiUtils.suspendSeasonalColors(true);
+      expect(accent()).toBe('#10B981');
+      uiUtils.applyAccentTheme('rose');
+      expect(accent()).toBe('#F43F5E');
+
+      uiUtils.suspendSeasonalColors(false);
+      expect(accent()).toBe('#F97316');
+    });
+
+    it('leaves a raw colour for its owner to repaint', () => {
+      uiUtils.applyAccentTheme('emerald');
+      uiUtils.applyAccentThemeFromColor('#123456');
+      expect(uiUtils.setSeasonalColors({ accent: '#f97316', background: '#6d28d9' })).toBe(true);
+      expect(accent()).toBe('#123456');
+      expect(uiUtils.getSeasonalColors()).toEqual({ accent: '#f97316', background: '#6d28d9' });
+      expect(uiUtils.setSeasonalColors({ accent: '#f97316', background: '#6d28d9' })).toBe(false);
+    });
+
+    it('passes every applied ui to the registered observer', () => {
+      const observer = jest.fn();
+      uiUtils.setUiPreferencesObserver(observer);
+      const ui = { density: 'compact', seasonal: { show: 'halloween' } };
+      uiUtils.applyUiPreferences(ui);
+      expect(observer).toHaveBeenCalledWith(ui);
+
+      observer.mockImplementation(() => {
+        throw new Error('boom');
+      });
+      jest.spyOn(console, 'error').mockImplementation(() => {});
+      expect(() => uiUtils.applyUiPreferences({})).not.toThrow();
+      expect(document.body.classList.contains('density-compact')).toBe(false);
+      console.error.mockRestore();
     });
   });
 });

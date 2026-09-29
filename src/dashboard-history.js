@@ -50,7 +50,14 @@ function readDashboardHistory(config) {
       ? entries
           .filter((entry) => Number.isFinite(entry?.at) && Array.isArray(entry?.layout?.customTabs))
           .slice(0, LIMIT)
-          .map((entry) => ({ at: entry.at, layout: dashboardSnapshot(entry.layout) }))
+          .map((entry) => ({
+            at: entry.at,
+            layout: dashboardSnapshot(entry.layout),
+            // The page on screen when the layout was saved, so a restore can return to it.
+            ...(typeof entry.activeTabId === 'string' ? { activeTabId: entry.activeTabId } : {}),
+            // Layouts replaced by Undo stay restorable but are skipped by the next Undo.
+            ...(entry.undone === true ? { undone: true } : {}),
+          }))
       : [];
     parsedHistory = { key, raw, entries: parsed };
     return [...parsed];
@@ -67,8 +74,12 @@ function rememberDashboard(previous, next) {
   )
     return;
   const entries = readDashboardHistory(previous);
-  if (JSON.stringify(entries[0]?.layout) === JSON.stringify(layout)) return;
-  writeDashboardHistory(previous, [{ at: Date.now(), layout }, ...entries]);
+  const sameAsNewest = JSON.stringify(entries[0]?.layout) === JSON.stringify(layout);
+  if (sameAsNewest && !entries[0].undone) return;
+  const entry = { at: Date.now(), layout };
+  if (typeof previous?.activeTabId === 'string') entry.activeTabId = previous.activeTabId;
+  // Editing on from a layout that Undo set aside makes it an ordinary undo step again.
+  writeDashboardHistory(previous, [entry, ...(sameAsNewest ? entries.slice(1) : entries)]);
 }
 
 function writeDashboardHistory(config, entries) {

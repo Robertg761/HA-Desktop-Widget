@@ -44,6 +44,10 @@ function createDesktopPinConnectionState(
     hasToken: !!token && token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER,
     secureStoragePending: secureStoragePending === true,
     ...(runtimeState ? { runtimeState } : {}),
+    // OAuth users never typed a token, so the pin must not tell them to check one.
+    ...(homeAssistant.authMethod === 'oauth'
+      ? { authMethod: 'oauth', oauthStatus: String(homeAssistant.oauthStatus || '') }
+      : {}),
   };
 }
 

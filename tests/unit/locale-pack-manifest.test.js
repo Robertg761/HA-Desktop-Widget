@@ -94,4 +94,25 @@ describe('downloadable locale-pack manifest', () => {
       expect(englishMessages).toHaveProperty(key);
     }
   });
+
+  test('translates the Sync Up and Sync Down buttons and quotes them as translated', () => {
+    const packDir = path.resolve(__dirname, '../../locale-packs');
+    const manifest = JSON.parse(fs.readFileSync(path.join(packDir, 'manifest.json'), 'utf8'));
+    const englishMessages = require('../../locales/en.json');
+    const referencing = Object.keys(englishMessages).filter(
+      (key) => /Sync (Up|Down)\b/.test(key) && !/^Sync (Up|Down)$/.test(key)
+    );
+    expect(referencing.length).toBeGreaterThan(0);
+    for (const { locale } of manifest.packs) {
+      const { messages } = JSON.parse(
+        fs.readFileSync(path.join(packDir, `${locale}.json`), 'utf8')
+      );
+      for (const button of ['Sync Up', 'Sync Down']) {
+        expect(messages[button]).not.toBe(button);
+        for (const key of referencing.filter((k) => k.includes(button))) {
+          expect(messages[key]).toContain(messages[button]);
+        }
+      }
+    }
+  });
 });

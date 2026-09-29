@@ -18,6 +18,7 @@ jest.mock('../../src/ui-utils.js', () => ({
 }));
 
 jest.mock('../../src/utils.js', () => ({
+  getStateDisplayLabel: jest.fn((rawState) => rawState),
   getEntityDisplayName: jest.fn((entity) => {
     if (!entity) return 'Unknown Entity';
     return entity.attributes?.friendly_name || entity.entity_id;
@@ -57,7 +58,7 @@ beforeAll(() => {
   // Mock Notification API
   global.Notification = class MockNotification {
     constructor(title, options) {
-      MockNotification.lastNotification = { title, options };
+      MockNotification.lastNotification = { title, options, instance: this };
     }
 
     static requestPermission() {
@@ -193,6 +194,53 @@ describe('alerts module', () => {
       reading('26');
       jest.advanceTimersByTime(10000);
       expect(showToast).toHaveBeenCalledTimes(1);
+    });
+
+    describe('with Home Assistant authorization', () => {
+      const useOAuth = (accessToken, authorizationId = 'authorization-1') => {
+        mockState.CONFIG.homeAssistant = {
+          url: 'http://first-server',
+          token: accessToken,
+          authMethod: 'oauth',
+          oauthStatus: 'connected',
+          oauthAuthorizationId: authorizationId,
+        };
+      };
+      beforeEach(() => {
+        useOAuth('access-token-1');
+        alerts.resetEntityAlerts();
+        alerts.initializeEntityAlerts();
+      });
+
+      it('keeps a pending sustained alert when the access token is refreshed', () => {
+        reading('26');
+        jest.advanceTimersByTime(9000);
+        useOAuth('access-token-2');
+        alerts.initializeEntityAlerts();
+        jest.advanceTimersByTime(1000);
+        expect(showToast).toHaveBeenCalledTimes(1);
+      });
+
+      it('keeps cooldowns across access token refreshes', () => {
+        reading('26');
+        jest.advanceTimersByTime(10000);
+        expect(showToast).toHaveBeenCalledTimes(1);
+        useOAuth('access-token-2');
+        alerts.initializeEntityAlerts();
+        reading('24');
+        reading('26');
+        jest.advanceTimersByTime(10000);
+        expect(showToast).toHaveBeenCalledTimes(1);
+      });
+
+      it('starts over for a new authorization', () => {
+        reading('26');
+        jest.advanceTimersByTime(9000);
+        useOAuth('access-token-2', 'authorization-2');
+        alerts.initializeEntityAlerts();
+        jest.advanceTimersByTime(1000);
+        expect(showToast).not.toHaveBeenCalled();
+      });
     });
 
     it.each(['rule', 'disabled', 'server', 'disconnect'])(
@@ -339,7 +387,47 @@ describe('alerts module', () => {
         alerts.checkEntityAlerts('light.living_room', 'on');
 
         expect(showToast).toHaveBeenCalledWith(
-          expect.stringContaining('from off to on'),
+          expect.stringContaining('from Off to On'),
+          'info',
+          4000
+        );
+      });
+    });
+
+    describe('translated alert messages', () => {
+      const i18n = require('../../src/i18n.js');
+      afterEach(() => i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} }));
+
+      it('uses the active language for the message, entity states and numeric values', () => {
+        i18n.setLocaleBootstrap({
+          activeLocale: 'de',
+          messages: {
+            '{{name}} changed from {{previousState}} to {{newState}}':
+              '{{name}} wechselte von {{previousState}} zu {{newState}}',
+            '{{name}} is now {{newState}}': '{{name}} ist jetzt {{newState}}',
+            On: 'An',
+            Off: 'Aus',
+            'Home Assistant Alert': 'Home Assistant-Warnung',
+          },
+        });
+        mockState.CONFIG.entityAlerts.alerts['light.living_room'] = { onStateChange: true };
+        mockState.CONFIG.entityAlerts.alerts['sensor.temperature'] = {
+          onNumericThreshold: true,
+          threshold: 20,
+        };
+        alerts.initializeEntityAlerts();
+
+        alerts.checkEntityAlerts('light.living_room', 'off');
+        expect(showToast).toHaveBeenLastCalledWith(
+          'Living Room Light wechselte von An zu Aus',
+          'info',
+          4000
+        );
+        expect(global.Notification.lastNotification.title).toBe('Home Assistant-Warnung');
+
+        alerts.checkEntityAlerts('sensor.temperature', '21.5');
+        expect(showToast).toHaveBeenLastCalledWith(
+          expect.stringMatching(/ist jetzt 21,5$/),
           'info',
           4000
         );
@@ -356,7 +444,7 @@ describe('alerts module', () => {
 
         alerts.checkEntityAlerts('light.living_room', 'on');
 
-        expect(showToast).toHaveBeenCalledWith(expect.stringContaining('is now on'), 'info', 4000);
+        expect(showToast).toHaveBeenCalledWith(expect.stringContaining('is now On'), 'info', 4000);
         expect(global.Notification.lastNotification).toBeTruthy();
       });
 
@@ -488,6 +576,12 @@ describe('alerts module', () => {
       expect(global.Notification.lastNotification.title).toBe('Home Assistant Alert');
       expect(global.Notification.lastNotification.options.body).toContain('Living Room Light');
       expect(global.Notification.lastNotification.options.tag).toBe('ha-alert-light.living_room');
+    });
+
+    it('opens the widget when the notification is clicked', () => {
+      alerts.checkEntityAlerts('light.living_room', 'off');
+      global.Notification.lastNotification.instance.onclick();
+      expect(mockElectronAPI.showWindow).toHaveBeenCalledTimes(1);
     });
 
     it('should include entity icon in notification', () => {

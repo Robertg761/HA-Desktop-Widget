@@ -11,6 +11,7 @@ const {
   getMockConfig,
 } = require('../mocks/electron.js');
 const desktopPinStyles = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
+const { loadAppStylesheets, resolvedValue } = require('../helpers/css-cascade.js');
 global.TextEncoder = global.TextEncoder || nodeUtil.TextEncoder;
 global.TextDecoder = global.TextDecoder || nodeUtil.TextDecoder;
 const { getRendererHost, setRendererHost } = require('@hadw/renderer/host.js');
@@ -116,8 +117,11 @@ jest.mock('../../src/icons.js', () => ({
 }));
 
 jest.mock('../../src/weather-icons.js', () => ({
+  getWeatherConditionLabel: jest.requireActual('../../src/weather-icons.js')
+    .getWeatherConditionLabel,
   normalizeWeatherCondition: jest.requireActual('../../src/weather-icons.js')
     .normalizeWeatherCondition,
+  WEATHER_LABELS: jest.requireActual('../../src/weather-icons.js').WEATHER_LABELS,
   renderWeatherIcon: jest.fn((element, condition) => {
     element.replaceChildren();
     element.dataset.weatherCondition = condition;
@@ -303,7 +307,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       room.onchange();
       expect(document.querySelector('input[value="light.desk"]')).toBeNull();
       expect(document.querySelector('input[value="sensor.temperature"]')).not.toBeNull();
-      expect(document.querySelectorAll('.room-preview-tile')).toHaveLength(1);
+      // Sensors are offered but not preselected, the same as in first-run setup.
+      expect(document.querySelectorAll('.room-preview-tile')).toHaveLength(0);
+      expect(document.querySelector('.room-device-search').hidden).toBe(false);
     });
 
     it('falls back to devices for non-admins, previews selection, and saves additively', async () => {
@@ -325,7 +331,10 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.querySelectorAll('.room-entity-list input')).toHaveLength(3);
       expect(document.querySelectorAll('.room-entity-list input:checked')).toHaveLength(1);
       expect(document.querySelector('.room-dashboard-preview').textContent).toContain(
-        'Desk lamp — on'
+        'Desk lamp — On'
+      );
+      expect(document.querySelector('.room-dashboard [role="status"]').textContent).toBe(
+        'Rooms are unavailable. Choose from your devices instead.'
       );
       const sensor = document.querySelector('input[value="sensor.temperature"]');
       sensor.click();
@@ -336,6 +345,13 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       search.value = 'desk';
       search.dispatchEvent(new Event('input'));
       expect(sensor.parentElement.hidden).toBe(true);
+      // The pick list styles its rows as flex; the hidden attribute must still win.
+      document.head.innerHTML = '';
+      loadAppStylesheets(document);
+      expect(resolvedValue(sensor.parentElement, 'display')).toBe('none');
+      expect(
+        resolvedValue(document.querySelector('input[value="light.desk"]').parentElement, 'display')
+      ).toBe('flex');
       document.querySelector('#add-page-save-btn').click();
       await flush();
       expect(state.CONFIG.customTabs.find((page) => page.id === 'existing').entityIds).toEqual([
@@ -346,6 +362,178 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         'sensor.temperature',
       ]);
     });
+    const registryResponses = (overrides = {}) =>
+      mockRequest.mockImplementation(({ type }) =>
+        Promise.resolve({
+          success: true,
+          result: {
+            get_states: [
+              ...entities,
+              { entity_id: 'light.stove', state: 'off', attributes: { friendly_name: 'Stove' } },
+              { entity_id: 'button.restart', state: 'unknown', attributes: {} },
+            ],
+            'config/area_registry/list': [
+              { area_id: 'office', name: 'Office' },
+              { area_id: 'kitchen', name: 'Kitchen' },
+            ],
+            'config/entity_registry/list': [
+              { entity_id: 'light.desk', area_id: 'office' },
+              { entity_id: 'sensor.temperature', area_id: 'office' },
+              { entity_id: 'button.restart', area_id: 'office' },
+              { entity_id: 'light.stove', area_id: 'kitchen' },
+            ],
+            'config/device_registry/list': [],
+            ...overrides,
+          }[type],
+        })
+      );
+
+    it('fills the empty first page instead of adding another page beside it', async () => {
+      state.setConfig({
+        ...state.CONFIG,
+        customTabs: [{ id: 'default', name: 'All', entityIds: [] }],
+        activeTabId: 'default',
+      });
+      registryResponses();
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      document.querySelector('#add-page-save-btn').click();
+      await flush();
+      expect(state.CONFIG.customTabs).toEqual([
+        { id: 'default', name: 'Kitchen', entityIds: ['light.stove'] },
+      ]);
+    });
+
+    it('says the first page was updated and lands focus on it after filling it', async () => {
+      state.setConfig({
+        ...state.CONFIG,
+        customTabs: [{ id: 'default', name: 'All', entityIds: [] }],
+        activeTabId: 'default',
+      });
+      state.setStates({
+        'light.stove': { entity_id: 'light.stove', state: 'off', attributes: {} },
+      });
+      registryResponses();
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      document.querySelector('#add-page-save-btn').click();
+      await flush();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(uiUtils.showToast).toHaveBeenCalledWith('Page updated', 'success', 1600);
+      expect(uiUtils.showToast).not.toHaveBeenCalledWith('Page added', 'success', 1600);
+      // The launcher (the empty-dashboard button) is gone; focus lands on the new page's tile.
+      expect(document.activeElement).not.toBe(document.body);
+      expect(
+        document.activeElement.closest('[data-entity-id="light.stove"]') ||
+          document.activeElement.closest('#quick-controls')
+      ).not.toBeNull();
+    });
+
+    it('says when the device search matches nothing, then brings the hint back', async () => {
+      registryResponses();
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      const status = document.querySelector('.room-dashboard [role="status"]');
+      const hint = status.textContent;
+      const search = document.querySelector('.room-device-search');
+
+      search.value = 'nothing like this';
+      search.dispatchEvent(new Event('input'));
+      expect(status.textContent).toBe('No matching entities found.');
+
+      search.value = 'sto';
+      search.dispatchEvent(new Event('input'));
+      expect(status.textContent).toBe(hint);
+    });
+
+    it('makes a quick pick choose the matching room, not just the name', async () => {
+      registryResponses();
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      expect(document.querySelector('#add-page-room').value).toBe('kitchen');
+      document.querySelector('.qa-add-chip[data-name="Office"]').click();
+      expect(document.querySelector('#add-page-room').value).toBe('office');
+      expect(document.querySelector('#add-page-name').value).toBe('Office');
+      expect(
+        [...document.querySelectorAll('.room-entity-list input')].map((input) => input.value)
+      ).toEqual(['button.restart', 'light.desk', 'sensor.temperature']);
+    });
+
+    it('matches a translated quick pick to a room named in English or the interface language', async () => {
+      const i18n = require('../../src/i18n.js');
+      i18n.setLocaleBootstrap({
+        activeLocale: 'de',
+        messages: { Kitchen: 'Küche', Office: 'Büro' },
+      });
+      try {
+        registryResponses({
+          'config/area_registry/list': [
+            { area_id: 'office', name: 'buro' },
+            { area_id: 'kitchen', name: 'Kitchen' },
+          ],
+        });
+        ui.showAddPageModal();
+        await flush();
+        const room = document.querySelector('#add-page-room');
+        document.querySelector('.qa-add-chip[data-name="Küche"]').click();
+        expect(room.value).toBe('kitchen');
+        expect(document.querySelector('#add-page-name').value).toBe('Küche');
+        document.querySelector('.qa-add-chip[data-name="Büro"]').click();
+        expect(room.value).toBe('office');
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
+    });
+
+    it('preselects the same controllable devices when adding an ordinary page', async () => {
+      registryResponses();
+      state.setStates(
+        Object.fromEntries(
+          [
+            ...entities,
+            { entity_id: 'button.restart', state: '2026-09-01T00:00:00Z', attributes: {} },
+          ].map((entity) => [entity.entity_id, entity])
+        )
+      );
+      ui.showAddPageModal();
+      await flush();
+      expect(document.querySelector('.room-device-search').hidden).toBe(true);
+      const room = document.querySelector('#add-page-room');
+      room.value = 'office';
+      room.onchange();
+      expect(
+        [...document.querySelectorAll('.room-entity-list input:checked')].map(
+          (input) => input.value
+        )
+      ).toEqual(['light.desk']);
+      const search = document.querySelector('.room-device-search');
+      expect(search.hidden).toBe(false);
+      search.value = 'temp';
+      search.dispatchEvent(new Event('input'));
+      expect(document.querySelector('input[value="light.desk"]').parentElement.hidden).toBe(true);
+    });
+
+    it('explains refused room access without offering a retry that cannot work', async () => {
+      mockRequest.mockResolvedValue({ success: false, error: { code: 'unauthorized' } });
+      ui.showAddPageModal();
+      await flush();
+      expect(document.querySelector('.room-dashboard [role="status"]').textContent).toBe(
+        'Room information is unavailable. Check your Home Assistant permissions.'
+      );
+      expect(document.querySelector('.room-dashboard button').hidden).toBe(true);
+    });
+
+    it('tells admins with no rooms apart from users who cannot read them', async () => {
+      registryResponses({ 'config/area_registry/list': [] });
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      expect(document.querySelector('.room-dashboard [role="status"]').textContent).toBe(
+        'No rooms are set up in Home Assistant yet. Choose from your devices instead.'
+      );
+    });
+
     it('preselects a populated room and lets users cancel without saving', async () => {
       mockRequest.mockImplementation(({ type }) =>
         Promise.resolve({
@@ -454,7 +642,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       checkboxes[0].dispatchEvent(new Event('change', { bubbles: true }));
       expect(document.querySelectorAll('.room-preview-tile')).toHaveLength(8);
       expect(document.querySelector('.room-dashboard-preview').textContent).toContain(
-        'And 992 more devices'
+        'And 992 more entities'
       );
       document.querySelector('#add-page-save-btn').click();
       await flush();
@@ -510,6 +698,34 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(state.CONFIG.customTabs[0].id).toBe('previous');
       expect(state.CONFIG.homeAssistant).toEqual(current.homeAssistant);
       expect(state.CONFIG.globalHotkeys).toEqual(current.globalHotkeys);
+    });
+
+    it('returns to the page the restored layout was saved on, else a neighbouring page', async () => {
+      const tabs = (...ids) => ids.map((id) => ({ id, name: id, entityIds: [] }));
+      mockElectronAPI.updateConfig.mockImplementation(async (patch) => ({
+        ...state.CONFIG,
+        ...patch,
+      }));
+      // Undoing "add Bedroom" goes back to Kitchen, where the user added it from.
+      state.setConfig({
+        ...state.CONFIG,
+        customTabs: tabs('default', 'kitchen', 'bedroom'),
+        activeTabId: 'bedroom',
+      });
+      await ui.restoreDashboard(
+        { customTabs: tabs('default', 'kitchen') },
+        { activeTabId: 'kitchen' }
+      );
+      expect(state.CONFIG.activeTabId).toBe('kitchen');
+
+      // Without a saved page, the page now in the removed page's position is shown, not "All".
+      state.setConfig({
+        ...state.CONFIG,
+        customTabs: tabs('default', 'kitchen', 'bedroom', 'office'),
+        activeTabId: 'bedroom',
+      });
+      await ui.restoreDashboard({ customTabs: tabs('default', 'kitchen', 'office') });
+      expect(state.CONFIG.activeTabId).toBe('office');
     });
   });
 
@@ -1082,6 +1298,58 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         4000
       );
     });
+
+    it.each([
+      ['WebSocket not connected', 'warn'],
+      ['WebSocket request timeout', 'warn'],
+      ['Entity is read-only', 'error'],
+    ])('logs a failed control (%s) at %s level', async (rawMessage, level) => {
+      state.setConfig({
+        ...sampleConfig,
+        ui: { ...sampleConfig.ui },
+        favoriteEntities: ['light.bedroom'],
+      });
+      state.setStates({ 'light.bedroom': getBedroomLightOnState() });
+      ui.renderActiveTab();
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        mockCallService.mockRejectedValueOnce(new Error(rawMessage));
+        ui.executeHotkeyAction(state.STATES['light.bedroom'], 'toggle');
+        await flushAsync();
+        await flushAsync();
+        const logged = (spy) =>
+          spy.mock.calls.some(([label]) => label === 'WebSocket service call failed:');
+        expect(logged(warn)).toBe(level === 'warn');
+        expect(logged(error)).toBe(level === 'error');
+      } finally {
+        warn.mockRestore();
+        error.mockRestore();
+      }
+    });
+
+    it.each([
+      ['WebSocket not connected', 'Not connected to Home Assistant'],
+      ['WebSocket request timeout', 'Home Assistant did not respond'],
+      ['Entity is read-only', 'Entity is read-only'],
+    ])('explains a failed control (%s) in user terms', async (rawMessage, shownMessage) => {
+      state.setConfig({
+        ...sampleConfig,
+        ui: { ...sampleConfig.ui },
+        favoriteEntities: ['light.bedroom'],
+      });
+      state.setStates({ 'light.bedroom': getBedroomLightOnState() });
+      ui.renderActiveTab();
+      mockCallService.mockRejectedValueOnce(new Error(rawMessage));
+
+      ui.executeHotkeyAction(state.STATES['light.bedroom'], 'toggle');
+      await flushAsync();
+      await flushAsync();
+
+      const [message] = uiUtils.showToast.mock.calls.at(-1);
+      expect(message).toMatch(new RegExp(`^Failed to control .+: ${shownMessage}$`));
+      expect(message).not.toContain('WebSocket');
+    });
   });
 
   describe('Quick Access keyboard and filter polish', () => {
@@ -1596,7 +1864,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
       expect(state.CONFIG.selectedWeatherEntity).toBe('weather.authoritative');
       expect(state.CONFIG.opacity).toBe(0.68);
-      expect(document.getElementById('weather-condition').textContent).toBe('rainy');
+      expect(document.getElementById('weather-condition').textContent).toBe('Rainy');
       expect(uiUtils.showToast).toHaveBeenCalledWith(
         'Failed to save weather entity selection',
         'error',
@@ -1640,6 +1908,42 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(mockElectronAPI.onAutoUpdate).toHaveBeenCalledTimes(2);
       expect(firstUnsubscribe).toHaveBeenCalledTimes(1);
       expect(secondUnsubscribe).not.toHaveBeenCalled();
+    });
+
+    it('re-renders the update status line in a new language', () => {
+      const i18n = require('../../src/i18n.js');
+      document.body.insertAdjacentHTML('beforeend', '<span id="update-status-text"></span>');
+      let onUpdate = null;
+      mockElectronAPI.onAutoUpdate = jest.fn((callback) => {
+        onUpdate = callback;
+        return jest.fn();
+      });
+      const status = document.getElementById('update-status-text');
+      try {
+        ui.initUpdateUI();
+        expect(status.textContent).toBe('Ready to check for updates');
+        i18n.setLocaleBootstrap({
+          activeLocale: 'de',
+          messages: {
+            'Ready to check for updates': 'Bereit zur Suche nach Updates',
+            'You are up to date!': 'Du bist auf dem neuesten Stand!',
+          },
+        });
+        ui.relocalizeUpdateStatus();
+        expect(status.textContent).toBe('Bereit zur Suche nach Updates');
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+        onUpdate({ status: 'none' });
+        expect(status.textContent).toBe('You are up to date!');
+        i18n.setLocaleBootstrap({
+          activeLocale: 'de',
+          messages: { 'You are up to date!': 'Du bist auf dem neuesten Stand!' },
+        });
+        ui.relocalizeUpdateStatus();
+        expect(status.textContent).toBe('Du bist auf dem neuesten Stand!');
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+        status.remove();
+      }
     });
   });
 
@@ -1688,7 +1992,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.updateWeatherFromHA();
 
       const conditionEl = document.getElementById('weather-condition');
-      expect(conditionEl.textContent).toBe('sunny');
+      expect(conditionEl.textContent).toBe('Sunny');
     });
 
     it('should update humidity display', () => {
@@ -1831,7 +2135,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.updateWeatherFromHA();
 
       const conditionEl = document.getElementById('weather-condition');
-      expect(conditionEl.textContent).toBe('sunny');
+      expect(conditionEl.textContent).toBe('Sunny');
     });
 
     it('should fallback to alphabetically first weather entity', () => {
@@ -1856,7 +2160,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       // Should use weather.forecast (alphabetically first)
       const conditionEl = document.getElementById('weather-condition');
-      expect(conditionEl.textContent).toBe('cloudy');
+      expect(conditionEl.textContent).toBe('Cloudy');
     });
 
     it('falls back to an available weather entity when the saved source is unavailable', () => {
@@ -1879,7 +2183,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       ui.updateWeatherFromHA();
 
-      expect(document.getElementById('weather-condition').textContent).toBe('cloudy');
+      expect(document.getElementById('weather-condition').textContent).toBe('Cloudy');
     });
 
     it('keeps weather visibility target aligned with displayed fallback entity', () => {
@@ -1915,7 +2219,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.renderActiveTab();
 
       const conditionEl = document.getElementById('weather-condition');
-      expect(conditionEl.textContent).toBe('cloudy');
+      expect(conditionEl.textContent).toBe('Cloudy');
       expect(ui.isEntityVisible('weather.alpha')).toBe(true);
       expect(ui.isEntityVisible('weather.zeta')).toBe(false);
     });
@@ -2331,6 +2635,105 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const timerIcon = timerTile.querySelector('.control-icon.timer-icon');
       expect(timerIcon).toBeTruthy();
       expect(timerIcon.textContent).toContain('🔥');
+    });
+
+    it('draws default tile icons as line icons and keeps custom emoji', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['switch.kettle', 'switch.fan_plug'];
+      config.customEntityIcons = { 'switch.fan_plug': '🌀' };
+      state.setConfig(config);
+      state.setStates({
+        'switch.kettle': {
+          entity_id: 'switch.kettle',
+          state: 'off',
+          attributes: { friendly_name: 'Kettle' },
+        },
+        'switch.fan_plug': {
+          entity_id: 'switch.fan_plug',
+          state: 'off',
+          attributes: { friendly_name: 'Fan plug' },
+        },
+      });
+
+      ui.renderActiveTab();
+
+      const kettleIcon = document.querySelector(
+        '.control-item[data-entity-id="switch.kettle"] .control-icon'
+      );
+      expect(kettleIcon.querySelector('svg.entity-line-icon').dataset.icon).toBe('plug');
+      expect(kettleIcon.dataset.iconKind).toBe('line');
+      const fanIcon = document.querySelector(
+        '.control-item[data-entity-id="switch.fan_plug"] .control-icon'
+      );
+      expect(fanIcon.querySelector('svg')).toBeNull();
+      expect(fanIcon.textContent).toBe('🌀');
+    });
+
+    it('gives plain tiles a state line that follows live updates', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['switch.kettle', 'binary_sensor.front_door', 'scene.movie'];
+      config.customEntityIcons = {};
+      state.setConfig(config);
+      const kettleOff = {
+        entity_id: 'switch.kettle',
+        state: 'off',
+        attributes: { friendly_name: 'Kettle' },
+      };
+      state.setStates({
+        'switch.kettle': kettleOff,
+        'binary_sensor.front_door': {
+          entity_id: 'binary_sensor.front_door',
+          state: 'on',
+          attributes: { friendly_name: 'Front door', device_class: 'door' },
+        },
+        'scene.movie': {
+          entity_id: 'scene.movie',
+          state: '2026-09-01T20:00:00+00:00',
+          attributes: { friendly_name: 'Movie' },
+        },
+      });
+
+      ui.renderActiveTab();
+
+      const stateOf = (entityId) =>
+        document.querySelector(`.control-item[data-entity-id="${entityId}"] .control-state`);
+      expect(stateOf('switch.kettle').textContent).toBe('Off');
+      expect(stateOf('binary_sensor.front_door').textContent).toBe('Open');
+      expect(stateOf('scene.movie')).toBeNull();
+
+      const kettleOn = { ...kettleOff, state: 'on' };
+      state.setEntityState(kettleOn);
+      ui.updateEntityInUI(kettleOn);
+      expect(stateOf('switch.kettle').textContent).toBe('On');
+      expect(
+        document.querySelector('.control-item[data-entity-id="switch.kettle"]').dataset.active
+      ).toBe('true');
+
+      const kettleGone = { ...kettleOff, state: 'unavailable' };
+      state.setEntityState(kettleGone);
+      ui.updateEntityInUI(kettleGone);
+      const kettleTile = document.querySelector('.control-item[data-entity-id="switch.kettle"]');
+      expect(stateOf('switch.kettle').textContent).toBe('Unavailable');
+      expect(kettleTile.dataset.unavailable).toBe('true');
+      expect(kettleTile.dataset.active).toBeUndefined();
+    });
+
+    it('shows the Controls action as a labelled icon button', () => {
+      state.setConfig({ ...sampleConfig, favoriteEntities: ['light.bedroom'] });
+      state.setStates({
+        'light.bedroom': {
+          entity_id: 'light.bedroom',
+          state: 'on',
+          attributes: { friendly_name: 'Bedroom Light', brightness: 128 },
+        },
+      });
+      ui.renderActiveTab();
+      const details = document.querySelector(
+        '[data-entity-id="light.bedroom"] .tile-details-button'
+      );
+      expect(details.title).toBe('Controls');
+      expect(details.getAttribute('aria-label')).toContain('Controls for');
+      expect(details.querySelector('svg.entity-line-icon').dataset.icon).toBe('sliders-horizontal');
     });
 
     it('pauses an active timer and starts an idle timer on quick-access click', () => {
@@ -3698,7 +4101,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         '.control-item[data-entity-id="light.bedroom"] .desktop-pin-quick-toggle'
       );
       expect(pinButton).toBeTruthy();
-      expect(pinButton.textContent).toBe('Pin');
+      expect(pinButton.getAttribute('aria-label')).toBe('Pin');
 
       pinButton.click();
       await Promise.resolve();
@@ -3756,7 +4159,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         '.control-item[data-entity-id="light.bedroom"] .desktop-pin-quick-toggle'
       );
       expect(pinButton).toBeTruthy();
-      expect(pinButton.textContent).toBe('Pinned');
+      expect(pinButton.getAttribute('aria-label')).toBe('Pinned');
 
       pinButton.click();
       await Promise.resolve();
@@ -3767,6 +4170,43 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       ui.toggleReorganizeMode();
       expect(mockElectronAPI.setDesktopPinEditMode).toHaveBeenLastCalledWith(false);
+    });
+
+    it.each([
+      [{}, 'Pinned'],
+      [{ 'light.bedroom': { x: 10, y: 20, width: 168, height: 148 } }, 'Pin'],
+    ])('keeps keyboard focus on the Pin button after the tiles rebuild', async (pins, label) => {
+      state.setConfig({
+        ...state.CONFIG,
+        favoriteEntities: ['light.bedroom'],
+        customTabs: [{ id: 'default', name: 'All', entityIds: ['light.bedroom'] }],
+        activeTabId: 'default',
+        desktopPins: pins,
+      });
+      state.setStates({
+        'light.bedroom': {
+          entity_id: 'light.bedroom',
+          state: 'off',
+          attributes: { friendly_name: 'Bedroom Light' },
+        },
+      });
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+
+      const pinButton = document.querySelector(
+        '.control-item[data-entity-id="light.bedroom"] .desktop-pin-quick-toggle'
+      );
+      pinButton.focus();
+      pinButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(pinButton.isConnected).toBe(false);
+      expect(document.activeElement.dataset.desktopPinQuickToggle).toBe('light.bedroom');
+      // The button shows a pin icon; its state is carried by the accessible name.
+      expect(document.activeElement.getAttribute('aria-label')).toBe(label);
+
+      ui.toggleReorganizeMode();
     });
 
     it('disables the reorganize-mode pin button for unsupported domains', () => {
@@ -3792,7 +4232,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         '.control-item[data-entity-id="calendar.family"] .desktop-pin-quick-toggle'
       );
       expect(pinButton).toBeTruthy();
-      expect(pinButton.textContent).toBe('Unsupported');
+      expect(pinButton.getAttribute('aria-label')).toBe('Unsupported');
       expect(pinButton.disabled).toBe(true);
       expect(pinButton.title).toContain('does not have a desktop-pin profile yet');
     });
@@ -3942,6 +4382,10 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.getElementById('desktop-pin-empty-copy')?.textContent).toBe(
         'This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.'
       );
+      // Small pins clamp the copy, so the full text stays available on hover.
+      expect(document.getElementById('desktop-pin-empty-copy')?.title).toBe(
+        'This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.'
+      );
       expect(focusActions?.classList.contains('hidden')).toBe(false);
       expect(focusBtn?.disabled).toBe(false);
       expect(focusBtn?.getAttribute('aria-disabled')).toBe('false');
@@ -3971,11 +4415,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(emptyState?.dataset.state).toBe('unavailable');
       expect(content?.classList.contains('hidden')).toBe(true);
       expect(document.getElementById('desktop-pin-empty-kicker')?.textContent).toBe('Unavailable');
-      expect(document.getElementById('desktop-pin-empty-title')?.textContent).toBe(
-        'Bedroom Light is unavailable'
-      );
+      expect(document.getElementById('desktop-pin-empty-title')?.textContent).toBe('Bedroom Light');
       expect(document.getElementById('desktop-pin-empty-copy')?.textContent).toBe(
-        'Latest Home Assistant data reports this entity as unavailable right now.'
+        "Home Assistant can't reach it right now."
       );
       expect(focusActions?.classList.contains('hidden')).toBe(false);
       expect(focusBtn?.disabled).toBe(false);
@@ -4077,6 +4519,87 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(focusActions?.classList.contains('hidden')).toBe(false);
       expect(focusBtn?.disabled).toBe(false);
       expect(focusBtn?.getAttribute('aria-disabled')).toBe('false');
+    });
+
+    it('translates every fallback state of a desktop pin', () => {
+      const i18n = require('../../src/i18n.js');
+      const keys = [
+        'Pin setup',
+        'No entity selected',
+        'Choose an entity in the main widget and pin it again.',
+        'Connection issue',
+        'Home Assistant unavailable',
+        'Unsupported',
+        'Desktop pin not supported yet',
+        'The "{{domain}}" domain does not have a desktop-pin profile yet.',
+        'Missing entity',
+        'Pinned entity not found',
+        'This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.',
+        'Connecting',
+        'Waiting for first live update',
+        'Waiting for live Home Assistant data...',
+        'Unavailable',
+        "Home Assistant can't reach it right now.",
+      ];
+      const text = (part) => document.getElementById(`desktop-pin-empty-${part}`)?.textContent;
+      state.setStates({
+        'light.bedroom': {
+          ...sampleStates['light.bedroom'],
+          state: 'unavailable',
+          attributes: { friendly_name: 'Bedroom Light' },
+        },
+      });
+      i18n.setLocaleBootstrap({
+        messages: Object.fromEntries(keys.map((key) => [key, `[xx] ${key}`])),
+      });
+
+      try {
+        ui.renderDesktopPinnedTile('', null);
+        expect([text('kicker'), text('title'), text('copy')]).toEqual([
+          '[xx] Pin setup',
+          '[xx] No entity selected',
+          '[xx] Choose an entity in the main widget and pin it again.',
+        ]);
+
+        ui.renderDesktopPinnedTile('light.bedroom', null, { connectionIssue: 'Offline' });
+        expect([text('kicker'), text('title')]).toEqual([
+          '[xx] Connection issue',
+          '[xx] Home Assistant unavailable',
+        ]);
+
+        ui.renderDesktopPinnedTile('calendar.work', null, { hasSnapshot: true });
+        expect([text('kicker'), text('title'), text('copy')]).toEqual([
+          '[xx] Unsupported',
+          '[xx] Desktop pin not supported yet',
+          '[xx] The "calendar" domain does not have a desktop-pin profile yet.',
+        ]);
+
+        ui.renderDesktopPinnedTile('light.missing', null, { hasSnapshot: true });
+        expect([text('kicker'), text('title')]).toEqual([
+          '[xx] Missing entity',
+          '[xx] Pinned entity not found',
+        ]);
+        expect(text('copy')).toMatch(/^\[xx\] This tile could not find its entity/);
+
+        ui.renderDesktopPinnedTile('light.missing', null);
+        expect([text('kicker'), text('title'), text('copy')]).toEqual([
+          '[xx] Connecting',
+          '[xx] Waiting for first live update',
+          '[xx] Waiting for live Home Assistant data...',
+        ]);
+
+        ui.renderDesktopPinnedTile('light.bedroom', state.STATES['light.bedroom'], {
+          hasSnapshot: true,
+        });
+        expect([text('kicker'), text('title'), text('copy')]).toEqual([
+          '[xx] Unavailable',
+          // The kicker already says "Unavailable", so the title is just the entity's name.
+          'Bedroom Light',
+          "[xx] Home Assistant can't reach it right now.",
+        ]);
+      } finally {
+        i18n.setLocaleBootstrap({ messages: {} });
+      }
     });
 
     it('keeps dense tiles in compact mode when only one axis clears the old promotion threshold', () => {
@@ -4496,6 +5019,13 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const control = document.querySelector('#desktop-pin-content .desktop-pin-climate-control');
       expect(control).toBeTruthy();
       expect(control.querySelector('.desktop-pin-climate-slider')).toBeTruthy();
+
+      // The current mode stays highlighted after the pin's first live-state pass.
+      const currentMode = state.STATES['climate.thermostat'].state;
+      const activeModes = [
+        ...control.querySelectorAll('.desktop-pin-climate-mode[data-active="true"]'),
+      ].map((button) => button.dataset.action);
+      expect(activeModes).toEqual([currentMode]);
 
       control.querySelector('.desktop-pin-climate-mode[data-action="cool"]').click();
 
@@ -5066,7 +5596,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       jest.useRealTimers();
     });
 
-    it('converts scene minimum sizes to native pixels at increased interface scale', async () => {
+    it('reports scene minimum sizes at 100% for main to scale at increased interface scale', async () => {
       jest.useFakeTimers();
       setDesktopPinViewport(97, 83);
       state.CONFIG.ui = { ...state.CONFIG.ui, scale: 1.5 };
@@ -5079,8 +5609,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.renderDesktopPinnedTile('scene.relax', scene);
       await flushDesktopPinSceneMinSync();
       expect(mockElectronAPI.syncDesktopPinContentMinBounds).toHaveBeenCalledWith('scene.relax', {
-        width: 146,
-        height: 125,
+        width: 97,
+        height: 83,
       });
       jest.useRealTimers();
     });
@@ -5241,7 +5771,10 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         selector: '.desktop-pin-sensor-control',
         assertUpdated: (control) => {
           expect(control?.dataset.state).toBe('on');
-          expect(control?.querySelector('.desktop-pin-panel-kpi')?.textContent).toBe('on');
+          // The value reads "Detected"; the raw "on" no longer repeats it in the header.
+          expect(
+            control?.querySelector('.desktop-pin-panel-topline .desktop-pin-panel-kpi')
+          ).toBeNull();
           expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('Detected');
         },
       },
@@ -5339,7 +5872,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         selector: '.desktop-pin-presence-control',
         assertUpdated: (control) => {
           expect(control?.dataset.state).toBe('not_home');
-          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('Not_home');
+          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('Away');
         },
       },
       {
@@ -5944,6 +6477,38 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(inactive.querySelector('.qa-tab-rename')).toBeNull();
     });
 
+    it('moves focus to the page now shown after deleting a page', async () => {
+      setPages(
+        [
+          { id: 'default', name: 'All', entityIds: [] },
+          { id: 'bedroom', name: 'Bedroom', entityIds: [] },
+        ],
+        'bedroom'
+      );
+      ui.toggleReorganizeMode();
+      // Like the real confirmation, it is still animating out, with focus on its Delete button.
+      const confirmation = document.createElement('div');
+      confirmation.className = 'modal modal-closing';
+      confirmation.innerHTML = '<button>Delete</button>';
+      uiUtils.showConfirm.mockImplementationOnce(async () => {
+        document.body.appendChild(confirmation);
+        confirmation.querySelector('button').focus();
+        return true;
+      });
+      const deleteButton = tabBar.querySelector('.qa-tab-delete');
+      deleteButton.focus();
+      deleteButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(state.CONFIG.customTabs.map((page) => page.id)).toEqual(['default']);
+      expect(document.activeElement).toBe(
+        tabBar.querySelector('.quick-access-tab-link[data-tab="default"]')
+      );
+      confirmation.remove();
+    });
+
     it('opens a themed add-page modal and creates a page from a preset chip', async () => {
       setPages([{ id: 'default', name: 'All', entityIds: [] }]);
       ui.toggleReorganizeMode();
@@ -6318,6 +6883,49 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.querySelector('.quick-access-entity-view-select')).toBeNull();
     });
 
+    it('keeps the search and focus on the same row after Add and Remove', () => {
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        `
+        <div id="quick-controls-modal" class="modal" style="display: flex">
+          <input id="quick-controls-search" />
+          <div id="quick-controls-target-hint"></div>
+          <div id="quick-controls-list"></div>
+        </div>
+      `
+      );
+      state.setStates({
+        'light.bedroom': sampleStates['light.bedroom'],
+        'switch.coffee': { entity_id: 'switch.coffee', state: 'off', attributes: {} },
+      });
+      setPages([{ id: 'default', name: 'All', entityIds: [] }], 'default');
+      const search = document.getElementById('quick-controls-search');
+      search.value = 'stale';
+      ui.populateQuickControlsList();
+      // Opening starts a fresh search, before the list is drawn.
+      expect(search.value).toBe('');
+      expect(document.querySelectorAll('#quick-controls-list .entity-item').length).toBe(2);
+
+      search.value = 'coffee';
+      search.dispatchEvent(new Event('input'));
+      const rowButton = () =>
+        document.querySelector('#quick-controls-list [data-entity-id="switch.coffee"]');
+      rowButton().focus();
+      rowButton().click();
+
+      expect(state.CONFIG.customTabs[0].entityIds).toEqual(['switch.coffee']);
+      expect(search.value).toBe('coffee');
+      expect(document.querySelectorAll('#quick-controls-list .entity-item').length).toBe(1);
+      expect(document.activeElement).toBe(rowButton());
+      expect(rowButton().textContent).toBe('Remove');
+
+      rowButton().click();
+      expect(search.value).toBe('coffee');
+      expect(document.activeElement).toBe(rowButton());
+      expect(rowButton().textContent).toBe('Add');
+      document.getElementById('quick-controls-modal').remove();
+    });
+
     it('leaves the manage list alone while its dialog is closed', async () => {
       document.body.insertAdjacentHTML(
         'beforeend',
@@ -6347,6 +6955,39 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       modal.style.display = 'flex';
       await ui.switchQuickAccessPage('default');
       expect(list.children.length).toBeGreaterThan(0);
+    });
+
+    it('draws a single history sample as a flat line on to now', async () => {
+      const sensor = {
+        entity_id: 'sensor.outside',
+        state: '15.6',
+        attributes: {
+          friendly_name: 'Outside',
+          unit_of_measurement: '°C',
+          state_class: 'measurement',
+        },
+      };
+      state.setStates({ 'sensor.outside': sensor });
+      const sampledAt = Date.now() - 3600000;
+      mockRequest.mockResolvedValue({
+        success: true,
+        result: { 'sensor.outside': [{ s: '15.6', lu: sampledAt / 1000 }] },
+      });
+      ui.openEntityDetailModal(sensor);
+      for (let i = 0; i < 10; i += 1) await Promise.resolve();
+      const line = document.querySelector('.sensor-detail-modal polyline');
+      const points = line
+        .getAttribute('points')
+        .split(' ')
+        .map((point) => point.split(',').map(Number));
+      expect(points).toHaveLength(2);
+      expect(points[0][1]).toBe(points[1][1]);
+      expect(points[1][0]).toBe(420);
+      expect(points[0][0]).toBeLessThan(420);
+      const dot = document.querySelector('.sensor-detail-modal circle');
+      expect(Number(dot.getAttribute('cx'))).toBe(points[0][0]);
+      expect(Number(dot.getAttribute('cy'))).toBe(points[0][1]);
+      document.querySelector('.sensor-detail-modal')?.remove();
     });
 
     it('fetches history for every chart tile on a page in one request', async () => {
@@ -6402,6 +7043,187 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(typeof ui.updateMediaSeekBar).toBe('function');
       expect(typeof ui.callMediaTileService).toBe('function');
       expect(typeof ui.updateWeatherEffects).toBe('function');
+    });
+  });
+
+  describe('describeQuickAccessTile', () => {
+    it('describes a tile the way the widget draws it, for the Omarchy bar', () => {
+      state.setStates({
+        'light.desk': {
+          entity_id: 'light.desk',
+          state: 'on',
+          attributes: { friendly_name: 'Desk', brightness: 217 },
+        },
+        'scene.movie': {
+          entity_id: 'scene.movie',
+          state: '2026-09-26T18:52:26+00:00',
+          attributes: { friendly_name: 'Movie' },
+        },
+        'calendar.home': {
+          entity_id: 'calendar.home',
+          state: 'off',
+          attributes: { friendly_name: 'Home', message: 'Dentist' },
+        },
+        'switch.gone': {
+          entity_id: 'switch.gone',
+          state: 'unavailable',
+          attributes: { friendly_name: 'Gone' },
+        },
+        'binary_sensor.door': {
+          entity_id: 'binary_sensor.door',
+          state: 'on',
+          attributes: { friendly_name: 'Door', device_class: 'door' },
+        },
+      });
+
+      expect(ui.describeQuickAccessTile('light.desk')).toMatchObject({
+        id: 'light.desk',
+        name: 'Desk',
+        value: '85%',
+        icon: { kind: 'line', name: 'lightbulb' },
+        active: true,
+        available: true,
+        action: 'toggle',
+        controls: true,
+      });
+      // A scene runs on click and has no status line, however recently it ran.
+      expect(ui.describeQuickAccessTile('scene.movie')).toMatchObject({
+        value: '',
+        action: 'activate',
+        active: false,
+        controls: false,
+      });
+      // A calendar opens its dialog in the widget and shows the next event.
+      expect(ui.describeQuickAccessTile('calendar.home')).toMatchObject({ action: 'dialog' });
+      expect(ui.describeQuickAccessTile('calendar.home').value).toContain('Dentist');
+      expect(ui.describeQuickAccessTile('switch.gone')).toMatchObject({
+        value: 'Unavailable',
+        available: false,
+        action: 'none',
+        controls: false,
+      });
+      // Read-only tiles show their state and do nothing on click, as in the widget.
+      expect(ui.describeQuickAccessTile('binary_sensor.door')).toMatchObject({
+        value: 'Open',
+        action: 'none',
+      });
+      // An entity Home Assistant no longer has keeps its tile, as the widget's repair tile does.
+      expect(ui.describeQuickAccessTile('light.removed_lamp')).toMatchObject({
+        name: 'removed lamp',
+        missing: true,
+        available: false,
+        icon: { kind: 'line', name: 'triangle-alert' },
+      });
+    });
+  });
+
+  describe('Quick Access tile controls outside the widget', () => {
+    const light = {
+      entity_id: 'light.desk',
+      state: 'on',
+      attributes: {
+        friendly_name: 'Desk',
+        brightness: 128,
+        supported_color_modes: ['color_temp', 'hs'],
+        min_color_temp_kelvin: 2200,
+        max_color_temp_kelvin: 6500,
+        color_temp_kelvin: 4000,
+      },
+    };
+    const switchEntity = {
+      entity_id: 'switch.plug',
+      state: 'off',
+      attributes: { friendly_name: 'Plug' },
+    };
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      mockCallService.mockClear();
+      state.setStates({ 'light.desk': light, 'switch.plug': switchEntity });
+    });
+
+    afterEach(() => jest.useRealTimers());
+
+    it('describes what the controls popup can adjust', () => {
+      expect(ui.describeQuickAccessTile('light.desk').controlState).toMatchObject({
+        kind: 'light',
+        on: true,
+        brightness: 50,
+        canSetBrightness: true,
+        colorTemp: { kelvin: 4000, min: 2200, max: 6500 },
+      });
+      expect(ui.describeQuickAccessTile('light.desk').controlState.colors.length).toBeGreaterThan(
+        0
+      );
+      expect(ui.describeQuickAccessTile('switch.plug').controlState).toBeNull();
+    });
+
+    it('applies popup changes with the same service calls as the widget', () => {
+      expect(ui.executeQuickAccessControl(light, 'brightness', 30)).toBe(true);
+      expect(ui.executeQuickAccessControl(light, 'brightness', 40)).toBe(true);
+      jest.advanceTimersByTime(200);
+      // Dragging sends many values; the debounce sends the last.
+      expect(mockCallService).toHaveBeenCalledTimes(1);
+      expect(mockCallService).toHaveBeenCalledWith('light', 'turn_on', {
+        entity_id: 'light.desk',
+        brightness_pct: 40,
+      });
+
+      mockCallService.mockClear();
+      expect(ui.executeQuickAccessControl(light, 'color_temp', 9000)).toBe(true);
+      jest.advanceTimersByTime(200);
+      expect(mockCallService).toHaveBeenCalledWith('light', 'turn_on', {
+        entity_id: 'light.desk',
+        color_temp_kelvin: 6500,
+      });
+
+      mockCallService.mockClear();
+      expect(ui.executeQuickAccessControl(light, 'color', '#FF6B9D')).toBe(true);
+      expect(mockCallService).toHaveBeenCalledWith('light', 'turn_on', {
+        entity_id: 'light.desk',
+        rgb_color: [255, 107, 157],
+      });
+    });
+
+    it('refuses what the entity cannot do', () => {
+      expect(ui.executeQuickAccessControl(switchEntity, 'brightness', 50)).toBe(false);
+      expect(ui.executeQuickAccessControl(light, 'position', 50)).toBe(false);
+      expect(ui.executeQuickAccessControl(light, 'brightness', 'bright')).toBe(false);
+      expect(ui.executeQuickAccessControl(light, 'color', 'not a colour')).toBe(false);
+      jest.advanceTimersByTime(500);
+      expect(mockCallService).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('calendar event descriptions', () => {
+    it('shows HTML descriptions as plain text, keeping their line breaks', () => {
+      expect(
+        ui.getCalendarDescriptionText(
+          '<p>Montreal Canadiens 2026-27 regular-season game. Away game.</p>'
+        )
+      ).toBe('Montreal Canadiens 2026-27 regular-season game. Away game.');
+      expect(
+        ui.getCalendarDescriptionText(
+          '<p>Bring&nbsp;snacks &amp; drinks</p><p>Line one<br>Line two</p><ul><li>First</li><li>Second</li></ul>'
+        )
+      ).toBe('Bring snacks & drinks\nLine one\nLine two\nFirst\nSecond');
+      expect(
+        ui.getCalendarDescriptionText('<a href="https://example.com/meet">Join the meeting</a>')
+      ).toBe('Join the meeting');
+    });
+
+    it('leaves plain descriptions alone and never runs what an HTML one carries', () => {
+      expect(ui.getCalendarDescriptionText('  Just text, 3 < 4\nSecond line ')).toBe(
+        'Just text, 3 < 4\nSecond line'
+      );
+      expect(ui.getCalendarDescriptionText(undefined)).toBe('');
+      window.__calendarDescriptionRan = false;
+      expect(
+        ui.getCalendarDescriptionText(
+          '<p>Safe</p><img src=x onerror="window.__calendarDescriptionRan = true"><script>window.__calendarDescriptionRan = true</script>'
+        )
+      ).toBe('Safe');
+      expect(window.__calendarDescriptionRan).toBe(false);
     });
   });
 });

@@ -5,6 +5,7 @@ jest.mock('../../src/ui-utils.js', () => ({
   applyBackgroundTheme: jest.fn(),
   applyAccentThemeFromColor: jest.fn(),
   applyBackgroundThemeFromColor: jest.fn(),
+  getSeasonalColors: jest.fn(() => null),
 }));
 
 let applyDesktopAppearance;
@@ -82,4 +83,26 @@ test('system theme changes leave an explicit theme alone', () => {
   applyDesktopAppearance({ ui: { theme: 'light' } });
   systemThemeChanged();
   expect(theme.applyTheme).not.toHaveBeenCalled();
+});
+
+test('holiday colours win over the palette, which keeps its text colours', () => {
+  const { reapplyDesktopAppearance } = require('../../src/desktop-appearance.js');
+  const config = {
+    ui: { followOmarchy: true, accent: 'rose', background: 'slate' },
+    desktopAppearance: palette,
+  };
+  theme.getSeasonalColors.mockReturnValue({ accent: '#f97316', background: '#6d28d9' });
+  applyDesktopAppearance(config);
+  expect(theme.applyTheme).toHaveBeenCalledWith('dark');
+  expect(theme.applyAccentTheme).toHaveBeenCalledWith('rose');
+  expect(theme.applyBackgroundTheme).toHaveBeenCalledWith('slate');
+  expect(theme.applyAccentThemeFromColor).not.toHaveBeenCalled();
+  expect(document.documentElement.style.getPropertyValue('--window-bg-rgb')).toBe('');
+  expect(document.body.style.getPropertyValue('--text-primary')).toBe('#eeeeee');
+
+  // Once the holiday ends, re-applying the same config brings the palette back.
+  theme.getSeasonalColors.mockReturnValue(null);
+  reapplyDesktopAppearance();
+  expect(theme.applyAccentThemeFromColor).toHaveBeenCalledWith('#ffaa00');
+  expect(document.documentElement.style.getPropertyValue('--window-bg-rgb')).toBe('17, 34, 51');
 });

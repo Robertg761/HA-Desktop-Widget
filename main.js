@@ -14,9 +14,12 @@ const {
   dialog,
   powerMonitor,
   session,
+  nativeTheme,
+  clipboard,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const nodeCrypto = require('crypto');
 const { pathToFileURL, fileURLToPath } = require('url');
 
@@ -38,12 +41,56 @@ const {
 } = require('./src/linux-desktop.cjs');
 const IS_ISOLATED_PROFILE = hasIsolatedProfile();
 let initialLaunchAction = process.env.HA_WIDGET_LAUNCH_VISIBILITY || getLaunchAction();
+// Started by an explicit --show or --toggle (the Omarchy bar, a launcher or a key binding) rather
+// than by autostart or a restart: a desktop-layer widget then comes up raised above the windows
+// covering it, as it would for the same command sent to a running widget.
+let initialLaunchRaise =
+  !process.env.HA_WIDGET_LAUNCH_VISIBILITY &&
+  (process.argv.includes('--show') || process.argv.includes('--toggle'));
 const { createOmarchyThemeWatcher } = require('./src/omarchy-theme.cjs');
+const { watchForStatusNotifierWatcher } = require('./src/linux-tray-host.cjs');
+const {
+  OMARCHY_BAR_PLUGIN_ID,
+  buildOmarchyBarStatus,
+  createOmarchyBarPublisher,
+  cleanLineIconSvg,
+  cleanOmarchyBarTile,
+  createOmarchyBarCommandServer,
+  getOmarchyBarActionRequest,
+  getOmarchyBarPaths,
+  installOmarchyBarPluginFiles,
+  isAllowedOmarchyBarAction,
+  isOmarchyShellInstalled,
+  readOmarchyBarEntry,
+  rememberOmarchyBarLaunch,
+  resolveOmarchyBarEntities,
+  updateInstalledOmarchyBarPlugin,
+} = require('./src/omarchy-bar.cjs');
 const {
   ensureAppImageDesktopEntry,
   repairStaleAppImageLaunchers,
 } = require('./src/linux-desktop-entry.cjs');
 let omarchyThemeWatcher = null;
+let trayHostWatch = null;
+// When the tray or bar click (or `--toggle`) meant to lower a raised desktop-layer widget takes
+// focus first, the widget's blur has already lowered it by the time the toggle arrives. The
+// toggle consumes that recent release instead of raising the widget straight back up.
+const LAYER_BLUR_TOGGLE_GRACE_MS = 500;
+// How long a freshly started desktop-layer widget waits for its first focus before raising anyway.
+const LAYER_STARTUP_RAISE_FALLBACK_MS = 1500;
+let layerBlurReleasedAt = null;
+// Omarchy 4 bar plugin support; see src/omarchy-bar.cjs. Null unless the Omarchy shell exists.
+let omarchyBarPublisher = null;
+// Listens for the bar's clicks and control changes; null while the integration is off.
+let omarchyBarCommandServer = null;
+let omarchyBarEntry = { present: false, entities: null, barEntities: null };
+// The renderer's descriptions of the Quick Access tiles the bar shows, and their line icons.
+const omarchyBarTiles = new Map();
+const omarchyBarIcons = new Map();
+// A bar click can start a fresh widget with `--entity-action` when the status file outlived a
+// crashed one. That request waits here until the renderer has described the entity's tile.
+let pendingOmarchyBarAction = null;
+const OMARCHY_BAR_PENDING_ACTION_MS = 60000;
 const {
   readHyprlandMonitors,
   chooseLayerMonitor,
@@ -291,6 +338,7 @@ const {
   getDesktopPinDomain,
   normalizeDesktopPinContentMinBounds,
   clampDesktopPinBounds: clampDesktopPinBoundsWithWorkArea,
+  getDesktopPinWindowBounds: getDesktopPinWindowBoundsInWorkArea,
 } = require('./src/desktop-pin-bounds.js');
 const {
   resolveDesktopPinProfile,
@@ -334,7 +382,9 @@ const {
   NATIVE_WAYLAND_ENV_OVERRIDE,
   getAppIconPath,
   getMainWindowVisualOptions,
+  mergeChromiumFeatureList,
   resolveLinuxPasswordStoreBackend,
+  resolveNativeThemeSource,
   shouldForceX11OzonePlatform,
   hasGlobalShortcutFallback,
   shouldUseCompositorOwnedPlacement,
@@ -343,13 +393,20 @@ const {
   supportsAutoUpdater,
 } = require('./src/platform.cjs');
 const { clampPositionToWorkAreas } = require('./src/window-placement.cjs');
+const { onWindowBoundsChanged } = require('./src/window-bounds-events.cjs');
 const { attachEditHandlers, installApplicationMenu } = require('./src/application-menu.cjs');
 const {
   createLinuxPopupHotkeyController,
   isLinuxPopupHotkeyPlatform,
 } = require('./src/linux-popup-hotkey.cjs');
 const { createPopupWindowPresenter } = require('./src/popup-window-presenter.cjs');
+const {
+  createLayerPointerRelease,
+  getHyprlandRequestSocket,
+  readHyprlandCursorFromSocket,
+} = require('./src/layer-pointer-release.cjs');
 const { createWindowAutoHideController } = require('./src/window-auto-hide.cjs');
+const { installSystemShutdownHandlers } = require('./src/system-shutdown.cjs');
 const { createKWinWindowRaiser } = require('./src/kwin-window-raise.cjs');
 const { installSessionPermissionPolicy } = require('./src/session-permissions.cjs');
 const {
@@ -376,6 +433,7 @@ const {
 const {
   HomeAssistantOAuthClient,
   normalizeHomeAssistantBaseUrl,
+  probeHomeAssistantWithElectronNet,
   requestFormWithElectronNet,
 } = require('./src/ha-oauth.cjs');
 
@@ -489,7 +547,14 @@ function forwardRendererConsole(webContents, label = 'renderer') {
 
 const usesLinuxPopupHotkeyBackend = isLinuxPopupHotkeyPlatform(process.platform);
 if (usesLinuxPopupHotkeyBackend) {
-  app.commandLine.appendSwitch('enable-features', 'GlobalShortcutsPortal');
+  // appendSwitch replaces an existing value, so keep features the launcher already enabled.
+  app.commandLine.appendSwitch(
+    'enable-features',
+    mergeChromiumFeatureList(
+      app.commandLine.getSwitchValue('enable-features'),
+      'GlobalShortcutsPortal'
+    )
+  );
 }
 
 // Chromium only knows how to find the OS keyring on the desktops in its own table, and silently
@@ -544,6 +609,10 @@ if (usesLinuxPopupHotkeyBackend) {
 // climate demo and unpackaged dev runs redirect that above, so an isolated demo or a dev build
 // still runs alongside the real widget.
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (gotSingleInstanceLock) {
+  const barAction = getOmarchyBarActionRequest(process.argv);
+  if (barAction) pendingOmarchyBarAction = { ...barAction, requestedAt: Date.now() };
+}
 if (!gotSingleInstanceLock) {
   log.info('Another instance already owns this profile; handing the request to it and exiting');
   app.quit();
@@ -552,12 +621,21 @@ if (!gotSingleInstanceLock) {
   // popup hotkey do. This is also the only way back for a window hidden to the tray on a desktop
   // whose tray is missing or broken.
   app.on('second-instance', (_event, argv) => {
+    const barAction = getOmarchyBarActionRequest(argv);
+    if (barAction) {
+      // Delivered at once when ready, or once startup has the connection and the entity's tile.
+      pendingOmarchyBarAction = { ...barAction, requestedAt: Date.now() };
+      deliverPendingOmarchyBarAction();
+      return;
+    }
     const action = getLaunchAction(argv);
     if (!mainWindow) {
       initialLaunchAction = action;
       return;
     }
-    if (action === 'hide' || (action === 'toggle' && mainWindow?.isVisible())) {
+    if (action === 'toggle' && isLayerShellChildProcess) {
+      toggleRaisedLayerWidget();
+    } else if (action === 'hide' || (action === 'toggle' && mainWindow?.isVisible())) {
       hideMainWindowToTray();
     } else {
       showMainWindowFromTray();
@@ -644,6 +722,9 @@ let smokeTestRendererReady = false;
 let smokeTestTrayReady = false;
 const CONFIG_SAVE_DEBOUNCE_MS = 120;
 const QUIT_FINALIZATION_TIMEOUT_MS = 15000;
+// Inside logind's default 5 s shutdown delay, and far inside systemd's stop timeout.
+const SYSTEM_SHUTDOWN_EXIT_DEADLINE_MS = 4000;
+let systemShutdownRequested = false;
 let configWriteTimer = null;
 let configWriteInFlight = false;
 let pendingConfigSnapshot = null;
@@ -694,6 +775,8 @@ const PROFILE_SYNC_MIN_PASSPHRASE_LENGTH = 8;
 const PROFILE_SYNC_OPPORTUNISTIC_MIN_GAP_MS = 60 * 1000;
 const PROFILE_SYNC_BACKUP_DIR_NAME = 'profile-sync-backups';
 const PROFILE_SYNC_BACKUP_KEEP = 5;
+// Pulls remembered for recognising config updates built before them.
+const PROFILE_SYNC_PULL_HISTORY_LIMIT = 16;
 const PROFILE_SYNC_MAX_APPROVED_COPY_FOLDERS = 10;
 const PROFILE_SYNC_RESOLUTION_CHOICES = new Set(['upload_local', 'use_remote', 'cancel']);
 const PROFILE_SYNC_SUPPORTED_PROVIDERS = new Set([
@@ -727,6 +810,15 @@ const profileSyncRuntime = {
   // config echo can be recognised by content rather than by timing; see
   // updateLocalProfileSyncTracking.
   pendingPullEchoHash: null,
+  // The synced profile as it stood before that pull, for updates that carry no
+  // config revision.
+  pendingPullEchoProfile: null,
+  // Pulls applied this session, oldest first: the synced profile as it stood
+  // before each, and the config revision the renderer first sees it in. An
+  // update built from an older revision is compared with the profile before the
+  // first pull it missed. Kept after an update is answered, since another one
+  // built earlier (a rollback snapshot) can still follow.
+  pendingPulls: [],
   // Conflict-copy filenames found beside the sync file on the last run. Refreshed
   // by sync runs because the check needs the filesystem.
   conflictCopies: [],
@@ -736,6 +828,19 @@ const profileSyncRuntime = {
   pendingRemoteIdentity: null,
   localProfileHash: null,
   localProfileUpdatedAt: null,
+  // Hash of each in-scope section as last seen locally. A save that changes a
+  // section stamps profileSync.sectionUpdatedAt for it, which only matters when
+  // two devices changed the same section and the newer edit has to win.
+  localSectionHashes: {},
+  // Sections that differ between this device and the file while a first-sync
+  // choice is pending, for the conflict prompt.
+  conflictSections: [],
+  // The subset of conflictSections that are damaged in the file, where only
+  // keeping this device's settings can resolve the conflict.
+  damagedConflictSections: [],
+  // What the last successful run moved, for the status line.
+  lastRunSummary: null,
+  lastRemote: null,
   passphraseSession: '',
   passphraseWarning: '',
   approvedCopyDestinationFolders: [],
@@ -905,6 +1010,40 @@ const popupWindowPresenter = createPopupWindowPresenter({
   requestCompositorRestore: layerShellRaiser ? () => layerShellRaiser.restore() : null,
   log,
 });
+// Where the main widget is on screen, in Hyprland's global coordinates, while it is a layer.
+function getMainLayerRect() {
+  const position = layerPositions.get('main');
+  if (!layerActualMonitor || !position || !mainWindow || mainWindow.isDestroyed()) return null;
+  const { width, height } = mainWindow.getBounds();
+  return {
+    x: layerActualMonitor.x + position.x,
+    y: layerActualMonitor.y + position.y,
+    width,
+    height,
+  };
+}
+
+// With focus-follows-mouse, a raised layer widget loses focus the moment the pointer crosses a
+// window on its way to it. On Hyprland the widget waits for the pointer to move off elsewhere
+// instead; see src/layer-pointer-release.cjs.
+let hyprlandRequestSocket = null;
+const layerPointerRelease = createLayerPointerRelease({
+  readCursor: () => {
+    if (hyprlandRequestSocket === null) hyprlandRequestSocket = getHyprlandRequestSocket();
+    return readHyprlandCursorFromSocket({ socketPath: hyprlandRequestSocket });
+  },
+  getRect: getMainLayerRect,
+  shouldKeepWatching: () =>
+    !!mainWindow &&
+    !mainWindow.isDestroyed() &&
+    !mainWindow.isFocused() &&
+    popupWindowPresenter.isElevated(),
+  onRelease: () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (popupWindowPresenter.handleWindowBlur(mainWindow)) layerBlurReleasedAt = Date.now();
+  },
+});
+
 const linuxPopupHotkeyController = createLinuxPopupHotkeyController({
   globalShortcut,
   getConfig: () => config,
@@ -912,6 +1051,7 @@ const linuxPopupHotkeyController = createLinuxPopupHotkeyController({
   log,
   presenter: popupWindowPresenter,
   layerSurfaceMode: isLayerShellChildProcess,
+  translate: (key, vars) => mainT(key, vars),
 });
 const desktopPinWindows = new Map();
 const desktopPinContentMinBounds = new Map();
@@ -948,7 +1088,7 @@ const DEV_RENDERER_BUNDLE_PATH = path.join(__dirname, 'dist-renderer', 'renderer
 const DEV_RELOAD_DEBOUNCE_MS = 220;
 const DEV_RELOAD_RETRY_MS = 160;
 const DEV_RELOAD_MAX_RETRIES = 20;
-const OPAQUE_WINDOW_BACKGROUND_COLOR = '#28282d';
+const OPAQUE_WINDOW_BACKGROUND_COLOR = '#12161e';
 let devReloadTimer = null;
 let devReloadWatchersStarted = false;
 const devReloadWatchers = [];
@@ -1042,7 +1182,10 @@ function refreshProfileSyncRuntimeTracking({ decodePassphrase = true } = {}) {
   const activeScope = getActiveProfileSyncScope();
   const initialProfile = profileSyncCore.projectSyncProfile(config, activeScope);
   profileSyncRuntime.localProfileHash = computeScopedProfileHash(initialProfile, activeScope);
+  profileSyncRuntime.localSectionHashes = computeLocalSectionHashes(activeScope);
   profileSyncRuntime.pendingPullEchoHash = null;
+  profileSyncRuntime.pendingPullEchoProfile = null;
+  profileSyncRuntime.pendingPulls = [];
   // Seed from the persisted content-change timestamp. lastSyncAt is only a
   // fallback for configs written before profileUpdatedAt existed — it tracks
   // sync *attempts* (including failures), so it must not be preferred here or
@@ -1063,6 +1206,27 @@ function refreshProfileSyncRuntimeTracking({ decodePassphrase = true } = {}) {
 
 function mainT(key, vars = {}) {
   return localizationService.translate(config?.ui?.language || 'auto', key, vars);
+}
+
+// Shared helpers (profile-sync-core.js, src/cloud-sync-path.cjs,
+// src/profile-sync-rewrite-transaction.cjs) throw English messages that are also catalog
+// keys, so they are translated where they reach the renderer. Text without a catalog entry
+// (OS errors, text that is already translated) passes through unchanged.
+function mainTError(errorOrMessage) {
+  const message =
+    typeof errorOrMessage === 'string'
+      ? errorOrMessage
+      : errorOrMessage?.message || String(errorOrMessage ?? '');
+  return message ? mainT(message) : message;
+}
+
+// Hotkey changes roll back on failure; when the rollback fails as well, report both.
+function withRollbackWarning(message, rollbackWarning) {
+  if (!rollbackWarning) return message;
+  return mainT('{{error}}. Rollback failed: {{warning}}', {
+    error: message,
+    warning: rollbackWarning,
+  });
 }
 
 function finishSmokeTest(success, error = '') {
@@ -1497,6 +1661,16 @@ function getNormalizedProfileSyncScopeValue(value) {
   return profileSyncCore.normalizeSyncScope(value);
 }
 
+function normalizeProfileSyncStringMap(value) {
+  if (!isPlainObject(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      ([key, entry]) =>
+        profileSyncCore.SYNC_SCOPE_SECTION_KEYS.includes(key) && typeof entry === 'string'
+    )
+  );
+}
+
 function getDefaultProfileSyncConfig() {
   return {
     enabled: false,
@@ -1510,9 +1684,14 @@ function getDefaultProfileSyncConfig() {
     passphraseEncrypted: false,
     storedPassphrase: '',
     lastSyncAt: null,
+    lastSuccessfulSyncAt: null,
     lastSyncStatus: 'idle',
     lastSyncError: '',
     profileUpdatedAt: null,
+    // Main-process-owned merge state: each section's hash after the last
+    // successful sync, and when each section last changed on this device.
+    syncBaseline: {},
+    sectionUpdatedAt: {},
     firstEnableResolutionPending: false,
     remoteRewritePending: false,
     passphraseTransition: null,
@@ -1521,10 +1700,32 @@ function getDefaultProfileSyncConfig() {
   };
 }
 
+/**
+ * Gives entityAlerts its full shape after a sync pull or backup restore, which
+ * can bring a partial object or clear it altogether.
+ */
+function ensureEntityAlertsConfigDefaults(target) {
+  const current = isPlainObject(target.entityAlerts) ? target.entityAlerts : {};
+  target.entityAlerts = {
+    ...current,
+    enabled: current.enabled === true,
+    alerts: isPlainObject(current.alerts) ? current.alerts : {},
+  };
+  return target;
+}
+
 function ensureProfileSyncConfigDefaults(target) {
   if (!target || typeof target !== 'object') return target;
   const defaults = getDefaultProfileSyncConfig();
-  target.profileSync = { ...defaults, ...(target.profileSync || {}) };
+  // Fill in place rather than replacing the object: code that holds on to
+  // config.profileSync across a helper that calls this again would otherwise
+  // write to a detached copy, and those writes (a staged key rewrite, a
+  // completion marker) would never be saved.
+  const profileSync = isPlainObject(target.profileSync) ? target.profileSync : {};
+  Object.keys(defaults).forEach((key) => {
+    if (!Object.prototype.hasOwnProperty.call(profileSync, key)) profileSync[key] = defaults[key];
+  });
+  target.profileSync = profileSync;
   target.profileSync.intervalMinutes = Number.isFinite(Number(target.profileSync.intervalMinutes))
     ? Math.max(1, Math.min(60, Number(target.profileSync.intervalMinutes)))
     : PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES;
@@ -1546,6 +1747,13 @@ function ensureProfileSyncConfigDefaults(target) {
   ) {
     target.profileSync.profileUpdatedAt = null;
   }
+  if (typeof target.profileSync.lastSuccessfulSyncAt !== 'string') {
+    target.profileSync.lastSuccessfulSyncAt = null;
+  }
+  target.profileSync.syncBaseline = normalizeProfileSyncStringMap(target.profileSync.syncBaseline);
+  target.profileSync.sectionUpdatedAt = normalizeProfileSyncStringMap(
+    target.profileSync.sectionUpdatedAt
+  );
   target.profileSync.firstEnableResolutionPending =
     target.profileSync.firstEnableResolutionPending === true;
   target.profileSync.remoteRewritePending = target.profileSync.remoteRewritePending === true;
@@ -1636,6 +1844,24 @@ function ensureDateTimeFormatConfigDefaults(target, options = {}) {
   return target;
 }
 
+/**
+ * Following the Omarchy palette is on by default. It used to be off, and Settings wrote that
+ * unticked default back on every save on Omarchy, so a saved `false` from before is not a
+ * choice anyone made: turn it on once, then keep whatever the user picks afterwards. The
+ * marker is top-level config, which a Settings save keeps even though it never sends it.
+ */
+function ensureFollowOmarchyDefault(target) {
+  if (!target || typeof target !== 'object') return target;
+  target.ui = target.ui && typeof target.ui === 'object' ? target.ui : {};
+  if (target.omarchyThemeDefaultApplied !== true) {
+    target.ui.followOmarchy = true;
+    target.omarchyThemeDefaultApplied = true;
+  } else if (typeof target.ui.followOmarchy !== 'boolean') {
+    target.ui.followOmarchy = true;
+  }
+  return target;
+}
+
 function getProfileSyncConfig() {
   ensureProfileSyncConfigDefaults(config);
   return config.profileSync;
@@ -1654,6 +1880,8 @@ function sanitizeConfigForRenderer(inputConfig) {
   if (cloned.profileSync) {
     delete cloned.profileSync.storedPassphrase;
     delete cloned.profileSync.passphraseTransition;
+    delete cloned.profileSync.syncBaseline;
+    delete cloned.profileSync.sectionUpdatedAt;
   }
   // The marker is runtime-only. It is never read from or written to a user
   // profile, including when the connected overlay is active.
@@ -1664,6 +1892,7 @@ function sanitizeConfigForRenderer(inputConfig) {
     cloned.developmentDemo = { climate: true, mode: 'overlay' };
   }
   cloned.desktopAppearance = omarchyThemeWatcher?.get() || null;
+  cloned.omarchyBarEntities = getOmarchyBarEntities().all;
   cloned.desktopCapabilities = {
     layerMode: isLayerShellChildProcess,
     canDrag: isLayerShellChildProcess && isHyprland(),
@@ -1742,13 +1971,13 @@ function normalizeDesktopPinActionError(error) {
       message:
         typeof error.message === 'string' && error.message.trim()
           ? error.message
-          : 'Desktop pin action failed',
+          : mainT('Desktop pin action failed'),
     };
   }
   if (typeof error === 'string' && error.trim()) {
     return { message: error };
   }
-  return { message: 'Desktop pin action failed' };
+  return { message: mainT('Desktop pin action failed') };
 }
 
 function normalizeDesktopPinActionResponse(response) {
@@ -1851,14 +2080,11 @@ function clampDesktopPinBounds(
   const x = Number.isFinite(Number(bounds.x)) ? Math.round(Number(bounds.x)) : cascadeOrigin.x;
   const y = Number.isFinite(Number(bounds.y)) ? Math.round(Number(bounds.y)) : cascadeOrigin.y;
 
-  const display = electronScreen.getDisplayMatching({ x, y, width, height });
-  const workArea = display?.workArea ||
-    electronScreen.getPrimaryDisplay()?.workArea || { x: 0, y: 0, width: 1280, height: 720 };
   const clampedBounds = clampDesktopPinBoundsWithWorkArea(bounds, {
     entityId,
     contentMinBounds: desktopPinContentMinBounds.get(entityId) || null,
     fallbackOrigin: cascadeOrigin,
-    workArea,
+    workArea: getDesktopPinWorkArea({ x, y, width, height }),
     previousBounds,
   });
   if (usesCompositorOwnedPlacement) {
@@ -1875,16 +2101,51 @@ function clampDesktopPinBounds(
   return clampedBounds;
 }
 
+function getDesktopPinWorkArea(bounds) {
+  const display = electronScreen.getDisplayMatching(bounds);
+  return (
+    display?.workArea ||
+    electronScreen.getPrimaryDisplay()?.workArea || { x: 0, y: 0, width: 1280, height: 720 }
+  );
+}
+
+/**
+ * Native window bounds for a pin's saved bounds. Saved sizes are at 100% "Text and control
+ * size"; the window is scaled by the current setting so the zoomed content still fits.
+ */
+function getDesktopPinWindowBounds(entityId, pinBounds) {
+  const scale = config?.ui?.scale;
+  const windowBounds = getDesktopPinWindowBoundsInWorkArea(pinBounds, {
+    entityId,
+    contentMinBounds: desktopPinContentMinBounds.get(entityId) || null,
+    fallbackOrigin: getDesktopPinCascadeOrigin(0),
+    workArea: getDesktopPinWorkArea(pinBounds),
+    scale,
+  });
+  if (usesCompositorOwnedPlacement) {
+    windowBounds.x = pinBounds.x;
+    windowBounds.y = pinBounds.y;
+  }
+  return windowBounds;
+}
+
+// Moving a pin only changes its position; its saved size stays the 100% size.
+function getDesktopPinBoundsFromWindow(entityId, pinWindow) {
+  const { x, y } = pinWindow.getBounds();
+  return getDesktopPinBounds(entityId, { ...config?.desktopPins?.[entityId], x, y });
+}
+
 function applyDesktopPinBoundsToWindow(targetWindow, nextBounds) {
   if (!targetWindow || targetWindow.isDestroyed() || !nextBounds) return;
   try {
     targetWindow.__desktopPinApplyingBounds = true;
+    const windowBounds = getDesktopPinWindowBounds(targetWindow.__desktopPinEntityId, nextBounds);
     if (usesCompositorOwnedPlacement) {
-      targetWindow.setSize(nextBounds.width, nextBounds.height);
+      targetWindow.setSize(windowBounds.width, windowBounds.height);
     } else {
-      targetWindow.setBounds(nextBounds);
+      targetWindow.setBounds(windowBounds);
     }
-    applyDesktopPinWindowShape(targetWindow, nextBounds);
+    applyDesktopPinWindowShape(targetWindow, windowBounds);
     if (isLayerShellChildProcess) placeLayerWindow(targetWindow);
     targetWindow.__desktopPinApplyingBounds = false;
   } catch (error) {
@@ -1940,7 +2201,7 @@ async function syncDesktopPinContentMinBounds(entityId, minBounds = {}) {
       }
       return {
         success: false,
-        error: `Failed to save desktop pin size: ${persistence.error}`,
+        error: mainT('Failed to save desktop pin size: {{error}}', { error: persistence.error }),
       };
     }
     const runtimeWarnings = [];
@@ -2028,7 +2289,7 @@ async function pinEntityToDesktopInternal(entityId, supportInfo = null) {
   if (!favorites.has(normalizedEntityId)) {
     return {
       success: false,
-      error: 'Only Quick Access entities can be pinned in this version',
+      error: mainT('Only Quick Access entities can be pinned in this version'),
       supportProfile,
     };
   }
@@ -2051,7 +2312,7 @@ async function pinEntityToDesktopInternal(entityId, supportInfo = null) {
     }
     return {
       success: false,
-      error: `Failed to save desktop pin: ${persistence.error}`,
+      error: mainT('Failed to save desktop pin: {{error}}', { error: persistence.error }),
       supportProfile,
     };
   }
@@ -2098,7 +2359,7 @@ async function unpinEntityFromDesktopInternal(entityId) {
     }
     return {
       success: false,
-      error: `Failed to save desktop pin removal: ${persistence.error}`,
+      error: mainT('Failed to save desktop pin removal: {{error}}', { error: persistence.error }),
     };
   }
   const runtimeWarnings = [];
@@ -2290,7 +2551,7 @@ function broadcastDesktopPinConfigUpdate() {
   });
 }
 
-function focusMainWindow() {
+function focusMainWindow({ keepElevated = false } = {}) {
   if (!mainWindow || mainWindow.isDestroyed()) {
     createWindow();
   }
@@ -2300,7 +2561,7 @@ function focusMainWindow() {
 
   // A one-off raise: it clears full-screen windows the same way the popup hotkey does,
   // then settles back to the user's always-on-top preference.
-  popupWindowPresenter.showAboveFullScreen(mainWindow, { keepElevated: false });
+  popupWindowPresenter.showAboveFullScreen(mainWindow, { keepElevated });
 
   return { focused: mainWindow.isFocused() };
 }
@@ -2321,7 +2582,46 @@ function showMainWindowFromTray() {
       log.warn('Failed to restore window size before showing:', error.message);
     }
   }
-  return focusMainWindow();
+  // A desktop-layer widget settles back under tiled windows, where a one-off raise is only
+  // a flash, so an explicit show keeps it raised until toggled back or focus moves away.
+  return focusMainWindow({ keepElevated: isLayerShellChildProcess });
+}
+
+/**
+ * Raise a desktop-layer widget that has just started. The helper cannot move its surface until
+ * Electron has mapped it, which happens around the first focus, well after the page loads; a
+ * raise sent before then is lost. Raise on that focus, or after a fallback delay without one.
+ */
+function raiseLayerWidgetOnceMapped() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const targetWindow = mainWindow;
+  let fallback = null;
+  const raise = () => {
+    clearTimeout(fallback);
+    targetWindow.removeListener('focus', raise);
+    if (targetWindow === mainWindow && !targetWindow.isDestroyed()) showMainWindowFromTray();
+  };
+  targetWindow.once('focus', raise);
+  fallback = setTimeout(raise, LAYER_STARTUP_RAISE_FALLBACK_MS);
+}
+
+/**
+ * Tray click and `--toggle` on a desktop layer. The widget there is always mapped, normally
+ * under tiled windows, so being visible says nothing about whether the user can see it: raise
+ * it above them, and lower it back on the next press, as the popup shortcut does.
+ */
+function toggleRaisedLayerWidget(now = Date.now()) {
+  const releasedByBlur =
+    layerBlurReleasedAt !== null && now - layerBlurReleasedAt < LAYER_BLUR_TOGGLE_GRACE_MS;
+  layerBlurReleasedAt = null;
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+    if (popupWindowPresenter.isElevated()) {
+      popupWindowPresenter.releaseElevation(mainWindow);
+      return;
+    }
+    if (releasedByBlur) return;
+  }
+  showMainWindowFromTray();
 }
 
 /** Hide the widget to the tray, ending any raise still in flight. */
@@ -2426,7 +2726,7 @@ async function updateDesktopPinBounds(entityId, nextBounds = {}) {
     config.desktopPins[normalizedEntityId] = previousBounds;
     return {
       success: false,
-      error: `Failed to save desktop pin position: ${persistence.error}`,
+      error: mainT('Failed to save desktop pin position: {{error}}', { error: persistence.error }),
       pinBounds: previousBounds,
     };
   }
@@ -2470,14 +2770,17 @@ function createDesktopPinWindow(entityId, options = {}) {
   );
   config.desktopPins = config.desktopPins || {};
   config.desktopPins[normalizedEntityId] = pinBounds;
+  const windowBounds = getDesktopPinWindowBounds(normalizedEntityId, pinBounds);
 
   const iconPath = getAppIconPath(__dirname);
   const transparencyOptions = getWindowTransparencyOptions(config);
-  const pinPositionOptions = usesCompositorOwnedPlacement ? {} : { x: pinBounds.x, y: pinBounds.y };
+  const pinPositionOptions = usesCompositorOwnedPlacement
+    ? {}
+    : { x: windowBounds.x, y: windowBounds.y };
   const windowOptions = {
     ...pinPositionOptions,
-    width: pinBounds.width,
-    height: pinBounds.height,
+    width: windowBounds.width,
+    height: windowBounds.height,
     transparent: transparencyOptions.transparent,
     backgroundColor: transparencyOptions.backgroundColor,
     frame: false,
@@ -2538,7 +2841,7 @@ function createDesktopPinWindow(entityId, options = {}) {
   } catch (error) {
     log.warn('Failed to set desktop pin opacity:', error.message);
   }
-  applyDesktopPinWindowShape(pinWindow, pinBounds);
+  applyDesktopPinWindowShape(pinWindow, windowBounds);
   applyDesktopPinWindowEffects(pinWindow, config);
   wireWindowEffectsRefresh(pinWindow, () => config, false);
   applyDesktopPinEditModeToWindow(pinWindow);
@@ -2546,6 +2849,7 @@ function createDesktopPinWindow(entityId, options = {}) {
   const persistBounds = () => {
     if (
       usesCompositorOwnedPlacement ||
+      isLayerShellChildProcess ||
       !desktopPinEditMode ||
       pinWindow.__desktopPinApplyingBounds
     ) {
@@ -2554,9 +2858,26 @@ function createDesktopPinWindow(entityId, options = {}) {
     if (pinWindow.__desktopPinSaveTimer) {
       clearTimeout(pinWindow.__desktopPinSaveTimer);
     }
-    pinWindow.__desktopPinPendingBounds = getDesktopPinBounds(
+    // Linux also reports moves the app made (creation, a scale change, keeping the pin on
+    // screen). A pin that sits where its saved bounds put it has not been moved.
+    const { x, y, width, height } = pinWindow.getBounds();
+    const placedBounds = getDesktopPinWindowBounds(
       normalizedEntityId,
-      pinWindow.getBounds()
+      config?.desktopPins?.[normalizedEntityId] || {}
+    );
+    if (
+      x === placedBounds.x &&
+      y === placedBounds.y &&
+      width === placedBounds.width &&
+      height === placedBounds.height
+    ) {
+      pinWindow.__desktopPinSaveTimer = null;
+      pinWindow.__desktopPinPendingBounds = null;
+      return;
+    }
+    pinWindow.__desktopPinPendingBounds = getDesktopPinBoundsFromWindow(
+      normalizedEntityId,
+      pinWindow
     );
     pinWindow.__desktopPinSaveTimer = setTimeout(() => {
       pinWindow.__desktopPinSaveTimer = null;
@@ -2564,7 +2885,7 @@ function createDesktopPinWindow(entityId, options = {}) {
       if (!desktopPinEditMode) return;
       const nextBounds =
         pinWindow.__desktopPinPendingBounds ||
-        getDesktopPinBounds(normalizedEntityId, pinWindow.getBounds());
+        getDesktopPinBoundsFromWindow(normalizedEntityId, pinWindow);
       pinWindow.__desktopPinPendingBounds = null;
       runBackgroundConfigMutation(() => {
         config.desktopPins = config.desktopPins || {};
@@ -2576,7 +2897,7 @@ function createDesktopPinWindow(entityId, options = {}) {
     }, 180);
   };
 
-  pinWindow.on('moved', persistBounds);
+  onWindowBoundsChanged(pinWindow, { platform: process.platform, onMove: persistBounds });
 
   pinWindow.on('close', (event) => {
     if (isQuitting || pinWindow.__desktopPinProgrammaticClose) return;
@@ -2644,12 +2965,15 @@ function syncDesktopPinWindowsWithConfig(options = {}) {
       return;
     }
 
+    // A "Text and control size" change arrives here too: the saved bounds stay the same and the
+    // window is resized to the new scale.
     const currentBounds = window.getBounds();
+    const windowBounds = getDesktopPinWindowBounds(entityId, bounds);
     const boundsChanged =
-      currentBounds.x !== bounds.x ||
-      currentBounds.y !== bounds.y ||
-      currentBounds.width !== bounds.width ||
-      currentBounds.height !== bounds.height;
+      currentBounds.x !== windowBounds.x ||
+      currentBounds.y !== windowBounds.y ||
+      currentBounds.width !== windowBounds.width ||
+      currentBounds.height !== windowBounds.height;
 
     if (boundsChanged) {
       applyDesktopPinBoundsToWindow(window, bounds);
@@ -2670,6 +2994,12 @@ function applyMainWindowSettingSideEffects(previousConfig, nextConfig) {
   // Config mutations stage values before disk writes finish. Activate this
   // preference only through the post-save path, including profile-sync pulls.
   appliedHideOnBlur = nextConfig?.hideOnBlur === true;
+  if (
+    previousConfig?.ui?.theme !== nextConfig?.ui?.theme ||
+    !!previousConfig?.ui?.followOmarchy !== !!nextConfig?.ui?.followOmarchy
+  ) {
+    applyNativeThemeSource();
+  }
   if (mainWindow && !mainWindow.isDestroyed()) {
     try {
       if (previousConfig?.alwaysOnTop !== nextConfig?.alwaysOnTop) {
@@ -2845,10 +3175,23 @@ function buildProfileSyncStatus(extra = {}) {
     rememberPassphrase: !!profileSync.rememberPassphrase,
     passphraseEncrypted: !!profileSync.passphraseEncrypted,
     passphraseStored: !!profileSync.storedPassphrase,
-    passphraseWarning: profileSyncRuntime.passphraseWarning || '',
+    // Stored messages may be English text from shared helpers or older versions.
+    passphraseWarning: mainTError(profileSyncRuntime.passphraseWarning || ''),
     lastSyncAt: profileSync.lastSyncAt || null,
+    lastSuccessfulSyncAt: profileSync.lastSuccessfulSyncAt || null,
+    lastRemoteUpdatedAt: profileSyncRuntime.lastRemote?.updatedAt || null,
+    lastRemoteUpdatedByThisDevice: profileSyncRuntime.lastRemote
+      ? profileSyncRuntime.lastRemote.updatedByDeviceId === profileSync.deviceId
+      : null,
+    lastRunSummary: profileSyncRuntime.lastRunSummary,
+    conflictSections: profileSyncRuntime.needsResolution
+      ? [...profileSyncRuntime.conflictSections]
+      : [],
+    damagedConflictSections: profileSyncRuntime.needsResolution
+      ? [...profileSyncRuntime.damagedConflictSections]
+      : [],
     lastSyncStatus: profileSync.lastSyncStatus || 'idle',
-    lastSyncError: profileSync.lastSyncError || '',
+    lastSyncError: mainTError(profileSync.lastSyncError || ''),
     inFlight: !!profileSyncRuntime.inFlight,
     needsResolution:
       !!profileSyncRuntime.needsResolution || !!profileSync.firstEnableResolutionPending,
@@ -2911,11 +3254,40 @@ function collectProfileSyncFolderWarnings() {
   return warnings;
 }
 
+// Written by main as syncs run and as settings change. A renderer snapshot taken
+// before the last run would roll them back, so update-config keeps main's.
+const PROFILE_SYNC_MAIN_OWNED_RESULT_FIELDS = [
+  'lastSyncAt',
+  'lastSuccessfulSyncAt',
+  'lastSyncStatus',
+  'lastSyncError',
+  'profileUpdatedAt',
+  'deviceId',
+];
+
+/**
+ * Replaces the sync-result fields of an incoming profileSync object with the
+ * values main holds.
+ */
+function keepMainOwnedProfileSyncResults(nextProfileSync, currentProfileSync) {
+  PROFILE_SYNC_MAIN_OWNED_RESULT_FIELDS.forEach((field) => {
+    if (currentProfileSync && Object.prototype.hasOwnProperty.call(currentProfileSync, field)) {
+      nextProfileSync[field] = currentProfileSync[field];
+    } else {
+      delete nextProfileSync[field];
+    }
+  });
+  return nextProfileSync;
+}
+
 function updateProfileSyncStatus(status, errorMessage = '') {
   const profileSync = getProfileSyncConfig();
   profileSync.lastSyncAt = new Date().toISOString();
   profileSync.lastSyncStatus = status;
   profileSync.lastSyncError = errorMessage || '';
+  if (status === 'success') {
+    profileSync.lastSuccessfulSyncAt = profileSync.lastSyncAt;
+  }
   saveConfig();
 }
 
@@ -2928,8 +3300,9 @@ function decodeStoredProfileSyncPassphrase() {
 
   if (profileSync.passphraseEncrypted) {
     if (!safeStorage.isEncryptionAvailable()) {
-      profileSyncRuntime.passphraseWarning =
-        'Stored passphrase could not be decrypted on this system.';
+      profileSyncRuntime.passphraseWarning = mainT(
+        'Stored passphrase could not be decrypted on this system.'
+      );
       return '';
     }
     try {
@@ -2937,7 +3310,7 @@ function decodeStoredProfileSyncPassphrase() {
       return safeStorage.decryptString(encryptedBuffer);
     } catch (error) {
       log.warn('Failed to decrypt remembered profile sync passphrase:', error.message);
-      profileSyncRuntime.passphraseWarning = 'Stored passphrase could not be decrypted.';
+      profileSyncRuntime.passphraseWarning = mainT('Stored passphrase could not be decrypted.');
       return '';
     }
   }
@@ -2974,8 +3347,9 @@ function persistRememberedProfileSyncPassphrase(passphrase, remember) {
   profileSync.rememberPassphrase = false;
   profileSync.passphraseEncrypted = false;
   profileSync.storedPassphrase = '';
-  profileSyncRuntime.passphraseWarning =
-    'Passphrase will only be kept for this session because OS encryption is unavailable.';
+  profileSyncRuntime.passphraseWarning = mainT(
+    'Passphrase will only be kept for this session because OS encryption is unavailable.'
+  );
   return { remembered: false, encrypted: false };
 }
 
@@ -2993,7 +3367,7 @@ function getActiveProfileSyncPassphrase() {
 function sealProfileSyncTransitionSecret(secret) {
   if (!isSecureProfileSyncStorageAvailable(safeStorage, process.platform)) {
     throw new Error(
-      'Secure OS credential storage is required to change an active sync passphrase safely'
+      mainT('Secure OS credential storage is required to change an active sync passphrase safely')
     );
   }
   const encrypted = safeStorage.encryptString(typeof secret === 'string' ? secret : '');
@@ -3002,51 +3376,123 @@ function sealProfileSyncTransitionSecret(secret) {
 
 function unsealProfileSyncTransitionSecret(encryptedSecret) {
   if (!isSecureProfileSyncStorageAvailable(safeStorage, process.platform)) {
-    throw new Error('Secure OS credential storage is unavailable for pending sync-key recovery');
+    throw new Error(
+      mainT('Secure OS credential storage is unavailable for pending sync-key recovery')
+    );
   }
   try {
     return safeStorage.decryptString(Buffer.from(encryptedSecret, 'base64'));
   } catch {
-    throw new Error('Pending sync-key recovery credentials could not be decrypted');
+    throw new Error(mainT('Pending sync-key recovery credentials could not be decrypted'));
   }
 }
 
+/**
+ * Builds a sync file from a config for the rewrite transaction (encryption and
+ * passphrase changes). Sections already in the file are carried over as they
+ * are, including ones this device does not sync; in-scope sections the file
+ * lacks are added from the config.
+ */
 async function buildProfileSyncEnvelopeForConfig(
   sourceConfig,
-  { encrypt, passphrase, updatedAt = new Date().toISOString() }
+  {
+    encrypt,
+    passphrase,
+    remoteSections = {},
+    remoteExtensions = null,
+    updatedAt = new Date().toISOString(),
+  }
 ) {
   const profileSync = sourceConfig?.profileSync || getProfileSyncConfig();
   const syncScope = getNormalizedProfileSyncScopeValue(profileSync.syncScope);
+  const localSections = profileSyncCore.buildLocalSections(sourceConfig, syncScope);
+  const sections = { ...remoteSections };
+  Object.entries(localSections).forEach(([key, data]) => {
+    if (sections[key]) return;
+    sections[key] = profileSyncCore.buildPushedSectionEntry(key, data, null, {
+      updatedAt: profileSync.sectionUpdatedAt?.[key] || updatedAt,
+      deviceId: profileSync.deviceId,
+    });
+  });
   return profileSyncCore.buildSyncEnvelope({
-    profile: profileSyncCore.projectSyncProfile(sourceConfig, syncScope),
+    sections,
     updatedAt,
     updatedByDeviceId: profileSync.deviceId,
-    syncScope,
     encrypt: encrypt === true,
     passphrase: passphrase || '',
+    extensions: remoteExtensions,
   });
 }
 
-async function decodeRemoteProfileWithPassphrase(readResult, passphrase) {
-  if (!readResult?.exists || !readResult.envelope) {
-    return { profile: null, syncScope: null };
-  }
-  const profile = await profileSyncCore.decodeEnvelopeProfile(readResult.envelope, passphrase);
-  return {
-    profile,
-    syncScope: profileSyncCore.extractSyncScopeFromEnvelope(readResult.envelope),
-  };
+const PROFILE_SYNC_SECTION_LABELS = {
+  quickAccessLayout: 'Quick Access and layout',
+  visualPersonalization: 'Appearance',
+  automationAlerts: 'Alerts',
+  connectionMediaPreferences: 'Weather and media',
+};
+
+function createDamagedSyncSectionsError(sectionKeys) {
+  return new Error(
+    mainT(
+      "The sync file's {{sections}} settings are damaged. Use Sync Up to replace them with this computer's; the damaged copy is backed up first.",
+      {
+        sections: sectionKeys
+          .map((key) => mainT(PROFILE_SYNC_SECTION_LABELS[key] || key))
+          .join(', '),
+      }
+    )
+  );
 }
 
-function assertRemoteProfileMatchesConfig(decodedRemote, baselineConfig) {
-  if (!decodedRemote?.profile || !decodedRemote.syncScope) return;
-  const localProfile = profileSyncCore.projectSyncProfile(baselineConfig, decodedRemote.syncScope);
-  if (
-    computeScopedProfileHash(decodedRemote.profile, decodedRemote.syncScope) !==
-    computeScopedProfileHash(localProfile, decodedRemote.syncScope)
-  ) {
+async function decodeRemoteFileWithPassphrase(readResult, passphrase) {
+  if (!readResult?.exists || !readResult.envelope) {
+    return { sections: {}, malformed: {}, extensions: null };
+  }
+  const decoded = await profileSyncCore.decodeEnvelopeSections(readResult.envelope, passphrase);
+  // A key rewrite copies sections as they are, so it must not run over damage
+  // in sections this device syncs. Damaged sections it doesn't sync are carried
+  // through untouched.
+  const { inScope, outOfScope } = splitDamagedSyncSections(
+    decoded.malformed,
+    profileSyncCore.getScopeSectionKeys(getActiveProfileSyncScope())
+  );
+  const damaged = Object.keys(inScope);
+  if (damaged.length > 0) throw createDamagedSyncSectionsError(damaged);
+  return { ...decoded, sections: { ...outOfScope, ...decoded.sections } };
+}
+
+function splitDamagedSyncSections(malformed, sectionKeys) {
+  const inScope = {};
+  const outOfScope = {};
+  Object.entries(malformed || {}).forEach(([key, entry]) => {
+    (sectionKeys.includes(key) ? inScope : outOfScope)[key] = entry;
+  });
+  return { inScope, outOfScope };
+}
+
+async function decodeRemoteSectionsWithPassphrase(readResult, passphrase) {
+  return (await decodeRemoteFileWithPassphrase(readResult, passphrase)).sections;
+}
+
+/**
+ * Throws when a section this device syncs differs between the file and the
+ * given config, so a rewrite never publishes stale local content or hides
+ * unsynced remote changes behind a new key.
+ */
+function assertRemoteSectionsMatchConfig(remoteSections, baselineConfig) {
+  const syncScope = getNormalizedProfileSyncScopeValue(baselineConfig?.profileSync?.syncScope);
+  const localSections = profileSyncCore.buildLocalSections(baselineConfig, syncScope);
+  const differs = Object.entries(localSections).some(
+    ([key, data]) =>
+      remoteSections[key] &&
+      profileSyncCore.computeSectionHash(key, data) !==
+        profileSyncCore.computeSectionHash(key, remoteSections[key].data)
+  );
+  if (differs) {
     throw new Error(
-      'The remote profile has changes that are not present locally. Sync or resolve them before changing encryption.'
+      mainT(
+        'The remote profile has changes that are not present locally. Sync or resolve them before changing encryption.'
+      )
     );
   }
 }
@@ -3064,10 +3510,12 @@ async function stageProfileSyncRewrite({
 }) {
   const profileSync = getProfileSyncConfig();
   if (profileSync.passphraseTransition) {
-    throw new Error('A sync-key rewrite is already pending recovery');
+    throw new Error(mainT('A sync-key rewrite is already pending recovery'));
   }
   if (!profileSync.enabled || !profileSync.cloudFilePath) {
-    throw new Error('Profile sync must have an active remote file before it can be rewritten');
+    throw new Error(
+      mainT('Profile sync must have an active remote file before it can be rewritten')
+    );
   }
 
   // Seal both credentials before either side changes. This is intentionally
@@ -3076,12 +3524,15 @@ async function stageProfileSyncRewrite({
   const oldPassphraseEncrypted = sealProfileSyncTransitionSecret(oldPassphrase);
   const newPassphraseEncrypted = sealProfileSyncTransitionSecret(newPassphrase);
   const baselineRemote = remoteResult || (await readConfiguredSyncEnvelope());
-  const decodedRemote = await decodeRemoteProfileWithPassphrase(baselineRemote, oldPassphrase);
-  assertRemoteProfileMatchesConfig(decodedRemote, baselineConfig);
+  const { sections: remoteSections, extensions: remoteExtensions } =
+    await decodeRemoteFileWithPassphrase(baselineRemote, oldPassphrase);
+  assertRemoteSectionsMatchConfig(remoteSections, baselineConfig);
 
   const targetEnvelope = await buildProfileSyncEnvelopeForConfig(targetConfig, {
     encrypt: targetEncryptionEnabled,
     passphrase: newPassphrase,
+    remoteSections,
+    remoteExtensions,
   });
   const targetEnvelopeSerialized = profileSyncCore.serializeSyncEnvelope(targetEnvelope);
   const transaction = createProfileSyncRewriteTransaction({
@@ -3107,7 +3558,9 @@ async function stageProfileSyncRewrite({
     if (!persistence.success) {
       profileSync.passphraseTransition = previousTransition;
       profileSync.remoteRewritePending = previousRemoteRewritePending;
-      throw new Error(`Failed to stage sync-key recovery: ${persistence.error}`);
+      throw new Error(
+        mainT('Failed to stage sync-key recovery: {{error}}', { error: persistence.error })
+      );
     }
   });
   return transaction;
@@ -3127,7 +3580,9 @@ async function executePendingProfileSyncRewrite() {
     )
   ) {
     throw new Error(
-      'The sync provider or file changed during key recovery. Restore the original target before retrying.'
+      mainT(
+        'The sync provider or file changed during key recovery. Restore the original target before retrying.'
+      )
     );
   }
 
@@ -3152,7 +3607,7 @@ async function executePendingProfileSyncRewrite() {
       readRemoteIdentity: async () => getSyncEnvelopeIdentity(await readConfiguredSyncEnvelope()),
       verifyOldRemote: async () => {
         const currentRemote = await readConfiguredSyncEnvelope();
-        await decodeRemoteProfileWithPassphrase(currentRemote, oldPassphrase);
+        await decodeRemoteSectionsWithPassphrase(currentRemote, oldPassphrase);
       },
       writeExactTarget: async (serializedTarget) => {
         if (serializedTarget !== transaction.targetEnvelopeSerialized) {
@@ -3161,6 +3616,21 @@ async function executePendingProfileSyncRewrite() {
         await writeConfiguredSyncEnvelope(targetEnvelope);
       },
       promoteLocal: async () => {
+        // The baseline is what the file now holds, not the current config:
+        // settings edited while recovery was pending still differ from the staged
+        // file, and have to merge as local changes afterwards.
+        const writtenSections = (
+          await profileSyncCore.decodeEnvelopeSections(targetEnvelope, newPassphrase)
+        ).sections;
+        const writtenBaseline = {};
+        profileSyncCore.getScopeSectionKeys(getActiveProfileSyncScope()).forEach((key) => {
+          if (writtenSections[key]) {
+            writtenBaseline[key] = profileSyncCore.computeSectionHash(
+              key,
+              writtenSections[key].data
+            );
+          }
+        });
         const previous = {
           rememberPassphrase: profileSync.rememberPassphrase,
           passphraseEncrypted: profileSync.passphraseEncrypted,
@@ -3176,6 +3646,8 @@ async function executePendingProfileSyncRewrite() {
           lastSyncError: profileSync.lastSyncError,
           profileUpdatedAt: profileSync.profileUpdatedAt,
           localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
+          syncBaseline: profileSync.syncBaseline,
+          lastSuccessfulSyncAt: profileSync.lastSuccessfulSyncAt,
         };
 
         if (transaction.changeCredential) {
@@ -3202,6 +3674,8 @@ async function executePendingProfileSyncRewrite() {
         profileSync.lastSyncError = '';
         profileSyncRuntime.localProfileUpdatedAt = targetEnvelope.updatedAt;
         profileSync.profileUpdatedAt = targetEnvelope.updatedAt;
+        profileSync.syncBaseline = writtenBaseline;
+        profileSync.lastSuccessfulSyncAt = profileSync.lastSyncAt;
 
         const persistence = await saveConfigDurably({ allowDebouncedPush: false });
         if (!persistence.success) {
@@ -3219,8 +3693,13 @@ async function executePendingProfileSyncRewrite() {
           profileSync.lastSyncError = previous.lastSyncError;
           profileSync.profileUpdatedAt = previous.profileUpdatedAt;
           profileSyncRuntime.localProfileUpdatedAt = previous.localProfileUpdatedAt;
+          profileSync.syncBaseline = previous.syncBaseline;
+          profileSync.lastSuccessfulSyncAt = previous.lastSuccessfulSyncAt;
           const error = new Error(
-            `The remote rewrite committed, but local key promotion could not be saved: ${persistence.error}`
+            mainT(
+              'The remote rewrite committed, but local key promotion could not be saved: {{error}}',
+              { error: persistence.error }
+            )
           );
           error.remoteRewriteCommitted = true;
           throw error;
@@ -3252,10 +3731,10 @@ async function readCloudFileEnvelope(filePath) {
   try {
     const stats = await fs.promises.stat(filePath);
     if (!stats.isFile()) {
-      throw new Error('Selected sync path is not a file');
+      throw new Error(mainT('Selected sync path is not a file'));
     }
     if (stats.size > PROFILE_SYNC_MAX_FILE_BYTES) {
-      throw new Error('Sync file exceeds size limit (512 KB)');
+      throw new Error(mainT('Sync file exceeds size limit (512 KB)'));
     }
     const raw = await fs.promises.readFile(filePath, 'utf8');
     const envelope = profileSyncCore.parseSyncEnvelope(raw);
@@ -3271,9 +3750,14 @@ async function readCloudFileEnvelope(filePath) {
 
 async function writeCloudFileEnvelope(filePath, envelope) {
   if (!filePath) {
-    throw new Error('Sync file path is not configured');
+    throw new Error(mainT('Sync file path is not configured'));
   }
   const serialized = profileSyncCore.serializeSyncEnvelope(envelope);
+  // Readers refuse files over the limit, so writing one would stop every device
+  // syncing, this one included.
+  if (Buffer.byteLength(serialized, 'utf8') > PROFILE_SYNC_MAX_FILE_BYTES) {
+    throw new Error(mainT('Sync file exceeds size limit (512 KB)'));
+  }
   await requireExistingSyncParentDirectory(filePath, fs);
   const tempPath = `${filePath}.tmp-${Date.now()}`;
   try {
@@ -3319,7 +3803,7 @@ async function copyProfileSyncFile(fromPath, toPath, overwrite = false) {
     }
 
     if (!sourceStats.isFile()) {
-      return { ok: false, status: 'error', error: 'Source sync file is not a file' };
+      return { ok: false, status: 'error', error: mainT('Source sync file is not a file') };
     }
 
     await requireExistingSyncParentDirectory(destinationPath, fs);
@@ -3334,14 +3818,14 @@ async function copyProfileSyncFile(fromPath, toPath, overwrite = false) {
       throw error;
     }
   } catch (error) {
-    return { ok: false, status: 'error', error: error?.message || String(error) };
+    return { ok: false, status: 'error', error: mainTError(error) };
   }
 }
 
 async function readConfiguredSyncEnvelope() {
   const profileSync = getProfileSyncConfig();
   if (!isProfileSyncProviderSupported(profileSync.provider)) {
-    throw new Error('Unsupported profile sync provider');
+    throw new Error(mainT('Unsupported profile sync provider'));
   }
   return readCloudFileEnvelope(profileSync.cloudFilePath);
 }
@@ -3349,7 +3833,7 @@ async function readConfiguredSyncEnvelope() {
 async function writeConfiguredSyncEnvelope(envelope) {
   const profileSync = getProfileSyncConfig();
   if (!isProfileSyncProviderSupported(profileSync.provider)) {
-    throw new Error('Unsupported profile sync provider');
+    throw new Error(mainT('Unsupported profile sync provider'));
   }
   return writeCloudFileEnvelope(profileSync.cloudFilePath, envelope);
 }
@@ -3432,122 +3916,186 @@ function computeScopedProfileHash(profile, syncScope) {
   });
 }
 
-async function buildLocalProfileEnvelope(
-  updatedAt = profileSyncRuntime.localProfileUpdatedAt || new Date().toISOString()
-) {
-  const profileSync = getProfileSyncConfig();
-  const syncScope = getActiveProfileSyncScope();
-  const profile = profileSyncCore.projectSyncProfile(config, syncScope);
-  const encrypt = !!profileSync.encryptionEnabled;
-  const passphrase = getActiveProfileSyncPassphrase();
-  if (encrypt && !passphrase) {
-    throw new Error('A passphrase is required to sync encrypted profiles');
-  }
-  return profileSyncCore.buildSyncEnvelope({
-    profile,
-    updatedAt,
-    updatedByDeviceId: profileSync.deviceId,
-    syncScope,
-    encrypt,
-    passphrase,
-  });
+function computeLocalSectionHashes(syncScope = getActiveProfileSyncScope(), source = config) {
+  const sections = profileSyncCore.buildLocalSections(source, syncScope);
+  return Object.fromEntries(
+    Object.entries(sections).map(([key, data]) => [
+      key,
+      profileSyncCore.computeSectionHash(key, data),
+    ])
+  );
 }
 
-async function decodeEnvelopeProfile(envelope) {
-  const passphrase = getActiveProfileSyncPassphrase();
-  const profile = await profileSyncCore.decodeEnvelopeProfile(envelope, passphrase);
-  const syncScope = profileSyncCore.extractSyncScopeFromEnvelope(envelope);
-  return { profile, syncScope };
+function pickSections(sections, keys) {
+  return Object.fromEntries(keys.filter((key) => sections[key]).map((key) => [key, sections[key]]));
 }
 
-async function backupLocalProfileBeforePullApply(syncScope) {
-  let backupDir;
-  try {
-    backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
-    await fs.promises.mkdir(backupDir, { recursive: true });
-    const normalizedScope = getNormalizedProfileSyncScopeValue(syncScope);
-    const backup = {
-      backedUpAt: new Date().toISOString(),
-      syncScope: normalizedScope,
-      profile: profileSyncCore.projectSyncProfile(config, normalizedScope),
-    };
-    await fs.promises.writeFile(
-      path.join(backupDir, `local-profile-${Date.now()}.json`),
-      JSON.stringify(backup, null, 2),
-      'utf8'
-    );
-  } catch (error) {
-    log.warn('Failed to back up local profile before applying remote sync:', error.message);
-    throw new Error(
-      `Remote profile was not applied because the local backup failed: ${error?.message || String(error)}`
-    );
-  }
+async function writeProfileSyncBackup(prefix, contents) {
+  const backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
+  await fs.promises.mkdir(backupDir, { recursive: true });
+  await fs.promises.writeFile(
+    path.join(backupDir, `${prefix}-${Date.now()}.json`),
+    JSON.stringify({ backedUpAt: new Date().toISOString(), ...contents }, null, 2),
+    'utf8'
+  );
 
   try {
+    const pattern = new RegExp(`^${prefix}-\\d+\\.json$`);
     const entries = (await fs.promises.readdir(backupDir))
-      .filter((name) => /^local-profile-\d+\.json$/.test(name))
+      .filter((name) => pattern.test(name))
       .sort();
     while (entries.length > PROFILE_SYNC_BACKUP_KEEP) {
       const oldest = entries.shift();
       await fs.promises.unlink(path.join(backupDir, oldest));
     }
   } catch (error) {
-    log.warn(
-      'Created local profile backup, but failed to prune older profile backups:',
-      error.message
+    log.warn('Created a profile sync backup, but failed to prune older backups:', error.message);
+  }
+}
+
+async function backupLocalProfileBeforePullApply(sectionKeys) {
+  try {
+    const sections = profileSyncCore.buildLocalSections(config, {
+      preset: 'custom',
+      sections: Object.fromEntries(sectionKeys.map((key) => [key, true])),
+    });
+    await writeProfileSyncBackup('local-profile', { sections });
+  } catch (error) {
+    log.warn('Failed to back up local profile before applying remote sync:', error.message);
+    throw new Error(
+      mainT('Remote profile was not applied because the local backup failed: {{error}}', {
+        error: error?.message || String(error),
+      })
     );
   }
 }
 
-async function applySyncedProfileToConfig(syncedProfile, updatedAt, syncScopeValue = null) {
+/**
+ * Keeps a copy of sections another device wrote before this device's newer
+ * edits replace them in the file. Pushing without one would lose them for good.
+ */
+async function backupRemoteSectionsBeforePush(remoteSections) {
+  try {
+    await writeProfileSyncBackup('remote-profile', { sections: remoteSections });
+  } catch (error) {
+    log.warn('Failed to back up remote profile sections before pushing:', error.message);
+    throw new Error(
+      mainT('The sync file was not updated because its backup failed: {{error}}', {
+        error: error?.message || String(error),
+      })
+    );
+  }
+}
+
+/**
+ * Applies pulled sections to the config and runtime.
+ *
+ * @param {Object<string, {updatedAt: string, data: object}>} pulledSections remote entries to apply
+ */
+async function applySyncedProfileToConfig(pulledSections) {
   const previous = config;
   const previousRuntimeTracking = {
     localProfileHash: profileSyncRuntime.localProfileHash,
     localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
+    localSectionHashes: profileSyncRuntime.localSectionHashes,
     pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
+    pendingPullEchoProfile: profileSyncRuntime.pendingPullEchoProfile,
+    pendingPulls: profileSyncRuntime.pendingPulls,
   };
   const previousEncryptedTokenForRecovery = preservedEncryptedTokenForRecovery;
-  const nextScope = getNormalizedProfileSyncScopeValue(
-    syncScopeValue || previous?.profileSync?.syncScope
-  );
-  // Captured under nextScope (not the pre-pull scope) so it is directly
-  // comparable to the hashes updateLocalProfileSyncTracking computes afterwards.
+  const scope = getActiveProfileSyncScope();
+  // Captured under the active scope so it is directly comparable to the hashes
+  // updateLocalProfileSyncTracking computes afterwards.
   const prePullHash = computeScopedProfileHash(
-    profileSyncCore.projectSyncProfile(previous, nextScope),
-    nextScope
+    profileSyncCore.projectSyncProfile(previous, scope),
+    scope
   );
-  const merged = profileSyncCore.mergeSyncedProfileIntoConfig(config, syncedProfile, nextScope);
-  ensureDateTimeFormatConfigDefaults(merged);
-  ensureProfileSyncConfigDefaults(merged);
+  const sectionData = Object.fromEntries(
+    Object.entries(pulledSections).map(([key, entry]) => [key, entry.data])
+  );
+  const merged = profileSyncCore.mergeSectionsIntoConfig(config, sectionData);
+  const latestPulledAt = Object.values(pulledSections)
+    .map((entry) => entry.updatedAt)
+    .reduce(
+      (latest, value) => (profileSyncCore.compareIsoTimestamps(value, latest) > 0 ? value : latest),
+      null
+    );
   merged.profileSync = {
     ...previous.profileSync,
-    syncScope: nextScope,
-    profileUpdatedAt: updatedAt || new Date().toISOString(),
+    // A pulled section counts as changed when the other device changed it, so a
+    // later conflict on it compares against that edit rather than this pull.
+    sectionUpdatedAt: {
+      ...(previous.profileSync?.sectionUpdatedAt || {}),
+      ...Object.fromEntries(
+        Object.entries(pulledSections).map(([key, entry]) => [key, entry.updatedAt])
+      ),
+    },
+    profileUpdatedAt: latestPulledAt || new Date().toISOString(),
   };
   config = merged;
   pruneConfig(config);
   ensureDateTimeFormatConfigDefaults(config);
   ensureProfileSyncConfigDefaults(config);
+  ensureEntityAlertsConfigDefaults(config);
   normalizeDesktopPinsConfig(config);
   normalizeTrayEntitiesConfigInPlace(config);
 
-  const projected = profileSyncCore.projectSyncProfile(config, getActiveProfileSyncScope());
-  profileSyncRuntime.localProfileHash = computeScopedProfileHash(
-    projected,
-    getActiveProfileSyncScope()
-  );
-  profileSyncRuntime.localProfileUpdatedAt = updatedAt || new Date().toISOString();
-  profileSyncRuntime.pendingPullEchoHash =
-    prePullHash === profileSyncRuntime.localProfileHash ? null : prePullHash;
+  const projected = profileSyncCore.projectSyncProfile(config, scope);
+  profileSyncRuntime.localProfileHash = computeScopedProfileHash(projected, scope);
+  profileSyncRuntime.localSectionHashes = computeLocalSectionHashes(scope);
+  profileSyncRuntime.localProfileUpdatedAt = config.profileSync.profileUpdatedAt;
+  const pull = { profile: profileSyncCore.projectSyncProfile(previous, scope), revision: null };
+  // A pull that lands before anything answered the previous one leaves the
+  // content guard on the state before the first: a stale snapshot may predate both.
+  if (profileSyncRuntime.pendingPullEchoHash === null) {
+    profileSyncRuntime.pendingPullEchoHash =
+      prePullHash === profileSyncRuntime.localProfileHash ? null : prePullHash;
+    profileSyncRuntime.pendingPullEchoProfile = pull.profile;
+  }
+  profileSyncRuntime.pendingPulls = appendPendingPull(profileSyncRuntime.pendingPulls, pull);
 
   const persistence = await saveConfigDurably({ allowDebouncedPush: false });
   if (!persistence.success) {
     config = previous;
     Object.assign(profileSyncRuntime, previousRuntimeTracking);
     preservedEncryptedTokenForRecovery = previousEncryptedTokenForRecovery;
-    throw new Error(`Failed to persist pulled profile: ${persistence.error}`);
+    throw new Error(
+      mainT('Failed to persist pulled profile: {{error}}', { error: persistence.error })
+    );
   }
+  pull.revision = configSnapshotVersion;
 
+  return applySyncedConfigSideEffects(previous, persistence);
+}
+
+/**
+ * Adds a pull to the history, merging the two oldest entries once it is full.
+ * The merged entry keeps the older state and where its range began: an update
+ * built before the range is still compared exactly, and one built inside it,
+ * whose starting state is gone, is handled conservatively.
+ */
+function appendPendingPull(pulls, pull) {
+  let next = [...(pulls || []), pull];
+  while (next.length > PROFILE_SYNC_PULL_HISTORY_LIMIT) {
+    const [oldest, following, ...rest] = next;
+    next = [
+      {
+        profile: oldest.profile,
+        revision: following.revision,
+        compactedFrom:
+          typeof oldest.compactedFrom === 'number' ? oldest.compactedFrom : oldest.revision,
+      },
+      ...rest,
+    ];
+  }
+  return next;
+}
+
+/**
+ * Carries a config change that did not come from the renderer (a pull or a
+ * backup restore) out to the windows, tray and runtime.
+ */
+async function applySyncedConfigSideEffects(previous, persistence) {
   const runtimeWarnings = [];
   await runPostSaveSideEffect(runtimeWarnings, 'synced main window settings', () =>
     applyMainWindowSettingSideEffects(previous, config)
@@ -3573,6 +4121,125 @@ async function applySyncedProfileToConfig(syncedProfile, updatedAt, syncScopeVal
   return { runtimeWarnings };
 }
 
+const PROFILE_SYNC_BACKUP_FILE_PATTERN = /^(local|remote)-profile-(\d+)\.json$/;
+
+function extractProfileSyncBackupSections(backup, kind) {
+  if (isPlainObject(backup?.sections)) {
+    return Object.fromEntries(
+      Object.entries(backup.sections)
+        .filter(([key]) => profileSyncCore.SYNC_SCOPE_SECTION_KEYS.includes(key))
+        .map(([key, value]) => [key, kind === 'remote' ? value?.data : value])
+        // A damaged section is kept in the file for reference but never restored.
+        .filter(([key, data]) => profileSyncCore.hasValidSectionFields(key, data))
+    );
+  }
+  // Backups written before sections existed hold one flat profile.
+  if (isPlainObject(backup?.profile)) {
+    const scope = profileSyncCore.normalizeSyncScope(backup.syncScope);
+    return Object.fromEntries(
+      profileSyncCore
+        .getScopeSectionKeys(scope)
+        .map((key) => [key, profileSyncCore.projectSection(backup.profile, key)])
+        .filter(([key, data]) => profileSyncCore.hasValidSectionFields(key, data))
+    );
+  }
+  return {};
+}
+
+async function readProfileSyncBackup(id) {
+  const match = typeof id === 'string' ? id.match(PROFILE_SYNC_BACKUP_FILE_PATTERN) : null;
+  if (!match) {
+    throw new Error(mainT('That backup is no longer available'));
+  }
+  const backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
+  let backup;
+  try {
+    backup = JSON.parse(await fs.promises.readFile(path.join(backupDir, id), 'utf8'));
+  } catch {
+    throw new Error(mainT('That backup is no longer available'));
+  }
+  return {
+    id,
+    kind: match[1],
+    createdAt: new Date(Number(match[2])).toISOString(),
+    sections: extractProfileSyncBackupSections(backup, match[1]),
+  };
+}
+
+/**
+ * Lists the backups sync keeps before replacing settings, newest first:
+ * `local` ones hold this device's settings before a pull replaced them, and
+ * `remote` ones hold the file's settings before this device's push replaced them.
+ */
+async function listProfileSyncBackups() {
+  const backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
+  let entries;
+  try {
+    entries = await fs.promises.readdir(backupDir);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return [];
+    throw error;
+  }
+  const backups = await Promise.all(
+    entries
+      .filter((name) => PROFILE_SYNC_BACKUP_FILE_PATTERN.test(name))
+      .map((name) => readProfileSyncBackup(name).catch(() => null))
+  );
+  return backups
+    .filter((backup) => backup && Object.keys(backup.sections).length > 0)
+    .map(({ id, kind, createdAt, sections }) => ({
+      id,
+      kind,
+      createdAt,
+      sections: Object.keys(sections),
+    }))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/**
+ * Applies a backup on this device as an ordinary local change, so the next merge
+ * run carries it to the other devices. The settings it replaces are backed up
+ * first, which keeps the restore itself undoable.
+ */
+async function restoreProfileSyncBackup(id) {
+  const backup = await readProfileSyncBackup(id);
+  const sectionKeys = Object.keys(backup.sections);
+  if (sectionKeys.length === 0) {
+    throw new Error(mainT('That backup is no longer available'));
+  }
+  await backupLocalProfileBeforePullApply(sectionKeys);
+
+  const previous = config;
+  const previousRuntimeTracking = {
+    localProfileHash: profileSyncRuntime.localProfileHash,
+    localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
+    localSectionHashes: profileSyncRuntime.localSectionHashes,
+    pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
+    pendingPullEchoProfile: profileSyncRuntime.pendingPullEchoProfile,
+  };
+  // Restoring what the last pull replaced reproduces the pre-pull profile exactly,
+  // which the content guard would otherwise drop as a stale echo instead of
+  // syncing it. The pull history stays: an update built before the pull is
+  // still stale.
+  profileSyncRuntime.pendingPullEchoHash = null;
+  profileSyncRuntime.pendingPullEchoProfile = null;
+  config = profileSyncCore.mergeSectionsIntoConfig(config, backup.sections);
+  pruneConfig(config);
+  ensureDateTimeFormatConfigDefaults(config);
+  ensureProfileSyncConfigDefaults(config);
+  ensureEntityAlertsConfigDefaults(config);
+  normalizeDesktopPinsConfig(config);
+  normalizeTrayEntitiesConfigInPlace(config);
+  const persistence = await saveConfigDurably();
+  if (!persistence.success) {
+    config = previous;
+    Object.assign(profileSyncRuntime, previousRuntimeTracking);
+    throw new Error(mainT('Failed to restore the backup: {{error}}', { error: persistence.error }));
+  }
+  await applySyncedConfigSideEffects(previous, persistence);
+  return { restored: sectionKeys };
+}
+
 function clearProfileSyncTimers() {
   if (profileSyncRuntime.pushDebounceTimer) {
     clearTimeout(profileSyncRuntime.pushDebounceTimer);
@@ -3590,40 +4257,118 @@ function clearProfileSyncTimers() {
  * applySyncedProfileToConfig pushes the pulled profile out to the renderer, but a
  * config update already in flight arrives afterwards still carrying the pre-pull
  * values, and the update-config merge would silently revert the pull. The stale
- * update is recognised by content — it reproduces the pre-pull profile exactly —
- * and the pulled fields are merged back over it.
+ * update is recognised by content — every setting the user did not touch still
+ * holds its pre-pull value — and the pulled fields are merged back over it,
+ * keeping the ones the user touched.
  *
  * @param {object} pulledConfig config as it stood before this update, i.e. the pulled state
+ * @param {string[]} [touchedKeys] settings the user changed ('key' or 'ui.key'), kept as sent
+ * @param {number|null} [baseRevision] config revision the renderer built the update from
  * @returns {boolean} whether a stale update was detected and reversed
  */
-function restoreProfileFromStalePullEcho(pulledConfig) {
-  const prePullHash = profileSyncRuntime.pendingPullEchoHash;
-  if (prePullHash === null || !pulledConfig) return false;
+function restoreProfileFromStalePullEcho(pulledConfig, touchedKeys = [], baseRevision = null) {
+  if (!pulledConfig) return false;
+  const pulls = profileSyncRuntime.pendingPulls || [];
+  const revisionKnown = baseRevision !== null && pulls.length > 0;
+  let prePullProfile;
+  let startingStateLost = false;
+  if (revisionKnown) {
+    // The profile the update was built from: before the first pull it missed. A
+    // pull still being saved has no revision yet, and nothing has seen it.
+    const missedPull = pulls.find(
+      (entry) => entry.revision === null || entry.revision > baseRevision
+    );
+    if (!missedPull) {
+      // Built after the renderer saw every pull: every value in it is deliberate.
+      profileSyncRuntime.pendingPullEchoHash = null;
+      return false;
+    }
+    prePullProfile = missedPull.profile;
+    startingStateLost =
+      typeof missedPull.compactedFrom === 'number' && baseRevision >= missedPull.compactedFrom;
+  } else {
+    // No revision (an older renderer): checked once, against the last pull.
+    if (profileSyncRuntime.pendingPullEchoHash === null) return false;
+    prePullProfile = profileSyncRuntime.pendingPullEchoProfile;
+    if (!prePullProfile) return false;
+  }
 
   // Scope comes from the pulled config, not the merged one: the stale update may
   // carry a stale syncScope too.
   const scope = getNormalizedProfileSyncScopeValue(pulledConfig?.profileSync?.syncScope);
-  const incomingHash = computeScopedProfileHash(
-    profileSyncCore.projectSyncProfile(config, scope),
-    scope
-  );
-  if (incomingHash !== prePullHash) return false;
+  const touched = new Set(touchedKeys);
+  const incomingProfile = profileSyncCore.projectSyncProfile(config, scope);
+  const same = (a, b) =>
+    profileSyncCore.computeProfileHash({ value: a }) ===
+    profileSyncCore.computeProfileHash({ value: b });
+  const eachSyncedSetting = (visit) => {
+    const fields = new Set([...Object.keys(prePullProfile), ...Object.keys(incomingProfile)]);
+    return [...fields].every((field) => {
+      if (field !== 'ui') return visit(field, incomingProfile[field], prePullProfile[field]);
+      const incomingUi = incomingProfile.ui || {};
+      const prePullUi = prePullProfile.ui || {};
+      return [...new Set([...Object.keys(incomingUi), ...Object.keys(prePullUi)])].every((key) =>
+        visit(`ui.${key}`, incomingUi[key], prePullUi[key])
+      );
+    });
+  };
 
+  let keep = touched;
+  if (revisionKnown) {
+    // Built before the pull. Whatever it changed relative to the pre-pull
+    // profile is a deliberate edit; everything else is stale.
+    keep = new Set(touched);
+    // Built inside a compacted stretch of history, the state it started from is
+    // unknown, so only settings the user touched are taken from it.
+    if (!startingStateLost) {
+      eachSyncedSetting((key, incomingValue, prePullValue) => {
+        if (!same(incomingValue, prePullValue)) keep.add(key);
+        return true;
+      });
+    }
+  } else {
+    // Stale when every setting the user did not touch still holds its pre-pull value.
+    const stale = eachSyncedSetting(
+      (key, incomingValue, prePullValue) => touched.has(key) || same(incomingValue, prePullValue)
+    );
+    if (!stale) return false;
+  }
+
+  const incoming = config;
   config = profileSyncCore.mergeSyncedProfileIntoConfig(
     config,
-    profileSyncCore.projectSyncProfile(pulledConfig, scope),
+    // Cleared fields come through as null, so a setting the pull removed is
+    // removed from the stale update too rather than left as it was.
+    profileSyncCore.projectSyncProfile(pulledConfig, scope, { markCleared: true }),
     scope
   );
+  // Deliberate values from the update survive, even ones equal to the pre-pull value.
+  keep.forEach((key) => {
+    const [owner, field] = key.startsWith('ui.') ? [incoming.ui, key.slice(3)] : [incoming, key];
+    const target = key.startsWith('ui.') ? (config.ui = { ...(config.ui || {}) }) : config;
+    if (owner && Object.prototype.hasOwnProperty.call(owner, field)) {
+      target[field] = owner[field];
+    } else {
+      delete target[field];
+    }
+  });
   ensureProfileSyncConfigDefaults(config);
   config.profileSync.syncScope = scope;
   profileSyncRuntime.pendingPullEchoHash = null;
-  log.debug('Reverted a renderer config update that predates the last profile sync pull');
+  log.debug('Reverted the stale part of a renderer config update that predates the last pull');
   return true;
 }
 
 function updateLocalProfileSyncTracking({ allowDebouncedPush = true } = {}) {
-  const profile = profileSyncCore.projectSyncProfile(config, getActiveProfileSyncScope());
-  const nextHash = computeScopedProfileHash(profile, getActiveProfileSyncScope());
+  const scope = getActiveProfileSyncScope();
+  const profile = profileSyncCore.projectSyncProfile(config, scope);
+  const nextHash = computeScopedProfileHash(profile, scope);
+  const previousSectionHashes = profileSyncRuntime.localSectionHashes || {};
+  const nextSectionHashes = computeLocalSectionHashes(scope);
+  profileSyncRuntime.localSectionHashes = nextSectionHashes;
+  const changedSections = Object.keys(nextSectionHashes).filter(
+    (key) => previousSectionHashes[key] !== nextSectionHashes[key]
+  );
   if (profileSyncRuntime.localProfileHash === null) {
     profileSyncRuntime.localProfileHash = nextHash;
     profileSyncRuntime.localProfileUpdatedAt = new Date().toISOString();
@@ -3646,9 +4391,15 @@ function updateLocalProfileSyncTracking({ allowDebouncedPush = true } = {}) {
   ) {
     profileSyncRuntime.pendingPullEchoHash = null;
     profileSyncRuntime.localProfileHash = nextHash;
-    // localProfileUpdatedAt deliberately stays on the pulled envelope's
-    // timestamp: leaving it behind keeps the next auto sync from treating the
-    // stale echo as the newer side and pushing it out.
+    // The edit times deliberately stay on the pulled sections' timestamps, and
+    // their baseline is dropped: the next run then sees a tie with the file,
+    // which the file wins, so the pulled content comes back instead of the
+    // stale echo being pushed out.
+    if (config?.profileSync?.syncBaseline) {
+      changedSections.forEach((key) => {
+        delete config.profileSync.syncBaseline[key];
+      });
+    }
     return;
   }
 
@@ -3657,6 +4408,12 @@ function updateLocalProfileSyncTracking({ allowDebouncedPush = true } = {}) {
   profileSyncRuntime.localProfileUpdatedAt = new Date().toISOString();
   if (config?.profileSync) {
     config.profileSync.profileUpdatedAt = profileSyncRuntime.localProfileUpdatedAt;
+    config.profileSync.sectionUpdatedAt = {
+      ...(config.profileSync.sectionUpdatedAt || {}),
+      ...Object.fromEntries(
+        changedSections.map((key) => [key, profileSyncRuntime.localProfileUpdatedAt])
+      ),
+    };
   }
 
   if (allowDebouncedPush) {
@@ -3752,6 +4509,7 @@ function pruneConfig(target) {
   delete target.secureStoragePending;
   delete target.desktopCapabilities;
   delete target.desktopAppearance;
+  delete target.omarchyBarEntities;
   delete target.configRevision;
   delete target.configRecovery;
   delete target.persistenceWarnings;
@@ -3864,6 +4622,8 @@ function loadConfig(options = {}) {
       weatherEffectsEnabled: false,
       weatherOverride: 'auto',
       enableInteractionDebugLogs: false,
+      // Only takes effect where an Omarchy palette exists.
+      followOmarchy: true,
     },
     primaryCards: ['weather', 'time'],
     favoriteEntities: [],
@@ -3895,7 +4655,12 @@ function loadConfig(options = {}) {
       try {
         serializedConfig = fs.readFileSync(configPath, 'utf8');
       } catch (error) {
-        configWriteBlockedReason = `The existing config could not be read safely: ${error?.message || String(error)}`;
+        configWriteBlockedReason = mainT(
+          'The existing config could not be read safely: {{error}}',
+          {
+            error: error?.message || String(error),
+          }
+        );
         lastConfigWriteError = configWriteBlockedReason;
         configRecoveryNotice = {
           recovered: false,
@@ -3918,6 +4683,7 @@ function loadConfig(options = {}) {
         ensureProfileSyncConfigDefaults(config);
         ensureUpdateConfigDefaults(config);
         ensureHaProfileConfigDefaults(config);
+        ensureFollowOmarchyDefault(config);
         normalizeDesktopPinsConfig(config);
         normalizeTrayEntitiesConfigInPlace(config);
 
@@ -3935,7 +4701,10 @@ function loadConfig(options = {}) {
             error: persisted.success ? '' : persisted.error,
           };
         } else {
-          lastConfigWriteError = `The existing config is invalid and could not be moved aside: ${recovery.error}`;
+          lastConfigWriteError = mainT(
+            'The existing config is invalid and could not be moved aside: {{error}}',
+            { error: recovery.error }
+          );
           configWriteBlockedReason = lastConfigWriteError;
           configRecoveryNotice = {
             recovered: false,
@@ -3977,6 +4746,7 @@ function loadConfig(options = {}) {
       ensureProfileSyncConfigDefaults(config);
       ensureUpdateConfigDefaults(config);
       ensureHaProfileConfigDefaults(config);
+      ensureFollowOmarchyDefault(config);
 
       // OAuth access tokens are short-lived runtime state. Ignore any stale copy
       // that an earlier development build may have put in config.json.
@@ -3984,6 +4754,7 @@ function loadConfig(options = {}) {
         config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER;
         config.homeAssistant.tokenEncrypted = false;
         config.homeAssistant.oauthStatus = 'restoring';
+        delete config.homeAssistant.oauthAuthorizationId;
         delete config.tokenResetReason;
       } else if (config.homeAssistant?.tokenEncrypted && config.homeAssistant?.token) {
         if (deferSecureStorage) {
@@ -4153,6 +4924,7 @@ function loadConfig(options = {}) {
       ensureDateTimeFormatConfigDefaults(config);
       ensureProfileSyncConfigDefaults(config);
       ensureUpdateConfigDefaults(config);
+      ensureFollowOmarchyDefault(config);
       normalizeDesktopPinsConfig(config);
       normalizeTrayEntitiesConfigInPlace(config);
       // Ensure directory exists and persist
@@ -4165,7 +4937,10 @@ function loadConfig(options = {}) {
   } catch (error) {
     log.error('Error loading config:', error);
     if (!configWriteBlockedReason && fs.existsSync(configPath)) {
-      configWriteBlockedReason = `The existing config could not be normalized safely: ${error?.message || String(error)}`;
+      configWriteBlockedReason = mainT(
+        'The existing config could not be normalized safely: {{error}}',
+        { error: error?.message || String(error) }
+      );
       lastConfigWriteError = configWriteBlockedReason;
       configRecoveryNotice = {
         recovered: false,
@@ -4178,6 +4953,7 @@ function loadConfig(options = {}) {
     ensureDateTimeFormatConfigDefaults(config);
     ensureProfileSyncConfigDefaults(config);
     ensureUpdateConfigDefaults(config);
+    ensureFollowOmarchyDefault(config);
     normalizeDesktopPinsConfig(config);
     normalizeTrayEntitiesConfigInPlace(config);
   }
@@ -4426,6 +5202,8 @@ function buildConfigSnapshotForSave() {
     delete configToSave.homeAssistant.tokenEncrypted;
     delete configToSave.homeAssistant.oauthExpiresAt;
     delete configToSave.homeAssistant.oauthLastError;
+    delete configToSave.homeAssistant.oauthLastErrorCode;
+    delete configToSave.homeAssistant.oauthAuthorizationId;
     delete configToSave.tokenResetReason;
   }
 
@@ -4500,7 +5278,7 @@ function buildConfigSnapshotForSave() {
 async function writeConfigSnapshotAsync(snapshot) {
   try {
     if (shouldBlockPotentialConfigClobber(snapshot)) {
-      throw new Error(configWriteBlockedReason || 'Configuration writes are blocked');
+      throw new Error(configWriteBlockedReason || mainT('Configuration writes are blocked'));
     }
     await fs.promises.mkdir(snapshot.userDataDir, { recursive: true });
     await fs.promises.writeFile(snapshot.tempPath, snapshot.serializedConfig, 'utf8');
@@ -4692,6 +5470,7 @@ async function saveConfigDurably(options = {}) {
     localProfileHash: profileSyncRuntime.localProfileHash,
     localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
     pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
+    localSectionHashes: profileSyncRuntime.localSectionHashes,
   };
   const previousProfileUpdatedAt = config?.profileSync?.profileUpdatedAt ?? null;
   const hadTokenResetReason = Object.prototype.hasOwnProperty.call(
@@ -4776,11 +5555,46 @@ function setupProfileSyncInterval() {
   }, intervalMs);
 }
 
+/**
+ * Sections this computer and the file both hold, with different content and no
+ * shared history to merge from.
+ */
+async function findProfileSyncConflictSections(envelope) {
+  const { sections: remoteSections, malformed } = await profileSyncCore.decodeEnvelopeSections(
+    envelope,
+    getActiveProfileSyncPassphrase()
+  );
+  const localSections = profileSyncCore.buildLocalSections(config, getActiveProfileSyncScope());
+  const baseline = getProfileSyncConfig().syncBaseline || {};
+  // A damaged section also needs a choice: Keep Local replaces it after backing
+  // it up, where an automatic run would only stop. Use Remote cannot apply it.
+  const isDamaged = (key) => !!malformed && Object.prototype.hasOwnProperty.call(malformed, key);
+  const sections = Object.entries(localSections)
+    .filter(
+      ([key, data]) =>
+        isDamaged(key) ||
+        (!baseline[key] &&
+          remoteSections[key] &&
+          profileSyncCore.computeSectionHash(key, data) !==
+            profileSyncCore.computeSectionHash(key, remoteSections[key].data))
+    )
+    .map(([key]) => key);
+  return { sections, damaged: sections.filter(isDamaged) };
+}
+
+/**
+ * Before the first sync against a file (or of a section newly added to this
+ * device's scope), finds sections where this device and the file already hold
+ * different content with no shared history to merge from. Those need the user to
+ * choose a side; everything else can sync normally.
+ */
 async function prepareProfileSyncFirstEnableResolution() {
   const profileSync = getProfileSyncConfig();
   profileSyncRuntime.needsResolution = false;
   profileSyncRuntime.pendingRemoteEnvelope = null;
   profileSyncRuntime.pendingRemoteIdentity = null;
+  profileSyncRuntime.conflictSections = [];
+  profileSyncRuntime.damagedConflictSections = [];
 
   if (!profileSync.enabled || !profileSync.cloudFilePath) {
     return { needsResolution: false };
@@ -4792,20 +5606,21 @@ async function prepareProfileSyncFirstEnableResolution() {
     return { needsResolution: false };
   }
 
-  const { profile: remoteProfile, syncScope } = await decodeEnvelopeProfile(readResult.envelope);
-  const localProfile = profileSyncCore.projectSyncProfile(config, syncScope);
-  const localHash = computeScopedProfileHash(localProfile, syncScope);
-  const remoteHash = computeScopedProfileHash(remoteProfile, syncScope);
-  if (remoteHash === localHash) {
+  const { sections: conflictSections, damaged } = await findProfileSyncConflictSections(
+    readResult.envelope
+  );
+  if (conflictSections.length === 0) {
     return { needsResolution: false };
   }
 
   profileSyncRuntime.needsResolution = true;
+  profileSyncRuntime.conflictSections = conflictSections;
+  profileSyncRuntime.damagedConflictSections = damaged;
   profileSyncRuntime.pendingRemoteEnvelope = readResult.envelope;
   profileSyncRuntime.pendingRemoteIdentity = getSyncEnvelopeIdentity(readResult);
   updateProfileSyncStatus(
     'needs_resolution',
-    'Choose how to resolve initial profile sync conflict.'
+    mainT('Choose how to resolve initial profile sync conflict.')
   );
   emitProfileSyncStatus();
   return { needsResolution: true };
@@ -4821,29 +5636,17 @@ function getSyncEnvelopeIdentity(readResult) {
 
 async function prepareRemoteRewriteBaseline(passphrase, baselineConfig = config) {
   const readResult = await readConfiguredSyncEnvelope();
-  if (readResult.exists && readResult.envelope) {
-    const remoteProfile = await profileSyncCore.decodeEnvelopeProfile(
-      readResult.envelope,
-      passphrase
-    );
-    const syncScope = profileSyncCore.extractSyncScopeFromEnvelope(readResult.envelope);
-    const localProfile = profileSyncCore.projectSyncProfile(baselineConfig, syncScope);
-    if (
-      computeScopedProfileHash(remoteProfile, syncScope) !==
-      computeScopedProfileHash(localProfile, syncScope)
-    ) {
-      throw new Error(
-        'The remote profile has changes that are not present locally. Sync or resolve them before changing encryption.'
-      );
-    }
-  }
+  const remoteSections = await decodeRemoteSectionsWithPassphrase(readResult, passphrase);
+  assertRemoteSectionsMatchConfig(remoteSections, baselineConfig);
   return getSyncEnvelopeIdentity(readResult);
 }
 
 async function verifyPendingRemoteEnvelopeUnchanged() {
   const expectedIdentity = profileSyncRuntime.pendingRemoteIdentity;
   if (!expectedIdentity) {
-    throw new Error('The pending profile conflict is no longer available; retry conflict check');
+    throw new Error(
+      mainT('The pending profile conflict is no longer available; retry conflict check')
+    );
   }
   const currentResult = await readConfiguredSyncEnvelope();
   const currentIdentity = getSyncEnvelopeIdentity(currentResult);
@@ -4851,12 +5654,19 @@ async function verifyPendingRemoteEnvelopeUnchanged() {
     profileSyncRuntime.pendingRemoteEnvelope = currentResult.envelope;
     profileSyncRuntime.pendingRemoteIdentity = currentIdentity;
     profileSyncRuntime.needsResolution = true;
+    const refreshed = currentResult.envelope
+      ? await findProfileSyncConflictSections(currentResult.envelope).catch(() => null)
+      : null;
+    profileSyncRuntime.conflictSections = refreshed?.sections || [];
+    profileSyncRuntime.damagedConflictSections = refreshed?.damaged || [];
     updateProfileSyncStatus(
       'needs_resolution',
-      'The remote profile changed while waiting for a choice. Review it and choose again.'
+      mainT('The remote profile changed while waiting for a choice. Review it and choose again.')
     );
     emitProfileSyncStatus();
-    const error = new Error('The remote profile changed while waiting for conflict resolution');
+    const error = new Error(
+      mainT('The remote profile changed while waiting for conflict resolution')
+    );
     error.remoteConflictRefreshed = true;
     throw error;
   }
@@ -4873,7 +5683,9 @@ async function clearProfileSyncFirstEnableResolutionPending() {
   const persistence = await saveConfigDurably({ allowDebouncedPush: false });
   if (!persistence.success) {
     profileSync.firstEnableResolutionPending = true;
-    throw new Error(`Failed to save profile sync conflict check: ${persistence.error}`);
+    throw new Error(
+      mainT('Failed to save profile sync conflict check: {{error}}', { error: persistence.error })
+    );
   }
   return persistence;
 }
@@ -4887,10 +5699,14 @@ async function completeProfileSyncFirstEnablePreparation(source) {
   // Keep the durable gate armed through the first identity-checked write. If the
   // provider changes or fails, retry remains available and no conflict is
   // silently bypassed.
+  // No section conflicts remain, so a merge run syncs each section the right way:
+  // matching ones only record their baseline, missing ones are uploaded.
   const expectedRemoteIdentity = profileSyncRuntime.pendingRemoteIdentity;
-  const result = await runProfileSyncInternal('push', source, { expectedRemoteIdentity });
+  const result = await runProfileSyncInternal('auto', source, { expectedRemoteIdentity });
   if (result?.ok !== true || result?.reason === 'remote_changed') {
-    throw new Error(result?.error || result?.reason || 'Initial profile sync did not complete');
+    throw new Error(
+      result?.error || result?.reason || mainT('Initial profile sync did not complete')
+    );
   }
   await clearProfileSyncFirstEnableResolutionPending();
   profileSyncRuntime.needsResolution = false;
@@ -4916,7 +5732,9 @@ function scheduleDebouncedProfileSyncPush(source = 'config_change') {
   }
   profileSyncRuntime.pushDebounceTimer = setTimeout(() => {
     profileSyncRuntime.pushDebounceTimer = null;
-    runProfileSync('push', source).catch((error) => {
+    // A merge, not a forced push: another device may have changed other
+    // sections since the last run, and those have to come in, not be overwritten.
+    runProfileSync('auto', source).catch((error) => {
       log.warn('Debounced profile sync push failed:', error.message);
     });
   }, PROFILE_SYNC_PUSH_DEBOUNCE_MS);
@@ -4933,16 +5751,17 @@ function runProfileSync(direction = 'auto', source = 'manual') {
 }
 
 async function runProfileSyncInternal(direction = 'auto', source = 'manual', options = {}) {
-  const profileSync = getProfileSyncConfig();
+  // Reassigned after a pull: applying one replaces config, and with it this object.
+  let profileSync = getProfileSyncConfig();
 
   if (!profileSync.enabled) {
     return { ok: false, reason: 'disabled', status: buildProfileSyncStatus() };
   }
   if (!isProfileSyncProviderSupported(profileSync.provider)) {
-    throw new Error('Unsupported profile sync provider');
+    throw new Error(mainT('Unsupported profile sync provider'));
   }
   if (!profileSync.cloudFilePath) {
-    throw new Error('Profile sync file is not configured');
+    throw new Error(mainT('Profile sync file is not configured'));
   }
   if (profileSync.passphraseTransition) {
     if (source === 'manual' || source === 'startup_rewrite_recovery') {
@@ -5000,7 +5819,6 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
   emitProfileSyncStatus();
 
   try {
-    const localUpdatedAt = profileSyncRuntime.localProfileUpdatedAt || new Date().toISOString();
     const remoteResult = await readConfiguredSyncEnvelope();
     if (
       options.expectedRemoteIdentity &&
@@ -5009,70 +5827,158 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       profileSyncRuntime.needsResolution = false;
       profileSyncRuntime.pendingRemoteEnvelope = remoteResult.envelope;
       profileSyncRuntime.pendingRemoteIdentity = getSyncEnvelopeIdentity(remoteResult);
-      const error = new Error('The remote profile changed before the initial sync could complete');
+      const error = new Error(
+        mainT('The remote profile changed before the initial sync could complete')
+      );
       error.remoteChangedBeforeResolution = true;
       error.remoteConflictRefreshed = true;
       throw error;
     }
     profileSyncRuntime.conflictCopies = await findProfileSyncConflictCopies();
-    let finalDirection = direction;
 
-    if (direction === 'auto') {
-      finalDirection = profileSyncCore.chooseSyncDirection({
-        localUpdatedAt,
-        remoteUpdatedAt: remoteResult.envelope?.updatedAt || null,
-        remoteExists: remoteResult.exists,
+    // A routine run never changes the file's encryption. Only the rewrite and
+    // first-sync flows (which pin the exact remote they checked) may, so a
+    // device with stale settings cannot publish the profile unencrypted or
+    // re-encrypt it under a passphrase another device has replaced.
+    const remoteEnvelope = remoteResult.exists ? remoteResult.envelope : null;
+    const mayChangeEncryption =
+      !!options.expectedRemoteIdentity || !!profileSync.remoteRewritePending;
+    if (
+      remoteEnvelope &&
+      !mayChangeEncryption &&
+      profileSyncCore.isEnvelopeEncrypted(remoteEnvelope) !== !!profileSync.encryptionEnabled
+    ) {
+      throw new Error(
+        profileSync.encryptionEnabled
+          ? mainT(
+              'The sync file is not encrypted, but encryption is on for this device. If another device turned encryption off, turn it off here too.'
+            )
+          : mainT(
+              'The sync file is encrypted. Turn on encryption and enter the passphrase your other devices use.'
+            )
+      );
+    }
+
+    const {
+      sections: remoteSections,
+      malformed: remoteMalformed,
+      extensions: remoteExtensions,
+    } = remoteEnvelope
+      ? await profileSyncCore.decodeEnvelopeSections(
+          remoteEnvelope,
+          getActiveProfileSyncPassphrase()
+        )
+      : { sections: {}, malformed: {}, extensions: null };
+    const syncScope = getActiveProfileSyncScope();
+    const scopeKeys = profileSyncCore.getScopeSectionKeys(syncScope);
+    // A run can be limited to some sections (repairing damage on first enable);
+    // the others are left exactly as they are on both sides.
+    const sectionKeys = Array.isArray(options.onlySections)
+      ? scopeKeys.filter((key) => options.onlySections.includes(key))
+      : scopeKeys;
+    // Damage only matters in sections this run syncs; the rest are written
+    // back exactly as found.
+    const { inScope: damagedInScope, outOfScope: damagedOutOfScope } = splitDamagedSyncSections(
+      remoteMalformed,
+      sectionKeys
+    );
+    const damagedSections = Object.keys(damagedInScope);
+    if (damagedSections.length > 0) {
+      // Only an explicit Sync Up may replace damaged sections, after keeping them.
+      if (direction !== 'push') throw createDamagedSyncSectionsError(damagedSections);
+      await backupRemoteSectionsBeforePush(damagedInScope);
+    }
+    const localSections = profileSyncCore.buildLocalSections(config, syncScope);
+    const localUpdatedAt = Object.fromEntries(
+      sectionKeys.map((key) => [
+        key,
+        profileSync.sectionUpdatedAt?.[key] || profileSync.profileUpdatedAt || null,
+      ])
+    );
+    const plan = profileSyncCore.planSectionSync({
+      sectionKeys,
+      localSections,
+      remoteSections,
+      baseline: profileSync.syncBaseline,
+      localUpdatedAt,
+      direction,
+      forceSections: options.forceSections || null,
+    });
+    const nextBaseline = {};
+    plan.unchanged.forEach((key) => {
+      if (plan.localHashes[key] === plan.remoteHashes[key]) {
+        nextBaseline[key] = plan.localHashes[key];
+      }
+    });
+
+    let currentLocalSections = localSections;
+    const pushKeys = [...plan.push];
+    if (plan.pull.length > 0) {
+      await backupLocalProfileBeforePullApply(plan.pull);
+      await applySyncedProfileToConfig(pickSections(remoteSections, plan.pull));
+      profileSync = getProfileSyncConfig();
+      currentLocalSections = profileSyncCore.buildLocalSections(config, syncScope);
+      plan.pull.forEach((key) => {
+        const appliedHash = profileSyncCore.computeSectionHash(key, currentLocalSections[key]);
+        if (appliedHash === plan.remoteHashes[key]) {
+          nextBaseline[key] = appliedHash;
+        } else {
+          // The file lacked fields this version keeps (an older writer), so the
+          // applied section still differs; write it back so both sides agree.
+          pushKeys.push(key);
+        }
       });
     }
 
-    if (finalDirection === 'none') {
-      updateProfileSyncStatus('idle', '');
-      const status = buildProfileSyncStatus();
-      emitProfileSyncStatus();
-      return { ok: true, action: 'none', status };
-    }
-
-    if (finalDirection === 'pull') {
-      if (!remoteResult.exists || !remoteResult.envelope) {
-        updateProfileSyncStatus('idle', '');
-        const status = buildProfileSyncStatus();
-        emitProfileSyncStatus();
-        return { ok: true, action: 'none', status };
+    // Changing the encryption mode rewrites the whole file even when no section
+    // content changed.
+    const rewriteRequired = !!profileSync.remoteRewritePending && mayChangeEncryption;
+    let wroteEnvelope = null;
+    if (pushKeys.length > 0 || rewriteRequired) {
+      // A merge only replaces remote edits it reports as discarded. Sync Up replaces
+      // whatever the file holds for the sections it pushes, so it keeps all of them.
+      const replacedRemoteKeys = direction === 'push' ? plan.push : plan.discardsRemote;
+      const replacedRemoteSections = pickSections(remoteSections, replacedRemoteKeys);
+      if (Object.keys(replacedRemoteSections).length > 0) {
+        await backupRemoteSectionsBeforePush(replacedRemoteSections);
       }
-
-      const { profile: remoteProfile, syncScope: remoteSyncScope } = await decodeEnvelopeProfile(
-        remoteResult.envelope
-      );
-      const localProfile = profileSyncCore.projectSyncProfile(config, remoteSyncScope);
-      const localHash = computeScopedProfileHash(localProfile, remoteSyncScope);
-      const remoteHash = computeScopedProfileHash(remoteProfile, remoteSyncScope);
-      if (remoteHash !== localHash || source === 'first_enable_resolution') {
-        await backupLocalProfileBeforePullApply(remoteSyncScope);
-        await applySyncedProfileToConfig(
-          remoteProfile,
-          remoteResult.envelope.updatedAt,
-          remoteSyncScope
+      const now = new Date().toISOString();
+      const nextSections = { ...damagedOutOfScope, ...remoteSections };
+      pushKeys.forEach((key) => {
+        nextSections[key] = profileSyncCore.buildPushedSectionEntry(
+          key,
+          currentLocalSections[key],
+          remoteSections[key],
+          {
+            updatedAt: profileSync.sectionUpdatedAt?.[key] || now,
+            deviceId: profileSync.deviceId,
+          }
         );
+      });
+      const encrypt = !!profileSync.encryptionEnabled;
+      const passphrase = getActiveProfileSyncPassphrase();
+      if (encrypt && !passphrase) {
+        throw new Error(mainT('A passphrase is required to sync encrypted profiles'));
       }
-      profileSyncRuntime.localProfileUpdatedAt = remoteResult.envelope.updatedAt;
-      getProfileSyncConfig().profileUpdatedAt = remoteResult.envelope.updatedAt;
-      updateProfileSyncStatus('success', '');
-      setupProfileSyncInterval();
-      const status = buildProfileSyncStatus();
-      emitProfileSyncStatus();
-      return { ok: true, action: 'pull', status, config: sanitizeConfigForRenderer(config) };
-    }
-
-    if (finalDirection === 'push') {
-      const envelopeToWrite = await buildLocalProfileEnvelope(new Date().toISOString());
+      const envelopeToWrite = await profileSyncCore.buildSyncEnvelope({
+        sections: nextSections,
+        updatedAt: now,
+        updatedByDeviceId: profileSync.deviceId,
+        encrypt,
+        passphrase,
+        extensions: remoteExtensions,
+      });
 
       // Best-effort compare-before-write: encryption and provider replication take time, so
       // another device can land a write between the read above and this one.
       // Overwriting blind would silently drop it, so re-check and re-resolve.
       if (await hasRemoteSyncEnvelopeChanged(remoteResult)) {
         log.info('Remote sync file changed while preparing a push; re-resolving direction');
-        if (source === 'conflict_recheck') {
-          throw new Error('Sync file kept changing on the other device; try again');
+        await persistProfileSyncBaseline(nextBaseline, scopeKeys);
+        // Sync Up and a conflict choice were decided against the file as it was;
+        // an automatic merge must not stand in for them, so the user is asked again.
+        if (source === 'conflict_recheck' || direction !== 'auto') {
+          throw new Error(mainT('Sync file kept changing on the other device; try again'));
         }
         void runProfileSync('auto', 'conflict_recheck');
         const status = buildProfileSyncStatus();
@@ -5081,6 +5987,10 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       }
 
       await writeConfiguredSyncEnvelope(envelopeToWrite);
+      wroteEnvelope = envelopeToWrite;
+      pushKeys.forEach((key) => {
+        nextBaseline[key] = profileSyncCore.computeSectionHash(key, currentLocalSections[key]);
+      });
       if (profileSync.remoteRewritePending) {
         const previousCredential = {
           rememberPassphrase: profileSync.rememberPassphrase,
@@ -5106,28 +6016,76 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
           profileSyncRuntime.passphraseSession = previousCredential.passphraseSession;
           profileSyncRuntime.passphraseWarning = previousCredential.passphraseWarning;
           const markerError = new Error(
-            `Remote profile was rewritten, but the local completion marker could not be saved: ${markerPersistence.error}`
+            mainT(
+              'Remote profile was rewritten, but the local completion marker could not be saved: {{error}}',
+              { error: markerPersistence.error }
+            )
           );
           markerError.remoteRewriteCommitted = true;
           throw markerError;
         }
       }
-      profileSyncRuntime.localProfileUpdatedAt = envelopeToWrite.updatedAt;
-      getProfileSyncConfig().profileUpdatedAt = envelopeToWrite.updatedAt;
-      updateProfileSyncStatus('success', '');
-      setupProfileSyncInterval();
-      const status = buildProfileSyncStatus();
-      emitProfileSyncStatus();
-      return { ok: true, action: 'push', status };
     }
 
-    throw new Error(`Unknown profile sync direction: ${finalDirection}`);
+    await persistProfileSyncBaseline(nextBaseline, scopeKeys);
+    const finalEnvelope = wroteEnvelope || remoteEnvelope;
+    profileSyncRuntime.lastRemote = finalEnvelope
+      ? {
+          updatedAt: finalEnvelope.updatedAt,
+          updatedByDeviceId: finalEnvelope.updatedByDeviceId,
+        }
+      : null;
+    profileSyncRuntime.lastRunSummary = {
+      at: new Date().toISOString(),
+      pushed: pushKeys,
+      pulled: plan.pull,
+      replacedLocal: plan.discardsLocal,
+      replacedRemote: plan.discardsRemote,
+    };
+    updateProfileSyncStatus('success', '');
+    setupProfileSyncInterval();
+    const status = buildProfileSyncStatus();
+    emitProfileSyncStatus();
+    const pushed = pushKeys.length > 0 || !!wroteEnvelope;
+    const pulled = plan.pull.length > 0;
+    const action = pushed && pulled ? 'merge' : pushed ? 'push' : pulled ? 'pull' : 'none';
+    return {
+      ok: true,
+      action,
+      pushed: pushKeys,
+      pulled: plan.pull,
+      status,
+      ...(pulled ? { config: sanitizeConfigForRenderer(config) } : {}),
+    };
   } catch (error) {
     updateProfileSyncStatus('error', error.message);
     emitProfileSyncStatus();
     throw error;
   } finally {
     profileSyncRuntime.inFlight = false;
+  }
+}
+
+/**
+ * Records which sections this device and the file now agree on. Sections that
+ * are out of scope are forgotten, and ones whose outcome is still open (a
+ * re-check is queued) keep their previous baseline.
+ */
+async function persistProfileSyncBaseline(agreedHashes, sectionKeys) {
+  const profileSync = getProfileSyncConfig();
+  const previous = profileSync.syncBaseline || {};
+  const next = {};
+  sectionKeys.forEach((key) => {
+    if (agreedHashes[key]) next[key] = agreedHashes[key];
+    else if (previous[key]) next[key] = previous[key];
+  });
+  profileSync.syncBaseline = next;
+  const persistence = await saveConfigDurably({ allowDebouncedPush: false });
+  if (!persistence.success) {
+    profileSync.syncBaseline = previous;
+    throw new Error(
+      mainT('Failed to save profile sync state: {{error}}', { error: persistence.error })
+    );
   }
 }
 
@@ -5170,13 +6128,52 @@ function setupProfileSyncWakeTriggers() {
     powerMonitor.on('resume', () => {
       requestOpportunisticProfileSync('resume');
       invalidateHaConnectionState('connecting');
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('tray-entities-refresh-needed', { reconnect: true });
+      const requestReconnect = () => {
+        // An expired authorization (also one the refresh below just found revoked) waits for
+        // the user to reconnect; a reconnect could only fail on the placeholder token.
+        if (
+          config?.homeAssistant?.authMethod === 'oauth' &&
+          config.homeAssistant.oauthStatus === 'reauth_required'
+        ) {
+          return;
+        }
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('tray-entities-refresh-needed', { reconnect: true });
+        }
+      };
+      if (!isHomeAssistantOAuthSessionStale()) {
+        // An expired authorization waits for the user to reconnect; there is nothing to refresh.
+        if (
+          config?.homeAssistant?.authMethod === 'oauth' &&
+          config.homeAssistant.oauthStatus !== 'reauth_required' &&
+          config.homeAssistant.oauthExpiresAt
+        ) {
+          scheduleHomeAssistantOAuthRefresh(config.homeAssistant.oauthExpiresAt);
+        }
+        requestReconnect();
+        return;
       }
+      // Reconnecting with the expired token would only be rejected; refresh first.
+      void runSerializedConfigMutation(() => refreshHomeAssistantOAuthSession())
+        .catch((error) => {
+          log.warn('Home Assistant OAuth refresh after resume failed:', error?.message || error);
+        })
+        .finally(requestReconnect);
     });
   } catch (error) {
     log.warn('Could not subscribe to power resume events:', error?.message || error);
   }
+}
+
+// Timers do not run while the machine sleeps, so after a long suspend the access token can have
+// expired while its refresh is still scheduled for later.
+function isHomeAssistantOAuthSessionStale(now = Date.now()) {
+  const homeAssistant = config?.homeAssistant;
+  if (homeAssistant?.authMethod !== 'oauth' || homeAssistant.oauthStatus === 'reauth_required') {
+    return false;
+  }
+  const expiresAt = Number(homeAssistant.oauthExpiresAt || 0);
+  return !expiresAt || expiresAt - now <= HOME_ASSISTANT_OAUTH_REFRESH_SKEW_MS;
 }
 
 async function initializeProfileSyncOnStartupInternal() {
@@ -5204,7 +6201,11 @@ async function initializeProfileSyncOnStartupInternal() {
     // forced pull.
     await runProfileSyncInternal('auto', 'startup');
   } catch (error) {
+    // Keep the interval: at login the sync folder is often not mounted yet
+    // (OneDrive, a Google Drive letter) and a later run succeeds on its own.
+    // setupProfileSyncInterval stays off while a choice or recovery is pending.
     clearProfileSyncTimers();
+    setupProfileSyncInterval();
     log.warn('Profile sync startup run failed:', error.message);
   }
 }
@@ -5227,6 +6228,19 @@ function applyFrostedGlass(override) {
 }
 
 /**
+ * Point nativeTheme at the app's theme so the surfaces the renderer cannot style (context menus,
+ * macOS select popups and vibrancy) match it. See resolveNativeThemeSource.
+ */
+function applyNativeThemeSource() {
+  const next = resolveNativeThemeSource(config, omarchyThemeWatcher?.get() || null);
+  try {
+    if (nativeTheme && nativeTheme.themeSource !== next) nativeTheme.themeSource = next;
+  } catch (error) {
+    log.warn('Failed to set native theme source:', error.message);
+  }
+}
+
+/**
  * Create and configure the application's main BrowserWindow.
  *
  * Creates the primary transparent window, applies visual effects (frosted glass and safe opacity),
@@ -5238,6 +6252,65 @@ function applyFrostedGlass(override) {
  * such as always-on-top, resizability, and the configured icon. This function updates in-memory
  * configuration (e.g., clamped opacity) and calls saveConfig() when position/size changes.
  */
+function mainWindowMatchesSavedBounds(bounds) {
+  const positionMatches =
+    usesCompositorOwnedPlacement ||
+    (config.windowPosition?.x === bounds.x && config.windowPosition?.y === bounds.y);
+  return (
+    positionMatches &&
+    config.windowSize?.width === bounds.width &&
+    config.windowSize?.height === bounds.height
+  );
+}
+
+/** Save the main window's position and size after the user moves or resizes it. */
+function watchMainWindowBounds(targetWindow) {
+  const changeWin = () => {
+    const bounds = targetWindow.getBounds();
+    // Linux reports programmatic moves too (restoring the saved position after a show,
+    // resetting it, restoring the saved size). Landing on the saved bounds leaves nothing to
+    // save, and drops any position still queued from a drag that ended back there.
+    if (mainWindowMatchesSavedBounds(bounds)) {
+      if (windowStateSaveTimer) clearTimeout(windowStateSaveTimer);
+      windowStateSaveTimer = null;
+      pendingWindowBounds = null;
+      return;
+    }
+    pendingWindowBounds = bounds;
+    if (windowStateSaveTimer) {
+      clearTimeout(windowStateSaveTimer);
+    }
+    windowStateSaveTimer = setTimeout(() => {
+      windowStateSaveTimer = null;
+      const boundsToPersist = pendingWindowBounds;
+      pendingWindowBounds = null;
+      if (!boundsToPersist) return;
+      runBackgroundConfigMutation(() => {
+        // Native Wayland compositors own placement and report coordinates that are not
+        // stable app-controlled positions. Persisting those values during a resize makes
+        // the next XWayland/X11 launch jump to compositor bookkeeping coordinates.
+        if (!usesCompositorOwnedPlacement) {
+          config.windowPosition = { x: boundsToPersist.x, y: boundsToPersist.y };
+        }
+        config.windowSize = {
+          width: boundsToPersist.width,
+          height: boundsToPersist.height,
+        };
+        saveConfig();
+      }, 'window bounds save');
+    }, 400);
+  };
+
+  // A layer surface is placed by the app and moved through its own drag path, which saves
+  // layerPositions when the drag ends; its bounds events are never user moves.
+  if (isLayerShellChildProcess) return;
+  onWindowBoundsChanged(targetWindow, {
+    platform: process.platform,
+    onMove: changeWin,
+    onResize: changeWin,
+  });
+}
+
 function createWindow() {
   log.info('Creating main window');
   appliedHideOnBlur = config?.hideOnBlur === true;
@@ -5310,6 +6383,7 @@ function createWindow() {
   forwardRendererConsole(mainWindow.webContents, 'renderer');
   attachEditHandlers(mainWindow, Menu, process.platform, {
     suspendAutoHide: () => windowAutoHide.suspend(),
+    translate: (key) => mainT(key),
   });
 
   // Transparent windows use renderer CSS surface opacity; opaque fallback
@@ -5341,6 +6415,8 @@ function createWindow() {
     refreshLayerPlacement();
     pushConfigToRenderer();
     if (initialLaunchAction === 'hide') mainWindow.hide();
+    else if (initialLaunchRaise && isLayerShellChildProcess) raiseLayerWidgetOnceMapped();
+    initialLaunchRaise = false;
     delete process.env.HA_WIDGET_LAUNCH_VISIBILITY;
     if (IS_SMOKE_TEST_MODE) {
       smokeTestRendererLoaded = true;
@@ -5369,41 +6445,7 @@ function createWindow() {
     });
   }
 
-  const changeWin = () => {
-    const bounds = mainWindow.getBounds();
-    pendingWindowBounds = bounds;
-    if (windowStateSaveTimer) {
-      clearTimeout(windowStateSaveTimer);
-    }
-    windowStateSaveTimer = setTimeout(() => {
-      windowStateSaveTimer = null;
-      const boundsToPersist = pendingWindowBounds;
-      pendingWindowBounds = null;
-      if (!boundsToPersist) return;
-      runBackgroundConfigMutation(() => {
-        // Native Wayland compositors own placement and report coordinates that are not
-        // stable app-controlled positions. Persisting those values during a resize makes
-        // the next XWayland/X11 launch jump to compositor bookkeeping coordinates.
-        if (!usesCompositorOwnedPlacement) {
-          config.windowPosition = { x: boundsToPersist.x, y: boundsToPersist.y };
-        }
-        config.windowSize = {
-          width: boundsToPersist.width,
-          height: boundsToPersist.height,
-        };
-        saveConfig();
-      }, 'window bounds save');
-    }, 400);
-  };
-
-  // Save position when window is moved
-  mainWindow.on('moved', changeWin);
-
-  // Save size when window is resized
-  mainWindow.on('resized', () => {
-    changeWin();
-    if (isLayerShellChildProcess) placeLayerWindow(mainWindow);
-  });
+  watchMainWindowBounds(mainWindow);
 
   // Hide to tray when minimizing
   mainWindow.on('minimize', (event) => {
@@ -5423,13 +6465,25 @@ function createWindow() {
     notifyDesktopCompanionStateChanged();
   });
   mainWindow.on('blur', () => {
-    popupWindowPresenter.handleWindowBlur(mainWindow);
     windowAutoHide.handleBlur();
+    // On Hyprland a raised layer widget follows the pointer rather than focus; see
+    // layerPointerRelease. Elsewhere, or where its position is unknown, it lowers now.
+    if (
+      isLayerShellChildProcess &&
+      isHyprland() &&
+      popupWindowPresenter.isElevated() &&
+      layerPointerRelease.start()
+    ) {
+      return;
+    }
+    const released = popupWindowPresenter.handleWindowBlur(mainWindow);
+    if (released && isLayerShellChildProcess) layerBlurReleasedAt = Date.now();
   });
 
   // Coming back to the widget is the moment a stale profile is most visible, and
   // the provider has usually finished replicating by then.
   mainWindow.on('focus', () => {
+    layerPointerRelease.stop();
     windowAutoHide.handleFocus();
     requestOpportunisticProfileSync('focus');
   });
@@ -5507,6 +6561,10 @@ function toggleMainWindowFromTrayEntity({ fromTrayClick = false, trayBounds } = 
     fromTrayClick ? trayBounds : undefined
   );
   if (fromTrayClick && recentlyHidden) return;
+  if (fromTrayClick && isLayerShellChildProcess) {
+    toggleRaisedLayerWidget();
+    return;
+  }
   if (mainWindow?.isVisible()) {
     hideMainWindowToTray();
   } else {
@@ -5557,6 +6615,7 @@ function createTrayEntityIcon(entityId) {
 function invalidateHaConnectionState(status) {
   latestHaConnectionState = status;
   invalidateTrayEntityIcons();
+  omarchyBarPublisher?.update();
   Object.keys(config?.desktopPins || {}).forEach((entityId) => {
     sendDesktopPinUpdate(entityId, { type: 'connection' });
   });
@@ -5711,6 +6770,8 @@ function buildTrayContextMenu() {
     {
       label: mainT('Always on Top'),
       type: 'checkbox',
+      // A desktop layer cannot be kept on top; Settings disables the same option there.
+      enabled: !isLayerShellChildProcess,
       checked: !isLayerShellChildProcess && config.alwaysOnTop,
       click: (menuItem) => {
         const requestedValue = !!menuItem.checked;
@@ -5802,6 +6863,9 @@ function buildTrayContextMenu() {
           },
         ]
       : []),
+    ...(omarchyBarPublisher && !omarchyBarEntry.present
+      ? [{ label: mainT('Add to Omarchy Bar'), click: () => void addOmarchyBarPlugin() }]
+      : []),
     { type: 'separator' },
     {
       label: mainT('DevTools'),
@@ -5869,6 +6933,213 @@ function buildTrayContextMenu() {
   return protectAutoHideDuringMenu(menu);
 }
 
+function getOmarchyBarEntities() {
+  if (!omarchyBarPublisher || !omarchyBarEntry.present) return { panel: [], bar: [], all: [] };
+  return resolveOmarchyBarEntities(omarchyBarEntry, config);
+}
+
+/** What the bar should tell the user to fix, when the widget cannot fix it by itself. */
+function getOmarchyBarIssue() {
+  const keyringLocked =
+    config?.homeAssistant?.oauthLastErrorCode === 'OAUTH_KEYRING_UNAVAILABLE' ||
+    config?.tokenResetReason === 'encryption_unavailable';
+  return keyringLocked ? 'keyring' : '';
+}
+
+/** The command the bar plugin runs to reach this widget, or null to use its default. */
+function getOmarchyBarLaunchArgv() {
+  if (process.env.APPIMAGE) return [process.env.APPIMAGE];
+  return app.isPackaged ? [process.execPath] : null;
+}
+
+function readOmarchyBarShellEntry() {
+  try {
+    return readOmarchyBarEntry(fs.readFileSync(getOmarchyBarPaths().shellConfig, 'utf8'));
+  } catch {
+    return { present: false, entities: null, barEntities: null };
+  }
+}
+
+function refreshOmarchyBarEntry() {
+  const next = readOmarchyBarShellEntry();
+  if (JSON.stringify(next) === JSON.stringify(omarchyBarEntry)) return;
+  const wasPresent = omarchyBarEntry.present;
+  omarchyBarEntry = next;
+  // The renderer publishes the states of whatever the bar now asks for.
+  pushConfigToRenderer();
+  omarchyBarPublisher?.update();
+  if (wasPresent !== next.present && tray && !tray.isDestroyed?.()) createTray();
+}
+
+/**
+ * Publish status for the Omarchy 4 bar plugin while the Omarchy shell is installed. An isolated
+ * profile stays out of it: it would overwrite the status of the user's real widget.
+ */
+function startOmarchyBarIntegration() {
+  if (process.platform !== 'linux' || IS_SMOKE_TEST_MODE || IS_ISOLATED_PROFILE) return;
+  if (!isOmarchyShellInstalled()) return;
+  const paths = getOmarchyBarPaths();
+  try {
+    if (
+      updateInstalledOmarchyBarPlugin({
+        sourceDir: getBundledOmarchyBarPluginDir(),
+        pluginDir: paths.pluginDir,
+      })
+    ) {
+      log.info('Updated the Omarchy bar plugin to the version bundled with this widget');
+    }
+  } catch (error) {
+    log.warn('Could not update the Omarchy bar plugin:', error.message);
+  }
+  try {
+    rememberOmarchyBarLaunch({ launchFile: paths.launchFile, launch: getOmarchyBarLaunchArgv() });
+  } catch (error) {
+    log.warn('Could not save the Omarchy bar launch command:', error.message);
+  }
+  omarchyBarEntry = readOmarchyBarShellEntry();
+  // Listening before the first status write, so a bar that sees the widget running can connect.
+  omarchyBarCommandServer = createOmarchyBarCommandServer({
+    socketPath: paths.socket,
+    log,
+    onRequest: handleOmarchyBarEntityAction,
+  });
+  omarchyBarPublisher = createOmarchyBarPublisher({
+    statusFile: paths.statusFile,
+    log,
+    getStatus: () =>
+      buildOmarchyBarStatus({
+        connection: latestHaConnectionState,
+        tiles: omarchyBarTiles,
+        icons: omarchyBarIcons,
+        entities: getOmarchyBarEntities(),
+        launch: getOmarchyBarLaunchArgv(),
+        issue: getOmarchyBarIssue(),
+      }),
+  });
+  if (!omarchyBarPublisher) {
+    omarchyBarCommandServer?.stop();
+    omarchyBarCommandServer = null;
+    return;
+  }
+  fs.watchFile(paths.shellConfig, { interval: 2000, persistent: false }, refreshOmarchyBarEntry);
+}
+
+function stopOmarchyBarIntegration() {
+  if (!omarchyBarPublisher) return;
+  fs.unwatchFile(getOmarchyBarPaths().shellConfig, refreshOmarchyBarEntry);
+  omarchyBarCommandServer?.stop();
+  omarchyBarCommandServer = null;
+  omarchyBarPublisher.stop();
+  omarchyBarPublisher = null;
+}
+
+/**
+ * Deliver a bar request this process was started with, once connected and holding the entity's
+ * tile. Dropped after a minute so a slow start never acts on something unexpectedly.
+ */
+function deliverPendingOmarchyBarAction(now = Date.now()) {
+  const pending = pendingOmarchyBarAction;
+  if (!pending) return;
+  if (now - pending.requestedAt > OMARCHY_BAR_PENDING_ACTION_MS) {
+    pendingOmarchyBarAction = null;
+    return;
+  }
+  if (latestHaConnectionState !== 'connected' || !omarchyBarTiles.has(pending.entityId)) return;
+  pendingOmarchyBarAction = null;
+  handleOmarchyBarEntityAction(pending);
+}
+
+/**
+ * A request from the Omarchy bar's panel, through its socket or the command line: a click on a
+ * tile (primary), the widget's controls dialog for it (controls), or a change made in the panel's
+ * own controls popup (set). Each does what the same thing does on the widget's own tile. A request
+ * that opens one of the widget's dialogs brings the widget up first, so the dialog is in view.
+ */
+function handleOmarchyBarEntityAction(request) {
+  const tile = omarchyBarTiles.get(request?.entityId);
+  if (!isAllowedOmarchyBarAction(request, getOmarchyBarEntities(), tile)) {
+    log.warn(`Ignoring an Omarchy bar request for ${request?.entityId}, which its tile cannot do`);
+    return;
+  }
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (request.kind === 'set') {
+    mainWindow.webContents.send('omarchy-bar-entity-action', {
+      entityId: request.entityId,
+      kind: 'set',
+      command: request.command,
+      value: request.value,
+    });
+    return;
+  }
+  if (request.kind === 'controls' || tile.action === 'dialog') showMainWindowFromTray();
+  mainWindow.webContents.send('omarchy-bar-entity-action', {
+    entityId: request.entityId,
+    kind: request.kind,
+  });
+}
+
+function getBundledOmarchyBarPluginDir() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'omarchy-plugin')
+    : path.join(__dirname, 'omarchy-plugin');
+}
+
+/** Tray action: copy the bundled plugin into Omarchy and place it in the bar. */
+async function addOmarchyBarPlugin() {
+  const omarchyBin = path.join(process.env.OMARCHY_PATH || '/usr/share/omarchy', 'bin');
+  const env = { ...process.env, PATH: `${omarchyBin}:${process.env.PATH || ''}` };
+  const run = (command, args) =>
+    new Promise((resolve, reject) => {
+      require('child_process').execFile(
+        path.join(omarchyBin, command),
+        args,
+        { env, timeout: 15000 },
+        (error, _stdout, stderr) =>
+          error ? reject(new Error(String(stderr || error.message).trim())) : resolve()
+      );
+    });
+  try {
+    installOmarchyBarPluginFiles({
+      sourceDir: getBundledOmarchyBarPluginDir(),
+      pluginDir: getOmarchyBarPaths().pluginDir,
+    });
+    await run('omarchy-shell', ['shell', 'rescanPlugins']);
+    await run('omarchy-plugin-enable', [OMARCHY_BAR_PLUGIN_ID]);
+    log.info('Added the Home Assistant widget to the Omarchy bar');
+    refreshOmarchyBarEntry();
+  } catch (error) {
+    log.warn('Could not add the Omarchy bar plugin:', error.message);
+    dialog.showErrorBox(mainT('Could not add Home Assistant to the Omarchy bar'), error.message);
+  }
+}
+
+/**
+ * A Wayland bar that starts after the widget at login never sees its tray icon, because
+ * Electron falls back to an XEmbed icon that no Wayland bar shows. Recreate the icons once a
+ * StatusNotifier host turns up; see src/linux-tray-host.cjs.
+ */
+function startTrayHostWatch() {
+  trayHostWatch?.stop();
+  trayHostWatch = watchForStatusNotifierWatcher({
+    log,
+    getExpectedItemCount: () =>
+      1 + Array.from(trayEntityIcons.values()).filter((icon) => !icon.isDestroyed?.()).length,
+    onAppeared: () => {
+      trayHostWatch = null;
+      // The bar claims the watcher name before its host registers; give it a moment.
+      setTimeout(() => {
+        if (isQuitting || !tray) return;
+        log.info('StatusNotifier host appeared; recreating tray icons');
+        if (!tray.isDestroyed?.()) tray.destroy();
+        tray = null;
+        destroyTrayEntityIcons();
+        createTray();
+        syncTrayEntitiesWithConfig();
+      }, 1000);
+    },
+  });
+}
+
 function createTray() {
   log.info('Creating system tray icon');
   if (!tray || tray.isDestroyed?.()) {
@@ -5917,6 +7188,9 @@ function schedulePostWindowStartupTasks() {
     } catch (error) {
       log.warn('Tray startup initialization failed:', error.message);
       finishSmokeTest(false, `Tray startup initialization failed: ${error.message}`);
+    }
+    if (process.platform === 'linux' && waylandSession && !IS_SMOKE_TEST_MODE) {
+      startTrayHostWatch();
     }
 
     try {
@@ -6051,6 +7325,7 @@ ipcMain.handle(
       localProfileHash: profileSyncRuntime.localProfileHash,
       localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
       pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
+      localSectionHashes: profileSyncRuntime.localSectionHashes,
     };
     const replacement = replaceConfigEntityIdReferences(config, oldEntityId, newEntityId);
     if (!replacement.changed) {
@@ -6070,7 +7345,7 @@ ipcMain.handle(
       Object.assign(profileSyncRuntime, previousRuntimeTracking);
       return {
         success: false,
-        error: `Failed to save entity replacement: ${persistence.error}`,
+        error: mainT('Failed to save entity replacement: {{error}}', { error: persistence.error }),
         config: sanitizeConfigForRenderer(config),
       };
     }
@@ -6135,6 +7410,7 @@ ipcMain.handle(
       localProfileHash: profileSyncRuntime.localProfileHash,
       localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
       pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
+      localSectionHashes: profileSyncRuntime.localSectionHashes,
     };
     const previousEncryptedTokenForRecovery = preservedEncryptedTokenForRecovery;
     const prevSyncEnabled = !!config?.profileSync?.enabled;
@@ -6143,6 +7419,19 @@ ipcMain.handle(
     // Development demo state is an IPC-only marker. Never let an overlay renderer
     // write it back into the user's real configuration.
     delete newConfig.developmentDemo;
+    // Settings lists the synced settings the user changed, for the stale-echo
+    // guard below. It is never stored.
+    const touchedSyncKeys = Array.isArray(newConfig.profileSyncTouchedKeys)
+      ? newConfig.profileSyncTouchedKeys
+          .filter((key) => typeof key === 'string' && /^(ui\.)?[A-Za-z0-9_]{1,64}$/.test(key))
+          .slice(0, 100)
+      : [];
+    delete newConfig.profileSyncTouchedKeys;
+    // The config revision the renderer built this update from (added by preload).
+    const baseRevision = Number.isInteger(newConfig.configBaseRevision)
+      ? newConfig.configBaseRevision
+      : null;
+    delete newConfig.configBaseRevision;
     pruneConfig(newConfig);
     const customTabs = Array.isArray(newConfig.customTabs)
       ? newConfig.customTabs
@@ -6192,13 +7481,31 @@ ipcMain.handle(
     ) {
       return {
         success: false,
-        error:
-          'Finish the pending sync-key recovery before changing the sync target or encryption setting',
+        error: mainT(
+          'Finish the pending sync-key recovery before changing the sync target or encryption setting'
+        ),
         config: sanitizeConfigForRenderer(config),
       };
     }
     const requiresInitialPreparation =
       !!profileSync.enabled && (!prevSyncEnabled || remoteTargetChanged);
+    // Merge state is main-process-owned and describes the file it was built
+    // against: a new file or a fresh enable starts with no shared history, and a
+    // narrower scope forgets sections this device no longer syncs.
+    const syncFileChanged =
+      !prevSyncEnabled ||
+      normalizedNextProvider !== previousProvider ||
+      normalizedNextPath !== previousCloudFilePath;
+    const nextScopeKeys = new Set(profileSyncCore.getScopeSectionKeys(normalizedNextScope));
+    profileSync.syncBaseline = syncFileChanged
+      ? {}
+      : Object.fromEntries(
+          Object.entries(config.profileSync?.syncBaseline || {}).filter(([key]) =>
+            nextScopeKeys.has(key)
+          )
+        );
+    profileSync.sectionUpdatedAt = { ...(config.profileSync?.sectionUpdatedAt || {}) };
+    keepMainOwnedProfileSyncResults(profileSync, config.profileSync);
     if (requiresInitialPreparation) {
       profileSync.firstEnableResolutionPending = true;
     } else if (!profileSync.enabled) {
@@ -6261,7 +7568,7 @@ ipcMain.handle(
     normalizeDesktopPinsConfig(config);
     normalizeTrayEntitiesConfigInPlace(config);
     pruneConfig(config);
-    restoreProfileFromStalePullEcho(prevConfig);
+    restoreProfileFromStalePullEcho(prevConfig, touchedSyncKeys, baseRevision);
     // The renderer's echo of profileSync may be stale; the content-change
     // timestamp is main-process-authoritative (saveConfig advances it on real
     // profile changes).
@@ -6286,7 +7593,7 @@ ipcMain.handle(
       log.error('Configuration update was not persisted:', persistence.error);
       return {
         success: false,
-        error: `Failed to save settings: ${persistence.error}`,
+        error: mainT('Failed to save settings: {{error}}', { error: persistence.error }),
         config: sanitizeConfigForRenderer(config),
       };
     }
@@ -6395,7 +7702,9 @@ ipcMain.handle(
         config.tokenResetReason = previousReason;
         return {
           success: false,
-          error: `Failed to save token recovery acknowledgement: ${persistence.error}`,
+          error: mainT('Failed to save token recovery acknowledgement: {{error}}', {
+            error: persistence.error,
+          }),
           config: sanitizeConfigForRenderer(config),
         };
       }
@@ -6425,6 +7734,9 @@ function getHomeAssistantOAuthClient() {
       userDataPath: app.getPath('userData'),
       openExternal: (url) => shell.openExternal(url),
       postForm: (url, fields) => requestFormWithElectronNet(net, url, fields),
+      // The browser pages shown after Home Assistant redirects back to the app.
+      translate: (key) => mainT(key),
+      probeServer: (baseUrl, signal) => probeHomeAssistantWithElectronNet(net, baseUrl, { signal }),
       isSecureStorageAvailable: isSecureProfileSyncStorageAvailable,
       log,
     });
@@ -6471,10 +7783,12 @@ async function applyHomeAssistantOAuthSession(session, options = {}) {
       authMethod: 'oauth',
       oauthStatus: 'connected',
       oauthExpiresAt: session.expiresAt,
+      oauthAuthorizationId: session.authorizationId,
     },
     desktopCompanion: { ...(config?.desktopCompanion || {}) },
   };
   delete nextConfig.homeAssistant.oauthLastError;
+  delete nextConfig.homeAssistant.oauthLastErrorCode;
   delete nextConfig.tokenResetReason;
   config = nextConfig;
   ensureDesktopCompanionIdentity();
@@ -6494,24 +7808,58 @@ async function applyHomeAssistantOAuthSession(session, options = {}) {
   return sanitizeConfigForRenderer(config);
 }
 
+/**
+ * On Linux, an unavailable credential store usually means the Secret Service keyring was locked
+ * or not running yet when the widget started. Chromium keeps that answer until the app
+ * restarts, so reconnecting would fail the same way: report it as a keyring problem, which the
+ * renderer resolves with a restart. A decrypt failure is left alone: the store was available,
+ * so the saved authorization itself is unreadable and only reconnecting can replace it.
+ */
+function describeLinuxKeyringOAuthError(code, platform = process.platform) {
+  const value = String(code || '');
+  if (platform === 'linux' && value === 'OAUTH_SECURE_STORAGE_UNAVAILABLE') {
+    return 'OAUTH_KEYRING_UNAVAILABLE';
+  }
+  return value;
+}
+
 async function refreshHomeAssistantOAuthSession() {
   if (config?.homeAssistant?.authMethod !== 'oauth') return null;
   try {
     const session = await getHomeAssistantOAuthClient().refresh();
-    if (!session) throw new Error('Saved Home Assistant authorization was not found');
+    if (!session) {
+      // No saved refresh token (already cleared by an invalid grant): retrying cannot help, the
+      // user has to authorize again.
+      const missing = new Error('Saved Home Assistant authorization was not found');
+      missing.code = 'OAUTH_INVALID_GRANT';
+      throw missing;
+    }
     return applyHomeAssistantOAuthSession(session);
   } catch (error) {
+    // Retrying cannot fix a rejected grant or a saved authorization this system cannot read;
+    // only a new authorization can.
+    const reauthRequired = [
+      'OAUTH_INVALID_GRANT',
+      'OAUTH_STORE_READ',
+      'OAUTH_STORE_INVALID',
+      'OAUTH_STORE_DECRYPT',
+      'OAUTH_SECURE_STORAGE_UNAVAILABLE',
+    ].includes(error?.code);
     config.homeAssistant = config.homeAssistant || {};
-    config.homeAssistant.oauthStatus =
-      error?.code === 'OAUTH_INVALID_GRANT' ? 'reauth_required' : 'offline';
+    config.homeAssistant.oauthStatus = reauthRequired ? 'reauth_required' : 'offline';
     config.homeAssistant.oauthLastError = String(error?.message || error).slice(0, 512);
-    if (error?.code === 'OAUTH_INVALID_GRANT') {
+    // The renderer shows a translated message for known codes; the text is the fallback.
+    config.homeAssistant.oauthLastErrorCode = describeLinuxKeyringOAuthError(error?.code);
+    if (reauthRequired) {
       config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER;
+      delete config.homeAssistant.oauthAuthorizationId;
+      delete config.homeAssistant.oauthExpiresAt;
       clearHomeAssistantOAuthRefreshTimer();
     } else {
       scheduleHomeAssistantOAuthRefresh(null, HOME_ASSISTANT_OAUTH_RETRY_MS);
     }
     pushConfigToRenderer();
+    broadcastDesktopPinConfigUpdate();
     return null;
   }
 }
@@ -6535,10 +7883,25 @@ ipcMain.handle('start-home-assistant-oauth', async (event, rawUrl) => {
   } catch (error) {
     return {
       success: false,
-      code: error?.code || 'OAUTH_PAIRING_FAILED',
+      code: describeLinuxKeyringOAuthError(error?.code || 'OAUTH_PAIRING_FAILED'),
       error: error?.message || 'Home Assistant authorization failed',
     };
   }
+});
+
+// Home Assistant rejected the current access token (revoked authorization, or a token that
+// expired while the machine slept). Refresh now instead of waiting for the scheduled refresh; an
+// invalid grant turns into reauth_required, which the renderer explains to the user.
+ipcMain.handle('refresh-home-assistant-oauth', async (event) => {
+  const sender = authorizeIpcSender(event, 'refresh-home-assistant-oauth');
+  if (!sender) return rejectUnauthorizedIpc('refresh-home-assistant-oauth');
+  if (config?.homeAssistant?.authMethod !== 'oauth') {
+    return { success: false, error: 'Home Assistant authorization is not in use' };
+  }
+  if (config.homeAssistant.oauthStatus !== 'reauth_required') {
+    await runSerializedConfigMutation(() => refreshHomeAssistantOAuthSession());
+  }
+  return { success: true, oauthStatus: config?.homeAssistant?.oauthStatus || null };
 });
 
 ipcMain.handle('cancel-home-assistant-oauth', async (event) => {
@@ -6793,7 +8156,37 @@ ipcMain.handle('publish-ha-connection-state', (event, status) => {
   Object.keys(config?.desktopPins || {}).forEach((entityId) => {
     sendDesktopPinUpdate(entityId, { type: 'connection' });
   });
+  omarchyBarPublisher?.update();
+  deliverPendingOmarchyBarAction();
   return { success: true };
+});
+
+// The renderer describes exactly the tiles the Omarchy bar asked for (config.omarchyBarEntities),
+// as a full set each time, with the line icons they use.
+ipcMain.handle('publish-omarchy-bar-tiles', (event, payload) => {
+  const sender = authorizeIpcSender(event, 'publish-omarchy-bar-tiles');
+  if (!sender) return rejectUnauthorizedIpc('publish-omarchy-bar-tiles');
+  if (!omarchyBarPublisher) return { success: true, discarded: true };
+  const wanted = new Set(getOmarchyBarEntities().all);
+  omarchyBarTiles.clear();
+  omarchyBarIcons.clear();
+  if (isPlainObject(payload?.tiles)) {
+    Object.entries(payload.tiles).forEach(([entityId, tile]) => {
+      const normalizedEntityId = normalizeEntityId(entityId);
+      if (!wanted.has(normalizedEntityId)) return;
+      const cleaned = cleanOmarchyBarTile(normalizedEntityId, tile);
+      if (cleaned) omarchyBarTiles.set(normalizedEntityId, cleaned);
+    });
+  }
+  if (isPlainObject(payload?.icons)) {
+    Object.entries(payload.icons).forEach(([name, svg]) => {
+      const cleaned = cleanLineIconSvg(svg);
+      if (cleaned && /^[a-z0-9-]{1,40}$/.test(name)) omarchyBarIcons.set(name, cleaned);
+    });
+  }
+  omarchyBarPublisher.update();
+  deliverPendingOmarchyBarAction();
+  return { success: true, count: omarchyBarTiles.size };
 });
 
 ipcMain.handle('publish-ha-snapshot', (event, states) => {
@@ -7054,7 +8447,7 @@ ipcMain.handle(
       }
       return {
         success: false,
-        error: `Failed to save window opacity: ${persistence.error}`,
+        error: mainT('Failed to save window opacity: {{error}}', { error: persistence.error }),
       };
     }
     return { success: true, opacity: safeOpacity };
@@ -7117,7 +8510,9 @@ ipcMain.handle(
       }
       return {
         success: false,
-        error: `Failed to save always-on-top setting: ${persistence.error}`,
+        error: mainT('Failed to save always-on-top setting: {{error}}', {
+          error: persistence.error,
+        }),
         applied: false,
       };
     }
@@ -7294,9 +8689,33 @@ ipcMain.handle('run-profile-sync', async (event, direction = 'auto') => {
     const normalizedDirection = allowedDirections.has(direction) ? direction : 'auto';
     return await runProfileSync(normalizedDirection, 'manual');
   } catch (error) {
-    return { ok: false, error: error.message, status: buildProfileSyncStatus() };
+    return { ok: false, error: mainTError(error), status: buildProfileSyncStatus() };
   }
 });
+
+ipcMain.handle('list-profile-sync-backups', async (event) => {
+  const sender = authorizeIpcSender(event, 'list-profile-sync-backups');
+  if (!sender) return rejectUnauthorizedIpc('list-profile-sync-backups');
+  try {
+    return { success: true, backups: await listProfileSyncBackups() };
+  } catch (error) {
+    return { success: false, error: mainTError(error), backups: [] };
+  }
+});
+
+ipcMain.handle(
+  'restore-profile-sync-backup',
+  serializeConfigMutationHandler(async (event, id) => {
+    const sender = authorizeIpcSender(event, 'restore-profile-sync-backup');
+    if (!sender) return rejectUnauthorizedIpc('restore-profile-sync-backup');
+    try {
+      const result = await restoreProfileSyncBackup(id);
+      return { success: true, ...result, config: sanitizeConfigForRenderer(config) };
+    } catch (error) {
+      return { success: false, error: mainTError(error) };
+    }
+  })
+);
 
 ipcMain.handle(
   'set-profile-sync-passphrase',
@@ -7312,7 +8731,9 @@ ipcMain.handle(
         ) {
           return {
             success: false,
-            error: `Passphrase must be at least ${PROFILE_SYNC_MIN_PASSPHRASE_LENGTH} characters long`,
+            error: mainT('Passphrase must be at least {{count}} characters long', {
+              count: PROFILE_SYNC_MIN_PASSPHRASE_LENGTH,
+            }),
           };
         }
         const profileSync = getProfileSyncConfig();
@@ -7323,7 +8744,10 @@ ipcMain.handle(
           } catch (error) {
             return {
               success: false,
-              error: `Finish the pending sync-key recovery before changing the passphrase: ${error?.message || String(error)}`,
+              error: mainT(
+                'Finish the pending sync-key recovery before changing the passphrase: {{error}}',
+                { error: mainTError(error) }
+              ),
               status: buildProfileSyncStatus(),
             };
           }
@@ -7340,7 +8764,9 @@ ipcMain.handle(
         if (targetEncryptionEnabled && !effectiveNewPassphrase) {
           return {
             success: false,
-            error: `Passphrase must be at least ${PROFILE_SYNC_MIN_PASSPHRASE_LENGTH} characters long`,
+            error: mainT('Passphrase must be at least {{count}} characters long', {
+              count: PROFILE_SYNC_MIN_PASSPHRASE_LENGTH,
+            }),
             status: buildProfileSyncStatus(),
           };
         }
@@ -7364,7 +8790,9 @@ ipcMain.handle(
             profileSync.encryptionChangePending = previousPendingTarget;
             return {
               success: false,
-              error: `Failed to cancel the pending encryption change: ${cancellationPersistence.error}`,
+              error: mainT('Failed to cancel the pending encryption change: {{error}}', {
+                error: cancellationPersistence.error,
+              }),
               status: buildProfileSyncStatus(),
             };
           }
@@ -7399,7 +8827,9 @@ ipcMain.handle(
           if (profileSync.encryptionEnabled && !oldPassphrase) {
             return {
               success: false,
-              error: 'Enter the current remote passphrase before disabling profile encryption',
+              error: mainT(
+                'Enter the current remote passphrase before disabling profile encryption'
+              ),
               status: buildProfileSyncStatus(),
             };
           }
@@ -7438,7 +8868,9 @@ ipcMain.handle(
               const persistence = await saveConfigDurably({ allowDebouncedPush: false });
               if (!persistence.success) {
                 throw new Error(
-                  `Failed to save the requested encryption mode: ${persistence.error}`
+                  mainT('Failed to save the requested encryption mode: {{error}}', {
+                    error: persistence.error,
+                  })
                 );
               }
               localEncryptionCommitPersisted = true;
@@ -7460,7 +8892,7 @@ ipcMain.handle(
                   throw new Error(
                     createResult?.error ||
                       createResult?.reason ||
-                      'The missing remote profile could not be created'
+                      mainT('The missing remote profile could not be created')
                   );
                 }
                 setupProfileSyncInterval();
@@ -7520,7 +8952,9 @@ ipcMain.handle(
             emitProfileSyncStatus();
             return {
               success: false,
-              error: `Cannot change profile encryption safely: ${error?.message || String(error)}`,
+              error: mainT('Cannot change profile encryption safely: {{error}}', {
+                error: mainTError(error),
+              }),
               status: buildProfileSyncStatus(),
               config: sanitizeConfigForRenderer(config),
             };
@@ -7530,7 +8964,7 @@ ipcMain.handle(
         let candidateUnlocksRemote = !remoteResult.exists || !remoteResult.envelope;
         if (remoteResult.exists && remoteResult.envelope) {
           try {
-            await decodeRemoteProfileWithPassphrase(
+            await decodeRemoteSectionsWithPassphrase(
               remoteResult,
               candidatePassphrase || activePassphrase
             );
@@ -7577,7 +9011,9 @@ ipcMain.handle(
             emitProfileSyncStatus();
             return {
               success: false,
-              error: `Cannot change the sync passphrase safely: ${error?.message || String(error)}`,
+              error: mainT('Cannot change the sync passphrase safely: {{error}}', {
+                error: mainTError(error),
+              }),
               status: buildProfileSyncStatus(),
               config: sanitizeConfigForRenderer(config),
             };
@@ -7587,8 +9023,9 @@ ipcMain.handle(
         if (passphraseSubmission === 'reject') {
           return {
             success: false,
-            error:
-              'That passphrase does not unlock the remote profile. Enter the current remote passphrase before attempting a key change.',
+            error: mainT(
+              'That passphrase does not unlock the remote profile. Enter the current remote passphrase before attempting a key change.'
+            ),
             status: buildProfileSyncStatus(),
           };
         }
@@ -7617,7 +9054,7 @@ ipcMain.handle(
           emitProfileSyncStatus();
           return {
             success: false,
-            error: `Failed to save sync passphrase: ${persistence.error}`,
+            error: mainT('Failed to save sync passphrase: {{error}}', { error: persistence.error }),
             status: buildProfileSyncStatus(),
           };
         }
@@ -7635,7 +9072,7 @@ ipcMain.handle(
           }
         } catch (error) {
           clearProfileSyncTimers();
-          resolutionWarning = error?.message || String(error);
+          resolutionWarning = mainTError(error);
           updateProfileSyncStatus('error', resolutionWarning);
         }
         emitProfileSyncStatus();
@@ -7647,7 +9084,7 @@ ipcMain.handle(
           config: sanitizeConfigForRenderer(config),
         };
       } catch (error) {
-        return { success: false, error: error.message };
+        return { success: false, error: mainTError(error) };
       }
     }
   )
@@ -7662,8 +9099,9 @@ ipcMain.handle(
     if (hasProfileSyncCredentialTransitionPending(profileSync)) {
       return {
         success: false,
-        error:
-          'The passphrase cannot be cleared until the pending encryption change or remote rewrite succeeds',
+        error: mainT(
+          'The passphrase cannot be cleared until the pending encryption change or remote rewrite succeeds'
+        ),
         status: buildProfileSyncStatus(),
       };
     }
@@ -7689,7 +9127,7 @@ ipcMain.handle(
       emitProfileSyncStatus();
       return {
         success: false,
-        error: `Failed to clear sync passphrase: ${persistence.error}`,
+        error: mainT('Failed to clear sync passphrase: {{error}}', { error: persistence.error }),
         status: buildProfileSyncStatus(),
       };
     }
@@ -7717,7 +9155,9 @@ ipcMain.handle(
     ) {
       return {
         success: false,
-        error: 'Finish the pending encryption or key recovery before resolving this conflict',
+        error: mainT(
+          'Finish the pending encryption or key recovery before resolving this conflict'
+        ),
         status: buildProfileSyncStatus(),
       };
     }
@@ -7749,7 +9189,7 @@ ipcMain.handle(
         }
         return {
           success: false,
-          error: 'A remote profile conflict was found. Review it and choose again.',
+          error: mainT('A remote profile conflict was found. Review it and choose again.'),
           status: buildProfileSyncStatus(),
           config: sanitizeConfigForRenderer(config),
         };
@@ -7785,7 +9225,9 @@ ipcMain.handle(
           emitProfileSyncStatus();
           return {
             success: false,
-            error: `Failed to save profile sync cancellation: ${persistence.error}`,
+            error: mainT('Failed to save profile sync cancellation: {{error}}', {
+              error: persistence.error,
+            }),
             status: buildProfileSyncStatus(),
             config: sanitizeConfigForRenderer(config),
           };
@@ -7798,16 +9240,49 @@ ipcMain.handle(
         };
       }
 
+      // The choice covers only the sections the prompt named; sections this
+      // computer already shares a history with keep merging normally. An empty
+      // list (the file changed and no longer conflicts) forces nothing.
+      const chosenSections = [...profileSyncRuntime.conflictSections];
+      const damagedSections = [...profileSyncRuntime.damagedConflictSections];
+      if (choice === 'upload_local' && damagedSections.length > 0) {
+        // Repair the damaged sections only; valid conflicts are then offered again
+        // with both choices instead of being overwritten along with them.
+        const remoteResult = await verifyPendingRemoteEnvelopeUnchanged();
+        const repair = await runProfileSyncInternal('push', 'first_enable_resolution', {
+          expectedRemoteIdentity: getSyncEnvelopeIdentity(remoteResult),
+          forceSections: damagedSections,
+          onlySections: damagedSections,
+        });
+        if (repair?.ok !== true || repair?.reason === 'remote_changed') {
+          throw new Error(
+            repair?.reason === 'remote_changed'
+              ? mainT('The remote profile changed during upload; review the conflict and try again')
+              : repair?.error || repair?.reason || mainT('Profile upload did not complete')
+          );
+        }
+        const next = await prepareProfileSyncFirstEnableResolution();
+        const result = next?.needsResolution
+          ? repair
+          : await completeProfileSyncFirstEnablePreparation('first_enable_resolution_retry');
+        return {
+          success: true,
+          ...result,
+          status: buildProfileSyncStatus(),
+          config: sanitizeConfigForRenderer(config),
+        };
+      }
       if (choice === 'upload_local') {
         const remoteResult = await verifyPendingRemoteEnvelopeUnchanged();
         const result = await runProfileSyncInternal('push', 'first_enable_resolution', {
           expectedRemoteIdentity: getSyncEnvelopeIdentity(remoteResult),
+          forceSections: chosenSections,
         });
         if (result?.ok !== true || result?.reason === 'remote_changed') {
           throw new Error(
             result?.reason === 'remote_changed'
-              ? 'The remote profile changed during upload; review the conflict and try again'
-              : result?.error || result?.reason || 'Profile upload did not complete'
+              ? mainT('The remote profile changed during upload; review the conflict and try again')
+              : result?.error || result?.reason || mainT('Profile upload did not complete')
           );
         }
         await clearProfileSyncFirstEnableResolutionPending();
@@ -7825,32 +9300,28 @@ ipcMain.handle(
 
       if (choice === 'use_remote') {
         const remoteResult = await verifyPendingRemoteEnvelopeUnchanged();
-        const envelope = remoteResult.envelope;
-        if (!envelope) {
-          throw new Error('Remote profile is no longer available');
+        if (!remoteResult.envelope) {
+          throw new Error(mainT('Remote profile is no longer available'));
         }
-        const { profile: remoteProfile, syncScope: remoteSyncScope } =
-          await decodeEnvelopeProfile(envelope);
         profileSyncRuntime.needsResolution = false;
         profileSyncRuntime.pendingRemoteEnvelope = null;
         profileSyncRuntime.pendingRemoteIdentity = null;
-        await backupLocalProfileBeforePullApply(remoteSyncScope);
-        await applySyncedProfileToConfig(remoteProfile, envelope.updatedAt, remoteSyncScope);
-        if (getProfileSyncConfig().remoteRewritePending) {
-          const rewriteResult = await runProfileSyncInternal('push', 'first_enable_resolution', {
-            expectedRemoteIdentity: getSyncEnvelopeIdentity(remoteResult),
-          });
-          if (rewriteResult?.ok !== true || rewriteResult?.reason === 'remote_changed') {
-            throw new Error(
-              rewriteResult?.reason === 'remote_changed'
-                ? 'The remote profile changed before encryption could be applied; review it again'
-                : rewriteResult?.error ||
-                    'The accepted remote profile could not be rewritten safely'
-            );
-          }
+        // A forced pull of the exact file the user reviewed. When an encryption
+        // change is pending, the same run rewrites the file in the new mode.
+        const result = await runProfileSyncInternal('pull', 'first_enable_resolution', {
+          expectedRemoteIdentity: getSyncEnvelopeIdentity(remoteResult),
+          forceSections: chosenSections,
+        });
+        if (result?.ok !== true || result?.reason === 'remote_changed') {
+          throw new Error(
+            result?.reason === 'remote_changed'
+              ? mainT(
+                  'The remote profile changed before encryption could be applied; review it again'
+                )
+              : result?.error || mainT('The accepted remote profile could not be rewritten safely')
+          );
         }
         await clearProfileSyncFirstEnableResolutionPending();
-        updateProfileSyncStatus('success', '');
         setupProfileSyncInterval();
         emitProfileSyncStatus();
         return {
@@ -7869,7 +9340,7 @@ ipcMain.handle(
       }
       updateProfileSyncStatus('error', error.message);
       emitProfileSyncStatus();
-      return { success: false, error: error.message, status: buildProfileSyncStatus() };
+      return { success: false, error: mainTError(error), status: buildProfileSyncStatus() };
     }
   })
 );
@@ -8046,6 +9517,14 @@ ipcMain.handle('minimize-window', (event) => {
   }
 });
 
+// A click on one of the widget's desktop notifications. Shows it the way the tray does, which
+// also brings back a widget hidden to the tray and keeps a desktop-layer widget raised.
+ipcMain.handle('show-window', (event) => {
+  const sender = authorizeIpcSender(event, 'show-window');
+  if (!sender) return rejectUnauthorizedIpc('show-window');
+  return showMainWindowFromTray();
+});
+
 ipcMain.handle('focus-window', (event) => {
   const sender = authorizeIpcSender(event, 'focus-window');
   if (!sender) return rejectUnauthorizedIpc('focus-window');
@@ -8134,6 +9613,29 @@ ipcMain.handle('get-app-version', (event) => {
   return app.getVersion();
 });
 
+// For the diagnostics report: the system and its version, never the computer or user name.
+function describeOperatingSystem() {
+  const info = { platform: os.platform(), release: os.release() };
+  if (info.platform === 'linux') {
+    try {
+      const prettyName = /^PRETTY_NAME=(.*)$/m
+        .exec(fs.readFileSync('/etc/os-release', 'utf8'))?.[1]
+        ?.trim()
+        .replace(/^(["'])(.*)\1$/, '$2');
+      if (prettyName) info.distro = prettyName.slice(0, 128);
+    } catch {
+      // Not every distribution ships /etc/os-release; the kernel release still identifies it.
+    }
+  }
+  return info;
+}
+
+ipcMain.handle('get-os-info', (event) => {
+  const sender = authorizeIpcSender(event, 'get-os-info');
+  if (!sender) return rejectUnauthorizedIpc('get-os-info');
+  return describeOperatingSystem();
+});
+
 // Log file viewer functionality
 ipcMain.handle('open-logs', (event) => {
   const sender = authorizeIpcSender(event, 'open-logs');
@@ -8193,6 +9695,23 @@ ipcMain.handle('open-external', async (event, url) => {
   }
 });
 
+// The renderer's own clipboard permission stays denied (see session-permissions.cjs); copy
+// buttons go through this narrow, main-window-only channel instead.
+const MAX_CLIPBOARD_TEXT_LENGTH = 256 * 1024;
+ipcMain.handle('write-clipboard-text', (event, text) => {
+  const sender = authorizeIpcSender(event, 'write-clipboard-text');
+  if (!sender) return rejectUnauthorizedIpc('write-clipboard-text');
+  if (typeof text !== 'string' || text.length > MAX_CLIPBOARD_TEXT_LENGTH) {
+    return { success: false, error: 'Invalid clipboard text' };
+  }
+  try {
+    clipboard.writeText(text);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error?.message || String(error) };
+  }
+});
+
 ipcMain.handle('debug-log', (event, payload) => {
   const sender = authorizeIpcSender(event, 'debug-log', { allowDesktopPin: true });
   if (!sender) return rejectUnauthorizedIpc('debug-log');
@@ -8246,7 +9765,7 @@ ipcMain.handle(
     if (!validateHotkey(hotkey)) {
       return {
         success: false,
-        error: 'Invalid hotkey format or conflicts with common system shortcuts',
+        error: mainT('Invalid hotkey format or conflicts with common system shortcuts'),
       };
     }
 
@@ -8254,7 +9773,7 @@ ipcMain.handle(
       typeof config.popupHotkey === 'string' &&
       config.popupHotkey.toLowerCase() === hotkey.toLowerCase()
     ) {
-      return { success: false, error: 'Hotkey already assigned to the popup trigger' };
+      return { success: false, error: mainT('Hotkey already assigned to the popup trigger') };
     }
 
     // Check for conflicts with existing hotkeys first
@@ -8262,8 +9781,12 @@ ipcMain.handle(
     const existingEntity = findConfiguredEntityHotkey(hotkey, normalizedEntityId);
 
     if (existingEntity) {
-      const entityName = existingEntity[0] || 'another action';
-      return { success: false, error: `Hotkey already assigned to ${entityName}` };
+      return {
+        success: false,
+        error: existingEntity[0]
+          ? mainT('Hotkey already assigned to {{entity}}', { entity: existingEntity[0] })
+          : mainT('Hotkey already assigned to another action'),
+      };
     }
 
     if (config.globalHotkeys.enabled && usesPortalGlobalShortcuts) {
@@ -8313,14 +9836,15 @@ ipcMain.handle(
         );
         const rollbackWarning =
           rollbackResult?.success === false
-            ? rollbackResult.error || 'Previous hotkey bindings could not be restored'
+            ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
             : '';
         return {
           success: false,
-          error:
-            (registrationResult?.error ||
-              'Hotkey is in use, unsupported, or was not approved by the desktop') +
-            (rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''),
+          error: withRollbackWarning(
+            registrationResult?.error ||
+              mainT('Hotkey is in use, unsupported, or was not approved by the desktop'),
+            rollbackWarning
+          ),
           rollbackWarning,
         };
       }
@@ -8338,11 +9862,14 @@ ipcMain.handle(
       );
       const rollbackWarning =
         rollbackResult?.success === false
-          ? rollbackResult.error || 'Previous hotkey bindings could not be restored'
+          ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
           : '';
       return {
         success: false,
-        error: `Failed to save hotkey: ${persistence.error}${rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''}`,
+        error: withRollbackWarning(
+          mainT('Failed to save hotkey: {{error}}', { error: persistence.error }),
+          rollbackWarning
+        ),
         rollbackWarning,
       };
     }
@@ -8383,22 +9910,28 @@ ipcMain.handle(
         );
         const rollbackWarning =
           rollbackResult?.success === false
-            ? rollbackResult.error || 'Previous hotkey bindings could not be restored'
+            ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
             : '';
         return {
           success: false,
-          error: `Failed to save hotkey removal: ${persistence.error}${rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''}`,
+          error: withRollbackWarning(
+            mainT('Failed to save hotkey removal: {{error}}', { error: persistence.error }),
+            rollbackWarning
+          ),
           rollbackWarning,
         };
       }
-      return { success: false, error: `Failed to save hotkey removal: ${persistence.error}` };
+      return {
+        success: false,
+        error: mainT('Failed to save hotkey removal: {{error}}', { error: persistence.error }),
+      };
     }
     return {
       success: true,
       warning:
         registrationResult?.success === false
           ? registrationResult.error ||
-            'The hotkey was removed, but another shortcut could not be activated'
+            mainT('The hotkey was removed, but another shortcut could not be activated')
           : '',
     };
   })
@@ -8463,11 +9996,14 @@ ipcMain.handle(
       );
       const rollbackWarning =
         rollbackResult?.success === false
-          ? rollbackResult.error || 'Previous hotkey bindings could not be restored'
+          ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
           : '';
       return {
         ...registrationResult,
-        error: `${registrationResult.error || 'Failed to activate global hotkeys'}${rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''}`,
+        error: withRollbackWarning(
+          registrationResult.error || mainT('Failed to activate global hotkeys'),
+          rollbackWarning
+        ),
         rollbackWarning,
       };
     }
@@ -8479,11 +10015,14 @@ ipcMain.handle(
       );
       const rollbackWarning =
         rollbackResult?.success === false
-          ? rollbackResult.error || 'Previous hotkey bindings could not be restored'
+          ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
           : '';
       return {
         success: false,
-        error: `Failed to save hotkey setting: ${persistence.error}${rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''}`,
+        error: withRollbackWarning(
+          mainT('Failed to save hotkey setting: {{error}}', { error: persistence.error }),
+          rollbackWarning
+        ),
         rollbackWarning,
       };
     }
@@ -8492,7 +10031,7 @@ ipcMain.handle(
       warning:
         registrationResult?.success === false
           ? registrationResult.error ||
-            'Global hotkeys were disabled, but another shortcut could not be activated'
+            mainT('Global hotkeys were disabled, but another shortcut could not be activated')
           : '',
     };
   })
@@ -8523,7 +10062,10 @@ ipcMain.handle(
       } else {
         config.entityAlerts.alerts[normalizedEntityId] = previousAlert;
       }
-      return { success: false, error: `Failed to save alert: ${persistence.error}` };
+      return {
+        success: false,
+        error: mainT('Failed to save alert: {{error}}', { error: persistence.error }),
+      };
     }
     setupEntityAlerts();
     return { success: true };
@@ -8546,7 +10088,10 @@ ipcMain.handle(
       if (previousAlert !== undefined) {
         config.entityAlerts.alerts[normalizedEntityId] = previousAlert;
       }
-      return { success: false, error: `Failed to remove alert: ${persistence.error}` };
+      return {
+        success: false,
+        error: mainT('Failed to remove alert: {{error}}', { error: persistence.error }),
+      };
     }
     setupEntityAlerts();
     return { success: true };
@@ -8563,7 +10108,10 @@ ipcMain.handle(
     const persistence = await saveConfigDurably();
     if (!persistence.success) {
       config.entityAlerts.enabled = previousEnabled;
-      return { success: false, error: `Failed to save alert setting: ${persistence.error}` };
+      return {
+        success: false,
+        error: mainT('Failed to save alert setting: {{error}}', { error: persistence.error }),
+      };
     }
     setupEntityAlerts();
     return { success: true };
@@ -8582,24 +10130,32 @@ ipcMain.handle(
     if (!hasLegacyGlobalShortcutFallback && !portalShortcutsActive) {
       return {
         success: false,
-        error: 'The desktop does not provide the Global Shortcuts portal required on Wayland',
+        error: mainT(
+          'The desktop does not provide the Global Shortcuts portal required on Wayland'
+        ),
       };
     }
     if (!usesLinuxPopupHotkeyBackend && !uiohookAvailable) {
-      return { success: false, error: 'Popup hotkey feature is not available on this platform' };
+      return {
+        success: false,
+        error: mainT('Popup hotkey feature is not available on this platform'),
+      };
     }
 
     // Validate the hotkey
     if (!validateHotkey(hotkey)) {
       return {
         success: false,
-        error: 'Invalid hotkey format or conflicts with common system shortcuts',
+        error: mainT('Invalid hotkey format or conflicts with common system shortcuts'),
       };
     }
 
     const conflictingEntity = findConfiguredEntityHotkey(hotkey);
     if (conflictingEntity) {
-      return { success: false, error: `Hotkey already assigned to ${conflictingEntity[0]}` };
+      return {
+        success: false,
+        error: mainT('Hotkey already assigned to {{entity}}', { entity: conflictingEntity[0] }),
+      };
     }
 
     const previousHotkey = config.popupHotkey || '';
@@ -8617,8 +10173,9 @@ ipcMain.handle(
               : {
                   success: false,
                   backend: PORTAL_SHORTCUTS_BACKEND,
-                  error:
-                    'The desktop portal did not assign an active popup shortcut. Assign it in system shortcut settings.',
+                  error: mainT(
+                    'The desktop portal did not assign an active popup shortcut. Assign it in system shortcut settings.'
+                  ),
                 };
           })
         : registerPopupHotkey()
@@ -8651,12 +10208,15 @@ ipcMain.handle(
         if (!rollbackResult.success) {
           log.error('Failed to restore the previous popup hotkey:', rollbackResult.error);
           rollbackWarning =
-            rollbackResult.error || 'The previous popup hotkey could not be restored';
+            rollbackResult.error || mainT('The previous popup hotkey could not be restored');
         }
       }
       return {
         ...registrationResult,
-        error: `${registrationResult.error || 'Failed to register popup hotkey'}${rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''}`,
+        error: withRollbackWarning(
+          registrationResult.error || mainT('Failed to register popup hotkey'),
+          rollbackWarning
+        ),
         rollbackWarning,
       };
     }
@@ -8669,11 +10229,14 @@ ipcMain.handle(
       );
       const rollbackWarning =
         rollbackResult?.success === false
-          ? rollbackResult.error || 'The previous popup hotkey could not be restored'
+          ? rollbackResult.error || mainT('The previous popup hotkey could not be restored')
           : '';
       return {
         success: false,
-        error: `Failed to save popup hotkey: ${persistence.error}${rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''}`,
+        error: withRollbackWarning(
+          mainT('Failed to save popup hotkey: {{error}}', { error: persistence.error }),
+          rollbackWarning
+        ),
         rollbackWarning,
       };
     }
@@ -8705,11 +10268,14 @@ ipcMain.handle(
       );
       const rollbackWarning =
         rollbackResult?.success === false
-          ? rollbackResult.error || 'The previous popup hotkey could not be restored'
+          ? rollbackResult.error || mainT('The previous popup hotkey could not be restored')
           : '';
       return {
         success: false,
-        error: `Failed to save popup hotkey removal: ${persistence.error}${rollbackWarning ? `. Rollback failed: ${rollbackWarning}` : ''}`,
+        error: withRollbackWarning(
+          mainT('Failed to save popup hotkey removal: {{error}}', { error: persistence.error }),
+          rollbackWarning
+        ),
         rollbackWarning,
       };
     }
@@ -8719,7 +10285,7 @@ ipcMain.handle(
       warning:
         unregisterResult?.success === false
           ? unregisterResult.error ||
-            'The popup hotkey was removed, but another shortcut could not be activated'
+            mainT('The popup hotkey was removed, but another shortcut could not be activated')
           : '',
     };
   })
@@ -8885,7 +10451,14 @@ function collectPortalShortcuts() {
       if (hotkey && hotkey.trim()) {
         shortcuts.push({
           id: PORTAL_ENTITY_SHORTCUT_PREFIX + entityId,
-          description: `${action === 'turn_on' ? 'Turn on' : action === 'turn_off' ? 'Turn off' : 'Toggle'} ${entityId}`,
+          // Shown in the desktop's shortcut settings. Sent with every bind, so a
+          // language change applies the next time the shortcuts are rebound.
+          description:
+            action === 'turn_on'
+              ? mainT('Turn on {{entity}}', { entity: entityId })
+              : action === 'turn_off'
+                ? mainT('Turn off {{entity}}', { entity: entityId })
+                : mainT('Toggle {{entity}}', { entity: entityId }),
           accelerator: hotkey,
         });
       }
@@ -8895,7 +10468,7 @@ function collectPortalShortcuts() {
   if (popupHotkey) {
     shortcuts.push({
       id: PORTAL_POPUP_SHORTCUT_ID,
-      description: 'Show or hide the widget window',
+      description: mainT('Show or hide the widget window'),
       accelerator: popupHotkey,
     });
   }
@@ -8996,7 +10569,7 @@ function syncPortalShortcuts({ immediate = false } = {}) {
       success: false,
       backend: PORTAL_SHORTCUTS_BACKEND,
       bound: [],
-      error: 'Global shortcuts portal is unavailable',
+      error: mainT('Global shortcuts portal is unavailable'),
     });
   }
 
@@ -9074,7 +10647,7 @@ function deactivatePortalShortcutsForLegacyFallback(reason) {
       success: false,
       backend: PORTAL_SHORTCUTS_BACKEND,
       bound: [],
-      error: 'The desktop portal did not assign active shortcut triggers',
+      error: mainT('The desktop portal did not assign active shortcut triggers'),
     })
   );
   if (portalShortcutsController) {
@@ -9203,7 +10776,7 @@ function registerGlobalHotkeys() {
     return {
       success: false,
       backend: PORTAL_SHORTCUTS_BACKEND,
-      error: 'The desktop does not provide the Global Shortcuts portal required on Wayland',
+      error: mainT('The desktop does not provide the Global Shortcuts portal required on Wayland'),
     };
   }
 
@@ -9240,7 +10813,7 @@ function registerGlobalHotkeys() {
   return {
     success: allRegistered,
     backend: 'globalShortcut',
-    error: allRegistered ? '' : 'One or more entity hotkeys could not be registered',
+    error: allRegistered ? '' : mainT('One or more entity hotkeys could not be registered'),
   };
 }
 
@@ -9509,8 +11082,9 @@ function registerPopupHotkey() {
         return {
           success: false,
           backend: PORTAL_SHORTCUTS_BACKEND,
-          error:
-            'The desktop portal did not assign an active popup shortcut. Assign it in system shortcut settings.',
+          error: mainT(
+            'The desktop portal did not assign an active popup shortcut. Assign it in system shortcut settings.'
+          ),
         };
       }
       return { success: true, backend: PORTAL_SHORTCUTS_BACKEND, binding: popupBinding };
@@ -9521,7 +11095,7 @@ function registerPopupHotkey() {
     return {
       success: false,
       backend: PORTAL_SHORTCUTS_BACKEND,
-      error: 'The desktop does not provide the Global Shortcuts portal required on Wayland',
+      error: mainT('The desktop does not provide the Global Shortcuts portal required on Wayland'),
     };
   }
 
@@ -9534,14 +11108,14 @@ function registerPopupHotkey() {
     return {
       success: false,
       backend: 'uiohook',
-      error: 'Popup hotkey feature is not available on this platform',
+      error: mainT('Popup hotkey feature is not available on this platform'),
     };
   }
 
   const hotkeyConfig = acceleratorToUIOhookKey(config.popupHotkey);
   if (!hotkeyConfig) {
     log.warn(`Failed to parse popup hotkey: ${config.popupHotkey}`);
-    return { success: false, backend: 'uiohook', error: 'Unsupported popup hotkey' };
+    return { success: false, backend: 'uiohook', error: mainT('Unsupported popup hotkey') };
   }
 
   try {
@@ -9814,7 +11388,7 @@ async function checkManualReleaseUpdate() {
     if (!latestVersion) {
       return {
         status: 'error',
-        error: 'Unable to determine the latest release version.',
+        error: mainT('Unable to determine the latest release version.'),
         downloadUrl,
       };
     }
@@ -9858,7 +11432,7 @@ async function checkPortableUpdate() {
     if (!latestVersion) {
       return {
         status: 'error',
-        error: 'Unable to determine the latest Portable release version.',
+        error: mainT('Unable to determine the latest Portable release version.'),
         downloadUrl,
       };
     }
@@ -9933,7 +11507,20 @@ function setupAutoUpdates() {
     });
 
     // Keep the first packaged-launch window responsive before doing network/update work.
-    setTimeout(() => autoUpdater.checkForUpdatesAndNotify().catch(() => {}), 30000);
+    // electron-updater fills {appName} and {version} itself when the download finishes.
+    setTimeout(
+      () =>
+        autoUpdater
+          .checkForUpdatesAndNotify({
+            title: mainT('A new update is ready to install'),
+            body: mainT(
+              '{{appName}} version {{version}} has been downloaded and will be automatically installed on exit',
+              { appName: '{appName}', version: '{version}' }
+            ),
+          })
+          .catch(() => {}),
+      30000
+    );
   } catch (error) {
     log.error('Auto-update setup failed:', error);
   }
@@ -9976,7 +11563,7 @@ function capturePendingWindowBoundsForShutdown() {
     if (!pinWindow.__desktopPinSaveTimer && !pinWindow.__desktopPinPendingBounds) return;
     if (!usesCompositorOwnedPlacement) {
       const bounds =
-        pinWindow.__desktopPinPendingBounds || getDesktopPinBounds(entityId, pinWindow.getBounds());
+        pinWindow.__desktopPinPendingBounds || getDesktopPinBoundsFromWindow(entityId, pinWindow);
       config.desktopPins = config.desktopPins || {};
       config.desktopPins[entityId] = bounds;
       changed = true;
@@ -10086,8 +11673,46 @@ function shutDownRuntimeAfterConfigFlush() {
   closeLegacyPortalShortcutsControllers();
   unregisterGlobalHotkeys();
   unregisterPopupHotkey();
+  trayHostWatch?.stop();
+  trayHostWatch = null;
+  stopOmarchyBarIntegration();
   kwinWindowRaiser?.close();
 }
+
+// A logout or shutdown cannot wait out the bounded save a user's quit waits on, and must never
+// stop on the error dialog: the session is gone either way, and a dialog only holds it open until
+// systemd kills the process. So quit through the normal path, but exit regardless at a deadline.
+function quitForSystemShutdown(reason) {
+  systemShutdownRequested = true;
+  isQuitting = true;
+  const deadline = setTimeout(
+    () => exitForSystemShutdown(`${reason}: clean quit did not finish in time`),
+    SYSTEM_SHUTDOWN_EXIT_DEADLINE_MS
+  );
+  deadline.unref?.();
+  app.quit();
+}
+
+function exitForSystemShutdown(reason) {
+  log.warn(`Exiting for system shutdown without a clean quit (${reason})`);
+  if (config && !quitFinalized) {
+    try {
+      const persistence = flushPendingConfigWriteSync({ shutdown: true });
+      if (!persistence.success) {
+        log.error('Could not save configuration before exiting:', persistence.error);
+      }
+    } catch (error) {
+      log.error('Could not save configuration before exiting:', error);
+    }
+  }
+  app.exit(0);
+}
+
+// When the current quit started, for the timings logged at each stage. A quit that seems slow
+// can then be read off the log: the settings save, the runtime shutdown, or Chromium's own exit
+// after the 'quit' event.
+let quitRequestedAt = null;
+const QUIT_WAIT_NOTICE_MS = 1000;
 
 app.on('before-quit', (event) => {
   if (!gotSingleInstanceLock || !config) return;
@@ -10095,19 +11720,48 @@ app.on('before-quit', (event) => {
   event.preventDefault();
   if (quitFinalizationStarted) return;
 
+  quitRequestedAt = Date.now();
+  log.info('Quit requested; saving settings before exit');
+  const waitNotice = setTimeout(() => {
+    log.warn('Quit is waiting for an in-progress settings or profile-sync operation to finish');
+  }, QUIT_WAIT_NOTICE_MS);
+  waitNotice.unref?.();
   void flushConfigForBoundedExit('quitting')
     .then(() => {
+      clearTimeout(waitNotice);
+      log.info(`Quit: settings saved after ${Date.now() - quitRequestedAt} ms`);
       shutDownRuntimeAfterConfigFlush();
+      log.info(`Quit: runtime shut down after ${Date.now() - quitRequestedAt} ms`);
       quitFinalized = true;
       app.quit();
     })
     .catch((error) => {
+      clearTimeout(waitNotice);
+      if (systemShutdownRequested) {
+        exitForSystemShutdown(error?.message || String(error));
+        return;
+      }
       log.error('Quit canceled because configuration could not be saved:', error);
+      // The app stays open, so a later exit that skips this handler must not time from here.
+      quitRequestedAt = null;
       dialog.showErrorBox(
-        'Could not save settings',
-        `The app stayed open because its configuration could not be saved.\n\n${error?.message || String(error)}`
+        mainT('Could not save settings'),
+        `${mainT('The app stayed open because its configuration could not be saved.')}\n\n${
+          error?.message || String(error)
+        }`
       );
     });
+});
+
+app.on('will-quit', () => {
+  if (quitRequestedAt !== null) {
+    log.info(`Quit: windows closed after ${Date.now() - quitRequestedAt} ms`);
+  }
+});
+app.on('quit', () => {
+  if (quitRequestedAt !== null) {
+    log.info(`Quit: handing over to Chromium's exit after ${Date.now() - quitRequestedAt} ms`);
+  }
 });
 
 // Register custom protocol before creating window
@@ -10139,6 +11793,13 @@ app
     // inherit a display that dies with this process and a marker that skips the
     // handoff.
     if (isLayerShellChildProcess) restoreLayerShellParentEnv();
+
+    installSystemShutdownHandlers({
+      powerMonitor,
+      onShutdownRequested: quitForSystemShutdown,
+      onForceExit: (signal) => exitForSystemShutdown(`repeated ${signal}`),
+      log,
+    });
 
     startSmokeTestTimeout();
 
@@ -10232,11 +11893,14 @@ app
     if (process.platform === 'linux') {
       omarchyThemeWatcher = createOmarchyThemeWatcher({
         onChange: () => {
+          applyNativeThemeSource();
           if (mainWindow && !mainWindow.isDestroyed()) pushConfigToRenderer();
           desktopPinWindows.forEach((_window, id) => sendDesktopPinUpdate(id));
         },
       });
     }
+    applyNativeThemeSource();
+    startOmarchyBarIntegration();
     enableDevelopmentClimateDemo();
     startDevLiveReloadWatchers();
 

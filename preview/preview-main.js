@@ -196,20 +196,34 @@ function installVirtualSocket() {
   websocket.isConnected = () => connected;
   websocket.close = () => {};
   let requestId = 1000;
-  websocket.request = async (payload) => {
-    const id = (requestId += 1);
+  const answer = (payload) => {
     switch (payload?.type) {
       case 'get_states':
-        return { id, success: true, result: Object.values(state.STATES || {}) };
+        return Object.values(state.STATES || {});
       case 'get_services':
-        return { id, success: true, result: {} };
+        return {};
       case 'get_config':
-        return { id, success: true, result: { unit_system: { temperature: '°C' } } };
+        return { unit_system: { temperature: '°C' } };
       case 'config/area_registry/list':
-        return { id, success: true, result: [] };
+        return [];
       default:
-        return { id, success: true, result: {} };
+        return {};
     }
+  };
+  // Mirror the real transport: the promise carries its request id, and every response is also
+  // emitted as a `result` message, which is how the app learns that get_states has arrived and
+  // leaves its "Waiting for live Home Assistant data" state.
+  websocket.request = (payload) => {
+    const id = (requestId += 1);
+    const response = { id, type: 'result', success: true, result: answer(payload) };
+    const promise = new Promise((resolve) => {
+      setTimeout(() => {
+        websocket.emit('message', response);
+        resolve(response);
+      }, 0);
+    });
+    promise.id = id;
+    return promise;
   };
   websocket.subscribeMessage = () => () => {};
   websocket.callService = async () => ({ success: true, preview: true });
@@ -270,6 +284,11 @@ function emitChange() {
   }
 }
 
+// Tile edits are user edits: unlike parent-initiated pushes, report the result to the parent.
+function applyEdit(document_) {
+  void applyProfile(document_).then(emitChange);
+}
+
 function mutateActiveTab(mutate) {
   const document_ = currentDocument();
   const tab =
@@ -277,7 +296,7 @@ function mutateActiveTab(mutate) {
     (document_.customTabs || [])[0];
   if (!tab) return false;
   mutate(tab, document_);
-  void applyProfile(document_);
+  applyEdit(document_);
   return true;
 }
 
@@ -291,7 +310,7 @@ function addEntity(entityId) {
   const document_ = currentDocument();
   document_.customTabs = [{ id: 'default', name: 'Home', entityIds: [cleanId] }];
   document_.activeTabId = 'default';
-  void applyProfile(document_);
+  applyEdit(document_);
   return true;
 }
 

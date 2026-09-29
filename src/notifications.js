@@ -65,14 +65,14 @@ function formatRelativeTime(createdAt, now = Date.now()) {
 
   const elapsedMs = Math.max(0, now - timestamp);
   const elapsedMinutes = Math.floor(elapsedMs / 60000);
-  if (elapsedMinutes < 1) return 'just now';
-  if (elapsedMinutes < 60) return `${elapsedMinutes}m ago`;
+  if (elapsedMinutes < 1) return t('just now');
+  if (elapsedMinutes < 60) return t('{{count}}m ago', { count: elapsedMinutes });
 
   const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24) return `${elapsedHours}h ago`;
+  if (elapsedHours < 24) return t('{{count}}h ago', { count: elapsedHours });
 
   const elapsedDays = Math.floor(elapsedHours / 24);
-  return `${elapsedDays}d ago`;
+  return t('{{count}}d ago', { count: elapsedDays });
 }
 
 function getSortedNotifications() {
@@ -89,11 +89,17 @@ function showPersistentDesktopNotification(notification) {
   try {
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
     const title = notification.title || DEFAULT_NOTIFICATION_TITLE;
-    new Notification(title, {
+    const desktopNotification = new Notification(title, {
       body: notification.message,
       tag: `ha-persistent-notification-${notification.notification_id}`,
       requireInteraction: false,
     });
+    desktopNotification.onclick = () => {
+      openPersistentNotificationsPanel();
+      window.electronAPI?.showWindow?.().catch((error) => {
+        console.error('Error showing widget from notification:', error);
+      });
+    };
   } catch (error) {
     console.error('Error showing persistent notification:', error);
   }
