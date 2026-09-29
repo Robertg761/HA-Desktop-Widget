@@ -477,6 +477,11 @@ if (savedAccent) applyAccent(savedAccent);
 /* Weather: the app's own engine (src/weather-effects.js, copied verbatim),
    running behind the frosted windows. Off by default; the visitor turns it on. */
 class StageWeather extends WeatherEffectsManager {
+  startAnimation() {
+    if (document.hidden || !stageVisible || this.prefersReducedMotion()) return;
+    super.startAnimation();
+  }
+
   resizeCanvas() {
     if (!this.canvas) return;
     this.canvas.width = stage.clientWidth;

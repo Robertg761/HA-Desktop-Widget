@@ -23,7 +23,7 @@ const PLATFORMS = {
 /* What to do after downloading each file. The last step is the same everywhere. */
 const CONNECT = 'Enter your Home Assistant address and approve it in your browser.';
 const SMARTSCREEN = 'If Windows shows a SmartScreen warning, click <b>More info</b>, then <b>Run anyway</b>. The app isn’t code-signed yet.';
-const GATEKEEPER = 'The first time, <b>Control-click</b> the app and choose <b>Open</b>. macOS asks because the app isn’t signed yet.';
+const GATEKEEPER = 'The first time, <b>Control-click</b> the app and choose <b>Open</b>. If macOS still blocks it, open <b>System Settings → Privacy &amp; Security</b> and choose <b>Open Anyway</b>. The build isn’t notarized yet.';
 const INSTALL_STEPS = {
   'win-setup': ['Run the installer from your Downloads folder.', SMARTSCREEN, CONNECT],
   'win-portable': ['Put the .exe wherever you like and double-click it. Nothing gets installed.', SMARTSCREEN, CONNECT],

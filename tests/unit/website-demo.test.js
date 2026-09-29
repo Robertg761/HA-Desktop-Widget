@@ -11,10 +11,18 @@ describe('website demo weather transitions', () => {
   let intersect;
   let resize;
   let hidden;
+  let motionChange;
+  let motionQuery;
 
   beforeEach(() => {
     jest.useFakeTimers();
     hidden = false;
+    motionQuery = {
+      matches: false,
+      addEventListener: (_event, callback) => {
+        motionChange = callback;
+      },
+    };
     document.body.innerHTML = `
       <canvas id="weather-canvas"></canvas>
       <div class="dock"><div class="seg">
@@ -24,6 +32,11 @@ describe('website demo weather transitions', () => {
     jest.spyOn(document, 'hidden', 'get').mockImplementation(() => hidden);
     jest.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
       clearRect: jest.fn(),
+      createRadialGradient: () => ({ addColorStop: jest.fn() }),
+      fillRect: jest.fn(),
+      beginPath: jest.fn(),
+      arc: jest.fn(),
+      fill: jest.fn(),
     });
     let frame = 0;
     const source = fs.readFileSync(path.join(__dirname, '../../website/script.js'), 'utf8');
@@ -44,7 +57,7 @@ describe('website demo weather transitions', () => {
       .replace('export class WeatherEffectsManager', 'class WeatherEffectsManager');
     demo = vm.createContext({
       document,
-      window: { addEventListener: jest.fn() },
+      window: { addEventListener: jest.fn(), matchMedia: () => motionQuery },
       performance,
       Date,
       setTimeout,
@@ -101,6 +114,19 @@ describe('website demo weather transitions', () => {
     expect(vm.runInContext('fx.animationFrameId', demo)).toBeNull();
     hidden = false;
     document.dispatchEvent(new Event('visibilitychange'));
+    expect(vm.runInContext('fx.animationFrameId', demo)).not.toBeNull();
+  });
+
+  it('keeps weather paused when reduced motion is turned off while the demo is offscreen', () => {
+    jest.advanceTimersByTime(3950);
+    expect(vm.runInContext('fx.animationFrameId', demo)).not.toBeNull();
+    intersect([{ isIntersecting: false }]);
+    motionQuery.matches = true;
+    motionChange();
+    motionQuery.matches = false;
+    motionChange();
+    expect(vm.runInContext('fx.animationFrameId', demo)).toBeNull();
+    intersect([{ isIntersecting: true }]);
     expect(vm.runInContext('fx.animationFrameId', demo)).not.toBeNull();
   });
 
