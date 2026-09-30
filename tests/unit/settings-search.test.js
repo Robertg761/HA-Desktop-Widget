@@ -123,6 +123,31 @@ describe('settings search', () => {
       style.remove();
     }
   });
+  test('offers an ARIA-named control whose own labels are all hidden', () => {
+    const style = document.createElement('style');
+    // The editor's own stylesheet hides both labels for the picker.
+    style.textContent = [
+      '#settings-modal .form-group.custom-color-editor > label:first-child { display: none; }',
+      '#settings-modal .custom-color-editor-grid > :nth-child(1) .custom-color-field-label { display: none; }',
+    ].join('\n');
+    document.head.appendChild(style);
+    try {
+      const result = search('Color picker').find(
+        (button) => button.firstChild.textContent === 'Color picker'
+      );
+      expect(result).toBeDefined();
+      result.click();
+      expect(document.activeElement.id).toBe('custom-color-picker');
+    } finally {
+      style.remove();
+    }
+  });
+  test('focuses the visible radio group for a label it references', () => {
+    search('Edit colors for')
+      .find((button) => button.firstChild.textContent === 'Edit colors for')
+      .click();
+    expect(document.activeElement.dataset.colorTarget).toBe('accent');
+  });
   test('lowercases independently of the host locale', () => {
     const spy = jest.spyOn(String.prototype, 'toLocaleLowerCase').mockImplementation(function () {
       return String(this).replace(/I/g, '\u0131').toLowerCase();
