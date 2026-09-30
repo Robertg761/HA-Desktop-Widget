@@ -90,6 +90,14 @@ See the [Omarchy guide](docs/omarchy.md) for native desktop layers, independent 
 - **Media Tile**: Choose a primary media player or hide the tile
 - **Profile Sync (Opt-in)**: Keep Quick Access, appearance, alerts, and weather and media choices the same on every computer through a folder you already sync (see [Profile sync](#profile-sync))
 
+## Export and import settings
+
+Open **Settings → Advanced → Settings files** to export your saved pages, appearance, alerts, weather and media choices to a JSON file. Connection details and credentials, desktop pins, shortcuts, tray preferences, text size, Omarchy theme following, startup, updates, and profile sync settings stay on each computer.
+
+Import shows the sections that will change, page names, and how many referenced devices are missing from the current Home Assistant connection. Confirming applies the file immediately and replaces unsaved Settings edits. Imported entity IDs still refer to the original Home Assistant devices; importing does not create devices or automations.
+
+The widget saves a backup before applying an import. Restore it under **Advanced → Settings files → Backups**, even with profile sync disabled. Imports and restores follow your existing sync scope when sync is enabled. Settings files use a versioned format and have a 1 MB limit.
+
 ## Live tray values (beta only)
 
 Live tray values are available only in beta builds. Stable builds retain saved tray preferences

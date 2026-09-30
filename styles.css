@@ -9971,6 +9971,11 @@ body.widget-state-active #quick-controls .status-message {
   padding: var(--space-6);
 }
 
+#confirm-message {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
 .confirm-modal-content .modal-footer {
   display: flex;
   gap: var(--space-3);

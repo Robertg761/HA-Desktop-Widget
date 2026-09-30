@@ -1,5 +1,6 @@
 import { applyDesktopAppearance } from './desktop-appearance.js';
 import { initializeSettingsSearch } from './settings-search.js';
+import { initializeSettingsFiles } from './settings-files-ui.js';
 import state from './state.js';
 import log from './logger.js';
 import websocket from './websocket.js';
@@ -4669,6 +4670,15 @@ async function openSettings(uiHooks) {
 
     applyProfileSyncConfigToForm();
     bindProfileSyncSettingsUi();
+    initializeSettingsFiles({
+      onImported: async (nextConfig) => {
+        const hooks = settingsUiHooks;
+        closeSettings();
+        applyConfigFromProfileSync(nextConfig);
+        hooks?.renderActiveTab?.();
+        await openSettings(hooks);
+      },
+    });
     bindSupportDevelopmentUi();
     await refreshProfileSyncStatusUi({ syncFormState: true });
     void refreshProfileSyncBackups();

@@ -29,6 +29,7 @@ const { pathToFileURL, fileURLToPath } = require('url');
 const PRELOAD_SCRIPT_PATH = path.join(__dirname, 'dist-preload', 'preload.cjs');
 const log = require('electron-log');
 const pkg = require('./package.json');
+const { createSettingsFileController } = require('./src/settings-file-controller.cjs');
 const {
   getLaunchAction,
   hasIsolatedProfile,
@@ -4210,7 +4211,11 @@ async function listProfileSyncBackups() {
  */
 async function restoreProfileSyncBackup(id) {
   const backup = await readProfileSyncBackup(id);
-  const sectionKeys = Object.keys(backup.sections);
+  return applyLocalProfileSections(backup.sections);
+}
+
+async function applyLocalProfileSections(sections) {
+  const sectionKeys = Object.keys(sections);
   if (sectionKeys.length === 0) {
     throw new Error(mainT('That backup is no longer available'));
   }
@@ -4230,7 +4235,7 @@ async function restoreProfileSyncBackup(id) {
   // still stale.
   profileSyncRuntime.pendingPullEchoHash = null;
   profileSyncRuntime.pendingPullEchoProfile = null;
-  config = profileSyncCore.mergeSectionsIntoConfig(config, backup.sections);
+  config = profileSyncCore.mergeSectionsIntoConfig(config, sections);
   pruneConfig(config);
   ensureDateTimeFormatConfigDefaults(config);
   ensureProfileSyncConfigDefaults(config);
@@ -8712,6 +8717,53 @@ ipcMain.handle('copy-profile-sync-file', async (event, fromPath, toPath, overwri
   }
   return copyProfileSyncFile(fromPath, toPath, overwrite);
 });
+
+const settingsFileController = createSettingsFileController({
+  fs,
+  dialog,
+  getConfig: () => config,
+  translate: (key) => mainT(key),
+  applySections: async (sections) => {
+    await applyLocalProfileSections(sections);
+    return { config: sanitizeConfigForRenderer(config) };
+  },
+});
+
+ipcMain.handle('export-settings-file', async (event) => {
+  const sender = authorizeIpcSender(event, 'export-settings-file');
+  if (!sender) return rejectUnauthorizedIpc('export-settings-file');
+  try {
+    return { success: true, ...(await settingsFileController.exportSettings(sender.window)) };
+  } catch (error) {
+    return { success: false, code: error.code || 'export_failed' };
+  }
+});
+
+ipcMain.handle('preview-settings-import', async (event) => {
+  const sender = authorizeIpcSender(event, 'preview-settings-import');
+  if (!sender) return rejectUnauthorizedIpc('preview-settings-import');
+  try {
+    return {
+      success: true,
+      ...(await settingsFileController.previewImport(sender.window, event.sender.id)),
+    };
+  } catch (error) {
+    return { success: false, code: error.code || 'import_failed' };
+  }
+});
+
+ipcMain.handle(
+  'apply-settings-import',
+  serializeConfigMutationHandler(async (event, id) => {
+    const sender = authorizeIpcSender(event, 'apply-settings-import');
+    if (!sender) return rejectUnauthorizedIpc('apply-settings-import');
+    try {
+      return { success: true, ...(await settingsFileController.applyImport(event.sender.id, id)) };
+    } catch (error) {
+      return { success: false, code: error.code || 'import_failed' };
+    }
+  })
+);
 
 ipcMain.handle('get-profile-sync-status', (event) => {
   const sender = authorizeIpcSender(event, 'get-profile-sync-status');
