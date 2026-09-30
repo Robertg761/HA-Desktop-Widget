@@ -246,7 +246,7 @@ function projectSyncProfile(config, syncScope = getDefaultSyncScope(), options =
   return projectFields(config, getSyncedFieldsForScope(syncScope), options);
 }
 
-function mergeFieldsIntoConfig(target, incoming, fields) {
+function mergeFieldsIntoConfig(target, incoming, fields, { clearNullUiKeys = false } = {}) {
   fields.forEach((field) => {
     // An absent field was never sent (an older writer), so it stays as it is.
     if (!Object.prototype.hasOwnProperty.call(incoming, field)) return;
@@ -264,6 +264,13 @@ function mergeFieldsIntoConfig(target, incoming, fields) {
         Object.entries(localUi).filter(([key]) => LOCAL_ONLY_UI_KEYS.has(key))
       );
       target.ui = { ...localUi, ...stripLocalOnlyUiKeys(incoming.ui), ...localOnly };
+      // A settings file writes null for a ui key its source never set: fall back to the default.
+      // Only keys the incoming ui names are cleared, so a newer version's null key survives.
+      if (clearNullUiKeys) {
+        Object.entries(stripLocalOnlyUiKeys(incoming.ui)).forEach(([key, value]) => {
+          if (value === null) delete target.ui[key];
+        });
+      }
       return;
     }
     target[field] = deepClone(incoming[field]);
@@ -287,6 +294,20 @@ function projectSection(config, sectionKey) {
   });
 }
 
+/**
+ * Restoring a backup merges it, which keeps ui keys the backup lacks. Records the ui keys the
+ * incoming sections would add as cleared, so restoring the backup removes them again.
+ */
+function markIncomingUiKeysCleared(backupSections, incomingSections) {
+  const backupUi = backupSections?.visualPersonalization?.ui;
+  const incomingUi = incomingSections?.visualPersonalization?.ui;
+  if (!isObject(backupUi) || !isObject(incomingUi)) return backupSections;
+  Object.keys(stripLocalOnlyUiKeys(incomingUi)).forEach((key) => {
+    if (!Object.prototype.hasOwnProperty.call(backupUi, key)) backupUi[key] = null;
+  });
+  return backupSections;
+}
+
 function buildLocalSections(config, syncScope = getDefaultSyncScope()) {
   return getScopeSectionKeys(syncScope).reduce((acc, key) => {
     acc[key] = projectSection(config, key);
@@ -297,14 +318,15 @@ function buildLocalSections(config, syncScope = getDefaultSyncScope()) {
 /**
  * Applies whole sections to a copy of the config. Only fields this version
  * knows are applied, so a section written by a newer version cannot plant
- * arbitrary keys in the config.
+ * arbitrary keys in the config. With `clearNullUiKeys` (settings files and
+ * their backups), a ui key the incoming data sets to null is cleared.
  */
-function mergeSectionsIntoConfig(baseConfig, sectionData) {
+function mergeSectionsIntoConfig(baseConfig, sectionData, options) {
   const target = isObject(baseConfig) ? deepClone(baseConfig) : {};
   Object.entries(isObject(sectionData) ? sectionData : {}).forEach(([key, data]) => {
     const fields = SYNC_SCOPE_SECTION_FIELDS[key];
     if (!fields || !isObject(data)) return;
-    mergeFieldsIntoConfig(target, data, fields);
+    mergeFieldsIntoConfig(target, data, fields, options);
   });
   return target;
 }
@@ -825,6 +847,7 @@ module.exports = {
   mergeSyncedProfileIntoConfig,
   projectSection,
   buildLocalSections,
+  markIncomingUiKeysCleared,
   mergeSectionsIntoConfig,
   computeProfileHash,
   computeSectionHash,

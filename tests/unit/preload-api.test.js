@@ -77,6 +77,9 @@ describe('preload Electron API', () => {
       ['chooseProfileSyncFolder', ['cloudFile'], 'choose-profile-sync-folder', ['cloudFile']],
       ['copyProfileSyncFile', ['/a', '/b'], 'copy-profile-sync-file', ['/a', '/b', false]],
       ['getProfileSyncStatus', [], 'get-profile-sync-status', []],
+      ['exportSettingsFile', [], 'export-settings-file', []],
+      ['previewSettingsImport', [], 'preview-settings-import', []],
+      ['applySettingsImport', ['import-id'], 'apply-settings-import', ['import-id']],
       ['runProfileSync', ['push'], 'run-profile-sync', ['push']],
       [
         'setProfileSyncPassphrase',

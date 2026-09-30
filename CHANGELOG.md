@@ -15,6 +15,9 @@ Release preparation only. Native platform, real-device, and two-computer sync ch
 
 - Add numeric and select helper dialogs with current bounds/options, and vacuum controls limited to each device's supported actions.
 - Complete supported alarm arming modes and disarm in the command palette, with a temporary code prompt when required. Disarm requires a typed query and codes are never saved with recents.
+- Export and import portable settings files from Advanced, with a preview of changed sections and referenced devices, a backup before applying, and restore controls available without profile sync. Credentials and computer-specific settings stay on each computer.
+- Duplicate a Quick Access page in reorganize mode, keeping its tile order and copying comparison charts so they can be edited independently.
+- Search Settings by name or help text, then jump directly to a control, including controls inside collapsed sections.
 - Choose Auto, Dark, or Light theme in Settings → Appearance. It previews live and saves with Save; Auto still follows the system.
 - Draw entities with line icons that take the accent color and a soft glow when on. Custom emoji and icons set in Home Assistant still take priority. Dialogs, entity lists, the command palette, and the window controls use the same icon set.
 - Show a status line on every Quick Access tile, such as Off, Closed, Locked, or Home, and keep it current as states change.

@@ -19,6 +19,8 @@ A semi-transparent desktop widget for Home Assistant that provides quick access 
 
 Settings are organized into six pages on the left: **General** (Home Assistant connection, window behavior, language), **Appearance** (light or dark theme, colors, window effects, readability), **Dashboard** (primary cards, date and time formats, weather source, media tile, custom entity icons), **Hotkeys**, **Alerts**, and **Advanced** (updates, profile sync, diagnostics).
 
+Use **Search settings** at the top of Settings to find an option by its name or help text. Choose a result to open its page and any collapsed section. Press Escape in the search field to clear the search.
+
 In **Appearance → Readability**, choose **Text and control size** (100%, 115%, 130%, or 150%) to enlarge the interface, dialogs, and desktop pins. Enable **High contrast with opaque panels** for a dark, solid background and brighter text and borders. These preferences save immediately. Small pins can scroll when their enlarged controls need more space.
 
 Light, climate, fan, cover, and media tiles include a **Controls** button (the sliders icon in the tile corner) to open their detailed controls. Keyboard users can also focus a tile and press **Shift+Enter**.
@@ -37,6 +39,7 @@ See the [Omarchy guide](docs/omarchy.md) for native desktop layers, independent 
 
 - **Real-time Updates**: WebSocket connection for instant entity state changes
 - **Quick Access Dashboard**: Customizable grid of your most-used entities
+- **Duplicate Pages**: In reorganize mode, use Duplicate page beside the active page name. The copy opens beside the original with the same tile order and its own copies of comparison charts. Device names and tile preferences remain shared for the same Home Assistant entity.
 - **Entity Management**: Add, remove, rename, and reorder entities with drag-and-drop
 - **Desktop Pins**: Pin selected Quick Access entities as movable, resizable desktop tiles
 - **Custom Names & Icons**: Rename entities and override entity icons without changing Home Assistant
@@ -86,6 +89,14 @@ See the [Omarchy guide](docs/omarchy.md) for native desktop layers, independent 
 - **Per-Tile Charts**: Give each numeric sensor tile a line chart, a gauge with an automatic or custom range, or no chart at all
 - **Media Tile**: Choose a primary media player or hide the tile
 - **Profile Sync (Opt-in)**: Keep Quick Access, appearance, alerts, and weather and media choices the same on every computer through a folder you already sync (see [Profile sync](#profile-sync))
+
+## Export and import settings
+
+Open **Settings → Advanced → Settings files** to export your saved pages, appearance, alerts, weather and media choices to a JSON file. Connection details and credentials, desktop pins, shortcuts, tray preferences, text size, Omarchy theme following, startup, updates, and profile sync settings stay on each computer.
+
+Import shows the sections that will change, page names, and how many referenced devices are missing from the current Home Assistant connection. Confirming applies the file immediately and replaces unsaved Settings edits. Imported entity IDs still refer to the original Home Assistant devices; importing does not create devices or automations.
+
+The widget saves a backup before applying an import. Restore it under **Advanced → Settings files → Backups**, even with profile sync disabled. Imports and restores follow your existing sync scope when sync is enabled. Settings files use a versioned format and have a 1 MB limit.
 
 ## Live tray values (beta only)
 
