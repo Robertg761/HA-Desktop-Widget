@@ -375,6 +375,23 @@ describe('device control and live data regressions', () => {
     expect(await pending).toBe('0123');
     expect(input.value).toBe('');
   });
+  test('media detail shows controls a player gains while the dialog is open', () => {
+    const player = entity('media_player.audit', 'unavailable', { supported_features: 0 });
+    state.setEntityState(player);
+    ui.openEntityControls(player);
+    jest.advanceTimersByTime(20);
+    expect(document.querySelector('.media-modal .media-detail-play-btn')).toBeNull();
+    state.setEntityState(
+      entity('media_player.audit', 'paused', { supported_features: 16445, volume_level: 0.5 })
+    );
+    const modals = document.querySelectorAll('.media-modal');
+    expect(modals).toHaveLength(1);
+    const modal = modals[0];
+    expect(modal.querySelector('.media-detail-play-btn').disabled).toBe(false);
+    expect(modal.querySelector('#media-volume-slider').disabled).toBe(false);
+    modal.querySelector('.media-detail-play-btn').click();
+    expect(mockCallService).toHaveBeenCalledTimes(1);
+  });
   test('primary media refuses commands for a player with no supported playback features', () => {
     const player = entity('media_player.audit', 'idle', { supported_features: 0 });
     state.setEntityState(player);
@@ -397,6 +414,24 @@ describe('device control and live data regressions', () => {
     await Promise.resolve();
     const form = document.querySelector('.todo-add-form');
     form.querySelector('input').value = 'Should not add';
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    expect(mockCallService).not.toHaveBeenCalled();
+  });
+  test('todo dialog stops writing once Home Assistant deletes the entity', async () => {
+    const list = entity('todo.deleted', '1', { supported_features: 5 });
+    mockCallServiceWithResponse.mockResolvedValue({
+      [list.entity_id]: { items: [{ uid: 'one', summary: 'Milk', status: 'needs_action' }] },
+    });
+    state.setEntityState(list);
+    ui.openEntityControls(list);
+    await flush();
+    const modal = document.querySelector('.todo-modal');
+    expect(modal.querySelector('.todo-add-form input').disabled).toBe(false);
+    state.deleteEntityState(list.entity_id);
+    expect(modal.querySelector('.todo-add-form input').disabled).toBe(true);
+    expect(modal.querySelector('input[type="checkbox"]').disabled).toBe(true);
+    const form = modal.querySelector('.todo-add-form');
+    form.querySelector('input').value = 'Ghost';
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     expect(mockCallService).not.toHaveBeenCalled();
   });
