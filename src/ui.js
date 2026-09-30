@@ -12614,6 +12614,7 @@ function showBrightnessSlider(light) {
     const closeModal = () => {
       if (isClosing) return;
       isClosing = true;
+      entityDetailClosers.delete(closeModal);
       unsubscribe();
       if (brightnessDebounceTimer) clearTimeout(brightnessDebounceTimer);
       if (colorTempDebounceTimer) clearTimeout(colorTempDebounceTimer);
@@ -12623,6 +12624,8 @@ function showBrightnessSlider(light) {
         onClosed: () => releaseAccessibleDialogModal(modal),
       });
     };
+    // An account or server change closes this dialog with its timers and subscription.
+    entityDetailClosers.add(closeModal);
     if (closeBtn) closeBtn.onclick = closeModal;
     if (cancelBtn) cancelBtn.onclick = closeModal;
     modal.addEventListener('keydown', (e) => {
@@ -13237,6 +13240,7 @@ function showClimateControls(climateEntity) {
     const closeModal = () => {
       if (isClosing) return;
       isClosing = true;
+      entityDetailClosers.delete(closeModal);
       climateDialogRefreshers.delete(climateEntity.entity_id);
       if (temperatureDebounceTimer) clearTimeout(temperatureDebounceTimer);
       rangeController?.cancel();
@@ -13245,6 +13249,8 @@ function showClimateControls(climateEntity) {
         onClosed: () => releaseAccessibleDialogModal(modal),
       });
     };
+    // An account or server change closes this dialog with its timers and subscription.
+    entityDetailClosers.add(closeModal);
     const controlSignature = (value) =>
       JSON.stringify([
         value.canSetTemperature,
@@ -13264,6 +13270,7 @@ function showClimateControls(climateEntity) {
         clearTimeout(temperatureDebounceTimer);
         rangeController?.cancel();
         climateDialogRefreshers.delete(climateEntity.entity_id);
+        entityDetailClosers.delete(closeModal);
         releaseAccessibleDialogModal(modal);
         modal.remove();
         showClimateControls(nextEntity);
@@ -13526,6 +13533,7 @@ function showFanControls(fanEntity) {
     const closeModal = () => {
       if (isClosing) return;
       isClosing = true;
+      entityDetailClosers.delete(closeModal);
       unsubscribe();
       if (speedDebounceTimer) clearTimeout(speedDebounceTimer);
       void uiUtils.closeModal(modal, {
@@ -13533,6 +13541,8 @@ function showFanControls(fanEntity) {
         onClosed: () => releaseAccessibleDialogModal(modal),
       });
     };
+    // An account or server change closes this dialog with its timers and subscription.
+    entityDetailClosers.add(closeModal);
     if (closeBtn) closeBtn.onclick = closeModal;
     if (cancelBtn) cancelBtn.onclick = closeModal;
     const powerBtn = modal.querySelector('#fan-power');
@@ -13766,6 +13776,7 @@ function showCoverControls(coverEntity) {
     const closeModal = () => {
       if (isClosing) return;
       isClosing = true;
+      entityDetailClosers.delete(closeModal);
       unsubscribe();
       if (positionDebounceTimer) clearTimeout(positionDebounceTimer);
       void uiUtils.closeModal(modal, {
@@ -13773,6 +13784,8 @@ function showCoverControls(coverEntity) {
         onClosed: () => releaseAccessibleDialogModal(modal),
       });
     };
+    // An account or server change closes this dialog with its timers and subscription.
+    entityDetailClosers.add(closeModal);
     if (closeBtn) closeBtn.onclick = closeModal;
     if (cancelBtn) cancelBtn.onclick = closeModal;
     modal.addEventListener('keydown', (e) => {

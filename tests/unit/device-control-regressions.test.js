@@ -384,6 +384,41 @@ describe('device control and live data regressions', () => {
     expect(mockCallServiceWithResponse).toHaveBeenCalledTimes(2);
   });
 
+  test.each([
+    [
+      'light',
+      entity('light.switch', 'on', { brightness: 128, supported_color_modes: ['brightness'] }),
+      '.brightness-modal',
+    ],
+    [
+      'climate',
+      entity('climate.switch', 'heat', {
+        temperature: 20,
+        min_temp: 7,
+        max_temp: 30,
+        hvac_modes: ['off', 'heat'],
+        supported_features: 1,
+      }),
+      '.climate-modal',
+    ],
+    ['fan', entity('fan.switch', 'on', { percentage: 50, supported_features: 1 }), '.fan-modal'],
+    [
+      'cover',
+      entity('cover.switch', 'open', { current_position: 40, supported_features: 4 }),
+      '.cover-modal',
+    ],
+  ])('a server change closes an open %s control dialog', (_domain, item, selector) => {
+    state.setEntityState(item);
+    ui.openEntityControls(item);
+    jest.advanceTimersByTime(20);
+    expect(document.querySelector(selector)).not.toBeNull();
+    state.setConfig({ ...state.CONFIG, homeAssistant: { url: 'http://new-server', token: 'new' } });
+    ui.ensureEntityCacheScope();
+    jest.advanceTimersByTime(500);
+    expect(document.querySelector(selector)).toBeNull();
+    // Closing runs the dialog's own cleanup, so nothing is sent to the new server.
+    expect(mockCallService).not.toHaveBeenCalled();
+  });
   test('OAuth access-token refresh retains cache scope while account changes reset it', () => {
     state.setConfig({
       ...state.CONFIG,
