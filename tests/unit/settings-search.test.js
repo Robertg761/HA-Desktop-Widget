@@ -86,4 +86,33 @@ describe('settings search', () => {
     document.getElementById('follow-omarchy-group').classList.add('hidden');
     expect(search('Follow Omarchy theme')).toHaveLength(0);
   });
+  test('indexes a nested-label checkbox once, with a clean title', () => {
+    const results = search('Christmas');
+    expect(results).toHaveLength(1);
+    expect(results[0].firstChild.textContent).toBe('Christmas');
+  });
+  test('focuses the matched checkbox in a multi-checkbox group', () => {
+    search('Christmas')[0].click();
+    expect(document.activeElement.dataset.holiday).toBe('christmas');
+    search('Thanksgiving')[0].click();
+    expect(document.activeElement.dataset.holiday).toBe('thanksgiving');
+  });
+  test('does not offer controls hidden with inline display', () => {
+    const group = document.getElementById('weather-override-group');
+    expect(group.style.display).toBe('none');
+    expect(search('Weather effect override')).toHaveLength(0);
+    // The index is rebuilt per query, so a later reveal makes it findable.
+    group.style.display = '';
+    expect(search('Weather effect override')).toHaveLength(1);
+  });
+  test('lowercases independently of the host locale', () => {
+    const spy = jest.spyOn(String.prototype, 'toLocaleLowerCase').mockImplementation(function () {
+      return String(this).replace(/I/g, '\u0131').toLowerCase();
+    });
+    try {
+      expect(search('CHRISTMAS')).toHaveLength(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });
