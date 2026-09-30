@@ -20,7 +20,7 @@ function settingsSearchEntries(modal) {
   return (
     [
       ...modal.querySelectorAll(
-        `.tab-content label, .tab-content .setting-label, .tab-content summary, .tab-content .section-toggle, .tab-content .setting-row-action > button[data-i18n], .tab-content button.btn[data-i18n], .tab-content :is(${ARIA_NAMED_CONTROL})`
+        `.tab-content label, .tab-content .setting-label, .tab-content summary, .tab-content .section-toggle, .tab-content .setting-row-action > button[data-i18n], .tab-content button.btn, .tab-content :is(${ARIA_NAMED_CONTROL})`
       ),
     ]
       // Entity lists are generated per Home Assistant entity; their parent setting is the entry.
@@ -65,6 +65,7 @@ function settingsSearchEntries(modal) {
           text: searchText(`${title} ${page} ${group} ${help} ${label.htmlFor || ''}`),
         };
       })
+      .filter((entry) => entry.title)
   );
 }
 
