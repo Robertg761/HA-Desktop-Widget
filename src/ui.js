@@ -82,6 +82,7 @@ import {
   groupSeriesByUnit,
   isComparisonGraphId,
   isGraphableEntity,
+  normalizeComparisonGraphsConfig,
   readGraphSeriesUnit,
   readGraphSeriesValue,
   removeComparisonGraph,
@@ -884,7 +885,9 @@ async function deleteQuickAccessPage(tabId) {
   if (!confirmed) return;
 
   const previousActiveTabId = state.CONFIG?.activeTabId;
-  const nextConfig = deleteQuickAccessView(state.CONFIG, tabId);
+  // A graph only the deleted page showed (a duplicated page's copy) goes with it; Undo restores
+  // both from the saved layout.
+  const nextConfig = normalizeComparisonGraphsConfig(deleteQuickAccessView(state.CONFIG, tabId));
   const pending = setQuickAccessConfig(nextConfig);
   // The deleted page's tab took the focused button with it.
   focusActiveQuickAccessPage();
