@@ -183,6 +183,20 @@ describe('buildConfigPatchFromApplyPayload', () => {
     expect(patch.comparisonGraphs).toEqual([]);
   });
 
+  test('favorites-only updates that select a page change that page', () => {
+    const patch = apply({ activeTabId: 'bed', favoriteEntities: ['light.new'] });
+    expect(patch.activeTabId).toBe('bed');
+    expect(patch.customTabs).toEqual([
+      pages.customTabs[0],
+      { ...pages.customTabs[1], entityIds: ['light.new'] },
+    ]);
+    // An unknown page falls back to the current active page.
+    expect(apply({ activeTabId: 'gone', favoriteEntities: ['light.new'] }).customTabs[0]).toEqual({
+      ...pages.customTabs[0],
+      entityIds: ['light.new'],
+    });
+  });
+
   test('graphs-only profiles reconcile against existing tabs', () => {
     const patch = apply({ comparisonGraphs: [{ ...pages.comparisonGraphs[0], name: 'Updated' }] });
     expect(patch.customTabs).toEqual(pages.customTabs);
