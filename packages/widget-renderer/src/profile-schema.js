@@ -18,6 +18,9 @@ const PROFILE_SCHEMA_VERSION = 1;
 const PROFILE_SECTION_KEYS = Object.freeze([
   'ui',
   'primaryCards',
+  'selectedWeatherEntity',
+  'primaryMediaPlayer',
+  'tileSpans',
   'favoriteEntities',
   'customTabs',
   'activeTabId',
@@ -33,6 +36,8 @@ const PROFILE_SECTION_KEYS = Object.freeze([
 const LOCAL_ONLY_UI_KEYS = new Set([
   'personalizationSectionsCollapsed',
   'enableInteractionDebugLogs',
+  'scale',
+  'followOmarchy',
 ]);
 
 const MAX_PRIMARY_CARDS = 2;
@@ -71,7 +76,7 @@ function normalizeObjectMap(value, normalizeEntry) {
  * Sections absent from the document stay absent, so partial profiles only
  * overwrite what they mention. Throws when the document is not an object.
  */
-function normalizeProfileDocument(document) {
+function normalizeProfileDocument(document, currentConfig = {}) {
   if (!isPlainObject(document)) {
     throw new Error('Profile document must be an object');
   }
@@ -89,29 +94,52 @@ function normalizeProfileDocument(document) {
     });
   }
 
-  const hasQuickAccess =
-    'customTabs' in document || 'favoriteEntities' in document || 'activeTabId' in document;
+  for (const [key, domain] of [
+    ['selectedWeatherEntity', 'weather'],
+    ['primaryMediaPlayer', 'media_player'],
+  ]) {
+    if (!(key in document)) continue;
+    const entityId = boundedString(document[key]);
+    normalized[key] = entityId.startsWith(`${domain}.`) ? entityId : null;
+  }
+
+  if ('tileSpans' in document) {
+    normalized.tileSpans = normalizeObjectMap(document.tileSpans, (value) =>
+      Number.isInteger(value) && value >= 1 && value <= 4 ? value : undefined
+    );
+  }
+
+  const hasQuickAccess = ['customTabs', 'favoriteEntities', 'activeTabId', 'comparisonGraphs'].some(
+    (key) => key in document
+  );
   if (hasQuickAccess) {
-    const quickAccess = normalizeQuickAccessConfig({
-      customTabs: Array.isArray(document.customTabs) ? document.customTabs : [],
-      favoriteEntities: normalizeStringArray(document.favoriteEntities),
-      activeTabId: boundedString(document.activeTabId),
-    });
+    const source = { ...currentConfig, ...document };
+    if ('customTabs' in document && !('favoriteEntities' in document)) {
+      source.favoriteEntities = [];
+    }
+    // A legacy favorites-only edit changes the active page, not every page on the desktop.
+    if (
+      'favoriteEntities' in document &&
+      !('customTabs' in document) &&
+      source.customTabs?.length
+    ) {
+      const current = normalizeQuickAccessConfig(currentConfig);
+      source.customTabs = current.customTabs.map((tab) =>
+        tab.id === current.activeTabId
+          ? { ...tab, entityIds: normalizeStringArray(document.favoriteEntities) }
+          : tab
+      );
+    }
+    const quickAccess = normalizeQuickAccessConfig(source);
     normalized.customTabs = quickAccess.customTabs;
     normalized.activeTabId = quickAccess.activeTabId;
     normalized.favoriteEntities = quickAccess.favoriteEntities;
-  }
-
-  if ('comparisonGraphs' in document) {
-    // Graphs only exist as tiles inside tabs, so reconcile them against the
-    // document's own (normalized) tabs; orphaned graphs are dropped here just
-    // like they are in the renderer's config pipeline.
-    const reconciled = normalizeComparisonGraphsConfig({
-      comparisonGraphs: Array.isArray(document.comparisonGraphs) ? document.comparisonGraphs : [],
-      customTabs: normalized.customTabs || [],
-    });
-    normalized.comparisonGraphs = reconciled.comparisonGraphs;
-    if (normalized.customTabs) {
+    if ('comparisonGraphs' in document || 'comparisonGraphs' in currentConfig) {
+      const reconciled = normalizeComparisonGraphsConfig({
+        ...quickAccess,
+        comparisonGraphs: source.comparisonGraphs,
+      });
+      normalized.comparisonGraphs = reconciled.comparisonGraphs;
       normalized.customTabs = reconciled.customTabs;
       normalized.favoriteEntities = reconciled.favoriteEntities;
     }
@@ -171,7 +199,7 @@ function buildConfigPatchFromApplyPayload(payload, currentConfig = {}) {
     throw new Error('Profile payload is missing a valid profile identity');
   }
 
-  const document = normalizeProfileDocument(payload?.profile);
+  const document = normalizeProfileDocument(payload?.profile, currentConfig);
   const patch = { ...document };
   if (document.ui) {
     patch.ui = { ...(isPlainObject(currentConfig?.ui) ? currentConfig.ui : {}), ...document.ui };

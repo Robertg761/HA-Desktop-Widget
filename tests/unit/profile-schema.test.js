@@ -7,6 +7,7 @@ const {
   PROFILE_SECTION_KEYS,
   buildConfigPatchFromApplyPayload,
   normalizeProfileDocument,
+  buildProfileDocumentFromConfig,
 } = require('../../src/profile-schema');
 
 describe('normalizeProfileDocument', () => {
@@ -29,6 +30,8 @@ describe('normalizeProfileDocument', () => {
         accent: 'teal',
         personalizationSectionsCollapsed: { colors: true },
         enableInteractionDebugLogs: true,
+        scale: 1.5,
+        followOmarchy: true,
       },
     });
     expect(normalized.ui).toEqual({ theme: 'dark', accent: 'teal' });
@@ -148,5 +151,73 @@ describe('buildConfigPatchFromApplyPayload', () => {
     expect('customTabs' in patch).toBe(false);
     expect('favoriteEntities' in patch).toBe(false);
     expect(patch.opacity).toBe(0.7);
+  });
+
+  const pages = {
+    customTabs: [
+      { id: 'home', name: 'Home', entityIds: ['light.desk', 'graph:temp'] },
+      { id: 'bed', name: 'Bedroom', entityIds: ['switch.bed'] },
+    ],
+    activeTabId: 'home',
+    comparisonGraphs: [
+      { id: 'graph:temp', name: 'Temperature', span: 2, entityIds: ['sensor.temp'] },
+    ],
+  };
+  const apply = (profile, current = pages) =>
+    buildConfigPatchFromApplyPayload(payload({ profile }), current);
+
+  test('active-page-only profiles preserve pages and graph definitions', () => {
+    const patch = apply({ activeTabId: 'bed' });
+    expect(patch.customTabs).toEqual(pages.customTabs);
+    expect(patch.activeTabId).toBe('bed');
+    expect(patch.comparisonGraphs).toEqual(pages.comparisonGraphs);
+  });
+
+  test('legacy favorites-only updates change the active page and preserve other pages', () => {
+    const patch = apply({ favoriteEntities: ['light.new'] });
+    expect(patch.customTabs).toEqual([
+      { ...pages.customTabs[0], entityIds: ['light.new'] },
+      pages.customTabs[1],
+    ]);
+    expect(patch.favoriteEntities).toEqual(['light.new', 'switch.bed']);
+    expect(patch.comparisonGraphs).toEqual([]);
+  });
+
+  test('graphs-only profiles reconcile against existing tabs', () => {
+    const patch = apply({ comparisonGraphs: [{ ...pages.comparisonGraphs[0], name: 'Updated' }] });
+    expect(patch.customTabs).toEqual(pages.customTabs);
+    expect(patch.comparisonGraphs[0].name).toBe('Updated');
+  });
+
+  test('explicit graph and page clearing do not resurrect existing content', () => {
+    expect(apply({ comparisonGraphs: [] }).customTabs[0].entityIds).toEqual(['light.desk']);
+    const patch = apply({ customTabs: [] });
+    expect(patch.customTabs).toHaveLength(1);
+    expect(patch.favoriteEntities).toEqual([]);
+    expect(patch.comparisonGraphs).toEqual([]);
+  });
+
+  test('profile application keeps display scale and platform theme following local', () => {
+    expect(
+      apply(
+        { ui: { scale: 2, followOmarchy: true, theme: 'dark' } },
+        {
+          ui: { scale: 1, followOmarchy: false, theme: 'light' },
+        }
+      ).ui
+    ).toEqual({ scale: 1, followOmarchy: false, theme: 'dark' });
+  });
+
+  test('panel settings survive projection and application with explicit clearing', () => {
+    const config = {
+      selectedWeatherEntity: 'weather.home',
+      primaryMediaPlayer: 'media_player.office',
+      tileSpans: { 'sensor.temp': 2, 'sensor.invalid': 20, 'sensor.text': '2' },
+    };
+    const document = buildProfileDocumentFromConfig(config);
+    expect(apply(document)).toMatchObject({ ...config, tileSpans: { 'sensor.temp': 2 } });
+    expect(
+      apply({ selectedWeatherEntity: null, primaryMediaPlayer: 'light.wrong', tileSpans: {} })
+    ).toMatchObject({ selectedWeatherEntity: null, primaryMediaPlayer: null, tileSpans: {} });
   });
 });
