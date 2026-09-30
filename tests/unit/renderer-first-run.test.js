@@ -217,6 +217,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
     };
     jest.doMock('../../src/ui-utils.js', () => mockUiUtils);
     jest.doMock('../../src/utils.js', () => ({
+      getEntityDisplayName: (entity) => entity.attributes?.friendly_name || entity.entity_id,
       __esModule: true,
       reconcileConfigEntityIds: jest.fn((config) => ({ changed: false, config })),
       resolveEntityId: jest.fn((entityId) => entityId),
@@ -1116,6 +1117,27 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(input.value).toBe('Ctrl+L');
     expect(document.activeElement).toBe(input);
     expect(mockUiUtils.showToast).toHaveBeenCalledWith('Already registered', 'error');
+  });
+  it('announces a successful keyboard hotkey assignment', async () => {
+    await loadRenderer({
+      config: unconfiguredConfig(),
+      bodyHtml:
+        '<main class="widget-content"></main><div id="hotkeys-list"><div><input readonly class="hotkey-input" data-entity-id="light.office"></div></div>',
+    });
+    mockHotkeys.captureHotkey.mockResolvedValueOnce('Ctrl+K');
+    mockElectronAPI.registerHotkey.mockResolvedValueOnce({ success: true });
+    const input = document.querySelector('.hotkey-input');
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    );
+    await flushAsync();
+    expect(input.value).toBe('Ctrl+K');
+    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect.stringContaining('Hotkey set for'),
+      'success',
+      2200
+    );
+    expect(document.activeElement).toBe(input);
   });
 
   it('publishes stale status until a fresh snapshot arrives, and preserves actionable auth failure', async () => {
