@@ -74,8 +74,8 @@ function hasItemsOfType(container, type) {
   return Object.values(container).every((item) => getJsonType(item) === type);
 }
 // ui keys that describe this machine or session rather than the shared look.
-// Keep in step with LOCAL_ONLY_UI_KEYS in packages/widget-renderer/src/profile-schema.js,
-// plus the text size and Omarchy theme following, which depend on the display and desktop.
+// Keep in step with LOCAL_ONLY_UI_KEYS in packages/widget-renderer/src/profile-schema.js.
+// Text size and Omarchy theme following depend on this machine's display and desktop.
 const LOCAL_ONLY_UI_KEYS = new Set([
   'personalizationSectionsCollapsed',
   'enableInteractionDebugLogs',

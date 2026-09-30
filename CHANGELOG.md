@@ -7,14 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0] - Unreleased
+
+Release preparation only. Native platform, real-device, and two-computer sync checks remain required before tagging. Stable 4.0 uses the regular tray; live tray tiles remain limited to numbered beta builds. Hosted Cloud Sync accounts and billing are planned separately from the free folder Profile Sync shipped here.
+
 ### Added
 
+- Add numeric and select helper dialogs with current bounds/options, and vacuum controls limited to each device's supported actions.
+- Complete supported alarm arming modes and disarm in the command palette, with a temporary code prompt when required. Disarm requires a typed query and codes are never saved with recents.
 - Export and import portable settings files from Advanced, with a preview of changed sections and referenced devices, a backup before applying, and restore controls available without profile sync. Credentials and computer-specific settings stay on each computer.
-
 - Duplicate a Quick Access page in reorganize mode, keeping its tile order and copying comparison charts so they can be edited independently.
-
 - Search Settings by name or help text, then jump directly to a control, including controls inside collapsed sections.
-
 - Choose Auto, Dark, or Light theme in Settings → Appearance. It previews live and saves with Save; Auto still follows the system.
 - Draw entities with line icons that take the accent color and a soft glow when on. Custom emoji and icons set in Home Assistant still take priority. Dialogs, entity lists, the command palette, and the window controls use the same icon set.
 - Show a status line on every Quick Access tile, such as Off, Closed, Locked, or Home, and keep it current as states change.
@@ -27,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Render 50 entities per page in Manage Quick Access and debounce searches across the full entity list.
+- Split the desktop renderer into smaller device/settings chunks and omit unused legacy icon-font formats from the companion panel build.
 - Redesign the main window after the project website: one pane of frosted glass in a cool slate, lighter tiles and cards with 14px corners, normal-case tile names, and Plus Jakarta Sans for the clock, temperature, and sensor values. The two primary cards share one pane and Quick Access pages are a segmented control.
 - Reorganize Settings into six pages on an icon rail (General, Appearance, Dashboard, Hotkeys, Alerts, Advanced) with grouped rows: labels and help on the left, controls on the right. Weather source moves to Dashboard, connection diagnostics to General, and updates to Advanced. Custom colors, language packs, the primary-card entity picker, and the icon editor sit behind disclosures.
 - Restyle dialogs, control pop-ups, toasts, and the command palette to match, with slimmer sliders, chip-style presets, and quieter buttons.
@@ -46,6 +51,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Update the build/test toolchain's transitive `brace-expansion` patch versions to address newly listed denial-of-service advisories. Run full CI for stacked pull requests as well as PRs targeting main.
+- Preserve existing pages and omitted settings when applying partial companion profiles. Include weather/media selection and tile spans in the profile round-trip, while keeping UI scale and Omarchy theme following local.
+- Serialize companion commands and share the result of duplicate in-flight deliveries. Stop obsolete session initialization and send an initial layout snapshot to each new session.
+- Guard unavailable and unsupported media, fan, to-do, and hotkey actions. Read-only to-do lists no longer expose writes; live task counts and sensor detail values stay current.
+- Clear device caches and close detail dialogs when changing Home Assistant accounts/servers, and discard responses belonging to the old connection.
+- Keep numeric/select/vacuum tiles actionable and unsupported domains explicitly read-only. Preserve a zero climate temperature.
+- Follow visual arrow order in RTL, expose tile values to assistive technology, and allow Enter/Space to capture named hotkeys with cancellation/conflict focus recovery.
+- Offer calendar retry/refresh and show its seven-day event window.
 - Make automation hotkeys set to Toggle enable or disable the automation; they previously sent no command.
 - Refresh alert state after reconnecting, so an ended threshold condition can alert again and state-change alerts use the current reading as their baseline.
 - Frosted glass now actually blurs on Hyprland. The widget asks Hyprland to blur its own surface; before, it was only tinted, because an app cannot blur the desktop behind itself on Linux. Omarchy ships with Hyprland's blur off, so Settings → Appearance → Window Effects says so and offers a button that turns blur on for the widget alone. The button leaves every other window unblurred, and the same button turns it off again.

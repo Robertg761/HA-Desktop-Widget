@@ -17,7 +17,10 @@ export default defineConfig(({ mode }) => {
         output: {
           entryFileNames: 'renderer.bundle.js',
           chunkFileNames: 'chunks/[name]-[hash].js',
+          onlyExplicitManualChunks: true,
           manualChunks: (id) => {
+            if (id.endsWith('/src/ui.js')) return 'device-ui';
+            if (id.endsWith('/src/settings.js')) return 'settings';
             if (!id.includes('node_modules')) return null;
             if (id.includes('hls.js')) return 'vendor-hls';
             if (id.includes('sortablejs')) return 'vendor-sortable';

@@ -3194,8 +3194,17 @@ function wireUI() {
                 state.CONFIG.globalHotkeys ||= { hotkeys: {} };
                 state.CONFIG.globalHotkeys.hotkeys ||= {};
                 state.CONFIG.globalHotkeys.hotkeys[entityId] = { hotkey, action };
+                uiUtils.showToast(
+                  t('Hotkey set for {{name}}', {
+                    name: utils.getEntityDisplayName(
+                      state.STATES[entityId] || { entity_id: entityId, attributes: {} }
+                    ),
+                  }),
+                  'success',
+                  2200
+                );
               } else {
-                uiUtils.showToast(result.error, 'error');
+                uiUtils.showToast(result?.error || t('Failed to set hotkey'), 'error');
                 const currentConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
                 target.value =
                   typeof currentConfig === 'string' ? currentConfig : currentConfig?.hotkey || '';
