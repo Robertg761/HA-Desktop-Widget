@@ -582,6 +582,19 @@
           </button>
         </div>
         <div class="modal-body">
+          <div class="form-group settings-search-box">
+            <label for="settings-search" data-i18n="Search settings">Search settings</label>
+            <input
+              id="settings-search"
+              type="search"
+              autocomplete="off"
+              placeholder="Search settings"
+              data-i18n-placeholder="Search settings"
+              aria-controls="settings-search-results"
+            />
+            <p id="settings-search-status" class="form-help" role="status"></p>
+          </div>
+          <div id="settings-search-results" hidden></div>
           <div id="general-tab" class="tab-content active">
             <header class="settings-page-header">
               <h3 class="settings-page-title" data-i18n="General">General</h3>
@@ -1755,7 +1768,7 @@
               <div class="settings-group-body">
                 <div class="form-group">
                   <label id="popup-hotkey-mode-label" for="popup-hotkey-input">Popup hotkey</label>
-                  <p id="popup-hotkey-help-text" class="form-help">
+                  <p id="popup-hotkey-help-text" class="form-help" data-search-help>
                     Configure a global hotkey that brings the window to front while held down. When
                     released, the window returns to normal z-order.
                   </p>
@@ -2295,28 +2308,66 @@
                       </button>
                     </div>
                   </div>
-                  <div class="form-group setting-row setting-row-stacked">
-                    <div class="setting-text">
-                      <label for="profile-sync-backup-select" data-i18n="Backups">Backups</label>
-                      <p
-                        class="form-help"
-                        data-i18n="Settings a sync replaced, newest first. Restoring one applies it on this computer, and it then syncs to your other computers."
-                      >
-                        Settings a sync replaced, newest first. Restoring one applies it on this
-                        computer, and it then syncs to your other computers.
-                      </p>
-                    </div>
-                    <div class="profile-sync-file-row profile-sync-backup-row">
-                      <select id="profile-sync-backup-select"></select>
-                      <button
-                        type="button"
-                        id="profile-sync-restore-backup"
-                        class="btn btn-secondary"
-                        data-i18n="Restore"
-                      >
-                        Restore
-                      </button>
-                    </div>
+                </div>
+              </div>
+            </section>
+            <section class="settings-group">
+              <h4 class="settings-group-caption" data-i18n="Settings files">Settings files</h4>
+              <div class="settings-group-body">
+                <div class="form-group setting-row setting-row-stacked">
+                  <div class="setting-text">
+                    <span class="setting-label" data-i18n="Export and import"
+                      >Export and import</span
+                    >
+                    <p
+                      class="form-help"
+                      data-i18n="Save your pages, appearance, alerts, weather and media choices in a file. Connection details, desktop pins, shortcuts and profile sync stay on this computer."
+                    >
+                      Save your pages, appearance, alerts, weather and media choices in a file.
+                      Connection details, desktop pins, shortcuts and profile sync stay on this
+                      computer.
+                    </p>
+                  </div>
+                  <div class="profile-sync-actions">
+                    <button
+                      id="export-settings-file"
+                      type="button"
+                      class="btn btn-secondary"
+                      data-i18n="Export settings"
+                    >
+                      Export settings
+                    </button>
+                    <button
+                      id="import-settings-file"
+                      type="button"
+                      class="btn btn-secondary"
+                      data-i18n="Import settings"
+                    >
+                      Import settings
+                    </button>
+                  </div>
+                </div>
+                <div class="form-group setting-row setting-row-stacked">
+                  <div class="setting-text">
+                    <label for="profile-sync-backup-select" data-i18n="Backups">Backups</label>
+                    <p
+                      class="form-help"
+                      data-i18n="Settings replaced by sync or import, newest first. Restoring a backup applies immediately and follows your existing sync scope."
+                    >
+                      Settings replaced by sync or import, newest first. Restoring a backup applies
+                      immediately and follows your existing sync scope.
+                    </p>
+                  </div>
+                  <div class="profile-sync-file-row profile-sync-backup-row">
+                    <select id="profile-sync-backup-select"></select>
+                    <button
+                      type="button"
+                      id="profile-sync-restore-backup"
+                      class="btn btn-secondary"
+                      data-i18n="Restore"
+                    >
+                      Restore
+                    </button>
                   </div>
                 </div>
               </div>

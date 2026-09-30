@@ -217,6 +217,37 @@ function removeEntityFromQuickAccessViews(config, entityId) {
   return moveEntityToQuickAccessView(config, entityId, null);
 }
 
+// Page-scoped add/remove. A duplicated page holds the same entities as its original, so adding or
+// removing a tile on one page must leave every other page alone (unlike move, which is exclusive).
+function addEntityToQuickAccessView(config, entityId, tabId) {
+  const normalized = normalizeQuickAccessConfig(config);
+  if (typeof entityId !== 'string' || !entityId.trim()) return normalized;
+  const trimmedEntityId = entityId.trim();
+  if (!normalized.customTabs.some((tab) => tab.id === tabId)) return normalized;
+  return normalizeQuickAccessConfig({
+    ...normalized,
+    customTabs: normalized.customTabs.map((tab) =>
+      tab.id === tabId && !tab.entityIds.includes(trimmedEntityId)
+        ? { ...tab, entityIds: [...tab.entityIds, trimmedEntityId] }
+        : tab
+    ),
+  });
+}
+
+function removeEntityFromQuickAccessView(config, entityId, tabId) {
+  const normalized = normalizeQuickAccessConfig(config);
+  if (typeof entityId !== 'string' || !entityId.trim()) return normalized;
+  const trimmedEntityId = entityId.trim();
+  return normalizeQuickAccessConfig({
+    ...normalized,
+    customTabs: normalized.customTabs.map((tab) =>
+      tab.id === tabId
+        ? { ...tab, entityIds: tab.entityIds.filter((id) => id !== trimmedEntityId) }
+        : tab
+    ),
+  });
+}
+
 function reorderQuickAccessView(config, tabId, entityIds) {
   const normalized = normalizeQuickAccessConfig(config);
   const targetTab = normalized.customTabs.find((tab) => tab.id === tabId);
@@ -238,12 +269,14 @@ function reorderQuickAccessView(config, tabId, entityIds) {
 export {
   DEFAULT_QUICK_ACCESS_TAB_ID,
   DEFAULT_QUICK_ACCESS_TAB_NAME,
+  addEntityToQuickAccessView,
   addQuickAccessView,
   deleteQuickAccessView,
   getActiveQuickAccessTab,
   getFavoriteEntityUnion,
   moveEntityToQuickAccessView,
   normalizeQuickAccessConfig,
+  removeEntityFromQuickAccessView,
   removeEntityFromQuickAccessViews,
   renameQuickAccessView,
   reorderQuickAccessView,

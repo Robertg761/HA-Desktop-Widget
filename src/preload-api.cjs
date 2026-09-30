@@ -173,6 +173,9 @@ function createElectronApi(ipcRenderer, platform) {
     resolveProfileSyncFirstEnable: (choice) => invoke('resolve-profile-sync-first-enable', choice),
     listProfileSyncBackups: () => invoke('list-profile-sync-backups'),
     restoreProfileSyncBackup: (id) => invoke('restore-profile-sync-backup', id),
+    exportSettingsFile: () => invoke('export-settings-file'),
+    previewSettingsImport: () => invoke('preview-settings-import'),
+    applySettingsImport: (id) => invokeConfigMutation('apply-settings-import', id),
 
     setOpacity: (opacity) => invokeChecked('set-opacity', opacity),
     previewWindowEffects: (effects) => invoke('preview-window-effects', effects),
