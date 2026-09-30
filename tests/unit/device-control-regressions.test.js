@@ -275,6 +275,53 @@ describe('device control and live data regressions', () => {
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     expect(mockCallService).not.toHaveBeenCalled();
   });
+  test('todo dialog keeps a deleted list disabled when a pending read resolves later', async () => {
+    const list = entity('todo.pending', '1', { supported_features: 5 });
+    let resolveItems;
+    mockCallServiceWithResponse.mockReturnValue(
+      new Promise((resolve) => {
+        resolveItems = resolve;
+      })
+    );
+    state.setEntityState(list);
+    ui.openEntityControls(list);
+    await flush();
+    const modal = document.querySelector('.todo-modal');
+    state.deleteEntityState(list.entity_id);
+    resolveItems({
+      [list.entity_id]: { items: [{ uid: 'one', summary: 'Milk', status: 'needs_action' }] },
+    });
+    await flush();
+    const checkbox = modal.querySelector('input[type="checkbox"]');
+    expect(checkbox.disabled).toBe(true);
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+    await flush();
+    expect(mockCallService).not.toHaveBeenCalled();
+  });
+  test('media detail shows unavailable once Home Assistant deletes the player', () => {
+    const player = entity('media_player.deleted', 'playing', {
+      supported_features: 16445,
+      volume_level: 0.5,
+      media_title: 'Old Song',
+      media_artist: 'Old Artist',
+    });
+    state.setEntityState(player);
+    ui.openEntityControls(player);
+    jest.advanceTimersByTime(20);
+    const modal = document.querySelector('.media-modal');
+    expect(modal.querySelector('.media-detail-title').textContent).toBe('Old Song');
+    state.deleteEntityState(player.entity_id);
+    expect(document.querySelectorAll('.media-modal')).toHaveLength(1);
+    expect(document.querySelector('.media-modal')).toBe(modal);
+    expect(modal.querySelector('.media-detail-title').textContent).not.toContain('Old Song');
+    expect(modal.classList.contains('entity-unavailable')).toBe(true);
+    expect(
+      [...modal.querySelectorAll('.modal-body input,.modal-body button')].filter((e) => !e.disabled)
+    ).toHaveLength(0);
+    modal.querySelector('.media-detail-play-btn').click();
+    expect(mockCallService).not.toHaveBeenCalled();
+  });
   test('todo count follows live HA state even during item cache TTL', async () => {
     const list = entity('todo.auditcount', '1', {});
     mockCallServiceWithResponse.mockResolvedValue({
