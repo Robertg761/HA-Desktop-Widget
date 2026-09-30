@@ -18,7 +18,7 @@ const { appId: APP_ID } = require('../package.json');
 
 const OMARCHY_BAR_PLUGIN_ID = APP_ID;
 const OMARCHY_BAR_STATUS_VERSION = 1;
-const PLUGIN_FILES = Object.freeze(['manifest.json', 'Widget.qml']);
+const PLUGIN_FILES = Object.freeze(['manifest.json', 'Countdown.js', 'Widget.qml']);
 const MAX_PANEL_ENTITIES = 48;
 const MAX_BAR_ENTITIES = 4;
 const MAX_PANEL_SECTIONS = 12;
@@ -253,11 +253,20 @@ function cleanTileControls(controls) {
 function cleanOmarchyBarTile(entityId, tile) {
   if (!tile || typeof tile !== 'object') return null;
   const action = TILE_ACTIONS.has(tile.action) ? tile.action : 'none';
+  const endsAt = finiteNumber(tile.countdown?.endsAt);
   return {
     id: entityId,
     name: cleanText(tile.name, 80) || entityId,
     state: cleanText(tile.state, 64),
     value: cleanText(tile.value, 96),
+    ...(tile.available === true && endsAt !== null && endsAt > 0
+      ? {
+          countdown: {
+            endsAt,
+            finishedValue: cleanText(tile.countdown.finishedValue, 96) || '0:00',
+          },
+        }
+      : {}),
     icon: cleanTileIcon(tile.icon),
     available: tile.available === true,
     missing: tile.missing === true,

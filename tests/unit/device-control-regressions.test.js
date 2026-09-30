@@ -139,6 +139,7 @@ const ui = require('../../src/ui.js');
 const state = require('../../src/state.js').default;
 const { sampleConfig } = require('../fixtures/ha-data.js');
 const i18n = require('../../src/i18n.js');
+const uiUtils = require('../../src/ui-utils.js');
 const entity = (entity_id, value, attributes = {}) => ({ entity_id, state: value, attributes });
 const renderTiles = (states) => {
   const ids = states.map((item) => item.entity_id);
@@ -351,6 +352,15 @@ describe('device control and live data regressions', () => {
       'sensor.audit_4999'
     );
   });
+  test('alarm prompt starts keyboard focus in the code field', () => {
+    void ui.requestAlarmCode(entity('alarm_control_panel.audit', 'armed_home', {}));
+    const modal = document.querySelector('.alarm-code-modal');
+    jest.advanceTimersByTime(1);
+    expect(uiUtils.trapFocus).toHaveBeenCalledWith(modal, {
+      initialFocus: modal.querySelector('input'),
+    });
+    modal.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  });
   test('alarm prompt cancels on Escape and clears its secret field', async () => {
     const pending = ui.requestAlarmCode(
       entity('alarm_control_panel.audit', 'armed_home', { code_format: 'number' })
@@ -416,6 +426,17 @@ describe('device control and live data regressions', () => {
     form.querySelector('input').value = 'Should not add';
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     expect(mockCallService).not.toHaveBeenCalled();
+  });
+  test('sensor detail shows unavailable once Home Assistant deletes the entity', () => {
+    const sensor = entity('sensor.deleted', '21.5', { unit_of_measurement: '°C' });
+    state.setEntityState(sensor);
+    ui.openEntityControls(sensor);
+    const modal = document.querySelector('.sensor-detail-modal, .modal');
+    const readout = modal.querySelector('[aria-live="polite"]');
+    expect(readout.getAttribute('aria-label')).toContain('21.5');
+    state.deleteEntityState(sensor.entity_id);
+    expect(readout.getAttribute('aria-label')).not.toContain('21.5');
+    expect(readout.getAttribute('aria-label')).toMatch(/unavailable/i);
   });
   test('todo dialog stops writing once Home Assistant deletes the entity', async () => {
     const list = entity('todo.deleted', '1', { supported_features: 5 });
