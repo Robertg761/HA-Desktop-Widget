@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.44",
+  "version": "1.2.45",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1626,6 +1626,7 @@
     "Turn off widget blur": "विजेट ब्लर बंद करें",
     "Turn on blur for the widget": "विजेट के लिए ब्लर चालू करें",
     "Could not change Hyprland's blur.": "Hyprland का ब्लर बदला नहीं जा सका।",
+    "This list is read-only.": "यह सूची केवल पढ़ने के लिए है।",
     "Search settings": "सेटिंग खोजें",
     "{{count}} matching settings": "{{count}} मेल खाती सेटिंग",
     "No matching settings": "कोई मेल खाती सेटिंग नहीं",

@@ -2,7 +2,7 @@
   "locale": "zh",
   "displayName": "简体中文",
   "englishName": "Chinese (Simplified)",
-  "version": "1.2.44",
+  "version": "1.2.45",
   "minAppVersion": "3.4.1",
   "notes": "Simplified Chinese language pack for HA Desktop Widget.",
   "messages": {
@@ -1626,6 +1626,7 @@
     "Turn off widget blur": "关闭小部件模糊",
     "Turn on blur for the widget": "为小部件开启模糊",
     "Could not change Hyprland's blur.": "无法更改 Hyprland 的模糊设置。",
+    "This list is read-only.": "此列表为只读。",
     "Search settings": "搜索设置",
     "{{count}} matching settings": "{{count}} 项匹配的设置",
     "No matching settings": "没有匹配的设置",

@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.44",
+  "version": "1.2.45",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1626,6 +1626,7 @@
     "Turn off widget blur": "Desactivar el desenfoque del widget",
     "Turn on blur for the widget": "Activar el desenfoque para el widget",
     "Could not change Hyprland's blur.": "No se pudo cambiar el desenfoque de Hyprland.",
+    "This list is read-only.": "Esta lista es de solo lectura.",
     "Search settings": "Buscar ajustes",
     "{{count}} matching settings": "{{count}} ajustes coincidentes",
     "No matching settings": "No hay ajustes coincidentes",

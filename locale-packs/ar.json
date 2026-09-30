@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.44",
+  "version": "1.2.45",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1626,6 +1626,7 @@
     "Turn off widget blur": "إيقاف طمس الأداة",
     "Turn on blur for the widget": "تشغيل الطمس للأداة",
     "Could not change Hyprland's blur.": "تعذّر تغيير الطمس في Hyprland.",
+    "This list is read-only.": "هذه القائمة للقراءة فقط.",
     "Search settings": "البحث في الإعدادات",
     "{{count}} matching settings": "{{count}} إعدادات مطابقة",
     "No matching settings": "لا توجد إعدادات مطابقة",
