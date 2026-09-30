@@ -114,6 +114,7 @@ function normalizeProfileDocument(document, currentConfig = {}) {
   );
   if (hasQuickAccess) {
     const source = { ...currentConfig, ...document };
+    if ('activeTabId' in document) source.activeTabId = boundedString(document.activeTabId);
     if ('customTabs' in document && !('favoriteEntities' in document)) {
       source.favoriteEntities = [];
     }
