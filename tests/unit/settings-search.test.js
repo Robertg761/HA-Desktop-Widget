@@ -148,6 +148,31 @@ describe('settings search', () => {
       .click();
     expect(document.activeElement.dataset.colorTarget).toBe('accent');
   });
+  test('finds settings action buttons by their label', () => {
+    for (const [query, id] of [
+      ['Sync now', 'profile-sync-now'],
+      ['Sync Up', 'profile-sync-push-now'],
+      ['Need Help?', 'profile-sync-help-btn'],
+      ['Support this project', 'open-donate-modal-btn'],
+    ]) {
+      document
+        .querySelectorAll('.profile-sync-settings')
+        .forEach((el) => el.classList.remove('hidden'));
+      const result = search(query).find((button) => button.firstChild.textContent === query);
+      expect(result).toBeDefined();
+      result.click();
+      expect(document.activeElement.id).toBe(id);
+    }
+  });
+  test('does not index generated entity list rows', () => {
+    const list = document.getElementById('custom-entity-icons-list');
+    for (const id of ['light.one', 'light.two', 'light.three']) {
+      const input = document.createElement('input');
+      input.setAttribute('aria-label', `Custom icon for ${id}`);
+      list.appendChild(input);
+    }
+    expect(search('Custom icon for')).toHaveLength(0);
+  });
   test('lowercases independently of the host locale', () => {
     const spy = jest.spyOn(String.prototype, 'toLocaleLowerCase').mockImplementation(function () {
       return String(this).replace(/I/g, '\u0131').toLowerCase();
