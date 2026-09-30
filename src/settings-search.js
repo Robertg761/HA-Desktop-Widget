@@ -20,9 +20,13 @@ function settingsSearchEntries(modal) {
   return (
     [
       ...modal.querySelectorAll(
-        `.tab-content label, .tab-content .setting-label, .tab-content summary, .tab-content .section-toggle, .tab-content .setting-row-action > button[data-i18n], .tab-content :is(${ARIA_NAMED_CONTROL})`
+        `.tab-content label, .tab-content .setting-label, .tab-content summary, .tab-content .section-toggle, .tab-content .setting-row-action > button[data-i18n], .tab-content button.btn[data-i18n], .tab-content :is(${ARIA_NAMED_CONTROL})`
       ),
     ]
+      // Entity lists are generated per Home Assistant entity; their parent setting is the entry.
+      .filter((label) => !label.closest('.entity-selector-list'))
+      // Segmented choices (Weather/Time/Hide) belong to the setting that labels the group.
+      .filter((label) => !(label.matches('button') && label.closest('.segmented-control')))
       // A wrapping <label> is the entry for its control; skip the nested title span.
       .filter((label) => !(label.matches('.setting-label') && label.closest('label')))
       .filter((label) => !label.closest('[hidden], .hidden') && !isHidden(label, modal))
