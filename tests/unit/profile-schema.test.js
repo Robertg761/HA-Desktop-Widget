@@ -197,6 +197,18 @@ describe('buildConfigPatchFromApplyPayload', () => {
     });
   });
 
+  test('favorites for an unknown page stay on the current page', () => {
+    const patch = apply(
+      { activeTabId: 'gone', favoriteEntities: ['light.new'] },
+      { ...pages, activeTabId: 'bed' }
+    );
+    expect(patch.activeTabId).toBe('bed');
+    expect(patch.customTabs).toEqual([
+      pages.customTabs[0],
+      { ...pages.customTabs[1], entityIds: ['light.new'] },
+    ]);
+  });
+
   test('trims a requested active page before selecting it', () => {
     expect(apply({ activeTabId: ' bed ' }).activeTabId).toBe('bed');
   });
