@@ -130,6 +130,8 @@ function normalizeProfileDocument(document, currentConfig = {}) {
       const targetTabId = current.customTabs.some((tab) => tab.id === requestedTabId)
         ? requestedTabId
         : current.activeTabId;
+      // The page that received the favorites is the one to show.
+      source.activeTabId = targetTabId;
       source.customTabs = current.customTabs.map((tab) =>
         tab.id === targetTabId
           ? { ...tab, entityIds: normalizeStringArray(document.favoriteEntities) }
