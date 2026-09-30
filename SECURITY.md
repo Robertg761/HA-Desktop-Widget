@@ -2,13 +2,14 @@
 
 ## Supported Versions
 
-Security fixes target the current `3.x` release line of HA Desktop Widget unless a release note says otherwise.
+Security fixes target the latest stable release line of HA Desktop Widget. Until 4.0 is released, that is 3.x. After the stable 4.0 release, fixes target 4.x and users should upgrade from 3.x.
 
-| Version | Supported |
-| ------- | --------- |
-| 3.x     | Yes       |
-| 2.x     | No        |
-| < 2.0   | No        |
+| Version | Supported                    |
+| ------- | ---------------------------- |
+| 4.x     | After the stable 4.0 release |
+| 3.x     | Until the stable 4.0 release |
+| 2.x     | No                           |
+| < 2.0   | No                           |
 
 ## Reporting a Vulnerability
 
@@ -33,7 +34,7 @@ Expected handling is best effort for a maintainer-run project:
 
 ### For Users
 
-- **Keep the app updated**: Use the latest `3.x` release when possible.
+- **Keep the app updated**: Use the latest stable release. See [4.0 migration guidance](docs/MIGRATION.md) before upgrading computers that share a profile.
 - **Download from the project releases**: Prefer the official GitHub Releases page for installers and portable builds.
 - **Secure Home Assistant**: Use strong passwords, 2FA where practical, and a least-privilege network setup.
 - **Prefer HTTPS for remote Home Assistant access**: Use HTTPS when connecting outside your trusted local network.
@@ -55,7 +56,7 @@ Expected handling is best effort for a maintainer-run project:
 - **Local by default**: Configuration is stored in Electron's user data directory on the local machine.
 - **Token storage**: Home Assistant tokens are encrypted with Electron `safeStorage` when the OS supports it. If encryption is unavailable or fails, the token remains usable for the current session but is omitted from the saved config. The app asks the user to re-enter it instead of persisting plaintext.
 - **Profile Sync is opt-in**: Profile Sync writes selected personalization/settings data to a user-chosen JSON file. The app does not call Google Drive, iCloud, or Syncthing APIs directly; those labels use the same local/cloud-folder file model.
-- **Sync exclusions**: Home Assistant URL/token, window position/size, startup setting, and Profile Sync internals remain local.
+- **Sync exclusions**: Home Assistant connection and credentials, window position/size, startup settings, desktop pins, hotkeys, the active page, UI scale, Omarchy theme following, and Profile Sync internals remain local. Companion layout profiles also preserve UI scale and Omarchy theme following; explicit companion page commands can change the active page.
 - **Sync encryption**: Profile Sync can encrypt the synced payload with a passphrase using `AES-256-GCM` and `scrypt` key derivation.
 
 ### Network Access
@@ -84,7 +85,7 @@ Expected handling is best effort for a maintainer-run project:
 
 - **Cloud-backed folders are outside the app boundary**: If the selected sync file lives in a provider-synced folder, that provider controls transport, retention, sharing, and account security.
 - **Optional encryption depends on passphrase strength**: Use a unique passphrase if the sync file will leave the local machine.
-- **Conflict behavior**: First enable prompts for local-vs-remote choice; ongoing conflicts are resolved by last write.
+- **Conflict behavior**: First enable prompts for a local-vs-remote choice. Version 4.0 merges changes to different sections independently. Concurrent changes to the same section choose the newer revision and retain a recovery backup. The sync scope is local to each computer.
 
 ### Updates And Downloads
 
@@ -96,8 +97,8 @@ Expected handling is best effort for a maintainer-run project:
 
 Security updates may be released as:
 
-- **Patch releases**: For critical or narrowly scoped security fixes, such as `3.4.12`
-- **Minor releases**: For broader security improvements, such as `3.5.0`
+- **Patch releases**: For critical or narrowly scoped security fixes, such as `4.0.1`
+- **Minor releases**: For broader security improvements, such as `4.1.0`
 - **Major releases**: For significant security architecture changes, such as `4.0.0`
 
 ## Contact Information
@@ -111,4 +112,4 @@ Thank you to security researchers and community members who help keep HA Desktop
 
 ---
 
-**Last updated**: July 27, 2026
+**Last updated**: September 30, 2026

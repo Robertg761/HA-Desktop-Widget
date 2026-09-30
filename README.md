@@ -411,6 +411,8 @@ It reads files from 3.x and upgrades them the first time it saves a change. Vers
 read the new file. They stop with an error rather than overwriting it, so update every computer
 to 4.0.
 
+See the [4.0 migration guide](docs/MIGRATION.md) for backups, credential recovery, and returning to 3.x.
+
 ## Troubleshooting
 
 ### Connection Issues

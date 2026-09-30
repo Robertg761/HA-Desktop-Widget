@@ -1,7 +1,7 @@
 # 4.0 release audit
 
 Reviewed September 29, 2026, starting at `306c86b1709a75b568f4b78283e46e53669f339c`.
-The changes from this audit are local and still need CI on their final commit.
+These results describe the original audit baseline. The later [feature audit and implementation follow-up](FEATURE-AUDIT-4.0.md) records the remaining app fixes and PR stack. Final CI and native release checks are still required.
 
 ## Findings fixed
 
@@ -82,12 +82,10 @@ for the starting commit, not for the Electron update made during this audit.
 
 ## Before tagging 4.0.0
 
-- Set `package.json` and both root version entries in `package-lock.json` to 4.0.0.
-  They currently remain at 3.11.0. The Tag Release workflow requires the version bump
-  to be on main before tagging.
-- Move the completed release notes from `[Unreleased]` into a nonempty `[4.0.0]`
-  changelog section. `scripts/extract-release-notes.cjs 4.0.0` currently fails because
-  that section does not exist. The stable publication workflow requires it.
+- Review and merge the prepared 4.0.0 package/lockfile version and nonempty
+  `[4.0.0] - Unreleased` changelog section. The Tag Release workflow requires these
+  on main. Replace the changelog's Unreleased date with the actual release date
+  after completing the checks below. Preparation does not create a release tag.
 - Run CI on the final release commit. In particular, the Electron update needs new
   Windows and universal macOS package and smoke results.
 - Check a real Home Assistant login, reconnect after sleep, and profile sync between
