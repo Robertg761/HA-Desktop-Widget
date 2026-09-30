@@ -478,6 +478,10 @@ const todoItemsPendingByEntity = new Map();
 let entityCacheIdentity = null;
 let entityCacheGeneration = 0;
 const entityDetailClosers = new Set();
+// One entity can render as a primary card, a Quick Access tile and a pin at once, so readout IDs
+// belong to the tile element rather than the entity.
+const tileStateReadoutIds = new WeakMap();
+let tileStateReadoutCount = 0;
 // Lets a dialog that closes itself programmatically unregister from entityDetailClosers too.
 const entityDetailModalClosers = new WeakMap();
 
@@ -2979,14 +2983,14 @@ function setQuickAccessTileStateLine(div, text) {
   let stateEl = info.querySelector(':scope > .control-state');
   if (!text) {
     stateEl?.remove();
-    return;
-  }
-  if (!stateEl) {
+  } else if (!stateEl) {
     stateEl = document.createElement('div');
     stateEl.className = 'control-state';
     info.appendChild(stateEl);
   }
-  if (stateEl.textContent !== text) stateEl.textContent = text;
+  if (stateEl && text && stateEl.textContent !== text) stateEl.textContent = text;
+  // Keep aria-describedby pointing at the readout when the line is added or dropped.
+  if (tileStateReadoutIds.has(div)) linkTileStateReadout(div);
 }
 
 function applyQuickAccessTileActiveState(element, entity) {
@@ -9524,11 +9528,22 @@ function applyQuickAccessTileAccessibility(div, entity) {
     if (readOnly) div.removeAttribute('aria-keyshortcuts');
     else div.setAttribute('aria-keyshortcuts', 'Enter Space');
   }
+  linkTileStateReadout(div);
+}
+
+function linkTileStateReadout(div) {
   const readout = div.querySelector('.control-state');
-  if (readout) {
-    readout.id = `tile-state-${entity.entity_id.replace(/[^a-zA-Z0-9_-]/g, '-')}-${div.dataset.desktopPin === 'true' ? 'pin' : 'main'}`;
-    (primary || div).setAttribute('aria-describedby', readout.id);
+  const described = div.querySelector('.tile-primary-button') || div;
+  if (!readout) {
+    described.removeAttribute('aria-describedby');
+    return;
   }
+  if (!tileStateReadoutIds.has(div)) {
+    tileStateReadoutCount += 1;
+    tileStateReadoutIds.set(div, `tile-state-${tileStateReadoutCount}`);
+  }
+  readout.id = tileStateReadoutIds.get(div);
+  described.setAttribute('aria-describedby', readout.id);
 }
 
 function updateExistingUnavailableControl(div, entityId) {

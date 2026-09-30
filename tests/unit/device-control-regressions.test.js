@@ -280,7 +280,31 @@ describe('device control and live data regressions', () => {
     const readout = document.getElementById(target.getAttribute('aria-describedby'));
     expect(readout.textContent).toBe('Off');
     liveUpdate({ ...light, state: 'on' });
-    expect(document.getElementById(target.getAttribute('aria-describedby')).textContent).toBe('On');
+    // The update may replace the tile, so read the description from the tile now on screen.
+    const current = tile(light.entity_id).querySelector('.tile-primary-button');
+    expect(document.getElementById(current.getAttribute('aria-describedby')).textContent).toBe(
+      'On'
+    );
+  });
+  test('a primary card and a tile for the same entity describe themselves with their own readout', () => {
+    const light = entity('light.audit', 'off');
+    document.body.innerHTML +=
+      '<div class="status-grid"><div id="weather-card"></div><div id="time-card"></div></div>';
+    renderTiles([light]);
+    state.setConfig({ ...state.CONFIG, primaryCards: [light.entity_id, 'none'] });
+    ui.renderPrimaryCards();
+    const controls = [
+      ...document.querySelectorAll(`.control-item[data-entity-id="${light.entity_id}"]`),
+    ];
+    expect(controls).toHaveLength(2);
+    const readoutIds = controls.map((control) => {
+      const target = control.querySelector('.tile-primary-button') || control;
+      const id = target.getAttribute('aria-describedby');
+      expect(control.querySelector(`[id="${id}"]`)).not.toBeNull();
+      return id;
+    });
+    expect(new Set(readoutIds).size).toBe(2);
+    expect(document.querySelectorAll(`[id="${readoutIds[0]}"]`)).toHaveLength(1);
   });
   test('calendar explains the date window and retries after an error', async () => {
     const calendar = entity('calendar.audit', 'off');
