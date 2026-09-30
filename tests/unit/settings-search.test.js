@@ -201,6 +201,12 @@ describe('settings search', () => {
     }
     expect(removeResults()).toBe(before);
   });
+  test('searches help text translated as HTML or set by JavaScript, but not status lines', () => {
+    expect(search('Modifiers').length).toBeGreaterThan(0);
+    expect(search('brings the window to front').length).toBeGreaterThan(0);
+    document.getElementById('update-status').textContent = 'Version 9.9.9 is ready';
+    expect(search('9.9.9')).toHaveLength(0);
+  });
   test('lowercases independently of the host locale', () => {
     const spy = jest.spyOn(String.prototype, 'toLocaleLowerCase').mockImplementation(function () {
       return String(this).replace(/I/g, '\u0131').toLowerCase();

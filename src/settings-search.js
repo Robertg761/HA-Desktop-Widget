@@ -13,6 +13,10 @@ function isHidden(node, modal) {
   return getComputedStyle(node).display === 'none';
 }
 
+// Help copy, whichever way it is translated. Status lines (current values, sync or update state)
+// are left out, so search never reflects live state.
+const STATIC_HELP =
+  ':is(.form-help, .help-text):is([data-i18n], [data-i18n-html], [data-search-help])';
 const ARIA_NAMED_CONTROL = 'select[aria-label], input[aria-label], textarea[aria-label]';
 
 // Index labels and explanatory copy, never input values, tokens, or entity lists.
@@ -55,7 +59,7 @@ function settingsSearchEntries(modal) {
         // Options sharing a group must not match on each other's help, so use only their own.
         const helpNodes = titleNode
           ? label.querySelectorAll('.form-help, .help-text')
-          : row?.querySelectorAll('[data-i18n].form-help, [data-i18n].help-text') || [];
+          : row?.querySelectorAll(STATIC_HELP) || [];
         const help = [...helpNodes].map((node) => node.textContent.trim()).join(' ');
         return {
           label,
