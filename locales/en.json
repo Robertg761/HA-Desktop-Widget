@@ -1618,5 +1618,8 @@
   "Hyprland's blur is off, so the widget is tinted but not frosted. Set decoration:blur:enabled in your Hyprland config to frost it.": "Hyprland's blur is off, so the widget is tinted but not frosted. Set decoration:blur:enabled in your Hyprland config to frost it.",
   "Turn off widget blur": "Turn off widget blur",
   "Turn on blur for the widget": "Turn on blur for the widget",
-  "Could not change Hyprland's blur.": "Could not change Hyprland's blur."
+  "Could not change Hyprland's blur.": "Could not change Hyprland's blur.",
+  "Search settings": "Search settings",
+  "{{count}} matching settings": "{{count}} matching settings",
+  "No matching settings": "No matching settings"
 }

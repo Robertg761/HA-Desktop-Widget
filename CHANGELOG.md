@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Search Settings by name or help text, then jump directly to a control, including controls inside collapsed sections.
+
 - Choose Auto, Dark, or Light theme in Settings → Appearance. It previews live and saves with Save; Auto still follows the system.
 - Draw entities with line icons that take the accent color and a soft glow when on. Custom emoji and icons set in Home Assistant still take priority. Dialogs, entity lists, the command palette, and the window controls use the same icon set.
 - Show a status line on every Quick Access tile, such as Off, Closed, Locked, or Home, and keep it current as states change.

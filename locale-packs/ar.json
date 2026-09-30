@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.40",
+  "version": "1.2.41",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1625,6 +1625,9 @@
     "Hyprland's blur is off, so the widget is tinted but not frosted. Set decoration:blur:enabled in your Hyprland config to frost it.": "الطمس في Hyprland متوقف، لذا الأداة ملوّنة لكنها ليست ضبابية. فعّل decoration:blur:enabled في إعدادات Hyprland لجعلها ضبابية.",
     "Turn off widget blur": "إيقاف طمس الأداة",
     "Turn on blur for the widget": "تشغيل الطمس للأداة",
-    "Could not change Hyprland's blur.": "تعذّر تغيير الطمس في Hyprland."
+    "Could not change Hyprland's blur.": "تعذّر تغيير الطمس في Hyprland.",
+    "Search settings": "البحث في الإعدادات",
+    "{{count}} matching settings": "{{count}} إعدادات مطابقة",
+    "No matching settings": "لا توجد إعدادات مطابقة"
   }
 }

@@ -1,4 +1,5 @@
 import { applyDesktopAppearance } from './desktop-appearance.js';
+import { initializeSettingsSearch } from './settings-search.js';
 import state from './state.js';
 import log from './logger.js';
 import websocket from './websocket.js';
@@ -4815,6 +4816,7 @@ async function openSettings(uiHooks) {
     initializePopupHotkey();
 
     openModal(modal);
+    initializeSettingsSearch(modal);
     requestAnimationFrame(() => {
       refreshPersonalizationSectionHeights();
       const tabList = modal.querySelector('.modal-tabs');
