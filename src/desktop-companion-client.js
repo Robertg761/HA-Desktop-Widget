@@ -4,6 +4,10 @@ const PROTOCOL_VERSION = 1;
 const HEARTBEAT_INTERVAL_MS = 60 * 1000;
 const MAX_COMMAND_HISTORY = 100;
 const ALLOWED_ACTIONS = new Set(['show', 'hide', 'toggle', 'switch_page', 'apply_profile']);
+const SESSION_ENDED_RESULT = Object.freeze({
+  status: 'failed',
+  error: 'Companion session ended before command execution',
+});
 
 function boundedString(value, maximum = 128) {
   return typeof value === 'string' ? value.trim().slice(0, maximum) : '';
@@ -95,6 +99,10 @@ class DesktopCompanionClient {
 
   resetSession() {
     this.generation += 1;
+    // Commands still waiting for their turn belong to the ended session. Forget them so a
+    // redelivery in the next session runs fresh; the queue tail stays so a command that is
+    // already executing still finishes before the next session's commands start.
+    this.pendingCommands.clear();
     this.lastConfigSnapshot = null;
     if (this.unsubscribeCommands) {
       this.unsubscribeCommands();
@@ -294,11 +302,16 @@ class DesktopCompanionClient {
     let pending = this.pendingCommands.get(key);
     if (!pending) {
       // Serialize distinct commands so page/profile/visibility changes retain delivery order.
-      pending = this.commandQueue.then(() =>
-        generation === this.generation
-          ? this.executeReceivedCommand(command)
-          : { status: 'failed', error: 'Companion session ended before command execution' }
-      );
+      // The result is cached inside the chain, before the queue advances, so a redelivery queued
+      // behind a command that was already running when its session ended reuses that result.
+      pending = this.commandQueue.then(async () => {
+        if (generation !== this.generation) return SESSION_ENDED_RESULT;
+        const cached = this.commandResults.get(key);
+        if (cached) return cached;
+        const executed = await this.executeReceivedCommand(command);
+        this.rememberCommandResult(key, executed);
+        return executed;
+      });
       this.pendingCommands.set(key, pending);
       this.commandQueue = pending.then(
         () => undefined,
@@ -306,8 +319,7 @@ class DesktopCompanionClient {
       );
     }
     const result = await pending;
-    this.rememberCommandResult(key, result);
-    this.pendingCommands.delete(key);
+    if (this.pendingCommands.get(key) === pending) this.pendingCommands.delete(key);
     if (generation === this.generation) await this.acknowledge(desktopId, commandId, result);
   }
 
