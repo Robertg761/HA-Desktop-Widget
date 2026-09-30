@@ -159,6 +159,11 @@ function summarizeSettingsImport(settings, currentConfig) {
         ...(settings.comparisonGraphs || []).flatMap((graph) => graph.entityIds || []),
         ...(settings.primaryCards || []),
         ...Object.keys(settings.entityAlerts?.alerts || {}),
+        // Per-entity maps apply too, even for an entity that is on no page.
+        ...Object.keys(settings.customEntityNames || {}),
+        ...Object.keys(settings.customEntityIcons || {}),
+        ...Object.keys(settings.tileSpans || {}),
+        ...Object.keys(settings.quickAccessTileOptions || {}),
         settings.selectedWeatherEntity,
         settings.primaryMediaPlayer,
       ].filter((id) => typeof id === 'string' && /^[a-z_]+\.[a-zA-Z0-9_]+$/.test(id))

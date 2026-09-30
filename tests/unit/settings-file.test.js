@@ -111,6 +111,18 @@ describe('portable settings files', () => {
     ]);
     expect(summarizeSettingsImport({ ui: { theme: 'dark' } }, config).changedSections).toEqual([]);
   });
+  test('previews entities referenced only by per-entity maps', () => {
+    const { entityIds } = summarizeSettingsImport(
+      {
+        customEntityNames: { 'light.retired': 'Old lamp' },
+        customEntityIcons: { 'switch.fan': 'mdi:fan' },
+        tileSpans: { 'sensor.wide': 2, 'graph:abc': 2 },
+        quickAccessTileOptions: { 'camera.door': { valueSize: 'large' } },
+      },
+      config
+    );
+    expect(entityIds).toEqual(['light.retired', 'switch.fan', 'sensor.wide', 'camera.door']);
+  });
   test('round trips a saved profile with Unicode and a byte order mark', () => {
     const next = { ...config, customTabs: [{ id: 'home', name: '温度', entityIds: [] }] };
     expect(parseSettingsFile(`\uFEFF${serializeSettingsFile(next)}`).customTabs[0].name).toBe(
