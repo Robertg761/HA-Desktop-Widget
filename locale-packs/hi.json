@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.40",
+  "version": "1.2.41",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1625,6 +1625,7 @@
     "Hyprland's blur is off, so the widget is tinted but not frosted. Set decoration:blur:enabled in your Hyprland config to frost it.": "Hyprland का ब्लर बंद है, इसलिए विजेट रंगीन है पर फ्रॉस्टेड नहीं। इसे फ्रॉस्टेड बनाने के लिए अपने Hyprland कॉन्फ़िग में decoration:blur:enabled सेट करें।",
     "Turn off widget blur": "विजेट ब्लर बंद करें",
     "Turn on blur for the widget": "विजेट के लिए ब्लर चालू करें",
-    "Could not change Hyprland's blur.": "Hyprland का ब्लर बदला नहीं जा सका।"
+    "Could not change Hyprland's blur.": "Hyprland का ब्लर बदला नहीं जा सका।",
+    "This list is read-only.": "यह सूची केवल पढ़ने के लिए है।"
   }
 }

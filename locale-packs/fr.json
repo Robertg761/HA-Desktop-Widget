@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.40",
+  "version": "1.2.41",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1625,6 +1625,7 @@
     "Hyprland's blur is off, so the widget is tinted but not frosted. Set decoration:blur:enabled in your Hyprland config to frost it.": "Le flou de Hyprland est désactivé : le widget est teinté mais pas dépoli. Activez decoration:blur:enabled dans votre configuration Hyprland pour le dépolir.",
     "Turn off widget blur": "Désactiver le flou du widget",
     "Turn on blur for the widget": "Activer le flou pour le widget",
-    "Could not change Hyprland's blur.": "Impossible de modifier le flou de Hyprland."
+    "Could not change Hyprland's blur.": "Impossible de modifier le flou de Hyprland.",
+    "This list is read-only.": "Cette liste est en lecture seule."
   }
 }

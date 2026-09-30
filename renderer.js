@@ -1565,6 +1565,7 @@ function applyRendererConfig(nextConfig) {
   });
   const renderedConfig = state.CONFIG;
   state.setConfig(normalizedGraphs.config);
+  ui.ensureEntityCacheScope();
   publishOmarchyBarTiles();
   // Kept local: the migration write below can echo back synchronously and re-enter this function
   // before the appearance pass runs, and that inner call must not decide the outer pass.

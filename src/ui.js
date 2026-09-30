@@ -1,4 +1,10 @@
 import state from './state.js';
+import {
+  isEntityAvailable,
+  canPerformMediaAction,
+  getTodoCapabilities,
+  getClimateTileTemperature,
+} from './entity-control-policy.js';
 import { mountSensorHistoryDetail, summarizeHistory } from './sensor-history-detail.js';
 import { rememberDashboard, dashboardSnapshot } from './dashboard-history.js';
 import {
@@ -468,6 +474,39 @@ let weatherCardTemplate = null;
 let timeCardTemplate = null;
 const todoItemsCacheByEntity = new Map();
 const todoItemsPendingByEntity = new Map();
+let entityCacheIdentity = null;
+let entityCacheGeneration = 0;
+const entityDetailClosers = new Set();
+
+function ensureEntityCacheScope({ force = false } = {}) {
+  const connection = state.CONFIG?.homeAssistant || {};
+  const account =
+    connection.authMethod === 'oauth'
+      ? connection.oauthAuthorizationId || connection.token
+      : connection.token;
+  const identity = JSON.stringify([connection.url, connection.authMethod, account]);
+  if (!force && identity === entityCacheIdentity) return entityCacheGeneration;
+  entityCacheIdentity = identity;
+  entityCacheGeneration += 1;
+  sensorHistoryCache.clear();
+  todoItemsCacheByEntity.clear();
+  todoItemsPendingByEntity.clear();
+  lastKnownLightBrightnessByEntity.clear();
+  desiredStateByEntity.clear();
+  optimisticStateByEntity.clear();
+  inFlightByEntity.clear();
+  lastRequestedStateByEntity.clear();
+  onOffToggleConfirmationTimers.forEach(clearTimeout);
+  onOffToggleConfirmationTimers.clear();
+  desktopPinControlTimers.forEach(clearTimeout);
+  desktopPinControlTimers.clear();
+  desktopPinLightBrightnessTimers.forEach(clearTimeout);
+  desktopPinLightBrightnessTimers.clear();
+  [...desktopPinControlInteractionState.keys()].forEach(clearDesktopPinControlInteraction);
+  [...desktopPinLightInteractionState.keys()].forEach(clearDesktopPinLightInteraction);
+  [...entityDetailClosers].forEach((close) => close());
+  return entityCacheGeneration;
+}
 const WEATHER_UNAVAILABLE_STATES = new Set(['unknown', 'unavailable']);
 
 function generateQuickAccessViewId() {
@@ -2387,6 +2426,7 @@ function renderActiveTab() {
 
 function updateEntityInUI(entity, options = {}) {
   try {
+    ensureEntityCacheScope();
     if (!entity) return;
     const entityId = entity.entity_id;
     climateDialogRefreshers.get(entityId)?.(entity);
@@ -2395,6 +2435,7 @@ function updateEntityInUI(entity, options = {}) {
     let renderEntity = entity;
 
     if (!skipQueueReconcile && isOnOffToggleDomain(domain)) {
+      if (!isEntityAvailable(entity)) clearPendingOnOffToggle(entityId);
       const desiredState = desiredStateByEntity.get(entityId);
       if (isOnOffStateValue(desiredState)) {
         if (entity.state === desiredState) {
@@ -2657,8 +2698,8 @@ function getQuickAccessTileSummaryText(entity) {
     case 'lock':
       return getDeviceTileStateText(entity);
     case 'climate': {
-      const temp = entity.attributes?.current_temperature || entity.attributes?.temperature;
-      return temp ? `${formatNumber(temp)}°` : '';
+      const temp = getClimateTileTemperature(entity);
+      return temp !== null ? `${formatNumber(temp)}°` : utils.getEntityDisplayState(entity);
     }
     case 'media_player':
       return getQuickAccessMediaText(entity);
@@ -2971,7 +3012,7 @@ function getControlRenderSignature(entity) {
           ? 'light-off'
           : 'light-empty';
   } else if (domain === 'climate') {
-    contentKind = attrs.current_temperature || attrs.temperature ? 'climate-temp' : 'climate-empty';
+    contentKind = getClimateTileTemperature(entity) !== null ? 'climate-temp' : 'climate-empty';
   } else if (domain === 'camera') {
     contentKind = `camera-${getQuickAccessCameraPreviewRefresh(entity.entity_id)}`;
   }
@@ -3183,9 +3224,7 @@ function isQuickAccessTileValueSizeApplicable(entity) {
   }
 
   if (displayEntity.entity_id.startsWith('climate.')) {
-    return !!(
-      displayEntity.attributes?.current_temperature || displayEntity.attributes?.temperature
-    );
+    return getClimateTileTemperature(displayEntity) !== null;
   }
 
   return false;
@@ -3254,6 +3293,7 @@ function getQuickAccessSensorDisplayParts(entity) {
 }
 
 function getSensorHistoryCacheEntry(entityId) {
+  ensureEntityCacheScope();
   if (!sensorHistoryCache.has(entityId)) {
     sensorHistoryCache.set(entityId, {
       series: [],
@@ -3388,6 +3428,7 @@ function pruneSensorHistorySeries(series, now = Date.now()) {
  * @returns {Promise<Map<string, Array<{value:number, timestamp:number}>>>}
  */
 async function fetchSensorHistoryBatch(entityIds) {
+  const generation = ensureEntityCacheScope();
   const ids = [
     ...new Set(
       (Array.isArray(entityIds) ? entityIds : []).filter(
@@ -3413,6 +3454,7 @@ async function fetchSensorHistoryBatch(entityIds) {
 
   const collect = () => {
     const seriesByEntity = new Map();
+    if (generation !== ensureEntityCacheScope()) return seriesByEntity;
     ids.forEach((entityId) => {
       seriesByEntity.set(entityId, getSensorHistoryCacheEntry(entityId).series);
     });
@@ -3479,6 +3521,7 @@ async function fetchSensorHistoryBatch(entityIds) {
           'Home Assistant history request failed'
         );
 
+        if (generation !== ensureEntityCacheScope()) return;
         const completedAt = Date.now();
         batchIds.forEach((entityId) => {
           const entry = getSensorHistoryCacheEntry(entityId);
@@ -3498,10 +3541,11 @@ async function fetchSensorHistoryBatch(entityIds) {
         // The tile shows its "waiting for history" state, so the user still gets feedback.
         console.warn('Sensor history request failed:', error);
       } finally {
-        batchIds.forEach((entityId) => {
-          const entry = getSensorHistoryCacheEntry(entityId);
-          if (entry.promise === request) entry.promise = null;
-        });
+        if (generation === ensureEntityCacheScope())
+          batchIds.forEach((entityId) => {
+            const entry = getSensorHistoryCacheEntry(entityId);
+            if (entry.promise === request) entry.promise = null;
+          });
       }
     };
 
@@ -3681,6 +3725,7 @@ function renderSensorTileChart(tile, entity, series = []) {
 }
 
 function mountSensorTileChart(tile, entity) {
+  const generation = ensureEntityCacheScope();
   if (!tile || !entity?.entity_id || !isFiniteNumericSensorState(entity)) return;
   const chartType = getQuickAccessTileChartType(entity.entity_id);
   tile.dataset.chartType = chartType;
@@ -3692,6 +3737,7 @@ function mountSensorTileChart(tile, entity) {
   }
 
   fetchSensorHistory(entity.entity_id).then((series) => {
+    if (generation !== ensureEntityCacheScope() || !tile.isConnected) return;
     const latest = state.STATES?.[entity.entity_id] || entity;
     renderSensorTileChart(tile, isFiniteNumericSensorState(latest) ? latest : entity, series);
   });
@@ -4873,6 +4919,7 @@ function callEntityDomainService(entity, serviceName, serviceData = {}) {
   const domain = getEntityDomain(entityId);
   if (!entityId || !domain || !serviceName) return Promise.resolve();
   const currentEntity = state.STATES?.[entityId] || entity;
+  if (!isEntityAvailable(currentEntity)) return Promise.resolve();
   return websocket
     .callService(domain, serviceName, {
       entity_id: entityId,
@@ -8304,16 +8351,17 @@ function updateExistingMediaPlayerControl(item, entity) {
 }
 
 function getCachedTodoItems(entityId) {
+  ensureEntityCacheScope();
   const cached = todoItemsCacheByEntity.get(entityId);
   return Array.isArray(cached?.items) ? cached.items : null;
 }
 
 function getTodoTileCountLabel(entity) {
+  const stateCount = toFiniteNumber(entity?.state);
+  if (stateCount !== null && stateCount >= 0) return formatTodoActiveCount(stateCount);
+  if (!isEntityAvailable(entity)) return t('Unavailable');
   const cachedItems = getCachedTodoItems(entity?.entity_id);
   if (cachedItems) return formatTodoActiveCount(getTodoActiveCount(cachedItems));
-
-  const stateCount = Number(entity?.state);
-  if (Number.isFinite(stateCount)) return formatTodoActiveCount(stateCount);
 
   return t('-- active');
 }
@@ -8337,6 +8385,7 @@ function updateTodoTileCount(entityId) {
 }
 
 function fetchTodoItems(entityId, { force = false } = {}) {
+  const generation = ensureEntityCacheScope();
   if (!entityId || typeof callServiceWithResponse !== 'function') return Promise.resolve([]);
   const now = Date.now();
   const cached = todoItemsCacheByEntity.get(entityId);
@@ -8355,7 +8404,11 @@ function fetchTodoItems(entityId, { force = false } = {}) {
     if (!force) return pendingRequest;
     // A mutation can complete while an older get_items request is still in flight. Let that
     // request settle, then issue a genuinely fresh read instead of caching its pre-mutation data.
-    return pendingRequest.catch(() => {}).then(() => fetchTodoItems(entityId, { force: true }));
+    return pendingRequest
+      .catch(() => {})
+      .then(() =>
+        generation === ensureEntityCacheScope() ? fetchTodoItems(entityId, { force: true }) : []
+      );
   }
 
   todoItemsCacheByEntity.set(entityId, {
@@ -8365,6 +8418,7 @@ function fetchTodoItems(entityId, { force = false } = {}) {
 
   const request = callServiceWithResponse('todo', 'get_items', { entity_id: entityId })
     .then((response) => {
+      if (generation !== ensureEntityCacheScope()) return [];
       const items = normalizeTodoItems(response, entityId);
       todoItemsCacheByEntity.set(entityId, {
         items,
@@ -8379,7 +8433,12 @@ function fetchTodoItems(entityId, { force = false } = {}) {
       throw error;
     })
     .finally(() => {
-      todoItemsPendingByEntity.delete(entityId);
+      if (
+        generation === ensureEntityCacheScope() &&
+        todoItemsPendingByEntity.get(entityId) === request
+      ) {
+        todoItemsPendingByEntity.delete(entityId);
+      }
     });
 
   todoItemsPendingByEntity.set(entityId, request);
@@ -8446,6 +8505,7 @@ function playQuickAccessPageMotion(container, config) {
 
 function renderQuickControls() {
   try {
+    ensureEntityCacheScope();
     const container = document.getElementById('quick-controls');
     if (!container) {
       console.error('[UI] Quick controls container not found');
@@ -9229,9 +9289,8 @@ function createControlElement(entity, options = {}) {
     } else if (['light', 'cover', 'fan', 'lock'].includes(domain)) {
       stateDisplay = `<div class="control-state">${utils.escapeHtml(getDeviceTileStateText(entity))}</div>`;
     } else if (entity.entity_id.startsWith('climate.')) {
-      const temp = entity.attributes.current_temperature || entity.attributes.temperature;
-      if (temp)
-        stateDisplay = `<div class="control-state">${utils.escapeHtml(formatNumber(temp))}°</div>`;
+      const temp = getClimateTileTemperature(entity);
+      stateDisplay = `<div class="control-state">${utils.escapeHtml(temp !== null ? `${formatNumber(temp)}°` : utils.getEntityDisplayState(entity))}</div>`;
     } else if (entity.entity_id.startsWith('media_player.')) {
       // Media player state will be handled in setupMediaPlayerControls
       stateDisplay = '';
@@ -9738,9 +9797,9 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   if (displayEntity.entity_id.startsWith('climate.')) {
     div.title = t('Click to toggle, hold for temperature control');
     if (stateEl) {
-      const temp =
-        displayEntity.attributes?.current_temperature || displayEntity.attributes?.temperature;
-      stateEl.textContent = temp ? `${formatNumber(temp)}°` : '';
+      const temp = getClimateTileTemperature(displayEntity);
+      stateEl.textContent =
+        temp !== null ? `${formatNumber(temp)}°` : utils.getEntityDisplayState(displayEntity);
     }
     return true;
   }
@@ -9822,9 +9881,11 @@ function showSensorDetails(entity) {
   try {
     if (entity?.entity_id && isFiniteNumericSensorState(entity)) {
       const display = getQuickAccessSensorDisplayParts(entity);
+      let unsubscribe = () => {};
       const modal = createEntityDetailModal({
         className: 'sensor-detail-modal',
         title: utils.getEntityDisplayName(entity),
+        onClose: () => unsubscribe(),
       });
       const body = modal.querySelector('.modal-body');
       if (!body) return;
@@ -9855,6 +9916,28 @@ function showSensorDetails(entity) {
       summary.appendChild(icon);
       summary.appendChild(readout);
       body.appendChild(summary);
+
+      const refreshSummary = () => {
+        const current = state.STATES?.[entity.entity_id] || entity;
+        const parts = isEntityAvailable(current) ? getQuickAccessSensorDisplayParts(current) : null;
+        const text = parts?.text || utils.getEntityDisplayState(current);
+        readout.setAttribute('aria-label', text);
+        value.textContent = parts?.value ?? text;
+        let unit = readout.querySelector('.sensor-detail-unit');
+        if (parts?.unit) {
+          if (!unit) {
+            unit = document.createElement('span');
+            unit.className = 'sensor-detail-unit';
+            readout.appendChild(unit);
+          }
+          unit.textContent = parts.unit;
+        } else unit?.remove();
+        renderEntityIcon(icon, current);
+        modal.querySelector('h2').textContent = utils.getEntityDisplayName(current);
+      };
+      readout.setAttribute('aria-live', 'polite');
+      unsubscribe = state.subscribeEntity(entity.entity_id, refreshSummary);
+      refreshSummary();
 
       mountSensorHistoryDetail({
         body,
@@ -9956,7 +10039,8 @@ function releaseAccessibleDialogModal(modal) {
   }
 }
 
-function createEntityDetailModal({ className, title }) {
+function createEntityDetailModal({ className, title, onClose = null }) {
+  ensureEntityCacheScope();
   const modal = document.createElement('div');
   modal.className = `modal ${className}`;
   modal.innerHTML = `
@@ -9971,10 +10055,16 @@ function createEntityDetailModal({ className, title }) {
   const titleEl = modal.querySelector('h2');
   if (titleEl) titleEl.textContent = title;
 
+  let closing = false;
   const closeModal = () => {
+    if (closing) return;
+    closing = true;
+    entityDetailClosers.delete(closeModal);
+    onClose?.();
     releaseAccessibleDialogModal(modal);
     void uiUtils.closeModal(modal, { remove: true });
   };
+  entityDetailClosers.add(closeModal);
   const closeBtn = modal.querySelector('.close-btn');
   if (closeBtn) closeBtn.onclick = closeModal;
   modal.addEventListener('keydown', (event) => {
@@ -10016,7 +10106,7 @@ function renderTodoItemsInto(container, entity, items) {
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = item.status === 'completed';
-      checkbox.disabled = !item.uid;
+      checkbox.disabled = !item.uid || !getTodoCapabilities(entity).canUpdate;
       if (item.uid) checkbox.dataset.uid = item.uid;
 
       const summary = document.createElement('span');
@@ -10024,7 +10114,13 @@ function renderTodoItemsInto(container, entity, items) {
       summary.textContent = item.summary || t('Untitled item');
 
       checkbox.addEventListener('change', async () => {
+        const current = state.STATES?.[entity.entity_id] || entity;
+        if (!getTodoCapabilities(current).canUpdate) {
+          checkbox.checked = item.status === 'completed';
+          return;
+        }
         checkbox.disabled = true;
+        checkbox.dataset.pending = 'true';
         try {
           await websocket.callService('todo', 'update_item', {
             entity_id: entity.entity_id,
@@ -10034,7 +10130,9 @@ function renderTodoItemsInto(container, entity, items) {
           await loadTodoItemsInto(container, entity, { focusUid: item.uid });
         } catch (error) {
           checkbox.checked = !checkbox.checked;
-          checkbox.disabled = false;
+          delete checkbox.dataset.pending;
+          checkbox.disabled = !getTodoCapabilities(state.STATES?.[entity.entity_id] || entity)
+            .canUpdate;
           checkbox.focus();
           handleServiceError(error, utils.getEntityDisplayName(entity));
         }
@@ -10055,8 +10153,10 @@ async function loadTodoItemsInto(container, entity, { focusUid = null } = {}) {
   container.textContent = t('Loading...');
   try {
     const items = await fetchTodoItems(entity.entity_id, { force: true });
+    if (!container.isConnected || container.closest('.modal-closing')) return;
     renderTodoItemsInto(container, state.STATES?.[entity.entity_id] || entity, items);
   } catch {
+    if (!container.isConnected || container.closest('.modal-closing')) return;
     const message = document.createElement('p');
     message.setAttribute('role', 'alert');
     message.textContent = t('Unable to load items');
@@ -10085,9 +10185,11 @@ async function loadTodoItemsInto(container, entity, { focusUid = null } = {}) {
 function showTodoDetails(entity) {
   try {
     if (!entity?.entity_id) return;
+    let unsubscribe = () => {};
     const modal = createEntityDetailModal({
       className: 'todo-modal',
       title: utils.getEntityDisplayName(entity),
+      onClose: () => unsubscribe(),
     });
     const body = modal.querySelector('.modal-body');
     if (!body) return;
@@ -10110,12 +10212,36 @@ function showTodoDetails(entity) {
     listContainer.className = 'todo-detail-list-container';
     listContainer.textContent = t('Loading...');
 
+    let busy = false;
+    const readOnly = document.createElement('p');
+    readOnly.className = 'control-capability-note';
+    readOnly.textContent = t('This list is read-only.');
+    let lastState = entity.state;
+    const refreshTodo = () => {
+      const current = state.STATES?.[entity.entity_id] || entity;
+      showUnavailableDialogState(modal, current);
+      const capabilities = getTodoCapabilities(current);
+      input.disabled = busy || !capabilities.canAdd;
+      addButton.disabled = busy || !capabilities.canAdd;
+      readOnly.hidden =
+        !isEntityAvailable(current) || capabilities.canAdd || capabilities.canUpdate;
+      listContainer.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+        checkbox.disabled =
+          !!checkbox.dataset.pending || !checkbox.dataset.uid || !capabilities.canUpdate;
+      });
+      if (current.state !== lastState) {
+        lastState = current.state;
+        if (isEntityAvailable(current)) void loadTodoItemsInto(listContainer, current);
+      }
+    };
+
     addForm.addEventListener('submit', async (event) => {
       event.preventDefault();
+      if (busy || !getTodoCapabilities(state.STATES?.[entity.entity_id] || entity).canAdd) return;
       const summary = input.value.trim();
       if (!summary) return;
-      input.disabled = true;
-      addButton.disabled = true;
+      busy = true;
+      refreshTodo();
       try {
         await websocket.callService('todo', 'add_item', {
           entity_id: entity.entity_id,
@@ -10126,16 +10252,19 @@ function showTodoDetails(entity) {
       } catch (error) {
         handleServiceError(error, utils.getEntityDisplayName(entity));
       } finally {
-        input.disabled = false;
-        addButton.disabled = false;
-        input.focus();
+        busy = false;
+        refreshTodo();
+        if (input.isConnected && !input.disabled) input.focus();
       }
     });
 
     body.appendChild(addForm);
+    body.appendChild(readOnly);
     body.appendChild(listContainer);
-
-    void loadTodoItemsInto(listContainer, entity);
+    unsubscribe = state.subscribeEntity(entity.entity_id, refreshTodo);
+    refreshTodo();
+    if (isEntityAvailable(entity)) void loadTodoItemsInto(listContainer, entity);
+    else listContainer.textContent = t('Unavailable');
   } catch (error) {
     console.error('Error showing todo details:', error);
   }
@@ -10642,6 +10771,7 @@ function hasMediaSeekData(entity) {
 }
 
 function canSeekMedia(entity) {
+  if (!isEntityAvailable(entity)) return false;
   if (!entity?.entity_id?.startsWith('media_player.')) return false;
   if (!hasEntityService(entity, 'media_seek')) return false;
   const features = entity.attributes?.supported_features;
@@ -10736,6 +10866,7 @@ function supportsLightColorTemp(attributes = {}) {
 
 function showMediaDetail(entity) {
   try {
+    ensureEntityCacheScope();
     const name = utils.escapeHtml(utils.getEntityDisplayName(entity));
     const mediaTitle = utils.escapeHtml(entity.attributes?.media_title || '');
     const mediaArtist = utils.escapeHtml(entity.attributes?.media_artist || '');
@@ -10923,10 +11054,10 @@ function showMediaDetail(entity) {
     const updatePlayPauseBtn = () => {
       const currentEntity = state.STATES[entity.entity_id];
       const isCurrentlyPlaying = currentEntity?.state === 'playing';
-      const currentCapabilities = getDesktopPinCapabilities(currentEntity || entity);
-      const canTogglePlayback = isCurrentlyPlaying
-        ? currentCapabilities.canPause
-        : currentCapabilities.canPlay;
+      const canTogglePlayback = canPerformMediaAction(
+        currentEntity || entity,
+        isCurrentlyPlaying ? 'pause' : 'play'
+      );
       const pp = modal.querySelector('.play-pause-btn');
       if (pp) {
         // setIconContent already imported at top
@@ -10944,7 +11075,7 @@ function showMediaDetail(entity) {
 
     modal.addEventListener('click', (e) => {
       const btn = e.target.closest('.btn');
-      if (!btn) return;
+      if (!btn || btn.disabled) return;
       const action = btn.dataset.action;
       if (action === 'previous_track' || action === 'next_track') {
         callMediaPlayerService(entity.entity_id, action);
@@ -10964,6 +11095,7 @@ function showMediaDetail(entity) {
     let volumeDebounceTimer;
     if (volumeSlider) {
       volumeSlider.addEventListener('input', (e) => {
+        if (!canPerformMediaAction(state.STATES[entity.entity_id] || entity, 'volume_set')) return;
         const value = clampRange(Math.round(Number(e.target.value)), 0, 100);
         if (volumeValue) volumeValue.textContent = `${value}%`;
         clearTimeout(volumeDebounceTimer);
@@ -10977,6 +11109,7 @@ function showMediaDetail(entity) {
 
     if (muteToggle) {
       muteToggle.addEventListener('click', () => {
+        if (!canPerformMediaAction(state.STATES[entity.entity_id] || entity, 'volume_mute')) return;
         const nextMuted = muteToggle.getAttribute('aria-pressed') !== 'true';
         muteToggle.classList.toggle('active', nextMuted);
         muteToggle.setAttribute('aria-pressed', nextMuted ? 'true' : 'false');
@@ -10994,6 +11127,19 @@ function showMediaDetail(entity) {
       const artist = modal.querySelector('.media-detail-artist');
       artist.textContent = attrs.media_artist || '';
       artist.hidden = !attrs.media_artist;
+      showUnavailableDialogState(modal, currentEntity);
+      for (const control of modal.querySelectorAll('[data-action]')) {
+        const action =
+          control.dataset.action === 'play_pause'
+            ? currentEntity.state === 'playing'
+              ? 'pause'
+              : 'play'
+            : control.dataset.action;
+        control.disabled = !canPerformMediaAction(currentEntity, action);
+        control.setAttribute('aria-disabled', String(control.disabled));
+      }
+      if (volumeSlider) volumeSlider.disabled = !canPerformMediaAction(currentEntity, 'volume_set');
+      if (muteToggle) muteToggle.disabled = !canPerformMediaAction(currentEntity, 'volume_mute');
       updatePlayPauseBtn();
       updateVolumeControls();
       updateProgress();
@@ -11031,6 +11177,7 @@ function showMediaDetail(entity) {
     const closeModal = () => {
       if (isClosing) return;
       isClosing = true;
+      entityDetailClosers.delete(closeModal);
       stopUpdates();
       if (volumeDebounceTimer) clearTimeout(volumeDebounceTimer);
       void uiUtils.closeModal(modal, {
@@ -11038,6 +11185,7 @@ function showMediaDetail(entity) {
         onClosed: () => releaseAccessibleDialogModal(modal),
       });
     };
+    entityDetailClosers.add(closeModal);
     closeBtns.forEach((b) => b && (b.onclick = closeModal));
     modal.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeModal();
@@ -11079,8 +11227,10 @@ function updateMediaEntityPosition(entityId, seekPosition) {
 
 function callMediaPlayerService(entityId, action, options = {}) {
   try {
+    const generation = ensureEntityCacheScope();
     // websocket already imported at top
     const entity = state.STATES[entityId];
+    if (!canPerformMediaAction(entity, action)) return;
     const entityName = entity ? utils.getEntityDisplayName(entity) : entityId;
 
     let serviceCall;
@@ -11110,7 +11260,8 @@ function callMediaPlayerService(entityId, action, options = {}) {
             seek_position: seekPosition,
           })
           .then((response) => {
-            updateMediaEntityPosition(entityId, seekPosition);
+            if (generation === ensureEntityCacheScope())
+              updateMediaEntityPosition(entityId, seekPosition);
             return response;
           });
         break;
@@ -11155,8 +11306,13 @@ function getEntityNameFromId(entityId) {
 }
 
 async function processPendingOnOffToggle(entityId, domain) {
+  const generation = ensureEntityCacheScope();
   if (!entityId || !isOnOffToggleDomain(domain)) return;
   if (inFlightByEntity.get(entityId)) return;
+  if (state.STATES?.[entityId]?.state === 'unavailable') {
+    clearPendingOnOffToggle(entityId);
+    return;
+  }
 
   const desiredState = desiredStateByEntity.get(entityId);
   if (!isOnOffStateValue(desiredState)) return;
@@ -11176,6 +11332,7 @@ async function processPendingOnOffToggle(entityId, domain) {
 
   try {
     const response = await websocket.callService(domain, service, serviceData);
+    if (generation !== ensureEntityCacheScope()) return response;
 
     emitUiDebug('entity.toggle_success', {
       entityId,
@@ -11201,6 +11358,7 @@ async function processPendingOnOffToggle(entityId, domain) {
 
     return response;
   } catch (error) {
+    if (generation !== ensureEntityCacheScope()) return;
     const requestedState = lastRequestedStateByEntity.get(entityId);
     const latestDesiredState = desiredStateByEntity.get(entityId);
 
@@ -11233,19 +11391,23 @@ async function processPendingOnOffToggle(entityId, domain) {
 
     handleServiceError(error, getEntityNameFromId(entityId));
   } finally {
-    inFlightByEntity.delete(entityId);
-    const requestedState = lastRequestedStateByEntity.get(entityId);
-    const latestDesiredState = desiredStateByEntity.get(entityId);
+    if (generation === ensureEntityCacheScope()) {
+      inFlightByEntity.delete(entityId);
+      const requestedState = lastRequestedStateByEntity.get(entityId);
+      const latestDesiredState = desiredStateByEntity.get(entityId);
 
-    if (!latestDesiredState) {
-      lastRequestedStateByEntity.delete(entityId);
-    } else if (latestDesiredState !== requestedState) {
-      processPendingOnOffToggle(entityId, domain);
+      if (!latestDesiredState) {
+        lastRequestedStateByEntity.delete(entityId);
+      } else if (latestDesiredState !== requestedState) {
+        processPendingOnOffToggle(entityId, domain);
+      }
     }
   }
 }
 
 function queueOnOffToggle(entity) {
+  ensureEntityCacheScope();
+  if (!isEntityAvailable(state.STATES?.[entity?.entity_id] || entity)) return;
   if (!entity || !entity.entity_id) return;
   const entityId = entity.entity_id;
   const domain = getEntityDomain(entityId);
@@ -11281,6 +11443,8 @@ function queueOnOffToggle(entity) {
 
 function toggleEntity(entity) {
   try {
+    entity = state.STATES?.[entity?.entity_id] || entity;
+    if (!isEntityAvailable(entity)) return;
     const domain = entity.entity_id.split('.')[0];
     let service;
     const service_data = { entity_id: entity.entity_id };
@@ -11358,7 +11522,7 @@ function toggleEntity(entity) {
 }
 
 function toggleTimerEntity(entity) {
-  if (!entity?.entity_id?.startsWith('timer.')) return;
+  if (!isEntityAvailable(entity) || !entity.entity_id.startsWith('timer.')) return;
   const service = entity.state === 'active' ? 'pause' : 'start';
   websocket
     .callService('timer', service, { entity_id: entity.entity_id })
@@ -11509,6 +11673,8 @@ function triggerActivationFeedback(entityId) {
 
 function executeHotkeyAction(entity, action) {
   try {
+    entity = state.STATES?.[entity?.entity_id] || entity;
+    if (!isEntityAvailable(entity)) return;
     const domain = entity.entity_id.split('.')[0];
 
     // Validate numeric attributes to prevent NaN
@@ -11936,6 +12102,18 @@ function updateMediaTile() {
     // Show the tile
     tile.style.display = 'grid';
     isMediaTileVisible = true;
+    const actions = {
+      'media-tile-play': entity.state === 'playing' ? 'pause' : 'play',
+      'media-tile-prev': 'previous_track',
+      'media-tile-next': 'next_track',
+    };
+    for (const [id, action] of Object.entries(actions)) {
+      const control = document.getElementById(id);
+      if (control) {
+        control.disabled = !canPerformMediaAction(entity, action);
+        control.setAttribute('aria-disabled', String(control.disabled));
+      }
+    }
 
     // Try multiple artwork sources (smart speakers might use different attributes)
     let artworkUrl =
@@ -12050,31 +12228,8 @@ function callMediaTileService(action) {
     const primaryPlayer = state.CONFIG.primaryMediaPlayer;
     if (!primaryPlayer) return;
 
-    const entity = state.STATES[primaryPlayer];
-    const entityName = entity ? utils.getEntityDisplayName(entity) : t('Media Player');
-
-    const serviceCalls = {
-      play: () =>
-        websocket
-          .callService('media_player', 'media_play', { entity_id: primaryPlayer })
-          .catch((error) => handleServiceError(error, entityName)),
-      pause: () =>
-        websocket
-          .callService('media_player', 'media_pause', { entity_id: primaryPlayer })
-          .catch((error) => handleServiceError(error, entityName)),
-      previous: () =>
-        websocket
-          .callService('media_player', 'media_previous_track', { entity_id: primaryPlayer })
-          .catch((error) => handleServiceError(error, entityName)),
-      next: () =>
-        websocket
-          .callService('media_player', 'media_next_track', { entity_id: primaryPlayer })
-          .catch((error) => handleServiceError(error, entityName)),
-    };
-
-    if (serviceCalls[action]) {
-      serviceCalls[action]();
-    }
+    const mapped = { previous: 'previous_track', next: 'next_track', play: 'play', pause: 'pause' };
+    if (mapped[action]) return callMediaPlayerService(primaryPlayer, mapped[action]);
   } catch (error) {
     console.error('Error calling media tile service:', error);
     uiUtils.showToast(t('Failed to control media player'), 'error', 3000);
@@ -14122,6 +14277,7 @@ function removeEscapeKeyListener() {
 }
 
 export {
+  ensureEntityCacheScope,
   showAddPageModal,
   restoreDashboard,
   renderActiveTab,

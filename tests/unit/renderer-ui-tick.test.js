@@ -54,6 +54,7 @@ describe('Renderer UI tick scheduler', () => {
     mockUi = {
       initUpdateUI: jest.fn(),
       renderActiveTab: jest.fn(),
+      ensureEntityCacheScope: jest.fn(),
       updateMediaTile: jest.fn(),
       renderPrimaryCards: jest.fn(),
       toggleReorganizeMode: jest.fn(),

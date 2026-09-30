@@ -178,11 +178,11 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: 148 });
 
     // Reset WebSocket mock
-    mockCallService.mockClear();
+    mockCallService.mockReset();
     mockCallService.mockResolvedValue({ ...wsMessages.callServiceResponse });
-    mockCallServiceWithResponse.mockClear();
+    mockCallServiceWithResponse.mockReset();
     mockCallServiceWithResponse.mockResolvedValue({});
-    mockRequest.mockClear();
+    mockRequest.mockReset();
     mockRequest.mockResolvedValue({});
     require('../../src/websocket.js').isConnected.mockReturnValue(true);
 
@@ -238,11 +238,14 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     config.favoriteEntities = [];
     config.selectedWeatherEntity = null;
     config.primaryMediaPlayer = sampleConfig.primaryMediaPlayer || 'media_player.spotify';
+    // Layout writes return the main process's full config, including the same connection.
+    defaultUpdateConfigImplementation(config);
     state.setConfig(config);
     state.setStates({});
     state.setServices({ ...sampleServices });
     state.setAreas({ ...sampleAreas });
     state.setUnitSystem({ ...sampleUnitSystem });
+    ui.ensureEntityCacheScope({ force: true });
   });
 
   // ==============================================================================
@@ -1465,6 +1468,15 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   });
 
   describe('callMediaTileService', () => {
+    beforeEach(() =>
+      state.setEntityState({
+        ...sampleStates['media_player.spotify'],
+        attributes: {
+          ...sampleStates['media_player.spotify'].attributes,
+          supported_features: 16433,
+        },
+      })
+    );
     it('should call media_play service', () => {
       ui.callMediaTileService('play');
 
@@ -1507,6 +1519,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       state: entityOverrides.state || 'paused',
       attributes: {
         ...sampleStates['media_player.spotify'].attributes,
+        supported_features: 16447,
         media_position_updated_at: undefined,
         ...attributeOverrides,
       },
@@ -3062,7 +3075,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
     });
 
-    it('renders todo tiles with active item counts from get_items', async () => {
+    it('uses the live to-do count even when cached items disagree', async () => {
       const config = state.CONFIG;
       config.favoriteEntities = ['todo.shopping'];
       state.setConfig(config);
@@ -3094,7 +3107,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
       expect(todoTile).toBeTruthy();
       expect(todoTile.querySelector('.control-name').textContent).toBe('Shopping');
-      expect(todoTile.querySelector('.todo-active-count').textContent).toBe('2 active');
+      expect(todoTile.querySelector('.todo-active-count').textContent).toBe('0 active');
       expect(mockCallServiceWithResponse).toHaveBeenCalledWith('todo', 'get_items', {
         entity_id: 'todo.shopping',
       });

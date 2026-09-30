@@ -37,6 +37,7 @@ describe('Renderer desktop pin waiting escape hatch', () => {
 
   const createUiMock = () => ({
     initUpdateUI: jest.fn(),
+    ensureEntityCacheScope: jest.fn(),
     renderActiveTab: jest.fn(() => {
       document.body.dataset.renderedMode = 'main';
       document.getElementById('desktop-pin-empty-actions')?.classList.add('hidden');

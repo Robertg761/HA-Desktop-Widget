@@ -534,7 +534,7 @@ describe('User-facing audit regressions', () => {
           ],
         },
       });
-    ui.openEntityDetailModal(entity('todo.focus', '2'));
+    ui.openEntityDetailModal(entity('todo.focus', '2', { supported_features: 5 }));
     await jest.advanceTimersByTimeAsync(0);
     const list = document.querySelector('.todo-detail-list-container');
     const retry = list.querySelector('button');
@@ -590,7 +590,7 @@ describe('User-facing audit regressions', () => {
       .mockResolvedValueOnce({
         'todo.add': { items: [{ uid: 'one', summary: 'Milk', status: 'needs_action' }] },
       });
-    ui.openEntityDetailModal(entity('todo.add', '0'));
+    ui.openEntityDetailModal(entity('todo.add', '0', { supported_features: 5 }));
     await jest.advanceTimersByTimeAsync(0);
     const form = document.querySelector('.todo-add-form');
     form.querySelector('input').value = 'Milk';

@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.40",
+  "version": "1.2.41",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1625,6 +1625,7 @@
     "Hyprland's blur is off, so the widget is tinted but not frosted. Set decoration:blur:enabled in your Hyprland config to frost it.": "El desenfoque de Hyprland está desactivado, así que el widget está tintado pero no esmerilado. Activa decoration:blur:enabled en tu configuración de Hyprland para esmerilarlo.",
     "Turn off widget blur": "Desactivar el desenfoque del widget",
     "Turn on blur for the widget": "Activar el desenfoque para el widget",
-    "Could not change Hyprland's blur.": "No se pudo cambiar el desenfoque de Hyprland."
+    "Could not change Hyprland's blur.": "No se pudo cambiar el desenfoque de Hyprland.",
+    "This list is read-only.": "Esta lista es de solo lectura."
   }
 }

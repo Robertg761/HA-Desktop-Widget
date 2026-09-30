@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.40",
+  "version": "1.2.41",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget, including German date and time formats.",
   "messages": {
@@ -1625,6 +1625,7 @@
     "Hyprland's blur is off, so the widget is tinted but not frosted. Set decoration:blur:enabled in your Hyprland config to frost it.": "Die Unschärfe von Hyprland ist aus, daher ist das Widget getönt, aber nicht mattiert. Setze decoration:blur:enabled in deiner Hyprland-Konfiguration, um es zu mattieren.",
     "Turn off widget blur": "Unschärfe für das Widget ausschalten",
     "Turn on blur for the widget": "Unschärfe für das Widget einschalten",
-    "Could not change Hyprland's blur.": "Die Unschärfe von Hyprland konnte nicht geändert werden."
+    "Could not change Hyprland's blur.": "Die Unschärfe von Hyprland konnte nicht geändert werden.",
+    "This list is read-only.": "Diese Liste ist schreibgeschützt."
   }
 }
