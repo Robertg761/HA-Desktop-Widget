@@ -23,8 +23,9 @@ function settingsSearchEntries(modal) {
         `.tab-content label, .tab-content .setting-label, .tab-content summary, .tab-content .section-toggle, .tab-content .setting-row-action > button[data-i18n], .tab-content button.btn, .tab-content :is(${ARIA_NAMED_CONTROL})`
       ),
     ]
-      // Entity lists are generated per Home Assistant entity; their parent setting is the entry.
-      .filter((label) => !label.closest('.entity-selector-list'))
+      // Generated lists (entities, alerts, language packs, hotkeys) repeat a row per item; their
+      // parent setting is the entry. Every such container in the settings markup ends in -list.
+      .filter((label) => !label.closest('.entity-selector-list, [id$="-list"]'))
       // Segmented choices (Weather/Time/Hide) belong to the setting that labels the group.
       .filter((label) => !(label.matches('button') && label.closest('.segmented-control')))
       // A wrapping <label> is the entry for its control; skip the nested title span.
