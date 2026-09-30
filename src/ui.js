@@ -477,6 +477,8 @@ const todoItemsPendingByEntity = new Map();
 let entityCacheIdentity = null;
 let entityCacheGeneration = 0;
 const entityDetailClosers = new Set();
+// Lets a dialog that closes itself programmatically unregister from entityDetailClosers too.
+const entityDetailModalClosers = new WeakMap();
 
 function ensureEntityCacheScope({ force = false } = {}) {
   const connection = state.CONFIG?.homeAssistant || {};
@@ -4392,10 +4394,7 @@ function showComparisonGraphModal(graphId) {
   });
   const body = modal.querySelector('.modal-body');
   if (!body) return;
-  const removeGraphModal = () => {
-    releaseAccessibleDialogModal(modal);
-    void uiUtils.closeModal(modal, { remove: true });
-  };
+  const removeGraphModal = () => entityDetailModalClosers.get(modal)?.();
 
   const nameGroup = document.createElement('div');
   nameGroup.className = 'form-group';
@@ -10065,6 +10064,7 @@ function createEntityDetailModal({ className, title, onClose = null }) {
     void uiUtils.closeModal(modal, { remove: true });
   };
   entityDetailClosers.add(closeModal);
+  entityDetailModalClosers.set(modal, closeModal);
   const closeBtn = modal.querySelector('.close-btn');
   if (closeBtn) closeBtn.onclick = closeModal;
   modal.addEventListener('keydown', (event) => {

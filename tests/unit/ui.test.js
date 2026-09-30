@@ -6807,6 +6807,28 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
     });
 
+    it('unregisters a comparison graph editor that closes after its graph is deleted', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      state.setConfig({
+        ...state.CONFIG,
+        comparisonGraphs: [],
+      });
+      ui.renderActiveTab();
+      await ui.addComparisonGraphTile();
+      const modal = document.querySelector('.comparison-graph-modal');
+      expect(modal).not.toBeNull();
+
+      uiUtils.showConfirm.mockResolvedValueOnce(true);
+      modal.querySelector('.comparison-graph-modal-footer button').click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(document.querySelector('.comparison-graph-modal')).toBeNull();
+
+      // A connection change closes open detail dialogs; the deleted editor must not be among them.
+      uiUtils.closeModal.mockClear();
+      ui.ensureEntityCacheScope({ force: true });
+      expect(uiUtils.closeModal).not.toHaveBeenCalledWith(modal, expect.anything());
+    });
+
     it('serializes comparison graph editor mutations while persistence is pending', async () => {
       setPages([{ id: 'default', name: 'All', entityIds: [] }]);
       state.setConfig({
