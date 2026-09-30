@@ -68,6 +68,8 @@ class DesktopCompanionClient {
     this.unsubscribeCommands = null;
     this.heartbeatTimer = null;
     this.commandResults = new Map();
+    this.pendingCommands = new Map();
+    this.commandQueue = Promise.resolve();
     this._handleSocketMessage = (message) => {
       if (message?.type === 'auth_ok') void this.initializeSession();
       if (message?.type === 'auth_invalid') this.resetSession();
@@ -93,6 +95,7 @@ class DesktopCompanionClient {
 
   resetSession() {
     this.generation += 1;
+    this.lastConfigSnapshot = null;
     if (this.unsubscribeCommands) {
       this.unsubscribeCommands();
       this.unsubscribeCommands = null;
@@ -101,6 +104,10 @@ class DesktopCompanionClient {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+  }
+
+  isCurrentSession(generation) {
+    return this.started && generation === this.generation && this.websocket.isConnected?.();
   }
 
   // Without the optional integration every report is refused. Say so once, then stop asking.
@@ -115,6 +122,7 @@ class DesktopCompanionClient {
   async initializeSession() {
     if (!this.started || !this.websocket.isConnected?.()) return false;
     const generation = ++this.generation;
+    this.lastConfigSnapshot = null;
     this.integrationMissing = false;
     this.snapshotUnsupported = false;
     if (this.unsubscribeCommands) {
@@ -128,12 +136,13 @@ class DesktopCompanionClient {
 
     try {
       const registration = await this.getRegistration();
-      if (!registration?.desktop_id) return false;
+      if (!this.isCurrentSession(generation) || !registration?.desktop_id) return false;
 
       const infoResult = assertSuccessfulResponse(
         await this.websocket.request({ type: 'ha_desktop_widget/get_info' }),
         'HA Desktop Widget integration is unavailable'
       );
+      if (!this.isCurrentSession(generation)) return false;
       if (Number(infoResult?.protocol_version) !== PROTOCOL_VERSION) {
         throw new Error(
           `Unsupported HA Desktop Widget protocol ${infoResult?.protocol_version ?? 'unknown'}`
@@ -148,17 +157,22 @@ class DesktopCompanionClient {
         }),
         'Desktop registration failed'
       );
-      if (!this.started || generation !== this.generation) return false;
+      if (!this.isCurrentSession(generation)) return false;
 
       this.unsubscribeCommands = this.websocket.subscribeMessage(
         {
           type: 'ha_desktop_widget/subscribe_commands',
           desktop_id: registration.desktop_id,
         },
-        (command) => void this.handleCommand(registration.desktop_id, command)
+        (command) =>
+          this.isCurrentSession(generation)
+            ? this.handleCommand(registration.desktop_id, command)
+            : Promise.resolve()
       );
       await this.reportState(registration.desktop_id);
+      if (!this.isCurrentSession(generation)) return false;
       await this.reportConfigSnapshot(registration.desktop_id);
+      if (!this.isCurrentSession(generation)) return false;
       this.heartbeatTimer = setInterval(() => {
         void this.reportState(registration.desktop_id);
         void this.reportConfigSnapshot(registration.desktop_id);
@@ -176,11 +190,13 @@ class DesktopCompanionClient {
 
   async reportState(desktopId = null, explicitState = null) {
     if (!this.started || this.integrationMissing || !this.websocket.isConnected?.()) return false;
+    const generation = this.generation;
     const registration = desktopId ? null : await this.getRegistration();
     const resolvedDesktopId = boundedString(desktopId || registration?.desktop_id);
-    if (!resolvedDesktopId) return false;
+    if (!this.isCurrentSession(generation) || !resolvedDesktopId) return false;
     try {
       const state = normalizeState(explicitState || (await this.getState()));
+      if (!this.isCurrentSession(generation)) return false;
       assertSuccessfulResponse(
         await this.websocket.request({
           type: 'ha_desktop_widget/report_state',
@@ -189,8 +205,9 @@ class DesktopCompanionClient {
         }),
         'Desktop state report failed'
       );
-      return true;
+      return this.isCurrentSession(generation);
     } catch (error) {
+      if (!this.isCurrentSession(generation)) return false;
       if (isUnknownCommand(error)) this.noteIntegrationMissing();
       else this.log.warn('Failed to report desktop companion state:', error?.message || error);
       return false;
@@ -201,12 +218,14 @@ class DesktopCompanionClient {
     if (!this.started || this.integrationMissing || this.snapshotUnsupported) return false;
     if (!this.websocket.isConnected?.()) return false;
     if (typeof this.getConfigDocument !== 'function') return false;
+    const generation = this.generation;
     const registration = desktopId ? null : await this.getRegistration();
     const resolvedDesktopId = boundedString(desktopId || registration?.desktop_id);
-    if (!resolvedDesktopId) return false;
+    if (!this.isCurrentSession(generation) || !resolvedDesktopId) return false;
     try {
       const document = await this.getConfigDocument();
-      if (!document || typeof document !== 'object') return false;
+      if (!this.isCurrentSession(generation) || !document || typeof document !== 'object')
+        return false;
       const serialized = JSON.stringify(document);
       if (serialized === this.lastConfigSnapshot) return true;
       assertSuccessfulResponse(
@@ -217,9 +236,11 @@ class DesktopCompanionClient {
         }),
         'Desktop layout snapshot failed'
       );
+      if (!this.isCurrentSession(generation)) return false;
       this.lastConfigSnapshot = serialized;
       return true;
     } catch (error) {
+      if (!this.isCurrentSession(generation)) return false;
       // Older companion integrations do not know this command; stay quiet after the first
       // refusal instead of warning on every heartbeat and layout change.
       if (isUnknownCommand(error)) {
@@ -261,14 +282,37 @@ class DesktopCompanionClient {
 
   async handleCommand(desktopId, command) {
     const commandId = boundedString(command?.command_id, 64);
-    const action = boundedString(command?.action, 64);
     if (!commandId) return;
-
-    const previousResult = this.commandResults.get(commandId);
+    const key = JSON.stringify([desktopId, commandId]);
+    const generation = this.generation;
+    const previousResult = this.commandResults.get(key);
     if (previousResult) {
       await this.acknowledge(desktopId, commandId, previousResult);
       return;
     }
+
+    let pending = this.pendingCommands.get(key);
+    if (!pending) {
+      // Serialize distinct commands so page/profile/visibility changes retain delivery order.
+      pending = this.commandQueue.then(() =>
+        generation === this.generation
+          ? this.executeReceivedCommand(command)
+          : { status: 'failed', error: 'Companion session ended before command execution' }
+      );
+      this.pendingCommands.set(key, pending);
+      this.commandQueue = pending.then(
+        () => undefined,
+        () => undefined
+      );
+    }
+    const result = await pending;
+    this.rememberCommandResult(key, result);
+    this.pendingCommands.delete(key);
+    if (generation === this.generation) await this.acknowledge(desktopId, commandId, result);
+  }
+
+  async executeReceivedCommand(command) {
+    const action = boundedString(command?.action, 64);
 
     let result;
     const expiresAt = Date.parse(command?.expires_at || '');
@@ -292,8 +336,7 @@ class DesktopCompanionClient {
       }
     }
 
-    this.rememberCommandResult(commandId, result);
-    await this.acknowledge(desktopId, commandId, result);
+    return result;
   }
 }
 

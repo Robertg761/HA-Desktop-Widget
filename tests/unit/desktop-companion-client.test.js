@@ -71,6 +71,96 @@ describe('DesktopCompanionClient', () => {
     jest.useRealTimers();
   });
 
+  const command = (id, action = 'toggle') => ({
+    command_id: id,
+    action,
+    protocol_version: PROTOCOL_VERSION,
+    expires_at: new Date(Date.now() + 30_000).toISOString(),
+  });
+  const flush = async () => {
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+  };
+
+  test('concurrent duplicate delivery executes once and acknowledges each delivery', async () => {
+    let release;
+    const executeCommand = jest.fn(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        })
+    );
+    const { client, websocket } = createClient({ executeCommand });
+    const first = client.handleCommand('desktop-1', command('duplicate'));
+    const second = client.handleCommand('desktop-1', command('duplicate'));
+    await flush();
+    expect(executeCommand).toHaveBeenCalledTimes(1);
+    release({ visible: true });
+    await Promise.all([first, second]);
+    const acknowledgements = websocket.requests.filter((r) => r.type.endsWith('/ack_command'));
+    expect(acknowledgements).toHaveLength(2);
+    expect(acknowledgements[0]).toEqual(acknowledgements[1]);
+  });
+
+  test('distinct commands execute in delivery order', async () => {
+    let release;
+    const executeCommand = jest
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          })
+      )
+      .mockResolvedValue({ visible: false });
+    const { client } = createClient({ executeCommand });
+    const first = client.handleCommand('desktop-1', command('first', 'show'));
+    const second = client.handleCommand('desktop-1', command('second', 'hide'));
+    await flush();
+    expect(executeCommand).toHaveBeenCalledTimes(1);
+    release({ visible: true });
+    await Promise.all([first, second]);
+    expect(executeCommand.mock.calls.map(([value]) => value.action)).toEqual(['show', 'hide']);
+  });
+
+  test.each(['get_info', 'register_device', 'report_state', 'put_config_snapshot'])(
+    'stop during %s leaves no subscription or heartbeat',
+    async (stage) => {
+      const { client, websocket } = createClient();
+      client.getConfigDocument = async () => ({ ui: { theme: 'dark' } });
+      let release;
+      const answer = websocket.request.bind(websocket);
+      websocket.request = (message) =>
+        message.type === `ha_desktop_widget/${stage}`
+          ? new Promise((resolve) => {
+              release = resolve;
+            })
+          : answer(message);
+      client.started = true;
+      const initializing = client.initializeSession();
+      await flush();
+      expect(release).toEqual(expect.any(Function));
+      client.stop();
+      release({ success: true, result: { protocol_version: PROTOCOL_VERSION } });
+      expect(await initializing).toBe(false);
+      expect(client.heartbeatTimer).toBeNull();
+      expect(client.unsubscribeCommands).toBeNull();
+      expect(client.lastConfigSnapshot).toBeNull();
+    }
+  );
+
+  test('each new session republishes an unchanged layout', async () => {
+    const { client, websocket } = createClient();
+    client.getConfigDocument = async () => ({ ui: { theme: 'dark' } });
+    client.started = true;
+    await client.initializeSession();
+    client.resetSession();
+    await client.initializeSession();
+    client.stop();
+    expect(websocket.requests.filter((r) => r.type.endsWith('/put_config_snapshot'))).toHaveLength(
+      2
+    );
+  });
+
   test('registers, subscribes, and reports state for an authenticated session', async () => {
     const { client, websocket } = createClient();
     client.start();
