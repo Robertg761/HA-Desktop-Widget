@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import "Countdown.js" as Countdown
 
 // Home Assistant in the Omarchy bar. HA Desktop Widget publishes its connection state and its
 // Quick Access tiles to $XDG_RUNTIME_DIR/ha-desktop-widget/omarchy-bar.json; this widget draws
@@ -46,9 +47,13 @@ Panel {
   readonly property var barTiles: running && Array.isArray(status.bar) ? status.bar : []
   readonly property var lineIcons: running && status.icons ? status.icons : ({})
   readonly property string barText: barTiles
-    .filter(function(tile) { return tile.value !== "" })
-    .map(function(tile) { return tile.value })
+    .map(function(tile) { return Countdown.value(tile, root.now) })
+    .filter(function(value) { return value !== "" })
     .join("  ")
+  readonly property bool hasVisibleCountdown: running && (
+    barTiles.some(function(tile) { return Countdown.isRunning(tile, root.now) })
+    || (opened && panelTiles.some(function(tile) { return Countdown.isRunning(tile, root.now) }))
+  )
 
   // The panel's tiles grouped under the widget's Quick Access pages. A page name of "" draws
   // no heading; files from widget versions without sections read as one untitled page.
@@ -315,6 +320,14 @@ Panel {
     }
   }
 
+  // Only visible, running timers need second-by-second updates. The widget can stay hidden.
+  Timer {
+    interval: 1000
+    running: root.hasVisibleCountdown
+    repeat: true
+    onTriggered: root.now = Date.now()
+  }
+
   WidgetButton {
     id: button
     anchors.fill: parent
@@ -558,7 +571,7 @@ Panel {
       Text {
         width: parent.width
         visible: text !== ""
-        text: tileRoot.tile.value || ""
+        text: Countdown.value(tileRoot.tile, root.now)
         color: tileRoot.active ? Qt.darker(root.foreground, 1.2) : root.dimColor
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
@@ -798,7 +811,7 @@ Panel {
         Text {
           width: parent.width
           visible: text !== ""
-          text: view.tile ? view.tile.value : ""
+          text: Countdown.value(view.tile, root.now)
           color: root.dimColor
           font.family: root.fontFamily
           font.pixelSize: Style.font.bodySmall
