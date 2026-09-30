@@ -3966,7 +3966,7 @@ async function writeProfileSyncBackup(prefix, contents) {
 
 async function backupLocalProfileBeforePullApply(sectionKeys, incomingSections = null) {
   try {
-    const sections = profileSyncCore.markIncomingUiKeysCleared(
+    const sections = profileSyncCore.scopeBackupToIncoming(
       profileSyncCore.buildLocalSections(config, {
         preset: 'custom',
         sections: Object.fromEntries(sectionKeys.map((key) => [key, true])),

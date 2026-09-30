@@ -189,6 +189,72 @@ describe('portable settings files', () => {
     expect(imported.ui).toEqual({ theme: 'dark', highContrast: true, scale: 1.25 });
     expect(mergeSectionsIntoConfig(imported, backup, options).ui).toEqual(before.ui);
   });
+  test('restoring the pre-import backup leaves settings the import never touched', () => {
+    const {
+      buildLocalSections,
+      scopeBackupToIncoming,
+      mergeSectionsIntoConfig,
+    } = require('../../profile-sync-core.js');
+    const before = {
+      ...config,
+      alwaysOnTop: true,
+      trayEntities: { 'light.desk': true },
+      ui: { theme: 'light', personalizationSectionsCollapsed: { colors: true } },
+    };
+    const incoming = settingsFileSections(
+      parseSettingsFile(serializeSettingsFile({ ...config, ui: { theme: 'dark' } }))
+    );
+    const backup = scopeBackupToIncoming(
+      buildLocalSections(before, {
+        preset: 'custom',
+        sections: { quickAccessLayout: true, visualPersonalization: true },
+      }),
+      incoming
+    );
+    expect(backup.visualPersonalization).not.toHaveProperty('alwaysOnTop');
+    expect(backup.quickAccessLayout).not.toHaveProperty('trayEntities');
+    const options = { clearNullUiKeys: true };
+    // After the import the user changes settings the file does not carry.
+    const edited = {
+      ...mergeSectionsIntoConfig(before, incoming, options),
+      alwaysOnTop: false,
+      trayEntities: {},
+    };
+    edited.ui = { ...edited.ui, personalizationSectionsCollapsed: {} };
+    const restored = mergeSectionsIntoConfig(edited, backup, options);
+    expect(restored.ui.theme).toBe('light');
+    expect(restored.alwaysOnTop).toBe(false);
+    expect(restored.trayEntities).toEqual({});
+    expect(restored.ui.personalizationSectionsCollapsed).toEqual({});
+  });
+  test('rejects alert delays outside whole seconds up to a day', () => {
+    const withCooldown = (cooldownSeconds) => {
+      const file = buildSettingsFile(config);
+      file.settings.entityAlerts = {
+        enabled: true,
+        alerts: { 'sensor.temp': { onStateChange: true, cooldownSeconds } },
+      };
+      return JSON.stringify(file);
+    };
+    expect(parseSettingsFile(withCooldown(86400)).entityAlerts.alerts['sensor.temp']).toEqual({
+      onStateChange: true,
+      cooldownSeconds: 86400,
+    });
+    for (const bad of [1e308, -1, 1.5]) {
+      expect(() => parseSettingsFile(withCooldown(bad))).toThrow();
+    }
+    // A stray delay saved locally is left out of an export instead of blocking it.
+    const exported = parseSettingsFile(
+      serializeSettingsFile({
+        ...config,
+        entityAlerts: {
+          enabled: true,
+          alerts: { 'sensor.temp': { onStateChange: true, durationSeconds: 999999 } },
+        },
+      })
+    );
+    expect(exported.entityAlerts.alerts['sensor.temp']).toEqual({ onStateChange: true });
+  });
   test('exports despite an out-of-range span saved locally, leaving that span out', () => {
     const settings = parseSettingsFile(
       serializeSettingsFile({ ...config, tileSpans: { 'light.desk': 2, 'sensor.temp': 9 } })

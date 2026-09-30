@@ -417,6 +417,18 @@ describe('device control and live data regressions', () => {
     modal.querySelector('.media-detail-play-btn').click();
     expect(mockCallService).toHaveBeenCalledTimes(1);
   });
+  test('unknown state blocks stale climate readings but not a never-pressed button', () => {
+    const { getClimateTileTemperature } = require('../../src/entity-control-policy.js');
+    const thermostat = entity('climate.audit', 'heat', { current_temperature: 21 });
+    expect(getClimateTileTemperature(thermostat)).toBe(21);
+    expect(getClimateTileTemperature({ ...thermostat, state: 'unknown' })).toBeNull();
+
+    const button = entity('button.audit', 'unknown');
+    state.setServices({ button: { press: {} } });
+    renderTiles([button]);
+    tile(button.entity_id).click();
+    expect(mockCallService).toHaveBeenCalledWith('button', 'press', { entity_id: 'button.audit' });
+  });
   test('primary media refuses commands for a player with no supported playback features', () => {
     const player = entity('media_player.audit', 'idle', { supported_features: 0 });
     state.setEntityState(player);
