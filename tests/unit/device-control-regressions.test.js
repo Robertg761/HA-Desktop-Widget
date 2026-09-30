@@ -287,6 +287,21 @@ describe('device control and live data regressions', () => {
       'On'
     );
   });
+  test.each([
+    ['script.audit_idle', 'off', 'on', 'Active'],
+    ['scene.audit_idle', '2026-01-01T00:00:00+00:00', 'unavailable', 'Unavailable'],
+  ])('%s gains an accessible description when a state line appears later', (id, from, to, text) => {
+    const item = entity(id, from);
+    renderTiles([item]);
+    const before = tile(id);
+    expect(before.querySelector('.control-state')).toBeNull();
+    liveUpdate({ ...item, state: to });
+    const current = tile(id);
+    const readout = current.querySelector('.control-state');
+    expect(readout.textContent).toBe(text);
+    const described = current.querySelector('.tile-primary-button') || current;
+    expect(document.getElementById(described.getAttribute('aria-describedby'))).toBe(readout);
+  });
   test('a primary card and a tile for the same entity describe themselves with their own readout', () => {
     const light = entity('light.audit', 'off');
     document.body.innerHTML +=

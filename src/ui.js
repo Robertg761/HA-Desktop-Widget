@@ -3015,8 +3015,9 @@ function setQuickAccessTileStateLine(div, text) {
     info.appendChild(stateEl);
   }
   if (stateEl && text && stateEl.textContent !== text) stateEl.textContent = text;
-  // Keep aria-describedby pointing at the readout when the line is added or dropped.
-  if (tileStateReadoutIds.has(div)) linkTileStateReadout(div);
+  // Keep aria-describedby pointing at the readout when the line is added or dropped, including
+  // on a tile that first rendered without one.
+  linkTileStateReadout(div);
 }
 
 function applyQuickAccessTileActiveState(element, entity) {
