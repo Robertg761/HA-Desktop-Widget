@@ -105,6 +105,24 @@ describe('settings search', () => {
     group.style.display = '';
     expect(search('Weather effect override')).toHaveLength(1);
   });
+  test('finds and focuses a control named only through aria-label', () => {
+    const results = search('Weather source');
+    expect(results.map((button) => button.firstChild.textContent)).toContain('Weather source');
+    results.find((button) => button.firstChild.textContent === 'Weather source').click();
+    expect(document.activeElement.id).toBe('weather-entity-select');
+  });
+  test('skips a label the stylesheet hides in favor of its visible duplicate', () => {
+    const style = document.createElement('style');
+    style.textContent =
+      '#settings-modal .form-group.custom-color-editor > label:first-child { display: none; }';
+    document.head.appendChild(style);
+    try {
+      const titles = search('Custom color').map((button) => button.firstChild.textContent);
+      expect(titles.filter((title) => title === 'Custom color')).toHaveLength(1);
+    } finally {
+      style.remove();
+    }
+  });
   test('lowercases independently of the host locale', () => {
     const spy = jest.spyOn(String.prototype, 'toLocaleLowerCase').mockImplementation(function () {
       return String(this).replace(/I/g, '\u0131').toLowerCase();
