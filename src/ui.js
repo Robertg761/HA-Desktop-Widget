@@ -3015,8 +3015,9 @@ function setQuickAccessTileStateLine(div, text) {
     info.appendChild(stateEl);
   }
   if (stateEl && text && stateEl.textContent !== text) stateEl.textContent = text;
-  // Keep aria-describedby pointing at the readout when the line is added or dropped.
-  if (tileStateReadoutIds.has(div)) linkTileStateReadout(div);
+  // Keep aria-describedby pointing at the readout when the line is added or dropped, including
+  // on a tile that first rendered without one.
+  linkTileStateReadout(div);
 }
 
 function applyQuickAccessTileActiveState(element, entity) {
@@ -10374,7 +10375,11 @@ function requestAlarmCode(entity) {
   });
 }
 
-function renderTodoItemsInto(container, entity, items) {
+// Callers that can tell the entity was deleted pass `getEntity`, so a late response or a click
+// never falls back to the opening snapshot.
+const liveTodoEntity = (entity) => state.STATES?.[entity.entity_id] || entity;
+
+function renderTodoItemsInto(container, entity, items, getEntity = () => liveTodoEntity(entity)) {
   if (!container) return;
   container.innerHTML = '';
 
@@ -10403,7 +10408,7 @@ function renderTodoItemsInto(container, entity, items) {
       summary.textContent = item.summary || t('Untitled item');
 
       checkbox.addEventListener('change', async () => {
-        const current = state.STATES?.[entity.entity_id] || entity;
+        const current = getEntity();
         if (!getTodoCapabilities(current).canUpdate) {
           checkbox.checked = item.status === 'completed';
           return;
@@ -10416,12 +10421,11 @@ function renderTodoItemsInto(container, entity, items) {
             item: item.uid,
             status: checkbox.checked ? 'completed' : 'needs_action',
           });
-          await loadTodoItemsInto(container, entity, { focusUid: item.uid });
+          await loadTodoItemsInto(container, entity, { focusUid: item.uid, getEntity });
         } catch (error) {
           checkbox.checked = !checkbox.checked;
           delete checkbox.dataset.pending;
-          checkbox.disabled = !getTodoCapabilities(state.STATES?.[entity.entity_id] || entity)
-            .canUpdate;
+          checkbox.disabled = !getTodoCapabilities(getEntity()).canUpdate;
           checkbox.focus();
           handleServiceError(error, utils.getEntityDisplayName(entity));
         }
@@ -10438,12 +10442,16 @@ function renderTodoItemsInto(container, entity, items) {
 
 // Reloading replaces the list, so the checkbox or Retry button that started it is gone and focus
 // falls to <body>. `focusUid` (an item uid, or true for the first control) puts it back.
-async function loadTodoItemsInto(container, entity, { focusUid = null } = {}) {
+async function loadTodoItemsInto(
+  container,
+  entity,
+  { focusUid = null, getEntity = () => liveTodoEntity(entity) } = {}
+) {
   container.textContent = t('Loading...');
   try {
     const items = await fetchTodoItems(entity.entity_id, { force: true });
     if (!container.isConnected || container.closest('.modal-closing')) return;
-    renderTodoItemsInto(container, state.STATES?.[entity.entity_id] || entity, items);
+    renderTodoItemsInto(container, getEntity(), items, getEntity);
   } catch {
     if (!container.isConnected || container.closest('.modal-closing')) return;
     const message = document.createElement('p');
@@ -10454,7 +10462,7 @@ async function loadTodoItemsInto(container, entity, { focusUid = null } = {}) {
     retry.className = 'btn btn-secondary';
     retry.textContent = t('Retry');
     retry.onclick = () => {
-      void loadTodoItemsInto(container, entity, { focusUid: true });
+      void loadTodoItemsInto(container, entity, { focusUid: true, getEntity });
     };
     container.replaceChildren(message, retry);
   }
@@ -10524,7 +10532,9 @@ function showTodoDetails(entity) {
       });
       if (current.state !== lastState) {
         lastState = current.state;
-        if (isEntityAvailable(current)) void loadTodoItemsInto(listContainer, current);
+        if (isEntityAvailable(current)) {
+          void loadTodoItemsInto(listContainer, current, { getEntity: liveTodo });
+        }
       }
     };
 
@@ -10541,7 +10551,7 @@ function showTodoDetails(entity) {
           item: summary,
         });
         input.value = '';
-        await loadTodoItemsInto(listContainer, entity);
+        await loadTodoItemsInto(listContainer, entity, { getEntity: liveTodo });
       } catch (error) {
         handleServiceError(error, utils.getEntityDisplayName(entity));
       } finally {
@@ -10559,8 +10569,9 @@ function showTodoDetails(entity) {
       refreshTodo();
     });
     refreshTodo();
-    if (isEntityAvailable(entity)) void loadTodoItemsInto(listContainer, entity);
-    else listContainer.textContent = t('Unavailable');
+    if (isEntityAvailable(entity)) {
+      void loadTodoItemsInto(listContainer, entity, { getEntity: liveTodo });
+    } else listContainer.textContent = t('Unavailable');
   } catch (error) {
     console.error('Error showing todo details:', error);
   }
@@ -11332,13 +11343,25 @@ function showMediaDetail(entity) {
     const volumeValue = modal.querySelector('#media-volume-value');
     const muteToggle = modal.querySelector('#media-mute-toggle');
 
-    const getLiveTimeline = () => {
-      const currentEntity = state.STATES[entity.entity_id] || entity;
-      return getMediaTimeline(currentEntity);
-    };
+    // Once Home Assistant removes the player, the opening snapshot must not keep its metadata or
+    // controls alive.
+    let removed = false;
+    const liveMedia = () =>
+      removed
+        ? {
+            ...entity,
+            state: 'unavailable',
+            attributes: {
+              friendly_name: entity.attributes?.friendly_name,
+              supported_features: entity.attributes?.supported_features,
+            },
+          }
+        : state.STATES[entity.entity_id] || entity;
+
+    const getLiveTimeline = () => getMediaTimeline(liveMedia());
 
     const updateVolumeControls = () => {
-      const currentEntity = state.STATES[entity.entity_id] || entity;
+      const currentEntity = liveMedia();
       const attrs = currentEntity.attributes || {};
       if (volumeSlider && volumeValue && document.activeElement !== volumeSlider) {
         // An off player reports no volume; show that instead of a made-up 0%.
@@ -11374,17 +11397,17 @@ function showMediaDetail(entity) {
     const syncProgressTimer = () => {
       clearInterval(tick);
       tick = null;
-      if (!document.hidden && (state.STATES[entity.entity_id] || entity).state === 'playing') {
+      if (!document.hidden && liveMedia().state === 'playing') {
         tick = setInterval(updateProgress, 1000);
       }
     };
 
     // Wire up controls
     const updatePlayPauseBtn = () => {
-      const currentEntity = state.STATES[entity.entity_id];
-      const isCurrentlyPlaying = currentEntity?.state === 'playing';
+      const currentEntity = liveMedia();
+      const isCurrentlyPlaying = currentEntity.state === 'playing';
       const canTogglePlayback = canPerformMediaAction(
-        currentEntity || entity,
+        currentEntity,
         isCurrentlyPlaying ? 'pause' : 'play'
       );
       const pp = modal.querySelector('.play-pause-btn');
@@ -11424,7 +11447,7 @@ function showMediaDetail(entity) {
     let volumeDebounceTimer;
     if (volumeSlider) {
       volumeSlider.addEventListener('input', (e) => {
-        if (!canPerformMediaAction(state.STATES[entity.entity_id] || entity, 'volume_set')) return;
+        if (!canPerformMediaAction(liveMedia(), 'volume_set')) return;
         const value = clampRange(Math.round(Number(e.target.value)), 0, 100);
         if (volumeValue) volumeValue.textContent = `${value}%`;
         clearTimeout(volumeDebounceTimer);
@@ -11438,7 +11461,7 @@ function showMediaDetail(entity) {
 
     if (muteToggle) {
       muteToggle.addEventListener('click', () => {
-        if (!canPerformMediaAction(state.STATES[entity.entity_id] || entity, 'volume_mute')) return;
+        if (!canPerformMediaAction(liveMedia(), 'volume_mute')) return;
         const nextMuted = muteToggle.getAttribute('aria-pressed') !== 'true';
         muteToggle.classList.toggle('active', nextMuted);
         muteToggle.setAttribute('aria-pressed', nextMuted ? 'true' : 'false');
@@ -11450,7 +11473,7 @@ function showMediaDetail(entity) {
     }
 
     const renderMedia = () => {
-      const currentEntity = state.STATES[entity.entity_id] || entity;
+      const currentEntity = liveMedia();
       const attrs = currentEntity.attributes || {};
       modal.querySelector('.media-detail-title').textContent = attrs.media_title || '—';
       const artist = modal.querySelector('.media-detail-artist');
@@ -11494,7 +11517,7 @@ function showMediaDetail(entity) {
         stopUpdates();
         return;
       }
-      const currentEntity = state.STATES[entity.entity_id] || entity;
+      const currentEntity = liveMedia();
       if (
         getMediaDetailControls(currentEntity).some(
           (supported, index) => supported && !renderedControls[index]
@@ -11522,7 +11545,10 @@ function showMediaDetail(entity) {
       renderMedia();
       syncProgressTimer();
     };
-    unsubscribe = state.subscribeEntity(entity.entity_id, refreshMedia);
+    unsubscribe = state.subscribeEntity(entity.entity_id, (next) => {
+      removed = !next;
+      refreshMedia();
+    });
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     // Close handlers

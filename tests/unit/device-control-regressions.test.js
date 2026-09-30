@@ -287,6 +287,21 @@ describe('device control and live data regressions', () => {
       'On'
     );
   });
+  test.each([
+    ['script.audit_idle', 'off', 'on', 'Active'],
+    ['scene.audit_idle', '2026-01-01T00:00:00+00:00', 'unavailable', 'Unavailable'],
+  ])('%s gains an accessible description when a state line appears later', (id, from, to, text) => {
+    const item = entity(id, from);
+    renderTiles([item]);
+    const before = tile(id);
+    expect(before.querySelector('.control-state')).toBeNull();
+    liveUpdate({ ...item, state: to });
+    const current = tile(id);
+    const readout = current.querySelector('.control-state');
+    expect(readout.textContent).toBe(text);
+    const described = current.querySelector('.tile-primary-button') || current;
+    expect(document.getElementById(described.getAttribute('aria-describedby'))).toBe(readout);
+  });
   test('a primary card and a tile for the same entity describe themselves with their own readout', () => {
     const light = entity('light.audit', 'off');
     document.body.innerHTML +=
@@ -454,6 +469,53 @@ describe('device control and live data regressions', () => {
     const form = modal.querySelector('.todo-add-form');
     form.querySelector('input').value = 'Ghost';
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    expect(mockCallService).not.toHaveBeenCalled();
+  });
+  test('todo dialog keeps a deleted list disabled when a pending read resolves later', async () => {
+    const list = entity('todo.pending', '1', { supported_features: 5 });
+    let resolveItems;
+    mockCallServiceWithResponse.mockReturnValue(
+      new Promise((resolve) => {
+        resolveItems = resolve;
+      })
+    );
+    state.setEntityState(list);
+    ui.openEntityControls(list);
+    await flush();
+    const modal = document.querySelector('.todo-modal');
+    state.deleteEntityState(list.entity_id);
+    resolveItems({
+      [list.entity_id]: { items: [{ uid: 'one', summary: 'Milk', status: 'needs_action' }] },
+    });
+    await flush();
+    const checkbox = modal.querySelector('input[type="checkbox"]');
+    expect(checkbox.disabled).toBe(true);
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+    await flush();
+    expect(mockCallService).not.toHaveBeenCalled();
+  });
+  test('media detail shows unavailable once Home Assistant deletes the player', () => {
+    const player = entity('media_player.deleted', 'playing', {
+      supported_features: 16445,
+      volume_level: 0.5,
+      media_title: 'Old Song',
+      media_artist: 'Old Artist',
+    });
+    state.setEntityState(player);
+    ui.openEntityControls(player);
+    jest.advanceTimersByTime(20);
+    const modal = document.querySelector('.media-modal');
+    expect(modal.querySelector('.media-detail-title').textContent).toBe('Old Song');
+    state.deleteEntityState(player.entity_id);
+    expect(document.querySelectorAll('.media-modal')).toHaveLength(1);
+    expect(document.querySelector('.media-modal')).toBe(modal);
+    expect(modal.querySelector('.media-detail-title').textContent).not.toContain('Old Song');
+    expect(modal.classList.contains('entity-unavailable')).toBe(true);
+    expect(
+      [...modal.querySelectorAll('.modal-body input,.modal-body button')].filter((e) => !e.disabled)
+    ).toHaveLength(0);
+    modal.querySelector('.media-detail-play-btn').click();
     expect(mockCallService).not.toHaveBeenCalled();
   });
   test('todo count follows live HA state even during item cache TTL', async () => {

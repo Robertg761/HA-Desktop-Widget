@@ -528,6 +528,92 @@ describe('hotkeys module', () => {
     });
   });
 
+  describe('captureHotkey focus', () => {
+    const nextTick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const openFrom = () => {
+      document.body.innerHTML = '<button id="origin" type="button">Record</button>';
+      const origin = document.getElementById('origin');
+      origin.focus();
+      return { origin, capture: hotkeys.captureHotkey() };
+    };
+
+    it('moves focus onto the dialog while recording and still captures keys', async () => {
+      const { origin, capture } = openFrom();
+      const dialog = document.querySelector('.hotkey-capture-modal');
+      expect(dialog.getAttribute('tabindex')).toBe('-1');
+      expect(document.activeElement).toBe(dialog);
+      dialog.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'K', code: 'KeyK', ctrlKey: true, bubbles: true })
+      );
+      await expect(capture).resolves.toBe('Ctrl+K');
+      await nextTick();
+      expect(document.activeElement).toBe(origin);
+    });
+
+    it('hands focus back to the originating control on Escape', async () => {
+      const { origin, capture } = openFrom();
+      document.activeElement.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true })
+      );
+      await expect(capture).resolves.toBeNull();
+      await nextTick();
+      expect(document.activeElement).toBe(origin);
+    });
+
+    it('refocuses the field that replaces the originating one after a successful assignment', async () => {
+      const config = getMockConfig();
+      config.globalHotkeys = { enabled: true, hotkeys: {} };
+      state.setConfig(config);
+      state.setStates({
+        'light.living_room': {
+          entity_id: 'light.living_room',
+          state: 'off',
+          attributes: { friendly_name: 'Living Room' },
+        },
+      });
+      document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+      hotkeys.renderHotkeysTab();
+      const before = document.querySelector('.hotkey-input');
+      before.focus();
+
+      const assignment = hotkeys.assignHotkeyToEntity('light.living_room');
+      expect(document.activeElement).toBe(document.querySelector('.hotkey-capture-modal'));
+      document.activeElement.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'A', code: 'KeyA', ctrlKey: true, bubbles: true })
+      );
+      await expect(assignment).resolves.toEqual(expect.objectContaining({ success: true }));
+      await nextTick();
+      const after = document.querySelector('.hotkey-input');
+      expect(after).not.toBe(before);
+      expect(document.activeElement).toBe(after);
+    });
+
+    it('hands focus back to the originating control when registration reports a conflict', async () => {
+      const config = getMockConfig();
+      config.globalHotkeys = { enabled: true, hotkeys: {} };
+      state.setConfig(config);
+      state.setStates({
+        'light.living_room': {
+          entity_id: 'light.living_room',
+          state: 'off',
+          attributes: { friendly_name: 'Living Room' },
+        },
+      });
+      mockElectronAPI.registerHotkey.mockResolvedValueOnce({ success: false, error: 'In use' });
+      document.body.innerHTML = '<button id="origin" type="button">Record</button>';
+      const origin = document.getElementById('origin');
+      origin.focus();
+
+      const assignment = hotkeys.assignHotkeyToEntity('light.living_room');
+      document.activeElement.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'A', code: 'KeyA', ctrlKey: true, bubbles: true })
+      );
+      await expect(assignment).resolves.toEqual(expect.objectContaining({ success: false }));
+      await nextTick();
+      expect(document.activeElement).toBe(origin);
+    });
+  });
+
   describe('assignHotkeyToEntity', () => {
     it('captures and registers a hotkey directly for an entity', async () => {
       const config = getMockConfig();
