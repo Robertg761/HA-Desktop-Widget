@@ -39,6 +39,7 @@ See the [Omarchy guide](docs/omarchy.md) for native desktop layers, independent 
 
 - **Real-time Updates**: WebSocket connection for instant entity state changes
 - **Quick Access Dashboard**: Customizable grid of your most-used entities
+- **Duplicate Pages**: In reorganize mode, use Duplicate page beside the active page name. The copy opens beside the original with the same tile order and its own copies of comparison charts. Device names and tile preferences remain shared for the same Home Assistant entity.
 - **Entity Management**: Add, remove, rename, and reorder entities with drag-and-drop
 - **Desktop Pins**: Pin selected Quick Access entities as movable, resizable desktop tiles
 - **Custom Names & Icons**: Rename entities and override entity icons without changing Home Assistant

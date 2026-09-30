@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.41",
+  "version": "1.2.42",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1628,6 +1628,9 @@
     "Could not change Hyprland's blur.": "Impossible de modifier le flou de Hyprland.",
     "Search settings": "Rechercher dans les paramètres",
     "{{count}} matching settings": "{{count}} paramètres correspondants",
-    "No matching settings": "Aucun paramètre correspondant"
+    "No matching settings": "Aucun paramètre correspondant",
+    "Duplicate page": "Dupliquer la page",
+    "{{name}} copy": "{{name}} copie",
+    "Page duplicated": "Page dupliquée"
   }
 }

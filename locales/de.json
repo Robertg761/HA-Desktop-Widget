@@ -1621,5 +1621,8 @@
   "Could not change Hyprland's blur.": "Die Unschärfe von Hyprland konnte nicht geändert werden.",
   "Search settings": "Einstellungen suchen",
   "{{count}} matching settings": "{{count}} passende Einstellungen",
-  "No matching settings": "Keine passenden Einstellungen"
+  "No matching settings": "Keine passenden Einstellungen",
+  "Duplicate page": "Seite duplizieren",
+  "{{name}} copy": "{{name}} Kopie",
+  "Page duplicated": "Seite dupliziert"
 }

@@ -6477,6 +6477,86 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(inactive.querySelector('.qa-tab-rename')).toBeNull();
     });
 
+    it('duplicates the active page, saves it, and focuses the new page', async () => {
+      window.electronAPI.updateConfig.mockImplementation(async (patch) => ({
+        ...state.CONFIG,
+        ...patch,
+      }));
+      setPages([{ id: 'home', name: 'Home', entityIds: ['light.living_room'] }]);
+      state.setConfig({ ...state.CONFIG, favoriteEntities: ['light.living_room'] });
+      ui.toggleReorganizeMode();
+      const button = tabBar.querySelector('.qa-tab-duplicate');
+      expect(button.getAttribute('aria-label')).toBe('Duplicate page');
+      button.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(state.CONFIG.customTabs).toHaveLength(2);
+      expect(state.CONFIG.customTabs[1].name).toBe('Home copy');
+      expect(state.CONFIG.customTabs[1].entityIds).toEqual(['light.living_room']);
+      expect(document.activeElement.dataset.tab).toBe(state.CONFIG.customTabs[1].id);
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ customTabs: state.CONFIG.customTabs })
+      );
+    });
+
+    it('tells the companion when a page is duplicated', async () => {
+      window.electronAPI.updateConfig.mockImplementation(async (patch) => ({
+        homeAssistant: {},
+        ...state.CONFIG,
+        ...patch,
+      }));
+      setPages([{ id: 'home', name: 'Home', entityIds: ['light.living_room'] }]);
+      state.setConfig({ ...state.CONFIG, favoriteEntities: ['light.living_room'] });
+      const changed = jest.fn();
+      window.addEventListener('desktop-companion-page-changed', changed);
+      try {
+        ui.toggleReorganizeMode();
+        tabBar.querySelector('.qa-tab-duplicate').click();
+        for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(changed).toHaveBeenCalledTimes(1);
+      } finally {
+        window.removeEventListener('desktop-companion-page-changed', changed);
+      }
+    });
+
+    it('removes a tile from a duplicated page only, leaving the original untouched', async () => {
+      window.electronAPI.updateConfig.mockImplementation(async (patch) => ({
+        homeAssistant: {},
+        ...state.CONFIG,
+        ...patch,
+      }));
+      state.setStates({ 'light.bedroom': sampleStates['light.bedroom'] });
+      state.setConfig({
+        ...state.CONFIG,
+        customTabs: [
+          { id: 'home', name: 'Home', entityIds: ['light.bedroom'] },
+          { id: 'copy', name: 'Home copy', entityIds: ['light.bedroom'] },
+        ],
+        activeTabId: 'copy',
+        favoriteEntities: ['light.bedroom'],
+        tileSpans: { 'light.bedroom': { cols: 2 } },
+        quickAccessTileOptions: { 'light.bedroom': { valueSize: 'large' } },
+      });
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+      uiUtils.showConfirm.mockResolvedValueOnce(true);
+      document
+        .querySelector('#quick-controls [data-entity-id="light.bedroom"] .remove-btn')
+        .click();
+      for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(state.CONFIG.customTabs.find((page) => page.id === 'copy').entityIds).toEqual([]);
+      expect(state.CONFIG.customTabs.find((page) => page.id === 'home').entityIds).toEqual([
+        'light.bedroom',
+      ]);
+      expect(state.CONFIG.favoriteEntities).toEqual(['light.bedroom']);
+      expect(state.CONFIG.tileSpans).toEqual({ 'light.bedroom': { cols: 2 } });
+      expect(state.CONFIG.quickAccessTileOptions).toEqual({
+        'light.bedroom': { valueSize: 'large' },
+      });
+    });
+
     it('moves focus to the page now shown after deleting a page', async () => {
       setPages(
         [
@@ -6507,6 +6587,46 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         tabBar.querySelector('.quick-access-tab-link[data-tab="default"]')
       );
       confirmation.remove();
+    });
+
+    it('removes the graph cloned onto a duplicated page when that page is deleted', async () => {
+      window.electronAPI.updateConfig.mockImplementation(async (patch) => ({
+        homeAssistant: {},
+        ...state.CONFIG,
+        ...patch,
+      }));
+      const graph = { id: 'graph:temps', name: 'Temps', span: 3, entityIds: ['sensor.indoor'] };
+      setPages(
+        [
+          { id: 'home', name: 'Home', entityIds: ['graph:temps'] },
+          { id: 'copy', name: 'Home copy', entityIds: ['graph:temps-copy'] },
+        ],
+        'copy'
+      );
+      const before = {
+        ...state.CONFIG,
+        comparisonGraphs: [graph, { ...graph, id: 'graph:temps-copy' }],
+      };
+      state.setConfig(before);
+      ui.toggleReorganizeMode();
+      uiUtils.showConfirm.mockResolvedValueOnce(true);
+      tabBar.querySelector('.qa-tab-delete').click();
+      for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(state.CONFIG.customTabs.map((page) => page.id)).toEqual(['home']);
+      expect(state.CONFIG.comparisonGraphs.map((entry) => entry.id)).toEqual(['graph:temps']);
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ comparisonGraphs: [graph] })
+      );
+      // Undo reads the saved layout, which still holds the deleted page and its graph.
+      const { readDashboardHistory } = require('../../src/dashboard-history.js');
+      const [saved] = readDashboardHistory(state.CONFIG);
+      expect(saved.layout.customTabs.map((page) => page.id)).toEqual(['home', 'copy']);
+      expect(saved.layout.comparisonGraphs.map((entry) => entry.id)).toEqual([
+        'graph:temps',
+        'graph:temps-copy',
+      ]);
     });
 
     it('opens a themed add-page modal and creates a page from a preset chip', async () => {

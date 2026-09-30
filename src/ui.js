@@ -51,17 +51,18 @@ import desktopPinSupport from './desktop-pin-support.cjs';
 import climateControls from './climate-controls.cjs';
 import { DEV_CLIMATE_DEMO_ENTITY_ID, isClimateDemoOverlayConfig } from '@dev-climate-demo';
 import {
+  addEntityToQuickAccessView,
   addQuickAccessView,
   deleteQuickAccessView,
   getActiveQuickAccessTab,
-  moveEntityToQuickAccessView,
   normalizeQuickAccessConfig,
-  removeEntityFromQuickAccessViews,
+  removeEntityFromQuickAccessView,
   renameQuickAccessView,
   reorderQuickAccessView,
   setActiveQuickAccessView,
 } from './quick-access-tabs.js';
 import { getNextQuickAccessFocusIndex } from './quick-access-ui-helpers.js';
+import { duplicateQuickAccessView } from './page-duplication.js';
 import { getRendererHost } from '@hadw/renderer/host.js';
 import {
   COMPARISON_GRAPH_SPAN_OPTIONS,
@@ -81,6 +82,7 @@ import {
   groupSeriesByUnit,
   isComparisonGraphId,
   isGraphableEntity,
+  normalizeComparisonGraphsConfig,
   readGraphSeriesUnit,
   readGraphSeriesValue,
   removeComparisonGraph,
@@ -743,6 +745,19 @@ function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
       });
       tabEl.appendChild(renameBtn);
 
+      const duplicateBtn = document.createElement('button');
+      duplicateBtn.type = 'button';
+      duplicateBtn.className = 'qa-tab-btn qa-tab-duplicate';
+      duplicateBtn.title = t('Duplicate page');
+      duplicateBtn.setAttribute('aria-label', t('Duplicate page'));
+      setIconContent(duplicateBtn, 'copy', { size: 12 });
+      duplicateBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void duplicateQuickAccessPage(tab.id);
+      });
+      tabEl.appendChild(duplicateBtn);
+
       if (tabs.length > 1) {
         const deleteBtn = document.createElement('button');
         deleteBtn.type = 'button';
@@ -837,6 +852,25 @@ function beginInlineTabRename(tabId, buttonEl) {
   input.addEventListener('dblclick', (event) => event.stopPropagation());
 }
 
+async function duplicateQuickAccessPage(tabId) {
+  if (quickAccessPendingWriteCount) {
+    uiUtils.showToast(t('Wait for the current dashboard save to finish.'), 'info', 1600);
+    return;
+  }
+  const config = ensureQuickAccessConfig();
+  if (!config.customTabs.some((tab) => tab.id === tabId)) return;
+  const pending = setQuickAccessConfig(duplicateQuickAccessView(config, tabId));
+  focusActiveQuickAccessPage();
+  const result = await pending;
+  if (result.success) {
+    uiUtils.showToast(t('Page duplicated'), 'success', 1600);
+    window.dispatchEvent(new CustomEvent('desktop-companion-page-changed'));
+  }
+  // Keep focus on the authoritative page after saving or rolling back a failed save.
+  renderQuickAccessTabs();
+  focusActiveQuickAccessPage();
+}
+
 async function deleteQuickAccessPage(tabId) {
   const config = ensureQuickAccessConfig();
   if ((config.customTabs || []).length <= 1) return;
@@ -850,13 +884,19 @@ async function deleteQuickAccessPage(tabId) {
   );
   if (!confirmed) return;
 
-  const nextConfig = deleteQuickAccessView(state.CONFIG, tabId);
+  const previousActiveTabId = state.CONFIG?.activeTabId;
+  // A graph only the deleted page showed (a duplicated page's copy) goes with it; Undo restores
+  // both from the saved layout.
+  const nextConfig = normalizeComparisonGraphsConfig(deleteQuickAccessView(state.CONFIG, tabId));
   const pending = setQuickAccessConfig(nextConfig);
   // The deleted page's tab took the focused button with it.
   focusActiveQuickAccessPage();
   const result = await pending;
   if (result.success) {
     uiUtils.showToast(t('Page deleted'), 'info', 1600);
+    if (state.CONFIG?.activeTabId !== previousActiveTabId) {
+      window.dispatchEvent(new CustomEvent('desktop-companion-page-changed'));
+    }
   }
 }
 
@@ -888,6 +928,10 @@ function createQuickAccessPage(name, entityIds = [], { fillEmptyPage = false } =
   return setQuickAccessConfig(nextConfig).then((result) => {
     if (result.success) {
       uiUtils.showToast(fillsActivePage ? t('Page updated') : t('Page added'), 'success', 1600);
+      // Adding a page switches to it; filling the empty active page keeps the same page.
+      if (!fillsActivePage) {
+        window.dispatchEvent(new CustomEvent('desktop-companion-page-changed'));
+      }
     }
     return result;
   });
@@ -2300,7 +2344,11 @@ async function removeFromQuickAccess(entityId) {
     // has no way back into the UI.
     const nextConfig = isComparisonGraphId(entityId)
       ? removeComparisonGraph(state.CONFIG, entityId)
-      : removeEntityFromQuickAccessViews(state.CONFIG, entityId);
+      : removeEntityFromQuickAccessView(
+          state.CONFIG,
+          entityId,
+          getActiveQuickAccessTab(state.CONFIG)?.id
+        );
     const result = await setQuickAccessConfig(nextConfig, { render: false });
     if (!result.success) return result;
 
@@ -13885,9 +13933,11 @@ function toggleQuickAccess(entityId) {
     if (isDevelopmentClimateOverlayEntity(entityId)) return;
     const config = ensureQuickAccessConfig();
     const activeTab = getActiveQuickAccessTab(config);
+    // Page-scoped: a duplicated page shares entities with its original, so ticking or unticking
+    // here must not touch any other page.
     const nextConfig = activeTab?.entityIds.includes(entityId)
-      ? removeEntityFromQuickAccessViews(config, entityId)
-      : moveEntityToQuickAccessView(config, entityId, activeTab?.id);
+      ? removeEntityFromQuickAccessView(config, entityId, activeTab.id)
+      : addEntityToQuickAccessView(config, entityId, activeTab?.id);
     setQuickAccessConfig(nextConfig);
   } catch (error) {
     console.error('Error toggling quick access:', error);

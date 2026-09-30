@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.41",
+  "version": "1.2.42",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1628,6 +1628,9 @@
     "Could not change Hyprland's blur.": "تعذّر تغيير الطمس في Hyprland.",
     "Search settings": "البحث في الإعدادات",
     "{{count}} matching settings": "{{count}} إعدادات مطابقة",
-    "No matching settings": "لا توجد إعدادات مطابقة"
+    "No matching settings": "لا توجد إعدادات مطابقة",
+    "Duplicate page": "نسخ الصفحة",
+    "{{name}} copy": "نسخة من {{name}}",
+    "Page duplicated": "تم نسخ الصفحة"
   }
 }

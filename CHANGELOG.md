@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Duplicate a Quick Access page in reorganize mode, keeping its tile order and copying comparison charts so they can be edited independently.
+
 - Search Settings by name or help text, then jump directly to a control, including controls inside collapsed sections.
 
 - Choose Auto, Dark, or Light theme in Settings → Appearance. It previews live and saves with Save; Auto still follows the system.
