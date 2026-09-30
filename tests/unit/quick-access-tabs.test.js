@@ -1,8 +1,10 @@
 const {
+  addEntityToQuickAccessView,
   addQuickAccessView,
   deleteQuickAccessView,
   moveEntityToQuickAccessView,
   normalizeQuickAccessConfig,
+  removeEntityFromQuickAccessView,
   removeEntityFromQuickAccessViews,
   renameQuickAccessView,
   reorderQuickAccessView,
@@ -98,6 +100,42 @@ describe('quick-access-tabs helpers', () => {
     const removed = removeEntityFromQuickAccessViews(moved, 'switch.fan');
     expect(removed.customTabs[1].entityIds).toEqual(['sensor.temp']);
     expect(removed.favoriteEntities).toEqual(['light.kitchen', 'sensor.temp']);
+  });
+
+  test('adds and removes an entity on one page without touching a page that shares it', () => {
+    const config = normalizeQuickAccessConfig({
+      activeTabId: 'copy',
+      customTabs: [
+        { id: 'home', name: 'Home', entityIds: ['light.kitchen', 'switch.fan'] },
+        { id: 'copy', name: 'Home copy', entityIds: ['light.kitchen', 'switch.fan'] },
+      ],
+    });
+
+    const removed = removeEntityFromQuickAccessView(config, 'light.kitchen', 'copy');
+    expect(removed.customTabs[0].entityIds).toEqual(['light.kitchen', 'switch.fan']);
+    expect(removed.customTabs[1].entityIds).toEqual(['switch.fan']);
+    // Still on the original page, so it stays in the favorites union.
+    expect(removed.favoriteEntities).toEqual(['light.kitchen', 'switch.fan']);
+
+    const readded = addEntityToQuickAccessView(removed, 'light.kitchen', 'copy');
+    expect(readded.customTabs[0].entityIds).toEqual(['light.kitchen', 'switch.fan']);
+    expect(readded.customTabs[1].entityIds).toEqual(['switch.fan', 'light.kitchen']);
+    expect(
+      addEntityToQuickAccessView(readded, 'light.kitchen', 'copy').customTabs[1].entityIds
+    ).toEqual(['switch.fan', 'light.kitchen']);
+
+    const gone = removeEntityFromQuickAccessView(removed, 'light.kitchen', 'home');
+    expect(gone.favoriteEntities).toEqual(['switch.fan']);
+  });
+
+  test('page-scoped add and remove ignore unknown pages and blank entity ids', () => {
+    const config = normalizeQuickAccessConfig({
+      customTabs: [{ id: 'home', name: 'Home', entityIds: ['light.kitchen'] }],
+    });
+    expect(addEntityToQuickAccessView(config, 'light.a', 'missing')).toEqual(config);
+    expect(removeEntityFromQuickAccessView(config, 'light.kitchen', 'missing')).toEqual(config);
+    expect(addEntityToQuickAccessView(config, '  ', 'home')).toEqual(config);
+    expect(removeEntityFromQuickAccessView(config, '', 'home')).toEqual(config);
   });
 
   test('reorders only the requested view and preserves missing current entities', () => {
