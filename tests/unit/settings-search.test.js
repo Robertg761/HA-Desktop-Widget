@@ -9,6 +9,7 @@ describe('settings search', () => {
       'utf8'
     );
     modal = document.getElementById('settings-modal');
+    modal.classList.remove('hidden');
     input = document.getElementById('settings-search');
     initializeSettingsSearch(modal);
     window.requestAnimationFrame = (callback) => callback();
@@ -80,5 +81,9 @@ describe('settings search', () => {
     initializeSettingsSearch(modal);
     expect(input.value).toBe('');
     expect(document.querySelectorAll('.settings-search-result')).toHaveLength(0);
+  });
+  test('does not offer settings hidden on the current platform', () => {
+    document.getElementById('follow-omarchy-group').classList.add('hidden');
+    expect(search('Follow Omarchy theme')).toHaveLength(0);
   });
 });

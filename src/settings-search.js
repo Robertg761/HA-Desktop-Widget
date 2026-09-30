@@ -11,7 +11,7 @@ function settingsSearchEntries(modal) {
       '.tab-content label, .tab-content .setting-label, .tab-content summary, .tab-content .section-toggle, .tab-content .setting-row-action > button[data-i18n]'
     ),
   ]
-    .filter((label) => !label.closest('[hidden]'))
+    .filter((label) => !label.closest('[hidden], .hidden'))
     .map((label) => {
       const panel = label.closest('.tab-content');
       const row = label.closest('.form-group, .settings-details, .personalization-section');
