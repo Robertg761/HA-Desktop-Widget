@@ -71,6 +71,194 @@ describe('DesktopCompanionClient', () => {
     jest.useRealTimers();
   });
 
+  const command = (id, action = 'toggle') => ({
+    command_id: id,
+    action,
+    protocol_version: PROTOCOL_VERSION,
+    expires_at: new Date(Date.now() + 30_000).toISOString(),
+  });
+  const flush = async () => {
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+  };
+
+  test('concurrent duplicate delivery executes once and acknowledges each delivery', async () => {
+    let release;
+    const executeCommand = jest.fn(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        })
+    );
+    const { client, websocket } = createClient({ executeCommand });
+    const first = client.handleCommand('desktop-1', command('duplicate'));
+    const second = client.handleCommand('desktop-1', command('duplicate'));
+    await flush();
+    expect(executeCommand).toHaveBeenCalledTimes(1);
+    release({ visible: true });
+    await Promise.all([first, second]);
+    const acknowledgements = websocket.requests.filter((r) => r.type.endsWith('/ack_command'));
+    expect(acknowledgements).toHaveLength(2);
+    expect(acknowledgements[0]).toEqual(acknowledgements[1]);
+  });
+
+  test('distinct commands execute in delivery order', async () => {
+    let release;
+    const executeCommand = jest
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          })
+      )
+      .mockResolvedValue({ visible: false });
+    const { client } = createClient({ executeCommand });
+    const first = client.handleCommand('desktop-1', command('first', 'show'));
+    const second = client.handleCommand('desktop-1', command('second', 'hide'));
+    await flush();
+    expect(executeCommand).toHaveBeenCalledTimes(1);
+    release({ visible: true });
+    await Promise.all([first, second]);
+    expect(executeCommand.mock.calls.map(([value]) => value.action)).toEqual(['show', 'hide']);
+  });
+
+  describe('session reset with queued commands', () => {
+    const ackFor = (websocket, id) =>
+      websocket.requests.filter((r) => r.type.endsWith('/ack_command') && r.command_id === id);
+
+    async function resetWithRunningAndQueued({
+      start = false,
+      restart = (client) => client.resetSession(),
+    } = {}) {
+      const releases = [];
+      const executeCommand = jest.fn(
+        () =>
+          new Promise((resolve) => {
+            releases.push(resolve);
+          })
+      );
+      const { client, websocket } = createClient({ executeCommand });
+      if (start) {
+        client.start();
+        await flush();
+      }
+      const running = client.handleCommand('desktop-1', command('running', 'show'));
+      const queued = client.handleCommand('desktop-1', command('queued', 'hide'));
+      await flush();
+      expect(executeCommand).toHaveBeenCalledTimes(1);
+      await restart(client, websocket);
+      return { client, websocket, executeCommand, releases, running, queued };
+    }
+
+    test('redelivering a queued command in the next session executes it fresh', async () => {
+      const { client, websocket, executeCommand, releases, running, queued } =
+        await resetWithRunningAndQueued();
+      const redelivered = client.handleCommand('desktop-1', command('queued', 'hide'));
+      await flush();
+      // The command from the ended session is still running, so nothing else may start yet.
+      expect(executeCommand).toHaveBeenCalledTimes(1);
+      releases[0]({ visible: true });
+      await flush();
+      expect(executeCommand).toHaveBeenCalledTimes(2);
+      releases[1]({ visible: false });
+      await Promise.all([running, queued, redelivered]);
+      expect(executeCommand.mock.calls.map(([value]) => value.action)).toEqual(['show', 'hide']);
+      const acks = ackFor(websocket, 'queued');
+      expect(acks).toHaveLength(1);
+      expect(acks[0].status).toBe('completed');
+      expect(ackFor(websocket, 'running')).toHaveLength(0);
+    });
+
+    test('a replacement socket that authenticates without closing also starts fresh', async () => {
+      const { client, websocket, executeCommand, releases, running, queued } =
+        await resetWithRunningAndQueued({
+          start: true,
+          restart: async (_client, socket) => {
+            socket.emit('message', { type: 'auth_ok' });
+            await flush();
+          },
+        });
+      const redelivered = client.handleCommand('desktop-1', command('queued', 'hide'));
+      releases[0]({ visible: true });
+      await flush();
+      expect(executeCommand).toHaveBeenCalledTimes(2);
+      releases[1]({ visible: false });
+      await Promise.all([running, queued, redelivered]);
+      expect(ackFor(websocket, 'queued').map((ack) => ack.status)).toEqual(['completed']);
+    });
+
+    test('a running command redelivered in the next session executes once', async () => {
+      const { client, websocket, executeCommand, releases, running, queued } =
+        await resetWithRunningAndQueued();
+      const redelivered = client.handleCommand('desktop-1', command('running', 'show'));
+      await flush();
+      expect(executeCommand).toHaveBeenCalledTimes(1);
+      releases[0]({ visible: true, current_page: 'real' });
+      await Promise.all([running, queued, redelivered]);
+      expect(executeCommand).toHaveBeenCalledTimes(1);
+      const acks = ackFor(websocket, 'running');
+      expect(acks).toHaveLength(1);
+      expect(acks[0].status).toBe('completed');
+      expect(acks[0].state.current_page).toBe('real');
+    });
+
+    test('a command dropped by a session reset is not cached for later redelivery', async () => {
+      const { client, websocket, executeCommand, releases, running, queued } =
+        await resetWithRunningAndQueued();
+      releases[0]({ visible: true });
+      await Promise.all([running, queued]);
+      expect(executeCommand).toHaveBeenCalledTimes(1);
+      expect(client.commandResults.size).toBe(1);
+      expect(ackFor(websocket, 'queued')).toHaveLength(0);
+
+      const redelivered = client.handleCommand('desktop-1', command('queued', 'hide'));
+      await flush();
+      expect(executeCommand).toHaveBeenCalledTimes(2);
+      releases[1]({ visible: false });
+      await redelivered;
+      expect(ackFor(websocket, 'queued').map((ack) => ack.status)).toEqual(['completed']);
+    });
+  });
+
+  test.each(['get_info', 'register_device', 'report_state', 'put_config_snapshot'])(
+    'stop during %s leaves no subscription or heartbeat',
+    async (stage) => {
+      const { client, websocket } = createClient();
+      client.getConfigDocument = async () => ({ ui: { theme: 'dark' } });
+      let release;
+      const answer = websocket.request.bind(websocket);
+      websocket.request = (message) =>
+        message.type === `ha_desktop_widget/${stage}`
+          ? new Promise((resolve) => {
+              release = resolve;
+            })
+          : answer(message);
+      client.started = true;
+      const initializing = client.initializeSession();
+      await flush();
+      expect(release).toEqual(expect.any(Function));
+      client.stop();
+      release({ success: true, result: { protocol_version: PROTOCOL_VERSION } });
+      expect(await initializing).toBe(false);
+      expect(client.heartbeatTimer).toBeNull();
+      expect(client.unsubscribeCommands).toBeNull();
+      expect(client.lastConfigSnapshot).toBeNull();
+    }
+  );
+
+  test('each new session republishes an unchanged layout', async () => {
+    const { client, websocket } = createClient();
+    client.getConfigDocument = async () => ({ ui: { theme: 'dark' } });
+    client.started = true;
+    await client.initializeSession();
+    client.resetSession();
+    await client.initializeSession();
+    client.stop();
+    expect(websocket.requests.filter((r) => r.type.endsWith('/put_config_snapshot'))).toHaveLength(
+      2
+    );
+  });
+
   test('registers, subscribes, and reports state for an authenticated session', async () => {
     const { client, websocket } = createClient();
     client.start();
