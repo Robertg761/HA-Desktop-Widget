@@ -1,5 +1,6 @@
 import { applyDesktopAppearance } from './desktop-appearance.js';
 import { initializeSettingsSearch } from './settings-search.js';
+import { initializeSettingsFiles } from './settings-files-ui.js';
 import state from './state.js';
 import log from './logger.js';
 import websocket from './websocket.js';
@@ -2821,6 +2822,16 @@ function cancelPreviewWindowEffects() {
  * frosted-glass) and requests the native/Electron layer to apply the same
  * preview. Errors are logged to the console.
  */
+/** The window effects a config saves, which closing Settings restores. */
+function savedWindowEffects(config) {
+  return {
+    opacity: Math.max(0.5, Math.min(1, config?.opacity || 0.95)),
+    frostedGlass: !!config?.frostedGlass,
+    weatherEffectsEnabled: !!config?.frostedGlass && !!config?.ui?.weatherEffectsEnabled,
+    weatherOverride: config?.ui?.weatherOverride || 'auto',
+  };
+}
+
 function restorePreviewWindowEffects() {
   if (!previewState) return;
 
@@ -3583,17 +3594,29 @@ async function refreshProfileSyncBackups() {
   renderProfileSyncBackups();
 }
 
+// A restore only reaches other computers through sync, and only for the sections in its scope.
+function describeProfileSyncRestore() {
+  const profileSync = state.CONFIG?.profileSync;
+  if (!profileSync?.enabled)
+    return t('Apply this backup on this computer? Your current settings are backed up first.');
+  const { sections } = normalizeProfileSyncScope(profileSync.syncScope);
+  if (!PROFILE_SYNC_SCOPE_SECTION_KEYS.every((key) => sections[key]))
+    return t(
+      'Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.'
+    );
+  return t(
+    'Apply this backup on this computer? Your current settings are backed up first, and the restored ones then sync to your other computers.'
+  );
+}
+
 async function restoreSelectedProfileSyncBackup() {
   const select = document.getElementById('profile-sync-backup-select');
   const id = select?.value;
   if (!id) return;
-  const confirmed = await showConfirm(
-    t('Restore'),
-    t(
-      'Apply this backup on this computer? Your current settings are backed up first, and the restored ones then sync to your other computers.'
-    ),
-    { confirmText: t('Restore'), confirmClass: 'btn-primary' }
-  );
+  const confirmed = await showConfirm(t('Restore'), describeProfileSyncRestore(), {
+    confirmText: t('Restore'),
+    confirmClass: 'btn-primary',
+  });
   if (!confirmed) return;
   try {
     const result = await window.electronAPI.restoreProfileSyncBackup(id);
@@ -4669,6 +4692,18 @@ async function openSettings(uiHooks) {
 
     applyProfileSyncConfigToForm();
     bindProfileSyncSettingsUi();
+    initializeSettingsFiles({
+      onImported: async (nextConfig) => {
+        const hooks = settingsUiHooks;
+        // Closing restores the window effects Settings opened with; after an import those are
+        // the imported ones, which the main process has already applied natively.
+        if (previewState) previewState = savedWindowEffects(nextConfig);
+        closeSettings();
+        applyConfigFromProfileSync(nextConfig);
+        hooks?.renderActiveTab?.();
+        await openSettings(hooks);
+      },
+    });
     bindSupportDevelopmentUi();
     await refreshProfileSyncStatusUi({ syncFormState: true });
     void refreshProfileSyncBackups();
@@ -4693,13 +4728,7 @@ async function openSettings(uiHooks) {
       weatherOverrideSelect.value = state.CONFIG.ui?.weatherOverride || 'auto';
     }
 
-    previewState = {
-      opacity: storedOpacity,
-      frostedGlass: !!state.CONFIG.frostedGlass,
-      weatherEffectsEnabled:
-        !!state.CONFIG.frostedGlass && !!state.CONFIG.ui?.weatherEffectsEnabled,
-      weatherOverride: state.CONFIG.ui?.weatherOverride || 'auto',
-    };
+    previewState = savedWindowEffects(state.CONFIG);
     syncWeatherEffectsAvailability();
     hasDraftColorPreview = false;
 

@@ -30,6 +30,10 @@ const PRELOAD_SCRIPT_PATH = path.join(__dirname, 'dist-preload', 'preload.cjs');
 const log = require('electron-log');
 const pkg = require('./package.json');
 const {
+  createSettingsFileController,
+  settingsFileErrorCode,
+} = require('./src/settings-file-controller.cjs');
+const {
   getLaunchAction,
   hasIsolatedProfile,
   isHyprland,
@@ -3960,12 +3964,15 @@ async function writeProfileSyncBackup(prefix, contents) {
   }
 }
 
-async function backupLocalProfileBeforePullApply(sectionKeys) {
+async function backupLocalProfileBeforePullApply(sectionKeys, incomingSections = null) {
   try {
-    const sections = profileSyncCore.buildLocalSections(config, {
-      preset: 'custom',
-      sections: Object.fromEntries(sectionKeys.map((key) => [key, true])),
-    });
+    const sections = profileSyncCore.scopeBackupToIncoming(
+      profileSyncCore.buildLocalSections(config, {
+        preset: 'custom',
+        sections: Object.fromEntries(sectionKeys.map((key) => [key, true])),
+      }),
+      incomingSections
+    );
     await writeProfileSyncBackup('local-profile', { sections });
   } catch (error) {
     log.warn('Failed to back up local profile before applying remote sync:', error.message);
@@ -4110,6 +4117,9 @@ async function applySyncedConfigSideEffects(previous, persistence) {
   await runPostSaveSideEffect(runtimeWarnings, 'synced runtime settings', () =>
     applyRuntimeConfigSideEffects(previous, config, 'profile sync pull')
   );
+  if (previous?.ui?.language !== config?.ui?.language && tray) {
+    await runPostSaveSideEffect(runtimeWarnings, 'synced tray language', () => createTray());
+  }
   await runPostSaveSideEffect(runtimeWarnings, 'synced desktop pin windows', () =>
     syncDesktopPinWindowsWithConfig()
   );
@@ -4210,11 +4220,15 @@ async function listProfileSyncBackups() {
  */
 async function restoreProfileSyncBackup(id) {
   const backup = await readProfileSyncBackup(id);
-  const sectionKeys = Object.keys(backup.sections);
+  return applyLocalProfileSections(backup.sections, { clearNullUiKeys: true });
+}
+
+async function applyLocalProfileSections(sections, mergeOptions) {
+  const sectionKeys = Object.keys(sections);
   if (sectionKeys.length === 0) {
     throw new Error(mainT('That backup is no longer available'));
   }
-  await backupLocalProfileBeforePullApply(sectionKeys);
+  await backupLocalProfileBeforePullApply(sectionKeys, sections);
 
   const previous = config;
   const previousRuntimeTracking = {
@@ -4230,7 +4244,7 @@ async function restoreProfileSyncBackup(id) {
   // still stale.
   profileSyncRuntime.pendingPullEchoHash = null;
   profileSyncRuntime.pendingPullEchoProfile = null;
-  config = profileSyncCore.mergeSectionsIntoConfig(config, backup.sections);
+  config = profileSyncCore.mergeSectionsIntoConfig(config, sections, mergeOptions);
   pruneConfig(config);
   ensureDateTimeFormatConfigDefaults(config);
   ensureProfileSyncConfigDefaults(config);
@@ -8712,6 +8726,54 @@ ipcMain.handle('copy-profile-sync-file', async (event, fromPath, toPath, overwri
   }
   return copyProfileSyncFile(fromPath, toPath, overwrite);
 });
+
+const settingsFileController = createSettingsFileController({
+  fs,
+  dialog,
+  suspendAutoHide: () => windowAutoHide.suspend(),
+  getConfig: () => config,
+  translate: (key) => mainT(key),
+  applySections: async (sections) => {
+    await applyLocalProfileSections(sections, { clearNullUiKeys: true });
+    return { config: sanitizeConfigForRenderer(config) };
+  },
+});
+
+ipcMain.handle('export-settings-file', async (event) => {
+  const sender = authorizeIpcSender(event, 'export-settings-file');
+  if (!sender) return rejectUnauthorizedIpc('export-settings-file');
+  try {
+    return { success: true, ...(await settingsFileController.exportSettings(sender.window)) };
+  } catch (error) {
+    return { success: false, code: settingsFileErrorCode(error, 'export_failed') };
+  }
+});
+
+ipcMain.handle('preview-settings-import', async (event) => {
+  const sender = authorizeIpcSender(event, 'preview-settings-import');
+  if (!sender) return rejectUnauthorizedIpc('preview-settings-import');
+  try {
+    return {
+      success: true,
+      ...(await settingsFileController.previewImport(sender.window, event.sender.id)),
+    };
+  } catch (error) {
+    return { success: false, code: settingsFileErrorCode(error, 'import_failed') };
+  }
+});
+
+ipcMain.handle(
+  'apply-settings-import',
+  serializeConfigMutationHandler(async (event, id) => {
+    const sender = authorizeIpcSender(event, 'apply-settings-import');
+    if (!sender) return rejectUnauthorizedIpc('apply-settings-import');
+    try {
+      return { success: true, ...(await settingsFileController.applyImport(event.sender.id, id)) };
+    } catch (error) {
+      return { success: false, code: settingsFileErrorCode(error, 'import_failed') };
+    }
+  })
+);
 
 ipcMain.handle('get-profile-sync-status', (event) => {
   const sender = authorizeIpcSender(event, 'get-profile-sync-status');

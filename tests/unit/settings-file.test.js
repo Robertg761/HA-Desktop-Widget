@@ -1,0 +1,275 @@
+/** @jest-environment node */
+const {
+  buildSettingsFile,
+  serializeSettingsFile,
+  parseSettingsFile,
+  settingsFileSections,
+  summarizeSettingsImport,
+  MAX_SETTINGS_FILE_BYTES,
+} = require('../../src/settings-file.cjs');
+
+const config = {
+  homeAssistant: { url: 'https://private.example', token: 'secret', refreshToken: 'secret' },
+  profileSync: { enabled: true, passphrase: 'secret', cloudFilePath: '/private' },
+  globalHotkeys: { enabled: true },
+  desktopPins: { 'light.desk': { enabled: true } },
+  activeTabId: 'home',
+  alwaysOnTop: true,
+  hideOnBlur: true,
+  updates: { allowPrerelease: true },
+  customTabs: [
+    { id: 'home', name: 'Home', entityIds: ['light.desk', 'graph:temps'], token: 'secret' },
+  ],
+  favoriteEntities: ['light.desk', 'graph:temps'],
+  comparisonGraphs: [{ id: 'graph:temps', name: 'Temps', span: 2, entityIds: ['sensor.temp'] }],
+  opacity: 0.9,
+  frostedGlass: true,
+  quickAccessTileOptions: {
+    'sensor.temp': { chartType: 'gauge', gaugeMin: null, gaugeMax: 30, passphrase: 'secret' },
+  },
+  customEntityNames: { 'light.desk': 'Desk' },
+  entityAlerts: {
+    enabled: true,
+    alerts: {
+      'sensor.temp': {
+        onNumericThreshold: true,
+        threshold: 25,
+        comparison: 'above',
+        durationSeconds: 10,
+        cooldownSeconds: 30,
+        quietHours: { enabled: true, start: '22:00', end: '07:00' },
+      },
+    },
+  },
+  ui: {
+    theme: 'dark',
+    scale: 1.3,
+    followOmarchy: true,
+    enableInteractionDebugLogs: true,
+    language: 'de',
+    token: 'secret',
+    customColors: [{ id: 'custom', name: 'Ocean', color: '#123456', secret: 'secret' }],
+    seasonal: { enabled: null, holidays: { halloween: false }, show: 'auto' },
+  },
+};
+describe('portable settings files', () => {
+  test('exports only portable fields and strips unknown nested values', () => {
+    const content = serializeSettingsFile(config);
+    expect(content).not.toMatch(
+      /secret|private\.example|profileSync|desktopPins|Hotkeys|followOmarchy|scale|activeTabId|alwaysOnTop/
+    );
+    const settings = parseSettingsFile(content);
+    expect(settings.customTabs[0]).toEqual({
+      id: 'home',
+      name: 'Home',
+      entityIds: ['light.desk', 'graph:temps'],
+    });
+    expect(settings.entityAlerts).toEqual(config.entityAlerts);
+    expect(settings.ui.customColors).toEqual([{ id: 'custom', name: 'Ocean', color: '#123456' }]);
+    expect(settingsFileSections(settings).visualPersonalization).toEqual({
+      opacity: 0.9,
+      frostedGlass: true,
+      ui: settings.ui,
+    });
+  });
+  test.each([
+    ['bad json', '{'],
+    ['wrong format', JSON.stringify({ format: 'config', version: 1, settings: {} })],
+    ['future version', JSON.stringify({ ...buildSettingsFile(config), version: 2 })],
+    [
+      'wrong field type',
+      JSON.stringify({ ...buildSettingsFile(config), settings: { customTabs: 'bad' } }),
+    ],
+    [
+      'wrong nested type',
+      JSON.stringify({
+        ...buildSettingsFile(config),
+        settings: { ui: { customColors: [{ color: 7 }] } },
+      }),
+    ],
+    ['empty payload', JSON.stringify({ ...buildSettingsFile(config), settings: {} })],
+    [
+      'prototype keys',
+      '{"format":"ha-desktop-widget-settings","version":1,"settings":{"customEntityNames":{"__proto__":{}}}}',
+    ],
+    ['oversized payload', ' '.repeat(MAX_SETTINGS_FILE_BYTES + 1)],
+  ])('rejects %s', (_label, content) => expect(() => parseSettingsFile(content)).toThrow());
+  test('ignores injected local-only fields and reports changes without credentials', () => {
+    const file = buildSettingsFile(config);
+    file.settings.homeAssistant = { token: 'malicious' };
+    file.settings.ui.scale = 9;
+    const settings = parseSettingsFile(JSON.stringify(file));
+    expect(settings.homeAssistant).toBeUndefined();
+    expect(settings.ui.scale).toBeUndefined();
+    expect(summarizeSettingsImport(settings, config)).toEqual({
+      changedSections: [],
+      pageNames: ['Home'],
+      entityIds: ['light.desk', 'sensor.temp'],
+    });
+    expect(summarizeSettingsImport({ ui: { theme: 'light' } }, config).changedSections).toEqual([
+      'visualPersonalization',
+    ]);
+    expect(summarizeSettingsImport({ ui: { theme: 'dark' } }, config).changedSections).toEqual([]);
+  });
+  test('previews entities referenced only by per-entity maps', () => {
+    const { entityIds } = summarizeSettingsImport(
+      {
+        customEntityNames: { 'light.retired': 'Old lamp' },
+        customEntityIcons: { 'switch.fan': 'mdi:fan' },
+        tileSpans: { 'sensor.wide': 2, 'graph:abc': 2 },
+        quickAccessTileOptions: { 'camera.door': { valueSize: 'large' } },
+      },
+      config
+    );
+    expect(entityIds).toEqual(['light.retired', 'switch.fan', 'sensor.wide', 'camera.door']);
+  });
+  test('previews entities whose domain contains a digit', () => {
+    const { entityIds } = summarizeSettingsImport(
+      { favoriteEntities: ['sensor.temp', 'ha_v2.thing', 'Light.Desk', 'graph:abc'] },
+      config
+    );
+    expect(entityIds).toEqual(['sensor.temp', 'ha_v2.thing', 'Light.Desk']);
+  });
+  test('rejects tile spans outside one to four columns and keeps an unset one', () => {
+    const fileWith = (tileSpans) => {
+      const file = buildSettingsFile(config);
+      file.settings.tileSpans = tileSpans;
+      return JSON.stringify(file);
+    };
+    expect(parseSettingsFile(fileWith({ 'light.desk': 4, 'sensor.temp': 1 })).tileSpans).toEqual({
+      'light.desk': 4,
+      'sensor.temp': 1,
+    });
+    expect(parseSettingsFile(fileWith(null)).tileSpans).toBeNull();
+    for (const bad of [10000, 0, 5, 1.5, -1, '2', null])
+      expect(() => parseSettingsFile(fileWith({ 'light.desk': bad }))).toThrow(
+        expect.objectContaining({ code: 'invalid_file' })
+      );
+  });
+  test('importing restores settings the exporting computer never set to their defaults', () => {
+    const { mergeSectionsIntoConfig } = require('../../profile-sync-core.js');
+    const source = { ...config, ui: { theme: 'dark' } };
+    delete source.selectedWeatherEntity;
+    delete source.tileSpans;
+    const settings = parseSettingsFile(serializeSettingsFile(source));
+    expect(settings.selectedWeatherEntity).toBeNull();
+    expect(settings.tileSpans).toBeNull();
+    expect(settings.ui.highContrast).toBeNull();
+    const destination = {
+      ...config,
+      selectedWeatherEntity: 'weather.other',
+      tileSpans: { 'light.desk': 3 },
+      ui: { theme: 'light', highContrast: true, scale: 1.25 },
+    };
+    const merged = mergeSectionsIntoConfig(destination, settingsFileSections(settings), {
+      clearNullUiKeys: true,
+    });
+    expect(merged.selectedWeatherEntity).toBeUndefined();
+    expect(merged.tileSpans).toBeUndefined();
+    expect(merged.ui).toEqual({ theme: 'dark', scale: 1.25 });
+  });
+  test('restoring the pre-import backup undoes ui keys the import added', () => {
+    const {
+      buildLocalSections,
+      markIncomingUiKeysCleared,
+      mergeSectionsIntoConfig,
+    } = require('../../profile-sync-core.js');
+    const before = { ...config, ui: { theme: 'light', scale: 1.25 } };
+    const incoming = settingsFileSections(
+      parseSettingsFile(
+        serializeSettingsFile({ ...config, ui: { theme: 'dark', highContrast: true, scale: 2 } })
+      )
+    );
+    const backup = markIncomingUiKeysCleared(
+      buildLocalSections(before, { preset: 'custom', sections: { visualPersonalization: true } }),
+      incoming
+    );
+    const options = { clearNullUiKeys: true };
+    const imported = mergeSectionsIntoConfig(before, incoming, options);
+    expect(imported.ui).toEqual({ theme: 'dark', highContrast: true, scale: 1.25 });
+    expect(mergeSectionsIntoConfig(imported, backup, options).ui).toEqual(before.ui);
+  });
+  test('restoring the pre-import backup leaves settings the import never touched', () => {
+    const {
+      buildLocalSections,
+      scopeBackupToIncoming,
+      mergeSectionsIntoConfig,
+    } = require('../../profile-sync-core.js');
+    const before = {
+      ...config,
+      alwaysOnTop: true,
+      trayEntities: { 'light.desk': true },
+      ui: { theme: 'light', personalizationSectionsCollapsed: { colors: true } },
+    };
+    const incoming = settingsFileSections(
+      parseSettingsFile(serializeSettingsFile({ ...config, ui: { theme: 'dark' } }))
+    );
+    const backup = scopeBackupToIncoming(
+      buildLocalSections(before, {
+        preset: 'custom',
+        sections: { quickAccessLayout: true, visualPersonalization: true },
+      }),
+      incoming
+    );
+    expect(backup.visualPersonalization).not.toHaveProperty('alwaysOnTop');
+    expect(backup.quickAccessLayout).not.toHaveProperty('trayEntities');
+    const options = { clearNullUiKeys: true };
+    // After the import the user changes settings the file does not carry.
+    const edited = {
+      ...mergeSectionsIntoConfig(before, incoming, options),
+      alwaysOnTop: false,
+      trayEntities: {},
+    };
+    edited.ui = { ...edited.ui, personalizationSectionsCollapsed: {} };
+    const restored = mergeSectionsIntoConfig(edited, backup, options);
+    expect(restored.ui.theme).toBe('light');
+    expect(restored.alwaysOnTop).toBe(false);
+    expect(restored.trayEntities).toEqual({});
+    expect(restored.ui.personalizationSectionsCollapsed).toEqual({});
+  });
+  test('rejects alert delays outside whole seconds up to a day', () => {
+    const withCooldown = (cooldownSeconds) => {
+      const file = buildSettingsFile(config);
+      file.settings.entityAlerts = {
+        enabled: true,
+        alerts: { 'sensor.temp': { onStateChange: true, cooldownSeconds } },
+      };
+      return JSON.stringify(file);
+    };
+    expect(parseSettingsFile(withCooldown(86400)).entityAlerts.alerts['sensor.temp']).toEqual({
+      onStateChange: true,
+      cooldownSeconds: 86400,
+    });
+    for (const bad of [1e308, -1, 1.5]) {
+      expect(() => parseSettingsFile(withCooldown(bad))).toThrow();
+    }
+    // A stray delay saved locally is left out of an export instead of blocking it.
+    const exported = parseSettingsFile(
+      serializeSettingsFile({
+        ...config,
+        entityAlerts: {
+          enabled: true,
+          alerts: { 'sensor.temp': { onStateChange: true, durationSeconds: 999999 } },
+        },
+      })
+    );
+    expect(exported.entityAlerts.alerts['sensor.temp']).toEqual({ onStateChange: true });
+  });
+  test('exports despite an out-of-range span saved locally, leaving that span out', () => {
+    const settings = parseSettingsFile(
+      serializeSettingsFile({ ...config, tileSpans: { 'light.desk': 2, 'sensor.temp': 9 } })
+    );
+    expect(settings.tileSpans).toEqual({ 'light.desk': 2 });
+  });
+  test('rejects a file that clears the whole ui object', () => {
+    const file = buildSettingsFile(config);
+    file.settings.ui = null;
+    expect(() => parseSettingsFile(JSON.stringify(file))).toThrow();
+  });
+  test('round trips a saved profile with Unicode and a byte order mark', () => {
+    const next = { ...config, customTabs: [{ id: 'home', name: '温度', entityIds: [] }] };
+    expect(parseSettingsFile(`\uFEFF${serializeSettingsFile(next)}`).customTabs[0].name).toBe(
+      '温度'
+    );
+  });
+});
