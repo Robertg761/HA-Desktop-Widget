@@ -34,6 +34,8 @@ To start the widget through a wrapper or a different executable when it is not r
 
 The widget must be running for the plugin to show values; the plugin never receives Home Assistant credentials. The widget publishes the tiles to `$XDG_RUNTIME_DIR/ha-desktop-widget/omarchy-bar.json`, and the plugin sends its actions over the widget's socket, `omarchy-bar.sock` in the same directory, which only your user can open. When the widget is not running, the plugin starts it through its command line. Updating the widget also updates an installed plugin. The Omarchy shell keeps running the old version of a changed plugin until it restarts, at your next login or with `omarchy-restart-shell`. Omarchy 3 uses waybar, which cannot load these plugins; the tray icon is available there instead.
 
+Running timers count down every second in the bar and its open panel, even while the desktop widget is hidden. This includes timer sensors such as Google Kitchen Timer. The shell calculates the time left from the timer's deadline between Home Assistant state updates.
+
 ## Shortcuts
 
 First-run setup explains desktop-layer visibility and offers a popup shortcut check. Use Set up shortcuts to open the Hotkeys settings, configure a popup shortcut, and copy its binding into Hyprland. Return to setup, press the shortcut, then choose Check popup shortcut. Setup can also continue without a shortcut.
