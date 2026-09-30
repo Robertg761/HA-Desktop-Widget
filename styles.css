@@ -11602,6 +11602,11 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   text-align: center;
 }
 
+/* The full-screen overlay takes focus while recording; a ring around the window would only distract. */
+.hotkey-capture-modal:focus {
+  outline: none;
+}
+
 .hotkey-preview-box {
   margin: 16px 0;
   padding: 12px 20px;

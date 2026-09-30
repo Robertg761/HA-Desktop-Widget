@@ -149,7 +149,7 @@ function renderHotkeysTab() {
       item.innerHTML = `
                 <span class="entity-name">${displayName}</span>
                 <div class="hotkey-input-container">
-                    <input type="text" readonly class="hotkey-input" value="${escapedHotkey}" placeholder="${escapeHtmlAttribute(t('None'))}" data-entity-id="${escapedEntityId}">
+                    <input type="text" readonly role="button" aria-label="${escapeHtmlAttribute(t('Hotkey for {{name}}', { name: getEntityDisplayName(entity) }))}" aria-keyshortcuts="Enter Space" class="hotkey-input" value="${escapedHotkey}" placeholder="${escapeHtmlAttribute(t('None'))}" data-entity-id="${escapedEntityId}">
                     ${dropdownHTML}
                     <button type="button" class="btn-clear-hotkey" title="${escapeHtmlAttribute(t('Clear hotkey'))}" aria-label="${escapeHtmlAttribute(t('Clear hotkey'))}">&times;</button>
                 </div>
@@ -189,6 +189,8 @@ async function assignHotkeyToEntity(entityId, options = {}) {
     const currentAction =
       typeof currentConfig === 'object' && currentConfig?.action ? currentConfig.action : null;
     const action = options.action || currentAction || getDefaultActionForEntity(entity);
+    const origin = document.activeElement;
+    const openedFromField = !!origin?.classList?.contains('hotkey-input');
     const hotkey = await captureHotkey();
 
     if (!hotkey) {
@@ -199,6 +201,13 @@ async function assignHotkeyToEntity(entityId, options = {}) {
     if (result?.success) {
       state.CONFIG.globalHotkeys.hotkeys[entityId] = { hotkey, action };
       renderHotkeysTab();
+      // The re-render replaces the field that opened the recorder, so refocus its replacement.
+      if (openedFromField && !origin.isConnected) {
+        const inputs = document.querySelectorAll('#hotkeys-list .hotkey-input');
+        Array.from(inputs)
+          .find((input) => input.dataset.entityId === entityId)
+          ?.focus();
+      }
       showToast(
         t('Hotkey set for {{name}}', { name: getEntityDisplayName(entity) }),
         'success',
@@ -303,17 +312,25 @@ function captureHotkey() {
     try {
       const modal = document.createElement('div');
       modal.className = 'hotkey-capture-modal';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      modal.setAttribute('aria-label', t('Press the desired key combination...'));
+      // Nothing inside is focusable, so the dialog itself takes focus while it records.
+      modal.tabIndex = -1;
       modal.innerHTML = `
                 <div class="modal-content">
                     <p>${escapeHtml(t('Press the desired key combination...'))}</p>
-                    <div id="hotkey-preview" class="hotkey-preview-box"></div>
+                    <div id="hotkey-preview" class="hotkey-preview-box" role="status"></div>
                     <p><small>${escapeHtml(t('Press Esc to cancel.'))}</small></p>
                 </div>
             `;
       document.body.appendChild(modal);
       // Registered as the top dialog so Escape pressed with focus on <body> reaches this overlay
       // rather than closing the dialog underneath it (Settings).
+      // The trap remembers the control that opened this and hands focus back when it closes; key
+      // capture listens on the document, so it still sees keys while the dialog has focus.
       trapFocus(modal, { initialFocus: false });
+      modal.focus();
       // Scoped rather than by id: the overlay now animates out, so a previous capture's node can
       // still be in the document when the next one opens.
       const previewBox = modal.querySelector('#hotkey-preview');

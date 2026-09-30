@@ -1,6 +1,11 @@
 import state from './state.js';
 import * as utils from './utils.js';
-import { openEntityDetailModal, getEntityDomain, switchQuickAccessPage } from './ui.js';
+import {
+  openEntityDetailModal,
+  getEntityDomain,
+  switchQuickAccessPage,
+  requestAlarmCode,
+} from './ui.js';
 import websocket from './websocket.js';
 import { releaseFocusTrap, showToast, trapFocus } from './ui-utils.js';
 import { t } from './i18n.js';
@@ -251,7 +256,11 @@ function buildPaletteCommands(entities, config = state.CONFIG, services = state.
   const commands = entities.flatMap((entity) => {
     const domain = getEntityDomain(entity.entity_id);
     const name = utils.getEntityDisplayName(entity);
-    if (['unavailable', 'unknown'].includes(entity.state)) return [];
+    if (
+      entity.state === 'unavailable' ||
+      (entity.state === 'unknown' && !['scene', 'script'].includes(domain))
+    )
+      return [];
     // Only offer the action that changes something: a device that is on gets "Turn off".
     const actions = ['light', 'switch', 'fan', 'input_boolean'].includes(domain)
       ? [
@@ -265,7 +274,9 @@ function buildPaletteCommands(entities, config = state.CONFIG, services = state.
               entity.state === 'unlocked' && ['lock', t('Lock {{name}}', { name })],
               entity.state === 'locked' && ['unlock', t('Unlock {{name}}', { name })],
             ].filter(Boolean)
-          : [];
+          : domain === 'alarm_control_panel'
+            ? getAlarmActions(entity, name)
+            : [];
     return actions
       .filter(([service]) => services?.[domain]?.[service])
       .map(([service, displayName]) => ({
@@ -294,6 +305,20 @@ function buildPaletteCommands(entities, config = state.CONFIG, services = state.
 
 // A lock or alarm panel row has no default action. Point at its explicit command instead of
 // closing, or explain why there is none.
+function getAlarmActions(entity, name) {
+  const features = Number(entity.attributes?.supported_features) || 0;
+  return [
+    [1, 'alarm_arm_home', 'armed_home', t('Arm {{name}} at home', { name })],
+    [2, 'alarm_arm_away', 'armed_away', t('Arm {{name}} away', { name })],
+    [4, 'alarm_arm_night', 'armed_night', t('Arm {{name}} at night', { name })],
+    [16, 'alarm_arm_custom_bypass', 'armed_custom_bypass', t('Arm {{name}} with bypass', { name })],
+    [32, 'alarm_arm_vacation', 'armed_vacation', t('Arm {{name}} for vacation', { name })],
+  ]
+    .filter(([flag, , target]) => (features & flag) === flag && entity.state !== target)
+    .map(([, service, , label]) => [service, label])
+    .concat(entity.state !== 'disarmed' ? [['alarm_disarm', t('Disarm {{name}}', { name })]] : []);
+}
+
 function redirectToExplicitCommand(selected) {
   const entityId = selected.entity.entity_id;
   const commandIndex = results.findIndex(
@@ -307,7 +332,9 @@ function redirectToExplicitCommand(selected) {
   const name = utils.getEntityDisplayName(selected.entity);
   const hasCommand = (paletteCommands || []).some((item) => item.entity?.entity_id === entityId);
   hint.textContent = hasCommand
-    ? t('To control {{name}}, type "lock" or "unlock".', { name })
+    ? getEntityDomain(entityId) === 'alarm_control_panel'
+      ? t('To control {{name}}, type "arm" or "disarm".', { name })
+      : t('To control {{name}}, type "lock" or "unlock".', { name })
     : t('No command is available for {{name}}.', { name });
   hint.hidden = false;
 }
@@ -334,16 +361,30 @@ async function executeHighlightedResult() {
       const result = await switchQuickAccessPage(selected.tabId);
       if (result?.success === false) return;
     } else {
-      const current = state.STATES[selected.entity.entity_id];
+      let current = state.STATES[selected.entity.entity_id];
+      const allowed = () =>
+        websocket.isConnected() &&
+        current &&
+        buildPaletteCommands([current], state.CONFIG, state.SERVICES).some(
+          (item) => item.service === selected.service && item.domain === selected.domain
+        );
+      if (!allowed()) throw new Error(t('Entity is unavailable'));
+      let code = null;
       if (
-        !websocket.isConnected() ||
-        !current ||
-        ['unknown', 'unavailable'].includes(current.state)
+        selected.domain === 'alarm_control_panel' &&
+        current.attributes?.code_format &&
+        (selected.service === 'alarm_disarm' || current.attributes?.code_arm_required !== false)
       ) {
-        throw new Error(t('Entity is unavailable'));
+        const connection = JSON.stringify(state.CONFIG.homeAssistant);
+        code = await requestAlarmCode(current);
+        if (code === null) return;
+        current = state.STATES[selected.entity.entity_id];
+        if (connection !== JSON.stringify(state.CONFIG.homeAssistant) || !allowed())
+          throw new Error(t('Entity is unavailable'));
       }
       await websocket.callService(selected.domain, selected.service, {
         entity_id: current.entity_id,
+        ...(code !== null ? { code } : {}),
       });
       showToast(t('Command sent'), 'success', 1600);
     }

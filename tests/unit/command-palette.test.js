@@ -1,6 +1,7 @@
 jest.mock('../../src/ui.js', () => ({
   openEntityDetailModal: jest.fn(),
   switchQuickAccessPage: jest.fn(async () => ({ success: true })),
+  requestAlarmCode: jest.fn(async () => null),
   getEntityDomain: (entityId) => String(entityId || '').split('.')[0],
 }));
 jest.mock('../../src/websocket.js', () => ({
@@ -69,6 +70,27 @@ describe('command palette fuzzy scoring', () => {
       ['lock.front', 'unlock', 'Unlock Front door'],
       ['lock.back', 'lock', 'Lock Back door'],
     ]);
+  });
+  it('offers only supported alarm modes and skips the mode already armed', () => {
+    const commands = buildPaletteCommands(
+      [
+        {
+          entity_id: 'alarm_control_panel.home',
+          state: 'armed_home',
+          attributes: { friendly_name: 'Home', supported_features: 3 },
+        },
+      ],
+      { customTabs: [] },
+      {
+        alarm_control_panel: {
+          alarm_arm_home: {},
+          alarm_arm_away: {},
+          alarm_arm_night: {},
+          alarm_disarm: {},
+        },
+      }
+    );
+    expect(commands.map((item) => item.service)).toEqual(['alarm_arm_away', 'alarm_disarm']);
   });
   it('scores exact, prefix, substring, and subsequence matches in descending tiers', () => {
     const exact = scoreCommandPaletteMatch('Kitchen Light', 'Kitchen Light');
@@ -421,6 +443,65 @@ describe('command palette recents', () => {
       expect(document.querySelector('.command-palette-hint').textContent).toBe(
         'No command is available for Home alarm.'
       );
+    });
+    const loadAlarm = () => {
+      const loaded = load();
+      const alarm = {
+        entity_id: 'alarm_control_panel.home',
+        state: 'armed_home',
+        attributes: {
+          friendly_name: 'Home alarm',
+          supported_features: 3,
+          code_format: 'number',
+          code_arm_required: true,
+        },
+      };
+      loaded.paletteState.setStates({ [alarm.entity_id]: alarm });
+      loaded.paletteState.setServices({
+        alarm_control_panel: { alarm_arm_home: {}, alarm_arm_away: {}, alarm_disarm: {} },
+      });
+      return {
+        ...loaded,
+        alarm,
+        requestCode: require('../../src/ui.js').requestAlarmCode,
+        websocket: require('../../src/websocket.js').default,
+      };
+    };
+    it('keeps disarm out of an empty query and cancels without sending a command', async () => {
+      const { palette, requestCode, websocket } = loadAlarm();
+      palette.openCommandPalette();
+      expect(resultNames()).not.toContain('Disarm Home alarm');
+      search('disarm');
+      requestCode.mockResolvedValueOnce(null);
+      await run('Disarm Home alarm');
+      expect(requestCode).toHaveBeenCalledTimes(1);
+      expect(websocket.callService).not.toHaveBeenCalled();
+    });
+    it('sends a requested code only in the service payload and never persists it', async () => {
+      const { palette, requestCode, websocket } = loadAlarm();
+      requestCode.mockResolvedValueOnce('0123');
+      palette.openCommandPalette();
+      search('disarm');
+      await run('Disarm Home alarm');
+      expect(websocket.callService).toHaveBeenCalledWith('alarm_control_panel', 'alarm_disarm', {
+        entity_id: 'alarm_control_panel.home',
+        code: '0123',
+      });
+      expect(JSON.stringify(Object.values(localStorage))).not.toContain('0123');
+    });
+    it('rejects a command if capabilities or the connection changed during code capture', async () => {
+      const { palette, paletteState, alarm, requestCode, websocket } = loadAlarm();
+      requestCode.mockImplementationOnce(async () => {
+        paletteState.setEntityState({
+          ...alarm,
+          attributes: { ...alarm.attributes, supported_features: 0 },
+        });
+        return '0123';
+      });
+      palette.openCommandPalette();
+      search('arm away');
+      await run('Arm Home alarm away');
+      expect(websocket.callService).not.toHaveBeenCalled();
     });
   });
 

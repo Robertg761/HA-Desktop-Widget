@@ -1,10 +1,19 @@
-function getNextQuickAccessFocusIndex(currentIndex, itemCount, key, columns = 1) {
+function getNextQuickAccessFocusIndex(
+  currentIndex,
+  itemCount,
+  key,
+  columns = 1,
+  direction = 'ltr'
+) {
   if (!Number.isInteger(itemCount) || itemCount <= 0) return -1;
 
   const normalizedCurrent = Number.isInteger(currentIndex)
     ? Math.min(Math.max(currentIndex, 0), itemCount - 1)
     : 0;
   const normalizedColumns = Math.max(1, Number.isInteger(columns) ? columns : 1);
+  if (direction === 'rtl' && ['ArrowLeft', 'ArrowRight'].includes(key)) {
+    key = key === 'ArrowLeft' ? 'ArrowRight' : 'ArrowLeft';
+  }
 
   switch (key) {
     case 'ArrowLeft':

@@ -1,4 +1,5 @@
 import state from './state.js';
+import { getHelperActions, getHelperServiceData } from './helper-controls.js';
 import {
   isEntityAvailable,
   canPerformMediaAction,
@@ -479,6 +480,10 @@ const todoItemsPendingByEntity = new Map();
 let entityCacheIdentity = null;
 let entityCacheGeneration = 0;
 const entityDetailClosers = new Set();
+// One entity can render as a primary card, a Quick Access tile and a pin at once, so readout IDs
+// belong to the tile element rather than the entity.
+const tileStateReadoutIds = new WeakMap();
+let tileStateReadoutCount = 0;
 // Lets a dialog that closes itself programmatically unregister from entityDetailClosers too.
 const entityDetailModalClosers = new WeakMap();
 
@@ -1425,10 +1430,19 @@ function handleQuickAccessGridKeydown(event) {
     currentIndex,
     visibleTiles.length,
     event.key,
-    getQuickAccessGridColumnCount(container)
+    getQuickAccessGridColumnCount(container),
+    window.getComputedStyle(container).direction || document.documentElement.dir
   );
   const nextTile = visibleTiles[nextIndex];
   if (!nextTile) return;
+  // Left and right move within the row on screen, in either direction and with wide tiles;
+  // they never jump to the far edge of the neighbouring row.
+  if (
+    (event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
+    Math.abs(nextTile.getBoundingClientRect().top - tile.getBoundingClientRect().top) > 1
+  ) {
+    return;
+  }
 
   syncQuickAccessRovingTabIndex(nextTile);
   (nextTile.querySelector('.tile-primary-button') || nextTile).focus();
@@ -2712,7 +2726,21 @@ const QUICK_ACCESS_TOGGLE_DOMAINS = new Set([
   'timer',
 ]);
 const QUICK_ACCESS_ACTIVATE_DOMAINS = new Set(['button', 'input_button', 'scene', 'script']);
-const QUICK_ACCESS_DIALOG_DOMAINS = new Set(['calendar', 'camera', 'climate', 'sensor', 'todo']);
+const QUICK_ACCESS_HELPER_DOMAINS = new Set([
+  'number',
+  'input_number',
+  'select',
+  'input_select',
+  'vacuum',
+]);
+const QUICK_ACCESS_DIALOG_DOMAINS = new Set([
+  'calendar',
+  'camera',
+  'climate',
+  'sensor',
+  'todo',
+  ...QUICK_ACCESS_HELPER_DOMAINS,
+]);
 // Tiles that carry the adjust button (openEntityControls).
 const QUICK_ACCESS_CONTROLS_DOMAINS = new Set(['climate', 'cover', 'fan', 'light', 'media_player']);
 
@@ -3029,14 +3057,15 @@ function setQuickAccessTileStateLine(div, text) {
   let stateEl = info.querySelector(':scope > .control-state');
   if (!text) {
     stateEl?.remove();
-    return;
-  }
-  if (!stateEl) {
+  } else if (!stateEl) {
     stateEl = document.createElement('div');
     stateEl.className = 'control-state';
     info.appendChild(stateEl);
   }
-  if (stateEl.textContent !== text) stateEl.textContent = text;
+  if (stateEl && text && stateEl.textContent !== text) stateEl.textContent = text;
+  // Keep aria-describedby pointing at the readout when the line is added or dropped, including
+  // on a tile that first rendered without one.
+  linkTileStateReadout(div);
 }
 
 function applyQuickAccessTileActiveState(element, entity) {
@@ -9314,12 +9343,26 @@ function createControlElement(entity, options = {}) {
           executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
       };
       div.title = t('Click to press {{name}}', { name: utils.getEntityDisplayName(entity) });
-    } else {
+    } else if (QUICK_ACCESS_HELPER_DOMAINS.has(domain)) {
+      div.onclick = () => {
+        if (!shouldBlockInteraction(div)) openEntityControls(entity);
+      };
+      div.title = t('Click to view {{name}}', { name: utils.getEntityDisplayName(entity) });
+    } else if (
+      QUICK_ACCESS_TOGGLE_DOMAINS.has(domain) ||
+      QUICK_ACCESS_ACTIVATE_DOMAINS.has(domain) ||
+      domain === 'automation'
+    ) {
       div.onclick = () => {
         if (!shouldBlockInteraction(div))
           executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
       };
       div.title = t('Click to toggle {{name}}', { name: utils.getEntityDisplayName(entity) });
+    } else {
+      div.title = t('{{name}}: {{state}}', {
+        name: utils.getEntityDisplayName(entity),
+        state: utils.getEntityDisplayState(entity),
+      });
     }
 
     const name = utils.escapeHtml(utils.getEntityDisplayName(entity));
@@ -9476,6 +9519,10 @@ function createControlElement(entity, options = {}) {
       camera.mountCameraPreview(div, entity.entity_id, cameraPreviewRefresh);
     }
 
+    applyQuickAccessTileAccessibility(div, entity);
+
+    if (!isQuickAccessContext && !div.querySelector('.tile-primary-button')) div.tabIndex = 0;
+
     return div;
   } catch (error) {
     console.error('Error creating control element:', error);
@@ -9530,7 +9577,14 @@ function createUnavailableElement(entityId) {
 function applyQuickAccessTileAccessibility(div, entity) {
   if (!div || !entity?.entity_id) return;
   const primary = div.querySelector('.tile-primary-button');
-  div.setAttribute('role', primary ? 'group' : 'button');
+  const domain = getEntityDomain(entity.entity_id);
+  const readOnly =
+    !QUICK_ACCESS_DIALOG_DOMAINS.has(domain) &&
+    !QUICK_ACCESS_TOGGLE_DOMAINS.has(domain) &&
+    !QUICK_ACCESS_ACTIVATE_DOMAINS.has(domain) &&
+    domain !== 'automation' &&
+    !div.classList.contains('unavailable-entity');
+  div.setAttribute('role', primary || readOnly ? 'group' : 'button');
   div.setAttribute('aria-label', utils.getEntityDisplayName(entity));
   if (primary) {
     div.removeAttribute('tabindex');
@@ -9546,8 +9600,25 @@ function applyQuickAccessTileAccessibility(div, entity) {
   } else {
     div.setAttribute('tabindex', '-1');
     // Only tiles with a Controls button advertise Shift+Enter.
-    div.setAttribute('aria-keyshortcuts', 'Enter Space');
+    if (readOnly) div.removeAttribute('aria-keyshortcuts');
+    else div.setAttribute('aria-keyshortcuts', 'Enter Space');
   }
+  linkTileStateReadout(div);
+}
+
+function linkTileStateReadout(div) {
+  const readout = div.querySelector('.control-state');
+  const described = div.querySelector('.tile-primary-button') || div;
+  if (!readout) {
+    described.removeAttribute('aria-describedby');
+    return;
+  }
+  if (!tileStateReadoutIds.has(div)) {
+    tileStateReadoutCount += 1;
+    tileStateReadoutIds.set(div, `tile-state-${tileStateReadoutCount}`);
+  }
+  readout.id = tileStateReadoutIds.get(div);
+  described.setAttribute('aria-describedby', readout.id);
 }
 
 function updateExistingUnavailableControl(div, entityId) {
@@ -9930,6 +10001,25 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
 
   setQuickAccessTileStateLine(div, getQuickAccessTileStateText(displayEntity));
   const liveEntity = () => state.STATES?.[displayEntity.entity_id] || displayEntity;
+  if (QUICK_ACCESS_HELPER_DOMAINS.has(domain)) {
+    div.onclick = () => {
+      if (!shouldBlockInteraction(div)) openEntityControls(liveEntity());
+    };
+    div.title = t('Click to view {{name}}', { name: utils.getEntityDisplayName(displayEntity) });
+    return true;
+  }
+  if (
+    !QUICK_ACCESS_TOGGLE_DOMAINS.has(domain) &&
+    !QUICK_ACCESS_ACTIVATE_DOMAINS.has(domain) &&
+    domain !== 'automation'
+  ) {
+    div.onclick = null;
+    div.title = t('{{name}}: {{state}}', {
+      name: utils.getEntityDisplayName(displayEntity),
+      state: utils.getEntityDisplayState(displayEntity),
+    });
+    return true;
+  }
   div.onclick = () => {
     if (!shouldBlockInteraction(div))
       executeEntityPrimaryAction(liveEntity(), { source: 'quick-access-click' });
@@ -10050,7 +10140,11 @@ function activateAccessibleDialogModal(modal, { titleIdPrefix = 'dialog-title' }
 
   if (typeof uiUtils.trapFocus === 'function') {
     setTimeout(() => {
-      if (modal.isConnected) uiUtils.trapFocus(modal);
+      // Content added after activation can name its own first stop, such as a code field.
+      const initialFocus = modal.querySelector('[data-initial-focus]');
+      if (!modal.isConnected) return;
+      if (initialFocus) uiUtils.trapFocus(modal, { initialFocus });
+      else uiUtils.trapFocus(modal);
     }, 0);
   }
 }
@@ -10156,6 +10250,177 @@ function createEntityDetailModal({ className, title, onClose = null }) {
     closeBtn?.focus();
   }
   return modal;
+}
+
+function showHelperControls(entity) {
+  let unsubscribe = null;
+  let closed = false;
+  let busy = false;
+  const modal = createEntityDetailModal({
+    className: 'helper-controls-modal',
+    title: utils.getEntityDisplayName(entity),
+    onClose: () => {
+      closed = true;
+      unsubscribe?.();
+    },
+  });
+  const body = modal.querySelector('.modal-body');
+  const domain = getEntityDomain(entity.entity_id);
+  const live = () => state.STATES?.[entity.entity_id];
+  const form = document.createElement('form');
+  const readout = document.createElement('p');
+  readout.setAttribute('role', 'status');
+  body.append(readout, form);
+  let input = null;
+  if (domain !== 'vacuum') {
+    const label = document.createElement('label');
+    label.textContent = utils.getEntityDisplayName(entity);
+    input = document.createElement(
+      ['select', 'input_select'].includes(domain) ? 'select' : 'input'
+    );
+    input.className = 'form-control';
+    if (input.tagName === 'INPUT') input.type = 'number';
+    label.append(input);
+    form.append(label);
+  }
+  const actions = document.createElement('div');
+  form.append(actions);
+  const refresh = () => {
+    const current = live();
+    const available = isEntityAvailable(current);
+    readout.textContent = available
+      ? utils.getEntityDisplayState(current)
+      : t('Entity is unavailable');
+    if (input) {
+      input.disabled = !available || busy;
+      if (input.tagName === 'SELECT') {
+        const options = current?.attributes?.options || [];
+        const selected = document.activeElement === input ? input.value : current?.state;
+        input.replaceChildren(...options.map((value) => new Option(value, value)));
+        input.value = options.includes(selected) ? selected : current?.state || '';
+      } else {
+        for (const attr of ['min', 'max', 'step']) {
+          const value = current?.attributes?.[attr];
+          if (value != null) input.setAttribute(attr, String(value));
+          else input.removeAttribute(attr);
+        }
+        if (!input.hasAttribute('step')) input.step = 'any';
+        if (document.activeElement !== input)
+          input.value = Number.isFinite(Number(current?.state)) ? current.state : '';
+      }
+    }
+    const supported = getHelperActions(current || entity, state.SERVICES);
+    if (input && !supported.length) input.disabled = true;
+    const focusedService = actions.contains(document.activeElement)
+      ? document.activeElement.dataset.service
+      : null;
+    actions.replaceChildren();
+    supported.forEach((action) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn-primary';
+      button.dataset.service = action.service;
+      button.textContent = t(action.label);
+      button.disabled = !available || busy;
+      button.onclick = () => void run(action.service);
+      actions.append(button);
+    });
+    if (focusedService && !busy)
+      actions.querySelector(`[data-service="${focusedService}"]`)?.focus();
+    if (!supported.length && available) readout.textContent = t('No controls available');
+  };
+  const run = async (service) => {
+    const current = live();
+    if (
+      closed ||
+      busy ||
+      !isEntityAvailable(current) ||
+      !getHelperActions(current, state.SERVICES).some((action) => action.service === service)
+    )
+      return;
+    const data = getHelperServiceData(current, input?.value);
+    if (!data || (input && !input.checkValidity())) {
+      uiUtils.showToast(t('Invalid value'), 'error');
+      input?.focus();
+      return;
+    }
+    busy = true;
+    const focusedInput = document.activeElement === input;
+    const focusedAction = actions.contains(document.activeElement)
+      ? document.activeElement.dataset.service
+      : null;
+    refresh();
+    try {
+      await websocket.callService(domain, service, data);
+      if (!closed) uiUtils.showToast(t('Command sent'), 'success');
+    } catch {
+      if (!closed)
+        uiUtils.showToast(t('Could not run command. Check your connection and retry.'), 'error');
+    } finally {
+      busy = false;
+      if (!closed) {
+        refresh();
+        if (focusedInput && !input.disabled) input.focus();
+        else if (focusedAction)
+          actions.querySelector(`[data-service="${focusedAction}"]:not(:disabled)`)?.focus();
+      }
+    }
+  };
+  form.onsubmit = (event) => {
+    event.preventDefault();
+    const action = getHelperActions(live() || entity, state.SERVICES)[0];
+    if (action) void run(action.service);
+  };
+  unsubscribe = state.subscribeEntity(entity.entity_id, () => {
+    if (!closed) refresh();
+  });
+  refresh();
+}
+
+function requestAlarmCode(entity) {
+  return new Promise((resolve) => {
+    let code = null;
+    let input = null;
+    const modal = createEntityDetailModal({
+      className: 'alarm-code-modal',
+      title: utils.getEntityDisplayName(entity),
+      onClose: () => {
+        if (input) input.value = '';
+        resolve(code);
+      },
+    });
+    const form = document.createElement('form');
+    const label = document.createElement('label');
+    label.textContent = t('Alarm code');
+    input = document.createElement('input');
+    input.className = 'form-control';
+    input.type = 'password';
+    input.required = true;
+    input.maxLength = 128;
+    input.autocomplete = 'off';
+    if (entity.attributes?.code_format === 'number') {
+      input.inputMode = 'numeric';
+      input.pattern = '[0-9]+';
+    }
+    label.append(input);
+    const submit = document.createElement('button');
+    submit.type = 'submit';
+    submit.className = 'btn-primary';
+    submit.textContent = t('Apply');
+    form.append(label, submit);
+    modal.querySelector('.modal-body').append(form);
+    form.onsubmit = (event) => {
+      event.preventDefault();
+      if (!input.checkValidity()) {
+        input.reportValidity();
+        return;
+      }
+      code = input.value;
+      modal.querySelector('.close-btn').click();
+    };
+    // The focus trap installs after this and would otherwise start on the close button.
+    input.dataset.initialFocus = '';
+  });
 }
 
 // Callers that can tell the entity was deleted pass `getEntity`, so a late response or a click
@@ -10438,26 +10703,43 @@ function showCalendarDetails(entity) {
 
     const listContainer = document.createElement('div');
     listContainer.className = 'calendar-events-list';
-    listContainer.textContent = t('Loading...');
-    body.appendChild(listContainer);
-
-    const start = new Date();
-    const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
-    callServiceWithResponse('calendar', 'get_events', {
-      entity_id: entity.entity_id,
-      start_date_time: start.toISOString(),
-      end_date_time: end.toISOString(),
-    })
-      .then((response) => {
+    listContainer.setAttribute('role', 'status');
+    const range = document.createElement('p');
+    range.textContent = t('Upcoming events for the next 7 days');
+    const refresh = document.createElement('button');
+    refresh.type = 'button';
+    refresh.textContent = t('Refresh');
+    body.append(range, refresh, listContainer);
+    let loading = false;
+    refresh.onclick = async () => {
+      if (loading) return;
+      loading = true;
+      refresh.setAttribute('aria-busy', 'true');
+      listContainer.textContent = t('Loading...');
+      const start = new Date();
+      const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
+      try {
+        const response = await callServiceWithResponse('calendar', 'get_events', {
+          entity_id: entity.entity_id,
+          start_date_time: start.toISOString(),
+          end_date_time: end.toISOString(),
+        });
+        if (!modal.isConnected || modal.classList.contains('modal-closing')) return;
         renderCalendarEventsInto(
           listContainer,
           normalizeCalendarEvents(response, entity.entity_id)
         );
-      })
-      .catch((error) => {
-        console.warn('Unable to fetch calendar events:', error);
+        refresh.textContent = t('Refresh');
+      } catch {
+        if (!modal.isConnected || modal.classList.contains('modal-closing')) return;
         listContainer.textContent = t('Unable to load events');
-      });
+        refresh.textContent = t('Retry');
+      } finally {
+        loading = false;
+        refresh.removeAttribute('aria-busy');
+      }
+    };
+    void refresh.onclick();
   } catch (error) {
     console.error('Error showing calendar details:', error);
   }
@@ -11730,6 +12012,11 @@ function executeEntityPrimaryAction(entity, options = {}) {
       return;
     }
 
+    if (QUICK_ACCESS_HELPER_DOMAINS.has(domain)) {
+      showHelperControls(liveEntity);
+      return;
+    }
+
     toggleEntity(liveEntity);
   } catch (error) {
     console.error('Error executing entity primary action:', error);
@@ -11777,6 +12064,13 @@ function openEntityControls(entity) {
       case 'sensor':
         if (isTimer) return false;
         showSensorDetails(liveEntity);
+        return true;
+      case 'number':
+      case 'input_number':
+      case 'select':
+      case 'input_select':
+      case 'vacuum':
+        showHelperControls(liveEntity);
         return true;
       default:
         return false;
@@ -14054,6 +14348,26 @@ function populateQuickControlsList({ resetSearch = true } = {}) {
     const searchInput = document.getElementById('quick-controls-search');
     const targetHint = document.getElementById('quick-controls-target-hint');
     if (!list) return;
+    const pageSize = 50;
+    if (resetSearch) list.dataset.page = '0';
+    let page = Number(list.dataset.page) || 0;
+    let searchTimer = null;
+    let pager = document.getElementById('quick-controls-pagination');
+    if (!pager) {
+      pager = document.createElement('div');
+      pager.id = 'quick-controls-pagination';
+      pager.className = 'entity-selector-pagination';
+      list.after(pager);
+    }
+    const previous = document.createElement('button');
+    previous.type = 'button';
+    previous.textContent = t('Previous');
+    const count = document.createElement('span');
+    count.setAttribute('role', 'status');
+    const next = document.createElement('button');
+    next.type = 'button';
+    next.textContent = t('Next');
+    pager.replaceChildren(previous, count, next);
 
     const renderList = () => {
       const filter = searchInput ? searchInput.value.toLowerCase() : '';
@@ -14087,6 +14401,29 @@ function populateQuickControlsList({ resetSearch = true } = {}) {
             .localeCompare(utils.getEntityDisplayName(b.entity));
         });
 
+      const pages = Math.max(1, Math.ceil(scoredEntities.length / pageSize));
+      page = Math.min(page, pages - 1);
+      list.dataset.page = String(page);
+      count.textContent = t('Page {{page}} of {{pages}} · {{count}} entities', {
+        page: page + 1,
+        pages,
+        count: scoredEntities.length,
+      });
+      previous.setAttribute('aria-disabled', String(page === 0));
+      next.setAttribute('aria-disabled', String(page >= pages - 1));
+      previous.onclick = () => {
+        if (page > 0) {
+          page -= 1;
+          renderList();
+        }
+      };
+      next.onclick = () => {
+        if (page < pages - 1) {
+          page += 1;
+          renderList();
+        }
+      };
+      pager.hidden = scoredEntities.length <= pageSize;
       list.innerHTML = '';
       if (!scoredEntities.length) {
         const empty = document.createElement('p');
@@ -14096,7 +14433,7 @@ function populateQuickControlsList({ resetSearch = true } = {}) {
         return;
       }
 
-      scoredEntities.forEach(({ entity }) => {
+      scoredEntities.slice(page * pageSize, (page + 1) * pageSize).forEach(({ entity }) => {
         const item = document.createElement('div');
         item.className = 'entity-item';
 
@@ -14167,7 +14504,13 @@ function populateQuickControlsList({ resetSearch = true } = {}) {
 
     // Set up search with proper scoring
     if (searchInput) {
-      searchInput.oninput = () => renderList();
+      searchInput.oninput = () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+          page = 0;
+          renderList();
+        }, 150);
+      };
       // Note: Focus is managed by trapFocus() in renderer.js when modal opens
     }
   } catch (error) {
@@ -14437,6 +14780,7 @@ function removeEscapeKeyListener() {
 }
 
 export {
+  requestAlarmCode,
   ensureEntityCacheScope,
   showAddPageModal,
   restoreDashboard,

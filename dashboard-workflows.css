@@ -411,3 +411,34 @@ body:not(.theme-light) .alert-advanced-options input[type='time'] {
 .add-page-modal .modal-footer {
   flex: 0 0 auto;
 }
+
+.entity-selector-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block: 12px;
+}
+
+.entity-selector-pagination[hidden] {
+  display: none;
+}
+
+.entity-selector-pagination button[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.helper-controls-modal form,
+.alarm-code-modal form,
+.helper-controls-modal label,
+.alarm-code-modal label {
+  display: grid;
+  gap: 12px;
+}
+
+.helper-controls-modal form > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}

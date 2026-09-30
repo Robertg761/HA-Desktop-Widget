@@ -139,6 +139,7 @@ const ui = require('../../src/ui.js');
 const state = require('../../src/state.js').default;
 const { sampleConfig } = require('../fixtures/ha-data.js');
 const i18n = require('../../src/i18n.js');
+const uiUtils = require('../../src/ui-utils.js');
 const entity = (entity_id, value, attributes = {}) => ({ entity_id, state: value, attributes });
 const renderTiles = (states) => {
   const ids = states.map((item) => item.entity_id);
@@ -203,6 +204,201 @@ describe('device control and live data regressions', () => {
     expect(
       [...modal.querySelectorAll('.modal-body input,.modal-body button')].filter((e) => !e.disabled)
     ).toHaveLength(0);
+  });
+  test.each(['number', 'input_number'])(
+    '%s opens bounds-aware controls and sends a numeric zero',
+    async (domain) => {
+      const helper = entity(`${domain}.audit`, '3', { min: 0, max: 10, step: 1 });
+      state.setServices({ [domain]: { set_value: {} } });
+      renderTiles([helper]);
+      tile(helper.entity_id).click();
+      const input = document.querySelector('.helper-controls-modal input');
+      expect(input.min).toBe('0');
+      expect(input.max).toBe('10');
+      input.value = '0';
+      document
+        .querySelector('.helper-controls-modal form')
+        .dispatchEvent(new Event('submit', { cancelable: true }));
+      expect(mockCallService).toHaveBeenCalledWith(domain, 'set_value', {
+        entity_id: helper.entity_id,
+        value: 0,
+      });
+      await Promise.resolve();
+      liveUpdate({ ...helper, state: 'unavailable' });
+      expect(input.disabled).toBe(true);
+    }
+  );
+  test.each(['select', 'input_select'])(
+    '%s controls reject a removed option and follow live options',
+    (domain) => {
+      const helper = entity(`${domain}.audit`, 'Auto', { options: ['Auto', 'Quiet'] });
+      state.setServices({ [domain]: { select_option: {} } });
+      renderTiles([helper]);
+      tile(helper.entity_id).click();
+      const input = document.querySelector('.helper-controls-modal select');
+      input.value = 'Quiet';
+      document
+        .querySelector('.helper-controls-modal form')
+        .dispatchEvent(new Event('submit', { cancelable: true }));
+      expect(mockCallService).toHaveBeenCalledWith(domain, 'select_option', {
+        entity_id: helper.entity_id,
+        option: 'Quiet',
+      });
+      liveUpdate({ ...helper, attributes: { options: ['Auto'] } });
+      expect([...input.options].map((option) => option.value)).toEqual(['Auto']);
+    }
+  );
+  test('vacuum exposes only entity-supported services and stops accepting actions while unavailable', () => {
+    const robot = entity('vacuum.audit', 'docked', { supported_features: 8192 });
+    state.setServices({ vacuum: { start: {}, pause: {}, return_to_base: {} } });
+    renderTiles([robot]);
+    tile(robot.entity_id).click();
+    const body = document.querySelector('.helper-controls-modal .modal-body');
+    expect([...body.querySelectorAll('button')].map((button) => button.textContent)).toEqual([
+      'Start',
+    ]);
+    const oldButton = body.querySelector('button');
+    liveUpdate({ ...robot, state: 'unavailable' });
+    oldButton.click();
+    expect(mockCallService).not.toHaveBeenCalled();
+    expect(body.querySelector('button').disabled).toBe(true);
+  });
+  test('unsupported tiles keep a read-only role and truthful tooltip after a live update', () => {
+    const item = entity('binary_sensor.audit', 'off');
+    renderTiles([item]);
+    expect(tile(item.entity_id).getAttribute('role')).toBe('group');
+    expect(tile(item.entity_id).title).not.toMatch(/toggle/);
+    expect(tile(item.entity_id).hasAttribute('aria-keyshortcuts')).toBe(false);
+    liveUpdate({ ...item, state: 'on' });
+    tile(item.entity_id).click();
+    expect(tile(item.entity_id).title).not.toMatch(/toggle/);
+    expect(mockCallService).not.toHaveBeenCalled();
+  });
+  test('tile state is included in its accessible description and stays current', () => {
+    const light = entity('light.audit', 'off');
+    renderTiles([light]);
+    const target = tile(light.entity_id).querySelector('.tile-primary-button');
+    const readout = document.getElementById(target.getAttribute('aria-describedby'));
+    expect(readout.textContent).toBe('Off');
+    liveUpdate({ ...light, state: 'on' });
+    // The update may replace the tile, so read the description from the tile now on screen.
+    const current = tile(light.entity_id).querySelector('.tile-primary-button');
+    expect(document.getElementById(current.getAttribute('aria-describedby')).textContent).toBe(
+      'On'
+    );
+  });
+  test.each([
+    ['script.audit_idle', 'off', 'on', 'Active'],
+    ['scene.audit_idle', '2026-01-01T00:00:00+00:00', 'unavailable', 'Unavailable'],
+  ])('%s gains an accessible description when a state line appears later', (id, from, to, text) => {
+    const item = entity(id, from);
+    renderTiles([item]);
+    const before = tile(id);
+    expect(before.querySelector('.control-state')).toBeNull();
+    liveUpdate({ ...item, state: to });
+    const current = tile(id);
+    const readout = current.querySelector('.control-state');
+    expect(readout.textContent).toBe(text);
+    const described = current.querySelector('.tile-primary-button') || current;
+    expect(document.getElementById(described.getAttribute('aria-describedby'))).toBe(readout);
+  });
+  test('a primary card and a tile for the same entity describe themselves with their own readout', () => {
+    const light = entity('light.audit', 'off');
+    document.body.innerHTML +=
+      '<div class="status-grid"><div id="weather-card"></div><div id="time-card"></div></div>';
+    renderTiles([light]);
+    state.setConfig({ ...state.CONFIG, primaryCards: [light.entity_id, 'none'] });
+    ui.renderPrimaryCards();
+    const controls = [
+      ...document.querySelectorAll(`.control-item[data-entity-id="${light.entity_id}"]`),
+    ];
+    expect(controls).toHaveLength(2);
+    const readoutIds = controls.map((control) => {
+      const target = control.querySelector('.tile-primary-button') || control;
+      const id = target.getAttribute('aria-describedby');
+      expect(control.querySelector(`[id="${id}"]`)).not.toBeNull();
+      return id;
+    });
+    expect(new Set(readoutIds).size).toBe(2);
+    expect(document.querySelectorAll(`[id="${readoutIds[0]}"]`)).toHaveLength(1);
+  });
+  test('calendar explains the date window and retries after an error', async () => {
+    const calendar = entity('calendar.audit', 'off');
+    state.setEntityState(calendar);
+    mockCallServiceWithResponse
+      .mockRejectedValueOnce(new Error('Offline'))
+      .mockResolvedValueOnce({ 'calendar.audit': { events: [] } });
+    ui.openEntityControls(calendar);
+    await Promise.resolve();
+    await Promise.resolve();
+    const body = document.querySelector('.calendar-modal .modal-body');
+    expect(body.textContent).toContain('next 7 days');
+    expect(body.querySelector('button').textContent).toBe('Retry');
+    body.querySelector('button').click();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mockCallServiceWithResponse).toHaveBeenCalledTimes(2);
+    expect(body.textContent).toContain('No upcoming events');
+    expect(body.querySelector('button').textContent).toBe('Refresh');
+  });
+  test('large entity picker renders 50 rows at a time and searches across all pages', () => {
+    document.body.innerHTML +=
+      '<input id="quick-controls-search"><div id="quick-controls-list"></div>';
+    state.setStates(
+      Object.fromEntries(
+        Array.from({ length: 5000 }, (_, index) => {
+          const id = `sensor.audit_${String(index).padStart(4, '0')}`;
+          return [id, entity(id, '1')];
+        })
+      )
+    );
+    ui.populateQuickControlsList();
+    expect(document.querySelectorAll('#quick-controls-list .entity-item')).toHaveLength(50);
+    document.querySelector('#quick-controls-pagination button:last-child').click();
+    expect(document.querySelector('#quick-controls-list .entity-id').textContent).toBe(
+      'sensor.audit_0050'
+    );
+    const search = document.getElementById('quick-controls-search');
+    search.value = 'audit_4999';
+    search.dispatchEvent(new Event('input'));
+    jest.advanceTimersByTime(150);
+    expect(document.querySelectorAll('#quick-controls-list .entity-item')).toHaveLength(1);
+    expect(document.querySelector('#quick-controls-list .entity-id').textContent).toBe(
+      'sensor.audit_4999'
+    );
+  });
+  test('alarm prompt starts keyboard focus in the code field', () => {
+    void ui.requestAlarmCode(entity('alarm_control_panel.audit', 'armed_home', {}));
+    const modal = document.querySelector('.alarm-code-modal');
+    jest.advanceTimersByTime(1);
+    expect(uiUtils.trapFocus).toHaveBeenCalledWith(modal, {
+      initialFocus: modal.querySelector('input'),
+    });
+    modal.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  });
+  test('alarm prompt cancels on Escape and clears its secret field', async () => {
+    const pending = ui.requestAlarmCode(
+      entity('alarm_control_panel.audit', 'armed_home', { code_format: 'number' })
+    );
+    const modal = document.querySelector('.alarm-code-modal');
+    const input = modal.querySelector('input');
+    input.value = '1234';
+    modal.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(await pending).toBeNull();
+    expect(input.value).toBe('');
+  });
+  test('alarm prompt requires numeric code when specified and returns it only on submit', async () => {
+    const pending = ui.requestAlarmCode(
+      entity('alarm_control_panel.audit', 'disarmed', { code_format: 'number' })
+    );
+    const modal = document.querySelector('.alarm-code-modal');
+    const input = modal.querySelector('input');
+    input.value = 'bad';
+    expect(input.checkValidity()).toBe(false);
+    input.value = '0123';
+    modal.querySelector('form').dispatchEvent(new Event('submit', { cancelable: true }));
+    expect(await pending).toBe('0123');
+    expect(input.value).toBe('');
   });
   test('media detail shows controls a player gains while the dialog is open', () => {
     const player = entity('media_player.audit', 'unavailable', { supported_features: 0 });
