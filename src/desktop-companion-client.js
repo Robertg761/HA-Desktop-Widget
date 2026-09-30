@@ -130,6 +130,8 @@ class DesktopCompanionClient {
   async initializeSession() {
     if (!this.started || !this.websocket.isConnected?.()) return false;
     const generation = ++this.generation;
+    // A replacement socket can authenticate without a close event, so this is also a new session.
+    this.pendingCommands.clear();
     this.lastConfigSnapshot = null;
     this.integrationMissing = false;
     this.snapshotUnsupported = false;
