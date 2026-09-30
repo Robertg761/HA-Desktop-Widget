@@ -308,6 +308,37 @@ function markIncomingUiKeysCleared(backupSections, incomingSections) {
   return backupSections;
 }
 
+/**
+ * Keeps only what the incoming sections replace in a backup of them: their fields and, within ui,
+ * their keys. A settings file carries part of a section, so a whole-section backup would also
+ * hold settings the import never touched, and restoring it would undo later edits to those.
+ */
+function scopeBackupToIncoming(backupSections, incomingSections) {
+  if (!isObject(incomingSections)) return backupSections;
+  const scoped = {};
+  Object.entries(backupSections || {}).forEach(([key, data]) => {
+    const incoming = incomingSections[key];
+    if (!isObject(incoming) || !isObject(data)) return;
+    scoped[key] = Object.fromEntries(
+      Object.entries(data)
+        .filter(([field]) => Object.prototype.hasOwnProperty.call(incoming, field))
+        .map(([field, value]) =>
+          field === 'ui' && isObject(value) && isObject(incoming.ui)
+            ? [
+                field,
+                Object.fromEntries(
+                  Object.entries(value).filter(([uiKey]) =>
+                    Object.prototype.hasOwnProperty.call(incoming.ui, uiKey)
+                  )
+                ),
+              ]
+            : [field, value]
+        )
+    );
+  });
+  return markIncomingUiKeysCleared(scoped, incomingSections);
+}
+
 function buildLocalSections(config, syncScope = getDefaultSyncScope()) {
   return getScopeSectionKeys(syncScope).reduce((acc, key) => {
     acc[key] = projectSection(config, key);
@@ -848,6 +879,7 @@ module.exports = {
   projectSection,
   buildLocalSections,
   markIncomingUiKeysCleared,
+  scopeBackupToIncoming,
   mergeSectionsIntoConfig,
   computeProfileHash,
   computeSectionHash,

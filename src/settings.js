@@ -2822,6 +2822,16 @@ function cancelPreviewWindowEffects() {
  * frosted-glass) and requests the native/Electron layer to apply the same
  * preview. Errors are logged to the console.
  */
+/** The window effects a config saves, which closing Settings restores. */
+function savedWindowEffects(config) {
+  return {
+    opacity: Math.max(0.5, Math.min(1, config?.opacity || 0.95)),
+    frostedGlass: !!config?.frostedGlass,
+    weatherEffectsEnabled: !!config?.frostedGlass && !!config?.ui?.weatherEffectsEnabled,
+    weatherOverride: config?.ui?.weatherOverride || 'auto',
+  };
+}
+
 function restorePreviewWindowEffects() {
   if (!previewState) return;
 
@@ -4685,6 +4695,9 @@ async function openSettings(uiHooks) {
     initializeSettingsFiles({
       onImported: async (nextConfig) => {
         const hooks = settingsUiHooks;
+        // Closing restores the window effects Settings opened with; after an import those are
+        // the imported ones, which the main process has already applied natively.
+        if (previewState) previewState = savedWindowEffects(nextConfig);
         closeSettings();
         applyConfigFromProfileSync(nextConfig);
         hooks?.renderActiveTab?.();
@@ -4715,13 +4728,7 @@ async function openSettings(uiHooks) {
       weatherOverrideSelect.value = state.CONFIG.ui?.weatherOverride || 'auto';
     }
 
-    previewState = {
-      opacity: storedOpacity,
-      frostedGlass: !!state.CONFIG.frostedGlass,
-      weatherEffectsEnabled:
-        !!state.CONFIG.frostedGlass && !!state.CONFIG.ui?.weatherEffectsEnabled,
-      weatherOverride: state.CONFIG.ui?.weatherOverride || 'auto',
-    };
+    previewState = savedWindowEffects(state.CONFIG);
     syncWeatherEffectsAvailability();
     hasDraftColorPreview = false;
 
