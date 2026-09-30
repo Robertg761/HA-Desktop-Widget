@@ -143,6 +143,26 @@ describe('portable settings files', () => {
     expect(merged.tileSpans).toBeUndefined();
     expect(merged.ui).toEqual({ theme: 'dark', scale: 1.25 });
   });
+  test('restoring the pre-import backup undoes ui keys the import added', () => {
+    const {
+      buildLocalSections,
+      markIncomingUiKeysCleared,
+      mergeSectionsIntoConfig,
+    } = require('../../profile-sync-core.js');
+    const before = { ...config, ui: { theme: 'light', scale: 1.25 } };
+    const incoming = settingsFileSections(
+      parseSettingsFile(
+        serializeSettingsFile({ ...config, ui: { theme: 'dark', highContrast: true, scale: 2 } })
+      )
+    );
+    const backup = markIncomingUiKeysCleared(
+      buildLocalSections(before, { preset: 'custom', sections: { visualPersonalization: true } }),
+      incoming
+    );
+    const imported = mergeSectionsIntoConfig(before, incoming);
+    expect(imported.ui).toEqual({ theme: 'dark', highContrast: true, scale: 1.25 });
+    expect(mergeSectionsIntoConfig(imported, backup).ui).toEqual(before.ui);
+  });
   test('rejects a file that clears the whole ui object', () => {
     const file = buildSettingsFile(config);
     file.settings.ui = null;

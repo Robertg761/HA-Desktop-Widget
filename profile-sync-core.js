@@ -291,6 +291,20 @@ function projectSection(config, sectionKey) {
   });
 }
 
+/**
+ * Restoring a backup merges it, which keeps ui keys the backup lacks. Records the ui keys the
+ * incoming sections would add as cleared, so restoring the backup removes them again.
+ */
+function markIncomingUiKeysCleared(backupSections, incomingSections) {
+  const backupUi = backupSections?.visualPersonalization?.ui;
+  const incomingUi = incomingSections?.visualPersonalization?.ui;
+  if (!isObject(backupUi) || !isObject(incomingUi)) return backupSections;
+  Object.keys(stripLocalOnlyUiKeys(incomingUi)).forEach((key) => {
+    if (!Object.prototype.hasOwnProperty.call(backupUi, key)) backupUi[key] = null;
+  });
+  return backupSections;
+}
+
 function buildLocalSections(config, syncScope = getDefaultSyncScope()) {
   return getScopeSectionKeys(syncScope).reduce((acc, key) => {
     acc[key] = projectSection(config, key);
@@ -829,6 +843,7 @@ module.exports = {
   mergeSyncedProfileIntoConfig,
   projectSection,
   buildLocalSections,
+  markIncomingUiKeysCleared,
   mergeSectionsIntoConfig,
   computeProfileHash,
   computeSectionHash,

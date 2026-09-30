@@ -44,9 +44,11 @@ describe('settings file main-process application', () => {
   });
   test('backs up before writing and preserves local setup', async () => {
     await context.applyLocalProfileSections({ visualPersonalization: { ui: { theme: 'light' } } });
-    expect(context.backupLocalProfileBeforePullApply).toHaveBeenCalledWith([
-      'visualPersonalization',
-    ]);
+    // The incoming sections let the backup record ui keys the apply adds, so restore undoes them.
+    expect(context.backupLocalProfileBeforePullApply).toHaveBeenCalledWith(
+      ['visualPersonalization'],
+      { visualPersonalization: { ui: { theme: 'light' } } }
+    );
     expect(context.backupLocalProfileBeforePullApply.mock.invocationCallOrder[0]).toBeLessThan(
       context.saveConfigDurably.mock.invocationCallOrder[0]
     );

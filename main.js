@@ -3964,12 +3964,15 @@ async function writeProfileSyncBackup(prefix, contents) {
   }
 }
 
-async function backupLocalProfileBeforePullApply(sectionKeys) {
+async function backupLocalProfileBeforePullApply(sectionKeys, incomingSections = null) {
   try {
-    const sections = profileSyncCore.buildLocalSections(config, {
-      preset: 'custom',
-      sections: Object.fromEntries(sectionKeys.map((key) => [key, true])),
-    });
+    const sections = profileSyncCore.markIncomingUiKeysCleared(
+      profileSyncCore.buildLocalSections(config, {
+        preset: 'custom',
+        sections: Object.fromEntries(sectionKeys.map((key) => [key, true])),
+      }),
+      incomingSections
+    );
     await writeProfileSyncBackup('local-profile', { sections });
   } catch (error) {
     log.warn('Failed to back up local profile before applying remote sync:', error.message);
@@ -4222,7 +4225,7 @@ async function applyLocalProfileSections(sections) {
   if (sectionKeys.length === 0) {
     throw new Error(mainT('That backup is no longer available'));
   }
-  await backupLocalProfileBeforePullApply(sectionKeys);
+  await backupLocalProfileBeforePullApply(sectionKeys, sections);
 
   const previous = config;
   const previousRuntimeTracking = {
