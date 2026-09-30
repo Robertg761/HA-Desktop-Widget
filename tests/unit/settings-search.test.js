@@ -164,6 +164,20 @@ describe('settings search', () => {
       expect(document.activeElement.id).toBe(id);
     }
   });
+  test('finds action buttons whose labels are set by JavaScript', () => {
+    // The app enables the update check once it knows the update channel.
+    document.getElementById('check-updates-btn').disabled = false;
+    for (const [query, id] of [
+      ['Connect with Home Assistant', 'connect-ha-oauth-btn'],
+      ['Set hotkey', 'popup-hotkey-set-btn'],
+      ['Check for updates', 'check-updates-btn'],
+    ]) {
+      const result = search(query).find((button) => button.firstChild.textContent === query);
+      expect(result).toBeDefined();
+      result.click();
+      expect(document.activeElement.id).toBe(id);
+    }
+  });
   test('does not index generated entity list rows', () => {
     const list = document.getElementById('custom-entity-icons-list');
     for (const id of ['light.one', 'light.two', 'light.three']) {
