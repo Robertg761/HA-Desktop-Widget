@@ -6477,6 +6477,27 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(inactive.querySelector('.qa-tab-rename')).toBeNull();
     });
 
+    it('duplicates the active page, saves it, and focuses the new page', async () => {
+      window.electronAPI.updateConfig.mockImplementation(async (patch) => ({
+        ...state.CONFIG,
+        ...patch,
+      }));
+      setPages([{ id: 'home', name: 'Home', entityIds: ['light.living_room'] }]);
+      state.setConfig({ ...state.CONFIG, favoriteEntities: ['light.living_room'] });
+      ui.toggleReorganizeMode();
+      const button = tabBar.querySelector('.qa-tab-duplicate');
+      expect(button.getAttribute('aria-label')).toBe('Duplicate page');
+      button.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(state.CONFIG.customTabs).toHaveLength(2);
+      expect(state.CONFIG.customTabs[1].name).toBe('Home copy');
+      expect(state.CONFIG.customTabs[1].entityIds).toEqual(['light.living_room']);
+      expect(document.activeElement.dataset.tab).toBe(state.CONFIG.customTabs[1].id);
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ customTabs: state.CONFIG.customTabs })
+      );
+    });
+
     it('moves focus to the page now shown after deleting a page', async () => {
       setPages(
         [

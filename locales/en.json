@@ -1621,5 +1621,8 @@
   "Could not change Hyprland's blur.": "Could not change Hyprland's blur.",
   "Search settings": "Search settings",
   "{{count}} matching settings": "{{count}} matching settings",
-  "No matching settings": "No matching settings"
+  "No matching settings": "No matching settings",
+  "Duplicate page": "Duplicate page",
+  "{{name}} copy": "{{name}} copy",
+  "Page duplicated": "Page duplicated"
 }

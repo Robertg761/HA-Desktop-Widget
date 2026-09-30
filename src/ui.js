@@ -62,6 +62,7 @@ import {
   setActiveQuickAccessView,
 } from './quick-access-tabs.js';
 import { getNextQuickAccessFocusIndex } from './quick-access-ui-helpers.js';
+import { duplicateQuickAccessView } from './page-duplication.js';
 import { getRendererHost } from '@hadw/renderer/host.js';
 import {
   COMPARISON_GRAPH_SPAN_OPTIONS,
@@ -743,6 +744,19 @@ function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
       });
       tabEl.appendChild(renameBtn);
 
+      const duplicateBtn = document.createElement('button');
+      duplicateBtn.type = 'button';
+      duplicateBtn.className = 'qa-tab-btn qa-tab-duplicate';
+      duplicateBtn.title = t('Duplicate page');
+      duplicateBtn.setAttribute('aria-label', t('Duplicate page'));
+      setIconContent(duplicateBtn, 'copy', { size: 12 });
+      duplicateBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void duplicateQuickAccessPage(tab.id);
+      });
+      tabEl.appendChild(duplicateBtn);
+
       if (tabs.length > 1) {
         const deleteBtn = document.createElement('button');
         deleteBtn.type = 'button';
@@ -835,6 +849,22 @@ function beginInlineTabRename(tabId, buttonEl) {
   input.addEventListener('blur', () => finish(true));
   input.addEventListener('click', (event) => event.stopPropagation());
   input.addEventListener('dblclick', (event) => event.stopPropagation());
+}
+
+async function duplicateQuickAccessPage(tabId) {
+  if (quickAccessPendingWriteCount) {
+    uiUtils.showToast(t('Wait for the current dashboard save to finish.'), 'info', 1600);
+    return;
+  }
+  const config = ensureQuickAccessConfig();
+  if (!config.customTabs.some((tab) => tab.id === tabId)) return;
+  const pending = setQuickAccessConfig(duplicateQuickAccessView(config, tabId));
+  focusActiveQuickAccessPage();
+  const result = await pending;
+  if (result.success) uiUtils.showToast(t('Page duplicated'), 'success', 1600);
+  // Keep focus on the authoritative page after saving or rolling back a failed save.
+  renderQuickAccessTabs();
+  focusActiveQuickAccessPage();
 }
 
 async function deleteQuickAccessPage(tabId) {

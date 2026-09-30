@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.41",
+  "version": "1.2.42",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1628,6 +1628,9 @@
     "Could not change Hyprland's blur.": "No se pudo cambiar el desenfoque de Hyprland.",
     "Search settings": "Buscar ajustes",
     "{{count}} matching settings": "{{count}} ajustes coincidentes",
-    "No matching settings": "No hay ajustes coincidentes"
+    "No matching settings": "No hay ajustes coincidentes",
+    "Duplicate page": "Duplicar página",
+    "{{name}} copy": "{{name}} copia",
+    "Page duplicated": "Página duplicada"
   }
 }
