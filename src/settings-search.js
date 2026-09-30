@@ -5,23 +5,29 @@ function searchText(value) {
 }
 
 // Controls toggled with inline display (e.g. the weather override group) are not reachable.
-function isInlineHidden(node, modal) {
+// A label the stylesheet hides itself duplicates a visible title; pages and disclosures hide
+// their containers instead, so only the label's own computed style is checked.
+function isHidden(node, modal) {
   for (let el = node; el && el !== modal; el = el.parentElement)
     if (el.style?.display === 'none') return true;
-  return false;
+  return getComputedStyle(node).display === 'none';
 }
+
+const ARIA_NAMED_CONTROL = 'select[aria-label], input[aria-label], textarea[aria-label]';
 
 // Index labels and explanatory copy, never input values, tokens, or entity lists.
 function settingsSearchEntries(modal) {
   return (
     [
       ...modal.querySelectorAll(
-        '.tab-content label, .tab-content .setting-label, .tab-content summary, .tab-content .section-toggle, .tab-content .setting-row-action > button[data-i18n]'
+        `.tab-content label, .tab-content .setting-label, .tab-content summary, .tab-content .section-toggle, .tab-content .setting-row-action > button[data-i18n], .tab-content :is(${ARIA_NAMED_CONTROL})`
       ),
     ]
       // A wrapping <label> is the entry for its control; skip the nested title span.
       .filter((label) => !(label.matches('.setting-label') && label.closest('label')))
-      .filter((label) => !label.closest('[hidden], .hidden') && !isInlineHidden(label, modal))
+      // Controls named only through aria-label are their own entry; labelled ones use the label.
+      .filter((label) => !label.matches(ARIA_NAMED_CONTROL) || !label.labels?.length)
+      .filter((label) => !label.closest('[hidden], .hidden') && !isHidden(label, modal))
       .map((label) => {
         const panel = label.closest('.tab-content');
         const row = label.closest('.form-group, .settings-details, .personalization-section');
@@ -32,7 +38,9 @@ function settingsSearchEntries(modal) {
             ?.querySelector('.settings-group-caption')
             ?.textContent.trim() || '';
         const titleNode = label.matches('label') ? label.querySelector('.setting-label') : null;
-        const title = (titleNode || label).textContent.trim();
+        const title = label.matches(ARIA_NAMED_CONTROL)
+          ? label.getAttribute('aria-label').trim()
+          : (titleNode || label).textContent.trim();
         // Options sharing a group must not match on each other's help, so use only their own.
         const helpNodes = titleNode
           ? label.querySelectorAll('.form-help, .help-text')
@@ -107,7 +115,7 @@ function initializeSettingsSearch(modal) {
         const target =
           labelled?.control ||
           (entry.label.htmlFor && document.getElementById(entry.label.htmlFor)) ||
-          (entry.label.matches('summary, button')
+          (entry.label.matches('summary, button, input, select, textarea')
             ? entry.label
             : entry.row?.querySelector('input:not([type="hidden"]), select, button, textarea'));
         requestAnimationFrame(() => {
