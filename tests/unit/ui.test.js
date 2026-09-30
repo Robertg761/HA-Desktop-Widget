@@ -6498,6 +6498,65 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
     });
 
+    it('tells the companion when a page is duplicated', async () => {
+      window.electronAPI.updateConfig.mockImplementation(async (patch) => ({
+        homeAssistant: {},
+        ...state.CONFIG,
+        ...patch,
+      }));
+      setPages([{ id: 'home', name: 'Home', entityIds: ['light.living_room'] }]);
+      state.setConfig({ ...state.CONFIG, favoriteEntities: ['light.living_room'] });
+      const changed = jest.fn();
+      window.addEventListener('desktop-companion-page-changed', changed);
+      try {
+        ui.toggleReorganizeMode();
+        tabBar.querySelector('.qa-tab-duplicate').click();
+        for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(changed).toHaveBeenCalledTimes(1);
+      } finally {
+        window.removeEventListener('desktop-companion-page-changed', changed);
+      }
+    });
+
+    it('removes a tile from a duplicated page only, leaving the original untouched', async () => {
+      window.electronAPI.updateConfig.mockImplementation(async (patch) => ({
+        homeAssistant: {},
+        ...state.CONFIG,
+        ...patch,
+      }));
+      state.setStates({ 'light.bedroom': sampleStates['light.bedroom'] });
+      state.setConfig({
+        ...state.CONFIG,
+        customTabs: [
+          { id: 'home', name: 'Home', entityIds: ['light.bedroom'] },
+          { id: 'copy', name: 'Home copy', entityIds: ['light.bedroom'] },
+        ],
+        activeTabId: 'copy',
+        favoriteEntities: ['light.bedroom'],
+        tileSpans: { 'light.bedroom': { cols: 2 } },
+        quickAccessTileOptions: { 'light.bedroom': { valueSize: 'large' } },
+      });
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+      uiUtils.showConfirm.mockResolvedValueOnce(true);
+      document
+        .querySelector('#quick-controls [data-entity-id="light.bedroom"] .remove-btn')
+        .click();
+      for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(state.CONFIG.customTabs.find((page) => page.id === 'copy').entityIds).toEqual([]);
+      expect(state.CONFIG.customTabs.find((page) => page.id === 'home').entityIds).toEqual([
+        'light.bedroom',
+      ]);
+      expect(state.CONFIG.favoriteEntities).toEqual(['light.bedroom']);
+      expect(state.CONFIG.tileSpans).toEqual({ 'light.bedroom': { cols: 2 } });
+      expect(state.CONFIG.quickAccessTileOptions).toEqual({
+        'light.bedroom': { valueSize: 'large' },
+      });
+    });
+
     it('moves focus to the page now shown after deleting a page', async () => {
       setPages(
         [
