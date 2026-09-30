@@ -25,9 +25,15 @@ function settingsSearchEntries(modal) {
     ]
       // A wrapping <label> is the entry for its control; skip the nested title span.
       .filter((label) => !(label.matches('.setting-label') && label.closest('label')))
-      // Controls named only through aria-label are their own entry; labelled ones use the label.
-      .filter((label) => !label.matches(ARIA_NAMED_CONTROL) || !label.labels?.length)
       .filter((label) => !label.closest('[hidden], .hidden') && !isHidden(label, modal))
+      // An aria-label names its own entry unless one of its <label>s is indexed instead.
+      .filter(
+        (label) =>
+          !label.matches(ARIA_NAMED_CONTROL) ||
+          ![...(label.labels || [])].some(
+            (own) => !own.closest('[hidden], .hidden') && !isHidden(own, modal)
+          )
+      )
       .map((label) => {
         const panel = label.closest('.tab-content');
         const row = label.closest('.form-group, .settings-details, .personalization-section');
@@ -112,12 +118,20 @@ function initializeSettingsSearch(modal) {
             node.querySelector('.section-toggle')?.click();
         }
         const labelled = entry.label.matches('label') ? entry.label : entry.label.closest('label');
+        // A custom widget such as a radiogroup points back at its label through aria-labelledby.
+        const labelledWidget =
+          entry.label.id && modal.querySelector(`[aria-labelledby~="${entry.label.id}"]`);
         const target =
           labelled?.control ||
           (entry.label.htmlFor && document.getElementById(entry.label.htmlFor)) ||
+          (labelledWidget &&
+            (labelledWidget.querySelector('[aria-checked="true"], [tabindex="0"]') ||
+              labelledWidget.querySelector('button, input, select, textarea'))) ||
           (entry.label.matches('summary, button, input, select, textarea')
             ? entry.label
-            : entry.row?.querySelector('input:not([type="hidden"]), select, button, textarea'));
+            : entry.row?.querySelector(
+                ':is(input:not([type="hidden"]), select, button, textarea):not([aria-hidden="true"])'
+              ));
         requestAnimationFrame(() => {
           entry.label.scrollIntoView?.({ block: 'center' });
           const focusTarget = target && !target.disabled ? target : entry.label;
