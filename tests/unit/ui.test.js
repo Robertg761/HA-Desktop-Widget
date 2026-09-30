@@ -1356,6 +1356,41 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   });
 
   describe('Quick Access keyboard and filter polish', () => {
+    it('keeps left and right arrows within the row on screen in both directions', () => {
+      const ids = ['light.bedroom', 'switch.bedroom', 'light.living_room'];
+      const config = state.CONFIG;
+      config.favoriteEntities = ids;
+      config.customTabs = [{ id: 'main', name: 'Main', entityIds: ids }];
+      config.activeTabId = 'main';
+      state.setConfig(config);
+      state.setStates(Object.fromEntries(ids.map((id) => [id, sampleStates[id]])));
+      ui.renderActiveTab();
+      const tiles = Array.from(document.querySelectorAll('#quick-controls .control-item'));
+      expect(tiles).toHaveLength(3);
+      // Two tiles on the first row, the third wrapped onto the next.
+      tiles.forEach((tile, index) => {
+        tile.getBoundingClientRect = () => ({ top: index < 2 ? 0 : 100 });
+      });
+      const press = (tile, key) =>
+        tile.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+      const focusedTile = () => document.activeElement?.closest('.control-item');
+
+      (tiles[1].querySelector('.tile-primary-button') || tiles[1]).focus();
+      press(tiles[1], 'ArrowRight');
+      expect(focusedTile()).not.toBe(tiles[2]);
+
+      const container = document.getElementById('quick-controls');
+      container.style.direction = 'rtl';
+      try {
+        press(tiles[1], 'ArrowLeft');
+        expect(focusedTile()).not.toBe(tiles[2]);
+        press(tiles[1], 'ArrowRight');
+        expect(focusedTile()).toBe(tiles[0]);
+      } finally {
+        container.style.direction = '';
+      }
+    });
+
     it('uses roving tabindex and arrow keys without duplicating activation logic', () => {
       const config = state.CONFIG;
       config.favoriteEntities = ['light.bedroom', 'switch.bedroom'];

@@ -1391,6 +1391,14 @@ function handleQuickAccessGridKeydown(event) {
   );
   const nextTile = visibleTiles[nextIndex];
   if (!nextTile) return;
+  // Left and right move within the row on screen, in either direction and with wide tiles;
+  // they never jump to the far edge of the neighbouring row.
+  if (
+    (event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
+    Math.abs(nextTile.getBoundingClientRect().top - tile.getBoundingClientRect().top) > 1
+  ) {
+    return;
+  }
 
   syncQuickAccessRovingTabIndex(nextTile);
   (nextTile.querySelector('.tile-primary-button') || nextTile).focus();
@@ -10083,7 +10091,11 @@ function activateAccessibleDialogModal(modal, { titleIdPrefix = 'dialog-title' }
 
   if (typeof uiUtils.trapFocus === 'function') {
     setTimeout(() => {
-      if (modal.isConnected) uiUtils.trapFocus(modal);
+      // Content added after activation can name its own first stop, such as a code field.
+      const initialFocus = modal.querySelector('[data-initial-focus]');
+      if (!modal.isConnected) return;
+      if (initialFocus) uiUtils.trapFocus(modal, { initialFocus });
+      else uiUtils.trapFocus(modal);
     }, 0);
   }
 }
@@ -10357,7 +10369,8 @@ function requestAlarmCode(entity) {
       code = input.value;
       modal.querySelector('.close-btn').click();
     };
-    input.focus();
+    // The focus trap installs after this and would otherwise start on the close button.
+    input.dataset.initialFocus = '';
   });
 }
 
