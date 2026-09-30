@@ -4117,6 +4117,9 @@ async function applySyncedConfigSideEffects(previous, persistence) {
   await runPostSaveSideEffect(runtimeWarnings, 'synced runtime settings', () =>
     applyRuntimeConfigSideEffects(previous, config, 'profile sync pull')
   );
+  if (previous?.ui?.language !== config?.ui?.language && tray) {
+    await runPostSaveSideEffect(runtimeWarnings, 'synced tray language', () => createTray());
+  }
   await runPostSaveSideEffect(runtimeWarnings, 'synced desktop pin windows', () =>
     syncDesktopPinWindowsWithConfig()
   );
@@ -4217,10 +4220,10 @@ async function listProfileSyncBackups() {
  */
 async function restoreProfileSyncBackup(id) {
   const backup = await readProfileSyncBackup(id);
-  return applyLocalProfileSections(backup.sections);
+  return applyLocalProfileSections(backup.sections, { clearNullUiKeys: true });
 }
 
-async function applyLocalProfileSections(sections) {
+async function applyLocalProfileSections(sections, mergeOptions) {
   const sectionKeys = Object.keys(sections);
   if (sectionKeys.length === 0) {
     throw new Error(mainT('That backup is no longer available'));
@@ -4241,7 +4244,7 @@ async function applyLocalProfileSections(sections) {
   // still stale.
   profileSyncRuntime.pendingPullEchoHash = null;
   profileSyncRuntime.pendingPullEchoProfile = null;
-  config = profileSyncCore.mergeSectionsIntoConfig(config, sections);
+  config = profileSyncCore.mergeSectionsIntoConfig(config, sections, mergeOptions);
   pruneConfig(config);
   ensureDateTimeFormatConfigDefaults(config);
   ensureProfileSyncConfigDefaults(config);
@@ -8731,7 +8734,7 @@ const settingsFileController = createSettingsFileController({
   getConfig: () => config,
   translate: (key) => mainT(key),
   applySections: async (sections) => {
-    await applyLocalProfileSections(sections);
+    await applyLocalProfileSections(sections, { clearNullUiKeys: true });
     return { config: sanitizeConfigForRenderer(config) };
   },
 });

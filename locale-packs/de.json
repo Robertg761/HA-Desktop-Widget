@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.43",
+  "version": "1.2.44",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget, including German date and time formats.",
   "messages": {
@@ -1652,6 +1652,8 @@
     "Changes: {{sections}}": "Änderungen: {{sections}}",
     "Import applies immediately and replaces unsaved Settings edits. Your current saved settings are backed up first. Connection details, desktop pins, shortcuts and profile sync stay on this computer. Imported settings follow your existing sync scope.": "Der Import gilt sofort und ersetzt ungespeicherte Änderungen in den Einstellungen. Ihre aktuell gespeicherten Einstellungen werden vorher gesichert. Verbindungsdaten, Desktop-Kacheln, Tastenkürzel und Profilsynchronisierung bleiben auf diesem Computer. Importierte Einstellungen folgen Ihrem bisherigen Synchronisierungsumfang.",
     "Pages: {{pages}}. Referenced entities: {{count}}.": "Seiten: {{pages}}. Referenzierte Entitäten: {{count}}.",
-    "Unavailable entities on this connection: {{count}}.": "Nicht verfügbare Entitäten über diese Verbindung: {{count}}."
+    "Unavailable entities on this connection: {{count}}.": "Nicht verfügbare Entitäten über diese Verbindung: {{count}}.",
+    "Apply this backup on this computer? Your current settings are backed up first.": "Diese Sicherung auf diesem Computer übernehmen? Deine aktuellen Einstellungen werden vorher gesichert.",
+    "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "Diese Sicherung auf diesem Computer übernehmen? Deine aktuellen Einstellungen werden vorher gesichert, und wiederhergestellte Einstellungen in deinem Synchronisierungsumfang werden dann mit deinen anderen Computern synchronisiert."
   }
 }

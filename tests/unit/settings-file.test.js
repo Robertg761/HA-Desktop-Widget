@@ -123,6 +123,29 @@ describe('portable settings files', () => {
     );
     expect(entityIds).toEqual(['light.retired', 'switch.fan', 'sensor.wide', 'camera.door']);
   });
+  test('previews entities whose domain contains a digit', () => {
+    const { entityIds } = summarizeSettingsImport(
+      { favoriteEntities: ['sensor.temp', 'ha_v2.thing', 'Light.Desk', 'graph:abc'] },
+      config
+    );
+    expect(entityIds).toEqual(['sensor.temp', 'ha_v2.thing', 'Light.Desk']);
+  });
+  test('rejects tile spans outside one to four columns and keeps an unset one', () => {
+    const fileWith = (tileSpans) => {
+      const file = buildSettingsFile(config);
+      file.settings.tileSpans = tileSpans;
+      return JSON.stringify(file);
+    };
+    expect(parseSettingsFile(fileWith({ 'light.desk': 4, 'sensor.temp': 1 })).tileSpans).toEqual({
+      'light.desk': 4,
+      'sensor.temp': 1,
+    });
+    expect(parseSettingsFile(fileWith(null)).tileSpans).toBeNull();
+    for (const bad of [10000, 0, 5, 1.5, -1, '2', null])
+      expect(() => parseSettingsFile(fileWith({ 'light.desk': bad }))).toThrow(
+        expect.objectContaining({ code: 'invalid_file' })
+      );
+  });
   test('importing restores settings the exporting computer never set to their defaults', () => {
     const { mergeSectionsIntoConfig } = require('../../profile-sync-core.js');
     const source = { ...config, ui: { theme: 'dark' } };
@@ -138,7 +161,9 @@ describe('portable settings files', () => {
       tileSpans: { 'light.desk': 3 },
       ui: { theme: 'light', highContrast: true, scale: 1.25 },
     };
-    const merged = mergeSectionsIntoConfig(destination, settingsFileSections(settings));
+    const merged = mergeSectionsIntoConfig(destination, settingsFileSections(settings), {
+      clearNullUiKeys: true,
+    });
     expect(merged.selectedWeatherEntity).toBeUndefined();
     expect(merged.tileSpans).toBeUndefined();
     expect(merged.ui).toEqual({ theme: 'dark', scale: 1.25 });
@@ -159,9 +184,10 @@ describe('portable settings files', () => {
       buildLocalSections(before, { preset: 'custom', sections: { visualPersonalization: true } }),
       incoming
     );
-    const imported = mergeSectionsIntoConfig(before, incoming);
+    const options = { clearNullUiKeys: true };
+    const imported = mergeSectionsIntoConfig(before, incoming, options);
     expect(imported.ui).toEqual({ theme: 'dark', highContrast: true, scale: 1.25 });
-    expect(mergeSectionsIntoConfig(imported, backup).ui).toEqual(before.ui);
+    expect(mergeSectionsIntoConfig(imported, backup, options).ui).toEqual(before.ui);
   });
   test('rejects a file that clears the whole ui object', () => {
     const file = buildSettingsFile(config);

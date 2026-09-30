@@ -70,6 +70,20 @@ describe('native settings file workflow', () => {
       code: 'import_expired',
     });
   });
+  test('a configuration change after the preview expires it without applying', async () => {
+    const preview = await controller.previewImport({}, 1);
+    // A sync pull lands while the confirmation is open.
+    config.ui.theme = 'light';
+    await expect(controller.applyImport(1, preview.id)).rejects.toMatchObject({
+      code: 'import_expired',
+    });
+    expect(applySections).not.toHaveBeenCalled();
+    // Settings the file never carries do not invalidate it.
+    const fresh = await controller.previewImport({}, 1);
+    config.homeAssistant.token = 'rotated';
+    await controller.applyImport(1, fresh.id);
+    expect(applySections).toHaveBeenCalledTimes(1);
+  });
   test('canceled dialogs leave the file and config untouched', async () => {
     const before = fs.readFileSync(file, 'utf8');
     dialog.showSaveDialog.mockResolvedValue({ canceled: true });

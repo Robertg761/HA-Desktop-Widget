@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.43",
+  "version": "1.2.44",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1652,6 +1652,8 @@
     "Changes: {{sections}}": "Modifications : {{sections}}",
     "Import applies immediately and replaces unsaved Settings edits. Your current saved settings are backed up first. Connection details, desktop pins, shortcuts and profile sync stay on this computer. Imported settings follow your existing sync scope.": "L’importation s’applique immédiatement et remplace les modifications non enregistrées. Vos paramètres enregistrés sont d’abord sauvegardés. La connexion, les éléments épinglés, les raccourcis et la synchronisation restent sur cet ordinateur. Les paramètres importés suivent votre périmètre de synchronisation actuel.",
     "Pages: {{pages}}. Referenced entities: {{count}}.": "Pages : {{pages}}. Entités référencées : {{count}}.",
-    "Unavailable entities on this connection: {{count}}.": "Entités indisponibles sur cette connexion : {{count}}."
+    "Unavailable entities on this connection: {{count}}.": "Entités indisponibles sur cette connexion : {{count}}.",
+    "Apply this backup on this computer? Your current settings are backed up first.": "Appliquer cette sauvegarde sur cet ordinateur ? Vos paramètres actuels sont d'abord sauvegardés.",
+    "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "Appliquer cette sauvegarde sur cet ordinateur ? Vos paramètres actuels sont d'abord sauvegardés, puis les paramètres restaurés inclus dans votre périmètre de synchronisation se synchronisent avec vos autres ordinateurs."
   }
 }

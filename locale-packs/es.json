@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.43",
+  "version": "1.2.44",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1652,6 +1652,8 @@
     "Changes: {{sections}}": "Cambios: {{sections}}",
     "Import applies immediately and replaces unsaved Settings edits. Your current saved settings are backed up first. Connection details, desktop pins, shortcuts and profile sync stay on this computer. Imported settings follow your existing sync scope.": "La importación se aplica de inmediato y reemplaza los cambios sin guardar en Ajustes. Primero se guarda una copia de tus ajustes actuales. La conexión, los elementos fijados, los atajos y la sincronización permanecen en este equipo. Los ajustes importados respetan tu alcance de sincronización actual.",
     "Pages: {{pages}}. Referenced entities: {{count}}.": "Páginas: {{pages}}. Entidades referenciadas: {{count}}.",
-    "Unavailable entities on this connection: {{count}}.": "Entidades no disponibles en esta conexión: {{count}}."
+    "Unavailable entities on this connection: {{count}}.": "Entidades no disponibles en esta conexión: {{count}}.",
+    "Apply this backup on this computer? Your current settings are backed up first.": "¿Aplicar esta copia de seguridad en este equipo? Tus ajustes actuales se guardan antes en una copia de seguridad.",
+    "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "¿Aplicar esta copia de seguridad en este equipo? Tus ajustes actuales se guardan antes en una copia de seguridad, y los ajustes restaurados que entran en tu alcance de sincronización se sincronizan después con tus otros equipos."
   }
 }

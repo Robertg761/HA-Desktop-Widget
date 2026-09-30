@@ -1645,5 +1645,7 @@
   "Changes: {{sections}}": "Changes: {{sections}}",
   "Import applies immediately and replaces unsaved Settings edits. Your current saved settings are backed up first. Connection details, desktop pins, shortcuts and profile sync stay on this computer. Imported settings follow your existing sync scope.": "Import applies immediately and replaces unsaved Settings edits. Your current saved settings are backed up first. Connection details, desktop pins, shortcuts and profile sync stay on this computer. Imported settings follow your existing sync scope.",
   "Pages: {{pages}}. Referenced entities: {{count}}.": "Pages: {{pages}}. Referenced entities: {{count}}.",
-  "Unavailable entities on this connection: {{count}}.": "Unavailable entities on this connection: {{count}}."
+  "Unavailable entities on this connection: {{count}}.": "Unavailable entities on this connection: {{count}}.",
+  "Apply this backup on this computer? Your current settings are backed up first.": "Apply this backup on this computer? Your current settings are backed up first.",
+  "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers."
 }

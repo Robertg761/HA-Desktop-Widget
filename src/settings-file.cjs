@@ -6,6 +6,8 @@ const SETTINGS_FILE_VERSION = 1;
 const MAX_SETTINGS_FILE_BYTES = 1024 * 1024;
 const mapOf = (schema) => ({ map: schema });
 const stringList = ['string'];
+// Mirrors the renderer's entity-ID pattern in ha-protocol.cjs, which needs Electron to load.
+const HA_ENTITY_ID_PATTERN = /^[a-z0-9_]+\.[a-z0-9_]+$/i;
 // Every exported property is listed, including nested fields. Connection details,
 // credentials, desktop pins, shortcuts, sync keys and machine preferences cannot ride along.
 const SETTINGS_SCHEMA = {
@@ -14,7 +16,7 @@ const SETTINGS_SCHEMA = {
   comparisonGraphs: [{ id: 'string', name: 'string', span: 'number', entityIds: stringList }],
   customEntityNames: mapOf('string'),
   customEntityIcons: mapOf('string'),
-  tileSpans: mapOf('number'),
+  tileSpans: mapOf('span'),
   quickAccessTileOptions: mapOf({
     valueSize: 'string',
     cameraPreviewRefresh: 'number|string',
@@ -74,6 +76,11 @@ function isObject(value) {
 }
 function project(value, schema) {
   if (typeof schema === 'string') {
+    // A tile spans one to four grid columns; anything else would be written straight to the grid.
+    if (schema === 'span') {
+      if (!Number.isInteger(value) || value < 1 || value > 4) throw fileError('invalid_file');
+      return value;
+    }
     if (value === null && schema.endsWith('?')) return null;
     const types = schema.replace(/\?$/, '').split('|');
     if (!types.includes(typeof value) || (typeof value === 'number' && !Number.isFinite(value)))
@@ -187,7 +194,7 @@ function summarizeSettingsImport(settings, currentConfig) {
         ...Object.keys(settings.quickAccessTileOptions || {}),
         settings.selectedWeatherEntity,
         settings.primaryMediaPlayer,
-      ].filter((id) => typeof id === 'string' && /^[a-z_]+\.[a-zA-Z0-9_]+$/.test(id))
+      ].filter((id) => typeof id === 'string' && HA_ENTITY_ID_PATTERN.test(id))
     ),
   ];
   return { changedSections, pageNames, entityIds };

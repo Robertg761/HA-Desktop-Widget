@@ -55,6 +55,13 @@ describe('settings file main-process application', () => {
     expect(context.config).toEqual({ ...original, ui: { ...original.ui, theme: 'light' } });
     expect(context.applySyncedConfigSideEffects).toHaveBeenCalledTimes(1);
   });
+  test('clears ui keys an import sets to null only when asked to', async () => {
+    const sections = { visualPersonalization: { ui: { theme: 'light', accent: null } } };
+    await context.applyLocalProfileSections(sections);
+    expect(context.config.ui.accent).toBeNull();
+    await context.applyLocalProfileSections(sections, { clearNullUiKeys: true });
+    expect(context.config.ui).not.toHaveProperty('accent');
+  });
   test('a failed backup never writes or changes config', async () => {
     context.backupLocalProfileBeforePullApply.mockRejectedValue(new Error('Disk full'));
     await expect(
@@ -71,6 +78,42 @@ describe('settings file main-process application', () => {
     expect(context.config).toBe(original);
     expect(context.profileSyncRuntime.pendingPullEchoHash).toBe('old');
     expect(context.applySyncedConfigSideEffects).not.toHaveBeenCalled();
+  });
+});
+
+describe('config changes that arrive outside the settings form', () => {
+  let context;
+  beforeEach(() => {
+    context = {
+      config: { ui: { language: 'de' } },
+      tray: {},
+      createTray: jest.fn(),
+      runPostSaveSideEffect: async (warnings, label, action) => action(),
+      applyMainWindowSettingSideEffects: jest.fn(),
+      applyRuntimeConfigSideEffects: jest.fn(),
+      syncDesktopPinWindowsWithConfig: jest.fn(),
+      syncTrayEntitiesWithConfig: jest.fn(),
+      broadcastDesktopPinConfigUpdate: jest.fn(),
+      pushConfigToRenderer: jest.fn(),
+    };
+    vm.createContext(context);
+    vm.runInContext(
+      slice(
+        'async function applySyncedConfigSideEffects(',
+        'const PROFILE_SYNC_BACKUP_FILE_PATTERN'
+      ),
+      context
+    );
+  });
+  test('rebuilds the tray when a pull, import or restore changes the language', async () => {
+    await context.applySyncedConfigSideEffects({ ui: { language: 'auto' } }, {});
+    expect(context.createTray).toHaveBeenCalledTimes(1);
+  });
+  test('leaves the tray alone when the language is unchanged or there is no tray', async () => {
+    await context.applySyncedConfigSideEffects({ ui: { language: 'de' } }, {});
+    context.tray = null;
+    await context.applySyncedConfigSideEffects({ ui: { language: 'auto' } }, {});
+    expect(context.createTray).not.toHaveBeenCalled();
   });
 });
 

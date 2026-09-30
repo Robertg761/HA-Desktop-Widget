@@ -1,8 +1,10 @@
 const path = require('path');
 const { Buffer } = require('buffer');
 const crypto = require('crypto');
+const { computeProfileHash } = require('../profile-sync-core.js');
 const {
   MAX_SETTINGS_FILE_BYTES,
+  buildSettingsFile,
   serializeSettingsFile,
   parseSettingsFile,
   settingsFileSections,
@@ -32,6 +34,8 @@ function createSettingsFileController({
   now = Date.now,
 }) {
   const pending = new Map();
+  // The portable settings as they stand, so a preview can tell the configuration changed under it.
+  const configRevision = () => computeProfileHash(buildSettingsFile(getConfig()).settings);
   const filters = [{ name: 'JSON', extensions: ['json'] }];
   return {
     async exportSettings(window) {
@@ -97,7 +101,12 @@ function createSettingsFileController({
       }
       const settings = parseSettingsFile(content);
       const id = crypto.randomUUID();
-      pending.set(senderId, { id, settings, expiresAt: now() + 10 * 60 * 1000 });
+      pending.set(senderId, {
+        id,
+        settings,
+        revision: configRevision(),
+        expiresAt: now() + 10 * 60 * 1000,
+      });
       return {
         canceled: false,
         id,
@@ -111,6 +120,9 @@ function createSettingsFileController({
         throw Object.assign(new Error('import_expired'), { code: 'import_expired' });
       // Consume before awaiting so a double click can never apply the same import twice.
       pending.delete(senderId);
+      // A sync pull or other change since the preview means its summary no longer matches.
+      if (candidate.revision !== configRevision())
+        throw Object.assign(new Error('import_expired'), { code: 'import_expired' });
       return applySections(settingsFileSections(candidate.settings));
     },
   };

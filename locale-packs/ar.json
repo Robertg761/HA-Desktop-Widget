@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.43",
+  "version": "1.2.44",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1652,6 +1652,8 @@
     "Changes: {{sections}}": "التغييرات: {{sections}}",
     "Import applies immediately and replaces unsaved Settings edits. Your current saved settings are backed up first. Connection details, desktop pins, shortcuts and profile sync stay on this computer. Imported settings follow your existing sync scope.": "يسري الاستيراد فوراً ويستبدل التعديلات غير المحفوظة في الإعدادات. تُحفظ نسخة احتياطية من إعداداتك الحالية أولاً. تبقى بيانات الاتصال والعناصر المثبتة والاختصارات ومزامنة الملف الشخصي على هذا الكمبيوتر. تتبع الإعدادات المستوردة نطاق المزامنة الحالي.",
     "Pages: {{pages}}. Referenced entities: {{count}}.": "الصفحات: {{pages}}. الكيانات المشار إليها: {{count}}.",
-    "Unavailable entities on this connection: {{count}}.": "الكيانات غير المتاحة على هذا الاتصال: {{count}}."
+    "Unavailable entities on this connection: {{count}}.": "الكيانات غير المتاحة على هذا الاتصال: {{count}}.",
+    "Apply this backup on this computer? Your current settings are backed up first.": "هل تريد تطبيق هذه النسخة الاحتياطية على هذا الكمبيوتر؟ تُنسخ إعداداتك الحالية احتياطيًا أولًا.",
+    "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "هل تريد تطبيق هذه النسخة الاحتياطية على هذا الكمبيوتر؟ تُنسخ إعداداتك الحالية احتياطيًا أولًا، ثم تُزامن الإعدادات المستعادة الواقعة ضمن نطاق المزامنة مع أجهزة الكمبيوتر الأخرى."
   }
 }
