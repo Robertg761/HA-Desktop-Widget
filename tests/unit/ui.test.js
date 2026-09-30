@@ -6589,6 +6589,46 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       confirmation.remove();
     });
 
+    it('removes the graph cloned onto a duplicated page when that page is deleted', async () => {
+      window.electronAPI.updateConfig.mockImplementation(async (patch) => ({
+        homeAssistant: {},
+        ...state.CONFIG,
+        ...patch,
+      }));
+      const graph = { id: 'graph:temps', name: 'Temps', span: 3, entityIds: ['sensor.indoor'] };
+      setPages(
+        [
+          { id: 'home', name: 'Home', entityIds: ['graph:temps'] },
+          { id: 'copy', name: 'Home copy', entityIds: ['graph:temps-copy'] },
+        ],
+        'copy'
+      );
+      const before = {
+        ...state.CONFIG,
+        comparisonGraphs: [graph, { ...graph, id: 'graph:temps-copy' }],
+      };
+      state.setConfig(before);
+      ui.toggleReorganizeMode();
+      uiUtils.showConfirm.mockResolvedValueOnce(true);
+      tabBar.querySelector('.qa-tab-delete').click();
+      for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(state.CONFIG.customTabs.map((page) => page.id)).toEqual(['home']);
+      expect(state.CONFIG.comparisonGraphs.map((entry) => entry.id)).toEqual(['graph:temps']);
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ comparisonGraphs: [graph] })
+      );
+      // Undo reads the saved layout, which still holds the deleted page and its graph.
+      const { readDashboardHistory } = require('../../src/dashboard-history.js');
+      const [saved] = readDashboardHistory(state.CONFIG);
+      expect(saved.layout.customTabs.map((page) => page.id)).toEqual(['home', 'copy']);
+      expect(saved.layout.comparisonGraphs.map((entry) => entry.id)).toEqual([
+        'graph:temps',
+        'graph:temps-copy',
+      ]);
+    });
+
     it('opens a themed add-page modal and creates a page from a preset chip', async () => {
       setPages([{ id: 'default', name: 'All', entityIds: [] }]);
       ui.toggleReorganizeMode();
