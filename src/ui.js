@@ -2734,6 +2734,22 @@ function getQuickAccessTileSummaryText(entity) {
   }
 }
 
+// The shell counts down without renderer ticks or Home Assistant state changes.
+function getQuickAccessTileCountdown(entity) {
+  const domain = getEntityDomain(entity?.entity_id);
+  if (domain !== 'timer' && !isTimerLikeSensorEntity(entity)) return null;
+  if (utils.getTimerRunState(entity) !== 'running') return null;
+  const remaining = utils.getTimerRemainingSeconds(entity);
+  if (remaining === null) return null;
+  let endsAt = Date.now() + remaining * 1000;
+  if (domain === 'timer' && !entity.attributes?.finishes_at) {
+    // Remaining describes the duration at the state update, not at publication.
+    const updatedAt = Date.parse(entity.last_updated);
+    if (Number.isFinite(updatedAt)) endsAt = updatedAt + remaining * 1000;
+  }
+  return { endsAt, finishedValue: domain === 'sensor' ? t('Finished') : '0:00' };
+}
+
 /**
  * Describe a Quick Access tile for another surface (the Omarchy bar plugin), so it can draw the
  * same tile: name, icon, status line, active and unavailable states, and what a click does.
@@ -2761,6 +2777,7 @@ function describeQuickAccessTile(entityId) {
   }
   const domain = getEntityDomain(entity.entity_id);
   const unavailable = entity.state === 'unavailable';
+  const countdown = getQuickAccessTileCountdown(entity);
   let action = 'none';
   if (!unavailable) {
     if (QUICK_ACCESS_DIALOG_DOMAINS.has(domain)) action = 'dialog';
@@ -2772,6 +2789,7 @@ function describeQuickAccessTile(entityId) {
     name: utils.getEntityDisplayName(entity),
     state: typeof entity.state === 'string' ? entity.state : '',
     value: getQuickAccessTileSummaryText(entity),
+    ...(countdown ? { countdown } : {}),
     icon: getEntityIconDescriptor(entity),
     available: !unavailable && entity.state !== 'unknown',
     missing: false,
@@ -9997,8 +10015,12 @@ function showSensorDetails(entity) {
       summary.appendChild(readout);
       body.appendChild(summary);
 
+      // Once Home Assistant removes the entity, show it as unavailable, not the opening reading.
+      let removed = false;
       const refreshSummary = () => {
-        const current = state.STATES?.[entity.entity_id] || entity;
+        const current = removed
+          ? { ...entity, state: 'unavailable' }
+          : state.STATES?.[entity.entity_id] || entity;
         const parts = isEntityAvailable(current) ? getQuickAccessSensorDisplayParts(current) : null;
         const text = parts?.text || utils.getEntityDisplayState(current);
         readout.setAttribute('aria-label', text);
@@ -10016,7 +10038,10 @@ function showSensorDetails(entity) {
         modal.querySelector('h2').textContent = utils.getEntityDisplayName(current);
       };
       readout.setAttribute('aria-live', 'polite');
-      unsubscribe = state.subscribeEntity(entity.entity_id, refreshSummary);
+      unsubscribe = state.subscribeEntity(entity.entity_id, (next) => {
+        removed = !next;
+        refreshSummary();
+      });
       refreshSummary();
 
       mountSensorHistoryDetail({

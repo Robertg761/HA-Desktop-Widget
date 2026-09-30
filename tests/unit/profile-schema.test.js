@@ -197,6 +197,10 @@ describe('buildConfigPatchFromApplyPayload', () => {
     });
   });
 
+  test('trims a requested active page before selecting it', () => {
+    expect(apply({ activeTabId: ' bed ' }).activeTabId).toBe('bed');
+  });
+
   test('graphs-only profiles reconcile against existing tabs', () => {
     const patch = apply({ comparisonGraphs: [{ ...pages.comparisonGraphs[0], name: 'Updated' }] });
     expect(patch.customTabs).toEqual(pages.customTabs);
