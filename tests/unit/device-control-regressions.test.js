@@ -246,6 +246,17 @@ describe('device control and live data regressions', () => {
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     expect(mockCallService).not.toHaveBeenCalled();
   });
+  test('sensor detail shows unavailable once Home Assistant deletes the entity', () => {
+    const sensor = entity('sensor.deleted', '21.5', { unit_of_measurement: '°C' });
+    state.setEntityState(sensor);
+    ui.openEntityControls(sensor);
+    const modal = document.querySelector('.sensor-detail-modal, .modal');
+    const readout = modal.querySelector('[aria-live="polite"]');
+    expect(readout.getAttribute('aria-label')).toContain('21.5');
+    state.deleteEntityState(sensor.entity_id);
+    expect(readout.getAttribute('aria-label')).not.toContain('21.5');
+    expect(readout.getAttribute('aria-label')).toMatch(/unavailable/i);
+  });
   test('todo dialog stops writing once Home Assistant deletes the entity', async () => {
     const list = entity('todo.deleted', '1', { supported_features: 5 });
     mockCallServiceWithResponse.mockResolvedValue({

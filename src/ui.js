@@ -9934,8 +9934,12 @@ function showSensorDetails(entity) {
       summary.appendChild(readout);
       body.appendChild(summary);
 
+      // Once Home Assistant removes the entity, show it as unavailable, not the opening reading.
+      let removed = false;
       const refreshSummary = () => {
-        const current = state.STATES?.[entity.entity_id] || entity;
+        const current = removed
+          ? { ...entity, state: 'unavailable' }
+          : state.STATES?.[entity.entity_id] || entity;
         const parts = isEntityAvailable(current) ? getQuickAccessSensorDisplayParts(current) : null;
         const text = parts?.text || utils.getEntityDisplayState(current);
         readout.setAttribute('aria-label', text);
@@ -9953,7 +9957,10 @@ function showSensorDetails(entity) {
         modal.querySelector('h2').textContent = utils.getEntityDisplayName(current);
       };
       readout.setAttribute('aria-live', 'polite');
-      unsubscribe = state.subscribeEntity(entity.entity_id, refreshSummary);
+      unsubscribe = state.subscribeEntity(entity.entity_id, (next) => {
+        removed = !next;
+        refreshSummary();
+      });
       refreshSummary();
 
       mountSensorHistoryDetail({
