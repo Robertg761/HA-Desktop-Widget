@@ -587,6 +587,39 @@ describe('Settings + Config Integration', () => {
       expect(mockUiHooks.initUpdateUI).toHaveBeenCalled();
     });
 
+    test('closing Settings after an import keeps the imported window effects', async () => {
+      window.electronAPI.previewWindowEffects = jest.fn().mockResolvedValue(undefined);
+      window.electronAPI.previewSettingsImport = jest.fn().mockResolvedValue({
+        success: true,
+        canceled: false,
+        id: 'import-1',
+        fileName: 'settings.json',
+        changedSections: ['visualPersonalization'],
+        pageNames: [],
+        entityIds: [],
+      });
+      window.electronAPI.applySettingsImport = jest.fn().mockResolvedValue({
+        success: true,
+        config: { ...state.CONFIG, opacity: 0.6, frostedGlass: false },
+      });
+      mockUiUtils.showConfirm.mockResolvedValueOnce(true);
+      document
+        .getElementById('settings-modal')
+        .insertAdjacentHTML(
+          'beforeend',
+          '<button id="export-settings-file"></button><button id="import-settings-file"></button>'
+        );
+      await settings.openSettings();
+      document.getElementById('import-settings-file').click();
+      for (let i = 0; i < 10; i += 1) await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(window.electronAPI.applySettingsImport).toHaveBeenCalledWith('import-1');
+      expect(window.electronAPI.previewWindowEffects).toHaveBeenLastCalledWith({
+        opacity: 0.6,
+        frostedGlass: false,
+      });
+    });
+
     test('hide on focus loss defaults off and persists both checkbox values', async () => {
       await settings.openSettings();
       const checkbox = document.getElementById('hide-on-blur');
