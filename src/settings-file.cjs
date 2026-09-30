@@ -8,6 +8,8 @@ const mapOf = (schema) => ({ map: schema });
 const stringList = ['string'];
 // Mirrors the renderer's entity-ID pattern in ha-protocol.cjs, which needs Electron to load.
 const HA_ENTITY_ID_PATTERN = /^[a-z0-9_]+\.[a-z0-9_]+$/i;
+// A tile spans one to four grid columns.
+const isTileSpan = (value) => Number.isInteger(value) && value >= 1 && value <= 4;
 // Every exported property is listed, including nested fields. Connection details,
 // credentials, desktop pins, shortcuts, sync keys and machine preferences cannot ride along.
 const SETTINGS_SCHEMA = {
@@ -78,7 +80,7 @@ function project(value, schema) {
   if (typeof schema === 'string') {
     // A tile spans one to four grid columns; anything else would be written straight to the grid.
     if (schema === 'span') {
-      if (!Number.isInteger(value) || value < 1 || value > 4) throw fileError('invalid_file');
+      if (!isTileSpan(value)) throw fileError('invalid_file');
       return value;
     }
     if (value === null && schema.endsWith('?')) return null;
@@ -128,6 +130,13 @@ function buildSettingsFile(config) {
   const settings = projectSettings({
     ...cleared(SETTINGS_SCHEMA),
     ...source,
+    // Files with an invalid span are rejected, but a stray one saved locally only drops that span
+    // rather than blocking export and every import preview.
+    ...(isObject(source.tileSpans) && {
+      tileSpans: Object.fromEntries(
+        Object.entries(source.tileSpans).filter(([, span]) => isTileSpan(span))
+      ),
+    }),
     ui: { ...cleared(SETTINGS_SCHEMA.ui), ...(isObject(source.ui) ? source.ui : {}) },
   });
   assertSafeTree(settings);

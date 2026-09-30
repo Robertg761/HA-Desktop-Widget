@@ -189,6 +189,12 @@ describe('portable settings files', () => {
     expect(imported.ui).toEqual({ theme: 'dark', highContrast: true, scale: 1.25 });
     expect(mergeSectionsIntoConfig(imported, backup, options).ui).toEqual(before.ui);
   });
+  test('exports despite an out-of-range span saved locally, leaving that span out', () => {
+    const settings = parseSettingsFile(
+      serializeSettingsFile({ ...config, tileSpans: { 'light.desk': 2, 'sensor.temp': 9 } })
+    );
+    expect(settings.tileSpans).toEqual({ 'light.desk': 2 });
+  });
   test('rejects a file that clears the whole ui object', () => {
     const file = buildSettingsFile(config);
     file.settings.ui = null;
