@@ -149,7 +149,7 @@ function renderHotkeysTab() {
       item.innerHTML = `
                 <span class="entity-name">${displayName}</span>
                 <div class="hotkey-input-container">
-                    <input type="text" readonly class="hotkey-input" value="${escapedHotkey}" placeholder="${escapeHtmlAttribute(t('None'))}" data-entity-id="${escapedEntityId}">
+                    <input type="text" readonly role="button" aria-label="${escapeHtmlAttribute(t('Hotkey for {{name}}', { name: getEntityDisplayName(entity) }))}" aria-keyshortcuts="Enter Space" class="hotkey-input" value="${escapedHotkey}" placeholder="${escapeHtmlAttribute(t('None'))}" data-entity-id="${escapedEntityId}">
                     ${dropdownHTML}
                     <button type="button" class="btn-clear-hotkey" title="${escapeHtmlAttribute(t('Clear hotkey'))}" aria-label="${escapeHtmlAttribute(t('Clear hotkey'))}">&times;</button>
                 </div>
@@ -303,10 +303,13 @@ function captureHotkey() {
     try {
       const modal = document.createElement('div');
       modal.className = 'hotkey-capture-modal';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      modal.setAttribute('aria-label', t('Press the desired key combination...'));
       modal.innerHTML = `
                 <div class="modal-content">
                     <p>${escapeHtml(t('Press the desired key combination...'))}</p>
-                    <div id="hotkey-preview" class="hotkey-preview-box"></div>
+                    <div id="hotkey-preview" class="hotkey-preview-box" role="status"></div>
                     <p><small>${escapeHtml(t('Press Esc to cancel.'))}</small></p>
                 </div>
             `;

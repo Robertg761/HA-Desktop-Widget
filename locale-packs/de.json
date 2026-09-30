@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.41",
+  "version": "1.2.42",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget, including German date and time formats.",
   "messages": {
@@ -235,7 +235,7 @@
     "Loading live stream...": "Livestream wird geladen…",
     "Snapshot": "Schnappschuss",
     "Live": "Live",
-    "Stop": "Stopp",
+    "Stop": "Stoppen",
     "Status:": "Status:",
     "Last Updated:": "Zuletzt aktualisiert:",
     "Disconnected": "Getrennt",
@@ -871,7 +871,7 @@
     "Search icons or paste icon": "Symbole suchen oder Symbol einfügen",
     "Custom icon for {{entityId}}": "Eigenes Symbol für {{entityId}}",
     "Search": "Suchen",
-    "Apply": "Übernehmen",
+    "Apply": "Anwenden",
     "Reset": "Zurücksetzen",
     "Custom icon must be a single emoji or glyph.": "Das eigene Symbol muss ein einzelnes Emoji oder Zeichen sein.",
     "Icon applied. Click Save to persist changes.": "Symbol übernommen. Klicke auf „Speichern“, um die Änderungen zu sichern.",
@@ -1626,6 +1626,20 @@
     "Turn off widget blur": "Unschärfe für das Widget ausschalten",
     "Turn on blur for the widget": "Unschärfe für das Widget einschalten",
     "Could not change Hyprland's blur.": "Die Unschärfe von Hyprland konnte nicht geändert werden.",
-    "This list is read-only.": "Diese Liste ist schreibgeschützt."
+    "This list is read-only.": "Diese Liste ist schreibgeschützt.",
+    "No controls available": "Keine Steuerung verfügbar",
+    "Invalid value": "Ungültiger Wert",
+    "Alarm code": "Alarmcode",
+    "Hotkey for {{name}}": "Tastenkürzel für {{name}}",
+    "Arm {{name}} at home": "{{name}} im Zuhause-Modus scharfstellen",
+    "Arm {{name}} away": "{{name}} im Abwesend-Modus scharfstellen",
+    "Arm {{name}} at night": "{{name}} im Nachtmodus scharfstellen",
+    "Arm {{name}} with bypass": "{{name}} mit Umgehung scharfstellen",
+    "Arm {{name}} for vacation": "{{name}} im Urlaubsmodus scharfstellen",
+    "Disarm {{name}}": "{{name}} unscharf stellen",
+    "To control {{name}}, type \"arm\" or \"disarm\".": "Um {{name}} zu steuern, geben Sie \"arm\" oder \"disarm\" ein.",
+    "Upcoming events for the next 7 days": "Anstehende Termine in den nächsten 7 Tagen",
+    "Page {{page}} of {{pages}} · {{count}} entities": "Seite {{page}} von {{pages}} · {{count}} Entitäten",
+    "Return to base": "Zur Ladestation zurückkehren"
   }
 }

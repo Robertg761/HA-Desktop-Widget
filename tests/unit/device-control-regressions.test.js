@@ -204,6 +204,153 @@ describe('device control and live data regressions', () => {
       [...modal.querySelectorAll('.modal-body input,.modal-body button')].filter((e) => !e.disabled)
     ).toHaveLength(0);
   });
+  test.each(['number', 'input_number'])(
+    '%s opens bounds-aware controls and sends a numeric zero',
+    async (domain) => {
+      const helper = entity(`${domain}.audit`, '3', { min: 0, max: 10, step: 1 });
+      state.setServices({ [domain]: { set_value: {} } });
+      renderTiles([helper]);
+      tile(helper.entity_id).click();
+      const input = document.querySelector('.helper-controls-modal input');
+      expect(input.min).toBe('0');
+      expect(input.max).toBe('10');
+      input.value = '0';
+      document
+        .querySelector('.helper-controls-modal form')
+        .dispatchEvent(new Event('submit', { cancelable: true }));
+      expect(mockCallService).toHaveBeenCalledWith(domain, 'set_value', {
+        entity_id: helper.entity_id,
+        value: 0,
+      });
+      await Promise.resolve();
+      liveUpdate({ ...helper, state: 'unavailable' });
+      expect(input.disabled).toBe(true);
+    }
+  );
+  test.each(['select', 'input_select'])(
+    '%s controls reject a removed option and follow live options',
+    (domain) => {
+      const helper = entity(`${domain}.audit`, 'Auto', { options: ['Auto', 'Quiet'] });
+      state.setServices({ [domain]: { select_option: {} } });
+      renderTiles([helper]);
+      tile(helper.entity_id).click();
+      const input = document.querySelector('.helper-controls-modal select');
+      input.value = 'Quiet';
+      document
+        .querySelector('.helper-controls-modal form')
+        .dispatchEvent(new Event('submit', { cancelable: true }));
+      expect(mockCallService).toHaveBeenCalledWith(domain, 'select_option', {
+        entity_id: helper.entity_id,
+        option: 'Quiet',
+      });
+      liveUpdate({ ...helper, attributes: { options: ['Auto'] } });
+      expect([...input.options].map((option) => option.value)).toEqual(['Auto']);
+    }
+  );
+  test('vacuum exposes only entity-supported services and stops accepting actions while unavailable', () => {
+    const robot = entity('vacuum.audit', 'docked', { supported_features: 8192 });
+    state.setServices({ vacuum: { start: {}, pause: {}, return_to_base: {} } });
+    renderTiles([robot]);
+    tile(robot.entity_id).click();
+    const body = document.querySelector('.helper-controls-modal .modal-body');
+    expect([...body.querySelectorAll('button')].map((button) => button.textContent)).toEqual([
+      'Start',
+    ]);
+    const oldButton = body.querySelector('button');
+    liveUpdate({ ...robot, state: 'unavailable' });
+    oldButton.click();
+    expect(mockCallService).not.toHaveBeenCalled();
+    expect(body.querySelector('button').disabled).toBe(true);
+  });
+  test('unsupported tiles keep a read-only role and truthful tooltip after a live update', () => {
+    const item = entity('binary_sensor.audit', 'off');
+    renderTiles([item]);
+    expect(tile(item.entity_id).getAttribute('role')).toBe('group');
+    expect(tile(item.entity_id).title).not.toMatch(/toggle/);
+    expect(tile(item.entity_id).hasAttribute('aria-keyshortcuts')).toBe(false);
+    liveUpdate({ ...item, state: 'on' });
+    tile(item.entity_id).click();
+    expect(tile(item.entity_id).title).not.toMatch(/toggle/);
+    expect(mockCallService).not.toHaveBeenCalled();
+  });
+  test('tile state is included in its accessible description and stays current', () => {
+    const light = entity('light.audit', 'off');
+    renderTiles([light]);
+    const target = tile(light.entity_id).querySelector('.tile-primary-button');
+    const readout = document.getElementById(target.getAttribute('aria-describedby'));
+    expect(readout.textContent).toBe('Off');
+    liveUpdate({ ...light, state: 'on' });
+    expect(document.getElementById(target.getAttribute('aria-describedby')).textContent).toBe('On');
+  });
+  test('calendar explains the date window and retries after an error', async () => {
+    const calendar = entity('calendar.audit', 'off');
+    state.setEntityState(calendar);
+    mockCallServiceWithResponse
+      .mockRejectedValueOnce(new Error('Offline'))
+      .mockResolvedValueOnce({ 'calendar.audit': { events: [] } });
+    ui.openEntityControls(calendar);
+    await Promise.resolve();
+    await Promise.resolve();
+    const body = document.querySelector('.calendar-modal .modal-body');
+    expect(body.textContent).toContain('next 7 days');
+    expect(body.querySelector('button').textContent).toBe('Retry');
+    body.querySelector('button').click();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mockCallServiceWithResponse).toHaveBeenCalledTimes(2);
+    expect(body.textContent).toContain('No upcoming events');
+    expect(body.querySelector('button').textContent).toBe('Refresh');
+  });
+  test('large entity picker renders 50 rows at a time and searches across all pages', () => {
+    document.body.innerHTML +=
+      '<input id="quick-controls-search"><div id="quick-controls-list"></div>';
+    state.setStates(
+      Object.fromEntries(
+        Array.from({ length: 5000 }, (_, index) => {
+          const id = `sensor.audit_${String(index).padStart(4, '0')}`;
+          return [id, entity(id, '1')];
+        })
+      )
+    );
+    ui.populateQuickControlsList();
+    expect(document.querySelectorAll('#quick-controls-list .entity-item')).toHaveLength(50);
+    document.querySelector('#quick-controls-pagination button:last-child').click();
+    expect(document.querySelector('#quick-controls-list .entity-id').textContent).toBe(
+      'sensor.audit_0050'
+    );
+    const search = document.getElementById('quick-controls-search');
+    search.value = 'audit_4999';
+    search.dispatchEvent(new Event('input'));
+    jest.advanceTimersByTime(150);
+    expect(document.querySelectorAll('#quick-controls-list .entity-item')).toHaveLength(1);
+    expect(document.querySelector('#quick-controls-list .entity-id').textContent).toBe(
+      'sensor.audit_4999'
+    );
+  });
+  test('alarm prompt cancels on Escape and clears its secret field', async () => {
+    const pending = ui.requestAlarmCode(
+      entity('alarm_control_panel.audit', 'armed_home', { code_format: 'number' })
+    );
+    const modal = document.querySelector('.alarm-code-modal');
+    const input = modal.querySelector('input');
+    input.value = '1234';
+    modal.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(await pending).toBeNull();
+    expect(input.value).toBe('');
+  });
+  test('alarm prompt requires numeric code when specified and returns it only on submit', async () => {
+    const pending = ui.requestAlarmCode(
+      entity('alarm_control_panel.audit', 'disarmed', { code_format: 'number' })
+    );
+    const modal = document.querySelector('.alarm-code-modal');
+    const input = modal.querySelector('input');
+    input.value = 'bad';
+    expect(input.checkValidity()).toBe(false);
+    input.value = '0123';
+    modal.querySelector('form').dispatchEvent(new Event('submit', { cancelable: true }));
+    expect(await pending).toBe('0123');
+    expect(input.value).toBe('');
+  });
   test('primary media refuses commands for a player with no supported playback features', () => {
     const player = entity('media_player.audit', 'idle', { supported_features: 0 });
     state.setEntityState(player);

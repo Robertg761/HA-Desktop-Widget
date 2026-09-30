@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.41",
+  "version": "1.2.42",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1626,6 +1626,20 @@
     "Turn off widget blur": "Desactivar el desenfoque del widget",
     "Turn on blur for the widget": "Activar el desenfoque para el widget",
     "Could not change Hyprland's blur.": "No se pudo cambiar el desenfoque de Hyprland.",
-    "This list is read-only.": "Esta lista es de solo lectura."
+    "This list is read-only.": "Esta lista es de solo lectura.",
+    "No controls available": "No controls available",
+    "Invalid value": "Invalid value",
+    "Alarm code": "Alarm code",
+    "Hotkey for {{name}}": "Hotkey for {{name}}",
+    "Arm {{name}} at home": "Arm {{name}} at home",
+    "Arm {{name}} away": "Arm {{name}} away",
+    "Arm {{name}} at night": "Arm {{name}} at night",
+    "Arm {{name}} with bypass": "Arm {{name}} with bypass",
+    "Arm {{name}} for vacation": "Arm {{name}} for vacation",
+    "Disarm {{name}}": "Disarm {{name}}",
+    "To control {{name}}, type \"arm\" or \"disarm\".": "To control {{name}}, type \"arm\" or \"disarm\".",
+    "Upcoming events for the next 7 days": "Upcoming events for the next 7 days",
+    "Page {{page}} of {{pages}} · {{count}} entities": "Page {{page}} of {{pages}} · {{count}} entities",
+    "Return to base": "Return to base"
   }
 }

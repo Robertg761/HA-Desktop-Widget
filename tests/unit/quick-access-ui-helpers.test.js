@@ -2,6 +2,15 @@ const { getNextQuickAccessFocusIndex } = require('../../src/quick-access-ui-help
 
 describe('quick access UI helpers', () => {
   describe('getNextQuickAccessFocusIndex', () => {
+    it('follows visual horizontal order in RTL while preserving vertical and endpoint navigation', () => {
+      expect(getNextQuickAccessFocusIndex(0, 5, 'ArrowLeft', 3, 'rtl')).toBe(1);
+      expect(getNextQuickAccessFocusIndex(1, 5, 'ArrowRight', 3, 'rtl')).toBe(0);
+      expect(getNextQuickAccessFocusIndex(0, 5, 'ArrowRight', 3, 'rtl')).toBe(0);
+      expect(getNextQuickAccessFocusIndex(4, 5, 'ArrowLeft', 3, 'rtl')).toBe(4);
+      expect(getNextQuickAccessFocusIndex(1, 5, 'ArrowDown', 3, 'rtl')).toBe(4);
+      expect(getNextQuickAccessFocusIndex(4, 5, 'Home', 3, 'rtl')).toBe(0);
+      expect(getNextQuickAccessFocusIndex(1, 5, 'End', 3, 'rtl')).toBe(4);
+    });
     it('moves horizontally and clamps at edges', () => {
       expect(getNextQuickAccessFocusIndex(0, 4, 'ArrowLeft', 2)).toBe(0);
       expect(getNextQuickAccessFocusIndex(0, 4, 'ArrowRight', 2)).toBe(1);

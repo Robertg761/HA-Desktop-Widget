@@ -3166,31 +3166,54 @@ function wireUI() {
 
     const hotkeysList = document.getElementById('hotkeys-list');
     if (hotkeysList) {
+      hotkeysList.addEventListener('keydown', (event) => {
+        if (event.target.classList.contains('hotkey-input') && ['Enter', ' '].includes(event.key)) {
+          event.preventDefault();
+          event.stopPropagation();
+          event.target.click();
+        }
+      });
       hotkeysList.addEventListener('click', async (e) => {
         const target = e.target;
         if (target.classList.contains('hotkey-input')) {
+          if (target.dataset.recording === 'true') return;
           const entityId = target.dataset.entityId;
+          target.dataset.recording = 'true';
+          target.setAttribute('aria-busy', 'true');
           target.value = t('Recording...');
-          const hotkey = await hotkeys.captureHotkey();
-          if (hotkey) {
-            // Get selected action from custom dropdown
-            const dropdown = target.parentElement.querySelector('.hotkey-action-dropdown');
-            const selectedOption = dropdown?.querySelector('.custom-dropdown-option.selected');
-            const action = selectedOption?.dataset?.value || 'toggle';
-            const result = await window.electronAPI.registerHotkey(entityId, hotkey, action);
-            if (result.success) {
-              target.value = hotkey;
-              state.CONFIG.globalHotkeys.hotkeys[entityId] = { hotkey, action };
+          try {
+            const hotkey = await hotkeys.captureHotkey();
+            if (hotkey) {
+              // Get selected action from custom dropdown
+              const dropdown = target.parentElement.querySelector('.hotkey-action-dropdown');
+              const selectedOption = dropdown?.querySelector('.custom-dropdown-option.selected');
+              const action = selectedOption?.dataset?.value || 'toggle';
+              const result = await window.electronAPI.registerHotkey(entityId, hotkey, action);
+              if (result?.success) {
+                target.value = hotkey;
+                state.CONFIG.globalHotkeys ||= { hotkeys: {} };
+                state.CONFIG.globalHotkeys.hotkeys ||= {};
+                state.CONFIG.globalHotkeys.hotkeys[entityId] = { hotkey, action };
+              } else {
+                uiUtils.showToast(result.error, 'error');
+                const currentConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
+                target.value =
+                  typeof currentConfig === 'string' ? currentConfig : currentConfig?.hotkey || '';
+              }
             } else {
-              uiUtils.showToast(result.error, 'error');
               const currentConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
               target.value =
                 typeof currentConfig === 'string' ? currentConfig : currentConfig?.hotkey || '';
             }
-          } else {
+          } catch (error) {
+            uiUtils.showToast(error?.message || t('Error toggling hotkeys'), 'error');
+          } finally {
+            target.dataset.recording = 'false';
+            target.removeAttribute('aria-busy');
             const currentConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
             target.value =
               typeof currentConfig === 'string' ? currentConfig : currentConfig?.hotkey || '';
+            if (target.isConnected) target.focus();
           }
         } else if (target.classList.contains('btn-clear-hotkey')) {
           const container = target.parentElement;
