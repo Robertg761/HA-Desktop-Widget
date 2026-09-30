@@ -22,9 +22,7 @@
       "repositoryUrl": {
         "url": "https://github.com/Robertg761/HA-Desktop-Widget"
       },
-      "licenses": [
-        "spdx:MIT"
-      ],
+      "licenses": ["spdx:MIT"],
       "tags": [
         "home-assistant",
         "home-automation",
@@ -62,9 +60,7 @@
         "amount": 10000,
         "currency": "USD",
         "frequency": "one-time",
-        "channels": [
-          "contact-maintainer"
-        ]
+        "channels": ["contact-maintainer"]
       }
     ]
   }

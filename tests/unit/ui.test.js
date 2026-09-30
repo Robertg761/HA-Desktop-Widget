@@ -7047,6 +7047,77 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   });
 
   describe('describeQuickAccessTile', () => {
+    it('publishes deadlines for native timers and timer sensors, clearing them on pause or stop', () => {
+      jest.useFakeTimers();
+      try {
+        const now = Date.parse('2026-09-30T12:00:00Z');
+        jest.setSystemTime(now);
+        const endsAt = now + 90000;
+        const timer = {
+          entity_id: 'timer.kitchen',
+          state: 'active',
+          attributes: { finishes_at: new Date(endsAt).toISOString(), remaining: '0:01:30' },
+        };
+        const sensor = {
+          entity_id: 'sensor.kitchen_timer',
+          state: new Date(endsAt).toISOString(),
+          attributes: {},
+        };
+        state.setStates({ [timer.entity_id]: timer, [sensor.entity_id]: sensor });
+        expect(ui.describeQuickAccessTile(timer.entity_id).countdown).toEqual({
+          endsAt,
+          finishedValue: '0:00',
+        });
+        expect(ui.describeQuickAccessTile(sensor.entity_id).countdown).toEqual({
+          endsAt,
+          finishedValue: 'Finished',
+        });
+        jest.setSystemTime(now + 15000);
+        expect(ui.describeQuickAccessTile(timer.entity_id).countdown.endsAt).toBe(endsAt);
+        expect(ui.describeQuickAccessTile(sensor.entity_id).countdown.endsAt).toBe(endsAt);
+        for (const timerState of ['paused', 'idle', 'unknown', 'unavailable']) {
+          state.setStates({ [timer.entity_id]: { ...timer, state: timerState } });
+          expect(ui.describeQuickAccessTile(timer.entity_id).countdown).toBeUndefined();
+        }
+        const resumedEnd = endsAt + 30000;
+        state.setStates({
+          [timer.entity_id]: {
+            ...timer,
+            attributes: { finishes_at: new Date(resumedEnd).toISOString() },
+          },
+        });
+        expect(ui.describeQuickAccessTile(timer.entity_id).countdown.endsAt).toBe(resumedEnd);
+        state.setStates({
+          [timer.entity_id]: { ...timer, attributes: { finishes_at: 'invalid' } },
+        });
+        expect(ui.describeQuickAccessTile(timer.entity_id).countdown).toBeUndefined();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('anchors remaining-only timers to their state update across republication', () => {
+      jest.useFakeTimers();
+      try {
+        const updatedAt = Date.parse('2026-09-30T12:00:00Z');
+        const timer = {
+          entity_id: 'timer.kitchen',
+          state: 'active',
+          last_updated: new Date(updatedAt).toISOString(),
+          attributes: { remaining: '0:01:30' },
+        };
+        state.setStates({ [timer.entity_id]: timer });
+        for (const elapsed of [0, 15000, 60000]) {
+          jest.setSystemTime(updatedAt + elapsed);
+          expect(ui.describeQuickAccessTile(timer.entity_id).countdown.endsAt).toBe(
+            updatedAt + 90000
+          );
+        }
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('describes a tile the way the widget draws it, for the Omarchy bar', () => {
       state.setStates({
         'light.desk': {

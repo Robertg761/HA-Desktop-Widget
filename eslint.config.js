@@ -101,6 +101,11 @@ module.exports = [
       'no-console': 'off',
     },
   },
+  // QML imports plain scripts and exposes their functions without ES module exports.
+  {
+    files: ['omarchy-plugin/*.js'],
+    languageOptions: { sourceType: 'script' },
+  },
   // Renderer process files (ES Modules - bundled by Vite)
   {
     files: [
