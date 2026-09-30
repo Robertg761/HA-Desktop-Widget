@@ -131,18 +131,25 @@ function resolveOmarchyBarEntities(entry, config = {}) {
   if (entry?.entities) {
     sections = [{ name: '', ids: entry.entities }];
   } else {
+    // A tile can sit on several pages (a duplicated page, say), and each page keeps its own copy.
+    // Only the distinct ids count toward the panel's limit.
     sections = [];
     const seen = new Set();
     for (const page of getQuickAccessPages(config)) {
-      if (sections.length >= MAX_PANEL_SECTIONS || seen.size >= MAX_PANEL_ENTITIES) break;
-      const ids = page.ids.filter((id) => !seen.has(id)).slice(0, MAX_PANEL_ENTITIES - seen.size);
-      ids.forEach((id) => seen.add(id));
+      if (sections.length >= MAX_PANEL_SECTIONS) break;
+      const ids = page.ids.filter((id) => {
+        if (seen.has(id)) return true;
+        if (seen.size >= MAX_PANEL_ENTITIES) return false;
+        seen.add(id);
+        return true;
+      });
       if (ids.length) sections.push({ name: page.name, ids });
     }
     // A single page needs no heading.
     if (sections.length === 1) sections[0] = { name: '', ids: sections[0].ids };
   }
-  const panel = sections.flatMap((section) => section.ids);
+  // The panel list is the distinct tiles; each section still lists its own ids.
+  const panel = [...new Set(sections.flatMap((section) => section.ids))];
   const bar = entry?.barEntities || [];
   return { panel, bar, sections, all: [...new Set([...bar, ...panel])] };
 }

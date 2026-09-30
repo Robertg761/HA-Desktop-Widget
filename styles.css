@@ -9971,6 +9971,11 @@ body.widget-state-active #quick-controls .status-message {
   padding: var(--space-6);
 }
 
+#confirm-message {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
 .confirm-modal-content .modal-footer {
   display: flex;
   gap: var(--space-3);
@@ -13878,6 +13883,40 @@ body.theme-light #settings-modal .modal-footer {
 }
 
 /* --- Page header --- */
+
+.settings-search-box {
+  margin-block-end: 16px;
+}
+
+.settings-search-box label {
+  display: block;
+  margin-block-end: 6px;
+}
+
+#settings-search {
+  width: 100%;
+}
+
+#settings-modal.settings-searching .tab-content {
+  display: none;
+}
+
+#settings-search-results:not([hidden]) {
+  display: grid;
+  gap: 8px;
+}
+
+#settings-modal .settings-search-result {
+  display: flex;
+  align-items: start;
+  flex-direction: column;
+  text-align: start;
+  white-space: normal;
+}
+
+.settings-search-result small {
+  color: var(--text-muted);
+}
 
 .settings-page-header {
   margin: 0 2px 18px;

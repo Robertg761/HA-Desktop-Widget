@@ -152,7 +152,8 @@ describe('Omarchy bar settings in shell.json', () => {
     expect(legacy.panel).toHaveLength(20);
     expect(legacy.sections).toEqual([{ name: '', ids: favorites }]);
     expect(legacy.bar).toEqual([]);
-    // One page needs no heading; several keep their names, in order, without repeats.
+    // One page needs no heading; several keep their names and order, and each page keeps its own
+    // tiles even when another page lists them too.
     const onePage = resolveOmarchyBarEntities(entry, {
       customTabs: [{ name: 'All', entityIds: ['light.a', 'switch.b'] }],
     });
@@ -166,9 +167,10 @@ describe('Omarchy bar settings in shell.json', () => {
     });
     expect(pages.sections).toEqual([
       { name: 'Living room', ids: ['light.a', 'switch.b'] },
-      { name: 'Office', ids: ['sensor.temp'] },
+      { name: 'Office', ids: ['switch.b', 'sensor.temp'] },
     ]);
     expect(pages.panel).toEqual(['light.a', 'switch.b', 'sensor.temp']);
+    expect(pages.all).toEqual(['light.a', 'switch.b', 'sensor.temp']);
     expect(getQuickAccessPages({})).toEqual([]);
     // Entities chosen on the shell.json entry replace the pages with one list.
     const chosen = resolveOmarchyBarEntities(
@@ -181,6 +183,45 @@ describe('Omarchy bar settings in shell.json', () => {
       sections: [{ name: '', ids: ['switch.fan'] }],
       all: ['sensor.temp', 'switch.fan'],
     });
+  });
+
+  it('keeps a duplicated page in the panel and skips its comparison graphs', () => {
+    const entry = { present: true, entities: null, barEntities: null };
+    const resolved = resolveOmarchyBarEntities(entry, {
+      customTabs: [
+        { name: 'Home', entityIds: ['light.a', 'graph:temps', 'switch.b'] },
+        { name: 'Home copy', entityIds: ['light.a', 'graph:temps-copy', 'switch.b'] },
+      ],
+    });
+    // The copy still gets its section; the tiles are listed once for the status and subscriptions.
+    expect(resolved.sections).toEqual([
+      { name: 'Home', ids: ['light.a', 'switch.b'] },
+      { name: 'Home copy', ids: ['light.a', 'switch.b'] },
+    ]);
+    expect(resolved.panel).toEqual(['light.a', 'switch.b']);
+    expect(resolved.all).toEqual(['light.a', 'switch.b']);
+    const tiles = new Map(resolved.panel.map((id) => [id, { ...lightTile, id }]));
+    const status = buildOmarchyBarStatus({ tiles, entities: resolved });
+    expect(status.panel.map((tile) => tile.id)).toEqual(['light.a', 'switch.b']);
+    expect(status.sections.map((section) => section.ids)).toEqual([
+      ['light.a', 'switch.b'],
+      ['light.a', 'switch.b'],
+    ]);
+  });
+
+  it('limits the panel by distinct entities, not by repeated ones', () => {
+    const ids = Array.from({ length: 48 }, (_, index) => `sensor.s${index}`);
+    const resolved = resolveOmarchyBarEntities(
+      { present: true, entities: null, barEntities: null },
+      {
+        customTabs: [
+          { name: 'A', entityIds: ids },
+          { name: 'B', entityIds: ['sensor.extra', ...ids.slice(0, 2)] },
+        ],
+      }
+    );
+    expect(resolved.panel).toEqual(ids);
+    expect(resolved.sections[1]).toEqual({ name: 'B', ids: ids.slice(0, 2) });
   });
 });
 

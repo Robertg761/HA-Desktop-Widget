@@ -129,6 +129,24 @@ describe('profile-sync-core', () => {
   });
 
   describe('merging into config', () => {
+    test('a null ui key survives a normal merge and is cleared only when opted in', () => {
+      const local = { ui: { theme: 'dark', futureKey: null, otherKey: null } };
+      const incoming = { visualPersonalization: { ui: { theme: 'light', otherKey: null } } };
+      expect(mergeSectionsIntoConfig(local, incoming).ui).toEqual({
+        theme: 'light',
+        futureKey: null,
+        otherKey: null,
+      });
+      expect(
+        mergeSyncedProfileIntoConfig(local, incoming.visualPersonalization).ui.futureKey
+      ).toBeNull();
+      // Only the keys the incoming ui names are cleared, not every null key already here.
+      expect(mergeSectionsIntoConfig(local, incoming, { clearNullUiKeys: true }).ui).toEqual({
+        theme: 'light',
+        futureKey: null,
+      });
+    });
+
     test('keeps local-only fields, out-of-scope sections and this machine’s ui keys', () => {
       const merged = mergeSyncedProfileIntoConfig(
         {
