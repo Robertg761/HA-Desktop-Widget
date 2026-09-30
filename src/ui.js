@@ -10217,8 +10217,12 @@ function showTodoDetails(entity) {
     readOnly.className = 'control-capability-note';
     readOnly.textContent = t('This list is read-only.');
     let lastState = entity.state;
+    // Once Home Assistant removes the entity, the opening snapshot must not keep writes enabled.
+    let removed = false;
+    const liveTodo = () =>
+      removed ? { ...entity, state: 'unavailable' } : state.STATES?.[entity.entity_id] || entity;
     const refreshTodo = () => {
-      const current = state.STATES?.[entity.entity_id] || entity;
+      const current = liveTodo();
       showUnavailableDialogState(modal, current);
       const capabilities = getTodoCapabilities(current);
       input.disabled = busy || !capabilities.canAdd;
@@ -10237,7 +10241,7 @@ function showTodoDetails(entity) {
 
     addForm.addEventListener('submit', async (event) => {
       event.preventDefault();
-      if (busy || !getTodoCapabilities(state.STATES?.[entity.entity_id] || entity).canAdd) return;
+      if (busy || !getTodoCapabilities(liveTodo()).canAdd) return;
       const summary = input.value.trim();
       if (!summary) return;
       busy = true;
@@ -10261,7 +10265,10 @@ function showTodoDetails(entity) {
     body.appendChild(addForm);
     body.appendChild(readOnly);
     body.appendChild(listContainer);
-    unsubscribe = state.subscribeEntity(entity.entity_id, refreshTodo);
+    unsubscribe = state.subscribeEntity(entity.entity_id, (next) => {
+      removed = !next;
+      refreshTodo();
+    });
     refreshTodo();
     if (isEntityAvailable(entity)) void loadTodoItemsInto(listContainer, entity);
     else listContainer.textContent = t('Unavailable');
@@ -10864,9 +10871,25 @@ function supportsLightColorTemp(attributes = {}) {
   return getSupportedLightColorModes(attributes).includes('color_temp');
 }
 
+// Which controls the media dialog renders. Lost capabilities only disable a rendered control;
+// gained ones need the dialog rebuilt.
+function getMediaDetailControls(entity) {
+  const capabilities = getDesktopPinCapabilities(entity);
+  const features = entity?.attributes?.supported_features;
+  return [
+    capabilities.canPreviousTrack,
+    capabilities.canNextTrack,
+    capabilities.canPlay || capabilities.canPause,
+    canSeekMedia(entity),
+    uiUtils.hasSupportedFeature(features, MEDIA_PLAYER_SUPPORT_VOLUME_SET),
+    uiUtils.hasSupportedFeature(features, MEDIA_PLAYER_SUPPORT_VOLUME_MUTE),
+  ];
+}
+
 function showMediaDetail(entity) {
   try {
     ensureEntityCacheScope();
+    const renderedControls = getMediaDetailControls(entity);
     const name = utils.escapeHtml(utils.getEntityDisplayName(entity));
     const mediaTitle = utils.escapeHtml(entity.attributes?.media_title || '');
     const mediaArtist = utils.escapeHtml(entity.attributes?.media_artist || '');
@@ -11163,6 +11186,30 @@ function showMediaDetail(entity) {
     const refreshMedia = () => {
       if (!modal.isConnected) {
         stopUpdates();
+        return;
+      }
+      const currentEntity = state.STATES[entity.entity_id] || entity;
+      if (
+        getMediaDetailControls(currentEntity).some(
+          (supported, index) => supported && !renderedControls[index]
+        )
+      ) {
+        // Controls are only rendered for the capabilities the player had at open, so rebuild
+        // the dialog in place when it gains one, keeping focus on the same control.
+        const focused = modal.contains(document.activeElement) ? document.activeElement : null;
+        const focusSelector = focused?.id
+          ? `#${focused.id}`
+          : focused?.dataset?.action
+            ? `[data-action="${focused.dataset.action}"]${focused.dataset.seekDelta ? `[data-seek-delta="${focused.dataset.seekDelta}"]` : ''}`
+            : null;
+        isClosing = true;
+        entityDetailClosers.delete(closeModal);
+        stopUpdates();
+        clearTimeout(volumeDebounceTimer);
+        releaseAccessibleDialogModal(modal);
+        modal.remove();
+        showMediaDetail(currentEntity);
+        if (focusSelector) document.querySelector(`.media-modal ${focusSelector}`)?.focus();
         return;
       }
       if (document.hidden) return;
