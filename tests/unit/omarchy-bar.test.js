@@ -2,6 +2,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const vm = require('vm');
 const {
   OMARCHY_BAR_PLUGIN_ID,
   PLUGIN_FILES,
@@ -184,6 +185,31 @@ describe('Omarchy bar settings in shell.json', () => {
 });
 
 describe('Omarchy bar status', () => {
+  it('bounds countdown metadata and passes it to the bar and panel', () => {
+    const endsAt = Date.parse('2026-09-30T12:00:00Z');
+    const raw = {
+      ...lightTile,
+      countdown: { endsAt, finishedValue: '  Finished\n', extra: 'dropped' },
+    };
+    const tile = cleanOmarchyBarTile('sensor.kitchen_timer', raw);
+    expect(tile.countdown).toEqual({ endsAt, finishedValue: 'Finished' });
+    const status = buildOmarchyBarStatus({
+      tiles: new Map([[tile.id, tile]]),
+      entities: { panel: [tile.id], bar: [tile.id] },
+    });
+    expect(status.panel[0].countdown).toEqual(tile.countdown);
+    expect(status.bar[0].countdown).toEqual(tile.countdown);
+    for (const invalid of [NaN, Infinity, -1, 0, '123', null]) {
+      expect(
+        cleanOmarchyBarTile(tile.id, { ...raw, countdown: { endsAt: invalid } }).countdown
+      ).toBeUndefined();
+    }
+    expect(cleanOmarchyBarTile(tile.id, { ...raw, available: false }).countdown).toBeUndefined();
+    expect(
+      cleanOmarchyBarTile(tile.id, { ...raw, countdown: { endsAt } }).countdown.finishedValue
+    ).toBe('0:00');
+  });
+
   it('keeps only the tile fields the plugin reads', () => {
     expect(cleanOmarchyBarTile('light.desk', { ...lightTile, extra: 'dropped' })).toEqual({
       id: 'light.desk',
@@ -315,6 +341,48 @@ describe('Omarchy bar status', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+describe('Omarchy shell countdowns', () => {
+  const countdown = vm.runInNewContext(
+    fs.readFileSync(path.join(pluginDir, 'Countdown.js'), 'utf8') + '\n({ value, isRunning })'
+  );
+  const now = Date.parse('2026-09-30T12:00:00Z');
+  const tile = {
+    available: true,
+    value: 'stale snapshot',
+    countdown: { endsAt: now + 90000, finishedValue: 'Finished' },
+  };
+
+  it('ticks between state updates and catches up after sleep', () => {
+    expect(countdown.value(tile, now)).toBe('1:30');
+    expect(countdown.value(tile, now + 1000)).toBe('1:29');
+    expect(countdown.value(tile, now + 65000)).toBe('0:25');
+    expect(countdown.isRunning(tile, now + 65000)).toBe(true);
+    expect(countdown.value(tile, now + 90000)).toBe('Finished');
+    expect(countdown.value(tile, now + 180000)).toBe('Finished');
+    expect(countdown.isRunning(tile, now + 90000)).toBe(false);
+  });
+
+  it('formats hours and clamps completed native timers to zero', () => {
+    const native = { ...tile, countdown: { endsAt: now + 3661000, finishedValue: '0:00' } };
+    expect(countdown.value(native, now)).toBe('1:01:01');
+    expect(countdown.value(native, now + 2000)).toBe('1:00:59');
+    expect(countdown.value(native, now + 7200000)).toBe('0:00');
+  });
+
+  it('preserves static, paused, unavailable and older widget values', () => {
+    for (const staticTile of [
+      { value: '85%' },
+      { ...tile, countdown: undefined, value: 'Paused' },
+      { ...tile, available: false, value: 'Unavailable' },
+      { ...tile, countdown: { endsAt: 'invalid' } },
+    ]) {
+      expect(countdown.value(staticTile, now + 180000)).toBe(staticTile.value);
+      expect(countdown.isRunning(staticTile, now)).toBe(false);
+    }
+    expect(countdown.value(null, now)).toBe('');
   });
 });
 
