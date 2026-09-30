@@ -126,7 +126,10 @@ describe('DesktopCompanionClient', () => {
     const ackFor = (websocket, id) =>
       websocket.requests.filter((r) => r.type.endsWith('/ack_command') && r.command_id === id);
 
-    async function resetWithRunningAndQueued() {
+    async function resetWithRunningAndQueued({
+      start = false,
+      restart = (client) => client.resetSession(),
+    } = {}) {
       const releases = [];
       const executeCommand = jest.fn(
         () =>
@@ -135,11 +138,15 @@ describe('DesktopCompanionClient', () => {
           })
       );
       const { client, websocket } = createClient({ executeCommand });
+      if (start) {
+        client.start();
+        await flush();
+      }
       const running = client.handleCommand('desktop-1', command('running', 'show'));
       const queued = client.handleCommand('desktop-1', command('queued', 'hide'));
       await flush();
       expect(executeCommand).toHaveBeenCalledTimes(1);
-      client.resetSession();
+      await restart(client, websocket);
       return { client, websocket, executeCommand, releases, running, queued };
     }
 
@@ -160,6 +167,24 @@ describe('DesktopCompanionClient', () => {
       expect(acks).toHaveLength(1);
       expect(acks[0].status).toBe('completed');
       expect(ackFor(websocket, 'running')).toHaveLength(0);
+    });
+
+    test('a replacement socket that authenticates without closing also starts fresh', async () => {
+      const { client, websocket, executeCommand, releases, running, queued } =
+        await resetWithRunningAndQueued({
+          start: true,
+          restart: async (_client, socket) => {
+            socket.emit('message', { type: 'auth_ok' });
+            await flush();
+          },
+        });
+      const redelivered = client.handleCommand('desktop-1', command('queued', 'hide'));
+      releases[0]({ visible: true });
+      await flush();
+      expect(executeCommand).toHaveBeenCalledTimes(2);
+      releases[1]({ visible: false });
+      await Promise.all([running, queued, redelivered]);
+      expect(ackFor(websocket, 'queued').map((ack) => ack.status)).toEqual(['completed']);
     });
 
     test('a running command redelivered in the next session executes once', async () => {
