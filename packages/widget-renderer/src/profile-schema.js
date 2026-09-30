@@ -117,15 +117,20 @@ function normalizeProfileDocument(document, currentConfig = {}) {
     if ('customTabs' in document && !('favoriteEntities' in document)) {
       source.favoriteEntities = [];
     }
-    // A legacy favorites-only edit changes the active page, not every page on the desktop.
+    // A legacy favorites-only edit changes one page, not every page on the desktop: the page the
+    // profile selects when it names an existing one, otherwise the current active page.
     if (
       'favoriteEntities' in document &&
       !('customTabs' in document) &&
       source.customTabs?.length
     ) {
       const current = normalizeQuickAccessConfig(currentConfig);
+      const requestedTabId = boundedString(document.activeTabId);
+      const targetTabId = current.customTabs.some((tab) => tab.id === requestedTabId)
+        ? requestedTabId
+        : current.activeTabId;
       source.customTabs = current.customTabs.map((tab) =>
-        tab.id === current.activeTabId
+        tab.id === targetTabId
           ? { ...tab, entityIds: normalizeStringArray(document.favoriteEntities) }
           : tab
       );
