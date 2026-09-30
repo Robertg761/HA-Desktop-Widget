@@ -10,6 +10,8 @@ const stringList = ['string'];
 const HA_ENTITY_ID_PATTERN = /^[a-z0-9_]+\.[a-z0-9_]+$/i;
 // A tile spans one to four grid columns.
 const isTileSpan = (value) => Number.isInteger(value) && value >= 1 && value <= 4;
+// Alert delays are whole seconds up to a day, as the alert editor enforces.
+const isAlertSeconds = (value) => Number.isInteger(value) && value >= 0 && value <= 86400;
 // Every exported property is listed, including nested fields. Connection details,
 // credentials, desktop pins, shortcuts, sync keys and machine preferences cannot ride along.
 const SETTINGS_SCHEMA = {
@@ -40,8 +42,8 @@ const SETTINGS_SCHEMA = {
       onNumericThreshold: 'boolean',
       comparison: 'string',
       threshold: 'number?',
-      durationSeconds: 'number',
-      cooldownSeconds: 'number',
+      durationSeconds: 'seconds',
+      cooldownSeconds: 'seconds',
       quietHours: { enabled: 'boolean', start: 'string', end: 'string' },
     }),
   },
@@ -79,8 +81,9 @@ function isObject(value) {
 function project(value, schema) {
   if (typeof schema === 'string') {
     // A tile spans one to four grid columns; anything else would be written straight to the grid.
-    if (schema === 'span') {
-      if (!isTileSpan(value)) throw fileError('invalid_file');
+    if (schema === 'span' || schema === 'seconds') {
+      if (!(schema === 'span' ? isTileSpan : isAlertSeconds)(value))
+        throw fileError('invalid_file');
       return value;
     }
     if (value === null && schema.endsWith('?')) return null;
@@ -130,13 +133,33 @@ function buildSettingsFile(config) {
   const settings = projectSettings({
     ...cleared(SETTINGS_SCHEMA),
     ...source,
-    // Files with an invalid span are rejected, but a stray one saved locally only drops that span
-    // rather than blocking export and every import preview.
+    // Files with an invalid span or alert delay are rejected, but a stray one saved locally is
+    // only left out rather than blocking export and every import preview.
     ...(isObject(source.tileSpans) && {
       tileSpans: Object.fromEntries(
         Object.entries(source.tileSpans).filter(([, span]) => isTileSpan(span))
       ),
     }),
+    ...(isObject(source.entityAlerts) &&
+      isObject(source.entityAlerts.alerts) && {
+        entityAlerts: {
+          ...source.entityAlerts,
+          alerts: Object.fromEntries(
+            Object.entries(source.entityAlerts.alerts).map(([id, alert]) => [
+              id,
+              isObject(alert)
+                ? Object.fromEntries(
+                    Object.entries(alert).filter(
+                      ([key, value]) =>
+                        !['durationSeconds', 'cooldownSeconds'].includes(key) ||
+                        isAlertSeconds(value)
+                    )
+                  )
+                : alert,
+            ])
+          ),
+        },
+      }),
     ui: { ...cleared(SETTINGS_SCHEMA.ui), ...(isObject(source.ui) ? source.ui : {}) },
   });
   assertSafeTree(settings);

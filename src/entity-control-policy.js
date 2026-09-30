@@ -1,6 +1,9 @@
 import desktopPinSupport from './desktop-pin-support.cjs';
 import { toFiniteNumber } from './comparison-graphs.js';
 
+// Only `unavailable` blocks commands. Home Assistant also reports `unknown` for entities that can
+// still act, such as a button or scene never pressed and assumed-state lights, so `unknown` stays
+// controllable; readings from an `unknown` entity are not shown (see getClimateTileTemperature).
 function isEntityAvailable(entity) {
   return !!entity?.entity_id && entity.state !== 'unavailable';
 }
@@ -35,7 +38,8 @@ function getTodoCapabilities(entity) {
 }
 
 function getClimateTileTemperature(entity) {
-  if (!isEntityAvailable(entity)) return null;
+  // An `unknown` thermostat's temperature attributes may be stale, so show none.
+  if (!isEntityAvailable(entity) || entity.state === 'unknown') return null;
   return (
     toFiniteNumber(entity.attributes?.current_temperature) ??
     toFiniteNumber(entity.attributes?.temperature)
