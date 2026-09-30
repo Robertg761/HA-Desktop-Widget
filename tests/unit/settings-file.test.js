@@ -123,6 +123,31 @@ describe('portable settings files', () => {
     );
     expect(entityIds).toEqual(['light.retired', 'switch.fan', 'sensor.wide', 'camera.door']);
   });
+  test('importing restores settings the exporting computer never set to their defaults', () => {
+    const { mergeSectionsIntoConfig } = require('../../profile-sync-core.js');
+    const source = { ...config, ui: { theme: 'dark' } };
+    delete source.selectedWeatherEntity;
+    delete source.tileSpans;
+    const settings = parseSettingsFile(serializeSettingsFile(source));
+    expect(settings.selectedWeatherEntity).toBeNull();
+    expect(settings.tileSpans).toBeNull();
+    expect(settings.ui.highContrast).toBeNull();
+    const destination = {
+      ...config,
+      selectedWeatherEntity: 'weather.other',
+      tileSpans: { 'light.desk': 3 },
+      ui: { theme: 'light', highContrast: true, scale: 1.25 },
+    };
+    const merged = mergeSectionsIntoConfig(destination, settingsFileSections(settings));
+    expect(merged.selectedWeatherEntity).toBeUndefined();
+    expect(merged.tileSpans).toBeUndefined();
+    expect(merged.ui).toEqual({ theme: 'dark', scale: 1.25 });
+  });
+  test('rejects a file that clears the whole ui object', () => {
+    const file = buildSettingsFile(config);
+    file.settings.ui = null;
+    expect(() => parseSettingsFile(JSON.stringify(file))).toThrow();
+  });
   test('round trips a saved profile with Unicode and a byte order mark', () => {
     const next = { ...config, customTabs: [{ id: 'home', name: '温度', entityIds: [] }] };
     expect(parseSettingsFile(`\uFEFF${serializeSettingsFile(next)}`).customTabs[0].name).toBe(

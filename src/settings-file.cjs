@@ -92,6 +92,22 @@ function project(value, schema) {
     entries.map(([key, entry]) => [key, project(entry, schema.map || schema[key])])
   );
 }
+// null marks a portable setting the exporting computer never set, so importing clears it and the
+// destination falls back to the same default. The ui object itself is never cleared as a whole.
+function projectClearable(value, schema) {
+  if (!isObject(value)) throw fileError('invalid_file');
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => Object.hasOwn(schema, key))
+      .map(([key, entry]) => [key, entry === null ? null : project(entry, schema[key])])
+  );
+}
+function projectSettings(value) {
+  const settings = projectClearable(value, { ...SETTINGS_SCHEMA, ui: 'object' });
+  if (Object.hasOwn(settings, 'ui')) settings.ui = projectClearable(value.ui, SETTINGS_SCHEMA.ui);
+  return settings;
+}
+const cleared = (schema) => Object.fromEntries(Object.keys(schema).map((key) => [key, null]));
 function assertSafeTree(value, depth = 0) {
   if (depth > 16) throw fileError('invalid_file');
   if (!value || typeof value !== 'object') return;
@@ -101,7 +117,12 @@ function assertSafeTree(value, depth = 0) {
   }
 }
 function buildSettingsFile(config) {
-  const settings = project(config, SETTINGS_SCHEMA);
+  const source = isObject(config) ? config : {};
+  const settings = projectSettings({
+    ...cleared(SETTINGS_SCHEMA),
+    ...source,
+    ui: { ...cleared(SETTINGS_SCHEMA.ui), ...(isObject(source.ui) ? source.ui : {}) },
+  });
   assertSafeTree(settings);
   return { format: SETTINGS_FILE_FORMAT, version: SETTINGS_FILE_VERSION, settings };
 }
@@ -123,7 +144,7 @@ function parseSettingsFile(content) {
   assertSafeTree(file);
   if (!isObject(file) || file.format !== SETTINGS_FILE_FORMAT) throw fileError('invalid_file');
   if (file.version !== SETTINGS_FILE_VERSION) throw fileError('unsupported_version');
-  const settings = project(file.settings, SETTINGS_SCHEMA);
+  const settings = projectSettings(file.settings);
   if (!Object.keys(settings).length) throw fileError('invalid_file');
   return settings;
 }

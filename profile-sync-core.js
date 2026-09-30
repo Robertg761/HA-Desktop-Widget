@@ -264,6 +264,10 @@ function mergeFieldsIntoConfig(target, incoming, fields) {
         Object.entries(localUi).filter(([key]) => LOCAL_ONLY_UI_KEYS.has(key))
       );
       target.ui = { ...localUi, ...stripLocalOnlyUiKeys(incoming.ui), ...localOnly };
+      // A null ui key (from a settings file) means the source never set it: fall back to default.
+      Object.keys(target.ui).forEach((key) => {
+        if (target.ui[key] === null) delete target.ui[key];
+      });
       return;
     }
     target[field] = deepClone(incoming[field]);

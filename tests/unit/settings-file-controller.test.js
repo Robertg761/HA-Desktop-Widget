@@ -60,7 +60,11 @@ describe('native settings file workflow', () => {
     });
     await controller.applyImport(1, preview.id);
     expect(applySections).toHaveBeenCalledWith(
-      expect.objectContaining({ visualPersonalization: { ui: { theme: 'dark' } } })
+      expect.objectContaining({
+        visualPersonalization: expect.objectContaining({
+          ui: expect.objectContaining({ theme: 'dark' }),
+        }),
+      })
     );
     await expect(controller.applyImport(1, preview.id)).rejects.toMatchObject({
       code: 'import_expired',
