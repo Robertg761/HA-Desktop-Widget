@@ -187,6 +187,20 @@ describe('settings search', () => {
     }
     expect(search('Custom icon for')).toHaveLength(0);
   });
+  test('does not index buttons generated for alerts or language packs', () => {
+    const removeResults = () =>
+      search('Remove').filter((button) => button.firstChild.textContent === 'Remove').length;
+    const before = removeResults();
+    for (const id of ['inline-alerts-list', 'language-packs-list']) {
+      for (let i = 0; i < 3; i += 1) {
+        const button = document.createElement('button');
+        button.className = 'btn btn-secondary';
+        button.textContent = 'Remove';
+        document.getElementById(id).appendChild(button);
+      }
+    }
+    expect(removeResults()).toBe(before);
+  });
   test('lowercases independently of the host locale', () => {
     const spy = jest.spyOn(String.prototype, 'toLocaleLowerCase').mockImplementation(function () {
       return String(this).replace(/I/g, '\u0131').toLowerCase();
