@@ -29,7 +29,10 @@ const { pathToFileURL, fileURLToPath } = require('url');
 const PRELOAD_SCRIPT_PATH = path.join(__dirname, 'dist-preload', 'preload.cjs');
 const log = require('electron-log');
 const pkg = require('./package.json');
-const { createSettingsFileController } = require('./src/settings-file-controller.cjs');
+const {
+  createSettingsFileController,
+  settingsFileErrorCode,
+} = require('./src/settings-file-controller.cjs');
 const {
   getLaunchAction,
   hasIsolatedProfile,
@@ -8721,6 +8724,7 @@ ipcMain.handle('copy-profile-sync-file', async (event, fromPath, toPath, overwri
 const settingsFileController = createSettingsFileController({
   fs,
   dialog,
+  suspendAutoHide: () => windowAutoHide.suspend(),
   getConfig: () => config,
   translate: (key) => mainT(key),
   applySections: async (sections) => {
@@ -8735,7 +8739,7 @@ ipcMain.handle('export-settings-file', async (event) => {
   try {
     return { success: true, ...(await settingsFileController.exportSettings(sender.window)) };
   } catch (error) {
-    return { success: false, code: error.code || 'export_failed' };
+    return { success: false, code: settingsFileErrorCode(error, 'export_failed') };
   }
 });
 
@@ -8748,7 +8752,7 @@ ipcMain.handle('preview-settings-import', async (event) => {
       ...(await settingsFileController.previewImport(sender.window, event.sender.id)),
     };
   } catch (error) {
-    return { success: false, code: error.code || 'import_failed' };
+    return { success: false, code: settingsFileErrorCode(error, 'import_failed') };
   }
 });
 
@@ -8760,7 +8764,7 @@ ipcMain.handle(
     try {
       return { success: true, ...(await settingsFileController.applyImport(event.sender.id, id)) };
     } catch (error) {
-      return { success: false, code: error.code || 'import_failed' };
+      return { success: false, code: settingsFileErrorCode(error, 'import_failed') };
     }
   })
 );

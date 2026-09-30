@@ -2,7 +2,10 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { createSettingsFileController } = require('../../src/settings-file-controller.cjs');
+const {
+  createSettingsFileController,
+  settingsFileErrorCode,
+} = require('../../src/settings-file-controller.cjs');
 const {
   serializeSettingsFile,
   parseSettingsFile,
@@ -102,5 +105,70 @@ describe('native settings file workflow', () => {
     await expect(controller.exportSettings({})).rejects.toThrow('Disk failure');
     expect(fs.readFileSync(file, 'utf8')).toBe(before);
     expect(fs.readdirSync(folder)).toEqual(['settings.json']);
+  });
+
+  describe('window auto-hide suspension around native dialogs', () => {
+    let events, resume;
+    beforeEach(() => {
+      events = [];
+      resume = jest.fn(() => events.push('resume'));
+      controller = createSettingsFileController({
+        fs,
+        dialog,
+        suspendAutoHide: jest.fn(() => {
+          events.push('suspend');
+          return resume;
+        }),
+        getConfig: () => config,
+        applySections,
+        translate: (key) => key,
+      });
+    });
+    const track = (mock, result) =>
+      mock.mockImplementation(async () => {
+        events.push('dialog');
+        if (result instanceof Error) throw result;
+        return result;
+      });
+    const cases = [
+      ['exportSettings', 'showSaveDialog', [{}], { filePath: () => file }],
+      ['previewImport', 'showOpenDialog', [{}, 1], { filePaths: () => [file] }],
+    ];
+    test.each(cases)(
+      '%s suspends before and resumes after the dialog on success',
+      async (method, dialogName, args, pick) => {
+        track(dialog[dialogName], { [Object.keys(pick)[0]]: Object.values(pick)[0]() });
+        await controller[method](...args);
+        expect(events).toEqual(['suspend', 'dialog', 'resume']);
+      }
+    );
+    test.each(cases)('%s resumes when the dialog is canceled', async (method, dialogName, args) => {
+      track(dialog[dialogName], { canceled: true });
+      await expect(controller[method](...args)).resolves.toEqual({ canceled: true });
+      expect(events).toEqual(['suspend', 'dialog', 'resume']);
+    });
+    test.each(cases)('%s resumes when the dialog throws', async (method, dialogName, args) => {
+      track(dialog[dialogName], new Error('Dialog failure'));
+      await expect(controller[method](...args)).rejects.toThrow('Dialog failure');
+      expect(events).toEqual(['suspend', 'dialog', 'resume']);
+    });
+  });
+
+  describe('renderer-facing error codes', () => {
+    test('passes through only the settings file error codes', () => {
+      for (const code of [
+        'invalid_file',
+        'unsupported_version',
+        'file_too_large',
+        'import_expired',
+      ])
+        expect(settingsFileErrorCode({ code }, 'import_failed')).toBe(code);
+    });
+    test('maps raw errno and unknown codes to the operation fallback', () => {
+      for (const code of ['EACCES', 'ENOSPC', 'EPERM', 'ENOENT', 'export_failed', undefined])
+        expect(settingsFileErrorCode({ code }, 'export_failed')).toBe('export_failed');
+      expect(settingsFileErrorCode(new Error('x'), 'import_failed')).toBe('import_failed');
+      expect(settingsFileErrorCode(null, 'import_failed')).toBe('import_failed');
+    });
   });
 });

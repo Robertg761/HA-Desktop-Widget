@@ -9,9 +9,23 @@ const {
   summarizeSettingsImport,
 } = require('./settings-file.cjs');
 
+const SETTINGS_FILE_ERROR_CODES = new Set([
+  'invalid_file',
+  'unsupported_version',
+  'file_too_large',
+  'import_expired',
+]);
+
+// Only the module's own error codes may reach the renderer; raw errno codes (EACCES, ENOSPC...)
+// collapse to the operation's generic failure code.
+function settingsFileErrorCode(error, fallback) {
+  return SETTINGS_FILE_ERROR_CODES.has(error?.code) ? error.code : fallback;
+}
+
 function createSettingsFileController({
   fs,
   dialog,
+  suspendAutoHide = () => () => {},
   getConfig,
   applySections,
   translate,
@@ -21,11 +35,17 @@ function createSettingsFileController({
   const filters = [{ name: 'JSON', extensions: ['json'] }];
   return {
     async exportSettings(window) {
-      const choice = await dialog.showSaveDialog(window, {
-        title: translate('Export settings'),
-        defaultPath: 'ha-desktop-widget-settings.json',
-        filters,
-      });
+      const resumeAutoHide = suspendAutoHide();
+      let choice;
+      try {
+        choice = await dialog.showSaveDialog(window, {
+          title: translate('Export settings'),
+          defaultPath: 'ha-desktop-widget-settings.json',
+          filters,
+        });
+      } finally {
+        resumeAutoHide();
+      }
       if (choice.canceled || !choice.filePath) return { canceled: true };
       // Serialize after choosing the destination so edits while the dialog was open are included.
       const content = serializeSettingsFile(getConfig());
@@ -47,11 +67,17 @@ function createSettingsFileController({
     },
     async previewImport(window, senderId) {
       pending.delete(senderId);
-      const choice = await dialog.showOpenDialog(window, {
-        title: translate('Import settings'),
-        properties: ['openFile'],
-        filters,
-      });
+      const resumeAutoHide = suspendAutoHide();
+      let choice;
+      try {
+        choice = await dialog.showOpenDialog(window, {
+          title: translate('Import settings'),
+          properties: ['openFile'],
+          filters,
+        });
+      } finally {
+        resumeAutoHide();
+      }
       if (choice.canceled || !choice.filePaths?.length) return { canceled: true };
       const handle = await fs.promises.open(choice.filePaths[0], 'r');
       let content;
@@ -90,4 +116,4 @@ function createSettingsFileController({
   };
 }
 
-module.exports = { createSettingsFileController };
+module.exports = { createSettingsFileController, settingsFileErrorCode };

@@ -81,4 +81,10 @@ describe('settings file controls', () => {
     await flush();
     expect(showToast).not.toHaveBeenCalled();
   });
+  test('failed export reports an export-specific message, not the import failure', async () => {
+    api.exportSettingsFile.mockResolvedValue({ success: false, code: 'export_failed' });
+    document.getElementById('export-settings-file').click();
+    await flush();
+    expect(showToast).toHaveBeenCalledWith('Could not export settings.', 'error', 4000);
+  });
 });
