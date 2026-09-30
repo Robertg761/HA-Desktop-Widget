@@ -6,7 +6,13 @@ Version 4.0 retains the desktop app's local configuration and upgrades folder Pr
 
 1. Quit the widget on every computer that uses the shared profile and let the folder provider finish syncing.
 2. Copy the shared profile file to a separate location. Keep the original encrypted file if encryption is enabled, and keep its passphrase available.
-3. Back up each computer's app user-data directory, including `config.json`, credential storage, and existing recovery backups. Settings → Advanced → View logs opens the log location; the app data directory contains `config.json`. Keep these copies private because they may contain credentials or personal configuration.
+3. Back up each computer's app user-data directory, including `config.json`, credential storage, and existing recovery backups. Keep these copies private because they may contain credentials or personal configuration. The directory is:
+   - Windows: `%APPDATA%\home-assistant-widget`
+   - macOS: `~/Library/Application Support/home-assistant-widget`
+   - Linux: `~/.config/home-assistant-widget` (or `$XDG_CONFIG_HOME/home-assistant-widget`)
+
+   Settings → Advanced → View logs opens the separate log location, not this directory.
+
 4. Upgrade every computer that writes to the same profile before resuming sync. Keep the backups until you have verified the layout, connection, and sync on each computer.
 
 The app also makes local configuration backups before migration/save and keeps profile recovery backups, but a separate pre-upgrade copy is useful if you need to return to 3.x.
