@@ -9,8 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [4.0.0] - Unreleased
 
-Release preparation only. Native platform, real-device, and two-computer sync checks remain required before tagging. Stable 4.0 uses the regular tray; live tray tiles remain limited to numbered beta builds. Hosted Cloud Sync accounts and billing are planned separately from the free folder Profile Sync shipped here.
-
 ### Added
 
 - Add numeric and select helper dialogs with current bounds/options, and vacuum controls limited to each device's supported actions.
