@@ -25,7 +25,8 @@ const STATES = {
 };
 
 const PROFILE_DOCUMENT = {
-  ui: { theme: 'dark', accent: 'teal' },
+  // Seasonal themes replace the accent during holidays, so keep them off for a date-independent run.
+  ui: { theme: 'dark', accent: 'teal', seasonal: { enabled: false } },
   customTabs: [
     { id: 'office', name: 'Office', entityIds: ['light.living_room', 'sensor.temperature'] },
   ],
