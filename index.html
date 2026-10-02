@@ -1105,12 +1105,24 @@
                     >
                     <p
                       class="form-help"
+                      id="frosted-glass-help"
                       data-i18n="Blurs what's behind the widget to keep it readable while transparent."
                     >
                       Blurs what's behind the widget to keep it readable while transparent.
                     </p>
+                    <div
+                      class="form-help form-warning hidden"
+                      id="frosted-glass-warning"
+                      aria-live="polite"
+                    >
+                      Needs Windows 11 version 22H2 or later.
+                    </div>
                   </div>
-                  <input type="checkbox" id="frosted-glass" />
+                  <input
+                    type="checkbox"
+                    id="frosted-glass"
+                    aria-describedby="frosted-glass-help frosted-glass-warning"
+                  />
                 </div>
                 <div
                   class="form-group setting-row setting-row-stacked"

@@ -400,6 +400,7 @@ const {
   shouldUseTransparentWindow,
   supportsAutoUpdater,
 } = require('./src/platform.cjs');
+const { supportsNativeGlass } = require('./src/window-glass.cjs');
 const { clampPositionToWorkAreas } = require('./src/window-placement.cjs');
 const { onWindowBoundsChanged } = require('./src/window-bounds-events.cjs');
 const { attachEditHandlers, installApplicationMenu } = require('./src/application-menu.cjs');
@@ -1134,6 +1135,13 @@ let deferredProfileSyncPassphraseDecryptPending = false;
 let deferredSecureConfigResolutionInProgress = false;
 let homeAssistantOAuthClient = null;
 let homeAssistantOAuthRefreshTimer = null;
+
+// The OS build cannot change while the app runs. Windows before 11 22H2 cannot blur behind the
+// window, so the widget draws the solid panel there and never asks for acrylic.
+const NATIVE_GLASS_SUPPORTED = supportsNativeGlass({
+  platform: process.platform,
+  release: os.release(),
+});
 
 function resolveFrostedGlassConfig(currentConfig = config, overrideFrostedGlass) {
   return typeof overrideFrostedGlass === 'boolean'
@@ -1948,6 +1956,7 @@ function sanitizeConfigForRenderer(inputConfig) {
     canDrag: isLayerShellChildProcess && isHyprland(),
     hyprland: isHyprland(),
     isolatedProfile: IS_ISOLATED_PROFILE,
+    nativeGlassSupported: NATIVE_GLASS_SUPPORTED,
   };
   cloned.configRevision = configSnapshotVersion;
   cloned.secureStoragePending = hasDeferredSecureConfigWork();
@@ -2463,7 +2472,11 @@ function applyWindowEffectsToWindow(targetWindow, currentConfig, overrideFrosted
   const transparencyOptions = getWindowTransparencyOptions(currentConfig);
   const enabled = resolveFrostedGlassConfig(currentConfig, overrideFrostedGlass);
 
-  if (process.platform === 'win32' && typeof targetWindow.setBackgroundMaterial === 'function') {
+  if (
+    process.platform === 'win32' &&
+    NATIVE_GLASS_SUPPORTED &&
+    typeof targetWindow.setBackgroundMaterial === 'function'
+  ) {
     try {
       targetWindow.setBackgroundMaterial(enabled ? 'acrylic' : 'none');
     } catch (error) {
@@ -2494,7 +2507,8 @@ function applyWindowEffectsToWindow(targetWindow, currentConfig, overrideFrosted
 }
 
 function wireWindowEffectsRefresh(targetWindow, currentConfigProvider, overrideFrostedGlass) {
-  if (!targetWindow || process.platform !== 'win32') return;
+  // The refresh only exists to keep acrylic painted; without it there is nothing to refresh.
+  if (!targetWindow || process.platform !== 'win32' || !NATIVE_GLASS_SUPPORTED) return;
 
   const refreshEffects = () => {
     const currentConfig =
@@ -2613,6 +2627,7 @@ function sendDesktopPinUpdate(entityId, extra = {}) {
       desktopCapabilities: {
         layerMode: isLayerShellChildProcess,
         canDrag: isLayerShellChildProcess && isHyprland(),
+        nativeGlassSupported: NATIVE_GLASS_SUPPORTED,
       },
     },
     connection: createDesktopPinConnectionState(config, {
@@ -2893,7 +2908,7 @@ function createDesktopPinWindow(entityId, options = {}) {
   // the rounded widget, which creates mismatched corners.
   if (config.frostedGlass && options.useNativeFrostedGlass !== false) {
     if (process.platform === 'win32') {
-      windowOptions.backgroundMaterial = 'acrylic';
+      if (NATIVE_GLASS_SUPPORTED) windowOptions.backgroundMaterial = 'acrylic';
     } else if (process.platform === 'darwin') {
       windowOptions.vibrancy = 'sidebar';
     }
@@ -6569,7 +6584,7 @@ function initializeProfileSyncOnStartup() {
 /**
  * Apply or remove platform-appropriate frosted glass effects to the main window.
  *
- * Applies Windows acrylic or macOS vibrancy/visual-effect state and ensures the window background is transparent.
+ * Applies Windows acrylic (Windows 11 22H2 and later) or macOS vibrancy/visual-effect state and ensures the window background is transparent.
  * If `override` is provided, its value determines whether effects are enabled; otherwise the function uses `config.frostedGlass`.
  * No-op if the main window is not available.
  * @param {boolean} [override] - When set, force enable (`true`) or disable (`false`) frosted glass effects.
@@ -6691,6 +6706,7 @@ function createWindow() {
   const visualOptions = getMainWindowVisualOptions({
     platform: process.platform,
     frostedGlass: !!config.frostedGlass,
+    nativeGlassSupported: NATIVE_GLASS_SUPPORTED,
     transparencyOptions,
   });
   const positionOptions = {};
@@ -8504,6 +8520,7 @@ ipcMain.handle('get-desktop-pin-bootstrap', (event, entityId) => {
       desktopCapabilities: {
         layerMode: isLayerShellChildProcess,
         canDrag: isLayerShellChildProcess && isHyprland(),
+        nativeGlassSupported: NATIVE_GLASS_SUPPORTED,
       },
     },
     connection: createDesktopPinConnectionState(config, {

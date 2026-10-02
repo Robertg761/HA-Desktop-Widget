@@ -15,6 +15,7 @@ import {
   applyUiPreferences,
   suspendSeasonalColors,
   applyWindowEffects,
+  isFrostedGlassAvailable,
   trapFocus,
   closeModal,
   openModal,
@@ -79,8 +80,11 @@ const COLOR_TARGETS = {
   background: 'background',
 };
 // Called at render time so the warning follows the active language.
+const getFrostedGlassUnavailableMessage = () => t('Needs Windows 11 version 22H2 or later.');
 const getWeatherEffectsGlassWarning = () =>
-  t('Turn on Frosted glass background before enabling subtle weather effects.');
+  isFrostedGlassAvailable(state.CONFIG)
+    ? t('Turn on Frosted glass background before enabling subtle weather effects.')
+    : getFrostedGlassUnavailableMessage();
 const WEATHER_UNAVAILABLE_STATES = new Set(['unknown', 'unavailable']);
 let activeColorTarget = COLOR_TARGETS.accent;
 let themeTooltip = null;
@@ -181,6 +185,23 @@ const CUSTOM_ENTITY_ICON_FALLBACKS = [
   '🍳',
   '🚿',
 ];
+
+// Windows before 11 22H2 cannot blur behind the window, so the widget draws the solid panel and
+// the switch shows off and locked. Saving leaves a locked switch alone, so the saved choice comes
+// back into effect if the machine is upgraded.
+function syncFrostedGlassAvailability() {
+  const frostedGlass = document.getElementById('frosted-glass');
+  if (!frostedGlass) return;
+  const unavailable = !isFrostedGlassAvailable(state.CONFIG);
+  frostedGlass.disabled = unavailable;
+  frostedGlass.title = unavailable ? getFrostedGlassUnavailableMessage() : '';
+  if (unavailable) frostedGlass.checked = false;
+  const warning = document.getElementById('frosted-glass-warning');
+  if (warning) {
+    warning.classList.toggle('hidden', !unavailable);
+    warning.textContent = getFrostedGlassUnavailableMessage();
+  }
+}
 
 function syncWeatherEffectsAvailability(options = {}) {
   const { showWarning = false } = options;
@@ -2812,6 +2833,7 @@ function getPreviewValuesFromInputs() {
     frostedGlass: frostedGlassEnabled,
     weatherEffectsEnabled: weatherEffectsEnabledVal,
     weatherOverride: weatherOverrideVal,
+    desktopCapabilities: state.CONFIG?.desktopCapabilities,
   };
 }
 
@@ -2891,6 +2913,7 @@ function savedWindowEffects(config) {
     frostedGlass: !!config?.frostedGlass,
     weatherEffectsEnabled: !!config?.frostedGlass && !!config?.ui?.weatherEffectsEnabled,
     weatherOverride: config?.ui?.weatherOverride || 'auto',
+    desktopCapabilities: config?.desktopCapabilities,
   };
 }
 
@@ -4839,6 +4862,7 @@ function relocalizeOpenSettings({ force = false } = {}) {
     renderProfileSyncBackups();
     renderUpdateButtonLabels();
     settingsUiHooks?.relocalizeUpdateStatus?.();
+    syncFrostedGlassAvailability();
     syncWeatherEffectsAvailability();
     if (hasDraftColorPreview || isCustomEditorActive) {
       // Rebuilding the swatches would reset the custom color draft; relabel only.
@@ -5074,6 +5098,7 @@ async function openSettings(uiHooks) {
         ?.classList.toggle('hidden', followOmarchy.disabled);
     }
     if (frostedGlass) frostedGlass.checked = !!state.CONFIG.frostedGlass;
+    syncFrostedGlassAvailability();
     if (allowPrereleaseUpdates) {
       allowPrereleaseUpdates.checked = state.CONFIG.updates?.allowPrerelease === true;
     }
@@ -5724,7 +5749,7 @@ async function saveSettings() {
     }
     if (alwaysOnTop && !alwaysOnTop.disabled) nextConfig.alwaysOnTop = alwaysOnTop.checked;
     if (hideOnBlur && !hideOnBlur.disabled) nextConfig.hideOnBlur = hideOnBlur.checked;
-    if (frostedGlass) nextConfig.frostedGlass = frostedGlass.checked;
+    if (frostedGlass && !frostedGlass.disabled) nextConfig.frostedGlass = frostedGlass.checked;
     delete nextConfig.frostedGlassStrength;
     delete nextConfig.frostedGlassTint;
 
@@ -5735,9 +5760,12 @@ async function saveSettings() {
     if (followOmarchy && !followOmarchy.disabled)
       nextConfig.ui.followOmarchy = followOmarchy.checked;
     const frostedGlassEnabled = !!nextConfig.frostedGlass;
-    nextConfig.ui.weatherEffectsEnabled = weatherEffectsEnabled
-      ? frostedGlassEnabled && !!weatherEffectsEnabled.checked
-      : false;
+    // A locked Frosted glass switch means the weather switch is locked with it, not turned off.
+    if (!frostedGlass?.disabled) {
+      nextConfig.ui.weatherEffectsEnabled = weatherEffectsEnabled
+        ? frostedGlassEnabled && !!weatherEffectsEnabled.checked
+        : false;
+    }
     nextConfig.ui.weatherOverride = weatherOverrideSelect ? weatherOverrideSelect.value : 'auto';
     nextConfig.ui.language = languageSelect?.value || nextConfig.ui.language || 'auto';
     nextConfig.ui = getAppearanceFromInputs(nextConfig.ui);

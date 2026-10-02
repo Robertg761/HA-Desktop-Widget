@@ -1531,6 +1531,108 @@ describe('UI Utilities', () => {
       expect(document.body.style.opacity).toBe('');
     });
 
+    describe('on Windows without acrylic', () => {
+      const withoutAcrylic = { nativeGlassSupported: false };
+      // The look the frosted glass setting being off draws, for the same opacity and theme.
+      const drawnWithGlassOff = (opacity, light) => {
+        document.body.className = light ? 'theme-light' : '';
+        document.body.removeAttribute('style');
+        uiUtils.applyWindowEffects({ opacity, frostedGlass: false });
+        return { className: document.body.className, style: document.body.getAttribute('style') };
+      };
+
+      it.each([
+        [0.5, false],
+        [0.75, false],
+        [1, false],
+        [0.75, true],
+      ])('draws the solid panel for a saved "on" at opacity %s (light: %s)', (opacity, light) => {
+        mockElectronAPI.platform = 'win32';
+        const expected = drawnWithGlassOff(opacity, light);
+
+        document.body.className = light ? 'theme-light' : '';
+        document.body.removeAttribute('style');
+        uiUtils.applyWindowEffects({
+          opacity,
+          frostedGlass: true,
+          desktopCapabilities: withoutAcrylic,
+        });
+
+        expect({
+          className: document.body.className,
+          style: document.body.getAttribute('style'),
+        }).toEqual(expected);
+        expect(document.body.classList.contains('frosted-glass')).toBe(false);
+        expect(document.body.classList.contains('native-glass')).toBe(false);
+        expect(document.body.classList.contains('software-glass')).toBe(false);
+        expect(document.body.classList.contains('linux-performance-mode')).toBe(true);
+      });
+
+      it('clears glass left over from before the capability arrived', () => {
+        mockElectronAPI.platform = 'win32';
+        uiUtils.applyWindowEffects({ opacity: 0.75, frostedGlass: true });
+        expect(document.body.classList.contains('native-glass')).toBe(true);
+
+        uiUtils.applyWindowEffects({
+          opacity: 0.75,
+          frostedGlass: true,
+          desktopCapabilities: withoutAcrylic,
+        });
+
+        expect(document.body.classList.contains('frosted-glass')).toBe(false);
+        expect(document.body.classList.contains('native-glass')).toBe(false);
+        expect(document.body.style.getPropertyValue('--frosted-glass-elevated-alpha')).toBe('');
+      });
+
+      it('still draws the saved choice when the window can blur again', () => {
+        mockElectronAPI.platform = 'win32';
+        uiUtils.applyWindowEffects({
+          opacity: 0.75,
+          frostedGlass: true,
+          desktopCapabilities: withoutAcrylic,
+        });
+        uiUtils.applyWindowEffects({
+          opacity: 0.75,
+          frostedGlass: true,
+          desktopCapabilities: { nativeGlassSupported: true },
+        });
+
+        expect(document.body.className).toBe('frosted-glass native-glass');
+      });
+    });
+
+    describe('where the window can blur or the platform ignores the capability', () => {
+      const before = require('../fixtures/window-effects-before-glass-gate.json');
+      const capabilityCases = {
+        'no capability sent': undefined,
+        'Windows 11 22H2 or later': { nativeGlassSupported: true },
+        // The main process only ever sends false on Windows; the renderer must not read it elsewhere.
+        'a stray false off Windows': { nativeGlassSupported: false },
+      };
+
+      it.each(Object.entries(before))('keeps the %s look unchanged', (key, expected) => {
+        const [platform, theme, opacity, frostedGlass] = key.split('|');
+        Object.entries(capabilityCases).forEach(([label, desktopCapabilities]) => {
+          if (platform === 'win32' && desktopCapabilities?.nativeGlassSupported === false) return;
+          document.body.className = theme === 'light' ? 'theme-light' : '';
+          document.body.removeAttribute('style');
+          mockElectronAPI.platform = platform;
+
+          uiUtils.applyWindowEffects({
+            opacity: Number(opacity),
+            frostedGlass: frostedGlass === 'true',
+            ...(desktopCapabilities ? { desktopCapabilities } : {}),
+          });
+
+          expect({
+            label,
+            className: document.body.className,
+            style: document.body.getAttribute('style') || '',
+          }).toEqual({ label, ...expected });
+        });
+      });
+    });
+
     it('keeps macOS non-glass opacity on background surfaces without performance mode', () => {
       mockElectronAPI.platform = 'darwin';
 
@@ -1540,6 +1642,24 @@ describe('UI Utilities', () => {
       expect(document.body.classList.contains('frosted-glass')).toBe(false);
       expect(Number(document.body.style.getPropertyValue('--window-bg-alpha'))).toBeLessThan(1);
       expect(document.body.style.opacity).toBe('');
+    });
+  });
+
+  describe('isFrostedGlassAvailable', () => {
+    it('is withheld only on Windows when the main process says acrylic is missing', () => {
+      const withoutAcrylic = { desktopCapabilities: { nativeGlassSupported: false } };
+      const withAcrylic = { desktopCapabilities: { nativeGlassSupported: true } };
+
+      mockElectronAPI.platform = 'win32';
+      expect(uiUtils.isFrostedGlassAvailable(withoutAcrylic)).toBe(false);
+      expect(uiUtils.isFrostedGlassAvailable(withAcrylic)).toBe(true);
+      expect(uiUtils.isFrostedGlassAvailable({})).toBe(true);
+      expect(uiUtils.isFrostedGlassAvailable(undefined)).toBe(true);
+
+      ['darwin', 'linux'].forEach((platform) => {
+        mockElectronAPI.platform = platform;
+        expect(uiUtils.isFrostedGlassAvailable(withoutAcrylic)).toBe(true);
+      });
     });
   });
 

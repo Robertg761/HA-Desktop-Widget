@@ -1700,5 +1700,6 @@
   "No unlocked system keyring (Secret Service) was found, so this token will not be remembered after you quit. Start gnome-keyring or KWallet, then restart the widget.": "No unlocked system keyring (Secret Service) was found, so this token will not be remembered after you quit. Start gnome-keyring or KWallet, then restart the widget.",
   "The sync file is in use by another program or is read-only. Try again in a moment, and check the folder’s permissions if it keeps happening.": "The sync file is in use by another program or is read-only. Try again in a moment, and check the folder’s permissions if it keeps happening.",
   "Details": "Details",
-  "No unlocked system keyring (Secret Service) was found, so this computer cannot remember your Home Assistant sign-in or sync passphrase. Start gnome-keyring or KWallet, then restart the widget.": "No unlocked system keyring (Secret Service) was found, so this computer cannot remember your Home Assistant sign-in or sync passphrase. Start gnome-keyring or KWallet, then restart the widget."
+  "No unlocked system keyring (Secret Service) was found, so this computer cannot remember your Home Assistant sign-in or sync passphrase. Start gnome-keyring or KWallet, then restart the widget.": "No unlocked system keyring (Secret Service) was found, so this computer cannot remember your Home Assistant sign-in or sync passphrase. Start gnome-keyring or KWallet, then restart the widget.",
+  "Needs Windows 11 version 22H2 or later.": "Needs Windows 11 version 22H2 or later."
 }
