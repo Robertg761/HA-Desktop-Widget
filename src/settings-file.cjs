@@ -8,6 +8,8 @@ const SETTINGS_FILE_VERSION = 1;
 const MAX_SETTINGS_FILE_BYTES = 256 * 1024;
 // What the app itself can produce, with room to spare: names are typed into one-line fields,
 // entity ids are at most 255 characters, and lists and maps follow the entities that exist.
+// Text a person types is cut to this length instead of failing, so a name saved before its field
+// was limited still exports and imports. Ids and map keys are never typed, so a long one is refused.
 const MAX_TEXT_LENGTH = 256;
 const MAX_ITEMS = 2000;
 const MAX_PAGES = 200;
@@ -28,12 +30,12 @@ const isAlertSeconds = (value) => Number.isInteger(value) && value >= 0 && value
 // credentials, desktop pins, shortcuts, sync keys and machine preferences cannot ride along.
 const SETTINGS_SCHEMA = {
   favoriteEntities: stringList,
-  customTabs: listOf({ id: 'string', name: 'string', entityIds: stringList }, MAX_PAGES),
+  customTabs: listOf({ id: 'string', name: 'text', entityIds: stringList }, MAX_PAGES),
   comparisonGraphs: listOf(
-    { id: 'string', name: 'string', span: 'number', entityIds: stringList },
+    { id: 'string', name: 'text', span: 'number', entityIds: stringList },
     MAX_PAGES
   ),
-  customEntityNames: mapOf('string'),
+  customEntityNames: mapOf('text'),
   customEntityIcons: mapOf('string'),
   tileSpans: mapOf('span'),
   quickAccessTileOptions: mapOf({
@@ -53,7 +55,7 @@ const SETTINGS_SCHEMA = {
     alerts: mapOf({
       onStateChange: 'boolean',
       onSpecificState: 'boolean',
-      targetState: 'string',
+      targetState: 'text',
       onNumericThreshold: 'boolean',
       comparison: 'string',
       threshold: 'number?',
@@ -67,7 +69,7 @@ const SETTINGS_SCHEMA = {
     accent: 'string',
     background: 'string',
     language: 'string',
-    customColors: listOf({ id: 'string', name: 'string', color: 'string' }, MAX_PAGES),
+    customColors: listOf({ id: 'string', name: 'text', color: 'string' }, MAX_PAGES),
     density: oneOf('comfortable', 'compact'),
     activeTileGlow: 'boolean',
     highContrast: 'boolean',
@@ -93,8 +95,20 @@ function fileError(code) {
 function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
+// Cuts at a character boundary: slicing between the halves of a surrogate pair leaves a broken one.
+function truncateText(value) {
+  if (value.length <= MAX_TEXT_LENGTH) return value;
+  const end = /[\uD800-\uDBFF]/.test(value[MAX_TEXT_LENGTH - 1])
+    ? MAX_TEXT_LENGTH - 1
+    : MAX_TEXT_LENGTH;
+  return value.slice(0, end);
+}
 function project(value, schema) {
   if (typeof schema === 'string') {
+    if (schema === 'text') {
+      if (typeof value !== 'string') throw fileError('invalid_file');
+      return truncateText(value);
+    }
     // A tile spans one to four grid columns; anything else would be written straight to the grid.
     if (schema === 'span' || schema === 'seconds') {
       if (!(schema === 'span' ? isTileSpan : isAlertSeconds)(value))

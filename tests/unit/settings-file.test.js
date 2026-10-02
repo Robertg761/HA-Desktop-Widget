@@ -304,8 +304,8 @@ describe('portable settings files', () => {
       ['an unknown date format', { ui: { dateFormat: 'tomorrow' } }],
       ['more primary cards than slots', { primaryCards: ['weather', 'time', 'extra'] }],
       [
-        'a page name that is a wall of text',
-        { customTabs: [{ id: 'a', name: 'x'.repeat(257), entityIds: [] }] },
+        'a page id that is a wall of text',
+        { customTabs: [{ id: 'x'.repeat(257), name: 'Home', entityIds: [] }] },
       ],
       ['an entity id that is a wall of text', { favoriteEntities: ['light.' + 'x'.repeat(300)] }],
       [
@@ -360,6 +360,70 @@ describe('portable settings files', () => {
 
       expect(settings.primaryCards).toEqual(['a', 'b']);
       expect(settings.opacity).toBe(0.5);
+    });
+
+    describe('text a person typed that is longer than the fields allow today', () => {
+      // A tile's display name, a graph name and an alert's target state had no length limit.
+      const wall = 'n'.repeat(1000);
+      const long = {
+        ...config,
+        customTabs: [{ id: 'home', name: wall, entityIds: ['light.desk'] }],
+        comparisonGraphs: [{ id: 'graph:temps', name: wall, span: 2, entityIds: ['sensor.temp'] }],
+        customEntityNames: { 'light.desk': wall, 'sensor.temp': 'Temperature' },
+        entityAlerts: {
+          enabled: true,
+          alerts: { 'light.desk': { onSpecificState: true, targetState: wall } },
+        },
+        ui: { ...config.ui, customColors: [{ id: 'custom', name: wall, color: '#123456' }] },
+      };
+
+      test('is cut when the settings are exported, so the export still succeeds', () => {
+        const settings = parseSettingsFile(serializeSettingsFile(long));
+
+        expect(settings.customEntityNames['light.desk']).toBe('n'.repeat(256));
+        expect(settings.customTabs[0].name).toBe('n'.repeat(256));
+        expect(settings.comparisonGraphs[0].name).toBe('n'.repeat(256));
+        expect(settings.entityAlerts.alerts['light.desk'].targetState).toBe('n'.repeat(256));
+        expect(settings.ui.customColors[0].name).toBe('n'.repeat(256));
+        // Everything beside it is untouched.
+        expect(settings.customEntityNames['sensor.temp']).toBe('Temperature');
+        expect(settings.customTabs[0].entityIds).toEqual(['light.desk']);
+        expect(settings.comparisonGraphs[0]).toMatchObject({ id: 'graph:temps', span: 2 });
+      });
+
+      test('is cut when a file holding it is imported, so an older export still imports', () => {
+        const settings = importWith({
+          customEntityNames: { 'light.desk': wall },
+          customTabs: [{ id: 'home', name: wall, entityIds: [] }],
+        });
+
+        expect(settings.customEntityNames['light.desk']).toBe('n'.repeat(256));
+        expect(settings.customTabs[0].name).toBe('n'.repeat(256));
+      });
+
+      test('is not cut in the middle of a character made of two code units', () => {
+        // The emoji would start at the last kept code unit and end past it.
+        const cutName = (name) =>
+          importWith({ customEntityNames: { 'light.desk': name } }).customEntityNames['light.desk'];
+
+        expect(cutName(`${'a'.repeat(255)}😀😀`)).toBe('a'.repeat(255));
+        expect(cutName(`${'a'.repeat(254)}😀😀`)).toBe(`${'a'.repeat(254)}😀`);
+        expect(cutName('é'.repeat(300))).toBe('é'.repeat(256));
+      });
+
+      test('does not stop an import preview from comparing against the current settings', () => {
+        const settings = importWith({ customEntityNames: { 'light.desk': 'Desk' } });
+
+        expect(summarizeSettingsImport(settings, long).changedSections).toEqual([
+          'quickAccessLayout',
+        ]);
+      });
+
+      test('still has to be text', () => {
+        expect(() => importWith({ customEntityNames: { 'light.desk': 12 } })).toThrow(
+          expect.objectContaining({ code: 'invalid_file' })
+        );
+      });
     });
 
     test('a file larger than a sync file could carry is refused, not just a huge one', () => {

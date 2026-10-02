@@ -2053,7 +2053,7 @@ function showRenameModal(entityId) {
         <div class="modal-body">
           <div class="form-group">
             <label for="rename-input">${utils.escapeHtml(t('Display Name:'))}</label>
-            <input type="text" id="rename-input" class="form-control" value="${escapeHtmlAttribute(currentName)}" placeholder="${escapeHtmlAttribute(t('Enter custom name'))}">
+            <input type="text" id="rename-input" class="form-control" maxlength="64" value="${escapeHtmlAttribute(currentName)}" placeholder="${escapeHtmlAttribute(t('Enter custom name'))}">
           </div>
           ${valueSizeControlMarkup}
           ${chartControlMarkup}
@@ -4498,6 +4498,7 @@ function showComparisonGraphModal(graphId) {
   const nameInput = document.createElement('input');
   nameInput.type = 'text';
   nameInput.className = 'form-control';
+  nameInput.maxLength = 40;
   nameInput.value = initial.name;
   nameGroup.appendChild(nameLabel);
   nameGroup.appendChild(nameInput);

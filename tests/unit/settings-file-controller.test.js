@@ -45,6 +45,19 @@ describe('native settings file workflow', () => {
     expect(parseSettingsFile(fs.readFileSync(file, 'utf8')).ui.theme).toBe('light');
     expect(fs.readFileSync(file, 'utf8')).not.toContain('secret');
   });
+  test('exports and previews while a saved name is longer than any field allows today', async () => {
+    // A tile's display name had no length limit, so an existing configuration can hold this.
+    config.customEntityNames = { 'light.desk': 'n'.repeat(1000) };
+
+    await expect(controller.exportSettings({})).resolves.toEqual({ canceled: false });
+    expect(parseSettingsFile(fs.readFileSync(file, 'utf8')).customEntityNames).toEqual({
+      'light.desk': 'n'.repeat(256),
+    });
+
+    const preview = await controller.previewImport({}, 1);
+    await expect(controller.applyImport(1, preview.id)).resolves.toBeDefined();
+    expect(applySections).toHaveBeenCalledTimes(1);
+  });
   test('previews without applying and only applies the exact selected document once', async () => {
     const preview = await controller.previewImport({}, 1);
     expect(preview).toMatchObject({
