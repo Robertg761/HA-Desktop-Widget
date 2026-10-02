@@ -22,6 +22,7 @@ const {
   createSettingsFileController,
   settingsFileErrorCode,
 } = require('../../src/settings-file-controller.cjs');
+const { validateProfileSyncCopyPaths } = require('../../src/main-security.cjs');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
@@ -36,6 +37,7 @@ function sliceMain(startMarker, endMarker) {
 
 const ENGINE_SOURCE = [
   sliceMain('function describeKnownProfileSyncFailure(', '// Hotkey changes roll back on failure'),
+  sliceMain('function getRendererSyncFilePath(', 'function isPlainObject('),
   sliceMain('function isProfileSyncProviderSupported(', 'function isPortableBuild('),
   sliceMain('function generateProfileSyncDeviceId(', 'function ensureUpdateConfigDefaults('),
   sliceMain('function ensureUpdateConfigDefaults(', 'function ensureHaProfileConfigDefaults('),
@@ -165,6 +167,7 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
 
     const handlers = {};
     const dialogResults = [];
+    const dialogCalls = [];
     const context = {
       Date: DeviceDate,
       Buffer,
@@ -179,6 +182,7 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
       ...rewriteTransaction,
       createSettingsFileController,
       settingsFileErrorCode,
+      validateProfileSyncCopyPaths,
       app: { getPath: (key) => (key === 'home' ? tempRoot : userData) },
       log: { warn: () => {}, info: () => {}, debug: () => {}, error: () => {} },
       // Stands in for the OS credential store the rewrite transaction seals secrets with.
@@ -198,8 +202,14 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
       rejectUnauthorizedIpc: () => ({ success: false, error: 'Unauthorized' }),
       windowAutoHide: { suspend: () => () => {} },
       dialog: {
-        showOpenDialog: async () => dialogResults.shift() || { canceled: true, filePaths: [] },
-        showSaveDialog: async () => dialogResults.shift() || { canceled: true },
+        showOpenDialog: async (options) => {
+          dialogCalls.push(options);
+          return dialogResults.shift() || { canceled: true, filePaths: [] };
+        },
+        showSaveDialog: async (...args) => {
+          dialogCalls.push(args.at(-1));
+          return dialogResults.shift() || { canceled: true };
+        },
       },
     };
     vm.createContext(context);
@@ -236,18 +246,13 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
      function normalizeDesktopPinsConfig() {}
      function normalizeTrayEntitiesConfigInPlace() {}
      function isPlaceholderOrEmptyToken(token) { return !token || token === HOME_ASSISTANT_TOKEN_PLACEHOLDER; }
-     // Mirrors what sanitizeConfigForRenderer keeps main-only.
-     function sanitizeConfigForRenderer(value) {
-       const cloned = JSON.parse(JSON.stringify(value));
-       if (cloned.profileSync) {
-         delete cloned.profileSync.storedPassphrase;
-         delete cloned.profileSync.passphraseTransition;
-         delete cloned.profileSync.syncBaseline;
-         delete cloned.profileSync.sectionUpdatedAt;
-       }
-       cloned.configRevision = configSnapshotVersion;
-       return cloned;
-     }
+     // What the real sanitizeConfigForRenderer reads besides the config.
+     var IS_CLIMATE_DEMO_MODE = false, IS_CLIMATE_DEMO_OVERLAY_MODE = false;
+     var IS_ISOLATED_PROFILE = false, isLayerShellChildProcess = false, configRecoveryNotice = null;
+     var omarchyThemeWatcher = null;
+     function getOmarchyBarEntities() { return { all: [] }; }
+     function isHyprland() { return false; }
+     function hasDeferredSecureConfigWork() { return false; }
      function getDefaultProfileSyncFilePath() { return path.join(app.getPath('userData'), PROFILE_SYNC_DEFAULT_FILE_NAME); }
      var config = null;
      ${HANDLER_SOURCE}`,
@@ -311,6 +316,8 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
         if (!handlers[channel]) throw new Error(`No handler registered for ${channel}`);
         return handlers[channel]({ sender: {} }, ...args);
       },
+      /** The options each native dialog was opened with. */
+      dialogCalls,
       /** Queues what the next native dialog returns. */
       queueDialogResult(result) {
         dialogResults.push(result);

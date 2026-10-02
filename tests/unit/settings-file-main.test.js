@@ -47,7 +47,8 @@ describe('settings file main-process application', () => {
     // The incoming sections let the backup record ui keys the apply adds, so restore undoes them.
     expect(context.backupLocalProfileBeforePullApply).toHaveBeenCalledWith(
       ['visualPersonalization'],
-      { visualPersonalization: { ui: { theme: 'light' } } }
+      { visualPersonalization: { ui: { theme: 'light' } } },
+      'import'
     );
     expect(context.backupLocalProfileBeforePullApply.mock.invocationCallOrder[0]).toBeLessThan(
       context.saveConfigDurably.mock.invocationCallOrder[0]

@@ -796,11 +796,11 @@ const PROFILE_SYNC_SUPPORTED_PROVIDERS = new Set([
   'syncthing',
 ]);
 // Filenames these providers leave behind when two devices write at once. Their
-// presence beside the sync file means a race already happened.
+// presence beside the sync file means a race already happened. OneDrive and iCloud
+// name a copy after the original, so theirs are built from the file's own name.
 const PROFILE_SYNC_CONFLICT_PATTERNS = [
   /\.sync-conflict-/i, // Syncthing
   /\bconflicted copy\b/i, // Dropbox
-  /-[A-Za-z0-9]+'s conflicted copy\b/i, // OneDrive
   /\(\d+\)\.json$/i, // Google Drive / generic duplicate suffix
 ];
 const PROFILE_SYNC_DEFAULT_FILE_NAME = 'ha-widget-profile-sync.json';
@@ -1539,12 +1539,14 @@ async function getProviderDefaultFolderCandidates(provider) {
   return [];
 }
 
-async function getDefaultProfileSyncFolderPath(provider, existingPath = '') {
-  if (existingPath) {
-    const existingFolder = path.dirname(existingPath);
-    if (existingFolder && existingFolder !== '.') {
-      return existingFolder;
-    }
+/**
+ * Where the folder chooser opens: the folder already in use, else the sync app's usual
+ * folder. The app's own data folder never counts as in use. It holds the default sync
+ * file that nothing replicates, so starting there would hide the sync app's folder.
+ */
+async function getDefaultProfileSyncFolderPath(provider, existingFolder = '') {
+  if (existingFolder && existingFolder !== '.' && !isProfileSyncFolderUnsynced(existingFolder)) {
+    return existingFolder;
   }
   for (const candidate of await getProviderDefaultFolderCandidates(
     normalizeProfileSyncProvider(provider)
@@ -1907,6 +1909,13 @@ function hasDeferredSecureConfigWork() {
   );
 }
 
+// The file sync uses until a folder is chosen lives in the app's own data folder, where
+// nothing replicates it. Settings is told there is no folder, so a first enable does not
+// read as a move from that folder and the field asks for one.
+function getRendererSyncFilePath(cloudFilePath) {
+  return cloudFilePath === getDefaultProfileSyncFilePath() ? '' : cloudFilePath || '';
+}
+
 function sanitizeConfigForRenderer(inputConfig) {
   const cloned = JSON.parse(JSON.stringify(inputConfig || {}));
   if (cloned.profileSync) {
@@ -1914,6 +1923,7 @@ function sanitizeConfigForRenderer(inputConfig) {
     delete cloned.profileSync.passphraseTransition;
     delete cloned.profileSync.syncBaseline;
     delete cloned.profileSync.sectionUpdatedAt;
+    cloned.profileSync.cloudFilePath = getRendererSyncFilePath(cloned.profileSync.cloudFilePath);
   }
   // The marker is runtime-only. It is never read from or written to a user
   // profile, including when the connected overlay is active.
@@ -3200,7 +3210,7 @@ function buildProfileSyncStatus(extra = {}) {
   const status = {
     enabled: !!profileSync.enabled,
     provider: normalizeProfileSyncProvider(profileSync.provider),
-    cloudFilePath: profileSync.cloudFilePath || '',
+    cloudFilePath: getRendererSyncFilePath(profileSync.cloudFilePath),
     syncScope: getNormalizedProfileSyncScopeValue(profileSync.syncScope),
     intervalMinutes: profileSync.intervalMinutes || PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES,
     encryptionEnabled: !!profileSync.encryptionEnabled,
@@ -3924,6 +3934,8 @@ async function copyProfileSyncFile(fromPath, toPath, overwrite = false) {
 
     await requireExistingSyncParentDirectory(destinationPath, fs);
     try {
+      // Whatever is there may be another computer's file: keep it before replacing it.
+      if (overwrite) await backupReplacedSyncFile(destinationPath);
       const copyFlags = overwrite ? 0 : fs.constants.COPYFILE_EXCL;
       await fs.promises.copyFile(sourcePath, destinationPath, copyFlags);
       return { ok: true, status: 'copied', copied: true, overwritten: overwrite };
@@ -4004,14 +4016,24 @@ async function findProfileSyncConflictCopies() {
   if (!filePath) return [];
 
   const folder = path.dirname(filePath);
-  const baseName = path.basename(filePath, path.extname(filePath));
+  const extension = path.extname(filePath);
+  const baseName = path.basename(filePath, extension);
+  const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escapedBase = escapeRegex(baseName);
+  const escapedExtension = escapeRegex(extension);
+  const namedAfterOriginal = [
+    new RegExp(`^${escapedBase}-[^./\\\\]+${escapedExtension}$`, 'i'), // OneDrive: name-COMPUTER.json
+    new RegExp(`^${escapedBase} \\d+${escapedExtension}$`, 'i'), // iCloud Drive: name 2.json
+  ];
   try {
     const entries = await fs.promises.readdir(folder);
     return entries.filter(
       (entry) =>
         entry !== path.basename(filePath) &&
         entry.includes(baseName) &&
-        PROFILE_SYNC_CONFLICT_PATTERNS.some((pattern) => pattern.test(entry))
+        [...PROFILE_SYNC_CONFLICT_PATTERNS, ...namedAfterOriginal].some((pattern) =>
+          pattern.test(entry)
+        )
     );
   } catch {
     // folder unreadable or gone; nothing useful to report
@@ -4061,27 +4083,51 @@ function pickSections(sections, keys) {
   return Object.fromEntries(keys.filter((key) => sections[key]).map((key) => [key, sections[key]]));
 }
 
-async function writeProfileSyncBackup(prefix, contents) {
+// Why a backup was taken. Syncing replaces settings routinely, many times a day with
+// several computers; an import or a restore is the person's own undo. The two are kept
+// in separate groups, so a busy stretch of syncing cannot push out the one backup
+// someone is counting on.
+const PROFILE_SYNC_MANUAL_BACKUP_REASONS = new Set(['import', 'restore']);
+
+async function writeProfileSyncBackup(prefix, contents, reason = 'pull') {
   const backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
   await fs.promises.mkdir(backupDir, { recursive: true });
   await fs.promises.writeFile(
     path.join(backupDir, `${prefix}-${Date.now()}.json`),
-    JSON.stringify({ backedUpAt: new Date().toISOString(), ...contents }, null, 2),
+    JSON.stringify({ backedUpAt: new Date().toISOString(), reason, ...contents }, null, 2),
     'utf8'
   );
 
-  await pruneProfileSyncBackups(backupDir, new RegExp(`^${prefix}-\\d+\\.json$`));
+  await pruneProfileSyncBackups(backupDir, new RegExp(`^${prefix}-\\d+\\.json$`), async (name) => {
+    try {
+      const saved = JSON.parse(await fs.promises.readFile(path.join(backupDir, name), 'utf8'));
+      return PROFILE_SYNC_MANUAL_BACKUP_REASONS.has(saved?.reason) ? 'manual' : 'routine';
+    } catch {
+      return 'routine';
+    }
+  });
 }
 
-/** Deletes the oldest of the backups matching the pattern beyond the number kept. */
-async function pruneProfileSyncBackups(backupDir, pattern) {
+/**
+ * Deletes the oldest of the backups matching the pattern beyond the number kept, for
+ * each group `groupOf` puts them in.
+ */
+async function pruneProfileSyncBackups(backupDir, pattern, groupOf = async () => '') {
   try {
     const entries = (await fs.promises.readdir(backupDir))
       .filter((name) => pattern.test(name))
       .sort();
-    while (entries.length > PROFILE_SYNC_BACKUP_KEEP) {
-      const oldest = entries.shift();
-      await fs.promises.unlink(path.join(backupDir, oldest));
+    // No group can hold more than all of them, so there is nothing to sort into groups.
+    if (entries.length <= PROFILE_SYNC_BACKUP_KEEP) return;
+    const groups = new Map();
+    for (const name of entries) {
+      const group = await groupOf(name);
+      groups.set(group, [...(groups.get(group) || []), name]);
+    }
+    for (const names of groups.values()) {
+      while (names.length > PROFILE_SYNC_BACKUP_KEEP) {
+        await fs.promises.unlink(path.join(backupDir, names.shift()));
+      }
     }
   } catch (error) {
     log.warn('Created a profile sync backup, but failed to prune older backups:', error.message);
@@ -4089,31 +4135,48 @@ async function pruneProfileSyncBackups(backupDir, pattern) {
 }
 
 /**
- * Keeps the text of a sync file that could not be read before Sync Up replaces it. It
- * is not offered for restore, since there are no settings in it to apply: the copy is
- * there for the user to open or send along.
+ * Keeps a copy of a whole sync file before something replaces it. These are for the
+ * user to open, not for restore: the file is another computer's, or has no settings
+ * in it to apply. Fails the operation when the copy cannot be made.
  */
-async function backupDamagedSyncFile(raw) {
+async function keepSyncFileCopy(prefix, extension, writeCopy) {
   const backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
   try {
     await fs.promises.mkdir(backupDir, { recursive: true });
-    await fs.promises.writeFile(
-      path.join(backupDir, `damaged-sync-file-${Date.now()}.txt`),
-      raw,
-      'utf8'
-    );
+    await writeCopy(path.join(backupDir, `${prefix}-${Date.now()}.${extension}`));
   } catch (error) {
-    log.warn('Failed to back up the damaged sync file before replacing it:', error.message);
+    log.warn('Failed to keep a copy of the sync file before replacing it:', error.message);
     throw new Error(
       mainT('The sync file was not updated because its backup failed: {{error}}', {
         error: describeSyncFileSystemError(error) || mainTError(error),
       })
     );
   }
-  await pruneProfileSyncBackups(backupDir, /^damaged-sync-file-\d+\.txt$/);
+  await pruneProfileSyncBackups(backupDir, new RegExp(`^${prefix}-\\d+\\.${extension}$`));
 }
 
-async function backupLocalProfileBeforePullApply(sectionKeys, incomingSections = null) {
+/** Keeps the text of a sync file that could not be read before Sync Up replaces it. */
+function backupDamagedSyncFile(raw) {
+  return keepSyncFileCopy('damaged-sync-file', 'txt', (target) =>
+    fs.promises.writeFile(target, raw, 'utf8')
+  );
+}
+
+/** Keeps the sync file in a folder before a folder change overwrites it. */
+function backupReplacedSyncFile(filePath) {
+  return keepSyncFileCopy('replaced-sync-file', 'json', (target) =>
+    fs.promises.copyFile(filePath, target).catch((error) => {
+      // Nothing there to replace.
+      if (error?.code !== 'ENOENT') throw error;
+    })
+  );
+}
+
+async function backupLocalProfileBeforePullApply(
+  sectionKeys,
+  incomingSections = null,
+  reason = 'pull'
+) {
   try {
     const sections = profileSyncCore.scopeBackupToIncoming(
       profileSyncCore.buildLocalSections(config, {
@@ -4122,7 +4185,7 @@ async function backupLocalProfileBeforePullApply(sectionKeys, incomingSections =
       }),
       incomingSections
     );
-    await writeProfileSyncBackup('local-profile', { sections });
+    await writeProfileSyncBackup('local-profile', { sections }, reason);
   } catch (error) {
     log.warn('Failed to back up local profile before applying remote sync:', error.message);
     throw new Error(
@@ -4139,7 +4202,7 @@ async function backupLocalProfileBeforePullApply(sectionKeys, incomingSections =
  */
 async function backupRemoteSectionsBeforePush(remoteSections) {
   try {
-    await writeProfileSyncBackup('remote-profile', { sections: remoteSections });
+    await writeProfileSyncBackup('remote-profile', { sections: remoteSections }, 'push');
   } catch (error) {
     log.warn('Failed to back up remote profile sections before pushing:', error.message);
     throw new Error(
@@ -4327,15 +4390,19 @@ async function readProfileSyncBackup(id) {
   return {
     id,
     kind: match[1],
+    // Backups written before the reason was recorded are all from syncing.
+    reason:
+      typeof backup?.reason === 'string' ? backup.reason : match[1] === 'remote' ? 'push' : 'pull',
     createdAt: new Date(Number(match[2])).toISOString(),
     sections: extractProfileSyncBackupSections(backup, match[1]),
   };
 }
 
 /**
- * Lists the backups sync keeps before replacing settings, newest first:
- * `local` ones hold this device's settings before a pull replaced them, and
- * `remote` ones hold the file's settings before this device's push replaced them.
+ * Lists the backups kept before settings are replaced, newest first: `local` ones
+ * hold this device's settings before a pull, an import or a restore replaced them
+ * (`reason` says which), and `remote` ones hold the file's settings before this
+ * device's push replaced them.
  */
 async function listProfileSyncBackups() {
   const backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
@@ -4353,9 +4420,10 @@ async function listProfileSyncBackups() {
   );
   return backups
     .filter((backup) => backup && Object.keys(backup.sections).length > 0)
-    .map(({ id, kind, createdAt, sections }) => ({
+    .map(({ id, kind, reason, createdAt, sections }) => ({
       id,
       kind,
+      reason,
       createdAt,
       sections: Object.keys(sections),
     }))
@@ -4369,15 +4437,15 @@ async function listProfileSyncBackups() {
  */
 async function restoreProfileSyncBackup(id) {
   const backup = await readProfileSyncBackup(id);
-  return applyLocalProfileSections(backup.sections, { clearNullUiKeys: true });
+  return applyLocalProfileSections(backup.sections, { clearNullUiKeys: true }, 'restore');
 }
 
-async function applyLocalProfileSections(sections, mergeOptions) {
+async function applyLocalProfileSections(sections, mergeOptions, reason = 'import') {
   const sectionKeys = Object.keys(sections);
   if (sectionKeys.length === 0) {
     throw new Error(mainT('That backup is no longer available'));
   }
-  await backupLocalProfileBeforePullApply(sectionKeys, sections);
+  await backupLocalProfileBeforePullApply(sectionKeys, sections, reason);
 
   const previous = config;
   const previousRuntimeTracking = {
@@ -5796,10 +5864,8 @@ async function prepareProfileSyncFirstEnableResolution() {
   profileSyncRuntime.damagedConflictSections = damaged;
   profileSyncRuntime.pendingRemoteEnvelope = readResult.envelope;
   profileSyncRuntime.pendingRemoteIdentity = getSyncEnvelopeIdentity(readResult);
-  updateProfileSyncStatus(
-    'needs_resolution',
-    mainT('Choose how to resolve initial profile sync conflict.')
-  );
+  // A pending choice is not a failure: the status line and the choice panel carry it.
+  updateProfileSyncStatus('needs_resolution');
   emitProfileSyncStatus();
   return { needsResolution: true };
 }
@@ -7709,8 +7775,10 @@ ipcMain.handle(
     Object.assign(profileSync, previousPassphraseMetadata);
     profileSync.encryptionEnabled = previousEncryptionEnabled;
     const normalizedNextProvider = normalizeProfileSyncProvider(profileSync.provider);
+    // Settings shows no folder until one is chosen (see getRendererSyncFilePath).
     const normalizedNextPath =
-      typeof profileSync.cloudFilePath === 'string' ? profileSync.cloudFilePath.trim() : '';
+      (typeof profileSync.cloudFilePath === 'string' ? profileSync.cloudFilePath.trim() : '') ||
+      getDefaultProfileSyncFilePath();
     const normalizedNextScope = getNormalizedProfileSyncScopeValue(profileSync.syncScope);
     const remoteTargetChanged =
       prevSyncEnabled &&
@@ -8889,14 +8957,16 @@ ipcMain.handle('get-window-state', (event) => {
   return { alwaysOnTop: !!(mainWindow && mainWindow.isAlwaysOnTop && mainWindow.isAlwaysOnTop()) };
 });
 
-ipcMain.handle('choose-profile-sync-folder', async (event, provider) => {
+ipcMain.handle('choose-profile-sync-folder', async (event, provider, currentFolder = '') => {
   const sender = authorizeIpcSender(event, 'choose-profile-sync-folder');
   if (!sender) return rejectUnauthorizedIpc('choose-profile-sync-folder');
   const profileSync = getProfileSyncConfig();
   const providerToUse = normalizeProfileSyncProvider(provider || profileSync.provider);
+  // The folder in the form, which may not be saved yet, comes before the saved one.
+  const formFolder = typeof currentFolder === 'string' ? currentFolder.trim() : '';
   const defaultPath = await getDefaultProfileSyncFolderPath(
     providerToUse,
-    profileSync.cloudFilePath
+    formFolder || path.dirname(profileSync.cloudFilePath)
   );
   const resumeAutoHide = windowAutoHide.suspend();
   let result;

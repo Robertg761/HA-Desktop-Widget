@@ -123,6 +123,7 @@ describe('main-process translations', () => {
         // Persisted in config by an earlier sync attempt, still in English.
         lastSyncError: 'Failed to decrypt synced profile payload',
       }),
+      getRendererSyncFilePath: (cloudFilePath) => cloudFilePath || '',
       normalizeProfileSyncProvider: (provider) => provider || 'custom',
       getNormalizedProfileSyncScopeValue: () => 'all',
       collectProfileSyncFolderWarnings: () => [],
