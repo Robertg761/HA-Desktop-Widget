@@ -3677,6 +3677,12 @@ body.first-run-active .widget-content > * {
   border-radius: var(--radius-sm);
 }
 
+/* A lone page has nothing to scroll to, so no fades: it only has to fit the strip. The strip is as
+   wide as its pages, so taking the fades off its width would trim the one page by 40px. */
+.quick-access-tab:only-child {
+  max-width: 100%;
+}
+
 .quick-access-tabs.reorganize .quick-access-tab {
   min-height: 28px;
 }

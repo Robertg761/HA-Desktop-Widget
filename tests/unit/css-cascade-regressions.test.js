@@ -64,7 +64,7 @@ describe('stylesheet cascade regressions', () => {
   });
 
   describe('Quick Access page tab strip', () => {
-    const strip = (barClass = '') => `
+    const strip = (barClass = '', otherPage = '') => `
       <div class="section-header quick-access-header">
         <div id="quick-access-tabs" class="quick-access-tabs ${barClass}">
           <div class="quick-access-tab-scroll">
@@ -74,7 +74,7 @@ describe('stylesheet cascade regressions', () => {
               </button>
               <button class="qa-tab-btn qa-tab-rename" data-focus-visible></button>
               <button class="qa-tab-btn qa-tab-delete"></button>
-            </div>
+            </div>${otherPage}
           </div>
         </div>
         <button class="qa-tab-add" data-focus-visible><span>Add page</span></button>
@@ -179,7 +179,8 @@ describe('stylesheet cascade regressions', () => {
     });
 
     it('keeps a page and its buttons inside the strip, clear of the fades', () => {
-      render('reorganize', strip('reorganize'));
+      const other = `<div class="quick-access-tab"><button class="tab-link"></button></div>`;
+      render('reorganize', strip('reorganize', other));
       const tab = document.querySelector('.quick-access-tab');
       // A page wider than the strip would have its last button under the fade or out of reach, so
       // the name gives way: the page is capped, its link may shrink, its buttons may not.
@@ -188,6 +189,13 @@ describe('stylesheet cascade regressions', () => {
       expect(resolvedValue(link, 'min-width')).toBe('0');
       expect(resolvedValue(link, 'flex-shrink')).toBe('1');
       expect(resolvedValue(document.querySelector('.qa-tab-rename'), 'flex')).toBe('none');
+    });
+
+    // The strip is as wide as its pages, so a lone page that gave up the width of the fades would
+    // be trimmed for nothing: its name would shrink to nothing in the default one-page dashboard.
+    it('lets a lone page use the whole strip, since there is nothing to scroll to', () => {
+      render('reorganize', strip('reorganize'));
+      expect(resolvedValue(document.querySelector('.quick-access-tab'), 'max-width')).toBe('100%');
     });
 
     it('gives up the words of Add page in a narrow window, and keeps them otherwise', () => {

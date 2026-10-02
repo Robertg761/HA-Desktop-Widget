@@ -29,7 +29,8 @@ const openBrightness = (ctx) => ctx.click(tileDetails('light.desk_lamp'));
 const openClimate = (ctx) => ctx.click(tileDetails('climate.living_room'));
 // The page being edited carries its rename, duplicate and delete buttons in the tab strip. However
 // long its name and however wordy Add page is in the interface's language, they have to lie inside
-// the strip and clear of the fades at its edges, or they cannot be seen or reached.
+// the strip and clear of the fades at its edges, or they cannot be seen or reached. Its name has to
+// keep some room as well: a lone page in a strip as wide as itself once lost all of it.
 const EDIT_BUTTONS_IN_STRIP = `(() => {
   const strip = document.querySelector('.quick-access-tab-scroll');
   const tab = document.querySelector('.quick-access-tab.active');
@@ -39,7 +40,9 @@ const EDIT_BUTTONS_IN_STRIP = `(() => {
   const overflow = strip.dataset.overflow || '';
   const left = bounds.left + (overflow === 'left' || overflow === 'both' ? fade : 0);
   const right = bounds.right - (overflow === 'right' || overflow === 'both' ? fade : 0);
-  return [...tab.children].every((part) => {
+  const label = tab.querySelector('.quick-access-tab-label');
+  const named = !label || label.clientWidth >= Math.min(label.scrollWidth, 30);
+  return named && [...tab.children].every((part) => {
     const box = part.getBoundingClientRect();
     return box.left >= left - 1 && box.right <= right + 1;
   });
