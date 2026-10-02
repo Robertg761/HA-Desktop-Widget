@@ -217,7 +217,7 @@ async function main() {
     await sleep(1500);
 
     // What each scene is measured against: the fixture's own settings and window.
-    const settingsToReset = ['frostedGlass', 'customTabs', 'activeTabId'];
+    const settingsToReset = ['frostedGlass', 'customTabs', 'activeTabId', 'entityAlerts'];
     function sceneSettings(scene) {
       const settings = Object.fromEntries(settingsToReset.map((key) => [key, baseConfig[key]]));
       return { ...settings, ...scene.config, ui: { ...baseConfig.ui, ...scene.ui } };

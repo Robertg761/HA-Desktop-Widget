@@ -11334,6 +11334,21 @@ function getMediaDetailControls(entity) {
   ];
 }
 
+// "+10s" and "−10s" (a real minus), in the active language: the seek buttons say how far they
+// jump. The unit comes from Intl, so it needs no string of its own. Arabic wraps the sign in
+// direction marks that would put it behind the number, and the transport row keeps its signs in
+// front, so the marks go.
+function formatSeekStep(seconds) {
+  return formatNumber(seconds, {
+    style: 'unit',
+    unit: 'second',
+    unitDisplay: 'narrow',
+    signDisplay: 'always',
+  })
+    .replace(/[\u061C\u200E\u200F]/g, '')
+    .replace('-', '\u2212');
+}
+
 function showMediaDetail(entity) {
   try {
     ensureEntityCacheScope();
@@ -11392,7 +11407,7 @@ function showMediaDetail(entity) {
                 id="media-mute-toggle"
                 type="button"
                 aria-pressed="${initialMuted ? 'true' : 'false'}"
-              >${utils.escapeHtml(initialMuted ? t('Muted') : t('Mute'))}</button>
+              >${utils.escapeHtml(t('Mute'))}</button>
             `
                 : ''
             }
@@ -11427,9 +11442,9 @@ function showMediaDetail(entity) {
           ${volumeControlsMarkup}
           <div class="media-detail-controls">
             ${mediaCapabilities.canPreviousTrack ? `<button class="btn media-detail-prev-btn" data-action="previous_track" title="${escapeHtmlAttribute(t('Previous'))}" aria-label="${escapeHtmlAttribute(t('Previous track'))}"></button>` : ''}
-            ${supportsSeek ? `<button class="btn media-detail-seek-btn" data-action="seek_relative" data-seek-delta="-10" title="${escapeHtmlAttribute(t('Rewind 10 seconds'))}" aria-label="${escapeHtmlAttribute(t('Rewind 10 seconds'))}">-10</button>` : ''}
+            ${supportsSeek ? `<button class="btn media-detail-seek-btn" data-action="seek_relative" data-seek-delta="-10" title="${escapeHtmlAttribute(t('Rewind 10 seconds'))}" aria-label="${escapeHtmlAttribute(t('Rewind 10 seconds'))}">${formatSeekStep(-10)}</button>` : ''}
             ${supportsAnyPlaybackToggle ? `<button class="btn play-pause-btn media-detail-play-btn" data-action="play_pause" title="${escapeHtmlAttribute(t('Play/Pause'))}" aria-label="${escapeHtmlAttribute(t('Play or pause'))}"></button>` : ''}
-            ${supportsSeek ? `<button class="btn media-detail-seek-btn" data-action="seek_relative" data-seek-delta="10" title="${escapeHtmlAttribute(t('Forward 10 seconds'))}" aria-label="${escapeHtmlAttribute(t('Forward 10 seconds'))}">+10</button>` : ''}
+            ${supportsSeek ? `<button class="btn media-detail-seek-btn" data-action="seek_relative" data-seek-delta="10" title="${escapeHtmlAttribute(t('Forward 10 seconds'))}" aria-label="${escapeHtmlAttribute(t('Forward 10 seconds'))}">${formatSeekStep(10)}</button>` : ''}
             ${mediaCapabilities.canNextTrack ? `<button class="btn media-detail-next-btn" data-action="next_track" title="${escapeHtmlAttribute(t('Next'))}" aria-label="${escapeHtmlAttribute(t('Next track'))}"></button>` : ''}
             ${
               !mediaCapabilities.canPreviousTrack &&
@@ -11508,7 +11523,6 @@ function showMediaDetail(entity) {
         const isMuted = attrs.is_volume_muted === true;
         muteToggle.classList.toggle('active', isMuted);
         muteToggle.setAttribute('aria-pressed', isMuted ? 'true' : 'false');
-        muteToggle.textContent = isMuted ? t('Muted') : t('Mute');
       }
     };
 
@@ -11596,7 +11610,6 @@ function showMediaDetail(entity) {
         const nextMuted = muteToggle.getAttribute('aria-pressed') !== 'true';
         muteToggle.classList.toggle('active', nextMuted);
         muteToggle.setAttribute('aria-pressed', nextMuted ? 'true' : 'false');
-        muteToggle.textContent = nextMuted ? t('Muted') : t('Mute');
         callMediaPlayerService(entity.entity_id, 'volume_mute', {
           isVolumeMuted: nextMuted,
         });

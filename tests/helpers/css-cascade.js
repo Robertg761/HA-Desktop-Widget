@@ -153,15 +153,42 @@ function toMatchableSelector(selector) {
   );
 }
 
+/**
+ * jsdom's selector engine answers false for a :not() inside :is() (and fails to parse one followed
+ * by a comma), so a top-level :is() group that holds one is spelled out as a selector per
+ * alternative: `a :is(b:not(.x), c)` becomes `a b:not(.x)` and `a c`.
+ */
+function expandIsGroups(selector) {
+  let depth = 0;
+  for (let index = 0; index < selector.length; index += 1) {
+    if (depth === 0 && selector.startsWith(':is(', index)) {
+      const close = findClosing(selector, index + ':is'.length);
+      const inner = selector.slice(index + ':is('.length, close);
+      if (inner.includes(':not(')) {
+        const before = selector.slice(0, index);
+        const after = selector.slice(close + 1);
+        return splitTopLevel(inner).flatMap((alternative) =>
+          expandIsGroups(before + alternative + after)
+        );
+      }
+    }
+    if (selector[index] === '(') depth += 1;
+    if (selector[index] === ')') depth -= 1;
+  }
+  return [selector];
+}
+
 function selectorMatches(element, selector) {
   const matchable = toMatchableSelector(selector);
   if (!matchable) return false;
-  try {
-    return element.matches(matchable);
-  } catch {
-    // Selectors jsdom cannot parse (e.g. vendor pseudo-classes) never match in the app's tests.
-    return false;
-  }
+  return expandIsGroups(matchable).some((alternative) => {
+    try {
+      return element.matches(alternative);
+    } catch {
+      // Selectors jsdom cannot parse (e.g. vendor pseudo-classes) never match in the app's tests.
+      return false;
+    }
+  });
 }
 
 function mediaMatches(mediaText, viewport) {

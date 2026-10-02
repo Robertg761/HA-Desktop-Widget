@@ -257,6 +257,11 @@
   line-height: 1.5;
 }
 
+/* Two fields side by side line up at the bottom when one label wraps to a second line. */
+.alert-advanced-options > label {
+  grid-template-rows: 1fr auto;
+}
+
 .alert-advanced-options label:has(#alert-condition),
 .alert-advanced-options label:has(#alert-threshold),
 .alert-advanced-options > .form-group,

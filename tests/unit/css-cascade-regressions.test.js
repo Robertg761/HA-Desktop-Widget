@@ -654,15 +654,26 @@ describe('stylesheet cascade regressions', () => {
       ).toMatch(/^linear-gradient\(to right, #ffb45f/);
     });
 
-    it('leaves transparent tile and transport buttons alone', () => {
+    it('leaves transparent tile buttons alone', () => {
       render(
         THEMES['readable light'],
-        `<div class="control-item"><button class="tile-primary-button"></button></div>
-        <div class="media-detail-controls"><button class="btn"></button></div>`
+        `<div class="control-item"><button class="tile-primary-button"></button></div>`
+      );
+
+      expect(resolvedValue(document.querySelector('button'), 'background')).toBe('transparent');
+    });
+
+    // The transport buttons are round chips now, so they take the readable fill like every other
+    // button instead of staying bare glyphs.
+    it.each(readableThemes)('draws the media transport as readable buttons (%s)', (theme) => {
+      render(
+        theme,
+        `<div class="media-detail-controls"><button class="btn"></button>
+        <button class="btn play-pause-btn"></button></div>`
       );
 
       for (const button of document.querySelectorAll('button')) {
-        expect(resolvedValue(button, 'background')).toBe('transparent');
+        expect(isOpaque(resolvedValue(button, 'background'))).toBe(true);
       }
     });
   });

@@ -5527,34 +5527,8 @@ body.theme-light .status-card.time-card .date-display {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 8px;
-  background: linear-gradient(to right, #ffb45f 0%, #fff4d6 46%, #9fd8ff 100%);
-  border-radius: var(--radius-sm);
   outline: none;
   cursor: pointer;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-
-.light-color-temp-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 22px;
-  height: 22px;
-  background: var(--surface-1);
-  border: 2px solid var(--accent);
-  border-radius: 50%;
-  cursor: grab;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.light-color-temp-slider::-moz-range-thumb {
-  width: 22px;
-  height: 22px;
-  background: var(--surface-1);
-  border: 2px solid var(--accent);
-  border-radius: 50%;
-  cursor: grab;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .brightness-color-row {
@@ -5735,15 +5709,6 @@ body.theme-light .status-card.time-card .date-display {
   transition: var(--transition-base);
 }
 
-.climate-slider:hover {
-  background: linear-gradient(
-    to right,
-    rgba(33, 150, 243, 0.5) 0%,
-    var(--accent-hover) 50%,
-    rgba(255, 152, 0, 1) 100%
-  );
-}
-
 .climate-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
@@ -5755,37 +5720,6 @@ body.theme-light .status-card.time-card .date-display {
   cursor: pointer;
   transition: var(--transition-base);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.climate-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.2);
-  background: var(--accent-hover);
-  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.4);
-}
-
-.climate-slider::-webkit-slider-thumb:active {
-  transform: scale(1.1);
-}
-
-.climate-slider::-moz-range-thumb {
-  width: 24px;
-  height: 24px;
-  background: var(--accent);
-  border: 3px solid var(--surface-1);
-  border-radius: 50%;
-  cursor: pointer;
-  transition: var(--transition-base);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.climate-slider::-moz-range-thumb:hover {
-  transform: scale(1.2);
-  background: var(--accent-hover);
-  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.4);
-}
-
-.climate-slider::-moz-range-thumb:active {
-  transform: scale(1.1);
 }
 
 .climate-slider-labels {
@@ -6003,15 +5937,6 @@ body.theme-light .status-card.time-card .date-display {
   transition: var(--transition-base);
 }
 
-.fan-slider:hover {
-  background: linear-gradient(
-    to right,
-    var(--surface-3) 0%,
-    rgba(var(--accent-rgb), 0.5) 30%,
-    var(--accent-hover) 100%
-  );
-}
-
 .fan-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
@@ -6025,37 +5950,6 @@ body.theme-light .status-card.time-card .date-display {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
-.fan-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.2);
-  background: var(--accent-hover);
-  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.4);
-}
-
-.fan-slider::-webkit-slider-thumb:active {
-  transform: scale(1.1);
-}
-
-.fan-slider::-moz-range-thumb {
-  width: 24px;
-  height: 24px;
-  background: var(--accent);
-  border: 3px solid var(--surface-1);
-  border-radius: 50%;
-  cursor: pointer;
-  transition: var(--transition-base);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.fan-slider::-moz-range-thumb:hover {
-  transform: scale(1.2);
-  background: var(--accent-hover);
-  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.4);
-}
-
-.fan-slider::-moz-range-thumb:active {
-  transform: scale(1.1);
-}
-
 .fan-presets {
   display: flex;
   gap: var(--space-2);
@@ -6064,7 +5958,7 @@ body.theme-light .status-card.time-card .date-display {
 
 .fan-preset-btn {
   flex: 1;
-  padding: var(--space-3);
+  padding: 0 var(--space-4);
   background: var(--surface-2);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -6216,15 +6110,6 @@ body.theme-light .status-card.time-card .date-display {
   transition: var(--transition-base);
 }
 
-.cover-slider:hover {
-  background: linear-gradient(
-    to right,
-    rgba(158, 158, 158, 0.5) 0%,
-    rgba(var(--accent-rgb), 0.5) 50%,
-    var(--accent-hover) 100%
-  );
-}
-
 .cover-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
@@ -6236,37 +6121,6 @@ body.theme-light .status-card.time-card .date-display {
   cursor: pointer;
   transition: var(--transition-base);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.cover-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.2);
-  background: var(--accent-hover);
-  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.4);
-}
-
-.cover-slider::-webkit-slider-thumb:active {
-  transform: scale(1.1);
-}
-
-.cover-slider::-moz-range-thumb {
-  width: 24px;
-  height: 24px;
-  background: var(--accent);
-  border: 3px solid var(--surface-1);
-  border-radius: 50%;
-  cursor: pointer;
-  transition: var(--transition-base);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.cover-slider::-moz-range-thumb:hover {
-  transform: scale(1.2);
-  background: var(--accent-hover);
-  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.4);
-}
-
-.cover-slider::-moz-range-thumb:active {
-  transform: scale(1.1);
 }
 
 .cover-slider-labels {
@@ -6945,34 +6799,17 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   box-shadow: 0 0 0 2px rgba(255, 152, 0, 0.16);
 }
 
-.camera-expanded-preview-close {
-  display: grid;
-  width: 34px;
-  height: 34px;
+/* The viewer is dark in every theme, so its close button (the dialogs' .close-btn) keeps light
+   ink instead of the theme's. */
+.camera-expanded-preview .camera-expanded-preview-close {
   flex: 0 0 auto;
-  padding: 0 0 2px;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.06);
   color: rgba(255, 255, 255, 0.8);
-  font: inherit;
-  font-size: var(--font-size-2xl);
-  line-height: 1;
-  transition:
-    background var(--transition-fast),
-    border-color var(--transition-fast),
-    color var(--transition-fast),
-    transform var(--transition-fast);
-  cursor: pointer;
 }
 
-.camera-expanded-preview-close:hover,
-.camera-expanded-preview-close:focus-visible {
-  border-color: rgba(255, 255, 255, 0.22);
+.camera-expanded-preview .camera-expanded-preview-close:hover,
+.camera-expanded-preview .camera-expanded-preview-close:focus-visible {
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
-  transform: scale(1.04);
 }
 
 .camera-expanded-preview-stage {
@@ -8447,7 +8284,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .form-group input,
 .form-group select,
 .form-group textarea,
-:where(.modal-body)
+:where(.modal-body, .first-run-content)
   :where(
     input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
     select,
@@ -8466,7 +8303,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .form-group input::placeholder,
 .form-group textarea::placeholder,
-:where(.modal-body)
+:where(.modal-body, .first-run-content)
   :where(
     input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
     select,
@@ -8478,7 +8315,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .form-group input:hover,
 .form-group select:hover,
 .form-group textarea:hover,
-:where(.modal-body)
+:where(.modal-body, .first-run-content)
   :where(
     input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
     select,
@@ -8491,7 +8328,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .form-group input:focus,
 .form-group select:focus,
 .form-group textarea:focus,
-:where(.modal-body)
+:where(.modal-body, .first-run-content)
   :where(
     input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
     select,
@@ -9106,20 +8943,6 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   background: var(--border-hover);
 }
 
-/* Settings: keep primary media dropdown within scroll flow to avoid clipping */
-#primary-media-player-dropdown .custom-dropdown-menu {
-  position: static;
-  margin-top: var(--space-2);
-  display: none;
-  opacity: 1;
-  visibility: visible;
-  transform: none;
-}
-
-#primary-media-player-dropdown.open .custom-dropdown-menu {
-  display: block;
-}
-
 /* Buttons */
 .btn {
   padding: var(--space-3) var(--space-5);
@@ -9457,28 +9280,44 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   line-height: 1.5;
 }
 
+/* Each step moves focus to its heading so screen readers start there. It is not a control, so
+   it draws no ring: the browser's default one wraps the glyphs and looks like a field. */
+.first-run-title:focus,
+.first-run-title:focus-visible {
+  outline: none;
+}
+
+/* The reassurance under the instruction: quieter than it, not louder. */
+.first-run-security-note {
+  margin: 0 0 18px;
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+/* On Hyprland the wizard adds shortcut help: two paragraphs, two buttons and a result line. */
+#first-run-desktop-help {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+#first-run-desktop-help > p {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+#first-run-desktop-help > p:empty {
+  display: none;
+}
+
 .first-run-label {
   display: block;
   margin-bottom: 8px;
   color: var(--text-primary);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
-}
-
-.first-run-content input {
-  width: 100%;
-  min-height: 42px;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  color: var(--text-primary);
-}
-
-.first-run-content input:focus-visible {
-  outline: none;
-  border-color: var(--focus-ring);
-  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.22);
 }
 
 .first-run-test-row {
@@ -9500,16 +9339,20 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .widget-state-panel {
-  margin-top: 12px;
-  padding: 18px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  background: rgba(var(--settings-modal-panel-rgb), 0.48);
-  box-shadow: var(--shadow-sm);
+  /* The tiles above end with the controls section's own bottom margin. */
+  margin-top: 0;
+  padding: var(--space-6) var(--space-4);
+  border: 1px dashed var(--tile-border-hover);
+  border-radius: var(--radius-tile);
+  text-align: center;
+  /* Scrolled into view for an error, the panel keeps the content's bottom padding clear. */
+  scroll-margin-bottom: 14px;
 }
 
 .widget-state-error {
-  border-color: rgba(239, 83, 80, 0.38);
+  border-style: solid;
+  border-color: rgba(239, 83, 80, 0.45);
+  background: rgba(239, 83, 80, 0.08);
 }
 
 .widget-state-empty {
@@ -9517,33 +9360,40 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .widget-state-title {
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-2);
   color: var(--text-primary);
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
 }
 
 .widget-state-copy {
-  margin: 0;
+  margin: 0 auto;
+  max-width: 34ch;
   color: var(--text-secondary);
-  line-height: 1.45;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  text-wrap: balance;
 }
 
 .widget-state-actions {
   display: flex;
+  justify-content: center;
   gap: var(--space-2);
   margin-top: 14px;
   flex-wrap: wrap;
 }
 
-/* The accent tint of .btn-secondary washes out on the red error panel and reads as disabled. */
+/* The accent tint of .btn-secondary washes out on the red error panel and reads as disabled, so
+   the panel's second action is the neutral button the dialogs use for Cancel. */
 .widget-state-actions .btn-secondary {
-  background: var(--surface-2);
+  background: var(--tile-bg);
+  border-color: var(--tile-border-hover);
   color: var(--text-primary);
-  border-color: var(--border-hover);
 }
 
 .widget-state-actions .btn-secondary:hover {
-  background: var(--surface-hover);
+  background: var(--tile-bg-hover);
+  border-color: var(--border-hover);
   color: var(--text-primary);
 }
 
@@ -10052,7 +9902,8 @@ body.widget-state-active #quick-controls .status-message {
 }
 
 .confirm-modal-content .modal-body {
-  padding: var(--space-6);
+  /* The header and footer pad by --space-5, so the message starts where the title does. */
+  padding: var(--space-5);
 }
 
 #confirm-message {
@@ -10065,34 +9916,11 @@ body.widget-state-active #quick-controls .status-message {
   gap: var(--space-3);
   justify-content: flex-end;
   padding: var(--space-3) var(--space-5);
-  border-top: 1px solid var(--border-color);
-  background: transparent;
-  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
+/* Size, corners and fill come from the dialog buttons; this only sets how wide they are. */
 .confirm-modal-content .btn {
-  padding: var(--space-4) var(--space-6);
-  min-width: 100px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-base);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--transition-base);
-  backdrop-filter: blur(var(--blur-sm));
-  -webkit-backdrop-filter: blur(var(--blur-sm));
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-.confirm-modal-content .btn-secondary {
-  background: var(--surface-2);
-  color: var(--text-primary);
-}
-
-.confirm-modal-content .btn-secondary:hover {
-  background: var(--surface-hover);
-  border-color: var(--border-hover);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  min-width: 88px;
 }
 
 .confirm-modal-content .btn-danger {
@@ -10104,11 +9932,6 @@ body.widget-state-active #quick-controls .status-message {
 .confirm-modal-content .btn-danger:hover {
   background: rgba(183, 28, 28, 1);
   border-color: rgba(183, 28, 28, 0.8);
-  box-shadow: 0 4px 12px rgba(211, 47, 47, 0.5);
-}
-
-.confirm-modal-content .btn:active {
-  transform: scale(0.98);
 }
 
 /* Rename button in reorganize mode - with glassmorphism */
@@ -10234,32 +10057,15 @@ body.widget-state-active #quick-controls .status-message {
   padding-top: calc(var(--space-3) + 24px);
 }
 
-/* Rename modal styles */
-.rename-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--z-modal-backdrop);
-}
-
+/* Tile Settings (the only dialog with this class, built in ui.js) takes the shared dialog recipe;
+   what is left here is its width, a scrolling body that keeps the header and footer in view, and
+   the footer's order. The panel, fields, switch and buttons all come from the dialogs section. */
 .rename-modal .modal-content {
-  background: var(--bg-primary);
-  border-radius: var(--radius-lg);
-  padding: 0;
-  width: min(520px, calc(100vw - 24px));
+  width: min(480px, calc(100vw - 24px));
   max-width: calc(100vw - 24px);
   max-height: calc(100dvh - 24px);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  box-shadow: var(--shadow-lg);
-  border: 1px solid var(--border-color);
 }
 
 .rename-modal .modal-body {
@@ -10273,119 +10079,16 @@ body.widget-state-active #quick-controls .status-message {
   flex-shrink: 0;
 }
 
+/* Save is first in the markup but last on screen, as in the other dialogs. */
 .rename-modal .modal-footer {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  flex-direction: row-reverse;
+  flex-wrap: wrap;
+  justify-content: flex-start;
 }
 
-.rename-modal .modal-footer .btn {
-  min-width: 0;
-  padding: var(--space-2);
-  white-space: normal;
-  overflow-wrap: anywhere;
-  text-overflow: clip;
-}
-
-.rename-modal .modal-footer .btn-primary {
-  grid-column: 1 / -1;
-}
-
-.rename-modal h3 {
-  margin: 0 0 16px 0;
-  color: var(--text-primary);
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-}
-
-.rename-modal p {
-  margin: 0 0 16px 0;
-  color: var(--text-secondary);
-  font-size: var(--font-size-base);
-}
-
-.rename-modal code {
-  background: var(--bg-secondary);
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
-  color: var(--accent-text);
-}
-
-.rename-modal .form-group {
-  margin-bottom: 20px;
-}
-
-.rename-modal label {
-  display: block;
-  margin-bottom: 8px;
-  color: var(--text-primary);
-  font-weight: 500;
-  font-size: var(--font-size-base);
-}
-
-.rename-modal input:not([type='checkbox']),
-.rename-modal select {
-  width: 100%;
-  padding: 12px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  font-size: var(--font-size-base);
-  transition: border-color var(--transition-base);
-  box-sizing: border-box;
-  user-select: text;
-  -webkit-user-select: text;
-  cursor: text;
-}
-
-.rename-modal select {
-  cursor: pointer;
-}
-
-.rename-modal input:focus,
-.rename-modal select:focus {
-  outline: none;
-  border-color: var(--focus-ring);
-  box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
-}
-
-.rename-modal .modal-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-}
-
-.rename-modal .btn {
-  padding: 10px 20px;
-  border: none;
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-base);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--transition-base);
-}
-
-.rename-modal .btn-primary {
-  background: var(--accent);
-  color: var(--on-accent);
-}
-
-.rename-modal .btn-primary:hover {
-  background: var(--accent-hover);
-  transform: translateY(-1px);
-}
-
-.rename-modal .btn-secondary {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-}
-
-.rename-modal .btn-secondary:hover {
-  background: var(--bg-tertiary);
-  transform: translateY(-1px);
+/* The last field needs no margin of its own: the body's padding already closes the dialog. */
+.rename-modal .modal-body > .form-group:last-child {
+  margin-bottom: 0;
 }
 
 /* Responsive adjustments */
@@ -11078,9 +10781,9 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   gap: 10px;
   margin: 14px 0 4px;
   padding: 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  border-radius: var(--radius-tile);
 }
 
 .media-volume-row {
@@ -11107,53 +10810,32 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 6px;
-  background: linear-gradient(to right, var(--surface-3), var(--accent));
-  border-radius: var(--radius-sm);
   outline: none;
   cursor: pointer;
 }
 
-.media-volume-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  background: var(--surface-1);
-  border: 2px solid var(--accent);
-  border-radius: 50%;
-  cursor: grab;
-}
-
-.media-volume-slider::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  background: var(--surface-1);
-  border: 2px solid var(--accent);
-  border-radius: 50%;
-  cursor: grab;
-}
-
 .media-mute-toggle {
   min-height: 34px;
-  border: 1px solid var(--border-color);
-  background: var(--surface-1);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--tile-border-hover);
+  background: var(--tile-bg);
   color: var(--text-primary);
   border-radius: var(--radius-md);
   cursor: pointer;
   font-size: var(--font-size-sm);
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
   transition: var(--transition-base);
 }
 
 .media-mute-toggle:hover {
-  border-color: var(--accent);
-  background: var(--surface-hover);
+  border-color: var(--border-hover);
+  background: var(--tile-bg-hover);
 }
 
+/* Pressed says it all: the label stays "Mute", and the state is aria-pressed plus this tint. */
 .media-mute-toggle.active {
   color: var(--accent-text);
-  border-color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.45);
   background: var(--accent-bg);
 }
 
@@ -11168,120 +10850,63 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 .media-detail-controls .btn {
-  appearance: none;
-  background: transparent !important;
-  border: none !important;
   flex: 0 1 auto;
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   min-width: 40px;
+  min-height: 0;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
-  transition: var(--transition-base);
-  color: var(--accent-text);
-  font-size: var(--font-size-2xl);
+  /* Round chips like the other dialogs' presets: fill, edge and hover come from .btn. */
+  border-radius: var(--radius-full);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
   line-height: 1;
-  padding: 0 !important;
   text-transform: none;
   letter-spacing: 0;
-  outline: none;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  border-radius: 0 !important;
-}
-
-.media-detail-controls .btn:hover {
-  color: var(--accent-text-hover);
-  transform: scale(1.2);
-  filter: drop-shadow(0 2px 8px rgba(var(--accent-rgb), 0.4));
-  background: transparent !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
-.media-detail-controls .btn:active {
-  transform: scale(1);
-  background: transparent !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
-/* The buttons have no border or background of their own, so focus needs a visible outline. */
-.media-detail-controls .btn:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
 }
 
 .media-detail-controls .btn:disabled {
   cursor: not-allowed;
   opacity: 0.38;
-  transform: none;
-  filter: none;
 }
 
-.media-detail-controls .btn:disabled:hover {
-  color: var(--accent-text);
-  transform: none;
-  filter: none;
-}
-
-.media-detail-controls .media-detail-seek-btn {
-  font-size: var(--font-size-md);
-  font-weight: 700;
-}
-
+/* Play and pause is the one action that matters here: a filled accent circle. */
 .media-detail-controls .play-pause-btn {
   width: 56px;
   height: 56px;
   min-width: 44px;
-  color: var(--accent-text);
-  background: transparent !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
-.media-detail-controls .play-pause-btn svg {
-  width: 40px;
-  height: 40px;
-}
-
+/* The tile's play button grows and glows on hover and while playing; here the circle just
+   changes shade, like the dialogs' other buttons. */
 .media-detail-controls .play-pause-btn:hover {
-  color: var(--accent-text-hover);
-  transform: scale(1.25);
-  filter: drop-shadow(0 4px 12px rgba(var(--accent-rgb), 0.6));
-  background: transparent !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  border-color: transparent;
+  background: var(--accent-hover);
+  color: var(--on-accent);
+  transform: none;
+  filter: none;
 }
 
 .media-detail-controls .play-pause-btn:active {
-  transform: scale(1.1);
-  background: transparent !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  transform: scale(0.97);
 }
 
-/* Add subtle glow when playing */
 .media-detail-controls .play-pause-btn.playing {
-  color: var(--accent-text);
-  animation: iconGlow 2s ease-in-out infinite;
-  background: transparent !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  color: var(--on-accent);
+  animation: none;
 }
 
-.media-detail-controls .play-pause-btn.playing svg {
-  width: 40px;
-  height: 40px;
+.media-detail-controls .play-pause-btn svg {
+  width: 28px;
+  height: 28px;
 }
 
 .camera-stream {
@@ -11476,11 +11101,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   font-family: var(--font-mono);
   font-size: var(--font-size-base);
   letter-spacing: 0.5px;
-  padding: 8px 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  color: var(--text-color);
 }
 
 /* The saved hotkey and the "Not set" hint are placeholders; read them as text, not as code. */
@@ -11518,7 +11138,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   overflow-y: auto;
   overflow-x: hidden;
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
 }
 
 .hotkey-item {
@@ -11576,6 +11196,9 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   /* Sized to the placeholder or hotkey so "No hotkey set" is never clipped when translated. */
   field-sizing: content;
   flex-shrink: 1;
+  /* Compact, level with the action dropdown beside it. The fill, border and corners come from
+     the field recipe; only the value is set in mono. */
+  min-height: 32px;
   min-width: 120px;
   max-width: 100%;
   text-align: center;
@@ -11602,7 +11225,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   padding: 6px 8px;
   font-size: var(--font-size-sm);
   gap: 6px;
-  min-height: auto;
+  min-height: 32px;
 }
 
 .hotkey-action-dropdown .custom-dropdown-arrow {
@@ -11879,74 +11502,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   padding: 12px;
   border-radius: var(--radius-md);
   margin-bottom: 16px;
-}
-
-.hotkey-btn,
-.alert-btn {
-  padding: 6px 12px;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-  transition: all var(--transition-base);
-}
-
-.hotkey-btn.primary,
-.alert-btn.primary {
-  background: var(--primary);
-  color: var(--on-accent);
-}
-
-.hotkey-btn.primary:hover,
-.alert-btn.primary:hover {
-  background: var(--primary-hover);
-}
-
-.hotkey-btn.secondary,
-.alert-btn.secondary {
-  background: var(--surface-3);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-}
-
-.hotkey-btn.secondary:hover,
-.alert-btn.secondary:hover {
-  background: var(--surface-hover);
-}
-
-.hotkey-btn.danger,
-.alert-btn.danger {
-  background: var(--danger);
-  color: white;
-}
-
-.hotkey-btn.danger:hover,
-.alert-btn.danger:hover {
-  background: var(--danger-hover);
-}
-
-.hotkey-input,
-.alert-input {
-  padding: 6px 8px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--surface-1);
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
-}
-
-.hotkey-input:focus,
-.alert-input:focus {
-  outline: none;
-  border-color: var(--focus-ring);
-  box-shadow: 0 0 0 2px var(--accent-bg);
-}
-
-.hotkey-input.invalid,
-.alert-input.invalid {
-  border-color: var(--danger);
-  background: var(--danger-bg);
 }
 
 .hotkey-help,
@@ -12526,6 +12081,13 @@ textarea:disabled,
   pointer-events: none;
 }
 
+/* A disabled control that says why in its title still has to be hovered to show it, and to show
+   the not-allowed cursor: Always on top in desktop layer mode, say. Native controls ignore a
+   click while disabled, so letting the pointer reach them does no harm. */
+:is(button, input, select, textarea, .btn):disabled[title]:not([title='']) {
+  pointer-events: auto;
+}
+
 /* Disabled label styling for mutually exclusive options */
 label.disabled {
   opacity: 0.5;
@@ -12661,33 +12223,6 @@ label.disabled {
 
 .command-palette-close {
   flex: none;
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--surface-1);
-  color: var(--text-secondary);
-  font-size: var(--font-size-lg);
-  line-height: 1;
-  cursor: pointer;
-  transition:
-    background var(--transition-fast),
-    color var(--transition-fast),
-    border-color var(--transition-fast);
-}
-
-.command-palette-close:hover,
-.command-palette-close:focus-visible {
-  border-color: rgba(var(--accent-rgb), 0.4);
-  background: rgba(var(--accent-rgb), 0.14);
-  color: var(--text-primary);
-}
-
-.command-palette-close:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
 }
 
 .command-palette-results {
@@ -13230,7 +12765,6 @@ body.theme-light {
 /* --- Backdrop and panel --- */
 
 .modal,
-.rename-modal,
 .hotkey-capture-modal {
   background: var(--dialog-scrim);
   backdrop-filter: blur(8px);
@@ -13242,7 +12776,6 @@ body.theme-light {
 .climate-modal-content,
 .fan-modal-content,
 .cover-modal-content,
-.rename-modal .modal-content,
 body.frosted-glass .modal-content,
 body.software-glass.frosted-glass .modal-content {
   background: var(--dialog-bg);
@@ -13307,7 +12840,6 @@ body.software-glass.frosted-glass .modal-content {
 /* --- Buttons --- */
 
 .btn,
-.rename-modal .btn-secondary,
 .confirm-modal-content .btn-secondary {
   min-height: 34px;
   border: 1px solid var(--tile-border-hover);
@@ -13323,7 +12855,6 @@ body.software-glass.frosted-glass .modal-content {
 }
 
 .btn:hover,
-.rename-modal .btn-secondary:hover,
 .confirm-modal-content .btn-secondary:hover {
   background: var(--tile-bg-hover);
   border-color: var(--border-hover);
@@ -13336,16 +12867,14 @@ body.software-glass.frosted-glass .modal-content {
   box-shadow: none;
 }
 
-.btn-primary,
-.rename-modal .btn-primary {
+.btn-primary {
   background: var(--accent);
   border-color: transparent;
   color: var(--on-accent);
   font-weight: var(--font-weight-semibold);
 }
 
-.btn-primary:hover,
-.rename-modal .btn-primary:hover {
+.btn-primary:hover {
   background: var(--accent-hover);
   border-color: transparent;
 }
@@ -13429,7 +12958,7 @@ body.theme-light {
    input beside it, and both match the custom dropdown trigger. */
 .form-group
   :is(input, select):not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
-:where(.modal-body)
+:where(.modal-body, .first-run-content)
   :where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']), select) {
   min-height: 36px;
 }
@@ -13540,6 +13069,8 @@ body.theme-light .brightness-icon:not(.brightness-off) {
 }
 
 .brightness-label,
+.brightness-control-heading,
+.brightness-slider-labels,
 .fan-speed-label,
 .cover-position-label,
 .climate-temp-label,
@@ -13575,41 +13106,66 @@ body.theme-light .brightness-icon:not(.brightness-off) {
   filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.5));
 }
 
-/* Sliders: a slim rounded track and a white thumb, as on the pinned tiles. */
+/* Sliders: a slim rounded track and a white thumb, as on the pinned tiles. Every slider in a
+   dialog (brightness, colour temperature, fan, cover, climate, media volume) shares them. */
+:root {
+  /* The way a track fills, towards the end the thumb moves to. Chromium mirrors a range input in
+     right-to-left, so the gradient has to turn with it. */
+  --slider-dir: to right;
+}
+
+[dir='rtl'] {
+  --slider-dir: to left;
+}
+
 .brightness-slider,
+.light-color-temp-slider,
 .fan-slider,
 .cover-slider,
-.climate-slider {
+.climate-slider,
+.media-volume-slider {
   height: 6px;
   border-radius: var(--radius-full);
-  background: linear-gradient(90deg, var(--tile-border-hover), var(--accent));
+  background: linear-gradient(var(--slider-dir), var(--tile-border-hover), var(--accent));
   box-shadow: none;
 }
 
 .brightness-slider {
-  background: linear-gradient(90deg, rgba(255, 208, 138, 0.18), #ffd08a);
+  background: linear-gradient(var(--slider-dir), rgba(255, 208, 138, 0.18), #ffd08a);
+}
+
+.light-color-temp-slider {
+  background: linear-gradient(var(--slider-dir), #ffb45f 0%, #fff4d6 46%, #9fd8ff 100%);
 }
 
 .brightness-slider:hover,
 .brightness-slider:focus,
+.light-color-temp-slider:hover,
 .fan-slider:hover,
 .cover-slider:hover,
-.climate-slider:hover {
+.climate-slider:hover,
+.media-volume-slider:hover {
   box-shadow: none;
 }
 
 .brightness-slider:focus-visible,
+.light-color-temp-slider:focus-visible,
 .fan-slider:focus-visible,
 .cover-slider:focus-visible,
-.climate-slider:focus-visible {
+.climate-slider:focus-visible,
+.media-volume-slider:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 6px;
 }
 
 .brightness-slider::-webkit-slider-thumb,
+.light-color-temp-slider::-webkit-slider-thumb,
 .fan-slider::-webkit-slider-thumb,
 .cover-slider::-webkit-slider-thumb,
-.climate-slider::-webkit-slider-thumb {
+.climate-slider::-webkit-slider-thumb,
+.media-volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
   width: 18px;
   height: 18px;
   border: none;
@@ -13622,9 +13178,11 @@ body.theme-light .brightness-icon:not(.brightness-off) {
 }
 
 .brightness-slider::-webkit-slider-thumb:hover,
+.light-color-temp-slider::-webkit-slider-thumb:hover,
 .fan-slider::-webkit-slider-thumb:hover,
 .cover-slider::-webkit-slider-thumb:hover,
-.climate-slider::-webkit-slider-thumb:hover {
+.climate-slider::-webkit-slider-thumb:hover,
+.media-volume-slider::-webkit-slider-thumb:hover {
   transform: scale(1.12);
   box-shadow:
     0 2px 8px rgba(0, 0, 0, 0.4),
@@ -13632,9 +13190,11 @@ body.theme-light .brightness-icon:not(.brightness-off) {
 }
 
 .brightness-slider::-webkit-slider-thumb:active,
+.light-color-temp-slider::-webkit-slider-thumb:active,
 .fan-slider::-webkit-slider-thumb:active,
 .cover-slider::-webkit-slider-thumb:active,
-.climate-slider::-webkit-slider-thumb:active {
+.climate-slider::-webkit-slider-thumb:active,
+.media-volume-slider::-webkit-slider-thumb:active {
   transform: scale(1.05);
 }
 
@@ -13656,7 +13216,8 @@ body.theme-light .brightness-icon:not(.brightness-off) {
     transform var(--duration-fast) var(--ease-emphasized);
 }
 
-.brightness-preset-btn {
+.brightness-preset-btn,
+.fan-preset-btn {
   flex: 1 1 0;
   min-width: 0;
   height: 34px;
@@ -14297,9 +13858,11 @@ body.theme-light #settings-modal .form-help.form-error {
   display: none;
 }
 
-/* --- Switches --- */
+/* --- Switches ---
+   One switch everywhere a toggle sits in a form group: Settings, the alert dialog's quiet hours and
+   Tile Settings' tray option. Pick lists with real checkboxes (the Add Page rooms) stay outside it. */
 
-#settings-modal .form-group input[type='checkbox'] {
+:is(#settings-modal, #alert-config-modal, .rename-modal) .form-group input[type='checkbox'] {
   flex-shrink: 0;
   margin-inline-end: 0;
   width: 38px;
@@ -14310,15 +13873,21 @@ body.theme-light #settings-modal .form-help.form-error {
   box-shadow: none;
 }
 
-body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked) {
+body.theme-light
+  :is(#settings-modal, #alert-config-modal, .rename-modal)
+  .form-group
+  input[type='checkbox']:not(:checked) {
   background: color-mix(in srgb, var(--text-primary) 38%, transparent);
 }
 
-#settings-modal .form-group label:has(input[type='checkbox']) input[type='checkbox'] {
+:is(#settings-modal, #alert-config-modal, .rename-modal)
+  .form-group
+  label:has(input[type='checkbox'])
+  input[type='checkbox'] {
   margin-inline-end: 10px;
 }
 
-#settings-modal .form-group input[type='checkbox']::after {
+:is(#settings-modal, #alert-config-modal, .rename-modal) .form-group input[type='checkbox']::after {
   top: 3px;
   left: 3px;
   width: 16px;
@@ -14327,12 +13896,16 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
-#settings-modal .form-group input[type='checkbox']:checked {
+:is(#settings-modal, #alert-config-modal, .rename-modal)
+  .form-group
+  input[type='checkbox']:checked {
   background: var(--accent);
   border-color: transparent;
 }
 
-#settings-modal .form-group input[type='checkbox']:checked::after {
+:is(#settings-modal, #alert-config-modal, .rename-modal)
+  .form-group
+  input[type='checkbox']:checked::after {
   transform: translateX(16px);
   background: #fff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
@@ -14545,7 +14118,9 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
 #settings-modal .custom-color-editor-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  /* More between the rows than between a label and its field, so each label reads as belonging
+     to the field under it, not the row above. */
+  gap: 14px 8px;
   align-items: end;
 }
 
@@ -14570,7 +14145,7 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
 
 #settings-modal .custom-color-field-label {
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: 0;
   font-size: var(--font-size-xs-plus);
   font-weight: var(--font-weight-semibold);
   letter-spacing: 0.04em;
@@ -14585,9 +14160,32 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
   font-variant-numeric: tabular-nums;
 }
 
+/* The swatch is as tall as the hex field beside it, and its colour fills the well instead of
+   sitting in the browser's square grey frame. */
 #settings-modal #custom-color-picker {
+  height: 36px;
+  min-height: 36px;
   padding: 3px;
   cursor: pointer;
+}
+
+#custom-color-picker::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+#custom-color-picker::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-md) - 4px);
+}
+
+/* The management row follows the Save button above it; the form-group rule above zeroed its
+   margin. */
+#settings-modal .custom-theme-management {
+  margin-top: var(--space-4);
+}
+
+#settings-modal .custom-editor-save-lock-hint {
+  margin-top: var(--space-3);
 }
 
 #settings-modal .primary-card-value {
@@ -16286,6 +15884,7 @@ body[data-season='thanksgiving'] .control-item {
     .control-state,
     .brightness-value-large,
     .brightness-preset-btn,
+    .fan-preset-btn,
     .climate-temp-value,
     .climate-temp-value-large,
     .cover-position-value,
