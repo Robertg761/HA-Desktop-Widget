@@ -2874,8 +2874,15 @@
             </div>
           </div>
           <div class="form-group">
-            <label data-i18n="Current weather entity">Current weather entity</label>
-            <div id="current-weather-info" class="weather-info">
+            <label id="current-weather-label" data-i18n="Current weather entity"
+              >Current weather entity</label
+            >
+            <div
+              id="current-weather-info"
+              class="weather-info"
+              role="group"
+              aria-labelledby="current-weather-label"
+            >
               <span id="current-weather-name">None selected</span>
               <button
                 type="button"
@@ -2917,6 +2924,8 @@
             <input
               type="text"
               id="hotkey-search"
+              aria-label="Search entities"
+              data-i18n-aria-label="Search entities"
               spellcheck="false"
               autocapitalize="off"
               autocomplete="off"
@@ -2978,6 +2987,8 @@
             <input
               type="text"
               id="alert-search"
+              aria-label="Search entities"
+              data-i18n-aria-label="Search entities"
               spellcheck="false"
               autocapitalize="off"
               autocomplete="off"

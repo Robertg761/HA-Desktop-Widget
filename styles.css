@@ -12966,8 +12966,10 @@ body.theme-light {
 /* A native select drawn like the custom dropdown: the browser's heavy chevron (which each OS
    draws differently) gives way to the same thin one, set at the end of the line and mirrored in
    right-to-left. The menu itself is still the browser's. The fill comes from the field recipe;
-   only the background image is set here, so a rule that sets just the colour keeps the chevron. */
-select:not([multiple]) {
+   only the background image is set here, so a rule that sets just the colour keeps the chevron.
+   The readable preset repaints every field with a plain background shorthand, which would take
+   the chevron with it, so it keeps the browser's own select. */
+body:not(.high-contrast) select:not([multiple]) {
   appearance: none;
   -webkit-appearance: none;
   padding-inline-end: 36px;
@@ -12978,7 +12980,7 @@ select:not([multiple]) {
   text-overflow: ellipsis;
 }
 
-[dir='rtl'] select:not([multiple]) {
+[dir='rtl'] body:not(.high-contrast) select:not([multiple]) {
   background-position: left 12px center;
 }
 

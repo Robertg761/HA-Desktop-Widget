@@ -210,6 +210,27 @@ const scenes = [
     setup: openAlertConfig,
   },
 
+  // The sensor pop-up with its history period, and the dialogs the Advanced page opens.
+  { name: 'popup-sensor', setup: (ctx) => ctx.click(tile('sensor.office_temp')) },
+  {
+    name: 'dialog-support',
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'advanced');
+      await ctx.click('#open-donate-modal-btn');
+      await ctx.waitForExpression(
+        `!document.querySelector('#donate-modal')?.classList.contains('hidden')`
+      );
+    },
+  },
+  {
+    name: 'dialog-diagnostics',
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'advanced');
+      await ctx.click('#connection-diagnostics-btn');
+      await ctx.waitForSelector('.diagnostics-report');
+    },
+  },
+
   // Settings pages the first scenes do not reach, and the custom colour editor.
   { name: 'settings-dashboard', setup: (ctx) => openSettingsTab(ctx, 'dashboard') },
   { name: 'settings-hotkeys', setup: (ctx) => openSettingsTab(ctx, 'hotkeys') },
@@ -293,6 +314,39 @@ const scenes = [
     setup: (ctx) => openTileSettings(ctx),
   },
   {
+    name: 'de-popup-input-select',
+    ui: { language: 'de' },
+    config: dialogsPage,
+    setup: (ctx) => ctx.click(tile('input_select.house_mode')),
+  },
+  {
+    name: 'de-dialog-alert-config',
+    ui: { language: 'de' },
+    config: alertsConfig,
+    setup: openAlertConfig,
+  },
+  {
+    name: 'de-dialog-manage-quick-access',
+    ui: { language: 'de' },
+    setup: (ctx) => ctx.click('#manage-quick-controls-btn'),
+  },
+  {
+    name: 'ar-dialog-alert-config',
+    ui: { language: 'ar' },
+    config: alertsConfig,
+    setup: openAlertConfig,
+  },
+  {
+    name: 'ar-dialog-manage-quick-access',
+    ui: { language: 'ar' },
+    setup: (ctx) => ctx.click('#manage-quick-controls-btn'),
+  },
+  {
+    name: 'ar-settings-hotkeys',
+    ui: { language: 'ar' },
+    setup: (ctx) => openSettingsTab(ctx, 'hotkeys'),
+  },
+  {
     name: 'popup-media-light',
     ui: { theme: 'light' },
     config: dialogsPage,
@@ -368,6 +422,29 @@ const scenes = [
   {
     name: 'christmas-light',
     ui: { theme: 'light', seasonal: holiday('christmas') },
+  },
+
+  // First run shows when no server is configured. The runner only puts the keys listed above
+  // back after a scene, so this one stays last: later scenes would find the app unconnected.
+  {
+    name: 'first-run',
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: (ctx) => ctx.waitForSelector('.first-run-onboarding:not(.hidden)'),
+  },
+  {
+    name: 'first-run-url',
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await ctx.waitForSelector('.first-run-onboarding:not(.hidden)');
+      await ctx.click('.first-run-actions .btn-primary');
+      await ctx.waitForSelector('.first-run-content input');
+    },
+  },
+  {
+    name: 'first-run-light',
+    ui: { theme: 'light' },
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: (ctx) => ctx.waitForSelector('.first-run-onboarding:not(.hidden)'),
   },
 ];
 

@@ -140,6 +140,22 @@ describe('the control recipe', () => {
       expect(resolvedValue(select, 'background')).toBe(resolvedValue(trigger, 'background'));
     });
 
+    it('leaves a select native under the readable preset, which repaints fields itself', () => {
+      render('high-contrast opaque-panels', '<div class="modal-body"><select></select></div>');
+
+      expect(resolvedValue(document.querySelector('select'), 'appearance')).toBeNull();
+    });
+
+    it('mirrors the chevron in right-to-left', () => {
+      render('', '<div class="modal-body"><select></select></div>');
+      const select = document.querySelector('select');
+
+      expect(resolvedValue(select, 'background-position')).toBe('right 12px center');
+      document.documentElement.setAttribute('dir', 'rtl');
+      expect(resolvedValue(select, 'background-position')).toBe('left 12px center');
+      document.documentElement.removeAttribute('dir');
+    });
+
     it('keeps the chevron clear of a compact select in a Settings row', () => {
       render(
         '',
