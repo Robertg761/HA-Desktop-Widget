@@ -1031,6 +1031,41 @@ describe('profile sync engine', () => {
     expect(next.deviceId).toBe(current.deviceId);
   });
 
+  test('a finished run reports itself as finished, whatever way it ended', async () => {
+    const { desktop, laptop } = await createSyncedPair();
+
+    // Settings disables its sync buttons while a run is in flight, so a status sent
+    // out before the run is cleared would leave them disabled until it was reopened.
+    desktop.edit((config) => {
+      config.opacity = 0.7;
+    });
+    const pushed = await desktop.sync('auto', 'manual');
+    expect(pushed.status.inFlight).toBe(false);
+    expect(desktop.emittedStatuses.at(-1).inFlight).toBe(false);
+
+    const unchanged = await desktop.sync('auto', 'manual');
+    expect(unchanged.action).toBe('none');
+    expect(unchanged.status.inFlight).toBe(false);
+
+    laptop.edit((config) => {
+      config.opacity = 0.4;
+    });
+    const realCheck = laptop.context.hasRemoteSyncEnvelopeChanged;
+    laptop.context.hasRemoteSyncEnvelopeChanged = async () => true;
+    const recheck = await laptop.sync('auto', 'manual');
+    laptop.context.hasRemoteSyncEnvelopeChanged = realCheck;
+    expect(recheck.reason).toBe('remote_changed');
+    expect(recheck.status.inFlight).toBe(false);
+    expect(laptop.emittedStatuses.at(-1).inFlight).toBe(false);
+
+    fs.writeFileSync(syncFilePath(), '');
+    await desktop.sync('auto', 'manual').catch(() => {});
+    expect(desktop.emittedStatuses.at(-1)).toMatchObject({
+      inFlight: false,
+      lastSyncStatus: 'error',
+    });
+  });
+
   test('reports when the file was last written and by whom', async () => {
     const { desktop, laptop } = await createSyncedPair();
     laptop.edit((config) => {

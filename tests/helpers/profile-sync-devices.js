@@ -195,6 +195,7 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
       tray: null,
       autoUpdaterInstance: null,
       pushes: [],
+      emittedStatuses: [],
       savedSnapshots: 0,
       ipcMain: { handle: (channel, handler) => (handlers[channel] = handler) },
       serializeConfigMutationHandler: (handler) => handler,
@@ -229,7 +230,7 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
      }
      function scheduleDebouncedProfileSyncPush(source) { pushes.push(source); }
      function runProfileSync(direction, source) { return runProfileSyncInternal(direction, source); }
-     function emitProfileSyncStatus() {}
+     function emitProfileSyncStatus(extra = {}) { emittedStatuses.push(buildProfileSyncStatus(extra)); }
      function setupProfileSyncInterval() {}
      async function runPostSaveSideEffect(warnings, label, fn) { await fn(); }
      function applyMainWindowSettingSideEffects() {}
@@ -301,6 +302,10 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
       },
       status() {
         return context.buildProfileSyncStatus();
+      },
+      /** What the renderer was sent, in order, as each run started and ended. */
+      get emittedStatuses() {
+        return context.emittedStatuses;
       },
       backups(prefix) {
         const dir = path.join(userData, 'profile-sync-backups');

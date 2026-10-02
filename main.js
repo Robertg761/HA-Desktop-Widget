@@ -6299,6 +6299,9 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
           throw new Error(mainT('Sync file kept changing on the other device; try again'));
         }
         void runProfileSync('auto', 'conflict_recheck');
+        // The finally below only clears this after the last status has gone out, so the
+        // run is marked over first or Settings would keep its buttons disabled.
+        profileSyncRuntime.inFlight = false;
         const status = buildProfileSyncStatus();
         emitProfileSyncStatus();
         return { ok: true, action: 'none', reason: 'remote_changed', queued: true, status };
@@ -6331,6 +6334,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
     };
     updateProfileSyncStatus('success', '');
     setupProfileSyncInterval();
+    profileSyncRuntime.inFlight = false;
     const status = buildProfileSyncStatus();
     emitProfileSyncStatus();
     const pushed = pushKeys.length > 0 || !!wroteEnvelope;
@@ -6345,6 +6349,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       ...(pulled ? { config: sanitizeConfigForRenderer(config) } : {}),
     };
   } catch (error) {
+    profileSyncRuntime.inFlight = false;
     updateProfileSyncStatus('error', mainTError(error));
     emitProfileSyncStatus();
     throw error;
