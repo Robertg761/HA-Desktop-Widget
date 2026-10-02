@@ -2792,6 +2792,30 @@ describe('Settings + Config Integration', () => {
       ).toHaveLength(1);
     });
 
+    test('should not save the custom color when Enter commits an IME composition', async () => {
+      // Arrange
+      await settings.openSettings();
+      const hexInput = document.getElementById('custom-color-hex');
+      hexInput.focus();
+      hexInput.value = '#336699';
+      hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+      // Act
+      const enter = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        isComposing: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      hexInput.dispatchEvent(enter);
+
+      // Assert
+      expect(enter.defaultPrevented).toBe(false);
+      expect(
+        document.querySelectorAll('.color-theme-option[data-custom-theme="true"]')
+      ).toHaveLength(0);
+    });
+
     test('should disable main settings save while custom editor is active', async () => {
       // Arrange
       await settings.openSettings();

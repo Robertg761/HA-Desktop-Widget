@@ -1343,7 +1343,8 @@ function initCustomColorEditor() {
   [rInput, gInput, bInput, hexInput].forEach((input) => {
     if (!input) return;
     input.onkeydown = (event) => {
-      if (event.key !== 'Enter') return;
+      // An Enter that commits an IME composition belongs to the IME, not to Save.
+      if (event.key !== 'Enter' || event.isComposing) return;
       event.preventDefault();
       if (saveCustomColorFromEditor()) setMainSettingsSaveLocked(false);
     };
