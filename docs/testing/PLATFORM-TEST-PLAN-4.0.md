@@ -24,12 +24,12 @@ Do the shared checks first. Later checks assume the Quick Access tiles from "Set
 
 Run these first, in this order. They cover the problems most likely to affect the most people.
 
-| Your machine | Checks                                                                                                                                                                |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Windows 11   | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, WIN11-1, WIN11-2, WIN11-5, WIN11-6, WIN11-8                                                                                       |
-| Windows 10   | ALL-1, ALL-3, ALL-4, ALL-5, WIN10-1, WIN11-1, WIN11-3, WIN11-5, WIN11-6, WIN11-8                                                                                      |
-| macOS        | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, MAC-1, MAC-2, MAC-3, MAC-5, MAC-6                                                                                                 |
-| Linux        | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, LNX-1, LNX-2, LNX-3, LNX-6, then the first two checks in the section for your desktop (GNOME, KDE Plasma, Hyprland, Sway or niri) |
+| Your machine | Checks                                                                                                                                                                                               |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Windows 11   | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, WIN11-1, WIN11-2, WIN11-5, WIN11-6, WIN11-8                                                                                                                      |
+| Windows 10   | ALL-1, ALL-3, ALL-4, ALL-5, WIN10-1, WIN11-1, WIN11-3, WIN11-5, WIN11-6, WIN11-8                                                                                                                     |
+| macOS        | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, MAC-1, MAC-2, MAC-3, MAC-5, MAC-6                                                                                                                                |
+| Linux        | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, LNX-1, LNX-2, LNX-3, LNX-6, then the first two checks in the section for your desktop (GNOME, KDE Plasma, Hyprland, Sway or niri); on stock GNOME, GNOME-2 first |
 
 On a GNOME without a tray extension, run GNOME-2 before anything else in this list. ALL-4 needs a tray icon, so run it only after you install an extension, or skip it (see "Check for a tray icon").
 
@@ -167,14 +167,14 @@ Ref: CSSA1-16, MP-18, MP-39, RO2-41, MP-41, MP-76
 
 Needs: A tray icon. Stock GNOME has none until you install an AppIndicator extension: run GNOME-2 first and then install one, or skip this check and say so in your report (see "Check for a tray icon").
 
-On a desktop layer (Hyprland, Sway, niri) Always on Top is greyed out and unchecked, because a layer cannot be kept on top, so skip that entry. There a left-click raises the widget above your windows and the next click lowers it, instead of hiding it, and Reset Position returns it to the default corner (see HYP-2 and SWAY-4).
+On a desktop layer (Hyprland, Sway, niri) Always on Top is greyed out and unchecked, because a layer cannot be kept on top, so skip that entry. There a left-click raises the widget above your windows and the next click lowers it, instead of hiding it, and Reset Position returns it to the default corner (HYP-2 on Hyprland, where you can drag the widget away first; SWAY-4 for the Sway and niri menu entry).
 
 1. Find the app's icon: Windows may hide it under the ^ overflow; macOS shows it in the menu bar; on Linux it appears on your bar's tray (GNOME needs an AppIndicator extension).
 2. Hover for the tooltip. Open the menu (right-click; on macOS, click).
 3. Use each entry: Show/Hide, Always on Top, Reset Position, Open Settings, Check for Updates, Report Issue. Leave Quit for last. DevTools and Reload are for developers.
 4. Windows and Linux: left-click the icon once.
 
-Expected: The tooltip names the app. Show/Hide shows or hides the widget. Always on Top toggles and its check mark follows the setting. Reset Position puts the widget fully on a connected screen at its normal size. Open Settings brings the widget forward with Settings open. Check for Updates gives an answer you can see (see UPD-1). Quit ends the app and leaves no process running. A left-click toggles the widget.
+Expected: The tooltip names the app. Show/Hide shows or hides the widget. Always on Top toggles and its check mark follows the setting (not on a desktop layer; see the note above). Reset Position puts the widget fully on a connected screen at its normal size. Open Settings brings the widget forward with Settings open. Check for Updates gives an answer you can see (see UPD-1). Quit ends the app and leaves no process running. A left-click toggles the widget (on a desktop layer it raises or lowers it).
 
 Capture: A screenshot of the menu and tooltip, and the position and size after Reset Position.
 
