@@ -81,6 +81,29 @@ describe('stylesheet cascade regressions', () => {
     });
   });
 
+  describe('custom colour hex field', () => {
+    const field = (attributes = '') =>
+      `<div id="settings-modal"><input id="custom-color-hex" type="text" ${attributes}></div>`;
+
+    // The settings modal paints the focus border on text inputs; the rejected-value border has to
+    // beat it, because the field keeps focus when Save rejects the value.
+    it('stays red while focused once its value has been rejected', () => {
+      render('', field('aria-invalid="true" data-focus-visible'));
+
+      expect(resolvedValue(document.getElementById('custom-color-hex'), 'border-color')).toBe(
+        '#ef5350'
+      );
+    });
+
+    it('keeps the normal focus border while the value is acceptable', () => {
+      render('', field('data-focus-visible'));
+
+      expect(resolvedValue(document.getElementById('custom-color-hex'), 'border-color')).not.toBe(
+        '#ef5350'
+      );
+    });
+  });
+
   describe('media tile text', () => {
     // Hovering used to slide every line sideways out of its pill, whether or not it overflowed.
     it('keeps its lines in place and ellipsized while the tile is hovered', () => {

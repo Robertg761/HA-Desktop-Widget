@@ -8868,8 +8868,9 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   box-shadow: var(--glow-focus);
 }
 
-/* After the :focus rule so a rejected value stays red while the field has focus. */
-#custom-color-hex[aria-invalid='true'] {
+/* Scoped to beat the settings modal's own :focus-visible border, so a rejected value stays red
+   while the field has focus too. */
+#settings-modal #custom-color-hex[aria-invalid='true'] {
   border-color: var(--error);
 }
 
