@@ -2,6 +2,8 @@
  * @jest-environment jsdom
  */
 
+const fs = require('fs');
+const path = require('path');
 const {
   bindTabListKeyboard,
   getNextTabIndex,
@@ -128,5 +130,28 @@ describe('tab navigation', () => {
       expect(press(other, 'ArrowRight').defaultPrevented).toBe(false);
       expect(clicked).toEqual([]);
     });
+  });
+});
+
+describe('Settings rail markup', () => {
+  const html = fs.readFileSync(path.resolve(__dirname, '../../index.html'), 'utf8');
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const tabs = [...doc.querySelectorAll('#settings-modal .modal-tabs [role="tab"]')];
+
+  it('wires every tab to its panel and back', () => {
+    expect(tabs).toHaveLength(6);
+    for (const tab of tabs) {
+      const panel = doc.getElementById(tab.getAttribute('aria-controls'));
+      expect(panel).not.toBeNull();
+      expect(panel.getAttribute('role')).toBe('tabpanel');
+      expect(panel.getAttribute('aria-labelledby')).toBe(tab.id);
+      expect(panel.id).toBe(`${tab.dataset.tab}-tab`);
+    }
+  });
+
+  it('makes only the selected tab a Tab stop', () => {
+    const stops = tabs.filter((tab) => tab.getAttribute('tabindex') !== '-1');
+    expect(stops).toHaveLength(1);
+    expect(stops[0].getAttribute('aria-selected')).toBe('true');
   });
 });

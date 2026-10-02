@@ -21,6 +21,7 @@ import { setLocaleBootstrap, t, translateDocument } from './src/i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './src/icons.js';
 import { lineIconMarkup, setLineIconContent } from './src/entity-icons.js';
 import { animateEnter, syncSlidingIndicator } from './src/motion.js';
+import { bindTabListKeyboard, syncRovingTabIndex } from './src/tab-navigation.js';
 import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
 import { WeatherEffectsManager } from './src/weather-effects.js';
 import { SeasonalEffectsManager } from './src/seasonal-effects.js';
@@ -3163,6 +3164,7 @@ function wireUI() {
         });
         button.classList.add('active');
         button.setAttribute('aria-selected', 'true');
+        syncRovingTabIndex(button.closest('.modal-tabs').querySelectorAll('.tab-link'), button);
         document
           .querySelectorAll('.modal-body .tab-content')
           .forEach((content) => content.classList.remove('active'));
@@ -3184,6 +3186,11 @@ function wireUI() {
         }
       });
     });
+
+    // The rail is a column, and a row in a narrow window: either pair of arrows moves along it.
+    document
+      .querySelectorAll('.modal-tabs')
+      .forEach((tabList) => bindTabListKeyboard(tabList, '.tab-link', { orientation: 'both' }));
 
     const hotkeySearch = document.getElementById('hotkey-entity-search');
     if (hotkeySearch) {
