@@ -1152,7 +1152,9 @@ Needs: Two monitors with different scale factors (for example 100% and 150%). Ho
 5. With monitor 2 unplugged, quit and start the app. Look at the pins that were on monitor 2. Plug monitor 2 in, quit and start the app again.
 6. On Hyprland, Sway or niri, use the tray's Move to Monitor instead of dragging.
 
-Expected: After step 1 everything is where you left it, at the right size on each scale. After step 2 the widget and the pins move to the remaining monitor and are fully visible. In step 3 the widget appears on the remaining monitor. Reset Position puts it fully on a connected monitor at its normal size. In step 5 the pins appear on monitor 1 while monitor 2 is missing, and go back to monitor 2, where you left them, once it is connected again. Move to Monitor lists your monitors and restarts the widget on the one you pick.
+Per-monitor pin positions are a Hyprland-only feature on desktop layers. On Sway and niri, skip the pin parts of steps 1 and 5 and of the expected result; SWAY-1 covers where pins sit there.
+
+Expected: After step 1 everything is where you left it, at the right size on each scale. After step 2 the widget and the pins move to the remaining monitor and are fully visible. In step 3 the widget appears on the remaining monitor. Reset Position puts it fully on a connected monitor at its normal size. In step 5 the pins appear on monitor 1 while monitor 2 is missing, and go back to monitor 2, where you left them, once it is connected again (not on Sway or niri; see the note above). Move to Monitor lists your monitors and restarts the widget on the one you pick.
 
 Capture: Screenshots at each step and your monitor layout.
 
