@@ -63,6 +63,100 @@ describe('stylesheet cascade regressions', () => {
     );
   });
 
+  describe('confirmation dialog stacking', () => {
+    // The confirmation is a static element; dialogs built later are appended after it and share the
+    // backdrop tier, so only a higher tier keeps "Delete graph" from opening behind its own editor.
+    it('paints above dialogs that are appended to the page after it', () => {
+      render(
+        '',
+        `<div id="confirm-modal" class="modal"></div>
+        <div id="comparison-graph-editor" class="modal"></div>`
+      );
+
+      const confirmModal = document.getElementById('confirm-modal');
+      const editor = document.getElementById('comparison-graph-editor');
+      expect(Number(resolvedValue(confirmModal, 'z-index'))).toBeGreaterThan(
+        Number(resolvedValue(editor, 'z-index'))
+      );
+    });
+  });
+
+  describe('custom colour hex field', () => {
+    const field = (attributes = '') =>
+      `<div id="settings-modal"><input id="custom-color-hex" type="text" ${attributes}></div>`;
+
+    // The settings modal paints the focus border on text inputs; the rejected-value border has to
+    // beat it, because the field keeps focus when Save rejects the value.
+    it('stays red while focused once its value has been rejected', () => {
+      render('', field('aria-invalid="true" data-focus-visible'));
+
+      expect(resolvedValue(document.getElementById('custom-color-hex'), 'border-color')).toBe(
+        '#ef5350'
+      );
+    });
+
+    it('keeps the normal focus border while the value is acceptable', () => {
+      render('', field('data-focus-visible'));
+
+      expect(resolvedValue(document.getElementById('custom-color-hex'), 'border-color')).not.toBe(
+        '#ef5350'
+      );
+    });
+  });
+
+  describe('media tile text', () => {
+    // Hovering used to slide every line sideways out of its pill, whether or not it overflowed.
+    it('keeps its lines in place and ellipsized while the tile is hovered', () => {
+      render(
+        '',
+        `<div class="control-item media-player-entity" data-hover>
+          <div class="control-info"><div class="media-info">
+            <div class="media-title">Title</div>
+            <div class="media-artist">Artist</div>
+            <div class="media-album">Album</div>
+          </div></div>
+        </div>`
+      );
+
+      for (const line of document.querySelectorAll('.media-info > *')) {
+        expect(resolvedValue(line, 'animation')).toBeNull();
+        expect(resolvedValue(line, 'overflow')).toBe('hidden');
+        expect(resolvedValue(line, 'text-overflow')).toBe('ellipsis');
+      }
+    });
+
+    it('has no marquee animation left in the stylesheets', () => {
+      const css = require('fs').readFileSync(
+        require('path').resolve(__dirname, '../../styles.css'),
+        'utf8'
+      );
+
+      expect(css).not.toContain('marquee-scroll');
+    });
+  });
+
+  describe('camera viewer frame', () => {
+    // A frame whose track follows its content grows to a 4:3 or portrait picture's own height and
+    // then crops it, so the track has to be sized by the 16:9 frame instead.
+    it('sizes its grid track by the frame and lets the feed shrink to it', () => {
+      render(
+        '',
+        `<div class="modal camera-modal"><div class="camera-viewer">
+          <img class="camera-stream camera-img"><video class="camera-video"></video>
+        </div></div>`
+      );
+
+      const viewer = document.querySelector('.camera-viewer');
+      expect(resolvedValue(viewer, 'grid-template')).toBe('minmax(0, 1fr) / minmax(0, 1fr)');
+      for (const feed of document.querySelectorAll('.camera-viewer > *')) {
+        expect(resolvedValue(feed, 'height')).toBe('100%');
+        expect(resolvedValue(feed, 'object-fit')).toBe('contain');
+        expect(resolvedValue(feed, 'min-height')).toBe('0');
+        expect(resolvedValue(feed, 'min-width')).toBe('0');
+      }
+    });
+  });
+
   describe('single-action primary card focus ring', () => {
     // Lock, switch and scene cards focus the tile itself; the card clips anything outside it.
     it.each(THEME_CASES)('draws the ring inside the card (%s)', (_, theme) => {

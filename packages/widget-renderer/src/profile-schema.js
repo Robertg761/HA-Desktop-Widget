@@ -32,7 +32,8 @@ const PROFILE_SECTION_KEYS = Object.freeze([
   'frostedGlass',
 ]);
 
-// These ui fields describe this machine's session, not the shared look.
+// These ui fields describe this machine's session, not the shared look. Profile sync keeps the
+// same list in profile-sync-core.js (a test keeps the two equal).
 const LOCAL_ONLY_UI_KEYS = new Set([
   'personalizationSectionsCollapsed',
   'enableInteractionDebugLogs',
@@ -109,24 +110,33 @@ function normalizeProfileDocument(document, currentConfig = {}) {
     );
   }
 
-  const hasQuickAccess = ['customTabs', 'favoriteEntities', 'activeTabId', 'comparisonGraphs'].some(
-    (key) => key in document
+  // A key is only read as present when it holds the right kind of value: a null, a string or an
+  // object where a list belongs would otherwise read as "clear this" and empty the layout.
+  const quickAccessDocument = Object.fromEntries(
+    ['customTabs', 'favoriteEntities', 'comparisonGraphs']
+      .filter((key) => Array.isArray(document[key]))
+      .map((key) => [key, document[key]])
   );
-  if (hasQuickAccess) {
-    const source = { ...currentConfig, ...document };
-    if ('activeTabId' in document) source.activeTabId = boundedString(document.activeTabId);
-    if ('customTabs' in document && !('favoriteEntities' in document)) {
+  if (typeof document.activeTabId === 'string') {
+    quickAccessDocument.activeTabId = document.activeTabId;
+  }
+  if (Object.keys(quickAccessDocument).length > 0) {
+    const source = { ...currentConfig, ...quickAccessDocument };
+    if ('activeTabId' in quickAccessDocument) {
+      source.activeTabId = boundedString(quickAccessDocument.activeTabId);
+    }
+    if ('customTabs' in quickAccessDocument && !('favoriteEntities' in quickAccessDocument)) {
       source.favoriteEntities = [];
     }
     // A legacy favorites-only edit changes one page, not every page on the desktop: the page the
     // profile selects when it names an existing one, otherwise the current active page.
     if (
-      'favoriteEntities' in document &&
-      !('customTabs' in document) &&
+      'favoriteEntities' in quickAccessDocument &&
+      !('customTabs' in quickAccessDocument) &&
       source.customTabs?.length
     ) {
       const current = normalizeQuickAccessConfig(currentConfig);
-      const requestedTabId = boundedString(document.activeTabId);
+      const requestedTabId = boundedString(quickAccessDocument.activeTabId);
       const targetTabId = current.customTabs.some((tab) => tab.id === requestedTabId)
         ? requestedTabId
         : current.activeTabId;
@@ -134,7 +144,7 @@ function normalizeProfileDocument(document, currentConfig = {}) {
       source.activeTabId = targetTabId;
       source.customTabs = current.customTabs.map((tab) =>
         tab.id === targetTabId
-          ? { ...tab, entityIds: normalizeStringArray(document.favoriteEntities) }
+          ? { ...tab, entityIds: normalizeStringArray(quickAccessDocument.favoriteEntities) }
           : tab
       );
     }
@@ -142,7 +152,7 @@ function normalizeProfileDocument(document, currentConfig = {}) {
     normalized.customTabs = quickAccess.customTabs;
     normalized.activeTabId = quickAccess.activeTabId;
     normalized.favoriteEntities = quickAccess.favoriteEntities;
-    if ('comparisonGraphs' in document || 'comparisonGraphs' in currentConfig) {
+    if ('comparisonGraphs' in quickAccessDocument || 'comparisonGraphs' in currentConfig) {
       const reconciled = normalizeComparisonGraphsConfig({
         ...quickAccess,
         comparisonGraphs: source.comparisonGraphs,
@@ -175,7 +185,13 @@ function normalizeProfileDocument(document, currentConfig = {}) {
   }
 
   if ('opacity' in document) {
-    const opacity = Number(document.opacity);
+    // Number(null), Number('') and Number(false) are 0, which would clamp to the minimum and
+    // make the whole widget half transparent: only a number, or text holding one, counts.
+    const raw = document.opacity;
+    const opacity =
+      typeof raw === 'number' || (typeof raw === 'string' && raw.trim() !== '')
+        ? Number(raw)
+        : Number.NaN;
     if (Number.isFinite(opacity)) {
       normalized.opacity = Math.max(MIN_OPACITY, Math.min(MAX_OPACITY, opacity));
     }
@@ -236,6 +252,7 @@ function buildProfileDocumentFromConfig(config) {
 export {
   PROFILE_SCHEMA_VERSION,
   PROFILE_SECTION_KEYS,
+  LOCAL_ONLY_UI_KEYS,
   buildConfigPatchFromApplyPayload,
   buildProfileDocumentFromConfig,
   normalizeProfileDocument,

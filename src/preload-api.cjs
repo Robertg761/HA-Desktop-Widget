@@ -153,6 +153,7 @@ function createElectronApi(ipcRenderer, platform) {
       invoke('sync-desktop-pin-content-min-bounds', entityId, minBounds),
     getDesktopPinBootstrap: (entityId) => invoke('get-desktop-pin-bootstrap', entityId),
     publishHaConnectionState: (status) => invoke('publish-ha-connection-state', status),
+    publishHaUnitSystem: (unitSystem) => invoke('publish-ha-unit-system', unitSystem),
     publishHaSnapshot: (states) => invoke('publish-ha-snapshot', states),
     publishHaEntityUpdate: (entity) => invoke('publish-ha-entity-update', entity),
     requestDesktopPinAction: (entityId, action, payload) =>
@@ -162,9 +163,9 @@ function createElectronApi(ipcRenderer, platform) {
     showEntityTileMenu: (entityId, supportInfo = null) =>
       invoke('show-entity-tile-menu', entityId, supportInfo),
     updateTrayEntityIcon: (payload) => invoke('update-tray-entity-icon', payload),
-    chooseProfileSyncFolder: (provider) => invoke('choose-profile-sync-folder', provider),
-    copyProfileSyncFile: (fromPath, toPath, overwrite = false) =>
-      invoke('copy-profile-sync-file', fromPath, toPath, overwrite),
+    chooseProfileSyncFolder: (provider, currentFolder = '') =>
+      invoke('choose-profile-sync-folder', provider, currentFolder),
+    copyProfileSyncFile: (fromPath, toPath) => invoke('copy-profile-sync-file', fromPath, toPath),
     getProfileSyncStatus: () => invoke('get-profile-sync-status'),
     runProfileSync: (direction) => invoke('run-profile-sync', direction),
     setProfileSyncPassphrase: (passphrase, remember, encryptionEnabled = null) =>
@@ -189,6 +190,7 @@ function createElectronApi(ipcRenderer, platform) {
     getLoginItemSettings: () => invoke('get-login-item-settings'),
     setLoginItemSettings: (openAtLogin) => invoke('set-login-item-settings', openAtLogin),
     minimizeWindow: () => invoke('minimize-window'),
+    closeWindow: () => invoke('close-window'),
     focusWindow: () => invoke('focus-window'),
     showWindow: () => invoke('show-window'),
     publishOmarchyBarTiles: (payload) => invoke('publish-omarchy-bar-tiles', payload),

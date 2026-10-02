@@ -841,8 +841,8 @@ function dismissToast(toast) {
 /**
  * Display a transient toast notification in the element with id "toast-container".
  *
- * The toast leads with a status icon matching its type, is dismissible by clicking it, and exits
- * through the shared `.toast-closing` animation.
+ * The toast leads with a status icon matching its type, is dismissible by clicking it or from the
+ * keyboard, and exits through the shared `.toast-closing` animation.
  *
  * @param {string} message - Text to show inside the toast.
  * @param {string} [type='success'] - Visual variant/class to apply ('success', 'error', 'warning' or 'info').
@@ -871,6 +871,14 @@ function showToast(message, type = 'success', timeout = 2000) {
     const container = document.getElementById('toast-container');
     if (!container) return undefined;
     placeToastContainer(container);
+    // The same message twice at once is one problem reported twice; the first stays up.
+    const showing = [...container.querySelectorAll('.toast')].find(
+      (existing) =>
+        existing.dataset?.dismissing !== 'true' &&
+        existing.classList.contains(type) &&
+        existing.querySelector('.toast-message')?.textContent === message
+    );
+    if (showing) return showing;
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
 
@@ -885,8 +893,15 @@ function showToast(message, type = 'success', timeout = 2000) {
     text.textContent = message;
     toast.appendChild(text);
 
-    // A toast that outlasts its usefulness should be dismissible rather than merely waited out.
+    // A toast that outlasts its usefulness should be dismissible rather than merely waited out,
+    // from the keyboard as well: it takes focus with Tab, and Enter, Space or Escape closes it.
+    toast.tabIndex = 0;
     toast.addEventListener('click', () => dismissToast(toast));
+    toast.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Escape') return;
+      event.preventDefault();
+      dismissToast(toast);
+    });
 
     container.appendChild(toast);
     setTimeout(() => dismissToast(toast), timeout);
@@ -1574,6 +1589,10 @@ function showConfirm(title, message, options = {}) {
         if (e.key === 'Escape') {
           handleCancel();
         } else if (e.key === 'Enter') {
+          // Focus starts on Cancel, and Enter on a focused button is that button's own click.
+          // Confirming here would run the action the user is trying to decline, and the shortcut
+          // also must not fire again while the key that opened the dialog is still held down.
+          if (e.repeat || e.target?.closest?.('button')) return;
           handleConfirm();
         }
       };

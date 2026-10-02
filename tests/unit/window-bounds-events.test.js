@@ -186,6 +186,7 @@ describe('desktop pin bounds on Linux', () => {
       clampDesktopPinBoundsWithWorkArea: clampDesktopPinBounds,
       getDesktopPinBaseBounds,
       getDesktopPinWindowBoundsInWorkArea: getDesktopPinWindowBounds,
+      isPlainObject: (value) => !!value && typeof value === 'object' && !Array.isArray(value),
       normalizeEntityId: (id) => String(id || '').trim(),
       BrowserWindow: function (options) {
         const window = new FakeWindow({

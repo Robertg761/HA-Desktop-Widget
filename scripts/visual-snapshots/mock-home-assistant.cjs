@@ -2,7 +2,9 @@
  * A tiny stand-in for Home Assistant, just enough for the widget to connect and render.
  *
  * It speaks the WebSocket API's auth handshake and answers every request from a fixture: states
- * for get_states, empty lists and objects for registries and history, null for subscriptions.
+ * for get_states, services for get_services (the command palette only offers commands for
+ * services that exist), empty lists and objects for registries and history, null for
+ * subscriptions.
  * The WebSocket framing is done by hand (text frames, ping, close) so the snapshot job needs no
  * dependency beyond Node itself. Test-only; never shipped.
  */
@@ -63,7 +65,7 @@ function decodeFrames(buffer) {
   return [frames, buffer.subarray(offset)];
 }
 
-function resultFor(message, states) {
+function resultFor(message, { states, services }) {
   switch (message.type) {
     case 'get_states':
       return states;
@@ -83,7 +85,7 @@ function resultFor(message, states) {
         },
       };
     case 'get_services':
-      return {};
+      return services;
     case 'auth/current_user':
       return { id: 'snapshot', name: 'Snapshot', is_owner: true, is_admin: true };
     case 'config/entity_registry/list_for_display':
@@ -95,7 +97,7 @@ function resultFor(message, states) {
   }
 }
 
-function startMockHomeAssistant({ port = 0, token, states }) {
+function startMockHomeAssistant({ port = 0, token, states, services = {} }) {
   const server = http.createServer((request, response) => {
     response.writeHead(404, { 'content-type': 'application/json' });
     response.end('{"message":"Not found"}');
@@ -158,7 +160,12 @@ function startMockHomeAssistant({ port = 0, token, states }) {
           } else if (item.type === 'ping') {
             send({ id: item.id, type: 'pong' });
           } else if (typeof item.id === 'number') {
-            send({ id: item.id, type: 'result', success: true, result: resultFor(item, states) });
+            send({
+              id: item.id,
+              type: 'result',
+              success: true,
+              result: resultFor(item, { states, services }),
+            });
           }
         }
       }

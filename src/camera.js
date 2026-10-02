@@ -1426,8 +1426,6 @@ async function openCamera(cameraId, options = {}) {
           video.playsInline = true;
           video.autoplay = true;
           video.controls = false;
-          video.style.width = '100%';
-          video.style.height = 'auto';
           viewer.insertBefore(video, viewer.firstChild);
           showFrameMessage(false);
         }

@@ -1779,6 +1779,25 @@ describe('Camera Module', () => {
       });
     });
 
+    it('should leave the size of the live video to the stylesheet', async () => {
+      mockWebSocketRequest.mockResolvedValue({
+        success: true,
+        result: { url: '/api/hls/master_playlist.m3u8' },
+      });
+
+      camera.openCamera('camera.front_door');
+
+      const liveBtn = document.querySelector('#live-btn');
+      await liveBtn.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // An inline height of "auto" beats the viewer's 100% and lets a 4:3 or portrait feed grow
+      // taller than the 16:9 frame, which then crops it.
+      const video = document.querySelector('video.camera-video');
+      expect(video.style.height).toBe('');
+      expect(video.style.width).toBe('');
+    });
+
     it('should set video attributes correctly', async () => {
       mockWebSocketRequest.mockResolvedValue({
         success: true,

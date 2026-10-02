@@ -2,6 +2,7 @@ const path = require('path');
 const {
   getAppIconPath,
   getMainWindowVisualOptions,
+  getRelaunchOptions,
   resolveNativeThemeSource,
   hasGlobalShortcutFallback,
   isLinuxAppImage,
@@ -36,6 +37,36 @@ describe('platform helpers', () => {
     expect(supportsAutoUpdater('linux', {})).toBe(false);
     expect(supportsAutoUpdater('win32', {})).toBe(true);
     expect(supportsAutoUpdater('darwin', {})).toBe(false);
+  });
+
+  test('relaunches an AppImage through the AppImage file, not its vanishing mount', () => {
+    const argv = ['/tmp/.mount_HAWidgXyz/ha-desktop-widget', '--show'];
+
+    expect(
+      getRelaunchOptions({ argv, env: { APPIMAGE: '/apps/HA Desktop Widget.AppImage' } })
+    ).toEqual({
+      args: ['--show'],
+      execPath: '/apps/HA Desktop Widget.AppImage',
+    });
+    expect(
+      getRelaunchOptions({
+        argv,
+        env: { APPIMAGE: '/apps/HA Desktop Widget.AppImage' },
+        extraArgs: ['--ozone-platform=wayland'],
+      })
+    ).toEqual({
+      args: ['--show', '--ozone-platform=wayland'],
+      execPath: '/apps/HA Desktop Widget.AppImage',
+    });
+  });
+
+  test('relaunches every other install in place with the same arguments', () => {
+    const argv = ['/opt/HA Desktop Widget/ha-desktop-widget', '--show'];
+
+    expect(getRelaunchOptions({ argv, env: {} })).toEqual({ args: ['--show'] });
+    expect(getRelaunchOptions({ argv, env: {}, extraArgs: ['--ozone-platform=wayland'] })).toEqual({
+      args: ['--show', '--ozone-platform=wayland'],
+    });
   });
 
   test('uses opaque native windows on Linux unless explicitly overridden', () => {

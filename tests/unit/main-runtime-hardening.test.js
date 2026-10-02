@@ -99,7 +99,7 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).toContain('NATIVE_WAYLAND_ENV_OVERRIDE');
     // A machine where XWayland cannot render must end up on Wayland, not with no window.
     expect(mainSource).toContain(
-      "app.relaunch({ args: process.argv.slice(1).concat('--ozone-platform=wayland') })"
+      "app.relaunch(getRelaunchOptions({ extraArgs: ['--ozone-platform=wayland'] }))"
     );
     expect(mainSource).toContain('forcedX11FallbackStarted');
     // The verdict is remembered so a machine without working XWayland stops paying for it.
@@ -570,7 +570,9 @@ describe('main-process wiring safeguards', () => {
     const restartEnd = mainSource.indexOf("ipcMain.handle('minimize-window'", restartStart);
     const restartSource = mainSource.slice(restartStart, restartEnd);
     expect(restartSource).toContain("await flushConfigForBoundedExit('restarting')");
-    expect(restartSource.indexOf('app.relaunch()')).toBeLessThan(
+    // Through getRelaunchOptions() so an AppImage restarts from the AppImage, not its dead mount.
+    expect(restartSource).toContain('app.relaunch(getRelaunchOptions())');
+    expect(restartSource.indexOf('app.relaunch(getRelaunchOptions())')).toBeLessThan(
       restartSource.indexOf('app.exit(0)')
     );
     // The IPC handler must go through that sequence, not around it.

@@ -8,6 +8,7 @@ const path = require('path');
 
 const {
   isAllowedHlsProxyPath,
+  isPathInsideDirectory,
   normalizeEntityIdForObjectKey,
   validateProfileSyncCopyPaths,
 } = require('../../src/main-security.cjs');
@@ -43,6 +44,34 @@ describe('main-process security helpers', () => {
       expect(isAllowedHlsProxyPath('/api/camera_proxy_stream/camera.front')).toBe(true);
       expect(isAllowedHlsProxyPath('/api/states')).toBe(false);
       expect(isAllowedHlsProxyPath('/api/services/light/turn_on')).toBe(false);
+    });
+  });
+
+  describe('isPathInsideDirectory', () => {
+    it('finds a path inside a folder and not beside or above it', () => {
+      const parent = path.join(os.tmpdir(), 'parent');
+      expect(isPathInsideDirectory(path.join(parent, 'a', 'b.json'), parent)).toBe(true);
+      expect(isPathInsideDirectory(parent, parent)).toBe(true);
+      expect(isPathInsideDirectory(path.join(os.tmpdir(), 'parent-two'), parent)).toBe(false);
+      expect(isPathInsideDirectory(os.tmpdir(), parent)).toBe(false);
+      expect(isPathInsideDirectory('', parent)).toBe(false);
+    });
+
+    it('does not call a path on another Windows drive inside the folder', () => {
+      // path.relative answers with the other drive's absolute path, which has no leading "..".
+      let winSecurity;
+      jest.isolateModules(() => {
+        jest.doMock('path', () => jest.requireActual('path').win32);
+        winSecurity = require('../../src/main-security.cjs');
+      });
+      jest.dontMock('path');
+
+      expect(winSecurity.isPathInsideDirectory('D:\\work\\somewhere', 'C:\\Temp\\userData')).toBe(
+        false
+      );
+      expect(winSecurity.isPathInsideDirectory('C:\\Temp\\userData\\x', 'C:\\Temp\\userData')).toBe(
+        true
+      );
     });
   });
 

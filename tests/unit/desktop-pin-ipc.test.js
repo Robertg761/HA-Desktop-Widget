@@ -6,6 +6,7 @@ const {
   createDesktopPinConnectionState,
   createDesktopPinRendererConfig,
   normalizeDesktopPinActionRequest,
+  normalizeHaUnitSystem,
 } = require('../../src/desktop-pin-ipc.cjs');
 
 describe('desktop pin IPC helpers', () => {
@@ -39,6 +40,22 @@ describe('desktop pin IPC helpers', () => {
     expect(JSON.stringify(result)).not.toContain('decrypted-secret');
     expect(JSON.stringify(result)).not.toContain('sync.json');
     expect(source.homeAssistant.token).toBe('decrypted-secret');
+  });
+
+  it("relays only the unit strings of Home Assistant's unit system to pin windows", () => {
+    expect(
+      normalizeHaUnitSystem({
+        temperature: '°F',
+        wind_speed: 'mph',
+        length: { nested: 'object' },
+        pressure: 5,
+        long: 'x'.repeat(64),
+      })
+    ).toEqual({ temperature: '°F', wind_speed: 'mph' });
+    expect(normalizeHaUnitSystem(null)).toBeNull();
+    expect(normalizeHaUnitSystem('°F')).toBeNull();
+    expect(normalizeHaUnitSystem(['°F'])).toBeNull();
+    expect(normalizeHaUnitSystem({ temperature: 70 })).toBeNull();
   });
 
   it('reports connection readiness without returning credential values', () => {

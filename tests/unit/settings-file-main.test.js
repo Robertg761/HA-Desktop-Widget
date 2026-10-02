@@ -47,7 +47,8 @@ describe('settings file main-process application', () => {
     // The incoming sections let the backup record ui keys the apply adds, so restore undoes them.
     expect(context.backupLocalProfileBeforePullApply).toHaveBeenCalledWith(
       ['visualPersonalization'],
-      { visualPersonalization: { ui: { theme: 'light' } } }
+      { visualPersonalization: { ui: { theme: 'light' } } },
+      'import'
     );
     expect(context.backupLocalProfileBeforePullApply.mock.invocationCallOrder[0]).toBeLessThan(
       context.saveConfigDurably.mock.invocationCallOrder[0]
@@ -55,12 +56,16 @@ describe('settings file main-process application', () => {
     expect(context.config).toEqual({ ...original, ui: { ...original.ui, theme: 'light' } });
     expect(context.applySyncedConfigSideEffects).toHaveBeenCalledTimes(1);
   });
-  test('clears ui keys an import sets to null only when asked to', async () => {
-    const sections = { visualPersonalization: { ui: { theme: 'light', accent: null } } };
+  test('clears the shared ui keys a section sets to null, and other nulls only when asked to', async () => {
+    const sections = {
+      visualPersonalization: { ui: { theme: 'light', accent: null, aKeyFromALaterVersion: null } },
+    };
     await context.applyLocalProfileSections(sections);
-    expect(context.config.ui.accent).toBeNull();
-    await context.applyLocalProfileSections(sections, { clearNullUiKeys: true });
+    // A shared key reset on the other side is reset here too; a later version's key stays as sent.
     expect(context.config.ui).not.toHaveProperty('accent');
+    expect(context.config.ui.aKeyFromALaterVersion).toBeNull();
+    await context.applyLocalProfileSections(sections, { clearNullUiKeys: true });
+    expect(context.config.ui).not.toHaveProperty('aKeyFromALaterVersion');
   });
   test('a failed backup never writes or changes config', async () => {
     context.backupLocalProfileBeforePullApply.mockRejectedValue(new Error('Disk full'));
