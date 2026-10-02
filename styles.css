@@ -14928,10 +14928,13 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
 }
 
 /* Camera viewer: a fixed 16:9 frame, so a slow or failed feed doesn't collapse the dialog to a
-   thin black bar or show a broken-image icon. */
+   thin black bar or show a broken-image icon. The track is sized by the frame rather than by its
+   content, otherwise a taller picture (4:3, a portrait doorbell) grows the row past the frame and
+   overflow:hidden crops it before object-fit can letterbox it. */
 .camera-modal .camera-viewer {
   position: relative;
   display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   place-items: center;
   aspect-ratio: 16 / 9;
   overflow: hidden;
@@ -14944,6 +14947,8 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   grid-area: 1 / 1;
   width: 100%;
   height: 100%;
+  min-width: 0;
+  min-height: 0;
   max-height: none;
   border-radius: 0;
   background: transparent;

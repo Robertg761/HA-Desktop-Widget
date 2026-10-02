@@ -81,6 +81,28 @@ describe('stylesheet cascade regressions', () => {
     });
   });
 
+  describe('camera viewer frame', () => {
+    // A frame whose track follows its content grows to a 4:3 or portrait picture's own height and
+    // then crops it, so the track has to be sized by the 16:9 frame instead.
+    it('sizes its grid track by the frame and lets the feed shrink to it', () => {
+      render(
+        '',
+        `<div class="modal camera-modal"><div class="camera-viewer">
+          <img class="camera-stream camera-img"><video class="camera-video"></video>
+        </div></div>`
+      );
+
+      const viewer = document.querySelector('.camera-viewer');
+      expect(resolvedValue(viewer, 'grid-template')).toBe('minmax(0, 1fr) / minmax(0, 1fr)');
+      for (const feed of document.querySelectorAll('.camera-viewer > *')) {
+        expect(resolvedValue(feed, 'height')).toBe('100%');
+        expect(resolvedValue(feed, 'object-fit')).toBe('contain');
+        expect(resolvedValue(feed, 'min-height')).toBe('0');
+        expect(resolvedValue(feed, 'min-width')).toBe('0');
+      }
+    });
+  });
+
   describe('single-action primary card focus ring', () => {
     // Lock, switch and scene cards focus the tile itself; the card clips anything outside it.
     it.each(THEME_CASES)('draws the ring inside the card (%s)', (_, theme) => {
