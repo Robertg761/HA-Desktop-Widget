@@ -9962,6 +9962,12 @@ body.widget-state-active #quick-controls .status-message {
 }
 
 /* Confirmation Modal - Compact Style */
+/* The confirmation is one static element near the top of <body>, but dialogs built on demand
+   (the comparison graph editor) are appended after it at the same z-index and would paint over it. */
+#confirm-modal {
+  z-index: var(--z-modal);
+}
+
 .confirm-modal-content {
   max-width: 400px;
   min-width: 320px;

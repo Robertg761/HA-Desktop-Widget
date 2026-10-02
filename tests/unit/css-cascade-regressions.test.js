@@ -63,6 +63,24 @@ describe('stylesheet cascade regressions', () => {
     );
   });
 
+  describe('confirmation dialog stacking', () => {
+    // The confirmation is a static element; dialogs built later are appended after it and share the
+    // backdrop tier, so only a higher tier keeps "Delete graph" from opening behind its own editor.
+    it('paints above dialogs that are appended to the page after it', () => {
+      render(
+        '',
+        `<div id="confirm-modal" class="modal"></div>
+        <div id="comparison-graph-editor" class="modal"></div>`
+      );
+
+      const confirmModal = document.getElementById('confirm-modal');
+      const editor = document.getElementById('comparison-graph-editor');
+      expect(Number(resolvedValue(confirmModal, 'z-index'))).toBeGreaterThan(
+        Number(resolvedValue(editor, 'z-index'))
+      );
+    });
+  });
+
   describe('single-action primary card focus ring', () => {
     // Lock, switch and scene cards focus the tile itself; the card clips anything outside it.
     it.each(THEME_CASES)('draws the ring inside the card (%s)', (_, theme) => {
