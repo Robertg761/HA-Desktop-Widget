@@ -96,6 +96,7 @@ function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 // Cuts at a character boundary: slicing between the halves of a surrogate pair leaves a broken one.
+// A lone high surrogate at the cut point is dropped too, which is harmless.
 function truncateText(value) {
   if (value.length <= MAX_TEXT_LENGTH) return value;
   const end = /[\uD800-\uDBFF]/.test(value[MAX_TEXT_LENGTH - 1])
