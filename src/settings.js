@@ -3513,6 +3513,17 @@ function setProfileSyncFolderField(folder) {
   input.title = folder;
 }
 
+/**
+ * The encryption choice the form shows for the saved settings. A change that is waiting is
+ * drawn as it was asked for, so saving carries it on: drawn as the old value, following the
+ * on-screen advice would take the save for a cancel.
+ */
+function getSavedProfileSyncEncryptionChoice(profileSync) {
+  return typeof profileSync.encryptionChangePending === 'boolean'
+    ? profileSync.encryptionChangePending
+    : !!profileSync.encryptionEnabled;
+}
+
 function applyProfileSyncConfigToForm() {
   const profileSync = ensureProfileSyncConfig();
   const enabled = document.getElementById('profile-sync-enabled');
@@ -3537,14 +3548,7 @@ function applyProfileSyncConfigToForm() {
     setProfileSyncFolderField(derivedFolder || profileSync.cloudFilePath || '');
   }
   if (interval) interval.value = String(profileSync.intervalMinutes || 5);
-  if (encryption) {
-    // A change that is waiting is drawn as it was asked for, so saving carries it on. Drawn as
-    // the old value, following the on-screen advice would take the save for a cancel.
-    encryption.checked =
-      typeof profileSync.encryptionChangePending === 'boolean'
-        ? profileSync.encryptionChangePending
-        : !!profileSync.encryptionEnabled;
-  }
+  if (encryption) encryption.checked = getSavedProfileSyncEncryptionChoice(profileSync);
   if (remember) remember.checked = !!profileSync.rememberPassphrase;
   applyProfileSyncScopeToForm(profileSync.syncScope);
   if (passphraseGroup)
@@ -3614,14 +3618,20 @@ function getProfileSyncBlockedMessage() {
   const saved = ensureProfileSyncConfig();
   const formScope = readProfileSyncScopeFromForm();
   const formFolder = (document.getElementById('profile-sync-folder-path')?.value || '').trim();
+  const formEncryption = document.getElementById('profile-sync-encryption-enabled');
   const formDiffersFromSaved =
     !!document.getElementById('profile-sync-enabled')?.checked !== !!saved.enabled ||
     (document.getElementById('profile-sync-provider')?.value || 'cloudFile') !==
       (saved.provider || 'cloudFile') ||
     formFolder !== deriveProfileSyncFolderPath(saved.cloudFilePath || '') ||
-    JSON.stringify(formScope) !== JSON.stringify(normalizeProfileSyncScope(saved.syncScope));
-  // Sync runs against what is saved, so a switch or folder that has not been saved yet would
-  // be ignored and the run would only report that sync is off.
+    JSON.stringify(formScope) !== JSON.stringify(normalizeProfileSyncScope(saved.syncScope)) ||
+    (!!formEncryption && formEncryption.checked !== getSavedProfileSyncEncryptionChoice(saved)) ||
+    // The field is empty unless a passphrase was typed, and a typed one is not in use until saved.
+    !!document.getElementById('profile-sync-passphrase')?.value.trim();
+  // Sync runs against what is saved, so a switch or folder that has not been saved yet would be
+  // ignored and the run would only report that sync is off, and an encryption mode or passphrase
+  // that has not been saved yet would be ignored too, publishing or reading the file in the old
+  // mode while the form shows another.
   if (!saved.enabled || formDiffersFromSaved) {
     return { type: 'warning', text: t('Save your settings first to start syncing.') };
   }

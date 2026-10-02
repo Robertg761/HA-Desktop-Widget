@@ -68,7 +68,10 @@ describe('downloadable locale-pack manifest', () => {
       catalogs[file] = JSON.parse(fs.readFileSync(path.join(root, file), 'utf8')).messages;
     }
     for (const [file, messages] of Object.entries(catalogs)) {
-      const blank = Object.keys(messages).filter((key) => !String(messages[key]).trim());
+      // A hand edit can leave a number, null or an object where text belongs; String() would hide it.
+      const blank = Object.keys(messages).filter(
+        (key) => typeof messages[key] !== 'string' || !messages[key].trim()
+      );
       expect({ file, blank }).toEqual({ file, blank: [] });
     }
   });

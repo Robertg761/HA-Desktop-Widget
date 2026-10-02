@@ -318,22 +318,126 @@ describe('portable settings files', () => {
         'a key that is a wall of text',
         { customEntityNames: { ['light.' + 'x'.repeat(300)]: 'Name' } },
       ],
-      [
-        'more pages than anyone makes',
-        {
-          customTabs: Array.from({ length: 201 }, (_, index) => ({
-            id: `t${index}`,
-            name: 'Page',
-            entityIds: [],
-          })),
-        },
-      ],
-      [
-        'an endless entity list',
-        { favoriteEntities: Array.from({ length: 2001 }, (_, i) => `light.l${i}`) },
-      ],
     ])('rejects %s', (_label, settings) => {
       expect(() => importWith(settings)).toThrow(expect.objectContaining({ code: 'invalid_file' }));
+    });
+
+    describe('collections the app lets a person grow without limit', () => {
+      // Nothing in the app caps how many pages, graphs, colors, favorites or per-entity settings
+      // there are, so a count limit in the file could only reject a configuration the app made:
+      // Export and every Import preview (which compares against the current settings) would fail
+      // with "invalid file" for a few kilobytes of settings. The file's size is the bound.
+      const COUNT = 250;
+      const pages = Array.from({ length: COUNT }, (_, index) => ({
+        id: `view-${index}`,
+        name: `Page ${index}`,
+        entityIds: [`graph:g${index}`],
+      }));
+      const graphs = Array.from({ length: COUNT }, (_, index) => ({
+        id: `graph:g${index}`,
+        name: `Graph ${index}`,
+        span: 2,
+        entityIds: ['sensor.temp'],
+      }));
+      const colors = Array.from({ length: COUNT }, (_, index) => ({
+        id: `custom-${index}`,
+        name: `Color ${index}`,
+        color: `#${(0x100000 + index).toString(16)}`,
+      }));
+      // A Home Assistant installation can have thousands of entities.
+      const ENTITIES = 2100;
+      const entityIds = Array.from({ length: ENTITIES }, (_, index) => `sensor.entity_${index}`);
+      const perEntity = (value) => Object.fromEntries(entityIds.map((id) => [id, value]));
+
+      const roundTrips = (live, expected) => {
+        const settings = parseSettingsFile(serializeSettingsFile(live));
+        expect(settings).toMatchObject(expected);
+        // An export of the current settings imported again changes nothing.
+        expect(summarizeSettingsImport(settings, live).changedSections).toEqual([]);
+        return settings;
+      };
+
+      test('250 pages and 250 graphs export and import again', () => {
+        const live = {
+          ...config,
+          customTabs: pages,
+          favoriteEntities: pages.flatMap((page) => page.entityIds),
+          comparisonGraphs: graphs,
+        };
+
+        const settings = roundTrips(live, { customTabs: pages, comparisonGraphs: graphs });
+
+        expect(settings.customTabs).toHaveLength(COUNT);
+        expect(settings.comparisonGraphs).toHaveLength(COUNT);
+        expect(summarizeSettingsImport(settings, config).pageNames).toHaveLength(COUNT);
+      });
+
+      test('250 saved colors export and import again', () => {
+        roundTrips(
+          { ...config, ui: { ...config.ui, customColors: colors } },
+          { ui: { customColors: colors } }
+        );
+      });
+
+      test.each([
+        ['favorites on one page', { customTabs: [{ id: 'home', name: 'Home', entityIds }] }],
+        ['custom names', { customEntityNames: perEntity('Name') }],
+        ['custom icons', { customEntityIcons: perEntity('mdi:lightbulb') }],
+        ['tile sizes', { tileSpans: perEntity(2) }],
+        ['tile options', { quickAccessTileOptions: perEntity({ chartType: 'gauge' }) }],
+        ['alerts', { entityAlerts: { enabled: true, alerts: perEntity({ onStateChange: true }) } }],
+      ])('%s for 2100 entities export and import again', (_label, collection) => {
+        const live = { ...config, ...collection };
+
+        roundTrips(live, collection);
+      });
+
+      test('all of them at once reach the size limit, which only refuses the new export', () => {
+        // Each collection above fits alone. Together they are the one place a large installation
+        // meets a limit, the size one: Export says so with a code of its own, and a file an earlier
+        // version wrote with the same settings still imports.
+        const everything = {
+          customEntityNames: perEntity('Name'),
+          customEntityIcons: perEntity('mdi:lightbulb'),
+          tileSpans: perEntity(2),
+          quickAccessTileOptions: perEntity({ chartType: 'gauge' }),
+          entityAlerts: { enabled: true, alerts: perEntity({ onStateChange: true }) },
+        };
+        const live = { ...config, ...everything };
+
+        expect(() => serializeSettingsFile(live)).toThrow(
+          expect.objectContaining({ code: 'export_too_large' })
+        );
+
+        const file = JSON.stringify({
+          format: 'ha-desktop-widget-settings',
+          version: 1,
+          settings: everything,
+        });
+        expect(Buffer.byteLength(file, 'utf8')).toBeGreaterThan(MAX_SETTINGS_EXPORT_BYTES);
+        expect(Buffer.byteLength(file, 'utf8')).toBeLessThanOrEqual(MAX_SETTINGS_FILE_BYTES);
+        expect(parseSettingsFile(file)).toMatchObject(everything);
+      });
+
+      test('a file written by an earlier version with this many still imports', () => {
+        const file = JSON.stringify({
+          format: 'ha-desktop-widget-settings',
+          version: 1,
+          settings: { customTabs: pages, comparisonGraphs: graphs, favoriteEntities: entityIds },
+        });
+
+        const settings = parseSettingsFile(file);
+
+        expect(settings.customTabs).toHaveLength(COUNT);
+        expect(settings.comparisonGraphs).toHaveLength(COUNT);
+        expect(settings.favoriteEntities).toHaveLength(ENTITIES);
+      });
+
+      test('the number of primary cards is still limited to the two slots', () => {
+        expect(() => importWith({ primaryCards: ['weather', 'time', 'extra'] })).toThrow(
+          expect.objectContaining({ code: 'invalid_file' })
+        );
+      });
     });
 
     test('exports a saved choice this version does not offer as unset, while import still refuses it', () => {
