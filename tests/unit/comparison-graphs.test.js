@@ -102,6 +102,30 @@ describe('normalizeComparisonGraphsConfig', () => {
     expect(config.comparisonGraphs[0].name).toBe('Comparison Graph');
   });
 
+  it('keeps the graphs apart when many share one id, without slowing down', () => {
+    // A settings file can name any number of graphs, and each repeat used to count up past all
+    // the earlier ones, so a file of a few hundred kilobytes froze the window for many seconds.
+    const comparisonGraphs = Array.from({ length: 20000 }, () => ({
+      id: 'graph:1',
+      name: 'X',
+      entityIds: ['sensor.a'],
+    }));
+    const customTabs = [
+      { id: 'default', name: 'All', entityIds: ['graph:1', 'graph:1-2', 'graph:1-20000'] },
+    ];
+
+    const started = Date.now();
+    const config = normalizeComparisonGraphsConfig({ comparisonGraphs, customTabs });
+
+    expect(Date.now() - started).toBeLessThan(2000);
+    // Only the graphs a page shows are kept, and each repeat got the next number.
+    expect(config.comparisonGraphs.map((graph) => graph.id)).toEqual([
+      'graph:1',
+      'graph:1-2',
+      'graph:1-20000',
+    ]);
+  });
+
   it('reports changed only when it actually rewrote something', () => {
     const clean = normalizeComparisonGraphsConfig(configWithGraph(), { withChanged: true });
     expect(clean.changed).toBe(false);
