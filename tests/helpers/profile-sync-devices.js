@@ -35,6 +35,7 @@ function sliceMain(startMarker, endMarker) {
 }
 
 const ENGINE_SOURCE = [
+  sliceMain('function describeKnownProfileSyncFailure(', '// Hotkey changes roll back on failure'),
   sliceMain('function isProfileSyncProviderSupported(', 'function isPortableBuild('),
   sliceMain('function generateProfileSyncDeviceId(', 'function ensureUpdateConfigDefaults('),
   sliceMain('function ensureUpdateConfigDefaults(', 'function ensureHaProfileConfigDefaults('),
@@ -183,7 +184,6 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
       // Stands in for the OS credential store the rewrite transaction seals secrets with.
       safeStorage,
       mainT: (key, vars) => formatTemplate(key, vars),
-      mainTError: (error) => (typeof error === 'string' ? error : error?.message || ''),
       isPlainObject: (value) => !!value && typeof value === 'object' && !Array.isArray(value),
       isPathInsideDirectory: (target, dir) => !path.relative(dir, target).startsWith('..'),
       preservedEncryptedTokenForRecovery: null,

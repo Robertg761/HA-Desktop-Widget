@@ -431,6 +431,8 @@ const {
   resolveProfileSyncEncryptionRequest,
   stageProfileSyncRewriteTransaction,
   runProfileSyncRewriteRecovery,
+  REWRITE_TRANSACTION_INVALID,
+  createRewriteTransactionError,
 } = require('./src/profile-sync-rewrite-transaction.cjs');
 const {
   canCommitSnapshot,
@@ -1219,11 +1221,30 @@ function mainT(key, vars = {}) {
   return localizationService.translate(config?.ui?.language || 'auto', key, vars);
 }
 
+/**
+ * Words the failures profile sync reports by code for a person. The technical text in
+ * the error stays for the log.
+ */
+function describeKnownProfileSyncFailure(error) {
+  if (profileSyncCore.isSyncFileDamagedError(error)) {
+    return mainT(
+      "The sync file is damaged. Use Sync Up to replace it with this computer's settings; the old file is backed up first."
+    );
+  }
+  if (error?.code === REWRITE_TRANSACTION_INVALID) {
+    return mainT("Could not update the sync file's encryption. Nothing was changed. Try again.");
+  }
+  return '';
+}
+
 // Shared helpers (profile-sync-core.js, src/cloud-sync-path.cjs,
 // src/profile-sync-rewrite-transaction.cjs) throw English messages that are also catalog
 // keys, so they are translated where they reach the renderer. Text without a catalog entry
-// (OS errors, text that is already translated) passes through unchanged.
+// (OS errors, text that is already translated) passes through unchanged. The failures that
+// carry a code are worded by describeKnownProfileSyncFailure instead.
 function mainTError(errorOrMessage) {
+  const known = describeKnownProfileSyncFailure(errorOrMessage);
+  if (known) return known;
   const message =
     typeof errorOrMessage === 'string'
       ? errorOrMessage
@@ -3607,7 +3628,7 @@ async function executePendingProfileSyncRewrite() {
   const profileSync = getProfileSyncConfig();
   const transaction = normalizeProfileSyncRewriteTransaction(profileSync.passphraseTransition);
   if (!transaction) {
-    throw new Error('No valid sync-key rewrite transaction is available');
+    throw createRewriteTransactionError('No valid sync-key rewrite transaction is available');
   }
   if (
     !profileSyncRewriteEndpointMatches(
@@ -3631,7 +3652,7 @@ async function executePendingProfileSyncRewrite() {
     envelope: targetEnvelope,
   });
   if (stagedTargetIdentity !== transaction.targetRemoteIdentity) {
-    throw new Error('The staged sync-key target failed its integrity check');
+    throw createRewriteTransactionError('The staged sync-key target failed its integrity check');
   }
 
   let persistedCredential = {
@@ -3648,7 +3669,9 @@ async function executePendingProfileSyncRewrite() {
       },
       writeExactTarget: async (serializedTarget) => {
         if (serializedTarget !== transaction.targetEnvelopeSerialized) {
-          throw new Error('The staged sync-key target changed before its exact write');
+          throw createRewriteTransactionError(
+            'The staged sync-key target changed before its exact write'
+          );
         }
         await writeConfiguredSyncEnvelope(targetEnvelope);
       },
@@ -3760,6 +3783,58 @@ async function executePendingProfileSyncRewrite() {
   };
 }
 
+/**
+ * Sentences for the file-system failures a sync folder produces, or an empty
+ * string for an error that has none. The system's own text (a code, a path, the
+ * temporary file's name) is for the log, not for the person using the widget.
+ */
+function describeSyncFileSystemError(error) {
+  // Windows refuses to replace a file another program has open (a sync client scanning it,
+  // an antivirus) with EPERM, which is not about permissions.
+  const code = error?.code === 'EPERM' && process.platform === 'win32' ? 'EBUSY' : error?.code;
+  switch (code) {
+    case 'EACCES':
+    case 'EPERM':
+    case 'EROFS':
+      return mainT(
+        "This app does not have permission to use the sync file or its folder. Check the folder's permissions and that it is not read-only."
+      );
+    case 'ENOSPC':
+      return mainT('The disk that holds the sync folder is full.');
+    case 'EBUSY':
+      return mainT('The sync file is in use by another program. Try again in a moment.');
+    case 'ENOTDIR':
+      return mainT('The selected sync folder path is not a directory');
+    case 'ENOENT':
+      // The folder went away between checking it and writing (an unmounted drive).
+      return mainT(
+        'The selected sync folder is unavailable. Reconnect the cloud provider or choose the folder again.'
+      );
+    case 'EEXIST':
+    case 'ENOTEMPTY':
+      return '';
+    default:
+      return typeof error?.code === 'string' && /^E[A-Z0-9]+$/.test(error.code)
+        ? mainT('Could not access the sync file ({{code}}). Check the sync folder and try again.', {
+            code: error.code,
+          })
+        : '';
+  }
+}
+
+function throwSyncFileSystemError(error) {
+  const friendly = describeSyncFileSystemError(error);
+  if (!friendly) throw error;
+  log.warn('Sync file access failed:', error.message);
+  throw Object.assign(new Error(friendly), { cause: error });
+}
+
+/**
+ * Reads the sync file. A file that exists but cannot be parsed comes back with
+ * `damaged` (its text and the reason) instead of throwing, so the callers that may
+ * replace it (Sync Up, Keep Local on first enable) can keep a copy first;
+ * readConfiguredSyncEnvelope throws for it unless asked to hand it back.
+ */
 async function readCloudFileEnvelope(filePath) {
   if (!filePath) {
     return { exists: false, envelope: null };
@@ -3774,14 +3849,18 @@ async function readCloudFileEnvelope(filePath) {
       throw new Error(mainT('Sync file exceeds size limit (512 KB)'));
     }
     const raw = await fs.promises.readFile(filePath, 'utf8');
-    const envelope = profileSyncCore.parseSyncEnvelope(raw);
-    return { exists: true, envelope };
+    try {
+      return { exists: true, envelope: profileSyncCore.parseSyncEnvelope(raw) };
+    } catch (error) {
+      if (!profileSyncCore.isSyncFileDamagedError(error)) throw error;
+      return { exists: true, envelope: null, damaged: { raw, error } };
+    }
   } catch (error) {
     if (error && error.code === 'ENOENT') {
       await requireExistingSyncParentDirectory(filePath, fs);
       return { exists: false, envelope: null };
     }
-    throw error;
+    return throwSyncFileSystemError(error);
   }
 }
 
@@ -3802,7 +3881,7 @@ async function writeCloudFileEnvelope(filePath, envelope) {
     await fs.promises.rename(tempPath, filePath);
   } catch (error) {
     await fs.promises.unlink(tempPath).catch(() => {});
-    throw error;
+    throwSyncFileSystemError(error);
   }
 }
 
@@ -3855,11 +3934,19 @@ async function copyProfileSyncFile(fromPath, toPath, overwrite = false) {
       throw error;
     }
   } catch (error) {
-    return { ok: false, status: 'error', error: mainTError(error) };
+    return {
+      ok: false,
+      status: 'error',
+      error: describeSyncFileSystemError(error) || mainTError(error),
+    };
   }
 }
 
-async function readConfiguredSyncEnvelope() {
+/**
+ * Reads the configured sync file. A damaged file throws, as it cannot be merged or
+ * rewritten; `allowDamaged` hands it back instead to the callers that may replace it.
+ */
+async function readConfiguredSyncEnvelope({ allowDamaged = false } = {}) {
   const profileSync = getProfileSyncConfig();
   if (!isProfileSyncProviderSupported(profileSync.provider)) {
     throw new Error(mainT('Unsupported profile sync provider'));
@@ -3868,6 +3955,7 @@ async function readConfiguredSyncEnvelope() {
   // stops on it, to ask for the right thing. A file that could not be read is not known.
   profileSyncRuntime.remoteEncrypted = null;
   const result = await readCloudFileEnvelope(profileSync.cloudFilePath);
+  if (result.damaged && !allowDamaged) throw result.damaged.error;
   profileSyncRuntime.remoteEncrypted =
     result.exists && result.envelope ? profileSyncCore.isEnvelopeEncrypted(result.envelope) : null;
   return result;
@@ -3894,7 +3982,7 @@ async function writeConfiguredSyncEnvelope(envelope) {
 async function hasRemoteSyncEnvelopeChanged(previousResult) {
   let currentResult;
   try {
-    currentResult = await readConfiguredSyncEnvelope();
+    currentResult = await readConfiguredSyncEnvelope({ allowDamaged: true });
   } catch (error) {
     log.warn('Could not re-read the sync file before pushing:', error.message);
     return true;
@@ -3982,8 +4070,12 @@ async function writeProfileSyncBackup(prefix, contents) {
     'utf8'
   );
 
+  await pruneProfileSyncBackups(backupDir, new RegExp(`^${prefix}-\\d+\\.json$`));
+}
+
+/** Deletes the oldest of the backups matching the pattern beyond the number kept. */
+async function pruneProfileSyncBackups(backupDir, pattern) {
   try {
-    const pattern = new RegExp(`^${prefix}-\\d+\\.json$`);
     const entries = (await fs.promises.readdir(backupDir))
       .filter((name) => pattern.test(name))
       .sort();
@@ -3994,6 +4086,31 @@ async function writeProfileSyncBackup(prefix, contents) {
   } catch (error) {
     log.warn('Created a profile sync backup, but failed to prune older backups:', error.message);
   }
+}
+
+/**
+ * Keeps the text of a sync file that could not be read before Sync Up replaces it. It
+ * is not offered for restore, since there are no settings in it to apply: the copy is
+ * there for the user to open or send along.
+ */
+async function backupDamagedSyncFile(raw) {
+  const backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
+  try {
+    await fs.promises.mkdir(backupDir, { recursive: true });
+    await fs.promises.writeFile(
+      path.join(backupDir, `damaged-sync-file-${Date.now()}.txt`),
+      raw,
+      'utf8'
+    );
+  } catch (error) {
+    log.warn('Failed to back up the damaged sync file before replacing it:', error.message);
+    throw new Error(
+      mainT('The sync file was not updated because its backup failed: {{error}}', {
+        error: describeSyncFileSystemError(error) || mainTError(error),
+      })
+    );
+  }
+  await pruneProfileSyncBackups(backupDir, /^damaged-sync-file-\d+\.txt$/);
 }
 
 async function backupLocalProfileBeforePullApply(sectionKeys, incomingSections = null) {
@@ -5613,11 +5730,20 @@ function setupProfileSyncInterval() {
  * shared history to merge from.
  */
 async function findProfileSyncConflictSections(envelope) {
-  const { sections: remoteSections, malformed } = await profileSyncCore.decodeEnvelopeSections(
-    envelope,
-    getActiveProfileSyncPassphrase()
-  );
   const localSections = profileSyncCore.buildLocalSections(config, getActiveProfileSyncScope());
+  let decoded;
+  try {
+    decoded = await profileSyncCore.decodeEnvelopeSections(
+      envelope,
+      getActiveProfileSyncPassphrase()
+    );
+  } catch (error) {
+    // A file whose content cannot be read is damaged in every section.
+    if (!profileSyncCore.isSyncFileDamagedError(error)) throw error;
+    const everySection = Object.keys(localSections);
+    return { sections: everySection, damaged: everySection };
+  }
+  const { sections: remoteSections, malformed } = decoded;
   const baseline = getProfileSyncConfig().syncBaseline || {};
   // A damaged section also needs a choice: Keep Local replaces it after backing
   // it up, where an automatic run would only stop. Use Remote cannot apply it.
@@ -5653,15 +5779,14 @@ async function prepareProfileSyncFirstEnableResolution() {
     return { needsResolution: false };
   }
 
-  const readResult = await readConfiguredSyncEnvelope();
+  const readResult = await readConfiguredSyncEnvelope({ allowDamaged: true });
   profileSyncRuntime.pendingRemoteIdentity = getSyncEnvelopeIdentity(readResult);
-  if (!readResult.exists || !readResult.envelope) {
+  if (!readResult.exists) {
     return { needsResolution: false };
   }
 
-  const { sections: conflictSections, damaged } = await findProfileSyncConflictSections(
-    readResult.envelope
-  );
+  const { sections: conflictSections, damaged } =
+    await findProfileSyncConflictSectionsInRead(readResult);
   if (conflictSections.length === 0) {
     return { needsResolution: false };
   }
@@ -5679,7 +5804,21 @@ async function prepareProfileSyncFirstEnableResolution() {
   return { needsResolution: true };
 }
 
+/** The conflict check for what a read returned, which may be a file that cannot be parsed. */
+async function findProfileSyncConflictSectionsInRead(readResult) {
+  if (readResult.damaged) {
+    const everySection = Object.keys(
+      profileSyncCore.buildLocalSections(config, getActiveProfileSyncScope())
+    );
+    return { sections: everySection, damaged: everySection };
+  }
+  return findProfileSyncConflictSections(readResult.envelope);
+}
+
 function getSyncEnvelopeIdentity(readResult) {
+  if (readResult?.damaged) {
+    return `damaged:${nodeCrypto.createHash('sha256').update(readResult.damaged.raw).digest('hex')}`;
+  }
   if (!readResult?.exists || !readResult.envelope) return 'missing';
   return nodeCrypto
     .createHash('sha256')
@@ -5701,14 +5840,14 @@ async function verifyPendingRemoteEnvelopeUnchanged() {
       mainT('The pending profile conflict is no longer available; retry conflict check')
     );
   }
-  const currentResult = await readConfiguredSyncEnvelope();
+  const currentResult = await readConfiguredSyncEnvelope({ allowDamaged: true });
   const currentIdentity = getSyncEnvelopeIdentity(currentResult);
   if (currentIdentity !== expectedIdentity) {
     profileSyncRuntime.pendingRemoteEnvelope = currentResult.envelope;
     profileSyncRuntime.pendingRemoteIdentity = currentIdentity;
     profileSyncRuntime.needsResolution = true;
-    const refreshed = currentResult.envelope
-      ? await findProfileSyncConflictSections(currentResult.envelope).catch(() => null)
+    const refreshed = currentResult.exists
+      ? await findProfileSyncConflictSectionsInRead(currentResult).catch(() => null)
       : null;
     profileSyncRuntime.conflictSections = refreshed?.sections || [];
     profileSyncRuntime.damagedConflictSections = refreshed?.damaged || [];
@@ -5835,7 +5974,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       }
       return await completeProfileSyncFirstEnablePreparation('first_enable_resolution_retry');
     } catch (error) {
-      updateProfileSyncStatus('error', error?.message || String(error));
+      updateProfileSyncStatus('error', mainTError(error));
       emitProfileSyncStatus();
       throw error;
     }
@@ -5850,7 +5989,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
         expectedRemoteIdentity,
       });
     } catch (error) {
-      updateProfileSyncStatus('error', error?.message || String(error));
+      updateProfileSyncStatus('error', mainTError(error));
       emitProfileSyncStatus();
       throw error;
     }
@@ -5874,7 +6013,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
   emitProfileSyncStatus();
 
   try {
-    const remoteResult = await readConfiguredSyncEnvelope();
+    const remoteResult = await readConfiguredSyncEnvelope({ allowDamaged: true });
     if (
       options.expectedRemoteIdentity &&
       getSyncEnvelopeIdentity(remoteResult) !== options.expectedRemoteIdentity
@@ -5891,11 +6030,18 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
     }
     profileSyncRuntime.conflictCopies = await findProfileSyncConflictCopies();
 
+    if (remoteResult.damaged) {
+      // A file that cannot be read is only replaced by an explicit Sync Up (or Keep
+      // Local on first enable), and only after a copy is kept.
+      if (direction !== 'push') throw remoteResult.damaged.error;
+      await backupDamagedSyncFile(remoteResult.damaged.raw);
+    }
+
     // A routine run never changes the file's encryption. Only the rewrite and
     // first-sync flows (which pin the exact remote they checked) may, so a
     // device with stale settings cannot publish the profile unencrypted or
     // re-encrypt it under a passphrase another device has replaced.
-    const remoteEnvelope = remoteResult.exists ? remoteResult.envelope : null;
+    let remoteEnvelope = remoteResult.exists ? remoteResult.envelope : null;
     const mayChangeEncryption =
       !!options.expectedRemoteIdentity || !!profileSync.remoteRewritePending;
     const remoteEncrypted = !!remoteEnvelope && profileSyncCore.isEnvelopeEncrypted(remoteEnvelope);
@@ -5922,16 +6068,26 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       );
     }
 
+    let decoded = { sections: {}, malformed: {}, extensions: null };
+    if (remoteEnvelope) {
+      try {
+        decoded = await profileSyncCore.decodeEnvelopeSections(
+          remoteEnvelope,
+          getActiveProfileSyncPassphrase()
+        );
+      } catch (error) {
+        // Content that parsed but cannot be read (a cut-off encrypted payload) is
+        // damage like an unparseable file: Sync Up replaces it after keeping a copy.
+        if (!profileSyncCore.isSyncFileDamagedError(error) || direction !== 'push') throw error;
+        await backupDamagedSyncFile(profileSyncCore.serializeSyncEnvelope(remoteEnvelope));
+        remoteEnvelope = null;
+      }
+    }
     const {
       sections: remoteSections,
       malformed: remoteMalformed,
       extensions: remoteExtensions,
-    } = remoteEnvelope
-      ? await profileSyncCore.decodeEnvelopeSections(
-          remoteEnvelope,
-          getActiveProfileSyncPassphrase()
-        )
-      : { sections: {}, malformed: {}, extensions: null };
+    } = decoded;
     const syncScope = getActiveProfileSyncScope();
     const scopeKeys = profileSyncCore.getScopeSectionKeys(syncScope);
     // A run can be limited to some sections (repairing damage on first enable);
@@ -6094,7 +6250,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       ...(pulled ? { config: sanitizeConfigForRenderer(config) } : {}),
     };
   } catch (error) {
-    updateProfileSyncStatus('error', error.message);
+    updateProfileSyncStatus('error', mainTError(error));
     emitProfileSyncStatus();
     throw error;
   } finally {
@@ -7717,7 +7873,7 @@ ipcMain.handle(
             }
           } catch (error) {
             clearProfileSyncTimers();
-            updateProfileSyncStatus('error', error.message);
+            updateProfileSyncStatus('error', mainTError(error));
           }
         } else {
           clearProfileSyncTimers();
@@ -9259,7 +9415,7 @@ ipcMain.handle(
             if (localEncryptionCommitPersisted) {
               setupProfileSyncInterval();
             }
-            updateProfileSyncStatus('error', error?.message || String(error));
+            updateProfileSyncStatus('error', mainTError(error));
             emitProfileSyncStatus();
             return {
               success: false,
@@ -9318,7 +9474,7 @@ ipcMain.handle(
             };
           } catch (error) {
             clearProfileSyncTimers();
-            updateProfileSyncStatus('error', error?.message || String(error));
+            updateProfileSyncStatus('error', mainTError(error));
             emitProfileSyncStatus();
             return {
               success: false,
@@ -9650,7 +9806,7 @@ ipcMain.handle(
         getProfileSyncConfig().firstEnableResolutionPending =
           previousResolutionState.firstEnableResolutionPending;
       }
-      updateProfileSyncStatus('error', error.message);
+      updateProfileSyncStatus('error', mainTError(error));
       emitProfileSyncStatus();
       return { success: false, error: mainTError(error), status: buildProfileSyncStatus() };
     }

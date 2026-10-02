@@ -1665,5 +1665,11 @@
   "Enter the sync passphrase in Settings > Advanced to continue syncing.": "Enter the sync passphrase in Settings > Advanced to continue syncing.",
   "Enter the passphrase your other computers use for this sync file.": "Enter the passphrase your other computers use for this sync file.",
   "Secure system storage is unavailable, and changing the encryption of an existing sync file needs it. On Linux, start and unlock a keyring such as GNOME Keyring or KWallet, then restart the widget.": "Secure system storage is unavailable, and changing the encryption of an existing sync file needs it. On Linux, start and unlock a keyring such as GNOME Keyring or KWallet, then restart the widget.",
-  "That passphrase does not unlock the sync file. Enter the passphrase your other computers use.": "That passphrase does not unlock the sync file. Enter the passphrase your other computers use."
+  "That passphrase does not unlock the sync file. Enter the passphrase your other computers use.": "That passphrase does not unlock the sync file. Enter the passphrase your other computers use.",
+  "The sync file is damaged. Use Sync Up to replace it with this computer's settings; the old file is backed up first.": "The sync file is damaged. Use Sync Up to replace it with this computer's settings; the old file is backed up first.",
+  "This app does not have permission to use the sync file or its folder. Check the folder's permissions and that it is not read-only.": "This app does not have permission to use the sync file or its folder. Check the folder's permissions and that it is not read-only.",
+  "The disk that holds the sync folder is full.": "The disk that holds the sync folder is full.",
+  "The sync file is in use by another program. Try again in a moment.": "The sync file is in use by another program. Try again in a moment.",
+  "Could not access the sync file ({{code}}). Check the sync folder and try again.": "Could not access the sync file ({{code}}). Check the sync folder and try again.",
+  "Could not update the sync file's encryption. Nothing was changed. Try again.": "Could not update the sync file's encryption. Nothing was changed. Try again."
 }

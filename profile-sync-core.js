@@ -104,6 +104,20 @@ const KNOWN_UI_KEYS = new Set([
   ...LOCAL_ONLY_UI_KEYS,
 ]);
 
+// Failures a person can act on carry a code, so the app can word them for the user
+// instead of showing the technical message.
+const SYNC_FILE_DAMAGED = 'SYNC_FILE_DAMAGED';
+const SYNC_FILE_NEWER_VERSION = 'SYNC_FILE_NEWER_VERSION';
+
+function createSyncFileError(message, code) {
+  return Object.assign(new Error(message), { code });
+}
+
+/** Whether a read or decode failed because the file's own content is unusable. */
+function isSyncFileDamagedError(error) {
+  return error?.code === SYNC_FILE_DAMAGED;
+}
+
 function deepClone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
@@ -566,6 +580,10 @@ async function decryptProfilePayload(payload, passphrase) {
   const iv = Buffer.from(payload.iv || '', 'base64');
   const authTag = Buffer.from(payload.authTag || '', 'base64');
   const ciphertext = Buffer.from(payload.ciphertext || '', 'base64');
+  // Fields of the wrong size cannot come from a wrong passphrase: the file itself is damaged.
+  if (salt.length !== 16 || iv.length !== 12 || authTag.length !== 16) {
+    throw createSyncFileError('The encrypted payload is damaged', SYNC_FILE_DAMAGED);
+  }
   const key = await scryptAsync(passphrase, salt, 32);
   const decipher = nodeCrypto.createDecipheriv('aes-256-gcm', key, iv);
   decipher.setAuthTag(authTag);
@@ -677,8 +695,9 @@ function validateEnvelopeShape(envelope) {
       ? envelope.minReaderVersion
       : envelope.schemaVersion;
   if (minReaderVersion > SYNC_SCHEMA_VERSION) {
-    throw new Error(
-      'The sync file was written by a newer version of HA Desktop Widget. Update this device to keep syncing.'
+    throw createSyncFileError(
+      'The sync file was written by a newer version of HA Desktop Widget. Update this device to keep syncing.',
+      SYNC_FILE_NEWER_VERSION
     );
   }
   if (envelope.schemaVersion === 2) {
@@ -707,10 +726,16 @@ function parseSyncEnvelope(rawText) {
   try {
     parsed = JSON.parse(rawText);
   } catch {
-    throw new Error('Sync file is not valid JSON');
+    throw createSyncFileError('Sync file is not valid JSON', SYNC_FILE_DAMAGED);
   }
 
-  validateEnvelopeShape(parsed);
+  try {
+    validateEnvelopeShape(parsed);
+  } catch (error) {
+    // A newer writer's file is not damaged, and must never be replaced as if it were.
+    if (error.code === SYNC_FILE_NEWER_VERSION) throw error;
+    throw createSyncFileError(error.message, SYNC_FILE_DAMAGED);
+  }
   return parsed;
 }
 
@@ -823,7 +848,7 @@ async function decodeEnvelopeSections(envelope, passphrase) {
     ? await decryptProfilePayload(envelope.payload, passphrase)
     : deepClone(envelope.payload);
   if (!isObject(decoded)) {
-    throw new Error('Sync payload must be an object');
+    throw createSyncFileError('Sync payload must be an object', SYNC_FILE_DAMAGED);
   }
 
   if (envelope.schemaVersion < 3) {
@@ -837,7 +862,7 @@ async function decodeEnvelopeSections(envelope, passphrase) {
   }
 
   if (!isObject(decoded.sections)) {
-    throw new Error('Sync payload is missing sections');
+    throw createSyncFileError('Sync payload is missing sections', SYNC_FILE_DAMAGED);
   }
   const sections = {};
   // Known sections that are damaged are reported, not dropped: treating them as
@@ -889,6 +914,7 @@ module.exports = {
   encryptProfilePayload,
   decryptProfilePayload,
   isEnvelopeEncrypted,
+  isSyncFileDamagedError,
   buildSyncEnvelope,
   parseSyncEnvelope,
   serializeSyncEnvelope,

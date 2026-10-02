@@ -1672,6 +1672,12 @@
     "Enter the sync passphrase in Settings > Advanced to continue syncing.": "请在“设置 > 高级”中输入同步密码短语，以继续同步。",
     "Enter the passphrase your other computers use for this sync file.": "请输入你的其他电脑用于此同步文件的密码短语。",
     "Secure system storage is unavailable, and changing the encryption of an existing sync file needs it. On Linux, start and unlock a keyring such as GNOME Keyring or KWallet, then restart the widget.": "安全的系统存储不可用，而更改现有同步文件的加密需要它。在 Linux 上，请启动并解锁 GNOME Keyring 或 KWallet 等密钥环，然后重新启动小组件。",
-    "That passphrase does not unlock the sync file. Enter the passphrase your other computers use.": "此密码短语无法解锁同步文件。请输入你的其他电脑使用的密码短语。"
+    "That passphrase does not unlock the sync file. Enter the passphrase your other computers use.": "此密码短语无法解锁同步文件。请输入你的其他电脑使用的密码短语。",
+    "The sync file is damaged. Use Sync Up to replace it with this computer's settings; the old file is backed up first.": "同步文件已损坏。请使用“向上同步”用此电脑的设置替换它；旧文件会先备份。",
+    "This app does not have permission to use the sync file or its folder. Check the folder's permissions and that it is not read-only.": "此应用无权使用同步文件或其所在文件夹。请检查文件夹权限，并确认它不是只读的。",
+    "The disk that holds the sync folder is full.": "存放同步文件夹的磁盘已满。",
+    "The sync file is in use by another program. Try again in a moment.": "同步文件正被其他程序使用。请稍后再试。",
+    "Could not access the sync file ({{code}}). Check the sync folder and try again.": "无法访问同步文件（{{code}}）。请检查同步文件夹后重试。",
+    "Could not update the sync file's encryption. Nothing was changed. Try again.": "无法更新同步文件的加密。未更改任何内容。请重试。"
   }
 }

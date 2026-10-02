@@ -1672,6 +1672,12 @@
     "Enter the sync passphrase in Settings > Advanced to continue syncing.": "Introduce la frase de contraseña de sincronización en Configuración > Avanzado para seguir sincronizando.",
     "Enter the passphrase your other computers use for this sync file.": "Introduce la frase de contraseña que usan tus otros equipos para este archivo de sincronización.",
     "Secure system storage is unavailable, and changing the encryption of an existing sync file needs it. On Linux, start and unlock a keyring such as GNOME Keyring or KWallet, then restart the widget.": "El almacenamiento seguro del sistema no está disponible y es necesario para cambiar el cifrado de un archivo de sincronización existente. En Linux, inicia y desbloquea un llavero como GNOME Keyring o KWallet y reinicia el widget.",
-    "That passphrase does not unlock the sync file. Enter the passphrase your other computers use.": "Esa frase de contraseña no desbloquea el archivo de sincronización. Introduce la que usan tus otros equipos."
+    "That passphrase does not unlock the sync file. Enter the passphrase your other computers use.": "Esa frase de contraseña no desbloquea el archivo de sincronización. Introduce la que usan tus otros equipos.",
+    "The sync file is damaged. Use Sync Up to replace it with this computer's settings; the old file is backed up first.": "El archivo de sincronización está dañado. Usa Subir sincronización para reemplazarlo con los ajustes de este equipo; antes se guarda una copia de seguridad del archivo anterior.",
+    "This app does not have permission to use the sync file or its folder. Check the folder's permissions and that it is not read-only.": "Esta aplicación no tiene permiso para usar el archivo de sincronización ni su carpeta. Comprueba los permisos de la carpeta y que no sea de solo lectura.",
+    "The disk that holds the sync folder is full.": "El disco que contiene la carpeta de sincronización está lleno.",
+    "The sync file is in use by another program. Try again in a moment.": "Otro programa está usando el archivo de sincronización. Inténtalo de nuevo en un momento.",
+    "Could not access the sync file ({{code}}). Check the sync folder and try again.": "No se pudo acceder al archivo de sincronización ({{code}}). Comprueba la carpeta de sincronización e inténtalo de nuevo.",
+    "Could not update the sync file's encryption. Nothing was changed. Try again.": "No se pudo actualizar el cifrado del archivo de sincronización. No se cambió nada. Inténtalo de nuevo."
   }
 }

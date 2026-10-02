@@ -1672,6 +1672,12 @@
     "Enter the sync passphrase in Settings > Advanced to continue syncing.": "सिंक जारी रखने के लिए सेटिंग्स > उन्नत में सिंक पासफ़्रेज़ दर्ज करें।",
     "Enter the passphrase your other computers use for this sync file.": "इस सिंक फ़ाइल के लिए आपके दूसरे कंप्यूटर जो पासफ़्रेज़ उपयोग करते हैं, वही दर्ज करें।",
     "Secure system storage is unavailable, and changing the encryption of an existing sync file needs it. On Linux, start and unlock a keyring such as GNOME Keyring or KWallet, then restart the widget.": "सुरक्षित सिस्टम स्टोरेज उपलब्ध नहीं है, जबकि मौजूदा सिंक फ़ाइल का एन्क्रिप्शन बदलने के लिए इसकी ज़रूरत होती है। Linux पर GNOME Keyring या KWallet जैसी कीरिंग शुरू करके अनलॉक करें, फिर विजेट को पुनः आरंभ करें।",
-    "That passphrase does not unlock the sync file. Enter the passphrase your other computers use.": "यह पासफ़्रेज़ सिंक फ़ाइल को नहीं खोलता। वही पासफ़्रेज़ दर्ज करें जो आपके दूसरे कंप्यूटर उपयोग करते हैं।"
+    "That passphrase does not unlock the sync file. Enter the passphrase your other computers use.": "यह पासफ़्रेज़ सिंक फ़ाइल को नहीं खोलता। वही पासफ़्रेज़ दर्ज करें जो आपके दूसरे कंप्यूटर उपयोग करते हैं।",
+    "The sync file is damaged. Use Sync Up to replace it with this computer's settings; the old file is backed up first.": "सिंक फ़ाइल खराब है। इसे इस कंप्यूटर की सेटिंग्स से बदलने के लिए “सिंक अपलोड करें” का उपयोग करें; पुरानी फ़ाइल का पहले बैकअप लिया जाता है।",
+    "This app does not have permission to use the sync file or its folder. Check the folder's permissions and that it is not read-only.": "इस ऐप को सिंक फ़ाइल या उसके फ़ोल्डर का उपयोग करने की अनुमति नहीं है। फ़ोल्डर की अनुमतियाँ जाँचें और देखें कि वह केवल-पढ़ने योग्य न हो।",
+    "The disk that holds the sync folder is full.": "सिंक फ़ोल्डर वाली डिस्क भर गई है।",
+    "The sync file is in use by another program. Try again in a moment.": "सिंक फ़ाइल किसी दूसरे प्रोग्राम में उपयोग हो रही है। थोड़ी देर बाद फिर कोशिश करें।",
+    "Could not access the sync file ({{code}}). Check the sync folder and try again.": "सिंक फ़ाइल तक नहीं पहुँचा जा सका ({{code}})। सिंक फ़ोल्डर जाँचें और फिर कोशिश करें।",
+    "Could not update the sync file's encryption. Nothing was changed. Try again.": "सिंक फ़ाइल का एन्क्रिप्शन अपडेट नहीं किया जा सका। कुछ भी नहीं बदला गया। फिर कोशिश करें।"
   }
 }

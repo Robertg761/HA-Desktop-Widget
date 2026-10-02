@@ -1665,5 +1665,11 @@
   "Enter the sync passphrase in Settings > Advanced to continue syncing.": "Gib die Sync-Passphrase unter Einstellungen > Erweitert ein, um weiter zu synchronisieren.",
   "Enter the passphrase your other computers use for this sync file.": "Gib die Passphrase ein, die deine anderen Computer für diese Sync-Datei verwenden.",
   "Secure system storage is unavailable, and changing the encryption of an existing sync file needs it. On Linux, start and unlock a keyring such as GNOME Keyring or KWallet, then restart the widget.": "Der sichere Systemspeicher ist nicht verfügbar, wird aber zum Ändern der Verschlüsselung einer vorhandenen Sync-Datei benötigt. Starte unter Linux einen Schlüsselbund wie GNOME Keyring oder KWallet, entsperre ihn und starte das Widget dann neu.",
-  "That passphrase does not unlock the sync file. Enter the passphrase your other computers use.": "Diese Passphrase entsperrt die Sync-Datei nicht. Gib die Passphrase ein, die deine anderen Computer verwenden."
+  "That passphrase does not unlock the sync file. Enter the passphrase your other computers use.": "Diese Passphrase entsperrt die Sync-Datei nicht. Gib die Passphrase ein, die deine anderen Computer verwenden.",
+  "The sync file is damaged. Use Sync Up to replace it with this computer's settings; the old file is backed up first.": "Die Sync-Datei ist beschädigt. Ersetze sie mit „Hochladen“ durch die Einstellungen dieses Computers; die alte Datei wird vorher gesichert.",
+  "This app does not have permission to use the sync file or its folder. Check the folder's permissions and that it is not read-only.": "Diese App hat keine Berechtigung für die Sync-Datei oder ihren Ordner. Prüfe die Berechtigungen des Ordners und ob er schreibgeschützt ist.",
+  "The disk that holds the sync folder is full.": "Der Datenträger mit dem Sync-Ordner ist voll.",
+  "The sync file is in use by another program. Try again in a moment.": "Die Sync-Datei wird von einem anderen Programm verwendet. Versuche es gleich noch einmal.",
+  "Could not access the sync file ({{code}}). Check the sync folder and try again.": "Auf die Sync-Datei konnte nicht zugegriffen werden ({{code}}). Prüfe den Sync-Ordner und versuche es erneut.",
+  "Could not update the sync file's encryption. Nothing was changed. Try again.": "Die Verschlüsselung der Sync-Datei konnte nicht aktualisiert werden. Es wurde nichts geändert. Versuche es erneut."
 }

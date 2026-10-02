@@ -22,6 +22,7 @@ const {
   serializeSyncEnvelope,
   decodeEnvelopeSections,
   isEnvelopeEncrypted,
+  isSyncFileDamagedError,
 } = require('../../profile-sync-core.js');
 
 const LAYOUT_ONLY = {
@@ -769,6 +770,51 @@ describe('profile-sync-core', () => {
       await expect(decodeEnvelopeSections({ ...noSections, payload: '' })).rejects.toThrow(
         'Sync payload must be an object'
       );
+    });
+
+    test('marks files whose content is unusable as damaged, and a newer writer’s file as not', async () => {
+      const damaged = [
+        () => parseSyncEnvelope(''),
+        () => parseSyncEnvelope('{"schemaVersion": 3, "upd'),
+        () => parseSyncEnvelope('{"hello": "world"}'),
+      ];
+      damaged.forEach((parse) => {
+        expect(() => parse()).toThrow();
+        try {
+          parse();
+        } catch (error) {
+          expect(isSyncFileDamagedError(error)).toBe(true);
+        }
+      });
+      const tooNew = JSON.stringify({
+        schemaVersion: SYNC_SCHEMA_VERSION + 1,
+        minReaderVersion: SYNC_SCHEMA_VERSION + 1,
+        updatedAt: '2026-02-23T08:00:00.000Z',
+        updatedByDeviceId: 'device-b',
+        payload: {},
+      });
+      try {
+        parseSyncEnvelope(tooNew);
+      } catch (error) {
+        expect(isSyncFileDamagedError(error)).toBe(false);
+      }
+    });
+
+    test('reports a payload whose parts are the wrong size as damaged, not as a wrong passphrase', async () => {
+      const envelope = await buildSyncEnvelope({
+        sections,
+        updatedByDeviceId: 'device-a',
+        encrypt: true,
+        passphrase: 'strong-passphrase',
+      });
+      for (const field of ['salt', 'iv', 'authTag']) {
+        const tampered = JSON.parse(JSON.stringify(envelope));
+        tampered.payload[field] = 'AAAA';
+        const error = await decodeEnvelopeSections(tampered, 'strong-passphrase').catch((e) => e);
+        expect(isSyncFileDamagedError(error)).toBe(true);
+      }
+      const wrong = await decodeEnvelopeSections(envelope, 'another passphrase').catch((e) => e);
+      expect(isSyncFileDamagedError(wrong)).toBe(false);
     });
 
     test('converts version 2 files to sections in their scope, dropping machine-local fields', async () => {
