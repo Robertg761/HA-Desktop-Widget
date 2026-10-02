@@ -115,6 +115,11 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
       expect(resolvedValue(document.querySelector('.quick-access-tab'), 'outline', FORCED)).toBe(
         '2px solid Highlight'
       );
+      // The link inside it would draw a second box around the page name, by outline and by its
+      // transparent border, which forced colours redraw in ButtonText.
+      const link = document.querySelector('.tab-link');
+      expect(resolvedValue(link, 'outline', FORCED)).toBe('none');
+      expect(resolvedValue(link, 'border-color', FORCED)).toBe('Canvas');
     });
   });
 
@@ -238,6 +243,8 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
       expect(forcedRule('.weather-glyph .weather-glyph-fill')).toContain('fill: CanvasText');
     });
 
+    // Only the body carries desktop-pin-mode (renderer.js sets it there), so the rule has to look
+    // down from <html>; a pin is a transparent window around a rounded shell.
     it('makes the window one solid Canvas pane', () => {
       render('', '');
       expect(resolvedValue(document.documentElement, 'background', FORCED)).toBe('Canvas');
@@ -250,8 +257,6 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
     });
   });
 
-    // Only the body carries desktop-pin-mode (renderer.js sets it there), so the rule has to look
-    // down from <html>; a pin is a transparent window around a rounded shell.
   describe('buttons and fields', () => {
     it('tells the primary action from the others by its edge', () => {
       render(
