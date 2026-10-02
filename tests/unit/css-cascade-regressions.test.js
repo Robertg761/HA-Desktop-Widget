@@ -707,6 +707,23 @@ describe('stylesheet cascade regressions', () => {
     });
   });
 
+  describe('media dialog seek chips', () => {
+    it('grow into pills for a unit longer than a letter, as in "−10 Sek."', () => {
+      render(
+        '',
+        `<div class="media-detail-controls">
+          <button class="btn media-detail-seek-btn">\u221210 Sek.</button>
+          <button class="btn media-detail-prev-btn"></button>
+        </div>`
+      );
+      const [seek, previous] = document.querySelectorAll('button');
+
+      expect(resolvedValue(seek, 'width')).toBe('auto');
+      expect(resolvedValue(seek, 'min-width')).toBe('44px');
+      expect(resolvedValue(previous, 'width')).toBe('44px');
+    });
+  });
+
   describe('longer translations fit their controls', () => {
     it('sizes the smallest cover pin buttons to their labels, in sentence case', () => {
       render(

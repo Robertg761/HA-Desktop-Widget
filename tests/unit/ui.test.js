@@ -3390,6 +3390,14 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       return document.querySelector('.rename-modal');
     }
 
+    it('lists the Tile Settings buttons in the order they are read and tabbed through', () => {
+      const modal = seedOfficeTemperatureTile();
+
+      expect(
+        [...modal.querySelectorAll('.modal-footer button')].map((button) => button.id)
+      ).toEqual(['cancel-rename-btn', 'reset-rename-btn', 'save-rename-btn']);
+    });
+
     it('switches a sensor tile to a gauge with a custom range from the settings modal', async () => {
       const modal = seedOfficeTemperatureTile();
       const chartSelect = modal.querySelector('#tile-chart-type-select');

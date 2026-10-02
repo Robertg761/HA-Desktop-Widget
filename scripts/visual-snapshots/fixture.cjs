@@ -13,7 +13,13 @@ const TOKEN = 'visual-snapshot-token';
 
 // The settings a scene may change and the runner puts back afterwards (see run.cjs). A scene that
 // changes any other setting leaves it changed for every scene after it.
-const RESETTABLE_SETTINGS = ['frostedGlass', 'customTabs', 'activeTabId', 'entityAlerts'];
+const RESETTABLE_SETTINGS = [
+  'frostedGlass',
+  'customTabs',
+  'activeTabId',
+  'entityAlerts',
+  'primaryCards',
+];
 
 // Where the main window opens. The default (100, 100) puts a 660px window under the taskbar on a
 // 768px display; y=20 keeps all of it on screen. Pins are placed by the app, off to the side.

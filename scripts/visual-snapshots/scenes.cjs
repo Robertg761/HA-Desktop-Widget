@@ -248,6 +248,9 @@ const scenes = [
     },
   },
 
+  // A light as a primary card: the lit lamp warms its icon and glow.
+  { name: 'primary-light-card', config: { primaryCards: ['light.desk_lamp', 'time'] } },
+
   // A page with nothing on it says so instead of showing an empty grid.
   {
     name: 'empty-page',
@@ -301,6 +304,12 @@ const scenes = [
     name: 'de-settings-hotkeys',
     ui: { language: 'de' },
     setup: (ctx) => openSettingsTab(ctx, 'hotkeys'),
+  },
+  {
+    name: 'de-popup-media',
+    ui: { language: 'de' },
+    config: dialogsPage,
+    setup: openDetails('media_player.den_stereo'),
   },
   {
     name: 'ar-popup-media',

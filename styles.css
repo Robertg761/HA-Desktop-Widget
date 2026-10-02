@@ -10059,7 +10059,7 @@ body.widget-state-active #quick-controls .status-message {
 
 /* Tile Settings (the only dialog with this class, built in ui.js) takes the shared dialog recipe;
    what is left here is its width, a scrolling body that keeps the header and footer in view, and
-   the footer's order. The panel, fields, switch and buttons all come from the dialogs section. */
+   a footer that wraps. The panel, fields, switch and buttons all come from the dialogs section. */
 .rename-modal .modal-content {
   width: min(480px, calc(100vw - 24px));
   max-width: calc(100vw - 24px);
@@ -10079,11 +10079,9 @@ body.widget-state-active #quick-controls .status-message {
   flex-shrink: 0;
 }
 
-/* Save is first in the markup but last on screen, as in the other dialogs. */
+/* Three buttons, one of them a long "Reset to Default", wrap rather than overflow. */
 .rename-modal .modal-footer {
-  flex-direction: row-reverse;
   flex-wrap: wrap;
-  justify-content: flex-start;
 }
 
 /* The last field needs no margin of its own: the body's padding already closes the dialog. */
@@ -10868,6 +10866,14 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   line-height: 1;
   text-transform: none;
   letter-spacing: 0;
+}
+
+/* The seek chips carry their unit ("+10s", "−10 Sek."), so they grow into pills where the
+   language's unit is longer than a letter. */
+.media-detail-controls .media-detail-seek-btn {
+  width: auto;
+  min-width: 44px;
+  padding: 0 var(--space-3);
 }
 
 .media-detail-controls .btn:disabled {
@@ -12081,11 +12087,22 @@ textarea:disabled,
   pointer-events: none;
 }
 
-/* A disabled control that says why in its title still has to be hovered to show it, and to show
-   the not-allowed cursor: Always on top in desktop layer mode, say. Native controls ignore a
-   click while disabled, so letting the pointer reach them does no harm. */
-:is(button, input, select, textarea, .btn):disabled[title]:not([title='']) {
+/* A switch that says why it is off in its title (Always on top in desktop layer mode, say) has to
+   be hovered to show it, and to show the not-allowed cursor. A disabled input ignores a click, and
+   a switch draws no hover of its own. Buttons keep the rule above: their title is their plain name,
+   and hovering one would light it up as if it could be pressed. */
+input[type='checkbox']:disabled[title]:not([title='']) {
   pointer-events: auto;
+}
+
+/* The switch sets a pointer cursor of its own, which the rule above would not outrank. */
+.form-group input[type='checkbox']:disabled {
+  cursor: not-allowed;
+}
+
+/* A disabled switch dims its whole row, not only the label and the switch. */
+.setting-row:has(input:disabled) .form-help {
+  opacity: 0.6;
 }
 
 /* Disabled label styling for mutually exclusive options */
@@ -13882,10 +13899,12 @@ body.theme-light
   background: color-mix(in srgb, var(--text-primary) 38%, transparent);
 }
 
+/* A switch that leads its text (Tile Settings' tray option) keeps a gap to it. One that trails its
+   label (the alert dialog's quiet hours) sits flush with the fields' edge. */
 :is(#settings-modal, #alert-config-modal, .rename-modal)
   .form-group
   label:has(input[type='checkbox'])
-  input[type='checkbox'] {
+  input[type='checkbox']:where(:first-child) {
   margin-inline-end: 10px;
 }
 

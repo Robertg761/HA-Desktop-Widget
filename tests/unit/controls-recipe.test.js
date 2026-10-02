@@ -98,24 +98,53 @@ describe('the control recipe', () => {
   });
 
   describe('disabled controls', () => {
-    it('lets one that explains itself in a title show it, and ignores the rest', () => {
+    const switchRow = (attributes) =>
+      `<div id="settings-modal"><div class="form-group setting-row">
+        <div class="setting-text"><label for="s">Always on top</label><p class="form-help">Help</p></div>
+        <input type="checkbox" id="s" ${attributes}></div></div>`;
+
+    it('lets a switch that explains itself in a title show it, and ignores the rest', () => {
       render(
         '',
-        `<button disabled title="Desktop layer mode keeps the widget behind normal windows."></button>
-        <button disabled></button>
-        <button disabled title=""></button>
-        <input type="checkbox" disabled title="Why">
+        `<input type="checkbox" disabled title="Desktop layer mode keeps the widget behind normal windows.">
+        <input type="checkbox" disabled>
+        <input type="checkbox" disabled title="">
+        <button disabled title="Play"></button>
         <div role="button" aria-disabled="true" title="Why"></div>`
       );
-      const [titled, bare, emptyTitle, checkbox, custom] = document.body.children;
+      const [titled, bare, emptyTitle, button, custom] = document.body.children;
 
       expect(resolvedValue(titled, 'pointer-events')).toBe('auto');
-      expect(resolvedValue(checkbox, 'pointer-events')).toBe('auto');
+      expect(resolvedValue(titled, 'cursor')).toBe('not-allowed');
       expect(resolvedValue(bare, 'pointer-events')).toBe('none');
       // An empty title is how settings.js clears the text once the control is usable again.
       expect(resolvedValue(emptyTitle, 'pointer-events')).toBe('none');
+      // A button's title is its plain name: hovering a disabled one would light it up like a live one.
+      expect(resolvedValue(button, 'pointer-events')).toBe('none');
       expect(resolvedValue(custom, 'pointer-events')).toBe('none');
-      expect(resolvedValue(titled, 'cursor')).toBe('not-allowed');
+    });
+
+    it('draws a disabled switch the same under the pointer as at rest', () => {
+      render('', switchRow('disabled title="Why" data-hover'));
+      const hovered = document.querySelector('input');
+      const hoveredLook = ['background', 'border-color', 'cursor'].map((property) =>
+        resolvedValue(hovered, property)
+      );
+      hovered.removeAttribute('data-hover');
+
+      expect(
+        ['background', 'border-color', 'cursor'].map((property) => resolvedValue(hovered, property))
+      ).toEqual(hoveredLook);
+      expect(hoveredLook[2]).toBe('not-allowed');
+    });
+
+    it('dims the help under a disabled switch with the rest of its row', () => {
+      render('', switchRow('disabled'));
+      const help = document.querySelector('.form-help');
+      expect(resolvedValue(help, 'opacity')).toBe('0.6');
+
+      document.querySelector('input').removeAttribute('disabled');
+      expect(resolvedValue(help, 'opacity')).not.toBe('0.6');
     });
   });
 
@@ -140,11 +169,23 @@ describe('the control recipe', () => {
       expect(resolvedValue(document.querySelector('input'), 'border')).toBeNull();
     });
 
-    it('lets a field with its own class keep its own look', () => {
-      render('', '<div class="modal-body"><input class="hotkey-input" readonly></div>');
+    // The Hotkeys page lists its rows beside the search field's form group, not inside one: a
+    // .form-group field would take the shared padding and height over a plain class.
+    it.each([
+      ['a dialog body', '<div class="modal-body">%</div>'],
+      [
+        'the Hotkeys page',
+        `<div id="settings-modal"><div class="modal-body"><div id="hotkeys-list-container">
+          <div class="form-group"><input type="text"></div>
+          <div id="hotkeys-list"><div class="hotkey-item"><div class="hotkey-input-container">%</div></div></div>
+        </div></div></div>`,
+      ],
+    ])('lets a field with its own class keep its own look in %s', (_, wrapper) => {
+      render('', wrapper.replace('%', '<input class="hotkey-input" readonly>'));
+      const field = document.querySelector('.hotkey-input');
 
-      expect(resolvedValue(document.querySelector('input'), 'padding')).toBe('6px 10px');
-      expect(resolvedValue(document.querySelector('input'), 'min-height')).toBe('32px');
+      expect(resolvedValue(field, 'padding')).toBe('6px 10px');
+      expect(resolvedValue(field, 'min-height')).toBe('32px');
     });
 
     it('draws a native select like the custom dropdown trigger', () => {
@@ -212,6 +253,18 @@ describe('the control recipe', () => {
 
       expect(resolvedValue(toggle, 'width')).toBe('38px');
       expect(resolvedValue(toggle, 'height')).toBe('22px');
+    });
+
+    it('keeps a gap behind a switch that leads its text, and none behind one that trails it', () => {
+      render(
+        '',
+        `<div class="modal rename-modal"><div class="form-group"><label><input type="checkbox"><span>Tray</span></label></div></div>
+        <div id="alert-config-modal"><div class="form-group"><label><span>Quiet hours</span><input type="checkbox"></label></div></div>`
+      );
+      const [leading, trailing] = document.querySelectorAll('input');
+
+      expect(resolvedValue(leading, 'margin-inline-end')).toBe('10px');
+      expect(resolvedValue(trailing, 'margin-inline-end')).toBe('0');
     });
 
     it('draws it in Tile Settings, and leaves the Add Page room list alone', () => {
@@ -346,6 +399,8 @@ describe('the control recipe', () => {
     it('names the weather readouts, the theme colours and the Reset button', () => {
       expect(html).toMatch(/class="weather-detail"\s+role="group"\s+aria-label="Humidity"/);
       expect(html).toMatch(/class="weather-detail"\s+role="group"\s+aria-label="Wind"/);
+      // A title would repeat the name and cover the card's own long-press hint while hovering.
+      expect(html).not.toMatch(/class="weather-detail"[^>]*\btitle=/);
       expect(html).toMatch(/id="theme-options"[^>]*aria-labelledby="theme-options-label"/s);
       expect(html).not.toMatch(/aria-label="Theme colors"/);
       expect(html).toMatch(/id="primary-cards-reset"\s+aria-describedby="primary-cards-title"/);
