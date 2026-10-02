@@ -5020,8 +5020,36 @@ function callEntityDomainService(entity, serviceName, serviceData = {}) {
       ...(serviceData || {}),
     })
     .catch((error) =>
-      handleServiceError(error, utils.getEntityDisplayName(currentEntity || entity))
+      handleDesktopPinServiceError(
+        error,
+        entityId,
+        utils.getEntityDisplayName(currentEntity || entity)
+      )
     );
+}
+
+// A pin applies the value it is about to send straight to the DOM. The interaction that holds it
+// only expires, without re-rendering, so after a rejected command the pin would keep showing the
+// value that never took effect until some unrelated update arrived. Drop the optimistic state and
+// draw what Home Assistant last reported. Without a pin on the page this does nothing.
+function resyncDesktopPinFromState(entityId) {
+  if (!entityId) return;
+  clearDesktopPinControlInteraction(entityId);
+  clearDesktopPinLightInteraction(entityId);
+  const entity = state.STATES?.[entityId];
+  if (!entity) return;
+  try {
+    document.querySelectorAll('.desktop-pin-control').forEach((root) => {
+      if (root.dataset.entityId === entityId) updateExistingDesktopPinPanelControl(root, entity);
+    });
+  } catch (error) {
+    console.error('Failed to restore desktop pin state after a failed command:', error);
+  }
+}
+
+function handleDesktopPinServiceError(error, entityId, entityName) {
+  handleServiceError(error, entityName);
+  resyncDesktopPinFromState(entityId);
 }
 
 function callServiceWithResponse(domain, service, serviceData = {}) {
@@ -5585,7 +5613,7 @@ function queueDesktopPinLightBrightness(entity, brightnessPct) {
 
     websocket
       .callService('light', serviceName, serviceData)
-      .catch((error) => handleServiceError(error, entityName));
+      .catch((error) => handleDesktopPinServiceError(error, entityId, entityName));
   }, 110);
 
   desktopPinLightBrightnessTimers.set(entityId, timer);
@@ -6077,7 +6105,13 @@ function createDesktopPinClimateControlElement(entity) {
               entity_id: entity.entity_id,
               temperature: nextValue,
             })
-            .catch((error) => handleServiceError(error, utils.getEntityDisplayName(currentEntity)));
+            .catch((error) =>
+              handleDesktopPinServiceError(
+                error,
+                entity.entity_id,
+                utils.getEntityDisplayName(currentEntity)
+              )
+            );
         },
         180
       );
@@ -6097,7 +6131,13 @@ function createDesktopPinClimateControlElement(entity) {
           entity_id: entity.entity_id,
           hvac_mode: mode,
         })
-        .catch((error) => handleServiceError(error, utils.getEntityDisplayName(liveEntity())));
+        .catch((error) =>
+          handleDesktopPinServiceError(
+            error,
+            entity.entity_id,
+            utils.getEntityDisplayName(liveEntity())
+          )
+        );
     });
   });
 
@@ -6197,7 +6237,7 @@ function queueDesktopPinFanPercentage(entity, percentage) {
           .callService('fan', 'turn_off', {
             entity_id: entity.entity_id,
           })
-          .catch((error) => handleServiceError(error, entityName));
+          .catch((error) => handleDesktopPinServiceError(error, entity.entity_id, entityName));
         return;
       }
       websocket
@@ -6205,7 +6245,7 @@ function queueDesktopPinFanPercentage(entity, percentage) {
           entity_id: entity.entity_id,
           percentage: safePercent,
         })
-        .catch((error) => handleServiceError(error, entityName));
+        .catch((error) => handleDesktopPinServiceError(error, entity.entity_id, entityName));
     },
     140
   );
@@ -6394,7 +6434,13 @@ function queueDesktopPinCoverPosition(entity, position) {
           entity_id: entity.entity_id,
           position: Math.max(0, Math.min(100, Math.round(Number(position) || 0))),
         })
-        .catch((error) => handleServiceError(error, utils.getEntityDisplayName(currentEntity)));
+        .catch((error) =>
+          handleDesktopPinServiceError(
+            error,
+            entity.entity_id,
+            utils.getEntityDisplayName(currentEntity)
+          )
+        );
     },
     180
   );
@@ -6509,8 +6555,9 @@ function createDesktopPinCoverControlElement(entity) {
           entity_id: entity.entity_id,
         })
         .catch((error) =>
-          handleServiceError(
+          handleDesktopPinServiceError(
             error,
+            entity.entity_id,
             utils.getEntityDisplayName(state.STATES?.[entity.entity_id] || entity)
           )
         );
@@ -7624,7 +7671,7 @@ function createDesktopPinNumericControlElement(entity) {
       <div class="desktop-pin-panel-actions desktop-pin-numeric-actions">
         ${createDesktopPinButtonMarkup({
           className: 'desktop-pin-panel-button desktop-pin-numeric-step',
-          label: '-',
+          label: '\u2212',
           ariaLabel: t('Decrease {{name}}', { name: utils.getEntityDisplayName(entity) }),
           action: 'decrease',
         })}
@@ -7669,13 +7716,17 @@ function createDesktopPinNumericControlElement(entity) {
 
   root.querySelectorAll('.desktop-pin-numeric-step').forEach((button) => {
     bindDesktopPinButton(button, () => {
-      const delta = button.dataset.action === 'decrease' ? -spec.step : spec.step;
-      const nextValue = spec.value + delta;
+      // The control outlives the entity it was built from, so step from the value it shows now
+      // (a step still settling counts) rather than the one it had when it was created.
+      const liveEntity = state.STATES?.[entity.entity_id] || entity;
+      const liveSpec = getDesktopPinNumericSpec(liveEntity);
+      const delta = button.dataset.action === 'decrease' ? -liveSpec.step : liveSpec.step;
+      const nextValue = liveSpec.value + delta;
       setDesktopPinControlInteraction(entity.entity_id, { value: nextValue, active: false });
       scheduleDesktopPinControlInteractionRelease(entity.entity_id, 360);
-      queueDesktopPinNumericValue(entity, nextValue);
+      queueDesktopPinNumericValue(liveEntity, nextValue);
       updateExistingDesktopPinNumericControl(root, {
-        ...entity,
+        ...liveEntity,
         state: String(nextValue),
       });
     });
@@ -7749,7 +7800,8 @@ function getDesktopPinEnumState(entity) {
 function queueDesktopPinEnumSelection(entity, direction) {
   const entityId = entity?.entity_id;
   if (!entityId) return;
-  const enumState = getDesktopPinEnumState(entity);
+  // The control is reused across updates, so the entity it was built from goes stale.
+  const enumState = getDesktopPinEnumState(state.STATES?.[entityId] || entity);
   if (!enumState.options.length) return;
 
   const directionOffset = direction === 'previous' ? -1 : 1;
@@ -7823,9 +7875,10 @@ function createDesktopPinEnumControlElement(entity) {
   root.querySelectorAll('.desktop-pin-enum-step').forEach((button) => {
     bindDesktopPinButton(button, () => {
       queueDesktopPinEnumSelection(entity, button.dataset.action);
+      const liveEntity = state.STATES?.[entity.entity_id] || entity;
       updateExistingDesktopPinEnumControl(root, {
-        ...entity,
-        state: getDesktopPinControlInteraction(entity.entity_id)?.option || entity.state,
+        ...liveEntity,
+        state: getDesktopPinControlInteraction(entity.entity_id)?.option || liveEntity.state,
       });
     });
   });

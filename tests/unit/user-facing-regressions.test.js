@@ -634,6 +634,153 @@ describe('User-facing audit regressions', () => {
     }
   );
 
+  // A pin control is built once and reused for every later update, so its buttons must act on the
+  // entity Home Assistant reports now, not the one the control was created with.
+  describe('desktop pin select and number buttons', () => {
+    const pushUpdate = (updated) => {
+      state.setEntityState(updated);
+      ui.renderDesktopPinnedTile(updated.entity_id, updated);
+    };
+
+    it('keeps stepping through a select pin as its state updates', async () => {
+      const select = entity('input_select.pin_mode', 'A', { options: ['A', 'B', 'C', 'D'] });
+      state.setStates({ [select.entity_id]: select });
+      ui.renderDesktopPinnedTile(select.entity_id, select);
+      const next = () => document.querySelector('.desktop-pin-enum-step[data-action="next"]');
+
+      next().click();
+      await jest.advanceTimersByTimeAsync(200);
+      pushUpdate({ ...select, state: 'B' });
+      await jest.advanceTimersByTimeAsync(600);
+      next().click();
+      await jest.advanceTimersByTimeAsync(200);
+
+      expect(mockCallService.mock.calls.map((call) => call[2].option)).toEqual(['B', 'C']);
+    });
+
+    it('steps back from the current option, not the one the pin was built with', async () => {
+      const select = entity('input_select.pin_back', 'A', { options: ['A', 'B', 'C'] });
+      state.setStates({ [select.entity_id]: select });
+      ui.renderDesktopPinnedTile(select.entity_id, select);
+      pushUpdate({ ...select, state: 'C' });
+
+      document.querySelector('.desktop-pin-enum-step[data-action="previous"]').click();
+      await jest.advanceTimersByTimeAsync(200);
+
+      expect(mockCallService.mock.calls.map((call) => call[2].option)).toEqual(['B']);
+    });
+
+    it('keeps stepping an unbounded number pin as its state updates', async () => {
+      const number = entity('input_number.pin_count', '5', { step: 2 });
+      state.setStates({ [number.entity_id]: number });
+      ui.renderDesktopPinnedTile(number.entity_id, number);
+      const step = (action) =>
+        document.querySelector(`.desktop-pin-numeric-step[data-action="${action}"]`);
+
+      step('increase').click();
+      await jest.advanceTimersByTimeAsync(200);
+      pushUpdate({ ...number, state: '7' });
+      await jest.advanceTimersByTimeAsync(600);
+      step('increase').click();
+      await jest.advanceTimersByTimeAsync(200);
+      step('decrease').click();
+      await jest.advanceTimersByTimeAsync(600);
+
+      expect(mockCallService.mock.calls.map((call) => call[2].value)).toEqual([7, 9, 7]);
+    });
+
+    it('draws the decrease button with a real minus sign', () => {
+      const number = entity('input_number.pin_minus', '5', { step: 1 });
+      state.setStates({ [number.entity_id]: number });
+      ui.renderDesktopPinnedTile(number.entity_id, number);
+
+      expect(
+        document
+          .querySelector('.desktop-pin-numeric-step[data-action="decrease"]')
+          .textContent.trim()
+      ).toBe('\u2212');
+    });
+  });
+
+  describe('desktop pin controls after a failed command', () => {
+    it('restores the light preset to the real brightness', async () => {
+      const light = entity('light.pin_fail', 'on', {
+        brightness: 128,
+        supported_color_modes: ['brightness'],
+      });
+      state.setStates({ [light.entity_id]: light });
+      ui.renderDesktopPinnedTile(light.entity_id, light);
+      const root = document.querySelector('.desktop-pin-light-control');
+      mockCallService.mockRejectedValueOnce(new Error('Light rejected'));
+
+      document.querySelector('.desktop-pin-light-preset[data-brightness="75"]').click();
+      expect(root.querySelector('.desktop-pin-light-status').textContent).toBe('75% brightness');
+      await jest.advanceTimersByTimeAsync(300);
+
+      expect(root.querySelector('.desktop-pin-light-status').textContent).toBe('50% brightness');
+      expect(root.querySelector('.desktop-pin-light-slider').value).toBe('50');
+      expect(uiUtils.showToast).toHaveBeenCalled();
+    });
+
+    it('restores the cover to its real position', async () => {
+      const cover = entity('cover.pin_fail', 'closed', {
+        current_position: 0,
+        supported_features: 15,
+      });
+      state.setStates({ [cover.entity_id]: cover });
+      ui.renderDesktopPinnedTile(cover.entity_id, cover);
+      const root = document.querySelector('.desktop-pin-cover-control');
+      mockCallService.mockRejectedValueOnce(new Error('Cover rejected'));
+
+      document.querySelector('.desktop-pin-cover-action[data-action="open_cover"]').click();
+      expect(root.querySelector('.desktop-pin-cover-slider').value).toBe('100');
+      await jest.advanceTimersByTimeAsync(50);
+
+      expect(root.querySelector('.desktop-pin-cover-slider').value).toBe('0');
+      expect(root.dataset.state).toBe('closed');
+    });
+
+    it('restores the thermostat mode to the real mode', async () => {
+      const climate = entity('climate.pin_fail', 'heat', {
+        current_temperature: 21,
+        temperature: 22,
+        min_temp: 7,
+        max_temp: 35,
+        target_temp_step: 0.5,
+        supported_features: 1,
+        hvac_modes: ['heat', 'cool', 'off'],
+      });
+      state.setStates({ [climate.entity_id]: climate });
+      ui.renderDesktopPinnedTile(climate.entity_id, climate);
+      const root = document.querySelector('.desktop-pin-climate-control');
+      mockCallService.mockRejectedValueOnce(new Error('Mode rejected'));
+      const activeMode = () =>
+        root.querySelector(
+          '.desktop-pin-climate-mode[aria-pressed="true"], .desktop-pin-climate-mode[data-active="true"]'
+        )?.dataset.mode;
+      expect(activeMode()).toBe('heat');
+
+      root.querySelector('.desktop-pin-climate-mode[data-mode="cool"]').click();
+      await jest.advanceTimersByTimeAsync(50);
+
+      expect(activeMode()).toBe('heat');
+    });
+
+    it('restores a number pin to its real value', async () => {
+      const number = entity('input_number.pin_fail', '5', { step: 1 });
+      state.setStates({ [number.entity_id]: number });
+      ui.renderDesktopPinnedTile(number.entity_id, number);
+      const root = document.querySelector('.desktop-pin-numeric-control');
+      mockCallService.mockRejectedValueOnce(new Error('Number rejected'));
+
+      root.querySelector('.desktop-pin-numeric-step[data-action="increase"]').click();
+      expect(root.querySelector('.desktop-pin-panel-value').textContent).toBe('6');
+      await jest.advanceTimersByTimeAsync(200);
+
+      expect(root.querySelector('.desktop-pin-panel-value').textContent).toBe('5');
+    });
+  });
+
   it('cancels pending movement when Stop is pressed on a desktop pin', async () => {
     const cover = entity('cover.pin_stop', 'open', {
       current_position: 40,
