@@ -41,6 +41,7 @@ const PAGE_SETS = {
         'binary_sensor.front_door',
         'lock.back_door',
         'switch.coffee_maker',
+        'light.colour_strip',
       ],
     },
   ],
@@ -96,6 +97,16 @@ function buildStates(now = new Date()) {
     entity('light.shelf_leds', 'off', {
       friendly_name: 'Shelf LEDs',
       supported_color_modes: ['brightness'],
+    }),
+    // The one light with colour controls: a colour temperature slider and colour swatches.
+    entity('light.colour_strip', 'on', {
+      friendly_name: 'Colour strip',
+      brightness: 153,
+      supported_color_modes: ['color_temp', 'hs'],
+      color_mode: 'color_temp',
+      color_temp_kelvin: 3200,
+      min_color_temp_kelvin: 2000,
+      max_color_temp_kelvin: 6500,
     }),
     entity('switch.coffee_maker', 'off', { friendly_name: 'Coffee maker' }),
     entity('sensor.office_temp', '21.4', {

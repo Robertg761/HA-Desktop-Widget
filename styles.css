@@ -16138,20 +16138,75 @@ body[data-season='thanksgiving'] .control-item {
 
 /* Readings and their units are handled with the other right-to-left text rules at the end. */
 
-/* Windows High Contrast replaces backgrounds with system colours, which erases the accent fills
-   that mark "on" tiles, selected tabs and switches. Draw those states with outlines instead. */
+/* Windows High Contrast and other contrast themes replace the page's colours with the system
+   palette: backgrounds become Canvas, borders ButtonText, and gradients, shadows and glows go.
+   That erases everything drawn with a fill alone (the accent on "on" tiles and selected chips,
+   slider tracks and thumbs, swatches, progress bars, the connection dot), so each of those gets an
+   outline, an edge or a system colour of its own here. System colour keywords written in author
+   CSS are kept, which is how the Highlight and ButtonText below survive. */
 @media (forced-colors: active) {
-  .sliding-indicator {
-    background: none;
-    border: 2px solid Highlight;
+  /* The window is one solid pane. Its tint keeps its alpha under forced colours, which lets the
+     desktop show through and makes Chromium paint an opaque plate behind every line of text. */
+  html:not(.desktop-pin-mode) {
+    background: Canvas;
   }
 
+  /* Selected and "on" states are a Highlight outline in place of the accent fill. A running timer
+     is solid and a paused one dashed, as the tint and its colour tell them apart otherwise. */
   #quick-controls .control-item[data-active='true'],
+  .timer-entity[data-state='active'],
   .segmented-option.active,
   .tab-link.active,
-  .quick-access-tab.active {
+  .quick-access-tabs.reorganize .quick-access-tab.active,
+  .climate-mode-btn.active,
+  .climate-fan-mode-btn.active,
+  .climate-preset-mode-btn.active,
+  .media-mute-toggle.active,
+  .custom-dropdown-option.selected,
+  .donate-amount-chip.selected,
+  .desktop-pin-panel-button[data-active='true'],
+  .desktop-pin-light-power[data-active='true'] {
     outline: 2px solid Highlight;
     outline-offset: -2px;
+  }
+
+  .timer-entity[data-state='paused'] {
+    outline: 2px dashed Highlight;
+    outline-offset: -2px;
+  }
+
+  /* The pill that slides behind the active tab is a fill too. The tab rings itself instead, which
+     also avoids two rings with notches where their corner radii differ. */
+  .sliding-indicator {
+    display: none;
+  }
+
+  /* The primary action is told from the others by its heavier edge, not its fill. */
+  .btn-primary {
+    border: 2px solid Highlight !important;
+  }
+
+  /* Fields signal focus with a border colour and a shadow, and some switch their outline off,
+     which leaves nothing once forced colours take the first two away. */
+  :is(input, select, textarea, .custom-dropdown-trigger):focus-visible {
+    outline: 2px solid Highlight !important;
+    outline-offset: 2px;
+  }
+
+  /* Disabled controls are already GrayText; halving their opacity on top washes them out. A control
+     that is only aria-disabled gets the colour itself. */
+  :disabled,
+  [aria-disabled='true'],
+  label.disabled,
+  .is-disabled,
+  .is-overridden {
+    opacity: 1 !important;
+  }
+
+  [aria-disabled='true']:not(.btn-primary),
+  label.disabled,
+  .is-disabled {
+    color: GrayText;
   }
 
   /* !important: the Settings switch rules carry #settings-modal and would otherwise win. */
@@ -16176,6 +16231,171 @@ body[data-season='thanksgiving'] .control-item {
   .form-group input[type='checkbox']:checked::after,
   .entity-toggle.active::after {
     background: HighlightText !important;
+  }
+
+  /* Range sliders paint a gradient track and a white thumb with no border, and all of it goes.
+     The track is a ButtonText bar and the thumb a Highlight disc with an edge. */
+  :is(
+    .brightness-slider,
+    .fan-slider,
+    .cover-slider,
+    .climate-slider,
+    .light-color-temp-slider,
+    .media-volume-slider
+  ) {
+    background: ButtonText;
+  }
+
+  :is(
+    .brightness-slider,
+    .fan-slider,
+    .cover-slider,
+    .climate-slider,
+    .light-color-temp-slider,
+    .media-volume-slider
+  )::-webkit-slider-thumb,
+  .desktop-pin-light-slider::-webkit-slider-thumb {
+    background: Highlight;
+    border: 2px solid ButtonText;
+    box-shadow: none;
+  }
+
+  /* The Readable preset paints these tracks #8a8a8a, an author colour that forced colours would
+     turn into Canvas, so the same selector (it outranks the rule above) restates the system one. */
+  body.high-contrast input[type='range']:not(.light-color-temp-slider, .desktop-pin-light-slider) {
+    background: ButtonText !important;
+  }
+
+  /* The pin's slider is a transparent overlay above its own fill, so its track is only an edge. */
+  .desktop-pin-light-slider::-webkit-slider-runnable-track {
+    background: transparent;
+    border: 1px solid ButtonText;
+    box-shadow: none;
+  }
+
+  /* Colour is the information in a swatch, so it keeps its own colour and gets an edge against
+     Canvas. */
+  .light-color-swatch,
+  .color-target-swatch,
+  .accent-theme-swatch {
+    forced-color-adjust: none;
+    border: 1px solid CanvasText;
+    box-shadow: none;
+  }
+
+  .theme-tooltip-name::before,
+  .comparison-graph-swatch {
+    forced-color-adjust: none;
+  }
+
+  .theme-option.selected,
+  .color-target-option.active,
+  .light-color-swatch:focus-visible {
+    outline: 3px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  /* The connection dot is a ring when disconnected and a solid dot when connected. */
+  .connection-indicator {
+    box-sizing: border-box;
+    border: 2px solid ButtonText;
+    box-shadow: none;
+  }
+
+  .connection-indicator.connected {
+    border-color: Highlight;
+    background: Highlight;
+  }
+
+  /* Progress is a Highlight fill in an outlined track. */
+  .media-tile-seek-bar,
+  .media-tile-seek-bar:hover {
+    box-sizing: border-box;
+    height: 6px;
+    border: 1px solid ButtonText;
+    overflow: hidden;
+  }
+
+  .media-tile-seek-fill::after {
+    display: none;
+  }
+
+  .connection-progress,
+  .desktop-pin-panel-progress {
+    border: 1px solid ButtonText;
+  }
+
+  .desktop-pin-timer-progress {
+    border-top: 1px solid ButtonText;
+  }
+
+  .media-tile-seek-fill,
+  .media-progress-fill,
+  .progress-fill,
+  .connection-progress-bar,
+  .desktop-pin-panel-progress-fill,
+  .desktop-pin-timer-progress-fill,
+  .desktop-pin-light-brightness-fill {
+    background: Highlight;
+    box-shadow: none;
+  }
+
+  /* The hero pane's divider is an inset shadow, which is dropped; a border stays. */
+  .status-grid:not(.single-card):not(.primary-cards-hidden) > .status-card + .status-card {
+    box-shadow: none;
+    border-inline-start: 1px solid CanvasText;
+  }
+
+  @media (max-width: 420px) {
+    .status-grid:not(.single-card):not(.primary-cards-hidden) > .status-card + .status-card {
+      border-inline-start: none;
+      border-block-start: 1px solid CanvasText;
+    }
+  }
+
+  /* An inline icon keeps a colour written on the icon itself in forced colours, so the active
+     rail icon would stay a pale blue whatever the contrast theme. */
+  #settings-modal .tab-link.active .tab-link-icon {
+    color: ButtonText;
+    filter: none;
+  }
+
+  /* The weather glyph is drawn with fixed pale fills and strokes; draw it as an outline. */
+  .weather-glyph,
+  .weather-glyph * {
+    forced-color-adjust: none;
+    stroke: CanvasText;
+    fill: none;
+    filter: none;
+  }
+
+  .weather-glyph .weather-glyph-fill,
+  .weather-glyph .weather-glyph-hail {
+    fill: CanvasText;
+  }
+
+  /* A custom scrollbar thumb is a background, which is the Canvas colour here. */
+  ::-webkit-scrollbar,
+  .modal-body::-webkit-scrollbar,
+  .custom-dropdown-menu::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+
+  ::-webkit-scrollbar-thumb,
+  ::-webkit-scrollbar-thumb:hover,
+  .modal-body::-webkit-scrollbar-thumb,
+  .modal-body::-webkit-scrollbar-thumb:hover,
+  .custom-dropdown-menu::-webkit-scrollbar-thumb,
+  .custom-dropdown-menu::-webkit-scrollbar-thumb:hover {
+    background: ButtonText;
+    border: 3px solid Canvas;
+  }
+
+  ::-webkit-scrollbar-track,
+  .modal-body::-webkit-scrollbar-track,
+  .custom-dropdown-menu::-webkit-scrollbar-track {
+    background: Canvas;
   }
 
   .entity-line-icon {
