@@ -4,6 +4,8 @@ This plan is for people with a Windows, macOS or Linux machine who can run a 4.0
 
 You do not need to be a developer. Every check lists the steps, what you should see, and what to capture if you do not see it. A check that fails on your machine is a useful result, not a mistake on your part. If you cannot run a check (no second monitor, no touch screen), skip it and say so in the report.
 
+The expected results describe how 4.0.0 is meant to behave. They were written against the source at commit `c2e97aa` together with the fixes planned for 4.0.0 at that time, so a few of them (the shortcut and tray name on Windows, for example) describe changes that a build made before those fixes does not have. The call for testers names the build to use. If a check fails on an older build, report it anyway; the developers know which failures are already on their list.
+
 ## Which sections to run
 
 | Your machine                        | Run                                                                                                                                                                                                                                                    |
@@ -17,6 +19,17 @@ You do not need to be a developer. Every check lists the steps, what you should 
 | Any machine with the right hardware | Whichever of the cross-cutting sections apply: contrast themes and screen readers, several monitors, large text, Chinese or Japanese input, language packs, profile sync, a real Home Assistant, cameras, a long-running session, updates, the website |
 
 Do the shared checks first. Later checks assume the Quick Access tiles from "Set up Home Assistant" and the pins from ALL-5.
+
+### Short on time
+
+Run these first, in this order. They cover the problems most likely to affect the most people.
+
+| Your machine | Checks                                                                                                                                                                |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Windows 11   | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, WIN11-1, WIN11-2, WIN11-5, WIN11-6, WIN11-8                                                                                       |
+| Windows 10   | ALL-1, ALL-3, ALL-4, ALL-5, WIN10-1, WIN11-1, WIN11-3, WIN11-5, WIN11-6, WIN11-8                                                                                      |
+| macOS        | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, MAC-1, MAC-2, MAC-3, MAC-5, MAC-6                                                                                                 |
+| Linux        | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, LNX-1, LNX-2, LNX-3, LNX-6, then the first two checks in the section for your desktop (GNOME, KDE Plasma, Hyprland, Sway or niri) |
 
 ## Before you start
 
@@ -87,7 +100,7 @@ For a failure, add: what you did, what you saw, what you expected from the check
 
 Screenshots and logs can show your Home Assistant address, entity names, and in rare cases tokens. Crop or blur them. To attach the log, use Settings > Advanced > View logs, which shows the log file in your file manager. Read it before you attach it.
 
-The `Ref:` line at the end of each check lists cluster ids from the 4.0 frontend audit. You can ignore them; the developers use them to map your result back to the audit.
+The `Ref:` line at the end of each check lists cluster ids from the maintainers' private audit of 4.0, which is not published, so you cannot look them up. You can ignore them; the developers use them to map your result back to the audit.
 
 ## Shared checks (ALL)
 
@@ -108,11 +121,11 @@ Ref: MP-17, RO1-16
 
 ### ALL-2 Start hidden
 
-1. Quit the app. Start it again with `--hide` added to the command from "Use a throwaway profile".
-2. Watch the screen for five seconds. Note whether anything flashes and whether keyboard focus leaves the window you were using.
+1. Quit the app. Start it again with `--hide` added to the command from "Use a throwaway profile". The flag works the same way on every system.
+2. Watch the screen for five seconds. Note whether anything flashes, even for a moment, and whether keyboard focus leaves the window you were using.
 3. Open the tray menu (the menu bar item on macOS) and choose Show/Hide.
 
-Expected: Nothing appears on screen and focus stays where it was. The tray icon appears, and Show/Hide shows the widget normally.
+Expected: Nothing appears on screen and focus stays where it was. A brief flash of the window before it hides counts as a failure; say how long it lasted. The tray icon appears, and Show/Hide shows the widget normally.
 
 Capture: A recording of the screen and a note of what lost focus.
 
@@ -126,9 +139,9 @@ In desktop-layer mode (Hyprland, Sway, niri) skip steps 2 to 4; the Hyprland and
 2. Double-click the header.
 3. Drag the widget against a screen edge so the system tries to snap or tile it (Windows: drag to the top or a side; GNOME and KDE: drag to an edge, or press Super or Meta + Up). Quit from the tray and start the app again.
 4. Drag a window corner inward as far as it goes, then far past the header.
-5. Close the widget three ways: the X at the right end of the header; Alt+F4 (Windows, Linux) or Cmd+W (macOS); the Minimize button. After each, bring it back from the tray, the menu bar or the popup hotkey.
+5. Close the widget three ways: the X at the right end of the header; Alt+F4 (Windows, Linux) or Cmd+W (macOS); the Minimize button. After each, bring it back from the tray, the menu bar or the popup hotkey. Each time, note whether the app is still running and what the X's tooltip says.
 
-Expected: The whole header strip moves the window and its buttons still click. Double-clicking or snapping does not turn the widget into a maximized or full-screen slab, and after a restart it has the size you chose. The window stops shrinking at a size where Settings, Minimize and the X are still visible. The X, Alt+F4 and Cmd+W all hide the widget to the tray in the same way: the app keeps running and its hotkeys keep working. Quit in the tray menu ends the app. After Minimize there is always a visible way back.
+Expected: The whole header strip moves the window and its buttons still click. Double-clicking or snapping does not turn the widget into a maximized or full-screen slab, and after a restart it has the size you chose. The window stops shrinking at a size where Settings, Minimize and the X are still visible. The X, Alt+F4 and Cmd+W all hide the widget to the tray: the app keeps running and its hotkeys keep working, and the X's tooltip says Hide. Quit in the tray menu ends the app. After the X, Alt+F4 or Minimize there is always a visible way back (on a desktop without a tray, see GNOME-2).
 
 Capture: A recording of steps 1, 3 and 4, and the widget size before and after restart.
 
@@ -401,9 +414,9 @@ Ref: CSSB2-23
 1. Settings > Hotkeys > Popup hotkey: choose Set hotkey and press Ctrl+Space. Repeat with Ctrl+Shift+Space, Alt+Space and Ctrl+Up.
 2. Try Shift+A, then Ctrl+C and Ctrl+V.
 3. With a hotkey set, hold it while another app is focused. Then turn on Press to toggle and press it once, then again.
-4. Look at the name the recorder shows for the Windows key.
+4. Press Win+Shift+A in the recorder and note how it names the Windows key. If Windows handles the combination itself and nothing is recorded, say so and try another letter.
 
-Expected: Space, arrow keys and similar keys record as you pressed them. A combination with only Shift is refused with a clear message, and so are the common editing shortcuts. The Windows key is shown as Win or Super, not Command. Holding the hotkey shows the widget in front and releasing it sends it back; with Press to toggle, the first press shows it and the second hides it.
+Expected: Space, arrow keys and similar keys record as you pressed them. A combination with only Shift is refused with a clear message, and so are the common editing shortcuts. The Windows key is recorded as Win or Super, not Command. Holding the hotkey shows the widget in front and releasing it sends it back; with Press to toggle, the first press shows it and the second hides it.
 
 Capture: The message or recorded text for each refused or odd key, and a recording of the hold and toggle behavior.
 
@@ -604,7 +617,7 @@ Run this on a machine with working GPU acceleration, and also, if you can, on a 
 3. Turn Holiday decorations off, wait two minutes, and read it again. Then play media on the media tile and read it a third time.
 4. With decorations on, make the widget show an error or empty state (disconnect from the network) and read the text on it.
 
-Expected: Idle CPU use is low and decorations are not the main cost. For reference, the audit saw about 5 to 8% of one core without decorations and about 48 to 51% with them on a session with no GPU, and about 0.1% when the widget was hidden to the tray. Report your numbers. The error or empty state text is not crossed by decoration shapes. Playing media does not raise CPU use noticeably.
+Expected: Idle CPU use is low and decorations are not the main cost. For reference, the maintainers measured about 5 to 8% of one core without decorations and about 48 to 51% with them on a session with no GPU, and about 0.1% when the widget was hidden to the tray. Report your numbers. The error or empty state text is not crossed by decoration shapes. Playing media does not raise CPU use noticeably.
 
 Capture: The three CPU readings, the renderer, and a screenshot of the error state.
 
@@ -1071,7 +1084,7 @@ Start VoiceOver with Cmd+F5.
 2. Move through the header buttons and the tray menu.
 3. In System Settings > Accessibility > Display, turn on Increase contrast and look at the tile borders. A11Y-4 covers Reduce motion.
 
-Expected: As in A11Y-2. Header buttons are announced as Settings, Minimize and Quit. With Increase contrast, tile borders are clearly stronger.
+Expected: As in A11Y-2. Each header button is announced by what it does: Settings, Minimize, and Hide for the X (see ALL-3). With Increase contrast, tile borders are clearly stronger.
 
 Capture: What VoiceOver said and a screenshot with Increase contrast on.
 
@@ -1520,12 +1533,3 @@ Expected: The stable release is not described as "the beta". No page mentions ac
 Capture: A screenshot of the page and its address.
 
 Ref: RO3-07, RO3-08, RO3-09
-
-## Not covered by this plan
-
-The audit clusters below are not in this plan. A person cannot see or measure them by hand, or they are better checked another way:
-
-- Measured in code, by tests or in CI, not by eye: MP-66 (screenshot harness), MP-84 (a comment about macOS window events), MP-85 (build tooling), RO3-36 (plugin tests), MP-27 (a 100 ms tray icon stall), RO1-40 (a second WebSocket handshake at start), RO2-54 and RO2-55 (companion retries and clock skew).
-- Developer checks: MP-44 (running `npm run dev` beside an installed widget on Omarchy), MP-54 (packages that include the repository's test and website files).
-- Documentation: MP-70 (the README's configuration folder names; this plan uses the folders in [Upgrading to 4.0](../MIGRATION.md)).
-- Pixel nits that CI screenshots show: RO2-34 (the palette's type chip inset by 10 px).
