@@ -160,6 +160,14 @@ describe('downloadable locale-pack manifest', () => {
       }
     }
   });
+
+  test('keeps the hex example in the colour hint left-to-right in the Arabic pack', () => {
+    const { messages } = JSON.parse(
+      fs.readFileSync(path.resolve(__dirname, '../../locale-packs/ar.json'), 'utf8')
+    );
+    // Without an isolate the neutral "#" drifts to the wrong side of the digits in right-to-left text.
+    expect(messages['Use 3 or 6 hex digits, for example #2E9BD6']).toMatch(/\u2066#2E9BD6\u2069$/);
+  });
 });
 
 describe('untranslated pack strings', () => {

@@ -12,6 +12,7 @@ const {
   resolveProfileSyncEncryptionRequest,
   stageProfileSyncRewriteTransaction,
   runProfileSyncRewriteRecovery,
+  REWRITE_TRANSACTION_INVALID,
 } = require('../../src/profile-sync-rewrite-transaction.cjs');
 
 function makeTransaction(overrides = {}) {
@@ -31,6 +32,20 @@ function makeTransaction(overrides = {}) {
 }
 
 describe('profile sync rewrite transaction', () => {
+  it('tags the failures the app words for the user with one code', async () => {
+    const codeOf = async (run) => (await run().catch((error) => error)).code;
+
+    await expect(codeOf(async () => createProfileSyncRewriteTransaction({}))).resolves.toBe(
+      REWRITE_TRANSACTION_INVALID
+    );
+    await expect(
+      codeOf(() => stageProfileSyncRewriteTransaction({}, async () => {}))
+    ).resolves.toBe(REWRITE_TRANSACTION_INVALID);
+    await expect(codeOf(() => runProfileSyncRewriteRecovery({ transaction: {} }))).resolves.toBe(
+      REWRITE_TRANSACTION_INVALID
+    );
+  });
+
   it('recovers a crash before the remote write by writing the exact staged target', () => {
     const transaction = makeTransaction();
 

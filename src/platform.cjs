@@ -13,6 +13,17 @@ function isLinuxAppImage(env = process.env) {
   return Boolean(env && env.APPIMAGE);
 }
 
+/**
+ * Options for app.relaunch(). Inside an AppImage process.execPath is in the runtime's FUSE mount,
+ * which disappears when this process exits, so a bare relaunch starts nothing; the AppImage file
+ * itself has to be launched again so it gets a mount of its own.
+ */
+function getRelaunchOptions({ argv = process.argv, env = process.env, extraArgs = [] } = {}) {
+  const options = { args: argv.slice(1).concat(extraArgs) };
+  if (isLinuxAppImage(env)) options.execPath = env.APPIMAGE;
+  return options;
+}
+
 function supportsAutoUpdater(platform = process.platform, env = process.env) {
   if (platform === 'linux') return isLinuxAppImage(env);
   // Current macOS artifacts are ad-hoc signed rather than Developer-ID signed/notarized.
@@ -262,6 +273,7 @@ function hasGlobalShortcutFallback({
 function getMainWindowVisualOptions({
   platform = process.platform,
   frostedGlass = false,
+  nativeGlassSupported = true,
   transparencyOptions = {},
 } = {}) {
   const options = {
@@ -273,7 +285,8 @@ function getMainWindowVisualOptions({
 
   if (platform === 'win32') {
     options.thickFrame = true;
-    if (frostedGlass) {
+    // Windows before 11 22H2 would ignore the material anyway; the renderer draws the solid panel.
+    if (frostedGlass && nativeGlassSupported) {
       options.backgroundMaterial = 'acrylic';
     }
   } else if (platform === 'darwin' && frostedGlass) {
@@ -320,6 +333,7 @@ module.exports = {
   getExplicitOzonePlatform,
   getOzonePlatformArgvValue,
   getMainWindowVisualOptions,
+  getRelaunchOptions,
   hasGlobalShortcutFallback,
   isDisabledEnvFlag,
   isEnabledEnvFlag,

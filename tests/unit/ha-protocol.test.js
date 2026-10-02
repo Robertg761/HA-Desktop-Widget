@@ -215,6 +215,122 @@ describe('Home Assistant protocol handler', () => {
     }
   });
 
+  // Electron's net.fetch only closes the upstream socket when the signal it was given aborts, and
+  // the protocol request's own signal does not fire when an <img> drops its src, so the handler has
+  // to abort the fetch itself once the renderer stops reading.
+  describe('closing the upstream connection', () => {
+    function createOpenStream() {
+      let cancelled = false;
+      const body = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('frame-one'));
+        },
+        cancel() {
+          cancelled = true;
+        },
+      });
+      return { body, wasCancelled: () => cancelled };
+    }
+
+    it('aborts the MJPEG fetch when the renderer stops reading the stream', async () => {
+      const { body } = createOpenStream();
+      const fetchStream = jest.fn(async () => new Response(body, { status: 200 }));
+      const { handler } = createHandler({ fetchStream });
+
+      const response = await handler(createRequest('ha://camera_stream/camera.front_door'));
+      const signal = fetchStream.mock.calls[0][1].signal;
+      const reader = response.body.getReader();
+      await reader.read();
+      expect(signal.aborted).toBe(false);
+
+      await reader.cancel();
+
+      expect(signal.aborted).toBe(true);
+    });
+
+    it('aborts the MJPEG fetch when the stream stalls', async () => {
+      jest.useFakeTimers();
+      try {
+        const { body } = createOpenStream();
+        const fetchStream = jest.fn(async () => new Response(body, { status: 200 }));
+        const { handler } = createHandler({ fetchStream });
+
+        const response = await handler(createRequest('ha://camera_stream/camera.front_door'));
+        const reader = response.body.getReader();
+        await reader.read();
+        const stalled = reader.read().catch(() => 'ended');
+        await jest.advanceTimersByTimeAsync(15000);
+        await stalled;
+
+        expect(fetchStream.mock.calls[0][1].signal.aborted).toBe(true);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('still cancels the upstream body it was reading', async () => {
+      const { body, wasCancelled } = createOpenStream();
+      const fetchStream = jest.fn(async () => new Response(body, { status: 200 }));
+      const { handler } = createHandler({ fetchStream });
+
+      const response = await handler(createRequest('ha://camera_stream/camera.front_door'));
+      await response.body.getReader().cancel();
+
+      expect(wasCancelled()).toBe(true);
+    });
+
+    it.each([
+      ['an HLS segment', 'ha://hls/api/hls/session/segment-1.ts'],
+      ['an HLS master playlist', 'ha://hls/api/hls/session/master_playlist.m3u8'],
+      ['a camera snapshot', 'ha://camera/camera.front_door'],
+    ])('aborts the fetch for %s when the renderer stops reading it', async (_label, url) => {
+      const { body } = createOpenStream();
+      const fetchStream = jest.fn(async () => new Response(body, { status: 200 }));
+      const { handler } = createHandler({ fetchStream });
+
+      const response = await handler(createRequest(url));
+      await response.body.getReader().cancel();
+
+      expect(fetchStream.mock.calls[0][1].signal.aborted).toBe(true);
+    });
+
+    it('lets go of the connection behind a rejected response nobody will read', async () => {
+      const fetchStream = jest.fn(async () => new Response('denied', { status: 401 }));
+      const { handler } = createHandler({ fetchStream });
+
+      const response = await handler(createRequest('ha://camera_stream/camera.front_door'));
+
+      expect(response.status).toBe(401);
+      expect(fetchStream.mock.calls[0][1].signal.aborted).toBe(true);
+    });
+
+    it('does not abort a stream that is still being read', async () => {
+      const { body } = createOpenStream();
+      const fetchStream = jest.fn(async () => new Response(body, { status: 200 }));
+      const { handler } = createHandler({ fetchStream });
+
+      const response = await handler(createRequest('ha://camera_stream/camera.front_door'));
+      await response.body.getReader().read();
+
+      expect(fetchStream.mock.calls[0][1].signal.aborted).toBe(false);
+    });
+
+    it('still aborts the fetch when the protocol request itself is aborted', async () => {
+      const { body } = createOpenStream();
+      const fetchStream = jest.fn(async () => new Response(body, { status: 200 }));
+      const { handler } = createHandler({ fetchStream });
+      const requestAbort = new AbortController();
+
+      await handler({
+        url: 'ha://camera_stream/camera.front_door',
+        signal: requestAbort.signal,
+      });
+      requestAbort.abort();
+
+      expect(fetchStream.mock.calls[0][1].signal.aborted).toBe(true);
+    });
+  });
+
   it('leaves a healthy MJPEG stream alone', async () => {
     jest.useFakeTimers();
     try {

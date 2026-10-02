@@ -8868,6 +8868,12 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   box-shadow: var(--glow-focus);
 }
 
+/* Scoped to beat the settings modal's own :focus-visible border, so a rejected value stays red
+   while the field has focus too. */
+#settings-modal #custom-color-hex[aria-invalid='true'] {
+  border-color: var(--error);
+}
+
 #custom-color-r::-webkit-outer-spin-button,
 #custom-color-r::-webkit-inner-spin-button,
 #custom-color-g::-webkit-outer-spin-button,
@@ -9962,6 +9968,12 @@ body.widget-state-active #quick-controls .status-message {
 }
 
 /* Confirmation Modal - Compact Style */
+/* The confirmation is one static element near the top of <body>, but dialogs built on demand
+   (the comparison graph editor) are appended after it at the same z-index and would paint over it. */
+#confirm-modal {
+  z-index: var(--z-modal);
+}
+
 .confirm-modal-content {
   max-width: 400px;
   min-width: 320px;
@@ -10684,7 +10696,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   min-height: 0;
 }
 
-/* Media text lines — with marquee scrolling on hover */
+/* Media text lines. A line that does not fit ends in an ellipsis; the full text is its tooltip. */
 .media-title {
   font-size: 0.75em;
   font-weight: 600;
@@ -10717,26 +10729,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   line-height: 1.2;
   width: 100%;
   text-align: center;
-}
-
-/* Marquee animation wrapper on hover */
-.media-player-entity:hover .media-title,
-.media-player-entity:hover .media-artist,
-.media-player-entity:hover .media-album {
-  overflow: visible;
-  text-overflow: clip;
-  animation: marquee-scroll 10s linear infinite;
-}
-
-@keyframes marquee-scroll {
-  0%,
-  10% {
-    transform: translateX(0%);
-  }
-  90%,
-  100% {
-    transform: translateX(calc(-100% + 80px));
-  }
 }
 
 /* Media Controls */
@@ -12726,6 +12718,11 @@ label.disabled {
   font-size: var(--font-size-sm);
 }
 
+/* A page row has no state. Its empty item would still take a flex gap and inset the type chip. */
+.command-palette-result-state:empty {
+  display: none;
+}
+
 .command-palette-empty {
   padding: 22px 16px 24px;
   color: var(--text-secondary);
@@ -14043,6 +14040,7 @@ body.theme-light #settings-modal .modal-footer {
 }
 
 #settings-modal .form-group > label:not(:has(input[type='checkbox'])),
+#settings-modal .profile-sync-passphrase-confirm > label,
 #settings-modal .setting-text > label,
 #settings-modal .setting-label {
   display: block;
@@ -14130,6 +14128,15 @@ body.theme-light #settings-modal .modal-footer {
 /* Warnings share the help text's spot but must still read as warnings. */
 #settings-modal .form-help.form-warning {
   color: var(--warning);
+}
+
+#settings-modal .form-help.form-error {
+  color: var(--error);
+}
+
+/* --error is tuned for dark surfaces; this is the same hue re-stepped to read as text on white. */
+body.theme-light #settings-modal .form-help.form-error {
+  color: #c62828;
 }
 
 #settings-modal .setting-text > .form-help:first-of-type {
@@ -14517,11 +14524,28 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
 }
 
 .profile-sync-file-row,
+.profile-sync-passphrase-row,
 .profile-sync-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+/* The passphrase gets the line; its Show button sits beside it and wraps under it when narrow. */
+#settings-modal .profile-sync-passphrase-row > input {
+  flex: 1 1 220px;
+  min-width: 0;
+  margin: 0;
+}
+
+#settings-modal .profile-sync-passphrase-confirm {
+  display: grid;
+  gap: 6px;
+}
+
+#settings-modal .profile-sync-passphrase-confirm.hidden {
+  display: none;
 }
 
 #settings-modal .profile-sync-file-row > input,
@@ -14531,17 +14555,82 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
   margin: 0;
 }
 
-/* Backup names are long; give them the whole line and put Restore under them. */
-#settings-modal .profile-sync-backup-row > select {
-  flex-basis: 100%;
+/* The folder is chosen with the button, so its field only shows it: the type and height of
+   the selects around it, a plain cursor, a muted fill, and an ellipsis for a long path (its
+   full text is the tooltip). */
+#settings-modal .profile-sync-file-row > input[readonly] {
+  padding: 7px 10px;
+  font-size: var(--font-size-sm);
+  text-overflow: ellipsis;
+  cursor: default;
+  background: var(--surface-2);
 }
 
-.profile-sync-status {
+/* Backup names are long; give them the whole line and put Restore under them. A closed
+   select cuts its text, so it gets an ellipsis and room for the arrow. */
+#settings-modal .profile-sync-backup-row > select {
+  flex-basis: 100%;
+  text-overflow: ellipsis;
+  padding-inline-end: 32px;
+}
+
+/* The status and the error change length on every sync event. Five lines hold a finished sync
+   or a failed one (its status, a two-line error and the Details button), so the rows below stay
+   put when a run starts, ends or fails. */
+#settings-modal .profile-sync-status-block {
+  min-height: calc(var(--font-size-sm) * 1.4 * 5 + 9px);
+}
+
+#settings-modal .profile-sync-status {
   color: var(--text-secondary);
+}
+
+/* A run in progress is a spinner in the line's own text, so it needs no room of its own. */
+#settings-modal .profile-sync-status[data-busy='true']::before {
+  content: '';
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  margin-inline-end: 0.5em;
+  border: 2px solid var(--accent);
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -0.1em;
+  animation: spin 0.8s linear infinite;
 }
 
 #settings-modal .profile-sync-error {
   color: var(--danger);
+}
+
+#settings-modal .profile-sync-error:empty {
+  margin: 0;
+}
+
+/* Two lines until "Details" is pressed, so a long error cannot push the rows below it down. */
+#settings-modal .profile-sync-error.is-clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+#settings-modal #profile-sync-error-toggle {
+  margin-inline-start: -6px;
+}
+
+#settings-modal #profile-sync-error-toggle::after {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+}
+
+#settings-modal #profile-sync-error-toggle[aria-expanded='true']::after {
+  transform: translateY(1px) rotate(-135deg);
 }
 
 #settings-modal .profile-sync-settings > .profile-sync-resolution {
@@ -14552,6 +14641,15 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
 #settings-modal .profile-sync-scope-advanced {
   display: grid;
   gap: 12px;
+}
+
+/* The four switches belong to the Custom preset above them, so they sit inside it. */
+#settings-modal .profile-sync-settings > .profile-sync-scope-advanced {
+  margin-inline-start: 12px;
+  padding-top: 0;
+  padding-inline-start: 12px;
+  border-top: none;
+  border-inline-start: 2px solid var(--tile-border);
 }
 
 #settings-modal .profile-sync-scope-advanced.hidden,
@@ -14908,10 +15006,13 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
 }
 
 /* Camera viewer: a fixed 16:9 frame, so a slow or failed feed doesn't collapse the dialog to a
-   thin black bar or show a broken-image icon. */
+   thin black bar or show a broken-image icon. The track is sized by the frame rather than by its
+   content, otherwise a taller picture (4:3, a portrait doorbell) grows the row past the frame and
+   overflow:hidden crops it before object-fit can letterbox it. */
 .camera-modal .camera-viewer {
   position: relative;
   display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   place-items: center;
   aspect-ratio: 16 / 9;
   overflow: hidden;
@@ -14924,6 +15025,8 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   grid-area: 1 / 1;
   width: 100%;
   height: 100%;
+  min-width: 0;
+  min-height: 0;
   max-height: none;
   border-radius: 0;
   background: transparent;

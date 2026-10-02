@@ -142,6 +142,12 @@ Planned for a future release:
 > signature is not a substitute for Developer-ID signing. Do not bypass Gatekeeper for copies
 > obtained elsewhere.
 
+> **Linux keyring:** The widget remembers your Home Assistant sign-in and sync passphrase in the
+> system keyring (a Secret Service such as GNOME Keyring or KWallet). Minimal desktops (i3, Sway,
+> XFCE) may not run one, and then nothing is remembered after you quit. Install and start
+> `gnome-keyring`, or another Secret Service, and restart the widget. The `.deb` recommends
+> `gnome-keyring`, and the Arch package lists it as optional.
+
 ### First-Time Setup
 
 1. **Get your Home Assistant URL**: Use the exact address you normally open in your browser, such as `http://homeassistant.local`, a legacy `http://your-ha-ip:8123` address, or `https://your-ha-domain.com`
@@ -248,7 +254,7 @@ power controls without a brightness slider.
 
 - **General**: Configure Home Assistant connection, always-on-top, startup behavior, and language packs
 - **Themes**: Choose built-in or custom accent and background colors
-- **Window Effects**: Adjust opacity, toggle frosted glass, and enable subtle weather effects
+- **Window Effects**: Adjust opacity, toggle frosted glass, and enable subtle weather effects. On Windows, frosted glass needs Windows 11 version 22H2 or later; Windows 10 and older Windows 11 builds draw the solid panel instead
 - **Primary Cards**: Pin weather/time or any entity to the top two cards
 - **Custom Entity Icons**: Search or paste emoji/glyph overrides for entity icons
 - **Media Tile**: Select the primary media player or hide the tile

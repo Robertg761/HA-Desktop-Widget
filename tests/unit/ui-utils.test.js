@@ -122,6 +122,19 @@ describe('UI Utilities', () => {
       expect(toast.textContent).toBe('Test message');
     });
 
+    it('shows the same message once while it is still up', () => {
+      const first = uiUtils.showToast('Your token was not saved', 'warning', 2000);
+      const second = uiUtils.showToast('Your token was not saved', 'warning', 2000);
+
+      expect(second).toBe(first);
+      expect(toastContainer.querySelectorAll('.toast')).toHaveLength(1);
+
+      // A different message, or the same text as another kind of toast, is its own toast.
+      uiUtils.showToast('Your token was not saved', 'error', 2000);
+      uiUtils.showToast('Something else', 'warning', 2000);
+      expect(toastContainer.querySelectorAll('.toast')).toHaveLength(3);
+    });
+
     it('should apply success type class', () => {
       uiUtils.showToast('Success', 'success', 2000);
 
@@ -201,6 +214,31 @@ describe('UI Utilities', () => {
 
       jest.advanceTimersByTime(300);
       expect(toastContainer.children.length).toBe(0);
+    });
+
+    it('should take focus with Tab and be dismissed from the keyboard', () => {
+      uiUtils.showToast('Press a key', 'warning', 20000);
+      const toast = toastContainer.querySelector('.toast');
+      expect(toast.tabIndex).toBe(0);
+
+      toast.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+      expect(toast.classList.contains('toast-closing')).toBe(false);
+
+      toast.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      expect(toast.classList.contains('toast-closing')).toBe(true);
+      jest.advanceTimersByTime(300);
+      expect(toastContainer.children.length).toBe(0);
+    });
+
+    it.each(['Enter', ' '])('should dismiss a toast with the %j key', (key) => {
+      uiUtils.showToast('Press a key', 'info', 20000);
+      const toast = toastContainer.querySelector('.toast');
+      const keydown = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+
+      toast.dispatchEvent(keydown);
+
+      expect(keydown.defaultPrevented).toBe(true);
+      expect(toast.classList.contains('toast-closing')).toBe(true);
     });
 
     it('should not remove a clicked toast twice when its timeout also fires', () => {
@@ -1206,6 +1244,36 @@ describe('UI Utilities', () => {
       expect(result).toBe(true);
     });
 
+    it('should leave Enter on the focused Cancel button to that button so it cancels', async () => {
+      const promise = uiUtils.showConfirm('Delete', 'Delete this?');
+
+      // The browser turns Enter on a button into a click; jsdom does not, so dispatch both.
+      cancelBtn.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      cancelBtn.click();
+
+      expect(await promise).toBe(false);
+    });
+
+    it('should leave Enter on the focused Confirm button to that button so it confirms', async () => {
+      const promise = uiUtils.showConfirm('Delete', 'Delete this?');
+
+      okBtn.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      okBtn.click();
+
+      expect(await promise).toBe(true);
+    });
+
+    it('should ignore a held-down Enter key repeating into the dialog', async () => {
+      const promise = uiUtils.showConfirm('Delete', 'Delete this?');
+
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', repeat: true, bubbles: true })
+      );
+      cancelBtn.click();
+
+      expect(await promise).toBe(false);
+    });
+
     it('should return false when Escape key pressed', async () => {
       const promise = uiUtils.showConfirm('Confirm', 'Continue?');
 
@@ -1463,6 +1531,108 @@ describe('UI Utilities', () => {
       expect(document.body.style.opacity).toBe('');
     });
 
+    describe('on Windows without acrylic', () => {
+      const withoutAcrylic = { nativeGlassSupported: false };
+      // The look the frosted glass setting being off draws, for the same opacity and theme.
+      const drawnWithGlassOff = (opacity, light) => {
+        document.body.className = light ? 'theme-light' : '';
+        document.body.removeAttribute('style');
+        uiUtils.applyWindowEffects({ opacity, frostedGlass: false });
+        return { className: document.body.className, style: document.body.getAttribute('style') };
+      };
+
+      it.each([
+        [0.5, false],
+        [0.75, false],
+        [1, false],
+        [0.75, true],
+      ])('draws the solid panel for a saved "on" at opacity %s (light: %s)', (opacity, light) => {
+        mockElectronAPI.platform = 'win32';
+        const expected = drawnWithGlassOff(opacity, light);
+
+        document.body.className = light ? 'theme-light' : '';
+        document.body.removeAttribute('style');
+        uiUtils.applyWindowEffects({
+          opacity,
+          frostedGlass: true,
+          desktopCapabilities: withoutAcrylic,
+        });
+
+        expect({
+          className: document.body.className,
+          style: document.body.getAttribute('style'),
+        }).toEqual(expected);
+        expect(document.body.classList.contains('frosted-glass')).toBe(false);
+        expect(document.body.classList.contains('native-glass')).toBe(false);
+        expect(document.body.classList.contains('software-glass')).toBe(false);
+        expect(document.body.classList.contains('linux-performance-mode')).toBe(true);
+      });
+
+      it('clears glass left over from before the capability arrived', () => {
+        mockElectronAPI.platform = 'win32';
+        uiUtils.applyWindowEffects({ opacity: 0.75, frostedGlass: true });
+        expect(document.body.classList.contains('native-glass')).toBe(true);
+
+        uiUtils.applyWindowEffects({
+          opacity: 0.75,
+          frostedGlass: true,
+          desktopCapabilities: withoutAcrylic,
+        });
+
+        expect(document.body.classList.contains('frosted-glass')).toBe(false);
+        expect(document.body.classList.contains('native-glass')).toBe(false);
+        expect(document.body.style.getPropertyValue('--frosted-glass-elevated-alpha')).toBe('');
+      });
+
+      it('still draws the saved choice when the window can blur again', () => {
+        mockElectronAPI.platform = 'win32';
+        uiUtils.applyWindowEffects({
+          opacity: 0.75,
+          frostedGlass: true,
+          desktopCapabilities: withoutAcrylic,
+        });
+        uiUtils.applyWindowEffects({
+          opacity: 0.75,
+          frostedGlass: true,
+          desktopCapabilities: { nativeGlassSupported: true },
+        });
+
+        expect(document.body.className).toBe('frosted-glass native-glass');
+      });
+    });
+
+    describe('where the window can blur or the platform ignores the capability', () => {
+      const before = require('../fixtures/window-effects-before-glass-gate.json');
+      const capabilityCases = {
+        'no capability sent': undefined,
+        'Windows 11 22H2 or later': { nativeGlassSupported: true },
+        // The main process only ever sends false on Windows; the renderer must not read it elsewhere.
+        'a stray false off Windows': { nativeGlassSupported: false },
+      };
+
+      it.each(Object.entries(before))('keeps the %s look unchanged', (key, expected) => {
+        const [platform, theme, opacity, frostedGlass] = key.split('|');
+        Object.entries(capabilityCases).forEach(([label, desktopCapabilities]) => {
+          if (platform === 'win32' && desktopCapabilities?.nativeGlassSupported === false) return;
+          document.body.className = theme === 'light' ? 'theme-light' : '';
+          document.body.removeAttribute('style');
+          mockElectronAPI.platform = platform;
+
+          uiUtils.applyWindowEffects({
+            opacity: Number(opacity),
+            frostedGlass: frostedGlass === 'true',
+            ...(desktopCapabilities ? { desktopCapabilities } : {}),
+          });
+
+          expect({
+            label,
+            className: document.body.className,
+            style: document.body.getAttribute('style') || '',
+          }).toEqual({ label, ...expected });
+        });
+      });
+    });
+
     it('keeps macOS non-glass opacity on background surfaces without performance mode', () => {
       mockElectronAPI.platform = 'darwin';
 
@@ -1472,6 +1642,24 @@ describe('UI Utilities', () => {
       expect(document.body.classList.contains('frosted-glass')).toBe(false);
       expect(Number(document.body.style.getPropertyValue('--window-bg-alpha'))).toBeLessThan(1);
       expect(document.body.style.opacity).toBe('');
+    });
+  });
+
+  describe('isFrostedGlassAvailable', () => {
+    it('is withheld only on Windows when the main process says acrylic is missing', () => {
+      const withoutAcrylic = { desktopCapabilities: { nativeGlassSupported: false } };
+      const withAcrylic = { desktopCapabilities: { nativeGlassSupported: true } };
+
+      mockElectronAPI.platform = 'win32';
+      expect(uiUtils.isFrostedGlassAvailable(withoutAcrylic)).toBe(false);
+      expect(uiUtils.isFrostedGlassAvailable(withAcrylic)).toBe(true);
+      expect(uiUtils.isFrostedGlassAvailable({})).toBe(true);
+      expect(uiUtils.isFrostedGlassAvailable(undefined)).toBe(true);
+
+      ['darwin', 'linux'].forEach((platform) => {
+        mockElectronAPI.platform = platform;
+        expect(uiUtils.isFrostedGlassAvailable(withoutAcrylic)).toBe(true);
+      });
     });
   });
 

@@ -13,14 +13,14 @@ describe('profile sync settings transition safeguards', () => {
     expect(settingsSource).toContain(
       'Enter the current remote passphrase before disabling encrypted sync.'
     );
-    expect(settingsSource).toContain(
+    expect(settingsSource.replace(/\s+/g, ' ')).toContain(
       'disablingEncryption && !typedPassphrase && !hasSavedPassphrase'
     );
   });
 
   it('shows durable pending encryption and key-recovery states', () => {
     expect(settingsSource).toContain('typeof status.encryptionChangePending');
-    expect(settingsSource).toContain('Sync is paused until this is resolved.');
+    expect(settingsSource).toContain('Sync is paused until then.');
     expect(settingsSource).toContain('status.rewriteRecoveryRequired');
     expect(settingsSource).toContain('A protected sync-key recovery is pending.');
   });

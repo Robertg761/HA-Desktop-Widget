@@ -1,0 +1,146 @@
+{
+  "win32|dark|0.5|true": {
+    "className": "frosted-glass native-glass",
+    "style": "--window-opacity: 0.500; --window-bg-alpha: 0.080; --desktop-pin-window-opacity: 0.080; --frosted-blur: 25.2px; --frosted-bg-alpha: 0.044; --frosted-elevated-alpha: 0.048; --frosted-surface-alpha: 0.044; --frosted-surface-hover-alpha: 0.052; --frosted-card-alpha: 0.038; --frosted-glass-alpha: 0.035; --frosted-glass-elevated-alpha: 0.042; --frosted-glass-overlay-alpha: 0.050; --software-acrylic-bg-alpha: 0.190; --software-acrylic-highlight-alpha: 0.040; --software-acrylic-noise-alpha: 0.027; --software-acrylic-shadow-alpha: 0.040;"
+  },
+  "win32|dark|0.5|false": {
+    "className": "linux-performance-mode",
+    "style": "--window-opacity: 0.500; --window-bg-alpha: 0.080; --desktop-pin-window-opacity: 0.080;"
+  },
+  "win32|dark|0.75|true": {
+    "className": "frosted-glass native-glass",
+    "style": "--window-opacity: 0.750; --window-bg-alpha: 0.441; --desktop-pin-window-opacity: 0.441; --frosted-blur: 25.2px; --frosted-bg-alpha: 0.242; --frosted-elevated-alpha: 0.265; --frosted-surface-alpha: 0.242; --frosted-surface-hover-alpha: 0.287; --frosted-card-alpha: 0.207; --frosted-glass-alpha: 0.194; --frosted-glass-elevated-alpha: 0.229; --frosted-glass-overlay-alpha: 0.278; --software-acrylic-bg-alpha: 0.413; --software-acrylic-highlight-alpha: 0.055; --software-acrylic-noise-alpha: 0.038; --software-acrylic-shadow-alpha: 0.055;"
+  },
+  "win32|dark|0.75|false": {
+    "className": "linux-performance-mode",
+    "style": "--window-opacity: 0.750; --window-bg-alpha: 0.441; --desktop-pin-window-opacity: 0.441;"
+  },
+  "win32|dark|1|true": {
+    "className": "frosted-glass native-glass",
+    "style": "--window-opacity: 1.000; --window-bg-alpha: 1.000; --desktop-pin-window-opacity: 1.000; --frosted-blur: 25.2px; --frosted-bg-alpha: 0.550; --frosted-elevated-alpha: 0.600; --frosted-surface-alpha: 0.550; --frosted-surface-hover-alpha: 0.650; --frosted-card-alpha: 0.470; --frosted-glass-alpha: 0.440; --frosted-glass-elevated-alpha: 0.520; --frosted-glass-overlay-alpha: 0.630; --software-acrylic-bg-alpha: 0.760; --software-acrylic-highlight-alpha: 0.080; --software-acrylic-noise-alpha: 0.055; --software-acrylic-shadow-alpha: 0.080;"
+  },
+  "win32|dark|1|false": {
+    "className": "linux-performance-mode",
+    "style": "--window-opacity: 1.000; --window-bg-alpha: 1.000; --desktop-pin-window-opacity: 1.000;"
+  },
+  "win32|light|0.5|true": {
+    "className": "theme-light frosted-glass native-glass",
+    "style": "--window-opacity: 0.500; --window-bg-alpha: 0.080; --desktop-pin-window-opacity: 0.080; --frosted-blur: 25.2px; --frosted-bg-alpha: 0.044; --frosted-elevated-alpha: 0.048; --frosted-surface-alpha: 0.044; --frosted-surface-hover-alpha: 0.052; --frosted-card-alpha: 0.038; --frosted-glass-alpha: 0.035; --frosted-glass-elevated-alpha: 0.042; --frosted-glass-overlay-alpha: 0.050; --software-acrylic-bg-alpha: 0.228; --software-acrylic-highlight-alpha: 0.079; --software-acrylic-noise-alpha: 0.040; --software-acrylic-shadow-alpha: 0.017;"
+  },
+  "win32|light|0.5|false": {
+    "className": "theme-light linux-performance-mode",
+    "style": "--window-opacity: 0.500; --window-bg-alpha: 0.080; --desktop-pin-window-opacity: 0.080;"
+  },
+  "win32|light|0.75|true": {
+    "className": "theme-light frosted-glass native-glass",
+    "style": "--window-opacity: 0.750; --window-bg-alpha: 0.441; --desktop-pin-window-opacity: 0.441; --frosted-blur: 25.2px; --frosted-bg-alpha: 0.242; --frosted-elevated-alpha: 0.265; --frosted-surface-alpha: 0.242; --frosted-surface-hover-alpha: 0.287; --frosted-card-alpha: 0.207; --frosted-glass-alpha: 0.194; --frosted-glass-elevated-alpha: 0.229; --frosted-glass-overlay-alpha: 0.278; --software-acrylic-bg-alpha: 0.445; --software-acrylic-highlight-alpha: 0.111; --software-acrylic-noise-alpha: 0.055; --software-acrylic-shadow-alpha: 0.024;"
+  },
+  "win32|light|0.75|false": {
+    "className": "theme-light linux-performance-mode",
+    "style": "--window-opacity: 0.750; --window-bg-alpha: 0.441; --desktop-pin-window-opacity: 0.441;"
+  },
+  "win32|light|1|true": {
+    "className": "theme-light frosted-glass native-glass",
+    "style": "--window-opacity: 1.000; --window-bg-alpha: 1.000; --desktop-pin-window-opacity: 1.000; --frosted-blur: 25.2px; --frosted-bg-alpha: 0.550; --frosted-elevated-alpha: 0.600; --frosted-surface-alpha: 0.550; --frosted-surface-hover-alpha: 0.650; --frosted-card-alpha: 0.470; --frosted-glass-alpha: 0.440; --frosted-glass-elevated-alpha: 0.520; --frosted-glass-overlay-alpha: 0.630; --software-acrylic-bg-alpha: 0.780; --software-acrylic-highlight-alpha: 0.160; --software-acrylic-noise-alpha: 0.080; --software-acrylic-shadow-alpha: 0.035;"
+  },
+  "win32|light|1|false": {
+    "className": "theme-light linux-performance-mode",
+    "style": "--window-opacity: 1.000; --window-bg-alpha: 1.000; --desktop-pin-window-opacity: 1.000;"
+  },
+  "darwin|dark|0.5|true": {
+    "className": "frosted-glass native-glass",
+    "style": "--window-opacity: 0.500; --window-bg-alpha: 0.080; --desktop-pin-window-opacity: 0.080; --frosted-blur: 25.2px; --frosted-bg-alpha: 0.044; --frosted-elevated-alpha: 0.048; --frosted-surface-alpha: 0.044; --frosted-surface-hover-alpha: 0.052; --frosted-card-alpha: 0.038; --frosted-glass-alpha: 0.035; --frosted-glass-elevated-alpha: 0.042; --frosted-glass-overlay-alpha: 0.050; --software-acrylic-bg-alpha: 0.190; --software-acrylic-highlight-alpha: 0.040; --software-acrylic-noise-alpha: 0.027; --software-acrylic-shadow-alpha: 0.040;"
+  },
+  "darwin|dark|0.5|false": {
+    "className": "",
+    "style": "--window-opacity: 0.500; --window-bg-alpha: 0.080; --desktop-pin-window-opacity: 0.080;"
+  },
+  "darwin|dark|0.75|true": {
+    "className": "frosted-glass native-glass",
+    "style": "--window-opacity: 0.750; --window-bg-alpha: 0.441; --desktop-pin-window-opacity: 0.441; --frosted-blur: 25.2px; --frosted-bg-alpha: 0.242; --frosted-elevated-alpha: 0.265; --frosted-surface-alpha: 0.242; --frosted-surface-hover-alpha: 0.287; --frosted-card-alpha: 0.207; --frosted-glass-alpha: 0.194; --frosted-glass-elevated-alpha: 0.229; --frosted-glass-overlay-alpha: 0.278; --software-acrylic-bg-alpha: 0.413; --software-acrylic-highlight-alpha: 0.055; --software-acrylic-noise-alpha: 0.038; --software-acrylic-shadow-alpha: 0.055;"
+  },
+  "darwin|dark|0.75|false": {
+    "className": "",
+    "style": "--window-opacity: 0.750; --window-bg-alpha: 0.441; --desktop-pin-window-opacity: 0.441;"
+  },
+  "darwin|dark|1|true": {
+    "className": "frosted-glass native-glass",
+    "style": "--window-opacity: 1.000; --window-bg-alpha: 1.000; --desktop-pin-window-opacity: 1.000; --frosted-blur: 25.2px; --frosted-bg-alpha: 0.550; --frosted-elevated-alpha: 0.600; --frosted-surface-alpha: 0.550; --frosted-surface-hover-alpha: 0.650; --frosted-card-alpha: 0.470; --frosted-glass-alpha: 0.440; --frosted-glass-elevated-alpha: 0.520; --frosted-glass-overlay-alpha: 0.630; --software-acrylic-bg-alpha: 0.760; --software-acrylic-highlight-alpha: 0.080; --software-acrylic-noise-alpha: 0.055; --software-acrylic-shadow-alpha: 0.080;"
+  },
+  "darwin|dark|1|false": {
+    "className": "",
+    "style": "--window-opacity: 1.000; --window-bg-alpha: 1.000; --desktop-pin-window-opacity: 1.000;"
+  },
+  "darwin|light|0.5|true": {
+    "className": "theme-light frosted-glass native-glass",
+    "style": "--window-opacity: 0.500; --window-bg-alpha: 0.080; --desktop-pin-window-opacity: 0.080; --frosted-blur: 25.2px; --frosted-bg-alpha: 0.044; --frosted-elevated-alpha: 0.048; --frosted-surface-alpha: 0.044; --frosted-surface-hover-alpha: 0.052; --frosted-card-alpha: 0.038; --frosted-glass-alpha: 0.035; --frosted-glass-elevated-alpha: 0.042; --frosted-glass-overlay-alpha: 0.050; --software-acrylic-bg-alpha: 0.228; --software-acrylic-highlight-alpha: 0.079; --software-acrylic-noise-alpha: 0.040; --software-acrylic-shadow-alpha: 0.017;"
+  },
+  "darwin|light|0.5|false": {
+    "className": "theme-light",
+    "style": "--window-opacity: 0.500; --window-bg-alpha: 0.080; --desktop-pin-window-opacity: 0.080;"
+  },
+  "darwin|light|0.75|true": {
+    "className": "theme-light frosted-glass native-glass",
+    "style": "--window-opacity: 0.750; --window-bg-alpha: 0.441; --desktop-pin-window-opacity: 0.441; --frosted-blur: 25.2px; --frosted-bg-alpha: 0.242; --frosted-elevated-alpha: 0.265; --frosted-surface-alpha: 0.242; --frosted-surface-hover-alpha: 0.287; --frosted-card-alpha: 0.207; --frosted-glass-alpha: 0.194; --frosted-glass-elevated-alpha: 0.229; --frosted-glass-overlay-alpha: 0.278; --software-acrylic-bg-alpha: 0.445; --software-acrylic-highlight-alpha: 0.111; --software-acrylic-noise-alpha: 0.055; --software-acrylic-shadow-alpha: 0.024;"
+  },
+  "darwin|light|0.75|false": {
+    "className": "theme-light",
+    "style": "--window-opacity: 0.750; --window-bg-alpha: 0.441; --desktop-pin-window-opacity: 0.441;"
+  },
+  "darwin|light|1|true": {
+    "className": "theme-light frosted-glass native-glass",
+    "style": "--window-opacity: 1.000; --window-bg-alpha: 1.000; --desktop-pin-window-opacity: 1.000; --frosted-blur: 25.2px; --frosted-bg-alpha: 0.550; --frosted-elevated-alpha: 0.600; --frosted-surface-alpha: 0.550; --frosted-surface-hover-alpha: 0.650; --frosted-card-alpha: 0.470; --frosted-glass-alpha: 0.440; --frosted-glass-elevated-alpha: 0.520; --frosted-glass-overlay-alpha: 0.630; --software-acrylic-bg-alpha: 0.780; --software-acrylic-highlight-alpha: 0.160; --software-acrylic-noise-alpha: 0.080; --software-acrylic-shadow-alpha: 0.035;"
+  },
+  "darwin|light|1|false": {
+    "className": "theme-light",
+    "style": "--window-opacity: 1.000; --window-bg-alpha: 1.000; --desktop-pin-window-opacity: 1.000;"
+  },
+  "linux|dark|0.5|true": {
+    "className": "linux-performance-mode frosted-glass software-glass",
+    "style": "--window-opacity: 0.500; --window-bg-alpha: 0.080; --desktop-pin-window-opacity: 0.080; --frosted-blur: 25.2px; --frosted-bg-alpha: 0.206; --frosted-elevated-alpha: 0.225; --frosted-surface-alpha: 0.206; --frosted-surface-hover-alpha: 0.280; --frosted-card-alpha: 0.176; --frosted-glass-alpha: 0.165; --frosted-glass-elevated-alpha: 0.220; --frosted-glass-overlay-alpha: 0.236; --software-acrylic-bg-alpha: 0.190; --software-acrylic-highlight-alpha: 0.040; --software-acrylic-noise-alpha: 0.027; --software-acrylic-shadow-alpha: 0.040;"
+  },
+  "linux|dark|0.5|false": {
+    "className": "linux-performance-mode",
+    "style": "--window-opacity: 0.500; --window-bg-alpha: 0.080; --desktop-pin-window-opacity: 0.080;"
+  },
+  "linux|dark|0.75|true": {
+    "className": "linux-performance-mode frosted-glass software-glass",
+    "style": "--window-opacity: 0.750; --window-bg-alpha: 0.441; --desktop-pin-window-opacity: 0.441; --frosted-blur: 25.2px; --frosted-bg-alpha: 0.341; --frosted-elevated-alpha: 0.372; --frosted-surface-alpha: 0.341; --frosted-surface-hover-alpha: 0.403; --frosted-card-alpha: 0.291; --frosted-glass-alpha: 0.273; --frosted-glass-elevated-alpha: 0.322; --frosted-glass-overlay-alpha: 0.390; --software-acrylic-bg-alpha: 0.413; --software-acrylic-highlight-alpha: 0.055; --software-acrylic-noise-alpha: 0.038; --software-acrylic-shadow-alpha: 0.055;"
+  },
+  "linux|dark|0.75|false": {
+    "className": "linux-performance-mode",
+    "style": "--window-opacity: 0.750; --window-bg-alpha: 0.441; --desktop-pin-window-opacity: 0.441;"
+  },
+  "linux|dark|1|true": {
+    "className": "linux-performance-mode frosted-glass software-glass",
+    "style": "--window-opacity: 1.000; --window-bg-alpha: 1.000; --desktop-pin-window-opacity: 1.000; --frosted-blur: 25.2px; --frosted-bg-alpha: 0.550; --frosted-elevated-alpha: 0.600; --frosted-surface-alpha: 0.550; --frosted-surface-hover-alpha: 0.650; --frosted-card-alpha: 0.470; --frosted-glass-alpha: 0.440; --frosted-glass-elevated-alpha: 0.520; --frosted-glass-overlay-alpha: 0.630; --software-acrylic-bg-alpha: 0.760; --software-acrylic-highlight-alpha: 0.080; --software-acrylic-noise-alpha: 0.055; --software-acrylic-shadow-alpha: 0.080;"
+  },
+  "linux|dark|1|false": {
+    "className": "linux-performance-mode",
+    "style": "--window-opacity: 1.000; --window-bg-alpha: 1.000; --desktop-pin-window-opacity: 1.000;"
+  },
+  "linux|light|0.5|true": {
+    "className": "theme-light linux-performance-mode frosted-glass software-glass",
+    "style": "--window-opacity: 0.500; --window-bg-alpha: 0.080; --desktop-pin-window-opacity: 0.080; --frosted-blur: 25.2px; --frosted-bg-alpha: 0.207; --frosted-elevated-alpha: 0.253; --frosted-surface-alpha: 0.230; --frosted-surface-hover-alpha: 0.322; --frosted-card-alpha: 0.184; --frosted-glass-alpha: 0.184; --frosted-glass-elevated-alpha: 0.253; --frosted-glass-overlay-alpha: 0.253; --software-acrylic-bg-alpha: 0.228; --software-acrylic-highlight-alpha: 0.079; --software-acrylic-noise-alpha: 0.040; --software-acrylic-shadow-alpha: 0.017;"
+  },
+  "linux|light|0.5|false": {
+    "className": "theme-light linux-performance-mode",
+    "style": "--window-opacity: 0.500; --window-bg-alpha: 0.080; --desktop-pin-window-opacity: 0.080;"
+  },
+  "linux|light|0.75|true": {
+    "className": "theme-light linux-performance-mode frosted-glass software-glass",
+    "style": "--window-opacity: 0.750; --window-bg-alpha: 0.441; --desktop-pin-window-opacity: 0.441; --frosted-blur: 25.2px; --frosted-bg-alpha: 0.341; --frosted-elevated-alpha: 0.372; --frosted-surface-alpha: 0.341; --frosted-surface-hover-alpha: 0.403; --frosted-card-alpha: 0.291; --frosted-glass-alpha: 0.273; --frosted-glass-elevated-alpha: 0.322; --frosted-glass-overlay-alpha: 0.390; --software-acrylic-bg-alpha: 0.445; --software-acrylic-highlight-alpha: 0.111; --software-acrylic-noise-alpha: 0.055; --software-acrylic-shadow-alpha: 0.024;"
+  },
+  "linux|light|0.75|false": {
+    "className": "theme-light linux-performance-mode",
+    "style": "--window-opacity: 0.750; --window-bg-alpha: 0.441; --desktop-pin-window-opacity: 0.441;"
+  },
+  "linux|light|1|true": {
+    "className": "theme-light linux-performance-mode frosted-glass software-glass",
+    "style": "--window-opacity: 1.000; --window-bg-alpha: 1.000; --desktop-pin-window-opacity: 1.000; --frosted-blur: 25.2px; --frosted-bg-alpha: 0.550; --frosted-elevated-alpha: 0.600; --frosted-surface-alpha: 0.550; --frosted-surface-hover-alpha: 0.650; --frosted-card-alpha: 0.470; --frosted-glass-alpha: 0.440; --frosted-glass-elevated-alpha: 0.520; --frosted-glass-overlay-alpha: 0.630; --software-acrylic-bg-alpha: 0.780; --software-acrylic-highlight-alpha: 0.160; --software-acrylic-noise-alpha: 0.080; --software-acrylic-shadow-alpha: 0.035;"
+  },
+  "linux|light|1|false": {
+    "className": "theme-light linux-performance-mode",
+    "style": "--window-opacity: 1.000; --window-bg-alpha: 1.000; --desktop-pin-window-opacity: 1.000;"
+  }
+}

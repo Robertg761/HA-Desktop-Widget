@@ -2,6 +2,7 @@ const path = require('path');
 const {
   getAppIconPath,
   getMainWindowVisualOptions,
+  getRelaunchOptions,
   resolveNativeThemeSource,
   hasGlobalShortcutFallback,
   isLinuxAppImage,
@@ -36,6 +37,36 @@ describe('platform helpers', () => {
     expect(supportsAutoUpdater('linux', {})).toBe(false);
     expect(supportsAutoUpdater('win32', {})).toBe(true);
     expect(supportsAutoUpdater('darwin', {})).toBe(false);
+  });
+
+  test('relaunches an AppImage through the AppImage file, not its vanishing mount', () => {
+    const argv = ['/tmp/.mount_HAWidgXyz/ha-desktop-widget', '--show'];
+
+    expect(
+      getRelaunchOptions({ argv, env: { APPIMAGE: '/apps/HA Desktop Widget.AppImage' } })
+    ).toEqual({
+      args: ['--show'],
+      execPath: '/apps/HA Desktop Widget.AppImage',
+    });
+    expect(
+      getRelaunchOptions({
+        argv,
+        env: { APPIMAGE: '/apps/HA Desktop Widget.AppImage' },
+        extraArgs: ['--ozone-platform=wayland'],
+      })
+    ).toEqual({
+      args: ['--show', '--ozone-platform=wayland'],
+      execPath: '/apps/HA Desktop Widget.AppImage',
+    });
+  });
+
+  test('relaunches every other install in place with the same arguments', () => {
+    const argv = ['/opt/HA Desktop Widget/ha-desktop-widget', '--show'];
+
+    expect(getRelaunchOptions({ argv, env: {} })).toEqual({ args: ['--show'] });
+    expect(getRelaunchOptions({ argv, env: {}, extraArgs: ['--ozone-platform=wayland'] })).toEqual({
+      args: ['--show', '--ozone-platform=wayland'],
+    });
   });
 
   test('uses opaque native windows on Linux unless explicitly overridden', () => {
@@ -395,6 +426,37 @@ describe('platform helpers', () => {
     });
   });
 
+  test('does not ask for acrylic on Windows that cannot draw it', () => {
+    expect(
+      getMainWindowVisualOptions({
+        platform: 'win32',
+        frostedGlass: true,
+        nativeGlassSupported: false,
+        transparencyOptions: { transparent: true, backgroundColor: '#00000000' },
+      })
+    ).toEqual({
+      transparent: true,
+      backgroundColor: '#00000000',
+      thickFrame: true,
+    });
+  });
+
+  test('keeps acrylic on Windows 11 22H2 and later', () => {
+    expect(
+      getMainWindowVisualOptions({
+        platform: 'win32',
+        frostedGlass: true,
+        nativeGlassSupported: true,
+        transparencyOptions: { transparent: true, backgroundColor: '#00000000' },
+      })
+    ).toEqual({
+      transparent: true,
+      backgroundColor: '#00000000',
+      thickFrame: true,
+      backgroundMaterial: 'acrylic',
+    });
+  });
+
   test('enables macOS vibrancy only when frosted glass is enabled', () => {
     expect(
       getMainWindowVisualOptions({
@@ -417,6 +479,33 @@ describe('platform helpers', () => {
     ).toEqual({
       transparent: true,
       backgroundColor: '#00000000',
+    });
+  });
+
+  test('leaves macOS and Linux alone when told the Windows build cannot blur', () => {
+    expect(
+      getMainWindowVisualOptions({
+        platform: 'darwin',
+        frostedGlass: true,
+        nativeGlassSupported: false,
+        transparencyOptions: { transparent: true, backgroundColor: '#00000000' },
+      })
+    ).toEqual({
+      transparent: true,
+      backgroundColor: '#00000000',
+      vibrancy: 'sidebar',
+    });
+    expect(
+      getMainWindowVisualOptions({
+        platform: 'linux',
+        frostedGlass: true,
+        nativeGlassSupported: false,
+        transparencyOptions: { transparent: false, backgroundColor: '#12161e' },
+      })
+    ).toEqual({
+      transparent: false,
+      backgroundColor: '#12161e',
+      roundedCorners: false,
     });
   });
 

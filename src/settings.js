@@ -15,6 +15,7 @@ import {
   applyUiPreferences,
   suspendSeasonalColors,
   applyWindowEffects,
+  isFrostedGlassAvailable,
   trapFocus,
   closeModal,
   openModal,
@@ -79,8 +80,11 @@ const COLOR_TARGETS = {
   background: 'background',
 };
 // Called at render time so the warning follows the active language.
+const getFrostedGlassUnavailableMessage = () => t('Needs Windows 11 version 22H2 or later.');
 const getWeatherEffectsGlassWarning = () =>
-  t('Turn on Frosted glass background before enabling subtle weather effects.');
+  isFrostedGlassAvailable(state.CONFIG)
+    ? t('Turn on Frosted glass background before enabling subtle weather effects.')
+    : getFrostedGlassUnavailableMessage();
 const WEATHER_UNAVAILABLE_STATES = new Set(['unknown', 'unavailable']);
 let activeColorTarget = COLOR_TARGETS.accent;
 let themeTooltip = null;
@@ -101,6 +105,7 @@ let languageSaveQueue = Promise.resolve();
 // The Start at login state shown when Settings opened, so Save only writes a real change.
 let loadedStartAtLogin = null;
 let profileSyncStatusCache = null;
+let profileSyncErrorObserver = null;
 let localePackListCache = [];
 let localePackListError = '';
 let languagePackRefreshPromise = Promise.resolve();
@@ -180,6 +185,23 @@ const CUSTOM_ENTITY_ICON_FALLBACKS = [
   '🍳',
   '🚿',
 ];
+
+// Windows before 11 22H2 cannot blur behind the window, so the widget draws the solid panel and
+// the switch shows off and locked. Saving leaves a locked switch alone, so the saved choice comes
+// back into effect if the machine is upgraded.
+function syncFrostedGlassAvailability() {
+  const frostedGlass = document.getElementById('frosted-glass');
+  if (!frostedGlass) return;
+  const unavailable = !isFrostedGlassAvailable(state.CONFIG);
+  frostedGlass.disabled = unavailable;
+  frostedGlass.title = unavailable ? getFrostedGlassUnavailableMessage() : '';
+  if (unavailable) frostedGlass.checked = false;
+  const warning = document.getElementById('frosted-glass-warning');
+  if (warning) {
+    warning.classList.toggle('hidden', !unavailable);
+    warning.textContent = getFrostedGlassUnavailableMessage();
+  }
+}
 
 function syncWeatherEffectsAvailability(options = {}) {
   const { showWarning = false } = options;
@@ -330,6 +352,9 @@ const CUSTOM_ENTITY_ICON_SEARCH_ALIASES = {
   '🚿': ['bathroom', 'shower'],
 };
 const PROFILE_SYNC_DEFAULT_FILE_NAME = 'ha-widget-profile-sync.json';
+// Main enforces the same minimum (PROFILE_SYNC_MIN_PASSPHRASE_LENGTH in main.js); checking it
+// here keeps a short passphrase from ever reaching a half-saved state.
+const PROFILE_SYNC_MIN_PASSPHRASE_LENGTH = 8;
 const PROFILE_SYNC_HELP_URL = 'https://github.com/Robertg761/HA-Desktop-Widget#profile-sync';
 const GITHUB_SPONSORS_URL = 'https://github.com/sponsors/robertg761';
 // GitHub Sponsors caps custom amounts at $12,000; higher values 404 the checkout page.
@@ -498,6 +523,13 @@ function normalizeHexColor(hex) {
           .join('')
       : normalized;
   return `#${sixDigit.toUpperCase()}`;
+}
+
+// While the user types, only a complete 6-digit value counts. normalizeHexColor() also expands
+// 3-digit shorthand, which would rewrite "#1E8" to "#11EE88" before the rest of "#1E88E5" is typed.
+function normalizeFullHexColor(hex) {
+  if (typeof hex !== 'string' || !/^#?[0-9a-f]{6}$/i.test(hex.trim())) return null;
+  return normalizeHexColor(hex);
 }
 
 function hexToRgb(hex) {
@@ -988,6 +1020,7 @@ function getCustomColorEditorElements() {
     gInput: document.getElementById('custom-color-g'),
     bInput: document.getElementById('custom-color-b'),
     hexInput: document.getElementById('custom-color-hex'),
+    hexError: document.getElementById('custom-color-hex-error'),
     saveBtn: document.getElementById('save-custom-color-btn'),
     managementRow: document.getElementById('custom-theme-management'),
     nameInput: document.getElementById('custom-color-name-input'),
@@ -1028,28 +1061,48 @@ function setMainSettingsSaveLocked(isLocked) {
   }
 }
 
-function setCustomColorEditorValues(hex) {
+function setCustomColorHexInvalid(invalid) {
+  const { hexInput, hexError } = getCustomColorEditorElements();
+  if (hexInput) {
+    if (invalid) {
+      hexInput.setAttribute('aria-invalid', 'true');
+    } else {
+      hexInput.removeAttribute('aria-invalid');
+    }
+  }
+  hexError?.classList.toggle('hidden', !invalid);
+}
+
+/**
+ * Write one colour into every editor field.
+ * @param {string} hex - The colour to show.
+ * @param {Object} [options] - Write behaviour.
+ * @param {HTMLInputElement|null} [options.skipField] - A field the user is typing in; rewriting it
+ *   would replace their half-typed text with the normalized colour.
+ */
+function setCustomColorEditorValues(hex, { skipField = null } = {}) {
   const normalized = normalizeHexColor(hex);
   if (!normalized) return;
   const rgb = hexToRgb(normalized);
   if (!rgb) return;
 
   const { picker, rInput, gInput, bInput, hexInput } = getCustomColorEditorElements();
+  const write = (input, value) => {
+    if (input && input !== skipField) input.value = value;
+  };
   isSyncingCustomColorEditor = true;
-  if (picker) picker.value = normalized.toLowerCase();
-  if (rInput) rInput.value = `${rgb.r}`;
-  if (gInput) gInput.value = `${rgb.g}`;
-  if (bInput) bInput.value = `${rgb.b}`;
-  if (hexInput) hexInput.value = normalized;
+  write(picker, normalized.toLowerCase());
+  write(rInput, `${rgb.r}`);
+  write(gInput, `${rgb.g}`);
+  write(bInput, `${rgb.b}`);
+  write(hexInput, normalized);
   isSyncingCustomColorEditor = false;
+  if (hexInput && hexInput !== skipField) setCustomColorHexInvalid(false);
   lastValidCustomColorHex = normalized;
 }
 
-function getCustomColorHexFromEditor() {
-  const { rInput, gInput, bInput, hexInput } = getCustomColorEditorElements();
-  const fromHexInput = normalizeHexColor(hexInput?.value);
-  if (fromHexInput) return fromHexInput;
-
+function getCustomColorHexFromChannels() {
+  const { rInput, gInput, bInput } = getCustomColorEditorElements();
   const parseChannel = (input) => {
     if (!input) return null;
     const raw = (input.value || '').trim();
@@ -1064,6 +1117,11 @@ function getCustomColorHexFromEditor() {
   const b = parseChannel(bInput);
   if (r === null || g === null || b === null) return null;
   return rgbToHex(r, g, b);
+}
+
+function getCustomColorHexFromEditor() {
+  const { hexInput } = getCustomColorEditorElements();
+  return normalizeHexColor(hexInput?.value) || getCustomColorHexFromChannels();
 }
 
 function applyCustomColorPreview(hex) {
@@ -1125,8 +1183,14 @@ function selectThemeForActiveTarget(themeId) {
 }
 
 function saveCustomColorFromEditor() {
-  const color = getCustomColorHexFromEditor();
+  const { hexInput } = getCustomColorEditorElements();
+  // The channel boxes only ever hold the last valid colour, so they must not stand in for a hex
+  // value the user typed wrongly; they are the fallback only when the hex field is empty.
+  const typedHex = (hexInput?.value || '').trim();
+  const color = typedHex ? normalizeHexColor(typedHex) : getCustomColorHexFromChannels();
   if (!color) {
+    setCustomColorHexInvalid(true);
+    hexInput?.focus();
     showToast(t('Enter a valid color before saving.'), 'warning', 2500);
     return false;
   }
@@ -1250,12 +1314,13 @@ function initCustomColorEditor() {
     };
   }
 
-  const handleRgbInput = () => {
+  // `event` is absent when blur re-applies the clamped value, so every field is rewritten then.
+  const handleRgbInput = (event) => {
     if (isSyncingCustomColorEditor) return;
     setMainSettingsSaveLocked(true);
-    const color = getCustomColorHexFromEditor();
+    const color = getCustomColorHexFromChannels();
     if (!color) return;
-    setCustomColorEditorValues(color);
+    setCustomColorEditorValues(color, { skipField: event?.target });
     applyCustomColorPreview(color);
   };
 
@@ -1276,25 +1341,43 @@ function initCustomColorEditor() {
   if (hexInput) {
     hexInput.oninput = () => {
       if (isSyncingCustomColorEditor) return;
-      const normalized = normalizeHexColor(hexInput.value);
+      setCustomColorHexInvalid(false);
+      const normalized = normalizeFullHexColor(hexInput.value);
       if (!normalized) return;
-      setCustomColorEditorValues(normalized);
+      setCustomColorEditorValues(normalized, { skipField: hexInput });
       applyCustomColorPreview(normalized);
     };
     hexInput.onblur = () => {
-      const normalized = normalizeHexColor(hexInput.value);
-      if (!normalized) {
+      if (!hexInput.value.trim()) {
         setCustomColorEditorValues(lastValidCustomColorHex);
         return;
       }
+      const normalized = normalizeHexColor(hexInput.value);
+      if (!normalized) {
+        // Keep what was typed and flag it: reverting here would hide the typo, and Save would then
+        // quietly store the previous colour.
+        setCustomColorHexInvalid(true);
+        return;
+      }
+      // A shorthand value ("#1E8") was not previewed while typing, so expanding it is the change.
+      if (normalized !== lastValidCustomColorHex) applyCustomColorPreview(normalized);
       setCustomColorEditorValues(normalized);
     };
   }
 
+  [rInput, gInput, bInput, hexInput].forEach((input) => {
+    if (!input) return;
+    input.onkeydown = (event) => {
+      // An Enter that commits an IME composition belongs to the IME, not to Save.
+      if (event.key !== 'Enter' || event.isComposing) return;
+      event.preventDefault();
+      if (saveCustomColorFromEditor()) setMainSettingsSaveLocked(false);
+    };
+  });
+
   if (saveBtn) {
     saveBtn.onclick = () => {
-      saveCustomColorFromEditor();
-      setMainSettingsSaveLocked(false);
+      if (saveCustomColorFromEditor()) setMainSettingsSaveLocked(false);
     };
   }
 
@@ -2750,6 +2833,7 @@ function getPreviewValuesFromInputs() {
     frostedGlass: frostedGlassEnabled,
     weatherEffectsEnabled: weatherEffectsEnabledVal,
     weatherOverride: weatherOverrideVal,
+    desktopCapabilities: state.CONFIG?.desktopCapabilities,
   };
 }
 
@@ -2829,6 +2913,7 @@ function savedWindowEffects(config) {
     frostedGlass: !!config?.frostedGlass,
     weatherEffectsEnabled: !!config?.frostedGlass && !!config?.ui?.weatherEffectsEnabled,
     weatherOverride: config?.ui?.weatherOverride || 'auto',
+    desktopCapabilities: config?.desktopCapabilities,
   };
 }
 
@@ -3099,6 +3184,28 @@ function describeProfileSyncStatus(status = {}) {
   return parts.join(' ');
 }
 
+/**
+ * Error text stays at two lines until asked for, so a long one cannot push the rows below it
+ * down by a paragraph. The element is never hidden: it is a live region, and one that appears
+ * with its text in it may not be announced.
+ */
+function setProfileSyncErrorExpanded(expanded) {
+  document.getElementById('profile-sync-error')?.classList.toggle('is-clamped', !expanded);
+  document
+    .getElementById('profile-sync-error-toggle')
+    ?.setAttribute('aria-expanded', String(expanded));
+  updateProfileSyncErrorToggle();
+}
+
+/** Offers "Details" only when the clamped text does not fit; an open message keeps its way back. */
+function updateProfileSyncErrorToggle() {
+  const errorEl = document.getElementById('profile-sync-error');
+  const toggle = document.getElementById('profile-sync-error-toggle');
+  if (!errorEl || !toggle) return;
+  const expanded = toggle.getAttribute('aria-expanded') === 'true';
+  toggle.classList.toggle('hidden', !expanded && errorEl.scrollHeight <= errorEl.clientHeight + 1);
+}
+
 function setProfileSyncSettingsVisibility() {
   const enabledCheckbox = document.getElementById('profile-sync-enabled');
   const settingsContainer = document.getElementById('profile-sync-settings');
@@ -3130,6 +3237,8 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
 
   if (statusEl) {
     statusEl.textContent = describeProfileSyncStatus(status);
+    // The spinner sits in the line's own text, so a run starting moves nothing.
+    statusEl.dataset.busy = status.inFlight ? 'true' : 'false';
   }
 
   if (errorEl) {
@@ -3142,10 +3251,10 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
       typeof status.encryptionChangePending === 'boolean'
         ? status.encryptionChangePending
           ? t(
-              'Encryption is still waiting to be enabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.'
+              'Encryption is not on yet. Enter a passphrase of at least 8 characters and save to finish, or press Cancel change. Sync is paused until then.'
             )
           : t(
-              'Encryption is still waiting to be disabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.'
+              'Encryption is not off yet. Enter the current passphrase and save to finish, or press Cancel change. Sync is paused until then.'
             )
         : '';
     const recoveryWarning = status.rewriteRecoveryInvalid
@@ -3164,13 +3273,16 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
       pendingEncryptionWarning,
       recoveryWarning,
     ].filter(Boolean);
+    // A message already open stays open when the same text arrives again.
+    const sameMessages = errorEl.textContent === messages.join('');
     // One line per message: run together they read as a single garbled sentence.
     errorEl.replaceChildren(
       ...messages.flatMap((message, index) =>
         index === 0 ? [message] : [document.createElement('br'), message]
       )
     );
-    errorEl.classList.toggle('hidden', messages.length === 0);
+    if (!sameMessages) setProfileSyncErrorExpanded(false);
+    updateProfileSyncErrorToggle();
   }
 
   if (resolutionEl) {
@@ -3215,6 +3327,12 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
 
   renderProfileSyncFolderWarnings(status);
 
+  // The status line says a sync is running; a second press would only be turned away.
+  ['profile-sync-now', 'profile-sync-push-now', 'profile-sync-pull-now'].forEach((id) => {
+    const button = document.getElementById(id);
+    if (button) button.disabled = !!status.inFlight;
+  });
+
   const clearPassphraseButton = document.getElementById('profile-sync-clear-passphrase');
   if (clearPassphraseButton) {
     clearPassphraseButton.classList.toggle('hidden', !status.passphraseStored);
@@ -3236,8 +3354,68 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
     status.cloudFilePath.trim()
   ) {
     const derivedFolder = deriveProfileSyncFolderPath(status.cloudFilePath);
-    folderInput.value = derivedFolder || status.cloudFilePath;
+    setProfileSyncFolderField(derivedFolder || status.cloudFilePath);
   }
+
+  updateProfileSyncPassphraseFields();
+}
+
+/**
+ * Which sync states need a person, not just a status line: a choice to make, a failed
+ * run, or a paused encryption change. Used to say so outside Settings.
+ */
+function profileSyncNeedsAttention(status) {
+  return (
+    !!status?.enabled &&
+    (!!status.needsResolution ||
+      status.lastSyncStatus === 'error' ||
+      typeof status.encryptionChangePending === 'boolean' ||
+      !!status.rewriteRecoveryRequired)
+  );
+}
+
+/**
+ * Keeps the passphrase fields in step with the encryption switch and the sync state: the
+ * hint for a passphrase already saved, the second field that catches a typo while one is
+ * being chosen, and the way out of a change that is waiting.
+ */
+function updateProfileSyncPassphraseFields() {
+  const status = profileSyncStatusCache || {};
+  const encryption = document.getElementById('profile-sync-encryption-enabled');
+  const confirmGroup = document.getElementById('profile-sync-passphrase-confirm-group');
+  const passphraseInput = document.getElementById('profile-sync-passphrase');
+  const cancelChange = document.getElementById('profile-sync-cancel-encryption-change');
+
+  // A typo is locked in wherever a passphrase is chosen: a new key for the file, or one in
+  // use replaced, which re-encrypts it. One in use may be saved, or held only for this
+  // session; main rekeys the file either way. Joining a file that is already encrypted needs
+  // no second field, because a wrong passphrase is refused on the spot. The renderer cannot
+  // tell a retyped passphrase from a new one, so any text typed over one in use asks twice.
+  const passphraseInUse = !!status.passphraseStored || !!status.passphraseActive;
+  const choosingPassphrase = passphraseInUse
+    ? !!passphraseInput?.value.trim()
+    : status.remoteEncrypted !== true;
+  if (confirmGroup) {
+    confirmGroup.classList.toggle('hidden', !encryption?.checked || !choosingPassphrase);
+  }
+  if (passphraseInput) {
+    passphraseInput.placeholder = status.passphraseStored
+      ? t('Saved on this device. Type a new one to change it.')
+      : t('Enter passphrase (min 8 chars)');
+  }
+  if (cancelChange) {
+    cancelChange.classList.toggle('hidden', typeof status.encryptionChangePending !== 'boolean');
+  }
+}
+
+function setProfileSyncPassphraseRevealed(revealed) {
+  const reveal = document.getElementById('profile-sync-passphrase-reveal');
+  ['profile-sync-passphrase', 'profile-sync-passphrase-confirm'].forEach((id) => {
+    const input = document.getElementById(id);
+    if (input) input.type = revealed ? 'text' : 'password';
+  });
+  // The label stays put: aria-pressed already tells a screen reader which way it is set.
+  if (reveal) reveal.setAttribute('aria-pressed', String(revealed));
 }
 
 /**
@@ -3327,6 +3505,14 @@ function readProfileSyncScopeFromForm() {
   return normalizeProfileSyncScope({ preset, sections });
 }
 
+/** Sets the folder field. It is cut to its width, so the whole path is its tooltip. */
+function setProfileSyncFolderField(folder) {
+  const input = document.getElementById('profile-sync-folder-path');
+  if (!input) return;
+  input.value = folder;
+  input.title = folder;
+}
+
 function applyProfileSyncConfigToForm() {
   const profileSync = ensureProfileSyncConfig();
   const enabled = document.getElementById('profile-sync-enabled');
@@ -3348,10 +3534,17 @@ function applyProfileSyncConfigToForm() {
   }
   if (folderPath) {
     const derivedFolder = deriveProfileSyncFolderPath(profileSync.cloudFilePath || '');
-    folderPath.value = derivedFolder || profileSync.cloudFilePath || '';
+    setProfileSyncFolderField(derivedFolder || profileSync.cloudFilePath || '');
   }
   if (interval) interval.value = String(profileSync.intervalMinutes || 5);
-  if (encryption) encryption.checked = !!profileSync.encryptionEnabled;
+  if (encryption) {
+    // A change that is waiting is drawn as it was asked for, so saving carries it on. Drawn as
+    // the old value, following the on-screen advice would take the save for a cancel.
+    encryption.checked =
+      typeof profileSync.encryptionChangePending === 'boolean'
+        ? profileSync.encryptionChangePending
+        : !!profileSync.encryptionEnabled;
+  }
   if (remember) remember.checked = !!profileSync.rememberPassphrase;
   applyProfileSyncScopeToForm(profileSync.syncScope);
   if (passphraseGroup)
@@ -3361,8 +3554,12 @@ function applyProfileSyncConfigToForm() {
         (!profileSync.encryptionEnabled && typeof profileSync.encryptionChangePending !== 'boolean')
     );
   if (passphraseInput) passphraseInput.value = '';
+  const passphraseConfirm = document.getElementById('profile-sync-passphrase-confirm');
+  if (passphraseConfirm) passphraseConfirm.value = '';
+  setProfileSyncPassphraseRevealed(false);
 
   setProfileSyncSettingsVisibility();
+  updateProfileSyncPassphraseFields();
 }
 
 const PROFILE_SYNC_REPLACE_CONFIRMATIONS = {
@@ -3389,7 +3586,82 @@ function applyConfigFromProfileSync(nextConfig) {
   applyDesktopAppearance(state.CONFIG);
 }
 
+/**
+ * Takes in a config that changed outside the form (a sync pull, a restored backup, an
+ * import) while Settings is open. The form, the pending colours and the window-effect
+ * preview all describe the old config, so Cancel would put the old look back and Save
+ * would write the stale values over the new ones. Reopening rebuilds them from the new
+ * config, at the cost of any edits not yet saved, which the return value reports.
+ *
+ * @returns {Promise<boolean>} whether unsaved edits were discarded
+ */
+async function reopenSettingsWithConfig(nextConfig) {
+  const discardedEdits = settingsTouchedKeys.size > 0;
+  const hooks = settingsUiHooks;
+  // Closing restores the window effects Settings opened with; after this change those are
+  // the new ones, which the main process has already applied natively.
+  if (previewState) previewState = savedWindowEffects(nextConfig);
+  closeSettings();
+  applyConfigFromProfileSync(nextConfig);
+  hooks?.renderActiveTab?.();
+  await openSettings(hooks);
+  return discardedEdits;
+}
+
+/** Says why a manual sync cannot run right now, or returns null when it can. */
+function getProfileSyncBlockedMessage() {
+  const status = profileSyncStatusCache || {};
+  const saved = ensureProfileSyncConfig();
+  const formScope = readProfileSyncScopeFromForm();
+  const formFolder = (document.getElementById('profile-sync-folder-path')?.value || '').trim();
+  const formDiffersFromSaved =
+    !!document.getElementById('profile-sync-enabled')?.checked !== !!saved.enabled ||
+    (document.getElementById('profile-sync-provider')?.value || 'cloudFile') !==
+      (saved.provider || 'cloudFile') ||
+    formFolder !== deriveProfileSyncFolderPath(saved.cloudFilePath || '') ||
+    JSON.stringify(formScope) !== JSON.stringify(normalizeProfileSyncScope(saved.syncScope));
+  // Sync runs against what is saved, so a switch or folder that has not been saved yet would
+  // be ignored and the run would only report that sync is off.
+  if (!saved.enabled || formDiffersFromSaved) {
+    return { type: 'warning', text: t('Save your settings first to start syncing.') };
+  }
+  if (status.needsResolution) {
+    return { type: 'warning', text: t('Resolve first-time sync conflict before syncing.') };
+  }
+  if (typeof status.encryptionChangePending === 'boolean' && !status.rewriteRecoveryRequired) {
+    return { type: 'warning', text: t('Finish or cancel the pending encryption change first.') };
+  }
+  if (status.inFlight) {
+    return { type: 'info', text: t('A sync is already running. Try again in a moment.') };
+  }
+  return null;
+}
+
+/** The toast for a run main declined with a reason instead of an error. */
+function describeProfileSyncDeclined(result) {
+  switch (result?.reason) {
+    case 'needs_resolution':
+      return { type: 'warning', text: t('Resolve first-time sync conflict before syncing.') };
+    case 'disabled':
+      return { type: 'warning', text: t('Save your settings first to start syncing.') };
+    case 'encryption_change_pending':
+    case 'rewrite_pending':
+      return { type: 'warning', text: t('Finish or cancel the pending encryption change first.') };
+    case 'in_flight':
+      return { type: 'info', text: t('A sync is already running. Try again in a moment.') };
+    default:
+      return { type: 'error', text: result?.error || t('Profile sync failed.') };
+  }
+}
+
 async function runManualProfileSync(direction) {
+  // Answer a run that cannot start before the confirmation, which warns about replacing
+  // settings that nothing is going to replace.
+  const blocked = getProfileSyncBlockedMessage();
+  if (blocked) {
+    showToast(blocked.text, blocked.type, 3500);
+    return;
+  }
   const confirmation = PROFILE_SYNC_REPLACE_CONFIRMATIONS[direction];
   if (confirmation) {
     const confirmed = await showConfirm(t(confirmation.title), t(confirmation.message), {
@@ -3401,16 +3673,13 @@ async function runManualProfileSync(direction) {
   try {
     const result = await window.electronAPI.runProfileSync(direction);
     if (!result?.ok) {
-      if (result?.reason === 'needs_resolution') {
-        showToast(t('Resolve first-time sync conflict before syncing.'), 'warning', 3500);
-      } else {
-        showToast(result?.error || t('Profile sync failed.'), 'error', 3500);
-      }
+      const declined = describeProfileSyncDeclined(result);
+      showToast(declined.text, declined.type, 3500);
       if (result?.status) updateProfileSyncStatusUi(result.status);
       return;
     }
 
-    if (result?.config) applyConfigFromProfileSync(result.config);
+    const discardedEdits = result?.config ? await reopenSettingsWithConfig(result.config) : false;
 
     if (result?.status) {
       updateProfileSyncStatusUi(result.status);
@@ -3418,6 +3687,25 @@ async function runManualProfileSync(direction) {
       await refreshProfileSyncStatusUi();
     }
     void refreshProfileSyncBackups();
+    if (discardedEdits) {
+      showToast(
+        t('Synced settings were applied. Unsaved changes in this window were discarded.'),
+        'warning',
+        4000
+      );
+      return;
+    }
+    if (direction === 'pull' && result.action === 'none') {
+      // Nothing came down: either there is no file yet, or this computer already has it all.
+      showToast(
+        result.status?.lastRemoteUpdatedAt
+          ? t('This computer already matches the sync file.')
+          : t('No sync file found yet.'),
+        'info',
+        2600
+      );
+      return;
+    }
     const completeMessage = {
       push: 'Profile sync upload complete.',
       pull: 'Profile sync download complete.',
@@ -3438,12 +3726,31 @@ async function resolveProfileSyncFirstEnable(choice) {
       if (result?.status) updateProfileSyncStatusUi(result.status);
       return;
     }
+    // Using the file's settings replaces this computer's, which the open form still shows.
+    let discardedEdits = false;
     if (result?.config) {
-      state.setConfig(result.config);
-      applyProfileSyncConfigToForm();
+      if (choice === 'use_remote') {
+        discardedEdits = await reopenSettingsWithConfig(result.config);
+      } else {
+        state.setConfig(result.config);
+        applyProfileSyncConfigToForm();
+      }
     }
     if (result?.status) updateProfileSyncStatusUi(result.status);
-    showToast(t('Profile sync conflict resolved.'), 'success', 2500);
+    const outcomeMessage = {
+      cancel: () => t('Profile sync turned off. No settings were changed.'),
+      upload_local: () => t('This computer’s settings were uploaded to the sync file.'),
+      use_remote: () => t('Settings downloaded from the sync file.'),
+    }[choice];
+    if (discardedEdits) {
+      showToast(
+        t('Synced settings were applied. Unsaved changes in this window were discarded.'),
+        'warning',
+        4000
+      );
+      return;
+    }
+    showToast(outcomeMessage(), 'success', 2500);
   } catch (error) {
     log.error('Failed to resolve profile sync conflict:', error);
     showToast(error?.message || t('Failed to resolve sync conflict.'), 'error', 3500);
@@ -3550,6 +3857,30 @@ function bindSupportDevelopmentUi() {
 
 let profileSyncBackupsCache = [];
 
+function describeProfileSyncBackup(backup) {
+  const time = formatProfileSyncTimestamp(backup.createdAt);
+  if (backup.kind === 'remote') return t('{{time}} · Sync file, before an upload', { time });
+  if (backup.reason === 'import') {
+    return t('{{time}} · This computer, before an import', { time });
+  }
+  if (backup.reason === 'restore') {
+    return t('{{time}} · This computer, before a restore', { time });
+  }
+  return t('{{time}} · This computer, before a sync', { time });
+}
+
+/** The line under the list: what the selected backup holds, which the cut-off names cannot say. */
+function updateProfileSyncBackupDetail() {
+  const select = document.getElementById('profile-sync-backup-select');
+  const detail = document.getElementById('profile-sync-backup-detail');
+  if (!select || !detail) return;
+  const backup = profileSyncBackupsCache.find((entry) => entry.id === select.value);
+  detail.textContent = backup
+    ? t('Contains: {{sections}}', { sections: formatProfileSyncSectionList(backup.sections) })
+    : '';
+  detail.classList.toggle('hidden', !backup);
+}
+
 function renderProfileSyncBackups() {
   const select = document.getElementById('profile-sync-backup-select');
   const restore = document.getElementById('profile-sync-restore-backup');
@@ -3562,24 +3893,24 @@ function renderProfileSyncBackups() {
     select.replaceChildren(empty);
     select.disabled = true;
     if (restore) restore.disabled = true;
+    updateProfileSyncBackupDetail();
     return;
   }
   select.replaceChildren(
     ...profileSyncBackupsCache.map((backup) => {
       const option = document.createElement('option');
       option.value = backup.id;
-      const time = formatProfileSyncTimestamp(backup.createdAt);
-      const sections = formatProfileSyncSectionList(backup.sections);
-      option.textContent =
-        backup.kind === 'remote'
-          ? t('{{time}}: the sync file’s {{sections}}', { time, sections })
-          : t('{{time}}: this computer’s {{sections}}', { time, sections });
+      option.textContent = describeProfileSyncBackup(backup);
+      option.title = t('Contains: {{sections}}', {
+        sections: formatProfileSyncSectionList(backup.sections),
+      });
       return option;
     })
   );
   if (profileSyncBackupsCache.some((backup) => backup.id === previous)) select.value = previous;
   select.disabled = false;
   if (restore) restore.disabled = false;
+  updateProfileSyncBackupDetail();
 }
 
 async function refreshProfileSyncBackups() {
@@ -3613,10 +3944,20 @@ async function restoreSelectedProfileSyncBackup() {
   const select = document.getElementById('profile-sync-backup-select');
   const id = select?.value;
   if (!id) return;
-  const confirmed = await showConfirm(t('Restore'), describeProfileSyncRestore(), {
-    confirmText: t('Restore'),
-    confirmClass: 'btn-primary',
-  });
+  const backup = profileSyncBackupsCache.find((entry) => entry.id === id);
+  // Named by its time, so the confirmation says which of the near-identical entries it replaces.
+  const confirmed = await showConfirm(
+    backup
+      ? t('Restore the backup from {{time}}', {
+          time: formatProfileSyncTimestamp(backup.createdAt),
+        })
+      : t('Restore'),
+    describeProfileSyncRestore(),
+    {
+      confirmText: t('Restore'),
+      confirmClass: 'btn-primary',
+    }
+  );
   if (!confirmed) return;
   try {
     const result = await window.electronAPI.restoreProfileSyncBackup(id);
@@ -3624,13 +3965,43 @@ async function restoreSelectedProfileSyncBackup() {
       showToast(result?.error || t('Failed to restore the backup.'), 'error', 3500);
       return;
     }
-    if (result.config) applyConfigFromProfileSync(result.config);
-    showToast(t('Backup restored.'), 'success', 2200);
+    const discardedEdits = result.config ? await reopenSettingsWithConfig(result.config) : false;
+    showToast(
+      discardedEdits
+        ? t('Synced settings were applied. Unsaved changes in this window were discarded.')
+        : t('Backup restored.'),
+      discardedEdits ? 'warning' : 'success',
+      discardedEdits ? 4000 : 2200
+    );
   } catch (error) {
     log.error('Failed to restore profile sync backup:', error);
     showToast(t('Failed to restore the backup.'), 'error', 3500);
   }
   await refreshProfileSyncBackups();
+}
+
+/**
+ * Gives up on an encryption change that is waiting, by asking main for the mode already in
+ * force. An explicit button rather than a side effect of saving: the form draws the waiting
+ * change as asked for, so a save carries it on.
+ */
+async function cancelPendingEncryptionChange() {
+  const committed = !!ensureProfileSyncConfig().encryptionEnabled;
+  try {
+    const result = await window.electronAPI.setProfileSyncPassphrase('', false, committed);
+    if (!result?.success) {
+      if (result?.status) updateProfileSyncStatusUi(result.status);
+      showToast(result?.error || t('Failed to save sync passphrase.'), 'error', 3400);
+      return;
+    }
+    if (result.config) applyPersistedConfigResponse(result.config);
+    applyProfileSyncConfigToForm();
+    if (result.status) updateProfileSyncStatusUi(result.status);
+    showToast(t('Encryption change canceled.'), 'info', 2400);
+  } catch (error) {
+    log.error('Failed to cancel the pending encryption change:', error);
+    showToast(error?.message || t('Failed to save sync passphrase.'), 'error', 3400);
+  }
 }
 
 function bindProfileSyncSettingsUi() {
@@ -3650,6 +4021,7 @@ function bindProfileSyncSettingsUi() {
           !enabled.checked || (!encryptionEnabled.checked && !needsCurrentKeyToDisable)
         );
       }
+      updateProfileSyncPassphraseFields();
     };
   }
 
@@ -3681,13 +4053,17 @@ function bindProfileSyncSettingsUi() {
     try {
       const provider = document.getElementById('profile-sync-provider');
       const selectedProvider = provider?.value || 'cloudFile';
-      const response = await window.electronAPI.chooseProfileSyncFolder(selectedProvider);
+      // Starting where the form already points keeps the dialog next to what is being replaced.
+      const currentFolder = document.getElementById('profile-sync-folder-path')?.value || '';
+      const response = await window.electronAPI.chooseProfileSyncFolder(
+        selectedProvider,
+        currentFolder
+      );
       if (response?.canceled) return;
       const folderPath =
         response?.folderPath || deriveProfileSyncFolderPath(response?.filePath || '');
       if (!folderPath) return;
-      const input = document.getElementById('profile-sync-folder-path');
-      if (input) input.value = folderPath;
+      setProfileSyncFolderField(folderPath);
     } catch (error) {
       log.error('Failed to choose profile sync folder:', error);
       showToast(t('Failed to choose sync folder.'), 'error', 3000);
@@ -3697,6 +4073,18 @@ function bindProfileSyncSettingsUi() {
   const chooseFolderBtn = document.getElementById('profile-sync-choose-folder');
   if (chooseFolderBtn) {
     chooseFolderBtn.onclick = () => chooseProfileSyncFolder();
+  }
+  // The field looks like one you can type in, but it only shows the folder: using it opens
+  // the chooser, as the button does.
+  const folderField = document.getElementById('profile-sync-folder-path');
+  if (folderField) {
+    folderField.onclick = () => chooseProfileSyncFolder();
+    folderField.onkeydown = (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        chooseProfileSyncFolder();
+      }
+    };
   }
 
   const profileSyncHelpBtn = document.getElementById('profile-sync-help-btn');
@@ -3729,7 +4117,35 @@ function bindProfileSyncSettingsUi() {
           !enabledCheckbox?.checked || (!encryption.checked && !needsCurrentKeyToDisable)
         );
       }
+      updateProfileSyncPassphraseFields();
     };
+  }
+
+  // Typing over a saved passphrase starts a change of key, which asks for it twice.
+  const passphraseField = document.getElementById('profile-sync-passphrase');
+  if (passphraseField) passphraseField.oninput = () => updateProfileSyncPassphraseFields();
+
+  const revealPassphrase = document.getElementById('profile-sync-passphrase-reveal');
+  if (revealPassphrase) {
+    revealPassphrase.onclick = () =>
+      setProfileSyncPassphraseRevealed(revealPassphrase.getAttribute('aria-pressed') !== 'true');
+  }
+
+  const errorToggle = document.getElementById('profile-sync-error-toggle');
+  if (errorToggle) {
+    errorToggle.onclick = () =>
+      setProfileSyncErrorExpanded(errorToggle.getAttribute('aria-expanded') !== 'true');
+  }
+  // The text is measured while it is on screen; the page it sits on may be shown later.
+  const errorEl = document.getElementById('profile-sync-error');
+  if (!profileSyncErrorObserver && errorEl && typeof ResizeObserver === 'function') {
+    profileSyncErrorObserver = new ResizeObserver(() => updateProfileSyncErrorToggle());
+    profileSyncErrorObserver.observe(errorEl);
+  }
+
+  const cancelEncryptionChange = document.getElementById('profile-sync-cancel-encryption-change');
+  if (cancelEncryptionChange) {
+    cancelEncryptionChange.onclick = () => cancelPendingEncryptionChange();
   }
 
   const syncNow = document.getElementById('profile-sync-now');
@@ -3737,6 +4153,9 @@ function bindProfileSyncSettingsUi() {
 
   const restoreBackup = document.getElementById('profile-sync-restore-backup');
   if (restoreBackup) restoreBackup.onclick = () => restoreSelectedProfileSyncBackup();
+
+  const backupSelect = document.getElementById('profile-sync-backup-select');
+  if (backupSelect) backupSelect.onchange = () => updateProfileSyncBackupDetail();
 
   const pullNow = document.getElementById('profile-sync-pull-now');
   if (pullNow) pullNow.onclick = () => runManualProfileSync('pull');
@@ -3749,7 +4168,9 @@ function bindProfileSyncSettingsUi() {
     clearPassphrase.onclick = async () => {
       const confirmed = await showConfirm(
         t('Clear Saved Passphrase'),
-        t('Remove the saved sync passphrase from this device?'),
+        t(
+          'Remove the saved sync passphrase from this device? Syncing stays paused until you enter it again.'
+        ),
         { confirmText: t('Action: Clear'), confirmClass: 'btn-danger' }
       );
       if (!confirmed) return;
@@ -4431,6 +4852,7 @@ function relocalizeOpenSettings({ force = false } = {}) {
     renderProfileSyncBackups();
     renderUpdateButtonLabels();
     settingsUiHooks?.relocalizeUpdateStatus?.();
+    syncFrostedGlassAvailability();
     syncWeatherEffectsAvailability();
     if (hasDraftColorPreview || isCustomEditorActive) {
       // Rebuilding the swatches would reset the custom color draft; relabel only.
@@ -4636,6 +5058,7 @@ async function openSettings(uiHooks) {
         uiHooks?.showToast?.(warningMessage, 'warning', 10000);
       }
     }
+    void refreshSecureStorageNotice();
     bindHomeAssistantOAuthUi();
     updateHomeAssistantAuthUi();
     bindConnectionTestUi();
@@ -4665,6 +5088,7 @@ async function openSettings(uiHooks) {
         ?.classList.toggle('hidden', followOmarchy.disabled);
     }
     if (frostedGlass) frostedGlass.checked = !!state.CONFIG.frostedGlass;
+    syncFrostedGlassAvailability();
     if (allowPrereleaseUpdates) {
       allowPrereleaseUpdates.checked = state.CONFIG.updates?.allowPrerelease === true;
     }
@@ -4694,15 +5118,9 @@ async function openSettings(uiHooks) {
     bindProfileSyncSettingsUi();
     initializeSettingsFiles({
       onImported: async (nextConfig) => {
-        const hooks = settingsUiHooks;
-        // Closing restores the window effects Settings opened with; after an import those are
-        // the imported ones, which the main process has already applied natively.
-        if (previewState) previewState = savedWindowEffects(nextConfig);
-        closeSettings();
-        applyConfigFromProfileSync(nextConfig);
-        hooks?.renderActiveTab?.();
-        await openSettings(hooks);
+        await reopenSettingsWithConfig(nextConfig);
       },
+      hasUnsavedChanges: () => settingsTouchedKeys.size > 0,
     });
     bindSupportDevelopmentUi();
     await refreshProfileSyncStatusUi({ syncFormState: true });
@@ -5235,6 +5653,8 @@ async function saveSettings() {
     const prevAlwaysOnTop = currentConfig.alwaysOnTop;
     const prevOpacity = typeof currentConfig.opacity === 'number' ? currentConfig.opacity : 1;
     const prevProfileSync = { ...(currentConfig.profileSync || {}) };
+    // A choice put off earlier is not this save's business unless the save touches sync.
+    const choiceWasWaiting = !!profileSyncStatusCache?.needsResolution;
 
     // Store previous HA connection settings to detect if reconnect is needed
     const prevHaUrl = currentConfig.homeAssistant?.url;
@@ -5319,7 +5739,7 @@ async function saveSettings() {
     }
     if (alwaysOnTop && !alwaysOnTop.disabled) nextConfig.alwaysOnTop = alwaysOnTop.checked;
     if (hideOnBlur && !hideOnBlur.disabled) nextConfig.hideOnBlur = hideOnBlur.checked;
-    if (frostedGlass) nextConfig.frostedGlass = frostedGlass.checked;
+    if (frostedGlass && !frostedGlass.disabled) nextConfig.frostedGlass = frostedGlass.checked;
     delete nextConfig.frostedGlassStrength;
     delete nextConfig.frostedGlassTint;
 
@@ -5330,9 +5750,12 @@ async function saveSettings() {
     if (followOmarchy && !followOmarchy.disabled)
       nextConfig.ui.followOmarchy = followOmarchy.checked;
     const frostedGlassEnabled = !!nextConfig.frostedGlass;
-    nextConfig.ui.weatherEffectsEnabled = weatherEffectsEnabled
-      ? frostedGlassEnabled && !!weatherEffectsEnabled.checked
-      : false;
+    // A locked Frosted glass switch means the weather switch is locked with it, not turned off.
+    if (!frostedGlass?.disabled) {
+      nextConfig.ui.weatherEffectsEnabled = weatherEffectsEnabled
+        ? frostedGlassEnabled && !!weatherEffectsEnabled.checked
+        : false;
+    }
     nextConfig.ui.weatherOverride = weatherOverrideSelect ? weatherOverrideSelect.value : 'auto';
     nextConfig.ui.language = languageSelect?.value || nextConfig.ui.language || 'auto';
     nextConfig.ui = getAppearanceFromInputs(nextConfig.ui);
@@ -5400,22 +5823,75 @@ async function saveSettings() {
       nextProfileSync.encryptionEnabled && !!profileSyncRememberPassphrase?.checked;
     nextProfileSync.passphraseEncrypted = false;
 
-    if (nextProfileSync.enabled && !nextProfileSync.cloudFilePath) {
+    // Only turning sync on needs a folder. Sync that was already on without one keeps working
+    // against its private file (the folder warning says so), so an unrelated save must not
+    // be refused for it.
+    if (
+      nextProfileSync.enabled &&
+      prevProfileSync.enabled !== true &&
+      !nextProfileSync.cloudFilePath
+    ) {
       showToast(t('Choose a sync folder before enabling profile sync.'), 'error', 3200);
+      revealProfileSyncField(document.getElementById('profile-sync-choose-folder'));
+      return;
+    }
+
+    // Checked here, before anything is saved or copied: main would refuse a short passphrase
+    // only after the rest of the save was persisted, leaving encrypted sync half enabled.
+    const typedPassphrase = (profileSyncPassphrase?.value || '').trim();
+    if (
+      nextProfileSync.enabled &&
+      nextProfileSync.encryptionEnabled &&
+      typedPassphrase &&
+      typedPassphrase.length < PROFILE_SYNC_MIN_PASSPHRASE_LENGTH
+    ) {
+      showToast(
+        t('Passphrase must be at least {{count}} characters long', {
+          count: PROFILE_SYNC_MIN_PASSPHRASE_LENGTH,
+        }),
+        'error',
+        3400
+      );
+      revealProfileSyncField(profileSyncPassphrase);
+      return;
+    }
+    const passphraseConfirm = document.getElementById('profile-sync-passphrase-confirm');
+    const confirmShown =
+      !!passphraseConfirm &&
+      !document
+        .getElementById('profile-sync-passphrase-confirm-group')
+        ?.classList.contains('hidden');
+    if (
+      nextProfileSync.enabled &&
+      nextProfileSync.encryptionEnabled &&
+      typedPassphrase &&
+      confirmShown &&
+      passphraseConfirm.value.trim() !== typedPassphrase
+    ) {
+      showToast(t('The passphrases do not match.'), 'error', 3400);
+      revealProfileSyncField(passphraseConfirm);
       return;
     }
 
     const previousSyncFilePath = (prevProfileSync.cloudFilePath || '').trim();
     const nextSyncFilePath = (nextProfileSync.cloudFilePath || '').trim();
+    // A first enable is not a move: before sync has run there is no file to carry along, and
+    // main reports no folder while the private default one is in use.
     const syncPathChanged =
       nextProfileSync.enabled &&
+      prevProfileSync.enabled === true &&
       !!previousSyncFilePath &&
       !!nextSyncFilePath &&
       previousSyncFilePath !== nextSyncFilePath;
     if (syncPathChanged) {
+      const previousFolder = deriveProfileSyncFolderPath(previousSyncFilePath);
+      const nextFolder = deriveProfileSyncFolderPath(nextSyncFilePath);
       const copyAndSwitch = await showConfirm(
         t('Sync Folder Changed'),
-        t('Copy the existing sync data file into the new folder and switch sync there?'),
+        t('Copy the existing sync data file from {{from}} into {{to}} and switch sync there?', {
+          from: previousFolder,
+          to: nextFolder,
+        }),
         {
           confirmText: t('Copy & Switch'),
           cancelText: t('Keep Current'),
@@ -5425,15 +5901,20 @@ async function saveSettings() {
 
       const revertToPreviousSyncPath = () => {
         nextProfileSync.cloudFilePath = previousSyncFilePath;
-        const previousFolder = deriveProfileSyncFolderPath(previousSyncFilePath);
-        if (profileSyncFolderPath) {
-          profileSyncFolderPath.value = previousFolder;
-        }
+        setProfileSyncFolderField(previousFolder);
+      };
+      const keepCurrentSyncFolder = () => {
+        revertToPreviousSyncPath();
+        showToast(
+          t('Kept the current sync folder: {{folder}}', { folder: previousFolder }),
+          'info',
+          2600
+        );
       };
 
+      let usedExistingFile = false;
       if (!copyAndSwitch) {
-        revertToPreviousSyncPath();
-        showToast(t('Kept current sync folder.'), 'warning', 2200);
+        keepCurrentSyncFolder();
       } else if (!window.electronAPI?.copyProfileSyncFile) {
         revertToPreviousSyncPath();
         showToast(
@@ -5442,42 +5923,32 @@ async function saveSettings() {
           3200
         );
       } else {
-        let copyResult = await window.electronAPI.copyProfileSyncFile(
+        const copyResult = await window.electronAPI.copyProfileSyncFile(
           previousSyncFilePath,
-          nextSyncFilePath,
-          false
+          nextSyncFilePath
         );
         if (copyResult?.status === 'destination_exists') {
-          const overwrite = await showConfirm(
+          // Whatever is there is probably another computer's file, so it is never replaced
+          // with a copy. Switching to it compares the two sides' settings first, and the
+          // choice panel offers Keep Local (with the replaced settings backed up).
+          usedExistingFile = await showConfirm(
             t('Sync File Already Exists'),
             t(
-              'A sync file already exists in the new folder. Overwrite it with your current synced data?'
+              '{{folder}} already has a sync file, probably from another computer. Switch to it? Settings that differ are compared first, and you choose which to keep before anything is replaced.',
+              { folder: nextFolder }
             ),
             {
-              confirmText: t('Overwrite & Switch'),
+              confirmText: t('Use That File'),
               cancelText: t('Keep Current'),
-              confirmClass: 'btn-danger',
+              confirmClass: 'btn-primary',
             }
           );
-          if (!overwrite) {
-            revertToPreviousSyncPath();
-            showToast(t('Kept current sync folder.'), 'warning', 2200);
-          } else {
-            copyResult = await window.electronAPI.copyProfileSyncFile(
-              previousSyncFilePath,
-              nextSyncFilePath,
-              true
-            );
-          }
+          if (!usedExistingFile) keepCurrentSyncFolder();
         }
 
-        if (nextProfileSync.cloudFilePath !== previousSyncFilePath) {
+        if (nextProfileSync.cloudFilePath !== previousSyncFilePath && !usedExistingFile) {
           if (copyResult?.status === 'source_missing') {
-            showToast(
-              t('No existing sync file found. Switched to the new folder.'),
-              'warning',
-              3200
-            );
+            showToast(t('No existing sync file found. Switched to the new folder.'), 'info', 3200);
           } else if (!copyResult?.ok) {
             revertToPreviousSyncPath();
             showToast(
@@ -5493,7 +5964,6 @@ async function saveSettings() {
       }
     }
 
-    const typedPassphrase = (profileSyncPassphrase?.value || '').trim();
     const hasSavedPassphrase = !!profileSyncStatusCache?.passphraseStored;
     const encryptionSettingChanged =
       nextProfileSync.encryptionEnabled !== !!prevProfileSync.encryptionEnabled;
@@ -5512,12 +5982,20 @@ async function saveSettings() {
     let passphraseUpdatedThisSave = false;
     let profileSyncCredentialOperationFailed = false;
 
-    if (disablingEncryption && !typedPassphrase && !hasSavedPassphrase) {
+    // The file's own mode decides whether the current passphrase is needed: when another computer
+    // already turned encryption off, there is nothing to unlock.
+    if (
+      disablingEncryption &&
+      !typedPassphrase &&
+      !hasSavedPassphrase &&
+      profileSyncStatusCache?.remoteEncrypted !== false
+    ) {
       showToast(
         t('Enter the current remote passphrase before disabling encrypted sync.'),
         'error',
         3400
       );
+      revealProfileSyncField(profileSyncPassphrase);
       return;
     }
 
@@ -5531,6 +6009,7 @@ async function saveSettings() {
           'error',
           3400
         );
+        revealProfileSyncField(profileSyncPassphrase);
         return;
       }
 
@@ -5624,13 +6103,12 @@ async function saveSettings() {
           updateProfileSyncStatusUi(passphraseResult.status);
         }
         log.error('Failed to store sync passphrase after saving settings:', passphraseError);
-        showToast(
+        const failureReason =
           passphraseResult?.error ||
-            passphraseError?.message ||
-            t('Settings were saved, but the sync passphrase could not be stored.'),
-          'warning',
-          5000
-        );
+          passphraseError?.message ||
+          t('Settings were saved, but the sync passphrase could not be stored.');
+        // A refusal can run to two sentences, which the usual few seconds are too short to read.
+        showToast(failureReason, 'warning', failureReason.length > 100 ? 10000 : 5000);
       }
     }
 
@@ -5682,6 +6160,20 @@ async function saveSettings() {
     }
 
     await refreshProfileSyncStatusUi({ syncFormState: true });
+    // A sync that waits on the person (a first-sync choice, a passphrase that was refused)
+    // would otherwise be known only to someone who reopens Advanced, so Settings stays there.
+    const syncChangedBySave =
+      nextProfileSync.enabled &&
+      (prevProfileSync.enabled !== true ||
+        // Read after the folder question: a switch the person declined is not a change.
+        (nextProfileSync.cloudFilePath || '').trim() !== previousSyncFilePath ||
+        encryptionSettingChanged ||
+        !!typedPassphrase ||
+        JSON.stringify(normalizeProfileSyncScope(prevProfileSync.syncScope)) !==
+          JSON.stringify(normalizeProfileSyncScope(nextProfileSync.syncScope)));
+    const keepSettingsOpenForSync =
+      profileSyncCredentialOperationFailed ||
+      (!!profileSyncStatusCache?.needsResolution && (!choiceWasWaiting || syncChangedBySave));
 
     // Apply opacity immediately
     if (opacitySlider) {
@@ -5762,6 +6254,11 @@ async function saveSettings() {
 
     if (haSettingsChanged) {
       websocket.connect();
+    }
+
+    if (keepSettingsOpenForSync) {
+      await openSettings(settingsUiHooks);
+      showProfileSyncAttention();
     }
   } catch (error) {
     log.error('Failed to save config:', error);
@@ -6838,6 +7335,25 @@ function handleProfileSyncStatusUpdate(status) {
   updateProfileSyncStatusUi(status);
 }
 
+/** Shows the Advanced page and puts the cursor on a sync field that needs fixing. */
+function revealProfileSyncField(field) {
+  document.querySelector('.modal-tabs .tab-link[data-tab="advanced"]')?.click();
+  field?.focus?.();
+  field?.scrollIntoView?.({ block: 'center' });
+}
+
+/** Brings the person to the part of Advanced that asks something of them. */
+function showProfileSyncAttention() {
+  document.querySelector('.modal-tabs .tab-link[data-tab="advanced"]')?.click();
+  const waitingForChoice = !!profileSyncStatusCache?.needsResolution;
+  document
+    .getElementById(waitingForChoice ? 'profile-sync-resolution' : 'profile-sync-status')
+    ?.scrollIntoView?.({ block: 'center' });
+  if (waitingForChoice) {
+    showToast(t('Waiting for your choice below.'), 'warning', 5000);
+  }
+}
+
 export {
   syncSegmentedIndicators,
   refreshRestoredDashboardSettings,
@@ -6857,6 +7373,7 @@ export {
   initializePopupHotkey,
   refreshPersonalizationSectionHeights,
   handleProfileSyncStatusUpdate,
+  profileSyncNeedsAttention,
   waitForLanguagePackRefresh,
   refreshHomeAssistantAuthStatus,
 };
@@ -6903,6 +7420,24 @@ function renderDesktopBlur(status) {
       button.disabled = false;
     }
   };
+}
+
+/**
+ * Says so in General while this Linux session has no unlocked keyring. The toast that reports
+ * it is gone within seconds, and the condition stays: the token and the sync passphrase
+ * cannot be remembered until a keyring is running.
+ */
+async function refreshSecureStorageNotice() {
+  const notice = document.getElementById('secure-storage-notice');
+  if (!notice) return;
+  let unavailable = false;
+  try {
+    const info = await window.electronAPI?.getDesktopIntegration?.();
+    unavailable = info?.platform === 'linux' && info.secureStorageAvailable === false;
+  } catch (error) {
+    log.warn('Failed to read the secure storage status:', error);
+  }
+  notice.classList.toggle('hidden', !unavailable);
 }
 
 async function refreshDesktopIntegration() {

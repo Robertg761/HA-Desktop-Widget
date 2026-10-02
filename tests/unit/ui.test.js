@@ -80,6 +80,7 @@ jest.mock('../../src/ui-utils.js', () => {
     }),
     applyTheme: jest.fn(),
     applyUiPreferences: jest.fn(),
+    isFrostedGlassAvailable: jest.fn(() => true),
     hexToRgb: jest.fn((hex) => {
       if (!hex || typeof hex !== 'string') return null;
       const normalized = hex.replace('#', '').trim();
@@ -3720,6 +3721,28 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(sensorTile.querySelector('.control-name').textContent).toBe('Office Temperature');
     });
 
+    it('limits a tile display name to what a settings file can carry', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.office_temperature'];
+      state.setConfig(config);
+      state.setStates({
+        'sensor.office_temperature': {
+          entity_id: 'sensor.office_temperature',
+          state: '21',
+          attributes: { friendly_name: 'Office Temperature' },
+        },
+      });
+
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+      document
+        .querySelector('.control-item[data-entity-id="sensor.office_temperature"] .rename-btn')
+        .click();
+
+      // The settings file holds at most 256 characters of text, so the field stops well short.
+      expect(document.querySelector('#rename-input').maxLength).toBe(64);
+    });
+
     it('trims trailing zeros for quick access humidity readouts', () => {
       const config = state.CONFIG;
       config.favoriteEntities = ['sensor.office_humidity'];
@@ -6439,6 +6462,25 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.updateWeatherEffects();
       expect(mockWeatherEffects.setEffect).toHaveBeenCalledWith(null);
     });
+
+    it('should keep weather effects off where the window cannot draw frosted glass', () => {
+      state.setConfig({
+        ...sampleConfig,
+        frostedGlass: true,
+        desktopCapabilities: { nativeGlassSupported: false },
+        ui: {
+          ...sampleConfig.ui,
+          weatherEffectsEnabled: true,
+          weatherOverride: 'rainy',
+        },
+      });
+      uiUtils.isFrostedGlassAvailable.mockReturnValueOnce(false);
+
+      ui.updateWeatherEffects();
+
+      expect(uiUtils.isFrostedGlassAvailable).toHaveBeenCalledWith(state.CONFIG);
+      expect(mockWeatherEffects.setEffect).toHaveBeenCalledWith(null);
+    });
   });
 
   // ==============================================================================
@@ -6982,6 +7024,19 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       uiUtils.closeModal.mockClear();
       ui.ensureEntityCacheScope({ force: true });
       expect(uiUtils.closeModal).not.toHaveBeenCalledWith(modal, expect.anything());
+    });
+
+    it('limits a comparison graph name like a page name', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      state.setConfig({
+        ...state.CONFIG,
+        comparisonGraphs: [],
+      });
+      ui.renderActiveTab();
+      await ui.addComparisonGraphTile();
+
+      const nameInput = document.querySelector('.comparison-graph-modal input.form-control');
+      expect(nameInput.maxLength).toBe(40);
     });
 
     it('serializes comparison graph editor mutations while persistence is pending', async () => {

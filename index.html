@@ -180,10 +180,10 @@
           id="close-btn"
           class="control-btn"
           type="button"
-          data-i18n-title="Quit"
-          data-i18n-aria-label="Quit"
-          title="Quit"
-          aria-label="Quit"
+          data-i18n-title="Hide"
+          data-i18n-aria-label="Hide"
+          title="Hide"
+          aria-label="Hide"
         >
           <svg
             class="icon line-icon"
@@ -623,6 +623,15 @@
                   role="status"
                   aria-live="polite"
                 ></div>
+                <p
+                  id="secure-storage-notice"
+                  class="form-help form-warning hidden"
+                  data-i18n="No unlocked system keyring (Secret Service) was found, so this computer cannot remember your Home Assistant sign-in or sync passphrase. Start gnome-keyring or KWallet, then restart the widget."
+                >
+                  No unlocked system keyring (Secret Service) was found, so this computer cannot
+                  remember your Home Assistant sign-in or sync passphrase. Start gnome-keyring or
+                  KWallet, then restart the widget.
+                </p>
                 <div class="connection-test-row">
                   <button type="button" id="connect-ha-oauth-btn" class="btn btn-primary">
                     Connect with Home Assistant
@@ -1011,6 +1020,7 @@
                             data-i18n-placeholder="#RRGGBB"
                             aria-label="Hex color"
                             data-i18n-aria-label="Hex color"
+                            aria-describedby="custom-color-hex-error"
                           />
                         </div>
                         <div class="custom-color-action">
@@ -1029,6 +1039,13 @@
                             Save Custom Color
                           </button>
                         </div>
+                      </div>
+                      <div
+                        id="custom-color-hex-error"
+                        class="form-help form-error hidden"
+                        data-i18n="Use 3 or 6 hex digits, for example #2E9BD6"
+                      >
+                        Use 3 or 6 hex digits, for example #2E9BD6
                       </div>
                       <div
                         id="custom-editor-save-lock-hint"
@@ -1088,12 +1105,24 @@
                     >
                     <p
                       class="form-help"
+                      id="frosted-glass-help"
                       data-i18n="Blurs what's behind the widget to keep it readable while transparent."
                     >
                       Blurs what's behind the widget to keep it readable while transparent.
                     </p>
+                    <div
+                      class="form-help form-warning hidden"
+                      id="frosted-glass-warning"
+                      aria-live="polite"
+                    >
+                      Needs Windows 11 version 22H2 or later.
+                    </div>
                   </div>
-                  <input type="checkbox" id="frosted-glass" />
+                  <input
+                    type="checkbox"
+                    id="frosted-glass"
+                    aria-describedby="frosted-glass-help frosted-glass-warning"
+                  />
                 </div>
                 <div
                   class="form-group setting-row setting-row-stacked"
@@ -1989,12 +2018,12 @@
                     <label for="profile-sync-enabled" data-i18n="Profile sync">Profile sync</label>
                     <p
                       class="form-help"
-                      data-i18n="Keep Quick Access, appearance, alerts, and weather and media choices the same on every computer through a folder your cloud or sync app already keeps in sync. The Home Assistant connection, desktop pins, hotkeys and window position stay on each computer."
+                      data-i18n="Keep Quick Access, appearance, alerts, and weather and media choices the same on every computer through a folder your cloud or sync app already keeps in sync. The Home Assistant connection, desktop pins, hotkeys, and window position stay on each computer."
                     >
                       Keep Quick Access, appearance, alerts, and weather and media choices the same
                       on every computer through a folder your cloud or sync app already keeps in
-                      sync. The Home Assistant connection, desktop pins, hotkeys and window position
-                      stay on each computer.
+                      sync. The Home Assistant connection, desktop pins, hotkeys, and window
+                      position stay on each computer.
                     </p>
                   </div>
                   <input type="checkbox" id="profile-sync-enabled" />
@@ -2003,16 +2032,28 @@
                   <div class="form-group setting-row">
                     <div class="setting-text">
                       <span class="setting-label" data-i18n="Sync status">Sync status</span>
-                      <p
-                        id="profile-sync-status"
-                        class="form-help profile-sync-status"
-                        aria-live="polite"
-                      ></p>
-                      <p
-                        id="profile-sync-error"
-                        class="form-help profile-sync-error hidden"
-                        aria-live="polite"
-                      ></p>
+                      <div class="profile-sync-status-block">
+                        <p
+                          id="profile-sync-status"
+                          class="form-help profile-sync-status"
+                          aria-live="polite"
+                        ></p>
+                        <p
+                          id="profile-sync-error"
+                          class="form-help profile-sync-error is-clamped"
+                          aria-live="polite"
+                        ></p>
+                        <button
+                          type="button"
+                          id="profile-sync-error-toggle"
+                          class="btn btn-link hidden"
+                          aria-expanded="false"
+                          aria-controls="profile-sync-error"
+                          data-i18n="Details"
+                        >
+                          Details
+                        </button>
+                      </div>
                     </div>
                     <button
                       type="button"
@@ -2068,14 +2109,14 @@
                       <label for="profile-sync-provider" data-i18n="Sync app">Sync app</label>
                       <p
                         class="form-help"
-                        data-i18n="Used to suggest its usual folder and to recognize its conflict copies."
+                        data-i18n="Suggests the app’s usual folder and spots its conflict copies."
                       >
-                        Used to suggest its usual folder and to recognize its conflict copies.
+                        Suggests the app’s usual folder and spots its conflict copies.
                       </p>
                     </div>
                     <select id="profile-sync-provider">
-                      <option value="cloudFile" data-i18n="Other synced folder">
-                        Other synced folder
+                      <option value="cloudFile" data-i18n="Another sync app">
+                        Another sync app
                       </option>
                       <option value="dropbox">Dropbox</option>
                       <option value="oneDrive">OneDrive</option>
@@ -2104,6 +2145,7 @@
                         class="form-control"
                         placeholder="Choose a synced folder..."
                         data-i18n-placeholder="Choose a synced folder..."
+                        dir="ltr"
                         readonly
                       />
                       <button
@@ -2134,18 +2176,14 @@
                       </p>
                     </div>
                     <select id="profile-sync-scope-preset">
-                      <option value="all" data-i18n="All Syncable Settings">
-                        All Syncable Settings
+                      <option value="all" data-i18n="All settings that can sync">
+                        All settings that can sync
                       </option>
-                      <option value="visual" data-i18n="Visual Personalization Only">
-                        Visual Personalization Only
+                      <option value="visual" data-i18n="Appearance only">Appearance only</option>
+                      <option value="quick_access" data-i18n="Quick Access and layout only">
+                        Quick Access and layout only
                       </option>
-                      <option value="quick_access" data-i18n="Quick Access/Layout Only">
-                        Quick Access/Layout Only
-                      </option>
-                      <option value="custom" data-i18n="Custom (Advanced)">
-                        Custom (Advanced)
-                      </option>
+                      <option value="custom" data-i18n="Custom">Custom</option>
                     </select>
                   </div>
                   <div
@@ -2229,9 +2267,9 @@
                       >
                       <p
                         class="form-help"
-                        data-i18n="Encrypts the sync file with AES-256-GCM. Every computer needs the same passphrase."
+                        data-i18n="Locks the sync file with a passphrase. Every computer needs the same passphrase."
                       >
-                        Encrypts the sync file with AES-256-GCM. Every computer needs the same
+                        Locks the sync file with a passphrase. Every computer needs the same
                         passphrase.
                       </p>
                     </div>
@@ -2244,18 +2282,57 @@
                     <label for="profile-sync-passphrase" data-i18n="Sync passphrase"
                       >Sync passphrase</label
                     >
-                    <input
-                      type="password"
-                      id="profile-sync-passphrase"
-                      placeholder="Enter passphrase (min 8 chars)"
-                      data-i18n-placeholder="Enter passphrase (min 8 chars)"
-                    />
+                    <div class="profile-sync-passphrase-row">
+                      <input
+                        type="password"
+                        id="profile-sync-passphrase"
+                        autocomplete="off"
+                        placeholder="Enter passphrase (min 8 chars)"
+                        data-i18n-placeholder="Enter passphrase (min 8 chars)"
+                      />
+                      <button
+                        type="button"
+                        id="profile-sync-passphrase-reveal"
+                        class="btn btn-secondary"
+                        aria-pressed="false"
+                        data-i18n="Show passphrase"
+                      >
+                        Show passphrase
+                      </button>
+                    </div>
+                    <div
+                      id="profile-sync-passphrase-confirm-group"
+                      class="profile-sync-passphrase-confirm hidden"
+                    >
+                      <label for="profile-sync-passphrase-confirm" data-i18n="Confirm passphrase"
+                        >Confirm passphrase</label
+                      >
+                      <input
+                        type="password"
+                        id="profile-sync-passphrase-confirm"
+                        autocomplete="off"
+                      />
+                    </div>
+                    <p
+                      class="form-help"
+                      data-i18n="At least 8 characters. If you forget it, the data in the sync file cannot be recovered."
+                    >
+                      At least 8 characters. If you forget it, the data in the sync file cannot be
+                      recovered.
+                    </p>
                     <label class="profile-sync-remember">
                       <input type="checkbox" id="profile-sync-remember-passphrase" />
                       <span data-i18n="Remember passphrase on this device"
                         >Remember passphrase on this device</span
                       >
                     </label>
+                    <p
+                      class="form-help"
+                      data-i18n="Saved with your system’s secure storage. When this is off, you enter the passphrase again after each restart."
+                    >
+                      Saved with your system’s secure storage. When this is off, you enter the
+                      passphrase again after each restart.
+                    </p>
                     <div class="profile-sync-actions">
                       <button
                         type="button"
@@ -2264,6 +2341,14 @@
                         data-i18n="Clear Saved Passphrase"
                       >
                         Clear Saved Passphrase
+                      </button>
+                      <button
+                        type="button"
+                        id="profile-sync-cancel-encryption-change"
+                        class="btn btn-secondary hidden"
+                        data-i18n="Cancel change"
+                      >
+                        Cancel change
                       </button>
                     </div>
                   </div>
@@ -2369,6 +2454,11 @@
                       Restore
                     </button>
                   </div>
+                  <p
+                    id="profile-sync-backup-detail"
+                    class="form-help hidden"
+                    aria-live="polite"
+                  ></p>
                 </div>
               </div>
             </section>
@@ -2939,6 +3029,7 @@
             <input
               type="text"
               id="target-state-input"
+              maxlength="255"
               placeholder="e.g., on, off, open, closed"
               data-i18n-placeholder="e.g., on, off, open, closed"
               class="form-control"

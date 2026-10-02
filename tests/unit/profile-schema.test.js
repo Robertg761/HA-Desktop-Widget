@@ -2,9 +2,11 @@
  * @jest-environment jsdom
  */
 
+const { LOCAL_ONLY_UI_KEYS: SYNC_LOCAL_ONLY_UI_KEYS } = require('../../profile-sync-core.js');
 const {
   PROFILE_SCHEMA_VERSION,
   PROFILE_SECTION_KEYS,
+  LOCAL_ONLY_UI_KEYS,
   buildConfigPatchFromApplyPayload,
   normalizeProfileDocument,
   buildProfileDocumentFromConfig,
@@ -77,6 +79,48 @@ describe('normalizeProfileDocument', () => {
     expect(normalizeProfileDocument({ opacity: 0.1 }).opacity).toBe(0.5);
   });
 
+  test.each([[null], [''], ['  '], [false], [true], [{}], [[]], ['abc']])(
+    'ignores an opacity of %p instead of reading it as zero',
+    (opacity) => {
+      expect(normalizeProfileDocument({ opacity })).toEqual({});
+    }
+  );
+
+  test('still reads opacity written as a number or as numeric text', () => {
+    expect(normalizeProfileDocument({ opacity: 0.8 }).opacity).toBe(0.8);
+    expect(normalizeProfileDocument({ opacity: '0.7' }).opacity).toBe(0.7);
+    expect(normalizeProfileDocument({ opacity: 0 }).opacity).toBe(0.5);
+  });
+
+  test.each([[null], ['not a list'], [{ id: 'a' }], [42], [false]])(
+    'a %p where a page or favorites list belongs leaves the layout alone',
+    (junk) => {
+      const current = {
+        customTabs: [{ id: 'home', name: 'Home', entityIds: ['light.desk'] }],
+        favoriteEntities: ['light.desk'],
+        activeTabId: 'home',
+      };
+
+      expect(normalizeProfileDocument({ customTabs: junk }, current)).toEqual({});
+      expect(normalizeProfileDocument({ favoriteEntities: junk }, current)).toEqual({});
+      expect(normalizeProfileDocument({ comparisonGraphs: junk }, current)).toEqual({});
+      const withOpacity = normalizeProfileDocument(
+        { customTabs: junk, favoriteEntities: junk, opacity: 0.9 },
+        current
+      );
+      expect(withOpacity).toEqual({ opacity: 0.9 });
+    }
+  );
+
+  test('a bad list does not stop a good one in the same profile', () => {
+    const normalized = normalizeProfileDocument({
+      customTabs: null,
+      favoriteEntities: ['light.desk', 'switch.fan'],
+    });
+
+    expect(normalized.favoriteEntities).toEqual(['light.desk', 'switch.fan']);
+  });
+
   test('every normalized key is a declared profile section', () => {
     const normalized = normalizeProfileDocument({
       ui: { theme: 'dark' },
@@ -95,6 +139,13 @@ describe('normalizeProfileDocument', () => {
       expect(PROFILE_SECTION_KEYS).toContain(key);
     }
     expect('unknownSection' in normalized).toBe(false);
+  });
+});
+
+describe('machine-local ui keys', () => {
+  test('are the same for Home Assistant profiles and for profile sync', () => {
+    // Each side keeps its own list, so a key added to one would sync from one path only.
+    expect([...LOCAL_ONLY_UI_KEYS].sort()).toEqual([...SYNC_LOCAL_ONLY_UI_KEYS].sort());
   });
 });
 
