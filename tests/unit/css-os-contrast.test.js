@@ -41,10 +41,10 @@ describe('the OS contrast preference', () => {
     const more = { prefersContrast: 'more' };
     expect(resolvedValue(document.body, '--border-color')).not.toBe(border);
     expect(resolvedValue(document.body, '--border-color', more)).toBe(border);
-    expect(resolvedValue(document.body, '--tile-border', more)).toBe(border);
-    expect(resolvedValue(document.querySelector('.control-item'), 'border-width', more)).toBe(
-      '2px'
-    );
+    // Read on the tile itself: a rule that sets the tile tokens on the tile would shadow the body.
+    const tile = document.querySelector('.control-item');
+    expect(resolvedValue(tile, '--tile-border', more)).toBe(border);
+    expect(resolvedValue(tile, 'border-width', more)).toBe('2px');
   });
 });
 

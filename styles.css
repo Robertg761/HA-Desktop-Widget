@@ -9825,7 +9825,9 @@ body.widget-state-active #quick-controls .status-message {
 }
 
 /* Scrollbar styling. The thumb is the text colour at half strength (a hairline border colour was
-   about 1.3:1 against the panel) and its drag target is wider than the 5px it draws. */
+   about 1.3:1 against the panel). It still draws 5px, but inside a 9px scrollbar (10px in menus),
+   so there is something to grab. The scrollbar takes layout space on Windows and Linux, so a pane
+   that scrolls is 4px narrower than it was and a few long help paragraphs wrap one line more. */
 body {
   --scrollbar-thumb: color-mix(in srgb, var(--text-primary) 50%, transparent);
   --scrollbar-thumb-hover: color-mix(in srgb, var(--text-primary) 70%, transparent);
