@@ -539,6 +539,7 @@ describe('Settings + Config Integration', () => {
     }),
     passphraseEncrypted: false,
     passphraseStored: false,
+    passphraseActive: false,
     needsResolution: false,
     inFlight: false,
     ...overrides,
@@ -4751,6 +4752,33 @@ describe('Settings + Config Integration', () => {
 
         expect(lastToast()).toEqual(['The passphrases do not match.', 'error', expect.any(Number)]);
         expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+      });
+
+      test('ask twice once a new passphrase is typed over one kept only for this session', async () => {
+        // Main rewrites the file under the new key here too, so a typo would lock it.
+        await choosePassphraseFor({
+          remoteEncrypted: true,
+          passphraseStored: false,
+          passphraseActive: true,
+        });
+        const input = document.getElementById('profile-sync-passphrase');
+        expect(confirmGroupHidden()).toBe(true);
+        expect(input.placeholder).toBe('Enter passphrase (min 8 chars)');
+
+        input.value = 'a different one';
+        input.dispatchEvent(new Event('input'));
+        expect(confirmGroupHidden()).toBe(false);
+
+        document.getElementById('profile-sync-passphrase-confirm').value = 'a different on';
+        mockElectronAPI.updateConfig.mockClear();
+        await settings.saveSettings();
+
+        expect(lastToast()).toEqual(['The passphrases do not match.', 'error', expect.any(Number)]);
+        expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+
+        input.value = '';
+        input.dispatchEvent(new Event('input'));
+        expect(confirmGroupHidden()).toBe(true);
       });
 
       test('can be shown and hidden', async () => {

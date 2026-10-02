@@ -3247,6 +3247,9 @@ function buildProfileSyncStatus(extra = {}) {
     rememberPassphrase: !!profileSync.rememberPassphrase,
     passphraseEncrypted: !!profileSync.passphraseEncrypted,
     passphraseStored: !!profileSync.storedPassphrase,
+    // A passphrase is in use, saved on this device or only held until the app closes.
+    // Typing a different one over it re-encrypts the file.
+    passphraseActive: !!(profileSyncRuntime.passphraseSession || profileSync.storedPassphrase),
     // Stored messages may be English text from shared helpers or older versions.
     passphraseWarning: mainTError(profileSyncRuntime.passphraseWarning || ''),
     lastSyncAt: profileSync.lastSyncAt || null,

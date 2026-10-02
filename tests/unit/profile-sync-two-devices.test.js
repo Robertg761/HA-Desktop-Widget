@@ -266,7 +266,10 @@ describe('turning encryption on for a profile that already syncs', () => {
 
     expect(result.passphrase.success).toBe(true);
     expect(isEncrypted()).toBe(true);
+    // Nothing is saved, but the passphrase is held for the session, so Settings knows that
+    // typing another one would rekey the file.
     expect(desktop.status().passphraseStored).toBe(false);
+    expect(desktop.status().passphraseActive).toBe(true);
   });
 });
 

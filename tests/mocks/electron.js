@@ -231,6 +231,7 @@ function createMockElectronAPI() {
         rememberPassphrase: !!mockConfig.profileSync?.rememberPassphrase,
         passphraseEncrypted: !!mockConfig.profileSync?.passphraseEncrypted,
         passphraseStored: false,
+        passphraseActive: false,
         passphraseWarning: '',
         lastSyncAt: mockConfig.profileSync?.lastSyncAt || null,
         lastSyncStatus: mockConfig.profileSync?.lastSyncStatus || 'idle',

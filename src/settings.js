@@ -3305,10 +3305,12 @@ function updateProfileSyncPassphraseFields() {
   const passphraseInput = document.getElementById('profile-sync-passphrase');
   const cancelChange = document.getElementById('profile-sync-cancel-encryption-change');
 
-  // A typo is locked in wherever a passphrase is chosen: a new key for the file, or a saved
-  // one replaced, which re-encrypts it. Joining a file that is already encrypted needs no
-  // second field, because a wrong passphrase is refused on the spot.
-  const choosingPassphrase = status.passphraseStored
+  // A typo is locked in wherever a passphrase is chosen: a new key for the file, or one in
+  // use replaced, which re-encrypts it. One in use may be saved, or held only for this
+  // session; main rekeys the file either way. Joining a file that is already encrypted needs
+  // no second field, because a wrong passphrase is refused on the spot.
+  const passphraseInUse = !!status.passphraseStored || !!status.passphraseActive;
+  const choosingPassphrase = passphraseInUse
     ? !!passphraseInput?.value.trim()
     : status.remoteEncrypted !== true;
   if (confirmGroup) {
