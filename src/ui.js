@@ -10572,6 +10572,14 @@ function renderTodoItemsInto(container, entity, items, getEntity = () => liveTod
   container.appendChild(list);
 }
 
+// A status line in a detail dialog's list area (Loading..., Unavailable), set like the empty list.
+function showDetailMessage(container, text) {
+  const message = document.createElement('div');
+  message.className = 'entity-detail-empty';
+  message.textContent = text;
+  container.replaceChildren(message);
+}
+
 // Reloading replaces the list, so the checkbox or Retry button that started it is gone and focus
 // falls to <body>. `focusUid` (an item uid, or true for the first control) puts it back.
 async function loadTodoItemsInto(
@@ -10579,7 +10587,7 @@ async function loadTodoItemsInto(
   entity,
   { focusUid = null, getEntity = () => liveTodoEntity(entity) } = {}
 ) {
-  container.textContent = t('Loading...');
+  showDetailMessage(container, t('Loading...'));
   try {
     const items = await fetchTodoItems(entity.entity_id, { force: true });
     if (!container.isConnected || container.closest('.modal-closing')) return;
@@ -10639,7 +10647,7 @@ function showTodoDetails(entity) {
 
     const listContainer = document.createElement('div');
     listContainer.className = 'todo-detail-list-container';
-    listContainer.textContent = t('Loading...');
+    showDetailMessage(listContainer, t('Loading...'));
 
     let busy = false;
     const readOnly = document.createElement('p');
@@ -10703,7 +10711,7 @@ function showTodoDetails(entity) {
     refreshTodo();
     if (isEntityAvailable(entity)) {
       void loadTodoItemsInto(listContainer, entity, { getEntity: liveTodo });
-    } else listContainer.textContent = t('Unavailable');
+    } else showDetailMessage(listContainer, t('Unavailable'));
   } catch (error) {
     console.error('Error showing todo details:', error);
   }
@@ -10804,7 +10812,7 @@ function showCalendarDetails(entity) {
       if (loading) return;
       loading = true;
       refresh.setAttribute('aria-busy', 'true');
-      listContainer.textContent = t('Loading...');
+      showDetailMessage(listContainer, t('Loading...'));
       const start = new Date();
       const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
       try {
@@ -10821,7 +10829,7 @@ function showCalendarDetails(entity) {
         refresh.textContent = t('Refresh');
       } catch {
         if (!modal.isConnected || modal.classList.contains('modal-closing')) return;
-        listContainer.textContent = t('Unable to load events');
+        showDetailMessage(listContainer, t('Unable to load events'));
         refresh.textContent = t('Retry');
       } finally {
         loading = false;

@@ -97,6 +97,28 @@ describe('the control recipe', () => {
     });
   });
 
+  describe('disabled controls', () => {
+    it('lets one that explains itself in a title show it, and ignores the rest', () => {
+      render(
+        '',
+        `<button disabled title="Desktop layer mode keeps the widget behind normal windows."></button>
+        <button disabled></button>
+        <button disabled title=""></button>
+        <input type="checkbox" disabled title="Why">
+        <div role="button" aria-disabled="true" title="Why"></div>`
+      );
+      const [titled, bare, emptyTitle, checkbox, custom] = document.body.children;
+
+      expect(resolvedValue(titled, 'pointer-events')).toBe('auto');
+      expect(resolvedValue(checkbox, 'pointer-events')).toBe('auto');
+      expect(resolvedValue(bare, 'pointer-events')).toBe('none');
+      // An empty title is how settings.js clears the text once the control is usable again.
+      expect(resolvedValue(emptyTitle, 'pointer-events')).toBe('none');
+      expect(resolvedValue(custom, 'pointer-events')).toBe('none');
+      expect(resolvedValue(titled, 'cursor')).toBe('not-allowed');
+    });
+  });
+
   describe('fields', () => {
     it('styles an input in a dialog that has no form group', () => {
       render('', '<div class="modal-body"><input class="form-control" type="number"></div>');
