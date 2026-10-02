@@ -2,253 +2,26 @@
  * @jest-environment node
  *
  * Runs the real profile sync engine from main.js for several simulated devices
- * sharing one sync folder. Each device is its own vm context with its own
- * config, runtime state, app data folder and clock; only the Electron-facing
- * side effects are stubbed.
+ * sharing one sync folder. See tests/helpers/profile-sync-devices.js.
  */
 
 const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const vm = require('vm');
-const nodeCrypto = require('crypto');
-const profileSyncCore = require('../../profile-sync-core.js');
-const { requireExistingSyncParentDirectory } = require('../../src/cloud-sync-path.cjs');
-const rewriteTransaction = require('../../src/profile-sync-rewrite-transaction.cjs');
-const { formatTemplate } = require('../../src/i18n-main.cjs');
+const { createProfileSyncHarness, profileSyncCore } = require('../helpers/profile-sync-devices.js');
 
-const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
-
-function sliceMain(startMarker, endMarker) {
-  const start = mainSource.indexOf(startMarker);
-  const end = mainSource.indexOf(endMarker, start);
-  if (start < 0 || end <= start) {
-    throw new Error(`Could not slice main.js from ${startMarker}`);
-  }
-  return mainSource.slice(start, end);
-}
-
-const ENGINE_SOURCE = [
-  sliceMain(
-    'function isProfileSyncProviderSupported(',
-    'async function getGoogleDriveFolderCandidates'
-  ),
-  sliceMain('function generateProfileSyncDeviceId(', 'function ensureUpdateConfigDefaults('),
-  sliceMain('function getProfileSyncConfig(', 'function hasDeferredSecureConfigWork('),
-  sliceMain('function buildProfileSyncStatus(', 'async function readCloudFileEnvelope('),
-  sliceMain(
-    'async function readCloudFileEnvelope(',
-    '/**\n * Selects and returns an appropriate tray icon'
-  ),
-  sliceMain(
-    'async function findProfileSyncConflictSections(',
-    'function scheduleDebouncedProfileSyncPush('
-  ),
-  sliceMain(
-    'async function runProfileSyncInternal(',
-    '/**\n * Runs a sync triggered by something other than the interval timer'
-  ),
-].join('\n');
-
-const PROFILE_SYNC_CONSTANTS = sliceMain(
-  'const PROFILE_SYNC_PUSH_DEBOUNCE_MS',
-  'const profileSyncRuntime = {'
-);
-
-let sharedFolder;
-let tempRoot;
-
-beforeEach(() => {
-  tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'profile-sync-engine-'));
-  sharedFolder = path.join(tempRoot, 'Dropbox');
-  fs.mkdirSync(sharedFolder);
+// Seals secrets the way these tests always did: the empty string becomes a
+// non-empty blob. The two-device tests cover a keyring that does not.
+const harness = createProfileSyncHarness({
+  createDefaultSafeStorage: () => ({
+    isEncryptionAvailable: () => true,
+    getSelectedStorageBackend: () => 'gnome_libsecret',
+    encryptString: (value) => Buffer.from(`sealed:${value}`),
+    decryptString: (buffer) => buffer.toString().slice('sealed:'.length),
+  }),
 });
+const { syncFilePath, readSyncFile, baseContent, createDevice, createSyncedPair } = harness;
 
-afterEach(() => {
-  fs.rmSync(tempRoot, { recursive: true, force: true });
-});
-
-function syncFilePath() {
-  return path.join(sharedFolder, 'ha-widget-profile-sync.json');
-}
-
-function readSyncFile() {
-  return JSON.parse(fs.readFileSync(syncFilePath(), 'utf8'));
-}
-
-function baseContent() {
-  return {
-    opacity: 0.9,
-    alwaysOnTop: true,
-    frostedGlass: true,
-    hideOnBlur: false,
-    ui: { theme: 'dark', accent: 'original', scale: 1 },
-    favoriteEntities: ['light.kitchen'],
-    customTabs: [],
-    activeTabId: '',
-    desktopPins: {},
-    globalHotkeys: { enabled: false, hotkeys: {} },
-    entityAlerts: { enabled: false, alerts: {} },
-    popupHotkey: '',
-  };
-}
-
-/**
- * @param {string} name used for the device's app data folder
- * @param {object} [options]
- * @param {object} [options.content] config content, defaults to baseContent()
- * @param {object} [options.profileSync] profileSync overrides
- * @param {number} [options.clockOffsetMs] how far this device's clock is ahead
- */
-function createDevice(name, { content = baseContent(), profileSync = {}, clockOffsetMs = 0 } = {}) {
-  const userData = path.join(tempRoot, `${name}-userData`);
-  fs.mkdirSync(userData);
-  const RealDate = Date;
-  class DeviceDate extends RealDate {
-    constructor(...args) {
-      super(...(args.length ? args : [RealDate.now() + clockOffsetMs]));
-    }
-    static now() {
-      return RealDate.now() + clockOffsetMs;
-    }
-  }
-
-  const context = {
-    Date: DeviceDate,
-    Buffer,
-    console,
-    process,
-    fs,
-    path,
-    nodeCrypto,
-    profileSyncCore,
-    requireExistingSyncParentDirectory,
-    ...rewriteTransaction,
-    app: { getPath: () => userData },
-    log: { warn: () => {}, info: () => {}, debug: () => {}, error: () => {} },
-    // Stands in for the OS credential store the rewrite transaction seals secrets with.
-    safeStorage: {
-      isEncryptionAvailable: () => true,
-      getSelectedStorageBackend: () => 'gnome_libsecret',
-      encryptString: (value) => Buffer.from(`sealed:${value}`),
-      decryptString: (buffer) => buffer.toString().slice('sealed:'.length),
-    },
-    mainT: (key, vars) => formatTemplate(key, vars),
-    mainTError: (error) => (typeof error === 'string' ? error : error?.message || ''),
-    isPlainObject: (value) => !!value && typeof value === 'object' && !Array.isArray(value),
-    isPathInsideDirectory: (target, dir) => !path.relative(dir, target).startsWith('..'),
-    preservedEncryptedTokenForRecovery: null,
-    mainWindow: null,
-    pushes: [],
-    savedSnapshots: 0,
-  };
-  vm.createContext(context);
-  vm.runInContext(
-    `${PROFILE_SYNC_CONSTANTS}
-     var profileSyncRuntime = {
-       inFlight: false, pushDebounceTimer: null, intervalTimer: null, pendingPullEchoHash: null,
-       pendingPullEchoProfile: null, pendingPulls: [], damagedConflictSections: [],
-       conflictCopies: [], lastOpportunisticSyncAt: 0, needsResolution: false,
-       pendingRemoteEnvelope: null, pendingRemoteIdentity: null, localProfileHash: null,
-       localProfileUpdatedAt: null, localSectionHashes: {}, conflictSections: [],
-       lastRunSummary: null, lastRemote: null, passphraseSession: '', passphraseWarning: '',
-       approvedCopyDestinationFolders: [],
-     };
-     ${ENGINE_SOURCE}
-     var configSnapshotVersion = 0;
-     function saveConfig(options = {}) {
-       updateLocalProfileSyncTracking({ allowDebouncedPush: options.allowDebouncedPush !== false });
-       savedSnapshots += 1;
-       configSnapshotVersion += 1;
-       return {};
-     }
-     async function saveConfigDurably(options = {}) {
-       saveConfig(options);
-       return { success: true, persistenceWarnings: [] };
-     }
-     function scheduleDebouncedProfileSyncPush(source) { pushes.push(source); }
-     function runProfileSync(direction, source) { return runProfileSyncInternal(direction, source); }
-     function emitProfileSyncStatus() {}
-     function setupProfileSyncInterval() {}
-     async function runPostSaveSideEffect(warnings, label, fn) { await fn(); }
-     function applyMainWindowSettingSideEffects() {}
-     function applyRuntimeConfigSideEffects() {}
-     function syncDesktopPinWindowsWithConfig() {}
-     function syncTrayEntitiesWithConfig() {}
-     function broadcastDesktopPinConfigUpdate() {}
-     function pushConfigToRenderer() {}
-     function pruneConfig() {}
-     function ensureDateTimeFormatConfigDefaults() {}
-     function normalizeDesktopPinsConfig() {}
-     function normalizeTrayEntitiesConfigInPlace() {}
-     function sanitizeConfigForRenderer(value) { return JSON.parse(JSON.stringify(value)); }
-     function getDefaultProfileSyncFilePath() { return path.join(app.getPath('userData'), PROFILE_SYNC_DEFAULT_FILE_NAME); }
-     var config = null;`,
-    context
-  );
-
-  context.config = {
-    ...JSON.parse(JSON.stringify(content)),
-    profileSync: {
-      enabled: true,
-      provider: 'dropbox',
-      cloudFilePath: syncFilePath(),
-      ...profileSync,
-    },
-  };
-  vm.runInContext(
-    `ensureProfileSyncConfigDefaults(config);
-     // Seeded at startup, as refreshProfileSyncRuntimeTracking does, from this device's clock.
-     config.profileSync.profileUpdatedAt = config.profileSync.profileUpdatedAt || new Date().toISOString();
-     profileSyncRuntime.passphraseSession = config.profileSync.__passphrase || '';
-     delete config.profileSync.__passphrase;
-     profileSyncRuntime.localProfileHash = computeScopedProfileHash(
-       profileSyncCore.projectSyncProfile(config, getActiveProfileSyncScope()),
-       getActiveProfileSyncScope()
-     );
-     profileSyncRuntime.localSectionHashes = computeLocalSectionHashes();`,
-    context
-  );
-
-  return {
-    context,
-    get config() {
-      return context.config;
-    },
-    /** Makes a local edit the way a settings save does. */
-    edit(mutate) {
-      mutate(context.config);
-      context.saveConfig();
-    },
-    sync(direction = 'auto', source = 'interval') {
-      return context.runProfileSyncInternal(direction, source);
-    },
-    firstEnable() {
-      context.config.profileSync.firstEnableResolutionPending = true;
-      return context.prepareProfileSyncFirstEnableResolution();
-    },
-    status() {
-      return context.buildProfileSyncStatus();
-    },
-    backups(prefix) {
-      const dir = path.join(userData, 'profile-sync-backups');
-      if (!fs.existsSync(dir)) return [];
-      return fs
-        .readdirSync(dir)
-        .filter((file) => file.startsWith(prefix))
-        .map((file) => JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8')));
-    },
-  };
-}
-
-/** Two devices that have already synced once and agree on everything. */
-async function createSyncedPair(options = {}) {
-  const desktop = createDevice('desktop', options.desktop);
-  const laptop = createDevice('laptop', options.laptop);
-  await desktop.sync();
-  await laptop.sync();
-  return { desktop, laptop };
-}
+beforeEach(() => harness.setup());
+afterEach(() => harness.teardown());
 
 describe('profile sync engine', () => {
   test('keeps edits two devices made to different sections', async () => {
