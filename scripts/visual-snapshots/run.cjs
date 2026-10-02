@@ -393,7 +393,13 @@ async function main() {
         // What the window looked like when it went wrong is the best clue.
         await capture(`${scene.name}-failed`, cdp).catch(() => {});
       }
-      await restore().catch((error) => console.warn(`Reset after ${scene.name}: ${error.message}`));
+      try {
+        await restore();
+      } catch (error) {
+        // A dialog or pin left behind would leak into every later scene, so the run must not pass.
+        failures.push(`${scene.name} (reset)`);
+        console.error(`Reset after ${scene.name} failed: ${error.message}`);
+      }
     }
   } finally {
     cdp?.close();
