@@ -16089,6 +16089,12 @@ body[data-season='thanksgiving'] .control-item {
   opacity: 0.5;
 }
 
+/* The Readable preset replaces these rows' effects (see syncReadablePresetOverrides). A light dim
+   keeps their text above 7:1 for the people who turn the preset on. */
+#settings-modal .is-overridden {
+  opacity: 0.7;
+}
+
 /* ==========================================================================
    RIGHT-TO-LEFT AND FORCED COLOURS
    ========================================================================== */

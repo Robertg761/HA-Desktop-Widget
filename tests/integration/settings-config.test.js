@@ -266,6 +266,7 @@ function createSettingsModalDOM() {
       <input type="range" id="opacity-slider" min="1" max="100" />
       <span id="opacity-value">90</span>
 
+      <section id="colors-section" data-readable-overrides></section>
       <select id="ui-scale-select"><option value="1">100%</option><option value="1.5">150%</option></select>
       <input type="checkbox" id="readable-preset" />
       <label for="density-select">Layout density</label>
@@ -3274,6 +3275,30 @@ describe('Settings + Config Integration', () => {
         expect.objectContaining({ density: 'compact' })
       );
       expect(mockUiUtils.applyUiPreferences.mock.lastCall[0].scale).toBeUndefined();
+    });
+
+    test('dims the rows the Readable preset replaces while it is on', async () => {
+      await settings.openSettings();
+      const colors = document.getElementById('colors-section');
+      const preset = document.getElementById('readable-preset');
+      expect(colors.classList.contains('is-overridden')).toBe(false);
+
+      preset.checked = true;
+      preset.dispatchEvent(new Event('change'));
+      expect(colors.classList.contains('is-overridden')).toBe(true);
+
+      preset.checked = false;
+      preset.dispatchEvent(new Event('change'));
+      expect(colors.classList.contains('is-overridden')).toBe(false);
+    });
+
+    test('opens with those rows dimmed when the preset is already saved on', async () => {
+      state.CONFIG.ui.highContrast = true;
+      state.CONFIG.ui.opaquePanels = true;
+      await settings.openSettings();
+      expect(document.getElementById('colors-section').classList.contains('is-overridden')).toBe(
+        true
+      );
     });
 
     test('saving unrelated settings keeps split contrast flags the preset does not represent', async () => {

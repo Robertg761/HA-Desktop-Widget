@@ -4631,9 +4631,22 @@ function syncSeasonalControls(ui) {
   status.classList.toggle('hidden', !message);
 }
 
+/**
+ * Dim the rows the Readable preset replaces (the colours, the glass, the window opacity and the
+ * holiday colours) while it is on. They stay editable, since they take effect again once it is off.
+ * @param {object} ui - The appearance settings being shown.
+ */
+function syncReadablePresetOverrides(ui) {
+  const overridden = !!ui.highContrast || !!ui.opaquePanels;
+  document.querySelectorAll('[data-readable-overrides]').forEach((element) => {
+    element.classList.toggle('is-overridden', overridden);
+  });
+}
+
 function previewAppearance() {
   const ui = getAppearanceFromInputs();
   syncSeasonalControls(ui);
+  syncReadablePresetOverrides(ui);
   applyUiPreferences(ui);
 }
 
@@ -4685,6 +4698,7 @@ function bindAppearanceSettingsUi() {
   for (const control of [scale, preset, activeTileGlow, densitySelect].filter(Boolean)) {
     control.onchange = previewAppearance;
   }
+  syncReadablePresetOverrides(ui);
   bindSeasonalSettingsUi(ui);
 }
 

@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.49",
+  "version": "1.2.50",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1708,6 +1708,7 @@
     "The sync file is in use by another program or is read-only. Try again in a moment, and check the folder’s permissions if it keeps happening.": "सिंक फ़ाइल किसी दूसरे प्रोग्राम में उपयोग हो रही है या केवल-पढ़ने योग्य है। थोड़ी देर बाद फिर कोशिश करें, और अगर समस्या बनी रहे तो फ़ोल्डर की अनुमतियाँ जाँचें।",
     "Details": "विवरण",
     "No unlocked system keyring (Secret Service) was found, so this computer cannot remember your Home Assistant sign-in or sync passphrase. Start gnome-keyring or KWallet, then restart the widget.": "कोई अनलॉक सिस्टम कीरिंग (Secret Service) नहीं मिली, इसलिए यह कंप्यूटर आपका Home Assistant साइन-इन या सिंक पासफ़्रेज़ याद नहीं रख सकता। gnome-keyring या KWallet शुरू करें, फिर विजेट को पुनः आरंभ करें।",
-    "Needs Windows 11 version 22H2 or later.": "Windows 11 संस्करण 22H2 या उसके बाद का संस्करण आवश्यक है।"
+    "Needs Windows 11 version 22H2 or later.": "Windows 11 संस्करण 22H2 या उसके बाद का संस्करण आवश्यक है।",
+    "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.": "पारदर्शिता बंद करता है और हर जगह टेक्स्ट और किनारों का कंट्रास्ट बढ़ाता है। चालू रहने तक यह आपके रंग, फ्रॉस्टेड ग्लास पृष्ठभूमि और त्योहार के रंगों को ओवरराइड करता है।"
   }
 }
