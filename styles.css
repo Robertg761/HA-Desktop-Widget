@@ -12997,12 +12997,6 @@ body.opaque-panels
   -webkit-backdrop-filter: none !important;
 }
 
-/* Toasts, the command palette, menus and tooltips draw --dialog-bg, which is 96% opaque, so a
-   tile's text would ghost through a toast over it. */
-body.opaque-panels {
-  --dialog-bg: color-mix(in srgb, var(--text-primary) 5%, rgb(var(--window-bg-rgb)));
-}
-
 /* Ranges are handled below; :where keeps this rule's specificity unchanged. Section headers and
    tabs are text-like buttons: a fill would draw a bar across the panel, and their own hover,
    active and focus styles stay visible without it. A colour swatch is its fill. */
@@ -13219,6 +13213,12 @@ body.theme-light {
   --dialog-border: rgba(0, 0, 0, 0.1);
   --dialog-shadow: 0 24px 60px -16px rgba(20, 24, 40, 0.35), 0 2px 6px rgba(20, 24, 40, 0.12);
   --dialog-scrim: rgba(240, 242, 246, 0.5);
+}
+
+/* Toasts, the command palette, menus and tooltips draw --dialog-bg, which is 96% opaque, so a
+   tile's text would ghost through a toast over it. */
+body.opaque-panels {
+  --dialog-bg: color-mix(in srgb, var(--text-primary) 5%, rgb(var(--window-bg-rgb)));
 }
 
 /* --- Backdrop and panel --- */
