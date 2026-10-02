@@ -1662,5 +1662,6 @@
   "Pages: {{pages}}. Referenced entities: {{count}}.": "Pages: {{pages}}. Referenced entities: {{count}}.",
   "Unavailable entities on this connection: {{count}}.": "Unavailable entities on this connection: {{count}}.",
   "Apply this backup on this computer? Your current settings are backed up first.": "Apply this backup on this computer? Your current settings are backed up first.",
-  "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers."
+  "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.",
+  "Needs Windows 11 version 22H2 or later.": "Needs Windows 11 version 22H2 or later."
 }

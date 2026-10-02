@@ -262,6 +262,7 @@ function hasGlobalShortcutFallback({
 function getMainWindowVisualOptions({
   platform = process.platform,
   frostedGlass = false,
+  nativeGlassSupported = true,
   transparencyOptions = {},
 } = {}) {
   const options = {
@@ -273,7 +274,8 @@ function getMainWindowVisualOptions({
 
   if (platform === 'win32') {
     options.thickFrame = true;
-    if (frostedGlass) {
+    // Windows before 11 22H2 would ignore the material anyway; the renderer draws the solid panel.
+    if (frostedGlass && nativeGlassSupported) {
       options.backgroundMaterial = 'acrylic';
     }
   } else if (platform === 'darwin' && frostedGlass) {

@@ -80,6 +80,7 @@ jest.mock('../../src/ui-utils.js', () => {
     }),
     applyTheme: jest.fn(),
     applyUiPreferences: jest.fn(),
+    isFrostedGlassAvailable: jest.fn(() => true),
     hexToRgb: jest.fn((hex) => {
       if (!hex || typeof hex !== 'string') return null;
       const normalized = hex.replace('#', '').trim();
@@ -6437,6 +6438,25 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
 
       ui.updateWeatherEffects();
+      expect(mockWeatherEffects.setEffect).toHaveBeenCalledWith(null);
+    });
+
+    it('should keep weather effects off where the window cannot draw frosted glass', () => {
+      state.setConfig({
+        ...sampleConfig,
+        frostedGlass: true,
+        desktopCapabilities: { nativeGlassSupported: false },
+        ui: {
+          ...sampleConfig.ui,
+          weatherEffectsEnabled: true,
+          weatherOverride: 'rainy',
+        },
+      });
+      uiUtils.isFrostedGlassAvailable.mockReturnValueOnce(false);
+
+      ui.updateWeatherEffects();
+
+      expect(uiUtils.isFrostedGlassAvailable).toHaveBeenCalledWith(state.CONFIG);
       expect(mockWeatherEffects.setEffect).toHaveBeenCalledWith(null);
     });
   });

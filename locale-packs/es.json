@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.46",
+  "version": "1.2.47",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1669,6 +1669,7 @@
     "Pages: {{pages}}. Referenced entities: {{count}}.": "Páginas: {{pages}}. Entidades referenciadas: {{count}}.",
     "Unavailable entities on this connection: {{count}}.": "Entidades no disponibles en esta conexión: {{count}}.",
     "Apply this backup on this computer? Your current settings are backed up first.": "¿Aplicar esta copia de seguridad en este equipo? Tus ajustes actuales se guardan antes en una copia de seguridad.",
-    "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "¿Aplicar esta copia de seguridad en este equipo? Tus ajustes actuales se guardan antes en una copia de seguridad, y los ajustes restaurados que entran en tu alcance de sincronización se sincronizan después con tus otros equipos."
+    "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "¿Aplicar esta copia de seguridad en este equipo? Tus ajustes actuales se guardan antes en una copia de seguridad, y los ajustes restaurados que entran en tu alcance de sincronización se sincronizan después con tus otros equipos.",
+    "Needs Windows 11 version 22H2 or later.": "Requiere Windows 11 versión 22H2 o posterior."
   }
 }

@@ -1,6 +1,7 @@
 /* global process */
 import { t } from './i18n.js';
 import { setIconContent } from './icons.js';
+import windowGlass from './window-glass.cjs';
 
 const focusTrapHandlers = new WeakMap();
 const focusTrapPreviousFocus = new WeakMap();
@@ -603,6 +604,19 @@ function getPlatform() {
   return window?.electronAPI?.platform || null;
 }
 
+/**
+ * Whether this window can draw Frosted glass. Windows before 11 22H2 cannot blur behind the
+ * window, so the setting stays saved but the widget draws the solid panel there.
+ * @param {Object} [config] - App config, which carries the main process's desktopCapabilities.
+ * @returns {boolean}
+ */
+function isFrostedGlassAvailable(config) {
+  return windowGlass.isGlassAvailable({
+    platform: getPlatform(),
+    nativeGlassSupported: config?.desktopCapabilities?.nativeGlassSupported,
+  });
+}
+
 function isLightThemeActive() {
   return document.body?.classList.contains('theme-light');
 }
@@ -937,16 +951,22 @@ function applyUiPreferences(ui = {}) {
 /**
  * Configure and apply frosted-glass (glassmorphism) window visual effects by setting CSS custom properties and body classes.
  *
- * When `config.frostedGlass` is true, this function sets CSS variables that control blur and multiple layer opacities and then adds the `frosted-glass` class (and `native-glass` on supported platforms). When false, it removes those classes and clears the related CSS custom properties.
+ * When `config.frostedGlass` is true, this function sets CSS variables that control blur and multiple layer opacities and then adds the `frosted-glass` class (and `native-glass` on supported platforms). When false, it removes those classes and clears the related CSS custom properties. Windows before 11 22H2 cannot blur behind the window, so there it draws what the setting being off draws.
  *
  * @param {Object} [config={}] - Configuration options.
  * @param {boolean} [config.frostedGlass=false] - Enable or disable the frosted glass effect.
+ * @param {Object} [config.desktopCapabilities] - What the main process says this window can do.
  */
 function applyWindowEffects(config = {}) {
   try {
     const body = document.body;
-    const enabled = !!config.frostedGlass;
     const platform = getPlatform();
+    const glassMode = windowGlass.resolveGlassMode({
+      platform,
+      frostedGlass: !!config.frostedGlass,
+      nativeGlassSupported: config.desktopCapabilities?.nativeGlassSupported,
+    });
+    const enabled = glassMode !== 'off';
     // Disable CSS backdrop filters for low-cost/no-glass rendering while keeping
     // opacity on CSS background surfaces (Linux default, Windows without frosted glass).
     const linuxPerformanceMode = platform === 'linux' || (platform === 'win32' && !enabled);
@@ -983,7 +1003,7 @@ function applyWindowEffects(config = {}) {
 
     const strength = DEFAULT_FROSTED_STRENGTH;
     const tint = DEFAULT_FROSTED_TINT / 100;
-    const nativeGlass = platform === 'win32' || platform === 'darwin';
+    const nativeGlass = glassMode === 'native';
     const lightTheme = isLightThemeActive();
 
     // Linear interpolation helper
@@ -1623,6 +1643,7 @@ export {
   getSeasonalColors,
   setUiPreferencesObserver,
   applyWindowEffects,
+  isFrostedGlassAvailable,
   trapFocus,
   releaseFocusTrap,
   showLoading,

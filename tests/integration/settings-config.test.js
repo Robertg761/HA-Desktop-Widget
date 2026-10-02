@@ -69,6 +69,7 @@ const mockUiUtils = {
   applyUiPreferences: jest.fn(),
   suspendSeasonalColors: jest.fn(),
   applyWindowEffects: jest.fn(),
+  isFrostedGlassAvailable: jest.fn(() => true),
   setCustomThemes: jest.fn((customColors = []) => {
     mockCustomThemes = (Array.isArray(customColors) ? customColors : [])
       .map((entry) => ({
@@ -403,6 +404,7 @@ function createSettingsModalDOM() {
           </button>
           <div class="section-body">
             <input type="checkbox" id="frosted-glass" />
+            <div id="frosted-glass-warning" class="hidden"></div>
             <input type="checkbox" id="weather-effects-enabled" />
             <div id="weather-effects-warning" class="hidden"></div>
             <div id="weather-override-group" style="display: none;">
@@ -2222,6 +2224,87 @@ describe('Settings + Config Integration', () => {
 
       expect(state.CONFIG.frostedGlass).toBe(true);
       expect(state.CONFIG.ui.weatherEffectsEnabled).toBe(true);
+    });
+  });
+
+  describe('Frosted glass on Windows without acrylic', () => {
+    const unavailable = { nativeGlassSupported: false };
+
+    beforeEach(() => {
+      mockUiUtils.isFrostedGlassAvailable.mockImplementation(() => false);
+      state.CONFIG.desktopCapabilities = unavailable;
+      state.CONFIG.frostedGlass = true;
+      state.CONFIG.ui.weatherEffectsEnabled = true;
+    });
+
+    afterEach(() => {
+      mockUiUtils.isFrostedGlassAvailable.mockImplementation(() => true);
+    });
+
+    test('shows the control off and locked with the reason', async () => {
+      await settings.openSettings();
+
+      const frostedGlass = document.getElementById('frosted-glass');
+      const warning = document.getElementById('frosted-glass-warning');
+      expect(frostedGlass.checked).toBe(false);
+      expect(frostedGlass.disabled).toBe(true);
+      expect(frostedGlass.title).toBe('Needs Windows 11 version 22H2 or later.');
+      expect(warning.classList.contains('hidden')).toBe(false);
+      expect(warning.textContent).toBe('Needs Windows 11 version 22H2 or later.');
+    });
+
+    test('explains weather effects with the same reason rather than asking for glass', async () => {
+      await settings.openSettings();
+
+      const weatherEffects = document.getElementById('weather-effects-enabled');
+      const warning = document.getElementById('weather-effects-warning');
+      expect(weatherEffects.checked).toBe(false);
+      expect(weatherEffects.disabled).toBe(true);
+      expect(warning.classList.contains('hidden')).toBe(false);
+      expect(warning.textContent).toBe('Needs Windows 11 version 22H2 or later.');
+    });
+
+    test('keeps the saved choices when Settings is saved, so an upgrade brings them back', async () => {
+      await settings.openSettings();
+
+      await settings.saveSettings();
+
+      expect(state.CONFIG.frostedGlass).toBe(true);
+      expect(state.CONFIG.ui.weatherEffectsEnabled).toBe(true);
+    });
+
+    test('previews and restores effects with the capabilities, so the solid panel is drawn', async () => {
+      await settings.openSettings();
+      mockUiUtils.applyWindowEffects.mockClear();
+
+      settings.previewWindowEffects();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(mockUiUtils.applyWindowEffects).toHaveBeenCalledWith(
+        expect.objectContaining({ frostedGlass: false, desktopCapabilities: unavailable })
+      );
+
+      mockUiUtils.applyWindowEffects.mockClear();
+      settings.closeSettings();
+
+      expect(mockUiUtils.applyWindowEffects).toHaveBeenCalledWith(
+        expect.objectContaining({ frostedGlass: true, desktopCapabilities: unavailable })
+      );
+    });
+
+    test('leaves the control usable where the window can draw frosted glass', async () => {
+      mockUiUtils.isFrostedGlassAvailable.mockImplementation(() => true);
+      state.CONFIG.desktopCapabilities = { nativeGlassSupported: true };
+
+      await settings.openSettings();
+
+      const frostedGlass = document.getElementById('frosted-glass');
+      expect(frostedGlass.checked).toBe(true);
+      expect(frostedGlass.disabled).toBe(false);
+      expect(frostedGlass.title).toBe('');
+      expect(document.getElementById('frosted-glass-warning').classList.contains('hidden')).toBe(
+        true
+      );
     });
   });
 

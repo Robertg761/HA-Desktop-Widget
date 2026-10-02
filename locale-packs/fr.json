@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.46",
+  "version": "1.2.47",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1669,6 +1669,7 @@
     "Pages: {{pages}}. Referenced entities: {{count}}.": "Pages : {{pages}}. Entités référencées : {{count}}.",
     "Unavailable entities on this connection: {{count}}.": "Entités indisponibles sur cette connexion : {{count}}.",
     "Apply this backup on this computer? Your current settings are backed up first.": "Appliquer cette sauvegarde sur cet ordinateur ? Vos paramètres actuels sont d'abord sauvegardés.",
-    "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "Appliquer cette sauvegarde sur cet ordinateur ? Vos paramètres actuels sont d'abord sauvegardés, puis les paramètres restaurés inclus dans votre périmètre de synchronisation se synchronisent avec vos autres ordinateurs."
+    "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "Appliquer cette sauvegarde sur cet ordinateur ? Vos paramètres actuels sont d'abord sauvegardés, puis les paramètres restaurés inclus dans votre périmètre de synchronisation se synchronisent avec vos autres ordinateurs.",
+    "Needs Windows 11 version 22H2 or later.": "Nécessite Windows 11 version 22H2 ou ultérieure."
   }
 }
