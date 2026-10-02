@@ -8,16 +8,7 @@
 const fs = require('fs');
 const { createProfileSyncHarness, profileSyncCore } = require('../helpers/profile-sync-devices.js');
 
-// Seals secrets the way these tests always did: the empty string becomes a
-// non-empty blob. The two-device tests cover a keyring that does not.
-const harness = createProfileSyncHarness({
-  createDefaultSafeStorage: () => ({
-    isEncryptionAvailable: () => true,
-    getSelectedStorageBackend: () => 'gnome_libsecret',
-    encryptString: (value) => Buffer.from(`sealed:${value}`),
-    decryptString: (buffer) => buffer.toString().slice('sealed:'.length),
-  }),
-});
+const harness = createProfileSyncHarness();
 const { syncFilePath, readSyncFile, baseContent, createDevice, createSyncedPair } = harness;
 
 beforeEach(() => harness.setup());

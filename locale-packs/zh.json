@@ -2,7 +2,7 @@
   "locale": "zh",
   "displayName": "简体中文",
   "englishName": "Chinese (Simplified)",
-  "version": "1.2.46",
+  "version": "1.2.47",
   "minAppVersion": "3.4.1",
   "notes": "Simplified Chinese language pack for HA Desktop Widget.",
   "messages": {
@@ -722,7 +722,6 @@
     "The missing remote profile could not be created": "无法创建缺失的远程配置文件",
     "Cannot change profile encryption safely: {{error}}": "无法安全地更改配置文件加密：{{error}}",
     "Cannot change the sync passphrase safely: {{error}}": "无法安全地更改同步密码短语：{{error}}",
-    "That passphrase does not unlock the remote profile. Enter the current remote passphrase before attempting a key change.": "该密码短语无法解锁远程配置文件。尝试更改密钥前，请输入当前的远程密码短语。",
     "Failed to save sync passphrase: {{error}}": "无法保存同步密码短语：{{error}}",
     "The passphrase cannot be cleared until the pending encryption change or remote rewrite succeeds": "待处理的加密更改或远程重写成功之前，无法清除密码短语",
     "Failed to clear sync passphrase: {{error}}": "无法清除同步密码短语：{{error}}",
@@ -1669,6 +1668,10 @@
     "Pages: {{pages}}. Referenced entities: {{count}}.": "页面：{{pages}}。引用的实体：{{count}}。",
     "Unavailable entities on this connection: {{count}}.": "此连接上不可用的实体：{{count}}。",
     "Apply this backup on this computer? Your current settings are backed up first.": "在此电脑上应用此备份？会先备份你当前的设置。",
-    "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "在此电脑上应用此备份？会先备份你当前的设置，恢复后属于同步范围的设置随后会同步到你的其他电脑。"
+    "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "在此电脑上应用此备份？会先备份你当前的设置，恢复后属于同步范围的设置随后会同步到你的其他电脑。",
+    "Enter the sync passphrase in Settings > Advanced to continue syncing.": "请在“设置 > 高级”中输入同步密码短语，以继续同步。",
+    "Enter the passphrase your other computers use for this sync file.": "请输入你的其他电脑用于此同步文件的密码短语。",
+    "Secure system storage is unavailable, and changing the encryption of an existing sync file needs it. On Linux, start and unlock a keyring such as GNOME Keyring or KWallet, then restart the widget.": "安全的系统存储不可用，而更改现有同步文件的加密需要它。在 Linux 上，请启动并解锁 GNOME Keyring 或 KWallet 等密钥环，然后重新启动小组件。",
+    "That passphrase does not unlock the sync file. Enter the passphrase your other computers use.": "此密码短语无法解锁同步文件。请输入你的其他电脑使用的密码短语。"
   }
 }

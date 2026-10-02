@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.46",
+  "version": "1.2.47",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -722,7 +722,6 @@
     "The missing remote profile could not be created": "अनुपलब्ध रिमोट प्रोफ़ाइल बनाई नहीं जा सकी",
     "Cannot change profile encryption safely: {{error}}": "प्रोफ़ाइल एन्क्रिप्शन को सुरक्षित रूप से नहीं बदला जा सकता: {{error}}",
     "Cannot change the sync passphrase safely: {{error}}": "सिंक पासफ़्रेज़ को सुरक्षित रूप से नहीं बदला जा सकता: {{error}}",
-    "That passphrase does not unlock the remote profile. Enter the current remote passphrase before attempting a key change.": "यह पासफ़्रेज़ रिमोट प्रोफ़ाइल को अनलॉक नहीं करता। कुंजी बदलने से पहले मौजूदा रिमोट पासफ़्रेज़ दर्ज करें।",
     "Failed to save sync passphrase: {{error}}": "सिंक पासफ़्रेज़ सहेजा नहीं जा सका: {{error}}",
     "The passphrase cannot be cleared until the pending encryption change or remote rewrite succeeds": "लंबित एन्क्रिप्शन बदलाव या रिमोट पुनर्लेखन सफल होने तक पासफ़्रेज़ हटाया नहीं जा सकता",
     "Failed to clear sync passphrase: {{error}}": "सिंक पासफ़्रेज़ हटाया नहीं जा सका: {{error}}",
@@ -1669,6 +1668,10 @@
     "Pages: {{pages}}. Referenced entities: {{count}}.": "पेज: {{pages}}। संदर्भित एंटिटी: {{count}}।",
     "Unavailable entities on this connection: {{count}}.": "इस कनेक्शन पर अनुपलब्ध एंटिटी: {{count}}।",
     "Apply this backup on this computer? Your current settings are backed up first.": "क्या इस बैकअप को इस कंप्यूटर पर लागू करें? पहले आपकी मौजूदा सेटिंग्स का बैकअप लिया जाता है।",
-    "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "क्या इस बैकअप को इस कंप्यूटर पर लागू करें? पहले आपकी मौजूदा सेटिंग्स का बैकअप लिया जाता है, फिर बहाल की गई सेटिंग्स में से आपके सिंक दायरे की सेटिंग्स आपके दूसरे कंप्यूटरों पर सिंक होती हैं।"
+    "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "क्या इस बैकअप को इस कंप्यूटर पर लागू करें? पहले आपकी मौजूदा सेटिंग्स का बैकअप लिया जाता है, फिर बहाल की गई सेटिंग्स में से आपके सिंक दायरे की सेटिंग्स आपके दूसरे कंप्यूटरों पर सिंक होती हैं।",
+    "Enter the sync passphrase in Settings > Advanced to continue syncing.": "सिंक जारी रखने के लिए सेटिंग्स > उन्नत में सिंक पासफ़्रेज़ दर्ज करें।",
+    "Enter the passphrase your other computers use for this sync file.": "इस सिंक फ़ाइल के लिए आपके दूसरे कंप्यूटर जो पासफ़्रेज़ उपयोग करते हैं, वही दर्ज करें।",
+    "Secure system storage is unavailable, and changing the encryption of an existing sync file needs it. On Linux, start and unlock a keyring such as GNOME Keyring or KWallet, then restart the widget.": "सुरक्षित सिस्टम स्टोरेज उपलब्ध नहीं है, जबकि मौजूदा सिंक फ़ाइल का एन्क्रिप्शन बदलने के लिए इसकी ज़रूरत होती है। Linux पर GNOME Keyring या KWallet जैसी कीरिंग शुरू करके अनलॉक करें, फिर विजेट को पुनः आरंभ करें।",
+    "That passphrase does not unlock the sync file. Enter the passphrase your other computers use.": "यह पासफ़्रेज़ सिंक फ़ाइल को नहीं खोलता। वही पासफ़्रेज़ दर्ज करें जो आपके दूसरे कंप्यूटर उपयोग करते हैं।"
   }
 }

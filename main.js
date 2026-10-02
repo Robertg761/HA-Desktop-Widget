@@ -3183,6 +3183,8 @@ function buildProfileSyncStatus(extra = {}) {
     syncScope: getNormalizedProfileSyncScopeValue(profileSync.syncScope),
     intervalMinutes: profileSync.intervalMinutes || PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES,
     encryptionEnabled: !!profileSync.encryptionEnabled,
+    // What the file itself held when last read: true, false, or null when unknown.
+    remoteEncrypted: profileSyncRuntime.remoteEncrypted,
     rememberPassphrase: !!profileSync.rememberPassphrase,
     passphraseEncrypted: !!profileSync.passphraseEncrypted,
     passphraseStored: !!profileSync.storedPassphrase,
@@ -3332,7 +3334,8 @@ function decodeStoredProfileSyncPassphrase() {
 function persistRememberedProfileSyncPassphrase(passphrase, remember) {
   const profileSync = getProfileSyncConfig();
 
-  if (!remember) {
+  // An empty passphrase has nothing to remember, and sealing it would store nothing.
+  if (!remember || !passphrase) {
     profileSync.rememberPassphrase = false;
     profileSync.passphraseEncrypted = false;
     profileSync.storedPassphrase = '';
@@ -3375,13 +3378,26 @@ function getActiveProfileSyncPassphrase() {
   return remembered;
 }
 
+// Chromium seals an empty string to an empty buffer on some platforms (Linux with a
+// Secret Service keyring), and a recovery record needs a value for every secret. The old
+// passphrase of a file that is not encrypted yet is empty, so each secret is stored behind
+// this marker. Records written before it existed hold the bare secret.
+const PROFILE_SYNC_SEALED_SECRET_MARKER = '\u0001ha1:';
+
 function sealProfileSyncTransitionSecret(secret) {
   if (!isSecureProfileSyncStorageAvailable(safeStorage, process.platform)) {
     throw new Error(
       mainT('Secure OS credential storage is required to change an active sync passphrase safely')
     );
   }
-  const encrypted = safeStorage.encryptString(typeof secret === 'string' ? secret : '');
+  const encrypted = safeStorage.encryptString(
+    PROFILE_SYNC_SEALED_SECRET_MARKER + (typeof secret === 'string' ? secret : '')
+  );
+  if (!encrypted?.length) {
+    throw new Error(
+      mainT('Secure OS credential storage is required to change an active sync passphrase safely')
+    );
+  }
   return encrypted.toString('base64');
 }
 
@@ -3392,7 +3408,10 @@ function unsealProfileSyncTransitionSecret(encryptedSecret) {
     );
   }
   try {
-    return safeStorage.decryptString(Buffer.from(encryptedSecret, 'base64'));
+    const secret = safeStorage.decryptString(Buffer.from(encryptedSecret, 'base64'));
+    return secret.startsWith(PROFILE_SYNC_SEALED_SECRET_MARKER)
+      ? secret.slice(PROFILE_SYNC_SEALED_SECRET_MARKER.length)
+      : secret;
   } catch {
     throw new Error(mainT('Pending sync-key recovery credentials could not be decrypted'));
   }
@@ -3486,20 +3505,27 @@ async function decodeRemoteSectionsWithPassphrase(readResult, passphrase) {
 }
 
 /**
- * Throws when a section this device syncs differs between the file and the
- * given config, so a rewrite never publishes stale local content or hides
- * unsynced remote changes behind a new key.
+ * Whether every section this device syncs is the same in the file and in the
+ * given config. A section the file lacks does not count as different.
  */
-function assertRemoteSectionsMatchConfig(remoteSections, baselineConfig) {
+function remoteSectionsMatchConfig(remoteSections, baselineConfig) {
   const syncScope = getNormalizedProfileSyncScopeValue(baselineConfig?.profileSync?.syncScope);
   const localSections = profileSyncCore.buildLocalSections(baselineConfig, syncScope);
-  const differs = Object.entries(localSections).some(
+  return !Object.entries(localSections).some(
     ([key, data]) =>
       remoteSections[key] &&
       profileSyncCore.computeSectionHash(key, data) !==
         profileSyncCore.computeSectionHash(key, remoteSections[key].data)
   );
-  if (differs) {
+}
+
+/**
+ * Throws when a section this device syncs differs between the file and the
+ * given config, so a rewrite never publishes stale local content or hides
+ * unsynced remote changes behind a new key.
+ */
+function assertRemoteSectionsMatchConfig(remoteSections, baselineConfig) {
+  if (!remoteSectionsMatchConfig(remoteSections, baselineConfig)) {
     throw new Error(
       mainT(
         'The remote profile has changes that are not present locally. Sync or resolve them before changing encryption.'
@@ -3838,7 +3864,13 @@ async function readConfiguredSyncEnvelope() {
   if (!isProfileSyncProviderSupported(profileSync.provider)) {
     throw new Error(mainT('Unsupported profile sync provider'));
   }
-  return readCloudFileEnvelope(profileSync.cloudFilePath);
+  // Kept for the status: Settings needs to know what mode the file is in even when a sync
+  // stops on it, to ask for the right thing. A file that could not be read is not known.
+  profileSyncRuntime.remoteEncrypted = null;
+  const result = await readCloudFileEnvelope(profileSync.cloudFilePath);
+  profileSyncRuntime.remoteEncrypted =
+    result.exists && result.envelope ? profileSyncCore.isEnvelopeEncrypted(result.envelope) : null;
+  return result;
 }
 
 async function writeConfiguredSyncEnvelope(envelope) {
@@ -5790,7 +5822,9 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
     }
     return { ok: false, reason: 'rewrite_pending', status: buildProfileSyncStatus() };
   }
-  if (typeof profileSync.encryptionChangePending === 'boolean') {
+  // The merge that precedes an encryption change (options.encryptionPrepare) has to run
+  // while that change is pending, or the edits it must publish could never be pushed.
+  if (typeof profileSync.encryptionChangePending === 'boolean' && !options.encryptionPrepare) {
     return { ok: false, reason: 'encryption_change_pending', status: buildProfileSyncStatus() };
   }
   if (profileSync.firstEnableResolutionPending && source === 'manual') {
@@ -5864,10 +5898,11 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
     const remoteEnvelope = remoteResult.exists ? remoteResult.envelope : null;
     const mayChangeEncryption =
       !!options.expectedRemoteIdentity || !!profileSync.remoteRewritePending;
+    const remoteEncrypted = !!remoteEnvelope && profileSyncCore.isEnvelopeEncrypted(remoteEnvelope);
     if (
       remoteEnvelope &&
       !mayChangeEncryption &&
-      profileSyncCore.isEnvelopeEncrypted(remoteEnvelope) !== !!profileSync.encryptionEnabled
+      remoteEncrypted !== !!profileSync.encryptionEnabled
     ) {
       throw new Error(
         profileSync.encryptionEnabled
@@ -5877,6 +5912,13 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
           : mainT(
               'The sync file is encrypted. Turn on encryption and enter the passphrase your other devices use.'
             )
+      );
+    }
+    // Encryption is already on here, so the file's own error would send the user to turn
+    // it on. What is missing is the passphrase (not remembered across a restart).
+    if (remoteEncrypted && profileSync.encryptionEnabled && !getActiveProfileSyncPassphrase()) {
+      throw new Error(
+        mainT('Enter the sync passphrase in Settings > Advanced to continue syncing.')
       );
     }
 
@@ -5952,8 +5994,12 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
     }
 
     // Changing the encryption mode rewrites the whole file even when no section
-    // content changed.
-    const rewriteRequired = !!profileSync.remoteRewritePending && mayChangeEncryption;
+    // content changed. A file that is already in this device's mode (another computer
+    // got there first) needs no rewrite, only the marker cleared.
+    const remoteModeMatches =
+      !remoteEnvelope || remoteEncrypted === !!profileSync.encryptionEnabled;
+    const rewriteRequired =
+      !!profileSync.remoteRewritePending && mayChangeEncryption && !remoteModeMatches;
     let wroteEnvelope = null;
     if (pushKeys.length > 0 || rewriteRequired) {
       // A merge only replaces remote edits it reports as discarded. Sync Up replaces
@@ -6012,40 +6058,9 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       pushKeys.forEach((key) => {
         nextBaseline[key] = profileSyncCore.computeSectionHash(key, currentLocalSections[key]);
       });
-      if (profileSync.remoteRewritePending) {
-        const previousCredential = {
-          rememberPassphrase: profileSync.rememberPassphrase,
-          passphraseEncrypted: profileSync.passphraseEncrypted,
-          storedPassphrase: profileSync.storedPassphrase,
-          passphraseSession: profileSyncRuntime.passphraseSession,
-          passphraseWarning: profileSyncRuntime.passphraseWarning,
-        };
-        profileSync.remoteRewritePending = false;
-        if (!profileSync.encryptionEnabled) {
-          profileSync.rememberPassphrase = false;
-          profileSync.passphraseEncrypted = false;
-          profileSync.storedPassphrase = '';
-          profileSyncRuntime.passphraseSession = '';
-          profileSyncRuntime.passphraseWarning = '';
-        }
-        const markerPersistence = await saveConfigDurably({ allowDebouncedPush: false });
-        if (!markerPersistence.success) {
-          profileSync.remoteRewritePending = true;
-          profileSync.rememberPassphrase = previousCredential.rememberPassphrase;
-          profileSync.passphraseEncrypted = previousCredential.passphraseEncrypted;
-          profileSync.storedPassphrase = previousCredential.storedPassphrase;
-          profileSyncRuntime.passphraseSession = previousCredential.passphraseSession;
-          profileSyncRuntime.passphraseWarning = previousCredential.passphraseWarning;
-          const markerError = new Error(
-            mainT(
-              'Remote profile was rewritten, but the local completion marker could not be saved: {{error}}',
-              { error: markerPersistence.error }
-            )
-          );
-          markerError.remoteRewriteCommitted = true;
-          throw markerError;
-        }
-      }
+      if (profileSync.remoteRewritePending) await completeProfileSyncRemoteRewrite();
+    } else if (profileSync.remoteRewritePending && mayChangeEncryption && remoteModeMatches) {
+      await completeProfileSyncRemoteRewrite();
     }
 
     await persistProfileSyncBaseline(nextBaseline, scopeKeys);
@@ -6084,6 +6099,47 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
     throw error;
   } finally {
     profileSyncRuntime.inFlight = false;
+  }
+}
+
+/**
+ * Clears the marker saying the sync file still has to be rewritten in this device's
+ * encryption mode, once the file is in it. Turning encryption off also forgets the
+ * passphrase, which nothing needs any more.
+ */
+async function completeProfileSyncRemoteRewrite() {
+  const profileSync = getProfileSyncConfig();
+  const previousCredential = {
+    rememberPassphrase: profileSync.rememberPassphrase,
+    passphraseEncrypted: profileSync.passphraseEncrypted,
+    storedPassphrase: profileSync.storedPassphrase,
+    passphraseSession: profileSyncRuntime.passphraseSession,
+    passphraseWarning: profileSyncRuntime.passphraseWarning,
+  };
+  profileSync.remoteRewritePending = false;
+  if (!profileSync.encryptionEnabled) {
+    profileSync.rememberPassphrase = false;
+    profileSync.passphraseEncrypted = false;
+    profileSync.storedPassphrase = '';
+    profileSyncRuntime.passphraseSession = '';
+    profileSyncRuntime.passphraseWarning = '';
+  }
+  const markerPersistence = await saveConfigDurably({ allowDebouncedPush: false });
+  if (!markerPersistence.success) {
+    profileSync.remoteRewritePending = true;
+    profileSync.rememberPassphrase = previousCredential.rememberPassphrase;
+    profileSync.passphraseEncrypted = previousCredential.passphraseEncrypted;
+    profileSync.storedPassphrase = previousCredential.storedPassphrase;
+    profileSyncRuntime.passphraseSession = previousCredential.passphraseSession;
+    profileSyncRuntime.passphraseWarning = previousCredential.passphraseWarning;
+    const markerError = new Error(
+      mainT(
+        'Remote profile was rewritten, but the local completion marker could not be saved: {{error}}',
+        { error: markerPersistence.error }
+      )
+    );
+    markerError.remoteRewriteCommitted = true;
+    throw markerError;
   }
 }
 
@@ -7530,6 +7586,8 @@ ipcMain.handle(
       normalizedNextProvider !== previousProvider ||
       normalizedNextPath !== previousCloudFilePath;
     const nextScopeKeys = new Set(profileSyncCore.getScopeSectionKeys(normalizedNextScope));
+    // What was last read from the old file says nothing about the new one.
+    if (syncFileChanged || !profileSync.enabled) profileSyncRuntime.remoteEncrypted = null;
     profileSync.syncBaseline = syncFileChanged
       ? {}
       : Object.fromEntries(
@@ -8817,24 +8875,84 @@ ipcMain.handle(
   })
 );
 
+/*
+ * Profile sync encryption, as one state machine.
+ *
+ * A device holds a committed mode (`encryptionEnabled`, which every routine sync checks
+ * the file against), a passphrase (remembered, or kept for the session) and two markers
+ * for work in flight: `encryptionChangePending` (Settings asked for a mode that is not
+ * committed yet) and `passphraseTransition` (a staged, crash-recoverable rewrite). The
+ * file is missing, plain text or encrypted.
+ *
+ * A Settings save runs update-config, which stores everything except credentials and
+ * the mode (a requested mode change is only recorded as pending), then the handler
+ * below, which compares the requested mode with the file:
+ *
+ *   sync was off, or there is no file   commit the mode here; first-enable writes the file
+ *   the file is already in that mode    join: prove the passphrase unlocks it (on) or follow
+ *                                       it (off); nothing is rewritten
+ *   the file is in the other mode       rewrite: merge what differs, stage, write the exact
+ *                                       target, promote the new mode and passphrase here
+ *   same mode, a different passphrase   rekey: the same rewrite under a new key
+ *   same mode, the passphrase only      unlock or remember it
+ *
+ * Every refusal (no keyring to seal the recovery record with, a missing or wrong
+ * passphrase, changes that could not be merged) happens before anything is staged or
+ * written. It puts the device back as it was and drops the pending marker, so sync is
+ * never left paused behind advice that cannot work. Only a staged rewrite survives a
+ * failure, because only then can the file be half changed.
+ */
+
+// A request that cannot be carried out. The message is already worded for the user.
+function createProfileSyncRefusal(message) {
+  const error = new Error(message);
+  error.profileSyncRefusal = true;
+  return error;
+}
+
+/**
+ * Drops an encryption change that update-config recorded as pending but that could not
+ * be carried out, so sync resumes. A staged rewrite is left for recovery.
+ */
+async function abandonProfileSyncEncryptionChange() {
+  const profileSync = getProfileSyncConfig();
+  if (
+    typeof profileSync.encryptionChangePending !== 'boolean' ||
+    profileSync.passphraseTransition
+  ) {
+    return;
+  }
+  profileSync.encryptionChangePending = null;
+  const persistence = await saveConfigDurably({ allowDebouncedPush: false });
+  if (!persistence.success) {
+    log.warn('Could not save the dropped encryption change:', persistence.error);
+  }
+  setupProfileSyncInterval();
+  // Edits saved with the request were held back by the pending marker.
+  scheduleDebouncedProfileSyncPush('config_change');
+}
+
 ipcMain.handle(
   'set-profile-sync-passphrase',
   serializeConfigMutationHandler(
     async (event, passphrase, remember = false, desiredEncryptionEnabled = null) => {
       const sender = authorizeIpcSender(event, 'set-profile-sync-passphrase');
       if (!sender) return rejectUnauthorizedIpc('set-profile-sync-passphrase');
+      const refuse = async (error) => {
+        await abandonProfileSyncEncryptionChange();
+        return { success: false, error, status: buildProfileSyncStatus() };
+      };
       try {
         const candidatePassphrase = typeof passphrase === 'string' ? passphrase.trim() : '';
         if (
           candidatePassphrase &&
           candidatePassphrase.length < PROFILE_SYNC_MIN_PASSPHRASE_LENGTH
         ) {
-          return {
-            success: false,
-            error: mainT('Passphrase must be at least {{count}} characters long', {
+          return refuse(
+            mainT('Passphrase must be at least {{count}} characters long', {
               count: PROFILE_SYNC_MIN_PASSPHRASE_LENGTH,
-            }),
-          };
+            })
+          );
         }
         const profileSync = getProfileSyncConfig();
 
@@ -8862,13 +8980,11 @@ ipcMain.handle(
               : profileSync.encryptionEnabled;
         const effectiveNewPassphrase = candidatePassphrase || activePassphrase;
         if (targetEncryptionEnabled && !effectiveNewPassphrase) {
-          return {
-            success: false,
-            error: mainT('Passphrase must be at least {{count}} characters long', {
+          return refuse(
+            mainT('Passphrase must be at least {{count}} characters long', {
               count: PROFILE_SYNC_MIN_PASSPHRASE_LENGTH,
-            }),
-            status: buildProfileSyncStatus(),
-          };
+            })
+          );
         }
 
         const remoteResult =
@@ -8913,7 +9029,6 @@ ipcMain.handle(
           let localEncryptionCommitPersisted = false;
           const previous = {
             encryptionEnabled: profileSync.encryptionEnabled,
-            encryptionChangePending: profileSync.encryptionChangePending,
             remoteRewritePending: profileSync.remoteRewritePending,
             rememberPassphrase: profileSync.rememberPassphrase,
             passphraseEncrypted: profileSync.passphraseEncrypted,
@@ -8921,25 +9036,17 @@ ipcMain.handle(
             passphraseSession: profileSyncRuntime.passphraseSession,
             passphraseWarning: profileSyncRuntime.passphraseWarning,
           };
+          const remoteExists = !!remoteResult.exists && !!remoteResult.envelope;
+          const remoteMatchesTarget =
+            remoteExists &&
+            profileSyncCore.isEnvelopeEncrypted(remoteResult.envelope) === targetEncryptionEnabled;
+          // What decrypts the file as it stands: nothing while it is plain text.
           const oldPassphrase = profileSync.encryptionEnabled
             ? candidatePassphrase || activePassphrase
             : '';
-          if (profileSync.encryptionEnabled && !oldPassphrase) {
-            return {
-              success: false,
-              error: mainT(
-                'Enter the current remote passphrase before disabling profile encryption'
-              ),
-              status: buildProfileSyncStatus(),
-            };
-          }
 
           try {
-            if (
-              profileSync.firstEnableResolutionPending ||
-              !remoteResult.exists ||
-              !remoteResult.envelope
-            ) {
+            if (profileSync.firstEnableResolutionPending || !remoteExists) {
               // The first-enable gate prevents either direction from running, so
               // committing the requested mode and credential locally is safe
               // until conflict preparation chooses the exact first write.
@@ -9006,10 +9113,100 @@ ipcMain.handle(
               };
             }
 
+            if (remoteMatchesTarget) {
+              // Another computer already put the file in the requested mode, so this one
+              // only follows it. Nothing is rewritten, whatever the old mode was here.
+              const joinPassphrase = candidatePassphrase || activePassphrase;
+              if (targetEncryptionEnabled) {
+                if (!joinPassphrase) {
+                  throw createProfileSyncRefusal(
+                    mainT('Enter the passphrase your other computers use for this sync file.')
+                  );
+                }
+                // Decoding proves the passphrase before anything is stored.
+                await profileSyncCore.decodeEnvelopeSections(remoteResult.envelope, joinPassphrase);
+              }
+              profileSync.encryptionEnabled = targetEncryptionEnabled;
+              profileSync.encryptionChangePending = null;
+              profileSync.remoteRewritePending = false;
+              let persisted = { remembered: false, encrypted: false };
+              if (targetEncryptionEnabled) {
+                persisted = persistRememberedProfileSyncPassphrase(joinPassphrase, !!remember);
+              } else {
+                profileSync.rememberPassphrase = false;
+                profileSync.passphraseEncrypted = false;
+                profileSync.storedPassphrase = '';
+                profileSyncRuntime.passphraseSession = '';
+                profileSyncRuntime.passphraseWarning = '';
+              }
+              const persistence = await saveConfigDurably({ allowDebouncedPush: false });
+              if (!persistence.success) {
+                throw new Error(
+                  mainT('Failed to save the requested encryption mode: {{error}}', {
+                    error: persistence.error,
+                  })
+                );
+              }
+              localEncryptionCommitPersisted = true;
+              setupProfileSyncInterval();
+              // Bring this device level with the file now rather than at the next interval.
+              let warning = '';
+              try {
+                await runProfileSyncInternal('auto', 'encryption_join');
+              } catch (error) {
+                warning = mainTError(error);
+              }
+              emitProfileSyncStatus();
+              return {
+                success: true,
+                ...persisted,
+                warning,
+                status: buildProfileSyncStatus(),
+                config: sanitizeConfigForRenderer(config),
+              };
+            }
+
+            // The file is in the other mode, so it has to be rewritten. Every check that
+            // can say no comes first: once a rewrite is staged the file may be half changed.
+            if (!isSecureProfileSyncStorageAvailable(safeStorage, process.platform)) {
+              throw createProfileSyncRefusal(
+                mainT(
+                  'Secure system storage is unavailable, and changing the encryption of an existing sync file needs it. On Linux, start and unlock a keyring such as GNOME Keyring or KWallet, then restart the widget.'
+                )
+              );
+            }
+            if (profileSync.encryptionEnabled && !oldPassphrase) {
+              throw createProfileSyncRefusal(
+                mainT('Enter the current remote passphrase before disabling profile encryption')
+              );
+            }
+            let currentRemote = remoteResult;
+            const { sections: remoteSections } = await decodeRemoteFileWithPassphrase(
+              currentRemote,
+              oldPassphrase
+            );
+            if (!remoteSectionsMatchConfig(remoteSections, config)) {
+              // Settings changed here in the same save, or on another computer since the
+              // last sync. A rewrite must not hide either behind the new mode, so merge first.
+              if (profileSync.encryptionEnabled)
+                profileSyncRuntime.passphraseSession = oldPassphrase;
+              const merged = await runProfileSyncInternal('auto', 'encryption_prepare', {
+                encryptionPrepare: true,
+              });
+              if (merged?.ok !== true) {
+                throw createProfileSyncRefusal(
+                  mainT(
+                    'The remote profile has changes that are not present locally. Sync or resolve them before changing encryption.'
+                  )
+                );
+              }
+              currentRemote = await readConfiguredSyncEnvelope();
+            }
+
             const targetConfig = {
               ...config,
               profileSync: {
-                ...profileSync,
+                ...getProfileSyncConfig(),
                 encryptionEnabled: targetEncryptionEnabled,
                 encryptionChangePending: null,
               },
@@ -9023,7 +9220,7 @@ ipcMain.handle(
               baselineConfig: config,
               targetConfig,
               reason: 'encryption_transition',
-              remoteResult,
+              remoteResult: currentRemote,
             });
             const result = await executePendingProfileSyncRewrite();
             emitProfileSyncStatus();
@@ -9034,15 +9231,29 @@ ipcMain.handle(
               config: sanitizeConfigForRenderer(config),
             };
           } catch (error) {
-            if (!profileSync.passphraseTransition && !localEncryptionCommitPersisted) {
-              profileSync.encryptionEnabled = previous.encryptionEnabled;
-              profileSync.encryptionChangePending = previous.encryptionChangePending;
-              profileSync.remoteRewritePending = previous.remoteRewritePending;
-              profileSync.rememberPassphrase = previous.rememberPassphrase;
-              profileSync.passphraseEncrypted = previous.passphraseEncrypted;
-              profileSync.storedPassphrase = previous.storedPassphrase;
+            // A merge or rewrite can replace the config, and the profileSync in it.
+            const current = getProfileSyncConfig();
+            if (!current.passphraseTransition && !localEncryptionCommitPersisted) {
+              // Nothing was written: put the device back as it was and drop the request.
+              current.encryptionEnabled = previous.encryptionEnabled;
+              current.remoteRewritePending = previous.remoteRewritePending;
+              current.rememberPassphrase = previous.rememberPassphrase;
+              current.passphraseEncrypted = previous.passphraseEncrypted;
+              current.storedPassphrase = previous.storedPassphrase;
               profileSyncRuntime.passphraseSession = previous.passphraseSession;
               profileSyncRuntime.passphraseWarning = previous.passphraseWarning;
+              await abandonProfileSyncEncryptionChange();
+              emitProfileSyncStatus();
+              return {
+                success: false,
+                error: error?.profileSyncRefusal
+                  ? mainTError(error)
+                  : mainT('Cannot change profile encryption safely: {{error}}', {
+                      error: mainTError(error),
+                    }),
+                status: buildProfileSyncStatus(),
+                config: sanitizeConfigForRenderer(config),
+              };
             }
             clearProfileSyncTimers();
             if (localEncryptionCommitPersisted) {
@@ -9121,13 +9332,14 @@ ipcMain.handle(
         }
 
         if (passphraseSubmission === 'reject') {
-          return {
-            success: false,
-            error: mainT(
-              'That passphrase does not unlock the remote profile. Enter the current remote passphrase before attempting a key change.'
-            ),
-            status: buildProfileSyncStatus(),
-          };
+          // This device cannot read the file with what it holds, so say so in the
+          // status too: the toast is gone once Settings closes.
+          const message = mainT(
+            'That passphrase does not unlock the sync file. Enter the passphrase your other computers use.'
+          );
+          updateProfileSyncStatus('error', message);
+          emitProfileSyncStatus();
+          return { success: false, error: message, status: buildProfileSyncStatus() };
         }
 
         // The submitted candidate already decrypts the remote (including the
@@ -9184,7 +9396,7 @@ ipcMain.handle(
           config: sanitizeConfigForRenderer(config),
         };
       } catch (error) {
-        return { success: false, error: mainTError(error) };
+        return refuse(mainTError(error));
       }
     }
   )

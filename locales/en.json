@@ -715,7 +715,6 @@
   "The missing remote profile could not be created": "The missing remote profile could not be created",
   "Cannot change profile encryption safely: {{error}}": "Cannot change profile encryption safely: {{error}}",
   "Cannot change the sync passphrase safely: {{error}}": "Cannot change the sync passphrase safely: {{error}}",
-  "That passphrase does not unlock the remote profile. Enter the current remote passphrase before attempting a key change.": "That passphrase does not unlock the remote profile. Enter the current remote passphrase before attempting a key change.",
   "Failed to save sync passphrase: {{error}}": "Failed to save sync passphrase: {{error}}",
   "The passphrase cannot be cleared until the pending encryption change or remote rewrite succeeds": "The passphrase cannot be cleared until the pending encryption change or remote rewrite succeeds",
   "Failed to clear sync passphrase: {{error}}": "Failed to clear sync passphrase: {{error}}",
@@ -1662,5 +1661,9 @@
   "Pages: {{pages}}. Referenced entities: {{count}}.": "Pages: {{pages}}. Referenced entities: {{count}}.",
   "Unavailable entities on this connection: {{count}}.": "Unavailable entities on this connection: {{count}}.",
   "Apply this backup on this computer? Your current settings are backed up first.": "Apply this backup on this computer? Your current settings are backed up first.",
-  "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers."
+  "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.",
+  "Enter the sync passphrase in Settings > Advanced to continue syncing.": "Enter the sync passphrase in Settings > Advanced to continue syncing.",
+  "Enter the passphrase your other computers use for this sync file.": "Enter the passphrase your other computers use for this sync file.",
+  "Secure system storage is unavailable, and changing the encryption of an existing sync file needs it. On Linux, start and unlock a keyring such as GNOME Keyring or KWallet, then restart the widget.": "Secure system storage is unavailable, and changing the encryption of an existing sync file needs it. On Linux, start and unlock a keyring such as GNOME Keyring or KWallet, then restart the widget.",
+  "That passphrase does not unlock the sync file. Enter the passphrase your other computers use.": "That passphrase does not unlock the sync file. Enter the passphrase your other computers use."
 }

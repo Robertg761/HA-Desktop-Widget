@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.46",
+  "version": "1.2.47",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -722,7 +722,6 @@
     "The missing remote profile could not be created": "No se pudo crear el perfil remoto que falta",
     "Cannot change profile encryption safely: {{error}}": "No se puede cambiar el cifrado del perfil de forma segura: {{error}}",
     "Cannot change the sync passphrase safely: {{error}}": "No se puede cambiar la frase de contraseña de sincronización de forma segura: {{error}}",
-    "That passphrase does not unlock the remote profile. Enter the current remote passphrase before attempting a key change.": "Esa frase de contraseña no desbloquea el perfil remoto. Introduce la frase de contraseña remota actual antes de intentar cambiar la clave.",
     "Failed to save sync passphrase: {{error}}": "No se pudo guardar la frase de contraseña de sincronización: {{error}}",
     "The passphrase cannot be cleared until the pending encryption change or remote rewrite succeeds": "La frase de contraseña no se puede borrar hasta que se complete el cambio de cifrado pendiente o la reescritura remota",
     "Failed to clear sync passphrase: {{error}}": "No se pudo borrar la frase de contraseña de sincronización: {{error}}",
@@ -1669,6 +1668,10 @@
     "Pages: {{pages}}. Referenced entities: {{count}}.": "Páginas: {{pages}}. Entidades referenciadas: {{count}}.",
     "Unavailable entities on this connection: {{count}}.": "Entidades no disponibles en esta conexión: {{count}}.",
     "Apply this backup on this computer? Your current settings are backed up first.": "¿Aplicar esta copia de seguridad en este equipo? Tus ajustes actuales se guardan antes en una copia de seguridad.",
-    "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "¿Aplicar esta copia de seguridad en este equipo? Tus ajustes actuales se guardan antes en una copia de seguridad, y los ajustes restaurados que entran en tu alcance de sincronización se sincronizan después con tus otros equipos."
+    "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "¿Aplicar esta copia de seguridad en este equipo? Tus ajustes actuales se guardan antes en una copia de seguridad, y los ajustes restaurados que entran en tu alcance de sincronización se sincronizan después con tus otros equipos.",
+    "Enter the sync passphrase in Settings > Advanced to continue syncing.": "Introduce la frase de contraseña de sincronización en Configuración > Avanzado para seguir sincronizando.",
+    "Enter the passphrase your other computers use for this sync file.": "Introduce la frase de contraseña que usan tus otros equipos para este archivo de sincronización.",
+    "Secure system storage is unavailable, and changing the encryption of an existing sync file needs it. On Linux, start and unlock a keyring such as GNOME Keyring or KWallet, then restart the widget.": "El almacenamiento seguro del sistema no está disponible y es necesario para cambiar el cifrado de un archivo de sincronización existente. En Linux, inicia y desbloquea un llavero como GNOME Keyring o KWallet y reinicia el widget.",
+    "That passphrase does not unlock the sync file. Enter the passphrase your other computers use.": "Esa frase de contraseña no desbloquea el archivo de sincronización. Introduce la que usan tus otros equipos."
   }
 }

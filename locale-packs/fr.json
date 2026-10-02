@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.46",
+  "version": "1.2.47",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -722,7 +722,6 @@
     "The missing remote profile could not be created": "Le profil distant manquant n'a pas pu être créé",
     "Cannot change profile encryption safely: {{error}}": "Impossible de modifier le chiffrement du profil en toute sécurité : {{error}}",
     "Cannot change the sync passphrase safely: {{error}}": "Impossible de modifier la phrase secrète de synchronisation en toute sécurité : {{error}}",
-    "That passphrase does not unlock the remote profile. Enter the current remote passphrase before attempting a key change.": "Cette phrase secrète ne déverrouille pas le profil distant. Saisissez la phrase secrète distante actuelle avant de tenter un changement de clé.",
     "Failed to save sync passphrase: {{error}}": "Impossible d'enregistrer la phrase secrète de synchronisation : {{error}}",
     "The passphrase cannot be cleared until the pending encryption change or remote rewrite succeeds": "La phrase secrète ne peut pas être effacée tant que la modification de chiffrement ou la réécriture distante en attente n'a pas réussi",
     "Failed to clear sync passphrase: {{error}}": "Impossible d'effacer la phrase secrète de synchronisation : {{error}}",
@@ -1669,6 +1668,10 @@
     "Pages: {{pages}}. Referenced entities: {{count}}.": "Pages : {{pages}}. Entités référencées : {{count}}.",
     "Unavailable entities on this connection: {{count}}.": "Entités indisponibles sur cette connexion : {{count}}.",
     "Apply this backup on this computer? Your current settings are backed up first.": "Appliquer cette sauvegarde sur cet ordinateur ? Vos paramètres actuels sont d'abord sauvegardés.",
-    "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "Appliquer cette sauvegarde sur cet ordinateur ? Vos paramètres actuels sont d'abord sauvegardés, puis les paramètres restaurés inclus dans votre périmètre de synchronisation se synchronisent avec vos autres ordinateurs."
+    "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "Appliquer cette sauvegarde sur cet ordinateur ? Vos paramètres actuels sont d'abord sauvegardés, puis les paramètres restaurés inclus dans votre périmètre de synchronisation se synchronisent avec vos autres ordinateurs.",
+    "Enter the sync passphrase in Settings > Advanced to continue syncing.": "Saisissez la phrase secrète de synchronisation dans Paramètres > Avancé pour continuer à synchroniser.",
+    "Enter the passphrase your other computers use for this sync file.": "Saisissez la phrase secrète que vos autres ordinateurs utilisent pour ce fichier de synchronisation.",
+    "Secure system storage is unavailable, and changing the encryption of an existing sync file needs it. On Linux, start and unlock a keyring such as GNOME Keyring or KWallet, then restart the widget.": "Le stockage sécurisé du système n'est pas disponible, mais il est nécessaire pour modifier le chiffrement d'un fichier de synchronisation existant. Sous Linux, démarrez et déverrouillez un trousseau de clés comme GNOME Keyring ou KWallet, puis redémarrez le widget.",
+    "That passphrase does not unlock the sync file. Enter the passphrase your other computers use.": "Cette phrase secrète ne déverrouille pas le fichier de synchronisation. Saisissez celle que vos autres ordinateurs utilisent."
   }
 }

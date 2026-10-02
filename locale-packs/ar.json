@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.46",
+  "version": "1.2.47",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -722,7 +722,6 @@
     "The missing remote profile could not be created": "تعذّر إنشاء الملف الشخصي البعيد المفقود",
     "Cannot change profile encryption safely: {{error}}": "لا يمكن تغيير تشفير الملف الشخصي بأمان: {{error}}",
     "Cannot change the sync passphrase safely: {{error}}": "لا يمكن تغيير عبارة مرور المزامنة بأمان: {{error}}",
-    "That passphrase does not unlock the remote profile. Enter the current remote passphrase before attempting a key change.": "عبارة المرور هذه لا تفتح الملف الشخصي البعيد. أدخل عبارة المرور البعيدة الحالية قبل محاولة تغيير المفتاح.",
     "Failed to save sync passphrase: {{error}}": "تعذّر حفظ عبارة مرور المزامنة: {{error}}",
     "The passphrase cannot be cleared until the pending encryption change or remote rewrite succeeds": "لا يمكن مسح عبارة المرور حتى ينجح تغيير التشفير المعلق أو إعادة الكتابة البعيدة",
     "Failed to clear sync passphrase: {{error}}": "تعذّر مسح عبارة مرور المزامنة: {{error}}",
@@ -1669,6 +1668,10 @@
     "Pages: {{pages}}. Referenced entities: {{count}}.": "الصفحات: {{pages}}. الكيانات المشار إليها: {{count}}.",
     "Unavailable entities on this connection: {{count}}.": "الكيانات غير المتاحة على هذا الاتصال: {{count}}.",
     "Apply this backup on this computer? Your current settings are backed up first.": "هل تريد تطبيق هذه النسخة الاحتياطية على هذا الكمبيوتر؟ تُنسخ إعداداتك الحالية احتياطيًا أولًا.",
-    "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "هل تريد تطبيق هذه النسخة الاحتياطية على هذا الكمبيوتر؟ تُنسخ إعداداتك الحالية احتياطيًا أولًا، ثم تُزامن الإعدادات المستعادة الواقعة ضمن نطاق المزامنة مع أجهزة الكمبيوتر الأخرى."
+    "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "هل تريد تطبيق هذه النسخة الاحتياطية على هذا الكمبيوتر؟ تُنسخ إعداداتك الحالية احتياطيًا أولًا، ثم تُزامن الإعدادات المستعادة الواقعة ضمن نطاق المزامنة مع أجهزة الكمبيوتر الأخرى.",
+    "Enter the sync passphrase in Settings > Advanced to continue syncing.": "أدخل عبارة مرور المزامنة في الإعدادات > متقدم لمتابعة المزامنة.",
+    "Enter the passphrase your other computers use for this sync file.": "أدخل عبارة المرور التي تستخدمها أجهزة الكمبيوتر الأخرى لديك لملف المزامنة هذا.",
+    "Secure system storage is unavailable, and changing the encryption of an existing sync file needs it. On Linux, start and unlock a keyring such as GNOME Keyring or KWallet, then restart the widget.": "التخزين الآمن للنظام غير متاح، وتغيير تشفير ملف مزامنة موجود يحتاج إليه. على Linux، شغّل سلسلة مفاتيح مثل GNOME Keyring أو KWallet وافتح قفلها، ثم أعد تشغيل الأداة.",
+    "That passphrase does not unlock the sync file. Enter the passphrase your other computers use.": "عبارة المرور هذه لا تفتح ملف المزامنة. أدخل العبارة التي تستخدمها أجهزة الكمبيوتر الأخرى لديك."
   }
 }
