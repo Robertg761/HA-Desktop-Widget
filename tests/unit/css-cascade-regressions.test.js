@@ -63,6 +63,131 @@ describe('stylesheet cascade regressions', () => {
     );
   });
 
+  describe('Quick Access page tab strip', () => {
+    const strip = (barClass = '') => `
+      <div class="section-header quick-access-header">
+        <div id="quick-access-tabs" class="quick-access-tabs ${barClass}">
+          <div class="quick-access-tab-scroll">
+            <div class="quick-access-tab active">
+              <button class="tab-link quick-access-tab-link active" tabindex="0" data-focus-visible>
+                <span class="quick-access-tab-label">Home</span>
+              </button>
+              <button class="qa-tab-btn qa-tab-rename" data-focus-visible></button>
+              <button class="qa-tab-btn qa-tab-delete"></button>
+            </div>
+          </div>
+        </div>
+        <button class="qa-tab-add" data-focus-visible><span>Add page</span></button>
+        <div class="section-buttons"></div>
+      </div>`;
+
+    // The pages scroll inside the bar; the bar is the pill, so it keeps its shape.
+    it('scrolls the pages in the strip, without a scrollbar, and not the bar itself', () => {
+      render('', strip());
+      const scroller = document.querySelector('.quick-access-tab-scroll');
+      const bar = document.getElementById('quick-access-tabs');
+
+      expect(resolvedValue(scroller, 'overflow-x')).toBe('auto');
+      expect(resolvedValue(scroller, 'scrollbar-width')).toBe('none');
+      expect(resolvedValue(bar, 'overflow-x')).toBeNull();
+      expect(resolvedValue(bar, 'overflow-y')).toBeNull();
+    });
+
+    it('does not squeeze a page to make room, since the strip scrolls', () => {
+      render('', strip());
+      expect(resolvedValue(document.querySelector('.quick-access-tab'), 'flex')).toBe('0 0 auto');
+    });
+
+    // The strip clips whatever is outside a page, and the global focus rule would put it there.
+    it.each(THEME_CASES)(
+      'draws the focus ring inside the pages and their buttons (%s)',
+      (_, theme) => {
+        render(theme, strip());
+
+        for (const control of document.querySelectorAll(
+          '.quick-access-tab-scroll [data-focus-visible]'
+        )) {
+          expect(resolvedValue(control, 'outline-offset')).toBe('-2px');
+          // The readable preset draws a thicker ring of its own, in the same place.
+          expect(resolvedValue(control, 'outline')).toMatch(/^[23]px solid /);
+          expect(resolvedValue(control, 'box-shadow')).toBe('none');
+        }
+      }
+    );
+
+    it('fades the edge that clips pages', () => {
+      render('', strip());
+      const scroller = document.querySelector('.quick-access-tab-scroll');
+      expect(resolvedValue(scroller, 'mask-image')).toBeNull();
+      scroller.dataset.overflow = 'right';
+      expect(resolvedValue(scroller, 'mask-image')).toMatch(/linear-gradient\(to right/);
+      scroller.dataset.overflow = 'both';
+      expect(resolvedValue(scroller, 'mask-image')).toMatch(/transparent/);
+    });
+
+    it('lets the rename field stand alone, without the page buttons or highlight behind it', () => {
+      render('reorganize', strip('reorganize'));
+      const page = document.querySelector('.quick-access-tab');
+      const button = page.querySelector('.qa-tab-rename');
+      expect(resolvedValue(button, 'display')).not.toBe('none');
+      expect(resolvedValue(page, 'box-shadow')).not.toBe('none');
+
+      page.insertAdjacentHTML('afterbegin', '<input class="qa-tab-rename-input" type="text">');
+      expect(resolvedValue(button, 'display')).toBe('none');
+      expect(resolvedValue(page, 'box-shadow')).toBe('none');
+      expect(resolvedValue(page, 'background')).toBe('none');
+    });
+
+    it('is as tall editing as it is as the pill, so the grid does not move', () => {
+      render('reorganize', strip('reorganize'));
+      expect(resolvedValue(document.getElementById('quick-access-tabs'), 'min-height')).toBe(
+        '32px'
+      );
+      expect(resolvedValue(document.querySelector('.quick-access-tab'), 'min-height')).toBe('28px');
+      expect(resolvedValue(document.querySelector('.qa-tab-add'), 'min-height')).toBe('28px');
+    });
+
+    it('lines up with the cards and tiles, and keeps Add page in the header beside the strip', () => {
+      render('reorganize', strip('reorganize'));
+      const header = document.querySelector('.quick-access-header');
+      expect(resolvedValue(header, 'padding-inline')).toBe('0');
+      expect(resolvedValue(document.getElementById('quick-access-tabs'), 'flex')).toBe('0 1 auto');
+      expect(resolvedValue(document.querySelector('.qa-tab-add'), 'flex')).toBe('0 0 auto');
+    });
+
+    it('gives the page buttons targets of at least 24px, and the delete button some room', () => {
+      render('reorganize', strip('reorganize'));
+      const rename = document.querySelector('.qa-tab-rename');
+      expect(resolvedValue(rename, 'width')).toBe('24px');
+      expect(resolvedValue(rename, 'height')).toBe('24px');
+      expect(resolvedValue(document.querySelector('.qa-tab-delete'), 'margin-inline-start')).toBe(
+        '0.25rem'
+      );
+    });
+
+    it('cuts a long page name short rather than letting it fill the strip', () => {
+      render('', strip());
+      const link = document.querySelector('.quick-access-tab-link');
+      const label = document.querySelector('.quick-access-tab-label');
+      expect(resolvedValue(link, 'max-width')).toBe('28ch');
+      expect(resolvedValue(label, 'text-overflow')).toBe('ellipsis');
+      expect(resolvedValue(label, 'overflow')).toBe('hidden');
+      render('reorganize', strip('reorganize'));
+      expect(resolvedValue(document.querySelector('.quick-access-tab-link'), 'max-width')).toBe(
+        '24ch'
+      );
+    });
+
+    it('gives up the words of Add page in a narrow window, and keeps them otherwise', () => {
+      render('reorganize', strip('reorganize'));
+      const label = document.querySelector('.qa-tab-add span');
+      expect(resolvedValue(label, 'display')).toBeNull();
+      expect(resolvedValue(label, 'display', { viewport: { width: 360, height: 600 } })).toBe(
+        'none'
+      );
+    });
+  });
+
   describe('confirmation dialog stacking', () => {
     // The confirmation is a static element; dialogs built later are appended after it and share the
     // backdrop tier, so only a higher tier keeps "Delete graph" from opening behind its own editor.

@@ -238,6 +238,8 @@ Open **Settings > General > Connection diagnostics** to inspect connection attem
 
 Use Tab to focus a primary card or the Quick Access grid. Arrow keys move between Quick Access
 tiles; Enter or Space activates the focused device. Shift+Enter opens its available detail controls.
+With several pages, Tab reaches the page tabs once: Left and Right (or Home and End) move along them
+and switch page. The tabs scroll to keep the active page in view, and the mouse wheel scrolls them.
 Heat/cool thermostats provide separate heating and cooling targets, and on/off-only lights show
 power controls without a brightness slider.
 

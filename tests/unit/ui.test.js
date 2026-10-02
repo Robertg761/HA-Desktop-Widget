@@ -6491,10 +6491,14 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     let tabBar;
 
     beforeEach(() => {
+      // As in the page: the bar sits in the section header, where Add page is placed beside it.
+      const header = document.createElement('div');
+      header.className = 'section-header quick-access-header';
       tabBar = document.createElement('div');
       tabBar.id = 'quick-access-tabs';
       tabBar.className = 'quick-access-tabs hidden';
-      document.body.appendChild(tabBar);
+      header.appendChild(tabBar);
+      document.body.appendChild(header);
     });
 
     const setPages = (pages, activeTabId) => {
@@ -6529,7 +6533,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(activeLinks).toHaveLength(1);
       expect(activeLinks[0].dataset.tab).toBe('default');
       // No page-management affordances outside reorganize mode.
-      expect(tabBar.querySelector('.qa-tab-add')).toBeNull();
+      expect(document.querySelector('.qa-tab-add')).toBeNull();
       expect(tabBar.querySelector('.qa-tab-rename')).toBeNull();
     });
 
@@ -6540,7 +6544,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       expect(tabBar.classList.contains('hidden')).toBe(false);
       expect(tabBar.classList.contains('reorganize')).toBe(true);
-      expect(tabBar.querySelector('.qa-tab-add')).not.toBeNull();
+      expect(document.querySelector('.qa-tab-add')).not.toBeNull();
 
       // Active page exposes rename; delete is hidden while only one page exists.
       const activeTab = tabBar.querySelector('.quick-access-tab.active');
@@ -6723,7 +6727,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       setPages([{ id: 'default', name: 'All', entityIds: [] }]);
       ui.toggleReorganizeMode();
 
-      tabBar.querySelector('.qa-tab-add').click();
+      document.querySelector('.qa-tab-add').click();
 
       const modal = document.getElementById('add-page-modal');
       expect(modal).not.toBeNull();
@@ -6770,7 +6774,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         })
       );
 
-      tabBar.querySelector('.qa-tab-add').click();
+      document.querySelector('.qa-tab-add').click();
       const modal = document.getElementById('add-page-modal');
       modal.querySelector('#add-page-name').value = 'Bedroom';
       modal.querySelector('#add-page-save-btn').click();
@@ -6812,7 +6816,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
 
       try {
-        tabBar.querySelector('.qa-tab-add').click();
+        document.querySelector('.qa-tab-add').click();
         const modal = document.getElementById('add-page-modal');
         modal.querySelector('#add-page-name').value = 'Bedroom';
         modal.querySelector('#add-page-save-btn').click();
@@ -7103,11 +7107,480 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     it('closes the add-page modal when leaving reorganize mode', () => {
       setPages([{ id: 'default', name: 'All', entityIds: [] }]);
       ui.toggleReorganizeMode();
-      tabBar.querySelector('.qa-tab-add').click();
+      document.querySelector('.qa-tab-add').click();
       expect(document.getElementById('add-page-modal')).not.toBeNull();
 
       ui.toggleReorganizeMode();
       expect(document.getElementById('add-page-modal')).toBeNull();
+    });
+
+    describe('page tab strip', () => {
+      const pagesNamed = (count) =>
+        Array.from({ length: count }, (_, index) => ({
+          id: `p${index + 1}`,
+          name: `Page ${index + 1}`,
+          entityIds: [],
+        }));
+      const strip = () => tabBar.querySelector('.quick-access-tab-scroll');
+      const links = () => [...tabBar.querySelectorAll('.quick-access-tab-link')];
+      const press = (target, key, init = {}) => {
+        const event = new KeyboardEvent('keydown', {
+          key,
+          bubbles: true,
+          cancelable: true,
+          ...init,
+        });
+        target.dispatchEvent(event);
+        return event;
+      };
+      const settle = async () => {
+        for (let tick = 0; tick < 6; tick += 1) await Promise.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      };
+
+      it('is a tab list whose one Tab stop is the active page', () => {
+        setPages(pagesNamed(4), 'p3');
+        ui.renderActiveTab();
+
+        expect(strip().getAttribute('role')).toBe('tablist');
+        expect(strip().getAttribute('aria-label')).toBe('Quick Access views');
+        expect(tabBar.getAttribute('role')).toBeNull();
+        expect(links().map((link) => link.getAttribute('role'))).toEqual(Array(4).fill('tab'));
+        expect(links().map((link) => link.tabIndex)).toEqual([-1, -1, 0, -1]);
+        expect(links().map((link) => link.getAttribute('aria-selected'))).toEqual([
+          'false',
+          'false',
+          'true',
+          'false',
+        ]);
+      });
+
+      it('names the grid as the panel of the active tab, and drops that when there are no tabs', () => {
+        const grid = document.getElementById('quick-controls');
+        setPages(pagesNamed(3), 'p2');
+        ui.renderActiveTab();
+        const activeTab = links()[1];
+        expect(
+          links().every((link) => link.getAttribute('aria-controls') === 'quick-controls')
+        ).toBe(true);
+        expect(grid.getAttribute('role')).toBe('tabpanel');
+        expect(grid.getAttribute('aria-labelledby')).toBe(activeTab.id);
+        expect(activeTab.id).toBeTruthy();
+
+        ui.toggleReorganizeMode();
+        expect(grid.getAttribute('role')).toBeNull();
+        expect(grid.getAttribute('aria-labelledby')).toBeNull();
+        ui.toggleReorganizeMode();
+        expect(grid.getAttribute('role')).toBe('tabpanel');
+
+        setPages(pagesNamed(1));
+        ui.renderActiveTab();
+        expect(grid.getAttribute('role')).toBeNull();
+      });
+
+      it('moves to the next, previous, first and last page with the arrows, Home and End', async () => {
+        setPages(pagesNamed(4), 'p2');
+        ui.renderActiveTab();
+        links()[1].focus();
+
+        const right = press(links()[1], 'ArrowRight');
+        await settle();
+        expect(right.defaultPrevented).toBe(true);
+        expect(state.CONFIG.activeTabId).toBe('p3');
+        // The bar was rebuilt by the switch; focus is on the new active page's button.
+        expect(document.activeElement).toBe(links()[2]);
+        expect(document.activeElement.classList.contains('active')).toBe(true);
+
+        press(document.activeElement, 'End');
+        await settle();
+        expect(state.CONFIG.activeTabId).toBe('p4');
+        press(document.activeElement, 'ArrowRight');
+        await settle();
+        expect(state.CONFIG.activeTabId).toBe('p1');
+        press(document.activeElement, 'ArrowLeft');
+        await settle();
+        expect(state.CONFIG.activeTabId).toBe('p4');
+        press(document.activeElement, 'Home');
+        await settle();
+        expect(state.CONFIG.activeTabId).toBe('p1');
+        expect(document.activeElement.dataset.tab).toBe('p1');
+        expect(links().map((link) => link.tabIndex)).toEqual([0, -1, -1, -1]);
+      });
+
+      it('swaps the arrows when the text runs right to left', async () => {
+        setPages(pagesNamed(3), 'p2');
+        ui.renderActiveTab();
+        strip().style.direction = 'rtl';
+        links()[1].focus();
+
+        press(links()[1], 'ArrowLeft');
+        await settle();
+        expect(state.CONFIG.activeTabId).toBe('p3');
+        press(document.activeElement, 'ArrowRight');
+        await settle();
+        expect(state.CONFIG.activeTabId).toBe('p2');
+      });
+
+      it('does not hijack keys with modifiers or arrows aimed at the page buttons', () => {
+        setPages(pagesNamed(3), 'p1');
+        ui.toggleReorganizeMode();
+        const rename = tabBar.querySelector('.qa-tab-rename');
+        rename.focus();
+        expect(press(rename, 'ArrowRight').defaultPrevented).toBe(false);
+        expect(press(links()[0], 'ArrowRight', { shiftKey: true }).defaultPrevented).toBe(false);
+        expect(state.CONFIG.activeTabId).toBe('p1');
+      });
+
+      it('keeps keyboard focus on a page button through rebuilds of the bar', () => {
+        setPages(pagesNamed(3), 'p2');
+        ui.renderActiveTab();
+        links()[2].focus();
+        const before = links()[2];
+
+        ui.renderActiveTab();
+        ui.renderActiveTab();
+
+        expect(before.isConnected).toBe(false);
+        expect(document.activeElement).toBe(links()[2]);
+        expect(document.activeElement.dataset.tab).toBe('p3');
+      });
+
+      it('does not steal focus the bar never had', () => {
+        setPages(pagesNamed(3), 'p2');
+        ui.renderActiveTab();
+        const outside = document.createElement('button');
+        document.body.appendChild(outside);
+        outside.focus();
+
+        ui.renderActiveTab();
+
+        expect(document.activeElement).toBe(outside);
+      });
+
+      it('saves nothing and tells nobody when the page already shown is chosen', async () => {
+        setPages(pagesNamed(3), 'p2');
+        ui.renderActiveTab();
+        const changed = jest.fn();
+        window.addEventListener('desktop-companion-page-changed', changed);
+        mockElectronAPI.updateConfig.mockClear();
+        try {
+          links()[1].click();
+          await settle();
+          expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+          expect(changed).not.toHaveBeenCalled();
+          expect(await ui.switchQuickAccessPage('p2')).toEqual(
+            expect.objectContaining({ success: true })
+          );
+
+          links()[2].click();
+          await settle();
+          expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(1);
+          expect(changed).toHaveBeenCalledTimes(1);
+        } finally {
+          window.removeEventListener('desktop-companion-page-changed', changed);
+        }
+      });
+
+      it('gives a long page name an ellipsis box, its own text direction and a tooltip', () => {
+        const longName = 'Donaudampfschifffahrtsgesellschaft Kapitänspatent';
+        setPages([
+          { id: 'a', name: 'Home', entityIds: [] },
+          { id: 'b', name: longName, entityIds: [] },
+        ]);
+        ui.renderActiveTab();
+
+        const [home, long] = links();
+        expect(long.title).toBe(longName);
+        expect(home.title).toBe('Home');
+        expect(long.textContent).toBe(longName);
+        const label = long.querySelector('.quick-access-tab-label');
+        expect(label.dir).toBe('auto');
+        expect(label.textContent).toBe(longName);
+
+        ui.toggleReorganizeMode();
+        expect(links()[1].title).toBe(`${longName}\nDouble-click to rename`);
+      });
+
+      describe('with a strip that overflows', () => {
+        let scrollTo;
+        let scrollLeft;
+        const restore = [];
+
+        // jsdom has no layout, so the strip is given one: 300px wide, 1200px of 90px tabs placed
+        // 100px apart, scrolled by `scrollLeft`.
+        const mockLayout = () => {
+          scrollLeft = 0;
+          // As a browser keeps the offset between the start and the end of the content.
+          const clamp = (value) => Math.max(0, Math.min(value, 900));
+          scrollTo = jest.fn(({ left }) => {
+            scrollLeft = clamp(left);
+          });
+          const isStrip = (element) => element.classList?.contains('quick-access-tab-scroll');
+          const patch = (name, descriptor) => {
+            const original = Object.getOwnPropertyDescriptor(Element.prototype, name);
+            Object.defineProperty(Element.prototype, name, { configurable: true, ...descriptor });
+            restore.push(() => {
+              if (original) Object.defineProperty(Element.prototype, name, original);
+              else delete Element.prototype[name];
+            });
+          };
+          const fallback = (name) => Object.getOwnPropertyDescriptor(Element.prototype, name)?.get;
+          const clientWidth = fallback('clientWidth');
+          const scrollWidth = fallback('scrollWidth');
+          const scrollLeftGetter = fallback('scrollLeft');
+          patch('clientWidth', {
+            get: function get() {
+              return isStrip(this) ? 300 : clientWidth?.call(this);
+            },
+          });
+          patch('scrollWidth', {
+            get: function get() {
+              return isStrip(this) ? 1200 : scrollWidth?.call(this);
+            },
+          });
+          patch('scrollLeft', {
+            get: function get() {
+              return isStrip(this) ? scrollLeft : scrollLeftGetter?.call(this);
+            },
+            set: function set(value) {
+              if (isStrip(this)) scrollLeft = clamp(value);
+            },
+          });
+          patch('scrollTo', {
+            value: function scroll(options) {
+              if (isStrip(this)) scrollTo(options);
+            },
+          });
+          const getBoundingClientRect = Element.prototype.getBoundingClientRect;
+          patch('getBoundingClientRect', {
+            value: function boundingRect() {
+              const rect = (left, right) => ({
+                left,
+                right,
+                top: 0,
+                bottom: 24,
+                width: right - left,
+              });
+              if (isStrip(this)) return rect(0, 300);
+              if (this.classList?.contains('quick-access-tab')) {
+                const index = [...this.parentElement.querySelectorAll('.quick-access-tab')].indexOf(
+                  this
+                );
+                return rect(index * 100 - scrollLeft, index * 100 + 90 - scrollLeft);
+              }
+              return getBoundingClientRect.call(this);
+            },
+          });
+        };
+
+        beforeEach(() => {
+          mockLayout();
+          setPages(pagesNamed(12), 'p1');
+          ui.renderActiveTab();
+          scrollTo.mockClear();
+        });
+
+        afterEach(() => {
+          restore
+            .splice(0)
+            .reverse()
+            .forEach((undo) => undo());
+        });
+
+        it('glides the active page into view after a switch, clear of the faded edge', async () => {
+          await ui.switchQuickAccessPage('p10');
+          // Tab 10 is at 900..990 in a 300px strip: its right edge goes 20px inside the strip's.
+          expect(scrollTo).toHaveBeenCalledWith({ left: 710, behavior: 'smooth' });
+        });
+
+        it('glides to an earlier page the same way, unless motion is reduced', async () => {
+          await ui.switchQuickAccessPage('p10');
+          scrollTo.mockClear();
+          await ui.switchQuickAccessPage('p2');
+          // Tab 2 is at 100..190, and the strip is scrolled to 710.
+          expect(scrollTo).toHaveBeenLastCalledWith({ left: 80, behavior: 'smooth' });
+
+          window.matchMedia = jest.fn(() => ({ matches: true }));
+          try {
+            scrollTo.mockClear();
+            await ui.switchQuickAccessPage('p11');
+            expect(scrollTo).toHaveBeenLastCalledWith(
+              expect.objectContaining({ behavior: 'auto' })
+            );
+          } finally {
+            delete window.matchMedia;
+          }
+        });
+
+        it('leaves the strip alone when the active page is already in view', async () => {
+          scrollTo.mockClear();
+          await ui.switchQuickAccessPage('p2');
+          expect(scrollTo).not.toHaveBeenCalled();
+        });
+
+        it('scrolls to the page that is active when the bar is first drawn', () => {
+          // A restart: the saved page is the last, and nothing has been scrolled yet.
+          strip().remove();
+          scrollLeft = 0;
+          setPages(pagesNamed(12), 'p12');
+          ui.renderActiveTab();
+
+          // Tab 12 is at 1100..1190; the browser stops at the end, 10px short of the margin.
+          expect(scrollTo).toHaveBeenCalledWith({ left: 910, behavior: 'auto' });
+        });
+
+        it('keeps where the person scrolled across a rebuild when the active page is in view', async () => {
+          await ui.switchQuickAccessPage('p2');
+          scrollLeft = 40;
+          ui.renderActiveTab();
+          expect(scrollLeft).toBe(40);
+        });
+
+        it('fades the edges that have pages beyond them', () => {
+          const fade = () => strip().dataset.overflow || '';
+          ui.renderActiveTab();
+          expect(fade()).toBe('right');
+
+          scrollLeft = 400;
+          strip().dispatchEvent(new Event('scroll'));
+          expect(fade()).toBe('both');
+
+          scrollLeft = 900;
+          strip().dispatchEvent(new Event('scroll'));
+          expect(fade()).toBe('left');
+        });
+
+        it('scrolls sideways with a plain wheel, and lets go at the ends', () => {
+          const wheel = (init) => {
+            const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, ...init });
+            strip().dispatchEvent(event);
+            return event;
+          };
+
+          const down = wheel({ deltaY: 120 });
+          expect(down.defaultPrevented).toBe(true);
+          expect(scrollLeft).toBe(120);
+
+          const up = wheel({ deltaY: -50 });
+          expect(up.defaultPrevented).toBe(true);
+          expect(scrollLeft).toBe(70);
+
+          // Already at the start: the wheel goes on to scroll the panel.
+          scrollLeft = 0;
+          expect(wheel({ deltaY: -50 }).defaultPrevented).toBe(false);
+          // At the end the same.
+          scrollLeft = 900;
+          expect(wheel({ deltaY: 50 }).defaultPrevented).toBe(false);
+          expect(scrollLeft).toBe(900);
+          // Sideways wheels and swipes are the browser's.
+          scrollLeft = 100;
+          expect(wheel({ deltaX: 80, deltaY: 10 }).defaultPrevented).toBe(false);
+          expect(scrollLeft).toBe(100);
+        });
+      });
+
+      describe('while reorganizing', () => {
+        it('holds buttons, not tabs, and marks the current page', () => {
+          setPages(pagesNamed(3), 'p2');
+          ui.toggleReorganizeMode();
+
+          expect(strip().getAttribute('role')).toBe('group');
+          expect(strip().querySelectorAll('[role="tab"]')).toHaveLength(0);
+          expect(links().map((link) => link.getAttribute('aria-current'))).toEqual([
+            null,
+            'page',
+            null,
+          ]);
+          expect(links().map((link) => link.getAttribute('aria-selected'))).toEqual([
+            null,
+            null,
+            null,
+          ]);
+          // Arrow keys still lead along the pages, so one Tab stop is enough for them.
+          expect(links().map((link) => link.tabIndex)).toEqual([-1, 0, -1]);
+        });
+
+        it('keeps Add page beside the strip, and the same button between renders', () => {
+          setPages(pagesNamed(12), 'p12');
+          ui.toggleReorganizeMode();
+
+          const add = document.querySelector('.qa-tab-add');
+          expect(add).not.toBeNull();
+          expect(strip().contains(add)).toBe(false);
+          expect(add.parentElement).toBe(tabBar.parentElement);
+          expect(tabBar.nextElementSibling).toBe(add);
+
+          add.focus();
+          ui.renderActiveTab();
+          expect(document.querySelector('.qa-tab-add')).toBe(add);
+          expect(document.activeElement).toBe(add);
+
+          ui.toggleReorganizeMode();
+          expect(document.querySelector('.qa-tab-add')).toBeNull();
+        });
+
+        it('keeps focus on a page button such as Duplicate through a rebuild', () => {
+          setPages(pagesNamed(3), 'p2');
+          ui.toggleReorganizeMode();
+          const duplicate = tabBar.querySelector('.qa-tab-duplicate');
+          duplicate.focus();
+
+          ui.renderActiveTab();
+
+          expect(document.activeElement.classList.contains('qa-tab-duplicate')).toBe(true);
+          expect(document.activeElement.isConnected).toBe(true);
+        });
+      });
+
+      describe('renaming a page', () => {
+        const startRename = () => {
+          tabBar.querySelector('.qa-tab-rename').click();
+          const input = tabBar.querySelector('.qa-tab-rename-input');
+          expect(document.activeElement).toBe(input);
+          return input;
+        };
+
+        it('puts focus back on the page after Enter', async () => {
+          setPages(pagesNamed(2), 'p1');
+          ui.toggleReorganizeMode();
+          const input = startRename();
+          expect(input.dir).toBe('auto');
+          input.value = 'Hall';
+          press(input, 'Enter');
+          await settle();
+
+          expect(state.CONFIG.customTabs[0].name).toBe('Hall');
+          expect(document.activeElement).toBe(links()[0]);
+          expect(document.activeElement.textContent).toBe('Hall');
+        });
+
+        it('puts focus back on the page after Escape, without leaving reorganize mode', async () => {
+          setPages(pagesNamed(2), 'p1');
+          ui.toggleReorganizeMode();
+          const input = startRename();
+          input.value = 'Hall';
+          press(input, 'Escape');
+          await settle();
+
+          expect(state.CONFIG.customTabs[0].name).toBe('Page 1');
+          expect(document.activeElement).toBe(links()[0]);
+          expect(tabBar.classList.contains('reorganize')).toBe(true);
+        });
+
+        it('keeps focus where the person went when the field loses it', async () => {
+          setPages(pagesNamed(2), 'p1');
+          ui.toggleReorganizeMode();
+          const input = startRename();
+          const elsewhere = document.createElement('button');
+          document.body.appendChild(elsewhere);
+          input.value = 'Hall';
+          elsewhere.focus();
+          await settle();
+
+          expect(state.CONFIG.customTabs[0].name).toBe('Hall');
+          expect(document.activeElement).toBe(elsewhere);
+        });
+      });
     });
 
     it('renders the active page hint in the manage modal without a per-entity view select', () => {
