@@ -2391,10 +2391,23 @@ window.electronAPI.onOpenSettings(() => {
   openSettingsModal();
 });
 
+// Settings shows the sync state, but only to someone who has it open: a sync that starts
+// waiting for a choice or failing is also said once, wherever the person is.
+let profileSyncNeededAttention = false;
 window.electronAPI.onProfileSyncStatus((status) => {
   if (settings.handleProfileSyncStatusUpdate) {
     settings.handleProfileSyncStatusUpdate(status);
   }
+  const needsAttention = settings.profileSyncNeedsAttention?.(status) === true;
+  const settingsOpen = !document.getElementById('settings-modal')?.classList.contains('hidden');
+  if (needsAttention && !profileSyncNeededAttention && !settingsOpen) {
+    uiUtils.showToast(
+      t('Profile sync needs attention. Open Settings > Advanced.'),
+      'warning',
+      8000
+    );
+  }
+  profileSyncNeededAttention = needsAttention;
 });
 
 window.electronAPI.onConfigUpdated(async (nextConfig) => {

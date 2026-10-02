@@ -2229,9 +2229,9 @@
                       >
                       <p
                         class="form-help"
-                        data-i18n="Encrypts the sync file with AES-256-GCM. Every computer needs the same passphrase."
+                        data-i18n="Locks the sync file with a passphrase. Every computer needs the same passphrase."
                       >
-                        Encrypts the sync file with AES-256-GCM. Every computer needs the same
+                        Locks the sync file with a passphrase. Every computer needs the same
                         passphrase.
                       </p>
                     </div>
@@ -2244,18 +2244,57 @@
                     <label for="profile-sync-passphrase" data-i18n="Sync passphrase"
                       >Sync passphrase</label
                     >
-                    <input
-                      type="password"
-                      id="profile-sync-passphrase"
-                      placeholder="Enter passphrase (min 8 chars)"
-                      data-i18n-placeholder="Enter passphrase (min 8 chars)"
-                    />
+                    <div class="profile-sync-passphrase-row">
+                      <input
+                        type="password"
+                        id="profile-sync-passphrase"
+                        autocomplete="off"
+                        placeholder="Enter passphrase (min 8 chars)"
+                        data-i18n-placeholder="Enter passphrase (min 8 chars)"
+                      />
+                      <button
+                        type="button"
+                        id="profile-sync-passphrase-reveal"
+                        class="btn btn-secondary"
+                        aria-pressed="false"
+                        data-i18n="Show passphrase"
+                      >
+                        Show passphrase
+                      </button>
+                    </div>
+                    <div
+                      id="profile-sync-passphrase-confirm-group"
+                      class="profile-sync-passphrase-confirm hidden"
+                    >
+                      <label for="profile-sync-passphrase-confirm" data-i18n="Confirm passphrase"
+                        >Confirm passphrase</label
+                      >
+                      <input
+                        type="password"
+                        id="profile-sync-passphrase-confirm"
+                        autocomplete="off"
+                      />
+                    </div>
+                    <p
+                      class="form-help"
+                      data-i18n="At least 8 characters. If you forget it, the data in the sync file cannot be recovered."
+                    >
+                      At least 8 characters. If you forget it, the data in the sync file cannot be
+                      recovered.
+                    </p>
                     <label class="profile-sync-remember">
                       <input type="checkbox" id="profile-sync-remember-passphrase" />
                       <span data-i18n="Remember passphrase on this device"
                         >Remember passphrase on this device</span
                       >
                     </label>
+                    <p
+                      class="form-help"
+                      data-i18n="Saved with your system’s secure storage. When this is off, you enter the passphrase again after each restart."
+                    >
+                      Saved with your system’s secure storage. When this is off, you enter the
+                      passphrase again after each restart.
+                    </p>
                     <div class="profile-sync-actions">
                       <button
                         type="button"
@@ -2264,6 +2303,14 @@
                         data-i18n="Clear Saved Passphrase"
                       >
                         Clear Saved Passphrase
+                      </button>
+                      <button
+                        type="button"
+                        id="profile-sync-cancel-encryption-change"
+                        class="btn btn-secondary hidden"
+                        data-i18n="Cancel change"
+                      >
+                        Cancel change
                       </button>
                     </div>
                   </div>

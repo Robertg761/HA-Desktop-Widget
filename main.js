@@ -9205,19 +9205,7 @@ ipcMain.handle(
               ? profileSync.encryptionChangePending
               : profileSync.encryptionEnabled;
         const effectiveNewPassphrase = candidatePassphrase || activePassphrase;
-        if (targetEncryptionEnabled && !effectiveNewPassphrase) {
-          return refuse(
-            mainT('Passphrase must be at least {{count}} characters long', {
-              count: PROFILE_SYNC_MIN_PASSPHRASE_LENGTH,
-            })
-          );
-        }
-
-        const remoteResult =
-          profileSync.enabled && profileSync.cloudFilePath
-            ? await readConfiguredSyncEnvelope()
-            : { exists: false, envelope: null };
-
+        // Giving up on a pending change needs neither a passphrase nor the file.
         if (
           typeof desiredEncryptionEnabled === 'boolean' &&
           typeof profileSync.encryptionChangePending === 'boolean' &&
@@ -9250,6 +9238,19 @@ ipcMain.handle(
             };
           }
         }
+
+        if (targetEncryptionEnabled && !effectiveNewPassphrase) {
+          return refuse(
+            mainT('Passphrase must be at least {{count}} characters long', {
+              count: PROFILE_SYNC_MIN_PASSPHRASE_LENGTH,
+            })
+          );
+        }
+
+        const remoteResult =
+          profileSync.enabled && profileSync.cloudFilePath
+            ? await readConfiguredSyncEnvelope()
+            : { exists: false, envelope: null };
 
         if (targetEncryptionEnabled !== profileSync.encryptionEnabled) {
           let localEncryptionCommitPersisted = false;

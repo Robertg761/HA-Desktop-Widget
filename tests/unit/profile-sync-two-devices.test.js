@@ -457,6 +457,29 @@ describe('recovery records', () => {
   });
 });
 
+describe('a change that was asked for but never carried out', () => {
+  test('can be given up without a passphrase or the file', async () => {
+    const { desktop } = await createSyncedPair();
+    await desktop.saveSettings({
+      profileSync: { encryptionEnabled: true },
+      passphrase: PASSPHRASE,
+    });
+    // The window closed (or the app crashed) between the two calls of a save that turned
+    // encryption off, and the passphrase was only kept for the session.
+    const next = desktop.rendererConfig();
+    next.profileSync.encryptionEnabled = false;
+    await desktop.invoke('update-config', next);
+    expect(desktop.status().encryptionChangePending).toBe(false);
+    desktop.context.profileSyncRuntime.passphraseSession = '';
+    fs.rmSync(syncFilePath());
+
+    const result = await desktop.invoke('set-profile-sync-passphrase', '', false, true);
+
+    expect(result.success).toBe(true);
+    expect(desktop.config.profileSync).toMatchObject(settled(true));
+  });
+});
+
 describe('turning encryption off', () => {
   test('rewrites the file as plain text and the other computer follows', async () => {
     const { desktop, laptop } = await createSyncedPair();

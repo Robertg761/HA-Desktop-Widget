@@ -344,6 +344,11 @@ function createSettingsModalDOM() {
         </label>
         <div id="profile-sync-passphrase-group" class="hidden">
           <input type="password" id="profile-sync-passphrase" />
+          <button type="button" id="profile-sync-passphrase-reveal" aria-pressed="false">Show passphrase</button>
+          <div id="profile-sync-passphrase-confirm-group" class="hidden">
+            <input type="password" id="profile-sync-passphrase-confirm" />
+          </div>
+          <button type="button" id="profile-sync-cancel-encryption-change" class="hidden">Cancel change</button>
           <label for="profile-sync-remember-passphrase">
             <input type="checkbox" id="profile-sync-remember-passphrase" />
             Remember
@@ -545,6 +550,17 @@ describe('Settings + Config Integration', () => {
         }
       : buildProfileSync().syncScope,
   });
+  /** Gives the open Settings window a saved, running sync, so a manual sync can start. */
+  const enableSavedProfileSync = (overrides = {}) => {
+    const running = {
+      enabled: true,
+      provider: 'cloudFile',
+      cloudFilePath: '/tmp/shared-folder/ha-widget-profile-sync.json',
+      ...overrides,
+    };
+    state.CONFIG.profileSync = buildProfileSync(running);
+    mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce(buildProfileSyncStatus(running));
+  };
   const openSettingsWithCustomIconsExpanded = async (uiHooks = undefined) => {
     const config = state.CONFIG;
     config.ui = config.ui || {};
@@ -3721,6 +3737,7 @@ describe('Settings + Config Integration', () => {
     });
 
     test('asks before Sync Up replaces the sync file', async () => {
+      enableSavedProfileSync();
       await settings.openSettings();
       mockElectronAPI.runProfileSync = jest.fn().mockResolvedValue({ ok: true });
       mockUiUtils.showConfirm.mockResolvedValueOnce(false);
@@ -4217,6 +4234,503 @@ describe('Settings + Config Integration', () => {
     });
   });
 
+  describe('Profile sync state in Settings', () => {
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const lastToast = () => mockUiUtils.showToast.mock.calls.at(-1);
+    const openWithRunningSync = async (statusOverrides = {}, savedOverrides = {}) => {
+      enableSavedProfileSync(savedOverrides);
+      mockElectronAPI.getProfileSyncStatus.mockReset();
+      mockElectronAPI.getProfileSyncStatus.mockResolvedValue(
+        buildProfileSyncStatus({
+          enabled: true,
+          provider: 'cloudFile',
+          cloudFilePath: '/tmp/shared-folder/ha-widget-profile-sync.json',
+          ...statusOverrides,
+        })
+      );
+      await settings.openSettings();
+    };
+    afterEach(() => {
+      mockElectronAPI.getProfileSyncStatus.mockReset();
+      mockElectronAPI.getProfileSyncStatus.mockImplementation(() =>
+        Promise.resolve(buildProfileSyncStatus({ enabled: false }))
+      );
+    });
+
+    describe('manual sync buttons', () => {
+      test('are answered before any confirmation when sync is not saved yet', async () => {
+        await settings.openSettings();
+        mockElectronAPI.runProfileSync = jest.fn().mockResolvedValue({ ok: true });
+        document.getElementById('profile-sync-enabled').checked = true;
+        document.getElementById('profile-sync-folder-path').value = '/tmp/shared-folder';
+
+        for (const id of ['profile-sync-now', 'profile-sync-push-now', 'profile-sync-pull-now']) {
+          mockUiUtils.showToast.mockClear();
+          document.getElementById(id).click();
+          await flush();
+          expect(lastToast()).toEqual([
+            'Save your settings first to start syncing.',
+            'warning',
+            expect.any(Number),
+          ]);
+        }
+        expect(mockUiUtils.showConfirm).not.toHaveBeenCalled();
+        expect(mockElectronAPI.runProfileSync).not.toHaveBeenCalled();
+      });
+
+      test('are answered when a folder or switch changed in the form after saving', async () => {
+        await openWithRunningSync();
+        mockElectronAPI.runProfileSync = jest.fn().mockResolvedValue({ ok: true });
+        document.getElementById('profile-sync-folder-path').value = '/tmp/another-folder';
+
+        document.getElementById('profile-sync-now').click();
+        await flush();
+
+        expect(lastToast()[0]).toBe('Save your settings first to start syncing.');
+        expect(mockElectronAPI.runProfileSync).not.toHaveBeenCalled();
+      });
+
+      test('say a pending choice or encryption change comes first, not that sync failed', async () => {
+        await openWithRunningSync({ needsResolution: true });
+        mockElectronAPI.runProfileSync = jest.fn();
+        document.getElementById('profile-sync-now').click();
+        await flush();
+        expect(lastToast()).toEqual([
+          'Resolve first-time sync conflict before syncing.',
+          'warning',
+          expect.any(Number),
+        ]);
+
+        await openWithRunningSync({ encryptionChangePending: true });
+        document.getElementById('profile-sync-now').click();
+        await flush();
+        expect(lastToast()).toEqual([
+          'Finish or cancel the pending encryption change first.',
+          'warning',
+          expect.any(Number),
+        ]);
+        expect(mockElectronAPI.runProfileSync).not.toHaveBeenCalled();
+      });
+
+      test.each([
+        ['in_flight', 'A sync is already running. Try again in a moment.', 'info'],
+        ['disabled', 'Save your settings first to start syncing.', 'warning'],
+        [
+          'encryption_change_pending',
+          'Finish or cancel the pending encryption change first.',
+          'warning',
+        ],
+        ['rewrite_pending', 'Finish or cancel the pending encryption change first.', 'warning'],
+      ])('a run main declined as %s is not a red failure', async (reason, text, type) => {
+        await openWithRunningSync();
+        mockElectronAPI.runProfileSync = jest.fn().mockResolvedValue({ ok: false, reason });
+        document.getElementById('profile-sync-now').click();
+        await flush();
+        expect(lastToast()).toEqual([text, type, expect.any(Number)]);
+      });
+
+      test('a real failure still shows its message as an error', async () => {
+        await openWithRunningSync();
+        mockElectronAPI.runProfileSync = jest
+          .fn()
+          .mockResolvedValue({ ok: false, error: 'The sync file is damaged.' });
+        document.getElementById('profile-sync-now').click();
+        await flush();
+        expect(lastToast()).toEqual(['The sync file is damaged.', 'error', expect.any(Number)]);
+      });
+
+      test('Sync Down says so when nothing was downloaded', async () => {
+        await openWithRunningSync();
+        mockUiUtils.showConfirm.mockResolvedValue(true);
+
+        mockElectronAPI.runProfileSync = jest.fn().mockResolvedValue({
+          ok: true,
+          action: 'none',
+          status: buildProfileSyncStatus({ enabled: true, lastRemoteUpdatedAt: null }),
+        });
+        document.getElementById('profile-sync-pull-now').click();
+        await flush();
+        expect(lastToast()).toEqual(['No sync file found yet.', 'info', expect.any(Number)]);
+
+        mockElectronAPI.runProfileSync = jest.fn().mockResolvedValue({
+          ok: true,
+          action: 'none',
+          status: buildProfileSyncStatus({
+            enabled: true,
+            lastRemoteUpdatedAt: '2026-10-01T08:00:00.000Z',
+          }),
+        });
+        document.getElementById('profile-sync-pull-now').click();
+        await flush();
+        expect(lastToast()).toEqual([
+          'This computer already matches the sync file.',
+          'info',
+          expect.any(Number),
+        ]);
+      });
+
+      test('are disabled while a run is in flight', async () => {
+        await openWithRunningSync({ inFlight: true });
+        for (const id of ['profile-sync-now', 'profile-sync-push-now', 'profile-sync-pull-now']) {
+          expect(document.getElementById(id).disabled).toBe(true);
+        }
+        settings.handleProfileSyncStatusUpdate(
+          buildProfileSyncStatus({ enabled: true, inFlight: false })
+        );
+        expect(document.getElementById('profile-sync-now').disabled).toBe(false);
+      });
+    });
+
+    describe('settings pulled while the window is open', () => {
+      const pulledConfig = () => ({
+        ...JSON.parse(JSON.stringify(state.CONFIG)),
+        opacity: 0.6,
+      });
+
+      test('Sync Down rebuilds the form, so Save does not write the old values back', async () => {
+        await openWithRunningSync();
+        mockUiUtils.showConfirm.mockResolvedValue(true);
+        const before = document.getElementById('opacity-slider').value;
+        mockElectronAPI.runProfileSync = jest.fn().mockResolvedValue({
+          ok: true,
+          action: 'pull',
+          config: pulledConfig(),
+          status: buildProfileSyncStatus({ enabled: true }),
+        });
+
+        document.getElementById('profile-sync-pull-now').click();
+        await flush();
+        await flush();
+
+        expect(state.CONFIG.opacity).toBe(0.6);
+        expect(document.getElementById('opacity-slider').value).not.toBe(before);
+
+        mockElectronAPI.updateConfig.mockClear();
+        await settings.saveSettings();
+        expect(mockElectronAPI.updateConfig.mock.calls[0][0].opacity).toBe(0.6);
+      });
+
+      test('says when unsaved edits were discarded by the pull', async () => {
+        await openWithRunningSync();
+        mockUiUtils.showConfirm.mockResolvedValue(true);
+        const opacity = document.getElementById('opacity-slider');
+        opacity.value = '70';
+        opacity.dispatchEvent(new Event('input', { bubbles: true }));
+        mockElectronAPI.runProfileSync = jest.fn().mockResolvedValue({
+          ok: true,
+          action: 'pull',
+          config: pulledConfig(),
+          status: buildProfileSyncStatus({ enabled: true }),
+        });
+
+        document.getElementById('profile-sync-pull-now').click();
+        await flush();
+        await flush();
+
+        expect(lastToast()).toEqual([
+          'Synced settings were applied. Unsaved changes in this window were discarded.',
+          'warning',
+          expect.any(Number),
+        ]);
+      });
+
+      test('restoring a backup rebuilds the form too', async () => {
+        mockElectronAPI.listProfileSyncBackups = jest.fn().mockResolvedValue({
+          success: true,
+          backups: [
+            {
+              id: 'local-profile-1771840800000.json',
+              kind: 'local',
+              createdAt: '2026-02-23T10:00:00.000Z',
+              sections: ['visualPersonalization'],
+            },
+          ],
+        });
+        mockElectronAPI.restoreProfileSyncBackup = jest
+          .fn()
+          .mockResolvedValue({ success: true, config: pulledConfig() });
+        await openWithRunningSync();
+        await flush();
+        const before = document.getElementById('opacity-slider').value;
+
+        document.getElementById('profile-sync-restore-backup').click();
+        await flush();
+        await flush();
+
+        expect(document.getElementById('opacity-slider').value).not.toBe(before);
+        expect(lastToast()[0]).toBe('Backup restored.');
+      });
+
+      test('Use Remote rebuilds the form with the file’s settings', async () => {
+        await openWithRunningSync({
+          needsResolution: true,
+          conflictSections: ['visualPersonalization'],
+        });
+        const before = document.getElementById('opacity-slider').value;
+        mockElectronAPI.resolveProfileSyncFirstEnable = jest.fn().mockResolvedValue({
+          success: true,
+          config: pulledConfig(),
+          status: buildProfileSyncStatus({ enabled: true }),
+        });
+
+        document.getElementById('profile-sync-resolve-remote').click();
+        await flush();
+        await flush();
+
+        expect(document.getElementById('opacity-slider').value).not.toBe(before);
+        expect(lastToast()[0]).toBe('Settings downloaded from the sync file.');
+      });
+    });
+
+    describe('an encryption change that is waiting', () => {
+      test('is drawn as asked for, with a way to give it up', async () => {
+        await openWithRunningSync(
+          { encryptionEnabled: false, encryptionChangePending: true },
+          { encryptionEnabled: false, encryptionChangePending: true }
+        );
+
+        expect(document.getElementById('profile-sync-encryption-enabled').checked).toBe(true);
+        expect(
+          document.getElementById('profile-sync-passphrase-group').classList.contains('hidden')
+        ).toBe(false);
+        expect(
+          document
+            .getElementById('profile-sync-cancel-encryption-change')
+            .classList.contains('hidden')
+        ).toBe(false);
+        expect(document.getElementById('profile-sync-error').textContent).toContain(
+          'Encryption is not on yet.'
+        );
+        expect(document.getElementById('profile-sync-error').textContent).toContain(
+          'press Cancel change'
+        );
+      });
+
+      test('saving with the switch as drawn finishes the change instead of cancelling it', async () => {
+        await openWithRunningSync(
+          { encryptionEnabled: false, encryptionChangePending: true },
+          { encryptionEnabled: false, encryptionChangePending: true }
+        );
+        mockElectronAPI.setProfileSyncPassphrase.mockResolvedValueOnce({
+          success: true,
+          remembered: false,
+          encrypted: false,
+        });
+        document.getElementById('profile-sync-passphrase').value = 'long enough';
+        document.getElementById('profile-sync-passphrase-confirm').value = 'long enough';
+
+        await settings.saveSettings();
+
+        expect(mockElectronAPI.setProfileSyncPassphrase).toHaveBeenCalledWith(
+          'long enough',
+          false,
+          true
+        );
+      });
+
+      test('Cancel change asks main to keep the mode already in force, and says so', async () => {
+        await openWithRunningSync(
+          { encryptionEnabled: false, encryptionChangePending: true },
+          { encryptionEnabled: false, encryptionChangePending: true }
+        );
+        const settled = { ...state.CONFIG.profileSync, encryptionChangePending: null };
+        mockElectronAPI.setProfileSyncPassphrase.mockResolvedValueOnce({
+          success: true,
+          config: { ...state.CONFIG, profileSync: settled },
+          status: buildProfileSyncStatus({
+            enabled: true,
+            encryptionEnabled: false,
+            encryptionChangePending: null,
+          }),
+        });
+
+        document.getElementById('profile-sync-cancel-encryption-change').click();
+        await flush();
+
+        expect(mockElectronAPI.setProfileSyncPassphrase).toHaveBeenCalledWith('', false, false);
+        expect(lastToast()).toEqual(['Encryption change canceled.', 'info', expect.any(Number)]);
+        expect(document.getElementById('profile-sync-encryption-enabled').checked).toBe(false);
+        expect(
+          document
+            .getElementById('profile-sync-cancel-encryption-change')
+            .classList.contains('hidden')
+        ).toBe(true);
+      });
+    });
+
+    describe('the passphrase fields', () => {
+      const choosePassphraseFor = async (statusOverrides) => {
+        await openWithRunningSync(statusOverrides);
+        const switchEl = document.getElementById('profile-sync-encryption-enabled');
+        switchEl.checked = true;
+        switchEl.dispatchEvent(new Event('change'));
+      };
+      const confirmGroupHidden = () =>
+        document
+          .getElementById('profile-sync-passphrase-confirm-group')
+          .classList.contains('hidden');
+
+      test('ask for the passphrase twice while one is being chosen', async () => {
+        await choosePassphraseFor({ remoteEncrypted: false });
+        expect(confirmGroupHidden()).toBe(false);
+
+        document.getElementById('profile-sync-passphrase').value = 'long enough';
+        document.getElementById('profile-sync-passphrase-confirm').value = 'long enough!';
+        mockElectronAPI.updateConfig.mockClear();
+        await settings.saveSettings();
+
+        expect(lastToast()).toEqual(['The passphrases do not match.', 'error', expect.any(Number)]);
+        expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(
+          document.getElementById('profile-sync-passphrase-confirm')
+        );
+      });
+
+      test('ask only once when joining a file that is already encrypted', async () => {
+        await choosePassphraseFor({ remoteEncrypted: true });
+        expect(confirmGroupHidden()).toBe(true);
+      });
+
+      test('ask only once when a passphrase is already saved, and say so', async () => {
+        await choosePassphraseFor({ remoteEncrypted: false, passphraseStored: true });
+        expect(confirmGroupHidden()).toBe(true);
+        expect(document.getElementById('profile-sync-passphrase').placeholder).toBe(
+          'Saved on this device. Type a new one to change it.'
+        );
+      });
+
+      test('can be shown and hidden', async () => {
+        await choosePassphraseFor({ remoteEncrypted: false });
+        const reveal = document.getElementById('profile-sync-passphrase-reveal');
+        const input = document.getElementById('profile-sync-passphrase');
+
+        reveal.click();
+        expect(input.type).toBe('text');
+        expect(document.getElementById('profile-sync-passphrase-confirm').type).toBe('text');
+        expect(reveal.getAttribute('aria-pressed')).toBe('true');
+        expect(reveal.textContent).toBe('Hide passphrase');
+
+        reveal.click();
+        expect(input.type).toBe('password');
+        expect(reveal.textContent).toBe('Show passphrase');
+      });
+
+      test('disabling encryption needs no passphrase when the file is already plain text', async () => {
+        await openWithRunningSync(
+          { encryptionEnabled: true, remoteEncrypted: false },
+          { encryptionEnabled: true }
+        );
+        document.getElementById('profile-sync-encryption-enabled').checked = false;
+        mockElectronAPI.setProfileSyncPassphrase.mockResolvedValueOnce({ success: true });
+
+        await settings.saveSettings();
+
+        expect(mockElectronAPI.setProfileSyncPassphrase).toHaveBeenCalledWith('', false, false);
+      });
+
+      test('disabling encryption still needs the passphrase while the file is encrypted', async () => {
+        await openWithRunningSync(
+          { encryptionEnabled: true, remoteEncrypted: true },
+          { encryptionEnabled: true }
+        );
+        document.getElementById('profile-sync-encryption-enabled').checked = false;
+        mockElectronAPI.updateConfig.mockClear();
+
+        await settings.saveSettings();
+
+        expect(lastToast()[0]).toBe(
+          'Enter the current remote passphrase before disabling encrypted sync.'
+        );
+        expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+      });
+
+      test('clearing the saved passphrase warns that syncing pauses', async () => {
+        await openWithRunningSync({ encryptionEnabled: true, passphraseStored: true });
+        document.getElementById('profile-sync-clear-passphrase').click();
+        await flush();
+
+        expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
+          'Clear Saved Passphrase',
+          'Remove the saved sync passphrase from this device? Syncing stays paused until you enter it again.',
+          expect.anything()
+        );
+      });
+    });
+
+    describe('a sync that needs the person', () => {
+      test('keeps Settings open on Advanced when a first-sync choice is waiting', async () => {
+        state.CONFIG.profileSync = buildProfileSync({ enabled: false, cloudFilePath: '' });
+        mockElectronAPI.getProfileSyncStatus.mockReset();
+        mockElectronAPI.getProfileSyncStatus.mockResolvedValue(
+          buildProfileSyncStatus({
+            enabled: true,
+            needsResolution: true,
+            conflictSections: ['visualPersonalization'],
+          })
+        );
+        await settings.openSettings();
+        const advancedTab = document.createElement('button');
+        advancedTab.className = 'tab-link';
+        advancedTab.dataset.tab = 'advanced';
+        const tabs = document.createElement('div');
+        tabs.className = 'modal-tabs';
+        tabs.appendChild(advancedTab);
+        document.getElementById('settings-modal').appendChild(tabs);
+        const openedTab = jest.fn();
+        advancedTab.addEventListener('click', openedTab);
+        document.getElementById('profile-sync-enabled').checked = true;
+        document.getElementById('profile-sync-folder-path').value = '/tmp/shared-folder';
+        document.getElementById('profile-sync-encryption-enabled').checked = false;
+        const modal = document.getElementById('settings-modal');
+
+        await settings.saveSettings();
+
+        expect(modal.classList.contains('hidden')).toBe(false);
+        expect(openedTab).toHaveBeenCalled();
+        expect(lastToast()).toEqual([
+          'Waiting for your choice below.',
+          'warning',
+          expect.any(Number),
+        ]);
+      });
+
+      test('closes as usual when nothing waits on the person', async () => {
+        await settings.openSettings();
+        await settings.saveSettings();
+        expect(document.getElementById('settings-modal').classList.contains('hidden')).toBe(true);
+      });
+
+      test('keeps Settings open when the passphrase was refused', async () => {
+        await settings.openSettings();
+        document.getElementById('profile-sync-enabled').checked = true;
+        document.getElementById('profile-sync-folder-path').value = '/tmp/shared-folder';
+        document.getElementById('profile-sync-encryption-enabled').checked = true;
+        document.getElementById('profile-sync-passphrase').value = 'long enough';
+        document.getElementById('profile-sync-passphrase-confirm').value = 'long enough';
+        mockElectronAPI.setProfileSyncPassphrase.mockResolvedValueOnce({
+          success: false,
+          error: 'That passphrase does not unlock the sync file.',
+        });
+
+        await settings.saveSettings();
+
+        expect(document.getElementById('settings-modal').classList.contains('hidden')).toBe(false);
+      });
+
+      test.each([
+        [{ enabled: true, needsResolution: true }, true],
+        [{ enabled: true, lastSyncStatus: 'error' }, true],
+        [{ enabled: true, encryptionChangePending: false }, true],
+        [{ enabled: true, rewriteRecoveryRequired: true }, true],
+        [{ enabled: true, lastSyncStatus: 'success' }, false],
+        [{ enabled: true, encryptionChangePending: null }, false],
+        [{ enabled: false, lastSyncStatus: 'error' }, false],
+      ])('profileSyncNeedsAttention(%j) is %s', (status, expected) => {
+        expect(settings.profileSyncNeedsAttention(status)).toBe(expected);
+      });
+    });
+  });
+
   describe('Alert Config Dialog', () => {
     beforeEach(() => {
       document.body.insertAdjacentHTML(
@@ -4426,6 +4940,8 @@ describe('Settings + Config Integration', () => {
       expect(alertsList.querySelector('.remove-alert').textContent).toBe('Entfernen');
 
       mockElectronAPI.runProfileSync = jest.fn().mockResolvedValue({ ok: true });
+      enableSavedProfileSync();
+      await settings.openSettings();
       document.getElementById('profile-sync-push-now').click();
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(mockUiUtils.showToast).toHaveBeenCalledWith(

@@ -14517,11 +14517,28 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
 }
 
 .profile-sync-file-row,
+.profile-sync-passphrase-row,
 .profile-sync-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+/* The passphrase gets the line; its Show button sits beside it and wraps under it when narrow. */
+#settings-modal .profile-sync-passphrase-row > input {
+  flex: 1 1 220px;
+  min-width: 0;
+  margin: 0;
+}
+
+#settings-modal .profile-sync-passphrase-confirm {
+  display: grid;
+  gap: 6px;
+}
+
+#settings-modal .profile-sync-passphrase-confirm.hidden {
+  display: none;
 }
 
 #settings-modal .profile-sync-file-row > input,

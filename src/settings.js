@@ -3145,10 +3145,10 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
       typeof status.encryptionChangePending === 'boolean'
         ? status.encryptionChangePending
           ? t(
-              'Encryption is still waiting to be enabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.'
+              'Encryption is not on yet. Enter a passphrase of at least 8 characters and save to finish, or press Cancel change. Sync is paused until then.'
             )
           : t(
-              'Encryption is still waiting to be disabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.'
+              'Encryption is not off yet. Enter the current passphrase and save to finish, or press Cancel change. Sync is paused until then.'
             )
         : '';
     const recoveryWarning = status.rewriteRecoveryInvalid
@@ -3218,6 +3218,12 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
 
   renderProfileSyncFolderWarnings(status);
 
+  // The status line says a sync is running; a second press would only be turned away.
+  ['profile-sync-now', 'profile-sync-push-now', 'profile-sync-pull-now'].forEach((id) => {
+    const button = document.getElementById(id);
+    if (button) button.disabled = !!status.inFlight;
+  });
+
   const clearPassphraseButton = document.getElementById('profile-sync-clear-passphrase');
   if (clearPassphraseButton) {
     clearPassphraseButton.classList.toggle('hidden', !status.passphraseStored);
@@ -3240,6 +3246,61 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
   ) {
     const derivedFolder = deriveProfileSyncFolderPath(status.cloudFilePath);
     folderInput.value = derivedFolder || status.cloudFilePath;
+  }
+
+  updateProfileSyncPassphraseFields();
+}
+
+/**
+ * Which sync states need a person, not just a status line: a choice to make, a failed
+ * run, or a paused encryption change. Used to say so outside Settings.
+ */
+function profileSyncNeedsAttention(status) {
+  return (
+    !!status?.enabled &&
+    (!!status.needsResolution ||
+      status.lastSyncStatus === 'error' ||
+      typeof status.encryptionChangePending === 'boolean' ||
+      !!status.rewriteRecoveryRequired)
+  );
+}
+
+/**
+ * Keeps the passphrase fields in step with the encryption switch and the sync state: the
+ * hint for a passphrase already saved, the second field that catches a typo while one is
+ * being chosen, and the way out of a change that is waiting.
+ */
+function updateProfileSyncPassphraseFields() {
+  const status = profileSyncStatusCache || {};
+  const encryption = document.getElementById('profile-sync-encryption-enabled');
+  const confirmGroup = document.getElementById('profile-sync-passphrase-confirm-group');
+  const passphraseInput = document.getElementById('profile-sync-passphrase');
+  const cancelChange = document.getElementById('profile-sync-cancel-encryption-change');
+
+  // Joining a file that is already encrypted needs no second field: a wrong passphrase is
+  // refused on the spot, where a typo while choosing one would be locked in.
+  const choosingPassphrase =
+    !!encryption?.checked && !status.passphraseStored && status.remoteEncrypted !== true;
+  if (confirmGroup) confirmGroup.classList.toggle('hidden', !choosingPassphrase);
+  if (passphraseInput) {
+    passphraseInput.placeholder = status.passphraseStored
+      ? t('Saved on this device. Type a new one to change it.')
+      : t('Enter passphrase (min 8 chars)');
+  }
+  if (cancelChange) {
+    cancelChange.classList.toggle('hidden', typeof status.encryptionChangePending !== 'boolean');
+  }
+}
+
+function setProfileSyncPassphraseRevealed(revealed) {
+  const reveal = document.getElementById('profile-sync-passphrase-reveal');
+  ['profile-sync-passphrase', 'profile-sync-passphrase-confirm'].forEach((id) => {
+    const input = document.getElementById(id);
+    if (input) input.type = revealed ? 'text' : 'password';
+  });
+  if (reveal) {
+    reveal.setAttribute('aria-pressed', String(revealed));
+    reveal.textContent = revealed ? t('Hide passphrase') : t('Show passphrase');
   }
 }
 
@@ -3354,7 +3415,14 @@ function applyProfileSyncConfigToForm() {
     folderPath.value = derivedFolder || profileSync.cloudFilePath || '';
   }
   if (interval) interval.value = String(profileSync.intervalMinutes || 5);
-  if (encryption) encryption.checked = !!profileSync.encryptionEnabled;
+  if (encryption) {
+    // A change that is waiting is drawn as it was asked for, so saving carries it on. Drawn as
+    // the old value, following the on-screen advice would take the save for a cancel.
+    encryption.checked =
+      typeof profileSync.encryptionChangePending === 'boolean'
+        ? profileSync.encryptionChangePending
+        : !!profileSync.encryptionEnabled;
+  }
   if (remember) remember.checked = !!profileSync.rememberPassphrase;
   applyProfileSyncScopeToForm(profileSync.syncScope);
   if (passphraseGroup)
@@ -3364,8 +3432,12 @@ function applyProfileSyncConfigToForm() {
         (!profileSync.encryptionEnabled && typeof profileSync.encryptionChangePending !== 'boolean')
     );
   if (passphraseInput) passphraseInput.value = '';
+  const passphraseConfirm = document.getElementById('profile-sync-passphrase-confirm');
+  if (passphraseConfirm) passphraseConfirm.value = '';
+  setProfileSyncPassphraseRevealed(false);
 
   setProfileSyncSettingsVisibility();
+  updateProfileSyncPassphraseFields();
 }
 
 const PROFILE_SYNC_REPLACE_CONFIRMATIONS = {
@@ -3392,7 +3464,82 @@ function applyConfigFromProfileSync(nextConfig) {
   applyDesktopAppearance(state.CONFIG);
 }
 
+/**
+ * Takes in a config that changed outside the form (a sync pull, a restored backup, an
+ * import) while Settings is open. The form, the pending colours and the window-effect
+ * preview all describe the old config, so Cancel would put the old look back and Save
+ * would write the stale values over the new ones. Reopening rebuilds them from the new
+ * config, at the cost of any edits not yet saved, which the return value reports.
+ *
+ * @returns {Promise<boolean>} whether unsaved edits were discarded
+ */
+async function reopenSettingsWithConfig(nextConfig) {
+  const discardedEdits = settingsTouchedKeys.size > 0;
+  const hooks = settingsUiHooks;
+  // Closing restores the window effects Settings opened with; after this change those are
+  // the new ones, which the main process has already applied natively.
+  if (previewState) previewState = savedWindowEffects(nextConfig);
+  closeSettings();
+  applyConfigFromProfileSync(nextConfig);
+  hooks?.renderActiveTab?.();
+  await openSettings(hooks);
+  return discardedEdits;
+}
+
+/** Says why a manual sync cannot run right now, or returns null when it can. */
+function getProfileSyncBlockedMessage() {
+  const status = profileSyncStatusCache || {};
+  const saved = ensureProfileSyncConfig();
+  const formScope = readProfileSyncScopeFromForm();
+  const formFolder = (document.getElementById('profile-sync-folder-path')?.value || '').trim();
+  const formDiffersFromSaved =
+    !!document.getElementById('profile-sync-enabled')?.checked !== !!saved.enabled ||
+    (document.getElementById('profile-sync-provider')?.value || 'cloudFile') !==
+      (saved.provider || 'cloudFile') ||
+    formFolder !== deriveProfileSyncFolderPath(saved.cloudFilePath || '') ||
+    JSON.stringify(formScope) !== JSON.stringify(normalizeProfileSyncScope(saved.syncScope));
+  // Sync runs against what is saved, so a switch or folder that has not been saved yet would
+  // be ignored and the run would only report that sync is off.
+  if (!saved.enabled || formDiffersFromSaved) {
+    return { type: 'warning', text: t('Save your settings first to start syncing.') };
+  }
+  if (status.needsResolution) {
+    return { type: 'warning', text: t('Resolve first-time sync conflict before syncing.') };
+  }
+  if (typeof status.encryptionChangePending === 'boolean' && !status.rewriteRecoveryRequired) {
+    return { type: 'warning', text: t('Finish or cancel the pending encryption change first.') };
+  }
+  if (status.inFlight) {
+    return { type: 'info', text: t('A sync is already running. Try again in a moment.') };
+  }
+  return null;
+}
+
+/** The toast for a run main declined with a reason instead of an error. */
+function describeProfileSyncDeclined(result) {
+  switch (result?.reason) {
+    case 'needs_resolution':
+      return { type: 'warning', text: t('Resolve first-time sync conflict before syncing.') };
+    case 'disabled':
+      return { type: 'warning', text: t('Save your settings first to start syncing.') };
+    case 'encryption_change_pending':
+    case 'rewrite_pending':
+      return { type: 'warning', text: t('Finish or cancel the pending encryption change first.') };
+    case 'in_flight':
+      return { type: 'info', text: t('A sync is already running. Try again in a moment.') };
+    default:
+      return { type: 'error', text: result?.error || t('Profile sync failed.') };
+  }
+}
+
 async function runManualProfileSync(direction) {
+  // Answer a run that cannot start before the confirmation, which warns about replacing
+  // settings that nothing is going to replace.
+  const blocked = getProfileSyncBlockedMessage();
+  if (blocked) {
+    showToast(blocked.text, blocked.type, 3500);
+    return;
+  }
   const confirmation = PROFILE_SYNC_REPLACE_CONFIRMATIONS[direction];
   if (confirmation) {
     const confirmed = await showConfirm(t(confirmation.title), t(confirmation.message), {
@@ -3404,16 +3551,13 @@ async function runManualProfileSync(direction) {
   try {
     const result = await window.electronAPI.runProfileSync(direction);
     if (!result?.ok) {
-      if (result?.reason === 'needs_resolution') {
-        showToast(t('Resolve first-time sync conflict before syncing.'), 'warning', 3500);
-      } else {
-        showToast(result?.error || t('Profile sync failed.'), 'error', 3500);
-      }
+      const declined = describeProfileSyncDeclined(result);
+      showToast(declined.text, declined.type, 3500);
       if (result?.status) updateProfileSyncStatusUi(result.status);
       return;
     }
 
-    if (result?.config) applyConfigFromProfileSync(result.config);
+    const discardedEdits = result?.config ? await reopenSettingsWithConfig(result.config) : false;
 
     if (result?.status) {
       updateProfileSyncStatusUi(result.status);
@@ -3421,6 +3565,25 @@ async function runManualProfileSync(direction) {
       await refreshProfileSyncStatusUi();
     }
     void refreshProfileSyncBackups();
+    if (discardedEdits) {
+      showToast(
+        t('Synced settings were applied. Unsaved changes in this window were discarded.'),
+        'warning',
+        4000
+      );
+      return;
+    }
+    if (direction === 'pull' && result.action === 'none') {
+      // Nothing came down: either there is no file yet, or this computer already has it all.
+      showToast(
+        result.status?.lastRemoteUpdatedAt
+          ? t('This computer already matches the sync file.')
+          : t('No sync file found yet.'),
+        'info',
+        2600
+      );
+      return;
+    }
     const completeMessage = {
       push: 'Profile sync upload complete.',
       pull: 'Profile sync download complete.',
@@ -3441,9 +3604,15 @@ async function resolveProfileSyncFirstEnable(choice) {
       if (result?.status) updateProfileSyncStatusUi(result.status);
       return;
     }
+    // Using the file's settings replaces this computer's, which the open form still shows.
+    let discardedEdits = false;
     if (result?.config) {
-      state.setConfig(result.config);
-      applyProfileSyncConfigToForm();
+      if (choice === 'use_remote') {
+        discardedEdits = await reopenSettingsWithConfig(result.config);
+      } else {
+        state.setConfig(result.config);
+        applyProfileSyncConfigToForm();
+      }
     }
     if (result?.status) updateProfileSyncStatusUi(result.status);
     const outcomeMessage = {
@@ -3451,6 +3620,14 @@ async function resolveProfileSyncFirstEnable(choice) {
       upload_local: () => t('This computer’s settings were uploaded to the sync file.'),
       use_remote: () => t('Settings downloaded from the sync file.'),
     }[choice];
+    if (discardedEdits) {
+      showToast(
+        t('Synced settings were applied. Unsaved changes in this window were discarded.'),
+        'warning',
+        4000
+      );
+      return;
+    }
     showToast(outcomeMessage(), 'success', 2500);
   } catch (error) {
     log.error('Failed to resolve profile sync conflict:', error);
@@ -3632,13 +3809,43 @@ async function restoreSelectedProfileSyncBackup() {
       showToast(result?.error || t('Failed to restore the backup.'), 'error', 3500);
       return;
     }
-    if (result.config) applyConfigFromProfileSync(result.config);
-    showToast(t('Backup restored.'), 'success', 2200);
+    const discardedEdits = result.config ? await reopenSettingsWithConfig(result.config) : false;
+    showToast(
+      discardedEdits
+        ? t('Synced settings were applied. Unsaved changes in this window were discarded.')
+        : t('Backup restored.'),
+      discardedEdits ? 'warning' : 'success',
+      discardedEdits ? 4000 : 2200
+    );
   } catch (error) {
     log.error('Failed to restore profile sync backup:', error);
     showToast(t('Failed to restore the backup.'), 'error', 3500);
   }
   await refreshProfileSyncBackups();
+}
+
+/**
+ * Gives up on an encryption change that is waiting, by asking main for the mode already in
+ * force. An explicit button rather than a side effect of saving: the form draws the waiting
+ * change as asked for, so a save carries it on.
+ */
+async function cancelPendingEncryptionChange() {
+  const committed = !!ensureProfileSyncConfig().encryptionEnabled;
+  try {
+    const result = await window.electronAPI.setProfileSyncPassphrase('', false, committed);
+    if (!result?.success) {
+      if (result?.status) updateProfileSyncStatusUi(result.status);
+      showToast(result?.error || t('Failed to save sync passphrase.'), 'error', 3400);
+      return;
+    }
+    if (result.config) applyPersistedConfigResponse(result.config);
+    applyProfileSyncConfigToForm();
+    if (result.status) updateProfileSyncStatusUi(result.status);
+    showToast(t('Encryption change canceled.'), 'info', 2400);
+  } catch (error) {
+    log.error('Failed to cancel the pending encryption change:', error);
+    showToast(error?.message || t('Failed to save sync passphrase.'), 'error', 3400);
+  }
 }
 
 function bindProfileSyncSettingsUi() {
@@ -3658,6 +3865,7 @@ function bindProfileSyncSettingsUi() {
           !enabled.checked || (!encryptionEnabled.checked && !needsCurrentKeyToDisable)
         );
       }
+      updateProfileSyncPassphraseFields();
     };
   }
 
@@ -3742,7 +3950,19 @@ function bindProfileSyncSettingsUi() {
           !enabledCheckbox?.checked || (!encryption.checked && !needsCurrentKeyToDisable)
         );
       }
+      updateProfileSyncPassphraseFields();
     };
+  }
+
+  const revealPassphrase = document.getElementById('profile-sync-passphrase-reveal');
+  if (revealPassphrase) {
+    revealPassphrase.onclick = () =>
+      setProfileSyncPassphraseRevealed(revealPassphrase.getAttribute('aria-pressed') !== 'true');
+  }
+
+  const cancelEncryptionChange = document.getElementById('profile-sync-cancel-encryption-change');
+  if (cancelEncryptionChange) {
+    cancelEncryptionChange.onclick = () => cancelPendingEncryptionChange();
   }
 
   const syncNow = document.getElementById('profile-sync-now');
@@ -3762,7 +3982,9 @@ function bindProfileSyncSettingsUi() {
     clearPassphrase.onclick = async () => {
       const confirmed = await showConfirm(
         t('Clear Saved Passphrase'),
-        t('Remove the saved sync passphrase from this device?'),
+        t(
+          'Remove the saved sync passphrase from this device? Syncing stays paused until you enter it again.'
+        ),
         { confirmText: t('Action: Clear'), confirmClass: 'btn-danger' }
       );
       if (!confirmed) return;
@@ -4707,14 +4929,7 @@ async function openSettings(uiHooks) {
     bindProfileSyncSettingsUi();
     initializeSettingsFiles({
       onImported: async (nextConfig) => {
-        const hooks = settingsUiHooks;
-        // Closing restores the window effects Settings opened with; after an import those are
-        // the imported ones, which the main process has already applied natively.
-        if (previewState) previewState = savedWindowEffects(nextConfig);
-        closeSettings();
-        applyConfigFromProfileSync(nextConfig);
-        hooks?.renderActiveTab?.();
-        await openSettings(hooks);
+        await reopenSettingsWithConfig(nextConfig);
       },
     });
     bindSupportDevelopmentUi();
@@ -5444,6 +5659,23 @@ async function saveSettings() {
       profileSyncPassphrase.focus();
       return;
     }
+    const passphraseConfirm = document.getElementById('profile-sync-passphrase-confirm');
+    const confirmShown =
+      !!passphraseConfirm &&
+      !document
+        .getElementById('profile-sync-passphrase-confirm-group')
+        ?.classList.contains('hidden');
+    if (
+      nextProfileSync.enabled &&
+      nextProfileSync.encryptionEnabled &&
+      typedPassphrase &&
+      confirmShown &&
+      passphraseConfirm.value.trim() !== typedPassphrase
+    ) {
+      showToast(t('The passphrases do not match.'), 'error', 3400);
+      passphraseConfirm.focus();
+      return;
+    }
 
     const previousSyncFilePath = (prevProfileSync.cloudFilePath || '').trim();
     const nextSyncFilePath = (nextProfileSync.cloudFilePath || '').trim();
@@ -5557,7 +5789,14 @@ async function saveSettings() {
     let passphraseUpdatedThisSave = false;
     let profileSyncCredentialOperationFailed = false;
 
-    if (disablingEncryption && !typedPassphrase && !hasSavedPassphrase) {
+    // The file's own mode decides whether the current passphrase is needed: when another computer
+    // already turned encryption off, there is nothing to unlock.
+    if (
+      disablingEncryption &&
+      !typedPassphrase &&
+      !hasSavedPassphrase &&
+      profileSyncStatusCache?.remoteEncrypted !== false
+    ) {
       showToast(
         t('Enter the current remote passphrase before disabling encrypted sync.'),
         'error',
@@ -5727,6 +5966,10 @@ async function saveSettings() {
     }
 
     await refreshProfileSyncStatusUi({ syncFormState: true });
+    // A sync that waits on the person (a first-sync choice, a passphrase that was refused)
+    // would otherwise be known only to someone who reopens Advanced, so Settings stays there.
+    const keepSettingsOpenForSync =
+      !!profileSyncStatusCache?.needsResolution || profileSyncCredentialOperationFailed;
 
     // Apply opacity immediately
     if (opacitySlider) {
@@ -5807,6 +6050,11 @@ async function saveSettings() {
 
     if (haSettingsChanged) {
       websocket.connect();
+    }
+
+    if (keepSettingsOpenForSync) {
+      await openSettings(settingsUiHooks);
+      showProfileSyncAttention();
     }
   } catch (error) {
     log.error('Failed to save config:', error);
@@ -6883,6 +7131,18 @@ function handleProfileSyncStatusUpdate(status) {
   updateProfileSyncStatusUi(status);
 }
 
+/** Brings the person to the part of Advanced that asks something of them. */
+function showProfileSyncAttention() {
+  document.querySelector('.modal-tabs .tab-link[data-tab="advanced"]')?.click();
+  const waitingForChoice = !!profileSyncStatusCache?.needsResolution;
+  document
+    .getElementById(waitingForChoice ? 'profile-sync-resolution' : 'profile-sync-status')
+    ?.scrollIntoView?.({ block: 'center' });
+  if (waitingForChoice) {
+    showToast(t('Waiting for your choice below.'), 'warning', 5000);
+  }
+}
+
 export {
   syncSegmentedIndicators,
   refreshRestoredDashboardSettings,
@@ -6902,6 +7162,7 @@ export {
   initializePopupHotkey,
   refreshPersonalizationSectionHeights,
   handleProfileSyncStatusUpdate,
+  profileSyncNeedsAttention,
   waitForLanguagePackRefresh,
   refreshHomeAssistantAuthStatus,
 };
