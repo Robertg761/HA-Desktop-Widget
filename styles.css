@@ -223,13 +223,35 @@ html {
   --surface-hover: rgba(42, 47, 58, 0.95);
   --card-bg: rgba(24, 28, 37, 0.7);
 
-  /* Tiles and cards on the main view: a faint wash over the window glass, so
-     they read as lifted panes of the same glass rather than separate slabs. */
+  /* Panes in Settings, dialogs and the header rule: a faint wash over the window
+     glass, so they read as lifted panes of the same glass rather than separate
+     slabs. */
   --tile-bg: rgba(255, 255, 255, 0.045);
   --tile-bg-hover: rgba(255, 255, 255, 0.075);
   --tile-border: rgba(255, 255, 255, 0.06);
   --tile-border-hover: rgba(255, 255, 255, 0.12);
   --window-highlight: rgba(255, 255, 255, 0.1);
+
+  /* The main view's tiles and cards need more than that to read as separate blocks
+     against the panel, so they take these instead (see "Main view: tiles that stand apart
+     from the panel", further down). These are for the dark solid panel (Windows without
+     acrylic, or Frosted glass off): the window colour lifted toward white, mostly opaque,
+     with a clear edge. A background theme still tints it. An active tile adds the wash
+     percentages of its accent. */
+  --dash-tile-bg: color-mix(
+    in srgb,
+    color-mix(in srgb, rgb(var(--window-bg-rgb)) 87%, white) 86%,
+    transparent
+  );
+  --dash-tile-bg-hover: color-mix(
+    in srgb,
+    color-mix(in srgb, rgb(var(--window-bg-rgb)) 81%, white) 91%,
+    transparent
+  );
+  --dash-tile-border: rgba(255, 255, 255, 0.18);
+  --dash-tile-border-hover: rgba(255, 255, 255, 0.28);
+  --dash-tile-wash: 24%;
+  --dash-tile-wash-hover: 30%;
 
   /* Borders */
   --border-color: rgba(255, 255, 255, 0.1);
@@ -478,6 +500,14 @@ body {
   --tile-border-hover: rgba(0, 0, 0, 0.13);
   --window-highlight: rgba(255, 255, 255, 0.55);
 
+  /* Main view tiles on the solid light panel: near-white panes with a clear edge. */
+  --dash-tile-bg: rgba(255, 255, 255, 0.88);
+  --dash-tile-bg-hover: rgba(255, 255, 255, 0.96);
+  --dash-tile-border: rgba(0, 0, 0, 0.26);
+  --dash-tile-border-hover: rgba(0, 0, 0, 0.36);
+  --dash-tile-wash: 18%;
+  --dash-tile-wash-hover: 24%;
+
   /* Glass Effects */
   --glass-surface: rgba(255, 255, 255, 0.7);
   --glass-elevated: rgba(250, 250, 250, 0.8);
@@ -548,6 +578,20 @@ body.frosted-glass {
     var(--frosted-glass-overlay-alpha, 0.5)
   );
 
+  /* Main view tiles on glass (Windows 11 acrylic, macOS vibrancy, the Linux tint): the
+     wallpaper shows through the panel, so a tile needs a darker, more opaque pane than on
+     the solid panel to stay readable over a bright photo. */
+  --dash-tile-bg: color-mix(
+    in srgb,
+    color-mix(in srgb, rgb(var(--window-bg-rgb)) 94%, white) 94%,
+    transparent
+  );
+  --dash-tile-bg-hover: color-mix(
+    in srgb,
+    color-mix(in srgb, rgb(var(--window-bg-rgb)) 90%, white) 99%,
+    transparent
+  );
+
   /* Update blur variable for child elements */
   --bg-blur: var(--frosted-blur, 32px);
   --glass-blur-strong: var(--bg-blur);
@@ -594,6 +638,12 @@ body.theme-light.frosted-glass {
     var(--frosted-glass-overlay-rgb, 245, 245, 250),
     var(--frosted-glass-overlay-alpha, 0.6)
   );
+
+  /* Main view tiles on light glass: the same near-white panes as on the solid light panel. */
+  --dash-tile-bg: rgba(255, 255, 255, 0.88);
+  --dash-tile-bg-hover: rgba(255, 255, 255, 0.96);
+  --dash-tile-border: rgba(0, 0, 0, 0.26);
+  --dash-tile-border-hover: rgba(0, 0, 0, 0.36);
 
   --bg-blur: var(--frosted-blur, 32px);
 }
@@ -6400,15 +6450,23 @@ body.theme-light .status-card.time-card .date-display {
 
 /* Tiles are styled the same whatever they are, except for the opt-out accent glow that
    marks a Quick Access tile whose entity is currently on (Personalization > Window
-   Effects): an accent-tinted pane, an accent icon with a soft halo, and a brighter
-   state line. Read-only tiles never carry data-active, so they never glow. */
+   Effects): the resting pane plus a wash of the accent, an accent icon with a soft halo,
+   and a brighter state line. Read-only tiles never carry data-active, so they never glow. */
 body.active-tile-glow #quick-controls .control-item[data-active='true'] {
-  background-color: rgba(var(--accent-rgb), 0.16);
+  background-color: color-mix(
+    in srgb,
+    rgb(var(--accent-rgb)) var(--dash-tile-wash),
+    var(--tile-bg)
+  );
   border-color: rgba(var(--accent-rgb), 0.42);
 }
 
 body.active-tile-glow #quick-controls .control-item[data-active='true']:hover {
-  background-color: rgba(var(--accent-rgb), 0.2);
+  background-color: color-mix(
+    in srgb,
+    rgb(var(--accent-rgb)) var(--dash-tile-wash-hover),
+    var(--tile-bg-hover)
+  );
   border-color: rgba(var(--accent-rgb), 0.55);
 }
 
@@ -12962,6 +13020,18 @@ body.opaque-panels
   -webkit-backdrop-filter: none !important;
 }
 
+/* That leaves the main view's tiles the colour of the panel, told apart only by their edge, so
+   they get a small lift: a touch toward white on the dark panel, and white on the pale one. */
+body.opaque-panels:not(.high-contrast)
+  :is(#quick-controls .control-item, .status-card, .media-tile) {
+  background: color-mix(in srgb, var(--bg-primary), white 7%) !important;
+}
+
+body.theme-light.opaque-panels:not(.high-contrast)
+  :is(#quick-controls .control-item, .status-card, .media-tile) {
+  background: color-mix(in srgb, var(--bg-primary), white 70%) !important;
+}
+
 /* Ranges are handled below; :where keeps this rule's specificity unchanged. Section headers and
    tabs are text-like buttons: a fill would draw a bar across the panel, and their own hover,
    active and focus styles stay visible without it. */
@@ -14588,6 +14658,56 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
   border: none;
   border-top: 1px solid var(--tile-border);
   margin: 4px 0;
+}
+
+/* --- Main view: tiles that stand apart from the panel ---
+   The Quick Access tiles, the hero pane holding the weather and time cards and the media card
+   take their fill and edge from --dash-tile-* (set per theme and glass mode with the other tile
+   tokens) by pointing --tile-* at them. Whatever sits inside and reads --tile-* follows: the
+   hairline between the cards, the seek track, the dashed edge of an unavailable tile. Settings,
+   dialogs, the header and pinned desktop tiles keep the softer values, and the readable preset
+   keeps its own tile tokens. */
+body:not(.high-contrast)
+  :is(
+    #quick-controls .control-item,
+    .status-grid:not(.single-card):not(.primary-cards-hidden),
+    .status-card,
+    .media-tile
+  ) {
+  --tile-bg: var(--dash-tile-bg);
+  --tile-bg-hover: var(--dash-tile-bg-hover);
+  --tile-border: var(--dash-tile-border);
+  --tile-border-hover: var(--dash-tile-border-hover);
+}
+
+/* The tab pill above the tiles takes the same edge, so it does not look fainter than they do. */
+body:not(.high-contrast) .quick-access-tabs:not(.hidden):not(.reorganize) {
+  --tile-border: var(--dash-tile-border);
+}
+
+/* These states paint their own wash straight onto the panel, or reset the fill to transparent,
+   so they would fall behind the new fill. Each sits on it now, like an active tile does. */
+body:not(.high-contrast)
+  #quick-controls
+  .timer-entity:is([data-state='active'], [data-state='paused']) {
+  background-color: color-mix(in srgb, rgb(var(--timer-rgb)) 18%, var(--tile-bg));
+}
+
+/* The state gradient of a media player tile is a background shorthand, which reset the fill. */
+body:not(.high-contrast) #quick-controls .media-player-entity {
+  background-color: var(--tile-bg);
+}
+
+/* An unavailable tile stays dashed and dimmed. On glass it gets a pane of its own so its dimmed
+   labels keep their contrast over a bright wallpaper; on the solid dark panel it stays clear. */
+body.frosted-glass:not(.theme-light, .high-contrast)
+  #quick-controls
+  .control-item[data-unavailable='true'] {
+  background: rgba(var(--window-bg-rgb), 0.9);
+}
+
+body.theme-light:not(.high-contrast) #quick-controls .control-item[data-unavailable='true'] {
+  background: color-mix(in srgb, var(--tile-bg) 70%, transparent);
 }
 
 /* --- Main view: one hero pane for the primary cards --- */
