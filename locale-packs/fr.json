@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.49",
+  "version": "1.2.50",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1708,6 +1708,9 @@
     "The sync file is in use by another program or is read-only. Try again in a moment, and check the folder’s permissions if it keeps happening.": "Le fichier de synchronisation est utilisé par un autre programme ou est en lecture seule. Réessayez dans un instant et vérifiez les autorisations du dossier si le problème persiste.",
     "Details": "Détails",
     "No unlocked system keyring (Secret Service) was found, so this computer cannot remember your Home Assistant sign-in or sync passphrase. Start gnome-keyring or KWallet, then restart the widget.": "Aucun trousseau de clés du système déverrouillé (Secret Service) n'a été trouvé, cet ordinateur ne peut donc pas mémoriser votre connexion à Home Assistant ni la phrase secrète de synchronisation. Démarrez gnome-keyring ou KWallet, puis redémarrez le widget.",
-    "Needs Windows 11 version 22H2 or later.": "Nécessite Windows 11 version 22H2 ou ultérieure."
+    "Needs Windows 11 version 22H2 or later.": "Nécessite Windows 11 version 22H2 ou ultérieure.",
+    "This page is empty": "Cette page est vide",
+    "Add entities to {{page}} for one-click control.": "Ajoutez des entités à {{page}} pour les contrôler en un clic.",
+    "Fill this page": "Remplir cette page"
   }
 }

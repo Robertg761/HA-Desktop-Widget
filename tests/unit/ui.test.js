@@ -661,6 +661,126 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.querySelector('.room-dashboard button').textContent).toBe('Retry');
       expect(document.querySelector('.room-dashboard button').disabled).toBe(false);
     });
+
+    it('leaves the starter able to save a named page after the rooms fail to load', async () => {
+      state.setConfig({
+        ...state.CONFIG,
+        customTabs: [{ id: 'default', name: 'All', entityIds: [] }],
+        activeTabId: 'default',
+      });
+      mockRequest.mockRejectedValue(new Error('Home Assistant is slow'));
+      ui.showAddPageModal({ starter: true });
+      await flush();
+
+      expect(document.querySelector('.room-dashboard [role="status"]').textContent).toContain(
+        'Could not load rooms'
+      );
+      const save = document.querySelector('#add-page-save-btn');
+      expect(save.disabled).toBe(false);
+
+      document.querySelector('#add-page-name').value = 'Attic';
+      save.click();
+      await flush();
+      expect(state.CONFIG.customTabs).toEqual([{ id: 'default', name: 'Attic', entityIds: [] }]);
+    });
+
+    it('says an empty page name is missing instead of doing nothing', async () => {
+      ui.showAddPageModal();
+      const input = document.querySelector('#add-page-name');
+      const error = document.querySelector('#add-page-name-error');
+      expect(error.hidden).toBe(true);
+      expect(input.hasAttribute('aria-describedby')).toBe(false);
+      const pages = state.CONFIG.customTabs;
+
+      document.querySelector('#add-page-save-btn').click();
+      expect(error.hidden).toBe(false);
+      expect(error.textContent).toBe('Enter page name');
+      expect(input.getAttribute('aria-invalid')).toBe('true');
+      expect(input.getAttribute('aria-describedby')).toBe('add-page-name-error');
+      expect(document.activeElement).toBe(input);
+      expect(state.CONFIG.customTabs).toBe(pages);
+
+      input.value = 'A';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      expect(error.hidden).toBe(true);
+      expect(input.hasAttribute('aria-invalid')).toBe(false);
+      expect(input.hasAttribute('aria-describedby')).toBe(false);
+    });
+
+    it('is named by its heading, with Cancel before Add Page in both order and look', () => {
+      ui.showAddPageModal();
+      const modal = document.getElementById('add-page-modal');
+      expect(modal.getAttribute('aria-labelledby')).toBe('add-page-title');
+      expect(document.getElementById('add-page-title').textContent).toBe('Add Page');
+      expect(
+        [...modal.querySelectorAll('.modal-footer button')].map((button) => button.id)
+      ).toEqual(['add-page-cancel-btn', 'add-page-save-btn']);
+    });
+
+    it('names the group of quick picks', () => {
+      ui.showAddPageModal();
+      const chips = document.querySelector('.qa-add-chips');
+      expect(chips.getAttribute('role')).toBe('group');
+      const label = document.getElementById(chips.getAttribute('aria-labelledby'));
+      expect(label.textContent).toBe('Quick picks:');
+      expect(label.tagName).toBe('SPAN');
+    });
+
+    describe('filling an empty page beside other pages', () => {
+      const pagesWithEmpty = () => ({
+        ...state.CONFIG,
+        customTabs: [
+          { id: 'garage', name: 'Garage', entityIds: [] },
+          { id: 'home', name: 'Home', entityIds: ['light.desk'] },
+        ],
+        activeTabId: 'garage',
+      });
+
+      it('says it fills the page and keeps the page its name', async () => {
+        state.setConfig(pagesWithEmpty());
+        registryResponses();
+        ui.showAddPageModal({ starter: true });
+        await flush();
+
+        expect(document.getElementById('add-page-title').textContent).toBe('Fill this page');
+        expect(document.querySelector('#add-page-save-btn').textContent).toBe('Fill this page');
+        // Choosing a room (the dialog picked one) does not rename the page.
+        expect(document.querySelector('#add-page-room').value).toBe('kitchen');
+        expect(document.querySelector('#add-page-name').value).toBe('Garage');
+
+        document.querySelector('#add-page-save-btn').click();
+        await flush();
+        expect(state.CONFIG.customTabs).toEqual([
+          { id: 'garage', name: 'Garage', entityIds: ['light.stove'] },
+          { id: 'home', name: 'Home', entityIds: ['light.desk'] },
+        ]);
+      });
+
+      it('still lets the person type another name', async () => {
+        state.setConfig(pagesWithEmpty());
+        registryResponses();
+        ui.showAddPageModal({ starter: true });
+        await flush();
+        document.querySelector('#add-page-name').value = 'Workshop';
+        document.querySelector('#add-page-save-btn').click();
+        await flush();
+        expect(state.CONFIG.customTabs[0].name).toBe('Workshop');
+        expect(state.CONFIG.customTabs).toHaveLength(2);
+      });
+
+      it('keeps the first-run wording and room name for the only page', async () => {
+        state.setConfig({
+          ...state.CONFIG,
+          customTabs: [{ id: 'default', name: 'All', entityIds: [] }],
+          activeTabId: 'default',
+        });
+        registryResponses();
+        ui.showAddPageModal({ starter: true });
+        await flush();
+        expect(document.getElementById('add-page-title').textContent).toBe('Add Page');
+        expect(document.querySelector('#add-page-name').value).toBe('Kitchen');
+      });
+    });
   });
 
   describe('dashboard recovery', () => {

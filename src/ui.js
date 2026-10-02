@@ -1191,6 +1191,14 @@ function closeAddPageModal() {
 function showAddPageModal({ starter = false } = {}) {
   closeAddPageModal();
 
+  // The starter dialog fills the empty page on screen rather than adding one. Beside other pages
+  // that page already has a name, which stays, and the dialog says it fills the page; as the only
+  // page it is the first-run page, named after the room chosen.
+  const activePage = starter ? getActiveQuickAccessTab(state.CONFIG) : null;
+  const fillsNamedPage =
+    !!activePage && !activePage.entityIds.length && (state.CONFIG.customTabs?.length ?? 0) > 1;
+  const dialogTitle = fillsNamedPage ? t('Fill this page') : t('Add Page');
+
   const chipsMarkup = QUICK_ACCESS_PAGE_PRESETS.map(
     (preset) => `
               <button type="button" class="qa-add-chip" data-name="${escapeHtmlAttribute(t(preset))}" data-preset="${escapeHtmlAttribute(preset)}">${utils.escapeHtml(t(preset))}</button>`
@@ -1201,25 +1209,27 @@ function showAddPageModal({ starter = false } = {}) {
   modal.className = 'modal add-page-modal';
   modal.setAttribute('role', 'dialog');
   modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'add-page-title');
   modal.innerHTML = `
     <div class="modal-content">
       <div class="modal-header">
-        <h2>${utils.escapeHtml(t('Add Page'))}</h2>
+        <h2 id="add-page-title">${utils.escapeHtml(dialogTitle)}</h2>
         <button class="close-btn" aria-label="${escapeHtmlAttribute(t('Close'))}">×</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
           <label for="add-page-name">${utils.escapeHtml(t('Page name:'))}</label>
-          <input type="text" id="add-page-name" class="form-control" maxlength="40" placeholder="${escapeHtmlAttribute(t('Enter page name'))}">
+          <input type="text" id="add-page-name" class="form-control" maxlength="40" value="${escapeHtmlAttribute(fillsNamedPage ? activePage.name : '')}" placeholder="${escapeHtmlAttribute(t('Enter page name'))}">
+          <p id="add-page-name-error" class="form-help add-page-name-error" role="alert" hidden>${utils.escapeHtml(t('Enter page name'))}</p>
         </div>
         <div class="form-group">
-          <label>${utils.escapeHtml(t('Quick picks:'))}</label>
-          <div class="qa-add-chips">${chipsMarkup}</div>
+          <span id="add-page-chips-label" class="form-label">${utils.escapeHtml(t('Quick picks:'))}</span>
+          <div class="qa-add-chips" role="group" aria-labelledby="add-page-chips-label">${chipsMarkup}</div>
         </div>
       </div>
       <div class="modal-footer">
-        <button id="add-page-save-btn" class="btn btn-primary">${utils.escapeHtml(t('Add Page'))}</button>
         <button id="add-page-cancel-btn" class="btn btn-secondary">${utils.escapeHtml(t('Cancel'))}</button>
+        <button id="add-page-save-btn" class="btn btn-primary">${utils.escapeHtml(dialogTitle)}</button>
       </div>
     </div>
   `;
@@ -1373,6 +1383,8 @@ function showAddPageModal({ starter = false } = {}) {
       loadRooms.textContent = t('Retry');
     } finally {
       if (!submissionInFlight) loadRooms.disabled = false;
+      // A failed load must not leave the dialog unable to save: an empty page is still a page.
+      if (starter && !submissionInFlight) saveBtn.disabled = false;
     }
   };
   roomSelect.onchange = () => {
@@ -1432,6 +1444,7 @@ function showAddPageModal({ starter = false } = {}) {
     updatePreview();
   };
   const input = modal.querySelector('#add-page-name');
+  const nameError = modal.querySelector('#add-page-name-error');
   const saveBtn = modal.querySelector('#add-page-save-btn');
   const cancelBtn = modal.querySelector('#add-page-cancel-btn');
   const closeBtn = modal.querySelector('.close-btn');
@@ -1462,7 +1475,11 @@ function showAddPageModal({ starter = false } = {}) {
     if (submissionInFlight || saveBtn.disabled) return;
     const name = (input?.value || '').trim();
     if (!name) {
-      if (input) input.focus();
+      // Say what is missing, in words and in the field's own state, and put the caret there.
+      nameError.hidden = false;
+      input?.setAttribute('aria-invalid', 'true');
+      input?.setAttribute('aria-describedby', nameError.id);
+      input?.focus();
       return;
     }
     setSubmissionInFlight(true);
@@ -1511,6 +1528,11 @@ function showAddPageModal({ starter = false } = {}) {
   if (closeBtn) closeBtn.onclick = close;
 
   if (input) {
+    input.addEventListener('input', () => {
+      nameError.hidden = true;
+      input.removeAttribute('aria-invalid');
+      input.removeAttribute('aria-describedby');
+    });
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
@@ -1523,7 +1545,6 @@ function showAddPageModal({ starter = false } = {}) {
     });
   }
 
-  modal.setAttribute('aria-label', t('Add Page'));
   uiUtils.trapFocus(modal);
   // The trap lands on the first control (the close button); the page name is where typing starts.
   setTimeout(() => {

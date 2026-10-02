@@ -1701,5 +1701,8 @@
   "The sync file is in use by another program or is read-only. Try again in a moment, and check the folder’s permissions if it keeps happening.": "The sync file is in use by another program or is read-only. Try again in a moment, and check the folder’s permissions if it keeps happening.",
   "Details": "Details",
   "No unlocked system keyring (Secret Service) was found, so this computer cannot remember your Home Assistant sign-in or sync passphrase. Start gnome-keyring or KWallet, then restart the widget.": "No unlocked system keyring (Secret Service) was found, so this computer cannot remember your Home Assistant sign-in or sync passphrase. Start gnome-keyring or KWallet, then restart the widget.",
-  "Needs Windows 11 version 22H2 or later.": "Needs Windows 11 version 22H2 or later."
+  "Needs Windows 11 version 22H2 or later.": "Needs Windows 11 version 22H2 or later.",
+  "This page is empty": "This page is empty",
+  "Add entities to {{page}} for one-click control.": "Add entities to {{page}} for one-click control.",
+  "Fill this page": "Fill this page"
 }

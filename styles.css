@@ -8496,7 +8496,9 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   margin-bottom: var(--space-5);
 }
 
-.form-group label {
+/* A group of controls with no single field to point a label at is named by a .form-label. */
+.form-group label,
+.form-group .form-label {
   display: block;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);

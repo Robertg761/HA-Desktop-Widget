@@ -651,12 +651,19 @@ function hasDashboardEntities() {
   );
 }
 
-function getActiveQuickAccessCount() {
+function getActiveQuickAccessPage() {
   const normalized = normalizeQuickAccessConfig(state.CONFIG || {});
-  const activeTab =
-    normalized.customTabs.find((tab) => tab.id === normalized.activeTabId) ||
-    normalized.customTabs[0];
-  return Array.isArray(activeTab?.entityIds) ? activeTab.entityIds.length : 0;
+  return {
+    page:
+      normalized.customTabs.find((tab) => tab.id === normalized.activeTabId) ||
+      normalized.customTabs[0],
+    pageCount: normalized.customTabs.length,
+  };
+}
+
+function getActiveQuickAccessCount() {
+  const { page } = getActiveQuickAccessPage();
+  return Array.isArray(page?.entityIds) ? page.entityIds.length : 0;
 }
 
 function removeWidgetStatePanel() {
@@ -908,10 +915,15 @@ function renderMainWidgetState() {
   }
 
   if (mainConnectionState === 'connected' && getActiveQuickAccessCount() === 0) {
+    // Beside other pages it is this page that is empty, not Quick Access as a whole.
+    const { page, pageCount } = getActiveQuickAccessPage();
+    const onePageOfMany = pageCount > 1;
     renderWidgetStatePanel({
       tone: 'empty',
-      title: t('No Quick Access entities yet'),
-      message: t('Add your favorite Home Assistant entities for one-click control.'),
+      title: onePageOfMany ? t('This page is empty') : t('No Quick Access entities yet'),
+      message: onePageOfMany
+        ? t('Add entities to {{page}} for one-click control.', { page: page.name })
+        : t('Add your favorite Home Assistant entities for one-click control.'),
       actions: [
         {
           label: t('Choose rooms and devices'),
