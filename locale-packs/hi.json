@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.46",
+  "version": "1.2.47",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1669,6 +1669,7 @@
     "Pages: {{pages}}. Referenced entities: {{count}}.": "पेज: {{pages}}। संदर्भित एंटिटी: {{count}}।",
     "Unavailable entities on this connection: {{count}}.": "इस कनेक्शन पर अनुपलब्ध एंटिटी: {{count}}।",
     "Apply this backup on this computer? Your current settings are backed up first.": "क्या इस बैकअप को इस कंप्यूटर पर लागू करें? पहले आपकी मौजूदा सेटिंग्स का बैकअप लिया जाता है।",
-    "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "क्या इस बैकअप को इस कंप्यूटर पर लागू करें? पहले आपकी मौजूदा सेटिंग्स का बैकअप लिया जाता है, फिर बहाल की गई सेटिंग्स में से आपके सिंक दायरे की सेटिंग्स आपके दूसरे कंप्यूटरों पर सिंक होती हैं।"
+    "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "क्या इस बैकअप को इस कंप्यूटर पर लागू करें? पहले आपकी मौजूदा सेटिंग्स का बैकअप लिया जाता है, फिर बहाल की गई सेटिंग्स में से आपके सिंक दायरे की सेटिंग्स आपके दूसरे कंप्यूटरों पर सिंक होती हैं।",
+    "Use 3 or 6 hex digits, for example #2E9BD6": "3 या 6 Hex अंकों का उपयोग करें, उदाहरण के लिए #2E9BD6"
   }
 }

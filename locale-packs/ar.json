@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.46",
+  "version": "1.2.47",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1669,6 +1669,7 @@
     "Pages: {{pages}}. Referenced entities: {{count}}.": "الصفحات: {{pages}}. الكيانات المشار إليها: {{count}}.",
     "Unavailable entities on this connection: {{count}}.": "الكيانات غير المتاحة على هذا الاتصال: {{count}}.",
     "Apply this backup on this computer? Your current settings are backed up first.": "هل تريد تطبيق هذه النسخة الاحتياطية على هذا الكمبيوتر؟ تُنسخ إعداداتك الحالية احتياطيًا أولًا.",
-    "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "هل تريد تطبيق هذه النسخة الاحتياطية على هذا الكمبيوتر؟ تُنسخ إعداداتك الحالية احتياطيًا أولًا، ثم تُزامن الإعدادات المستعادة الواقعة ضمن نطاق المزامنة مع أجهزة الكمبيوتر الأخرى."
+    "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "هل تريد تطبيق هذه النسخة الاحتياطية على هذا الكمبيوتر؟ تُنسخ إعداداتك الحالية احتياطيًا أولًا، ثم تُزامن الإعدادات المستعادة الواقعة ضمن نطاق المزامنة مع أجهزة الكمبيوتر الأخرى.",
+    "Use 3 or 6 hex digits, for example #2E9BD6": "استخدم 3 أو 6 أرقام Hex، على سبيل المثال ⁦#2E9BD6⁩"
   }
 }

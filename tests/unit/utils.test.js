@@ -79,6 +79,90 @@ describe('Utils Module', () => {
     });
   });
 
+  describe('getHomeAssistantMdiGlyph', () => {
+    // Chromium 112+ gives every style rule an (empty) cssRules list because of CSS nesting; jsdom
+    // does not, which is how the real stylesheet scan stayed untested.
+    const styleRule = (name, codepoint) => ({
+      selectorText: `.mdi-${name}::before`,
+      style: { content: `"\\${codepoint}"` },
+      cssRules: [],
+    });
+    const sheet = (rules) => ({ cssRules: rules });
+    let freshUtils;
+    let styleSheets;
+
+    beforeEach(() => {
+      jest.isolateModules(() => {
+        freshUtils = require('../../src/utils');
+      });
+      styleSheets = [];
+      Object.defineProperty(document, 'styleSheets', {
+        configurable: true,
+        get: () => styleSheets,
+      });
+    });
+
+    afterEach(() => {
+      delete document.styleSheets;
+    });
+
+    test('finds a glyph in style rules that expose an empty cssRules list', () => {
+      styleSheets = [sheet([styleRule('ceiling-light', 'F0769')])];
+
+      expect(freshUtils.getHomeAssistantMdiGlyph('mdi:ceiling-light')).toBe(
+        String.fromCodePoint(0xf0769)
+      );
+    });
+
+    test('still descends into grouping rules such as @media', () => {
+      styleSheets = [sheet([{ cssRules: [styleRule('sofa', 'F04B9')] }])];
+
+      expect(freshUtils.getHomeAssistantMdiGlyph('mdi:sofa')).toBe(String.fromCodePoint(0xf04b9));
+    });
+
+    test('scans the stylesheets once however often a missing icon is asked for', () => {
+      const reads = jest.fn(() => [styleRule('sofa', 'F04B9')]);
+      styleSheets = [
+        {
+          get cssRules() {
+            return reads();
+          },
+        },
+      ];
+
+      for (let index = 0; index < 5; index += 1) {
+        expect(freshUtils.getHomeAssistantMdiGlyph('mdi:amazon-alexa')).toBeNull();
+      }
+      expect(freshUtils.getHomeAssistantMdiGlyph('mdi:sofa')).toBe(String.fromCodePoint(0xf04b9));
+
+      expect(reads).toHaveBeenCalledTimes(1);
+    });
+
+    test('looks again once a stylesheet has been added', () => {
+      styleSheets = [sheet([styleRule('sofa', 'F04B9')])];
+      expect(freshUtils.getHomeAssistantMdiGlyph('mdi:power-socket')).toBeNull();
+
+      styleSheets = [...styleSheets, sheet([styleRule('power-socket', 'F0427')])];
+
+      expect(freshUtils.getHomeAssistantMdiGlyph('mdi:power-socket')).toBe(
+        String.fromCodePoint(0xf0427)
+      );
+    });
+
+    test('ignores a stylesheet whose rules cannot be read', () => {
+      styleSheets = [
+        {
+          get cssRules() {
+            throw new DOMException('Blocked', 'SecurityError');
+          },
+        },
+        sheet([styleRule('sofa', 'F04B9')]),
+      ];
+
+      expect(freshUtils.getHomeAssistantMdiGlyph('mdi:sofa')).toBe(String.fromCodePoint(0xf04b9));
+    });
+  });
+
   describe('getEntityIcon', () => {
     beforeAll(() => {
       const mdiStyles = document.createElement('style');

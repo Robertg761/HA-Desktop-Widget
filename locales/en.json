@@ -1662,5 +1662,6 @@
   "Pages: {{pages}}. Referenced entities: {{count}}.": "Pages: {{pages}}. Referenced entities: {{count}}.",
   "Unavailable entities on this connection: {{count}}.": "Unavailable entities on this connection: {{count}}.",
   "Apply this backup on this computer? Your current settings are backed up first.": "Apply this backup on this computer? Your current settings are backed up first.",
-  "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers."
+  "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.": "Apply this backup on this computer? Your current settings are backed up first, and restored settings in your sync scope then sync to your other computers.",
+  "Use 3 or 6 hex digits, for example #2E9BD6": "Use 3 or 6 hex digits, for example #2E9BD6"
 }

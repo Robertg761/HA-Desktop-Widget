@@ -387,8 +387,9 @@ function createSettingsModalDOM() {
             <input id="custom-color-r" type="number" min="0" max="255" step="1" />
             <input id="custom-color-g" type="number" min="0" max="255" step="1" />
             <input id="custom-color-b" type="number" min="0" max="255" step="1" />
-            <input id="custom-color-hex" type="text" />
+            <input id="custom-color-hex" type="text" aria-describedby="custom-color-hex-error" />
             <button type="button" id="save-custom-color-btn">Save Custom Color</button>
+            <div id="custom-color-hex-error" class="hidden"></div>
             <div id="custom-editor-save-lock-hint" class="hidden"></div>
             <div id="custom-theme-management" class="hidden">
               <input id="custom-color-name-input" type="text" />
@@ -2627,6 +2628,192 @@ describe('Settings + Config Integration', () => {
       // Assert
       expect(mockUiUtils.applyAccentThemeFromColor).toHaveBeenCalledWith('#123456');
       expect(mockUiUtils.applyBackgroundThemeFromColor).toHaveBeenCalledWith('#ABCDEF');
+    });
+
+    test('should keep a channel value as typed and carry it into the hex field and preview', async () => {
+      // Arrange
+      await settings.openSettings();
+      const redInput = document.getElementById('custom-color-r');
+      const hexInput = document.getElementById('custom-color-hex');
+      const blueInput = document.getElementById('custom-color-b');
+      hexInput.value = '#64B5F6';
+      hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+      // Act
+      redInput.focus();
+      redInput.value = '200';
+      redInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+      // Assert
+      expect(redInput.value).toBe('200');
+      expect(hexInput.value).toBe('#C8B5F6');
+      expect(document.getElementById('custom-color-picker').value).toBe('#c8b5f6');
+      expect(blueInput.value).toBe('246');
+      expect(mockUiUtils.applyAccentThemeFromColor).toHaveBeenLastCalledWith('#C8B5F6');
+    });
+
+    test('should clamp a channel above 255 when it loses focus', async () => {
+      // Arrange
+      await settings.openSettings();
+      const greenInput = document.getElementById('custom-color-g');
+      const hexInput = document.getElementById('custom-color-hex');
+      hexInput.value = '#112233';
+      hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+      // Act
+      greenInput.focus();
+      greenInput.value = '999';
+      greenInput.dispatchEvent(new Event('input', { bubbles: true }));
+      greenInput.blur();
+
+      // Assert
+      expect(greenInput.value).toBe('255');
+      expect(hexInput.value).toBe('#11FF33');
+    });
+
+    test('should accept a 6-digit hex typed one key at a time', async () => {
+      // Arrange
+      await settings.openSettings();
+      const hexInput = document.getElementById('custom-color-hex');
+      hexInput.focus();
+      hexInput.value = '';
+
+      // Act: a user appends each key to whatever the field currently holds.
+      for (const key of '#1E88E5') {
+        hexInput.value += key;
+        hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+
+      // Assert
+      expect(hexInput.value).toBe('#1E88E5');
+      expect(document.getElementById('custom-color-r').value).toBe('30');
+      expect(mockUiUtils.applyAccentThemeFromColor).toHaveBeenLastCalledWith('#1E88E5');
+      expect(mockUiUtils.applyAccentThemeFromColor).not.toHaveBeenCalledWith('#11EE88');
+    });
+
+    test('should expand a 3-digit hex shorthand and preview it when the field loses focus', async () => {
+      // Arrange
+      await settings.openSettings();
+      const hexInput = document.getElementById('custom-color-hex');
+      hexInput.focus();
+
+      // Act
+      hexInput.value = '#1e8';
+      hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+      expect(mockUiUtils.applyAccentThemeFromColor).not.toHaveBeenCalled();
+      hexInput.blur();
+
+      // Assert
+      expect(hexInput.value).toBe('#11EE88');
+      expect(mockUiUtils.applyAccentThemeFromColor).toHaveBeenCalledWith('#11EE88');
+    });
+
+    test('should not count tabbing through the hex field as a colour edit', async () => {
+      // Arrange
+      await settings.openSettings();
+      const hexInput = document.getElementById('custom-color-hex');
+
+      // Act
+      hexInput.focus();
+      hexInput.blur();
+
+      // Assert
+      expect(mockUiUtils.applyAccentThemeFromColor).not.toHaveBeenCalled();
+    });
+
+    test('should flag an invalid hex and refuse to save the previous colour instead', async () => {
+      // Arrange
+      await settings.openSettings();
+      const hexInput = document.getElementById('custom-color-hex');
+      const hexError = document.getElementById('custom-color-hex-error');
+      const saveCustomBtn = document.getElementById('save-custom-color-btn');
+      mockUiUtils.showToast.mockClear();
+
+      // Act: clicking Save moves focus off the hex field first, then clicks.
+      hexInput.focus();
+      hexInput.value = '#12ab9z';
+      hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+      saveCustomBtn.focus();
+      saveCustomBtn.click();
+
+      // Assert
+      expect(hexInput.value).toBe('#12ab9z');
+      expect(hexInput.getAttribute('aria-invalid')).toBe('true');
+      expect(hexError.classList.contains('hidden')).toBe(false);
+      expect(document.activeElement).toBe(hexInput);
+      expect(
+        document.querySelectorAll('.color-theme-option[data-custom-theme="true"]')
+      ).toHaveLength(0);
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        expect.stringContaining('valid color'),
+        'warning',
+        expect.any(Number)
+      );
+      expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+        expect.stringContaining('Custom color saved'),
+        expect.anything(),
+        expect.anything()
+      );
+    });
+
+    test('should clear the invalid hex flag as soon as the field is edited', async () => {
+      // Arrange
+      await settings.openSettings();
+      const hexInput = document.getElementById('custom-color-hex');
+      const hexError = document.getElementById('custom-color-hex-error');
+      document.getElementById('save-custom-color-btn').click();
+      hexInput.value = '#zzz';
+      document.getElementById('save-custom-color-btn').click();
+      expect(hexInput.getAttribute('aria-invalid')).toBe('true');
+
+      // Act
+      hexInput.value = '#12ab9';
+      hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+      // Assert
+      expect(hexInput.hasAttribute('aria-invalid')).toBe(false);
+      expect(hexError.classList.contains('hidden')).toBe(true);
+    });
+
+    test('should save the custom color when Enter is pressed in the hex field', async () => {
+      // Arrange
+      await settings.openSettings();
+      const hexInput = document.getElementById('custom-color-hex');
+      hexInput.focus();
+      hexInput.value = '#336699';
+      hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+      // Act
+      hexInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+      // Assert
+      expect(
+        document.querySelectorAll('.color-theme-option[data-custom-theme="true"]')
+      ).toHaveLength(1);
+    });
+
+    test('should not save the custom color when Enter commits an IME composition', async () => {
+      // Arrange
+      await settings.openSettings();
+      const hexInput = document.getElementById('custom-color-hex');
+      hexInput.focus();
+      hexInput.value = '#336699';
+      hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+      // Act
+      const enter = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        isComposing: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      hexInput.dispatchEvent(enter);
+
+      // Assert
+      expect(enter.defaultPrevented).toBe(false);
+      expect(
+        document.querySelectorAll('.color-theme-option[data-custom-theme="true"]')
+      ).toHaveLength(0);
     });
 
     test('should disable main settings save while custom editor is active', async () => {

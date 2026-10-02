@@ -1554,6 +1554,10 @@ function showConfirm(title, message, options = {}) {
         if (e.key === 'Escape') {
           handleCancel();
         } else if (e.key === 'Enter') {
+          // Focus starts on Cancel, and Enter on a focused button is that button's own click.
+          // Confirming here would run the action the user is trying to decline, and the shortcut
+          // also must not fire again while the key that opened the dialog is still held down.
+          if (e.repeat || e.target?.closest?.('button')) return;
           handleConfirm();
         }
       };

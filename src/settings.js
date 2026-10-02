@@ -500,6 +500,13 @@ function normalizeHexColor(hex) {
   return `#${sixDigit.toUpperCase()}`;
 }
 
+// While the user types, only a complete 6-digit value counts. normalizeHexColor() also expands
+// 3-digit shorthand, which would rewrite "#1E8" to "#11EE88" before the rest of "#1E88E5" is typed.
+function normalizeFullHexColor(hex) {
+  if (typeof hex !== 'string' || !/^#?[0-9a-f]{6}$/i.test(hex.trim())) return null;
+  return normalizeHexColor(hex);
+}
+
 function hexToRgb(hex) {
   const normalized = normalizeHexColor(hex);
   if (!normalized) return null;
@@ -988,6 +995,7 @@ function getCustomColorEditorElements() {
     gInput: document.getElementById('custom-color-g'),
     bInput: document.getElementById('custom-color-b'),
     hexInput: document.getElementById('custom-color-hex'),
+    hexError: document.getElementById('custom-color-hex-error'),
     saveBtn: document.getElementById('save-custom-color-btn'),
     managementRow: document.getElementById('custom-theme-management'),
     nameInput: document.getElementById('custom-color-name-input'),
@@ -1028,28 +1036,48 @@ function setMainSettingsSaveLocked(isLocked) {
   }
 }
 
-function setCustomColorEditorValues(hex) {
+function setCustomColorHexInvalid(invalid) {
+  const { hexInput, hexError } = getCustomColorEditorElements();
+  if (hexInput) {
+    if (invalid) {
+      hexInput.setAttribute('aria-invalid', 'true');
+    } else {
+      hexInput.removeAttribute('aria-invalid');
+    }
+  }
+  hexError?.classList.toggle('hidden', !invalid);
+}
+
+/**
+ * Write one colour into every editor field.
+ * @param {string} hex - The colour to show.
+ * @param {Object} [options] - Write behaviour.
+ * @param {HTMLInputElement|null} [options.skipField] - A field the user is typing in; rewriting it
+ *   would replace their half-typed text with the normalized colour.
+ */
+function setCustomColorEditorValues(hex, { skipField = null } = {}) {
   const normalized = normalizeHexColor(hex);
   if (!normalized) return;
   const rgb = hexToRgb(normalized);
   if (!rgb) return;
 
   const { picker, rInput, gInput, bInput, hexInput } = getCustomColorEditorElements();
+  const write = (input, value) => {
+    if (input && input !== skipField) input.value = value;
+  };
   isSyncingCustomColorEditor = true;
-  if (picker) picker.value = normalized.toLowerCase();
-  if (rInput) rInput.value = `${rgb.r}`;
-  if (gInput) gInput.value = `${rgb.g}`;
-  if (bInput) bInput.value = `${rgb.b}`;
-  if (hexInput) hexInput.value = normalized;
+  write(picker, normalized.toLowerCase());
+  write(rInput, `${rgb.r}`);
+  write(gInput, `${rgb.g}`);
+  write(bInput, `${rgb.b}`);
+  write(hexInput, normalized);
   isSyncingCustomColorEditor = false;
+  if (hexInput && hexInput !== skipField) setCustomColorHexInvalid(false);
   lastValidCustomColorHex = normalized;
 }
 
-function getCustomColorHexFromEditor() {
-  const { rInput, gInput, bInput, hexInput } = getCustomColorEditorElements();
-  const fromHexInput = normalizeHexColor(hexInput?.value);
-  if (fromHexInput) return fromHexInput;
-
+function getCustomColorHexFromChannels() {
+  const { rInput, gInput, bInput } = getCustomColorEditorElements();
   const parseChannel = (input) => {
     if (!input) return null;
     const raw = (input.value || '').trim();
@@ -1064,6 +1092,11 @@ function getCustomColorHexFromEditor() {
   const b = parseChannel(bInput);
   if (r === null || g === null || b === null) return null;
   return rgbToHex(r, g, b);
+}
+
+function getCustomColorHexFromEditor() {
+  const { hexInput } = getCustomColorEditorElements();
+  return normalizeHexColor(hexInput?.value) || getCustomColorHexFromChannels();
 }
 
 function applyCustomColorPreview(hex) {
@@ -1125,8 +1158,14 @@ function selectThemeForActiveTarget(themeId) {
 }
 
 function saveCustomColorFromEditor() {
-  const color = getCustomColorHexFromEditor();
+  const { hexInput } = getCustomColorEditorElements();
+  // The channel boxes only ever hold the last valid colour, so they must not stand in for a hex
+  // value the user typed wrongly; they are the fallback only when the hex field is empty.
+  const typedHex = (hexInput?.value || '').trim();
+  const color = typedHex ? normalizeHexColor(typedHex) : getCustomColorHexFromChannels();
   if (!color) {
+    setCustomColorHexInvalid(true);
+    hexInput?.focus();
     showToast(t('Enter a valid color before saving.'), 'warning', 2500);
     return false;
   }
@@ -1250,12 +1289,13 @@ function initCustomColorEditor() {
     };
   }
 
-  const handleRgbInput = () => {
+  // `event` is absent when blur re-applies the clamped value, so every field is rewritten then.
+  const handleRgbInput = (event) => {
     if (isSyncingCustomColorEditor) return;
     setMainSettingsSaveLocked(true);
-    const color = getCustomColorHexFromEditor();
+    const color = getCustomColorHexFromChannels();
     if (!color) return;
-    setCustomColorEditorValues(color);
+    setCustomColorEditorValues(color, { skipField: event?.target });
     applyCustomColorPreview(color);
   };
 
@@ -1276,25 +1316,43 @@ function initCustomColorEditor() {
   if (hexInput) {
     hexInput.oninput = () => {
       if (isSyncingCustomColorEditor) return;
-      const normalized = normalizeHexColor(hexInput.value);
+      setCustomColorHexInvalid(false);
+      const normalized = normalizeFullHexColor(hexInput.value);
       if (!normalized) return;
-      setCustomColorEditorValues(normalized);
+      setCustomColorEditorValues(normalized, { skipField: hexInput });
       applyCustomColorPreview(normalized);
     };
     hexInput.onblur = () => {
-      const normalized = normalizeHexColor(hexInput.value);
-      if (!normalized) {
+      if (!hexInput.value.trim()) {
         setCustomColorEditorValues(lastValidCustomColorHex);
         return;
       }
+      const normalized = normalizeHexColor(hexInput.value);
+      if (!normalized) {
+        // Keep what was typed and flag it: reverting here would hide the typo, and Save would then
+        // quietly store the previous colour.
+        setCustomColorHexInvalid(true);
+        return;
+      }
+      // A shorthand value ("#1E8") was not previewed while typing, so expanding it is the change.
+      if (normalized !== lastValidCustomColorHex) applyCustomColorPreview(normalized);
       setCustomColorEditorValues(normalized);
     };
   }
 
+  [rInput, gInput, bInput, hexInput].forEach((input) => {
+    if (!input) return;
+    input.onkeydown = (event) => {
+      // An Enter that commits an IME composition belongs to the IME, not to Save.
+      if (event.key !== 'Enter' || event.isComposing) return;
+      event.preventDefault();
+      if (saveCustomColorFromEditor()) setMainSettingsSaveLocked(false);
+    };
+  });
+
   if (saveBtn) {
     saveBtn.onclick = () => {
-      saveCustomColorFromEditor();
-      setMainSettingsSaveLocked(false);
+      if (saveCustomColorFromEditor()) setMainSettingsSaveLocked(false);
     };
   }
 
