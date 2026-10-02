@@ -28,7 +28,42 @@ const HOME_ENTITIES = [
   'fan.bedroom',
   'climate.living_room',
 ];
+// The entities the pin scenes pin. Only Quick Access entities can be pinned, so they sit on a page
+// of their own; scenes that pin one of them bring this page set.
+const PIN_ENTITIES = [
+  'light.desk_lamp',
+  'light.shelf_leds',
+  'light.upstairs_hallway_ceiling',
+  'climate.living_room',
+  'climate.bedroom',
+  'fan.office',
+  'cover.garage_door',
+  'media_player.kitchen_speaker',
+  'media_player.bathroom_radio',
+  'media_player.hall_chime',
+  'sensor.office_temp',
+  'sensor.grid_power',
+  'binary_sensor.front_door',
+  'input_number.thermostat_offset',
+  'input_select.house_mode',
+  'weather.home',
+  'camera.driveway',
+  'scene.movie_time',
+  'script.goodnight',
+  'lock.back_door',
+  'switch.coffee_maker',
+  'timer.laundry',
+  'vacuum.robot',
+  'automation.morning_routine',
+  'person.alex',
+];
 const PAGE_SETS = {
+  // Every desktop pin family, for the scenes that pin one. A second page keeps the tab strip, which
+  // the runner waits for after it changes the pages.
+  pins: [
+    { id: 'pins', name: 'Pins', entityIds: PIN_ENTITIES },
+    { id: 'default', name: 'Home', entityIds: HOME_ENTITIES },
+  ],
   // What the app opens with.
   default: [
     { id: 'default', name: 'Home', entityIds: HOME_ENTITIES },
@@ -178,6 +213,59 @@ function buildStates(now = new Date()) {
       supported_features: 63,
     }),
   ];
+  // One of each desktop pin family the Home page does not already have, plus the long names and
+  // labels that strain a 168x148 pin. They are not on any page; the pin scenes pin them directly.
+  states.push(
+    entity('light.upstairs_hallway_ceiling', 'on', {
+      friendly_name: 'Upstairs hallway ceiling light',
+      brightness: 153,
+      supported_color_modes: ['brightness'],
+      color_mode: 'brightness',
+    }),
+    entity('climate.bedroom', 'cool', {
+      friendly_name: 'Bedroom',
+      current_temperature: 23.5,
+      temperature: 21,
+      hvac_modes: ['off', 'heat', 'cool', 'auto'],
+      min_temp: 7,
+      max_temp: 30,
+      supported_features: 1,
+    }),
+    entity('fan.office', 'on', {
+      friendly_name: 'Office fan',
+      percentage: 66,
+      supported_features: 1,
+    }),
+    entity('cover.garage_door', 'open', {
+      friendly_name: 'Garage door',
+      current_position: 40,
+      supported_features: 15,
+    }),
+    // Play and pause only (no previous or next), and a player that only plays.
+    entity('media_player.bathroom_radio', 'paused', {
+      friendly_name: 'Bathroom radio',
+      media_title: 'Morning news',
+      supported_features: 16385,
+    }),
+    entity('media_player.hall_chime', 'idle', {
+      friendly_name: 'Hall chime',
+      supported_features: 16384,
+    }),
+    entity('sensor.grid_power', '1234.5678901', {
+      friendly_name: 'Grid power',
+      unit_of_measurement: 'W',
+      device_class: 'power',
+      state_class: 'measurement',
+    }),
+    entity('input_select.house_mode', 'Away', {
+      friendly_name: 'House mode',
+      options: ['Home', 'Away', 'Guests', 'Vacation'],
+    }),
+    entity('vacuum.robot', 'docked', { friendly_name: 'Robot vacuum', supported_features: 12316 }),
+    entity('script.goodnight', 'off', { friendly_name: 'Goodnight' }),
+    entity('automation.morning_routine', 'on', { friendly_name: 'Morning routine' }),
+    entity('person.alex', 'home', { friendly_name: 'Alex' })
+  );
   // Enough other entities that the Manage Quick Access list runs past its 50-row page.
   for (let index = 1; index <= 40; index += 1) {
     const number = String(index).padStart(2, '0');
