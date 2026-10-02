@@ -1011,6 +1011,7 @@
                             data-i18n-placeholder="#RRGGBB"
                             aria-label="Hex color"
                             data-i18n-aria-label="Hex color"
+                            aria-describedby="custom-color-hex-error"
                           />
                         </div>
                         <div class="custom-color-action">
@@ -1029,6 +1030,13 @@
                             Save Custom Color
                           </button>
                         </div>
+                      </div>
+                      <div
+                        id="custom-color-hex-error"
+                        class="form-help form-error hidden"
+                        data-i18n="Use 3 or 6 hex digits, for example #2E9BD6"
+                      >
+                        Use 3 or 6 hex digits, for example #2E9BD6
                       </div>
                       <div
                         id="custom-editor-save-lock-hint"

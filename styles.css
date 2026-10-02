@@ -8868,6 +8868,11 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   box-shadow: var(--glow-focus);
 }
 
+/* After the :focus rule so a rejected value stays red while the field has focus. */
+#custom-color-hex[aria-invalid='true'] {
+  border-color: var(--error);
+}
+
 #custom-color-r::-webkit-outer-spin-button,
 #custom-color-r::-webkit-inner-spin-button,
 #custom-color-g::-webkit-outer-spin-button,
@@ -14136,6 +14141,15 @@ body.theme-light #settings-modal .modal-footer {
 /* Warnings share the help text's spot but must still read as warnings. */
 #settings-modal .form-help.form-warning {
   color: var(--warning);
+}
+
+#settings-modal .form-help.form-error {
+  color: var(--error);
+}
+
+/* --error is tuned for dark surfaces; this is the same hue re-stepped to read as text on white. */
+body.theme-light #settings-modal .form-help.form-error {
+  color: #c62828;
 }
 
 #settings-modal .setting-text > .form-help:first-of-type {
