@@ -180,6 +180,10 @@ HOME="$(mktemp -d)" SNAPSHOT_DEBUG_PORT=9362 SNAPSHOT_SCENES='popup|pin' \
 
 `SNAPSHOT_DEBUG_PORT` (default 9333) lets several runs share a machine, and `SNAPSHOT_SCENES` is a regular expression over scene names. A scene that fails is skipped, a `<scene>-failed-page.png` shows where it stopped, and the run exits non-zero at the end. To add a scene, add an entry to `scenes.cjs` and, if it needs an entity the fixture lacks, add that to `fixture.cjs`. The fixture window is 500x660 at (100, 20) so it fits the 1024x768 Windows runners above their taskbar.
 
+## Manual testing on real machines
+
+Automated tests and the Linux screenshots cannot show real window managers, other operating systems, mixed-scale monitors, contrast themes and screen readers, input methods, camera streams, or a machine left running for a day. The [4.0 cross-platform test plan](testing/PLATFORM-TEST-PLAN-4.0.md) lists those checks, one section per environment, for volunteers with Windows, macOS or other Linux desktops.
+
 ## Native Hyprland verification
 
 The Xvfb smoke test exercises X11. Linux CI also runs the Rust protocol tests, which check independent surface placement, popup elevation, backpressure, and output loss. Before a release intended for Omarchy, run the packaged compositor test below on Hyprland. It requires Node 22 or newer and must use a disposable profile.
