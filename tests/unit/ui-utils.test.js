@@ -426,6 +426,58 @@ describe('UI Utilities', () => {
       expect(document.body.classList.contains('high-contrast')).toBe(false);
     });
 
+    describe('with the Readable preset', () => {
+      const themeClasses = () => [
+        document.body.classList.contains('theme-light'),
+        document.body.classList.contains('theme-dark'),
+      ];
+
+      afterEach(() => {
+        uiUtils.applyUiPreferences({});
+      });
+
+      it('paints the dark theme over a light one and gives the light theme back', () => {
+        uiUtils.applyTheme('light');
+        expect(themeClasses()).toEqual([true, false]);
+
+        uiUtils.applyUiPreferences({ highContrast: true });
+        expect(themeClasses()).toEqual([false, true]);
+
+        uiUtils.applyUiPreferences({ highContrast: false });
+        expect(themeClasses()).toEqual([true, false]);
+      });
+
+      it('keeps the preset dark when a theme is applied while it is on', () => {
+        uiUtils.applyUiPreferences({ highContrast: true });
+        uiUtils.applyTheme('light');
+        expect(themeClasses()).toEqual([false, true]);
+
+        uiUtils.applyUiPreferences({});
+        expect(themeClasses()).toEqual([true, false]);
+      });
+
+      it('leaves a dark theme alone', () => {
+        uiUtils.applyTheme('dark');
+        uiUtils.applyUiPreferences({ highContrast: true });
+        expect(themeClasses()).toEqual([false, true]);
+        uiUtils.applyUiPreferences({});
+        expect(themeClasses()).toEqual([false, true]);
+      });
+
+      it('works the accent tints out for the theme the preset paints', () => {
+        const accentBg = () => document.documentElement.style.getPropertyValue('--accent-bg');
+        uiUtils.applyTheme('light');
+        uiUtils.applyAccentTheme('original');
+        const lightTint = accentBg();
+        expect(lightTint).not.toBe('');
+
+        uiUtils.applyUiPreferences({ highContrast: true });
+        expect(accentBg()).not.toBe(lightTint);
+        uiUtils.applyUiPreferences({});
+        expect(accentBg()).toBe(lightTint);
+      });
+    });
+
     it('should apply opaque panels mode', () => {
       uiUtils.applyUiPreferences({ opaquePanels: true });
 

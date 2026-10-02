@@ -12908,6 +12908,9 @@ body.high-contrast {
   --text-secondary: #eee !important;
   --text-tertiary: #ddd !important;
   --muted-text: #ddd !important;
+  /* Help text, captions and unavailable tiles are the smallest text; they keep to 7:1 as well. */
+  --text-dim: #ddd !important;
+  --text-faint: #ccc !important;
   --bg-color: #141414 !important;
   --bg-primary: #141414 !important;
   --bg-secondary: #202020 !important;
@@ -12939,8 +12942,13 @@ body.high-contrast {
   --settings-modal-panel-alpha: 1 !important;
   --desktop-pin-ink-rgb: 255, 255, 255 !important;
   --focus-ring: #fff !important;
+  /* Dialogs, toasts, the command palette and menus draw their edge and backdrop from these; the
+     defaults are a 10% hairline, which barely separates a panel from what is behind it. */
+  --dialog-border: #aaa !important;
+  --dialog-scrim: rgba(8, 10, 14, 0.7) !important;
+  --window-highlight: rgba(255, 255, 255, 0.1) !important;
   color: #fff;
-  color-scheme: dark;
+  color-scheme: dark !important;
 }
 
 body.opaque-panels,
@@ -12959,19 +12967,28 @@ body.opaque-panels
   -webkit-backdrop-filter: none !important;
 }
 
+/* Toasts, the command palette, menus and tooltips draw --dialog-bg, which is 96% opaque, so a
+   tile's text would ghost through a toast over it. */
+body.opaque-panels {
+  --dialog-bg: color-mix(in srgb, var(--text-primary) 5%, rgb(var(--window-bg-rgb)));
+}
+
 /* Ranges are handled below; :where keeps this rule's specificity unchanged. Section headers and
    tabs are text-like buttons: a fill would draw a bar across the panel, and their own hover,
-   active and focus styles stay visible without it. */
+   active and focus styles stay visible without it. A colour swatch is its fill. */
 body.high-contrast
-  :is(button, input, select, textarea):not(:where([type='range'], .section-toggle, .tab-link)) {
+  :is(button, input, select, textarea):not(
+    :where([type='range'], .section-toggle, .tab-link, .light-color-swatch)
+  ) {
   color: #fff !important;
   background: #202020 !important;
   border-color: #aaa !important;
 }
 
-/* The primary fill marks the main action and the selected choice (Primary Cards), so it stays a
-   solid accent fill with dark text instead of the grey fill every other button gets. */
-body.high-contrast .btn-primary {
+/* The primary fill marks the main action and the selected choice (Primary Cards, the theme mode),
+   so it stays a solid accent fill with dark text instead of the grey fill every other button
+   gets. */
+body.high-contrast :is(.btn-primary, .segmented-option.active) {
   color: #141414 !important;
   background: var(--accent) !important;
   border-color: #fff !important;
@@ -12986,6 +13003,27 @@ body.high-contrast :is(#settings-modal, .quick-access-tabs) .tab-link.active {
    that barely differs from the readable panels. */
 body.high-contrast :is(#settings-modal, .quick-access-tabs) .tab-link:not(.active):hover {
   border-color: var(--border-hover);
+}
+
+/* The grey fill above also flattens the selected chip, whose accent border and tint were its mark,
+   so the chip keeps a heavier accent edge. */
+body.high-contrast
+  :is(
+    .climate-mode-btn,
+    .climate-fan-mode-btn,
+    .climate-preset-mode-btn,
+    .media-mute-toggle
+  ).active,
+body.high-contrast .donate-amount-chip.selected {
+  border-color: var(--accent) !important;
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+/* The rail marks its active page with the sliding pill (the active tab's own border is cancelled
+   while the pill is there), and the pill is faint by default, so the preset gives it an edge. */
+body.high-contrast #settings-modal .modal-tabs > .sliding-indicator {
+  background: rgba(var(--accent-rgb), 0.3);
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 /* A range input's background is its track: give it one that stands out from the #141414 panels.

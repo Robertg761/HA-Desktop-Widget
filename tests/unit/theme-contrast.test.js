@@ -30,6 +30,20 @@ describe('theme contrast ratchet', () => {
     expect(byKey.get('light|--text-primary on window').ratio).toBeGreaterThan(15);
   });
 
+  it('holds every text token of the readable preset to 7:1, help text included', () => {
+    // Seven tokens on three surfaces, with the preset over either theme.
+    const readable = checks.filter((check) =>
+      /^high-contrast(-light)?\|--(text|muted)/.test(check.key)
+    );
+    expect(readable.length).toBeGreaterThanOrEqual(42);
+    for (const check of readable) {
+      expect({ key: check.key, enough: check.ratio >= 7 }).toEqual({
+        key: check.key,
+        enough: true,
+      });
+    }
+  });
+
   it('has no failing pair beyond the baseline', () => {
     expectNoNewEntries(
       failing.map((check) => check.key),

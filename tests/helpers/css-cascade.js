@@ -146,6 +146,8 @@ function toMatchableSelector(selector) {
   return unwrapIsInsideNot(
     selector
       .replace(/\s+/g, ' ')
+      .replace(/\(\s+/g, '(')
+      .replace(/\s+\)/g, ')')
       .replace(/:where\(/g, ':is(')
       .replace(/:(focus-visible|focus|hover)(?![\w-])/g, (match, name) => {
         return `[data-${STATE_PSEUDO_CLASSES[name]}]`;
