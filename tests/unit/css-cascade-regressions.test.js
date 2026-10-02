@@ -244,17 +244,25 @@ describe('stylesheet cascade regressions', () => {
       );
     });
 
-    it('lets a touch or pen drag follow the pointer, and tilts with the individual properties', () => {
+    it('lets a touch or pen drag follow the pointer, and tilts the native drag image', () => {
       render(
         '',
-        `<div class="reorganize-mode"><div class="control-item sortable-drag sortable-fallback"></div></div>`
+        `<div class="reorganize-mode">
+          <div class="control-item sortable-drag sortable-fallback"></div>
+          <div class="control-item sortable-drag"></div>
+        </div>`
       );
-      const clone = document.querySelector('.control-item');
+      const [clone, native] = document.querySelectorAll('.control-item');
       // The settle that eases tiles into place would make the clone trail behind the pointer.
       expect(resolvedValue(clone, 'transition')).toBe('none');
       // The clone is positioned with an inline transform, which a transform rule would replace.
       expect(resolvedValue(clone, 'transform')).toBeNull();
-      expect(resolvedValue(clone, 'rotate')).toBe('2deg');
+      // The individual properties apply outside that transform, so a lift or tilt on the clone
+      // would scale and turn the finger's offset: the clone would drift away from the finger.
+      expect(resolvedValue(clone, 'scale')).toBe('none');
+      expect(resolvedValue(clone, 'rotate')).toBe('none');
+      expect(resolvedValue(native, 'scale')).toBe('1.05');
+      expect(resolvedValue(native, 'rotate')).toBe('2deg');
     });
   });
 

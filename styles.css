@@ -9965,6 +9965,14 @@ body.widget-state-active #quick-controls .status-message {
   transition: none;
 }
 
+/* The lift and tilt of .sortable-drag are individual properties, which apply outside that
+   transform: on the clone they would scale and turn the finger's offset along with the tile, and
+   it would drift away from the finger. The clone keeps the shadow and the opacity. */
+.reorganize-mode .control-item.sortable-fallback {
+  scale: none;
+  rotate: none;
+}
+
 .reorganize-mode .control-item * {
   pointer-events: none;
   user-select: none;
