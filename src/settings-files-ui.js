@@ -5,13 +5,28 @@ import state from './state.js';
 function settingsFileError(code) {
   if (code === 'invalid_file') return t('Choose a valid HA Desktop Widget settings file.');
   if (code === 'unsupported_version') return t('This settings file needs a different app version.');
-  if (code === 'file_too_large') return t('Settings files must be smaller than 1 MB.');
+  if (code === 'file_too_large') return t('Settings files must be smaller than 256 KB.');
   if (code === 'import_expired') return t('Choose the settings file again before importing.');
   if (code === 'export_failed') return t('Could not export settings.');
   return t('Could not import settings. Your current settings are unchanged.');
 }
 
-function initializeSettingsFiles({ onImported }) {
+// A page name is one line the person typed, but a file can hold anything; the confirmation lists
+// a few, shortened, and says how many more there are.
+const PREVIEW_PAGE_NAMES = 8;
+const PREVIEW_NAME_LENGTH = 40;
+
+function describePageNames(pageNames) {
+  const shown = pageNames
+    .slice(0, PREVIEW_PAGE_NAMES)
+    .map((name) =>
+      name.length > PREVIEW_NAME_LENGTH ? `${name.slice(0, PREVIEW_NAME_LENGTH - 1)}…` : name
+    );
+  const more = pageNames.length - shown.length;
+  return `${shown.join(', ')}${more > 0 ? `, … (+${more})` : ''}`;
+}
+
+function initializeSettingsFiles({ onImported, hasUnsavedChanges = () => false }) {
   const exportButton = document.getElementById('export-settings-file');
   const importButton = document.getElementById('import-settings-file');
   if (!exportButton || !importButton) return;
@@ -36,10 +51,22 @@ function initializeSettingsFiles({ onImported }) {
   };
   exportButton.onclick = () =>
     run(async () => {
+      // Export writes what is saved; an unsaved edit is not in it.
+      const unsaved = hasUnsavedChanges();
       const result = await api.exportSettingsFile();
-      if (!result?.success)
-        return showToast(settingsFileError(result?.code || 'export_failed'), 'error', 4000);
-      if (!result.canceled) showToast(t('Settings exported.'), 'success', 2200);
+      if (!result?.success) {
+        // Nothing was chosen on export, so "choose a valid file" would answer a different question.
+        const code = result?.code === 'invalid_file' ? 'export_failed' : result?.code;
+        return showToast(settingsFileError(code || 'export_failed'), 'error', 4000);
+      }
+      if (result.canceled) return;
+      showToast(
+        unsaved
+          ? t('Settings exported. Changes you have not saved yet are not included.')
+          : t('Settings exported.'),
+        unsaved ? 'warning' : 'success',
+        unsaved ? 4000 : 2200
+      );
     });
   importButton.onclick = () =>
     run(async () => {
@@ -57,12 +84,17 @@ function initializeSettingsFiles({ onImported }) {
           .map((key) => labels[key])
           .filter(Boolean)
           .join(', ') || t('No changes');
-      const unavailable = preview.entityIds.filter((id) => !state.STATES?.[id]).length;
+      // Before Home Assistant has delivered its entities (first run, or disconnected) every
+      // entity looks missing, which says nothing about the file.
+      const entitiesLoaded = Object.keys(state.STATES || {}).length > 0;
+      const unavailable = entitiesLoaded
+        ? preview.entityIds.filter((id) => !state.STATES[id]).length
+        : 0;
       const summary = [
         t('File: {{name}}', { name: preview.fileName }),
         t('Changes: {{sections}}', { sections }),
         t('Pages: {{pages}}. Referenced entities: {{count}}.', {
-          pages: preview.pageNames.join(', ') || t('None'),
+          pages: describePageNames(preview.pageNames) || t('None'),
           count: preview.entityIds.length,
         }),
         ...(unavailable

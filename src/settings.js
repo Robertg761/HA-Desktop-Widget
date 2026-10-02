@@ -4987,6 +4987,7 @@ async function openSettings(uiHooks) {
       onImported: async (nextConfig) => {
         await reopenSettingsWithConfig(nextConfig);
       },
+      hasUnsavedChanges: () => settingsTouchedKeys.size > 0,
     });
     bindSupportDevelopmentUi();
     await refreshProfileSyncStatusUi({ syncFormState: true });

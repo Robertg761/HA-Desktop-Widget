@@ -1629,7 +1629,6 @@
   "Settings replaced by sync or import, newest first. Restoring a backup applies immediately and follows your existing sync scope.": "Durch Synchronisierung oder Import ersetzte Einstellungen, neueste zuerst. Eine Wiederherstellung gilt sofort und folgt Ihrem bisherigen Synchronisierungsumfang.",
   "Choose a valid HA Desktop Widget settings file.": "Wählen Sie eine gültige HA Desktop Widget-Einstellungsdatei.",
   "This settings file needs a different app version.": "Diese Einstellungsdatei benötigt eine andere App-Version.",
-  "Settings files must be smaller than 1 MB.": "Einstellungsdateien müssen kleiner als 1 MB sein.",
   "Choose the settings file again before importing.": "Wählen Sie die Einstellungsdatei vor dem Import erneut.",
   "Could not export settings.": "Einstellungen konnten nicht exportiert werden.",
   "Could not import settings. Your current settings are unchanged.": "Einstellungen konnten nicht importiert werden. Ihre aktuellen Einstellungen bleiben unverändert.",
@@ -1692,5 +1691,7 @@
   "{{time}} · This computer, before a restore": "{{time}} · Dieser Computer, vor einer Wiederherstellung",
   "{{time}} · Sync file, before an upload": "{{time}} · Sync-Datei, vor einem Hochladen",
   "Contains: {{sections}}": "Enthält: {{sections}}",
-  "Restore the backup from {{time}}": "Sicherung vom {{time}} wiederherstellen"
+  "Restore the backup from {{time}}": "Sicherung vom {{time}} wiederherstellen",
+  "Settings exported. Changes you have not saved yet are not included.": "Einstellungen exportiert. Noch nicht gespeicherte Änderungen sind nicht enthalten.",
+  "Settings files must be smaller than 256 KB.": "Einstellungsdateien müssen kleiner als 256 KB sein."
 }

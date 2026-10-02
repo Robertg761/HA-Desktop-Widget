@@ -272,4 +272,105 @@ describe('portable settings files', () => {
       '温度'
     );
   });
+
+  describe('values the app never writes', () => {
+    const importWith = (settings) =>
+      parseSettingsFile(JSON.stringify({ ...buildSettingsFile(config), settings }));
+
+    test('a setting left undefined in memory does not break export or import', () => {
+      // The weather picker's Clear leaves selectedWeatherEntity undefined until the next restart.
+      const live = {
+        ...config,
+        selectedWeatherEntity: undefined,
+        ui: { ...config.ui, accent: undefined },
+      };
+
+      const file = buildSettingsFile(live);
+
+      expect(file.settings.selectedWeatherEntity).toBeNull();
+      expect(file.settings.ui.accent).toBeNull();
+      expect(() => parseSettingsFile(serializeSettingsFile(live))).not.toThrow();
+      expect(summarizeSettingsImport(importWith({ opacity: 0.8 }), live).changedSections).toEqual([
+        'visualPersonalization',
+      ]);
+    });
+
+    test.each([
+      ['an opacity below the slider', { opacity: 0.2 }],
+      ['an opacity above the slider', { opacity: 5 }],
+      ['an unknown theme', { ui: { theme: 'purple' } }],
+      ['an unknown density', { ui: { density: 'huge' } }],
+      ['an unknown time format', { ui: { timeFormat: 'sundial' } }],
+      ['an unknown date format', { ui: { dateFormat: 'tomorrow' } }],
+      ['more primary cards than slots', { primaryCards: ['weather', 'time', 'extra'] }],
+      [
+        'a page name that is a wall of text',
+        { customTabs: [{ id: 'a', name: 'x'.repeat(257), entityIds: [] }] },
+      ],
+      ['an entity id that is a wall of text', { favoriteEntities: ['light.' + 'x'.repeat(300)] }],
+      [
+        'a key that is a wall of text',
+        { customEntityNames: { ['light.' + 'x'.repeat(300)]: 'Name' } },
+      ],
+      [
+        'more pages than anyone makes',
+        {
+          customTabs: Array.from({ length: 201 }, (_, index) => ({
+            id: `t${index}`,
+            name: 'Page',
+            entityIds: [],
+          })),
+        },
+      ],
+      [
+        'an endless entity list',
+        { favoriteEntities: Array.from({ length: 2001 }, (_, i) => `light.l${i}`) },
+      ],
+    ])('rejects %s', (_label, settings) => {
+      expect(() => importWith(settings)).toThrow(expect.objectContaining({ code: 'invalid_file' }));
+    });
+
+    test('exports a saved choice this version does not offer as unset, while import still refuses it', () => {
+      const live = { ...config, ui: { ...config.ui, theme: 'sepia', density: 'spacious' } };
+
+      const settings = parseSettingsFile(serializeSettingsFile(live));
+
+      expect(settings.ui.theme).toBeNull();
+      expect(settings.ui.density).toBeNull();
+      expect(() => importWith({ ui: { theme: 'sepia' } })).toThrow(
+        expect.objectContaining({ code: 'invalid_file' })
+      );
+    });
+
+    test('accepts what the app itself writes at its limits', () => {
+      expect(() =>
+        importWith({
+          opacity: 0.5,
+          primaryCards: ['weather', 'time'],
+          ui: { theme: 'auto', density: 'compact', timeFormat: '24-hour', dateFormat: 'numeric' },
+          customTabs: [{ id: 'a', name: 'x'.repeat(256), entityIds: ['light.desk'] }],
+        })
+      ).not.toThrow();
+    });
+
+    test('exports stay possible when saved values drifted outside the limits', () => {
+      const live = { ...config, primaryCards: ['a', 'b', 'c'], opacity: 0.2 };
+
+      const settings = parseSettingsFile(serializeSettingsFile(live));
+
+      expect(settings.primaryCards).toEqual(['a', 'b']);
+      expect(settings.opacity).toBe(0.5);
+    });
+
+    test('a file larger than a sync file could carry is refused, not just a huge one', () => {
+      expect(MAX_SETTINGS_FILE_BYTES).toBeLessThanOrEqual(512 * 1024);
+      const padded = JSON.stringify({
+        ...buildSettingsFile(config),
+        padding: 'x'.repeat(MAX_SETTINGS_FILE_BYTES),
+      });
+      expect(() => parseSettingsFile(padded)).toThrow(
+        expect.objectContaining({ code: 'file_too_large' })
+      );
+    });
+  });
 });

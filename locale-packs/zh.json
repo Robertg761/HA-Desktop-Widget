@@ -1636,7 +1636,6 @@
     "Settings replaced by sync or import, newest first. Restoring a backup applies immediately and follows your existing sync scope.": "同步或导入替换的设置，最新的在前。恢复备份立即生效，并遵循现有同步范围。",
     "Choose a valid HA Desktop Widget settings file.": "请选择有效的 HA Desktop Widget 设置文件。",
     "This settings file needs a different app version.": "此设置文件需要其他应用版本。",
-    "Settings files must be smaller than 1 MB.": "设置文件必须小于 1 MB。",
     "Choose the settings file again before importing.": "导入前请重新选择设置文件。",
     "Could not export settings.": "无法导出设置。",
     "Could not import settings. Your current settings are unchanged.": "无法导入设置。当前设置未更改。",
@@ -1699,6 +1698,8 @@
     "{{time}} · This computer, before a restore": "{{time}} · 此电脑，恢复之前",
     "{{time}} · Sync file, before an upload": "{{time}} · 同步文件，上传之前",
     "Contains: {{sections}}": "包含：{{sections}}",
-    "Restore the backup from {{time}}": "恢复 {{time}} 的备份"
+    "Restore the backup from {{time}}": "恢复 {{time}} 的备份",
+    "Settings exported. Changes you have not saved yet are not included.": "已导出设置。尚未保存的更改不包含在内。",
+    "Settings files must be smaller than 256 KB.": "设置文件必须小于 256 KB。"
   }
 }

@@ -87,4 +87,62 @@ describe('settings file controls', () => {
     await flush();
     expect(showToast).toHaveBeenCalledWith('Could not export settings.', 'error', 4000);
   });
+  test('an export that fails validation is not reported as a bad file the user chose', async () => {
+    api.exportSettingsFile.mockResolvedValue({ success: false, code: 'invalid_file' });
+    document.getElementById('export-settings-file').click();
+    await flush();
+    expect(showToast).toHaveBeenCalledWith('Could not export settings.', 'error', 4000);
+  });
+  test('says when unsaved Settings edits are not in the export', async () => {
+    document.body.innerHTML =
+      '<button id="export-settings-file"></button><button id="import-settings-file"></button>';
+    initializeSettingsFiles({ onImported: imported, hasUnsavedChanges: () => true });
+
+    document.getElementById('export-settings-file').click();
+    await flush();
+
+    expect(showToast).toHaveBeenCalledWith(
+      'Settings exported. Changes you have not saved yet are not included.',
+      'warning',
+      4000
+    );
+  });
+  test('does not call every entity unavailable before Home Assistant has delivered any', async () => {
+    state.setStates({});
+    document.getElementById('import-settings-file').click();
+    await flush();
+    const message = showConfirm.mock.calls[0][1];
+    expect(message).toContain('Referenced entities: 2');
+    expect(message).not.toContain('Unavailable entities');
+  });
+  test('lists a few page names, shortened, and counts the rest', async () => {
+    api.previewSettingsImport.mockResolvedValue({
+      success: true,
+      id: 'selected',
+      fileName: 'settings.json',
+      changedSections: [],
+      pageNames: [
+        'x'.repeat(200),
+        ...Array.from({ length: 12 }, (_, index) => `Page ${index + 2}`),
+      ],
+      entityIds: [],
+    });
+    document.getElementById('import-settings-file').click();
+    await flush();
+    const message = showConfirm.mock.calls[0][1];
+    expect(message).toContain(`${'x'.repeat(39)}…, Page 2`);
+    expect(message).toContain('Page 8, … (+5)');
+    expect(message).not.toContain('x'.repeat(41));
+    expect(message).not.toContain('Page 9');
+  });
+  test('names the size a settings file may have', async () => {
+    api.previewSettingsImport.mockResolvedValue({ success: false, code: 'file_too_large' });
+    document.getElementById('import-settings-file').click();
+    await flush();
+    expect(showToast).toHaveBeenCalledWith(
+      'Settings files must be smaller than 256 KB.',
+      'error',
+      4000
+    );
+  });
 });

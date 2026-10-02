@@ -3064,9 +3064,10 @@ function wireUI() {
     if (clearWeatherBtn) {
       clearWeatherBtn.onclick = async () => {
         try {
-          // Clear the selected weather entity (revert to default)
+          // Clear the selected weather entity (revert to default). null, as Settings saves it:
+          // an undefined survives the IPC and sits in main's config until the next restart.
           const persistedConfig = await window.electronAPI.updateConfig({
-            selectedWeatherEntity: undefined,
+            selectedWeatherEntity: null,
           });
           applyRendererConfig(persistedConfig);
 

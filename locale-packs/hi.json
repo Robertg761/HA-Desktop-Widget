@@ -1636,7 +1636,6 @@
     "Settings replaced by sync or import, newest first. Restoring a backup applies immediately and follows your existing sync scope.": "सिंक या आयात से बदली गई सेटिंग, नवीनतम पहले। बैकअप बहाल करना तुरंत लागू होता है और आपके मौजूदा सिंक दायरे का पालन करता है।",
     "Choose a valid HA Desktop Widget settings file.": "एक मान्य HA Desktop Widget सेटिंग फ़ाइल चुनें।",
     "This settings file needs a different app version.": "इस सेटिंग फ़ाइल के लिए ऐप का दूसरा संस्करण चाहिए।",
-    "Settings files must be smaller than 1 MB.": "सेटिंग फ़ाइलें 1 MB से छोटी होनी चाहिए।",
     "Choose the settings file again before importing.": "आयात करने से पहले सेटिंग फ़ाइल फिर से चुनें।",
     "Could not export settings.": "सेटिंग निर्यात नहीं हो सकीं।",
     "Could not import settings. Your current settings are unchanged.": "सेटिंग आयात नहीं हो सकीं। आपकी वर्तमान सेटिंग नहीं बदली हैं।",
@@ -1699,6 +1698,8 @@
     "{{time}} · This computer, before a restore": "{{time}} · यह कंप्यूटर, बहाली से पहले",
     "{{time}} · Sync file, before an upload": "{{time}} · सिंक फ़ाइल, अपलोड से पहले",
     "Contains: {{sections}}": "इसमें शामिल: {{sections}}",
-    "Restore the backup from {{time}}": "{{time}} का बैकअप बहाल करें"
+    "Restore the backup from {{time}}": "{{time}} का बैकअप बहाल करें",
+    "Settings exported. Changes you have not saved yet are not included.": "सेटिंग निर्यात हो गईं। जो बदलाव अभी सहेजे नहीं गए हैं, वे शामिल नहीं हैं।",
+    "Settings files must be smaller than 256 KB.": "सेटिंग फ़ाइलें 256 KB से छोटी होनी चाहिए।"
   }
 }

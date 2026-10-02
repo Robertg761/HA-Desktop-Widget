@@ -1636,7 +1636,6 @@
     "Settings replaced by sync or import, newest first. Restoring a backup applies immediately and follows your existing sync scope.": "Paramètres remplacés par synchronisation ou importation, les plus récents en premier. La restauration s’applique immédiatement selon votre périmètre de synchronisation actuel.",
     "Choose a valid HA Desktop Widget settings file.": "Choisissez un fichier de paramètres HA Desktop Widget valide.",
     "This settings file needs a different app version.": "Ce fichier de paramètres nécessite une autre version de l’application.",
-    "Settings files must be smaller than 1 MB.": "Les fichiers de paramètres doivent faire moins de 1 Mo.",
     "Choose the settings file again before importing.": "Choisissez à nouveau le fichier de paramètres avant de l’importer.",
     "Could not export settings.": "Impossible d’exporter les paramètres.",
     "Could not import settings. Your current settings are unchanged.": "Impossible d’importer les paramètres. Vos paramètres actuels restent inchangés.",
@@ -1699,6 +1698,8 @@
     "{{time}} · This computer, before a restore": "{{time}} · Cet ordinateur, avant une restauration",
     "{{time}} · Sync file, before an upload": "{{time}} · Fichier de synchronisation, avant un envoi",
     "Contains: {{sections}}": "Contient : {{sections}}",
-    "Restore the backup from {{time}}": "Restaurer la sauvegarde du {{time}}"
+    "Restore the backup from {{time}}": "Restaurer la sauvegarde du {{time}}",
+    "Settings exported. Changes you have not saved yet are not included.": "Paramètres exportés. Les modifications non encore enregistrées ne sont pas incluses.",
+    "Settings files must be smaller than 256 KB.": "Les fichiers de paramètres doivent faire moins de 256 Ko."
   }
 }
