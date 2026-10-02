@@ -1,5 +1,6 @@
 const {
   cascadedDeclaration,
+  contrastRatio,
   loadAppStylesheets,
   parseColor,
   resolvedValue,
@@ -46,6 +47,26 @@ function opacityOf(value) {
   return mixed ? Number(mixed[1]) / 100 : parseColor(value)[3];
 }
 
+/**
+ * A main view tile's fill is its --dash-tile-* token mixed with transparent by the share it keeps
+ * at the current Window opacity. This splits the two: { fill, keep } with keep as a percentage.
+ */
+function splitKeep(value, backgroundAlpha = 1) {
+  const match = value.match(
+    /^color-mix\(in srgb, (.+) min\(100%, calc\((\d+)% \+ (\d+)% \* ([\d.]+)\)\), transparent\)$/s
+  );
+  expect(match).not.toBeNull();
+  const [, fill, base, slope, alpha] = match;
+  // The alpha in the value is whatever --window-bg-alpha the element resolved.
+  expect(Number(alpha)).toBe(backgroundAlpha);
+  return { fill, keep: Math.min(100, Number(base) + Number(slope) * Number(alpha)) };
+}
+
+/** Sets the alpha the Window opacity slider writes on the body (1 is a fully opaque window). */
+function setBackgroundAlpha(alpha) {
+  document.body.style.setProperty('--window-bg-alpha', String(alpha));
+}
+
 describe('main view tiles', () => {
   beforeAll(() => {
     loadAppStylesheets(document);
@@ -67,12 +88,14 @@ describe('main view tiles', () => {
 
       for (const selector of MAIN_VIEW_TILES) {
         const element = document.querySelector(selector);
-        const fill = resolvedValue(element, '--tile-bg');
+        const { fill, keep } = splitKeep(resolvedValue(element, '--tile-bg'));
         expect(fill).toBe(resolvedValue(document.body, '--dash-tile-bg'));
         expect(fill).not.toBe(soft);
         // A wash of a few percent is what disappeared into the panel.
         expect(opacityOf(fill)).toBeGreaterThanOrEqual(0.85);
-        expect(resolvedValue(element, '--tile-bg-hover')).toBe(
+        // At full opacity the tile keeps all of it.
+        expect(keep).toBe(100);
+        expect(splitKeep(resolvedValue(element, '--tile-bg-hover')).fill).toBe(
           resolvedValue(document.body, '--dash-tile-bg-hover')
         );
         const edge = parseColor(resolvedValue(element, '--tile-border'));
@@ -85,9 +108,10 @@ describe('main view tiles', () => {
 
     it('keeps the glass tile as opaque as the solid one on a dark panel', () => {
       render('frosted-glass');
-      expect(opacityOf(resolvedValue(document.querySelector('.status-card'), '--tile-bg'))).toBe(
-        0.94
+      const { fill } = splitKeep(
+        resolvedValue(document.querySelector('.status-card'), '--tile-bg')
       );
+      expect(opacityOf(fill)).toBe(0.94);
     });
 
     it('gives the tab pill the same edge as the tiles it sits above', () => {
@@ -146,7 +170,7 @@ describe('main view tiles', () => {
         const [active, timer] = document.querySelectorAll('.control-item');
         const fill = resolvedValue(active, '--tile-bg');
 
-        expect(fill).toBe(resolvedValue(document.body, '--dash-tile-bg'));
+        expect(splitKeep(fill).fill).toBe(resolvedValue(document.body, '--dash-tile-bg'));
         expect(resolvedValue(active, 'background-color')).toContain(fill);
         expect(resolvedValue(timer, 'background-color')).toContain(fill);
       }
@@ -158,6 +182,198 @@ describe('main view tiles', () => {
 
       expect(resolvedValue(active, 'background-color')).toMatch(/, 0\.26\)$/);
       expect(resolvedValue(timer, 'background-color')).toMatch(/, 0\.12\)$/);
+    });
+  });
+
+  describe('window opacity', () => {
+    // The Window opacity slider writes --window-bg-alpha on the body: 1 at 100%, 0.878 at the 95%
+    // the previews use, 0.761 at 90%, 0.185 at 60% and 0.08 at 50%.
+    it.each(MODE_CASES)('keep the whole fill from about 90% up (%s)', (_, bodyClass) => {
+      render(bodyClass);
+      const card = document.querySelector('.status-card');
+      for (const alpha of [1, 0.878, 0.761]) {
+        setBackgroundAlpha(alpha);
+        expect(splitKeep(resolvedValue(card, '--tile-bg'), alpha).keep).toBe(100);
+        expect(splitKeep(resolvedValue(card, '--tile-bg-hover'), alpha).keep).toBe(100);
+      }
+    });
+
+    it('thins the fill as the window gets more see-through, but never below about 80% of it', () => {
+      render('frosted-glass');
+      const card = document.querySelector('.status-card');
+      const keeps = [0.541, 0.347, 0.185, 0.08].map((alpha) => {
+        setBackgroundAlpha(alpha);
+        return splitKeep(resolvedValue(card, '--tile-bg'), alpha).keep;
+      });
+
+      keeps.forEach((keep, index) => {
+        expect(keep).toBeLessThan(index === 0 ? 100 : keeps[index - 1]);
+        expect(keep).toBeGreaterThanOrEqual(78);
+      });
+      // At 60% a dark glass tile (94% opaque) is still about 79% opaque.
+      expect(keeps[2]).toBeGreaterThan(80);
+      expect(keeps[2]).toBeLessThan(90);
+    });
+
+    it.each(MODE_CASES)('leave the edge as it is while the fill thins (%s)', (_, bodyClass) => {
+      render(bodyClass);
+      const card = document.querySelector('.status-card');
+      const edge = resolvedValue(card, '--tile-border');
+      const hoverEdge = resolvedValue(card, '--tile-border-hover');
+
+      setBackgroundAlpha(0.185);
+
+      expect(resolvedValue(card, '--tile-border')).toBe(edge);
+      expect(resolvedValue(card, '--tile-border-hover')).toBe(hoverEdge);
+    });
+
+    it('thins the pane of an unavailable tile on dark glass with the others', () => {
+      render(
+        'frosted-glass',
+        '<div id="quick-controls"><div class="control-item" data-unavailable="true"></div></div>'
+      );
+      const tile = document.querySelector('.control-item');
+
+      // Prettier wraps the long value, so compare it without the line breaks.
+      expect(cascadedDeclaration(tile, 'background').value.replace(/\s+/g, ' ')).toBe(
+        'color-mix( in srgb, rgba(var(--window-bg-rgb), 0.9) var(--dash-tile-keep), transparent )'
+      );
+    });
+
+    it('does not reach Settings, dialogs or the header', () => {
+      render('frosted-glass');
+      setBackgroundAlpha(0.185);
+      for (const selector of [
+        '.widget-header',
+        '.settings-card',
+        '#settings-modal .modal-content',
+      ]) {
+        expect(resolvedValue(document.querySelector(selector), '--tile-bg')).toBe(
+          resolvedValue(document.body, '--tile-bg')
+        );
+      }
+    });
+  });
+
+  describe('unavailable tiles', () => {
+    const unavailableMarkup = `<div id="quick-controls">
+      <div class="control-item" data-unavailable="true"></div>
+      <div class="control-item media-player-entity" data-unavailable="true"></div>
+      <div class="control-item media-player-entity"></div>
+    </div>`;
+
+    it('leave an unavailable media player clear on the dark solid panel, like the others', () => {
+      render('', unavailableMarkup);
+      const [plain, unavailablePlayer, player] = document.querySelectorAll('.control-item');
+
+      // The media player's fill is for a media player that is there.
+      expect(cascadedDeclaration(player, 'background-color').value).toBe('var(--tile-bg)');
+      expect(cascadedDeclaration(unavailablePlayer, 'background-color')?.value).not.toBe(
+        'var(--tile-bg)'
+      );
+      expect(cascadedDeclaration(unavailablePlayer, 'background').value).toBe(
+        cascadedDeclaration(plain, 'background').value
+      );
+      expect(cascadedDeclaration(plain, 'background').value).toBe('transparent');
+    });
+
+    it.each(['theme-light', 'frosted-glass', 'theme-light frosted-glass'])(
+      'give an unavailable media player the pane of the other unavailable tiles (%s)',
+      (bodyClass) => {
+        render(bodyClass, unavailableMarkup);
+        const [plain, unavailablePlayer] = document.querySelectorAll('.control-item');
+
+        expect(cascadedDeclaration(unavailablePlayer, 'background').value).toBe(
+          cascadedDeclaration(plain, 'background').value
+        );
+      }
+    );
+  });
+
+  describe('text on the light tiles', () => {
+    const textMarkup = `
+      <div class="widget-header"><div class="drag-area"></div></div>
+      <div class="widget-content">
+        <div class="status-grid">
+          <div class="status-card weather-card"><div class="weather-condition"></div></div>
+          <div class="status-card time-card"><div class="date-display"></div></div>
+        </div>
+        <div class="media-tile"><span class="media-tile-time"></span></div>
+        <div id="quick-controls"><div class="control-item"><span class="control-state"></span></div></div>
+      </div>
+      <div id="settings-modal"><div class="modal-content"><div class="settings-card"></div></div></div>
+      <div class="desktop-pin-shell"><div class="desktop-pin-content"><div class="control-item"></div></div></div>`;
+
+    // An 88% white pane over a dark photo is never darker than this.
+    const WORST_PANE = '#e0e0e0';
+    const TEXT_TOKENS = ['--text-dim', '--text-faint', '--muted-text'];
+
+    it.each(['theme-light', 'theme-light frosted-glass'])(
+      'are darkened to 4.5:1 or better on the pane (%s)',
+      (bodyClass) => {
+        render(bodyClass, textMarkup);
+        const tile = document.querySelector('.status-card');
+
+        for (const token of TEXT_TOKENS) {
+          expect(resolvedValue(tile, token)).not.toBe(resolvedValue(document.body, token));
+          expect(contrastRatio(resolvedValue(tile, token), WORST_PANE)).toBeGreaterThanOrEqual(4.5);
+        }
+        // The media timestamps read --muted-text from the media card, the tiles from their own.
+        for (const selector of ['.media-tile', '#quick-controls .control-item']) {
+          for (const token of TEXT_TOKENS) {
+            expect(resolvedValue(document.querySelector(selector), token)).toBe(
+              resolvedValue(tile, token)
+            );
+          }
+        }
+        expect(
+          contrastRatio(resolvedValue(document.querySelector('.date-display'), 'color'), WORST_PANE)
+        ).toBeGreaterThanOrEqual(4.5);
+        const condition = document.querySelector('.weather-condition');
+        expect(resolvedValue(condition, 'color')).toBe(resolvedValue(tile, '--text-dim'));
+        expect(contrastRatio(resolvedValue(condition, 'color'), WORST_PANE)).toBeGreaterThanOrEqual(
+          4.5
+        );
+      }
+    );
+
+    it.each(['theme-light', 'theme-light frosted-glass'])(
+      'leave the header, Settings, dialogs and a pinned tile on their own (%s)',
+      (bodyClass) => {
+        render(bodyClass, textMarkup);
+        for (const selector of [
+          '.widget-header',
+          '.settings-card',
+          '#settings-modal .modal-content',
+          '.desktop-pin-content .control-item',
+        ]) {
+          for (const token of TEXT_TOKENS) {
+            expect(resolvedValue(document.querySelector(selector), token)).toBe(
+              resolvedValue(document.body, token)
+            );
+          }
+        }
+      }
+    );
+
+    it.each([
+      ['dark', ''],
+      ['dark glass', 'frosted-glass'],
+      ['the light readable preset', 'theme-light high-contrast'],
+    ])('stay as they were on %s', (_, bodyClass) => {
+      render(bodyClass, textMarkup);
+      const tile = document.querySelector('.status-card');
+      for (const token of TEXT_TOKENS) {
+        expect(resolvedValue(tile, token)).toBe(resolvedValue(document.body, token));
+      }
+      expect(resolvedValue(document.querySelector('.date-display'), 'color')).toBe(
+        bodyClass.includes('theme-light')
+          ? 'color-mix(in srgb, var(--accent) 72%, #000)'.replace(
+              'var(--accent)',
+              resolvedValue(document.body, '--accent')
+            )
+          : resolvedValue(document.body, '--accent-text')
+      );
     });
   });
 
@@ -218,6 +434,29 @@ describe('panel veil', () => {
   ])('is not painted for %s', (_, bodyClass) => {
     render(bodyClass);
     expect(resolvedValue(document.body, '--panel-veil-layer')).toBe('none');
+  });
+
+  it('is not painted when Windows forces colours, which keeps gradients over Canvas', () => {
+    const veilRules = [];
+    const visit = (rules) => {
+      for (const rule of rules) {
+        if (rule.media && rule.media.mediaText === '(forced-colors: active)') {
+          for (const inner of rule.cssRules) {
+            if (
+              inner.selectorText === 'body' &&
+              inner.style.getPropertyValue('--panel-veil-layer')
+            ) {
+              veilRules.push(inner.style.getPropertyValue('--panel-veil-layer').trim());
+            }
+          }
+        }
+      }
+    };
+    for (const sheet of document.styleSheets) visit(sheet.cssRules);
+
+    // Every copy of the stylesheet the suite has loaded says the same thing.
+    expect(veilRules.length).toBeGreaterThan(0);
+    expect(new Set(veilRules)).toEqual(new Set(['none']));
   });
 
   it('is a layer for an ordinary window', () => {

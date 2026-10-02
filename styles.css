@@ -812,8 +812,10 @@ body {
    background theme still tints the panel, and it is scaled by the window opacity, so a lower
    Window opacity still gets more transparent. --panel-veil is its strength at full opacity, set
    with the tile tokens for each theme and glass mode. The readable preset, opaque panels and
-   pinned desktop tiles get no layer at all. The header and content paint it (the body does
-   during a holiday, see SEASONAL THEMES). */
+   pinned desktop tiles get no layer at all. The header and content paint it. On the solid panel
+   the body does during a holiday, so the snow and confetti are drawn above it (see SEASONAL
+   THEMES). On glass the header and content keep painting it then: the veil is 5 to 6% there, and
+   the canvas it dims is only art, so nothing is lost. */
 body {
   --panel-veil-color: rgba(0, 0, 0, calc(var(--panel-veil) * var(--window-bg-alpha, 1)));
   --panel-veil-layer: linear-gradient(var(--panel-veil-color), var(--panel-veil-color));
@@ -14797,10 +14799,20 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
    tile. Settings, dialogs, the header and pinned desktop tiles keep the softer values, and the
    readable preset keeps its own tile tokens. */
 body:not(.high-contrast) :is(#quick-controls .control-item, .status-grid, .media-tile) {
-  --tile-bg: var(--dash-tile-bg);
-  --tile-bg-hover: var(--dash-tile-bg-hover);
+  --tile-bg: color-mix(in srgb, var(--dash-tile-bg) var(--dash-tile-keep), transparent);
+  --tile-bg-hover: color-mix(in srgb, var(--dash-tile-bg-hover) var(--dash-tile-keep), transparent);
   --tile-border: var(--dash-tile-border);
   --tile-border-hover: var(--dash-tile-border-hover);
+}
+
+/* A tile keeps its whole fill from about 90% Window opacity up. Below that the fill thins out
+   (about 84% of itself at 60%, so a dark glass tile goes from 94% to 79% opaque), so lowering the
+   slider still makes the dashboard more see-through, instead of leaving dark blocks on a clear
+   panel. Only the fill follows: the edge stays as it is and keeps each tile apart as the fill
+   thins. This is declared on the body, where var(--window-bg-alpha) is the value the slider
+   writes. */
+body {
+  --dash-tile-keep: min(100%, calc(78% + 30% * var(--window-bg-alpha, 1)));
 }
 
 /* The tab pill above the tiles takes the same edge, so it does not look fainter than they do. */
@@ -14816,8 +14828,9 @@ body:not(.high-contrast)
   background-color: color-mix(in srgb, rgb(var(--timer-rgb)) 18%, var(--tile-bg));
 }
 
-/* The state gradient of a media player tile is a background shorthand, which reset the fill. */
-body:not(.high-contrast) #quick-controls .media-player-entity {
+/* The state gradient of a media player tile is a background shorthand, which reset the fill. An
+   unavailable one is left out: it stays clear like every other unavailable tile (see below). */
+body:not(.high-contrast) #quick-controls .media-player-entity:not([data-unavailable='true']) {
   background-color: var(--tile-bg);
 }
 
@@ -14826,11 +14839,33 @@ body:not(.high-contrast) #quick-controls .media-player-entity {
 body.frosted-glass:not(.theme-light, .high-contrast)
   #quick-controls
   .control-item[data-unavailable='true'] {
-  background: rgba(var(--window-bg-rgb), 0.9);
+  background: color-mix(
+    in srgb,
+    rgba(var(--window-bg-rgb), 0.9) var(--dash-tile-keep),
+    transparent
+  );
 }
 
 body.theme-light:not(.high-contrast) #quick-controls .control-item[data-unavailable='true'] {
   background: color-mix(in srgb, var(--tile-bg) 70%, transparent);
+}
+
+/* The light pane is nearly white, but the text on it is set for a pane that was half see-through,
+   and a few pairs fall short of 4.5:1 on it: the secondary and tertiary text, the media
+   timestamps, the date line and the weather condition. Each is darkened a notch, on the main
+   view's tiles only, so Settings and dialogs keep theirs. */
+body.theme-light:not(.high-contrast) :is(#quick-controls .control-item, .status-grid, .media-tile) {
+  --text-dim: color-mix(in srgb, var(--text-primary) 78%, transparent);
+  --text-faint: color-mix(in srgb, var(--text-primary) 70%, transparent);
+  --muted-text: #626268;
+}
+
+body.theme-light:not(.high-contrast) .status-card.time-card .date-display {
+  color: color-mix(in srgb, var(--accent) 55%, #000);
+}
+
+body.theme-light:not(.high-contrast) .status-card .weather-condition {
+  color: var(--text-dim);
 }
 
 /* --- Main view: one hero pane for the primary cards --- */
@@ -16212,6 +16247,12 @@ body[data-season='thanksgiving'] .control-item {
 /* Windows High Contrast replaces backgrounds with system colours, which erases the accent fills
    that mark "on" tiles, selected tabs and switches. Draw those states with outlines instead. */
 @media (forced-colors: active) {
+  /* The panel veil is a gradient. Forced colours keep gradients while they swap every background
+     colour for Canvas, so the veil would be painted over the system colour. */
+  body {
+    --panel-veil-layer: none;
+  }
+
   .sliding-indicator {
     background: none;
     border: 2px solid Highlight;
