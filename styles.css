@@ -3837,12 +3837,13 @@ body.first-run-active .widget-content > * {
   font-style: italic;
 }
 
+/* Tiles sit in the order they are saved and tabbed in. The grid does not pack densely, which
+   would back-fill the gap beside a wide tile with a later one and part the picture from the order. */
 .controls-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 8px;
   align-items: stretch;
-  grid-auto-flow: dense; /* tighter packing */
 }
 
 .control-item {
@@ -9957,6 +9958,13 @@ body.widget-state-active #quick-controls .status-message {
   transition: transform var(--transition-slower);
 }
 
+/* A touch or pen drag moves a clone with an inline transform on every pointer event. The slow
+   settle above would make it trail the finger. */
+.reorganize-mode .control-item.sortable-drag,
+.reorganize-mode .control-item.sortable-fallback {
+  transition: none;
+}
+
 .reorganize-mode .control-item * {
   pointer-events: none;
   user-select: none;
@@ -9990,21 +9998,22 @@ body.widget-state-active #quick-controls .status-message {
 /* SortableJS: Dragging element (item being dragged around) */
 .sortable-drag {
   cursor: grabbing !important;
-  transform: scale(1.05) rotate(2deg);
+  /* The individual properties leave transform to the touch clone, which is positioned with it. */
+  scale: 1.05;
+  rotate: 2deg;
   box-shadow:
     0 12px 32px rgba(0, 0, 0, 0.4),
     var(--glow-accent);
   opacity: 0.95;
-  transition: transform var(--transition-base);
   backdrop-filter: blur(var(--blur-md));
   -webkit-backdrop-filter: blur(var(--blur-md));
 }
 
-/* Disable animations for reduced motion preference */
+/* Reduced motion: lifted a little, but not tilted. */
 @media (prefers-reduced-motion: reduce) {
   .sortable-drag {
-    transition: none !important;
-    transform: scale(1.02) !important; /* Subtle scale only, no rotation */
+    rotate: 0deg;
+    scale: 1.02;
   }
 }
 
@@ -10266,10 +10275,11 @@ body.widget-state-active #quick-controls .status-message {
   transform: none;
 }
 
+/* The buttons run to 32px down the tile; the content starts a little clear of them. */
 .reorganize-mode .control-item {
   position: relative;
   overflow: hidden;
-  padding-top: calc(var(--space-3) + 24px);
+  padding-top: calc(var(--space-3) + 28px);
 }
 
 /* Rename modal styles */
@@ -15345,6 +15355,54 @@ body.theme-light
    The name and reading still identify it, so the icon steps aside while editing. */
 .reorganize-mode .control-item.sensor-numeric-entity .control-icon {
   visibility: hidden;
+}
+
+/* Reorganizing without dragging: the tile that was selected waits for the one to take its place. */
+.reorganize-mode .control-item.reorder-picked,
+.reorganize-mode .control-item.reorder-picked:hover {
+  box-shadow:
+    0 0 0 2px var(--accent),
+    var(--glow-accent);
+}
+
+/* The camera badge and a graph's range label sit in the corner the buttons use. */
+.reorganize-mode .control-item .camera-tile-preview-badge,
+.reorganize-mode .control-item .comparison-graph-range {
+  visibility: hidden;
+}
+
+/* Compact tiles are 78px tall, which has no room for the buttons above the icon and the name, so
+   they grow to 96px while editing. */
+body.density-compact #quick-controls.reorganize-mode {
+  --qa-tile-height: 96px;
+}
+
+body.density-compact
+  #quick-controls.reorganize-mode
+  .control-item:not(.comparison-graph-tile):not(.camera-preview-tile) {
+  padding-top: 32px;
+}
+
+/* In a narrow window tiles are as little as 82px wide, and three 24px buttons do not fit with
+   room between them: they shrink to 20px, still 24px apart centre to centre. */
+@media (max-width: 360px) {
+  .reorganize-mode .control-item :is(.rename-btn, .remove-btn, .desktop-pin-quick-toggle) {
+    width: 20px;
+    height: 20px;
+    top: 6px;
+  }
+
+  .reorganize-mode .control-item .desktop-pin-quick-toggle {
+    inset-inline-start: 6px;
+  }
+
+  .reorganize-mode .control-item .rename-btn {
+    inset-inline-end: 30px;
+  }
+
+  .reorganize-mode .control-item .remove-btn {
+    inset-inline-end: 6px;
+  }
 }
 
 /* ==========================================================================

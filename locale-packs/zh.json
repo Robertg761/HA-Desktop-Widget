@@ -201,7 +201,6 @@
     "Could not save the token recovery acknowledgement. {{error}}": "无法保存令牌恢复确认。{{error}}",
     "Failed to control {{entityName}}: {{errorMessage}}": "无法控制 {{entityName}}：{{errorMessage}}",
     "Service call failed: {{errorMessage}}": "服务调用失败：{{errorMessage}}",
-    "Reorganize mode enabled - Drag to reorder, click X to remove, ESC to exit": "已启用整理模式 - 拖动以重新排序，点击 X 删除，按 ESC 退出",
     "Quick Access order saved": "快捷访问顺序已保存",
     "Failed to control media player": "无法控制媒体播放器",
     "Failed to toggle entity": "无法切换实体",
@@ -1711,6 +1710,12 @@
     "Needs Windows 11 version 22H2 or later.": "需要 Windows 11 版本 22H2 或更高版本。",
     "This page is empty": "此页面为空",
     "Add entities to {{page}} for one-click control.": "向 {{page}} 添加实体，一键控制。",
-    "Fill this page": "填充此页面"
+    "Fill this page": "填充此页面",
+    "Edit settings for {{name}}": "编辑 {{name}} 的设置",
+    "Remove {{name}} from Quick Access": "从快捷访问中移除 {{name}}",
+    "Pin {{name}} to desktop": "将 {{name}} 固定到桌面",
+    "Moved to position {{position}} of {{total}}": "已移到第 {{position}} 位（共 {{total}} 个）",
+    "Reorganize mode enabled - Drag, select or press Alt+arrow keys to reorder, click X to remove, ESC to exit": "已启用整理模式 - 拖动、选择或按 Alt+方向键以重新排序，点击 X 删除，按 ESC 退出",
+    "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "已选中 {{name}}。请选择它要移到的磁贴位置，或按 Esc 取消。"
   }
 }

@@ -70,6 +70,7 @@ import {
 } from './quick-access-tabs.js';
 import {
   getNextQuickAccessFocusIndex,
+  getNextQuickAccessFocusIndexByLayout,
   getQuickAccessTabOverflow,
   getQuickAccessTabRevealDelta,
   getQuickAccessTabWheelDelta,
@@ -1616,8 +1617,111 @@ function syncQuickAccessRovingTabIndex(preferredTile = null) {
   });
 }
 
+// Says something to screen readers without showing anything.
+function announceQuickAccessChange(message) {
+  let region = document.getElementById('quick-access-announcer');
+  if (!region) {
+    region = document.createElement('div');
+    region.id = 'quick-access-announcer';
+    region.className = 'sr-only';
+    region.setAttribute('role', 'status');
+    document.body.appendChild(region);
+  }
+  region.textContent = message;
+}
+
+// Puts a tile where another is, the other making way, and saves the order like a drag does.
+function moveQuickAccessTile(tile, target) {
+  const tiles = getQuickAccessTiles();
+  const index = tiles.indexOf(tile);
+  const targetIndex = tiles.indexOf(target);
+  if (index < 0 || targetIndex < 0 || index === targetIndex) return false;
+
+  tile.parentElement.insertBefore(tile, targetIndex > index ? target.nextSibling : target);
+  saveQuickAccessOrder(tile);
+  announceQuickAccessChange(
+    t('Moved to position {{position}} of {{total}}', {
+      position: getQuickAccessTiles().indexOf(tile) + 1,
+      total: tiles.length,
+    })
+  );
+  return true;
+}
+
+// Reorganize mode without a mouse: Alt and an arrow key move the tile that has focus (or one of its
+// buttons) to where its neighbour in that direction is.
+function handleQuickAccessReorderKeydown(event) {
+  if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+  const tile = event.target?.closest?.('#quick-controls .control-item[data-entity-id]');
+  if (!tile) return;
+
+  event.preventDefault();
+  const tiles = getQuickAccessTiles();
+  const index = tiles.indexOf(tile);
+  let targetIndex = getNextQuickAccessFocusIndexByLayout(
+    tiles.map((item) => item.getBoundingClientRect()),
+    index,
+    event.key
+  );
+  if (targetIndex < 0) {
+    // Nothing is laid out to go by: a step is a place in the order.
+    targetIndex = getNextQuickAccessFocusIndex(
+      index,
+      tiles.length,
+      event.key,
+      1,
+      window.getComputedStyle(tile.parentElement).direction || document.documentElement.dir
+    );
+  }
+  if (moveQuickAccessTile(tile, tiles[targetIndex])) {
+    // Moving a node drops its focus.
+    event.target.focus();
+  }
+}
+
+// Reorganize mode without dragging: select a tile, then the tile that should take its place. The
+// selection ends with the move, with Escape, or with leaving reorganize mode.
+let pickedUpTile = null;
+let lastQuickAccessDragEnd = 0;
+
+function clearPickedUpTile() {
+  pickedUpTile?.classList.remove('reorder-picked');
+  pickedUpTile = null;
+}
+
+function handleQuickAccessReorderClick(event) {
+  if (!isReorganizeMode) return;
+  // A drag that ends over a tile can still be followed by a click.
+  if (Date.now() - lastQuickAccessDragEnd < 400) return;
+  const tile = event.target?.closest?.('#quick-controls .control-item[data-entity-id]');
+  // The buttons on a tile do their own work.
+  if (!tile || event.target.closest('button')) return;
+
+  if (!pickedUpTile?.isConnected) {
+    clearPickedUpTile();
+    pickedUpTile = tile;
+    tile.classList.add('reorder-picked');
+    // Said, not shown: the highlight on the tile is the cue, and a toast would cover the tiles
+    // that come next.
+    announceQuickAccessChange(
+      t(
+        'Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.',
+        { name: getQuickAccessTileLabel(tile) }
+      )
+    );
+    return;
+  }
+  const moving = pickedUpTile;
+  clearPickedUpTile();
+  if (moving !== tile) moveQuickAccessTile(moving, tile);
+}
+
 function handleQuickAccessGridKeydown(event) {
-  if (isReorganizeMode) return;
+  if (isReorganizeMode) {
+    handleQuickAccessReorderKeydown(event);
+    return;
+  }
   if (event.ctrlKey || event.metaKey || event.altKey) return;
   const tile = event.target?.closest?.('#quick-controls .control-item');
   if (!tile) return;
@@ -1642,23 +1746,35 @@ function handleQuickAccessGridKeydown(event) {
   if (!container || currentIndex < 0) return;
 
   event.preventDefault();
-  const nextIndex = getNextQuickAccessFocusIndex(
+  // Wide tiles (media players, graphs, spans) make the tile one step on in the DOM a different tile
+  // from the one next to it on screen, so the arrows follow where the tiles are drawn.
+  let nextIndex = getNextQuickAccessFocusIndexByLayout(
+    visibleTiles.map((item) => item.getBoundingClientRect()),
     currentIndex,
-    visibleTiles.length,
-    event.key,
-    getQuickAccessGridColumnCount(container),
-    window.getComputedStyle(container).direction || document.documentElement.dir
+    event.key
   );
+  if (nextIndex < 0) {
+    // Nothing is laid out to go by; count in DOM order.
+    nextIndex = getNextQuickAccessFocusIndex(
+      currentIndex,
+      visibleTiles.length,
+      event.key,
+      getQuickAccessGridColumnCount(container),
+      window.getComputedStyle(container).direction || document.documentElement.dir
+    );
+    // Left and right stay within the row, and never jump to the far edge of the next one.
+    if (
+      (event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
+      Math.abs(
+        (visibleTiles[nextIndex] || tile).getBoundingClientRect().top -
+          tile.getBoundingClientRect().top
+      ) > 1
+    ) {
+      return;
+    }
+  }
   const nextTile = visibleTiles[nextIndex];
   if (!nextTile) return;
-  // Left and right move within the row on screen, in either direction and with wide tiles;
-  // they never jump to the far edge of the neighbouring row.
-  if (
-    (event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
-    Math.abs(nextTile.getBoundingClientRect().top - tile.getBoundingClientRect().top) > 1
-  ) {
-    return;
-  }
 
   syncQuickAccessRovingTabIndex(nextTile);
   (nextTile.querySelector('.tile-primary-button') || nextTile).focus();
@@ -1668,6 +1784,8 @@ function setupQuickAccessGridKeyboardNavigation() {
   const container = document.getElementById('quick-controls');
   if (!container || container.dataset.keyboardNavigationBound === 'true') return;
   container.addEventListener('keydown', handleQuickAccessGridKeydown);
+  // Capturing, as the tiles stop their own clicks while reorganizing.
+  container.addEventListener('click', handleQuickAccessReorderClick, true);
   container.dataset.keyboardNavigationBound = 'true';
 }
 
@@ -1968,6 +2086,8 @@ function toggleReorganizeMode() {
         filter: '.remove-btn, .rename-btn, .desktop-pin-quick-toggle', // Ignore edit controls
         preventOnFilter: false, // Allow clicks on filtered elements
         onEnd: (evt) => {
+          lastQuickAccessDragEnd = Date.now();
+          clearPickedUpTile();
           // SortableJS has already reordered the DOM
           // Just save the new order (pass moved item for duplicate cleanup)
           saveQuickAccessOrder(evt?.item || null);
@@ -1980,9 +2100,11 @@ function toggleReorganizeMode() {
         console.error('Failed to enable desktop pin edit mode:', error);
       });
       uiUtils.showToast(
-        t('Reorganize mode enabled - Drag to reorder, click X to remove, ESC to exit'),
+        t(
+          'Reorganize mode enabled - Drag, select or press Alt+arrow keys to reorder, click X to remove, ESC to exit'
+        ),
         'info',
-        3000
+        4500
       );
     } else {
       // Destroy Sortable instance
@@ -1992,6 +2114,7 @@ function toggleReorganizeMode() {
       }
 
       closeAddPageModal();
+      clearPickedUpTile();
       container.classList.remove('reorganize-mode');
       if (btn) {
         setLineIconContent(btn, 'grip-vertical');
@@ -2041,13 +2164,23 @@ function removeRemoveButtons() {
   }
 }
 
+// What a tile is called, for the labels of its edit buttons.
+function getQuickAccessTileLabel(item) {
+  const name = item.querySelector('.control-name, .comparison-graph-title')?.textContent.trim();
+  return name || item.dataset.entityId || '';
+}
+
 function addButtonsToElement(item) {
   try {
     if (!item || item.dataset.primaryCard === 'true') return;
     if (isDevelopmentClimateOverlayEntity(item.dataset.entityId)) return;
 
+    // A placeholder stands in for something Home Assistant has not reported: there is nothing
+    // to edit or pin, only to remove.
+    const isPlaceholder = item.classList.contains('unavailable-entity');
+
     // Add rename button
-    if (!item.querySelector('.rename-btn')) {
+    if (!isPlaceholder && !item.querySelector('.rename-btn')) {
       const renameBtn = document.createElement('button');
       renameBtn.className = 'rename-btn';
       setIconContent(renameBtn, 'edit', { size: 14 });
@@ -2129,7 +2262,17 @@ function addButtonsToElement(item) {
       item.appendChild(removeBtn);
     }
 
-    syncQuickAccessControlButton(item, item.dataset.entityId);
+    // The buttons are named for their tile, as the icons inside them only say "Edit" and "Close".
+    // Tiles are reused when renamed, so this runs every time.
+    const tileName = getQuickAccessTileLabel(item);
+    item
+      .querySelector('.rename-btn')
+      ?.setAttribute('aria-label', t('Edit settings for {{name}}', { name: tileName }));
+    item
+      .querySelector('.remove-btn')
+      ?.setAttribute('aria-label', t('Remove {{name}} from Quick Access', { name: tileName }));
+
+    if (!isPlaceholder) syncQuickAccessControlButton(item, item.dataset.entityId);
   } catch (error) {
     console.error('Error adding buttons to element:', error);
   }
@@ -8596,7 +8739,8 @@ function syncQuickAccessControlButton(control, entityId) {
       await toggleDesktopPinFromQuickAccess(entityId);
     });
 
-    control.appendChild(button);
+    // First in tab order, as it is on screen (the pin sits at the tile's start).
+    control.insertBefore(button, control.querySelector('.rename-btn'));
   }
 
   const isPinned = isEntityDesktopPinned(entityId);
@@ -8613,9 +8757,12 @@ function syncQuickAccessControlButton(control, entityId) {
     : supportProfile.supported
       ? t('Pin to desktop')
       : getDesktopPinUnsupportedMessage(resolvedEntityId);
-  // An icon rather than a word: "Pinned" in German or French ran under the edit buttons.
-  const label = isPinned ? t('Pinned') : supportProfile.supported ? t('Pin') : t('Unsupported');
-  button.setAttribute('aria-label', label);
+  // An icon rather than a word: "Pinned" in German or French ran under the edit buttons. The
+  // name stays the same whatever the state; aria-pressed says whether it is pinned.
+  button.setAttribute(
+    'aria-label',
+    t('Pin {{name}} to desktop', { name: getQuickAccessTileLabel(control) })
+  );
   const iconName = isPinned || supportProfile.supported ? 'pin' : 'pin-off';
   if (button.dataset.icon !== iconName) {
     button.innerHTML = lineIconMarkup(iconName);
@@ -15035,6 +15182,12 @@ function handleEscapeKey(e) {
   const addPageModal = document.getElementById('add-page-modal');
   if (addPageModal && !addPageModal.classList.contains('modal-closing')) return;
   if (document.querySelector('#quick-access-tabs .qa-tab-rename-input')) return;
+  if (pickedUpTile) {
+    e.preventDefault();
+    e.stopPropagation();
+    clearPickedUpTile();
+    return;
+  }
   const confirmModal = document.getElementById('confirm-modal');
   if (
     confirmModal &&

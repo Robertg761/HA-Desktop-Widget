@@ -188,6 +188,76 @@ describe('stylesheet cascade regressions', () => {
     });
   });
 
+  describe('edit mode on the Quick Access grid', () => {
+    const tiles = () => `
+      <div id="quick-controls" class="controls-grid reorganize-mode">
+        <div class="control-item" data-entity-id="light.a"></div>
+        <div class="control-item comparison-graph-tile" data-entity-id="graph:g"></div>
+      </div>`;
+
+    it('does not pack the grid densely, which would part the picture from the saved order', () => {
+      render('', tiles());
+      expect(resolvedValue(document.getElementById('quick-controls'), 'grid-auto-flow')).toBeNull();
+    });
+
+    it('makes room for the buttons above the content of a compact tile', () => {
+      render('density-compact', tiles());
+      const tile = document.querySelector('[data-entity-id="light.a"]');
+      const grid = document.getElementById('quick-controls');
+      expect(resolvedValue(grid, '--qa-tile-height')).toBe('96px');
+      expect(resolvedValue(tile, 'padding-top')).toBe('32px');
+
+      render('density-compact', tiles().replace(' reorganize-mode', ''));
+      expect(resolvedValue(document.getElementById('quick-controls'), '--qa-tile-height')).toBe(
+        '78px'
+      );
+    });
+
+    it('hides the corner labels the buttons would cover', () => {
+      render(
+        '',
+        `<div class="reorganize-mode"><div class="control-item">
+          <span class="camera-tile-preview-badge"></span><span class="comparison-graph-range"></span>
+        </div></div>`
+      );
+      for (const label of document.querySelectorAll('.control-item span')) {
+        expect(resolvedValue(label, 'visibility')).toBe('hidden');
+      }
+    });
+
+    it('shrinks the buttons to fit the 82px tiles of a narrow window', () => {
+      const markup = `<div class="reorganize-mode"><div class="control-item">
+        <button class="rename-btn"></button><button class="remove-btn"></button>
+        <button class="desktop-pin-quick-toggle"></button>
+      </div></div>`;
+      render('', markup);
+      const rename = document.querySelector('.rename-btn');
+      expect(resolvedValue(rename, 'width')).toBe('24px');
+      const narrow = { viewport: { width: 340, height: 600 } };
+      for (const button of document.querySelectorAll('.control-item button')) {
+        expect(resolvedValue(button, 'width', narrow)).toBe('20px');
+      }
+      // Centre to centre they stay 24px apart: 6px in, 20px wide, then 30px from the far edge.
+      expect(resolvedValue(rename, 'inset-inline-end', narrow)).toBe('30px');
+      expect(resolvedValue(document.querySelector('.remove-btn'), 'inset-inline-end', narrow)).toBe(
+        '6px'
+      );
+    });
+
+    it('lets a touch or pen drag follow the pointer, and tilts with the individual properties', () => {
+      render(
+        '',
+        `<div class="reorganize-mode"><div class="control-item sortable-drag sortable-fallback"></div></div>`
+      );
+      const clone = document.querySelector('.control-item');
+      // The settle that eases tiles into place would make the clone trail behind the pointer.
+      expect(resolvedValue(clone, 'transition')).toBe('none');
+      // The clone is positioned with an inline transform, which a transform rule would replace.
+      expect(resolvedValue(clone, 'transform')).toBeNull();
+      expect(resolvedValue(clone, 'rotate')).toBe('2deg');
+    });
+  });
+
   describe('confirmation dialog stacking', () => {
     // The confirmation is a static element; dialogs built later are appended after it and share the
     // backdrop tier, so only a higher tier keeps "Delete graph" from opening behind its own editor.

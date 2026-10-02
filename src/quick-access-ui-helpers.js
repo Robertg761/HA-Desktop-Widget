@@ -38,6 +38,65 @@ function getNextQuickAccessFocusIndex(
 const QUICK_ACCESS_TAB_EDGE_INSET = 20;
 
 /**
+ * Where an arrow key moves on the Quick Access grid, judged by where the tiles are on screen
+ * rather than by their order in the DOM. Wide tiles (media players, graphs, tiles with a column
+ * span) make the two differ: stepping one place along the DOM skips tiles or dead-ends beside
+ * a wide one. Left and right stay in the row, in the direction pressed on screen (so right-to-left
+ * needs no swap); up and down go to the adjacent row, to the tile under or over the current one.
+ *
+ * @param {Array<{left: number, right: number, top: number, bottom: number}>} rects - One box per
+ *   tile, in DOM order.
+ * @param {number} currentIndex - The focused tile.
+ * @param {string} key - A KeyboardEvent key.
+ * @returns {number} The tile to focus (the current one when nothing lies that way), or -1 when
+ *   the boxes carry no layout (a hidden grid, jsdom) and the caller should count in DOM order.
+ */
+function getNextQuickAccessFocusIndexByLayout(rects, currentIndex, key) {
+  const current = rects?.[currentIndex];
+  if (!current || !rects.some((rect) => rect.right - rect.left > 0 && rect.bottom - rect.top > 0)) {
+    return -1;
+  }
+  if (key === 'Home') return 0;
+  if (key === 'End') return rects.length - 1;
+
+  const sameRow = (rect) => Math.abs(rect.top - current.top) <= 2;
+  const centerX = (rect) => (rect.left + rect.right) / 2;
+  const candidates = rects
+    .map((rect, index) => ({ rect, index }))
+    .filter(({ index }) => index !== currentIndex);
+
+  if (key === 'ArrowLeft' || key === 'ArrowRight') {
+    const direction = key === 'ArrowLeft' ? -1 : 1;
+    const ahead = candidates
+      .filter(({ rect }) => sameRow(rect) && (centerX(rect) - centerX(current)) * direction > 0)
+      .sort((a, b) => (centerX(a.rect) - centerX(b.rect)) * direction);
+    return ahead.length ? ahead[0].index : currentIndex;
+  }
+
+  if (key === 'ArrowUp' || key === 'ArrowDown') {
+    const direction = key === 'ArrowUp' ? -1 : 1;
+    const inDirection = candidates.filter(
+      ({ rect }) => !sameRow(rect) && (rect.top - current.top) * direction > 0
+    );
+    if (!inDirection.length) return currentIndex;
+    // The nearest row that way, then the tile in it that overlaps the current one the most (or,
+    // under a gap, the one whose centre is closest).
+    const nearestTop = inDirection.reduce(
+      (best, { rect }) => ((rect.top - best) * direction < 0 ? rect.top : best),
+      inDirection[0].rect.top
+    );
+    const row = inDirection.filter(({ rect }) => Math.abs(rect.top - nearestTop) <= 2);
+    const overlap = ({ rect }) =>
+      Math.min(rect.right, current.right) - Math.max(rect.left, current.left);
+    const distance = ({ rect }) => Math.abs(centerX(rect) - centerX(current));
+    row.sort((a, b) => overlap(b) - overlap(a) || distance(a) - distance(b));
+    return row[0].index;
+  }
+
+  return currentIndex;
+}
+
+/**
  * How far to scroll the page tab strip so one tab sits fully in view, kept clear of the faded
  * edges. Positions are measured from the strip's left edge on screen, which makes the sum the
  * same in either text direction; the caller adds the result to the strip's scrollLeft.
@@ -110,6 +169,7 @@ function getQuickAccessTabWheelDelta({ deltaX, deltaY, deltaMode }, viewWidth, d
 export {
   QUICK_ACCESS_TAB_EDGE_INSET,
   getNextQuickAccessFocusIndex,
+  getNextQuickAccessFocusIndexByLayout,
   getQuickAccessTabOverflow,
   getQuickAccessTabRevealDelta,
   getQuickAccessTabWheelDelta,

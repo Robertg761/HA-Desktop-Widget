@@ -201,7 +201,6 @@
     "Could not save the token recovery acknowledgement. {{error}}": "टोकन पुनर्प्राप्ति की पुष्टि सहेजी नहीं जा सकी। {{error}}",
     "Failed to control {{entityName}}: {{errorMessage}}": "{{entityName}} को नियंत्रित नहीं किया जा सका: {{errorMessage}}",
     "Service call failed: {{errorMessage}}": "सर्विस कॉल विफल: {{errorMessage}}",
-    "Reorganize mode enabled - Drag to reorder, click X to remove, ESC to exit": "पुनर्व्यवस्थित मोड सक्षम - क्रम बदलने के लिए खींचें, हटाने के लिए X क्लिक करें, बाहर निकलने के लिए ESC दबाएं",
     "Quick Access order saved": "क्विक एक्सेस क्रम सहेजा गया",
     "Failed to control media player": "मीडिया प्लेयर को नियंत्रित नहीं किया जा सका",
     "Failed to toggle entity": "एंटिटी टॉगल नहीं की जा सकी",
@@ -1711,6 +1710,12 @@
     "Needs Windows 11 version 22H2 or later.": "Windows 11 संस्करण 22H2 या उसके बाद का संस्करण आवश्यक है।",
     "This page is empty": "यह पेज खाली है",
     "Add entities to {{page}} for one-click control.": "एक क्लिक में नियंत्रण के लिए {{page}} में एंटिटी जोड़ें।",
-    "Fill this page": "इस पेज को भरें"
+    "Fill this page": "इस पेज को भरें",
+    "Edit settings for {{name}}": "{{name}} की सेटिंग्स संपादित करें",
+    "Remove {{name}} from Quick Access": "{{name}} को क्विक एक्सेस से हटाएं",
+    "Pin {{name}} to desktop": "{{name}} को डेस्कटॉप पर पिन करें",
+    "Moved to position {{position}} of {{total}}": "{{total}} में से स्थिति {{position}} पर ले जाया गया",
+    "Reorganize mode enabled - Drag, select or press Alt+arrow keys to reorder, click X to remove, ESC to exit": "पुनर्व्यवस्थित मोड सक्षम - क्रम बदलने के लिए खींचें, चुनें या Alt+तीर कुंजियाँ दबाएं, हटाने के लिए X क्लिक करें, बाहर निकलने के लिए ESC दबाएं",
+    "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "{{name}} चुना गया। जिस टाइल की जगह इसे लेनी है उसे चुनें, या रद्द करने के लिए Escape दबाएं।"
   }
 }

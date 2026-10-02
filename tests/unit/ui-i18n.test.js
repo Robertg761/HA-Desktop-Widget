@@ -384,12 +384,16 @@ describe('ui.js translations and number formatting', () => {
   });
 
   it('translates the light tile Off state and the Quick Access pin toggle', () => {
-    useGerman({ Off: 'Aus', Pin: 'Anheften', 'Pin to desktop': 'Auf dem Desktop anheften' });
+    useGerman({
+      Off: 'Aus',
+      'Pin {{name}} to desktop': '{{name}} an den Desktop anheften',
+      'Pin to desktop': 'Auf dem Desktop anheften',
+    });
     renderTiles([entity('light.desk', 'off', { supported_color_modes: ['brightness'] })]);
     expect(tile('light.desk').querySelector('.control-state').textContent).toBe('Aus');
     ui.toggleReorganizeMode();
     const toggle = tile('light.desk').querySelector('.desktop-pin-quick-toggle');
-    expect(toggle.getAttribute('aria-label')).toBe('Anheften');
+    expect(toggle.getAttribute('aria-label')).toBe('light.desk an den Desktop anheften');
     expect(toggle.title).toBe('Auf dem Desktop anheften');
     ui.toggleReorganizeMode();
   });

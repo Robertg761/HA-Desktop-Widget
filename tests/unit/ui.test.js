@@ -1555,6 +1555,50 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
     });
 
+    it('follows the tiles where they are drawn when a wide tile parts the screen from the DOM order', () => {
+      const ids = ['light.bedroom', 'switch.bedroom', 'light.living_room', 'light.office'];
+      const config = state.CONFIG;
+      config.favoriteEntities = ids;
+      config.customTabs = [{ id: 'main', name: 'Main', entityIds: ids }];
+      config.activeTabId = 'main';
+      state.setConfig(config);
+      state.setStates(
+        Object.fromEntries(
+          ids.map((id) => [id, sampleStates[id] || { entity_id: id, state: 'off', attributes: {} }])
+        )
+      );
+      ui.renderActiveTab();
+      const tiles = Array.from(document.querySelectorAll('#quick-controls .control-item'));
+      // A wide first tile and a narrow one beside it, then two narrow tiles in the row below. A
+      // step along the DOM from the first tile would land on the narrow one beside it, but down
+      // on the screen is the third.
+      const boxes = [
+        { left: 0, right: 208, top: 0, bottom: 80 },
+        { left: 216, right: 316, top: 0, bottom: 80 },
+        { left: 0, right: 100, top: 88, bottom: 168 },
+        { left: 108, right: 208, top: 88, bottom: 168 },
+      ];
+      tiles.forEach((tile, index) => {
+        tile.getBoundingClientRect = () => boxes[index];
+      });
+      const press = (tile, key) =>
+        tile.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+      const focusedTile = () => document.activeElement?.closest('.control-item');
+
+      press(tiles[0], 'ArrowDown');
+      expect(focusedTile()).toBe(tiles[2]);
+      press(tiles[2], 'ArrowRight');
+      expect(focusedTile()).toBe(tiles[3]);
+      press(tiles[3], 'ArrowUp');
+      expect(focusedTile()).toBe(tiles[0]);
+      press(tiles[0], 'ArrowRight');
+      expect(focusedTile()).toBe(tiles[1]);
+      press(tiles[1], 'ArrowDown');
+      expect(focusedTile()).toBe(tiles[3]);
+      // Leave the roving tab stop where tests expect to find it.
+      press(tiles[3], 'Home');
+    });
+
     it('lets non-admin users repair an unavailable entity with an explicit replacement', async () => {
       const replacement = {
         ...sampleStates['light.bedroom'],
@@ -4292,7 +4336,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         '.control-item[data-entity-id="light.bedroom"] .desktop-pin-quick-toggle'
       );
       expect(pinButton).toBeTruthy();
-      expect(pinButton.getAttribute('aria-label')).toBe('Pin');
+      // The name is the same whatever the state; aria-pressed carries whether it is pinned.
+      expect(pinButton.getAttribute('aria-label')).toBe('Pin Bedroom Light to desktop');
+      expect(pinButton.getAttribute('aria-pressed')).toBe('false');
 
       pinButton.click();
       await Promise.resolve();
@@ -4350,7 +4396,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         '.control-item[data-entity-id="light.bedroom"] .desktop-pin-quick-toggle'
       );
       expect(pinButton).toBeTruthy();
-      expect(pinButton.getAttribute('aria-label')).toBe('Pinned');
+      expect(pinButton.getAttribute('aria-label')).toBe('Pin Bedroom Light to desktop');
+      expect(pinButton.getAttribute('aria-pressed')).toBe('true');
 
       pinButton.click();
       await Promise.resolve();
@@ -4364,9 +4411,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
 
     it.each([
-      [{}, 'Pinned'],
-      [{ 'light.bedroom': { x: 10, y: 20, width: 168, height: 148 } }, 'Pin'],
-    ])('keeps keyboard focus on the Pin button after the tiles rebuild', async (pins, label) => {
+      [{}, 'true'],
+      [{ 'light.bedroom': { x: 10, y: 20, width: 168, height: 148 } }, 'false'],
+    ])('keeps keyboard focus on the Pin button after the tiles rebuild', async (pins, pressed) => {
       state.setConfig({
         ...state.CONFIG,
         favoriteEntities: ['light.bedroom'],
@@ -4394,8 +4441,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       expect(pinButton.isConnected).toBe(false);
       expect(document.activeElement.dataset.desktopPinQuickToggle).toBe('light.bedroom');
-      // The button shows a pin icon; its state is carried by the accessible name.
-      expect(document.activeElement.getAttribute('aria-label')).toBe(label);
+      // The button shows a pin icon; whether it is pinned is carried by aria-pressed.
+      expect(document.activeElement.getAttribute('aria-pressed')).toBe(pressed);
 
       ui.toggleReorganizeMode();
     });
@@ -4423,7 +4470,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         '.control-item[data-entity-id="calendar.family"] .desktop-pin-quick-toggle'
       );
       expect(pinButton).toBeTruthy();
-      expect(pinButton.getAttribute('aria-label')).toBe('Unsupported');
+      expect(pinButton.getAttribute('aria-label')).toBe('Pin Family Calendar to desktop');
       expect(pinButton.disabled).toBe(true);
       expect(pinButton.title).toContain('does not have a desktop-pin profile yet');
     });
@@ -7699,6 +7746,212 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
           expect(state.CONFIG.customTabs[0].name).toBe('Hall');
           expect(document.activeElement).toBe(elsewhere);
+        });
+      });
+    });
+
+    describe('reorganize mode tiles', () => {
+      const lamp = (id, name) => ({
+        entity_id: id,
+        state: 'off',
+        attributes: { friendly_name: name },
+      });
+      const tileIds = () =>
+        [...document.querySelectorAll('#quick-controls .control-item')].map(
+          (tile) => tile.dataset.entityId
+        );
+      const tile = (id) => document.querySelector(`#quick-controls [data-entity-id="${id}"]`);
+      const announcement = () => document.getElementById('quick-access-announcer')?.textContent;
+      const press = (target, key, init = {}) => {
+        const event = new KeyboardEvent('keydown', {
+          key,
+          bubbles: true,
+          cancelable: true,
+          ...init,
+        });
+        target.dispatchEvent(event);
+        return event;
+      };
+
+      beforeEach(() => {
+        state.setStates({
+          'light.a': lamp('light.a', 'Lamp A'),
+          'light.b': lamp('light.b', 'Lamp B'),
+          'light.c': lamp('light.c', 'Lamp C'),
+        });
+        setPages([{ id: 'home', name: 'Home', entityIds: ['light.a', 'light.b', 'light.c'] }]);
+        ui.renderActiveTab();
+        ui.toggleReorganizeMode();
+      });
+
+      it('names the buttons of a tile for the tile, and keeps the names after a rename', () => {
+        const edit = tile('light.b').querySelector('.rename-btn');
+        const remove = tile('light.b').querySelector('.remove-btn');
+        expect(edit.getAttribute('aria-label')).toBe('Edit settings for Lamp B');
+        expect(remove.getAttribute('aria-label')).toBe('Remove Lamp B from Quick Access');
+        expect(
+          tile('light.b').querySelector('.desktop-pin-quick-toggle').getAttribute('aria-label')
+        ).toBe('Pin Lamp B to desktop');
+
+        // Renaming the tile names its buttons again.
+        state.setConfig({
+          ...state.CONFIG,
+          customEntityNames: { 'light.b': 'Reading lamp' },
+        });
+        ui.renderActiveTab();
+        expect(tile('light.b').querySelector('.rename-btn').getAttribute('aria-label')).toBe(
+          'Edit settings for Reading lamp'
+        );
+      });
+
+      it('tabs through a tile in the order of the screen: pin, edit, remove', () => {
+        const order = [...tile('light.a').querySelectorAll('button')].map((button) =>
+          ['desktop-pin-quick-toggle', 'rename-btn', 'remove-btn'].find((name) =>
+            button.classList.contains(name)
+          )
+        );
+        expect(order.filter(Boolean)).toEqual([
+          'desktop-pin-quick-toggle',
+          'rename-btn',
+          'remove-btn',
+        ]);
+
+        // Also when the buttons are made again after being removed.
+        ui.toggleReorganizeMode();
+        ui.toggleReorganizeMode();
+        const again = [...tile('light.a').querySelectorAll('button')].map(
+          (button) => button.className
+        );
+        expect(again.findIndex((name) => name.includes('desktop-pin'))).toBeLessThan(
+          again.findIndex((name) => name.includes('rename-btn'))
+        );
+        expect(again.findIndex((name) => name.includes('rename-btn'))).toBeLessThan(
+          again.findIndex((name) => name.includes('remove-btn'))
+        );
+      });
+
+      it('offers only Remove on a placeholder for an entity Home Assistant has not reported', () => {
+        setPages([{ id: 'home', name: 'Home', entityIds: ['light.a', 'light.gone'] }]);
+        ui.renderActiveTab();
+        ui.toggleReorganizeMode();
+        ui.toggleReorganizeMode();
+
+        const placeholder = tile('light.gone');
+        expect(placeholder.classList.contains('unavailable-entity')).toBe(true);
+        expect(placeholder.querySelector('.remove-btn')).not.toBeNull();
+        expect(placeholder.querySelector('.rename-btn')).toBeNull();
+        expect(placeholder.querySelector('.desktop-pin-quick-toggle')).toBeNull();
+        expect(tile('light.a').querySelector('.rename-btn')).not.toBeNull();
+      });
+
+      describe('with the keyboard', () => {
+        it('moves the focused tile along the order with Alt and the arrow keys, and saves it', () => {
+          const edit = tile('light.a').querySelector('.rename-btn');
+          edit.focus();
+
+          const event = press(edit, 'ArrowRight', { altKey: true });
+          expect(event.defaultPrevented).toBe(true);
+          expect(tileIds()).toEqual(['light.b', 'light.a', 'light.c']);
+          expect(state.CONFIG.customTabs[0].entityIds).toEqual(['light.b', 'light.a', 'light.c']);
+          // The tile was moved in the page, and focus is back on the same button.
+          expect(document.activeElement).toBe(edit);
+          expect(announcement()).toBe('Moved to position 2 of 3');
+
+          press(edit, 'ArrowDown', { altKey: true });
+          expect(tileIds()).toEqual(['light.b', 'light.c', 'light.a']);
+          press(edit, 'ArrowLeft', { altKey: true });
+          press(edit, 'ArrowUp', { altKey: true });
+          expect(tileIds()).toEqual(['light.a', 'light.b', 'light.c']);
+          expect(announcement()).toBe('Moved to position 1 of 3');
+        });
+
+        it('stops at the ends of the page', () => {
+          const edit = tile('light.a').querySelector('.rename-btn');
+          expect(press(edit, 'ArrowLeft', { altKey: true }).defaultPrevented).toBe(true);
+          expect(tileIds()).toEqual(['light.a', 'light.b', 'light.c']);
+        });
+
+        it('moves the other way in right-to-left text', () => {
+          const edit = tile('light.a').querySelector('.rename-btn');
+          document.getElementById('quick-controls').style.direction = 'rtl';
+          press(edit, 'ArrowLeft', { altKey: true });
+          expect(tileIds()).toEqual(['light.b', 'light.a', 'light.c']);
+        });
+
+        it('needs Alt, so the arrows alone and other combinations are left alone', () => {
+          const edit = tile('light.a').querySelector('.rename-btn');
+          expect(press(edit, 'ArrowRight').defaultPrevented).toBe(false);
+          expect(press(edit, 'ArrowRight', { altKey: true, ctrlKey: true }).defaultPrevented).toBe(
+            false
+          );
+          expect(tileIds()).toEqual(['light.a', 'light.b', 'light.c']);
+        });
+      });
+
+      describe('without dragging', () => {
+        const click = (target) =>
+          target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        const picked = () =>
+          [...document.querySelectorAll('.reorder-picked')].map((item) => item.dataset.entityId);
+
+        it('selects a tile, then moves it to where the next selected tile is', () => {
+          click(tile('light.a'));
+          expect(picked()).toEqual(['light.a']);
+          expect(announcement()).toContain('Picked up Lamp A');
+
+          click(tile('light.c'));
+          expect(picked()).toEqual([]);
+          expect(tileIds()).toEqual(['light.b', 'light.c', 'light.a']);
+          expect(state.CONFIG.customTabs[0].entityIds).toEqual(['light.b', 'light.c', 'light.a']);
+          expect(announcement()).toBe('Moved to position 3 of 3');
+        });
+
+        it('moves a tile earlier the same way', () => {
+          click(tile('light.c'));
+          click(tile('light.a'));
+          expect(tileIds()).toEqual(['light.c', 'light.a', 'light.b']);
+        });
+
+        it('lets go of a tile selected again, and does not count its own buttons', () => {
+          click(tile('light.a'));
+          click(tile('light.a').querySelector('.rename-btn'));
+          expect(picked()).toEqual(['light.a']);
+          click(tile('light.a'));
+          expect(picked()).toEqual([]);
+          expect(tileIds()).toEqual(['light.a', 'light.b', 'light.c']);
+        });
+
+        it('lets Escape cancel a selection before it leaves reorganize mode', () => {
+          click(tile('light.b'));
+          const escape = () =>
+            document.dispatchEvent(
+              new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+            );
+
+          escape();
+          expect(picked()).toEqual([]);
+          expect(
+            document.getElementById('quick-controls').classList.contains('reorganize-mode')
+          ).toBe(true);
+          escape();
+          expect(
+            document.getElementById('quick-controls').classList.contains('reorganize-mode')
+          ).toBe(false);
+        });
+
+        it('drops a selection when reorganize mode ends', () => {
+          click(tile('light.b'));
+          ui.toggleReorganizeMode();
+          expect(picked()).toEqual([]);
+          ui.toggleReorganizeMode();
+          click(tile('light.c'));
+          expect(picked()).toEqual(['light.c']);
+        });
+
+        it('does nothing when the tiles are not being reorganized', () => {
+          ui.toggleReorganizeMode();
+          click(tile('light.a'));
+          expect(picked()).toEqual([]);
         });
       });
     });

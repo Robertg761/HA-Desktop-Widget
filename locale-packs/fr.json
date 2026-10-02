@@ -201,7 +201,6 @@
     "Could not save the token recovery acknowledgement. {{error}}": "Impossible d'enregistrer la confirmation de récupération du jeton. {{error}}",
     "Failed to control {{entityName}}: {{errorMessage}}": "Impossible de contrôler {{entityName}} : {{errorMessage}}",
     "Service call failed: {{errorMessage}}": "L'appel de service a échoué : {{errorMessage}}",
-    "Reorganize mode enabled - Drag to reorder, click X to remove, ESC to exit": "Mode réorganisation activé - glissez pour réordonner, cliquez sur X pour supprimer, Échap pour quitter",
     "Quick Access order saved": "Ordre d'accès rapide enregistré",
     "Failed to control media player": "Impossible de contrôler le lecteur multimédia",
     "Failed to toggle entity": "Impossible de basculer l'entité",
@@ -1711,6 +1710,12 @@
     "Needs Windows 11 version 22H2 or later.": "Nécessite Windows 11 version 22H2 ou ultérieure.",
     "This page is empty": "Cette page est vide",
     "Add entities to {{page}} for one-click control.": "Ajoutez des entités à {{page}} pour les contrôler en un clic.",
-    "Fill this page": "Remplir cette page"
+    "Fill this page": "Remplir cette page",
+    "Edit settings for {{name}}": "Modifier les paramètres de {{name}}",
+    "Remove {{name}} from Quick Access": "Retirer {{name}} de l'accès rapide",
+    "Pin {{name}} to desktop": "Épingler {{name}} au bureau",
+    "Moved to position {{position}} of {{total}}": "Déplacé à la position {{position}} sur {{total}}",
+    "Reorganize mode enabled - Drag, select or press Alt+arrow keys to reorder, click X to remove, ESC to exit": "Mode réorganisation activé - glissez, sélectionnez ou appuyez sur Alt+flèches pour réordonner, cliquez sur X pour supprimer, Échap pour quitter",
+    "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "{{name}} sélectionné. Choisissez la vignette dont il doit prendre la place, ou appuyez sur Échap pour annuler."
   }
 }

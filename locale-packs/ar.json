@@ -201,7 +201,6 @@
     "Could not save the token recovery acknowledgement. {{error}}": "تعذر حفظ تأكيد استعادة الرمز. {{error}}",
     "Failed to control {{entityName}}: {{errorMessage}}": "تعذر التحكم في {{entityName}}: {{errorMessage}}",
     "Service call failed: {{errorMessage}}": "فشل استدعاء الخدمة: {{errorMessage}}",
-    "Reorganize mode enabled - Drag to reorder, click X to remove, ESC to exit": "تم تفعيل وضع إعادة الترتيب - اسحب لإعادة الترتيب، وانقر X للإزالة، واضغط ESC للخروج",
     "Quick Access order saved": "تم حفظ ترتيب الوصول السريع",
     "Failed to control media player": "تعذر التحكم في مشغل الوسائط",
     "Failed to toggle entity": "تعذر تبديل الكيان",
@@ -1711,6 +1710,12 @@
     "Needs Windows 11 version 22H2 or later.": "يتطلب Windows 11 الإصدار 22H2 أو أحدث.",
     "This page is empty": "هذه الصفحة فارغة",
     "Add entities to {{page}} for one-click control.": "أضف كيانات إلى {{page}} للتحكم بها بنقرة واحدة.",
-    "Fill this page": "ملء هذه الصفحة"
+    "Fill this page": "ملء هذه الصفحة",
+    "Edit settings for {{name}}": "تعديل إعدادات {{name}}",
+    "Remove {{name}} from Quick Access": "إزالة {{name}} من الوصول السريع",
+    "Pin {{name}} to desktop": "تثبيت {{name}} على سطح المكتب",
+    "Moved to position {{position}} of {{total}}": "تم النقل إلى الموضع {{position}} من {{total}}",
+    "Reorganize mode enabled - Drag, select or press Alt+arrow keys to reorder, click X to remove, ESC to exit": "تم تفعيل وضع إعادة الترتيب - اسحب أو حدّد أو اضغط Alt مع مفاتيح الأسهم لإعادة الترتيب، وانقر X للإزالة، واضغط ESC للخروج",
+    "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "تم اختيار {{name}}. اختر البطاقة التي يجب أن يحل مكانها، أو اضغط Escape للإلغاء."
   }
 }
