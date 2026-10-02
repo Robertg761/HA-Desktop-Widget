@@ -359,6 +359,7 @@ const {
   createDesktopPinConnectionState,
   createDesktopPinRendererConfig,
   normalizeDesktopPinActionRequest,
+  normalizeHaUnitSystem,
 } = require('./src/desktop-pin-ipc.cjs');
 const {
   getWindowsStartupRegistryName,
@@ -1069,6 +1070,10 @@ const desktopPinContentMinBounds = new Map();
 const pendingDesktopPinActionRequests = new Map();
 let nextDesktopPinActionRequestId = 1;
 const latestEntityStates = new Map();
+// Pin windows never open a websocket, so Home Assistant's unit system (the only thing that says a
+// climate entity is in degrees Fahrenheit) reaches them from the main renderer through here.
+// Unlike the entity cache it is small and stays valid across unpinning, so it is not dropped then.
+let latestHaUnitSystem = null;
 let hasPublishedHaSnapshot = false;
 // Coalesces 'desktop-pin-snapshot-needed' requests: pin windows created in one burst
 // (repin-all, profile sync) each bootstrap before the first publish round-trips, and
@@ -2536,6 +2541,7 @@ function sendDesktopPinUpdate(entityId, extra = {}) {
   window.webContents.send('desktop-pin-update', {
     entityId,
     entity: latestEntityStates.get(entityId) || null,
+    unitSystem: latestHaUnitSystem,
     hasSnapshot: hasPublishedHaSnapshot,
     pinBounds: config?.desktopPins?.[entityId] || null,
     supportsWindowPositioning: !usesCompositorOwnedPlacement,
@@ -8159,6 +8165,7 @@ ipcMain.handle('get-desktop-pin-bootstrap', (event, entityId) => {
   return {
     entityId: normalizedEntityId,
     entity: latestEntityStates.get(normalizedEntityId) || null,
+    unitSystem: latestHaUnitSystem,
     hasSnapshot: hasPublishedHaSnapshot,
     pinBounds: config?.desktopPins?.[normalizedEntityId] || null,
     supportsWindowPositioning: !usesCompositorOwnedPlacement,
@@ -8220,6 +8227,19 @@ ipcMain.handle('publish-omarchy-bar-tiles', (event, payload) => {
   omarchyBarPublisher.update();
   deliverPendingOmarchyBarAction();
   return { success: true, count: omarchyBarTiles.size };
+});
+
+ipcMain.handle('publish-ha-unit-system', (event, unitSystem) => {
+  const sender = authorizeIpcSender(event, 'publish-ha-unit-system');
+  if (!sender) return rejectUnauthorizedIpc('publish-ha-unit-system');
+  const normalized = normalizeHaUnitSystem(unitSystem);
+  if (!normalized) return { success: false, error: 'Invalid unit system' };
+  if (JSON.stringify(normalized) === JSON.stringify(latestHaUnitSystem)) return { success: true };
+  latestHaUnitSystem = normalized;
+  Object.keys(config?.desktopPins || {}).forEach((entityId) => {
+    sendDesktopPinUpdate(entityId, { type: 'unit-system' });
+  });
+  return { success: true };
 });
 
 ipcMain.handle('publish-ha-snapshot', (event, states) => {

@@ -289,6 +289,39 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     jest.clearAllMocks();
   });
 
+  it('gives the pin the Home Assistant unit system from the bootstrap and from later updates', async () => {
+    await loadRenderer({ bootstrapOverrides: { unitSystem: { temperature: '°F' } } });
+    const state = require('../../src/state.js').default;
+
+    expect(state.setUnitSystem).toHaveBeenLastCalledWith({ temperature: '°F' });
+
+    triggerMockEvent('desktopPinUpdate', { unitSystem: { temperature: '°C', wind_speed: 'km/h' } });
+    await flushAsync();
+
+    expect(state.setUnitSystem).toHaveBeenLastCalledWith({
+      temperature: '°C',
+      wind_speed: 'km/h',
+    });
+  });
+
+  it('shows bare degrees instead of the metric defaults until main has the unit system', async () => {
+    await loadRenderer();
+    const state = require('../../src/state.js').default;
+
+    expect(state.setUnitSystem).toHaveBeenLastCalledWith({});
+
+    state.setUnitSystem.mockClear();
+    triggerMockEvent('desktopPinUpdate', { unitSystem: null });
+    await flushAsync();
+    expect(state.setUnitSystem).toHaveBeenLastCalledWith({});
+
+    // An update that does not mention the unit system leaves what the pin already has.
+    state.setUnitSystem.mockClear();
+    triggerMockEvent('desktopPinUpdate', { hasSnapshot: true });
+    await flushAsync();
+    expect(state.setUnitSystem).not.toHaveBeenCalled();
+  });
+
   it('keeps Focus Main visible and wired during a cold desktop-pin start', async () => {
     await loadRenderer();
 

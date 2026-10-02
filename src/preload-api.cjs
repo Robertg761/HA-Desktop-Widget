@@ -153,6 +153,7 @@ function createElectronApi(ipcRenderer, platform) {
       invoke('sync-desktop-pin-content-min-bounds', entityId, minBounds),
     getDesktopPinBootstrap: (entityId) => invoke('get-desktop-pin-bootstrap', entityId),
     publishHaConnectionState: (status) => invoke('publish-ha-connection-state', status),
+    publishHaUnitSystem: (unitSystem) => invoke('publish-ha-unit-system', unitSystem),
     publishHaSnapshot: (states) => invoke('publish-ha-snapshot', states),
     publishHaEntityUpdate: (entity) => invoke('publish-ha-entity-update', entity),
     requestDesktopPinAction: (entityId, action, payload) =>

@@ -427,6 +427,31 @@ describe('User-facing audit regressions', () => {
     expect(document.querySelector('#climate-target-value').textContent).toBe(expected);
   });
 
+  it.each([
+    ['°F', '74°F'],
+    ['°C', '74°C'],
+    [undefined, '74°'],
+  ])('prints the unit system the pin was given (%s) on a thermostat pin', (unit, expected) => {
+    // Thermostats carry no unit attribute of their own, so the pin relies on Home Assistant's.
+    state.setUnitSystem(unit ? { temperature: unit } : {});
+    const climate = entity('climate.pin_units', 'heat', {
+      temperature: 74,
+      current_temperature: 72,
+      min_temp: 45,
+      max_temp: 95,
+      supported_features: 1,
+      hvac_modes: ['heat', 'off'],
+    });
+    state.setStates({ [climate.entity_id]: climate });
+    ui.renderDesktopPinnedTile(climate.entity_id, climate);
+
+    const root = document.querySelector('.desktop-pin-climate-control');
+    expect(root.querySelector('.desktop-pin-climate-target-value').textContent).toBe(expected);
+    expect(root.querySelector('.desktop-pin-climate-current-value').textContent).toBe(
+      expected.replace('74', '72')
+    );
+  });
+
   it('edits both thermostat bounds in one range service call', async () => {
     ui.openEntityDetailModal(rangeClimate());
     expect(document.querySelector('#climate-slider')).toBeNull();

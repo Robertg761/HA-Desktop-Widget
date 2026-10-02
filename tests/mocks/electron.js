@@ -298,6 +298,7 @@ function createMockElectronAPI() {
     // re-publishes when a joined publish resolves falsy or `discarded`.
     publishHaSnapshot: jest.fn((_states) => Promise.resolve({ success: true, count: 0 })),
     publishHaEntityUpdate: jest.fn((_entity) => Promise.resolve()),
+    publishHaUnitSystem: jest.fn((_unitSystem) => Promise.resolve({ success: true })),
     requestDesktopPinAction: jest.fn((_entityId, _action, _payload) =>
       Promise.resolve({ success: true })
     ),

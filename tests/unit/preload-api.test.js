@@ -58,6 +58,7 @@ describe('preload Electron API', () => {
       ],
       ['getDesktopPinBootstrap', ['light.office'], 'get-desktop-pin-bootstrap', ['light.office']],
       ['publishHaConnectionState', ['connected'], 'publish-ha-connection-state', ['connected']],
+      ['publishHaUnitSystem', [objectArg], 'publish-ha-unit-system', [objectArg]],
       ['publishHaSnapshot', [objectArg], 'publish-ha-snapshot', [objectArg]],
       ['publishHaEntityUpdate', [objectArg], 'publish-ha-entity-update', [objectArg]],
       [

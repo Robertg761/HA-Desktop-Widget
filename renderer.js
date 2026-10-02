@@ -1733,6 +1733,10 @@ async function handleDesktopPinUpdate(message = {}) {
       desktopPinSupportsWindowPositioning = message.supportsWindowPositioning !== false;
     }
 
+    if (Object.prototype.hasOwnProperty.call(message, 'unitSystem')) {
+      applyDesktopPinUnitSystem(message.unitSystem);
+    }
+
     if (Object.prototype.hasOwnProperty.call(message, 'entity')) {
       if (message.entity) {
         state.setEntityState(message.entity);
@@ -2245,6 +2249,10 @@ websocket.on('message', (msg) => {
           if (msg.result && msg.result.unit_system) {
             log.debug('Unit system found:', JSON.stringify(msg.result.unit_system, null, 2));
             state.setUnitSystem(msg.result.unit_system);
+            // Desktop pin windows have no websocket of their own, so main relays this to them.
+            window.electronAPI.publishHaUnitSystem?.(msg.result.unit_system)?.catch((error) => {
+              log.warn('Failed to publish the Home Assistant unit system to main process:', error);
+            });
             // Re-render weather card with correct units
             if (ui.updateWeatherFromHA) {
               ui.updateWeatherFromHA();
@@ -2551,6 +2559,13 @@ function replaceEmojiIcons() {
  *
  * Loads persisted config (or applies a safe default if missing), wires UI event handlers, replaces emoji icons, and handles token-reset notifications that require the user to re-enter their Home Assistant token. Applies theme, accent, background, and UI preferences, starts recurring UI updates (time, timers, media seek bars), initializes hotkeys and entity alerts, hides the loading state, renders the active tab, and initiates the WebSocket connection. Ensures the loading indicator is cleared even if the connection stalls.
  */
+// Pin windows never open a websocket, so Home Assistant's unit system only reaches them from main.
+// Until it arrives they must not claim the metric defaults: an imperial install would read
+// "72°C" for a house at 72°F, so unit-less degrees are the honest fallback.
+function applyDesktopPinUnitSystem(unitSystem) {
+  state.setUnitSystem(unitSystem && typeof unitSystem === 'object' ? unitSystem : {});
+}
+
 async function initializeDesktopPinMode() {
   try {
     log.info('Initializing desktop pin renderer');
@@ -2561,6 +2576,7 @@ async function initializeDesktopPinMode() {
     desktopPinBounds = bootstrap?.pinBounds || null;
     desktopPinHasSnapshot = !!bootstrap?.hasSnapshot;
     desktopPinSupportsWindowPositioning = bootstrap?.supportsWindowPositioning !== false;
+    applyDesktopPinUnitSystem(bootstrap?.unitSystem);
 
     if (nextConfig?.homeAssistant) {
       applyRendererConfig(nextConfig);
