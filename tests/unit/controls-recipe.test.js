@@ -258,4 +258,74 @@ describe('the control recipe', () => {
       }
     });
   });
+
+  describe('markup', () => {
+    const html = read('index.html');
+
+    it('gives every button in the page a type', () => {
+      const untyped = (html.match(/<button\b[^>]*>/g) || []).filter(
+        (tag) => !/\btype\s*=/.test(tag)
+      );
+
+      expect(untyped).toEqual([]);
+    });
+
+    it('hides the weather canvas and the dropdown arrow from assistive technology', () => {
+      expect(html).toMatch(/<canvas id="weather-effects-canvas" aria-hidden="true">/);
+      expect(read('src/hotkeys.js')).toMatch(/class="custom-dropdown-arrow" aria-hidden="true"/);
+    });
+
+    it.each([
+      'settings-search',
+      'ha-url',
+      'custom-color-hex',
+      'hotkey-entity-search',
+      'quick-controls-search',
+      'alert-entity-picker-search',
+      'target-state-input',
+    ])('turns spell checking off in #%s', (id) => {
+      const tag = html.match(new RegExp(`<input\\b[^>]*\\bid="${id}"[^>]*>`));
+
+      expect(tag[0]).toMatch(/spellcheck="false"/);
+    });
+
+    it('names the search fields and lists the placeholder alone left unnamed', () => {
+      for (const id of [
+        'hotkey-entity-search',
+        'quick-controls-search',
+        'alert-entity-picker-search',
+      ]) {
+        const tag = html.match(new RegExp(`<input\\b[^>]*\\bid="${id}"[^>]*>`))[0];
+        expect(tag).toMatch(/aria-label="Search entities"/);
+        expect(tag).toMatch(/data-i18n-aria-label="Search entities"/);
+      }
+      for (const id of ['primary-cards-list', 'custom-entity-icons-list']) {
+        expect(html).toMatch(new RegExp(`id="${id}"[^>]*aria-labelledby="${id}-label"`));
+        expect(html).toMatch(new RegExp(`id="${id}-label"`));
+      }
+    });
+
+    it('names the weather readouts, the theme colours and the Reset button', () => {
+      expect(html).toMatch(/class="weather-detail"\s+role="group"\s+aria-label="Humidity"/);
+      expect(html).toMatch(/class="weather-detail"\s+role="group"\s+aria-label="Wind"/);
+      expect(html).toMatch(/id="theme-options"[^>]*aria-labelledby="theme-options-label"/s);
+      expect(html).not.toMatch(/aria-label="Theme colors"/);
+      expect(html).toMatch(/id="primary-cards-reset"\s+aria-describedby="primary-cards-title"/);
+    });
+
+    it('lets the visible label name each colour channel', () => {
+      for (const channel of ['Red', 'Green', 'Blue']) {
+        expect(html).not.toMatch(new RegExp(`aria-label="${channel} channel"`));
+      }
+    });
+
+    it('groups the primary card buttons under their card name', () => {
+      expect(html).toMatch(
+        /data-primary-card="0"\s+role="group"\s+aria-labelledby="primary-card-1-label"/
+      );
+      expect(html).toMatch(
+        /data-primary-card="1"\s+role="group"\s+aria-labelledby="primary-card-2-label"/
+      );
+    });
+  });
 });

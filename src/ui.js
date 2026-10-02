@@ -1621,11 +1621,6 @@ function renderPrimaryEntityCard(cardEl, entityId) {
   cardEl.classList.toggle('primary-light-card', resolvedEntityId.startsWith('light.'));
   cardEl.dataset.primaryType = 'entity';
   cardEl.dataset.entityId = resolvedEntityId;
-  if (entity?.state) {
-    cardEl.dataset.state = entity.state;
-  } else {
-    cardEl.removeAttribute('data-state');
-  }
 
   cardEl.innerHTML = '';
   cardEl.appendChild(control);
@@ -4264,6 +4259,9 @@ function createComparisonGraphTile(graphId) {
   }
 
   tile.dataset.renderSignature = getComparisonGraphSignature(graph);
+  // Without a name the tile reads as loose text and a chart; the title names the whole group.
+  tile.setAttribute('role', 'group');
+  tile.setAttribute('aria-label', graph.name);
 
   const header = document.createElement('div');
   header.className = 'comparison-graph-header';
@@ -4495,7 +4493,9 @@ function showComparisonGraphModal(graphId) {
   nameGroup.className = 'form-group';
   const nameLabel = document.createElement('label');
   nameLabel.textContent = t('Graph name');
+  nameLabel.htmlFor = `comparison-graph-name-${graphId}`;
   const nameInput = document.createElement('input');
+  nameInput.id = nameLabel.htmlFor;
   nameInput.type = 'text';
   nameInput.className = 'form-control';
   nameInput.maxLength = 40;
@@ -4508,7 +4508,9 @@ function showComparisonGraphModal(graphId) {
   widthGroup.className = 'form-group';
   const widthLabel = document.createElement('label');
   widthLabel.textContent = t('Width');
+  widthLabel.htmlFor = `comparison-graph-width-${graphId}`;
   const widthSelect = document.createElement('select');
+  widthSelect.id = widthLabel.htmlFor;
   widthSelect.className = 'form-control';
   COMPARISON_GRAPH_SPAN_OPTIONS.forEach((option) => {
     const optionEl = document.createElement('option');
@@ -4530,14 +4532,15 @@ function showComparisonGraphModal(graphId) {
   hint.className = 'form-help';
   body.appendChild(hint);
 
-  // The app scopes .form-control styling to .form-group, so these need the wrapper or they render
-  // as raw unstyled inputs.
+  // The group spaces the field like the others above it.
   const searchGroup = document.createElement('div');
   searchGroup.className = 'form-group';
   const search = document.createElement('input');
   search.type = 'text';
   search.className = 'form-control';
+  search.spellcheck = false;
   search.placeholder = t('Search sensors…');
+  search.setAttribute('aria-label', t('Search sensors…'));
   searchGroup.appendChild(search);
   body.appendChild(searchGroup);
 
@@ -4734,6 +4737,7 @@ function showComparisonGraphModal(graphId) {
 
       const name = document.createElement('span');
       name.className = 'entity-name';
+      name.id = `comparison-graph-sensor-${entityId}`;
       name.textContent = utils.getEntityDisplayName(entity);
 
       // For attribute-backed entities the entity id alone doesn't say what gets plotted, so name
@@ -4762,6 +4766,8 @@ function showComparisonGraphModal(graphId) {
       button.type = 'button';
       button.className = `entity-selector-btn ${isSelected ? 'remove' : 'add'}`;
       button.textContent = isSelected ? t('Remove') : t('Add');
+      // A column of identical Add or Remove buttons says nothing; the sensor's name does.
+      button.setAttribute('aria-describedby', name.id);
       button.disabled = graphMutationInFlight || (!isSelected && atCapacity);
       button.addEventListener('click', async () => {
         if (graphMutationInFlight) return;
@@ -4796,6 +4802,8 @@ function showComparisonGraphModal(graphId) {
 
   nameInput.addEventListener('change', async () => {
     await save({ name: nameInput.value });
+    // A blank name keeps the old one, so show it again instead of leaving the field empty.
+    if (modal.isConnected) reconcileEditor();
   });
   widthSelect.addEventListener('change', async () => {
     await save({ span: Number(widthSelect.value) });
@@ -9777,6 +9785,7 @@ function openEntityRepairModal(staleEntityId) {
   const search = document.createElement('input');
   search.type = 'search';
   search.className = 'form-control';
+  search.spellcheck = false;
   search.placeholder = t('Search replacement entities...');
   search.setAttribute('aria-label', t('Search replacement entities'));
   searchGroup.appendChild(search);
