@@ -4,14 +4,20 @@
  *
  * Starts a mock Home Assistant, launches the unpacked app (`electron .`) against a throwaway
  * profile, drives it over the Chrome DevTools Protocol, and saves two PNGs per scene:
- *   <scene>-page.png    the web contents, identical on every run of a given build;
+ *   <scene>-page.png    the web contents;
  *   <scene>-screen.png  that area of the real screen, including what the OS draws behind and
  *                       around the window (Windows acrylic, macOS vibrancy, shadows, fonts).
  * The screen capture is best effort: if the OS refuses (permissions, no display), the page
- * capture still lands and the run continues.
+ * capture still lands and the run continues. The scenes live in scenes.cjs; a scene that fails
+ * is reported and skipped, and the run exits non-zero once the others are done.
  *
  * Usage: npm run build:renderer && node scripts/visual-snapshots/run.cjs [outDir]
  * Needs Node 22+ (global WebSocket). On Linux run it under xvfb-run.
+ *
+ * Environment:
+ *   SNAPSHOT_DEBUG_PORT   the app's remote debugging port (default 9333); give parallel runs on
+ *                         one machine different ports
+ *   SNAPSHOT_SCENES       only run scenes whose name matches this regular expression
  */
 
 const { spawn, execFileSync } = require('child_process');
@@ -19,12 +25,26 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { startMockHomeAssistant } = require('./mock-home-assistant.cjs');
-const { TOKEN, buildConfig, buildStates } = require('./fixture.cjs');
+const {
+  TOKEN,
+  WINDOW_POSITION,
+  WINDOW_SIZE,
+  buildConfig,
+  buildServices,
+  buildStates,
+} = require('./fixture.cjs');
+const { scenes } = require('./scenes.cjs');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const OUT_DIR = path.resolve(process.argv[2] || path.join(ROOT, 'visual-snapshots'));
-const DEBUG_PORT = 9333;
+const DEBUG_PORT = Number(process.env.SNAPSHOT_DEBUG_PORT) || 9333;
+const SCENE_FILTER = process.env.SNAPSHOT_SCENES ? new RegExp(process.env.SNAPSHOT_SCENES) : null;
 const SCREEN_MARGIN = 32;
+// CDP's modifier bit for Ctrl in Input.dispatchKeyEvent.
+const CTRL = 2;
+// Language packs are not bundled (except German); scenes in these languages need the repo's pack
+// installed in the profile, which is also the version a PR is changing.
+const INSTALLED_PACKS = ['ar'];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -108,81 +128,62 @@ function captureScreen(file, { left, top, width, height }) {
   }
 }
 
-const SCENES = [
-  { name: 'main-dark', setup: '' },
-  {
-    name: 'popup-brightness',
-    setup: `document.querySelector('#quick-controls [data-entity-id="light.desk_lamp"] .tile-details-button')?.click();`,
-    teardown: `document.querySelector('#brightness-cancel')?.click();`,
-  },
-  {
-    name: 'popup-climate',
-    setup: `document.querySelector('#quick-controls [data-entity-id="climate.living_room"] .tile-details-button')?.click();`,
-    teardown: `document.querySelector('#climate-cancel')?.click();`,
-  },
-  {
-    name: 'edit-mode',
-    setup: `document.querySelector('#reorganize-quick-controls-btn')?.click();`,
-    teardown: `document.querySelector('#reorganize-quick-controls-btn')?.click();`,
-  },
-  {
-    name: 'settings',
-    setup: `document.querySelector('#settings-btn')?.click();`,
-    teardown: `document.querySelector('#close-settings')?.click();`,
-  },
-  {
-    name: 'settings-appearance',
-    setup: `document.querySelector('#settings-btn')?.click();
-      setTimeout(() => document.querySelector('#settings-modal .tab-link[data-tab="personalization"]')?.click(), 300);`,
-    teardown: `document.querySelector('#close-settings')?.click();`,
-  },
-  {
-    name: 'main-light',
-    setup: `(async () => {
-      const cfg = await window.electronAPI.getConfig();
-      await window.electronAPI.updateConfig({ ui: { ...cfg.ui, theme: 'light' } });
-    })()`,
-  },
-  {
-    name: 'main-light-solid',
-    setup: `window.electronAPI.updateConfig({ frostedGlass: false })`,
-  },
-  // The fixture turns seasonal themes off so the scenes above do not change with the date; these
-  // force a holiday on. They also switch the themes on explicitly: CI machines often ask for
-  // reduced motion, which otherwise keeps them off. The background scene is random, so these
-  // differ a little run to run.
-  {
-    name: 'halloween',
-    setup: `(async () => {
-      const cfg = await window.electronAPI.getConfig();
-      await window.electronAPI.updateConfig({
-        frostedGlass: true,
-        ui: { ...cfg.ui, theme: 'dark', seasonal: { enabled: true, show: 'halloween', showUntil: Date.now() + 3600000 } },
-      });
-    })()`,
-  },
-  {
-    name: 'christmas-light',
-    setup: `(async () => {
-      const cfg = await window.electronAPI.getConfig();
-      await window.electronAPI.updateConfig({
-        ui: { ...cfg.ui, theme: 'light', seasonal: { enabled: true, show: 'christmas', showUntil: Date.now() + 3600000 } },
-      });
-    })()`,
-  },
-];
+// Toasts last up to 20 s, and Linux runners without a keyring raise two at start-up, so one
+// would otherwise sit in every scene that follows the action that raised it.
+const REMOVE_TOASTS = `document.querySelectorAll('#toast-container .toast').forEach((toast) => toast.remove())`;
+
+const OPEN_DIALOGS = `[...document.querySelectorAll('.modal, .command-palette-overlay')].filter((element) =>
+  !element.classList.contains('hidden') &&
+  !element.classList.contains('modal-closing') &&
+  element.getClientRects().length > 0
+).length`;
+
+const CLICK_DIALOG_CLOSE = `(() => {
+  const dialogs = [...document.querySelectorAll('.modal, .command-palette-overlay')].filter((element) =>
+    !element.classList.contains('hidden') &&
+    !element.classList.contains('modal-closing') &&
+    element.getClientRects().length > 0
+  );
+  const top = dialogs[dialogs.length - 1];
+  if (!top) return false;
+  const button = top.querySelector('.close-btn, [id^="close-"], [id$="-cancel"], .btn-secondary');
+  if (button) button.click();
+  else top.remove();
+  return true;
+})()`;
+
+function installLocalePacks(profileDir) {
+  const installed = path.join(profileDir, 'locales');
+  fs.mkdirSync(installed, { recursive: true });
+  for (const locale of INSTALLED_PACKS) {
+    fs.copyFileSync(
+      path.join(ROOT, 'locale-packs', `${locale}.json`),
+      path.join(installed, `${locale}.json`)
+    );
+  }
+}
+
+async function listTargets() {
+  const response = await fetch(`http://127.0.0.1:${DEBUG_PORT}/json/list`);
+  return response.json();
+}
 
 async function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const platformTag = { darwin: 'macos', win32: 'windows' }[process.platform] || 'linux';
+  const selected = scenes.filter((scene) => !SCENE_FILTER || SCENE_FILTER.test(scene.name));
+  if (!selected.length) throw new Error(`No scene matches ${SCENE_FILTER}`);
 
-  const server = await startMockHomeAssistant({ token: TOKEN, states: buildStates() });
+  const server = await startMockHomeAssistant({
+    token: TOKEN,
+    states: buildStates(),
+    services: buildServices(),
+  });
   const haUrl = `http://127.0.0.1:${server.address().port}`;
+  const baseConfig = buildConfig(haUrl);
   const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ha-widget-snapshot-'));
-  fs.writeFileSync(
-    path.join(profileDir, 'config.json'),
-    JSON.stringify(buildConfig(haUrl), null, 2)
-  );
+  fs.writeFileSync(path.join(profileDir, 'config.json'), JSON.stringify(baseConfig, null, 2));
+  installLocalePacks(profileDir);
 
   const electron = require('electron');
   const env = { ...process.env };
@@ -194,18 +195,18 @@ async function main() {
   );
 
   let cdp = null;
+  const failures = [];
   try {
     const target = await waitFor(
-      async () => {
-        const response = await fetch(`http://127.0.0.1:${DEBUG_PORT}/json/list`);
-        const targets = await response.json();
-        return targets.find(
+      async () =>
+        (await listTargets()).find(
           (entry) => entry.type === 'page' && /index\.html(?!.*mode=desktop-pin)/.test(entry.url)
-        );
-      },
+        ),
       { label: 'the main window' }
     );
     cdp = await connectCdp(target.webSocketDebuggerUrl);
+    // Without a window manager nothing is focused; popups and the palette act on focus.
+    await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true }).catch(() => {});
     await waitFor(
       () => cdp.evaluate(`document.querySelectorAll('#quick-controls .control-item').length > 3`),
       { label: 'Quick Access tiles', timeoutMs: 45000 }
@@ -213,23 +214,186 @@ async function main() {
     // Let fonts, the weather icon and the media artwork settle.
     await sleep(1500);
 
-    // The page target has no Browser domain; the window's own screen geometry is enough.
-    const windowBounds = () =>
-      cdp.evaluate(
-        '({ left: window.screenX, top: window.screenY, width: window.outerWidth, height: window.outerHeight })'
-      );
-    for (const scene of SCENES) {
-      if (scene.setup) await cdp.evaluate(scene.setup);
-      await sleep(900);
-      const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' });
-      const base = path.join(OUT_DIR, `${platformTag}-${scene.name}`);
-      fs.writeFileSync(`${base}-page.png`, Buffer.from(data, 'base64'));
-      captureScreen(`${base}-screen.png`, await windowBounds());
-      console.log(`Captured ${scene.name}`);
-      if (scene.teardown) {
-        await cdp.evaluate(scene.teardown);
+    // What each scene is measured against: the fixture's own settings and window.
+    const settingsToReset = ['frostedGlass', 'customTabs', 'activeTabId'];
+    function sceneSettings(scene) {
+      const settings = Object.fromEntries(settingsToReset.map((key) => [key, baseConfig[key]]));
+      return { ...settings, ...scene.config, ui: { ...baseConfig.ui, ...scene.ui } };
+    }
+
+    let applied = { settings: JSON.stringify(sceneSettings({})), media: '[]', size: WINDOW_SIZE };
+
+    const openPins = [];
+    const extraTargets = [];
+    const ctx = {
+      CTRL,
+      sleep,
+      ev: (expression) => cdp.evaluate(expression),
+      async click(selector) {
+        const found = await cdp.evaluate(
+          `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (el) el.click(); return !!el; })()`
+        );
+        if (!found) throw new Error(`Nothing matches ${selector}`);
+      },
+      waitForSelector: (selector) =>
+        waitFor(() => cdp.evaluate(`!!document.querySelector(${JSON.stringify(selector)})`), {
+          label: selector,
+          timeoutMs: 10000,
+        }),
+      /** Wait until a page expression is truthy. */
+      waitForExpression: (expression, label = expression) =>
+        waitFor(() => cdp.evaluate(`!!(${expression})`), { label, timeoutMs: 10000 }),
+      async pressKey(key, { code = key, keyCode = 0, modifiers = 0, text } = {}) {
+        const event = {
+          key,
+          code,
+          windowsVirtualKeyCode: keyCode,
+          nativeVirtualKeyCode: keyCode,
+          modifiers,
+        };
+        await cdp.send('Input.dispatchKeyEvent', {
+          type: text ? 'keyDown' : 'rawKeyDown',
+          ...event,
+          ...(text ? { text } : {}),
+        });
+        await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...event });
+      },
+      insertText: (text) => cdp.send('Input.insertText', { text }),
+      /** Pin an entity to the desktop and return the CDP client of its window. */
+      async openPin(entityId) {
+        const result = await cdp.evaluate(
+          `window.electronAPI.pinEntityToDesktop(${JSON.stringify(entityId)})`
+        );
+        if (!result?.success) throw new Error(`Pinning ${entityId} failed: ${result?.error}`);
+        openPins.push(entityId);
+        const pinTarget = await waitFor(
+          async () =>
+            (await listTargets()).find(
+              (entry) =>
+                entry.type === 'page' &&
+                entry.url.includes('mode=desktop-pin') &&
+                decodeURIComponent(entry.url).includes(`entityId=${entityId}`)
+            ),
+          { label: `the ${entityId} pin window` }
+        );
+        // A new pin opens over the main window; move it to the free space on the right so the
+        // screen capture shows the pin on its own. Bounds can only change in edit mode.
+        const [x, y] = [WINDOW_POSITION.x + WINDOW_SIZE.width + 24, WINDOW_POSITION.y];
+        await cdp.evaluate(`(async () => {
+          await window.electronAPI.setDesktopPinEditMode(true);
+          await window.electronAPI.updateDesktopPinBounds(${JSON.stringify(entityId)}, { x: ${x}, y: ${y} });
+          await window.electronAPI.setDesktopPinEditMode(false);
+        })()`);
+        const pin = await connectCdp(pinTarget.webSocketDebuggerUrl);
+        extraTargets.push(pin);
+        await waitFor(() => pin.evaluate(`!!document.querySelector('.desktop-pin-shell')`), {
+          label: `the ${entityId} pin content`,
+        });
+        await sleep(900);
+        return pin;
+      },
+    };
+
+    async function closeDialogs() {
+      for (let attempt = 0; attempt < 8 && (await cdp.evaluate(OPEN_DIALOGS)) > 0; attempt += 1) {
+        // Escape closes most of them; the rest have a Cancel or Close button.
+        await ctx.pressKey('Escape', { code: 'Escape', keyCode: 27 });
+        await sleep(550);
+        if ((await cdp.evaluate(OPEN_DIALOGS)) === 0) break;
+        await cdp.evaluate(CLICK_DIALOG_CLOSE);
+        await sleep(550);
+      }
+      if (await cdp.evaluate(`!!document.querySelector('#quick-controls.reorganize-mode')`)) {
+        await ctx.click('#reorganize-quick-controls-btn');
         await sleep(400);
       }
+    }
+
+    async function restore() {
+      for (const pin of extraTargets.splice(0)) pin.close();
+      for (const entityId of openPins.splice(0)) {
+        await cdp.evaluate(
+          `window.electronAPI.unpinEntityFromDesktop(${JSON.stringify(entityId)})`
+        );
+        await sleep(400);
+      }
+      await closeDialogs();
+    }
+
+    async function prepare(scene) {
+      const settings = sceneSettings(scene);
+      const key = JSON.stringify(settings);
+      const settingsChanged = key !== applied.settings;
+      if (settingsChanged) {
+        await cdp.evaluate(`(async () => {
+          const patch = ${key};
+          const cfg = await window.electronAPI.getConfig();
+          await window.electronAPI.updateConfig({ ...patch, ui: { ...cfg.ui, ...patch.ui } });
+        })()`);
+        await waitFor(
+          () =>
+            cdp.evaluate(
+              `document.querySelector('#quick-access-tabs .quick-access-tab-link.active')?.dataset.tab === ${JSON.stringify(settings.activeTabId)}`
+            ),
+          { label: 'the page tabs', timeoutMs: 10000 }
+        );
+        // A new language takes longer to repaint than a theme.
+        await sleep(settings.ui.language === baseConfig.ui.language ? 700 : 1100);
+        applied.settings = key;
+      }
+
+      const size = scene.size || WINDOW_SIZE;
+      if (size.width !== applied.size.width || size.height !== applied.size.height) {
+        await cdp.evaluate(`window.resizeTo(${size.width}, ${size.height})`);
+        await waitFor(
+          () => cdp.evaluate(`innerWidth === ${size.width} && innerHeight === ${size.height}`),
+          { label: `a ${size.width}x${size.height} window`, timeoutMs: 5000 }
+        ).catch((error) => console.warn(`${scene.name}: ${error.message}`));
+        applied.size = size;
+        await sleep(500);
+      }
+
+      const features = scene.media || [];
+      const media = JSON.stringify(features);
+      if (media !== applied.media || (features.length && settingsChanged)) {
+        // A theme change while forced colours are emulated makes Chromium drop the forced
+        // palette even though matchMedia still reports it, so switch the emulation off and on.
+        await cdp.send('Emulation.setEmulatedMedia', { features: [] });
+        if (features.length) {
+          await sleep(250);
+          await cdp.send('Emulation.setEmulatedMedia', { features });
+        }
+        await sleep(600);
+        applied.media = media;
+      }
+    }
+
+    async function capture(name, source) {
+      await source.evaluate(REMOVE_TOASTS);
+      const { data } = await source.send('Page.captureScreenshot', { format: 'png' });
+      const base = path.join(OUT_DIR, `${platformTag}-${name}`);
+      fs.writeFileSync(`${base}-page.png`, Buffer.from(data, 'base64'));
+      // The page target has no Browser domain; the window's own screen geometry is enough.
+      const bounds = await source.evaluate(
+        '({ left: window.screenX, top: window.screenY, width: window.outerWidth, height: window.outerHeight })'
+      );
+      captureScreen(`${base}-screen.png`, bounds);
+    }
+
+    for (const scene of selected) {
+      try {
+        await prepare(scene);
+        const result = scene.setup ? await scene.setup(ctx) : null;
+        await sleep(scene.settle ?? 900);
+        await capture(scene.name, result?.capture || cdp);
+        console.log(`Captured ${scene.name}`);
+      } catch (error) {
+        failures.push(scene.name);
+        console.error(`Scene ${scene.name} failed: ${error.message}`);
+        // What the window looked like when it went wrong is the best clue.
+        await capture(`${scene.name}-failed`, cdp).catch(() => {});
+      }
+      await restore().catch((error) => console.warn(`Reset after ${scene.name}: ${error.message}`));
     }
   } finally {
     cdp?.close();
@@ -244,6 +408,8 @@ async function main() {
     fs.rmSync(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 250 });
   }
   console.log(`Snapshots written to ${OUT_DIR}`);
+  if (failures.length)
+    throw new Error(`${failures.length} scene(s) failed: ${failures.join(', ')}`);
 }
 
 main()
