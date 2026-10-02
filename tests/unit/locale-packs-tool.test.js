@@ -96,7 +96,7 @@ const newString = {
 };
 
 afterAll(() => {
-  tempRoots.forEach((root) => fs.rmSync(root, { recursive: true, force: true }));
+  tempRoots.forEach((root) => fs.rmSync(root, { recursive: true, force: true, maxRetries: 3 }));
 });
 
 describe('locale-packs check', () => {
