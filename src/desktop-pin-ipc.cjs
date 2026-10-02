@@ -1,6 +1,9 @@
 const HOME_ASSISTANT_TOKEN_PLACEHOLDER = 'YOUR_LONG_LIVED_ACCESS_TOKEN';
 const HOME_ASSISTANT_URL_PLACEHOLDERS = new Set(['YOUR_HOME_ASSISTANT_URL', 'HOME_ASSISTANT_URL']);
-const DESKTOP_PIN_ALLOWED_ACTIONS = new Set(['focus-main', 'service-call']);
+const DESKTOP_PIN_ALLOWED_ACTIONS = new Set(['focus-main', 'open-details', 'service-call']);
+// A pin may ask the main window to open an entity's details only for the family whose control is
+// that: a camera pin's Open button opens the viewer there instead of inside a 168x148 window.
+const DESKTOP_PIN_OPEN_DETAILS_DOMAINS = new Set(['camera']);
 
 function isPlainObject(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -70,6 +73,18 @@ function normalizeDesktopPinActionRequest(entityId, action, payload = {}) {
   }
 
   if (normalizedAction === 'focus-main') {
+    return {
+      success: true,
+      entityId: normalizedEntityId,
+      action: normalizedAction,
+      payload: {},
+    };
+  }
+
+  if (normalizedAction === 'open-details') {
+    if (!DESKTOP_PIN_OPEN_DETAILS_DOMAINS.has(normalizedEntityId.split('.')[0])) {
+      return { success: false, error: 'Unauthorized desktop pin action' };
+    }
     return {
       success: true,
       entityId: normalizedEntityId,

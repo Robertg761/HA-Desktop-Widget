@@ -5,7 +5,19 @@ function finiteAttribute(attributes, name) {
   return Number.isFinite(number) ? number : null;
 }
 
-function getClimateControlCapabilities(entity) {
+// What Home Assistant steps a target by when the integration publishes no step of its own: a
+// whole degree in Fahrenheit, half a degree otherwise. Offering 71.5°F to a thermostat that takes
+// whole degrees has it round the value or reject the command.
+function getDefaultTemperatureStep(unit) {
+  return typeof unit === 'string' && /f/i.test(unit) ? 1 : 0.5;
+}
+
+/**
+ * @param {Object} entity - A climate entity.
+ * @param {{unit?: string}} [options] - The temperature unit Home Assistant is configured with
+ *   (its unit system's `temperature`), which sets the default step.
+ */
+function getClimateControlCapabilities(entity, { unit = '' } = {}) {
   const attributes = entity?.attributes || {};
   const modes = (name) => [
     ...new Set(
@@ -36,7 +48,10 @@ function getClimateControlCapabilities(entity) {
     targetHigh,
     minTemp,
     maxTemp,
-    temperatureStep: step > 0 && step <= Math.max(1, (maxTemp || 0) - (minTemp || 0)) ? step : 0.5,
+    temperatureStep:
+      step > 0 && step <= Math.max(1, (maxTemp || 0) - (minTemp || 0))
+        ? step
+        : getDefaultTemperatureStep(unit),
     canSetTemperature: !rangeMode && supports(1) && targetTemp !== null && validBounds,
     canSetRange:
       rangeMode &&
@@ -53,4 +68,4 @@ function getClimateControlCapabilities(entity) {
   };
 }
 
-module.exports = { getClimateControlCapabilities };
+module.exports = { getClimateControlCapabilities, getDefaultTemperatureStep };
