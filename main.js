@@ -359,6 +359,7 @@ const {
   createDesktopPinConnectionState,
   createDesktopPinRendererConfig,
   normalizeDesktopPinActionRequest,
+  normalizeHaUnitSystem,
 } = require('./src/desktop-pin-ipc.cjs');
 const {
   getWindowsStartupRegistryName,
@@ -388,6 +389,7 @@ const {
   NATIVE_WAYLAND_ENV_OVERRIDE,
   getAppIconPath,
   getMainWindowVisualOptions,
+  getRelaunchOptions,
   mergeChromiumFeatureList,
   resolveLinuxPasswordStoreBackend,
   resolveNativeThemeSource,
@@ -1071,6 +1073,12 @@ const desktopPinContentMinBounds = new Map();
 const pendingDesktopPinActionRequests = new Map();
 let nextDesktopPinActionRequestId = 1;
 const latestEntityStates = new Map();
+// Pin windows never open a websocket, so Home Assistant's unit system (the only thing that says a
+// climate entity is in degrees Fahrenheit) reaches them from the main renderer through here.
+// Unlike the entity cache it is small and stays valid across unpinning, so it is not dropped then.
+// Switching instance does not clear it either: the main renderer republishes it from the new
+// instance's config as soon as it connects, and until then the entity cache is just as stale.
+let latestHaUnitSystem = null;
 let hasPublishedHaSnapshot = false;
 // Coalesces 'desktop-pin-snapshot-needed' requests: pin windows created in one burst
 // (repin-all, profile sync) each bootstrap before the first publish round-trips, and
@@ -2595,6 +2603,7 @@ function sendDesktopPinUpdate(entityId, extra = {}) {
   window.webContents.send('desktop-pin-update', {
     entityId,
     entity: latestEntityStates.get(entityId) || null,
+    unitSystem: latestHaUnitSystem,
     hasSnapshot: hasPublishedHaSnapshot,
     pinBounds: config?.desktopPins?.[entityId] || null,
     supportsWindowPositioning: !usesCompositorOwnedPlacement,
@@ -4729,16 +4738,21 @@ function resolveTrayIcon() {
     return image.resize({ width: traySize, height: traySize });
   };
 
-  try {
-    const exePath = app?.getPath ? app.getPath('exe') : process.execPath;
-    if (exePath && fs.existsSync(exePath)) {
-      const exeImage = nativeImage.createFromPath(exePath);
-      if (exeImage && !exeImage.isEmpty()) {
-        return ensureTraySize(exeImage);
+  // Only a Windows executable carries an embedded icon. On Linux and macOS this reads the whole
+  // Electron binary (over 200 MB) as an image, stalls the main thread for about 100 ms and still
+  // comes back empty.
+  if (preferIco) {
+    try {
+      const exePath = app?.getPath ? app.getPath('exe') : process.execPath;
+      if (exePath && fs.existsSync(exePath)) {
+        const exeImage = nativeImage.createFromPath(exePath);
+        if (exeImage && !exeImage.isEmpty()) {
+          return ensureTraySize(exeImage);
+        }
       }
+    } catch (error) {
+      log.warn('Unable to load tray icon from executable:', error.message);
     }
-  } catch (error) {
-    log.warn('Unable to load tray icon from executable:', error.message);
   }
 
   const candidates = [];
@@ -8480,6 +8494,7 @@ ipcMain.handle('get-desktop-pin-bootstrap', (event, entityId) => {
   return {
     entityId: normalizedEntityId,
     entity: latestEntityStates.get(normalizedEntityId) || null,
+    unitSystem: latestHaUnitSystem,
     hasSnapshot: hasPublishedHaSnapshot,
     pinBounds: config?.desktopPins?.[normalizedEntityId] || null,
     supportsWindowPositioning: !usesCompositorOwnedPlacement,
@@ -8541,6 +8556,19 @@ ipcMain.handle('publish-omarchy-bar-tiles', (event, payload) => {
   omarchyBarPublisher.update();
   deliverPendingOmarchyBarAction();
   return { success: true, count: omarchyBarTiles.size };
+});
+
+ipcMain.handle('publish-ha-unit-system', (event, unitSystem) => {
+  const sender = authorizeIpcSender(event, 'publish-ha-unit-system');
+  if (!sender) return rejectUnauthorizedIpc('publish-ha-unit-system');
+  const normalized = normalizeHaUnitSystem(unitSystem);
+  if (!normalized) return { success: false, error: 'Invalid unit system' };
+  if (JSON.stringify(normalized) === JSON.stringify(latestHaUnitSystem)) return { success: true };
+  latestHaUnitSystem = normalized;
+  Object.keys(config?.desktopPins || {}).forEach((entityId) => {
+    sendDesktopPinUpdate(entityId, { type: 'unit-system' });
+  });
+  return { success: true };
 });
 
 ipcMain.handle('publish-ha-snapshot', (event, states) => {
@@ -10063,7 +10091,7 @@ async function restartApplication() {
     // app.relaunch() spawns the successor only after this process exits, which is
     // also what frees the lock — no explicit release needed, and holding it until
     // then keeps the single-instance guarantee unbroken.
-    app.relaunch();
+    app.relaunch(getRelaunchOptions());
   }
   app.exit(0);
 }
@@ -10090,6 +10118,15 @@ ipcMain.handle('minimize-window', (event) => {
       mainWindow.minimize();
     }
   }
+});
+
+// The title bar's X. It closes the window exactly as Alt+F4 and Cmd+W do, so the window's own close
+// handler decides what that means (hide to the tray, or whatever that handler does on this
+// platform) and the app keeps running. Quitting stays with the tray menu and the app menu.
+ipcMain.handle('close-window', (event) => {
+  const sender = authorizeIpcSender(event, 'close-window');
+  if (!sender) return rejectUnauthorizedIpc('close-window');
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
 });
 
 // A click on one of the widget's desktop notifications. Shows it the way the tray does, which
@@ -12574,7 +12611,7 @@ app.on('child-process-gone', (_event, details) => {
   }
   // The explicit platform argument is also what stops the relaunched instance from forcing
   // XWayland again, so this cannot loop.
-  app.relaunch({ args: process.argv.slice(1).concat('--ozone-platform=wayland') });
+  app.relaunch(getRelaunchOptions({ extraArgs: ['--ozone-platform=wayland'] }));
   app.quit();
 });
 

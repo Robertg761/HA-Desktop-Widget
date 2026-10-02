@@ -8868,6 +8868,12 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   box-shadow: var(--glow-focus);
 }
 
+/* Scoped to beat the settings modal's own :focus-visible border, so a rejected value stays red
+   while the field has focus too. */
+#settings-modal #custom-color-hex[aria-invalid='true'] {
+  border-color: var(--error);
+}
+
 #custom-color-r::-webkit-outer-spin-button,
 #custom-color-r::-webkit-inner-spin-button,
 #custom-color-g::-webkit-outer-spin-button,
@@ -9962,6 +9968,12 @@ body.widget-state-active #quick-controls .status-message {
 }
 
 /* Confirmation Modal - Compact Style */
+/* The confirmation is one static element near the top of <body>, but dialogs built on demand
+   (the comparison graph editor) are appended after it at the same z-index and would paint over it. */
+#confirm-modal {
+  z-index: var(--z-modal);
+}
+
 .confirm-modal-content {
   max-width: 400px;
   min-width: 320px;
@@ -10684,7 +10696,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   min-height: 0;
 }
 
-/* Media text lines — with marquee scrolling on hover */
+/* Media text lines. A line that does not fit ends in an ellipsis; the full text is its tooltip. */
 .media-title {
   font-size: 0.75em;
   font-weight: 600;
@@ -10717,26 +10729,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   line-height: 1.2;
   width: 100%;
   text-align: center;
-}
-
-/* Marquee animation wrapper on hover */
-.media-player-entity:hover .media-title,
-.media-player-entity:hover .media-artist,
-.media-player-entity:hover .media-album {
-  overflow: visible;
-  text-overflow: clip;
-  animation: marquee-scroll 10s linear infinite;
-}
-
-@keyframes marquee-scroll {
-  0%,
-  10% {
-    transform: translateX(0%);
-  }
-  90%,
-  100% {
-    transform: translateX(calc(-100% + 80px));
-  }
 }
 
 /* Media Controls */
@@ -12726,6 +12718,11 @@ label.disabled {
   font-size: var(--font-size-sm);
 }
 
+/* A page row has no state. Its empty item would still take a flex gap and inset the type chip. */
+.command-palette-result-state:empty {
+  display: none;
+}
+
 .command-palette-empty {
   padding: 22px 16px 24px;
   color: var(--text-secondary);
@@ -14133,6 +14130,15 @@ body.theme-light #settings-modal .modal-footer {
   color: var(--warning);
 }
 
+#settings-modal .form-help.form-error {
+  color: var(--error);
+}
+
+/* --error is tuned for dark surfaces; this is the same hue re-stepped to read as text on white. */
+body.theme-light #settings-modal .form-help.form-error {
+  color: #c62828;
+}
+
 #settings-modal .setting-text > .form-help:first-of-type {
   margin-top: 2px;
 }
@@ -15000,10 +15006,13 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
 }
 
 /* Camera viewer: a fixed 16:9 frame, so a slow or failed feed doesn't collapse the dialog to a
-   thin black bar or show a broken-image icon. */
+   thin black bar or show a broken-image icon. The track is sized by the frame rather than by its
+   content, otherwise a taller picture (4:3, a portrait doorbell) grows the row past the frame and
+   overflow:hidden crops it before object-fit can letterbox it. */
 .camera-modal .camera-viewer {
   position: relative;
   display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   place-items: center;
   aspect-ratio: 16 / 9;
   overflow: hidden;
@@ -15016,6 +15025,8 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   grid-area: 1 / 1;
   width: 100%;
   height: 100%;
+  min-width: 0;
+  min-height: 0;
   max-height: none;
   border-radius: 0;
   background: transparent;

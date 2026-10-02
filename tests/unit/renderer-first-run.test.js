@@ -323,9 +323,10 @@ describe('Renderer first-run Home Assistant authorization', () => {
       }
       expect(mockSettings.closeSettings).toHaveBeenCalledTimes(2);
 
-      // Once Settings has closed, an explicit app quit still works.
+      // Once Settings has closed, the title bar's X closes the window like Alt+F4 does.
       document.getElementById('close-btn').click();
-      expect(mockElectronAPI.quitApp).toHaveBeenCalledTimes(1);
+      expect(mockElectronAPI.closeWindow).toHaveBeenCalledTimes(1);
+      expect(mockElectronAPI.quitApp).not.toHaveBeenCalled();
     }
   );
 
@@ -535,11 +536,11 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 3 of 4');
   });
 
-  it('distinguishes Quit from the Settings Close action', async () => {
+  it('distinguishes the title bar Hide from the Settings Close action', async () => {
     await loadRenderer({ bodyHtml: settingsNavigationHtml() });
     expect(document.querySelector('button[aria-label="Close"]').id).toBe('close-settings');
-    expect(document.getElementById('close-btn').getAttribute('data-i18n-aria-label')).toBe('Quit');
-    expect(document.getElementById('close-btn').title).toBe('Quit');
+    expect(document.getElementById('close-btn').getAttribute('data-i18n-aria-label')).toBe('Hide');
+    expect(document.getElementById('close-btn').title).toBe('Hide');
   });
 
   it.each(['close-settings', 'cancel-settings'])(
@@ -554,25 +555,27 @@ describe('Renderer first-run Home Assistant authorization', () => {
       expect(document.getElementById('first-run-onboarding').classList.contains('hidden')).toBe(
         true
       );
-      expect(mockElectronAPI.quitApp).not.toHaveBeenCalled();
+      expect(mockElectronAPI.closeWindow).not.toHaveBeenCalled();
       document.getElementById('close-btn').click();
-      expect(mockElectronAPI.quitApp).toHaveBeenCalledTimes(1);
+      expect(mockElectronAPI.closeWindow).toHaveBeenCalledTimes(1);
     }
   );
 
-  it('preserves the explicit Quit action even during a Settings detour', async () => {
+  it('closes the window from the title bar even during a Settings detour, without quitting', async () => {
     await loadRenderer({ bodyHtml: settingsNavigationHtml() });
     await clickButton('Full Settings');
     document.getElementById('close-btn').click();
-    expect(mockElectronAPI.quitApp).toHaveBeenCalledTimes(1);
+    expect(mockElectronAPI.closeWindow).toHaveBeenCalledTimes(1);
+    expect(mockElectronAPI.quitApp).not.toHaveBeenCalled();
     expect(mockSettings.closeSettings).not.toHaveBeenCalled();
   });
 
-  it('preserves the app quit action for configured users', async () => {
+  it('closes the window from the title bar for configured users, without quitting', async () => {
     await loadRenderer({ config: oauthConfig(), bodyHtml: settingsNavigationHtml() });
     mockSettings.openSettings();
     document.getElementById('close-btn').click();
-    expect(mockElectronAPI.quitApp).toHaveBeenCalledTimes(1);
+    expect(mockElectronAPI.closeWindow).toHaveBeenCalledTimes(1);
+    expect(mockElectronAPI.quitApp).not.toHaveBeenCalled();
     expect(mockSettings.closeSettings).not.toHaveBeenCalled();
   });
 

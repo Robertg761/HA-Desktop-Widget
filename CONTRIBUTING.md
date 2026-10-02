@@ -76,6 +76,34 @@ Thank you for your interest in contributing to HA Desktop Widget! This document 
 - **Modularity**: Break large functions into smaller, focused functions
 - **Error Handling**: Always include proper error handling and user feedback
 
+### Language Packs
+
+User-visible text goes through `t()` or `data-i18n`, and every new or changed string lives in `locales/en.json`, in each downloadable pack in `locale-packs/` (`ar`, `de`, `es`, `fr`, `hi`, `zh`) and in the bundled `locales/de.json`. A changed pack also needs a higher patch `version`, and `locale-packs/manifest.json` needs that version and the SHA-256 of the exact file bytes. `scripts/locale-packs.cjs` does the bookkeeping:
+
+```bash
+node scripts/locale-packs.cjs add strings.json   # {"Key": {"en": "...", "ar": "...", "de": "...", "es": "...", "fr": "...", "hi": "...", "zh": "..."}}
+node scripts/locale-packs.cjs bump               # patch-bump every pack that changed, refresh the manifest
+node scripts/locale-packs.cjs check              # keys, {{placeholders}}, no blank text, versions and hashes agree
+```
+
+`remove <key>...` deletes keys everywhere, `manifest` only refreshes the manifest (after a hand edit, say), and `check --against origin/main` also fails on a pack that changed without a version bump. Packs are downloaded from `main`, so a translation only reaches users once it is merged and the manifest is current. Reuse the words a pack already uses for the same term and keep `{{placeholders}}` identical. A pack value that is still the English text fails the untranslated-string guard unless that language really writes the word that way.
+
+**Merge conflicts in the packs.** Two branches that add strings both append to the end of every catalog, so they always conflict. Do not resolve those files by hand. Keep both sides' keys and let the tool redo the bookkeeping:
+
+```bash
+git merge origin/main                                   # conflicts in locales/ and locale-packs/
+node scripts/locale-packs.cjs export "$(git merge-base HEAD MERGE_HEAD)" > /tmp/my-strings.json
+git checkout MERGE_HEAD -- locales locale-packs         # take main's catalogs wholesale
+node scripts/locale-packs.cjs add /tmp/my-strings.json  # put your keys back on top
+node scripts/locale-packs.cjs bump --against MERGE_HEAD # one version above main's
+node scripts/locale-packs.cjs check --against MERGE_HEAD
+git add locales locale-packs
+```
+
+`export` lists only the texts your branch changed: every language of a key you added, and just the languages you edited for a key that already existed. A language only main touched keeps main's newer text. If both branches reworded the same language of the same key, yours replaces main's, so look at `git diff MERGE_HEAD -- locale-packs` before you commit.
+
+`export` cannot say "deleted", so a key you deleted comes back with main's catalogs. If your branch removed any, run `node scripts/locale-packs.cjs remove <key>...` after the `add` step and before `bump`. In the other direction, if main deleted a key your branch edited, `add` stops with `missing` for that key and writes nothing. To keep the key, give its entry `en` and every language; to accept main's deletion, delete its entry from the exported file. Then run `add` again.
+
 ## 🧪 Testing
 
 ### Manual Testing

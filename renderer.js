@@ -1739,6 +1739,10 @@ async function handleDesktopPinUpdate(message = {}) {
       desktopPinSupportsWindowPositioning = message.supportsWindowPositioning !== false;
     }
 
+    if (Object.prototype.hasOwnProperty.call(message, 'unitSystem')) {
+      applyDesktopPinUnitSystem(message.unitSystem);
+    }
+
     if (Object.prototype.hasOwnProperty.call(message, 'entity')) {
       if (message.entity) {
         state.setEntityState(message.entity);
@@ -2251,6 +2255,10 @@ websocket.on('message', (msg) => {
           if (msg.result && msg.result.unit_system) {
             log.debug('Unit system found:', JSON.stringify(msg.result.unit_system, null, 2));
             state.setUnitSystem(msg.result.unit_system);
+            // Desktop pin windows have no websocket of their own, so main relays this to them.
+            window.electronAPI.publishHaUnitSystem?.(msg.result.unit_system)?.catch((error) => {
+              log.warn('Failed to publish the Home Assistant unit system to main process:', error);
+            });
             // Re-render weather card with correct units
             if (ui.updateWeatherFromHA) {
               ui.updateWeatherFromHA();
@@ -2565,6 +2573,13 @@ function replaceEmojiIcons() {
   }
 }
 
+// Pin windows never open a websocket, so Home Assistant's unit system only reaches them from main.
+// Until it arrives they must not claim the metric defaults: an imperial install would read
+// "72°C" for a house at 72°F, so unit-less degrees are the honest fallback.
+function applyDesktopPinUnitSystem(unitSystem) {
+  state.setUnitSystem(unitSystem && typeof unitSystem === 'object' ? unitSystem : {});
+}
+
 /**
  * Initialize the renderer: load configuration, apply UI preferences, wire UI, start periodic updates, initialize hotkeys and alerts, and connect to Home Assistant.
  *
@@ -2580,6 +2595,7 @@ async function initializeDesktopPinMode() {
     desktopPinBounds = bootstrap?.pinBounds || null;
     desktopPinHasSnapshot = !!bootstrap?.hasSnapshot;
     desktopPinSupportsWindowPositioning = bootstrap?.supportsWindowPositioning !== false;
+    applyDesktopPinUnitSystem(bootstrap?.unitSystem);
 
     if (nextConfig?.homeAssistant) {
       applyRendererConfig(nextConfig);
@@ -2919,7 +2935,7 @@ function wireUI() {
     const closeBtn = document.getElementById('close-btn');
     if (closeBtn) {
       closeBtn.onclick = () => {
-        window.electronAPI.quitApp();
+        window.electronAPI.closeWindow();
       };
     }
 

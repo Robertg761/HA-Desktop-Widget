@@ -151,6 +151,9 @@ const graphemeSegmenter =
     ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
     : null;
 const homeAssistantMdiGlyphs = new Map();
+// How many stylesheets the last scan walked. A name still missing after a scan stays missing until
+// a stylesheet is added, so repeated lookups of an icon the bundled font lacks do not rescan.
+let scannedStyleSheetCount = -1;
 
 function normalizeHomeAssistantMdiIcon(icon) {
   if (typeof icon !== 'string') return null;
@@ -181,7 +184,9 @@ function collectHomeAssistantMdiGlyphsFromRules(rules) {
   if (!rules) return;
 
   for (const rule of rules) {
-    if (rule.cssRules) {
+    // Since CSS nesting every style rule also exposes an empty cssRules list, so only a rule with no
+    // selector (@media, @supports, ...) is a grouping rule to descend into.
+    if (rule.selectorText === undefined && rule.cssRules) {
       collectHomeAssistantMdiGlyphsFromRules(rule.cssRules);
       continue;
     }
@@ -202,11 +207,15 @@ function getHomeAssistantMdiGlyph(icon) {
   if (!iconName || typeof document === 'undefined') return null;
   if (homeAssistantMdiGlyphs.has(iconName)) return homeAssistantMdiGlyphs.get(iconName);
 
-  for (const stylesheet of Array.from(document.styleSheets || [])) {
-    try {
-      collectHomeAssistantMdiGlyphsFromRules(stylesheet.cssRules);
-    } catch {
-      // A stylesheet outside the app origin may deny CSSOM access. The bundled MDI sheet does not.
+  const stylesheets = Array.from(document.styleSheets || []);
+  if (stylesheets.length !== scannedStyleSheetCount) {
+    scannedStyleSheetCount = stylesheets.length;
+    for (const stylesheet of stylesheets) {
+      try {
+        collectHomeAssistantMdiGlyphsFromRules(stylesheet.cssRules);
+      } catch {
+        // A stylesheet outside the app origin may deny CSSOM access. The bundled MDI sheet does not.
+      }
     }
   }
 

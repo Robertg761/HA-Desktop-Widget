@@ -298,6 +298,7 @@ function createMockElectronAPI() {
     // re-publishes when a joined publish resolves falsy or `discarded`.
     publishHaSnapshot: jest.fn((_states) => Promise.resolve({ success: true, count: 0 })),
     publishHaEntityUpdate: jest.fn((_entity) => Promise.resolve()),
+    publishHaUnitSystem: jest.fn((_unitSystem) => Promise.resolve({ success: true })),
     requestDesktopPinAction: jest.fn((_entityId, _action, _payload) =>
       Promise.resolve({ success: true })
     ),
@@ -305,6 +306,7 @@ function createMockElectronAPI() {
     updateTrayEntityIcon: jest.fn((_payload) => Promise.resolve({ success: true })),
     restartApp: jest.fn(() => Promise.resolve()),
     quitApp: jest.fn(() => Promise.resolve()),
+    closeWindow: jest.fn(() => Promise.resolve()),
 
     // Hotkey Operations
     registerHotkey: jest.fn((_entityId, _hotkey, _action) => Promise.resolve({ success: true })),

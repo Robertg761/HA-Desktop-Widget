@@ -76,6 +76,7 @@ describe('Test Environment Setup', () => {
         expect(electronAPI.setAlwaysOnTop).toBeDefined();
         expect(electronAPI.getWindowState).toBeDefined();
         expect(electronAPI.minimizeWindow).toBeDefined();
+        expect(electronAPI.closeWindow).toBeDefined();
         expect(electronAPI.focusWindow).toBeDefined();
         expect(electronAPI.restartApp).toBeDefined();
         expect(electronAPI.quitApp).toBeDefined();

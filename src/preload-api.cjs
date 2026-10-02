@@ -153,6 +153,7 @@ function createElectronApi(ipcRenderer, platform) {
       invoke('sync-desktop-pin-content-min-bounds', entityId, minBounds),
     getDesktopPinBootstrap: (entityId) => invoke('get-desktop-pin-bootstrap', entityId),
     publishHaConnectionState: (status) => invoke('publish-ha-connection-state', status),
+    publishHaUnitSystem: (unitSystem) => invoke('publish-ha-unit-system', unitSystem),
     publishHaSnapshot: (states) => invoke('publish-ha-snapshot', states),
     publishHaEntityUpdate: (entity) => invoke('publish-ha-entity-update', entity),
     requestDesktopPinAction: (entityId, action, payload) =>
@@ -189,6 +190,7 @@ function createElectronApi(ipcRenderer, platform) {
     getLoginItemSettings: () => invoke('get-login-item-settings'),
     setLoginItemSettings: (openAtLogin) => invoke('set-login-item-settings', openAtLogin),
     minimizeWindow: () => invoke('minimize-window'),
+    closeWindow: () => invoke('close-window'),
     focusWindow: () => invoke('focus-window'),
     showWindow: () => invoke('show-window'),
     publishOmarchyBarTiles: (payload) => invoke('publish-omarchy-bar-tiles', payload),

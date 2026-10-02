@@ -652,6 +652,48 @@ describe('Renderer Home Assistant connection lifecycle', () => {
     });
   });
 
+  describe('the Home Assistant unit system', () => {
+    // connectSuccessfully() numbers the four requests it sends 10-13: states, services, areas, config.
+    const GET_CONFIG_ID = 13;
+
+    it('is relayed to main for the desktop pin windows once the config arrives', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      mockState.setTimeZone = jest.fn();
+      connectSuccessfully();
+
+      mockWebsocket.emit('message', {
+        type: 'result',
+        id: GET_CONFIG_ID,
+        success: true,
+        result: { unit_system: { temperature: '°F', wind_speed: 'mph' } },
+      });
+
+      expect(mockState.setUnitSystem).toHaveBeenCalledWith({
+        temperature: '°F',
+        wind_speed: 'mph',
+      });
+      expect(mockElectronAPI.publishHaUnitSystem).toHaveBeenCalledWith({
+        temperature: '°F',
+        wind_speed: 'mph',
+      });
+    });
+
+    it('is not relayed when the config response has none', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      mockState.setTimeZone = jest.fn();
+      connectSuccessfully();
+
+      mockWebsocket.emit('message', {
+        type: 'result',
+        id: GET_CONFIG_ID,
+        success: true,
+        result: { time_zone: 'America/Halifax' },
+      });
+
+      expect(mockElectronAPI.publishHaUnitSystem).not.toHaveBeenCalled();
+    });
+  });
+
   describe('connection indicator language', () => {
     it('rewrites the indicator label in the new language after a language change', async () => {
       await loadRenderer({ config: tokenConfig() });
