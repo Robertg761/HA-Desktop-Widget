@@ -85,6 +85,8 @@ function createRepo() {
   });
   tool.syncManifest(tool.pathsFor(root));
   git(root, 'init', '-q');
+  // Git for Windows defaults to autocrlf=true, which would rewrite the catalogs on every checkout.
+  git(root, 'config', 'core.autocrlf', 'false');
   git(root, 'checkout', '-q', '-b', 'main');
   git(root, 'add', '-A');
   git(root, 'commit', '-q', '-m', 'base');
@@ -331,6 +333,39 @@ describe('locale-packs merge recipe', () => {
     expect(Object.keys(english)).toEqual(expect.arrayContaining(['Alpha', 'Beta']));
     expect(readJson(root, 'locale-packs/fr.json').messages.Alpha).toBe('Alpha-fr');
     expect(readJson(root, 'locale-packs/fr.json').messages.Beta).toBe('Beta-fr');
+  });
+
+  it('needs a remove step to carry over a key the branch deleted', () => {
+    const root = createRepo();
+    const paths = tool.pathsFor(root);
+
+    git(root, 'checkout', '-q', '-b', 'feature');
+    tool.removeStrings(paths, ['Hello']);
+    tool.bumpPacks(paths);
+    git(root, 'commit', '-q', '-am', 'feature removes Hello');
+
+    git(root, 'checkout', '-q', 'main');
+    tool.addStrings(paths, { Beta: { en: 'Beta', de: 'Beta-de', fr: 'Beta-fr' } });
+    tool.bumpPacks(paths);
+    git(root, 'commit', '-q', '-am', 'main adds Beta');
+
+    git(root, 'checkout', '-q', 'feature');
+    expect(git(root, 'merge', 'main').status).not.toBe(0);
+
+    const mine = path.join(root, 'mine.json');
+    const base = git(root, 'merge-base', 'HEAD', 'MERGE_HEAD').stdout.trim();
+    fs.writeFileSync(mine, run(root, 'export', base).out);
+    expect(git(root, 'checkout', 'MERGE_HEAD', '--', 'locales', 'locale-packs').status).toBe(0);
+    expect(run(root, 'add', mine).code).toBe(0);
+    // The export has no way to say "deleted", so main's catalogs bring the key back.
+    expect(readJson(root, 'locales/en.json')).toHaveProperty('Hello');
+
+    expect(run(root, 'remove', 'Hello').code).toBe(0);
+    expect(run(root, 'bump', '--against', 'MERGE_HEAD').code).toBe(0);
+    expect(run(root, 'check', '--against', 'MERGE_HEAD').code).toBe(0);
+    expect(readJson(root, 'locales/en.json')).not.toHaveProperty('Hello');
+    expect(readJson(root, 'locale-packs/fr.json').messages).toHaveProperty('Beta');
+    expect(readJson(root, 'locale-packs/fr.json').messages).not.toHaveProperty('Hello');
   });
 });
 

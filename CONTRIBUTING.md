@@ -100,6 +100,8 @@ node scripts/locale-packs.cjs check --against MERGE_HEAD
 git add locales locale-packs
 ```
 
+`export` only lists keys your branch still has, so a key you deleted comes back with main's catalogs. If your branch removed any, run `node scripts/locale-packs.cjs remove <key>...` after the `add` step and before `bump`.
+
 ## 🧪 Testing
 
 ### Manual Testing
