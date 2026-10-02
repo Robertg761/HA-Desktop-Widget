@@ -96,6 +96,9 @@ function createRepo() {
 const newString = {
   Goodbye: { en: 'Goodbye', de: 'Tschüss', fr: 'Au revoir' },
 };
+// A key added on each side of a merge: that is what makes the catalogs conflict in the first place.
+const alpha = { Alpha: { en: 'Alpha', de: 'Alpha-de', fr: 'Alpha-fr' } };
+const beta = { Beta: { en: 'Beta', de: 'Beta-de', fr: 'Beta-fr' } };
 
 afterAll(() => {
   tempRoots.forEach((root) => fs.rmSync(root, { recursive: true, force: true, maxRetries: 3 }));
@@ -366,6 +369,141 @@ describe('locale-packs merge recipe', () => {
     expect(readJson(root, 'locales/en.json')).not.toHaveProperty('Hello');
     expect(readJson(root, 'locale-packs/fr.json').messages).toHaveProperty('Beta');
     expect(readJson(root, 'locale-packs/fr.json').messages).not.toHaveProperty('Hello');
+  });
+});
+
+describe('locale-packs export', () => {
+  it('lists only the languages that changed for an existing key and all of them for a new one', () => {
+    const root = createRepo();
+    const paths = tool.pathsFor(root);
+    git(root, 'checkout', '-q', '-b', 'feature');
+    tool.addStrings(paths, {
+      Hello: { de: 'Hallo!' },
+      Alpha: { en: 'Alpha', de: 'Alpha-de', fr: 'Alpha-fr' },
+    });
+    git(root, 'commit', '-q', '-am', 'feature');
+
+    const exported = JSON.parse(run(root, 'export', 'main').out);
+    expect(exported).toEqual({
+      Hello: { de: 'Hallo!' },
+      Alpha: { en: 'Alpha', de: 'Alpha-de', fr: 'Alpha-fr' },
+    });
+    expect(Object.keys(exported)).not.toContain('Count: {{count}}');
+  });
+
+  it('includes English when the English text changed', () => {
+    const root = createRepo();
+    const paths = tool.pathsFor(root);
+    git(root, 'checkout', '-q', '-b', 'feature');
+    tool.addStrings(paths, { Hello: { en: 'Hello there', fr: 'Bonjour à tous' } });
+    git(root, 'commit', '-q', '-am', 'feature');
+
+    expect(tool.exportStrings(paths, 'main')).toEqual({
+      Hello: { en: 'Hello there', fr: 'Bonjour à tous' },
+    });
+  });
+});
+
+describe('locale-packs merge recipe, one key changed on both sides', () => {
+  /** Runs the documented recipe on a repository whose merge stopped on conflicts. */
+  function carryOver(root) {
+    const mine = path.join(root, 'mine.json');
+    const base = git(root, 'merge-base', 'HEAD', 'MERGE_HEAD').stdout.trim();
+    const exported = run(root, 'export', base);
+    expect(exported.code).toBe(0);
+    fs.writeFileSync(mine, exported.out);
+    expect(git(root, 'checkout', 'MERGE_HEAD', '--', 'locales', 'locale-packs').status).toBe(0);
+    return { exported: JSON.parse(exported.out), add: run(root, 'add', mine) };
+  }
+
+  it('keeps the other branch newer translation of a language this branch left alone', () => {
+    const root = createRepo();
+    const paths = tool.pathsFor(root);
+
+    git(root, 'checkout', '-q', '-b', 'feature');
+    tool.addStrings(paths, { ...alpha, Hello: { de: 'Hallo zusammen' } });
+    tool.bumpPacks(paths);
+    git(root, 'commit', '-q', '-am', 'feature rewords Hello in German');
+
+    git(root, 'checkout', '-q', 'main');
+    tool.addStrings(paths, { ...beta, Hello: { fr: 'Salut' } });
+    tool.bumpPacks(paths);
+    git(root, 'commit', '-q', '-am', 'main rewords Hello in French');
+
+    git(root, 'checkout', '-q', 'feature');
+    expect(git(root, 'merge', 'main').status).not.toBe(0);
+
+    const { exported, add } = carryOver(root);
+    expect(exported).toEqual({ ...alpha, Hello: { de: 'Hallo zusammen' } });
+    expect(add.code).toBe(0);
+    expect(run(root, 'bump', '--against', 'MERGE_HEAD').out).toMatch(/de: 1\.0\.1 -> 1\.0\.2/);
+    expect(run(root, 'check', '--against', 'MERGE_HEAD').code).toBe(0);
+
+    expect(readJson(root, 'locale-packs/de.json').messages.Hello).toBe('Hallo zusammen');
+    expect(readJson(root, 'locales/de.json').Hello).toBe('Hallo zusammen');
+    expect(readJson(root, 'locale-packs/fr.json').messages.Hello).toBe('Salut');
+    expect(readJson(root, 'locales/en.json').Hello).toBe('Hello');
+    expect(readJson(root, 'locale-packs/fr.json').messages).toMatchObject({
+      Alpha: 'Alpha-fr',
+      Beta: 'Beta-fr',
+    });
+  });
+
+  it('keeps the other branch rewording of the English text', () => {
+    const root = createRepo();
+    const paths = tool.pathsFor(root);
+
+    git(root, 'checkout', '-q', '-b', 'feature');
+    tool.addStrings(paths, { ...alpha, 'Count: {{count}}': { de: 'Anzahl insgesamt: {{count}}' } });
+    tool.bumpPacks(paths);
+    git(root, 'commit', '-q', '-am', 'feature rewords the German count');
+
+    git(root, 'checkout', '-q', 'main');
+    tool.addStrings(paths, { ...beta, 'Count: {{count}}': { en: 'Total: {{count}}' } });
+    tool.bumpPacks(paths);
+    git(root, 'commit', '-q', '-am', 'main rewords the English count');
+
+    git(root, 'checkout', '-q', 'feature');
+    expect(git(root, 'merge', 'main').status).not.toBe(0);
+
+    const { exported, add } = carryOver(root);
+    expect(exported).toEqual({
+      ...alpha,
+      'Count: {{count}}': { de: 'Anzahl insgesamt: {{count}}' },
+    });
+    expect(add.code).toBe(0);
+    expect(readJson(root, 'locales/en.json')['Count: {{count}}']).toBe('Total: {{count}}');
+    expect(readJson(root, 'locale-packs/de.json').messages['Count: {{count}}']).toBe(
+      'Anzahl insgesamt: {{count}}'
+    );
+  });
+
+  it('stops instead of bringing back a key the other branch deleted', () => {
+    const root = createRepo();
+    const paths = tool.pathsFor(root);
+
+    git(root, 'checkout', '-q', '-b', 'feature');
+    tool.addStrings(paths, { ...alpha, Hello: { de: 'Hallo zusammen' } });
+    tool.bumpPacks(paths);
+    git(root, 'commit', '-q', '-am', 'feature rewords Hello in German');
+
+    git(root, 'checkout', '-q', 'main');
+    tool.addStrings(paths, beta);
+    tool.removeStrings(paths, ['Hello']);
+    tool.bumpPacks(paths);
+    git(root, 'commit', '-q', '-am', 'main removes Hello');
+
+    git(root, 'checkout', '-q', 'feature');
+    expect(git(root, 'merge', 'main').status).not.toBe(0);
+
+    const { add } = carryOver(root);
+    // Only the German text is in the export, which is not enough to recreate the key, and add
+    // writes nothing when any entry is refused.
+    expect(add.code).not.toBe(0);
+    expect(add.err).toMatch(/"Hello": missing en, fr/);
+    expect(readJson(root, 'locales/en.json')).not.toHaveProperty('Hello');
+    expect(readJson(root, 'locales/en.json')).not.toHaveProperty('Alpha');
+    expect(readJson(root, 'locale-packs/de.json').messages).not.toHaveProperty('Hello');
   });
 });
 

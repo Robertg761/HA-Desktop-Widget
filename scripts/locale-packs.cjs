@@ -13,8 +13,9 @@
  *                                      since <ref> must also carry a higher version
  *   add     <strings.json>             add or update keys everywhere from {key: {en, ar, de, ...}}
  *   remove  <key>...                   delete keys everywhere
- *   export  <base-ref> [<head-ref>]    print the keys added or changed between two refs, in the
- *                                      format `add` reads (head defaults to HEAD)
+ *   export  <base-ref> [<head-ref>]    print the texts added or changed between two refs, in the
+ *                                      format `add` reads (head defaults to HEAD); a new key lists
+ *                                      every language, an existing key only the ones that changed
  *   bump    [--against <ref>] [locale...]
  *                                      patch-bump every pack whose content differs from <ref>
  *                                      (default HEAD) and has not been bumped yet, or exactly the
@@ -331,7 +332,12 @@ function removeStrings(paths, keys) {
   }
 }
 
-/** The keys whose text differs between two refs, as an object `addStrings` accepts. */
+/**
+ * The texts that differ between two refs, as an object `addStrings` accepts. A new key lists every
+ * language; an existing key lists only the languages whose text changed. The merge recipe adds this
+ * on top of another branch's catalogs, so exporting a language that only the other branch touched
+ * would put the stale text back over its newer translation.
+ */
 function exportStrings(paths, baseRef, headRef = 'HEAD') {
   assertRef(paths.root, baseRef);
   assertRef(paths.root, headRef);
@@ -347,14 +353,16 @@ function exportStrings(paths, baseRef, headRef = 'HEAD') {
 
   const result = {};
   for (const key of Object.keys(headEnglish)) {
-    const changed =
-      headEnglish[key] !== baseEnglish[key] ||
-      locales.some((locale) => headText[locale][key] !== baseText[locale][key]);
-    if (!changed) continue;
-    result[key] = { en: headEnglish[key] };
+    const isNew = !(key in baseEnglish);
+    const entry = {};
+    if (isNew || headEnglish[key] !== baseEnglish[key]) entry[ENGLISH] = headEnglish[key];
     for (const locale of locales) {
-      if (typeof headText[locale][key] === 'string') result[key][locale] = headText[locale][key];
+      const value = headText[locale][key];
+      if (typeof value === 'string' && (isNew || value !== baseText[locale][key])) {
+        entry[locale] = value;
+      }
     }
+    if (Object.keys(entry).length) result[key] = entry;
   }
   return result;
 }
@@ -428,7 +436,7 @@ const USAGE = `Usage: node scripts/locale-packs.cjs <command>
   check [--against <ref>]               verify packs, catalogs and manifest agree
   add <strings.json>                    add or update keys from {key: {en, ar, de, es, fr, hi, zh}}
   remove <key>...                       delete keys everywhere
-  export <base-ref> [<head-ref>]        print keys changed between refs, in the "add" format
+  export <base-ref> [<head-ref>]        print texts changed between refs, in the "add" format
   bump [--against <ref>] [locale...]    patch-bump changed (or named) packs, then refresh the manifest
   manifest                              copy every pack's version and sha256 into manifest.json
 `;
