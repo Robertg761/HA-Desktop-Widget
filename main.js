@@ -4482,16 +4482,21 @@ function resolveTrayIcon() {
     return image.resize({ width: traySize, height: traySize });
   };
 
-  try {
-    const exePath = app?.getPath ? app.getPath('exe') : process.execPath;
-    if (exePath && fs.existsSync(exePath)) {
-      const exeImage = nativeImage.createFromPath(exePath);
-      if (exeImage && !exeImage.isEmpty()) {
-        return ensureTraySize(exeImage);
+  // Only a Windows executable carries an embedded icon. On Linux and macOS this reads the whole
+  // Electron binary (over 200 MB) as an image, stalls the main thread for about 100 ms and still
+  // comes back empty.
+  if (preferIco) {
+    try {
+      const exePath = app?.getPath ? app.getPath('exe') : process.execPath;
+      if (exePath && fs.existsSync(exePath)) {
+        const exeImage = nativeImage.createFromPath(exePath);
+        if (exeImage && !exeImage.isEmpty()) {
+          return ensureTraySize(exeImage);
+        }
       }
+    } catch (error) {
+      log.warn('Unable to load tray icon from executable:', error.message);
     }
-  } catch (error) {
-    log.warn('Unable to load tray icon from executable:', error.message);
   }
 
   const candidates = [];

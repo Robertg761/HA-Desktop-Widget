@@ -12718,6 +12718,11 @@ label.disabled {
   font-size: var(--font-size-sm);
 }
 
+/* A page row has no state. Its empty item would still take a flex gap and inset the type chip. */
+.command-palette-result-state:empty {
+  display: none;
+}
+
 .command-palette-empty {
   padding: 22px 16px 24px;
   color: var(--text-secondary);
