@@ -823,13 +823,15 @@ body:is(.high-contrast, .opaque-panels, .desktop-pin-mode) {
   --panel-veil-layer: none;
 }
 
-body:not(.desktop-pin-mode):not(.frosted-glass) {
+body:not(.desktop-pin-mode):not(.frosted-glass),
+body:not(.desktop-pin-mode):not(.frosted-glass) .widget-header,
+body:not(.desktop-pin-mode):not(.frosted-glass) .widget-content {
   background: rgba(var(--window-bg-rgb), var(--window-bg-alpha, 1)) !important;
 }
 
+/* The header and content lay the veil over that colour. */
 body:not(.desktop-pin-mode):not(.frosted-glass) :is(.widget-header, .widget-content) {
-  background:
-    var(--panel-veil-layer), rgba(var(--window-bg-rgb), var(--window-bg-alpha, 1)) !important;
+  background-image: var(--panel-veil-layer) !important;
 }
 
 html.desktop-pin-mode,

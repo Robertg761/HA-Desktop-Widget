@@ -228,11 +228,11 @@ describe('panel veil', () => {
   it('is painted over the solid panel by the header and content', () => {
     render('');
     for (const selector of ['.widget-header', '.widget-content']) {
-      const declaration = cascadedDeclaration(document.querySelector(selector), 'background');
-      expect(declaration.value).toMatch(/^var\(--panel-veil-layer\),\s+rgba\(/);
+      const declaration = cascadedDeclaration(document.querySelector(selector), 'background-image');
+      expect(declaration.value).toBe('var(--panel-veil-layer)');
       expect(declaration.important).toBe(true);
     }
-    expect(cascadedDeclaration(document.body, 'background').value).not.toContain('--panel-veil');
+    expect(cascadedDeclaration(document.body, 'background-image')).toBeNull();
   });
 
   it('is painted over glass by the header and content, never the body', () => {
