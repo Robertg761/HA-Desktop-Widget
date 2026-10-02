@@ -306,6 +306,7 @@ function createMockElectronAPI() {
     updateTrayEntityIcon: jest.fn((_payload) => Promise.resolve({ success: true })),
     restartApp: jest.fn(() => Promise.resolve()),
     quitApp: jest.fn(() => Promise.resolve()),
+    closeWindow: jest.fn(() => Promise.resolve()),
 
     // Hotkey Operations
     registerHotkey: jest.fn((_entityId, _hotkey, _action) => Promise.resolve({ success: true })),

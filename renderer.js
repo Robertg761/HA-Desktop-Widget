@@ -2914,7 +2914,7 @@ function wireUI() {
     const closeBtn = document.getElementById('close-btn');
     if (closeBtn) {
       closeBtn.onclick = () => {
-        window.electronAPI.quitApp();
+        window.electronAPI.closeWindow();
       };
     }
 

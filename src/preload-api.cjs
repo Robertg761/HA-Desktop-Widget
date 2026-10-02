@@ -190,6 +190,7 @@ function createElectronApi(ipcRenderer, platform) {
     getLoginItemSettings: () => invoke('get-login-item-settings'),
     setLoginItemSettings: (openAtLogin) => invoke('set-login-item-settings', openAtLogin),
     minimizeWindow: () => invoke('minimize-window'),
+    closeWindow: () => invoke('close-window'),
     focusWindow: () => invoke('focus-window'),
     showWindow: () => invoke('show-window'),
     publishOmarchyBarTiles: (payload) => invoke('publish-omarchy-bar-tiles', payload),

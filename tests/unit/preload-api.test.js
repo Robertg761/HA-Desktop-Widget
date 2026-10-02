@@ -110,6 +110,7 @@ describe('preload Electron API', () => {
       ['getLoginItemSettings', [], 'get-login-item-settings', []],
       ['setLoginItemSettings', [true], 'set-login-item-settings', [true]],
       ['minimizeWindow', [], 'minimize-window', []],
+      ['closeWindow', [], 'close-window', []],
       ['focusWindow', [], 'focus-window', []],
       ['showWindow', [], 'show-window', []],
       ['publishOmarchyBarTiles', [objectArg], 'publish-omarchy-bar-tiles', [objectArg]],

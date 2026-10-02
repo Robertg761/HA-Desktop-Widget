@@ -9638,6 +9638,15 @@ ipcMain.handle('minimize-window', (event) => {
   }
 });
 
+// The title bar's X. It closes the window exactly as Alt+F4 and Cmd+W do, so the window's own close
+// handler decides what that means (hide to the tray, or whatever that handler does on this
+// platform) and the app keeps running. Quitting stays with the tray menu and the app menu.
+ipcMain.handle('close-window', (event) => {
+  const sender = authorizeIpcSender(event, 'close-window');
+  if (!sender) return rejectUnauthorizedIpc('close-window');
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+});
+
 // A click on one of the widget's desktop notifications. Shows it the way the tray does, which
 // also brings back a widget hidden to the tray and keeps a desktop-layer widget raised.
 ipcMain.handle('show-window', (event) => {
