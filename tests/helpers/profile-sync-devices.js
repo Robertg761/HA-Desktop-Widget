@@ -254,6 +254,7 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
      // What the real sanitizeConfigForRenderer reads besides the config.
      var IS_CLIMATE_DEMO_MODE = false, IS_CLIMATE_DEMO_OVERLAY_MODE = false;
      var IS_ISOLATED_PROFILE = false, isLayerShellChildProcess = false, configRecoveryNotice = null;
+     var NATIVE_GLASS_SUPPORTED = true;
      var omarchyThemeWatcher = null;
      function getOmarchyBarEntities() { return { all: [] }; }
      function isHyprland() { return false; }

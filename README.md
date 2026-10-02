@@ -254,7 +254,7 @@ power controls without a brightness slider.
 
 - **General**: Configure Home Assistant connection, always-on-top, startup behavior, and language packs
 - **Themes**: Choose built-in or custom accent and background colors
-- **Window Effects**: Adjust opacity, toggle frosted glass, and enable subtle weather effects
+- **Window Effects**: Adjust opacity, toggle frosted glass, and enable subtle weather effects. On Windows, frosted glass needs Windows 11 version 22H2 or later; Windows 10 and older Windows 11 builds draw the solid panel instead
 - **Primary Cards**: Pin weather/time or any entity to the top two cards
 - **Custom Entity Icons**: Search or paste emoji/glyph overrides for entity icons
 - **Media Tile**: Select the primary media player or hide the tile

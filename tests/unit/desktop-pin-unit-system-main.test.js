@@ -34,6 +34,7 @@ describe('desktop pin unit system relay in main', () => {
       createDesktopPinConnectionState: () => ({}),
       omarchyThemeWatcher: null,
       isLayerShellChildProcess: false,
+      NATIVE_GLASS_SUPPORTED: true,
       isHyprland: () => false,
       hasDeferredSecureConfigWork: () => false,
       latestHaConnectionState: 'connected',

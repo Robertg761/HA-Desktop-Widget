@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.48",
+  "version": "1.2.49",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1707,6 +1707,7 @@
     "No unlocked system keyring (Secret Service) was found, so this token will not be remembered after you quit. Start gnome-keyring or KWallet, then restart the widget.": "لم يتم العثور على سلسلة مفاتيح نظام مفتوحة (Secret Service)، لذا لن يُحفظ هذا الرمز بعد الخروج. شغّل gnome-keyring أو KWallet ثم أعد تشغيل الأداة.",
     "The sync file is in use by another program or is read-only. Try again in a moment, and check the folder’s permissions if it keeps happening.": "ملف المزامنة قيد الاستخدام من برنامج آخر أو أنه للقراءة فقط. حاول مرة أخرى بعد قليل، وتحقق من أذونات المجلد إذا استمرت المشكلة.",
     "Details": "التفاصيل",
-    "No unlocked system keyring (Secret Service) was found, so this computer cannot remember your Home Assistant sign-in or sync passphrase. Start gnome-keyring or KWallet, then restart the widget.": "لم يتم العثور على سلسلة مفاتيح نظام مفتوحة (Secret Service)، لذا لا يستطيع هذا الكمبيوتر تذكّر تسجيل دخولك إلى Home Assistant أو عبارة مرور المزامنة. شغّل gnome-keyring أو KWallet ثم أعد تشغيل الأداة."
+    "No unlocked system keyring (Secret Service) was found, so this computer cannot remember your Home Assistant sign-in or sync passphrase. Start gnome-keyring or KWallet, then restart the widget.": "لم يتم العثور على سلسلة مفاتيح نظام مفتوحة (Secret Service)، لذا لا يستطيع هذا الكمبيوتر تذكّر تسجيل دخولك إلى Home Assistant أو عبارة مرور المزامنة. شغّل gnome-keyring أو KWallet ثم أعد تشغيل الأداة.",
+    "Needs Windows 11 version 22H2 or later.": "يتطلب Windows 11 الإصدار 22H2 أو أحدث."
   }
 }

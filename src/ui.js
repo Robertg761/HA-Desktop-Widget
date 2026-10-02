@@ -12375,8 +12375,10 @@ function updateWeatherEffects(previewEnabled, previewOverride) {
 
   const uiConfig = state.CONFIG?.ui || {};
 
+  // The effects live behind the glass; the solid panel Windows without acrylic gets would hide them.
   const enabled =
     state.CONFIG?.frostedGlass &&
+    uiUtils.isFrostedGlassAvailable(state.CONFIG) &&
     (previewEnabled !== undefined ? !!previewEnabled : !!uiConfig.weatherEffectsEnabled);
   const override =
     previewOverride !== undefined ? previewOverride : uiConfig.weatherOverride || 'auto';
