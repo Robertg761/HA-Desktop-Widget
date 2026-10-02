@@ -1206,6 +1206,36 @@ describe('UI Utilities', () => {
       expect(result).toBe(true);
     });
 
+    it('should leave Enter on the focused Cancel button to that button so it cancels', async () => {
+      const promise = uiUtils.showConfirm('Delete', 'Delete this?');
+
+      // The browser turns Enter on a button into a click; jsdom does not, so dispatch both.
+      cancelBtn.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      cancelBtn.click();
+
+      expect(await promise).toBe(false);
+    });
+
+    it('should leave Enter on the focused Confirm button to that button so it confirms', async () => {
+      const promise = uiUtils.showConfirm('Delete', 'Delete this?');
+
+      okBtn.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      okBtn.click();
+
+      expect(await promise).toBe(true);
+    });
+
+    it('should ignore a held-down Enter key repeating into the dialog', async () => {
+      const promise = uiUtils.showConfirm('Delete', 'Delete this?');
+
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', repeat: true, bubbles: true })
+      );
+      cancelBtn.click();
+
+      expect(await promise).toBe(false);
+    });
+
     it('should return false when Escape key pressed', async () => {
       const promise = uiUtils.showConfirm('Confirm', 'Continue?');
 
