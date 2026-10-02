@@ -83,7 +83,7 @@ User-visible text goes through `t()` or `data-i18n`, and every new or changed st
 ```bash
 node scripts/locale-packs.cjs add strings.json   # {"Key": {"en": "...", "ar": "...", "de": "...", "es": "...", "fr": "...", "hi": "...", "zh": "..."}}
 node scripts/locale-packs.cjs bump               # patch-bump every pack that changed, refresh the manifest
-node scripts/locale-packs.cjs check              # keys, {{placeholders}}, versions and hashes agree
+node scripts/locale-packs.cjs check              # keys, {{placeholders}}, no blank text, versions and hashes agree
 ```
 
 `remove <key>...` deletes keys everywhere, `manifest` only refreshes the manifest (after a hand edit, say), and `check --against origin/main` also fails on a pack that changed without a version bump. Packs are downloaded from `main`, so a translation only reaches users once it is merged and the manifest is current. Reuse the words a pack already uses for the same term and keep `{{placeholders}}` identical. A pack value that is still the English text fails the untranslated-string guard unless that language really writes the word that way.

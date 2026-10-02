@@ -9,8 +9,8 @@
  * conflicts with every other. This tool does the mechanical part:
  *
  *   check   [--against <ref>]          packs, catalogs and manifest agree (keys, placeholders,
- *                                      versions, sha256); with --against, content that changed
- *                                      since <ref> must also carry a higher version
+ *                                      no blank text, versions, sha256); with --against, content
+ *                                      that changed since <ref> must also carry a higher version
  *   add     <strings.json>             add or update keys everywhere from {key: {en, ar, de, ...}}
  *   remove  <key>...                   delete keys everywhere
  *   export  <base-ref> [<head-ref>]    print the texts added or changed between two refs, in the
@@ -64,6 +64,11 @@ function sha256(file) {
 
 function placeholderNames(text) {
   return [...String(text).matchAll(PLACEHOLDER_PATTERN)].map((match) => match[1]).sort();
+}
+
+/** True unless `value` is text with a visible character; the app shows "" as the English key. */
+function isBlankText(value) {
+  return typeof value !== 'string' || !value.trim();
 }
 
 function sameList(left, right) {
@@ -155,10 +160,15 @@ function checkMessages(label, english, messages, problems) {
   if (notStrings.length)
     problems.push(`${label} has non-string values for: ${listKeys(notStrings)}`);
 
+  const blank = Object.keys(messages).filter(
+    (key) => typeof messages[key] === 'string' && isBlankText(messages[key])
+  );
+  if (blank.length) problems.push(`${label} has blank text for: ${listKeys(blank)}`);
+
   const drifted = englishKeys.filter(
     (key) =>
       key in messages &&
-      typeof messages[key] === 'string' &&
+      !isBlankText(messages[key]) &&
       !sameList(placeholderNames(english[key]), placeholderNames(messages[key]))
   );
   if (drifted.length) {
@@ -239,8 +249,8 @@ function checkPacks(paths, { against } = {}) {
 /**
  * Add or update keys in en.json, every pack and every bundled catalog.
  * `strings` maps each key to {en, <locale>: text, ...}. A new key needs a value for every locale;
- * an existing key may name only the locales whose text changes. Nothing is written when any
- * entry is invalid.
+ * an existing key may name only the locales whose text changes. Every value given must be text
+ * with a visible character. Nothing is written when any entry is invalid.
  */
 function addStrings(paths, strings) {
   if (!strings || typeof strings !== 'object' || Array.isArray(strings)) {
@@ -283,12 +293,17 @@ function addStrings(paths, strings) {
     if (unknown.length)
       problems.push(`${JSON.stringify(key)}: unknown locale ${unknown.join(', ')}`);
     const required = isNew ? [ENGLISH, ...allLocales] : [];
-    const absent = required.filter((name) => typeof entry[name] !== 'string' || !entry[name]);
+    const absent = required.filter((name) => entry[name] === undefined);
     if (absent.length) problems.push(`${JSON.stringify(key)}: missing ${absent.join(', ')}`);
-    const englishText = typeof entry.en === 'string' ? entry.en : english[key];
+    const blank = [ENGLISH, ...allLocales].filter(
+      (name) => entry[name] !== undefined && isBlankText(entry[name])
+    );
+    if (blank.length) {
+      problems.push(`${JSON.stringify(key)}: blank or non-text value for ${blank.join(', ')}`);
+    }
+    const englishText = isBlankText(entry.en) ? english[key] : entry.en;
     for (const name of [ENGLISH, ...allLocales]) {
-      if (typeof entry[name] !== 'string' || !entry[name] || typeof englishText !== 'string')
-        continue;
+      if (isBlankText(entry[name]) || typeof englishText !== 'string') continue;
       if (!sameList(placeholderNames(englishText), placeholderNames(entry[name]))) {
         problems.push(
           `${JSON.stringify(key)}: ${name} changes the {{placeholders}} of the English text`

@@ -135,6 +135,26 @@ describe('locale-packs check', () => {
     ]);
   });
 
+  it('reports empty and whitespace-only values in a pack and in a bundled catalog', () => {
+    const root = createRepo();
+    const french = readJson(root, 'locale-packs/fr.json');
+    french.messages.Hello = '';
+    french.messages['Count: {{count}}'] = ' \t\n';
+    writeJson(root, 'locale-packs/fr.json', french);
+    const german = readJson(root, 'locale-packs/de.json');
+    german.messages.Hello = '   ';
+    writeJson(root, 'locale-packs/de.json', german);
+    writeJson(root, 'locales/de.json', german.messages);
+    tool.syncManifest(tool.pathsFor(root));
+
+    expect(tool.checkPacks(tool.pathsFor(root))).toEqual([
+      'locale-packs/de.json has blank text for: "Hello"',
+      'locale-packs/fr.json has blank text for: "Hello", "Count: {{count}}"',
+      'locales/de.json has blank text for: "Hello"',
+    ]);
+    expect(run(root, 'check').code).toBe(1);
+  });
+
   it('reports a stale hash, a version the manifest does not know and an unlisted pack', () => {
     const root = createRepo();
     const fr = readJson(root, 'locale-packs/fr.json');
@@ -222,6 +242,46 @@ describe('locale-packs add', () => {
     ).toThrow(/"Goodbye": missing fr/);
     expect(fs.readFileSync(path.join(root, 'locales/en.json'), 'utf8')).toBe(before);
     expect(readJson(root, 'locale-packs/de.json').messages).not.toHaveProperty('Later');
+  });
+
+  it('refuses an empty or whitespace-only text for an existing key and writes nothing', () => {
+    const root = createRepo();
+    const paths = tool.pathsFor(root);
+    const files = ['locales/en.json', 'locales/de.json', 'locale-packs/fr.json'];
+    const before = files.map((file) => fs.readFileSync(path.join(root, file), 'utf8'));
+
+    for (const blank of ['', '   ', '\n\t']) {
+      expect(() =>
+        tool.addStrings(paths, {
+          'Count: {{count}}': { de: 'Anzahl: {{count}}' },
+          Hello: { fr: blank },
+        })
+      ).toThrow(/"Hello": blank or non-text value for fr/);
+    }
+    expect(() => tool.addStrings(paths, { Hello: { en: ' ' } })).toThrow(/blank .* for en/);
+    expect(() => tool.addStrings(paths, { Hello: { fr: null } })).toThrow(/blank .* for fr/);
+    expect(() => tool.addStrings(paths, { Hello: { fr: 42 } })).toThrow(/blank .* for fr/);
+
+    expect(files.map((file) => fs.readFileSync(path.join(root, file), 'utf8'))).toEqual(before);
+    expect(tool.checkPacks(paths)).toEqual([]);
+  });
+
+  it('refuses an empty or whitespace-only text for a new key and writes nothing', () => {
+    const root = createRepo();
+    const before = fs.readFileSync(path.join(root, 'locale-packs/fr.json'), 'utf8');
+    expect(() =>
+      tool.addStrings(tool.pathsFor(root), {
+        Goodbye: { en: 'Goodbye', de: '   ', fr: '' },
+      })
+    ).toThrow(/"Goodbye": blank or non-text value for de, fr/);
+    expect(fs.readFileSync(path.join(root, 'locale-packs/fr.json'), 'utf8')).toBe(before);
+  });
+
+  it('reports a blank text once, not also as a changed placeholder', () => {
+    const root = createRepo();
+    expect(() =>
+      tool.addStrings(tool.pathsFor(root), { 'Count: {{count}}': { fr: '', de: '  ' } })
+    ).toThrow(/^Nothing written:\n- "Count: \{\{count\}\}": blank or non-text value for de, fr$/);
   });
 
   it('refuses translations that change the {{placeholders}} and unknown locales', () => {

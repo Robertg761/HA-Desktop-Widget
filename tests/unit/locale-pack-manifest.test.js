@@ -54,6 +54,25 @@ describe('downloadable locale-pack manifest', () => {
     }
   });
 
+  test('has no empty or whitespace-only text in any catalog or pack', () => {
+    const root = path.resolve(__dirname, '../..');
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(root, 'locale-packs', 'manifest.json'), 'utf8')
+    );
+    const catalogs = {
+      'locales/en.json': require('../../locales/en.json'),
+      'locales/de.json': require('../../locales/de.json'),
+    };
+    for (const { locale } of manifest.packs) {
+      const file = `locale-packs/${locale}.json`;
+      catalogs[file] = JSON.parse(fs.readFileSync(path.join(root, file), 'utf8')).messages;
+    }
+    for (const [file, messages] of Object.entries(catalogs)) {
+      const blank = Object.keys(messages).filter((key) => !String(messages[key]).trim());
+      expect({ file, blank }).toEqual({ file, blank: [] });
+    }
+  });
+
   test('bundles a complete German catalog alongside English', () => {
     const englishMessages = JSON.parse(
       fs.readFileSync(path.resolve(__dirname, '../../locales/en.json'), 'utf8')
