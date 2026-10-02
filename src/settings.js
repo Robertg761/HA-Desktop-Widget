@@ -5049,6 +5049,7 @@ async function openSettings(uiHooks) {
     const frostedGlass = document.getElementById('frosted-glass');
     const enableInteractionDebugLogs = document.getElementById('enable-interaction-debug-logs');
     const allowPrereleaseUpdates = document.getElementById('allow-prerelease-updates');
+    const anonymousUsagePing = document.getElementById('anonymous-usage-ping');
     if (haUrl) haUrl.value = state.CONFIG.homeAssistant.url || '';
     if (haToken) {
       const tokenValue = state.CONFIG.homeAssistant.token || '';
@@ -5101,6 +5102,9 @@ async function openSettings(uiHooks) {
     syncFrostedGlassAvailability();
     if (allowPrereleaseUpdates) {
       allowPrereleaseUpdates.checked = state.CONFIG.updates?.allowPrerelease === true;
+    }
+    if (anonymousUsagePing) {
+      anonymousUsagePing.checked = state.CONFIG.updates?.anonymousUsagePing !== false;
     }
 
     // Initialize "Start at login" checkbox
@@ -5678,6 +5682,7 @@ async function saveSettings() {
     const frostedGlass = document.getElementById('frosted-glass');
     const enableInteractionDebugLogs = document.getElementById('enable-interaction-debug-logs');
     const allowPrereleaseUpdates = document.getElementById('allow-prerelease-updates');
+    const anonymousUsagePing = document.getElementById('anonymous-usage-ping');
     const languageSelect = document.getElementById('language-select');
     const weatherEntitySelect = document.getElementById('weather-entity-select');
     const globalHotkeysEnabled = document.getElementById('global-hotkeys-enabled');
@@ -5775,6 +5780,9 @@ async function saveSettings() {
     nextConfig.updates = nextConfig.updates || {};
     if (allowPrereleaseUpdates) {
       nextConfig.updates.allowPrerelease = !!allowPrereleaseUpdates.checked;
+    }
+    if (anonymousUsagePing) {
+      nextConfig.updates.anonymousUsagePing = !!anonymousUsagePing.checked;
     }
     nextConfig.ui.theme = pendingThemeMode || normalizeThemeMode(nextConfig.ui.theme);
     nextConfig.ui.accent = pendingAccent || getCurrentAccentTheme();
