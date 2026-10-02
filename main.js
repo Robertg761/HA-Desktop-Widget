@@ -389,6 +389,7 @@ const {
   NATIVE_WAYLAND_ENV_OVERRIDE,
   getAppIconPath,
   getMainWindowVisualOptions,
+  getRelaunchOptions,
   mergeChromiumFeatureList,
   resolveLinuxPasswordStoreBackend,
   resolveNativeThemeSource,
@@ -9608,7 +9609,7 @@ async function restartApplication() {
     // app.relaunch() spawns the successor only after this process exits, which is
     // also what frees the lock — no explicit release needed, and holding it until
     // then keeps the single-instance guarantee unbroken.
-    app.relaunch();
+    app.relaunch(getRelaunchOptions());
   }
   app.exit(0);
 }
@@ -12104,7 +12105,7 @@ app.on('child-process-gone', (_event, details) => {
   }
   // The explicit platform argument is also what stops the relaunched instance from forcing
   // XWayland again, so this cannot loop.
-  app.relaunch({ args: process.argv.slice(1).concat('--ozone-platform=wayland') });
+  app.relaunch(getRelaunchOptions({ extraArgs: ['--ozone-platform=wayland'] }));
   app.quit();
 });
 
