@@ -1074,6 +1074,8 @@ const latestEntityStates = new Map();
 // Pin windows never open a websocket, so Home Assistant's unit system (the only thing that says a
 // climate entity is in degrees Fahrenheit) reaches them from the main renderer through here.
 // Unlike the entity cache it is small and stays valid across unpinning, so it is not dropped then.
+// Switching instance does not clear it either: the main renderer republishes it from the new
+// instance's config as soon as it connects, and until then the entity cache is just as stale.
 let latestHaUnitSystem = null;
 let hasPublishedHaSnapshot = false;
 // Coalesces 'desktop-pin-snapshot-needed' requests: pin windows created in one burst

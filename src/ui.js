@@ -5032,6 +5032,8 @@ function callEntityDomainService(entity, serviceName, serviceData = {}) {
 // only expires, without re-rendering, so after a rejected command the pin would keep showing the
 // value that never took effect until some unrelated update arrived. Drop the optimistic state and
 // draw what Home Assistant last reported. Without a pin on the page this does nothing.
+// If a second command on the same pin is still in flight, this also drops its optimistic value; the
+// state update that command causes, or its own failure, draws the right value a moment later.
 function resyncDesktopPinFromState(entityId) {
   if (!entityId) return;
   clearDesktopPinControlInteraction(entityId);
