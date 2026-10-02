@@ -10,18 +10,21 @@ const MAX_SETTINGS_FILE_BYTES = 1024 * 1024;
 // is limited to 512 KB for everything it holds, indented more deeply and carrying a few sections
 // a settings file does not. Half of that keeps what is exported small enough to sync.
 const MAX_SETTINGS_EXPORT_BYTES = 256 * 1024;
-// What the app itself can produce, with room to spare: names are typed into one-line fields,
-// entity ids are at most 255 characters, and lists and maps follow the entities that exist.
-// Text a person types is cut to this length instead of failing, so a name saved before its field
-// was limited still exports and imports. Ids and map keys are never typed, so a long one is refused.
+// What the app itself can produce, with room to spare: names are typed into one-line fields and
+// entity ids are at most 255 characters. Text a person types is cut to this length instead of
+// failing, so a name saved before its field was limited still exports and imports. Ids and map
+// keys are never typed, so a long one is refused.
 const MAX_TEXT_LENGTH = 256;
-const MAX_ITEMS = 2000;
-const MAX_PAGES = 200;
+// Pages, graphs, colors, favorites and per-entity settings have no limit in the app (lists and
+// maps follow the entities Home Assistant has, thousands on a large installation), so the file
+// has none either: a count limit could only reject a configuration the app made, and make Export
+// and every Import preview fail with it. The size limits above bound what a file holds, and only
+// a count the app itself enforces is checked, such as the two primary card slots.
 const MAX_PRIMARY_CARDS = 2;
 const MIN_OPACITY = 0.5;
 const MAX_OPACITY = 1;
 const mapOf = (schema) => ({ map: schema });
-const listOf = (schema, max = MAX_ITEMS) => ({ list: schema, max });
+const listOf = (schema, max = Infinity) => ({ list: schema, max });
 const oneOf = (...values) => ({ oneOf: values });
 const stringList = listOf('string');
 // Mirrors the renderer's entity-ID pattern in ha-protocol.cjs, which needs Electron to load.
@@ -34,11 +37,8 @@ const isAlertSeconds = (value) => Number.isInteger(value) && value >= 0 && value
 // credentials, desktop pins, shortcuts, sync keys and machine preferences cannot ride along.
 const SETTINGS_SCHEMA = {
   favoriteEntities: stringList,
-  customTabs: listOf({ id: 'string', name: 'text', entityIds: stringList }, MAX_PAGES),
-  comparisonGraphs: listOf(
-    { id: 'string', name: 'text', span: 'number', entityIds: stringList },
-    MAX_PAGES
-  ),
+  customTabs: listOf({ id: 'string', name: 'text', entityIds: stringList }),
+  comparisonGraphs: listOf({ id: 'string', name: 'text', span: 'number', entityIds: stringList }),
   customEntityNames: mapOf('text'),
   customEntityIcons: mapOf('string'),
   tileSpans: mapOf('span'),
@@ -73,7 +73,7 @@ const SETTINGS_SCHEMA = {
     accent: 'string',
     background: 'string',
     language: 'string',
-    customColors: listOf({ id: 'string', name: 'text', color: 'string' }, MAX_PAGES),
+    customColors: listOf({ id: 'string', name: 'text', color: 'string' }),
     density: oneOf('comfortable', 'compact'),
     activeTileGlow: 'boolean',
     highContrast: 'boolean',
@@ -138,12 +138,11 @@ function project(value, schema) {
     return value;
   }
   if (schema.list || Array.isArray(schema)) {
-    const [entrySchema, max] = schema.list ? [schema.list, schema.max] : [schema[0], MAX_ITEMS];
+    const [entrySchema, max] = schema.list ? [schema.list, schema.max] : [schema[0], Infinity];
     if (!Array.isArray(value) || value.length > max) throw fileError('invalid_file');
     return value.map((entry) => project(entry, entrySchema));
   }
   if (!isObject(value)) throw fileError('invalid_file');
-  if (schema.map && Object.keys(value).length > MAX_ITEMS) throw fileError('invalid_file');
   const entries = schema.map
     ? Object.entries(value)
     : Object.entries(value).filter(([key]) => Object.hasOwn(schema, key));
