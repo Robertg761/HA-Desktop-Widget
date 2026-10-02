@@ -887,7 +887,6 @@
     "Profile sync upload complete.": "配置同步上传完成。",
     "Profile sync download complete.": "配置同步下载完成。",
     "Failed to resolve sync conflict.": "无法解决同步冲突。",
-    "Profile sync conflict resolved.": "配置同步冲突已解决。",
     "Failed to choose sync folder.": "无法选择同步文件夹。",
     "Could not open help instructions.": "无法打开帮助说明。",
     "Clear Saved Passphrase": "清除已保存的密码短语",
@@ -902,14 +901,10 @@
     "Disconnected. Home Assistant did not confirm that it revoked the authorization, so you can remove it from your Home Assistant profile.": "已断开连接。Home Assistant 未确认已撤销授权，你可以在 Home Assistant 个人资料中将其移除。",
     "Choose a sync folder before enabling profile sync.": "启用配置同步前，请先选择同步文件夹。",
     "Sync Folder Changed": "同步文件夹已更改",
-    "Copy the existing sync data file into the new folder and switch sync there?": "要将现有同步数据文件复制到新文件夹并切换到那里同步吗？",
     "Copy & Switch": "复制并切换",
     "Keep Current": "保留当前",
-    "Kept current sync folder.": "已保留当前同步文件夹。",
     "Copy is unavailable on this build. Kept current sync folder.": "此版本不支持复制。已保留当前同步文件夹。",
     "Sync File Already Exists": "同步文件已存在",
-    "A sync file already exists in the new folder. Overwrite it with your current synced data?": "新文件夹中已有同步文件。要用当前的同步数据覆盖它吗？",
-    "Overwrite & Switch": "覆盖并切换",
     "No existing sync file found. Switched to the new folder.": "未找到现有同步文件。已切换到新文件夹。",
     "Failed to copy sync file. Kept current sync folder.": "无法复制同步文件。已保留当前同步文件夹。",
     "Copied sync file and switched folders.": "已复制同步文件并切换文件夹。",
@@ -1678,6 +1673,13 @@
     "The disk that holds the sync folder is full.": "存放同步文件夹的磁盘已满。",
     "The sync file is in use by another program. Try again in a moment.": "同步文件正被其他程序使用。请稍后再试。",
     "Could not access the sync file ({{code}}). Check the sync folder and try again.": "无法访问同步文件（{{code}}）。请检查同步文件夹后重试。",
-    "Could not update the sync file's encryption. Nothing was changed. Try again.": "无法更新同步文件的加密。未更改任何内容。请重试。"
+    "Could not update the sync file's encryption. Nothing was changed. Try again.": "无法更新同步文件的加密。未更改任何内容。请重试。",
+    "Copy the existing sync data file from {{from}} into {{to}} and switch sync there?": "要将现有同步数据文件从 {{from}} 复制到 {{to}} 并切换到那里同步吗？",
+    "Kept the current sync folder: {{folder}}": "已保留当前同步文件夹：{{folder}}",
+    "{{folder}} already has a sync file, probably from another computer. Switch to it? Settings that differ are compared first, and you choose which to keep before anything is replaced.": "{{folder}} 中已有一个同步文件，可能来自另一台电脑。要切换到该文件吗？会先比较有差异的设置，并在替换任何内容之前由你选择保留哪些。",
+    "Use That File": "使用该文件",
+    "Profile sync turned off. No settings were changed.": "配置同步已关闭。未更改任何设置。",
+    "This computer’s settings were uploaded to the sync file.": "此电脑的设置已上传到同步文件。",
+    "Settings downloaded from the sync file.": "已从同步文件下载设置。"
   }
 }

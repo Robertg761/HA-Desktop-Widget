@@ -3704,7 +3704,20 @@ describe('Settings + Config Integration', () => {
       document.getElementById('profile-sync-choose-folder').click();
       await Promise.resolve();
 
-      expect(mockElectronAPI.chooseProfileSyncFolder).toHaveBeenCalledWith('syncthing');
+      expect(mockElectronAPI.chooseProfileSyncFolder).toHaveBeenCalledWith('syncthing', '');
+    });
+
+    test('opens the folder chooser where the form already points', async () => {
+      await settings.openSettings();
+
+      document.getElementById('profile-sync-folder-path').value = '/tmp/typed-folder';
+      document.getElementById('profile-sync-choose-folder').click();
+      await Promise.resolve();
+
+      expect(mockElectronAPI.chooseProfileSyncFolder).toHaveBeenCalledWith(
+        'cloudFile',
+        '/tmp/typed-folder'
+      );
     });
 
     test('asks before Sync Up replaces the sync file', async () => {
@@ -3976,7 +3989,7 @@ describe('Settings + Config Integration', () => {
       );
     });
 
-    test('should prompt overwrite when destination exists on folder change', async () => {
+    test('switches to the sync file already in the new folder instead of overwriting it', async () => {
       const config = state.CONFIG;
       config.profileSync = buildProfileSync({
         ...config.profileSync,
@@ -3987,9 +4000,10 @@ describe('Settings + Config Integration', () => {
       });
       state.setConfig(config);
       mockUiUtils.showConfirm.mockResolvedValueOnce(true).mockResolvedValueOnce(true);
-      mockElectronAPI.copyProfileSyncFile
-        .mockResolvedValueOnce({ ok: false, status: 'destination_exists' })
-        .mockResolvedValueOnce({ ok: true, status: 'copied', copied: true, overwritten: true });
+      mockElectronAPI.copyProfileSyncFile.mockResolvedValueOnce({
+        ok: false,
+        status: 'destination_exists',
+      });
 
       await settings.openSettings();
       document.getElementById('profile-sync-enabled').checked = true;
@@ -3997,21 +4011,209 @@ describe('Settings + Config Integration', () => {
       document.getElementById('profile-sync-encryption-enabled').checked = false;
       await settings.saveSettings();
 
-      expect(mockElectronAPI.copyProfileSyncFile).toHaveBeenNthCalledWith(
-        1,
-        '/tmp/old-sync/ha-widget-profile-sync.json',
-        '/tmp/new-sync/ha-widget-profile-sync.json',
-        false
-      );
-      expect(mockElectronAPI.copyProfileSyncFile).toHaveBeenNthCalledWith(
-        2,
-        '/tmp/old-sync/ha-widget-profile-sync.json',
-        '/tmp/new-sync/ha-widget-profile-sync.json',
-        true
+      // The file in the new folder is never replaced, so the copy is never retried with overwrite.
+      expect(mockElectronAPI.copyProfileSyncFile).toHaveBeenCalledTimes(1);
+      expect(mockUiUtils.showConfirm).toHaveBeenLastCalledWith(
+        'Sync File Already Exists',
+        expect.stringContaining('/tmp/new-sync already has a sync file'),
+        expect.objectContaining({ confirmText: 'Use That File', cancelText: 'Keep Current' })
       );
       expect(state.CONFIG.profileSync.cloudFilePath).toBe(
         '/tmp/new-sync/ha-widget-profile-sync.json'
       );
+      expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+        expect.anything(),
+        'error',
+        expect.anything()
+      );
+    });
+
+    test('keeps the current folder when the file in the new folder is declined', async () => {
+      const config = state.CONFIG;
+      config.profileSync = buildProfileSync({
+        ...config.profileSync,
+        enabled: true,
+        cloudFilePath: '/tmp/old-sync/ha-widget-profile-sync.json',
+        intervalMinutes: 5,
+        encryptionEnabled: false,
+      });
+      state.setConfig(config);
+      mockUiUtils.showConfirm.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+      mockElectronAPI.copyProfileSyncFile.mockResolvedValueOnce({
+        ok: false,
+        status: 'destination_exists',
+      });
+
+      await settings.openSettings();
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-folder-path').value = '/tmp/new-sync';
+      document.getElementById('profile-sync-encryption-enabled').checked = false;
+      await settings.saveSettings();
+
+      expect(state.CONFIG.profileSync.cloudFilePath).toBe(
+        '/tmp/old-sync/ha-widget-profile-sync.json'
+      );
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        'Kept the current sync folder: /tmp/old-sync',
+        'info',
+        expect.any(Number)
+      );
+    });
+
+    test('names both folders when asking to move the sync file, and keeping is not a warning', async () => {
+      const config = state.CONFIG;
+      config.profileSync = buildProfileSync({
+        ...config.profileSync,
+        enabled: true,
+        cloudFilePath: '/tmp/old-sync/ha-widget-profile-sync.json',
+        intervalMinutes: 5,
+        encryptionEnabled: false,
+      });
+      state.setConfig(config);
+      mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+
+      await settings.openSettings();
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-folder-path').value = '/tmp/new-sync';
+      document.getElementById('profile-sync-encryption-enabled').checked = false;
+      await settings.saveSettings();
+
+      expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
+        'Sync Folder Changed',
+        'Copy the existing sync data file from /tmp/old-sync into /tmp/new-sync and switch sync there?',
+        expect.objectContaining({ confirmText: 'Copy & Switch', cancelText: 'Keep Current' })
+      );
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        'Kept the current sync folder: /tmp/old-sync',
+        'info',
+        expect.any(Number)
+      );
+      expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+        expect.stringContaining('Kept the current'),
+        'warning',
+        expect.anything()
+      );
+    });
+
+    test('turning sync on for the first time is not a folder change', async () => {
+      // Main reports no folder while sync has never been pointed at one.
+      state.CONFIG.profileSync = buildProfileSync({
+        enabled: false,
+        cloudFilePath: '',
+        encryptionEnabled: false,
+      });
+
+      await settings.openSettings();
+      expect(document.getElementById('profile-sync-folder-path').value).toBe('');
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-folder-path').value = '/tmp/shared-folder';
+      document.getElementById('profile-sync-encryption-enabled').checked = false;
+      await settings.saveSettings();
+
+      expect(mockUiUtils.showConfirm).not.toHaveBeenCalled();
+      expect(mockElectronAPI.copyProfileSyncFile).not.toHaveBeenCalled();
+      expect(state.CONFIG.profileSync.cloudFilePath).toBe(
+        '/tmp/shared-folder/ha-widget-profile-sync.json'
+      );
+    });
+
+    test('re-enabling sync in another folder after turning it off is not a folder change either', async () => {
+      state.CONFIG.profileSync = buildProfileSync({
+        enabled: false,
+        cloudFilePath: '/tmp/old-sync/ha-widget-profile-sync.json',
+      });
+
+      await settings.openSettings();
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-folder-path').value = '/tmp/new-sync';
+      document.getElementById('profile-sync-encryption-enabled').checked = false;
+      await settings.saveSettings();
+
+      expect(mockUiUtils.showConfirm).not.toHaveBeenCalled();
+      expect(state.CONFIG.profileSync.cloudFilePath).toBe(
+        '/tmp/new-sync/ha-widget-profile-sync.json'
+      );
+    });
+
+    test('sync that is already on without a folder does not block an unrelated save', async () => {
+      // Enabled before this fix without picking a folder: it runs on its private file, and main
+      // reports no folder for it.
+      state.CONFIG.profileSync = buildProfileSync({ enabled: true, cloudFilePath: '' });
+      mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce(
+        buildProfileSyncStatus({ enabled: true, cloudFilePath: '' })
+      );
+
+      await settings.openSettings();
+      expect(document.getElementById('profile-sync-folder-path').value).toBe('');
+      await settings.saveSettings();
+
+      expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+        'Choose a sync folder before enabling profile sync.',
+        'error',
+        expect.any(Number)
+      );
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalled();
+    });
+
+    test('asks for a folder when sync is turned on without choosing one', async () => {
+      state.CONFIG.profileSync = buildProfileSync({ enabled: false, cloudFilePath: '' });
+
+      await settings.openSettings();
+      document.getElementById('profile-sync-enabled').checked = true;
+      await settings.saveSettings();
+
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        'Choose a sync folder before enabling profile sync.',
+        'error',
+        expect.any(Number)
+      );
+      expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+    });
+
+    test('a passphrase that is too short stops the save before anything is persisted', async () => {
+      state.CONFIG.profileSync = buildProfileSync({ enabled: false, cloudFilePath: '' });
+
+      await settings.openSettings();
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-folder-path').value = '/tmp/shared-folder';
+      document.getElementById('profile-sync-encryption-enabled').checked = true;
+      document.getElementById('profile-sync-passphrase').value = 'short';
+      await settings.saveSettings();
+
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        'Passphrase must be at least 8 characters long',
+        'error',
+        expect.any(Number)
+      );
+      expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+      expect(mockElectronAPI.setProfileSyncPassphrase).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(document.getElementById('profile-sync-passphrase'));
+    });
+
+    test('says what each first-sync choice did', async () => {
+      const toastFor = async (choice) => {
+        mockUiUtils.showToast.mockClear();
+        await settings.openSettings();
+        document.getElementById(`profile-sync-resolve-${choice}`).click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        return mockUiUtils.showToast.mock.calls.at(-1);
+      };
+
+      expect(await toastFor('cancel')).toEqual([
+        'Profile sync turned off. No settings were changed.',
+        'success',
+        expect.any(Number),
+      ]);
+      expect(await toastFor('upload')).toEqual([
+        'This computer’s settings were uploaded to the sync file.',
+        'success',
+        expect.any(Number),
+      ]);
+      expect(await toastFor('remote')).toEqual([
+        'Settings downloaded from the sync file.',
+        'success',
+        expect.any(Number),
+      ]);
     });
   });
 

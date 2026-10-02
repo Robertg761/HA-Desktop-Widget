@@ -887,7 +887,6 @@
     "Profile sync upload complete.": "प्रोफ़ाइल सिंक अपलोड पूरा हुआ।",
     "Profile sync download complete.": "प्रोफ़ाइल सिंक डाउनलोड पूरा हुआ।",
     "Failed to resolve sync conflict.": "सिंक विरोध हल नहीं किया जा सका।",
-    "Profile sync conflict resolved.": "प्रोफ़ाइल सिंक विरोध हल हो गया।",
     "Failed to choose sync folder.": "सिंक फ़ोल्डर नहीं चुना जा सका।",
     "Could not open help instructions.": "सहायता निर्देश नहीं खोले जा सके।",
     "Clear Saved Passphrase": "सहेजा गया पासफ़्रेज़ हटाएं",
@@ -902,14 +901,10 @@
     "Disconnected. Home Assistant did not confirm that it revoked the authorization, so you can remove it from your Home Assistant profile.": "डिस्कनेक्ट हो गया। Home Assistant ने प्राधिकरण रद्द करने की पुष्टि नहीं की, इसलिए आप इसे अपनी Home Assistant प्रोफ़ाइल से हटा सकते हैं।",
     "Choose a sync folder before enabling profile sync.": "प्रोफ़ाइल सिंक सक्षम करने से पहले सिंक फ़ोल्डर चुनें।",
     "Sync Folder Changed": "सिंक फ़ोल्डर बदला गया",
-    "Copy the existing sync data file into the new folder and switch sync there?": "मौजूदा सिंक डेटा फ़ाइल को नए फ़ोल्डर में कॉपी करें और सिंक वहीं करें?",
     "Copy & Switch": "कॉपी करें और बदलें",
     "Keep Current": "मौजूदा रखें",
-    "Kept current sync folder.": "मौजूदा सिंक फ़ोल्डर रखा गया।",
     "Copy is unavailable on this build. Kept current sync folder.": "इस बिल्ड में कॉपी उपलब्ध नहीं है। मौजूदा सिंक फ़ोल्डर रखा गया।",
     "Sync File Already Exists": "सिंक फ़ाइल पहले से मौजूद है",
-    "A sync file already exists in the new folder. Overwrite it with your current synced data?": "नए फ़ोल्डर में एक सिंक फ़ाइल पहले से मौजूद है। क्या इसे आपके मौजूदा सिंक डेटा से अधिलेखित करें?",
-    "Overwrite & Switch": "अधिलेखित करें और बदलें",
     "No existing sync file found. Switched to the new folder.": "कोई मौजूदा सिंक फ़ाइल नहीं मिली। नए फ़ोल्डर पर स्विच किया गया।",
     "Failed to copy sync file. Kept current sync folder.": "सिंक फ़ाइल कॉपी नहीं की जा सकी। मौजूदा सिंक फ़ोल्डर रखा गया।",
     "Copied sync file and switched folders.": "सिंक फ़ाइल कॉपी की गई और फ़ोल्डर बदला गया।",
@@ -1678,6 +1673,13 @@
     "The disk that holds the sync folder is full.": "सिंक फ़ोल्डर वाली डिस्क भर गई है।",
     "The sync file is in use by another program. Try again in a moment.": "सिंक फ़ाइल किसी दूसरे प्रोग्राम में उपयोग हो रही है। थोड़ी देर बाद फिर कोशिश करें।",
     "Could not access the sync file ({{code}}). Check the sync folder and try again.": "सिंक फ़ाइल तक नहीं पहुँचा जा सका ({{code}})। सिंक फ़ोल्डर जाँचें और फिर कोशिश करें।",
-    "Could not update the sync file's encryption. Nothing was changed. Try again.": "सिंक फ़ाइल का एन्क्रिप्शन अपडेट नहीं किया जा सका। कुछ भी नहीं बदला गया। फिर कोशिश करें।"
+    "Could not update the sync file's encryption. Nothing was changed. Try again.": "सिंक फ़ाइल का एन्क्रिप्शन अपडेट नहीं किया जा सका। कुछ भी नहीं बदला गया। फिर कोशिश करें।",
+    "Copy the existing sync data file from {{from}} into {{to}} and switch sync there?": "मौजूदा सिंक डेटा फ़ाइल को {{from}} से {{to}} में कॉपी करें और सिंक वहीं करें?",
+    "Kept the current sync folder: {{folder}}": "मौजूदा सिंक फ़ोल्डर रखा गया: {{folder}}",
+    "{{folder}} already has a sync file, probably from another computer. Switch to it? Settings that differ are compared first, and you choose which to keep before anything is replaced.": "{{folder}} में पहले से एक सिंक फ़ाइल है, शायद किसी दूसरे कंप्यूटर की। क्या उसी पर स्विच करें? जो सेटिंग्स अलग हैं, उनकी पहले तुलना की जाती है, और कुछ भी बदले जाने से पहले आप चुनते हैं कि कौन-सी रखनी हैं।",
+    "Use That File": "वही फ़ाइल उपयोग करें",
+    "Profile sync turned off. No settings were changed.": "प्रोफ़ाइल सिंक बंद किया गया। कोई सेटिंग नहीं बदली गई।",
+    "This computer’s settings were uploaded to the sync file.": "इस कंप्यूटर की सेटिंग्स सिंक फ़ाइल में अपलोड की गईं।",
+    "Settings downloaded from the sync file.": "सिंक फ़ाइल से सेटिंग्स डाउनलोड की गईं।"
   }
 }

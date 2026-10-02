@@ -887,7 +887,6 @@
     "Profile sync upload complete.": "Hochladen der Profilsynchronisierung abgeschlossen.",
     "Profile sync download complete.": "Herunterladen der Profilsynchronisierung abgeschlossen.",
     "Failed to resolve sync conflict.": "Sync-Konflikt konnte nicht gelöst werden.",
-    "Profile sync conflict resolved.": "Konflikt der Profilsynchronisierung gelöst.",
     "Failed to choose sync folder.": "Sync-Ordner konnte nicht ausgewählt werden.",
     "Could not open help instructions.": "Hilfeanleitung konnte nicht geöffnet werden.",
     "Clear Saved Passphrase": "Gespeicherte Passphrase löschen",
@@ -902,14 +901,10 @@
     "Disconnected. Home Assistant did not confirm that it revoked the authorization, so you can remove it from your Home Assistant profile.": "Getrennt. Home Assistant hat nicht bestätigt, dass die Autorisierung widerrufen wurde. Du kannst sie in deinem Home-Assistant-Profil entfernen.",
     "Choose a sync folder before enabling profile sync.": "Wähle einen Sync-Ordner, bevor du die Profilsynchronisierung aktivierst.",
     "Sync Folder Changed": "Sync-Ordner geändert",
-    "Copy the existing sync data file into the new folder and switch sync there?": "Die vorhandene Sync-Datei in den neuen Ordner kopieren und die Synchronisierung dorthin verlegen?",
     "Copy & Switch": "Kopieren & wechseln",
     "Keep Current": "Aktuellen behalten",
-    "Kept current sync folder.": "Aktueller Sync-Ordner beibehalten.",
     "Copy is unavailable on this build. Kept current sync folder.": "Kopieren ist in diesem Build nicht verfügbar. Aktueller Sync-Ordner beibehalten.",
     "Sync File Already Exists": "Sync-Datei existiert bereits",
-    "A sync file already exists in the new folder. Overwrite it with your current synced data?": "Im neuen Ordner existiert bereits eine Sync-Datei. Mit deinen aktuell synchronisierten Daten überschreiben?",
-    "Overwrite & Switch": "Überschreiben & wechseln",
     "No existing sync file found. Switched to the new folder.": "Keine vorhandene Sync-Datei gefunden. Zum neuen Ordner gewechselt.",
     "Failed to copy sync file. Kept current sync folder.": "Sync-Datei konnte nicht kopiert werden. Aktueller Sync-Ordner beibehalten.",
     "Copied sync file and switched folders.": "Sync-Datei kopiert und Ordner gewechselt.",
@@ -1678,6 +1673,13 @@
     "The disk that holds the sync folder is full.": "Der Datenträger mit dem Sync-Ordner ist voll.",
     "The sync file is in use by another program. Try again in a moment.": "Die Sync-Datei wird von einem anderen Programm verwendet. Versuche es gleich noch einmal.",
     "Could not access the sync file ({{code}}). Check the sync folder and try again.": "Auf die Sync-Datei konnte nicht zugegriffen werden ({{code}}). Prüfe den Sync-Ordner und versuche es erneut.",
-    "Could not update the sync file's encryption. Nothing was changed. Try again.": "Die Verschlüsselung der Sync-Datei konnte nicht aktualisiert werden. Es wurde nichts geändert. Versuche es erneut."
+    "Could not update the sync file's encryption. Nothing was changed. Try again.": "Die Verschlüsselung der Sync-Datei konnte nicht aktualisiert werden. Es wurde nichts geändert. Versuche es erneut.",
+    "Copy the existing sync data file from {{from}} into {{to}} and switch sync there?": "Die vorhandene Sync-Datei von {{from}} nach {{to}} kopieren und die Synchronisierung dorthin verlegen?",
+    "Kept the current sync folder: {{folder}}": "Aktueller Sync-Ordner beibehalten: {{folder}}",
+    "{{folder}} already has a sync file, probably from another computer. Switch to it? Settings that differ are compared first, and you choose which to keep before anything is replaced.": "In {{folder}} liegt bereits eine Sync-Datei, wahrscheinlich von einem anderen Computer. Zu ihr wechseln? Abweichende Einstellungen werden zuerst verglichen, und du wählst, welche du behältst, bevor etwas ersetzt wird.",
+    "Use That File": "Diese Datei verwenden",
+    "Profile sync turned off. No settings were changed.": "Profilsynchronisierung ausgeschaltet. Es wurden keine Einstellungen geändert.",
+    "This computer’s settings were uploaded to the sync file.": "Die Einstellungen dieses Computers wurden in die Sync-Datei hochgeladen.",
+    "Settings downloaded from the sync file.": "Einstellungen aus der Sync-Datei heruntergeladen."
   }
 }

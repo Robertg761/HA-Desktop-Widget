@@ -887,7 +887,6 @@
     "Profile sync upload complete.": "Envoi de la synchronisation du profil terminé.",
     "Profile sync download complete.": "Récupération de la synchronisation du profil terminée.",
     "Failed to resolve sync conflict.": "Impossible de résoudre le conflit de synchronisation.",
-    "Profile sync conflict resolved.": "Conflit de synchronisation du profil résolu.",
     "Failed to choose sync folder.": "Impossible de choisir le dossier de synchronisation.",
     "Could not open help instructions.": "Impossible d'ouvrir les instructions d'aide.",
     "Clear Saved Passphrase": "Effacer la phrase secrète enregistrée",
@@ -902,14 +901,10 @@
     "Disconnected. Home Assistant did not confirm that it revoked the authorization, so you can remove it from your Home Assistant profile.": "Déconnecté. Home Assistant n'a pas confirmé la révocation de l'autorisation : vous pouvez la supprimer de votre profil Home Assistant.",
     "Choose a sync folder before enabling profile sync.": "Choisissez un dossier de synchronisation avant d'activer la synchronisation du profil.",
     "Sync Folder Changed": "Dossier de synchronisation modifié",
-    "Copy the existing sync data file into the new folder and switch sync there?": "Copier le fichier de données de synchronisation existant dans le nouveau dossier et y basculer la synchronisation ?",
     "Copy & Switch": "Copier et basculer",
     "Keep Current": "Conserver l'actuel",
-    "Kept current sync folder.": "Dossier de synchronisation actuel conservé.",
     "Copy is unavailable on this build. Kept current sync folder.": "La copie n'est pas disponible dans cette version. Dossier de synchronisation actuel conservé.",
     "Sync File Already Exists": "Le fichier de synchronisation existe déjà",
-    "A sync file already exists in the new folder. Overwrite it with your current synced data?": "Un fichier de synchronisation existe déjà dans le nouveau dossier. L'écraser avec vos données synchronisées actuelles ?",
-    "Overwrite & Switch": "Écraser et basculer",
     "No existing sync file found. Switched to the new folder.": "Aucun fichier de synchronisation existant trouvé. Basculement vers le nouveau dossier effectué.",
     "Failed to copy sync file. Kept current sync folder.": "Impossible de copier le fichier de synchronisation. Dossier de synchronisation actuel conservé.",
     "Copied sync file and switched folders.": "Fichier de synchronisation copié et dossier changé.",
@@ -1678,6 +1673,13 @@
     "The disk that holds the sync folder is full.": "Le disque contenant le dossier de synchronisation est plein.",
     "The sync file is in use by another program. Try again in a moment.": "Le fichier de synchronisation est utilisé par un autre programme. Réessayez dans un instant.",
     "Could not access the sync file ({{code}}). Check the sync folder and try again.": "Impossible d'accéder au fichier de synchronisation ({{code}}). Vérifiez le dossier de synchronisation et réessayez.",
-    "Could not update the sync file's encryption. Nothing was changed. Try again.": "Impossible de mettre à jour le chiffrement du fichier de synchronisation. Rien n'a été modifié. Réessayez."
+    "Could not update the sync file's encryption. Nothing was changed. Try again.": "Impossible de mettre à jour le chiffrement du fichier de synchronisation. Rien n'a été modifié. Réessayez.",
+    "Copy the existing sync data file from {{from}} into {{to}} and switch sync there?": "Copier le fichier de données de synchronisation existant de {{from}} vers {{to}} et y basculer la synchronisation ?",
+    "Kept the current sync folder: {{folder}}": "Dossier de synchronisation actuel conservé : {{folder}}",
+    "{{folder}} already has a sync file, probably from another computer. Switch to it? Settings that differ are compared first, and you choose which to keep before anything is replaced.": "{{folder}} contient déjà un fichier de synchronisation, probablement d'un autre ordinateur. Basculer vers celui-ci ? Les paramètres qui diffèrent sont d'abord comparés, et vous choisissez ceux à conserver avant que quoi que ce soit ne soit remplacé.",
+    "Use That File": "Utiliser ce fichier",
+    "Profile sync turned off. No settings were changed.": "Synchronisation du profil désactivée. Aucun paramètre n'a été modifié.",
+    "This computer’s settings were uploaded to the sync file.": "Les paramètres de cet ordinateur ont été envoyés dans le fichier de synchronisation.",
+    "Settings downloaded from the sync file.": "Paramètres récupérés depuis le fichier de synchronisation."
   }
 }

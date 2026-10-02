@@ -887,7 +887,6 @@
     "Profile sync upload complete.": "Subida de la sincronización del perfil completada.",
     "Profile sync download complete.": "Descarga de la sincronización del perfil completada.",
     "Failed to resolve sync conflict.": "No se pudo resolver el conflicto de sincronización.",
-    "Profile sync conflict resolved.": "Conflicto de sincronización del perfil resuelto.",
     "Failed to choose sync folder.": "No se pudo elegir la carpeta de sincronización.",
     "Could not open help instructions.": "No se pudieron abrir las instrucciones de ayuda.",
     "Clear Saved Passphrase": "Borrar la frase de contraseña guardada",
@@ -902,14 +901,10 @@
     "Disconnected. Home Assistant did not confirm that it revoked the authorization, so you can remove it from your Home Assistant profile.": "Desconectado. Home Assistant no confirmó que revocara la autorización, así que puedes eliminarla desde tu perfil de Home Assistant.",
     "Choose a sync folder before enabling profile sync.": "Elige una carpeta de sincronización antes de activar la sincronización del perfil.",
     "Sync Folder Changed": "Carpeta de sincronización cambiada",
-    "Copy the existing sync data file into the new folder and switch sync there?": "¿Copiar el archivo de datos de sincronización existente a la nueva carpeta y sincronizar allí?",
     "Copy & Switch": "Copiar y cambiar",
     "Keep Current": "Mantener la actual",
-    "Kept current sync folder.": "Se mantuvo la carpeta de sincronización actual.",
     "Copy is unavailable on this build. Kept current sync folder.": "La copia no está disponible en esta versión. Se mantuvo la carpeta de sincronización actual.",
     "Sync File Already Exists": "El archivo de sincronización ya existe",
-    "A sync file already exists in the new folder. Overwrite it with your current synced data?": "Ya hay un archivo de sincronización en la nueva carpeta. ¿Sobrescribirlo con tus datos sincronizados actuales?",
-    "Overwrite & Switch": "Sobrescribir y cambiar",
     "No existing sync file found. Switched to the new folder.": "No se encontró ningún archivo de sincronización. Se cambió a la nueva carpeta.",
     "Failed to copy sync file. Kept current sync folder.": "No se pudo copiar el archivo de sincronización. Se mantuvo la carpeta de sincronización actual.",
     "Copied sync file and switched folders.": "Se copió el archivo de sincronización y se cambió de carpeta.",
@@ -1678,6 +1673,13 @@
     "The disk that holds the sync folder is full.": "El disco que contiene la carpeta de sincronización está lleno.",
     "The sync file is in use by another program. Try again in a moment.": "Otro programa está usando el archivo de sincronización. Inténtalo de nuevo en un momento.",
     "Could not access the sync file ({{code}}). Check the sync folder and try again.": "No se pudo acceder al archivo de sincronización ({{code}}). Comprueba la carpeta de sincronización e inténtalo de nuevo.",
-    "Could not update the sync file's encryption. Nothing was changed. Try again.": "No se pudo actualizar el cifrado del archivo de sincronización. No se cambió nada. Inténtalo de nuevo."
+    "Could not update the sync file's encryption. Nothing was changed. Try again.": "No se pudo actualizar el cifrado del archivo de sincronización. No se cambió nada. Inténtalo de nuevo.",
+    "Copy the existing sync data file from {{from}} into {{to}} and switch sync there?": "¿Copiar el archivo de datos de sincronización existente de {{from}} a {{to}} y sincronizar allí?",
+    "Kept the current sync folder: {{folder}}": "Se mantuvo la carpeta de sincronización actual: {{folder}}",
+    "{{folder}} already has a sync file, probably from another computer. Switch to it? Settings that differ are compared first, and you choose which to keep before anything is replaced.": "{{folder}} ya contiene un archivo de sincronización, probablemente de otro equipo. ¿Cambiar a él? Primero se comparan los ajustes que difieren y tú eliges cuáles conservar antes de reemplazar nada.",
+    "Use That File": "Usar ese archivo",
+    "Profile sync turned off. No settings were changed.": "Sincronización del perfil desactivada. No se cambió ningún ajuste.",
+    "This computer’s settings were uploaded to the sync file.": "Los ajustes de este equipo se subieron al archivo de sincronización.",
+    "Settings downloaded from the sync file.": "Ajustes descargados del archivo de sincronización."
   }
 }

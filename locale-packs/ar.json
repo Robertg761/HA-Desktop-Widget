@@ -887,7 +887,6 @@
     "Profile sync upload complete.": "اكتمل رفع مزامنة الملف الشخصي.",
     "Profile sync download complete.": "اكتمل تنزيل مزامنة الملف الشخصي.",
     "Failed to resolve sync conflict.": "تعذّر حل تعارض المزامنة.",
-    "Profile sync conflict resolved.": "تم حل تعارض مزامنة الملف الشخصي.",
     "Failed to choose sync folder.": "تعذّر اختيار مجلد المزامنة.",
     "Could not open help instructions.": "تعذّر فتح تعليمات المساعدة.",
     "Clear Saved Passphrase": "مسح عبارة المرور المحفوظة",
@@ -902,14 +901,10 @@
     "Disconnected. Home Assistant did not confirm that it revoked the authorization, so you can remove it from your Home Assistant profile.": "تم قطع الاتصال. لم يؤكد Home Assistant إلغاء التفويض، لذا يمكنك إزالته من ملفك الشخصي في Home Assistant.",
     "Choose a sync folder before enabling profile sync.": "اختر مجلد مزامنة قبل تفعيل مزامنة الملف الشخصي.",
     "Sync Folder Changed": "تغيّر مجلد المزامنة",
-    "Copy the existing sync data file into the new folder and switch sync there?": "هل تريد نسخ ملف بيانات المزامنة الحالي إلى المجلد الجديد والتبديل إليه للمزامنة؟",
     "Copy & Switch": "نسخ وتبديل",
     "Keep Current": "الإبقاء على الحالي",
-    "Kept current sync folder.": "تم الإبقاء على مجلد المزامنة الحالي.",
     "Copy is unavailable on this build. Kept current sync folder.": "النسخ غير متاح في هذا الإصدار. تم الإبقاء على مجلد المزامنة الحالي.",
     "Sync File Already Exists": "ملف المزامنة موجود بالفعل",
-    "A sync file already exists in the new folder. Overwrite it with your current synced data?": "يوجد ملف مزامنة بالفعل في المجلد الجديد. هل تريد استبداله ببياناتك المتزامنة الحالية؟",
-    "Overwrite & Switch": "استبدال وتبديل",
     "No existing sync file found. Switched to the new folder.": "لم يتم العثور على ملف مزامنة سابق. تم التبديل إلى المجلد الجديد.",
     "Failed to copy sync file. Kept current sync folder.": "تعذّر نسخ ملف المزامنة. تم الإبقاء على مجلد المزامنة الحالي.",
     "Copied sync file and switched folders.": "تم نسخ ملف المزامنة وتبديل المجلد.",
@@ -1678,6 +1673,13 @@
     "The disk that holds the sync folder is full.": "القرص الذي يحتوي على مجلد المزامنة ممتلئ.",
     "The sync file is in use by another program. Try again in a moment.": "ملف المزامنة قيد الاستخدام من برنامج آخر. حاول مرة أخرى بعد قليل.",
     "Could not access the sync file ({{code}}). Check the sync folder and try again.": "تعذّر الوصول إلى ملف المزامنة ({{code}}). تحقق من مجلد المزامنة وحاول مرة أخرى.",
-    "Could not update the sync file's encryption. Nothing was changed. Try again.": "تعذّر تحديث تشفير ملف المزامنة. لم يتم تغيير أي شيء. حاول مرة أخرى."
+    "Could not update the sync file's encryption. Nothing was changed. Try again.": "تعذّر تحديث تشفير ملف المزامنة. لم يتم تغيير أي شيء. حاول مرة أخرى.",
+    "Copy the existing sync data file from {{from}} into {{to}} and switch sync there?": "هل تريد نسخ ملف بيانات المزامنة الحالي من {{from}} إلى {{to}} والتبديل إليه للمزامنة؟",
+    "Kept the current sync folder: {{folder}}": "تم الإبقاء على مجلد المزامنة الحالي: {{folder}}",
+    "{{folder}} already has a sync file, probably from another computer. Switch to it? Settings that differ are compared first, and you choose which to keep before anything is replaced.": "يوجد ملف مزامنة بالفعل في {{folder}}، ربما من كمبيوتر آخر. هل تريد التبديل إليه؟ تُقارَن الإعدادات المختلفة أولًا، وتختار ما تريد الاحتفاظ به قبل استبدال أي شيء.",
+    "Use That File": "استخدام ذلك الملف",
+    "Profile sync turned off. No settings were changed.": "تم إيقاف مزامنة الملف الشخصي. لم يتم تغيير أي إعدادات.",
+    "This computer’s settings were uploaded to the sync file.": "تم رفع إعدادات هذا الكمبيوتر إلى ملف المزامنة.",
+    "Settings downloaded from the sync file.": "تم تنزيل الإعدادات من ملف المزامنة."
   }
 }

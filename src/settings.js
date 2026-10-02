@@ -330,6 +330,9 @@ const CUSTOM_ENTITY_ICON_SEARCH_ALIASES = {
   '🚿': ['bathroom', 'shower'],
 };
 const PROFILE_SYNC_DEFAULT_FILE_NAME = 'ha-widget-profile-sync.json';
+// Main enforces the same minimum (PROFILE_SYNC_MIN_PASSPHRASE_LENGTH in main.js); checking it
+// here keeps a short passphrase from ever reaching a half-saved state.
+const PROFILE_SYNC_MIN_PASSPHRASE_LENGTH = 8;
 const PROFILE_SYNC_HELP_URL = 'https://github.com/Robertg761/HA-Desktop-Widget#profile-sync';
 const GITHUB_SPONSORS_URL = 'https://github.com/sponsors/robertg761';
 // GitHub Sponsors caps custom amounts at $12,000; higher values 404 the checkout page.
@@ -3443,7 +3446,12 @@ async function resolveProfileSyncFirstEnable(choice) {
       applyProfileSyncConfigToForm();
     }
     if (result?.status) updateProfileSyncStatusUi(result.status);
-    showToast(t('Profile sync conflict resolved.'), 'success', 2500);
+    const outcomeMessage = {
+      cancel: () => t('Profile sync turned off. No settings were changed.'),
+      upload_local: () => t('This computer’s settings were uploaded to the sync file.'),
+      use_remote: () => t('Settings downloaded from the sync file.'),
+    }[choice];
+    showToast(outcomeMessage(), 'success', 2500);
   } catch (error) {
     log.error('Failed to resolve profile sync conflict:', error);
     showToast(error?.message || t('Failed to resolve sync conflict.'), 'error', 3500);
@@ -3681,7 +3689,12 @@ function bindProfileSyncSettingsUi() {
     try {
       const provider = document.getElementById('profile-sync-provider');
       const selectedProvider = provider?.value || 'cloudFile';
-      const response = await window.electronAPI.chooseProfileSyncFolder(selectedProvider);
+      // Starting where the form already points keeps the dialog next to what is being replaced.
+      const currentFolder = document.getElementById('profile-sync-folder-path')?.value || '';
+      const response = await window.electronAPI.chooseProfileSyncFolder(
+        selectedProvider,
+        currentFolder
+      );
       if (response?.canceled) return;
       const folderPath =
         response?.folderPath || deriveProfileSyncFolderPath(response?.filePath || '');
@@ -5400,22 +5413,57 @@ async function saveSettings() {
       nextProfileSync.encryptionEnabled && !!profileSyncRememberPassphrase?.checked;
     nextProfileSync.passphraseEncrypted = false;
 
-    if (nextProfileSync.enabled && !nextProfileSync.cloudFilePath) {
+    // Only turning sync on needs a folder. Sync that was already on without one keeps working
+    // against its private file (the folder warning says so), so an unrelated save must not
+    // be refused for it.
+    if (
+      nextProfileSync.enabled &&
+      prevProfileSync.enabled !== true &&
+      !nextProfileSync.cloudFilePath
+    ) {
       showToast(t('Choose a sync folder before enabling profile sync.'), 'error', 3200);
+      return;
+    }
+
+    // Checked here, before anything is saved or copied: main would refuse a short passphrase
+    // only after the rest of the save was persisted, leaving encrypted sync half enabled.
+    const typedPassphrase = (profileSyncPassphrase?.value || '').trim();
+    if (
+      nextProfileSync.enabled &&
+      nextProfileSync.encryptionEnabled &&
+      typedPassphrase &&
+      typedPassphrase.length < PROFILE_SYNC_MIN_PASSPHRASE_LENGTH
+    ) {
+      showToast(
+        t('Passphrase must be at least {{count}} characters long', {
+          count: PROFILE_SYNC_MIN_PASSPHRASE_LENGTH,
+        }),
+        'error',
+        3400
+      );
+      profileSyncPassphrase.focus();
       return;
     }
 
     const previousSyncFilePath = (prevProfileSync.cloudFilePath || '').trim();
     const nextSyncFilePath = (nextProfileSync.cloudFilePath || '').trim();
+    // A first enable is not a move: before sync has run there is no file to carry along, and
+    // main reports no folder while the private default one is in use.
     const syncPathChanged =
       nextProfileSync.enabled &&
+      prevProfileSync.enabled === true &&
       !!previousSyncFilePath &&
       !!nextSyncFilePath &&
       previousSyncFilePath !== nextSyncFilePath;
     if (syncPathChanged) {
+      const previousFolder = deriveProfileSyncFolderPath(previousSyncFilePath);
+      const nextFolder = deriveProfileSyncFolderPath(nextSyncFilePath);
       const copyAndSwitch = await showConfirm(
         t('Sync Folder Changed'),
-        t('Copy the existing sync data file into the new folder and switch sync there?'),
+        t('Copy the existing sync data file from {{from}} into {{to}} and switch sync there?', {
+          from: previousFolder,
+          to: nextFolder,
+        }),
         {
           confirmText: t('Copy & Switch'),
           cancelText: t('Keep Current'),
@@ -5425,15 +5473,22 @@ async function saveSettings() {
 
       const revertToPreviousSyncPath = () => {
         nextProfileSync.cloudFilePath = previousSyncFilePath;
-        const previousFolder = deriveProfileSyncFolderPath(previousSyncFilePath);
         if (profileSyncFolderPath) {
           profileSyncFolderPath.value = previousFolder;
         }
       };
-
-      if (!copyAndSwitch) {
+      const keepCurrentSyncFolder = () => {
         revertToPreviousSyncPath();
-        showToast(t('Kept current sync folder.'), 'warning', 2200);
+        showToast(
+          t('Kept the current sync folder: {{folder}}', { folder: previousFolder }),
+          'info',
+          2600
+        );
+      };
+
+      let usedExistingFile = false;
+      if (!copyAndSwitch) {
+        keepCurrentSyncFolder();
       } else if (!window.electronAPI?.copyProfileSyncFile) {
         revertToPreviousSyncPath();
         showToast(
@@ -5442,42 +5497,33 @@ async function saveSettings() {
           3200
         );
       } else {
-        let copyResult = await window.electronAPI.copyProfileSyncFile(
+        const copyResult = await window.electronAPI.copyProfileSyncFile(
           previousSyncFilePath,
           nextSyncFilePath,
           false
         );
         if (copyResult?.status === 'destination_exists') {
-          const overwrite = await showConfirm(
+          // Whatever is there is probably another computer's file, so it is never replaced
+          // with a copy. Switching to it compares the two sides' settings first, and the
+          // choice panel offers Keep Local (with the replaced settings backed up).
+          usedExistingFile = await showConfirm(
             t('Sync File Already Exists'),
             t(
-              'A sync file already exists in the new folder. Overwrite it with your current synced data?'
+              '{{folder}} already has a sync file, probably from another computer. Switch to it? Settings that differ are compared first, and you choose which to keep before anything is replaced.',
+              { folder: nextFolder }
             ),
             {
-              confirmText: t('Overwrite & Switch'),
+              confirmText: t('Use That File'),
               cancelText: t('Keep Current'),
-              confirmClass: 'btn-danger',
+              confirmClass: 'btn-primary',
             }
           );
-          if (!overwrite) {
-            revertToPreviousSyncPath();
-            showToast(t('Kept current sync folder.'), 'warning', 2200);
-          } else {
-            copyResult = await window.electronAPI.copyProfileSyncFile(
-              previousSyncFilePath,
-              nextSyncFilePath,
-              true
-            );
-          }
+          if (!usedExistingFile) keepCurrentSyncFolder();
         }
 
-        if (nextProfileSync.cloudFilePath !== previousSyncFilePath) {
+        if (nextProfileSync.cloudFilePath !== previousSyncFilePath && !usedExistingFile) {
           if (copyResult?.status === 'source_missing') {
-            showToast(
-              t('No existing sync file found. Switched to the new folder.'),
-              'warning',
-              3200
-            );
+            showToast(t('No existing sync file found. Switched to the new folder.'), 'info', 3200);
           } else if (!copyResult?.ok) {
             revertToPreviousSyncPath();
             showToast(
@@ -5493,7 +5539,6 @@ async function saveSettings() {
       }
     }
 
-    const typedPassphrase = (profileSyncPassphrase?.value || '').trim();
     const hasSavedPassphrase = !!profileSyncStatusCache?.passphraseStored;
     const encryptionSettingChanged =
       nextProfileSync.encryptionEnabled !== !!prevProfileSync.encryptionEnabled;
