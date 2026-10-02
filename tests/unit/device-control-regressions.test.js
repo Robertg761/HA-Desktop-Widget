@@ -322,6 +322,23 @@ describe('device control and live data regressions', () => {
     expect(new Set(readoutIds).size).toBe(2);
     expect(document.querySelectorAll(`[id="${readoutIds[0]}"]`)).toHaveLength(1);
   });
+  test('a primary light card carries the light state its warm icon and glow key on', () => {
+    const light = entity('light.audit', 'on', { brightness: 200 });
+    document.body.innerHTML +=
+      '<div class="status-grid"><div id="weather-card"></div><div id="time-card"></div></div>';
+    state.setStates({ [light.entity_id]: light });
+    state.setConfig({ ...state.CONFIG, primaryCards: [light.entity_id, 'none'] });
+    ui.renderPrimaryCards();
+
+    const card = document.querySelector('.primary-light-card');
+    expect(card.dataset.state).toBe('on');
+
+    // The card outlives the control inside it, so a live change has to move the attribute too.
+    liveUpdate({ ...light, state: 'off', attributes: {} });
+    expect(card.dataset.state).toBe('off');
+    liveUpdate({ ...light, state: 'on' });
+    expect(card.dataset.state).toBe('on');
+  });
   test('calendar explains the date window and retries after an error', async () => {
     const calendar = entity('calendar.audit', 'off');
     state.setEntityState(calendar);

@@ -1595,6 +1595,17 @@ function getTickTargets() {
   };
 }
 
+// The primary light card's warm icon and glow key on the card's own data-state, and the card
+// outlives the control inside it, so every repaint of that control has to refresh it too.
+function syncPrimaryCardState(cardEl, entity) {
+  const displayState = getEntityForDisplay(entity)?.state;
+  if (displayState) {
+    cardEl.dataset.state = displayState;
+  } else {
+    cardEl.removeAttribute('data-state');
+  }
+}
+
 function renderPrimaryEntityCard(cardEl, entityId) {
   if (!cardEl) return;
 
@@ -1621,6 +1632,7 @@ function renderPrimaryEntityCard(cardEl, entityId) {
   cardEl.classList.toggle('primary-light-card', resolvedEntityId.startsWith('light.'));
   cardEl.dataset.primaryType = 'entity';
   cardEl.dataset.entityId = resolvedEntityId;
+  syncPrimaryCardState(cardEl, entity);
 
   cardEl.innerHTML = '';
   cardEl.appendChild(control);
@@ -2540,6 +2552,10 @@ function updateEntityInUI(entity, options = {}) {
     );
     items.forEach((item) => {
       const isDesktopPin = item.dataset.desktopPin === 'true';
+      if (item.dataset.primaryCard === 'true') {
+        const card = item.closest('.primary-entity-card');
+        if (card) syncPrimaryCardState(card, renderEntity);
+      }
       if (isDesktopPin && updateExistingDesktopPinPanelControl(item, renderEntity)) {
         return;
       }
