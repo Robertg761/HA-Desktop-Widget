@@ -16177,10 +16177,6 @@ body[data-season='thanksgiving'] .control-item {
     outline-offset: -2px;
   }
 
-  /* The pill that slides behind the active tab is a fill too. The tab rings itself instead, which
-     also avoids two rings with notches where their corner radii differ. */
-  .sliding-indicator {
-    display: none;
   /* In edit mode the active page's wrapper owns the highlight. The link inside it would ring as
      well, and its transparent border is redrawn in ButtonText, which makes a second box around the
      page name; a Canvas border is not drawn against the pane. */
@@ -16189,6 +16185,10 @@ body[data-season='thanksgiving'] .control-item {
     border-color: Canvas;
   }
 
+  /* The pill that slides behind the active tab is a fill too. The tab rings itself instead, which
+     also avoids two rings with notches where their corner radii differ. */
+  .sliding-indicator {
+    display: none;
   }
 
   /* The primary action is told from the others by its heavier edge, not its fill. */
