@@ -261,7 +261,7 @@ describe('a sync folder that cannot be written', () => {
 
 describe('a sync file another program has open', () => {
   test.each([
-    ['win32', 'in use by another program'],
+    ['win32', 'in use by another program or is read-only'],
     ['linux', 'does not have permission'],
   ])('EPERM on %s', async (platform, wording) => {
     const { desktop } = await createSyncedPair();
@@ -295,7 +295,7 @@ describe('internal recovery failures', () => {
     const result = await desktop.invoke('run-profile-sync', 'auto').catch((error) => error);
 
     expect(result.error).toBe(
-      "Could not update the sync file's encryption. Nothing was changed. Try again."
+      'Could not update the sync file’s encryption. Nothing was changed. Try again.'
     );
   });
 
@@ -304,7 +304,7 @@ describe('internal recovery failures', () => {
     const { createRewriteTransactionError } = desktop.context;
 
     expect(desktop.context.mainTError(createRewriteTransactionError('anything technical'))).toBe(
-      "Could not update the sync file's encryption. Nothing was changed. Try again."
+      'Could not update the sync file’s encryption. Nothing was changed. Try again.'
     );
   });
 });

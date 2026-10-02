@@ -1654,12 +1654,12 @@
     "Enter the passphrase your other computers use for this sync file.": "请输入你的其他电脑用于此同步文件的密码短语。",
     "Secure system storage is unavailable, and changing the encryption of an existing sync file needs it. On Linux, start and unlock a keyring such as GNOME Keyring or KWallet, then restart the widget.": "安全的系统存储不可用，而更改现有同步文件的加密需要它。在 Linux 上，请启动并解锁 GNOME Keyring 或 KWallet 等密钥环，然后重新启动小组件。",
     "That passphrase does not unlock the sync file. Enter the passphrase your other computers use.": "此密码短语无法解锁同步文件。请输入你的其他电脑使用的密码短语。",
-    "The sync file is damaged. Use Sync Up to replace it with this computer's settings; the old file is backed up first.": "同步文件已损坏。请使用“向上同步”用此电脑的设置替换它；旧文件会先备份。",
-    "This app does not have permission to use the sync file or its folder. Check the folder's permissions and that it is not read-only.": "此应用无权使用同步文件或其所在文件夹。请检查文件夹权限，并确认它不是只读的。",
+    "The sync file is damaged. Use Sync Up to replace it with this computer’s settings; the old file is backed up first.": "同步文件已损坏。请使用“向上同步”用此电脑的设置替换它；旧文件会先备份。",
+    "This app does not have permission to use the sync file or its folder. Check the folder’s permissions and that it is not read-only.": "此应用无权使用同步文件或其所在文件夹。请检查文件夹权限，并确认它不是只读的。",
     "The disk that holds the sync folder is full.": "存放同步文件夹的磁盘已满。",
     "The sync file is in use by another program. Try again in a moment.": "同步文件正被其他程序使用。请稍后再试。",
     "Could not access the sync file ({{code}}). Check the sync folder and try again.": "无法访问同步文件（{{code}}）。请检查同步文件夹后重试。",
-    "Could not update the sync file's encryption. Nothing was changed. Try again.": "无法更新同步文件的加密。未更改任何内容。请重试。",
+    "Could not update the sync file’s encryption. Nothing was changed. Try again.": "无法更新同步文件的加密。未更改任何内容。请重试。",
     "Copy the existing sync data file from {{from}} into {{to}} and switch sync there?": "要将现有同步数据文件从 {{from}} 复制到 {{to}} 并切换到那里同步吗？",
     "Kept the current sync folder: {{folder}}": "已保留当前同步文件夹：{{folder}}",
     "{{folder}} already has a sync file, probably from another computer. Switch to it? Settings that differ are compared first, and you choose which to keep before anything is replaced.": "{{folder}} 中已有一个同步文件，可能来自另一台电脑。要切换到该文件吗？会先比较有差异的设置，并在替换任何内容之前由你选择保留哪些。",
@@ -1669,7 +1669,6 @@
     "Settings downloaded from the sync file.": "已从同步文件下载设置。",
     "Locks the sync file with a passphrase. Every computer needs the same passphrase.": "用密码短语锁定同步文件。每台电脑都需要相同的密码短语。",
     "Show passphrase": "显示密码短语",
-    "Hide passphrase": "隐藏密码短语",
     "Confirm passphrase": "确认密码短语",
     "At least 8 characters. If you forget it, the data in the sync file cannot be recovered.": "至少 8 个字符。如果忘记，同步文件中的数据将无法恢复。",
     "Saved with your system’s secure storage. When this is off, you enter the passphrase again after each restart.": "保存在你系统的安全存储中。关闭后，每次重启都需要重新输入密码短语。",
@@ -1691,7 +1690,7 @@
     "Appearance only": "仅外观",
     "Quick Access and layout only": "仅快速访问和布局",
     "Another sync app": "其他同步应用",
-    "Suggests the app's usual folder and spots its conflict copies.": "建议该应用的常用文件夹，并识别其冲突副本。",
+    "Suggests the app’s usual folder and spots its conflict copies.": "建议该应用的常用文件夹，并识别其冲突副本。",
     "Keep Quick Access, appearance, alerts, and weather and media choices the same on every computer through a folder your cloud or sync app already keeps in sync. The Home Assistant connection, desktop pins, hotkeys, and window position stay on each computer.": "通过云盘或同步应用已在同步的文件夹，让每台电脑上的快速访问、外观、警报以及天气和媒体选项保持一致。Home Assistant 连接、桌面固定项、快捷键和窗口位置保留在各自的电脑上。",
     "{{time}} · This computer, before a sync": "{{time}} · 此电脑，同步之前",
     "{{time}} · This computer, before an import": "{{time}} · 此电脑，导入之前",
@@ -1703,6 +1702,8 @@
     "Settings files must be smaller than 256 KB.": "设置文件必须小于 256 KB。",
     "HA Desktop Widget could not start": "HA Desktop Widget 无法启动",
     "Something went wrong while starting the widget: {{error}}": "启动小组件时出错：{{error}}",
-    "No unlocked system keyring (Secret Service) was found, so this token will not be remembered after you quit. Start gnome-keyring or KWallet, then restart the widget.": "未找到已解锁的系统密钥环（Secret Service），因此退出后不会记住此令牌。请启动 gnome-keyring 或 KWallet，然后重新启动小组件。"
+    "No unlocked system keyring (Secret Service) was found, so this token will not be remembered after you quit. Start gnome-keyring or KWallet, then restart the widget.": "未找到已解锁的系统密钥环（Secret Service），因此退出后不会记住此令牌。请启动 gnome-keyring 或 KWallet，然后重新启动小组件。",
+    "The sync file is in use by another program or is read-only. Try again in a moment, and check the folder’s permissions if it keeps happening.": "同步文件正被其他程序使用，或为只读。请稍后再试；如果问题持续，请检查文件夹权限。",
+    "Details": "详细信息"
   }
 }

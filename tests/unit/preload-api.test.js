@@ -81,7 +81,7 @@ describe('preload Electron API', () => {
         'choose-profile-sync-folder',
         ['dropbox', '/tmp/shared'],
       ],
-      ['copyProfileSyncFile', ['/a', '/b'], 'copy-profile-sync-file', ['/a', '/b', false]],
+      ['copyProfileSyncFile', ['/a', '/b'], 'copy-profile-sync-file', ['/a', '/b']],
       ['getProfileSyncStatus', [], 'get-profile-sync-status', []],
       ['exportSettingsFile', [], 'export-settings-file', []],
       ['previewSettingsImport', [], 'preview-settings-import', []],

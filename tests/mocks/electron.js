@@ -103,12 +103,11 @@ function createMockElectronAPI() {
       provider,
     })
   );
-  const copyProfileSyncFile = jest.fn((_fromPath, _toPath, _overwrite = false) =>
+  const copyProfileSyncFile = jest.fn((_fromPath, _toPath) =>
     Promise.resolve({
       ok: true,
       status: 'copied',
       copied: true,
-      overwritten: false,
     })
   );
 

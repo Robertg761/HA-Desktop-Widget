@@ -2003,16 +2003,28 @@
                   <div class="form-group setting-row">
                     <div class="setting-text">
                       <span class="setting-label" data-i18n="Sync status">Sync status</span>
-                      <p
-                        id="profile-sync-status"
-                        class="form-help profile-sync-status"
-                        aria-live="polite"
-                      ></p>
-                      <p
-                        id="profile-sync-error"
-                        class="form-help profile-sync-error hidden"
-                        aria-live="polite"
-                      ></p>
+                      <div class="profile-sync-status-block">
+                        <p
+                          id="profile-sync-status"
+                          class="form-help profile-sync-status"
+                          aria-live="polite"
+                        ></p>
+                        <p
+                          id="profile-sync-error"
+                          class="form-help profile-sync-error is-clamped"
+                          aria-live="polite"
+                        ></p>
+                        <button
+                          type="button"
+                          id="profile-sync-error-toggle"
+                          class="btn btn-link hidden"
+                          aria-expanded="false"
+                          aria-controls="profile-sync-error"
+                          data-i18n="Details"
+                        >
+                          Details
+                        </button>
+                      </div>
                     </div>
                     <button
                       type="button"
@@ -2068,9 +2080,9 @@
                       <label for="profile-sync-provider" data-i18n="Sync app">Sync app</label>
                       <p
                         class="form-help"
-                        data-i18n="Suggests the app's usual folder and spots its conflict copies."
+                        data-i18n="Suggests the app’s usual folder and spots its conflict copies."
                       >
-                        Suggests the app's usual folder and spots its conflict copies.
+                        Suggests the app’s usual folder and spots its conflict copies.
                       </p>
                     </div>
                     <select id="profile-sync-provider">

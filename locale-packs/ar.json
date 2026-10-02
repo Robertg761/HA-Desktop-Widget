@@ -1654,12 +1654,12 @@
     "Enter the passphrase your other computers use for this sync file.": "أدخل عبارة المرور التي تستخدمها أجهزة الكمبيوتر الأخرى لديك لملف المزامنة هذا.",
     "Secure system storage is unavailable, and changing the encryption of an existing sync file needs it. On Linux, start and unlock a keyring such as GNOME Keyring or KWallet, then restart the widget.": "التخزين الآمن للنظام غير متاح، وتغيير تشفير ملف مزامنة موجود يحتاج إليه. على Linux، شغّل سلسلة مفاتيح مثل GNOME Keyring أو KWallet وافتح قفلها، ثم أعد تشغيل الأداة.",
     "That passphrase does not unlock the sync file. Enter the passphrase your other computers use.": "عبارة المرور هذه لا تفتح ملف المزامنة. أدخل العبارة التي تستخدمها أجهزة الكمبيوتر الأخرى لديك.",
-    "The sync file is damaged. Use Sync Up to replace it with this computer's settings; the old file is backed up first.": "ملف المزامنة تالف. استخدم «مزامنة للأعلى» لاستبداله بإعدادات هذا الكمبيوتر؛ يُنسخ الملف القديم احتياطيًا أولًا.",
-    "This app does not have permission to use the sync file or its folder. Check the folder's permissions and that it is not read-only.": "ليس لدى هذا التطبيق إذن لاستخدام ملف المزامنة أو مجلده. تحقق من أذونات المجلد ومن أنه ليس للقراءة فقط.",
+    "The sync file is damaged. Use Sync Up to replace it with this computer’s settings; the old file is backed up first.": "ملف المزامنة تالف. استخدم «مزامنة للأعلى» لاستبداله بإعدادات هذا الكمبيوتر؛ يُنسخ الملف القديم احتياطيًا أولًا.",
+    "This app does not have permission to use the sync file or its folder. Check the folder’s permissions and that it is not read-only.": "ليس لدى هذا التطبيق إذن لاستخدام ملف المزامنة أو مجلده. تحقق من أذونات المجلد ومن أنه ليس للقراءة فقط.",
     "The disk that holds the sync folder is full.": "القرص الذي يحتوي على مجلد المزامنة ممتلئ.",
     "The sync file is in use by another program. Try again in a moment.": "ملف المزامنة قيد الاستخدام من برنامج آخر. حاول مرة أخرى بعد قليل.",
     "Could not access the sync file ({{code}}). Check the sync folder and try again.": "تعذّر الوصول إلى ملف المزامنة ({{code}}). تحقق من مجلد المزامنة وحاول مرة أخرى.",
-    "Could not update the sync file's encryption. Nothing was changed. Try again.": "تعذّر تحديث تشفير ملف المزامنة. لم يتم تغيير أي شيء. حاول مرة أخرى.",
+    "Could not update the sync file’s encryption. Nothing was changed. Try again.": "تعذّر تحديث تشفير ملف المزامنة. لم يتم تغيير أي شيء. حاول مرة أخرى.",
     "Copy the existing sync data file from {{from}} into {{to}} and switch sync there?": "هل تريد نسخ ملف بيانات المزامنة الحالي من {{from}} إلى {{to}} والتبديل إليه للمزامنة؟",
     "Kept the current sync folder: {{folder}}": "تم الإبقاء على مجلد المزامنة الحالي: {{folder}}",
     "{{folder}} already has a sync file, probably from another computer. Switch to it? Settings that differ are compared first, and you choose which to keep before anything is replaced.": "يوجد ملف مزامنة بالفعل في {{folder}}، ربما من كمبيوتر آخر. هل تريد التبديل إليه؟ تُقارَن الإعدادات المختلفة أولًا، وتختار ما تريد الاحتفاظ به قبل استبدال أي شيء.",
@@ -1669,7 +1669,6 @@
     "Settings downloaded from the sync file.": "تم تنزيل الإعدادات من ملف المزامنة.",
     "Locks the sync file with a passphrase. Every computer needs the same passphrase.": "يقفل ملف المزامنة بعبارة مرور. يحتاج كل كمبيوتر إلى عبارة المرور نفسها.",
     "Show passphrase": "إظهار عبارة المرور",
-    "Hide passphrase": "إخفاء عبارة المرور",
     "Confirm passphrase": "تأكيد عبارة المرور",
     "At least 8 characters. If you forget it, the data in the sync file cannot be recovered.": "8 أحرف على الأقل. إذا نسيتها، فلا يمكن استرداد البيانات الموجودة في ملف المزامنة.",
     "Saved with your system’s secure storage. When this is off, you enter the passphrase again after each restart.": "تُحفظ في التخزين الآمن لنظامك. عند إيقاف هذا الخيار، تُدخل عبارة المرور مجددًا بعد كل إعادة تشغيل.",
@@ -1691,7 +1690,7 @@
     "Appearance only": "المظهر فقط",
     "Quick Access and layout only": "الوصول السريع والتخطيط فقط",
     "Another sync app": "تطبيق مزامنة آخر",
-    "Suggests the app's usual folder and spots its conflict copies.": "يقترح المجلد المعتاد للتطبيق ويتعرّف على نسخ التعارض الخاصة به.",
+    "Suggests the app’s usual folder and spots its conflict copies.": "يقترح المجلد المعتاد للتطبيق ويتعرّف على نسخ التعارض الخاصة به.",
     "Keep Quick Access, appearance, alerts, and weather and media choices the same on every computer through a folder your cloud or sync app already keeps in sync. The Home Assistant connection, desktop pins, hotkeys, and window position stay on each computer.": "حافظ على تطابق الوصول السريع والمظهر والتنبيهات وخيارات الطقس والوسائط على كل كمبيوتر عبر مجلد يزامنه تطبيق السحابة أو المزامنة لديك بالفعل. يبقى اتصال Home Assistant والعناصر المثبتة على سطح المكتب واختصارات لوحة المفاتيح وموضع النافذة على كل كمبيوتر.",
     "{{time}} · This computer, before a sync": "{{time}} · هذا الكمبيوتر، قبل المزامنة",
     "{{time}} · This computer, before an import": "{{time}} · هذا الكمبيوتر، قبل الاستيراد",
@@ -1703,6 +1702,8 @@
     "Settings files must be smaller than 256 KB.": "يجب أن تكون ملفات الإعدادات أصغر من 256 كيلوبايت.",
     "HA Desktop Widget could not start": "تعذّر تشغيل HA Desktop Widget",
     "Something went wrong while starting the widget: {{error}}": "حدث خطأ أثناء تشغيل الأداة: {{error}}",
-    "No unlocked system keyring (Secret Service) was found, so this token will not be remembered after you quit. Start gnome-keyring or KWallet, then restart the widget.": "لم يتم العثور على سلسلة مفاتيح نظام مفتوحة (Secret Service)، لذا لن يُحفظ هذا الرمز بعد الخروج. شغّل gnome-keyring أو KWallet ثم أعد تشغيل الأداة."
+    "No unlocked system keyring (Secret Service) was found, so this token will not be remembered after you quit. Start gnome-keyring or KWallet, then restart the widget.": "لم يتم العثور على سلسلة مفاتيح نظام مفتوحة (Secret Service)، لذا لن يُحفظ هذا الرمز بعد الخروج. شغّل gnome-keyring أو KWallet ثم أعد تشغيل الأداة.",
+    "The sync file is in use by another program or is read-only. Try again in a moment, and check the folder’s permissions if it keeps happening.": "ملف المزامنة قيد الاستخدام من برنامج آخر أو أنه للقراءة فقط. حاول مرة أخرى بعد قليل، وتحقق من أذونات المجلد إذا استمرت المشكلة.",
+    "Details": "التفاصيل"
   }
 }

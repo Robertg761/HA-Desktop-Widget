@@ -164,6 +164,16 @@ describe('settings search', () => {
       expect(document.activeElement.id).toBe(id);
     }
   });
+  test('does not index the Details button of the live sync status', () => {
+    document
+      .querySelectorAll('.profile-sync-settings, #profile-sync-error-toggle')
+      .forEach((el) => el.classList.remove('hidden'));
+    expect(
+      settingsSearchEntries(modal).some((entry) => entry.label.id === 'profile-sync-error-toggle')
+    ).toBe(false);
+    // The settings beside it are still found.
+    expect(search('Sync now').length).toBeGreaterThan(0);
+  });
   test('finds action buttons whose labels are set by JavaScript', () => {
     // The app enables the update check once it knows the update channel.
     document.getElementById('check-updates-btn').disabled = false;

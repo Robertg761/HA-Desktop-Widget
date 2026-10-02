@@ -164,8 +164,7 @@ function createElectronApi(ipcRenderer, platform) {
     updateTrayEntityIcon: (payload) => invoke('update-tray-entity-icon', payload),
     chooseProfileSyncFolder: (provider, currentFolder = '') =>
       invoke('choose-profile-sync-folder', provider, currentFolder),
-    copyProfileSyncFile: (fromPath, toPath, overwrite = false) =>
-      invoke('copy-profile-sync-file', fromPath, toPath, overwrite),
+    copyProfileSyncFile: (fromPath, toPath) => invoke('copy-profile-sync-file', fromPath, toPath),
     getProfileSyncStatus: () => invoke('get-profile-sync-status'),
     runProfileSync: (direction) => invoke('run-profile-sync', direction),
     setProfileSyncPassphrase: (passphrase, remember, encryptionEnabled = null) =>

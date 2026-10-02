@@ -368,7 +368,8 @@ function createSettingsModalDOM() {
           <button type="button" id="profile-sync-resolve-cancel">Cancel</button>
         </div>
         <div id="profile-sync-status"></div>
-        <div id="profile-sync-error" class="hidden"></div>
+        <div id="profile-sync-error" class="is-clamped"></div>
+        <button type="button" id="profile-sync-error-toggle" class="hidden" aria-expanded="false">Details</button>
       </div>
 
       <div id="personalization-tab" class="tab-content">
@@ -4085,7 +4086,6 @@ describe('Settings + Config Integration', () => {
         ok: true,
         status: 'copied',
         copied: true,
-        overwritten: false,
       });
 
       await settings.openSettings();
@@ -4096,8 +4096,7 @@ describe('Settings + Config Integration', () => {
 
       expect(mockElectronAPI.copyProfileSyncFile).toHaveBeenCalledWith(
         '/tmp/old-sync/ha-widget-profile-sync.json',
-        '/tmp/new-sync/ha-widget-profile-sync.json',
-        false
+        '/tmp/new-sync/ha-widget-profile-sync.json'
       );
       expect(state.CONFIG.profileSync.cloudFilePath).toBe(
         '/tmp/new-sync/ha-widget-profile-sync.json'
@@ -4126,7 +4125,7 @@ describe('Settings + Config Integration', () => {
       document.getElementById('profile-sync-encryption-enabled').checked = false;
       await settings.saveSettings();
 
-      // The file in the new folder is never replaced, so the copy is never retried with overwrite.
+      // The file in the new folder is never replaced, so the copy is not retried.
       expect(mockElectronAPI.copyProfileSyncFile).toHaveBeenCalledTimes(1);
       expect(mockUiUtils.showConfirm).toHaveBeenLastCalledWith(
         'Sync File Already Exists',
@@ -4689,12 +4688,34 @@ describe('Settings + Config Integration', () => {
         expect(confirmGroupHidden()).toBe(true);
       });
 
-      test('ask only once when a passphrase is already saved, and say so', async () => {
+      test('ask only once while a passphrase is already saved and nothing new is typed, and say so', async () => {
         await choosePassphraseFor({ remoteEncrypted: false, passphraseStored: true });
         expect(confirmGroupHidden()).toBe(true);
         expect(document.getElementById('profile-sync-passphrase').placeholder).toBe(
           'Saved on this device. Type a new one to change it.'
         );
+      });
+
+      test('ask twice once a new passphrase is typed over a saved one, for it re-encrypts the file', async () => {
+        await choosePassphraseFor({ remoteEncrypted: true, passphraseStored: true });
+        const input = document.getElementById('profile-sync-passphrase');
+
+        input.value = 'a different one';
+        input.dispatchEvent(new Event('input'));
+        expect(confirmGroupHidden()).toBe(false);
+
+        input.value = '';
+        input.dispatchEvent(new Event('input'));
+        expect(confirmGroupHidden()).toBe(true);
+
+        input.value = 'a different one';
+        input.dispatchEvent(new Event('input'));
+        document.getElementById('profile-sync-passphrase-confirm').value = 'a different on';
+        mockElectronAPI.updateConfig.mockClear();
+        await settings.saveSettings();
+
+        expect(lastToast()).toEqual(['The passphrases do not match.', 'error', expect.any(Number)]);
+        expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
       });
 
       test('can be shown and hidden', async () => {
@@ -4705,11 +4726,13 @@ describe('Settings + Config Integration', () => {
         reveal.click();
         expect(input.type).toBe('text');
         expect(document.getElementById('profile-sync-passphrase-confirm').type).toBe('text');
+        // The label stays: aria-pressed alone says which way the button is set.
         expect(reveal.getAttribute('aria-pressed')).toBe('true');
-        expect(reveal.textContent).toBe('Hide passphrase');
+        expect(reveal.textContent).toBe('Show passphrase');
 
         reveal.click();
         expect(input.type).toBe('password');
+        expect(reveal.getAttribute('aria-pressed')).toBe('false');
         expect(reveal.textContent).toBe('Show passphrase');
       });
 
@@ -4755,6 +4778,70 @@ describe('Settings + Config Integration', () => {
       });
     });
 
+    describe('the status line', () => {
+      const errorToggle = () => document.getElementById('profile-sync-error-toggle');
+      const errorLine = () => document.getElementById('profile-sync-error');
+      const fitsOnTwoLines = (fits) => {
+        // jsdom has no layout, so say what the browser would measure.
+        Object.defineProperty(errorLine(), 'scrollHeight', {
+          configurable: true,
+          value: fits ? 34 : 90,
+        });
+        Object.defineProperty(errorLine(), 'clientHeight', { configurable: true, value: 34 });
+      };
+      const failedSync = (lastSyncError) =>
+        buildProfileSyncStatus({ enabled: true, lastSyncStatus: 'error', lastSyncError });
+
+      test('marks a run in progress without changing the line', async () => {
+        await openWithRunningSync({ inFlight: true });
+        const status = document.getElementById('profile-sync-status');
+        expect(status.dataset.busy).toBe('true');
+        expect(status.textContent).toBe('Sync in progress...');
+
+        settings.handleProfileSyncStatusUpdate(
+          buildProfileSyncStatus({ enabled: true, inFlight: false })
+        );
+        expect(status.dataset.busy).toBe('false');
+      });
+
+      test('keeps the error where it is, and offers Details only for text that does not fit', async () => {
+        await openWithRunningSync();
+        fitsOnTwoLines(true);
+        settings.handleProfileSyncStatusUpdate(failedSync('The sync file is in use.'));
+        expect(errorLine().textContent).toBe('The sync file is in use.');
+        expect(errorLine().classList.contains('hidden')).toBe(false);
+        expect(errorToggle().classList.contains('hidden')).toBe(true);
+
+        fitsOnTwoLines(false);
+        settings.handleProfileSyncStatusUpdate(failedSync('A much longer explanation. '.repeat(8)));
+        expect(errorToggle().classList.contains('hidden')).toBe(false);
+        expect(errorLine().classList.contains('is-clamped')).toBe(true);
+        expect(errorToggle().getAttribute('aria-expanded')).toBe('false');
+      });
+
+      test('opens the whole error on Details, and keeps it open for the same text', async () => {
+        await openWithRunningSync();
+        fitsOnTwoLines(false);
+        const status = failedSync('A much longer explanation. '.repeat(8));
+        settings.handleProfileSyncStatusUpdate(status);
+
+        errorToggle().click();
+        expect(errorLine().classList.contains('is-clamped')).toBe(false);
+        expect(errorToggle().getAttribute('aria-expanded')).toBe('true');
+
+        // Open, the text fits itself, but the way back to two lines stays.
+        fitsOnTwoLines(true);
+        settings.handleProfileSyncStatusUpdate(status);
+        expect(errorLine().classList.contains('is-clamped')).toBe(false);
+        expect(errorToggle().classList.contains('hidden')).toBe(false);
+
+        // Another error starts closed again.
+        settings.handleProfileSyncStatusUpdate(failedSync('Something else went wrong. '.repeat(8)));
+        expect(errorLine().classList.contains('is-clamped')).toBe(true);
+        expect(errorToggle().getAttribute('aria-expanded')).toBe('false');
+      });
+    });
+
     describe('a sync that needs the person', () => {
       test('keeps Settings open on Advanced when a first-sync choice is waiting', async () => {
         state.CONFIG.profileSync = buildProfileSync({ enabled: false, cloudFilePath: '' });
@@ -4796,6 +4883,69 @@ describe('Settings + Config Integration', () => {
         await settings.openSettings();
         await settings.saveSettings();
         expect(document.getElementById('settings-modal').classList.contains('hidden')).toBe(true);
+      });
+
+      test('closes as usual for an unrelated change while a first-sync choice stays postponed', async () => {
+        await openWithRunningSync({ needsResolution: true });
+        mockUiUtils.showToast.mockClear();
+
+        await settings.saveSettings();
+
+        expect(document.getElementById('settings-modal').classList.contains('hidden')).toBe(true);
+        expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+          'Waiting for your choice below.',
+          expect.anything(),
+          expect.anything()
+        );
+      });
+
+      test('closes as usual when the folder switch that would have changed the sync is declined', async () => {
+        await openWithRunningSync({ needsResolution: true });
+        document.getElementById('profile-sync-folder-path').value = '/tmp/another-folder';
+        mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+
+        await settings.saveSettings();
+
+        expect(document.getElementById('settings-modal').classList.contains('hidden')).toBe(true);
+      });
+
+      test('comes back to a postponed first-sync choice when the save changes the sync', async () => {
+        await openWithRunningSync({ needsResolution: true });
+        document.getElementById('profile-sync-folder-path').value = '/tmp/another-folder';
+        mockUiUtils.showConfirm.mockResolvedValueOnce(true);
+
+        await settings.saveSettings();
+
+        expect(document.getElementById('settings-modal').classList.contains('hidden')).toBe(false);
+        expect(lastToast()).toEqual([
+          'Waiting for your choice below.',
+          'warning',
+          expect.any(Number),
+        ]);
+      });
+
+      test.each([
+        [
+          'a long refusal time to be read',
+          'Secure system storage is unavailable, and changing the encryption of an existing sync file needs it. On Linux, start and unlock a keyring such as GNOME Keyring or KWallet, then restart the widget.',
+          10000,
+        ],
+        ['a short refusal the usual time', 'That passphrase does not unlock the sync file.', 5000],
+      ])('gives %s', async (_label, reason, timeout) => {
+        await settings.openSettings();
+        document.getElementById('profile-sync-enabled').checked = true;
+        document.getElementById('profile-sync-folder-path').value = '/tmp/shared-folder';
+        document.getElementById('profile-sync-encryption-enabled').checked = true;
+        document.getElementById('profile-sync-passphrase').value = 'long enough';
+        document.getElementById('profile-sync-passphrase-confirm').value = 'long enough';
+        mockElectronAPI.setProfileSyncPassphrase.mockResolvedValueOnce({
+          success: false,
+          error: reason,
+        });
+
+        await settings.saveSettings();
+
+        expect(lastToast()).toEqual([reason, 'warning', timeout]);
       });
 
       test('keeps Settings open when the passphrase was refused', async () => {

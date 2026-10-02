@@ -101,6 +101,7 @@ let languageSaveQueue = Promise.resolve();
 // The Start at login state shown when Settings opened, so Save only writes a real change.
 let loadedStartAtLogin = null;
 let profileSyncStatusCache = null;
+let profileSyncErrorObserver = null;
 let localePackListCache = [];
 let localePackListError = '';
 let languagePackRefreshPromise = Promise.resolve();
@@ -3102,6 +3103,28 @@ function describeProfileSyncStatus(status = {}) {
   return parts.join(' ');
 }
 
+/**
+ * Error text stays at two lines until asked for, so a long one cannot push the rows below it
+ * down by a paragraph. The element is never hidden: it is a live region, and one that appears
+ * with its text in it may not be announced.
+ */
+function setProfileSyncErrorExpanded(expanded) {
+  document.getElementById('profile-sync-error')?.classList.toggle('is-clamped', !expanded);
+  document
+    .getElementById('profile-sync-error-toggle')
+    ?.setAttribute('aria-expanded', String(expanded));
+  updateProfileSyncErrorToggle();
+}
+
+/** Offers "Details" only when the clamped text does not fit; an open message keeps its way back. */
+function updateProfileSyncErrorToggle() {
+  const errorEl = document.getElementById('profile-sync-error');
+  const toggle = document.getElementById('profile-sync-error-toggle');
+  if (!errorEl || !toggle) return;
+  const expanded = toggle.getAttribute('aria-expanded') === 'true';
+  toggle.classList.toggle('hidden', !expanded && errorEl.scrollHeight <= errorEl.clientHeight + 1);
+}
+
 function setProfileSyncSettingsVisibility() {
   const enabledCheckbox = document.getElementById('profile-sync-enabled');
   const settingsContainer = document.getElementById('profile-sync-settings');
@@ -3133,6 +3156,8 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
 
   if (statusEl) {
     statusEl.textContent = describeProfileSyncStatus(status);
+    // The spinner sits in the line's own text, so a run starting moves nothing.
+    statusEl.dataset.busy = status.inFlight ? 'true' : 'false';
   }
 
   if (errorEl) {
@@ -3167,13 +3192,16 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
       pendingEncryptionWarning,
       recoveryWarning,
     ].filter(Boolean);
+    // A message already open stays open when the same text arrives again.
+    const sameMessages = errorEl.textContent === messages.join('');
     // One line per message: run together they read as a single garbled sentence.
     errorEl.replaceChildren(
       ...messages.flatMap((message, index) =>
         index === 0 ? [message] : [document.createElement('br'), message]
       )
     );
-    errorEl.classList.toggle('hidden', messages.length === 0);
+    if (!sameMessages) setProfileSyncErrorExpanded(false);
+    updateProfileSyncErrorToggle();
   }
 
   if (resolutionEl) {
@@ -3277,11 +3305,15 @@ function updateProfileSyncPassphraseFields() {
   const passphraseInput = document.getElementById('profile-sync-passphrase');
   const cancelChange = document.getElementById('profile-sync-cancel-encryption-change');
 
-  // Joining a file that is already encrypted needs no second field: a wrong passphrase is
-  // refused on the spot, where a typo while choosing one would be locked in.
-  const choosingPassphrase =
-    !!encryption?.checked && !status.passphraseStored && status.remoteEncrypted !== true;
-  if (confirmGroup) confirmGroup.classList.toggle('hidden', !choosingPassphrase);
+  // A typo is locked in wherever a passphrase is chosen: a new key for the file, or a saved
+  // one replaced, which re-encrypts it. Joining a file that is already encrypted needs no
+  // second field, because a wrong passphrase is refused on the spot.
+  const choosingPassphrase = status.passphraseStored
+    ? !!passphraseInput?.value.trim()
+    : status.remoteEncrypted !== true;
+  if (confirmGroup) {
+    confirmGroup.classList.toggle('hidden', !encryption?.checked || !choosingPassphrase);
+  }
   if (passphraseInput) {
     passphraseInput.placeholder = status.passphraseStored
       ? t('Saved on this device. Type a new one to change it.')
@@ -3298,10 +3330,8 @@ function setProfileSyncPassphraseRevealed(revealed) {
     const input = document.getElementById(id);
     if (input) input.type = revealed ? 'text' : 'password';
   });
-  if (reveal) {
-    reveal.setAttribute('aria-pressed', String(revealed));
-    reveal.textContent = revealed ? t('Hide passphrase') : t('Show passphrase');
-  }
+  // The label stays put: aria-pressed already tells a screen reader which way it is set.
+  if (reveal) reveal.setAttribute('aria-pressed', String(revealed));
 }
 
 /**
@@ -4007,10 +4037,26 @@ function bindProfileSyncSettingsUi() {
     };
   }
 
+  // Typing over a saved passphrase starts a change of key, which asks for it twice.
+  const passphraseField = document.getElementById('profile-sync-passphrase');
+  if (passphraseField) passphraseField.oninput = () => updateProfileSyncPassphraseFields();
+
   const revealPassphrase = document.getElementById('profile-sync-passphrase-reveal');
   if (revealPassphrase) {
     revealPassphrase.onclick = () =>
       setProfileSyncPassphraseRevealed(revealPassphrase.getAttribute('aria-pressed') !== 'true');
+  }
+
+  const errorToggle = document.getElementById('profile-sync-error-toggle');
+  if (errorToggle) {
+    errorToggle.onclick = () =>
+      setProfileSyncErrorExpanded(errorToggle.getAttribute('aria-expanded') !== 'true');
+  }
+  // The text is measured while it is on screen; the page it sits on may be shown later.
+  const errorEl = document.getElementById('profile-sync-error');
+  if (!profileSyncErrorObserver && errorEl && typeof ResizeObserver === 'function') {
+    profileSyncErrorObserver = new ResizeObserver(() => updateProfileSyncErrorToggle());
+    profileSyncErrorObserver.observe(errorEl);
   }
 
   const cancelEncryptionChange = document.getElementById('profile-sync-cancel-encryption-change');
@@ -5520,6 +5566,8 @@ async function saveSettings() {
     const prevAlwaysOnTop = currentConfig.alwaysOnTop;
     const prevOpacity = typeof currentConfig.opacity === 'number' ? currentConfig.opacity : 1;
     const prevProfileSync = { ...(currentConfig.profileSync || {}) };
+    // A choice put off earlier is not this save's business unless the save touches sync.
+    const choiceWasWaiting = !!profileSyncStatusCache?.needsResolution;
 
     // Store previous HA connection settings to detect if reconnect is needed
     const prevHaUrl = currentConfig.homeAssistant?.url;
@@ -5787,8 +5835,7 @@ async function saveSettings() {
       } else {
         const copyResult = await window.electronAPI.copyProfileSyncFile(
           previousSyncFilePath,
-          nextSyncFilePath,
-          false
+          nextSyncFilePath
         );
         if (copyResult?.status === 'destination_exists') {
           // Whatever is there is probably another computer's file, so it is never replaced
@@ -5966,13 +6013,12 @@ async function saveSettings() {
           updateProfileSyncStatusUi(passphraseResult.status);
         }
         log.error('Failed to store sync passphrase after saving settings:', passphraseError);
-        showToast(
+        const failureReason =
           passphraseResult?.error ||
-            passphraseError?.message ||
-            t('Settings were saved, but the sync passphrase could not be stored.'),
-          'warning',
-          5000
-        );
+          passphraseError?.message ||
+          t('Settings were saved, but the sync passphrase could not be stored.');
+        // A refusal can run to two sentences, which the usual few seconds are too short to read.
+        showToast(failureReason, 'warning', failureReason.length > 100 ? 10000 : 5000);
       }
     }
 
@@ -6026,8 +6072,18 @@ async function saveSettings() {
     await refreshProfileSyncStatusUi({ syncFormState: true });
     // A sync that waits on the person (a first-sync choice, a passphrase that was refused)
     // would otherwise be known only to someone who reopens Advanced, so Settings stays there.
+    const syncChangedBySave =
+      nextProfileSync.enabled &&
+      (prevProfileSync.enabled !== true ||
+        // Read after the folder question: a switch the person declined is not a change.
+        (nextProfileSync.cloudFilePath || '').trim() !== previousSyncFilePath ||
+        encryptionSettingChanged ||
+        !!typedPassphrase ||
+        JSON.stringify(normalizeProfileSyncScope(prevProfileSync.syncScope)) !==
+          JSON.stringify(normalizeProfileSyncScope(nextProfileSync.syncScope)));
     const keepSettingsOpenForSync =
-      !!profileSyncStatusCache?.needsResolution || profileSyncCredentialOperationFailed;
+      profileSyncCredentialOperationFailed ||
+      (!!profileSyncStatusCache?.needsResolution && (!choiceWasWaiting || syncChangedBySave));
 
     // Apply opacity immediately
     if (opacitySlider) {

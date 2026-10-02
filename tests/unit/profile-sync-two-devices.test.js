@@ -389,9 +389,39 @@ describe('a computer that did not change the encryption', () => {
     const { desktop } = await encryptedByDesktop();
     expect(desktop.status().remoteEncrypted).toBe(true);
 
+    // The last answer stands while the file is being read, so the form does not flicker.
+    const realReadFile = fs.promises.readFile;
+    let duringRead;
+    desktop.context.fs = {
+      ...fs,
+      promises: {
+        ...fs.promises,
+        readFile: async (...args) => {
+          duringRead = desktop.status().remoteEncrypted;
+          return realReadFile(...args);
+        },
+      },
+    };
+    await desktop.sync();
+    expect(duringRead).toBe(true);
+
     fs.writeFileSync(syncFilePath(), '');
     await desktop.sync().catch(() => {});
     expect(desktop.status().remoteEncrypted).toBeNull();
+
+    desktop.context.profileSyncRuntime.remoteEncrypted = true;
+    desktop.context.fs = {
+      ...fs,
+      promises: {
+        ...fs.promises,
+        stat: async () => {
+          throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+        },
+      },
+    };
+    await desktop.sync().catch(() => {});
+    expect(desktop.status().remoteEncrypted).toBeNull();
+    desktop.context.fs = fs;
 
     const next = desktop.rendererConfig();
     next.profileSync.cloudFilePath = path.join(

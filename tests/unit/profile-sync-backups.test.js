@@ -1,8 +1,8 @@
 /**
  * @jest-environment node
  *
- * What a computer keeps before something replaces its settings or another
- * computer's sync file, and the folder-level details around a shared sync folder:
+ * What a computer keeps before something replaces its settings or a sync file it
+ * could not read, and the folder-level details around a shared sync folder:
  * where the folder chooser opens, which files count as conflict copies, and how a
  * pending first-sync choice is reported.
  */
@@ -137,54 +137,33 @@ describe('moving the sync to a folder that already holds a sync file', () => {
     return { desktop, laptop, otherFile };
   }
 
-  test('overwriting keeps a copy of the file it replaces', async () => {
+  test('copying the sync file never replaces a file that is already there', async () => {
     const { laptop, otherFile } = await laptopWithOtherFolder();
     const anotherComputersFile = '{"another": "computer"}\n';
     fs.writeFileSync(otherFile, anotherComputersFile);
 
-    const refused = await laptop.invoke('copy-profile-sync-file', syncFilePath(), otherFile, false);
+    const refused = await laptop.invoke('copy-profile-sync-file', syncFilePath(), otherFile);
     expect(refused.status).toBe('destination_exists');
-    expect(backupFiles(laptop, 'replaced-sync-file-')).toEqual([]);
     expect(fs.readFileSync(otherFile, 'utf8')).toBe(anotherComputersFile);
 
-    const copied = await laptop.invoke('copy-profile-sync-file', syncFilePath(), otherFile, true);
+    // The renderer has no way to ask for a replacement.
+    const stillRefused = await laptop.invoke(
+      'copy-profile-sync-file',
+      syncFilePath(),
+      otherFile,
+      true
+    );
+    expect(stillRefused.status).toBe('destination_exists');
+    expect(fs.readFileSync(otherFile, 'utf8')).toBe(anotherComputersFile);
+  });
+
+  test('copying into an empty folder creates the file', async () => {
+    const { laptop, otherFile } = await laptopWithOtherFolder();
+
+    const copied = await laptop.invoke('copy-profile-sync-file', syncFilePath(), otherFile);
 
     expect(copied.ok).toBe(true);
-    const [kept] = backupFiles(laptop, 'replaced-sync-file-');
-    expect(fs.readFileSync(path.join(backupDir(laptop), kept), 'utf8')).toBe(anotherComputersFile);
     expect(JSON.parse(fs.readFileSync(otherFile, 'utf8')).schemaVersion).toBe(3);
-  });
-
-  test('copying into an empty folder needs no backup', async () => {
-    const { laptop, otherFile } = await laptopWithOtherFolder();
-
-    const copied = await laptop.invoke('copy-profile-sync-file', syncFilePath(), otherFile, true);
-
-    expect(copied.ok).toBe(true);
-    expect(backupFiles(laptop, 'replaced-sync-file-')).toEqual([]);
-  });
-
-  test('does not replace the file when its copy cannot be kept', async () => {
-    const { laptop, otherFile } = await laptopWithOtherFolder();
-    fs.writeFileSync(otherFile, 'someone else’s file');
-    laptop.context.fs = {
-      ...fs,
-      promises: {
-        ...fs.promises,
-        copyFile: async (from, to, ...rest) => {
-          if (String(to).includes('replaced-sync-file-')) {
-            throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' });
-          }
-          return fs.promises.copyFile(from, to, ...rest);
-        },
-      },
-    };
-
-    const copied = await laptop.invoke('copy-profile-sync-file', syncFilePath(), otherFile, true);
-
-    expect(copied.ok).toBe(false);
-    expect(copied.error).toContain('backup failed');
-    expect(fs.readFileSync(otherFile, 'utf8')).toBe('someone else’s file');
   });
 });
 

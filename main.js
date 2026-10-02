@@ -1228,11 +1228,11 @@ function mainT(key, vars = {}) {
 function describeKnownProfileSyncFailure(error) {
   if (profileSyncCore.isSyncFileDamagedError(error)) {
     return mainT(
-      "The sync file is damaged. Use Sync Up to replace it with this computer's settings; the old file is backed up first."
+      'The sync file is damaged. Use Sync Up to replace it with this computer’s settings; the old file is backed up first.'
     );
   }
   if (error?.code === REWRITE_TRANSACTION_INVALID) {
-    return mainT("Could not update the sync file's encryption. Nothing was changed. Try again.");
+    return mainT('Could not update the sync file’s encryption. Nothing was changed. Try again.');
   }
   return '';
 }
@@ -3390,6 +3390,15 @@ function decodeStoredProfileSyncPassphrase() {
   return profileSync.storedPassphrase;
 }
 
+/** Drops the sync passphrase from this device, for a file that no longer needs one. */
+function forgetProfileSyncPassphrase(profileSync) {
+  profileSync.rememberPassphrase = false;
+  profileSync.passphraseEncrypted = false;
+  profileSync.storedPassphrase = '';
+  profileSyncRuntime.passphraseSession = '';
+  profileSyncRuntime.passphraseWarning = '';
+}
+
 function persistRememberedProfileSyncPassphrase(passphrase, remember) {
   const profileSync = getProfileSyncConfig();
 
@@ -3828,14 +3837,19 @@ async function executePendingProfileSyncRewrite() {
  */
 function describeSyncFileSystemError(error) {
   // Windows refuses to replace a file another program has open (a sync client scanning it,
-  // an antivirus) with EPERM, which is not about permissions.
-  const code = error?.code === 'EPERM' && process.platform === 'win32' ? 'EBUSY' : error?.code;
-  switch (code) {
+  // an antivirus) with EPERM. A read-only file or a protected folder gives the same code, so
+  // the sentence names both rather than sending the user to retry what cannot succeed.
+  if (error?.code === 'EPERM' && process.platform === 'win32') {
+    return mainT(
+      'The sync file is in use by another program or is read-only. Try again in a moment, and check the folder’s permissions if it keeps happening.'
+    );
+  }
+  switch (error?.code) {
     case 'EACCES':
     case 'EPERM':
     case 'EROFS':
       return mainT(
-        "This app does not have permission to use the sync file or its folder. Check the folder's permissions and that it is not read-only."
+        'This app does not have permission to use the sync file or its folder. Check the folder’s permissions and that it is not read-only.'
       );
     case 'ENOSPC':
       return mainT('The disk that holds the sync folder is full.');
@@ -3923,7 +3937,7 @@ async function writeCloudFileEnvelope(filePath, envelope) {
   }
 }
 
-async function copyProfileSyncFile(fromPath, toPath, overwrite = false) {
+async function copyProfileSyncFile(fromPath, toPath) {
   try {
     const profileSync = getProfileSyncConfig();
     const configuredSyncFolder = profileSync.cloudFilePath
@@ -3962,11 +3976,9 @@ async function copyProfileSyncFile(fromPath, toPath, overwrite = false) {
 
     await requireExistingSyncParentDirectory(destinationPath, fs);
     try {
-      // Whatever is there may be another computer's file: keep it before replacing it.
-      if (overwrite) await backupReplacedSyncFile(destinationPath);
-      const copyFlags = overwrite ? 0 : fs.constants.COPYFILE_EXCL;
-      await fs.promises.copyFile(sourcePath, destinationPath, copyFlags);
-      return { ok: true, status: 'copied', copied: true, overwritten: overwrite };
+      // Whatever is there may be another computer's file, so it is never replaced.
+      await fs.promises.copyFile(sourcePath, destinationPath, fs.constants.COPYFILE_EXCL);
+      return { ok: true, status: 'copied', copied: true };
     } catch (error) {
       if (error?.code === 'EEXIST') {
         return { ok: false, status: 'destination_exists' };
@@ -3992,12 +4004,18 @@ async function readConfiguredSyncEnvelope({ allowDamaged = false } = {}) {
     throw new Error(mainT('Unsupported profile sync provider'));
   }
   // Kept for the status: Settings needs to know what mode the file is in even when a sync
-  // stops on it, to ask for the right thing. A file that could not be read is not known.
-  profileSyncRuntime.remoteEncrypted = null;
-  const result = await readCloudFileEnvelope(profileSync.cloudFilePath);
-  if (result.damaged && !allowDamaged) throw result.damaged.error;
+  // stops on it, to ask for the right thing. A file that could not be read is not known,
+  // but the last answer stands while a read is under way so the form does not flicker.
+  let result;
+  try {
+    result = await readCloudFileEnvelope(profileSync.cloudFilePath);
+  } catch (error) {
+    profileSyncRuntime.remoteEncrypted = null;
+    throw error;
+  }
   profileSyncRuntime.remoteEncrypted =
     result.exists && result.envelope ? profileSyncCore.isEnvelopeEncrypted(result.envelope) : null;
+  if (result.damaged && !allowDamaged) throw result.damaged.error;
   return result;
 }
 
@@ -4164,8 +4182,8 @@ async function pruneProfileSyncBackups(backupDir, pattern, groupOf = async () =>
 
 /**
  * Keeps a copy of a whole sync file before something replaces it. These are for the
- * user to open, not for restore: the file is another computer's, or has no settings
- * in it to apply. Fails the operation when the copy cannot be made.
+ * user to open, not for restore: the file has no settings in it to apply. Fails the
+ * operation when the copy cannot be made.
  */
 async function keepSyncFileCopy(prefix, extension, writeCopy) {
   const backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
@@ -4187,16 +4205,6 @@ async function keepSyncFileCopy(prefix, extension, writeCopy) {
 function backupDamagedSyncFile(raw) {
   return keepSyncFileCopy('damaged-sync-file', 'txt', (target) =>
     fs.promises.writeFile(target, raw, 'utf8')
-  );
-}
-
-/** Keeps the sync file in a folder before a folder change overwrites it. */
-function backupReplacedSyncFile(filePath) {
-  return keepSyncFileCopy('replaced-sync-file', 'json', (target) =>
-    fs.promises.copyFile(filePath, target).catch((error) => {
-      // Nothing there to replace.
-      if (error?.code !== 'ENOENT') throw error;
-    })
   );
 }
 
@@ -6373,13 +6381,7 @@ async function completeProfileSyncRemoteRewrite() {
     passphraseWarning: profileSyncRuntime.passphraseWarning,
   };
   profileSync.remoteRewritePending = false;
-  if (!profileSync.encryptionEnabled) {
-    profileSync.rememberPassphrase = false;
-    profileSync.passphraseEncrypted = false;
-    profileSync.storedPassphrase = '';
-    profileSyncRuntime.passphraseSession = '';
-    profileSyncRuntime.passphraseWarning = '';
-  }
+  if (!profileSync.encryptionEnabled) forgetProfileSyncPassphrase(profileSync);
   const markerPersistence = await saveConfigDurably({ allowDebouncedPush: false });
   if (!markerPersistence.success) {
     profileSync.remoteRewritePending = true;
@@ -9033,7 +9035,7 @@ ipcMain.handle('choose-profile-sync-folder', async (event, provider, currentFold
   return { canceled: false, folderPath, filePath, provider: providerToUse };
 });
 
-ipcMain.handle('copy-profile-sync-file', async (event, fromPath, toPath, overwrite = false) => {
+ipcMain.handle('copy-profile-sync-file', async (event, fromPath, toPath) => {
   const sender = authorizeIpcSender(event, 'copy-profile-sync-file');
   if (!sender) {
     return rejectUnauthorizedIpc('copy-profile-sync-file', {
@@ -9042,7 +9044,7 @@ ipcMain.handle('copy-profile-sync-file', async (event, fromPath, toPath, overwri
       error: 'Unauthorized',
     });
   }
-  return copyProfileSyncFile(fromPath, toPath, overwrite);
+  return copyProfileSyncFile(fromPath, toPath);
 });
 
 const settingsFileController = createSettingsFileController({
@@ -9394,11 +9396,7 @@ ipcMain.handle(
               if (targetEncryptionEnabled) {
                 persisted = persistRememberedProfileSyncPassphrase(joinPassphrase, !!remember);
               } else {
-                profileSync.rememberPassphrase = false;
-                profileSync.passphraseEncrypted = false;
-                profileSync.storedPassphrase = '';
-                profileSyncRuntime.passphraseSession = '';
-                profileSyncRuntime.passphraseWarning = '';
+                forgetProfileSyncPassphrase(profileSync);
               }
               const persistence = await saveConfigDurably({ allowDebouncedPush: false });
               if (!persistence.success) {

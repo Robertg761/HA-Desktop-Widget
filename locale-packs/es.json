@@ -1654,12 +1654,12 @@
     "Enter the passphrase your other computers use for this sync file.": "Introduce la frase de contraseña que usan tus otros equipos para este archivo de sincronización.",
     "Secure system storage is unavailable, and changing the encryption of an existing sync file needs it. On Linux, start and unlock a keyring such as GNOME Keyring or KWallet, then restart the widget.": "El almacenamiento seguro del sistema no está disponible y es necesario para cambiar el cifrado de un archivo de sincronización existente. En Linux, inicia y desbloquea un llavero como GNOME Keyring o KWallet y reinicia el widget.",
     "That passphrase does not unlock the sync file. Enter the passphrase your other computers use.": "Esa frase de contraseña no desbloquea el archivo de sincronización. Introduce la que usan tus otros equipos.",
-    "The sync file is damaged. Use Sync Up to replace it with this computer's settings; the old file is backed up first.": "El archivo de sincronización está dañado. Usa Subir sincronización para reemplazarlo con los ajustes de este equipo; antes se guarda una copia de seguridad del archivo anterior.",
-    "This app does not have permission to use the sync file or its folder. Check the folder's permissions and that it is not read-only.": "Esta aplicación no tiene permiso para usar el archivo de sincronización ni su carpeta. Comprueba los permisos de la carpeta y que no sea de solo lectura.",
+    "The sync file is damaged. Use Sync Up to replace it with this computer’s settings; the old file is backed up first.": "El archivo de sincronización está dañado. Usa Subir sincronización para reemplazarlo con los ajustes de este equipo; antes se guarda una copia de seguridad del archivo anterior.",
+    "This app does not have permission to use the sync file or its folder. Check the folder’s permissions and that it is not read-only.": "Esta aplicación no tiene permiso para usar el archivo de sincronización ni su carpeta. Comprueba los permisos de la carpeta y que no sea de solo lectura.",
     "The disk that holds the sync folder is full.": "El disco que contiene la carpeta de sincronización está lleno.",
     "The sync file is in use by another program. Try again in a moment.": "Otro programa está usando el archivo de sincronización. Inténtalo de nuevo en un momento.",
     "Could not access the sync file ({{code}}). Check the sync folder and try again.": "No se pudo acceder al archivo de sincronización ({{code}}). Comprueba la carpeta de sincronización e inténtalo de nuevo.",
-    "Could not update the sync file's encryption. Nothing was changed. Try again.": "No se pudo actualizar el cifrado del archivo de sincronización. No se cambió nada. Inténtalo de nuevo.",
+    "Could not update the sync file’s encryption. Nothing was changed. Try again.": "No se pudo actualizar el cifrado del archivo de sincronización. No se cambió nada. Inténtalo de nuevo.",
     "Copy the existing sync data file from {{from}} into {{to}} and switch sync there?": "¿Copiar el archivo de datos de sincronización existente de {{from}} a {{to}} y sincronizar allí?",
     "Kept the current sync folder: {{folder}}": "Se mantuvo la carpeta de sincronización actual: {{folder}}",
     "{{folder}} already has a sync file, probably from another computer. Switch to it? Settings that differ are compared first, and you choose which to keep before anything is replaced.": "{{folder}} ya contiene un archivo de sincronización, probablemente de otro equipo. ¿Cambiar a él? Primero se comparan los ajustes que difieren y tú eliges cuáles conservar antes de reemplazar nada.",
@@ -1669,7 +1669,6 @@
     "Settings downloaded from the sync file.": "Ajustes descargados del archivo de sincronización.",
     "Locks the sync file with a passphrase. Every computer needs the same passphrase.": "Bloquea el archivo de sincronización con una frase de contraseña. Todos los equipos necesitan la misma frase de contraseña.",
     "Show passphrase": "Mostrar frase de contraseña",
-    "Hide passphrase": "Ocultar frase de contraseña",
     "Confirm passphrase": "Confirmar frase de contraseña",
     "At least 8 characters. If you forget it, the data in the sync file cannot be recovered.": "Al menos 8 caracteres. Si la olvidas, los datos del archivo de sincronización no se pueden recuperar.",
     "Saved with your system’s secure storage. When this is off, you enter the passphrase again after each restart.": "Se guarda en el almacenamiento seguro de tu sistema. Si está desactivado, tendrás que introducir la frase de contraseña de nuevo tras cada reinicio.",
@@ -1691,7 +1690,7 @@
     "Appearance only": "Solo apariencia",
     "Quick Access and layout only": "Solo acceso rápido y diseño",
     "Another sync app": "Otra aplicación de sincronización",
-    "Suggests the app's usual folder and spots its conflict copies.": "Sugiere la carpeta habitual de la aplicación y reconoce sus copias en conflicto.",
+    "Suggests the app’s usual folder and spots its conflict copies.": "Sugiere la carpeta habitual de la aplicación y reconoce sus copias en conflicto.",
     "Keep Quick Access, appearance, alerts, and weather and media choices the same on every computer through a folder your cloud or sync app already keeps in sync. The Home Assistant connection, desktop pins, hotkeys, and window position stay on each computer.": "Mantén iguales el acceso rápido, la apariencia, las alertas y las opciones de tiempo y multimedia en todos tus equipos mediante una carpeta que tu aplicación de nube o de sincronización ya mantiene sincronizada. La conexión con Home Assistant, los anclajes en el escritorio, los atajos y la posición de la ventana se quedan en cada equipo.",
     "{{time}} · This computer, before a sync": "{{time}} · Este equipo, antes de una sincronización",
     "{{time}} · This computer, before an import": "{{time}} · Este equipo, antes de una importación",
@@ -1703,6 +1702,8 @@
     "Settings files must be smaller than 256 KB.": "Los archivos de ajustes deben ser menores de 256 KB.",
     "HA Desktop Widget could not start": "HA Desktop Widget no se pudo iniciar",
     "Something went wrong while starting the widget: {{error}}": "Algo salió mal al iniciar el widget: {{error}}",
-    "No unlocked system keyring (Secret Service) was found, so this token will not be remembered after you quit. Start gnome-keyring or KWallet, then restart the widget.": "No se encontró ningún llavero del sistema desbloqueado (Secret Service), así que este token no se recordará al salir. Inicia gnome-keyring o KWallet y reinicia el widget."
+    "No unlocked system keyring (Secret Service) was found, so this token will not be remembered after you quit. Start gnome-keyring or KWallet, then restart the widget.": "No se encontró ningún llavero del sistema desbloqueado (Secret Service), así que este token no se recordará al salir. Inicia gnome-keyring o KWallet y reinicia el widget.",
+    "The sync file is in use by another program or is read-only. Try again in a moment, and check the folder’s permissions if it keeps happening.": "Otro programa está usando el archivo de sincronización o es de solo lectura. Inténtalo de nuevo en un momento y comprueba los permisos de la carpeta si sigue ocurriendo.",
+    "Details": "Detalles"
   }
 }

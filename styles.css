@@ -14568,15 +14568,63 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
   padding-inline-end: 32px;
 }
 
-/* The status changes length on every sync event. Three lines hold a finished sync, so
-   the rows below it stay put when a run starts and ends. */
+/* The status and the error change length on every sync event. Five lines hold a finished sync
+   or a failed one (its status, a two-line error and the Details button), so the rows below stay
+   put when a run starts, ends or fails. */
+#settings-modal .profile-sync-status-block {
+  min-height: calc(var(--font-size-sm) * 1.4 * 5 + 9px);
+}
+
 #settings-modal .profile-sync-status {
-  min-height: 4.2em;
   color: var(--text-secondary);
+}
+
+/* A run in progress is a spinner in the line's own text, so it needs no room of its own. */
+#settings-modal .profile-sync-status[data-busy='true']::before {
+  content: '';
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  margin-inline-end: 0.5em;
+  border: 2px solid var(--accent);
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -0.1em;
+  animation: spin 0.8s linear infinite;
 }
 
 #settings-modal .profile-sync-error {
   color: var(--danger);
+}
+
+#settings-modal .profile-sync-error:empty {
+  margin: 0;
+}
+
+/* Two lines until "Details" is pressed, so a long error cannot push the rows below it down. */
+#settings-modal .profile-sync-error.is-clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+#settings-modal #profile-sync-error-toggle {
+  margin-inline-start: -6px;
+}
+
+#settings-modal #profile-sync-error-toggle::after {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+}
+
+#settings-modal #profile-sync-error-toggle[aria-expanded='true']::after {
+  transform: translateY(1px) rotate(-135deg);
 }
 
 #settings-modal .profile-sync-settings > .profile-sync-resolution {

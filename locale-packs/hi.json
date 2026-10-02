@@ -1654,12 +1654,12 @@
     "Enter the passphrase your other computers use for this sync file.": "इस सिंक फ़ाइल के लिए आपके दूसरे कंप्यूटर जो पासफ़्रेज़ उपयोग करते हैं, वही दर्ज करें।",
     "Secure system storage is unavailable, and changing the encryption of an existing sync file needs it. On Linux, start and unlock a keyring such as GNOME Keyring or KWallet, then restart the widget.": "सुरक्षित सिस्टम स्टोरेज उपलब्ध नहीं है, जबकि मौजूदा सिंक फ़ाइल का एन्क्रिप्शन बदलने के लिए इसकी ज़रूरत होती है। Linux पर GNOME Keyring या KWallet जैसी कीरिंग शुरू करके अनलॉक करें, फिर विजेट को पुनः आरंभ करें।",
     "That passphrase does not unlock the sync file. Enter the passphrase your other computers use.": "यह पासफ़्रेज़ सिंक फ़ाइल को नहीं खोलता। वही पासफ़्रेज़ दर्ज करें जो आपके दूसरे कंप्यूटर उपयोग करते हैं।",
-    "The sync file is damaged. Use Sync Up to replace it with this computer's settings; the old file is backed up first.": "सिंक फ़ाइल खराब है। इसे इस कंप्यूटर की सेटिंग्स से बदलने के लिए “सिंक अपलोड करें” का उपयोग करें; पुरानी फ़ाइल का पहले बैकअप लिया जाता है।",
-    "This app does not have permission to use the sync file or its folder. Check the folder's permissions and that it is not read-only.": "इस ऐप को सिंक फ़ाइल या उसके फ़ोल्डर का उपयोग करने की अनुमति नहीं है। फ़ोल्डर की अनुमतियाँ जाँचें और देखें कि वह केवल-पढ़ने योग्य न हो।",
+    "The sync file is damaged. Use Sync Up to replace it with this computer’s settings; the old file is backed up first.": "सिंक फ़ाइल खराब है। इसे इस कंप्यूटर की सेटिंग्स से बदलने के लिए “सिंक अपलोड करें” का उपयोग करें; पुरानी फ़ाइल का पहले बैकअप लिया जाता है।",
+    "This app does not have permission to use the sync file or its folder. Check the folder’s permissions and that it is not read-only.": "इस ऐप को सिंक फ़ाइल या उसके फ़ोल्डर का उपयोग करने की अनुमति नहीं है। फ़ोल्डर की अनुमतियाँ जाँचें और देखें कि वह केवल-पढ़ने योग्य न हो।",
     "The disk that holds the sync folder is full.": "सिंक फ़ोल्डर वाली डिस्क भर गई है।",
     "The sync file is in use by another program. Try again in a moment.": "सिंक फ़ाइल किसी दूसरे प्रोग्राम में उपयोग हो रही है। थोड़ी देर बाद फिर कोशिश करें।",
     "Could not access the sync file ({{code}}). Check the sync folder and try again.": "सिंक फ़ाइल तक नहीं पहुँचा जा सका ({{code}})। सिंक फ़ोल्डर जाँचें और फिर कोशिश करें।",
-    "Could not update the sync file's encryption. Nothing was changed. Try again.": "सिंक फ़ाइल का एन्क्रिप्शन अपडेट नहीं किया जा सका। कुछ भी नहीं बदला गया। फिर कोशिश करें।",
+    "Could not update the sync file’s encryption. Nothing was changed. Try again.": "सिंक फ़ाइल का एन्क्रिप्शन अपडेट नहीं किया जा सका। कुछ भी नहीं बदला गया। फिर कोशिश करें।",
     "Copy the existing sync data file from {{from}} into {{to}} and switch sync there?": "मौजूदा सिंक डेटा फ़ाइल को {{from}} से {{to}} में कॉपी करें और सिंक वहीं करें?",
     "Kept the current sync folder: {{folder}}": "मौजूदा सिंक फ़ोल्डर रखा गया: {{folder}}",
     "{{folder}} already has a sync file, probably from another computer. Switch to it? Settings that differ are compared first, and you choose which to keep before anything is replaced.": "{{folder}} में पहले से एक सिंक फ़ाइल है, शायद किसी दूसरे कंप्यूटर की। क्या उसी पर स्विच करें? जो सेटिंग्स अलग हैं, उनकी पहले तुलना की जाती है, और कुछ भी बदले जाने से पहले आप चुनते हैं कि कौन-सी रखनी हैं।",
@@ -1669,7 +1669,6 @@
     "Settings downloaded from the sync file.": "सिंक फ़ाइल से सेटिंग्स डाउनलोड की गईं।",
     "Locks the sync file with a passphrase. Every computer needs the same passphrase.": "सिंक फ़ाइल को पासफ़्रेज़ से लॉक करता है। हर कंप्यूटर को एक ही पासफ़्रेज़ चाहिए।",
     "Show passphrase": "पासफ़्रेज़ दिखाएं",
-    "Hide passphrase": "पासफ़्रेज़ छिपाएं",
     "Confirm passphrase": "पासफ़्रेज़ की पुष्टि करें",
     "At least 8 characters. If you forget it, the data in the sync file cannot be recovered.": "कम से कम 8 अक्षर। अगर आप इसे भूल गए, तो सिंक फ़ाइल का डेटा वापस नहीं पाया जा सकता।",
     "Saved with your system’s secure storage. When this is off, you enter the passphrase again after each restart.": "आपके सिस्टम के सुरक्षित स्टोरेज में सहेजा जाता है। यह बंद होने पर, हर पुनः आरंभ के बाद आपको पासफ़्रेज़ फिर से दर्ज करना होगा।",
@@ -1691,7 +1690,7 @@
     "Appearance only": "केवल दिखावट",
     "Quick Access and layout only": "केवल क्विक एक्सेस और लेआउट",
     "Another sync app": "कोई दूसरा सिंक ऐप",
-    "Suggests the app's usual folder and spots its conflict copies.": "ऐप का सामान्य फ़ोल्डर सुझाता है और उसकी टकराव वाली प्रतियाँ पहचानता है।",
+    "Suggests the app’s usual folder and spots its conflict copies.": "ऐप का सामान्य फ़ोल्डर सुझाता है और उसकी टकराव वाली प्रतियाँ पहचानता है।",
     "Keep Quick Access, appearance, alerts, and weather and media choices the same on every computer through a folder your cloud or sync app already keeps in sync. The Home Assistant connection, desktop pins, hotkeys, and window position stay on each computer.": "जिस फ़ोल्डर को आपका क्लाउड या सिंक ऐप पहले से सिंक रखता है, उसके ज़रिए हर कंप्यूटर पर क्विक एक्सेस, दिखावट, अलर्ट और मौसम व मीडिया विकल्प एक जैसे रखें। Home Assistant कनेक्शन, डेस्कटॉप पिन, हॉटकी और विंडो की स्थिति हर कंप्यूटर पर अलग रहती हैं।",
     "{{time}} · This computer, before a sync": "{{time}} · यह कंप्यूटर, सिंक से पहले",
     "{{time}} · This computer, before an import": "{{time}} · यह कंप्यूटर, आयात से पहले",
@@ -1703,6 +1702,8 @@
     "Settings files must be smaller than 256 KB.": "सेटिंग फ़ाइलें 256 KB से छोटी होनी चाहिए।",
     "HA Desktop Widget could not start": "HA Desktop Widget शुरू नहीं हो सका",
     "Something went wrong while starting the widget: {{error}}": "विजेट शुरू करते समय कुछ गड़बड़ हुई: {{error}}",
-    "No unlocked system keyring (Secret Service) was found, so this token will not be remembered after you quit. Start gnome-keyring or KWallet, then restart the widget.": "कोई अनलॉक सिस्टम कीरिंग (Secret Service) नहीं मिली, इसलिए यह टोकन बाहर निकलने के बाद याद नहीं रखा जाएगा। gnome-keyring या KWallet शुरू करें, फिर विजेट को पुनः आरंभ करें।"
+    "No unlocked system keyring (Secret Service) was found, so this token will not be remembered after you quit. Start gnome-keyring or KWallet, then restart the widget.": "कोई अनलॉक सिस्टम कीरिंग (Secret Service) नहीं मिली, इसलिए यह टोकन बाहर निकलने के बाद याद नहीं रखा जाएगा। gnome-keyring या KWallet शुरू करें, फिर विजेट को पुनः आरंभ करें।",
+    "The sync file is in use by another program or is read-only. Try again in a moment, and check the folder’s permissions if it keeps happening.": "सिंक फ़ाइल किसी दूसरे प्रोग्राम में उपयोग हो रही है या केवल-पढ़ने योग्य है। थोड़ी देर बाद फिर कोशिश करें, और अगर समस्या बनी रहे तो फ़ोल्डर की अनुमतियाँ जाँचें।",
+    "Details": "विवरण"
   }
 }
