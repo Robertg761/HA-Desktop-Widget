@@ -1700,6 +1700,9 @@
     "Contains: {{sections}}": "Enthält: {{sections}}",
     "Restore the backup from {{time}}": "Sicherung vom {{time}} wiederherstellen",
     "Settings exported. Changes you have not saved yet are not included.": "Einstellungen exportiert. Noch nicht gespeicherte Änderungen sind nicht enthalten.",
-    "Settings files must be smaller than 256 KB.": "Einstellungsdateien müssen kleiner als 256 KB sein."
+    "Settings files must be smaller than 256 KB.": "Einstellungsdateien müssen kleiner als 256 KB sein.",
+    "HA Desktop Widget could not start": "HA Desktop Widget konnte nicht gestartet werden",
+    "Something went wrong while starting the widget: {{error}}": "Beim Starten des Widgets ist etwas schiefgelaufen: {{error}}",
+    "No unlocked system keyring (Secret Service) was found, so this token will not be remembered after you quit. Start gnome-keyring or KWallet, then restart the widget.": "Es wurde kein entsperrter Systemschlüsselbund (Secret Service) gefunden, daher wird dieses Token nach dem Beenden nicht gespeichert. Starte gnome-keyring oder KWallet und starte das Widget dann neu."
   }
 }

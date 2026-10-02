@@ -55,6 +55,7 @@ function loadPinRuntime({ scale, pinBounds }) {
     closeDesktopPinWindow: jest.fn(),
     createDesktopPinWindow: jest.fn(),
     placeLayerWindow: jest.fn(),
+    isPlainObject: (value) => !!value && typeof value === 'object' && !Array.isArray(value),
     log: { warn: jest.fn() },
   };
   vm.runInNewContext(

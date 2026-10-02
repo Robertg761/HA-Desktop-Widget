@@ -2110,6 +2110,8 @@ function clampDesktopPinBounds(
   fallbackIndex = 0,
   previousBounds = null
 ) {
+  // A default parameter does not cover null, and a pin saved as null or text would throw below.
+  if (!isPlainObject(bounds)) bounds = {};
   const baseBounds = getDesktopPinBaseBounds(entityId);
   const cascadeOrigin = getDesktopPinCascadeOrigin(fallbackIndex);
 
@@ -2281,11 +2283,37 @@ function normalizeDesktopPinsConfig(targetConfig) {
 
   Object.entries(sourcePins).forEach(([entityId, bounds]) => {
     const normalizedEntityId = normalizeEntityId(entityId);
-    if (!normalizedEntityId) return;
+    // An entry that is not an object holds nothing to restore, so it is dropped rather than
+    // failing the whole config (which would reset every setting and block every save).
+    if (!normalizedEntityId || !isPlainObject(bounds)) return;
     nextPins[normalizedEntityId] = clampDesktopPinBounds(bounds, normalizedEntityId, index++);
   });
 
   targetConfig.desktopPins = nextPins;
+  return targetConfig;
+}
+
+/**
+ * The window's saved size and position go straight into its options. A hand-edited or damaged
+ * value (null, text, zero) would abort startup after the single-instance lock is taken, leaving
+ * a process with no window that swallows every relaunch, so such a value falls back to the default.
+ */
+function normalizeWindowGeometryConfig(targetConfig) {
+  if (!isPlainObject(targetConfig)) return targetConfig;
+  const isCoordinate = (value) => typeof value === 'number' && Number.isFinite(value);
+  const size = targetConfig.windowSize;
+  targetConfig.windowSize =
+    isPlainObject(size) && isCoordinate(size.width) && isCoordinate(size.height)
+      ? {
+          // The same bounds the layer-shell surface uses for a saved size.
+          width: Math.min(16384, Math.max(100, Math.round(size.width))),
+          height: Math.min(16384, Math.max(100, Math.round(size.height))),
+        }
+      : { ...DEFAULT_WINDOW_SIZE };
+  const position = targetConfig.windowPosition;
+  if (!(isPlainObject(position) && isCoordinate(position.x) && isCoordinate(position.y))) {
+    targetConfig.windowPosition = { x: 100, y: 100 };
+  }
   return targetConfig;
 }
 
@@ -4970,6 +4998,7 @@ function loadConfig(options = {}) {
         updates: { ...defaultConfig.updates, ...(userConfig.updates || {}) },
       };
       normalizeDesktopPinsConfig(config);
+      normalizeWindowGeometryConfig(config);
       normalizeTrayEntitiesConfigInPlace(config);
       pruneConfig(config);
       if (typeof config.ui?.language !== 'string' || !config.ui.language.trim()) {
@@ -12471,6 +12500,21 @@ app
   .catch((error) => {
     log.error('Application startup failed:', error);
     finishSmokeTest(false, error?.message || String(error));
+    // A late failure (after the window is up) leaves a working widget, which is better kept.
+    if (IS_SMOKE_TEST_MODE || (mainWindow && !mainWindow.isDestroyed())) return;
+    // The single-instance lock is already held. Staying alive without a window would turn every
+    // relaunch into a hand-off to this dead process, so say what happened and let go of it.
+    try {
+      dialog.showErrorBox(
+        mainT('HA Desktop Widget could not start'),
+        mainT('Something went wrong while starting the widget: {{error}}', {
+          error: error?.message || String(error),
+        })
+      );
+    } catch (dialogError) {
+      log.warn('Could not show the startup failure:', dialogError?.message || dialogError);
+    }
+    app.exit(1);
   });
 
 // XWayland cannot render at all on some machines (a driver stack where Chromium's GPU process

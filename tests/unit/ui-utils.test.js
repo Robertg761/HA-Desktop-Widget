@@ -122,6 +122,19 @@ describe('UI Utilities', () => {
       expect(toast.textContent).toBe('Test message');
     });
 
+    it('shows the same message once while it is still up', () => {
+      const first = uiUtils.showToast('Your token was not saved', 'warning', 2000);
+      const second = uiUtils.showToast('Your token was not saved', 'warning', 2000);
+
+      expect(second).toBe(first);
+      expect(toastContainer.querySelectorAll('.toast')).toHaveLength(1);
+
+      // A different message, or the same text as another kind of toast, is its own toast.
+      uiUtils.showToast('Your token was not saved', 'error', 2000);
+      uiUtils.showToast('Something else', 'warning', 2000);
+      expect(toastContainer.querySelectorAll('.toast')).toHaveLength(3);
+    });
+
     it('should apply success type class', () => {
       uiUtils.showToast('Success', 'success', 2000);
 

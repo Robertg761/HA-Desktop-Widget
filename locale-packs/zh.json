@@ -1700,6 +1700,9 @@
     "Contains: {{sections}}": "包含：{{sections}}",
     "Restore the backup from {{time}}": "恢复 {{time}} 的备份",
     "Settings exported. Changes you have not saved yet are not included.": "已导出设置。尚未保存的更改不包含在内。",
-    "Settings files must be smaller than 256 KB.": "设置文件必须小于 256 KB。"
+    "Settings files must be smaller than 256 KB.": "设置文件必须小于 256 KB。",
+    "HA Desktop Widget could not start": "HA Desktop Widget 无法启动",
+    "Something went wrong while starting the widget: {{error}}": "启动小组件时出错：{{error}}",
+    "No unlocked system keyring (Secret Service) was found, so this token will not be remembered after you quit. Start gnome-keyring or KWallet, then restart the widget.": "未找到已解锁的系统密钥环（Secret Service），因此退出后不会记住此令牌。请启动 gnome-keyring 或 KWallet，然后重新启动小组件。"
   }
 }

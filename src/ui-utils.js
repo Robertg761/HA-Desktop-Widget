@@ -857,6 +857,14 @@ function showToast(message, type = 'success', timeout = 2000) {
     const container = document.getElementById('toast-container');
     if (!container) return undefined;
     placeToastContainer(container);
+    // The same message twice at once is one problem reported twice; the first stays up.
+    const showing = [...container.querySelectorAll('.toast')].find(
+      (existing) =>
+        existing.dataset?.dismissing !== 'true' &&
+        existing.classList.contains(type) &&
+        existing.querySelector('.toast-message')?.textContent === message
+    );
+    if (showing) return showing;
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
 

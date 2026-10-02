@@ -991,6 +991,58 @@ describe('Renderer first-run Home Assistant authorization', () => {
     });
   });
 
+  it('says the token was not saved once per session, however often settings are saved', async () => {
+    await loadRenderer();
+    mockUiUtils.showToast.mockClear();
+
+    for (let save = 0; save < 3; save += 1) {
+      triggerMockEvent('configPersistenceWarning', [
+        { code: 'home_assistant_token_not_persisted' },
+      ]);
+      await flushAsync();
+    }
+
+    expect(mockUiUtils.showToast).toHaveBeenCalledTimes(1);
+  });
+
+  it('names the missing keyring on Linux instead of telling the user to re-enter the token', async () => {
+    await loadRenderer({
+      configureApi(api) {
+        api.platform = 'linux';
+      },
+    });
+    mockUiUtils.showToast.mockClear();
+
+    triggerMockEvent('configPersistenceWarning', [{ code: 'home_assistant_token_not_persisted' }]);
+    await flushAsync();
+
+    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect.stringContaining('No unlocked system keyring (Secret Service) was found'),
+      'warning',
+      20000
+    );
+  });
+
+  it('does not add a second toast for a keyring problem the startup toast already reported', async () => {
+    await loadRenderer({
+      config: { ...unconfiguredConfig(), tokenResetReason: 'encryption_unavailable' },
+      configureApi(api) {
+        api.platform = 'linux';
+      },
+    });
+    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect.stringContaining('Your system keyring is locked or not running'),
+      'warning',
+      20000
+    );
+    mockUiUtils.showToast.mockClear();
+
+    triggerMockEvent('configPersistenceWarning', [{ code: 'home_assistant_token_not_persisted' }]);
+    await flushAsync();
+
+    expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+  });
+
   it('continues startup but reports when token recovery acknowledgement is not persisted', async () => {
     await loadRenderer({
       config: {
