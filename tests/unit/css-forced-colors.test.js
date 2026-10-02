@@ -239,10 +239,19 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
     });
 
     it('makes the window one solid Canvas pane', () => {
-      expect(forcedRule('html:not(.desktop-pin-mode)')).toContain('background: Canvas');
+      render('', '');
+      expect(resolvedValue(document.documentElement, 'background', FORCED)).toBe('Canvas');
+      expect(resolvedValue(document.documentElement, 'background')).toBe('transparent');
+    });
+
+    it('leaves a desktop pin window see-through at its corners', () => {
+      render('desktop-pin-mode', '<div class="desktop-pin-shell"></div>');
+      expect(resolvedValue(document.documentElement, 'background', FORCED)).toBe('transparent');
     });
   });
 
+    // Only the body carries desktop-pin-mode (renderer.js sets it there), so the rule has to look
+    // down from <html>; a pin is a transparent window around a rounded shell.
   describe('buttons and fields', () => {
     it('tells the primary action from the others by its edge', () => {
       render(

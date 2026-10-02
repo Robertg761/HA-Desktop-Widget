@@ -7,7 +7,8 @@
  * inheritance for colours and custom properties, inline styles, var() fallbacks and srgb
  * color-mix(). Interaction states are modelled with attributes: give the element
  * `data-focus-visible`, `data-focus` or `data-hover`. Pass `forcedColors: true` or
- * `prefersContrast: 'more'` in the options to apply those media blocks.
+ * `prefersContrast: 'more'` in the options to apply those media blocks. A selector that ends in
+ * `:has(> child)` is matched too.
  */
 const fs = require('fs');
 const path = require('path');
@@ -156,6 +157,22 @@ function toMatchableSelector(selector) {
   );
 }
 
+/**
+ * jsdom parses a plain :has(.child) but not the relative form :has(> child), so when matching
+ * throws, a selector that ends in `:has(> child)` is matched in two steps: the part before it, then
+ * the relative selector inside. Any other selector jsdom cannot parse never matches.
+ */
+function matchesTrailingHas(element, selector) {
+  const start = selector.lastIndexOf(':has(');
+  if (start === -1) return false;
+  const close = findClosing(selector, start + ':has'.length);
+  const relative = selector.slice(start + ':has('.length, close).trim();
+  if (close !== selector.length - 1 || !relative.startsWith('>')) return false;
+  if (!element.matches(selector.slice(0, start) || '*')) return false;
+  const inner = relative.replace(/^>\s*/, '');
+  return Array.from(element.children).some((child) => child.matches(inner));
+}
+
 function selectorMatches(element, selector) {
   const matchable = toMatchableSelector(selector);
   if (!matchable) return false;
@@ -163,7 +180,11 @@ function selectorMatches(element, selector) {
     return element.matches(matchable);
   } catch {
     // Selectors jsdom cannot parse (e.g. vendor pseudo-classes) never match in the app's tests.
-    return false;
+    try {
+      return matchesTrailingHas(element, matchable);
+    } catch {
+      return false;
+    }
   }
 }
 
