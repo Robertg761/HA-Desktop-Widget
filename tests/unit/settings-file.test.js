@@ -392,6 +392,33 @@ describe('portable settings files', () => {
         roundTrips(live, collection);
       });
 
+      test('all of them at once reach the size limit, which only refuses the new export', () => {
+        // Each collection above fits alone. Together they are the one place a large installation
+        // meets a limit, the size one: Export says so with a code of its own, and a file an earlier
+        // version wrote with the same settings still imports.
+        const everything = {
+          customEntityNames: perEntity('Name'),
+          customEntityIcons: perEntity('mdi:lightbulb'),
+          tileSpans: perEntity(2),
+          quickAccessTileOptions: perEntity({ chartType: 'gauge' }),
+          entityAlerts: { enabled: true, alerts: perEntity({ onStateChange: true }) },
+        };
+        const live = { ...config, ...everything };
+
+        expect(() => serializeSettingsFile(live)).toThrow(
+          expect.objectContaining({ code: 'export_too_large' })
+        );
+
+        const file = JSON.stringify({
+          format: 'ha-desktop-widget-settings',
+          version: 1,
+          settings: everything,
+        });
+        expect(Buffer.byteLength(file, 'utf8')).toBeGreaterThan(MAX_SETTINGS_EXPORT_BYTES);
+        expect(Buffer.byteLength(file, 'utf8')).toBeLessThanOrEqual(MAX_SETTINGS_FILE_BYTES);
+        expect(parseSettingsFile(file)).toMatchObject(everything);
+      });
+
       test('a file written by an earlier version with this many still imports', () => {
         const file = JSON.stringify({
           format: 'ha-desktop-widget-settings',
