@@ -1,4 +1,9 @@
-const { loadAppStylesheets, parseColor, resolvedValue } = require('../helpers/css-cascade.js');
+const {
+  contrastRatio,
+  loadAppStylesheets,
+  parseColor,
+  resolvedValue,
+} = require('../helpers/css-cascade.js');
 
 function render(bodyClass, html) {
   document.body.className = bodyClass;
@@ -67,6 +72,31 @@ describe('the Readable preset', () => {
     expect(resolvedValue(chip, 'border-color')).toBe('#8ed1ff');
     chip.className = chip.className.replace(/ ?(active|selected)/, '');
     expect(resolvedValue(chip, 'border-color')).toBe('#aaa');
+  });
+
+  // The rows the preset replaces are dimmed, and the preset promises 7:1 for text.
+  it('dims the rows it replaces without taking their text under 7:1', () => {
+    render(
+      'high-contrast opaque-panels',
+      '<div id="settings-modal"><div class="settings-group is-overridden"></div></div>'
+    );
+    const opacity = Number(resolvedValue(document.querySelector('.is-overridden'), 'opacity'));
+    expect(opacity).toBeLessThan(1);
+    for (const token of [
+      '--text-primary',
+      '--text-secondary',
+      '--text-tertiary',
+      '--text-dim',
+      '--text-faint',
+      '--muted-text',
+    ]) {
+      const [r, g, b] = parseColor(resolvedValue(document.body, token));
+      for (const surface of ['--bg-primary', '--bg-secondary']) {
+        const dimmed = `rgba(${r}, ${g}, ${b}, ${opacity})`;
+        const ratio = contrastRatio(dimmed, resolvedValue(document.body, surface));
+        expect({ token, surface, enough: ratio >= 7 }).toEqual({ token, surface, enough: true });
+      }
+    }
   });
 
   it('gives the active Settings page a 2px accent edge on the sliding pill', () => {

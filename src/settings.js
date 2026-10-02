@@ -4637,7 +4637,9 @@ function syncSeasonalControls(ui) {
  * @param {object} ui - The appearance settings being shown.
  */
 function syncReadablePresetOverrides(ui) {
-  const overridden = !!ui.highContrast || !!ui.opaquePanels;
+  // The switch reads as on only when both flags are, so the dimming follows the same rule; a
+  // config with just one of them does not claim that the preset replaced anything.
+  const overridden = !!ui.highContrast && !!ui.opaquePanels;
   document.querySelectorAll('[data-readable-overrides]').forEach((element) => {
     element.classList.toggle('is-overridden', overridden);
   });

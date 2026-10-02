@@ -3301,6 +3301,16 @@ describe('Settings + Config Integration', () => {
       );
     });
 
+    test('leaves those rows alone when only one of the preset flags is saved', async () => {
+      state.CONFIG.ui.highContrast = true;
+      state.CONFIG.ui.opaquePanels = false;
+      await settings.openSettings();
+      expect(document.getElementById('readable-preset').checked).toBe(false);
+      expect(document.getElementById('colors-section').classList.contains('is-overridden')).toBe(
+        false
+      );
+    });
+
     test('saving unrelated settings keeps split contrast flags the preset does not represent', async () => {
       state.CONFIG.ui.highContrast = true;
       state.CONFIG.ui.opaquePanels = false;
