@@ -144,6 +144,41 @@ If you're stuck:
 
 **Remember:** Tests are here to help you catch bugs early. Running them regularly saves time in the long run!
 
+## Ratchet guards
+
+Some rules are not yet met everywhere, so their tests compare today's problems with a checked-in baseline instead of demanding zero. The baseline only shrinks:
+
+- A problem that is not in the baseline fails the test. Fix it; never add it to the baseline.
+- A baseline entry whose problem is gone also fails the test, and the message lists the lines to delete. Delete them in the same change that fixes the problem.
+- A contrast failure must not get worse than the ratio recorded in its baseline entry.
+
+| Rule                                                                                                                           | Test                               | Baseline in `tests/fixtures/`                                                       |
+| ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- | ----------------------------------------------------------------------------------- |
+| No `var(--x)` without a fallback reads a custom property that nothing defines (CSS, `index.html`, renderer JavaScript)         | `css-undefined-properties.test.js` | `css-undefined-properties-baseline.json`                                            |
+| Text tokens meet WCAG contrast on the window, tile and dialog surfaces, and every accent does in both themes and high contrast | `theme-contrast.test.js`           | `theme-contrast-baseline.json`                                                      |
+| No language pack value is still the English text                                                                               | `locale-pack-manifest.test.js`     | `locale-pack-untranslated-baseline.json`, `locale-pack-untranslated-allowlist.json` |
+
+The contrast test loads the real stylesheets into jsdom, runs the real theme and accent functions from `src/ui-utils.js`, and resolves the tokens through `tests/helpers/css-cascade.js`, so a change to a token or to the accent maths moves the numbers. When a token you fix gains a `--<name>-text` variant for status colours, that variant is measured instead. The allowlist holds words a language really writes the English way (brand names, cognates, tray abbreviations), and it also fails when an entry turns out to be translated.
+
+If two branches both delete lines from the same baseline, Git reports a conflict on neighbouring lines. Keep both deletions.
+
+## Visual snapshots
+
+`npm run snapshots` builds the renderer, starts a mock Home Assistant and drives the real app over the Chrome DevTools Protocol, saving `<os>-<scene>-page.png` (web contents) and `<os>-<scene>-screen.png` (the screen around the window) for every scene in `scripts/visual-snapshots/scenes.cjs`. The Visual snapshots workflow runs it on Windows, Windows 11 ARM, macOS and Linux and uploads the images, so a change can be compared before and after on each OS. Nothing is compared automatically.
+
+The scenes cover the main view, popups and dialogs, the light theme, German and Arabic, a 340px window, forced colours, six page tabs, media tiles and desktop pins. A scene lists only what it changes from the fixture (`scripts/visual-snapshots/fixture.cjs`), so scenes are independent. The clock, the date, the running timer and the media progress follow the wall clock, and the seasonal scenes use random backgrounds; everything else is fixed, and toasts are cleared before each capture.
+
+To run it by hand on Linux, use a private display, session bus and home directory so the app cannot reach your real desktop or keyring:
+
+```bash
+npm run build:renderer
+HOME="$(mktemp -d)" SNAPSHOT_DEBUG_PORT=9362 SNAPSHOT_SCENES='popup|pin' \
+  xvfb-run -a -s "-screen 0 1280x900x24" dbus-run-session -- \
+  node scripts/visual-snapshots/run.cjs /tmp/snapshots
+```
+
+`SNAPSHOT_DEBUG_PORT` (default 9333) lets several runs share a machine, and `SNAPSHOT_SCENES` is a regular expression over scene names. A scene that fails is skipped, a `<scene>-failed-page.png` shows where it stopped, and the run exits non-zero at the end. To add a scene, add an entry to `scenes.cjs` and, if it needs an entity the fixture lacks, add that to `fixture.cjs`. The fixture window is 500x660 at (100, 20) so it fits the 1024x768 Windows runners above their taskbar.
+
 ## Native Hyprland verification
 
 The Xvfb smoke test exercises X11. Linux CI also runs the Rust protocol tests, which check independent surface placement, popup elevation, backpressure, and output loss. Before a release intended for Omarchy, run the packaged compositor test below on Hyprland. It requires Node 22 or newer and must use a disposable profile.
