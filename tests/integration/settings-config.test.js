@@ -1447,6 +1447,24 @@ describe('Settings + Config Integration', () => {
       await settings.saveSettings();
       expect(state.CONFIG.primaryCards[0]).toBe('time');
     });
+
+    test('exposes the chosen source as pressed and keeps "(default)" with its own card', async () => {
+      await settings.openSettings();
+      const button = (card, value) =>
+        document.querySelector(`[data-primary-card="${card}"][data-primary-value="${value}"]`);
+
+      expect(button(0, 'weather').getAttribute('aria-pressed')).toBe('true');
+      expect(button(0, 'time').getAttribute('aria-pressed')).toBe('false');
+      expect(document.getElementById('primary-card-1-current').textContent).toBe(
+        'Weather (default)'
+      );
+
+      button(0, 'time').click();
+      expect(button(0, 'time').getAttribute('aria-pressed')).toBe('true');
+      expect(button(0, 'weather').getAttribute('aria-pressed')).toBe('false');
+      // Time is Card 2's default, not Card 1's, so after the swap Card 1 no longer claims it.
+      expect(document.getElementById('primary-card-1-current').textContent).toBe('Time');
+    });
   });
 
   describe('Theme mode control', () => {

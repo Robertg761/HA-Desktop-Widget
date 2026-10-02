@@ -190,4 +190,4 @@ function startMockHomeAssistant({ port = 0, token, states, services = {}, servic
   });
 }
 
-module.exports = { startMockHomeAssistant, encodeFrame, decodeFrames };
+module.exports = { startMockHomeAssistant, encodeFrame, decodeFrames, resultFor };

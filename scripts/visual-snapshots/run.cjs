@@ -26,6 +26,7 @@ const os = require('os');
 const path = require('path');
 const { startMockHomeAssistant } = require('./mock-home-assistant.cjs');
 const {
+  RESETTABLE_SETTINGS,
   TOKEN,
   WINDOW_POSITION,
   WINDOW_SIZE,
@@ -217,7 +218,7 @@ async function main() {
     await sleep(1500);
 
     // What each scene is measured against: the fixture's own settings and window.
-    const settingsToReset = ['frostedGlass', 'customTabs', 'activeTabId', 'entityAlerts'];
+    const settingsToReset = RESETTABLE_SETTINGS;
     function sceneSettings(scene) {
       const settings = Object.fromEntries(settingsToReset.map((key) => [key, baseConfig[key]]));
       return { ...settings, ...scene.config, ui: { ...baseConfig.ui, ...scene.ui } };

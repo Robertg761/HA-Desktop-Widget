@@ -7,6 +7,7 @@ const path = require('path');
 
 const {
   PAGE_SETS,
+  RESETTABLE_SETTINGS,
   WINDOW_POSITION,
   WINDOW_SIZE,
   buildConfig,
@@ -59,6 +60,17 @@ describe('visual snapshot scenes', () => {
     const names = scenes.map((scene) => scene.name);
     expect(new Set(names).size).toBe(names.length);
     for (const name of names) expect(name).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
+  });
+
+  it('leaves the scenes that change unrestored settings to the end', () => {
+    const changesMore = (scene) =>
+      Object.keys(scene.config || {}).some((key) => !RESETTABLE_SETTINGS.includes(key));
+    const firstIndex = scenes.findIndex(changesMore);
+
+    expect(firstIndex).toBeGreaterThan(0);
+    // Everything after the first such scene changes them too, so no scene starts from a state an
+    // earlier one left behind.
+    expect(scenes.slice(firstIndex).every(changesMore)).toBe(true);
   });
 
   it('activates pages that exist in the page set it brings', () => {
