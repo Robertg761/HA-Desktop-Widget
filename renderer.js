@@ -2554,11 +2554,6 @@ function replaceEmojiIcons() {
   }
 }
 
-/**
- * Initialize the renderer: load configuration, apply UI preferences, wire UI, start periodic updates, initialize hotkeys and alerts, and connect to Home Assistant.
- *
- * Loads persisted config (or applies a safe default if missing), wires UI event handlers, replaces emoji icons, and handles token-reset notifications that require the user to re-enter their Home Assistant token. Applies theme, accent, background, and UI preferences, starts recurring UI updates (time, timers, media seek bars), initializes hotkeys and entity alerts, hides the loading state, renders the active tab, and initiates the WebSocket connection. Ensures the loading indicator is cleared even if the connection stalls.
- */
 // Pin windows never open a websocket, so Home Assistant's unit system only reaches them from main.
 // Until it arrives they must not claim the metric defaults: an imperial install would read
 // "72°C" for a house at 72°F, so unit-less degrees are the honest fallback.
@@ -2566,6 +2561,11 @@ function applyDesktopPinUnitSystem(unitSystem) {
   state.setUnitSystem(unitSystem && typeof unitSystem === 'object' ? unitSystem : {});
 }
 
+/**
+ * Initialize the renderer: load configuration, apply UI preferences, wire UI, start periodic updates, initialize hotkeys and alerts, and connect to Home Assistant.
+ *
+ * Loads persisted config (or applies a safe default if missing), wires UI event handlers, replaces emoji icons, and handles token-reset notifications that require the user to re-enter their Home Assistant token. Applies theme, accent, background, and UI preferences, starts recurring UI updates (time, timers, media seek bars), initializes hotkeys and entity alerts, hides the loading state, renders the active tab, and initiates the WebSocket connection. Ensures the loading indicator is cleared even if the connection stalls.
+ */
 async function initializeDesktopPinMode() {
   try {
     log.info('Initializing desktop pin renderer');
