@@ -60,7 +60,8 @@ function getNextTabIndex(
 
 /**
  * Make a list of tabs answer the arrow keys, Home and End: focus moves to the tab and selects it
- * (by clicking it), the way a segmented control does.
+ * (by clicking it), the way a segmented control does. Only while the element is a tablist; one
+ * that is a plain group for a while (the Quick Access pages being edited) promises no arrow keys.
  *
  * @param {HTMLElement} tablist - The element that holds the tabs; the listener stays on it, so
  *   tabs that are rebuilt need no new listeners.
@@ -70,6 +71,7 @@ function getNextTabIndex(
  */
 function bindTabListKeyboard(tablist, tabSelector, { orientation = 'horizontal' } = {}) {
   tablist.addEventListener('keydown', (event) => {
+    if (tablist.getAttribute('role') !== 'tablist') return;
     if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
     const tabs = [...tablist.querySelectorAll(tabSelector)];
     const current = tabs.indexOf(event.target?.closest?.(tabSelector));

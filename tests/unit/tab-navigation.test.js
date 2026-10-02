@@ -71,7 +71,7 @@ describe('tab navigation', () => {
 
     beforeEach(() => {
       document.body.innerHTML = `
-        <div id="list">
+        <div id="list" role="tablist">
           <button class="tab" data-tab="a">A</button>
           <button class="tab" data-tab="b">B</button>
           <button class="tab" data-tab="c">C</button>
@@ -115,6 +115,21 @@ describe('tab navigation', () => {
       a.focus();
       press(a, 'ArrowLeft');
       expect(document.activeElement).toBe(b);
+    });
+
+    it('leaves the keys alone while the list is not a tablist', () => {
+      bindTabListKeyboard(tablist, '.tab');
+      const [a] = tablist.querySelectorAll('.tab');
+      a.focus();
+
+      tablist.setAttribute('role', 'group');
+      expect(press(a, 'ArrowRight').defaultPrevented).toBe(false);
+      expect(press(a, 'End').defaultPrevented).toBe(false);
+      expect(clicked).toEqual([]);
+
+      tablist.setAttribute('role', 'tablist');
+      expect(press(a, 'ArrowRight').defaultPrevented).toBe(true);
+      expect(clicked).toEqual(['b']);
     });
 
     it('leaves keys with modifiers, other keys and other buttons alone', () => {

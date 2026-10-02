@@ -7398,6 +7398,17 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         expect(state.CONFIG.activeTabId).toBe('p1');
       });
 
+      it('leaves the arrows alone while the pages are being edited', () => {
+        setPages(pagesNamed(3), 'p1');
+        ui.toggleReorganizeMode();
+        links()[0].focus();
+
+        // The pages are buttons in a group then, each one a Tab stop, so no arrow key is promised.
+        expect(press(links()[0], 'ArrowRight').defaultPrevented).toBe(false);
+        expect(press(links()[0], 'End').defaultPrevented).toBe(false);
+        expect(state.CONFIG.activeTabId).toBe('p1');
+      });
+
       it('keeps keyboard focus on a page button through rebuilds of the bar', () => {
         setPages(pagesNamed(3), 'p2');
         ui.renderActiveTab();
@@ -7663,8 +7674,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
             null,
             null,
           ]);
-          // Arrow keys still lead along the pages, so one Tab stop is enough for them.
-          expect(links().map((link) => link.tabIndex)).toEqual([-1, 0, -1]);
+          // Without a tab list's arrow keys, Tab has to reach every page, then the active page's
+          // own buttons.
+          expect(links().map((link) => link.tabIndex)).toEqual([0, 0, 0]);
+          expect(
+            [...tabBar.querySelectorAll('button')].every((button) => button.tabIndex === 0)
+          ).toBe(true);
         });
 
         it('keeps Add page beside the strip, and the same button between renders', () => {

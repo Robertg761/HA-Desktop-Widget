@@ -789,8 +789,9 @@ function revealActiveQuickAccessTab(scroller) {
 }
 
 function bindQuickAccessTabScroller(scroller) {
-  // The arrows move focus along the pages and choose the one reached. The switch rebuilds the
-  // bar, which puts focus back on the button for the same page.
+  // The arrows move focus along the pages and choose the one reached (not while reorganizing,
+  // when the pages are buttons in a group). The switch rebuilds the bar, which puts focus back on
+  // the button for the same page.
   bindTabListKeyboard(scroller, '.quick-access-tab-link');
   scroller.addEventListener('scroll', () => updateQuickAccessTabOverflow(scroller), {
     passive: true,
@@ -927,7 +928,9 @@ function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
     return;
   }
 
-  // One page is the tab stop (arrow keys reach the rest); the active one, or the first.
+  // A tab list has one tab stop and the arrow keys reach the rest: the active page, or the first.
+  // While reorganizing the pages are plain buttons beside their own edit buttons, and every one
+  // of them can be tabbed to.
   const stopId = tabs.some((tab) => tab.id === config.activeTabId)
     ? config.activeTabId
     : tabs[0]?.id;
@@ -946,7 +949,7 @@ function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
     button.classList.toggle('active', isActive);
     button.id = `quick-access-tab-${index}`;
     button.dataset.tab = tab.id;
-    button.tabIndex = tab.id === stopId ? 0 : -1;
+    button.tabIndex = !asTabs || tab.id === stopId ? 0 : -1;
     const label = document.createElement('span');
     label.className = 'quick-access-tab-label';
     // A name is in whatever script the person typed, which need not be the interface's: it is
