@@ -22,7 +22,10 @@ const {
   createSettingsFileController,
   settingsFileErrorCode,
 } = require('../../src/settings-file-controller.cjs');
-const { validateProfileSyncCopyPaths } = require('../../src/main-security.cjs');
+const {
+  isPathInsideDirectory,
+  validateProfileSyncCopyPaths,
+} = require('../../src/main-security.cjs');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
@@ -189,7 +192,8 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
       safeStorage,
       mainT: (key, vars) => formatTemplate(key, vars),
       isPlainObject: (value) => !!value && typeof value === 'object' && !Array.isArray(value),
-      isPathInsideDirectory: (target, dir) => !path.relative(dir, target).startsWith('..'),
+      // The real check: path.relative alone calls a path on another Windows drive inside.
+      isPathInsideDirectory,
       preservedEncryptedTokenForRecovery: null,
       mainWindow: null,
       tray: null,

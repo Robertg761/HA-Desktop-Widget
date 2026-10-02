@@ -8,6 +8,7 @@
  */
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { createProfileSyncHarness } = require('../helpers/profile-sync-devices.js');
 
@@ -189,8 +190,9 @@ describe('where the folder chooser opens', () => {
     await laptop.invoke('choose-profile-sync-folder', 'dropbox');
     expect(openedAt(laptop)).toBe(path.dirname(syncFilePath()));
 
-    await laptop.invoke('choose-profile-sync-folder', 'dropbox', '/somewhere/else');
-    expect(openedAt(laptop)).toBe('/somewhere/else');
+    const formFolder = path.join(os.tmpdir(), 'somewhere', 'else');
+    await laptop.invoke('choose-profile-sync-folder', 'dropbox', formFolder);
+    expect(openedAt(laptop)).toBe(formFolder);
   });
 
   test('ignores an unsaved form folder inside the app data folder', async () => {
