@@ -1,0 +1,24 @@
+{
+  "comment": [
+    "Known var(--x) reads, written file|--property, that have no fallback and no definition anywhere",
+    "(styles.css, dashboard-workflows.css, index.html and the renderer's JavaScript). Each one makes",
+    "its declaration invalid at computed-value time, so the property silently falls back to",
+    "inherited or initial. See tests/unit/css-undefined-properties.test.js.",
+    "This list only shrinks. Never add to it: define the property, give the var() a fallback, or use",
+    "the token that exists. When you fix an entry the test fails until you delete its line here."
+  ],
+  "entries": [
+    "src/settings.js|--text-muted",
+    "src/ui.js|--primary-color",
+    "styles.css|--accent-primary",
+    "styles.css|--bg-panel",
+    "styles.css|--button-secondary-bg",
+    "styles.css|--button-secondary-bg-hover",
+    "styles.css|--button-secondary-text",
+    "styles.css|--danger-bg",
+    "styles.css|--primary-alpha",
+    "styles.css|--primary-color",
+    "styles.css|--surface",
+    "styles.css|--text-muted"
+  ]
+}
