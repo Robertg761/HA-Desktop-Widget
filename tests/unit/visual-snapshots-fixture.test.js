@@ -22,7 +22,8 @@ describe('visual snapshot fixture', () => {
     const unknown = Object.entries(PAGE_SETS).flatMap(([setName, pages]) =>
       pages.flatMap((page) =>
         page.entityIds
-          .filter((entityId) => !entityIds.has(entityId))
+          // A comparison graph is not an entity; the scene brings its definition.
+          .filter((entityId) => !entityId.startsWith('graph:') && !entityIds.has(entityId))
           .map((entityId) => `${setName}/${page.id}: ${entityId}`)
       )
     );

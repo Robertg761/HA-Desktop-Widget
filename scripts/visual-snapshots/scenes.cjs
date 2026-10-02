@@ -68,6 +68,13 @@ async function pinEntity(ctx, entityId) {
 }
 
 const sixPages = (activeTabId) => ({ customTabs: PAGE_SETS.six, activeTabId });
+const pages = (set, activeTabId) => ({ customTabs: PAGE_SETS[set], activeTabId });
+
+// Keyboard focus rings only show after a key press, so press one before focusing from script.
+async function focusWithKeyboard(ctx, selector) {
+  await ctx.pressKey('Shift', { code: 'ShiftLeft', keyCode: 16 });
+  await ctx.ev(`document.querySelector(${JSON.stringify(selector)})?.focus()`);
+}
 // A holiday shows for an hour, long enough for the whole run.
 const holiday = (show) => ({ enabled: true, show, showUntil: Date.now() + 3600000 });
 
@@ -89,6 +96,85 @@ const scenes = [
     name: 'popup-input-number',
     config: sixPages('devices'),
     setup: (ctx) => ctx.click(tile('input_number.thermostat_offset')),
+  },
+
+  // The page tab strip with 1, 3, 6 and 12 pages (German names, the last of them very long), in
+  // normal and edit mode, light and dark, left to right and right to left. The active page is the
+  // last or next to last, which only shows if the strip scrolls it into view.
+  { name: 'tabs-three', config: pages('three', 'kitchen') },
+  { name: 'tabs-three-edit', config: pages('three', 'kitchen'), setup: toggleEditMode },
+  { name: 'tabs-six-edit', config: sixPages('devices'), setup: toggleEditMode },
+  {
+    name: 'tabs-single-edit',
+    setup: toggleEditMode,
+    config: { customTabs: [PAGE_SETS.default[0]], activeTabId: 'default' },
+  },
+  { name: 'tabs-twelve', config: pages('twelve', 'page-12') },
+  { name: 'tabs-twelve-edit', config: pages('twelve', 'page-6'), setup: toggleEditMode },
+  { name: 'tabs-twelve-edit-last', config: pages('twelve', 'page-12'), setup: toggleEditMode },
+  { name: 'tabs-twelve-light', ui: { theme: 'light' }, config: pages('twelve', 'page-12') },
+  {
+    name: 'tabs-twelve-light-edit',
+    ui: { theme: 'light' },
+    config: pages('twelve', 'page-6'),
+    setup: toggleEditMode,
+  },
+  { name: 'tabs-twelve-rtl', ui: { language: 'ar' }, config: pages('twelve', 'page-12') },
+  {
+    name: 'tabs-twelve-rtl-edit',
+    ui: { language: 'ar' },
+    config: pages('twelve', 'page-6'),
+    setup: toggleEditMode,
+  },
+  {
+    name: 'tabs-narrow-edit',
+    size: NARROW_WINDOW,
+    config: pages('six', 'media'),
+    setup: toggleEditMode,
+  },
+  {
+    name: 'tabs-focus',
+    config: pages('twelve', 'page-4'),
+    setup: (ctx) => focusWithKeyboard(ctx, '.quick-access-tab-link.active'),
+  },
+  {
+    name: 'tabs-focus-edit',
+    config: pages('twelve', 'page-4'),
+    setup: async (ctx) => {
+      await toggleEditMode(ctx);
+      await focusWithKeyboard(ctx, '.qa-tab-rename');
+    },
+  },
+  {
+    name: 'tabs-focus-add',
+    config: pages('three', 'default'),
+    setup: async (ctx) => {
+      await toggleEditMode(ctx);
+      await focusWithKeyboard(ctx, '.qa-tab-add');
+    },
+  },
+
+  // Edit mode puts a pin, edit and remove button on every tile; compact density and narrow
+  // windows leave the least room for them.
+  { name: 'edit-compact', ui: { density: 'compact' }, setup: toggleEditMode },
+  {
+    name: 'edit-compact-narrow',
+    ui: { density: 'compact' },
+    size: NARROW_WINDOW,
+    setup: toggleEditMode,
+  },
+  { name: 'edit-narrow', size: NARROW_WINDOW, setup: toggleEditMode },
+  { name: 'edit-media', config: sixPages('media'), setup: toggleEditMode },
+  {
+    name: 'edit-graph-camera',
+    config: {
+      ...pages('graph', 'default'),
+      comparisonGraphs: [
+        { id: 'graph:temps', name: 'Temperatures', span: 3, entityIds: ['sensor.office_temp'] },
+      ],
+      quickAccessTileOptions: { 'camera.driveway': { cameraPreviewRefresh: '30s' } },
+    },
+    setup: toggleEditMode,
   },
 
   // The light theme.
