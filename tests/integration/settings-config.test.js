@@ -8,6 +8,7 @@ const {
   getMockConfig,
 } = require('../mocks/electron.js');
 const { sampleStates, sampleConfig } = require('../fixtures/ha-data.js');
+const windowGlass = require('../../src/window-glass.cjs');
 
 // Mock dependencies that settings.js requires
 const mockWebsocket = {
@@ -69,7 +70,14 @@ const mockUiUtils = {
   applyUiPreferences: jest.fn(),
   suspendSeasonalColors: jest.fn(),
   applyWindowEffects: jest.fn(),
-  isFrostedGlassAvailable: jest.fn(() => true),
+  // Answers from the real helper, as the renderer's does, so the config settings.js hands over
+  // decides the result. The test platform is not Windows, so it is pinned to the case under test.
+  isFrostedGlassAvailable: jest.fn((config) =>
+    windowGlass.isGlassAvailable({
+      platform: 'win32',
+      nativeGlassSupported: config?.desktopCapabilities?.nativeGlassSupported,
+    })
+  ),
   setCustomThemes: jest.fn((customColors = []) => {
     mockCustomThemes = (Array.isArray(customColors) ? customColors : [])
       .map((entry) => ({
@@ -2231,18 +2239,15 @@ describe('Settings + Config Integration', () => {
     const unavailable = { nativeGlassSupported: false };
 
     beforeEach(() => {
-      mockUiUtils.isFrostedGlassAvailable.mockImplementation(() => false);
       state.CONFIG.desktopCapabilities = unavailable;
       state.CONFIG.frostedGlass = true;
       state.CONFIG.ui.weatherEffectsEnabled = true;
     });
 
-    afterEach(() => {
-      mockUiUtils.isFrostedGlassAvailable.mockImplementation(() => true);
-    });
-
     test('shows the control off and locked with the reason', async () => {
       await settings.openSettings();
+
+      expect(mockUiUtils.isFrostedGlassAvailable).toHaveBeenCalledWith(state.CONFIG);
 
       const frostedGlass = document.getElementById('frosted-glass');
       const warning = document.getElementById('frosted-glass-warning');
@@ -2293,7 +2298,6 @@ describe('Settings + Config Integration', () => {
     });
 
     test('leaves the control usable where the window can draw frosted glass', async () => {
-      mockUiUtils.isFrostedGlassAvailable.mockImplementation(() => true);
       state.CONFIG.desktopCapabilities = { nativeGlassSupported: true };
 
       await settings.openSettings();

@@ -4,6 +4,13 @@ const vm = require('vm');
 
 const source = fs.readFileSync(path.join(__dirname, '../../main.js'), 'utf8');
 
+// The source from a function or handler's opening line to its closing brace at column 0.
+function section(startMarker) {
+  const start = source.indexOf(startMarker);
+  expect(start).toBeGreaterThanOrEqual(0);
+  return source.slice(start, source.indexOf('\n}', start));
+}
+
 // Windows 11 22H2+ (supported) and Windows 10 / Windows 11 before 22H2 (unsupported).
 function runtime({ platform, nativeGlassSupported }) {
   const listeners = {};
@@ -93,11 +100,24 @@ describe('Windows acrylic on the main process', () => {
     expect(source).toMatch(
       /const NATIVE_GLASS_SUPPORTED = supportsNativeGlass\(\{\s*platform: process\.platform,\s*release: os\.release\(\),\s*\}\);/
     );
-    // The main window's options, and the config and pin payloads the renderer reads.
-    expect(source).toContain(
-      'nativeGlassSupported: NATIVE_GLASS_SUPPORTED,\n    transparencyOptions,'
-    );
-    expect(source.match(/nativeGlassSupported: NATIVE_GLASS_SUPPORTED,/g)).toHaveLength(4);
+    // The main window's options, and every payload the renderer reads its capabilities from.
+    // Keyed by site so a failure names the one that dropped the value.
+    const passesSupport = (marker, pattern = /nativeGlassSupported: NATIVE_GLASS_SUPPORTED,/) =>
+      pattern.test(section(marker));
+    expect({
+      createWindow: passesSupport(
+        'function createWindow(',
+        /nativeGlassSupported: NATIVE_GLASS_SUPPORTED,\s*transparencyOptions,/
+      ),
+      sanitizeConfigForRenderer: passesSupport('function sanitizeConfigForRenderer('),
+      sendDesktopPinUpdate: passesSupport('function sendDesktopPinUpdate('),
+      getDesktopPinBootstrap: passesSupport("ipcMain.handle('get-desktop-pin-bootstrap'"),
+    }).toEqual({
+      createWindow: true,
+      sanitizeConfigForRenderer: true,
+      sendDesktopPinUpdate: true,
+      getDesktopPinBootstrap: true,
+    });
     const pinCreation = source.slice(
       source.indexOf('function createDesktopPinWindow('),
       source.indexOf('const pinWindow = new BrowserWindow(')
