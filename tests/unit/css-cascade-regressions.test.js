@@ -81,6 +81,37 @@ describe('stylesheet cascade regressions', () => {
     });
   });
 
+  describe('media tile text', () => {
+    // Hovering used to slide every line sideways out of its pill, whether or not it overflowed.
+    it('keeps its lines in place and ellipsized while the tile is hovered', () => {
+      render(
+        '',
+        `<div class="control-item media-player-entity" data-hover>
+          <div class="control-info"><div class="media-info">
+            <div class="media-title">Title</div>
+            <div class="media-artist">Artist</div>
+            <div class="media-album">Album</div>
+          </div></div>
+        </div>`
+      );
+
+      for (const line of document.querySelectorAll('.media-info > *')) {
+        expect(resolvedValue(line, 'animation')).toBeNull();
+        expect(resolvedValue(line, 'overflow')).toBe('hidden');
+        expect(resolvedValue(line, 'text-overflow')).toBe('ellipsis');
+      }
+    });
+
+    it('has no marquee animation left in the stylesheets', () => {
+      const css = require('fs').readFileSync(
+        require('path').resolve(__dirname, '../../styles.css'),
+        'utf8'
+      );
+
+      expect(css).not.toContain('marquee-scroll');
+    });
+  });
+
   describe('camera viewer frame', () => {
     // A frame whose track follows its content grows to a 4:3 or portrait picture's own height and
     // then crops it, so the track has to be sized by the 16:9 frame instead.

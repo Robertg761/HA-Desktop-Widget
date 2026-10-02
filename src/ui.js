@@ -9563,7 +9563,7 @@ function createControlElement(entity, options = {}) {
     // Setup special controls after HTML is set
     if (entity.entity_id.startsWith('media_player.')) {
       setupMediaPlayerControls(div, entity);
-      // Auto-fit removed - using CSS ellipsis and marquee instead
+      // Auto-fit removed - long lines end in a CSS ellipsis and carry the full text as a tooltip
     }
     if (isQuickAccessContext && div.classList.contains('sensor-numeric-entity')) {
       mountSensorTileChart(div, entity);
@@ -10950,20 +10950,23 @@ function setupMediaPlayerControls(div, entity) {
     if (!div || !entity) return;
 
     // Get media info
-    const mediaTitle = utils.escapeHtml(entity.attributes?.media_title || '');
-    const mediaArtist = utils.escapeHtml(entity.attributes?.media_artist || '');
-    const mediaAlbum = utils.escapeHtml(entity.attributes?.media_album_name || '');
+    const mediaTitle = entity.attributes?.media_title || '';
+    const mediaArtist = entity.attributes?.media_artist || '';
+    const mediaAlbum = entity.attributes?.media_album_name || '';
     const isPlaying = entity.state === 'playing';
     const isOff = entity.state === 'off' || entity.state === 'idle';
+    // A line that does not fit is cut with an ellipsis, so the full text is its tooltip.
+    const mediaLine = (className, text) =>
+      `<div class="${className}" title="${escapeHtmlAttribute(text)}">${utils.escapeHtml(text)}</div>`;
 
     // Create media info display
     let mediaInfo = '';
     if (mediaTitle) {
       // Show title and artist on separate lines, album only if there's space
       mediaInfo = `<div class="media-info">
-        <div class="media-title">${mediaTitle}</div>
-        ${mediaArtist ? `<div class="media-artist">${mediaArtist}</div>` : ''}
-        ${mediaAlbum && !mediaArtist ? `<div class="media-album">${mediaAlbum}</div>` : ''}
+        ${mediaLine('media-title', mediaTitle)}
+        ${mediaArtist ? mediaLine('media-artist', mediaArtist) : ''}
+        ${mediaAlbum && !mediaArtist ? mediaLine('media-album', mediaAlbum) : ''}
       </div>`;
     } else if (isOff) {
       mediaInfo = `<div class="media-info"><div class="media-title">${utils.escapeHtml(t('No media'))}</div></div>`;

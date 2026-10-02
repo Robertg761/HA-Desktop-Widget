@@ -10695,7 +10695,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   min-height: 0;
 }
 
-/* Media text lines — with marquee scrolling on hover */
+/* Media text lines. A line that does not fit ends in an ellipsis; the full text is its tooltip. */
 .media-title {
   font-size: 0.75em;
   font-weight: 600;
@@ -10728,26 +10728,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   line-height: 1.2;
   width: 100%;
   text-align: center;
-}
-
-/* Marquee animation wrapper on hover */
-.media-player-entity:hover .media-title,
-.media-player-entity:hover .media-artist,
-.media-player-entity:hover .media-album {
-  overflow: visible;
-  text-overflow: clip;
-  animation: marquee-scroll 10s linear infinite;
-}
-
-@keyframes marquee-scroll {
-  0%,
-  10% {
-    transform: translateX(0%);
-  }
-  90%,
-  100% {
-    transform: translateX(calc(-100% + 80px));
-  }
 }
 
 /* Media Controls */

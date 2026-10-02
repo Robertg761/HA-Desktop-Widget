@@ -806,6 +806,61 @@ describe('User-facing audit regressions', () => {
     });
   });
 
+  describe('media tile text tooltips', () => {
+    const mediaPlayer = (attributes) => entity('media_player.tile_text', 'playing', attributes);
+    const renderTile = (player) => {
+      state.setConfig({ ...state.CONFIG, favoriteEntities: [player.entity_id] });
+      state.setStates({ [player.entity_id]: player });
+      ui.renderActiveTab();
+      return document.querySelector(`[data-entity-id="${player.entity_id}"]`);
+    };
+    const longTitle = 'A very long track title that cannot possibly fit inside the tile pill';
+
+    it('gives the title and artist the full text as a tooltip', () => {
+      const tile = renderTile(
+        mediaPlayer({
+          media_title: longTitle,
+          media_artist: 'The Artist & Co',
+          friendly_name: 'TV',
+        })
+      );
+
+      expect(tile.querySelector('.media-title').title).toBe(longTitle);
+      expect(tile.querySelector('.media-artist').title).toBe('The Artist & Co');
+      expect(tile.querySelector('.media-artist').textContent).toBe('The Artist & Co');
+    });
+
+    it('shows the album, with its tooltip, when there is no artist', () => {
+      const tile = renderTile(
+        mediaPlayer({ media_title: 'Song', media_album_name: 'The "Album"', friendly_name: 'TV' })
+      );
+
+      expect(tile.querySelector('.media-album').title).toBe('The "Album"');
+    });
+
+    it('keeps the tooltips current when the track changes', () => {
+      const player = mediaPlayer({
+        media_title: 'First',
+        media_artist: 'One',
+        friendly_name: 'TV',
+      });
+      renderTile(player);
+
+      const next = mediaPlayer({
+        media_title: longTitle,
+        media_artist: 'Two',
+        friendly_name: 'TV',
+      });
+      state.setEntityState(next);
+      ui.updateEntityInUI(next);
+
+      const tile = document.querySelector(`[data-entity-id="${player.entity_id}"]`);
+      expect(tile.querySelector('.media-title').title).toBe(longTitle);
+      expect(tile.querySelector('.media-title').textContent).toBe(longTitle);
+      expect(tile.querySelector('.media-artist').title).toBe('Two');
+    });
+  });
+
   it('cancels pending movement when Stop is pressed on a desktop pin', async () => {
     const cover = entity('cover.pin_stop', 'open', {
       current_position: 40,
