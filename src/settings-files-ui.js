@@ -5,7 +5,11 @@ import state from './state.js';
 function settingsFileError(code) {
   if (code === 'invalid_file') return t('Choose a valid HA Desktop Widget settings file.');
   if (code === 'unsupported_version') return t('This settings file needs a different app version.');
-  if (code === 'file_too_large') return t('Settings files must be smaller than 256 KB.');
+  if (code === 'file_too_large') return t('Settings files must be smaller than 1 MB.');
+  if (code === 'export_too_large')
+    return t(
+      'Your settings are too large to export. Remove some pages, favorites or alerts and try again.'
+    );
   if (code === 'import_expired') return t('Choose the settings file again before importing.');
   if (code === 'export_failed') return t('Could not export settings.');
   return t('Could not import settings. Your current settings are unchanged.');

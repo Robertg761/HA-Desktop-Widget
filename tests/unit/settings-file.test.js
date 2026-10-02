@@ -1,11 +1,17 @@
 /** @jest-environment node */
 const {
+  buildLocalSections,
+  buildSyncEnvelope,
+  serializeSyncEnvelope,
+} = require('../../profile-sync-core.js');
+const {
   buildSettingsFile,
   serializeSettingsFile,
   parseSettingsFile,
   settingsFileSections,
   summarizeSettingsImport,
   MAX_SETTINGS_FILE_BYTES,
+  MAX_SETTINGS_EXPORT_BYTES,
 } = require('../../src/settings-file.cjs');
 
 const config = {
@@ -425,16 +431,79 @@ describe('portable settings files', () => {
         );
       });
     });
+  });
 
-    test('a file larger than a sync file could carry is refused, not just a huge one', () => {
-      expect(MAX_SETTINGS_FILE_BYTES).toBeLessThanOrEqual(512 * 1024);
-      const padded = JSON.stringify({
-        ...buildSettingsFile(config),
-        padding: 'x'.repeat(MAX_SETTINGS_FILE_BYTES),
-      });
-      expect(() => parseSettingsFile(padded)).toThrow(
+  describe('file size limits', () => {
+    // A dashboard with many pages: the ids follow the entities that exist, so the file grows
+    // with them and nothing but the file's own size ever limited it.
+    const pagesOf = (count, entitiesPerPage = 150) =>
+      Array.from({ length: count }, (_, page) => ({
+        id: `page-${page}`,
+        name: `Page ${page}`,
+        entityIds: Array.from(
+          { length: entitiesPerPage },
+          (_, entity) => `sensor.room_${page}_value_${entity}`
+        ),
+      }));
+    const bytesOf = (content) => Buffer.byteLength(content, 'utf8');
+    // The layout earlier versions wrote.
+    const writtenByEarlierVersion = (settings) =>
+      `${JSON.stringify({ format: 'ha-desktop-widget-settings', version: 1, settings }, null, 2)}\n`;
+    const SYNC_FILE_LIMIT = 512 * 1024;
+
+    test('still reads a settings file of about 600 KB, as earlier versions could export one', () => {
+      const content = writtenByEarlierVersion({ customTabs: pagesOf(110), opacity: 0.9 });
+      expect(bytesOf(content)).toBeGreaterThan(550 * 1024);
+      expect(bytesOf(content)).toBeLessThan(650 * 1024);
+      expect(bytesOf(content)).toBeGreaterThan(MAX_SETTINGS_EXPORT_BYTES);
+
+      const settings = parseSettingsFile(content);
+      expect(settings.customTabs).toHaveLength(110);
+      expect(settings.customTabs[109].entityIds).toHaveLength(150);
+      expect(summarizeSettingsImport(settings, config).pageNames).toHaveLength(110);
+    });
+
+    test('reads a file of exactly the limit earlier versions had and refuses one byte more', () => {
+      expect(MAX_SETTINGS_FILE_BYTES).toBeGreaterThanOrEqual(1024 * 1024);
+      const valid = writtenByEarlierVersion({ opacity: 0.9 });
+      const paddedTo = (bytes) => valid + ' '.repeat(bytes - bytesOf(valid));
+
+      expect(parseSettingsFile(paddedTo(MAX_SETTINGS_FILE_BYTES))).toEqual({ opacity: 0.9 });
+      expect(() => parseSettingsFile(paddedTo(MAX_SETTINGS_FILE_BYTES + 1))).toThrow(
         expect.objectContaining({ code: 'file_too_large' })
       );
+    });
+
+    test('an export too large to sync once imported is refused with a code of its own', () => {
+      const tooLarge = { ...config, customTabs: pagesOf(60) };
+      expect(bytesOf(JSON.stringify(buildSettingsFile(tooLarge), null, 2))).toBeGreaterThan(
+        MAX_SETTINGS_EXPORT_BYTES
+      );
+      expect(() => serializeSettingsFile(tooLarge)).toThrow(
+        expect.objectContaining({ code: 'export_too_large' })
+      );
+      // The same pages are not wrong, only more than a new export carries: an older file with
+      // them still imports.
+      expect(
+        parseSettingsFile(writtenByEarlierVersion({ customTabs: pagesOf(60) })).customTabs
+      ).toHaveLength(60);
+    });
+
+    test('the largest export still imports and fits in a sync file, encrypted or not', async () => {
+      const content = serializeSettingsFile({ ...config, customTabs: pagesOf(45) });
+      expect(bytesOf(content)).toBeGreaterThan(MAX_SETTINGS_EXPORT_BYTES * 0.8);
+      expect(bytesOf(content)).toBeLessThanOrEqual(MAX_SETTINGS_EXPORT_BYTES);
+
+      const sections = buildLocalSections(parseSettingsFile(content));
+      const plain = await buildSyncEnvelope({ sections, updatedByDeviceId: 'device' });
+      const encrypted = await buildSyncEnvelope({
+        sections,
+        updatedByDeviceId: 'device',
+        encrypt: true,
+        passphrase: 'a long enough passphrase',
+      });
+      expect(bytesOf(serializeSyncEnvelope(plain))).toBeLessThan(SYNC_FILE_LIMIT);
+      expect(bytesOf(serializeSyncEnvelope(encrypted))).toBeLessThan(SYNC_FILE_LIMIT);
     });
   });
 });

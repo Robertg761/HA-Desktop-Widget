@@ -15,6 +15,7 @@ const SETTINGS_FILE_ERROR_CODES = new Set([
   'invalid_file',
   'unsupported_version',
   'file_too_large',
+  'export_too_large',
   'import_expired',
 ]);
 

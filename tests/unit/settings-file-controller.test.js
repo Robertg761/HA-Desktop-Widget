@@ -116,6 +116,39 @@ describe('native settings file workflow', () => {
     await expect(controller.previewImport({}, 1)).rejects.toMatchObject({ code: 'file_too_large' });
     expect(applySections).not.toHaveBeenCalled();
   });
+  test('previews a settings file of about 600 KB, as earlier versions could export one', async () => {
+    const customTabs = Array.from({ length: 110 }, (_, page) => ({
+      id: `page-${page}`,
+      name: `Page ${page}`,
+      entityIds: Array.from({ length: 150 }, (_, entity) => `sensor.room_${page}_value_${entity}`),
+    }));
+    const earlier = JSON.stringify(
+      { format: 'ha-desktop-widget-settings', version: 1, settings: { customTabs } },
+      null,
+      2
+    );
+    fs.writeFileSync(file, `${earlier}\n`);
+    expect(fs.statSync(file).size).toBeGreaterThan(550 * 1024);
+
+    const preview = await controller.previewImport({}, 1);
+    expect(preview.pageNames).toHaveLength(110);
+    await controller.applyImport(1, preview.id);
+    expect(applySections).toHaveBeenCalledTimes(1);
+  });
+  test('an export too large to sync is refused without writing or replacing a file', async () => {
+    config.customTabs = Array.from({ length: 60 }, (_, page) => ({
+      id: `page-${page}`,
+      name: `Page ${page}`,
+      entityIds: Array.from({ length: 150 }, (_, entity) => `sensor.room_${page}_value_${entity}`),
+    }));
+    const before = fs.readFileSync(file, 'utf8');
+
+    await expect(controller.exportSettings({})).rejects.toMatchObject({
+      code: 'export_too_large',
+    });
+    expect(fs.readFileSync(file, 'utf8')).toBe(before);
+    expect(fs.readdirSync(folder)).toEqual(['settings.json']);
+  });
   test('propagates a failed backup or save without reporting success', async () => {
     const preview = await controller.previewImport({}, 1);
     applySections.mockRejectedValue(new Error('Backup failed'));
@@ -191,6 +224,7 @@ describe('native settings file workflow', () => {
         'invalid_file',
         'unsupported_version',
         'file_too_large',
+        'export_too_large',
         'import_expired',
       ])
         expect(settingsFileErrorCode({ code }, 'import_failed')).toBe(code);

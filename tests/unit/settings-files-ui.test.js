@@ -140,7 +140,17 @@ describe('settings file controls', () => {
     document.getElementById('import-settings-file').click();
     await flush();
     expect(showToast).toHaveBeenCalledWith(
-      'Settings files must be smaller than 256 KB.',
+      'Settings files must be smaller than 1 MB.',
+      'error',
+      4000
+    );
+  });
+  test('says what to remove when the settings are too large to export', async () => {
+    api.exportSettingsFile.mockResolvedValue({ success: false, code: 'export_too_large' });
+    document.getElementById('export-settings-file').click();
+    await flush();
+    expect(showToast).toHaveBeenCalledWith(
+      'Your settings are too large to export. Remove some pages, favorites or alerts and try again.',
       'error',
       4000
     );
