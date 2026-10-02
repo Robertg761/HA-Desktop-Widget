@@ -16150,11 +16150,15 @@ body[data-season='thanksgiving'] .control-item {
    CSS are kept, which is how the Highlight and ButtonText below survive. */
 @media (forced-colors: active) {
   /* The window is one solid pane. Its tint keeps its alpha under forced colours, which lets the
-     desktop show through and makes Chromium paint an opaque plate behind every line of text. A
-     desktop pin is a transparent window around a rounded shell, so it keeps its see-through
-     corners. Only the body carries the pin class, hence the :has(). */
-  html:has(> body:not(.desktop-pin-mode)) {
+     desktop show through and makes Chromium paint an opaque plate behind every line of text. */
+  html {
     background: Canvas;
+  }
+
+  /* A desktop pin is a transparent window around a rounded shell, so it keeps its see-through
+     corners. Only the body carries the pin class, hence the :has(). */
+  html:has(body.desktop-pin-mode) {
+    background: transparent;
   }
 
   /* Selected and "on" states are a Highlight outline in place of the accent fill. A running timer
