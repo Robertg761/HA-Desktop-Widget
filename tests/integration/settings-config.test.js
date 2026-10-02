@@ -360,6 +360,7 @@ function createSettingsModalDOM() {
         <button type="button" id="profile-sync-push-now">Sync Up</button>
         <select id="profile-sync-backup-select"></select>
         <button type="button" id="profile-sync-restore-backup">Restore</button>
+        <p id="profile-sync-backup-detail" class="hidden"></p>
         <div id="profile-sync-resolution" class="hidden">
           <p id="profile-sync-resolution-text"></p>
           <button type="button" id="profile-sync-resolve-upload">Keep Local</button>
@@ -3811,7 +3812,8 @@ describe('Settings + Config Integration', () => {
 
       const select = document.getElementById('profile-sync-backup-select');
       expect(select.disabled).toBe(false);
-      expect(select.options[0].textContent).toContain('the sync file’s Appearance');
+      expect(select.options[0].textContent).toContain('Sync file, before an upload');
+      expect(select.options[0].title).toBe('Contains: Appearance');
 
       document.getElementById('profile-sync-restore-backup').click();
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -3819,6 +3821,102 @@ describe('Settings + Config Integration', () => {
         'remote-profile-1771840800000.json'
       );
       expect(state.CONFIG.opacity).toBe(0.6);
+    });
+
+    test('tells apart why each backup was taken, and what it holds', async () => {
+      mockElectronAPI.listProfileSyncBackups = jest.fn().mockResolvedValue({
+        success: true,
+        backups: [
+          {
+            id: 'local-profile-3.json',
+            kind: 'local',
+            reason: 'import',
+            createdAt: '2026-02-23T12:00:00.000Z',
+            sections: ['visualPersonalization', 'quickAccessLayout'],
+          },
+          {
+            id: 'local-profile-2.json',
+            kind: 'local',
+            reason: 'restore',
+            createdAt: '2026-02-23T11:00:00.000Z',
+            sections: ['automationAlerts'],
+          },
+          {
+            id: 'local-profile-1.json',
+            kind: 'local',
+            reason: 'pull',
+            createdAt: '2026-02-23T10:00:00.000Z',
+            sections: ['visualPersonalization'],
+          },
+        ],
+      });
+      await settings.openSettings();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const select = document.getElementById('profile-sync-backup-select');
+      const labels = [...select.options].map((option) => option.textContent);
+      expect(labels[0]).toContain('This computer, before an import');
+      expect(labels[1]).toContain('This computer, before a restore');
+      expect(labels[2]).toContain('This computer, before a sync');
+      // The sections are the part that tells similar entries apart and the part a closed
+      // select cuts off, so they are in the tooltip and on the line under the list.
+      expect(select.options[0].title).toBe('Contains: Appearance, Quick Access and layout');
+      const detail = document.getElementById('profile-sync-backup-detail');
+      expect(detail.textContent).toBe('Contains: Appearance, Quick Access and layout');
+      expect(detail.classList.contains('hidden')).toBe(false);
+
+      select.value = 'local-profile-2.json';
+      select.dispatchEvent(new Event('change'));
+      expect(detail.textContent).toBe('Contains: Alerts');
+    });
+
+    test('the restore confirmation names the backup it applies', async () => {
+      mockElectronAPI.listProfileSyncBackups = jest.fn().mockResolvedValue({
+        success: true,
+        backups: [
+          {
+            id: 'local-profile-1.json',
+            kind: 'local',
+            reason: 'pull',
+            createdAt: '2026-02-23T10:00:00.000Z',
+            sections: ['visualPersonalization'],
+          },
+        ],
+      });
+      mockElectronAPI.restoreProfileSyncBackup = jest.fn().mockResolvedValue({ success: true });
+      await settings.openSettings();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      mockUiUtils.showConfirm.mockClear();
+
+      document.getElementById('profile-sync-restore-backup').click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockUiUtils.showConfirm.mock.calls[0][0]).toMatch(/^Restore the backup from .*2026/);
+    });
+
+    test('shows the whole folder as a tooltip and opens the chooser from the field', async () => {
+      const longFolder = '/Users/someone/Library/Mobile Documents/com~apple~CloudDocs/Widget/Sync';
+      state.CONFIG.profileSync = buildProfileSync({
+        enabled: true,
+        cloudFilePath: `${longFolder}/ha-widget-profile-sync.json`,
+      });
+      mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce(
+        buildProfileSyncStatus({
+          enabled: true,
+          cloudFilePath: `${longFolder}/ha-widget-profile-sync.json`,
+        })
+      );
+      await settings.openSettings();
+
+      const field = document.getElementById('profile-sync-folder-path');
+      expect(field.value).toBe(longFolder);
+      expect(field.title).toBe(longFolder);
+
+      field.click();
+      await Promise.resolve();
+      expect(mockElectronAPI.chooseProfileSyncFolder).toHaveBeenCalledWith('cloudFile', longFolder);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(field.title).toBe('/tmp/profile-sync');
     });
 
     test('describes a restore according to the active sync scope', async () => {

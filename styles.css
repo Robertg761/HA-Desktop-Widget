@@ -14043,6 +14043,7 @@ body.theme-light #settings-modal .modal-footer {
 }
 
 #settings-modal .form-group > label:not(:has(input[type='checkbox'])),
+#settings-modal .profile-sync-passphrase-confirm > label,
 #settings-modal .setting-text > label,
 #settings-modal .setting-label {
   display: block;
@@ -14548,12 +14549,29 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
   margin: 0;
 }
 
-/* Backup names are long; give them the whole line and put Restore under them. */
-#settings-modal .profile-sync-backup-row > select {
-  flex-basis: 100%;
+/* The folder is chosen with the button, so its field only shows it: the type and height of
+   the selects around it, a plain cursor, a muted fill, and an ellipsis for a long path (its
+   full text is the tooltip). */
+#settings-modal .profile-sync-file-row > input[readonly] {
+  padding: 7px 10px;
+  font-size: var(--font-size-sm);
+  text-overflow: ellipsis;
+  cursor: default;
+  background: var(--surface-2);
 }
 
-.profile-sync-status {
+/* Backup names are long; give them the whole line and put Restore under them. A closed
+   select cuts its text, so it gets an ellipsis and room for the arrow. */
+#settings-modal .profile-sync-backup-row > select {
+  flex-basis: 100%;
+  text-overflow: ellipsis;
+  padding-inline-end: 32px;
+}
+
+/* The status changes length on every sync event. Three lines hold a finished sync, so
+   the rows below it stay put when a run starts and ends. */
+#settings-modal .profile-sync-status {
+  min-height: 4.2em;
   color: var(--text-secondary);
 }
 
@@ -14569,6 +14587,15 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
 #settings-modal .profile-sync-scope-advanced {
   display: grid;
   gap: 12px;
+}
+
+/* The four switches belong to the Custom preset above them, so they sit inside it. */
+#settings-modal .profile-sync-settings > .profile-sync-scope-advanced {
+  margin-inline-start: 12px;
+  padding-top: 0;
+  padding-inline-start: 12px;
+  border-top: none;
+  border-inline-start: 2px solid var(--tile-border);
 }
 
 #settings-modal .profile-sync-scope-advanced.hidden,

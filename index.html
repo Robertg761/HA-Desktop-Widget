@@ -1989,12 +1989,12 @@
                     <label for="profile-sync-enabled" data-i18n="Profile sync">Profile sync</label>
                     <p
                       class="form-help"
-                      data-i18n="Keep Quick Access, appearance, alerts, and weather and media choices the same on every computer through a folder your cloud or sync app already keeps in sync. The Home Assistant connection, desktop pins, hotkeys and window position stay on each computer."
+                      data-i18n="Keep Quick Access, appearance, alerts, and weather and media choices the same on every computer through a folder your cloud or sync app already keeps in sync. The Home Assistant connection, desktop pins, hotkeys, and window position stay on each computer."
                     >
                       Keep Quick Access, appearance, alerts, and weather and media choices the same
                       on every computer through a folder your cloud or sync app already keeps in
-                      sync. The Home Assistant connection, desktop pins, hotkeys and window position
-                      stay on each computer.
+                      sync. The Home Assistant connection, desktop pins, hotkeys, and window
+                      position stay on each computer.
                     </p>
                   </div>
                   <input type="checkbox" id="profile-sync-enabled" />
@@ -2068,14 +2068,14 @@
                       <label for="profile-sync-provider" data-i18n="Sync app">Sync app</label>
                       <p
                         class="form-help"
-                        data-i18n="Used to suggest its usual folder and to recognize its conflict copies."
+                        data-i18n="Suggests the app's usual folder and spots its conflict copies."
                       >
-                        Used to suggest its usual folder and to recognize its conflict copies.
+                        Suggests the app's usual folder and spots its conflict copies.
                       </p>
                     </div>
                     <select id="profile-sync-provider">
-                      <option value="cloudFile" data-i18n="Other synced folder">
-                        Other synced folder
+                      <option value="cloudFile" data-i18n="Another sync app">
+                        Another sync app
                       </option>
                       <option value="dropbox">Dropbox</option>
                       <option value="oneDrive">OneDrive</option>
@@ -2104,6 +2104,7 @@
                         class="form-control"
                         placeholder="Choose a synced folder..."
                         data-i18n-placeholder="Choose a synced folder..."
+                        dir="ltr"
                         readonly
                       />
                       <button
@@ -2134,18 +2135,14 @@
                       </p>
                     </div>
                     <select id="profile-sync-scope-preset">
-                      <option value="all" data-i18n="All Syncable Settings">
-                        All Syncable Settings
+                      <option value="all" data-i18n="All settings that can sync">
+                        All settings that can sync
                       </option>
-                      <option value="visual" data-i18n="Visual Personalization Only">
-                        Visual Personalization Only
+                      <option value="visual" data-i18n="Appearance only">Appearance only</option>
+                      <option value="quick_access" data-i18n="Quick Access and layout only">
+                        Quick Access and layout only
                       </option>
-                      <option value="quick_access" data-i18n="Quick Access/Layout Only">
-                        Quick Access/Layout Only
-                      </option>
-                      <option value="custom" data-i18n="Custom (Advanced)">
-                        Custom (Advanced)
-                      </option>
+                      <option value="custom" data-i18n="Custom">Custom</option>
                     </select>
                   </div>
                   <div
@@ -2416,6 +2413,11 @@
                       Restore
                     </button>
                   </div>
+                  <p
+                    id="profile-sync-backup-detail"
+                    class="form-help hidden"
+                    aria-live="polite"
+                  ></p>
                 </div>
               </div>
             </section>

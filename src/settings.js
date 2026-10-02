@@ -3245,7 +3245,7 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
     status.cloudFilePath.trim()
   ) {
     const derivedFolder = deriveProfileSyncFolderPath(status.cloudFilePath);
-    folderInput.value = derivedFolder || status.cloudFilePath;
+    setProfileSyncFolderField(derivedFolder || status.cloudFilePath);
   }
 
   updateProfileSyncPassphraseFields();
@@ -3391,6 +3391,14 @@ function readProfileSyncScopeFromForm() {
   return normalizeProfileSyncScope({ preset, sections });
 }
 
+/** Sets the folder field. It is cut to its width, so the whole path is its tooltip. */
+function setProfileSyncFolderField(folder) {
+  const input = document.getElementById('profile-sync-folder-path');
+  if (!input) return;
+  input.value = folder;
+  input.title = folder;
+}
+
 function applyProfileSyncConfigToForm() {
   const profileSync = ensureProfileSyncConfig();
   const enabled = document.getElementById('profile-sync-enabled');
@@ -3412,7 +3420,7 @@ function applyProfileSyncConfigToForm() {
   }
   if (folderPath) {
     const derivedFolder = deriveProfileSyncFolderPath(profileSync.cloudFilePath || '');
-    folderPath.value = derivedFolder || profileSync.cloudFilePath || '';
+    setProfileSyncFolderField(derivedFolder || profileSync.cloudFilePath || '');
   }
   if (interval) interval.value = String(profileSync.intervalMinutes || 5);
   if (encryption) {
@@ -3735,6 +3743,30 @@ function bindSupportDevelopmentUi() {
 
 let profileSyncBackupsCache = [];
 
+function describeProfileSyncBackup(backup) {
+  const time = formatProfileSyncTimestamp(backup.createdAt);
+  if (backup.kind === 'remote') return t('{{time}} · Sync file, before an upload', { time });
+  if (backup.reason === 'import') {
+    return t('{{time}} · This computer, before an import', { time });
+  }
+  if (backup.reason === 'restore') {
+    return t('{{time}} · This computer, before a restore', { time });
+  }
+  return t('{{time}} · This computer, before a sync', { time });
+}
+
+/** The line under the list: what the selected backup holds, which the cut-off names cannot say. */
+function updateProfileSyncBackupDetail() {
+  const select = document.getElementById('profile-sync-backup-select');
+  const detail = document.getElementById('profile-sync-backup-detail');
+  if (!select || !detail) return;
+  const backup = profileSyncBackupsCache.find((entry) => entry.id === select.value);
+  detail.textContent = backup
+    ? t('Contains: {{sections}}', { sections: formatProfileSyncSectionList(backup.sections) })
+    : '';
+  detail.classList.toggle('hidden', !backup);
+}
+
 function renderProfileSyncBackups() {
   const select = document.getElementById('profile-sync-backup-select');
   const restore = document.getElementById('profile-sync-restore-backup');
@@ -3747,24 +3779,24 @@ function renderProfileSyncBackups() {
     select.replaceChildren(empty);
     select.disabled = true;
     if (restore) restore.disabled = true;
+    updateProfileSyncBackupDetail();
     return;
   }
   select.replaceChildren(
     ...profileSyncBackupsCache.map((backup) => {
       const option = document.createElement('option');
       option.value = backup.id;
-      const time = formatProfileSyncTimestamp(backup.createdAt);
-      const sections = formatProfileSyncSectionList(backup.sections);
-      option.textContent =
-        backup.kind === 'remote'
-          ? t('{{time}}: the sync file’s {{sections}}', { time, sections })
-          : t('{{time}}: this computer’s {{sections}}', { time, sections });
+      option.textContent = describeProfileSyncBackup(backup);
+      option.title = t('Contains: {{sections}}', {
+        sections: formatProfileSyncSectionList(backup.sections),
+      });
       return option;
     })
   );
   if (profileSyncBackupsCache.some((backup) => backup.id === previous)) select.value = previous;
   select.disabled = false;
   if (restore) restore.disabled = false;
+  updateProfileSyncBackupDetail();
 }
 
 async function refreshProfileSyncBackups() {
@@ -3798,10 +3830,20 @@ async function restoreSelectedProfileSyncBackup() {
   const select = document.getElementById('profile-sync-backup-select');
   const id = select?.value;
   if (!id) return;
-  const confirmed = await showConfirm(t('Restore'), describeProfileSyncRestore(), {
-    confirmText: t('Restore'),
-    confirmClass: 'btn-primary',
-  });
+  const backup = profileSyncBackupsCache.find((entry) => entry.id === id);
+  // Named by its time, so the confirmation says which of the near-identical entries it replaces.
+  const confirmed = await showConfirm(
+    backup
+      ? t('Restore the backup from {{time}}', {
+          time: formatProfileSyncTimestamp(backup.createdAt),
+        })
+      : t('Restore'),
+    describeProfileSyncRestore(),
+    {
+      confirmText: t('Restore'),
+      confirmClass: 'btn-primary',
+    }
+  );
   if (!confirmed) return;
   try {
     const result = await window.electronAPI.restoreProfileSyncBackup(id);
@@ -3907,8 +3949,7 @@ function bindProfileSyncSettingsUi() {
       const folderPath =
         response?.folderPath || deriveProfileSyncFolderPath(response?.filePath || '');
       if (!folderPath) return;
-      const input = document.getElementById('profile-sync-folder-path');
-      if (input) input.value = folderPath;
+      setProfileSyncFolderField(folderPath);
     } catch (error) {
       log.error('Failed to choose profile sync folder:', error);
       showToast(t('Failed to choose sync folder.'), 'error', 3000);
@@ -3918,6 +3959,18 @@ function bindProfileSyncSettingsUi() {
   const chooseFolderBtn = document.getElementById('profile-sync-choose-folder');
   if (chooseFolderBtn) {
     chooseFolderBtn.onclick = () => chooseProfileSyncFolder();
+  }
+  // The field looks like one you can type in, but it only shows the folder: using it opens
+  // the chooser, as the button does.
+  const folderField = document.getElementById('profile-sync-folder-path');
+  if (folderField) {
+    folderField.onclick = () => chooseProfileSyncFolder();
+    folderField.onkeydown = (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        chooseProfileSyncFolder();
+      }
+    };
   }
 
   const profileSyncHelpBtn = document.getElementById('profile-sync-help-btn');
@@ -3970,6 +4023,9 @@ function bindProfileSyncSettingsUi() {
 
   const restoreBackup = document.getElementById('profile-sync-restore-backup');
   if (restoreBackup) restoreBackup.onclick = () => restoreSelectedProfileSyncBackup();
+
+  const backupSelect = document.getElementById('profile-sync-backup-select');
+  if (backupSelect) backupSelect.onchange = () => updateProfileSyncBackupDetail();
 
   const pullNow = document.getElementById('profile-sync-pull-now');
   if (pullNow) pullNow.onclick = () => runManualProfileSync('pull');
@@ -5637,6 +5693,7 @@ async function saveSettings() {
       !nextProfileSync.cloudFilePath
     ) {
       showToast(t('Choose a sync folder before enabling profile sync.'), 'error', 3200);
+      revealProfileSyncField(document.getElementById('profile-sync-choose-folder'));
       return;
     }
 
@@ -5656,7 +5713,7 @@ async function saveSettings() {
         'error',
         3400
       );
-      profileSyncPassphrase.focus();
+      revealProfileSyncField(profileSyncPassphrase);
       return;
     }
     const passphraseConfirm = document.getElementById('profile-sync-passphrase-confirm');
@@ -5673,7 +5730,7 @@ async function saveSettings() {
       passphraseConfirm.value.trim() !== typedPassphrase
     ) {
       showToast(t('The passphrases do not match.'), 'error', 3400);
-      passphraseConfirm.focus();
+      revealProfileSyncField(passphraseConfirm);
       return;
     }
 
@@ -5705,9 +5762,7 @@ async function saveSettings() {
 
       const revertToPreviousSyncPath = () => {
         nextProfileSync.cloudFilePath = previousSyncFilePath;
-        if (profileSyncFolderPath) {
-          profileSyncFolderPath.value = previousFolder;
-        }
+        setProfileSyncFolderField(previousFolder);
       };
       const keepCurrentSyncFolder = () => {
         revertToPreviousSyncPath();
@@ -5802,6 +5857,7 @@ async function saveSettings() {
         'error',
         3400
       );
+      revealProfileSyncField(profileSyncPassphrase);
       return;
     }
 
@@ -5815,6 +5871,7 @@ async function saveSettings() {
           'error',
           3400
         );
+        revealProfileSyncField(profileSyncPassphrase);
         return;
       }
 
@@ -7129,6 +7186,13 @@ function stopCapturingPopupHotkey() {
 
 function handleProfileSyncStatusUpdate(status) {
   updateProfileSyncStatusUi(status);
+}
+
+/** Shows the Advanced page and puts the cursor on a sync field that needs fixing. */
+function revealProfileSyncField(field) {
+  document.querySelector('.modal-tabs .tab-link[data-tab="advanced"]')?.click();
+  field?.focus?.();
+  field?.scrollIntoView?.({ block: 'center' });
 }
 
 /** Brings the person to the part of Advanced that asks something of them. */
