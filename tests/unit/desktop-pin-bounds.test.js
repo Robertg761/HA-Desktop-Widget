@@ -3,6 +3,8 @@ const {
   getDesktopPinMinBounds,
   resolveDesktopPinMinBounds,
   clampDesktopPinBounds,
+  resizeDesktopPinBounds,
+  findFreeDesktopPinOrigin,
   getDesktopPinWindowBounds,
 } = require('../../src/desktop-pin-bounds.js');
 
@@ -196,5 +198,120 @@ describe('desktop pin bounds helpers', () => {
         )
       ).toEqual({ x: 0, y: 0, width: 198, height: 177 });
     });
+  });
+});
+
+describe('resizing a pin from a corner handle', () => {
+  const workArea = { x: 0, y: 0, width: 1920, height: 1080 };
+  const start = { x: 1000, y: 300, width: 200, height: 200 };
+
+  test('grows from the bottom-right handle without moving the pin', () => {
+    expect(
+      resizeDesktopPinBounds(
+        start,
+        { corner: 'bottom-right', width: 240, height: 230 },
+        { entityId: 'light.bedroom', workArea }
+      )
+    ).toEqual({ x: 1000, y: 300, width: 240, height: 230 });
+  });
+
+  test('keeps the right and bottom edges where they are when the top-left handle moves', () => {
+    const next = resizeDesktopPinBounds(
+      start,
+      { corner: 'top-left', width: 230, height: 215 },
+      { entityId: 'light.bedroom', workArea }
+    );
+    expect(next).toEqual({ x: 970, y: 285, width: 230, height: 215 });
+    expect(next.x + next.width).toBe(1200);
+    expect(next.y + next.height).toBe(500);
+  });
+
+  test('keeps the opposite edge fixed on screen when the interface is scaled', () => {
+    // At 150% the window is 300x300 on screen: right edge 1300, bottom edge 600.
+    const next = resizeDesktopPinBounds(
+      start,
+      { corner: 'top-left', width: 180, height: 180 },
+      { entityId: 'light.bedroom', workArea, scale: 1.5 }
+    );
+    expect(next).toEqual({ x: 1030, y: 330, width: 180, height: 180 });
+    expect(next.x + Math.ceil(next.width * 1.5)).toBe(1300);
+    expect(next.y + Math.ceil(next.height * 1.5)).toBe(600);
+  });
+
+  test('stops at the minimum size with the opposite edge still in place', () => {
+    const next = resizeDesktopPinBounds(
+      start,
+      { corner: 'top-left', width: 20, height: 20 },
+      { entityId: 'light.bedroom', workArea }
+    );
+    expect(next).toEqual({ x: 1032, y: 352, width: 168, height: 148 });
+  });
+
+  test('stops the dragged edge at the work area instead of sliding the pin back', () => {
+    const next = resizeDesktopPinBounds(
+      { x: 1700, y: 300, width: 180, height: 200 },
+      { corner: 'bottom-right', width: 400, height: 200 },
+      { entityId: 'sensor.temperature', workArea }
+    );
+    // 220px of room to the right edge: the left edge stays at 1700.
+    expect(next).toMatchObject({ x: 1700, width: 220 });
+  });
+
+  test('lets a pin that starts on a second monitor grow across its own work area', () => {
+    const second = { x: 1920, y: 0, width: 1920, height: 1080 };
+    const next = resizeDesktopPinBounds(
+      { x: 3400, y: 100, width: 200, height: 200 },
+      { corner: 'bottom-right', width: 600, height: 300 },
+      { entityId: 'light.bedroom', workArea: second }
+    );
+    expect(next).toEqual({ x: 3400, y: 100, width: 440, height: 300 });
+  });
+});
+
+describe('opening a new pin in a free spot', () => {
+  const workArea = { x: 0, y: 0, width: 1000, height: 600 };
+  const size = { width: 168, height: 148 };
+
+  test('starts at the top-right corner of an empty screen', () => {
+    expect(findFreeDesktopPinOrigin({ size, workArea })).toEqual({ x: 808, y: 24 });
+  });
+
+  test('walks left along the row past the pins already there', () => {
+    const occupied = [{ x: 808, y: 24, width: 168, height: 148 }];
+    expect(findFreeDesktopPinOrigin({ size, workArea, occupied })).toEqual({ x: 624, y: 24 });
+  });
+
+  test('moves to the next row when a row is full, and reuses a freed spot', () => {
+    const row = [808, 624, 440, 256, 72].map((x) => ({ x, y: 24, width: 168, height: 148 }));
+    expect(findFreeDesktopPinOrigin({ size, workArea, occupied: row })).toEqual({ x: 808, y: 188 });
+    // Unpin the second one and the next pin takes its place.
+    const withHole = row.filter((rect) => rect.x !== 624);
+    expect(findFreeDesktopPinOrigin({ size, workArea, occupied: withHole })).toEqual({
+      x: 624,
+      y: 24,
+    });
+  });
+
+  test('keeps clear of a pin that was dragged off the grid, and of the widget', () => {
+    const occupied = [
+      { x: 700, y: 60, width: 168, height: 148 },
+      { x: 24, y: 24, width: 500, height: 560 },
+    ];
+    const origin = findFreeDesktopPinOrigin({ size, workArea, occupied });
+    expect(origin).not.toBeNull();
+    for (const rect of occupied) {
+      const clear =
+        origin.x + size.width <= rect.x ||
+        origin.x >= rect.x + rect.width ||
+        origin.y + size.height <= rect.y ||
+        origin.y >= rect.y + rect.height;
+      expect(clear).toBe(true);
+    }
+  });
+
+  test('gives up on a full screen so the caller can cascade', () => {
+    const full = [{ x: 0, y: 0, width: 1000, height: 600 }];
+    expect(findFreeDesktopPinOrigin({ size, workArea, occupied: full })).toBeNull();
+    expect(findFreeDesktopPinOrigin({ size, workArea: null })).toBeNull();
   });
 });

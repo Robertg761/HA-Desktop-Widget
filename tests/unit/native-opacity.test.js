@@ -7,13 +7,15 @@ function windowMock() {
   return { isDestroyed: () => false, setOpacity: jest.fn() };
 }
 
-function runtime(platform = 'darwin', opaquePanels = false) {
+function runtime(platform = 'darwin', opaquePanels = false, wayland = false) {
   const mainWindow = windowMock();
   const pin = windowMock();
   const handlers = {};
   const context = {
     process: { platform, env: {} },
     shouldUseTransparentWindow: () => false,
+    usesCompositorOwnedPlacement: wayland,
+    isLayerShellChildProcess: false,
     OPAQUE_WINDOW_BACKGROUND_COLOR: '#12161e',
     config: { opacity: 0.5, ui: { opaquePanels } },
     mainWindow,
@@ -35,7 +37,7 @@ function runtime(platform = 'darwin', opaquePanels = false) {
   vm.createContext(context);
   vm.runInContext(
     source.slice(
-      source.indexOf('function getWindowTransparencyOptions('),
+      source.indexOf('function windowsAreAlwaysTransparent('),
       source.indexOf('function refreshProfileSyncRuntimeTracking(')
     ),
     context
@@ -101,4 +103,27 @@ it('keeps both widget and pins opaque through preview, save, and failed-save rol
 
 it('routes every native opacity write through the shared policy, including pin creation and refresh', () => {
   expect(source.match(/\.setOpacity\(/g)).toHaveLength(1);
+});
+
+describe('window transparency on Linux', () => {
+  const options = (wayland, opacity) => {
+    const { context } = runtime('linux', false, wayland);
+    return context.getWindowTransparencyOptions({ opacity });
+  };
+
+  it('keeps windows opaque at 100% on X11, where an opaque window is drawn correctly', () => {
+    expect(options(false, 1).transparent).toBe(false);
+    expect(options(false, 0.9).transparent).toBe(true);
+  });
+
+  it('makes windows transparent at 100% on Wayland, so pins keep their rounded shape', () => {
+    // An opaque window there gets a larger surface and a square plate behind a rounded pin.
+    expect(options(true, 1).transparent).toBe(true);
+    expect(options(true, 1).backgroundColor).toBe('#00000000');
+  });
+
+  it('tells Settings that 100% needs no restart on Wayland', () => {
+    expect(runtime('linux', false, true).context.windowsAreAlwaysTransparent()).toBe(true);
+    expect(runtime('linux', false, false).context.windowsAreAlwaysTransparent()).toBe(false);
+  });
 });

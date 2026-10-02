@@ -6192,8 +6192,10 @@ async function saveSettings() {
 
     const platform = window?.electronAPI?.platform || 'web';
     const nextOpacity = typeof state.CONFIG.opacity === 'number' ? state.CONFIG.opacity : 1;
+    // Where the windows are transparent whatever the opacity (Wayland), 100% needs no restart.
     const opacityNeedsRestart =
       platform === 'linux' &&
+      !state.CONFIG.desktopCapabilities?.alwaysTransparentWindows &&
       ((prevOpacity === 1 && nextOpacity < 1) || (prevOpacity < 1 && nextOpacity === 1));
 
     if (opacityNeedsRestart) {

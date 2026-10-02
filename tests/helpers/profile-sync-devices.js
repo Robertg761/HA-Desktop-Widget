@@ -258,6 +258,7 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
      var omarchyThemeWatcher = null;
      function getOmarchyBarEntities() { return { all: [] }; }
      function isHyprland() { return false; }
+     function windowsAreAlwaysTransparent() { return false; }
      function hasDeferredSecureConfigWork() { return false; }
      function getDefaultProfileSyncFilePath() { return path.join(app.getPath('userData'), PROFILE_SYNC_DEFAULT_FILE_NAME); }
      var config = null;

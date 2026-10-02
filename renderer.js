@@ -1,5 +1,6 @@
 import { applyDesktopAppearance } from './src/desktop-appearance.js';
 import { installLayerDrag } from './src/layer-drag.js';
+import desktopPinResize from './src/desktop-pin-resize.cjs';
 // Load all required modules (ES Modules)
 import log from './src/logger.js';
 import {
@@ -72,6 +73,8 @@ const STATE_CHANGED_HIDDEN_FLUSH_DELAY_MS = 50;
 const WINDOW_QUERY = new URLSearchParams(window.location.search);
 const WINDOW_MODE = WINDOW_QUERY.get('mode') || '';
 const IS_DESKTOP_PIN_MODE = WINDOW_MODE === 'desktop-pin';
+const { getDesktopPinResizeKeyDelta, getDesktopPinResizeRequest, getPointerScreenFactor } =
+  desktopPinResize;
 const IS_SPECIAL_PIN_MODE = IS_DESKTOP_PIN_MODE;
 const DESKTOP_PIN_ENTITY_ID = WINDOW_QUERY.get('entityId') || '';
 // Only the main window renders tray entity icons; pin windows share this script but not the job.
@@ -3307,6 +3310,25 @@ function wireDesktopPinUI() {
     document.querySelectorAll('.desktop-pin-resize-handle').forEach((resizeHandle) => {
       if (resizeHandle.dataset.bound) return;
       resizeHandle.dataset.bound = 'true';
+
+      // Main works out the position from the corner and the size asked for: the edge opposite the
+      // handle stays put whatever the interface scale, and the work area the drag began on limits it.
+      const sendResize = async (corner, size, final) => {
+        const result = await window.electronAPI.updateDesktopPinBounds(DESKTOP_PIN_ENTITY_ID, {
+          width: size.width,
+          height: size.height,
+          resize: { corner, final },
+        });
+        if (result?.success && result.pinBounds) {
+          desktopPinBounds = result.pinBounds;
+        }
+        return result;
+      };
+      const getInterfaceScale = () => {
+        const scale = Number(state.CONFIG?.ui?.scale);
+        return scale > 1 ? scale : 1;
+      };
+
       resizeHandle.addEventListener(
         'pointerdown',
         (event) => {
@@ -3324,9 +3346,16 @@ function wireDesktopPinUI() {
             height: window.outerHeight || window.innerHeight,
           };
           const corner = resizeHandle.dataset.corner || 'bottom-right';
+          const scale = getInterfaceScale();
+          const pointerFactor = getPointerScreenFactor({
+            scale,
+            windowWidth: Math.ceil(startBounds.width * scale),
+            outerWidth: window.outerWidth,
+          });
 
-          let pendingBounds = null;
-          let resizeInFlight = false;
+          let pendingSize = null;
+          let lastSize = null;
+          let resizeInFlight = null;
           let frameScheduled = false;
           const pointerId = event.pointerId;
 
@@ -3338,32 +3367,26 @@ function wireDesktopPinUI() {
 
           const flushResize = async () => {
             frameScheduled = false;
-            if (resizeInFlight || !pendingBounds) return;
-            resizeInFlight = true;
-            const nextBounds = pendingBounds;
-            pendingBounds = null;
-
-            try {
-              const result = await window.electronAPI.updateDesktopPinBounds(
-                DESKTOP_PIN_ENTITY_ID,
-                nextBounds
-              );
-              if (result?.success && result.pinBounds) {
-                desktopPinBounds = result.pinBounds;
-              }
-            } catch (error) {
-              log.error('Failed to resize desktop tile:', error);
-            } finally {
-              resizeInFlight = false;
-              if (pendingBounds) {
-                requestAnimationFrame(flushResize);
-                frameScheduled = true;
-              }
-            }
+            if (resizeInFlight || !pendingSize) return;
+            const nextSize = pendingSize;
+            pendingSize = null;
+            resizeInFlight = sendResize(corner, nextSize, false)
+              .catch((error) => {
+                log.error('Failed to resize desktop tile:', error);
+              })
+              .finally(() => {
+                resizeInFlight = null;
+                if (pendingSize && !frameScheduled) {
+                  requestAnimationFrame(flushResize);
+                  frameScheduled = true;
+                }
+              });
+            await resizeInFlight;
           };
 
-          const scheduleResize = (nextBounds) => {
-            pendingBounds = nextBounds;
+          const scheduleResize = (nextSize) => {
+            pendingSize = nextSize;
+            lastSize = nextSize;
             if (!frameScheduled) {
               requestAnimationFrame(flushResize);
               frameScheduled = true;
@@ -3371,43 +3394,17 @@ function wireDesktopPinUI() {
           };
 
           const handlePointerMove = (moveEvent) => {
-            const deltaX = moveEvent.screenX - startX;
-            const deltaY = moveEvent.screenY - startY;
-            const nextBounds = {
-              x: startBounds.x,
-              y: startBounds.y,
-              width: startBounds.width,
-              height: startBounds.height,
-            };
-
-            switch (corner) {
-              case 'top-left':
-                nextBounds.x = Math.round(startBounds.x + deltaX);
-                nextBounds.y = Math.round(startBounds.y + deltaY);
-                nextBounds.width = Math.round(startBounds.width - deltaX);
-                nextBounds.height = Math.round(startBounds.height - deltaY);
-                break;
-              case 'top-right':
-                nextBounds.y = Math.round(startBounds.y + deltaY);
-                nextBounds.width = Math.round(startBounds.width + deltaX);
-                nextBounds.height = Math.round(startBounds.height - deltaY);
-                break;
-              case 'bottom-left':
-                nextBounds.x = Math.round(startBounds.x + deltaX);
-                nextBounds.width = Math.round(startBounds.width - deltaX);
-                nextBounds.height = Math.round(startBounds.height + deltaY);
-                break;
-              case 'bottom-right':
-              default:
-                nextBounds.width = Math.round(startBounds.width + deltaX);
-                nextBounds.height = Math.round(startBounds.height + deltaY);
-                break;
-            }
-
-            scheduleResize(nextBounds);
+            scheduleResize(
+              getDesktopPinResizeRequest(
+                startBounds,
+                corner,
+                { x: moveEvent.screenX - startX, y: moveEvent.screenY - startY },
+                { scale, pointerFactor }
+              )
+            );
           };
 
-          const finishResize = () => {
+          const finishResize = async () => {
             window.removeEventListener('pointermove', handlePointerMove, true);
             window.removeEventListener('pointerup', finishResize, true);
             window.removeEventListener('pointercancel', finishResize, true);
@@ -3415,6 +3412,14 @@ function wireDesktopPinUI() {
               resizeHandle.releasePointerCapture(pointerId);
             } catch {
               // no-op
+            }
+            // The drag only changed the window; saving the size is what ends it.
+            if (!lastSize) return;
+            try {
+              await resizeInFlight;
+              await sendResize(corner, lastSize, true);
+            } catch (error) {
+              log.error('Failed to finish resizing desktop tile:', error);
             }
           };
 
@@ -3424,6 +3429,28 @@ function wireDesktopPinUI() {
         },
         true
       );
+
+      // The handles are focusable buttons, so the arrow keys resize too: a step per press, a larger
+      // one with Shift.
+      resizeHandle.addEventListener('keydown', async (event) => {
+        if (!desktopPinEditMode || !desktopPinBounds) return;
+        const delta = getDesktopPinResizeKeyDelta(event.key, { shiftKey: event.shiftKey });
+        if (!delta) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const corner = resizeHandle.dataset.corner || 'bottom-right';
+        try {
+          await sendResize(
+            corner,
+            getDesktopPinResizeRequest(desktopPinBounds, corner, delta, {
+              scale: getInterfaceScale(),
+            }),
+            true
+          );
+        } catch (error) {
+          log.error('Failed to resize desktop tile from the keyboard:', error);
+        }
+      });
     });
   } catch (error) {
     log.error('Error wiring desktop pin UI:', error);
