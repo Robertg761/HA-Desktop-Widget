@@ -216,7 +216,7 @@ Click a numeric sensor tile to open its larger chart. Select **1 hour**, **6 hou
 
 ### Connection diagnostics
 
-Open **Settings > Advanced > Connection diagnostics** to inspect connection attempts, the last successful connection, the last received state update, and a generic issue code. **Copy report** copies an allowlisted report without server URLs, credentials, entity names, readings, or raw error messages. These counters cover the current app session. New workflow labels currently use English fallbacks in other language packs.
+Open **Settings > General > Connection diagnostics** to inspect connection attempts, the last successful connection, the last received state update, and a generic issue code. **Copy report** copies an allowlisted report without server URLs, credentials, entity names, readings, or raw error messages. These counters cover the current app session. New workflow labels currently use English fallbacks in other language packs.
 
 ### Entity Interactions
 
@@ -241,6 +241,7 @@ power controls without a brightness slider.
 - **Hide on Focus Loss**: Enable “Hide to tray when focus is lost” under General → Window & Behavior to dismiss the widget when switching apps. This is off by default. Reopen it from the tray or with the popup hotkey. Desktop pins and Linux desktop-layer mode stay visible.
 - **Updates**: Windows installer and Linux AppImage builds can update in app; portable, macOS, and Linux deb builds offer a GitHub Releases download
 - **Start at Login**: Enable or disable startup from Settings > General
+- **Start Hidden**: Add `--hide` to the launch command to start with the widget hidden in the tray. The [Omarchy guide](docs/omarchy.md) lists the related `--toggle` and `--show` actions
 - **Settings**: Access via the Settings button or right-click the tray icon
 
 ### Settings Highlights
@@ -322,10 +323,10 @@ New GitHub releases automatically generate notes from merged pull requests and c
 ### Configuration
 
 - **Config Location**: Stored as `config.json` in Electron's userData directory.
-  - **Windows (packaged)**: `%AppData%/Home Assistant Widget/config.json`
-  - **macOS (packaged)**: `~/Library/Application Support/HA Desktop Widget/config.json`
-  - **Linux (packaged)**: `~/.config/HA Desktop Widget/config.json`
-  - **Development builds**: typically use `home-assistant-widget` as the folder name
+  - **Windows**: `%APPDATA%\home-assistant-widget\config.json`
+  - **macOS**: `~/Library/Application Support/home-assistant-widget/config.json`
+  - **Linux**: `~/.config/home-assistant-widget/config.json` (or `$XDG_CONFIG_HOME/home-assistant-widget/config.json`)
+  - **Development builds**: use the sibling `home-assistant-widget-dev` folder
 - **Config Contents**: `homeAssistant` (url and auth method; encrypted token fields only for legacy-token authentication), `desktopCompanion` (a random installation ID), `favoriteEntities`, `customEntityNames`,
   `desktopPins`, `customEntityIcons`, `quickAccessTileOptions`, `tileSpans`, `selectedWeatherEntity`, `primaryMediaPlayer`,
   `globalHotkeys`, `entityAlerts`, `popupHotkey`, `windowPosition`, `windowSize`, `opacity`, `ui` (theme, accent, background,
