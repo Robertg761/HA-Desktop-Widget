@@ -8978,6 +8978,7 @@ ipcMain.handle('get-desktop-integration', (event) => {
       process.platform === 'linux'
         ? safeStorage.getSelectedStorageBackend?.() || 'unavailable'
         : 'system',
+    secureStorageAvailable: isSecureProfileSyncStorageAvailable(safeStorage, process.platform),
   };
 });
 

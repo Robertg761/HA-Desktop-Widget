@@ -1704,6 +1704,7 @@
     "Something went wrong while starting the widget: {{error}}": "विजेट शुरू करते समय कुछ गड़बड़ हुई: {{error}}",
     "No unlocked system keyring (Secret Service) was found, so this token will not be remembered after you quit. Start gnome-keyring or KWallet, then restart the widget.": "कोई अनलॉक सिस्टम कीरिंग (Secret Service) नहीं मिली, इसलिए यह टोकन बाहर निकलने के बाद याद नहीं रखा जाएगा। gnome-keyring या KWallet शुरू करें, फिर विजेट को पुनः आरंभ करें।",
     "The sync file is in use by another program or is read-only. Try again in a moment, and check the folder’s permissions if it keeps happening.": "सिंक फ़ाइल किसी दूसरे प्रोग्राम में उपयोग हो रही है या केवल-पढ़ने योग्य है। थोड़ी देर बाद फिर कोशिश करें, और अगर समस्या बनी रहे तो फ़ोल्डर की अनुमतियाँ जाँचें।",
-    "Details": "विवरण"
+    "Details": "विवरण",
+    "No unlocked system keyring (Secret Service) was found, so this computer cannot remember your Home Assistant sign-in or sync passphrase. Start gnome-keyring or KWallet, then restart the widget.": "कोई अनलॉक सिस्टम कीरिंग (Secret Service) नहीं मिली, इसलिए यह कंप्यूटर आपका Home Assistant साइन-इन या सिंक पासफ़्रेज़ याद नहीं रख सकता। gnome-keyring या KWallet शुरू करें, फिर विजेट को पुनः आरंभ करें।"
   }
 }

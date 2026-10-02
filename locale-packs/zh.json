@@ -1704,6 +1704,7 @@
     "Something went wrong while starting the widget: {{error}}": "启动小组件时出错：{{error}}",
     "No unlocked system keyring (Secret Service) was found, so this token will not be remembered after you quit. Start gnome-keyring or KWallet, then restart the widget.": "未找到已解锁的系统密钥环（Secret Service），因此退出后不会记住此令牌。请启动 gnome-keyring 或 KWallet，然后重新启动小组件。",
     "The sync file is in use by another program or is read-only. Try again in a moment, and check the folder’s permissions if it keeps happening.": "同步文件正被其他程序使用，或为只读。请稍后再试；如果问题持续，请检查文件夹权限。",
-    "Details": "详细信息"
+    "Details": "详细信息",
+    "No unlocked system keyring (Secret Service) was found, so this computer cannot remember your Home Assistant sign-in or sync passphrase. Start gnome-keyring or KWallet, then restart the widget.": "未找到已解锁的系统密钥环（Secret Service），因此此电脑无法记住你的 Home Assistant 登录信息或同步密码短语。请启动 gnome-keyring 或 KWallet，然后重新启动小组件。"
   }
 }

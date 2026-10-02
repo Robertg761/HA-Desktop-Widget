@@ -623,6 +623,15 @@
                   role="status"
                   aria-live="polite"
                 ></div>
+                <p
+                  id="secure-storage-notice"
+                  class="form-help form-warning hidden"
+                  data-i18n="No unlocked system keyring (Secret Service) was found, so this computer cannot remember your Home Assistant sign-in or sync passphrase. Start gnome-keyring or KWallet, then restart the widget."
+                >
+                  No unlocked system keyring (Secret Service) was found, so this computer cannot
+                  remember your Home Assistant sign-in or sync passphrase. Start gnome-keyring or
+                  KWallet, then restart the widget.
+                </p>
                 <div class="connection-test-row">
                   <button type="button" id="connect-ha-oauth-btn" class="btn btn-primary">
                     Connect with Home Assistant

@@ -210,6 +210,7 @@ function createSettingsModalDOM() {
       <input type="text" id="ha-url" />
 
       <div id="ha-oauth-status" class="hidden"></div>
+      <p id="secure-storage-notice" class="hidden">No keyring</p>
       <button type="button" id="connect-ha-oauth-btn">Connect with Home Assistant</button>
       <button type="button" id="disconnect-ha-oauth-btn" class="hidden">Disconnect</button>
       <button type="button" id="cancel-ha-oauth-btn" class="hidden">Cancel</button>
@@ -3154,6 +3155,40 @@ describe('Settings + Config Integration', () => {
       expect(mockUiUtils.applyUiPreferences).toHaveBeenLastCalledWith(
         expect.objectContaining({ seasonal: { show: 'christmas' } })
       );
+    });
+  });
+
+  describe('the keyring notice', () => {
+    const notice = () => document.getElementById('secure-storage-notice');
+    const openWithIntegration = async (info) => {
+      window.electronAPI.getDesktopIntegration = jest.fn().mockResolvedValue(info);
+      await settings.openSettings();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    };
+
+    afterEach(() => {
+      delete window.electronAPI.getDesktopIntegration;
+    });
+
+    test('shows in General while a Linux session has no unlocked keyring', async () => {
+      await openWithIntegration({ platform: 'linux', secureStorageAvailable: false });
+      expect(notice().classList.contains('hidden')).toBe(false);
+    });
+
+    test.each([
+      ['a keyring is running', { platform: 'linux', secureStorageAvailable: true }],
+      ['another system', { platform: 'win32', secureStorageAvailable: false }],
+      ['the status is unknown', {}],
+    ])('stays hidden when %s', async (_label, info) => {
+      await openWithIntegration(info);
+      expect(notice().classList.contains('hidden')).toBe(true);
+    });
+
+    test('goes away once the keyring is there on the next open', async () => {
+      await openWithIntegration({ platform: 'linux', secureStorageAvailable: false });
+      settings.closeSettings();
+      await openWithIntegration({ platform: 'linux', secureStorageAvailable: true });
+      expect(notice().classList.contains('hidden')).toBe(true);
     });
   });
 

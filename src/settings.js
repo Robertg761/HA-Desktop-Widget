@@ -4973,6 +4973,7 @@ async function openSettings(uiHooks) {
         uiHooks?.showToast?.(warningMessage, 'warning', 10000);
       }
     }
+    void refreshSecureStorageNotice();
     bindHomeAssistantOAuthUi();
     updateHomeAssistantAuthUi();
     bindConnectionTestUi();
@@ -7330,6 +7331,24 @@ function renderDesktopBlur(status) {
       button.disabled = false;
     }
   };
+}
+
+/**
+ * Says so in General while this Linux session has no unlocked keyring. The toast that reports
+ * it is gone within seconds, and the condition stays: the token and the sync passphrase
+ * cannot be remembered until a keyring is running.
+ */
+async function refreshSecureStorageNotice() {
+  const notice = document.getElementById('secure-storage-notice');
+  if (!notice) return;
+  let unavailable = false;
+  try {
+    const info = await window.electronAPI?.getDesktopIntegration?.();
+    unavailable = info?.platform === 'linux' && info.secureStorageAvailable === false;
+  } catch (error) {
+    log.warn('Failed to read the secure storage status:', error);
+  }
+  notice.classList.toggle('hidden', !unavailable);
 }
 
 async function refreshDesktopIntegration() {

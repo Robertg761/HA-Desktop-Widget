@@ -1704,6 +1704,7 @@
     "Something went wrong while starting the widget: {{error}}": "Un problème est survenu au démarrage du widget : {{error}}",
     "No unlocked system keyring (Secret Service) was found, so this token will not be remembered after you quit. Start gnome-keyring or KWallet, then restart the widget.": "Aucun trousseau de clés du système déverrouillé (Secret Service) n'a été trouvé, ce jeton ne sera donc pas mémorisé après la fermeture. Démarrez gnome-keyring ou KWallet, puis redémarrez le widget.",
     "The sync file is in use by another program or is read-only. Try again in a moment, and check the folder’s permissions if it keeps happening.": "Le fichier de synchronisation est utilisé par un autre programme ou est en lecture seule. Réessayez dans un instant et vérifiez les autorisations du dossier si le problème persiste.",
-    "Details": "Détails"
+    "Details": "Détails",
+    "No unlocked system keyring (Secret Service) was found, so this computer cannot remember your Home Assistant sign-in or sync passphrase. Start gnome-keyring or KWallet, then restart the widget.": "Aucun trousseau de clés du système déverrouillé (Secret Service) n'a été trouvé, cet ordinateur ne peut donc pas mémoriser votre connexion à Home Assistant ni la phrase secrète de synchronisation. Démarrez gnome-keyring ou KWallet, puis redémarrez le widget."
   }
 }
