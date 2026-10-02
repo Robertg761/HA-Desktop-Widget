@@ -103,12 +103,11 @@ function createMockElectronAPI() {
       provider,
     })
   );
-  const copyProfileSyncFile = jest.fn((_fromPath, _toPath, _overwrite = false) =>
+  const copyProfileSyncFile = jest.fn((_fromPath, _toPath) =>
     Promise.resolve({
       ok: true,
       status: 'copied',
       copied: true,
-      overwritten: false,
     })
   );
 
@@ -232,6 +231,7 @@ function createMockElectronAPI() {
         rememberPassphrase: !!mockConfig.profileSync?.rememberPassphrase,
         passphraseEncrypted: !!mockConfig.profileSync?.passphraseEncrypted,
         passphraseStored: false,
+        passphraseActive: false,
         passphraseWarning: '',
         lastSyncAt: mockConfig.profileSync?.lastSyncAt || null,
         lastSyncStatus: mockConfig.profileSync?.lastSyncStatus || 'idle',

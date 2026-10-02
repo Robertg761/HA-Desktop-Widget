@@ -191,6 +191,9 @@ describe('Renderer first-run Home Assistant authorization', () => {
       saveSettings: jest.fn(),
       renderAlertsListInline: jest.fn(),
       reapplySettingsPreviews: jest.fn(),
+      handleProfileSyncStatusUpdate: jest.fn(),
+      profileSyncNeedsAttention: (status) =>
+        jest.requireActual('../../src/settings.js').profileSyncNeedsAttention(status),
     };
     jest.doMock('../../src/settings.js', () => mockSettings);
     mockUiUtils = {
@@ -942,6 +945,105 @@ describe('Renderer first-run Home Assistant authorization', () => {
       20000
     );
     expect(mockState.CONFIG).not.toHaveProperty('persistenceWarnings');
+  });
+
+  describe('sync that needs the person', () => {
+    const attentionToast = [
+      'Profile sync needs attention. Open Settings > Advanced.',
+      'warning',
+      expect.any(Number),
+    ];
+
+    it('is said once when a sync starts waiting or failing, wherever the person is', async () => {
+      await loadRenderer({ bodyHtml: '<div id="settings-modal" class="hidden"></div>' });
+      mockUiUtils.showToast.mockClear();
+
+      triggerMockEvent('profileSyncStatus', { enabled: true, needsResolution: true });
+      triggerMockEvent('profileSyncStatus', { enabled: true, needsResolution: true });
+      triggerMockEvent('profileSyncStatus', {
+        enabled: true,
+        needsResolution: true,
+        inFlight: true,
+      });
+      expect(mockUiUtils.showToast).toHaveBeenCalledTimes(1);
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(...attentionToast);
+
+      // Once it is healthy again, the next trouble is news again.
+      triggerMockEvent('profileSyncStatus', { enabled: true, lastSyncStatus: 'success' });
+      triggerMockEvent('profileSyncStatus', { enabled: true, lastSyncStatus: 'error' });
+      expect(mockUiUtils.showToast).toHaveBeenCalledTimes(2);
+    });
+
+    it('stays quiet while Settings is open, where the state is on screen', async () => {
+      await loadRenderer({ bodyHtml: '<div id="settings-modal"></div>' });
+      mockUiUtils.showToast.mockClear();
+
+      triggerMockEvent('profileSyncStatus', { enabled: true, lastSyncStatus: 'error' });
+
+      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+    });
+
+    it('stays quiet for a healthy or switched-off sync', async () => {
+      await loadRenderer({ bodyHtml: '<div id="settings-modal" class="hidden"></div>' });
+      mockUiUtils.showToast.mockClear();
+
+      triggerMockEvent('profileSyncStatus', { enabled: true, lastSyncStatus: 'success' });
+      triggerMockEvent('profileSyncStatus', { enabled: false, lastSyncStatus: 'error' });
+
+      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+    });
+  });
+
+  it('says the token was not saved once per session, however often settings are saved', async () => {
+    await loadRenderer();
+    mockUiUtils.showToast.mockClear();
+
+    for (let save = 0; save < 3; save += 1) {
+      triggerMockEvent('configPersistenceWarning', [
+        { code: 'home_assistant_token_not_persisted' },
+      ]);
+      await flushAsync();
+    }
+
+    expect(mockUiUtils.showToast).toHaveBeenCalledTimes(1);
+  });
+
+  it('names the missing keyring on Linux instead of telling the user to re-enter the token', async () => {
+    await loadRenderer({
+      configureApi(api) {
+        api.platform = 'linux';
+      },
+    });
+    mockUiUtils.showToast.mockClear();
+
+    triggerMockEvent('configPersistenceWarning', [{ code: 'home_assistant_token_not_persisted' }]);
+    await flushAsync();
+
+    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect.stringContaining('No unlocked system keyring (Secret Service) was found'),
+      'warning',
+      20000
+    );
+  });
+
+  it('does not add a second toast for a keyring problem the startup toast already reported', async () => {
+    await loadRenderer({
+      config: { ...unconfiguredConfig(), tokenResetReason: 'encryption_unavailable' },
+      configureApi(api) {
+        api.platform = 'linux';
+      },
+    });
+    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect.stringContaining('Your system keyring is locked or not running'),
+      'warning',
+      20000
+    );
+    mockUiUtils.showToast.mockClear();
+
+    triggerMockEvent('configPersistenceWarning', [{ code: 'home_assistant_token_not_persisted' }]);
+    await flushAsync();
+
+    expect(mockUiUtils.showToast).not.toHaveBeenCalled();
   });
 
   it('continues startup but reports when token recovery acknowledgement is not persisted', async () => {

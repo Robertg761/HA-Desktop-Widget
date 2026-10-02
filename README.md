@@ -142,6 +142,12 @@ Planned for a future release:
 > signature is not a substitute for Developer-ID signing. Do not bypass Gatekeeper for copies
 > obtained elsewhere.
 
+> **Linux keyring:** The widget remembers your Home Assistant sign-in and sync passphrase in the
+> system keyring (a Secret Service such as GNOME Keyring or KWallet). Minimal desktops (i3, Sway,
+> XFCE) may not run one, and then nothing is remembered after you quit. Install and start
+> `gnome-keyring`, or another Secret Service, and restart the widget. The `.deb` recommends
+> `gnome-keyring`, and the Arch package lists it as optional.
+
 ### First-Time Setup
 
 1. **Get your Home Assistant URL**: Use the exact address you normally open in your browser, such as `http://homeassistant.local`, a legacy `http://your-ha-ip:8123` address, or `https://your-ha-domain.com`

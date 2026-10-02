@@ -1,11 +1,17 @@
 /** @jest-environment node */
 const {
+  buildLocalSections,
+  buildSyncEnvelope,
+  serializeSyncEnvelope,
+} = require('../../profile-sync-core.js');
+const {
   buildSettingsFile,
   serializeSettingsFile,
   parseSettingsFile,
   settingsFileSections,
   summarizeSettingsImport,
   MAX_SETTINGS_FILE_BYTES,
+  MAX_SETTINGS_EXPORT_BYTES,
 } = require('../../src/settings-file.cjs');
 
 const config = {
@@ -271,5 +277,233 @@ describe('portable settings files', () => {
     expect(parseSettingsFile(`\uFEFF${serializeSettingsFile(next)}`).customTabs[0].name).toBe(
       '温度'
     );
+  });
+
+  describe('values the app never writes', () => {
+    const importWith = (settings) =>
+      parseSettingsFile(JSON.stringify({ ...buildSettingsFile(config), settings }));
+
+    test('a setting left undefined in memory does not break export or import', () => {
+      // The weather picker's Clear leaves selectedWeatherEntity undefined until the next restart.
+      const live = {
+        ...config,
+        selectedWeatherEntity: undefined,
+        ui: { ...config.ui, accent: undefined },
+      };
+
+      const file = buildSettingsFile(live);
+
+      expect(file.settings.selectedWeatherEntity).toBeNull();
+      expect(file.settings.ui.accent).toBeNull();
+      expect(() => parseSettingsFile(serializeSettingsFile(live))).not.toThrow();
+      expect(summarizeSettingsImport(importWith({ opacity: 0.8 }), live).changedSections).toEqual([
+        'visualPersonalization',
+      ]);
+    });
+
+    test.each([
+      ['an opacity below the slider', { opacity: 0.2 }],
+      ['an opacity above the slider', { opacity: 5 }],
+      ['an unknown theme', { ui: { theme: 'purple' } }],
+      ['an unknown density', { ui: { density: 'huge' } }],
+      ['an unknown time format', { ui: { timeFormat: 'sundial' } }],
+      ['an unknown date format', { ui: { dateFormat: 'tomorrow' } }],
+      ['more primary cards than slots', { primaryCards: ['weather', 'time', 'extra'] }],
+      [
+        'a page id that is a wall of text',
+        { customTabs: [{ id: 'x'.repeat(257), name: 'Home', entityIds: [] }] },
+      ],
+      ['an entity id that is a wall of text', { favoriteEntities: ['light.' + 'x'.repeat(300)] }],
+      [
+        'a key that is a wall of text',
+        { customEntityNames: { ['light.' + 'x'.repeat(300)]: 'Name' } },
+      ],
+      [
+        'more pages than anyone makes',
+        {
+          customTabs: Array.from({ length: 201 }, (_, index) => ({
+            id: `t${index}`,
+            name: 'Page',
+            entityIds: [],
+          })),
+        },
+      ],
+      [
+        'an endless entity list',
+        { favoriteEntities: Array.from({ length: 2001 }, (_, i) => `light.l${i}`) },
+      ],
+    ])('rejects %s', (_label, settings) => {
+      expect(() => importWith(settings)).toThrow(expect.objectContaining({ code: 'invalid_file' }));
+    });
+
+    test('exports a saved choice this version does not offer as unset, while import still refuses it', () => {
+      const live = { ...config, ui: { ...config.ui, theme: 'sepia', density: 'spacious' } };
+
+      const settings = parseSettingsFile(serializeSettingsFile(live));
+
+      expect(settings.ui.theme).toBeNull();
+      expect(settings.ui.density).toBeNull();
+      expect(() => importWith({ ui: { theme: 'sepia' } })).toThrow(
+        expect.objectContaining({ code: 'invalid_file' })
+      );
+    });
+
+    test('accepts what the app itself writes at its limits', () => {
+      expect(() =>
+        importWith({
+          opacity: 0.5,
+          primaryCards: ['weather', 'time'],
+          ui: { theme: 'auto', density: 'compact', timeFormat: '24-hour', dateFormat: 'numeric' },
+          customTabs: [{ id: 'a', name: 'x'.repeat(256), entityIds: ['light.desk'] }],
+        })
+      ).not.toThrow();
+    });
+
+    test('exports stay possible when saved values drifted outside the limits', () => {
+      const live = { ...config, primaryCards: ['a', 'b', 'c'], opacity: 0.2 };
+
+      const settings = parseSettingsFile(serializeSettingsFile(live));
+
+      expect(settings.primaryCards).toEqual(['a', 'b']);
+      expect(settings.opacity).toBe(0.5);
+    });
+
+    describe('text a person typed that is longer than the fields allow today', () => {
+      // A tile's display name, a graph name and an alert's target state had no length limit.
+      const wall = 'n'.repeat(1000);
+      const long = {
+        ...config,
+        customTabs: [{ id: 'home', name: wall, entityIds: ['light.desk'] }],
+        comparisonGraphs: [{ id: 'graph:temps', name: wall, span: 2, entityIds: ['sensor.temp'] }],
+        customEntityNames: { 'light.desk': wall, 'sensor.temp': 'Temperature' },
+        entityAlerts: {
+          enabled: true,
+          alerts: { 'light.desk': { onSpecificState: true, targetState: wall } },
+        },
+        ui: { ...config.ui, customColors: [{ id: 'custom', name: wall, color: '#123456' }] },
+      };
+
+      test('is cut when the settings are exported, so the export still succeeds', () => {
+        const settings = parseSettingsFile(serializeSettingsFile(long));
+
+        expect(settings.customEntityNames['light.desk']).toBe('n'.repeat(256));
+        expect(settings.customTabs[0].name).toBe('n'.repeat(256));
+        expect(settings.comparisonGraphs[0].name).toBe('n'.repeat(256));
+        expect(settings.entityAlerts.alerts['light.desk'].targetState).toBe('n'.repeat(256));
+        expect(settings.ui.customColors[0].name).toBe('n'.repeat(256));
+        // Everything beside it is untouched.
+        expect(settings.customEntityNames['sensor.temp']).toBe('Temperature');
+        expect(settings.customTabs[0].entityIds).toEqual(['light.desk']);
+        expect(settings.comparisonGraphs[0]).toMatchObject({ id: 'graph:temps', span: 2 });
+      });
+
+      test('is cut when a file holding it is imported, so an older export still imports', () => {
+        const settings = importWith({
+          customEntityNames: { 'light.desk': wall },
+          customTabs: [{ id: 'home', name: wall, entityIds: [] }],
+        });
+
+        expect(settings.customEntityNames['light.desk']).toBe('n'.repeat(256));
+        expect(settings.customTabs[0].name).toBe('n'.repeat(256));
+      });
+
+      test('is not cut in the middle of a character made of two code units', () => {
+        // The emoji would start at the last kept code unit and end past it.
+        const cutName = (name) =>
+          importWith({ customEntityNames: { 'light.desk': name } }).customEntityNames['light.desk'];
+
+        expect(cutName(`${'a'.repeat(255)}😀😀`)).toBe('a'.repeat(255));
+        expect(cutName(`${'a'.repeat(254)}😀😀`)).toBe(`${'a'.repeat(254)}😀`);
+        expect(cutName('é'.repeat(300))).toBe('é'.repeat(256));
+      });
+
+      test('does not stop an import preview from comparing against the current settings', () => {
+        const settings = importWith({ customEntityNames: { 'light.desk': 'Desk' } });
+
+        expect(summarizeSettingsImport(settings, long).changedSections).toEqual([
+          'quickAccessLayout',
+        ]);
+      });
+
+      test('still has to be text', () => {
+        expect(() => importWith({ customEntityNames: { 'light.desk': 12 } })).toThrow(
+          expect.objectContaining({ code: 'invalid_file' })
+        );
+      });
+    });
+  });
+
+  describe('file size limits', () => {
+    // A dashboard with many pages: the ids follow the entities that exist, so the file grows
+    // with them and nothing but the file's own size ever limited it.
+    const pagesOf = (count, entitiesPerPage = 150) =>
+      Array.from({ length: count }, (_, page) => ({
+        id: `page-${page}`,
+        name: `Page ${page}`,
+        entityIds: Array.from(
+          { length: entitiesPerPage },
+          (_, entity) => `sensor.room_${page}_value_${entity}`
+        ),
+      }));
+    const bytesOf = (content) => Buffer.byteLength(content, 'utf8');
+    // The layout earlier versions wrote.
+    const writtenByEarlierVersion = (settings) =>
+      `${JSON.stringify({ format: 'ha-desktop-widget-settings', version: 1, settings }, null, 2)}\n`;
+    const SYNC_FILE_LIMIT = 512 * 1024;
+
+    test('still reads a settings file of about 600 KB, as earlier versions could export one', () => {
+      const content = writtenByEarlierVersion({ customTabs: pagesOf(110), opacity: 0.9 });
+      expect(bytesOf(content)).toBeGreaterThan(550 * 1024);
+      expect(bytesOf(content)).toBeLessThan(650 * 1024);
+      expect(bytesOf(content)).toBeGreaterThan(MAX_SETTINGS_EXPORT_BYTES);
+
+      const settings = parseSettingsFile(content);
+      expect(settings.customTabs).toHaveLength(110);
+      expect(settings.customTabs[109].entityIds).toHaveLength(150);
+      expect(summarizeSettingsImport(settings, config).pageNames).toHaveLength(110);
+    });
+
+    test('reads a file of exactly the limit earlier versions had and refuses one byte more', () => {
+      expect(MAX_SETTINGS_FILE_BYTES).toBeGreaterThanOrEqual(1024 * 1024);
+      const valid = writtenByEarlierVersion({ opacity: 0.9 });
+      const paddedTo = (bytes) => valid + ' '.repeat(bytes - bytesOf(valid));
+
+      expect(parseSettingsFile(paddedTo(MAX_SETTINGS_FILE_BYTES))).toEqual({ opacity: 0.9 });
+      expect(() => parseSettingsFile(paddedTo(MAX_SETTINGS_FILE_BYTES + 1))).toThrow(
+        expect.objectContaining({ code: 'file_too_large' })
+      );
+    });
+
+    test('an export too large to sync once imported is refused with a code of its own', () => {
+      const tooLarge = { ...config, customTabs: pagesOf(60) };
+      expect(bytesOf(JSON.stringify(buildSettingsFile(tooLarge), null, 2))).toBeGreaterThan(
+        MAX_SETTINGS_EXPORT_BYTES
+      );
+      expect(() => serializeSettingsFile(tooLarge)).toThrow(
+        expect.objectContaining({ code: 'export_too_large' })
+      );
+      // The same pages are not wrong, only more than a new export carries: an older file with
+      // them still imports.
+      expect(
+        parseSettingsFile(writtenByEarlierVersion({ customTabs: pagesOf(60) })).customTabs
+      ).toHaveLength(60);
+    });
+
+    test('the largest export still imports and fits in a sync file, encrypted or not', async () => {
+      const content = serializeSettingsFile({ ...config, customTabs: pagesOf(45) });
+      expect(bytesOf(content)).toBeGreaterThan(MAX_SETTINGS_EXPORT_BYTES * 0.8);
+      expect(bytesOf(content)).toBeLessThanOrEqual(MAX_SETTINGS_EXPORT_BYTES);
+
+      const sections = buildLocalSections(parseSettingsFile(content));
+      const plain = await buildSyncEnvelope({ sections, updatedByDeviceId: 'device' });
+      const encrypted = await buildSyncEnvelope({
+        sections,
+        updatedByDeviceId: 'device',
+        encrypt: true,
+        passphrase: 'a long enough passphrase',
+      });
+      expect(bytesOf(serializeSyncEnvelope(plain))).toBeLessThan(SYNC_FILE_LIMIT);
+      expect(bytesOf(serializeSyncEnvelope(encrypted))).toBeLessThan(SYNC_FILE_LIMIT);
+    });
   });
 });
