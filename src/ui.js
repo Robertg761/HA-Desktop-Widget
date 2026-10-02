@@ -5326,6 +5326,9 @@ function getDesktopPinCoverRenderProfile() {
   return {
     ...layoutProfile,
     showVisual: !layoutProfile.isDenseTight && !layoutProfile.isDenseMicro,
+    // The tight variant has no room for the blind, so a meter with the position takes the spare
+    // height, as the fan's does, and the header does not repeat the number.
+    showMeter: layoutProfile.isDenseTight,
     showSliderLabels: !layoutProfile.isDenseTight && !layoutProfile.isDenseMicro,
   };
 }
@@ -6517,11 +6520,22 @@ function createDesktopPinCoverControlElement(entity) {
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: getDesktopPinCoverStatusText(coverValue),
         // Without a settable position the status already says all there is to say.
-        asideMarkup: capabilities.canSetPosition
-          ? `<div class="desktop-pin-panel-kpi desktop-pin-cover-position">${coverValue.position}%</div>`
-          : '',
+        asideMarkup:
+          capabilities.canSetPosition && !renderProfile.showMeter
+            ? `<div class="desktop-pin-panel-kpi desktop-pin-cover-position">${coverValue.position}%</div>`
+            : '',
       })}
       <div class="desktop-pin-panel-body">
+        ${
+          renderProfile.showMeter && capabilities.canSetPosition
+            ? `
+          <div class="desktop-pin-panel-meter">
+            <div class="desktop-pin-panel-glyph">${entityIconMarkup(entity)}</div>
+            <div class="desktop-pin-panel-kpi desktop-pin-cover-position">${coverValue.position}%</div>
+          </div>
+        `
+            : ''
+        }
         ${
           renderProfile.showVisual && capabilities.canSetPosition
             ? `
@@ -6626,6 +6640,8 @@ function updateExistingDesktopPinCoverControl(root, entity) {
   root.dataset.layout = renderProfile.layout;
   root.dataset.denseVariant = renderProfile.denseVariant;
   syncDesktopPinPanelName(root, entity);
+  const glyph = root.querySelector('.desktop-pin-panel-glyph');
+  if (glyph) renderEntityIcon(glyph, entity);
   applyDesktopPinCoverVisualState(root, getDesktopPinCoverValue(entity));
   return true;
 }
@@ -7106,6 +7122,8 @@ function createDesktopPinSceneControlElement(entity) {
   );
   root.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
+    // A tile being arranged only moves; pointer-events: none does not stop the keyboard.
+    if (document.body.classList.contains('desktop-pin-edit-mode')) return;
     stopDesktopPinEvent(event, true);
     toggleEntity(state.STATES?.[entity.entity_id] || entity);
   });
@@ -7324,10 +7342,12 @@ function updateExistingDesktopPinCameraControl(root, entity) {
 
 // What a sensor measures, by Home Assistant's device class. The caption "Sensor" under a sensor
 // pin's name says nothing, so the common classes say what the reading is; any other keeps the
-// domain name.
+// domain name. "Humidity" is the same word everywhere it is used; the others have their own keys
+// because "Power", "Current" and "Motion" mean something else in some languages ("On/Off",
+// "present", "movement detected").
 const DESKTOP_PIN_DEVICE_CLASS_LABELS = Object.freeze({
   temperature: 'Device class: Temperature',
-  humidity: 'Device class: Humidity',
+  humidity: 'Humidity',
   power: 'Device class: Power',
   energy: 'Device class: Energy',
   battery: 'Device class: Battery',

@@ -671,6 +671,74 @@ describe('stylesheet cascade regressions', () => {
       expect(resolvedValue(power, 'padding', options)).toBe('0');
     });
 
+    it('draws a power button that is on with a heavier ring, a cue that survives forced colours', () => {
+      render(
+        'desktop-pin-mode',
+        `<button class="desktop-pin-power" data-active="true"></button>
+        <button class="desktop-pin-power" data-active="false"></button>`
+      );
+      const [on, off] = document.querySelectorAll('.desktop-pin-power');
+      expect(resolvedValue(on, 'border-width', options)).toBe('2px');
+      expect(resolvedValue(off, 'border', options)).toMatch(/^1px solid /);
+    });
+
+    it.each(['weather', 'numeric', 'enum', 'vacuum', 'presence'])(
+      'leaves the %s pin header to the name, because the meter prints the value',
+      (family) => {
+        const kpi = '<div class="desktop-pin-panel-kpi">1</div>';
+        const pin = (layout) =>
+          `<div class="control-item desktop-pin-control desktop-pin-panel-control desktop-pin-${family}-control"
+            data-layout="${layout}"><div class="desktop-pin-panel-topline">${kpi}</div></div>`;
+        render('desktop-pin-mode', pin('compact'));
+        expect(resolvedValue(document.querySelector('.desktop-pin-panel-kpi'), 'display')).toBe(
+          'none'
+        );
+        render('desktop-pin-mode', pin('roomy'));
+        expect(resolvedValue(document.querySelector('.desktop-pin-panel-kpi'), 'display')).not.toBe(
+          'none'
+        );
+      }
+    );
+
+    it('sets a word tightly only as much as a number, and keeps digit tracking for numbers', () => {
+      render(
+        'desktop-pin-mode',
+        `<div class="control-item desktop-pin-control desktop-pin-vacuum-control">
+          <div class="desktop-pin-panel-value">Docked</div></div>
+        <div class="control-item desktop-pin-control desktop-pin-numeric-control">
+          <div class="desktop-pin-panel-value">1.5 °C</div></div>`
+      );
+      const [word, number] = [...document.querySelectorAll('.desktop-pin-panel-value')];
+      expect(resolvedValue(word, 'letter-spacing', options)).toBe('-0.01em');
+      expect(resolvedValue(number, 'letter-spacing', options)).toBe('-0.04em');
+    });
+
+    it('puts a header value on the name baseline', () => {
+      render(
+        'desktop-pin-mode',
+        `<div class="desktop-pin-panel-topline"><div class="desktop-pin-panel-meta"></div>
+          <div class="desktop-pin-panel-kpi">40%</div></div>`
+      );
+      expect(resolvedValue(document.querySelector('.desktop-pin-panel-meta'), 'align-self')).toBe(
+        'baseline'
+      );
+      expect(resolvedValue(document.querySelector('.desktop-pin-panel-kpi'), 'align-self')).toBe(
+        'baseline'
+      );
+    });
+
+    it('steps the header in while a pin is edited, clear of the corner marks', () => {
+      const header = `<div class="desktop-pin-panel-topline"></div><div class="desktop-pin-light-topline"></div>`;
+      render('desktop-pin-mode', header);
+      for (const node of document.querySelectorAll('[class$="topline"]')) {
+        expect(resolvedValue(node, 'padding-inline-start', options)).not.toBe('6px');
+      }
+      render('desktop-pin-mode desktop-pin-edit-mode', header);
+      for (const node of document.querySelectorAll('[class$="topline"]')) {
+        expect(resolvedValue(node, 'padding-inline-start', options)).toBe('6px');
+      }
+    });
+
     it('takes a lamp that is off out of amber', () => {
       render(
         'desktop-pin-mode',
@@ -936,6 +1004,7 @@ describe('stylesheet cascade regressions', () => {
         <div class="control-name">Outlet 1</div><div class="control-state">مفتوح 50%</div>
         <div class="climate-temp-value-large">21–24°C</div>
         <div class="desktop-pin-panel-kpi">21–24°C</div>
+        <span class="desktop-pin-panel-slider-label">5.0 °C</span>
         <div class="control-state control-sensor-readout"><span>15,6</span><span>°C</span></div>`
       );
       for (const selector of [
@@ -945,6 +1014,8 @@ describe('stylesheet cascade regressions', () => {
         '.control-state',
         '.climate-temp-value-large',
         '.desktop-pin-panel-kpi',
+        // A range end ("5.0 °C") ends in a Latin letter: without its own direction it printed "C° 5.0".
+        '.desktop-pin-panel-slider-label',
       ]) {
         expect(resolvedValue(document.querySelector(selector), 'unicode-bidi')).toBe('plaintext');
       }

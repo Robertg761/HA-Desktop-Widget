@@ -178,7 +178,7 @@ HOME="$(mktemp -d)" SNAPSHOT_DEBUG_PORT=9362 SNAPSHOT_SCENES='popup|pin' \
   node scripts/visual-snapshots/run.cjs /tmp/snapshots
 ```
 
-`SNAPSHOT_DEBUG_PORT` (default 9333) lets several runs share a machine, and `SNAPSHOT_SCENES` is a regular expression over scene names. A scene that fails is skipped, a `<scene>-failed-page.png` shows where it stopped, and the run exits non-zero at the end. To add a scene, add an entry to `scenes.cjs` and, if it needs an entity the fixture lacks, add that to `fixture.cjs`. The fixture window is 500x660 at (100, 20) so it fits the 1024x768 Windows runners above their taskbar.
+`SNAPSHOT_DEBUG_PORT` (default 9333) lets several runs share a machine, and `SNAPSHOT_SCENES` is a regular expression over scene names. A scene that fails is skipped, a `<scene>-failed-page.png` shows where it stopped, and the run exits non-zero at the end. The first run after a quiet period can time out waiting for the Quick Access tiles (the log shows "Network service crashed" first); run it again. To add a scene, add an entry to `scenes.cjs` and, if it needs an entity the fixture lacks, add that to `fixture.cjs`. The fixture window is 500x660 at (100, 20) so it fits the 1024x768 Windows runners above their taskbar.
 
 ## Manual testing on real machines
 

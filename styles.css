@@ -864,6 +864,13 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-actions {
   display: none;
 }
 
+/* The corner marks that start a resize sit over the first letter of a name, so the header steps in
+   while the pin is edited. */
+body.desktop-pin-mode.desktop-pin-edit-mode
+  :is(.desktop-pin-panel-topline, .desktop-pin-light-topline) {
+  padding-inline-start: 6px;
+}
+
 body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content .control-item,
 body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-unavailable,
 body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-empty {
@@ -1126,17 +1133,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   min-width: 0;
 }
 
-.desktop-pin-light-name {
-  font-family: var(--desktop-pin-ui-font);
-  font-size: var(--desktop-pin-name-size);
-  font-weight: 700;
-  /* Tall enough for Arabic and Devanagari marks and Latin descenders, which the clipping below
-     would otherwise cut. */
-  line-height: 1.3;
-  color: rgba(var(--desktop-pin-ink-rgb), 0.96);
-  letter-spacing: 0.01em;
-}
-
 /* A name wraps to a second line before it is cut; the tile's title carries the whole name. */
 .desktop-pin-light-name {
   display: -webkit-box;
@@ -1144,6 +1140,14 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+  font-family: var(--desktop-pin-ui-font);
+  font-size: var(--desktop-pin-name-size);
+  font-weight: 700;
+  /* Tall enough for Arabic and Devanagari marks and Latin descenders, which the clipping above
+     would otherwise cut. */
+  line-height: 1.3;
+  color: rgba(var(--desktop-pin-ink-rgb), 0.96);
+  letter-spacing: 0.01em;
 }
 
 .desktop-pin-light-status {
@@ -1185,8 +1189,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
     box-shadow var(--transition-fast);
 }
 
+/* "On" is also a heavier ring, not only a tint: forced colours replace the tint but keep border
+   widths, and a lamp without a brightness readout has no other cue. */
 .desktop-pin-power[data-active='true'] {
   background: rgba(var(--desktop-pin-tint-rgb), 0.2);
+  border-width: 2px;
   border-color: rgba(var(--desktop-pin-tint-rgb), 0.4);
   color: rgba(var(--desktop-pin-ink-rgb), 0.98);
 }
@@ -1675,6 +1682,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   min-width: 0;
 }
 
+/* The header value sits on the name's baseline, not at the top of the row. */
+.desktop-pin-panel-topline > .desktop-pin-panel-meta {
+  align-self: baseline;
+}
+
 /* Pin windows clip to a 24px corner radius, so the top-right value is held clear of the rounded
    corner. */
 .desktop-pin-panel-topline > :is(.desktop-pin-panel-kpi, .desktop-pin-panel-aside) {
@@ -1745,8 +1757,18 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   font-family: var(--desktop-pin-display-font);
   color: rgba(var(--desktop-pin-ink-rgb), 0.98);
   font-weight: 800;
-  letter-spacing: -0.04em;
+  /* Words ("Docked", "À la base") are set at this size too, and close up at digit tracking. */
+  letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
+}
+
+/* Digits and percentages take the tighter tracking. */
+.desktop-pin-climate-target-value,
+.desktop-pin-climate-current-value,
+.desktop-pin-fan-value,
+.desktop-pin-cover-position,
+:is(.desktop-pin-numeric-control, .desktop-pin-weather-control) .desktop-pin-panel-value {
+  letter-spacing: -0.04em;
 }
 
 .desktop-pin-climate-target-value,
@@ -2322,6 +2344,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 /* The glyph and the value side by side: a stacked pair does not fit the meter at any size, because
    the fan's slider and presets, or the weather's stats, share the middle of the pin with it. */
 .desktop-pin-fan-control .desktop-pin-panel-meter,
+.desktop-pin-cover-control .desktop-pin-panel-meter,
 .desktop-pin-weather-control .desktop-pin-panel-meter {
   grid-auto-flow: column;
   justify-content: center;
@@ -2329,8 +2352,15 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   padding: 4px 10px;
 }
 
-/* The weather's header and meter would both print the temperature. */
-.desktop-pin-weather-control[data-layout='compact']
+/* The header's value and the meter's would both print the same reading, and the room goes to the
+   name instead. */
+.desktop-pin-panel-control:is(
+    .desktop-pin-weather-control,
+    .desktop-pin-numeric-control,
+    .desktop-pin-enum-control,
+    .desktop-pin-vacuum-control,
+    .desktop-pin-presence-control
+  )[data-layout='compact']
   .desktop-pin-panel-topline
   .desktop-pin-panel-kpi {
   display: none;
@@ -6695,7 +6725,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
   border-radius: var(--radius-full);
   background: rgba(8, 11, 16, 0.64);
   color: rgba(255, 255, 255, 0.8);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-2xs);
   font-weight: 700;
   letter-spacing: 0.04em;
   line-height: 1;
@@ -15329,7 +15359,7 @@ body.desktop-pin-mode .control-item:is(.desktop-pin-light-control, .desktop-pin-
 /* The header note is secondary to the body's value: small and quiet, never a second headline
    squeezed into the corner. */
 body.desktop-pin-mode .desktop-pin-panel-topline .desktop-pin-panel-kpi {
-  align-self: start;
+  align-self: baseline;
   max-width: 7em;
   color: rgba(255, 255, 255, 0.72);
   font-family: var(--desktop-pin-ui-font);
@@ -16165,6 +16195,7 @@ body[data-season='thanksgiving'] .control-item {
     .desktop-pin-light-name,
     .desktop-pin-panel-kpi,
     .desktop-pin-panel-value,
+    .desktop-pin-panel-slider-label,
     .desktop-pin-media-title,
     .desktop-pin-media-artist,
     .desktop-pin-climate-target-value

@@ -718,6 +718,21 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     expect(content.getAttribute('data-edit-hint')).toBe('Ziehen oder Größe ändern');
   });
 
+  it('takes the tile out of the focus order while it is being arranged', async () => {
+    await loadRenderer({ bootstrapOverrides: { editMode: true } });
+    const content = document.getElementById('desktop-pin-content');
+    const empty = document.getElementById('desktop-pin-empty');
+    // pointer-events: none stops the mouse; inert is what stops Tab, Enter and Space.
+    expect(content.hasAttribute('inert')).toBe(true);
+    expect(empty.hasAttribute('inert')).toBe(true);
+
+    triggerMockEvent('desktopPinUpdate', { entityId: 'light.bedroom', editMode: false });
+    await flushAsync();
+
+    expect(content.hasAttribute('inert')).toBe(false);
+    expect(empty.hasAttribute('inert')).toBe(false);
+  });
+
   describe('resizing from a corner handle', () => {
     const bounds = { x: 100, y: 100, width: 168, height: 148 };
     const pointer = (type, screenX, screenY) =>

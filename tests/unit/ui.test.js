@@ -5307,6 +5307,28 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
     });
 
+    it('does not run a scene pin from the keyboard while the pin is being arranged', () => {
+      state.setStates({
+        'scene.movie': sampleStates['scene.movie'] || {
+          entity_id: 'scene.movie',
+          state: 'scening',
+          attributes: { friendly_name: 'Movie time' },
+        },
+      });
+      ui.renderDesktopPinnedTile('scene.movie', state.STATES['scene.movie']);
+      const control = document.querySelector('.desktop-pin-scene-control');
+
+      document.body.classList.add('desktop-pin-edit-mode');
+      try {
+        for (const key of ['Enter', ' ']) {
+          control.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+        }
+        expect(mockCallService).not.toHaveBeenCalled();
+      } finally {
+        document.body.classList.remove('desktop-pin-edit-mode');
+      }
+    });
+
     it('keeps momentary pin buttons out of aria-pressed', () => {
       state.setStates({
         'climate.thermostat': {
@@ -5496,6 +5518,41 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(control?.dataset.denseVariant).toBe('tight');
       expect(control?.querySelector('.desktop-pin-cover-visual')).toBeNull();
       expect(control?.querySelector('.desktop-pin-cover-slider')).toBeTruthy();
+      // The position is the meter's value, so the header does not repeat it.
+      expect(
+        control?.querySelector('.desktop-pin-panel-meter .desktop-pin-cover-position')?.textContent
+      ).toBe('55%');
+      expect(control?.querySelectorAll('.desktop-pin-cover-position')).toHaveLength(1);
+      expect(
+        control?.querySelector('.desktop-pin-panel-topline .desktop-pin-cover-position')
+      ).toBeNull();
+
+      state.setStates({
+        'cover.blinds': { ...state.STATES['cover.blinds'], attributes: { current_position: 20 } },
+      });
+      ui.renderDesktopPinnedTile('cover.blinds', state.STATES['cover.blinds']);
+      expect(document.querySelector('.desktop-pin-cover-position')?.textContent).toBe('20%');
+    });
+
+    it('keeps the cover position in the header of a pin big enough for the blind', () => {
+      setDesktopPinViewport(320, 260);
+      state.setStates({
+        'cover.blinds': {
+          entity_id: 'cover.blinds',
+          state: 'open',
+          attributes: { friendly_name: 'Living Room Blinds', current_position: 55 },
+        },
+      });
+
+      ui.renderDesktopPinnedTile('cover.blinds', state.STATES['cover.blinds']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-cover-control');
+      expect(control?.querySelector('.desktop-pin-cover-visual')).toBeTruthy();
+      expect(control?.querySelector('.desktop-pin-panel-meter')).toBeNull();
+      expect(
+        control?.querySelector('.desktop-pin-panel-topline .desktop-pin-cover-position')
+          ?.textContent
+      ).toBe('55%');
     });
 
     it('renders compact media controls and routes play pause actions', () => {

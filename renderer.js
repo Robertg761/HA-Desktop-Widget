@@ -1689,6 +1689,11 @@ function renderCurrentMode() {
   if (IS_DESKTOP_PIN_MODE) {
     const entity = state.STATES?.[DESKTOP_PIN_ENTITY_ID] || null;
     document.body.classList.toggle('desktop-pin-edit-mode', desktopPinEditMode);
+    // pointer-events: none keeps the mouse off a tile that is being arranged, but not Tab, Enter
+    // or Space, so the tile is also taken out of the focus order while it is edited.
+    for (const id of ['desktop-pin-content', 'desktop-pin-empty']) {
+      document.getElementById(id)?.toggleAttribute('inert', desktopPinEditMode);
+    }
     // The edit-mode hint is drawn by CSS from this attribute so it follows the language.
     document
       .getElementById('desktop-pin-content')
