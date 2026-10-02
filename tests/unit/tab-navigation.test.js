@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const {
   bindTabListKeyboard,
+  bindTabListOrientation,
   getNextTabIndex,
   getTextDirection,
   syncRovingTabIndex,
@@ -145,6 +146,32 @@ describe('tab navigation', () => {
       expect(press(other, 'ArrowRight').defaultPrevented).toBe(false);
       expect(clicked).toEqual([]);
     });
+  });
+});
+
+describe('bindTabListOrientation', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('follows the layout of the list as the window is resized', () => {
+    document.body.innerHTML = '<div id="rail" role="tablist" aria-orientation="vertical"></div>';
+    const rail = document.getElementById('rail');
+    let flexDirection = 'column';
+    jest
+      .spyOn(window, 'getComputedStyle')
+      .mockImplementation(() => ({ flexDirection, direction: 'ltr' }));
+
+    bindTabListOrientation(rail);
+    expect(rail.getAttribute('aria-orientation')).toBe('vertical');
+
+    flexDirection = 'row';
+    window.dispatchEvent(new Event('resize'));
+    expect(rail.getAttribute('aria-orientation')).toBe('horizontal');
+
+    flexDirection = 'column';
+    window.dispatchEvent(new Event('resize'));
+    expect(rail.getAttribute('aria-orientation')).toBe('vertical');
   });
 });
 

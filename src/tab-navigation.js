@@ -106,4 +106,25 @@ function syncRovingTabIndex(tabs, selected) {
   });
 }
 
-export { bindTabListKeyboard, getNextTabIndex, getTextDirection, syncRovingTabIndex };
+/**
+ * Keep aria-orientation true for a list that lays out as a column or a row depending on the
+ * window (the Settings rail). It is read from the layout, so it cannot disagree with the CSS
+ * breakpoints, and it is read again whenever the window is resized.
+ * @param {HTMLElement} tablist
+ */
+function bindTabListOrientation(tablist) {
+  const sync = () => {
+    const column = window.getComputedStyle(tablist).flexDirection.startsWith('column');
+    tablist.setAttribute('aria-orientation', column ? 'vertical' : 'horizontal');
+  };
+  sync();
+  window.addEventListener('resize', sync);
+}
+
+export {
+  bindTabListKeyboard,
+  bindTabListOrientation,
+  getNextTabIndex,
+  getTextDirection,
+  syncRovingTabIndex,
+};
