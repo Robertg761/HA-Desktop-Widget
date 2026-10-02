@@ -90,6 +90,16 @@ describe('quick access UI helpers', () => {
       expect(getNextQuickAccessFocusIndexByLayout(mirrored, 1, 'ArrowRight')).toBe(0);
     });
 
+    it('passes over a tile that has no box', () => {
+      // A hidden tile reports a zero box at the page's corner, which is above every real row.
+      const none = { left: 0, right: 0, top: 0, bottom: 0 };
+      const withHidden = [box(0, 88), none, box(108, 88), box(0, 176)];
+      expect(getNextQuickAccessFocusIndexByLayout(withHidden, 0, 'ArrowUp')).toBe(0);
+      expect(getNextQuickAccessFocusIndexByLayout(withHidden, 2, 'ArrowUp')).toBe(2);
+      expect(getNextQuickAccessFocusIndexByLayout(withHidden, 3, 'ArrowUp')).toBe(0);
+      expect(getNextQuickAccessFocusIndexByLayout(withHidden, 0, 'ArrowRight')).toBe(2);
+    });
+
     it('supports Home and End', () => {
       expect(getNextQuickAccessFocusIndexByLayout(rects, 3, 'Home')).toBe(0);
       expect(getNextQuickAccessFocusIndexByLayout(rects, 0, 'End')).toBe(4);

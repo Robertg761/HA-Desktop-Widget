@@ -7954,6 +7954,17 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           ).toBe(false);
         });
 
+        it('leaves reorganize mode on the first Escape once the picked tile is gone', () => {
+          click(tile('light.b'));
+          tile('light.b').remove();
+          document.dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+          );
+          expect(
+            document.getElementById('quick-controls').classList.contains('reorganize-mode')
+          ).toBe(false);
+        });
+
         it('drops a selection when reorganize mode ends', () => {
           click(tile('light.b'));
           ui.toggleReorganizeMode();

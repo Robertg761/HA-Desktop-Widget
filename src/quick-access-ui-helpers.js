@@ -53,17 +53,17 @@ const QUICK_ACCESS_TAB_EDGE_INSET = 20;
  */
 function getNextQuickAccessFocusIndexByLayout(rects, currentIndex, key) {
   const current = rects?.[currentIndex];
-  if (!current || !rects.some((rect) => rect.right - rect.left > 0 && rect.bottom - rect.top > 0)) {
-    return -1;
-  }
+  const hasBox = (rect) => rect.right - rect.left > 0 && rect.bottom - rect.top > 0;
+  if (!current || !rects.some(hasBox)) return -1;
   if (key === 'Home') return 0;
   if (key === 'End') return rects.length - 1;
 
   const sameRow = (rect) => Math.abs(rect.top - current.top) <= 2;
   const centerX = (rect) => (rect.left + rect.right) / 2;
+  // A tile with no box (hidden, or not laid out) sits at 0,0 and would pass for the row above.
   const candidates = rects
     .map((rect, index) => ({ rect, index }))
-    .filter(({ index }) => index !== currentIndex);
+    .filter(({ rect, index }) => index !== currentIndex && hasBox(rect));
 
   if (key === 'ArrowLeft' || key === 'ArrowRight') {
     const direction = key === 'ArrowLeft' ? -1 : 1;

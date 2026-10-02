@@ -15185,7 +15185,7 @@ function handleEscapeKey(e) {
   const addPageModal = document.getElementById('add-page-modal');
   if (addPageModal && !addPageModal.classList.contains('modal-closing')) return;
   if (document.querySelector('#quick-access-tabs .qa-tab-rename-input')) return;
-  if (pickedUpTile) {
+  if (pickedUpTile?.isConnected) {
     e.preventDefault();
     e.stopPropagation();
     clearPickedUpTile();
