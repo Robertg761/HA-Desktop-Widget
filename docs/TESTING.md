@@ -151,6 +151,7 @@ Some rules are not yet met everywhere, so their tests compare today's problems w
 - A problem that is not in the baseline fails the test. Fix it; never add it to the baseline.
 - A baseline entry whose problem is gone also fails the test, and the message lists the lines to delete. Delete them in the same change that fixes the problem.
 - A contrast failure must not get worse than the ratio recorded in its baseline entry.
+- An undefined-property entry records how many times its file reads that name. Another read fails the test, and so does a fix that removes only some of them: lower the count, and delete the line when it reaches zero.
 
 | Rule                                                                                                                           | Test                               | Baseline in `tests/fixtures/`                                                       |
 | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- | ----------------------------------------------------------------------------------- |
@@ -160,7 +161,7 @@ Some rules are not yet met everywhere, so their tests compare today's problems w
 
 The contrast test loads the real stylesheets into jsdom, runs the real theme and accent functions from `src/ui-utils.js`, and resolves the tokens through `tests/helpers/css-cascade.js`, so a change to a token or to the accent maths moves the numbers. When a token you fix gains a `--<name>-text` variant for status colours, that variant is measured instead. The allowlist holds words a language really writes the English way (brand names, cognates, tray abbreviations), and it also fails when an entry turns out to be translated.
 
-If two branches both delete lines from the same baseline, Git reports a conflict on neighbouring lines. Keep both deletions.
+If two branches both delete lines from the same baseline, Git reports a conflict on neighbouring lines. Keep both deletions. If both lower the same read count, apply both reductions; the test names the number it expects.
 
 ## Visual snapshots
 

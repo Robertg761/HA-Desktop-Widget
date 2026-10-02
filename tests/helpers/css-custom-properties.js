@@ -10,6 +10,11 @@
  * templates, name tables). Reads come from var(--x) in the same places, including the inline
  * styles JavaScript writes. A name that is built at run time (var(--chart-series-${n}),
  * setProperty(`--glow-${x}`)) counts as a prefix.
+ *
+ * The JavaScript rule is deliberately loose: a quoted `--word` that is not a custom property at all
+ * (a command-line flag) also counts as a definition. That can only hide a missing definition for a
+ * property that happens to share its name, and the alternative is a list of every helper that
+ * forwards a name to setProperty.
  */
 const fs = require('fs');
 const path = require('path');
@@ -109,14 +114,19 @@ function isDefined(scan, read) {
   );
 }
 
-/** Sorted, unique `file|--name` for every var() read with no fallback and no definition. */
-function findUndefinedReads(scan) {
-  const found = new Set();
+/**
+ * How many var() reads have no fallback and no definition, counted per `file|--name` and sorted by
+ * that key. The count lets a ratchet catch one more read of a property that is already known to
+ * be undefined, which a bare list of names cannot.
+ */
+function countUndefinedReads(scan) {
+  const counts = new Map();
   for (const read of scan.reads) {
     if (read.fallback || isDefined(scan, read)) continue;
-    found.add(`${read.file}|${read.name}`);
+    const key = `${read.file}|${read.name}`;
+    counts.set(key, (counts.get(key) || 0) + 1);
   }
-  return [...found].sort();
+  return Object.fromEntries([...counts.keys()].sort().map((key) => [key, counts.get(key)]));
 }
 
-module.exports = { findUndefinedReads, scanCustomProperties, scanScript, scanText };
+module.exports = { countUndefinedReads, scanCustomProperties, scanScript, scanText };
