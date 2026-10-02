@@ -2,6 +2,29 @@ const nodeCrypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
+const { expectNoNewEntries, expectNoStaleEntries } = require('../helpers/ratchet.js');
+const allowlist = require('../fixtures/locale-pack-untranslated-allowlist.json');
+const baseline = require('../fixtures/locale-pack-untranslated-baseline.json');
+
+const ALLOWLIST_FILE = 'tests/fixtures/locale-pack-untranslated-allowlist.json';
+const BASELINE_FILE = 'tests/fixtures/locale-pack-untranslated-baseline.json';
+
+/** Every `locale|key` whose pack text is the English text, ignoring text that is only placeholders. */
+function collectIdenticalToEnglish() {
+  const packDir = path.resolve(__dirname, '../../locale-packs');
+  const english = require('../../locales/en.json');
+  const manifest = JSON.parse(fs.readFileSync(path.join(packDir, 'manifest.json'), 'utf8'));
+  const identical = [];
+  for (const { locale } of manifest.packs) {
+    const { messages } = JSON.parse(fs.readFileSync(path.join(packDir, `${locale}.json`), 'utf8'));
+    for (const key of Object.keys(english)) {
+      const hasWords = /\p{L}/u.test(english[key].replace(/\{\{\s*[\w.]+\s*\}\}/g, ''));
+      if (hasWords && messages[key] === english[key]) identical.push(`${locale}|${key}`);
+    }
+  }
+  return identical;
+}
+
 describe('downloadable locale-pack manifest', () => {
   test('contains the current SHA-256 hash for every published pack', () => {
     const packDir = path.resolve(__dirname, '../../locale-packs');
@@ -114,5 +137,40 @@ describe('downloadable locale-pack manifest', () => {
         }
       }
     }
+  });
+});
+
+describe('untranslated pack strings', () => {
+  const identical = collectIdenticalToEnglish();
+  const isAllowed = (entry) => {
+    const [locale, key] = [entry.slice(0, entry.indexOf('|')), entry.slice(entry.indexOf('|') + 1)];
+    return allowlist.any.includes(key) || (allowlist[locale] || []).includes(key);
+  };
+
+  it('has no pack text that is still English, apart from the baseline', () => {
+    expectNoNewEntries(
+      identical.filter((entry) => !isAllowed(entry)),
+      baseline.entries,
+      'These pack values are the English text. Translate them in locale-packs/<locale>.json (reuse ' +
+        'the wording the pack already uses for the same words), or, only if the language really ' +
+        `writes the word this way, add it to ${ALLOWLIST_FILE}. Do not add to ${BASELINE_FILE}:`
+    );
+  });
+
+  it('keeps the baseline free of strings that are now translated', () => {
+    expectNoStaleEntries(identical, baseline.entries, BASELINE_FILE);
+  });
+
+  it('keeps the allowlist free of strings that are now translated', () => {
+    const listed = Object.entries(allowlist)
+      .filter(([name]) => name !== 'comment')
+      .flatMap(([name, keys]) => keys.map((key) => `${name}|${key}`));
+    // An "any" entry stays while at least one pack still carries the English text.
+    const present = identical.flatMap((entry) => [entry, `any${entry.slice(entry.indexOf('|'))}`]);
+    expectNoStaleEntries(present, listed, ALLOWLIST_FILE, 'allowlist');
+  });
+
+  it('does not list a string in both the baseline and the allowlist', () => {
+    expect(baseline.entries.filter(isAllowed)).toEqual([]);
   });
 });
