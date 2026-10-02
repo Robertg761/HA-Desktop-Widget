@@ -66,6 +66,24 @@ const PAGE_SETS = {
       ],
     },
   ],
+  // One tile for each dialog the other pages do not open: the helpers, a vacuum, a to-do list and a
+  // calendar, plus a favourite Home Assistant no longer has, which opens the repair picker.
+  dialogs: [
+    {
+      id: 'default',
+      name: 'Home',
+      entityIds: [
+        'input_select.house_mode',
+        'vacuum.robot',
+        'todo.shopping',
+        'calendar.family',
+        'light.old_kitchen',
+        'media_player.living_room',
+      ],
+    },
+    // The tab strip only exists with two pages, and the runner waits for it.
+    { id: 'spare', name: 'Spare', entityIds: ['light.desk_lamp'] },
+  ],
 };
 
 function buildStates(now = new Date()) {
@@ -170,6 +188,23 @@ function buildStates(now = new Date()) {
       mode: 'slider',
       unit_of_measurement: '°C',
     }),
+    entity('input_select.house_mode', 'Home', {
+      friendly_name: 'House mode',
+      options: ['Home', 'Away', 'Night', 'Guests'],
+    }),
+    // Start, pause, stop and return to base (HA's VacuumEntityFeature bits 8192, 4, 8 and 16).
+    entity('vacuum.robot', 'docked', {
+      friendly_name: 'Robot vacuum',
+      supported_features: 8220,
+    }),
+    // Create and update items (TodoListEntityFeature bits 1 and 4).
+    entity('todo.shopping', '3', { friendly_name: 'Shopping list', supported_features: 5 }),
+    entity('calendar.family', 'off', {
+      friendly_name: 'Family calendar',
+      message: 'Dentist',
+      start_time: new Date(now.getTime() + 26 * 3600000).toISOString(),
+      all_day: false,
+    }),
     entity('alarm_control_panel.home_alarm', 'armed_home', {
       friendly_name: 'Home alarm',
       code_format: 'number',
@@ -213,8 +248,40 @@ function buildServices() {
       'alarm_arm_vacation'
     ),
     input_number: domain('set_value', 'increment', 'decrement'),
+    input_select: domain('select_option'),
+    vacuum: domain('start', 'pause', 'stop', 'return_to_base'),
+    todo: domain('add_item', 'update_item', 'get_items'),
+    calendar: domain('get_events'),
     scene: domain('turn_on'),
     timer: domain('start', 'pause', 'cancel', 'finish'),
+  };
+}
+
+/**
+ * What the services that return data answer, keyed `domain.service`: the shopping list's items
+ * and the family calendar's events for the next week.
+ */
+function buildServiceResponses(now = new Date()) {
+  const at = (hours) => new Date(now.getTime() + hours * 3600000).toISOString();
+  return {
+    'todo.get_items': (message) => ({
+      [message.service_data?.entity_id || 'todo.shopping']: {
+        items: [
+          { uid: 'milk', summary: 'Oat milk', status: 'needs_action' },
+          { uid: 'bread', summary: 'Sourdough bread', status: 'needs_action' },
+          { uid: 'coffee', summary: 'Coffee beans', status: 'needs_action' },
+          { uid: 'soap', summary: 'Dish soap', status: 'completed' },
+        ],
+      },
+    }),
+    'calendar.get_events': (message) => ({
+      [message.service_data?.entity_id || 'calendar.family']: {
+        events: [
+          { summary: 'Dentist', start: at(26), end: at(27), description: 'Bring the new forms.' },
+          { summary: 'Parents evening', start: at(74), end: at(76) },
+        ],
+      },
+    }),
   };
 }
 
@@ -257,6 +324,7 @@ module.exports = {
   WINDOW_POSITION,
   WINDOW_SIZE,
   buildConfig,
+  buildServiceResponses,
   buildServices,
   buildStates,
 };

@@ -26,7 +26,8 @@ describe('visual snapshot fixture', () => {
           .map((entityId) => `${setName}/${page.id}: ${entityId}`)
       )
     );
-    expect(unknown).toEqual([]);
+    // The dialogs page keeps one favourite Home Assistant no longer has: the repair picker's tile.
+    expect(unknown).toEqual(['dialogs/default: light.old_kitchen']);
   });
 
   it('starts on a page set that has the page it activates', () => {
@@ -84,6 +85,11 @@ describe('visual snapshot scenes', () => {
       'popup-brightness-light',
       'popup-climate-light',
       'popup-input-number',
+      'popup-input-select',
+      'popup-vacuum',
+      'popup-todo',
+      'popup-calendar',
+      'popup-repair',
       'popup-alarm-code',
       'dialog-manage-quick-access',
       'de-main',

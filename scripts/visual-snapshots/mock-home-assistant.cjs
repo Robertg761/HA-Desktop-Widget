@@ -4,7 +4,7 @@
  * It speaks the WebSocket API's auth handshake and answers every request from a fixture: states
  * for get_states, services for get_services (the command palette only offers commands for
  * services that exist), empty lists and objects for registries and history, null for
- * subscriptions.
+ * subscriptions; the few services that return data answer from `serviceResponses`.
  * The WebSocket framing is done by hand (text frames, ping, close) so the snapshot job needs no
  * dependency beyond Node itself. Test-only; never shipped.
  */
@@ -65,8 +65,20 @@ function decodeFrames(buffer) {
   return [frames, buffer.subarray(offset)];
 }
 
-function resultFor(message, { states, services }) {
+function resultFor(message, { states, services, serviceResponses }) {
   switch (message.type) {
+    case 'call_service': {
+      // A service that returns data (todo.get_items, calendar.get_events) answers from the
+      // fixture; every other call just succeeds.
+      const respond = message.return_response
+        ? serviceResponses?.[`${message.domain}.${message.service}`]
+        : null;
+      if (!respond) return null;
+      return {
+        context: { id: 'mock', parent_id: null, user_id: null },
+        response: respond(message),
+      };
+    }
     case 'get_states':
       return states;
     case 'get_config':
@@ -97,7 +109,7 @@ function resultFor(message, { states, services }) {
   }
 }
 
-function startMockHomeAssistant({ port = 0, token, states, services = {} }) {
+function startMockHomeAssistant({ port = 0, token, states, services = {}, serviceResponses = {} }) {
   const server = http.createServer((request, response) => {
     response.writeHead(404, { 'content-type': 'application/json' });
     response.end('{"message":"Not found"}');
@@ -164,7 +176,7 @@ function startMockHomeAssistant({ port = 0, token, states, services = {} }) {
               id: item.id,
               type: 'result',
               success: true,
-              result: resultFor(item, { states, services }),
+              result: resultFor(item, { states, services, serviceResponses }),
             });
           }
         }

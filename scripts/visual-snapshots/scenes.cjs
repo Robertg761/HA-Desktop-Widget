@@ -68,6 +68,8 @@ async function pinEntity(ctx, entityId) {
 }
 
 const sixPages = (activeTabId) => ({ customTabs: PAGE_SETS.six, activeTabId });
+// The page whose tiles open the helper, vacuum, to-do, calendar and repair dialogs.
+const dialogsPage = { customTabs: PAGE_SETS.dialogs, activeTabId: 'default' };
 // A holiday shows for an hour, long enough for the whole run.
 const holiday = (show) => ({ enabled: true, show, showUntil: Date.now() + 3600000 });
 
@@ -81,6 +83,42 @@ const scenes = [
   { name: 'settings-appearance', setup: (ctx) => openSettingsTab(ctx, 'personalization') },
   { name: 'dialog-manage-quick-access', setup: (ctx) => ctx.click('#manage-quick-controls-btn') },
   { name: 'popup-alarm-code', config: sixPages('default'), setup: openAlarmCodeDialog },
+
+  // The dialogs the dialogs page opens, each built by the app rather than by index.html.
+  {
+    name: 'popup-input-select',
+    config: dialogsPage,
+    setup: (ctx) => ctx.click(tile('input_select.house_mode')),
+  },
+  {
+    name: 'popup-vacuum',
+    config: dialogsPage,
+    setup: (ctx) => ctx.click(tile('vacuum.robot')),
+  },
+  {
+    name: 'popup-todo',
+    config: dialogsPage,
+    setup: async (ctx) => {
+      await ctx.click(tile('todo.shopping'));
+      await ctx.waitForSelector('.todo-item-row');
+    },
+  },
+  {
+    name: 'popup-calendar',
+    config: dialogsPage,
+    setup: async (ctx) => {
+      await ctx.click(tile('calendar.family'));
+      await ctx.waitForSelector('.calendar-event-row');
+    },
+  },
+  {
+    name: 'popup-repair',
+    config: dialogsPage,
+    setup: async (ctx) => {
+      await ctx.click(tile('light.old_kitchen'));
+      await ctx.waitForSelector('#entity-repair-modal .entity-item');
+    },
+  },
 
   // Pages the six-tab set adds: a tab strip that overflows, media tiles and a helper dialog.
   { name: 'six-tabs', config: sixPages('devices') },

@@ -4382,7 +4382,7 @@ function renderLanguagePackList() {
     if (pack.installed && versionAhead) {
       const updateBtn = document.createElement('button');
       updateBtn.type = 'button';
-      updateBtn.className = 'btn btn-secondary btn-small';
+      updateBtn.className = 'btn btn-secondary btn-sm';
       updateBtn.dataset.localeAction = 'download';
       updateBtn.dataset.locale = pack.locale;
       updateBtn.textContent = t('Update');
@@ -4391,7 +4391,7 @@ function renderLanguagePackList() {
     } else if (!pack.installed) {
       const downloadBtn = document.createElement('button');
       downloadBtn.type = 'button';
-      downloadBtn.className = 'btn btn-secondary btn-small';
+      downloadBtn.className = 'btn btn-secondary btn-sm';
       downloadBtn.dataset.localeAction = 'download';
       downloadBtn.dataset.locale = pack.locale;
       downloadBtn.textContent = t('Download');
@@ -4402,7 +4402,7 @@ function renderLanguagePackList() {
     if (pack.installed) {
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
-      removeBtn.className = 'btn btn-secondary btn-small';
+      removeBtn.className = 'btn btn-secondary btn-sm';
       removeBtn.dataset.localeAction = 'remove';
       removeBtn.dataset.locale = pack.locale;
       removeBtn.textContent = t('Remove');
@@ -6338,8 +6338,8 @@ function renderAlertsListInline() {
           </div>
         </div>
         <div class="alert-actions">
-          <button class="btn btn-small btn-secondary edit-alert" data-entity="${utils.escapeHtmlAttribute(entityId)}">${utils.escapeHtml(t('Edit'))}</button>
-          <button class="btn btn-small btn-danger remove-alert" data-entity="${utils.escapeHtmlAttribute(entityId)}">${utils.escapeHtml(t('Remove'))}</button>
+          <button class="btn btn-sm btn-secondary edit-alert" data-entity="${utils.escapeHtmlAttribute(entityId)}">${utils.escapeHtml(t('Edit'))}</button>
+          <button class="btn btn-sm btn-danger remove-alert" data-entity="${utils.escapeHtmlAttribute(entityId)}">${utils.escapeHtml(t('Remove'))}</button>
         </div>
       `;
 

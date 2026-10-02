@@ -9767,18 +9767,22 @@ function openEntityRepairModal(staleEntityId) {
   const body = document.createElement('div');
   body.className = 'modal-body';
   const explanation = document.createElement('p');
+  explanation.className = 'modal-lead';
   explanation.textContent = t(
     'Choose the entity that replaces {{entityId}}. Favorites, pages, pins, hotkeys, alerts, graphs, and saved display settings will all be updated.',
     { entityId: staleEntityId }
   );
+  const searchGroup = document.createElement('div');
+  searchGroup.className = 'form-group';
   const search = document.createElement('input');
   search.type = 'search';
   search.className = 'form-control';
   search.placeholder = t('Search replacement entities...');
   search.setAttribute('aria-label', t('Search replacement entities'));
+  searchGroup.appendChild(search);
   const list = document.createElement('div');
   list.className = 'entity-selector-list';
-  body.append(explanation, search, list);
+  body.append(explanation, searchGroup, list);
   content.append(header, body);
   modal.appendChild(content);
   document.body.appendChild(modal);
@@ -9845,7 +9849,7 @@ function openEntityRepairModal(staleEntityId) {
     list.replaceChildren();
     if (!candidates.length) {
       const empty = document.createElement('p');
-      empty.className = 'form-help';
+      empty.className = 'entity-selector-empty';
       empty.textContent = t('No matching replacement entities found.');
       list.appendChild(empty);
       return;
@@ -9888,7 +9892,8 @@ function openEntityRepairModal(staleEntityId) {
   });
   search.addEventListener('input', renderCandidates);
   renderCandidates();
-  uiUtils.trapFocus(modal);
+  // The search is the first thing to do here; without it focus would start on the close button.
+  uiUtils.trapFocus(modal, { initialFocus: search });
 }
 
 function updateExistingQuickAccessControl(div, entity, options = {}) {
@@ -10325,21 +10330,27 @@ function showHelperControls(entity) {
   const live = () => state.STATES?.[entity.entity_id];
   const form = document.createElement('form');
   const readout = document.createElement('p');
+  readout.className = 'modal-lead';
   readout.setAttribute('role', 'status');
   body.append(readout, form);
   let input = null;
   if (domain !== 'vacuum') {
+    const group = document.createElement('div');
+    group.className = 'form-group';
     const label = document.createElement('label');
     label.textContent = utils.getEntityDisplayName(entity);
+    label.htmlFor = `helper-controls-${entity.entity_id}`;
     input = document.createElement(
       ['select', 'input_select'].includes(domain) ? 'select' : 'input'
     );
+    input.id = label.htmlFor;
     input.className = 'form-control';
     if (input.tagName === 'INPUT') input.type = 'number';
-    label.append(input);
-    form.append(label);
+    group.append(label, input);
+    form.append(group);
   }
   const actions = document.createElement('div');
+  actions.className = 'entity-detail-actions';
   form.append(actions);
   const refresh = () => {
     const current = live();
@@ -10371,10 +10382,11 @@ function showHelperControls(entity) {
       ? document.activeElement.dataset.service
       : null;
     actions.replaceChildren();
-    supported.forEach((action) => {
+    supported.forEach((action, index) => {
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'btn-primary';
+      // The first action is the dialog's main one; a vacuum's others sit beside it, quieter.
+      button.className = index === 0 ? 'btn btn-primary' : 'btn btn-secondary';
       button.dataset.service = action.service;
       button.textContent = t(action.label);
       button.disabled = !available || busy;
@@ -10446,9 +10458,13 @@ function requestAlarmCode(entity) {
       },
     });
     const form = document.createElement('form');
+    const group = document.createElement('div');
+    group.className = 'form-group';
     const label = document.createElement('label');
     label.textContent = t('Alarm code');
+    label.htmlFor = 'alarm-code-input';
     input = document.createElement('input');
+    input.id = label.htmlFor;
     input.className = 'form-control';
     input.type = 'password';
     input.required = true;
@@ -10458,12 +10474,15 @@ function requestAlarmCode(entity) {
       input.inputMode = 'numeric';
       input.pattern = '[0-9]+';
     }
-    label.append(input);
+    group.append(label, input);
     const submit = document.createElement('button');
     submit.type = 'submit';
-    submit.className = 'btn-primary';
+    submit.className = 'btn btn-primary';
     submit.textContent = t('Apply');
-    form.append(label, submit);
+    const actions = document.createElement('div');
+    actions.className = 'entity-detail-actions';
+    actions.append(submit);
+    form.append(group, actions);
     modal.querySelector('.modal-body').append(form);
     form.onsubmit = (event) => {
       event.preventDefault();
@@ -10760,12 +10779,17 @@ function showCalendarDetails(entity) {
     const listContainer = document.createElement('div');
     listContainer.className = 'calendar-events-list';
     listContainer.setAttribute('role', 'status');
+    const toolbar = document.createElement('div');
+    toolbar.className = 'calendar-toolbar';
     const range = document.createElement('p');
+    range.className = 'modal-lead';
     range.textContent = t('Upcoming events for the next 7 days');
     const refresh = document.createElement('button');
     refresh.type = 'button';
+    refresh.className = 'btn btn-secondary btn-sm';
     refresh.textContent = t('Refresh');
-    body.append(range, refresh, listContainer);
+    toolbar.append(range, refresh);
+    body.append(toolbar, listContainer);
     let loading = false;
     refresh.onclick = async () => {
       if (loading) return;
@@ -14422,11 +14446,14 @@ function populateQuickControlsList({ resetSearch = true } = {}) {
     }
     const previous = document.createElement('button');
     previous.type = 'button';
+    previous.className = 'btn btn-secondary btn-sm';
     previous.textContent = t('Previous');
     const count = document.createElement('span');
+    count.className = 'entity-selector-pagination-status';
     count.setAttribute('role', 'status');
     const next = document.createElement('button');
     next.type = 'button';
+    next.className = 'btn btn-secondary btn-sm';
     next.textContent = t('Next');
     pager.replaceChildren(previous, count, next);
 
@@ -14466,9 +14493,9 @@ function populateQuickControlsList({ resetSearch = true } = {}) {
       page = Math.min(page, pages - 1);
       list.dataset.page = String(page);
       count.textContent = t('Page {{page}} of {{pages}} · {{count}} entities', {
-        page: page + 1,
-        pages,
-        count: scoredEntities.length,
+        page: formatNumber(page + 1),
+        pages: formatNumber(pages),
+        count: formatNumber(scoredEntities.length),
       });
       previous.setAttribute('aria-disabled', String(page === 0));
       next.setAttribute('aria-disabled', String(page >= pages - 1));

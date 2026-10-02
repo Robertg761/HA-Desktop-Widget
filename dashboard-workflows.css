@@ -309,22 +309,16 @@ body:not(.theme-light) .alert-advanced-options input[type='time'] {
   color-scheme: dark;
 }
 
+/* The fields take the shared field recipe from styles.css; a grid or flex cell only has to let
+   them shrink. */
 .sensor-history-controls select,
 .alert-advanced-options .form-control {
-  box-sizing: border-box;
-  width: 100%;
   min-width: 0;
-  min-height: 40px;
-  padding: 9px 12px;
-  color: var(--text-primary);
-  background: var(--glass-surface);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  font: inherit;
 }
 
+/* Level with the 36px fields beside it. */
 .sensor-history-controls .btn {
-  min-height: 40px;
+  min-height: 36px;
 }
 
 .dashboard-tools-modal :focus-visible,
@@ -429,16 +423,28 @@ body:not(.theme-light) .alert-advanced-options input[type='time'] {
   cursor: default;
 }
 
-.helper-controls-modal form,
-.alarm-code-modal form,
-.helper-controls-modal label,
-.alarm-code-modal label {
-  display: grid;
-  gap: 12px;
+.entity-selector-pagination-status {
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+  text-align: center;
 }
 
-.helper-controls-modal form > div {
+/* The helper and alarm-code dialogs: the field, then the actions, the main one at the end as in
+   the other dialogs' footers. */
+.helper-controls-modal form,
+.alarm-code-modal form {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.helper-controls-modal .form-group,
+.alarm-code-modal .form-group {
+  margin: 0;
+}
+
+.entity-detail-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  justify-content: flex-end;
+  gap: var(--space-3);
 }

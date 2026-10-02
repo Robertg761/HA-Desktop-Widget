@@ -731,6 +731,18 @@ body {
   */
 }
 
+/* Buttons and fields do not take the page font on their own: the browser gives them the system
+   control font (Arial on Linux and Windows, system-ui on macOS), so a button that only sets its
+   size and weight shows a different face from the Inter text beside it. Say it once here. Only
+   the family: sizes and weights stay with each component, and any rule that names its own
+   family (the pins' display font, the mono hotkey fields) still wins at this specificity. */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
 /* Home Assistant exposes explicit entity icons as Material Design Icons codepoints.
    Keep the MDI font first only in icon containers so normal text and custom emoji
    continue to use the platform's preferred fonts. */
@@ -4341,12 +4353,6 @@ body.first-run-active .widget-content > * {
 .weather-info span {
   font-weight: 500;
   color: var(--text-primary);
-}
-
-.btn-sm {
-  padding: 6px 12px;
-  font-size: var(--font-size-sm);
-  border-radius: var(--radius-sm);
 }
 
 /* Enhanced Weather Card Styles */
@@ -8250,6 +8256,15 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   text-align: center;
 }
 
+/* The line that introduces a dialog's content: the repair explanation, the calendar's date window,
+   a helper's current value. */
+.modal-lead {
+  margin: 0 0 var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+}
+
 .sensor-detail-summary {
   display: flex;
   align-items: center;
@@ -8314,6 +8329,22 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   margin-bottom: 14px;
 }
 
+.calendar-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.calendar-toolbar .modal-lead {
+  margin: 0;
+}
+
+.calendar-toolbar .btn {
+  flex-shrink: 0;
+}
+
 .todo-items-list,
 .calendar-events-list {
   display: grid;
@@ -8339,6 +8370,18 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   gap: 10px;
   padding: 10px 12px;
   cursor: pointer;
+}
+
+.todo-item-row input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.todo-item-row input[type='checkbox']:disabled {
+  cursor: not-allowed;
 }
 
 .todo-item-row[data-status='completed'] .todo-item-summary {
@@ -8397,9 +8440,19 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   letter-spacing: 0.01em;
 }
 
+/* The field recipe. A field built without the .form-group wrapper (the helper, alarm-code and
+   to-do dialogs, the repair search) takes it from the :where() selectors, which add no
+   specificity, so a class that styles its own field still wins and nothing in a dialog is left
+   with the browser's inset border. */
 .form-group input,
 .form-group select,
-.form-group textarea {
+.form-group textarea,
+:where(.modal-body)
+  :where(
+    input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
+    select,
+    textarea
+  ) {
   width: 100%;
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border-color);
@@ -8412,23 +8465,41 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .form-group input::placeholder,
-.form-group textarea::placeholder {
+.form-group textarea::placeholder,
+:where(.modal-body)
+  :where(
+    input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
+    select,
+    textarea
+  )::placeholder {
   color: var(--text-tertiary);
 }
 
 .form-group input:hover,
 .form-group select:hover,
-.form-group textarea:hover {
+.form-group textarea:hover,
+:where(.modal-body)
+  :where(
+    input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
+    select,
+    textarea
+  ):hover {
   border-color: var(--border-hover);
-  background: var(--tile-bg-hover);
+  background-color: var(--tile-bg-hover);
 }
 
 .form-group input:focus,
 .form-group select:focus,
-.form-group textarea:focus {
+.form-group textarea:focus,
+:where(.modal-body)
+  :where(
+    input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
+    select,
+    textarea
+  ):focus {
   outline: none;
   border-color: var(--focus-ring);
-  background: var(--tile-bg-hover);
+  background-color: var(--tile-bg-hover);
   box-shadow: var(--glow-focus);
 }
 
@@ -8911,39 +8982,37 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   width: 100%;
 }
 
+/* The trigger is a select that draws its own menu, so it takes the select's recipe: the same fill,
+   border, height and thin chevron (see the field recipe above and the select rules below). */
 .custom-dropdown-trigger {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+  min-height: 36px;
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--blur-sm));
-  -webkit-backdrop-filter: blur(var(--blur-sm));
+  background: var(--tile-bg);
   color: var(--text-primary);
   font-size: var(--font-size-base);
   font-family: inherit;
   text-align: start;
   cursor: pointer;
   transition: var(--transition-base);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .custom-dropdown-trigger:hover {
   border-color: var(--border-hover);
-  background: var(--glass-elevated);
+  background: var(--tile-bg-hover);
 }
 
 .custom-dropdown-trigger:focus {
   outline: none;
   border-color: var(--focus-ring);
-  background: var(--glass-elevated);
-  box-shadow:
-    var(--glow-focus),
-    inset 0 1px 2px rgba(0, 0, 0, 0.05);
+  background: var(--tile-bg-hover);
+  box-shadow: var(--glow-focus);
 }
 
 .custom-dropdown-value {
@@ -8994,6 +9063,9 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .custom-dropdown-option {
   padding: var(--space-3) var(--space-4);
+  /* The 3px accent edge takes room the trigger's 1px border does not, so the text still lines
+     up with the trigger's. */
+  padding-inline-start: calc(var(--space-4) - 2px);
   color: var(--text-primary);
   font-size: var(--font-size-base);
   cursor: pointer;
@@ -12484,9 +12556,11 @@ label.disabled {
 /* Buttons are position: static, so the spinner above escapes to the nearest
    positioned ancestor (the modal) and lands centred over unrelated content.
    These rows report progress through the sweep bar on their status line
-   instead, so opt them out rather than stacking two indicators. */
+   instead (the calendar's list says "Loading..." itself), so opt them out rather than stacking
+   two indicators. */
 .connection-test-row [aria-busy='true']::after,
-.first-run-actions [aria-busy='true']::after {
+.first-run-actions [aria-busy='true']::after,
+.calendar-toolbar [aria-busy='true']::after {
   content: none;
 }
 
@@ -13309,6 +13383,80 @@ body.theme-light .btn-secondary:not([id*='cancel']):not([id*='close']):not([id*=
   color: color-mix(in srgb, var(--accent) 72%, #000);
 }
 
+/* Compact buttons for rows and inline actions (Edit, Remove, language packs, hotkey presets).
+   Only the size changes; the colours come from the variant beside it. */
+.btn.btn-sm {
+  min-height: 28px;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+}
+
+/* A destructive action outside a confirmation (Remove, Clear, Delete graph, a hotkey being
+   recorded): the secondary button's shape in red, so it reads as a warning without a wall of solid
+   red. The confirmation dialog keeps its own solid red, which is why these stay at one class of
+   specificity. The text colour goes through a property so the light theme can step it down to
+   read on white without out-ranking that dialog. */
+.btn-danger {
+  --btn-danger-text: #ff8a80;
+  background: rgba(239, 83, 80, 0.14);
+  border-color: rgba(239, 83, 80, 0.45);
+  color: var(--btn-danger-text);
+}
+
+.btn-danger:hover {
+  background: rgba(239, 83, 80, 0.22);
+  border-color: rgba(239, 83, 80, 0.6);
+}
+
+body.theme-light .btn-danger {
+  --btn-danger-text: #c62828;
+}
+
+/* --- Fields --- */
+
+/* The select's chevron is a background image, which cannot read currentColor, so it comes in the
+   two text colours the themes use. */
+body {
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23b0b0b0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+}
+
+body.theme-light {
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23666666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+}
+
+/* One height for text fields and selects, so a native select no longer stands 2px taller than the
+   input beside it, and both match the custom dropdown trigger. */
+.form-group
+  :is(input, select):not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
+:where(.modal-body)
+  :where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']), select) {
+  min-height: 36px;
+}
+
+/* A native select drawn like the custom dropdown: the browser's heavy chevron (which each OS
+   draws differently) gives way to the same thin one, set at the end of the line and mirrored in
+   right-to-left. The menu itself is still the browser's. The fill comes from the field recipe;
+   only the background image is set here, so a rule that sets just the colour keeps the chevron. */
+select:not([multiple]) {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-inline-end: 36px;
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px 16px;
+  text-overflow: ellipsis;
+}
+
+[dir='rtl'] select:not([multiple]) {
+  background-position: left 12px center;
+}
+
+textarea {
+  resize: vertical;
+}
+
 /* --- Control pop-ups: brightness, climate, fan, cover, sensor --- */
 
 .brightness-icon-wrapper,
@@ -14076,7 +14224,8 @@ body.theme-light #settings-modal .modal-footer {
   width: auto;
   min-width: 120px;
   max-width: 62%;
-  padding: 7px 10px;
+  padding-block: 7px;
+  padding-inline-start: 10px;
   font-size: var(--font-size-sm);
 }
 
@@ -15108,14 +15257,20 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   gap: var(--space-2);
 }
 
-/* Manage Quick Access: one scrolling list under a fixed search box, with the secondary
-   "comparison graph" action moved to the footer. */
-#quick-controls-modal .quick-controls-modal-body {
+/* Manage Quick Access and the repair picker: one scrolling list under a fixed search box, with
+   Manage's secondary "comparison graph" action moved to the footer. */
+#quick-controls-modal .quick-controls-modal-body,
+#entity-repair-modal .modal-body {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   min-height: 0;
   overflow-y: auto;
+}
+
+#entity-repair-modal .modal-lead,
+#entity-repair-modal .form-group {
+  margin: 0;
 }
 
 #quick-controls-modal .quick-controls-target-hint {
@@ -15129,7 +15284,8 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   margin: 0;
 }
 
-#quick-controls-modal .entity-selector-list {
+#quick-controls-modal .entity-selector-list,
+#entity-repair-modal .entity-selector-list {
   flex: 1 1 auto;
   min-height: 120px;
   max-height: none;
