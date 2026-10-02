@@ -2,7 +2,7 @@
 
 This plan is for people with a Windows, macOS or Linux machine who can run a 4.0 build and check what automated tests and the project's Linux screenshots cannot show: real window managers and displays, real GPUs, accessibility settings, input methods, a live Home Assistant, and a machine left running for a day. Each check describes the behavior the app should have. Nothing here records a result; results go in your report.
 
-You do not need to be a developer. Every check lists the steps, what you should see, and what to capture if you do not see it. A check that fails on your machine is a useful result, not a mistake on your part. If you cannot run a check (no second monitor, no touch screen), skip it and say so in the report.
+You do not need to be a developer. Every check lists the steps, what you should see, and what to capture if you do not see it. A check that fails on your machine is a useful result, not a mistake on your part. If you cannot run a check (no second monitor, no touch screen, no tray icon), skip it and say so in the report.
 
 The expected results describe how 4.0.0 is meant to behave. They were written against the source at commit `c2e97aa` together with the fixes planned for 4.0.0 at that time, so a few of them (the shortcut and tray name on Windows, for example) describe changes that a build made before those fixes does not have. The call for testers names the build to use. If a check fails on an older build, report it anyway; the developers know which failures are already on their list.
 
@@ -18,7 +18,7 @@ The expected results describe how 4.0.0 is meant to behave. They were written ag
 | Hyprland or Omarchy, Sway, niri     | The matching section                                                                                                                                                                                                                                   |
 | Any machine with the right hardware | Whichever of the cross-cutting sections apply: contrast themes and screen readers, several monitors, large text, Chinese or Japanese input, language packs, profile sync, a real Home Assistant, cameras, a long-running session, updates, the website |
 
-Do the shared checks first. Later checks assume the Quick Access tiles from "Set up Home Assistant" and the pins from ALL-5.
+Do the shared checks first. Later checks assume the Quick Access tiles from "Set up Home Assistant" and the pins from ALL-5. ALL-1 is the exception: it needs a profile folder that has never been started, so it does not use the one you set up (see "Use a throwaway profile"). On a Linux desktop with no tray icon, read "Check for a tray icon" before you start.
 
 ### Short on time
 
@@ -30,6 +30,8 @@ Run these first, in this order. They cover the problems most likely to affect th
 | Windows 10   | ALL-1, ALL-3, ALL-4, ALL-5, WIN10-1, WIN11-1, WIN11-3, WIN11-5, WIN11-6, WIN11-8                                                                                      |
 | macOS        | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, MAC-1, MAC-2, MAC-3, MAC-5, MAC-6                                                                                                 |
 | Linux        | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, LNX-1, LNX-2, LNX-3, LNX-6, then the first two checks in the section for your desktop (GNOME, KDE Plasma, Hyprland, Sway or niri) |
+
+On a GNOME without a tray extension, run GNOME-2 before anything else in this list. ALL-4 needs a tray icon, so run it only after you install an extension, or skip it (see "Check for a tray icon").
 
 ## Before you start
 
@@ -60,19 +62,26 @@ Put this at the top of your report. Use whatever tool you have; the commands are
 
 ### Use a throwaway profile
 
-The app keeps its settings and credentials in one folder per user. Test with a separate folder so your real widget, pins and sync file are not touched. Start the app with `--user-data-dir=<an empty folder>`:
+The app keeps its settings and credentials in one folder per user. Test with separate folders so your real widget, pins and sync file are not touched. Start the app with `--user-data-dir=<an empty folder>`:
 
 - Windows (Portable build, from a terminal): `"HA Desktop Widget-<version>-win-x64-Portable.exe" --user-data-dir=C:\hadw-test`
 - macOS: `open -n -a "HA Desktop Widget" --args --user-data-dir=/tmp/hadw-test`
 - Linux AppImage: `./"HA Desktop Widget-<version>-linux-x64.AppImage" --user-data-dir=$HOME/hadw-test`; installed `.deb`: `home-assistant-widget --user-data-dir=$HOME/hadw-test`; Arch: `ha-desktop-widget --user-data-dir=$HOME/hadw-test`
 
+Use one main test folder for most checks (`hadw-test` in the examples above). A few checks need a folder that earlier checks have not touched. Start each of those in a new empty folder and delete it afterwards:
+
+- ALL-1 and HYP-1 need a profile that has never been started, so that the welcome screen appears. ALL-1 runs twice (OS light theme, then dark), each time in a new empty folder. They only need the welcome screen, so you do not have to connect these folders to Home Assistant.
+- WIN10-1 and LNX-8 need the default appearance settings, which earlier checks change. Connect the new folder to Home Assistant, add a few tiles and leave the appearance settings alone.
+
+ALL-15 damages `config.json` on purpose, so it uses a copy of your main folder.
+
 The settings file is `config.json` in that folder. Start at login and some update checks do not work in a throwaway profile; the checks that need your real profile say so. Before you use your real profile with a 4.0 build, back it up as described in [Upgrading to 4.0](../MIGRATION.md): the folders are `%APPDATA%\home-assistant-widget` on Windows, `~/Library/Application Support/home-assistant-widget` on macOS and `~/.config/home-assistant-widget` on Linux.
 
-When you finish, delete the throwaway folder. In Home Assistant, open your profile > Security and delete the refresh token the test profile created.
+When you finish, delete the throwaway folders. In Home Assistant, open your profile > Security and delete the refresh tokens the test profiles created.
 
 ### Set up Home Assistant
 
-Use your own Home Assistant, or a test instance. Connect from Settings > General with the browser authorization, then add these to Quick Access if you have them (the + button, Manage Quick Access):
+Use your own Home Assistant, or a test instance. Do this in your main test folder. The first-run checks use their own empty folders, so this connection does not get in their way. Connect from Settings > General with the browser authorization, then add these to Quick Access if you have them (the + button, Manage Quick Access):
 
 - a dimmable light and a switch you do not mind toggling, and a scene
 - a numeric sensor, ideally one that updates every second or two
@@ -81,6 +90,13 @@ Use your own Home Assistant, or a test instance. Connect from Settings > General
 - a Home Assistant helper such as an `input_boolean` you can delete (HYP-12)
 
 Pin a few of them to the desktop where a check asks for pins.
+
+### Check for a tray icon
+
+Several checks use the tray icon (the menu-bar item on macOS). Windows, macOS, KDE Plasma and Ubuntu have one. On Hyprland, Sway and niri it comes from your bar (the Omarchy bar or Waybar). Stock GNOME (Fedora Workstation, Debian) has none unless you install an AppIndicator extension, and a bare window manager may have none either.
+
+- Stock GNOME: run GNOME-2 before the shared checks. It tests the desktop as it is, with no tray, so it has to come before you install an extension. Then install an AppIndicator extension, restart the app and run the rest of the plan, ALL-4 included. If you would rather not install one, skip every step that uses the tray, including ALL-4, and say so in your report. GNOME-2 still counts.
+- Any other desktop with no tray icon: skip every step that uses the tray, including ALL-4, and say so in your report.
 
 ### Report your results
 
@@ -108,9 +124,9 @@ Run these on every machine. Where a step is specific to one system, it says so.
 
 ### ALL-1 First launch on an empty profile
 
-1. Start the app with a new empty profile. Watch the screen from the moment you start it. A phone video in slow motion helps.
+1. Start the app with a new empty profile folder, not your main test folder (see "Use a throwaway profile"). Watch the screen from the moment you start it. A phone video in slow motion helps.
 2. Note what the window looks like for the first two seconds, then when the welcome screen appears.
-3. Repeat once with the OS in the light theme and once in the dark theme (Settings > Appearance > Mode stays on Auto).
+3. Do steps 1 and 2 twice: once with the OS in the light theme and once in the dark theme (Settings > Appearance > Mode stays on Auto). Use a new empty folder each time, because a second start in the same folder is no longer a first launch.
 4. Look at the welcome heading, and at any buttons under it.
 
 Expected: The window appears once and is already in its final theme. There is no empty glass slab and no dark panel that turns light. The welcome heading has no box or ring around it, every button has space around it, and the reassurance text about security is not the loudest text on the screen.
@@ -123,9 +139,9 @@ Ref: MP-17, RO1-16
 
 1. Quit the app. Start it again with `--hide` added to the command from "Use a throwaway profile". The flag works the same way on every system.
 2. Watch the screen for five seconds. Note whether anything flashes, even for a moment, and whether keyboard focus leaves the window you were using.
-3. Open the tray menu (the menu bar item on macOS) and choose Show/Hide.
+3. Open the tray menu (the menu bar item on macOS) and choose Show/Hide. This needs a tray icon; without one, skip this step.
 
-Expected: Nothing appears on screen and focus stays where it was. A brief flash of the window before it hides counts as a failure; say how long it lasted. The tray icon appears, and Show/Hide shows the widget normally.
+Expected: Nothing appears on screen and focus stays where it was. A brief flash of the window before it hides counts as a failure; say how long it lasted. If you have a tray, its icon appears and Show/Hide shows the widget normally.
 
 Capture: A recording of the screen and a note of what lost focus.
 
@@ -133,11 +149,11 @@ Ref: MP-17
 
 ### ALL-3 Moving, resizing and closing the widget
 
-In desktop-layer mode (Hyprland, Sway, niri) skip steps 2 to 4; the Hyprland and Sway sections cover moving there.
+In desktop-layer mode (Hyprland, Sway, niri) skip steps 2 to 4; the Hyprland and Sway sections cover moving there. Sway and niri cannot move the widget by dragging, so on them only click the buttons in step 1.
 
 1. Drag the widget by the top edge and the bottom edge of its header (the strip with the title, the connection dot and the buttons) and by the strip to the left of the title. Then click Settings, Minimize and, if it is shown, the notification bell once each.
 2. Double-click the header.
-3. Drag the widget against a screen edge so the system tries to snap or tile it (Windows: drag to the top or a side; GNOME and KDE: drag to an edge, or press Super or Meta + Up). Quit from the tray and start the app again.
+3. Drag the widget against a screen edge so the system tries to snap or tile it (Windows: drag to the top or a side; GNOME and KDE: drag to an edge, or press Super or Meta + Up). Quit from the tray (this needs a tray icon) and start the app again.
 4. Drag a window corner inward as far as it goes, then far past the header.
 5. Close the widget three ways: the X at the right end of the header; Alt+F4 (Windows, Linux) or Cmd+W (macOS); the Minimize button. After each, bring it back from the tray, the menu bar or the popup hotkey. Each time, note whether the app is still running and what the X's tooltip says.
 
@@ -148,6 +164,10 @@ Capture: A recording of steps 1, 3 and 4, and the widget size before and after r
 Ref: CSSA1-16, MP-18, MP-39, RO2-41, MP-41, MP-76
 
 ### ALL-4 Tray or menu-bar menu
+
+Needs: A tray icon. Stock GNOME has none until you install an AppIndicator extension: run GNOME-2 first and then install one, or skip this check and say so in your report (see "Check for a tray icon").
+
+On a desktop layer (Hyprland, Sway, niri) Always on Top is greyed out and unchecked, because a layer cannot be kept on top, so skip that entry. There a left-click raises the widget above your windows and the next click lowers it, instead of hiding it, and Reset Position returns it to the default corner (see HYP-2 and SWAY-4).
 
 1. Find the app's icon: Windows may hide it under the ^ overflow; macOS shows it in the menu bar; on Linux it appears on your bar's tray (GNOME needs an AppIndicator extension).
 2. Hover for the tooltip. Open the menu (right-click; on macOS, click).
@@ -164,14 +184,16 @@ Ref: MP-19, MP-22, MP-53
 
 [Desktop pin QA](../DESKTOP_PIN_QA.md) has the full pin checklist. This check covers the platform-dependent parts.
 
+Pins cannot be dragged on Sway and niri. On them, skip the dragging in step 4 (resizing still applies) and the parts of the expected result about snapping and saved positions; SWAY-1 covers where pins sit there.
+
 1. Right-click a Quick Access tile and choose Pin to Desktop (or use the pin button on a tile while Reorganize Quick Access is on). Pin a light, a sensor and a scene, then pin four more.
 2. Unpin the second pin, then pin another tile.
 3. With Reorganize off, click the top-left corner of a pin (the bulb on a light pin). Then try to move a pin with the system's window-move gesture: hold Alt or Super and drag on Linux, or drag its title area.
-4. Open Reorganize Quick Access. Drag a pin, then resize it from each corner. Look for a lighter square at the pin's corners. If you have a dashboard with 30 or more tiles, note any stutter when you turn Reorganize on and off. Exit Reorganize.
+4. Open Reorganize Quick Access. Drag a pin (not on Sway or niri), then resize it from each corner. Look for a lighter square at the pin's corners. If you have a dashboard with 30 or more tiles, note any stutter when you turn Reorganize on and off. Exit Reorganize.
 5. Zoom into a pin's rounded corner at 100% display scale. Watch a new pin appear for a flash of a different background.
 6. Quit the app and start it again.
 
-Expected: Every new pin appears in its own free spot, not on top of another pin or on the widget. A click in the top-left corner of a pin works like a click anywhere on its control. Outside Reorganize, a pin cannot be moved: it does not stay where a window-move gesture or a drag put it. In Reorganize, a pin dropped across a screen edge snaps to a fully visible position right away, and the same position is there after restart. Pin corners are smooth, with no stair steps, and no square or lighter patch at the corners. A pin opens without a flash. Position and size are kept after the restart.
+Expected: Every new pin appears in its own free spot, not on top of another pin or on the widget. A click in the top-left corner of a pin works like a click anywhere on its control. Outside Reorganize, a pin cannot be moved: it does not stay where a window-move gesture or a drag put it. Where pins can be dragged (everywhere except Sway and niri), a pin dropped across a screen edge in Reorganize snaps to a fully visible position right away, and the same position is there after restart. Pin corners are smooth, with no stair steps, and no square or lighter patch at the corners. A pin opens without a flash. Size is kept after the restart, and so is position wherever pins can be dragged.
 
 Capture: A screenshot of the pins, a zoomed crop of one corner, and for any pin that moves, a recording.
 
@@ -211,7 +233,7 @@ Ref: CSSA1-01, CSSB2-03, CSSC2-07, CSSA1-41, CSSA2-21, CSSA3-15, CSSA3-17, CSSA1
 ### ALL-8 Window opacity over different wallpapers
 
 1. Settings > Appearance > Window Effects. Set Window opacity to 100, then to 60. Do this with Frosted glass background on and off, in the light and the dark theme. On Linux, crossing 100 may ask you to restart the app; accept (see LNX-3).
-2. Put the widget over a dark wallpaper and over a bright one (a white web page behind it is enough).
+2. Put the widget over a dark wallpaper and over a bright one (a white web page behind it is enough; on a desktop layer, where windows cover the widget, use a bright wallpaper instead).
 3. Read the title, the Settings, Minimize and X buttons, the tile names, and secondary text such as the state lines.
 4. Open Settings over the dashboard and look for a faint copy of the dashboard text behind the Settings headings and labels.
 
@@ -305,11 +327,11 @@ Ref: RO2-50
 
 ### ALL-15 Damaged settings values
 
-Use a throwaway profile only.
+Use a copy of your main test folder, never your real profile. This check damages `config.json` on purpose, and later checks need the pins from ALL-5.
 
-1. Quit the app. In the profile folder, open `config.json` in a text editor. Set `"windowSize": null` and add `"desktopPins": { "light.test": null }`. Keep the file valid JSON and save it.
-2. Start the app with the same profile.
-3. Quit from the tray and check that no process is left.
+1. Quit the app and copy the main test folder to a new folder. In the copy, open `config.json` in a text editor. Set `"windowSize": null` and set `"desktopPins": { "light.test": null }`, replacing any `desktopPins` value that is already there. Keep the file valid JSON and save it.
+2. Start the app with `--user-data-dir` pointing at the copy.
+3. Quit from the tray (this needs a tray icon) and check that no process is left.
 
 Expected: The widget starts at its default size, without pin errors, and Settings saves normally. No invisible process is left behind.
 
@@ -463,12 +485,12 @@ Windows 10 22H2 (build 19045) is the last version. Windows 11 21H2 and sessions 
 
 ### WIN10-1 Glass without acrylic
 
-This check helps the maintainer choose how the widget should look on systems without the Windows 11 blur.
+Windows 10 and Windows 11 21H2 cannot draw the Windows 11 blur. On them the widget is meant to draw the same solid panel that Frosted glass background off draws, not an unblurred tint.
 
-1. Use a new profile with the default settings. Put the widget over four backgrounds and take a screenshot of each: a busy photo with the dark theme; a bright photo with the dark theme; a dark wallpaper with the dark theme; a bright photo with the light theme.
+1. Use a new empty profile folder with the default settings (see "Use a throwaway profile"). Put the widget over four backgrounds and take a screenshot of each: a busy photo with the dark theme; a bright photo with the dark theme; a dark wallpaper with the dark theme; a bright photo with the light theme.
 2. Turn Frosted glass background off in Settings > Appearance > Window Effects and repeat the first one.
 
-Expected: With the default settings, text and icons are readable over all four backgrounds. The widget does not look like a faint dark tint over a sharp desktop. If readability needs Frosted glass off, that counts as a failure of the default even though the switch fixes it.
+Expected: With the default settings, text and icons are readable over all four backgrounds, and the widget looks the same as it does with Frosted glass background off. It does not look like a faint dark tint over a sharp desktop. If readability needs Frosted glass off, that counts as a failure of the default even though the switch fixes it.
 
 Capture: The four screenshots and the Windows build number.
 
@@ -669,7 +691,7 @@ Ref: MP-52
 
 ### LNX-7 Tray icon on a high-DPI bar
 
-Needs: A bar or panel at 200% scale, or a Wayland session with fractional scaling.
+Needs: A tray icon, and a bar or panel at 200% scale or a Wayland session with fractional scaling.
 
 1. Zoom into the tray icon.
 
@@ -683,7 +705,7 @@ Ref: MP-16
 
 Needs: A bare X11 window manager (i3, openbox, dwm), or XFCE with compositing turned off. Skip on GNOME and KDE.
 
-1. Start the app with the default settings in the light and the dark theme.
+1. Start the app with the default settings, in a new empty profile folder, because earlier checks changed the settings of your main folder (see "Use a throwaway profile"). Connect it to Home Assistant and look at the window in the light and the dark theme.
 2. Settings > Appearance: turn on High contrast with opaque panels, or set Window opacity to 100.
 
 Expected: With default settings the window looks as designed, not gray and muddy in the light theme or darker than designed in the dark theme. If it does not, the opaque setting fixes it.
@@ -695,6 +717,8 @@ Ref: MP-29
 ## GNOME, Wayland and X11
 
 Stock GNOME (Fedora Workstation, Debian) has no tray unless you install an AppIndicator extension. Ubuntu turns one on by default. If your distribution offers a GNOME on Xorg session, run GNOME-1 and GNOME-2 on both sessions.
+
+Run GNOME-2 before the shared checks and before you install an extension, on both sessions if you test both (see "Check for a tray icon"). GNOME-3 and the tray steps of the shared checks need the extension, so they come after it.
 
 ### GNOME-1 Alt+Tab and the overview
 
@@ -713,7 +737,7 @@ Ref: MP-24
 Needs: A GNOME without an AppIndicator extension.
 
 1. Click the widget's Minimize button. Look for a way back: the Dock, Alt+Tab, the overview, a tray icon.
-2. Start the app again from the app grid. Then close the widget with the X, and again with Alt+F4, and look for a way back each time.
+2. Start the app again with the same command you used before (the app grid starts your real profile, not the throwaway folder). Then close the widget with the X, and again with Alt+F4, and look for a way back each time.
 
 Expected: The widget does not vanish with no way back. Either it minimizes like a normal window and shows in the overview, or the app tells you once that GNOME needs an AppIndicator extension to show its tray icon. Starting the app again brings the widget back.
 
@@ -722,6 +746,8 @@ Capture: What you saw after Minimize.
 Ref: MP-41
 
 ### GNOME-3 Position and always on top
+
+Needs: An AppIndicator extension. On stock GNOME, install one after GNOME-2.
 
 1. Move the widget to a corner. Hide it from the tray (with the extension) and show it again.
 2. With Always on top on, open another window over it.
@@ -837,7 +863,7 @@ Some steps change your Hyprland blur setting, the Omarchy bar or the Omarchy the
 
 ### HYP-1 First run and tray
 
-1. Start with an empty profile. Read the welcome screen and the step about shortcuts.
+1. Start with a new empty profile folder (see "Use a throwaway profile"). Read the welcome screen and the step about shortcuts.
 2. Zoom into the tray icon on your bar.
 
 Expected: The heading has no box around it. The two buttons Set up shortcuts and Check popup shortcut have space between them, and the security note is not the loudest text. The tray icon is crisp at your bar's scale.
