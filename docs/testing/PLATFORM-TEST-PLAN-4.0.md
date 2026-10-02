@@ -8,15 +8,15 @@ The expected results describe how 4.0.0 is meant to behave. They were written ag
 
 ## Which sections to run
 
-| Your machine                        | Run                                                                                                                                                                                                                                                    |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Windows 11 (22H2 or later)          | Shared checks, Windows 11                                                                                                                                                                                                                              |
-| Windows 10                          | Shared checks, Windows 10 (it also points to a few Windows 11 checks)                                                                                                                                                                                  |
-| macOS, Apple silicon or Intel       | Shared checks, macOS                                                                                                                                                                                                                                   |
-| Any Linux desktop                   | Shared checks, Linux (every desktop), then the section for your desktop                                                                                                                                                                                |
-| GNOME, KDE Plasma                   | The matching section, plus Ubuntu 24.04 if you use an AppImage or .deb                                                                                                                                                                                 |
-| Hyprland or Omarchy, Sway, niri     | The matching section                                                                                                                                                                                                                                   |
-| Any machine with the right hardware | Whichever of the cross-cutting sections apply: contrast themes and screen readers, several monitors, large text, Chinese or Japanese input, language packs, profile sync, a real Home Assistant, cameras, a long-running session, updates, the website |
+| Your machine                           | Run                                                                                                                                                                                                                                                    |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Windows 11 (22H2 or later)             | Shared checks, Windows 11                                                                                                                                                                                                                              |
+| Windows 10                             | Shared checks, Windows 10 (it also points to a few Windows 11 checks)                                                                                                                                                                                  |
+| macOS, Apple silicon or Intel          | Shared checks, macOS                                                                                                                                                                                                                                   |
+| Any Linux desktop                      | Shared checks, Linux (every desktop), then the section for your desktop                                                                                                                                                                                |
+| GNOME, KDE Plasma                      | The matching section, plus Ubuntu 24.04 if you use an AppImage or .deb                                                                                                                                                                                 |
+| Hyprland or Omarchy, Sway, niri, river | The matching section                                                                                                                                                                                                                                   |
+| Any machine with the right hardware    | Whichever of the cross-cutting sections apply: contrast themes and screen readers, several monitors, large text, Chinese or Japanese input, language packs, profile sync, a real Home Assistant, cameras, a long-running session, updates, the website |
 
 Do the shared checks first. Later checks assume the Quick Access tiles from "Set up Home Assistant" and the pins from ALL-5. ALL-1 is the exception: it needs a profile folder that has never been started, so it does not use the one you set up (see "Use a throwaway profile"). On a Linux desktop with no tray icon, read "Check for a tray icon" before you start.
 
@@ -24,12 +24,12 @@ Do the shared checks first. Later checks assume the Quick Access tiles from "Set
 
 Run these first, in this order. They cover the problems most likely to affect the most people.
 
-| Your machine | Checks                                                                                                                                                                                               |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Windows 11   | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, WIN11-1, WIN11-2, WIN11-5, WIN11-6, WIN11-8                                                                                                                      |
-| Windows 10   | ALL-1, ALL-3, ALL-4, ALL-5, WIN10-1, WIN11-1, WIN11-3, WIN11-5, WIN11-6, WIN11-8                                                                                                                     |
-| macOS        | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, MAC-1, MAC-2, MAC-3, MAC-5, MAC-6                                                                                                                                |
-| Linux        | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, LNX-1, LNX-2, LNX-3, LNX-6, then the first two checks in the section for your desktop (GNOME, KDE Plasma, Hyprland, Sway or niri); on stock GNOME, GNOME-2 first |
+| Your machine | Checks                                                                                                                                                                                                      |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Windows 11   | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, WIN11-1, WIN11-2, WIN11-5, WIN11-6, WIN11-8                                                                                                                             |
+| Windows 10   | ALL-1, ALL-3, ALL-4, ALL-5, WIN10-1, WIN11-1, WIN11-3, WIN11-5, WIN11-6, WIN11-8                                                                                                                            |
+| macOS        | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, MAC-1, MAC-2, MAC-3, MAC-5, MAC-6                                                                                                                                       |
+| Linux        | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, LNX-1, LNX-2, LNX-3, LNX-6, then the first two checks in the section for your desktop (GNOME, KDE Plasma, Hyprland, Sway, niri or river); on stock GNOME, GNOME-2 first |
 
 On a GNOME without a tray extension, run GNOME-2 before anything else in this list. ALL-4 needs a tray icon, so run it only after you install an extension, or skip it (see "Check for a tray icon").
 
@@ -75,7 +75,7 @@ Use one main test folder for most checks (`hadw-test` in the examples above). A 
 
 ALL-15 damages `config.json` on purpose, so it uses a copy of your main folder.
 
-The settings file is `config.json` in that folder. Start at login and some update checks do not work in a throwaway profile; the checks that need your real profile say so. Before you use your real profile with a 4.0 build, back it up as described in [Upgrading to 4.0](../MIGRATION.md): the folders are `%APPDATA%\home-assistant-widget` on Windows, `~/Library/Application Support/home-assistant-widget` on macOS and `~/.config/home-assistant-widget` on Linux.
+The settings file is `config.json` in that folder. Start at login and some update checks do not work in a throwaway profile; the checks that need your real profile say so. Before you use your real profile with a 4.0 build, back it up as described in [Upgrading to 4.0](../MIGRATION.md): the folders are `%APPDATA%\home-assistant-widget` on Windows, `~/Library/Application Support/home-assistant-widget` on macOS and `~/.config/home-assistant-widget` on Linux (or `$XDG_CONFIG_HOME/home-assistant-widget` when `XDG_CONFIG_HOME` is set).
 
 When you finish, delete the throwaway folders. In Home Assistant, open your profile > Security and delete the refresh tokens the test profiles created.
 
@@ -93,7 +93,7 @@ Pin a few of them to the desktop where a check asks for pins.
 
 ### Check for a tray icon
 
-Several checks use the tray icon (the menu-bar item on macOS). Windows, macOS, KDE Plasma and Ubuntu have one. On Hyprland, Sway and niri it comes from your bar (the Omarchy bar or Waybar). Stock GNOME (Fedora Workstation, Debian) has none unless you install an AppIndicator extension, and a bare window manager may have none either.
+Several checks use the tray icon (the menu-bar item on macOS). Windows, macOS, KDE Plasma and Ubuntu have one. On Hyprland, Sway, niri and river it comes from your bar (the Omarchy bar or Waybar). Stock GNOME (Fedora Workstation, Debian) has none unless you install an AppIndicator extension, and a bare window manager may have none either.
 
 - Stock GNOME: run GNOME-2 before the shared checks. It tests the desktop as it is, with no tray, so it has to come before you install an extension. Then install an AppIndicator extension, restart the app and run the rest of the plan, ALL-4 included. If you would rather not install one, skip every step that uses the tray, including ALL-4, and say so in your report. GNOME-2 still counts.
 - Any other desktop with no tray icon: skip every step that uses the tray, including ALL-4, and say so in your report.
@@ -149,7 +149,7 @@ Ref: MP-17
 
 ### ALL-3 Moving, resizing and closing the widget
 
-In desktop-layer mode (Hyprland, Sway, niri) skip steps 2 to 4; the Hyprland and Sway sections cover moving there. Sway and niri cannot move the widget by dragging, so on them only click the buttons in step 1.
+In desktop-layer mode (Hyprland, Sway, niri, river) skip steps 2 to 4; the Hyprland and Sway sections cover moving there. Sway, niri and river cannot move the widget by dragging, so on them only click the buttons in step 1.
 
 1. Drag the widget by the top edge and the bottom edge of its header (the strip with the title, the connection dot and the buttons) and by the strip to the left of the title. Then click Settings, Minimize and, if it is shown, the notification bell once each.
 2. Double-click the header.
@@ -167,7 +167,7 @@ Ref: CSSA1-16, MP-18, MP-39, RO2-41, MP-41, MP-76
 
 Needs: A tray icon. Stock GNOME has none until you install an AppIndicator extension: run GNOME-2 first and then install one, or skip this check and say so in your report (see "Check for a tray icon").
 
-On a desktop layer (Hyprland, Sway, niri) Always on Top is greyed out and unchecked, because a layer cannot be kept on top, so skip that entry. There a left-click raises the widget above your windows and the next click lowers it, instead of hiding it, and Reset Position returns it to the default corner (HYP-2 on Hyprland, where you can drag the widget away first; SWAY-4 for the Sway and niri menu entry).
+On a desktop layer (Hyprland, Sway, niri, river) Always on Top is greyed out and unchecked, because a layer cannot be kept on top, so skip that entry. There a left-click raises the widget above your windows and the next click lowers it, instead of hiding it, and Reset Position returns it to the default corner (HYP-2 on Hyprland, where you can drag the widget away first; SWAY-4 for the Sway, niri and river menu entry).
 
 1. Find the app's icon: Windows may hide it under the ^ overflow; macOS shows it in the menu bar; on Linux it appears on your bar's tray (GNOME needs an AppIndicator extension).
 2. Hover for the tooltip. Open the menu (right-click; on macOS, click).
@@ -184,16 +184,16 @@ Ref: MP-19, MP-22, MP-53
 
 [Desktop pin QA](../DESKTOP_PIN_QA.md) has the full pin checklist. This check covers the platform-dependent parts.
 
-Pins cannot be dragged on Sway and niri. On them, skip the dragging in step 4 (resizing still applies) and the parts of the expected result about snapping and saved positions; SWAY-1 covers where pins sit there.
+Pins cannot be dragged on Sway, niri and river. On them, skip the dragging in step 4 (resizing still applies) and the parts of the expected result about snapping and saved positions; SWAY-1 covers where pins sit there.
 
 1. Right-click a Quick Access tile and choose Pin to Desktop (or use the pin button on a tile while Reorganize Quick Access is on). Pin a light, a sensor and a scene, then pin four more.
 2. Unpin the second pin, then pin another tile.
 3. With Reorganize off, click the top-left corner of a pin (the bulb on a light pin). Then try to move a pin with the system's window-move gesture: hold Alt or Super and drag on Linux, or drag its title area.
-4. Open Reorganize Quick Access. Drag a pin (not on Sway or niri), then resize it from each corner. Look for a lighter square at the pin's corners. If you have a dashboard with 30 or more tiles, note any stutter when you turn Reorganize on and off. Exit Reorganize.
+4. Open Reorganize Quick Access. Drag a pin (not on Sway, niri or river), then resize it from each corner. Look for a lighter square at the pin's corners. If you have a dashboard with 30 or more tiles, note any stutter when you turn Reorganize on and off. Exit Reorganize.
 5. Zoom into a pin's rounded corner at 100% display scale. Watch a new pin appear for a flash of a different background.
 6. Quit the app and start it again.
 
-Expected: Every new pin appears in its own free spot, not on top of another pin or on the widget. A click in the top-left corner of a pin works like a click anywhere on its control. Outside Reorganize, a pin cannot be moved: it does not stay where a window-move gesture or a drag put it. Where pins can be dragged (everywhere except Sway and niri), a pin dropped across a screen edge in Reorganize snaps to a fully visible position right away, and the same position is there after restart. Pin corners are smooth, with no stair steps, and no square or lighter patch at the corners. A pin opens without a flash. Size is kept after the restart, and so is position wherever pins can be dragged.
+Expected: Every new pin appears in its own free spot, not on top of another pin or on the widget. A click in the top-left corner of a pin works like a click anywhere on its control. Outside Reorganize, a pin cannot be moved: it does not stay where a window-move gesture or a drag put it. Where pins can be dragged (everywhere except Sway, niri and river), a pin dropped across a screen edge in Reorganize snaps to a fully visible position right away, and the same position is there after restart. Pin corners are smooth, with no stair steps, and no square or lighter patch at the corners. A pin opens without a flash. Size is kept after the restart, and so is position wherever pins can be dragged.
 
 Capture: A screenshot of the pins, a zoomed crop of one corner, and for any pin that moves, a recording.
 
@@ -201,7 +201,7 @@ Ref: MP-34, CSSA1-25, CSSA1-19, MP-37, MP-74, MP-75, CSSB2-42
 
 ### ALL-6 Hide on focus loss while arranging pins
 
-Layer-mode desktops (Hyprland, Sway, niri) do not hide on focus loss; skip this check there.
+Layer-mode desktops (Hyprland, Sway, niri, river) do not hide on focus loss; skip this check there.
 
 1. Settings > General > Window & Behavior: turn on Hide to tray when focus is lost. Read its help text. Save.
 2. Pin a tile and turn on Reorganize Quick Access. Click and drag the pin.
@@ -1021,9 +1021,9 @@ Run the monitor checks in MON-1 (the tray's Move to Monitor menu and Reset Posit
 
 Ref: none
 
-## Sway and niri (SWAY)
+## Sway, niri and river (SWAY)
 
-Sway, niri and river use the same desktop-layer mode as Hyprland, started automatically. Dragging and per-monitor pin positions are Hyprland features today, so these checks look at what a user of another compositor sees. For the popup shortcut, bind `ha-desktop-widget --toggle` yourself. Sway: `bindsym $mod+Shift+h exec ha-desktop-widget --toggle`. niri: `Mod+Shift+H { spawn "ha-desktop-widget" "--toggle"; }`.
+Sway, niri and river use the same desktop-layer mode as Hyprland, started automatically. Dragging and per-monitor pin positions are Hyprland features today, so these checks look at what a user of another compositor sees. For the popup shortcut, bind the widget's `--toggle` command yourself. The command depends on the package: `ha-desktop-widget` for the Arch package, `home-assistant-widget` for the `.deb`, and the full path of the AppImage file for the AppImage. With the Arch package, Sway: `bindsym $mod+Shift+h exec ha-desktop-widget --toggle`; niri: `Mod+Shift+H { spawn "ha-desktop-widget" "--toggle"; }`; river: `riverctl map normal Super+Shift H spawn 'ha-desktop-widget --toggle'`. Replace `ha-desktop-widget` with your package's command.
 
 ### SWAY-1 Pins
 
@@ -1049,7 +1049,7 @@ Ref: SM3-30, SM3-33
 
 ### SWAY-3 Dialogs and opacity 100
 
-1. Run LNX-3 on Sway or niri, with another window open over the widget.
+1. Run LNX-3 on Sway, niri or river, with another window open over the widget.
 
 Expected: As in LNX-3; a prompt is visible above your windows.
 
@@ -1150,11 +1150,11 @@ Needs: Two monitors with different scale factors (for example 100% and 150%). Ho
 3. Plug it in again. Then hide the widget to the tray while it is on monitor 2, unplug the monitor, and show the widget with the popup hotkey or the tray.
 4. Use the tray's Reset Position.
 5. With monitor 2 unplugged, quit and start the app. Look at the pins that were on monitor 2. Plug monitor 2 in, quit and start the app again.
-6. On Hyprland, Sway or niri, use the tray's Move to Monitor instead of dragging.
+6. On Hyprland, Sway, niri or river, use the tray's Move to Monitor instead of dragging.
 
-Per-monitor pin positions are a Hyprland-only feature on desktop layers. On Sway and niri, skip the pin parts of steps 1 and 5 and of the expected result; SWAY-1 covers where pins sit there.
+Per-monitor pin positions are a Hyprland-only feature on desktop layers. On Sway, niri and river, skip the pin parts of steps 1 and 5 and of the expected result; SWAY-1 covers where pins sit there.
 
-Expected: After step 1 everything is where you left it, at the right size on each scale. After step 2 the widget and the pins move to the remaining monitor and are fully visible. In step 3 the widget appears on the remaining monitor. Reset Position puts it fully on a connected monitor at its normal size. In step 5 the pins appear on monitor 1 while monitor 2 is missing, and go back to monitor 2, where you left them, once it is connected again (not on Sway or niri; see the note above). Move to Monitor lists your monitors and restarts the widget on the one you pick.
+Expected: After step 1 everything is where you left it, at the right size on each scale. After step 2 the widget and the pins move to the remaining monitor and are fully visible. In step 3 the widget appears on the remaining monitor. Reset Position puts it fully on a connected monitor at its normal size. In step 5 the pins appear on monitor 1 while monitor 2 is missing, and go back to monitor 2, where you left them, once it is connected again (not on Sway, niri or river; see the note above). Move to Monitor lists your monitors and restarts the widget on the one you pick.
 
 Capture: Screenshots at each step and your monitor layout.
 
