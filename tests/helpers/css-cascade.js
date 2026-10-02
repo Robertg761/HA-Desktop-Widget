@@ -281,8 +281,15 @@ function parseColor(value) {
     const [, firstColor, percent] = first.match(/^(.*?)\s+([\d.]+)%$/);
     const weight = Number(percent) / 100;
     const [a, b] = [parseColor(firstColor), parseColor(second)];
-    return a.map((channel, index) => channel * weight + b[index] * (1 - weight));
+    // Like the browser, interpolate premultiplied by alpha, so mixing with transparent keeps the
+    // colour and only lowers its alpha.
+    const alpha = a[3] * weight + b[3] * (1 - weight);
+    const channels = [0, 1, 2].map((index) =>
+      alpha === 0 ? 0 : (a[index] * a[3] * weight + b[index] * b[3] * (1 - weight)) / alpha
+    );
+    return [...channels, alpha];
   }
+  if (text.toLowerCase() === 'transparent') return [0, 0, 0, 0];
   const hex = text.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
   if (hex) {
     const digits =
