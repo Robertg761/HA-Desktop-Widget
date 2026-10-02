@@ -6,7 +6,8 @@
  * on an element using specificity, !important, source order, simple width/height media queries,
  * inheritance for colours and custom properties, inline styles, var() fallbacks and srgb
  * color-mix(). Interaction states are modelled with attributes: give the element
- * `data-focus-visible`, `data-focus` or `data-hover`.
+ * `data-focus-visible`, `data-focus` or `data-hover`. Pass `forcedColors: true` or
+ * `prefersContrast: 'more'` in the options to apply those media blocks.
  */
 const fs = require('fs');
 const path = require('path');
@@ -166,10 +167,15 @@ function selectorMatches(element, selector) {
   }
 }
 
-function mediaMatches(mediaText, viewport) {
+function mediaMatches(mediaText, viewport, { forcedColors = false, prefersContrast } = {}) {
   return splitTopLevel(mediaText).some((query) =>
     query.split(/\band\b/).every((condition) => {
       const feature = condition.trim().replace(/^\(|\)$/g, '');
+      if (feature === 'forced-colors: active') return forcedColors;
+      if (feature === 'forced-colors: none') return !forcedColors;
+      if (/^prefers-contrast:/.test(feature)) {
+        return feature.split(':')[1].trim() === (prefersContrast || 'no-preference');
+      }
       let match = feature.match(/^(max|min)-(width|height):\s*(\d+)px$/);
       if (match) {
         const [, bound, axis, size] = match;
@@ -185,13 +191,13 @@ function mediaMatches(mediaText, viewport) {
   );
 }
 
-function collectDeclarations(document, property, viewport) {
+function collectDeclarations(document, property, viewport, features) {
   const declarations = [];
   let order = 0;
   const visit = (rules) => {
     for (const rule of rules) {
       if (rule.cssRules && rule.media) {
-        if (mediaMatches(rule.media.mediaText, viewport)) visit(rule.cssRules);
+        if (mediaMatches(rule.media.mediaText, viewport, features)) visit(rule.cssRules);
         continue;
       }
       if (rule.cssRules && rule.conditionText !== undefined) {
@@ -218,9 +224,19 @@ function collectDeclarations(document, property, viewport) {
  * The winning declaration for `property` on `element` (before var() substitution), or null.
  * Returns `{ value, selector, specificity, important }`.
  */
-function cascadedDeclaration(element, property, { viewport = { width: 500, height: 600 } } = {}) {
+function cascadedDeclaration(
+  element,
+  property,
+  { viewport = { width: 500, height: 600 }, forcedColors, prefersContrast } = {}
+) {
   let winner = null;
-  for (const declaration of collectDeclarations(element.ownerDocument, property, viewport)) {
+  const features = { forcedColors, prefersContrast };
+  for (const declaration of collectDeclarations(
+    element.ownerDocument,
+    property,
+    viewport,
+    features
+  )) {
     for (const selector of splitTopLevel(declaration.selectorText)) {
       if (!selectorMatches(element, selector)) continue;
       const candidate = {
