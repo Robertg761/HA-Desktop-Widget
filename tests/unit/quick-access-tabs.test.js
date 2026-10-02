@@ -152,4 +152,41 @@ describe('quick-access-tabs helpers', () => {
     expect(reordered.customTabs[1].entityIds).toEqual(['light.d']);
     expect(reordered.favoriteEntities).toEqual(['light.c', 'light.a', 'light.b', 'light.d']);
   });
+
+  test('numbers pages that share an id one after another without clashing with later ids', () => {
+    const config = normalizeQuickAccessConfig({
+      customTabs: [
+        { id: 'page', name: 'A', entityIds: [] },
+        { id: 'page', name: 'B', entityIds: [] },
+        { id: 'page-2', name: 'C', entityIds: [] },
+        { id: 'page', name: 'D', entityIds: [] },
+        { id: 'page', name: 'E', entityIds: [] },
+      ],
+    });
+
+    expect(config.customTabs.map((tab) => tab.id)).toEqual([
+      'page',
+      'page-2',
+      'page-2-2',
+      'page-3',
+      'page-4',
+    ]);
+  });
+
+  test('normalizes tens of thousands of pages sharing one id in a moment', () => {
+    // A settings file can name any number of pages, and each repeat used to count up past all
+    // the earlier ones, so a file of a few hundred kilobytes froze the window for many seconds.
+    const customTabs = Array.from({ length: 20000 }, () => ({
+      id: 'page',
+      name: 'Page',
+      entityIds: [],
+    }));
+
+    const started = Date.now();
+    const config = normalizeQuickAccessConfig({ customTabs });
+
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(new Set(config.customTabs.map((tab) => tab.id)).size).toBe(20000);
+    expect(config.customTabs[19999].id).toBe('page-20000');
+  });
 });

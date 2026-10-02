@@ -45,12 +45,23 @@ function normalizeTabId(id, index) {
   return trimmed || `${DEFAULT_QUICK_ACCESS_TAB_ID}-${index + 1}`;
 }
 
+// Where each id's numbering got to in a set of used ids, so many pages sharing one id are
+// numbered in a single pass instead of each counting up from 2 past all the earlier ones.
+// Ids are only ever added to a set, so everything below the remembered number stays taken.
+const nextSuffixes = new WeakMap();
+
 function makeUniqueTabId(baseId, usedIds) {
+  if (!nextSuffixes.has(usedIds)) nextSuffixes.set(usedIds, new Map());
+  const suffixes = nextSuffixes.get(usedIds);
   let candidate = baseId;
-  let suffix = 2;
-  while (usedIds.has(candidate)) {
+  if (usedIds.has(candidate)) {
+    let suffix = suffixes.get(baseId) || 2;
     candidate = `${baseId}-${suffix}`;
-    suffix += 1;
+    while (usedIds.has(candidate)) {
+      suffix += 1;
+      candidate = `${baseId}-${suffix}`;
+    }
+    suffixes.set(baseId, suffix + 1);
   }
   usedIds.add(candidate);
   return candidate;

@@ -4697,6 +4697,92 @@ describe('Settings + Config Integration', () => {
         expect(mockElectronAPI.runProfileSync).not.toHaveBeenCalled();
       });
 
+      describe('when the encryption choice or passphrase in the form is not saved yet', () => {
+        // Sync runs against what is saved, so Sync Up would publish in the old mode while the
+        // form shows another, and Sync Down would read the file with the old passphrase.
+        const syncButtons = ['profile-sync-now', 'profile-sync-push-now', 'profile-sync-pull-now'];
+        const expectEveryButtonAskedToSave = async () => {
+          mockElectronAPI.runProfileSync = jest.fn().mockResolvedValue({ ok: true });
+          for (const id of syncButtons) {
+            mockUiUtils.showToast.mockClear();
+            document.getElementById(id).click();
+            await flush();
+            expect(lastToast()).toEqual([
+              'Save your settings first to start syncing.',
+              'warning',
+              expect.any(Number),
+            ]);
+          }
+          expect(mockUiUtils.showConfirm).not.toHaveBeenCalled();
+          expect(mockElectronAPI.runProfileSync).not.toHaveBeenCalled();
+        };
+
+        test('turning encryption on is answered, not synced in plain text', async () => {
+          await openWithRunningSync();
+          expect(document.getElementById('profile-sync-encryption-enabled').checked).toBe(false);
+
+          document.getElementById('profile-sync-encryption-enabled').click();
+
+          await expectEveryButtonAskedToSave();
+        });
+
+        test('turning encryption off is answered, not synced with the old passphrase', async () => {
+          await openWithRunningSync(
+            { encryptionEnabled: true, passphraseStored: true },
+            { encryptionEnabled: true }
+          );
+          expect(document.getElementById('profile-sync-encryption-enabled').checked).toBe(true);
+
+          document.getElementById('profile-sync-encryption-enabled').click();
+
+          await expectEveryButtonAskedToSave();
+        });
+
+        test('a passphrase typed over the saved one is answered', async () => {
+          await openWithRunningSync(
+            { encryptionEnabled: true, passphraseStored: true },
+            { encryptionEnabled: true }
+          );
+          const field = document.getElementById('profile-sync-passphrase');
+          field.value = 'a new passphrase';
+          field.dispatchEvent(new Event('input'));
+
+          await expectEveryButtonAskedToSave();
+        });
+
+        test('an unchanged form and a passphrase field left blank still sync', async () => {
+          await openWithRunningSync(
+            { encryptionEnabled: true, passphraseStored: true },
+            { encryptionEnabled: true }
+          );
+          mockElectronAPI.runProfileSync = jest.fn().mockResolvedValue({ ok: true });
+          document.getElementById('profile-sync-passphrase').value = '   ';
+
+          document.getElementById('profile-sync-now').click();
+          await flush();
+
+          expect(mockElectronAPI.runProfileSync).toHaveBeenCalledWith('auto');
+        });
+
+        test('a waiting encryption change is compared as the form draws it', async () => {
+          // The checkbox shows the change that was asked for, so leaving it alone is not an edit
+          // (sync then says the change comes first) and turning it back is.
+          await openWithRunningSync(
+            { encryptionChangePending: true },
+            { encryptionChangePending: true }
+          );
+          expect(document.getElementById('profile-sync-encryption-enabled').checked).toBe(true);
+          mockElectronAPI.runProfileSync = jest.fn();
+
+          document.getElementById('profile-sync-now').click();
+          await flush();
+          expect(lastToast()[0]).toBe('Finish or cancel the pending encryption change first.');
+
+          document.getElementById('profile-sync-encryption-enabled').click();
+          await expectEveryButtonAskedToSave();
+        });
+      });
+
       test('say a pending choice or encryption change comes first, not that sync failed', async () => {
         await openWithRunningSync({ needsResolution: true });
         mockElectronAPI.runProfileSync = jest.fn();
