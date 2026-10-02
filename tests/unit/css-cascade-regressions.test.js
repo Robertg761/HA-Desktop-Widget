@@ -169,13 +169,25 @@ describe('stylesheet cascade regressions', () => {
       render('', strip());
       const link = document.querySelector('.quick-access-tab-link');
       const label = document.querySelector('.quick-access-tab-label');
-      expect(resolvedValue(link, 'max-width')).toBe('28ch');
+      expect(resolvedValue(link, 'max-width')).toBe('34ch');
       expect(resolvedValue(label, 'text-overflow')).toBe('ellipsis');
       expect(resolvedValue(label, 'overflow')).toBe('hidden');
       render('reorganize', strip('reorganize'));
       expect(resolvedValue(document.querySelector('.quick-access-tab-link'), 'max-width')).toBe(
-        '24ch'
+        '28ch'
       );
+    });
+
+    it('keeps a page and its buttons inside the strip, clear of the fades', () => {
+      render('reorganize', strip('reorganize'));
+      const tab = document.querySelector('.quick-access-tab');
+      // A page wider than the strip would have its last button under the fade or out of reach, so
+      // the name gives way: the page is capped, its link may shrink, its buttons may not.
+      expect(resolvedValue(tab, 'max-width')).toMatch(/^calc\(100% - 2 \* \d+px\)$/);
+      const link = document.querySelector('.quick-access-tab-link');
+      expect(resolvedValue(link, 'min-width')).toBe('0');
+      expect(resolvedValue(link, 'flex-shrink')).toBe('1');
+      expect(resolvedValue(document.querySelector('.qa-tab-rename'), 'flex')).toBe('none');
     });
 
     it('gives up the words of Add page in a narrow window, and keeps them otherwise', () => {

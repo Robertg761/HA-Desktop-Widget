@@ -27,7 +27,29 @@ const tile = (entityId) => `#quick-controls [data-entity-id="${entityId}"]`;
 
 const openBrightness = (ctx) => ctx.click(tileDetails('light.desk_lamp'));
 const openClimate = (ctx) => ctx.click(tileDetails('climate.living_room'));
-const toggleEditMode = (ctx) => ctx.click('#reorganize-quick-controls-btn');
+// The page being edited carries its rename, duplicate and delete buttons in the tab strip. However
+// long its name and however wordy Add page is in the interface's language, they have to lie inside
+// the strip and clear of the fades at its edges, or they cannot be seen or reached.
+const EDIT_BUTTONS_IN_STRIP = `(() => {
+  const strip = document.querySelector('.quick-access-tab-scroll');
+  const tab = document.querySelector('.quick-access-tab.active');
+  if (!strip || !tab) return false;
+  const bounds = strip.getBoundingClientRect();
+  const fade = parseFloat(getComputedStyle(strip).getPropertyValue('--qa-tab-fade')) || 0;
+  const overflow = strip.dataset.overflow || '';
+  const left = bounds.left + (overflow === 'left' || overflow === 'both' ? fade : 0);
+  const right = bounds.right - (overflow === 'right' || overflow === 'both' ? fade : 0);
+  return [...tab.children].every((part) => {
+    const box = part.getBoundingClientRect();
+    return box.left >= left - 1 && box.right <= right + 1;
+  });
+})()`;
+
+async function toggleEditMode(ctx) {
+  await ctx.click('#reorganize-quick-controls-btn');
+  // The strip scrolls the page into view, which takes a moment.
+  await ctx.waitForExpression(EDIT_BUTTONS_IN_STRIP, 'the edited page inside the tab strip');
+}
 
 async function openSettingsTab(ctx, tab) {
   await ctx.click('#settings-btn');
@@ -100,7 +122,8 @@ const scenes = [
 
   // The page tab strip with 1, 3, 6 and 12 pages (German names, the last of them very long), in
   // normal and edit mode, light and dark, left to right and right to left. The active page is the
-  // last or next to last, which only shows if the strip scrolls it into view.
+  // last or next to last, which only shows if the strip scrolls it into view. In German, whose
+  // Add page is the wordiest, a long page name must still leave room for all its buttons.
   { name: 'tabs-three', config: pages('three', 'kitchen') },
   { name: 'tabs-three-edit', config: pages('three', 'kitchen'), setup: toggleEditMode },
   { name: 'tabs-six-edit', config: sixPages('devices'), setup: toggleEditMode },
@@ -112,6 +135,12 @@ const scenes = [
   { name: 'tabs-twelve', config: pages('twelve', 'page-12') },
   { name: 'tabs-twelve-edit', config: pages('twelve', 'page-6'), setup: toggleEditMode },
   { name: 'tabs-twelve-edit-last', config: pages('twelve', 'page-12'), setup: toggleEditMode },
+  {
+    name: 'tabs-twelve-de-edit',
+    ui: { language: 'de' },
+    config: pages('twelve', 'page-6'),
+    setup: toggleEditMode,
+  },
   { name: 'tabs-twelve-light', ui: { theme: 'light' }, config: pages('twelve', 'page-12') },
   {
     name: 'tabs-twelve-light-edit',

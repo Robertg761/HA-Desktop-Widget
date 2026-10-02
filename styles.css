@@ -3587,8 +3587,12 @@ body.first-run-active .widget-content > * {
   text-transform: uppercase;
   text-align: center;
   white-space: nowrap;
-  /* A long name is cut short (the tooltip has all of it) rather than filling the strip. */
-  max-width: 28ch;
+  /* A long name is cut short (the tooltip has all of it) rather than filling the strip. The
+     capitals are tracked wide, so this is about 20 of them. */
+  max-width: 34ch;
+  /* It gives way to the page around it, below (the shared .tab-link never shrinks). */
+  flex-shrink: 1;
+  min-width: 0;
   transition:
     background-color var(--transition-fast),
     color var(--transition-fast);
@@ -3596,7 +3600,7 @@ body.first-run-active .widget-content > * {
 
 /* The active page also carries its buttons while editing, so its name gives way sooner. */
 .quick-access-tabs.reorganize .tab-link {
-  max-width: 24ch;
+  max-width: 28ch;
 }
 
 /* The ellipsis needs a block to cut, which the flex button itself is not. */
@@ -3664,6 +3668,10 @@ body.first-run-active .widget-content > * {
   display: inline-flex;
   /* Keep its width; the strip scrolls instead of squeezing a page. */
   flex: 0 0 auto;
+  /* But never one that is wider than the strip shows between the fades: a page with its buttons
+     in a narrow strip (a long Add page label beside it) would have its last button under the
+     fade or out of reach. The name gives way, ending in an ellipsis. */
+  max-width: calc(100% - 2 * var(--qa-tab-fade));
   align-items: center;
   gap: var(--space-1);
   border-radius: var(--radius-sm);
@@ -3690,6 +3698,8 @@ body.first-run-active .widget-content > * {
 
 .qa-tab-btn {
   display: inline-flex;
+  /* The name gives way, not the buttons. */
+  flex: none;
   align-items: center;
   justify-content: center;
   width: 24px;
