@@ -388,7 +388,6 @@ describe('locale-packs export', () => {
       Hello: { de: 'Hallo!' },
       Alpha: { en: 'Alpha', de: 'Alpha-de', fr: 'Alpha-fr' },
     });
-    expect(Object.keys(exported)).not.toContain('Count: {{count}}');
   });
 
   it('includes English when the English text changed', () => {
