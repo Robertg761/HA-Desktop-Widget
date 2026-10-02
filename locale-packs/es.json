@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.49",
+  "version": "1.2.50",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1708,6 +1708,19 @@
     "The sync file is in use by another program or is read-only. Try again in a moment, and check the folder’s permissions if it keeps happening.": "Otro programa está usando el archivo de sincronización o es de solo lectura. Inténtalo de nuevo en un momento y comprueba los permisos de la carpeta si sigue ocurriendo.",
     "Details": "Detalles",
     "No unlocked system keyring (Secret Service) was found, so this computer cannot remember your Home Assistant sign-in or sync passphrase. Start gnome-keyring or KWallet, then restart the widget.": "No se encontró ningún llavero del sistema desbloqueado (Secret Service), así que este equipo no puede recordar tu inicio de sesión de Home Assistant ni la frase de contraseña de sincronización. Inicia gnome-keyring o KWallet y reinicia el widget.",
-    "Needs Windows 11 version 22H2 or later.": "Requiere Windows 11 versión 22H2 o posterior."
+    "Needs Windows 11 version 22H2 or later.": "Requiere Windows 11 versión 22H2 o posterior.",
+    "Device class: Temperature": "Temperatura",
+    "Device class: Humidity": "Humedad",
+    "Device class: Power": "Potencia",
+    "Device class: Energy": "Energía",
+    "Device class: Battery": "Batería",
+    "Device class: Pressure": "Presión",
+    "Device class: Illuminance": "Iluminancia",
+    "Device class: Voltage": "Tensión",
+    "Device class: Current": "Corriente",
+    "Device class: Door": "Puerta",
+    "Device class: Window": "Ventana",
+    "Device class: Motion": "Movimiento",
+    "Device class: Occupancy": "Ocupación"
   }
 }

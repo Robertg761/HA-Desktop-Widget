@@ -307,7 +307,7 @@ html {
   /* Step scale. The named steps below are the ONLY font sizes this stylesheet
      is allowed to use (see .stylelintrc.json); the small end is 1-2px-grained
      because the widget's dense card UI genuinely needs it. */
-  --font-size-3xs: 0.4375rem; /* 7px  — desktop-pin micro captions/badges */
+  --font-size-3xs: 0.4375rem; /* 7px  — the sensor gauge's end labels */
   --font-size-2xs: 0.5rem; /* 8px */
   --font-size-xs: 0.625rem; /* 10px */
   --font-size-xs-plus: 0.6875rem; /* 11px — section labels, tile state lines */
@@ -667,6 +667,7 @@ body.linux-performance-mode .form-group input,
 body.linux-performance-mode .form-group select,
 body.linux-performance-mode .form-group textarea,
 body.linux-performance-mode .desktop-pin-panel-button,
+body.linux-performance-mode .desktop-pin-power,
 body.linux-performance-mode .desktop-pin-control,
 body.linux-performance-mode .desktop-pin-action-primary,
 body.linux-performance-mode .desktop-pin-quick-toggle,
@@ -774,6 +775,16 @@ html.desktop-pin-mode body {
 .desktop-pin-shell {
   --desktop-pin-ui-font: 'Inter', 'Segoe UI', sans-serif;
   --desktop-pin-display-font: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
+  /* The type scale every pin family draws from. The default 168x148 pin is the baseline, so these
+     floors are what it shows and larger pins grow from them. Captions get 9px, not the 7px
+     "micro" step, which is unreadable at 1x. */
+  --desktop-pin-caption-size: 0.5625rem;
+  --desktop-pin-name-size: clamp(12px, 2.5vw + 6px, 15px);
+  --desktop-pin-value-size: clamp(15px, 6vw + 5px, 32px);
+  /* The top highlight and the rim of the glass. Pins are dark glass in every theme, so these are
+     not the theme's window and tile tokens, which turn bright and dark in the light theme. */
+  --desktop-pin-shell-highlight: rgba(255, 255, 255, 0.1);
+  --desktop-pin-shell-edge: rgba(255, 255, 255, 0.06);
   display: none;
   flex-direction: column;
   min-height: 100vh;
@@ -820,8 +831,8 @@ body.desktop-pin-mode .desktop-pin-shell {
   backdrop-filter: blur(var(--blur-xl)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
   box-shadow:
-    inset 0 1px 0 var(--window-highlight),
-    inset 0 0 0 1px var(--tile-border);
+    inset 0 1px 0 var(--desktop-pin-shell-highlight),
+    inset 0 0 0 1px var(--desktop-pin-shell-edge);
   isolation: isolate;
   clip-path: inset(0 round 24px);
 }
@@ -841,24 +852,6 @@ body.desktop-pin-mode .desktop-pin-shell::after {
   content: none;
 }
 
-body.desktop-pin-mode .desktop-pin-header {
-  display: flex;
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  right: auto;
-  z-index: 4;
-  align-items: flex-start;
-  justify-content: flex-start;
-  gap: 0;
-  padding: 0;
-  border-bottom: none;
-  background: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  pointer-events: none;
-}
-
 body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-shell,
 body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content,
 body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-empty,
@@ -871,14 +864,16 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-actions {
   display: none;
 }
 
-body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-header {
-  display: none;
-}
-
 body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content .control-item,
 body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-unavailable,
 body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-empty {
   pointer-events: none;
+}
+
+/* While editing, the pin's controls are inert, so they are dimmed under the hint instead of
+   competing with it. */
+body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content .control-item > * {
+  opacity: 0.45;
 }
 
 body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content::after {
@@ -890,7 +885,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content::after {
   z-index: 2;
   padding: 4px 8px;
   border-radius: var(--radius-full);
-  background: rgba(8, 12, 20, 0.78);
+  background: rgba(8, 12, 20, 0.92);
   color: var(--text-secondary);
   font-size: var(--font-size-xs);
   font-weight: 700;
@@ -945,43 +940,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   }
 }
 
-.desktop-pin-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 6px 8px 8px;
-  flex: 0 0 auto;
-  position: relative;
-  z-index: 2;
-}
-
-.desktop-pin-drag-region {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
-  -webkit-app-region: drag;
-}
-
-.desktop-pin-kicker {
-  font-size: var(--font-size-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: var(--text-secondary);
-  opacity: 0.8;
-}
-
-.desktop-pin-title {
-  font-size: var(--font-size-base);
-  font-weight: 700;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .desktop-pin-actions {
   display: flex;
   align-items: center;
@@ -1018,21 +976,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
     border-color var(--transition-fast),
     background var(--transition-fast),
     box-shadow var(--transition-fast);
-}
-
-body.desktop-pin-mode .desktop-pin-drag-region {
-  width: 30px;
-  min-width: 30px;
-  height: 24px;
-  min-height: 24px;
-  flex: 0 0 auto;
-  gap: 0;
-  border-radius: var(--radius-lg);
-  pointer-events: auto;
-}
-
-body.desktop-pin-mode .desktop-pin-drag-region::before {
-  content: none;
 }
 
 .desktop-pin-action:hover {
@@ -1090,7 +1033,6 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .desktop-pin-control {
-  cursor: pointer;
   border: none;
 }
 
@@ -1101,6 +1043,8 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .desktop-pin-light-control {
   --desktop-pin-tint-rgb: 255, 203, 104;
   --desktop-pin-control-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --desktop-pin-panel-pad: 12px;
+  --desktop-pin-panel-gap: 10px;
   position: relative;
   overflow: hidden;
   isolation: isolate;
@@ -1158,23 +1102,24 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-light-shell {
   display: grid;
+  /* Doubled so one wide child (a long label) cannot widen the column past the window. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr auto;
-  gap: 10px;
+  gap: var(--desktop-pin-panel-gap);
   width: 100%;
   min-height: 100%;
   position: relative;
   z-index: 1;
-  padding: 12px;
+  padding: var(--desktop-pin-panel-pad);
   border-radius: inherit;
 }
 
-/* Icon, name and status, then the power pill on the right. */
+/* Icon, name and status, then the power button on the right. */
 .desktop-pin-light-topline {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 10px;
+  gap: var(--desktop-pin-panel-gap);
   align-items: center;
-  min-height: 0;
 }
 
 .desktop-pin-light-meta {
@@ -1183,40 +1128,50 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-light-name {
   font-family: var(--desktop-pin-ui-font);
-  font-size: clamp(12px, 4.5vw, 14px);
+  font-size: var(--desktop-pin-name-size);
   font-weight: 700;
-  line-height: 1.1;
+  /* Tall enough for Arabic and Devanagari marks and Latin descenders, which the clipping below
+     would otherwise cut. */
+  line-height: 1.3;
   color: rgba(var(--desktop-pin-ink-rgb), 0.96);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   letter-spacing: 0.01em;
+}
+
+/* A name wraps to a second line before it is cut; the tile's title carries the whole name. */
+.desktop-pin-light-name {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .desktop-pin-light-status {
   margin-top: 3px;
   font-family: var(--desktop-pin-display-font);
-  font-size: clamp(7px, 1.4vw, 9px);
+  font-size: var(--desktop-pin-caption-size);
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(var(--desktop-pin-ink-rgb), 0.56);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.7);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.desktop-pin-light-power {
+/* A round power button on the light and fan pins: the state is the word in its label and title,
+   so it takes no width from the name in any language. Lit with the tile's tint while on. */
+.desktop-pin-power {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.1);
   background: rgba(var(--desktop-pin-ink-rgb), 0.04);
-  color: rgba(var(--desktop-pin-ink-rgb), 0.92);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.72);
   border-radius: var(--radius-full);
-  padding: 4px 10px;
-  min-width: 44px;
-  font-size: var(--font-size-xs);
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-size: var(--font-size-md);
   cursor: pointer;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
@@ -1230,21 +1185,25 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
     box-shadow var(--transition-fast);
 }
 
-.desktop-pin-light-power[data-active='true'] {
+.desktop-pin-power[data-active='true'] {
   background: rgba(var(--desktop-pin-tint-rgb), 0.2);
   border-color: rgba(var(--desktop-pin-tint-rgb), 0.4);
   color: rgba(var(--desktop-pin-ink-rgb), 0.98);
 }
 
-.desktop-pin-light-power:hover,
-.desktop-pin-light-power:focus-visible {
+.desktop-pin-power .entity-line-icon {
+  display: block;
+}
+
+.desktop-pin-power:hover,
+.desktop-pin-power:focus-visible {
   transform: translateY(-1px);
   background: rgba(var(--desktop-pin-ink-rgb), 0.08);
   border-color: rgba(var(--desktop-pin-ink-rgb), 0.15);
 }
 
 /* Pins are small and clip at their edges, so the ring is drawn inside the button. */
-.desktop-pin-light-power:focus-visible {
+.desktop-pin-power:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
 }
@@ -1297,18 +1256,18 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-light-brightness-label {
   font-family: var(--desktop-pin-display-font);
-  font-size: var(--font-size-3xs);
+  font-size: var(--desktop-pin-caption-size);
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(var(--desktop-pin-ink-rgb), 0.46);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.7);
 }
 
 .desktop-pin-light-meter-value {
   font-family: var(--desktop-pin-display-font);
   font-size: clamp(20px, 5vw, 32px);
   font-weight: 800;
-  line-height: 0.95;
+  line-height: 1.1;
   letter-spacing: -0.05em;
   color: rgba(var(--desktop-pin-ink-rgb), 0.98);
   font-variant-numeric: tabular-nums;
@@ -1344,10 +1303,9 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-light-slider::-webkit-slider-runnable-track {
   height: var(--desktop-pin-light-slider-track-size);
-  background: rgba(0, 0, 0, 0.2);
+  background: transparent;
   border-radius: var(--radius-full);
   border: none;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .desktop-pin-light-slider::-webkit-slider-thumb {
@@ -1370,40 +1328,6 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   transform: scale(1.1);
 }
 
-.desktop-pin-light-slider::-moz-range-track {
-  height: var(--desktop-pin-light-slider-track-size);
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: var(--radius-full);
-  border: none;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
-}
-
-.desktop-pin-light-slider::-moz-range-progress {
-  height: var(--desktop-pin-light-slider-track-size);
-  background: linear-gradient(
-    90deg,
-    rgba(var(--desktop-pin-tint-rgb), 0.7),
-    rgba(var(--desktop-pin-tint-rgb), 1)
-  );
-  border-radius: var(--radius-full);
-}
-
-.desktop-pin-light-slider::-moz-range-thumb {
-  width: var(--desktop-pin-light-slider-thumb-size);
-  height: var(--desktop-pin-light-slider-thumb-size);
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.95);
-  border: none;
-  box-shadow:
-    0 2px 5px rgba(0, 0, 0, 0.3),
-    0 0 0 1px rgba(0, 0, 0, 0.1);
-  transition: transform var(--transition-fast);
-}
-
-.desktop-pin-light-slider::-moz-range-thumb:hover {
-  transform: scale(1.1);
-}
-
 /* Doubled class: .desktop-pin-panel-progress, declared later, clips its overflow, which would
    cut the slider's round thumb down to the track's height. */
 .desktop-pin-light-brightness-track.desktop-pin-panel-progress {
@@ -1412,8 +1336,11 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   border-radius: var(--radius-full);
   overflow: visible;
   position: relative;
-  background: transparent;
-  box-shadow: none;
+  /* A dark track on near-black glass vanished (about 1.03:1) and left a lone thumb at 0%, so the
+     track is a light wash with a hairline rim. It sits under the fill, which the slider's own
+     track would otherwise wash out. */
+  background: rgba(var(--desktop-pin-ink-rgb), 0.16);
+  box-shadow: inset 0 0 0 1px rgba(var(--desktop-pin-ink-rgb), 0.14);
 }
 
 .desktop-pin-light-brightness-track::before {
@@ -1438,7 +1365,8 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 0;
+  /* Grows from the side the slider's minimum is on, which a right-to-left page mirrors. */
+  inset-inline-start: 0;
   pointer-events: none;
   min-width: 0;
   width: 0;
@@ -1471,10 +1399,13 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   color: rgba(var(--desktop-pin-ink-rgb), 0.86);
   border-radius: var(--radius-lg);
   min-height: 28px;
+  min-width: 0;
+  padding-inline: 2px;
+  line-height: 1.2;
   font-family: var(--desktop-pin-display-font);
   font-size: var(--font-size-xs);
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.04em;
   cursor: pointer;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   transition:
@@ -1500,6 +1431,20 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   box-shadow: none;
 }
 
+/* A lamp that is off is neutral like the other pins and the dashboard tiles, not an amber bulb
+   with a loud readout. */
+.desktop-pin-light-control[data-state='off'] {
+  --desktop-pin-tint-rgb: 130, 150, 176;
+}
+
+.desktop-pin-light-control[data-state='off'] .desktop-pin-light-glyph .entity-line-icon {
+  filter: none;
+}
+
+.desktop-pin-light-control[data-state='off'] .desktop-pin-light-meter-value {
+  color: rgba(var(--desktop-pin-ink-rgb), 0.6);
+}
+
 .desktop-pin-light-control[data-state='off'] .desktop-pin-light-shell {
   background: transparent;
   box-shadow: none;
@@ -1510,29 +1455,22 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-shell {
-  gap: 3px;
-  padding: 6px;
   grid-template-rows: auto auto auto;
-}
-
-.desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-topline {
-  gap: 4px;
-  align-items: center;
 }
 
 .desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-name {
   font-size: var(--font-size-xs);
+  -webkit-line-clamp: 1;
 }
 
 .desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-status {
   display: none;
 }
 
-.desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-power {
-  min-width: 34px;
-  padding: 2px 6px;
-  font-size: var(--font-size-2xs);
-  letter-spacing: 0.05em;
+.desktop-pin-light-control[data-layout='micro'] .desktop-pin-power {
+  width: 20px;
+  height: 20px;
+  font-size: var(--font-size-xs);
 }
 
 .desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-brightness {
@@ -1547,11 +1485,6 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   height: 18px;
   border-radius: var(--radius-sm);
   font-size: var(--font-size-xs);
-}
-
-.desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-brightness-label {
-  font-size: var(--font-size-3xs);
-  letter-spacing: 0.04em;
 }
 
 .desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-meter-value {
@@ -1578,11 +1511,6 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   border-radius: var(--radius-md);
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-shell {
-  gap: 10px;
-  padding: 10px 10px 9px;
-}
-
 .desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-brightness {
   gap: 7px;
 }
@@ -1594,11 +1522,6 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-size: var(--font-size-base);
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-brightness-label {
-  font-size: var(--font-size-3xs);
-  letter-spacing: 0.06em;
-}
-
 .desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-meter-value {
   font-size: clamp(16px, 4.3vw, 20px);
   letter-spacing: -0.03em;
@@ -1608,8 +1531,11 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   gap: 8px;
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-name {
-  font-size: var(--font-size-sm);
+.desktop-pin-panel-control[data-layout='compact'] .desktop-pin-power,
+.desktop-pin-light-control[data-layout='compact'] .desktop-pin-power {
+  width: 24px;
+  height: 24px;
+  font-size: var(--font-size-base);
 }
 
 .desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-status {
@@ -1625,6 +1551,11 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   --desktop-pin-light-slider-thumb-size: 14px;
 }
 
+.desktop-pin-light-control[data-layout='compact']
+  .desktop-pin-light-brightness-track.desktop-pin-panel-progress {
+  margin: 6px 0;
+}
+
 .desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-presets {
   gap: 4px;
 }
@@ -1634,17 +1565,8 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-size: var(--font-size-xs);
 }
 
-.desktop-pin-light-control[data-layout='roomy'] .desktop-pin-light-shell {
-  gap: 10px;
-  padding: 14px;
-}
-
 .desktop-pin-light-control[data-layout='roomy'] .desktop-pin-light-brightness {
   gap: 10px;
-}
-
-.desktop-pin-light-control[data-layout='roomy'] .desktop-pin-light-power {
-  min-width: 52px;
 }
 
 .desktop-pin-panel-control {
@@ -1691,16 +1613,12 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
     0 0 0 1px rgba(var(--desktop-pin-tint-rgb), 0.12);
 }
 
-.desktop-pin-panel-control::before,
-.desktop-pin-panel-control::after {
+.desktop-pin-panel-control::before {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-}
-
-.desktop-pin-panel-control::before {
   background: linear-gradient(
     135deg,
     rgba(255, 255, 255, 0.08),
@@ -1711,23 +1629,39 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   opacity: 0.86;
 }
 
-.desktop-pin-panel-control::after {
-  inset: auto 14px 10px 14px;
-  height: 1px;
-  border-radius: var(--radius-full);
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-  opacity: 0.72;
-}
-
 .desktop-pin-panel-shell,
 .desktop-pin-panel-body {
-  display: grid;
   gap: var(--desktop-pin-panel-gap);
   width: 100%;
   min-height: 100%;
   height: 100%;
   position: relative;
   z-index: 1;
+}
+
+/* One fixed column, so a wide child (a long German label) can never widen the grid past the
+   window and drag the slider and the buttons off its edge. The header takes its own height and
+   the body the rest, so spare height is never spread across the header's rows. */
+.desktop-pin-panel-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+/* A column of rows that take their own height. The meter (the glyph and the value) takes what is
+   left; without one the spare height sits around the slider, and the action row stays on the
+   bottom edge where it is in every other pin. */
+.desktop-pin-panel-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.desktop-pin-panel-body > .desktop-pin-panel-meter {
+  flex: 1 1 auto;
+}
+
+.desktop-pin-panel-body > :is(.desktop-pin-panel-slider-row, .desktop-pin-panel-actions) {
+  margin-top: auto;
 }
 
 .desktop-pin-panel-topline {
@@ -1741,9 +1675,8 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   min-width: 0;
 }
 
-/* Pin windows clip to a 24px corner radius, and in small windows the tile keeps only 4px of
-   padding (the narrow-window .control-item rule), so the top-right value is held clear of the
-   rounded corner. */
+/* Pin windows clip to a 24px corner radius, so the top-right value is held clear of the rounded
+   corner. */
 .desktop-pin-panel-topline > :is(.desktop-pin-panel-kpi, .desktop-pin-panel-aside) {
   margin-inline-end: 8px;
 }
@@ -1764,11 +1697,25 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-panel-name {
   font-family: var(--desktop-pin-ui-font);
-  font-size: clamp(10px, 1.9vw, 12px);
+  font-size: var(--desktop-pin-name-size);
   font-weight: 700;
-  line-height: 1.1;
+  /* Room for Arabic and Devanagari marks and Latin descenders, which the ellipsis clipping would
+     cut at a tight line box. */
+  line-height: 1.3;
   color: rgba(var(--desktop-pin-ink-rgb), 0.96);
   letter-spacing: 0.01em;
+}
+
+/* Windows with room for it let the name take a second line before the ellipsis; the tile's
+   title shows the whole name. */
+.desktop-pin-panel-control:is([data-layout='balanced'], [data-layout='roomy'])
+  .desktop-pin-panel-meta
+  .desktop-pin-panel-name {
+  display: -webkit-box;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .desktop-pin-panel-status,
@@ -1776,22 +1723,25 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .desktop-pin-panel-slider-label,
 .desktop-pin-panel-caption {
   font-family: var(--desktop-pin-display-font);
-  color: rgba(var(--desktop-pin-ink-rgb), 0.58);
-  font-size: var(--font-size-3xs);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.7);
+  font-size: var(--desktop-pin-caption-size);
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.08em;
+  line-height: 1.3;
   text-transform: uppercase;
 }
 
 .desktop-pin-panel-status {
-  margin-top: 3px;
+  margin-top: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .desktop-pin-panel-kpi,
-.desktop-pin-panel-value {
+.desktop-pin-panel-value,
+.desktop-pin-climate-target-value,
+.desktop-pin-climate-current-value {
   font-family: var(--desktop-pin-display-font);
   color: rgba(var(--desktop-pin-ink-rgb), 0.98);
   font-weight: 800;
@@ -1799,17 +1749,32 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   font-variant-numeric: tabular-nums;
 }
 
+.desktop-pin-climate-target-value,
+.desktop-pin-climate-current-value {
+  font-size: clamp(15px, 6vw + 5px, 22px);
+  line-height: 1.2;
+}
+
 .desktop-pin-panel-kpi {
   font-size: clamp(14px, 4vw, 18px);
-  line-height: 0.95;
+  line-height: 1.25;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .desktop-pin-panel-value {
-  font-size: clamp(15px, 4.2vw, 22px);
-  line-height: 0.95;
+  font-size: var(--desktop-pin-value-size);
+  line-height: 1.2;
+}
+
+/* A long reading ("0.7160215353965" or a long option name) is cut with an ellipsis, not wrapped
+   into the unit or out of the meter. */
+.desktop-pin-panel-meter .desktop-pin-panel-value {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .desktop-pin-panel-meter,
@@ -1819,7 +1784,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   gap: 6px;
   position: relative;
   overflow: hidden;
-  min-height: 42px;
+  min-height: var(--desktop-pin-meter-min, 42px);
   padding: 8px 10px;
   border-radius: var(--desktop-pin-panel-meter-radius);
   background:
@@ -1858,8 +1823,8 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .desktop-pin-fan-glyph {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: var(--desktop-pin-glyph-size, 28px);
+  height: var(--desktop-pin-glyph-size, 28px);
   border-radius: var(--radius-lg);
   background: linear-gradient(
     180deg,
@@ -1944,20 +1909,11 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   cursor: ew-resize;
 }
 
+/* One row of equal columns, however many buttons a family offers: a lone button fills the row
+   instead of sitting in the first of several fixed columns. */
 .desktop-pin-panel-actions {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.desktop-pin-action-actions,
-.desktop-pin-presence-actions,
-.desktop-pin-weather-actions {
-  grid-template-columns: 1fr;
-}
-
-.desktop-pin-enum-actions,
-.desktop-pin-numeric-actions,
-.desktop-pin-vacuum-actions {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
 }
 
 .desktop-pin-weather-stats {
@@ -1978,6 +1934,9 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   min-width: 0;
   min-height: 28px;
   padding: 6px 8px;
+  /* A fixed line box: the "normal" one of an Arabic or Devanagari fallback font is taller than the
+     button's minimum height and pushed the bottom row past the window. */
+  line-height: 1.2;
   border-radius: var(--radius-lg);
   border: 1px solid rgba(var(--desktop-pin-ink-rgb), 0.08);
   background:
@@ -1987,7 +1946,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
       rgba(var(--desktop-pin-ink-rgb), 0.02)
     ),
     rgba(var(--desktop-pin-ink-rgb), 0.02);
-  color: rgba(var(--desktop-pin-ink-rgb), 0.92);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.8);
   font-family: var(--desktop-pin-ui-font);
   font-size: var(--font-size-xs);
   font-weight: 700;
@@ -2017,9 +1976,12 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   white-space: nowrap;
 }
 
-.desktop-pin-panel-button[data-active='true'] {
-  background: rgba(var(--desktop-pin-tint-rgb), 0.15);
-  border-color: rgba(var(--desktop-pin-tint-rgb), 0.3);
+/* The active mode, speed or state differs by more than a faint tint: a brighter label and edge. */
+.desktop-pin-panel-button[data-active='true'],
+.desktop-pin-panel-button[data-active='true']:hover {
+  background: rgba(var(--desktop-pin-tint-rgb), 0.2);
+  border-color: rgba(var(--desktop-pin-tint-rgb), 0.6);
+  color: rgba(var(--desktop-pin-ink-rgb), 1);
 }
 
 .desktop-pin-panel-button:hover,
@@ -2052,14 +2014,17 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .desktop-pin-media-title {
   font-family: var(--desktop-pin-ui-font);
   color: rgba(var(--desktop-pin-ink-rgb), 0.96);
-  font-size: clamp(11px, 2.3vw, 13px);
+  /* A step above the device's name, which it used to sit 1px over. */
+  font-size: calc(var(--desktop-pin-name-size) + 1px);
   font-weight: 700;
+  line-height: 1.3;
 }
 
 .desktop-pin-media-artist {
   font-family: var(--desktop-pin-ui-font);
-  color: rgba(var(--desktop-pin-ink-rgb), 0.62);
-  font-size: var(--font-size-xs);
+  color: rgba(var(--desktop-pin-ink-rgb), 0.7);
+  font-size: var(--font-size-xs-plus);
+  line-height: 1.3;
 }
 
 .desktop-pin-panel-progress {
@@ -2114,6 +2079,14 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 
 .desktop-pin-camera-preview {
   min-height: 56px;
+}
+
+/* One line, cut with an ellipsis: "Ouvrir le flux de la caméra" wrapped to two and was clipped. */
+.desktop-pin-camera-preview .desktop-pin-panel-caption {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .desktop-pin-scene-shell,
@@ -2182,6 +2155,12 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
     linear-gradient(155deg, rgba(20, 16, 14, 0.9), rgba(14, 12, 10, 0.95));
 }
 
+/* The tile clips its overflow, so the ring is drawn inside it. */
+.desktop-pin-scene-control:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -4px;
+}
+
 .desktop-pin-scene-control .desktop-pin-panel-shell,
 .desktop-pin-scene-control .desktop-pin-panel-body {
   height: 100%;
@@ -2219,7 +2198,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .desktop-pin-media-control .desktop-pin-panel-actions {
-  grid-template-columns: repeat(3, minmax(46px, 72px));
+  grid-auto-columns: minmax(46px, 96px);
   justify-content: center;
 }
 .desktop-pin-toggle-control {
@@ -2284,10 +2263,6 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   min-height: 30px;
 }
 
-.desktop-pin-toggle-body .desktop-pin-panel-actions {
-  grid-template-columns: 1fr;
-}
-
 /* Stacked, the glyph and the state need about 63px, more than the middle panel gets below the
    default pin height (42px at the 156x122 minimum), which cut the state off at the bottom. Short
    pins put them side by side. */
@@ -2305,34 +2280,76 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   }
 }
 
-.desktop-pin-climate-modes {
-  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
-}
-
-.desktop-pin-panel-control[data-dense-variant='tight'] {
+/* The default 168x148 pin is the baseline every family is drawn for: the compact layout, and the
+   tight variant that smaller media pins share. Spacing, the meter and the buttons are cut down to
+   what fits a 146px-tall tile above its rounded bottom edge, in every language; larger pins have
+   room and keep the roomier base values. */
+.desktop-pin-panel-control:is([data-layout='compact'], [data-dense-variant='tight']),
+.desktop-pin-light-control[data-layout='compact'] {
   --desktop-pin-panel-pad: 8px;
   --desktop-pin-panel-gap: 6px;
   --desktop-pin-panel-meter-radius: 12px;
+  --desktop-pin-meter-min: 34px;
+  --desktop-pin-glyph-size: 24px;
 }
 
-.desktop-pin-panel-control[data-dense-variant='tight'] .desktop-pin-panel-topline {
+.desktop-pin-panel-control:is([data-layout='compact'], [data-dense-variant='tight'])
+  .desktop-pin-panel-topline {
   gap: 6px;
 }
 
-.desktop-pin-panel-control[data-dense-variant='tight'] .desktop-pin-panel-meter,
-.desktop-pin-panel-control[data-dense-variant='tight'] .desktop-pin-cover-frame {
-  min-height: 34px;
+.desktop-pin-panel-control:is([data-layout='compact'], [data-dense-variant='tight'])
+  :is(.desktop-pin-panel-meter, .desktop-pin-cover-frame) {
   padding: 6px 8px;
 }
 
-.desktop-pin-panel-control[data-dense-variant='tight'] .desktop-pin-panel-button {
+/* Sentence case, tight tracking and little padding: capitals and wide tracking cannot hold a word
+   like "Désactivé" in a third of 150px. */
+.desktop-pin-panel-control:is([data-layout='compact'], [data-dense-variant='tight'])
+  .desktop-pin-panel-button {
   min-height: 24px;
-  padding: 4px 6px;
+  padding: 4px 3px;
   border-radius: var(--radius-md);
+  letter-spacing: 0.02em;
+  text-transform: none;
 }
 
-.desktop-pin-panel-control[data-dense-variant='tight'] .desktop-pin-panel-actions {
+.desktop-pin-panel-control:is([data-layout='compact'], [data-dense-variant='tight'])
+  .desktop-pin-panel-actions {
   gap: 4px;
+}
+
+/* The glyph and the value side by side: a stacked pair does not fit the meter at any size, because
+   the fan's slider and presets, or the weather's stats, share the middle of the pin with it. */
+.desktop-pin-fan-control .desktop-pin-panel-meter,
+.desktop-pin-weather-control .desktop-pin-panel-meter {
+  grid-auto-flow: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 4px 10px;
+}
+
+/* The weather's header and meter would both print the temperature. */
+.desktop-pin-weather-control[data-layout='compact']
+  .desktop-pin-panel-topline
+  .desktop-pin-panel-kpi {
+  display: none;
+}
+
+.desktop-pin-weather-control[data-layout='compact']
+  .desktop-pin-weather-stats
+  .desktop-pin-panel-stat {
+  min-height: 0;
+  padding: 3px 4px;
+}
+
+.desktop-pin-weather-control[data-layout='compact'] .desktop-pin-panel-stat-label {
+  overflow: hidden;
+  letter-spacing: 0;
+  text-align: center;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
 }
 
 .desktop-pin-climate-control[data-dense-variant='tight'] .desktop-pin-climate-target-stat {
@@ -2343,26 +2360,28 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   margin-top: -2px;
 }
 
-.desktop-pin-fan-control[data-dense-variant='tight'] .desktop-pin-panel-actions,
-.desktop-pin-media-control[data-dense-variant='tight'] .desktop-pin-panel-actions {
-  grid-template-columns: repeat(3, minmax(42px, 64px));
-  justify-content: center;
-}
-
-/* Three verbs share the smallest pins. Equal thirds in capitals cannot hold "Schließen", so the
-   buttons take their label's width in sentence case and fall back to an ellipsis (with a title). */
-.desktop-pin-cover-control[data-dense-variant='tight'] .desktop-pin-panel-actions {
+/* Three modes, verbs or speeds share a 150px row. They take their label's width where equal thirds
+   cannot hold it ("Schließen", "Désactivé") and fall back to an ellipsis, with a title. */
+:is(
+    .desktop-pin-cover-control,
+    .desktop-pin-climate-control,
+    .desktop-pin-fan-control
+  )[data-dense-variant='tight']
+  .desktop-pin-panel-actions {
   display: flex;
+  gap: 3px;
 }
 
-.desktop-pin-cover-control[data-dense-variant='tight'] .desktop-pin-cover-action {
+:is(
+    .desktop-pin-cover-control,
+    .desktop-pin-climate-control,
+    .desktop-pin-fan-control
+  )[data-dense-variant='tight']
+  .desktop-pin-panel-button {
   flex: 1 1 auto;
-  padding-inline: 4px;
-  overflow: hidden;
-  letter-spacing: 0.02em;
-  text-overflow: ellipsis;
-  text-transform: none;
-  white-space: nowrap;
+  min-width: 0;
+  padding-inline: 2px;
+  letter-spacing: 0;
 }
 
 .desktop-pin-media-control[data-dense-variant='tight'] .desktop-pin-media-copy {
@@ -2373,10 +2392,12 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   height: 6px;
 }
 
-.desktop-pin-panel-control[data-layout='micro'] {
+.desktop-pin-panel-control[data-layout='micro'],
+.desktop-pin-light-control[data-layout='micro'] {
   --desktop-pin-panel-pad: 6px;
   --desktop-pin-panel-gap: 4px;
   --desktop-pin-panel-meter-radius: 10px;
+  --desktop-pin-meter-min: 28px;
 }
 
 .desktop-pin-panel-control[data-layout='micro'] .desktop-pin-panel-topline {
@@ -2416,10 +2437,6 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
    and the depleting bar along the bottom edge rather than by boxes and captions. */
 .desktop-pin-timer-control {
   --desktop-pin-panel-meter-radius: 0;
-}
-
-.desktop-pin-timer-control::after {
-  display: none;
 }
 
 .desktop-pin-timer-shell {
@@ -2564,9 +2581,10 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 }
 
 .desktop-pin-panel-control[data-layout='micro'] .desktop-pin-panel-button {
-  min-height: 20px;
-  padding: 3px 5px;
-  font-size: var(--font-size-3xs);
+  min-height: 22px;
+  padding: 2px 5px;
+  letter-spacing: 0.02em;
+  text-transform: none;
   border-radius: var(--radius-md);
 }
 
@@ -2820,8 +2838,6 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.3),
     0 4px 10px rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(12px) saturate(140%);
-  -webkit-backdrop-filter: blur(12px) saturate(140%);
   pointer-events: none;
 }
 
@@ -6679,9 +6695,9 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
   border-radius: var(--radius-full);
   background: rgba(8, 11, 16, 0.64);
   color: rgba(255, 255, 255, 0.8);
-  font-size: var(--font-size-3xs);
+  font-size: var(--font-size-xs);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   line-height: 1;
   text-transform: uppercase;
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.24);
@@ -12872,8 +12888,7 @@ label.disabled {
 /* Dragging a Wayland layer uses compositor coordinates, never native xdg move. */
 body.layer-drag-enabled .header,
 body.layer-drag-enabled .drag-area,
-body.layer-drag-enabled .drag-region,
-body.layer-drag-enabled .desktop-pin-drag-region {
+body.layer-drag-enabled .drag-region {
   -webkit-app-region: no-drag;
 }
 
@@ -13064,17 +13079,6 @@ body.large-interface .modal-body {
 
 body.large-interface .modal-footer {
   flex-wrap: wrap;
-}
-
-/* Small pinned windows retain access to every control at increased zoom. */
-body.large-interface.desktop-pin-mode .desktop-pin-shell {
-  overflow: auto;
-}
-
-body.large-interface.desktop-pin-mode .desktop-pin-content {
-  flex-shrink: 0;
-  min-width: 140px;
-  min-height: 122px;
 }
 
 /* Native primary and detail actions share a labelled tile group. */
@@ -15281,6 +15285,9 @@ body.desktop-pin-mode .control-item.desktop-pin-panel-control {
 }
 
 body.desktop-pin-mode .control-item.desktop-pin-light-control {
+  /* The narrow-window .control-item padding, declared later than the control's own, would
+     otherwise leave 4px around the shell and a light pin's content 4px further in than the others. */
+  padding: 0;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-xl);
   background:
@@ -15309,10 +15316,20 @@ body.desktop-pin-mode.theme-light {
   --focus-ring: var(--accent);
 }
 
+/* Only the light and scene pins act wherever they are clicked. The others have buttons and sliders
+   that show their own cursors, and a hand over a sensor would promise a click that does nothing. */
+body.desktop-pin-mode .control-item.desktop-pin-control {
+  cursor: default;
+}
+
+body.desktop-pin-mode .control-item:is(.desktop-pin-light-control, .desktop-pin-scene-control) {
+  cursor: pointer;
+}
+
 /* The header note is secondary to the body's value: small and quiet, never a second headline
    squeezed into the corner. */
 body.desktop-pin-mode .desktop-pin-panel-topline .desktop-pin-panel-kpi {
-  align-self: center;
+  align-self: start;
   max-width: 7em;
   color: rgba(255, 255, 255, 0.72);
   font-family: var(--desktop-pin-ui-font);
@@ -15320,13 +15337,6 @@ body.desktop-pin-mode .desktop-pin-panel-topline .desktop-pin-panel-kpi {
   font-weight: 600;
   letter-spacing: 0;
   line-height: 1.2;
-}
-
-/* Default-size pins (~168x148): a little less padding and a smaller glyph, so the value in the
-   meter clears the meter's own edge. */
-body.desktop-pin-mode .control-item.desktop-pin-panel-control[data-layout='compact'] {
-  --desktop-pin-panel-pad: 10px;
-  --desktop-pin-panel-gap: 8px;
 }
 
 body.desktop-pin-mode
@@ -15345,7 +15355,7 @@ body.desktop-pin-mode
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  padding: 5px 10px;
+  padding: 3px 10px;
 }
 
 body.desktop-pin-mode
@@ -15360,9 +15370,20 @@ body.desktop-pin-mode
   display: none;
 }
 
-/* Chips size to their label (German "Öffnen" overflowed a fixed-width chip). */
-body.desktop-pin-mode .desktop-pin-panel-chip {
-  min-width: max-content;
+/* A toast raised in a pin (a failed command) has 168px to sit in, so it shrinks to the window
+   instead of keeping its 200px minimum, and it is dark like the pin whatever the theme. */
+body.desktop-pin-mode .toast-container {
+  bottom: var(--space-2);
+  width: calc(100vw - 16px);
+}
+
+body.desktop-pin-mode .toast {
+  min-width: 0;
+  max-width: 100%;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-xs);
+  background: rgba(var(--window-bg-rgb), 0.96);
+  color: var(--text-primary);
 }
 
 /* Unavailable, missing or waiting pins: a short kicker, the name and one sentence, sized for a
@@ -16141,12 +16162,23 @@ body[data-season='thanksgiving'] .control-item {
     .sensor-detail-value,
     .sensor-value,
     .desktop-pin-panel-name,
+    .desktop-pin-light-name,
     .desktop-pin-panel-kpi,
     .desktop-pin-panel-value,
     .desktop-pin-media-title,
+    .desktop-pin-media-artist,
     .desktop-pin-climate-target-value
   ) {
   unicode-bidi: plaintext;
+}
+
+/* The brightness fill grows from the right, like the mirrored slider's thumb. */
+[dir='rtl'] .desktop-pin-light-brightness-fill {
+  background: linear-gradient(
+    270deg,
+    rgba(var(--desktop-pin-tint-rgb), 0.7),
+    rgba(var(--desktop-pin-tint-rgb), 1)
+  );
 }
 
 /* A value and its unit in separate spans keep their left-to-right order. */

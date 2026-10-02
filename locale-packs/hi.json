@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.49",
+  "version": "1.2.50",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1708,6 +1708,19 @@
     "The sync file is in use by another program or is read-only. Try again in a moment, and check the folder’s permissions if it keeps happening.": "सिंक फ़ाइल किसी दूसरे प्रोग्राम में उपयोग हो रही है या केवल-पढ़ने योग्य है। थोड़ी देर बाद फिर कोशिश करें, और अगर समस्या बनी रहे तो फ़ोल्डर की अनुमतियाँ जाँचें।",
     "Details": "विवरण",
     "No unlocked system keyring (Secret Service) was found, so this computer cannot remember your Home Assistant sign-in or sync passphrase. Start gnome-keyring or KWallet, then restart the widget.": "कोई अनलॉक सिस्टम कीरिंग (Secret Service) नहीं मिली, इसलिए यह कंप्यूटर आपका Home Assistant साइन-इन या सिंक पासफ़्रेज़ याद नहीं रख सकता। gnome-keyring या KWallet शुरू करें, फिर विजेट को पुनः आरंभ करें।",
-    "Needs Windows 11 version 22H2 or later.": "Windows 11 संस्करण 22H2 या उसके बाद का संस्करण आवश्यक है।"
+    "Needs Windows 11 version 22H2 or later.": "Windows 11 संस्करण 22H2 या उसके बाद का संस्करण आवश्यक है।",
+    "Device class: Temperature": "तापमान",
+    "Device class: Humidity": "आर्द्रता",
+    "Device class: Power": "पावर",
+    "Device class: Energy": "ऊर्जा",
+    "Device class: Battery": "बैटरी",
+    "Device class: Pressure": "दबाव",
+    "Device class: Illuminance": "रोशनी",
+    "Device class: Voltage": "वोल्टेज",
+    "Device class: Current": "करंट",
+    "Device class: Door": "दरवाज़ा",
+    "Device class: Window": "खिड़की",
+    "Device class: Motion": "गति",
+    "Device class: Occupancy": "अधिभोग"
   }
 }
