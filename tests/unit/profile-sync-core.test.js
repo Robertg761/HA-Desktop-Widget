@@ -23,6 +23,7 @@ const {
   decodeEnvelopeSections,
   isEnvelopeEncrypted,
   isSyncFileDamagedError,
+  hasValidSectionFields,
 } = require('../../profile-sync-core.js');
 
 const LAYOUT_ONLY = {
@@ -718,6 +719,62 @@ describe('profile-sync-core', () => {
           tileSpans: { 'light.kitchen': 2 },
         })
       ).toBe(false);
+    });
+
+    test('never writes a tile span the other side would call damage', () => {
+      const sections = buildLocalSections(
+        {
+          tileSpans: { 'light.a': 2, 'light.b': 99, 'light.c': 0, 'light.d': 1.5, 'light.e': '3' },
+        },
+        { preset: 'custom', sections: { quickAccessLayout: true } }
+      );
+
+      expect(sections.quickAccessLayout.tileSpans).toEqual({ 'light.a': 2 });
+      expect(hasValidSectionFields('quickAccessLayout', sections.quickAccessLayout)).toBe(true);
+    });
+
+    test('checks what is inside pages, graphs, tile spans and ui', () => {
+      const layout = (data) => hasValidSectionFields('quickAccessLayout', data);
+      const look = (ui) => hasValidSectionFields('visualPersonalization', { ui });
+
+      // A page or graph with a name or id that is not text, or entities that are not a list of ids.
+      expect(layout({ customTabs: [{ id: 7, name: 'Home', entityIds: [] }] })).toBe(false);
+      expect(layout({ customTabs: [{ id: 'home', name: ['Home'], entityIds: [] }] })).toBe(false);
+      expect(layout({ customTabs: [{ id: 'home', name: 'Home', entityIds: 'light.desk' }] })).toBe(
+        false
+      );
+      expect(layout({ customTabs: [{ id: 'home', name: 'Home', entityIds: [1, 2] }] })).toBe(false);
+      expect(layout({ comparisonGraphs: [{ id: 'g', entityIds: [], span: '2' }] })).toBe(false);
+      expect(layout({ tileSpans: { 'light.desk': 99 } })).toBe(false);
+      expect(layout({ tileSpans: { 'light.desk': '2' } })).toBe(false);
+      expect(layout({ tileSpans: { 'light.desk': 0 } })).toBe(false);
+
+      // Known ui keys of the wrong type.
+      expect(look({ theme: 5 })).toBe(false);
+      expect(look({ highContrast: 'yes' })).toBe(false);
+      expect(look({ customColors: 'red' })).toBe(false);
+      expect(look({ seasonal: [] })).toBe(false);
+
+      // Everything the app writes, and what a later version may add, is still fine.
+      expect(
+        layout({
+          customTabs: [{ id: 'home', name: 'Home', entityIds: ['light.desk'], icon: 'mdi:home' }],
+          comparisonGraphs: [{ id: 'g', name: 'Temps', entityIds: ['sensor.t'], span: 2 }],
+          tileSpans: { 'light.desk': 4, 'sensor.t': 1 },
+        })
+      ).toBe(true);
+      expect(layout({ customTabs: [{ id: 'home' }, {}], tileSpans: {} })).toBe(true);
+      expect(
+        look({
+          theme: 'a-theme-from-a-later-version',
+          density: 'spacious',
+          highContrast: false,
+          customColors: [],
+          seasonal: { enabled: null },
+          aKeyFromALaterVersion: { anything: true },
+        })
+      ).toBe(true);
+      expect(look({ theme: null })).toBe(true);
     });
 
     test('refuses a file that requires a newer reader whatever schema it claims', () => {

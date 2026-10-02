@@ -410,6 +410,120 @@ describe('profile sync engine', () => {
     expect(desktop.config.entityAlerts).toEqual({ enabled: false, alerts: {} });
   });
 
+  test('a section with malformed pages is damage, not a layout to apply', async () => {
+    const { desktop, laptop } = await createSyncedPair({
+      desktop: {
+        content: {
+          ...baseContent(),
+          customTabs: [{ id: 'home', name: 'Home', entityIds: ['light.kitchen'] }],
+        },
+      },
+      laptop: {
+        content: {
+          ...baseContent(),
+          customTabs: [{ id: 'home', name: 'Home', entityIds: ['light.kitchen'] }],
+        },
+      },
+    });
+    // A hand-edited or buggy file: pages whose names and entities are not text.
+    const file = readSyncFile();
+    file.payload.sections.quickAccessLayout.data.customTabs = [{ id: 1, name: {}, entityIds: 'x' }];
+    file.payload.sections.quickAccessLayout.updatedAt = '2099-01-01T00:00:00.000Z';
+    fs.writeFileSync(syncFilePath(), JSON.stringify(file));
+
+    await expect(laptop.sync()).rejects.toThrow('settings are damaged');
+    expect(laptop.config.customTabs).toEqual([
+      { id: 'home', name: 'Home', entityIds: ['light.kitchen'] },
+    ]);
+
+    // Sync Up keeps the damaged copy and puts this computer's pages back.
+    await laptop.sync('push', 'manual');
+    expect(laptop.backups('remote-profile')).toHaveLength(1);
+    await desktop.sync();
+    expect(desktop.config.customTabs).toEqual([
+      { id: 'home', name: 'Home', entityIds: ['light.kitchen'] },
+    ]);
+  });
+
+  describe('ui settings that were reset', () => {
+    const lookWith = (ui) => ({ ...baseContent(), ui: { theme: 'dark', scale: 1, ...ui } });
+
+    test('an import that resets one reaches the other computer, which does not push it back', async () => {
+      const { desktop, laptop } = await createSyncedPair({
+        desktop: { content: lookWith({ accent: 'violet' }) },
+        laptop: { content: lookWith({ accent: 'violet' }) },
+      });
+
+      // The Import button: the file's null means "back to the default".
+      await desktop.context.applyLocalProfileSections(
+        { visualPersonalization: { ui: { accent: null } } },
+        { clearNullUiKeys: true }
+      );
+      await desktop.sync();
+      await laptop.sync();
+      await desktop.sync();
+      await laptop.sync();
+
+      expect(desktop.config.ui).not.toHaveProperty('accent');
+      expect(laptop.config.ui).not.toHaveProperty('accent');
+      const ui = readSyncFile().payload.sections.visualPersonalization.data.ui;
+      expect(ui.accent).toBeNull();
+      expect(ui.theme).toBe('dark');
+    });
+
+    test('restoring the backup of a pull removes the settings that pull added', async () => {
+      const { desktop, laptop } = await createSyncedPair();
+      laptop.edit((config) => {
+        config.ui = { ...config.ui, highContrast: true };
+      });
+      await laptop.sync();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      await desktop.sync();
+      expect(desktop.config.ui.highContrast).toBe(true);
+
+      const [pullBackup] = await desktop.context.listProfileSyncBackups();
+      await desktop.context.restoreProfileSyncBackup(pullBackup.id);
+
+      expect(desktop.config.ui).not.toHaveProperty('highContrast');
+      await desktop.sync();
+      await laptop.sync();
+      expect(laptop.config.ui).not.toHaveProperty('highContrast');
+      await desktop.sync();
+      expect(desktop.config.ui).not.toHaveProperty('highContrast');
+    });
+
+    test('a file from a version that writes no null keys is not a different section', async () => {
+      const { desktop, laptop } = await createSyncedPair({
+        desktop: { content: lookWith({ accent: 'violet' }) },
+        laptop: { content: lookWith({ accent: 'violet' }) },
+      });
+      // Strip the null markers, as an older writer's file would not have them.
+      const file = readSyncFile();
+      const data = file.payload.sections.visualPersonalization.data;
+      data.ui = Object.fromEntries(Object.entries(data.ui).filter(([, value]) => value !== null));
+      fs.writeFileSync(syncFilePath(), JSON.stringify(file));
+
+      expect((await desktop.sync()).action).toBe('none');
+      expect((await laptop.sync()).action).toBe('none');
+    });
+
+    test('a setting a later version added is neither cleared nor written as null', async () => {
+      const { desktop } = await createSyncedPair();
+      const file = readSyncFile();
+      file.payload.sections.visualPersonalization.data.ui.aKeyFromALaterVersion = 'kept';
+      fs.writeFileSync(syncFilePath(), JSON.stringify(file));
+      desktop.edit((config) => {
+        config.opacity = 0.7;
+      });
+
+      await desktop.sync();
+
+      expect(
+        readSyncFile().payload.sections.visualPersonalization.data.ui.aKeyFromALaterVersion
+      ).toBe('kept');
+    });
+  });
+
   test('a backup of a damaged section is kept but never offered for restore', async () => {
     const desktop = createDevice('desktop');
     await desktop.sync();
