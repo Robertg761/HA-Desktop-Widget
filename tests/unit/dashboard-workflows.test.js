@@ -168,6 +168,8 @@ describe('alert conditions', () => {
     const label = markup.querySelector('label[for="target-state-input"]');
     expect(label.textContent).toBe('Target state');
     expect(label.dataset.i18n).toBe('Target state');
+    // Home Assistant states are at most 255 characters, and a settings file holds 256 of text.
+    expect(markup.getElementById('target-state-input').maxLength).toBe(255);
     // The older form-group wrapper must not bring its own spacing or larger text into the grid.
     const css = fs.readFileSync(path.join(__dirname, '../../dashboard-workflows.css'), 'utf8');
     const rule = /\.alert-advanced-options > \.form-group \{([^}]*)\}/.exec(css)?.[1] || '';

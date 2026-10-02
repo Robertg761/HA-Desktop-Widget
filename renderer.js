@@ -1475,7 +1475,10 @@ function startClimateDemoRuntime({ overlay = false } = {}) {
   return true;
 }
 
-let lastTokenPersistenceWarningAt = 0;
+// Every save reports the same unchanged condition, so the token warning is said once per
+// session. Throttled instead, it came back every few seconds for as long as the person kept
+// saving, next to the keyring toast that names the same cause.
+let tokenPersistenceWarningShown = false;
 let latestRendererConfigRevision = -1;
 
 function showConfigPersistenceWarnings(persistenceWarnings = []) {
@@ -1486,13 +1489,16 @@ function showConfigPersistenceWarnings(persistenceWarnings = []) {
     return;
   }
 
-  const now = Date.now();
-  if (now - lastTokenPersistenceWarningAt < 5000) return;
-  lastTokenPersistenceWarningAt = now;
+  if (tokenPersistenceWarningShown) return;
+  tokenPersistenceWarningShown = true;
   uiUtils.showToast(
-    t(
-      'Your Home Assistant token needs to be re-entered. Token encryption is not available on this system.'
-    ),
+    window.electronAPI?.platform === 'linux'
+      ? t(
+          'No unlocked system keyring (Secret Service) was found, so this token will not be remembered after you quit. Start gnome-keyring or KWallet, then restart the widget.'
+        )
+      : t(
+          'Your Home Assistant token needs to be re-entered. Token encryption is not available on this system.'
+        ),
     'warning',
     20000
   );
@@ -1731,6 +1737,10 @@ async function handleDesktopPinUpdate(message = {}) {
 
     if (Object.prototype.hasOwnProperty.call(message, 'supportsWindowPositioning')) {
       desktopPinSupportsWindowPositioning = message.supportsWindowPositioning !== false;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(message, 'unitSystem')) {
+      applyDesktopPinUnitSystem(message.unitSystem);
     }
 
     if (Object.prototype.hasOwnProperty.call(message, 'entity')) {
@@ -2245,6 +2255,10 @@ websocket.on('message', (msg) => {
           if (msg.result && msg.result.unit_system) {
             log.debug('Unit system found:', JSON.stringify(msg.result.unit_system, null, 2));
             state.setUnitSystem(msg.result.unit_system);
+            // Desktop pin windows have no websocket of their own, so main relays this to them.
+            window.electronAPI.publishHaUnitSystem?.(msg.result.unit_system)?.catch((error) => {
+              log.warn('Failed to publish the Home Assistant unit system to main process:', error);
+            });
             // Re-render weather card with correct units
             if (ui.updateWeatherFromHA) {
               ui.updateWeatherFromHA();
@@ -2391,10 +2405,23 @@ window.electronAPI.onOpenSettings(() => {
   openSettingsModal();
 });
 
+// Settings shows the sync state, but only to someone who has it open: a sync that starts
+// waiting for a choice or failing is also said once, wherever the person is.
+let profileSyncNeededAttention = false;
 window.electronAPI.onProfileSyncStatus((status) => {
   if (settings.handleProfileSyncStatusUpdate) {
     settings.handleProfileSyncStatusUpdate(status);
   }
+  const needsAttention = settings.profileSyncNeedsAttention?.(status) === true;
+  const settingsOpen = !document.getElementById('settings-modal')?.classList.contains('hidden');
+  if (needsAttention && !profileSyncNeededAttention && !settingsOpen) {
+    uiUtils.showToast(
+      t('Profile sync needs attention. Open Settings > Advanced.'),
+      'warning',
+      8000
+    );
+  }
+  profileSyncNeededAttention = needsAttention;
 });
 
 window.electronAPI.onConfigUpdated(async (nextConfig) => {
@@ -2546,6 +2573,13 @@ function replaceEmojiIcons() {
   }
 }
 
+// Pin windows never open a websocket, so Home Assistant's unit system only reaches them from main.
+// Until it arrives they must not claim the metric defaults: an imperial install would read
+// "72°C" for a house at 72°F, so unit-less degrees are the honest fallback.
+function applyDesktopPinUnitSystem(unitSystem) {
+  state.setUnitSystem(unitSystem && typeof unitSystem === 'object' ? unitSystem : {});
+}
+
 /**
  * Initialize the renderer: load configuration, apply UI preferences, wire UI, start periodic updates, initialize hotkeys and alerts, and connect to Home Assistant.
  *
@@ -2561,6 +2595,7 @@ async function initializeDesktopPinMode() {
     desktopPinBounds = bootstrap?.pinBounds || null;
     desktopPinHasSnapshot = !!bootstrap?.hasSnapshot;
     desktopPinSupportsWindowPositioning = bootstrap?.supportsWindowPositioning !== false;
+    applyDesktopPinUnitSystem(bootstrap?.unitSystem);
 
     if (nextConfig?.homeAssistant) {
       applyRendererConfig(nextConfig);
@@ -2726,6 +2761,8 @@ async function init() {
 
       // Show prominent warning message with extended duration
       uiUtils.showToast(message, 'warning', 20000);
+      // The same cause as the warning a save reports, which would only repeat it.
+      if (reason === 'encryption_unavailable') tokenPersistenceWarningShown = true;
     }
 
     if (!isConfigured(state.CONFIG)) {
@@ -2898,7 +2935,7 @@ function wireUI() {
     const closeBtn = document.getElementById('close-btn');
     if (closeBtn) {
       closeBtn.onclick = () => {
-        window.electronAPI.quitApp();
+        window.electronAPI.closeWindow();
       };
     }
 
@@ -3051,9 +3088,10 @@ function wireUI() {
     if (clearWeatherBtn) {
       clearWeatherBtn.onclick = async () => {
         try {
-          // Clear the selected weather entity (revert to default)
+          // Clear the selected weather entity (revert to default). null, as Settings saves it:
+          // an undefined survives the IPC and sits in main's config until the next restart.
           const persistedConfig = await window.electronAPI.updateConfig({
-            selectedWeatherEntity: undefined,
+            selectedWeatherEntity: null,
           });
           applyRendererConfig(persistedConfig);
 

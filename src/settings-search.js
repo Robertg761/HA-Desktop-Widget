@@ -30,6 +30,8 @@ function settingsSearchEntries(modal) {
       // Generated lists (entities, alerts, language packs, hotkeys) repeat a row per item; their
       // parent setting is the entry. Every such container in the settings markup ends in -list.
       .filter((label) => !label.closest('.entity-selector-list, [id$="-list"]'))
+      // Its Details button belongs to a live status line, not to a setting.
+      .filter((label) => !label.closest('.profile-sync-status-block'))
       // Segmented choices (Weather/Time/Hide) belong to the setting that labels the group.
       .filter((label) => !(label.matches('button') && label.closest('.segmented-control')))
       // A wrapping <label> is the entry for its control; skip the nested title span.

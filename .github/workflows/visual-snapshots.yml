@@ -25,6 +25,8 @@ on:
       - 'src/**'
       - 'packages/widget-renderer/**'
       - 'fonts/**'
+      - 'locales/**'
+      - 'locale-packs/**'
       - 'scripts/visual-snapshots/**'
       - '.github/workflows/visual-snapshots.yml'
 
@@ -72,7 +74,7 @@ jobs:
         run: node -e "require('electron')"
 
       - name: Take snapshots (Linux)
-        timeout-minutes: 8
+        timeout-minutes: 12
         if: runner.os == 'Linux'
         run: |
           # The npm-installed Electron's sandbox helper lacks the setuid bit.
@@ -124,7 +126,7 @@ jobs:
           Start-Sleep -Seconds 2
 
       - name: Take snapshots (Windows, macOS)
-        timeout-minutes: 8
+        timeout-minutes: 12
         if: runner.os != 'Linux'
         run: node scripts/visual-snapshots/run.cjs visual-snapshots
 

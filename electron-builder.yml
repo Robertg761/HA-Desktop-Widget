@@ -112,3 +112,10 @@ linux:
       arch: [x64]
     - target: deb
       arch: [x64]
+deb:
+  # Setting recommends replaces electron-builder's default (libappindicator3-1, for the tray
+  # icon), so that one is listed again. gnome-keyring is a Secret Service, which the widget
+  # needs to remember the Home Assistant sign-in and the sync passphrase.
+  recommends:
+    - libappindicator3-1
+    - gnome-keyring

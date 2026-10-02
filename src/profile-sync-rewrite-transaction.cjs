@@ -1,4 +1,11 @@
 const REWRITE_TRANSACTION_VERSION = 1;
+// The recovery record is missing, incomplete or no longer matches what it was staged for.
+// The app words this for the user, so the message here stays technical.
+const REWRITE_TRANSACTION_INVALID = 'PROFILE_SYNC_REWRITE_INVALID';
+
+function createRewriteTransactionError(message) {
+  return Object.assign(new Error(message), { code: REWRITE_TRANSACTION_INVALID });
+}
 
 function createProfileSyncRewriteTransaction(input = {}) {
   const transaction = {
@@ -30,7 +37,7 @@ function createProfileSyncRewriteTransaction(input = {}) {
     !transaction.oldPassphraseEncrypted ||
     !transaction.newPassphraseEncrypted
   ) {
-    throw new Error('Profile sync rewrite transaction is incomplete');
+    throw createRewriteTransactionError('Profile sync rewrite transaction is incomplete');
   }
 
   return transaction;
@@ -114,7 +121,7 @@ function resolveProfileSyncEncryptionRequest({
 async function stageProfileSyncRewriteTransaction(transaction, persistStage) {
   const normalized = normalizeProfileSyncRewriteTransaction(transaction);
   if (!normalized) {
-    throw new Error('Profile sync rewrite transaction is incomplete');
+    throw createRewriteTransactionError('Profile sync rewrite transaction is incomplete');
   }
   if (typeof persistStage !== 'function') {
     throw new TypeError('A durable stage writer is required');
@@ -132,7 +139,7 @@ async function runProfileSyncRewriteRecovery({
 }) {
   const normalized = normalizeProfileSyncRewriteTransaction(transaction);
   if (!normalized) {
-    throw new Error('No valid sync-key rewrite transaction is available');
+    throw createRewriteTransactionError('No valid sync-key rewrite transaction is available');
   }
   if (
     typeof readRemoteIdentity !== 'function' ||
@@ -179,6 +186,8 @@ async function runProfileSyncRewriteRecovery({
 
 module.exports = {
   REWRITE_TRANSACTION_VERSION,
+  REWRITE_TRANSACTION_INVALID,
+  createRewriteTransactionError,
   createProfileSyncRewriteTransaction,
   normalizeProfileSyncRewriteTransaction,
   getProfileSyncRewriteRecoveryAction,

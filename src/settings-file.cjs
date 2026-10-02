@@ -3,9 +3,27 @@ const { Buffer } = require('buffer');
 
 const SETTINGS_FILE_FORMAT = 'ha-desktop-widget-settings';
 const SETTINGS_FILE_VERSION = 1;
+// Earlier versions wrote settings files of up to 1 MB with no other limit on what they held, so a
+// file that size is still read; what it holds is bounded field by field below.
 const MAX_SETTINGS_FILE_BYTES = 1024 * 1024;
+// A file written now is smaller. Imported settings are synced like any others, and the sync file
+// is limited to 512 KB for everything it holds, indented more deeply and carrying a few sections
+// a settings file does not. Half of that keeps what is exported small enough to sync.
+const MAX_SETTINGS_EXPORT_BYTES = 256 * 1024;
+// What the app itself can produce, with room to spare: names are typed into one-line fields,
+// entity ids are at most 255 characters, and lists and maps follow the entities that exist.
+// Text a person types is cut to this length instead of failing, so a name saved before its field
+// was limited still exports and imports. Ids and map keys are never typed, so a long one is refused.
+const MAX_TEXT_LENGTH = 256;
+const MAX_ITEMS = 2000;
+const MAX_PAGES = 200;
+const MAX_PRIMARY_CARDS = 2;
+const MIN_OPACITY = 0.5;
+const MAX_OPACITY = 1;
 const mapOf = (schema) => ({ map: schema });
-const stringList = ['string'];
+const listOf = (schema, max = MAX_ITEMS) => ({ list: schema, max });
+const oneOf = (...values) => ({ oneOf: values });
+const stringList = listOf('string');
 // Mirrors the renderer's entity-ID pattern in ha-protocol.cjs, which needs Electron to load.
 const HA_ENTITY_ID_PATTERN = /^[a-z0-9_]+\.[a-z0-9_]+$/i;
 // A tile spans one to four grid columns.
@@ -16,9 +34,12 @@ const isAlertSeconds = (value) => Number.isInteger(value) && value >= 0 && value
 // credentials, desktop pins, shortcuts, sync keys and machine preferences cannot ride along.
 const SETTINGS_SCHEMA = {
   favoriteEntities: stringList,
-  customTabs: [{ id: 'string', name: 'string', entityIds: stringList }],
-  comparisonGraphs: [{ id: 'string', name: 'string', span: 'number', entityIds: stringList }],
-  customEntityNames: mapOf('string'),
+  customTabs: listOf({ id: 'string', name: 'text', entityIds: stringList }, MAX_PAGES),
+  comparisonGraphs: listOf(
+    { id: 'string', name: 'text', span: 'number', entityIds: stringList },
+    MAX_PAGES
+  ),
+  customEntityNames: mapOf('text'),
   customEntityIcons: mapOf('string'),
   tileSpans: mapOf('span'),
   quickAccessTileOptions: mapOf({
@@ -28,8 +49,8 @@ const SETTINGS_SCHEMA = {
     gaugeMin: 'number?',
     gaugeMax: 'number?',
   }),
-  primaryCards: stringList,
-  opacity: 'number',
+  primaryCards: listOf('string', MAX_PRIMARY_CARDS),
+  opacity: 'opacity',
   frostedGlass: 'boolean',
   selectedWeatherEntity: 'string?',
   primaryMediaPlayer: 'string?',
@@ -38,7 +59,7 @@ const SETTINGS_SCHEMA = {
     alerts: mapOf({
       onStateChange: 'boolean',
       onSpecificState: 'boolean',
-      targetState: 'string',
+      targetState: 'text',
       onNumericThreshold: 'boolean',
       comparison: 'string',
       threshold: 'number?',
@@ -48,18 +69,18 @@ const SETTINGS_SCHEMA = {
     }),
   },
   ui: {
-    theme: 'string',
+    theme: oneOf('auto', 'dark', 'light'),
     accent: 'string',
     background: 'string',
     language: 'string',
-    customColors: [{ id: 'string', name: 'string', color: 'string' }],
-    density: 'string',
+    customColors: listOf({ id: 'string', name: 'text', color: 'string' }, MAX_PAGES),
+    density: oneOf('comfortable', 'compact'),
     activeTileGlow: 'boolean',
     highContrast: 'boolean',
     opaquePanels: 'boolean',
     use24HourClock: 'boolean',
-    timeFormat: 'string',
-    dateFormat: 'string',
+    timeFormat: oneOf('system', '12-hour', '24-hour'),
+    dateFormat: oneOf('system', 'weekday-short', 'long', 'numeric'),
     weatherEffectsEnabled: 'boolean',
     weatherOverride: 'string',
     seasonal: {
@@ -78,11 +99,29 @@ function fileError(code) {
 function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
+// Cuts at a character boundary: slicing between the halves of a surrogate pair leaves a broken one.
+// A lone high surrogate at the cut point is dropped too, which is harmless.
+function truncateText(value) {
+  if (value.length <= MAX_TEXT_LENGTH) return value;
+  const end = /[\uD800-\uDBFF]/.test(value[MAX_TEXT_LENGTH - 1])
+    ? MAX_TEXT_LENGTH - 1
+    : MAX_TEXT_LENGTH;
+  return value.slice(0, end);
+}
 function project(value, schema) {
   if (typeof schema === 'string') {
+    if (schema === 'text') {
+      if (typeof value !== 'string') throw fileError('invalid_file');
+      return truncateText(value);
+    }
     // A tile spans one to four grid columns; anything else would be written straight to the grid.
     if (schema === 'span' || schema === 'seconds') {
       if (!(schema === 'span' ? isTileSpan : isAlertSeconds)(value))
+        throw fileError('invalid_file');
+      return value;
+    }
+    if (schema === 'opacity') {
+      if (typeof value !== 'number' || !(value >= MIN_OPACITY && value <= MAX_OPACITY))
         throw fileError('invalid_file');
       return value;
     }
@@ -90,18 +129,29 @@ function project(value, schema) {
     const types = schema.replace(/\?$/, '').split('|');
     if (!types.includes(typeof value) || (typeof value === 'number' && !Number.isFinite(value)))
       throw fileError('invalid_file');
+    if (typeof value === 'string' && value.length > MAX_TEXT_LENGTH)
+      throw fileError('invalid_file');
     return value;
   }
-  if (Array.isArray(schema)) {
-    if (!Array.isArray(value)) throw fileError('invalid_file');
-    return value.map((entry) => project(entry, schema[0]));
+  if (schema.oneOf) {
+    if (!schema.oneOf.includes(value)) throw fileError('invalid_file');
+    return value;
+  }
+  if (schema.list || Array.isArray(schema)) {
+    const [entrySchema, max] = schema.list ? [schema.list, schema.max] : [schema[0], MAX_ITEMS];
+    if (!Array.isArray(value) || value.length > max) throw fileError('invalid_file');
+    return value.map((entry) => project(entry, entrySchema));
   }
   if (!isObject(value)) throw fileError('invalid_file');
+  if (schema.map && Object.keys(value).length > MAX_ITEMS) throw fileError('invalid_file');
   const entries = schema.map
     ? Object.entries(value)
     : Object.entries(value).filter(([key]) => Object.hasOwn(schema, key));
   return Object.fromEntries(
-    entries.map(([key, entry]) => [key, project(entry, schema.map || schema[key])])
+    entries.map(([key, entry]) => {
+      if (key.length > MAX_TEXT_LENGTH) throw fileError('invalid_file');
+      return [key, project(entry, schema.map || schema[key])];
+    })
   );
 }
 // null marks a portable setting the exporting computer never set, so importing clears it and the
@@ -128,13 +178,35 @@ function assertSafeTree(value, depth = 0) {
     assertSafeTree(child, depth + 1);
   }
 }
+// A key holding undefined is a setting nobody set (the weather picker's Clear leaves one
+// behind until restart), so it is left out rather than failing every export and import.
+const withoutUndefined = (object) =>
+  Object.fromEntries(Object.entries(object).filter(([, value]) => value !== undefined));
+
+// A saved choice this version does not offer (left by an older or newer one) is exported as
+// unset instead of failing the export; an import still refuses it.
+const withoutUnknownChoices = (ui) =>
+  Object.fromEntries(
+    Object.entries(ui).filter(([key, value]) => {
+      const schema = SETTINGS_SCHEMA.ui[key];
+      return !schema?.oneOf || schema.oneOf.includes(value);
+    })
+  );
+
 function buildSettingsFile(config) {
-  const source = isObject(config) ? config : {};
+  const source = isObject(config) ? withoutUndefined(config) : {};
   const settings = projectSettings({
     ...cleared(SETTINGS_SCHEMA),
     ...source,
     // Files with an invalid span or alert delay are rejected, but a stray one saved locally is
-    // only left out rather than blocking export and every import preview.
+    // only left out rather than blocking export and every import preview. The same goes for
+    // more primary cards than there are slots.
+    ...(Array.isArray(source.primaryCards) && {
+      primaryCards: source.primaryCards.slice(0, MAX_PRIMARY_CARDS),
+    }),
+    ...(Number.isFinite(source.opacity) && {
+      opacity: Math.min(MAX_OPACITY, Math.max(MIN_OPACITY, source.opacity)),
+    }),
     ...(isObject(source.tileSpans) && {
       tileSpans: Object.fromEntries(
         Object.entries(source.tileSpans).filter(([, span]) => isTileSpan(span))
@@ -160,15 +232,18 @@ function buildSettingsFile(config) {
           ),
         },
       }),
-    ui: { ...cleared(SETTINGS_SCHEMA.ui), ...(isObject(source.ui) ? source.ui : {}) },
+    ui: {
+      ...cleared(SETTINGS_SCHEMA.ui),
+      ...withoutUnknownChoices(isObject(source.ui) ? withoutUndefined(source.ui) : {}),
+    },
   });
   assertSafeTree(settings);
   return { format: SETTINGS_FILE_FORMAT, version: SETTINGS_FILE_VERSION, settings };
 }
 function serializeSettingsFile(config) {
   const content = `${JSON.stringify(buildSettingsFile(config), null, 2)}\n`;
-  if (Buffer.byteLength(content, 'utf8') > MAX_SETTINGS_FILE_BYTES)
-    throw fileError('file_too_large');
+  if (Buffer.byteLength(content, 'utf8') > MAX_SETTINGS_EXPORT_BYTES)
+    throw fileError('export_too_large');
   return content;
 }
 function parseSettingsFile(content) {
@@ -234,6 +309,7 @@ function summarizeSettingsImport(settings, currentConfig) {
 
 module.exports = {
   MAX_SETTINGS_FILE_BYTES,
+  MAX_SETTINGS_EXPORT_BYTES,
   buildSettingsFile,
   serializeSettingsFile,
   parseSettingsFile,

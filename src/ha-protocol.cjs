@@ -579,27 +579,41 @@ function reportRepeatedCameraSnapshot(entityId, contentLength, log) {
   );
 }
 
-// Ends the passthrough stream when the upstream goes quiet, which surfaces to the renderer as a
-// plain image error. Doing it here rather than in the renderer avoids sampling pixels from a
-// canvas the ha:// scheme would taint, and needs no extra IPC channel.
-function watchStreamForStall(body, timeoutMs, onStall) {
+// Relays the upstream body to the renderer and makes sure the upstream connection ends with it.
+//
+// Electron's net.fetch keeps its socket open when the consumer merely cancels the body (and the
+// protocol request's own signal does not fire when an <img> drops its src), so an MJPEG connection
+// outlived the tile that showed it until the app exited; about six of those exhaust the browser's
+// per-host connection limit and every other proxied request then stalls. Aborting the controller
+// that was handed to the fetch is what actually closes the socket.
+//
+// With a stall timeout it also ends the stream when the upstream goes quiet, which surfaces to the
+// renderer as a plain image error. Doing it here rather than in the renderer avoids sampling pixels
+// from a canvas the ha:// scheme would taint, and needs no extra IPC channel.
+function relayUpstreamBody(body, { stallTimeoutMs = 0, onStall, abortUpstream } = {}) {
   if (!body || typeof body.getReader !== 'function') return body;
   if (typeof ReadableStream !== 'function') return body;
 
   const reader = body.getReader();
+  const closeUpstream = (reason) => {
+    if (typeof abortUpstream === 'function') abortUpstream(reason);
+  };
   return new ReadableStream({
     async pull(controller) {
       let timeoutId = null;
       try {
-        const result = await Promise.race([
-          reader.read(),
-          new Promise((_resolve, reject) => {
-            timeoutId = setTimeout(
-              () => reject(createProtocolError('Camera stream stalled', 504, 'STREAM_STALLED')),
-              timeoutMs
-            );
-          }),
-        ]);
+        const read = reader.read();
+        const result = stallTimeoutMs
+          ? await Promise.race([
+              read,
+              new Promise((_resolve, reject) => {
+                timeoutId = setTimeout(
+                  () => reject(createProtocolError('Camera stream stalled', 504, 'STREAM_STALLED')),
+                  stallTimeoutMs
+                );
+              }),
+            ])
+          : await read;
 
         if (result.done) {
           controller.close();
@@ -607,6 +621,7 @@ function watchStreamForStall(body, timeoutMs, onStall) {
         }
         controller.enqueue(result.value);
       } catch (error) {
+        closeUpstream(error);
         try {
           await reader.cancel(error);
         } catch {
@@ -619,7 +634,9 @@ function watchStreamForStall(body, timeoutMs, onStall) {
       }
     },
     cancel(reason) {
-      return reader.cancel(reason);
+      closeUpstream(reason);
+      // Aborting may already have errored the upstream body, which makes cancelling it reject.
+      return reader.cancel(reason).catch(() => {});
     },
   });
 }
@@ -646,14 +663,16 @@ function createHaProtocolHandler({
   const errorResponse = (status) => new ResponseCtor(null, { status });
   const streamResponse = (upstreamResponse, fallbackContentType, options = {}) => {
     const status = Number(upstreamResponse?.status) || 502;
-    if (status < 200 || status >= 300) return errorResponse(status);
+    if (status < 200 || status >= 300) {
+      // Nobody will read this body, so do not leave its connection open.
+      options.abortUpstream?.();
+      return errorResponse(status);
+    }
 
     const contentType =
       getHeaderValue(upstreamResponse.headers, 'content-type') || fallbackContentType;
     const rawBody = [204, 205].includes(status) ? null : upstreamResponse.body;
-    const body = options.stallTimeoutMs
-      ? watchStreamForStall(rawBody, options.stallTimeoutMs, options.onStall)
-      : rawBody;
+    const body = relayUpstreamBody(rawBody, options);
     return new ResponseCtor(body, {
       status,
       headers: {
@@ -670,6 +689,11 @@ function createHaProtocolHandler({
       const host = url.hostname;
       const entityId = decodeURIComponent(url.pathname.replace(/^\//, ''));
       requestContext = describeHaProtocolRequest(host, url, entityId);
+      // Ended when the renderer stops reading the response; see relayUpstreamBody().
+      const upstreamAbort = new AbortController();
+      const abortUpstream = (reason) => upstreamAbort.abort(reason);
+      const upstreamSignal = (...signals) =>
+        AbortSignal.any([request.signal, upstreamAbort.signal, ...signals].filter(Boolean));
       const currentConfig = getConfig() || {};
       const haUrl = String(currentConfig?.homeAssistant?.url || '').replace(/\/$/, '');
       const token = String(currentConfig?.homeAssistant?.token || '');
@@ -687,9 +711,10 @@ function createHaProtocolHandler({
             Pragma: 'no-cache',
           },
           redirect: 'follow',
-          signal: request.signal,
+          signal: upstreamSignal(),
         });
         return streamResponse(response, 'multipart/x-mixed-replace;boundary=--myboundary', {
+          abortUpstream,
           stallTimeoutMs: MJPEG_STREAM_STALL_TIMEOUT_MS,
           onStall: () =>
             log.warn(
@@ -710,7 +735,7 @@ function createHaProtocolHandler({
             Pragma: 'no-cache',
           },
           redirect: 'follow',
-          signal: request.signal,
+          signal: upstreamSignal(),
         };
         let response;
         if (/\/master_playlist\.m3u8$/i.test(url.pathname)) {
@@ -718,9 +743,7 @@ function createHaProtocolHandler({
             const warmupTimeoutSignal = AbortSignal.timeout(HLS_MASTER_WARMUP_TIMEOUT_MS);
             response = await fetchStream(upstream, {
               ...fetchOptions,
-              signal: request.signal
-                ? AbortSignal.any([request.signal, warmupTimeoutSignal])
-                : warmupTimeoutSignal,
+              signal: upstreamSignal(warmupTimeoutSignal),
             });
           } catch (error) {
             const isWarmupTimeout = ['AbortError', 'TimeoutError'].includes(error?.name);
@@ -732,9 +755,7 @@ function createHaProtocolHandler({
             const retryTimeoutSignal = AbortSignal.timeout(HLS_MASTER_RETRY_TIMEOUT_MS);
             response = await fetchStream(upstream, {
               ...fetchOptions,
-              signal: request.signal
-                ? AbortSignal.any([request.signal, retryTimeoutSignal])
-                : retryTimeoutSignal,
+              signal: upstreamSignal(retryTimeoutSignal),
             });
           }
         } else {
@@ -743,7 +764,7 @@ function createHaProtocolHandler({
         const fallbackContentType = url.pathname.toLowerCase().endsWith('.m3u8')
           ? 'application/vnd.apple.mpegurl'
           : 'video/MP2T';
-        return streamResponse(response, fallbackContentType);
+        return streamResponse(response, fallbackContentType, { abortUpstream });
       }
 
       if (host === 'camera') {
@@ -758,10 +779,10 @@ function createHaProtocolHandler({
             Pragma: 'no-cache',
           },
           redirect: 'follow',
-          signal: request.signal ? AbortSignal.any([request.signal, timeoutSignal]) : timeoutSignal,
+          signal: upstreamSignal(timeoutSignal),
         });
         reportRepeatedCameraSnapshot(entityId, getContentLength(response?.headers), log);
-        return streamResponse(response, 'image/jpeg');
+        return streamResponse(response, 'image/jpeg', { abortUpstream });
       }
 
       if (host === 'media_artwork') {

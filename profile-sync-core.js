@@ -11,7 +11,9 @@ const SYNC_SCHEMA_VERSION = 3;
 const SYNC_MIN_READER_VERSION = 3;
 const PROFILE_SYNC_SCOPE_PRESETS = new Set(['all', 'visual', 'quick_access', 'custom']);
 // Desktop pins, hotkeys and the open Quick Access page describe one machine, so
-// they never sync (matching Home Assistant profiles in profile-schema.js).
+// they never sync (matching Home Assistant profiles in profile-schema.js). Always on
+// top, hide on focus loss and the tray values do sync, as the scope descriptions in
+// Settings say; Home Assistant profiles and settings files leave them out.
 const SYNC_SCOPE_SECTION_FIELDS = {
   quickAccessLayout: [
     'favoriteEntities',
@@ -73,6 +75,61 @@ const SYNC_NESTED_FIELD_TYPES = {
 function hasItemsOfType(container, type) {
   return Object.values(container).every((item) => getJsonType(item) === type);
 }
+
+// What each item of a list holds, for the fields the app reads without checking. A field may be
+// left out (the receiving device fills in its default) but not hold another type. `string[]` is
+// a list of strings.
+const SYNC_ITEM_FIELD_TYPES = {
+  customTabs: { id: 'string', name: 'string', entityIds: 'string[]' },
+  comparisonGraphs: { id: 'string', name: 'string', entityIds: 'string[]', span: 'number' },
+};
+// The types of the shared ui keys this version knows. Only types are checked, never values: a
+// later version may add a theme or a density, and its file must not read as damaged here.
+const SYNC_UI_FIELD_TYPES = {
+  theme: 'string',
+  accent: 'string',
+  background: 'string',
+  language: 'string',
+  customColors: 'array',
+  density: 'string',
+  activeTileGlow: 'boolean',
+  highContrast: 'boolean',
+  opaquePanels: 'boolean',
+  use24HourClock: 'boolean',
+  timeFormat: 'string',
+  dateFormat: 'string',
+  weatherEffectsEnabled: 'boolean',
+  weatherOverride: 'string',
+  seasonal: 'object',
+};
+
+function matchesNestedType(value, type) {
+  if (type === 'string[]') {
+    return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+  }
+  return getJsonType(value) === type;
+}
+
+/** Whether every present field of an object has its declared type (null clears it). */
+function hasFieldsOfType(object, fieldTypes) {
+  return Object.entries(fieldTypes).every(([key, type]) => {
+    if (!Object.prototype.hasOwnProperty.call(object, key) || object[key] === null) return true;
+    return matchesNestedType(object[key], type);
+  });
+}
+
+// A tile spans one to four grid columns.
+const isTileSpan = (value) => Number.isInteger(value) && value >= 1 && value <= 4;
+
+/** The checks below the top-level type and item type of a field. */
+function hasValidNestedShape(field, value) {
+  if (field === 'tileSpans') return Object.values(value).every(isTileSpan);
+  if (SYNC_ITEM_FIELD_TYPES[field]) {
+    return value.every((item) => hasFieldsOfType(item, SYNC_ITEM_FIELD_TYPES[field]));
+  }
+  if (field === 'ui') return hasFieldsOfType(value, SYNC_UI_FIELD_TYPES);
+  return true;
+}
 // ui keys that describe this machine or session rather than the shared look.
 // Keep in step with LOCAL_ONLY_UI_KEYS in packages/widget-renderer/src/profile-schema.js.
 // Text size and Omarchy theme following depend on this machine's display and desktop.
@@ -103,6 +160,20 @@ const KNOWN_UI_KEYS = new Set([
   'seasonal',
   ...LOCAL_ONLY_UI_KEYS,
 ]);
+
+// Failures a person can act on carry a code, so the app can word them for the user
+// instead of showing the technical message.
+const SYNC_FILE_DAMAGED = 'SYNC_FILE_DAMAGED';
+const SYNC_FILE_NEWER_VERSION = 'SYNC_FILE_NEWER_VERSION';
+
+function createSyncFileError(message, code) {
+  return Object.assign(new Error(message), { code });
+}
+
+/** Whether a read or decode failed because the file's own content is unusable. */
+function isSyncFileDamagedError(error) {
+  return error?.code === SYNC_FILE_DAMAGED;
+}
 
 function deepClone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
@@ -216,7 +287,13 @@ function stripLocalOnlyUiKeys(ui) {
 }
 
 function projectField(source, field) {
-  return field === 'ui' ? stripLocalOnlyUiKeys(source.ui) : deepClone(source[field]);
+  if (field === 'ui') return stripLocalOnlyUiKeys(source.ui);
+  const value = deepClone(source[field]);
+  // A span outside one to four reads as damage on the other side, so it is never written.
+  if (field === 'tileSpans' && isObject(value)) {
+    return Object.fromEntries(Object.entries(value).filter(([, span]) => isTileSpan(span)));
+  }
+  return value;
 }
 
 /**
@@ -264,13 +341,13 @@ function mergeFieldsIntoConfig(target, incoming, fields, { clearNullUiKeys = fal
         Object.entries(localUi).filter(([key]) => LOCAL_ONLY_UI_KEYS.has(key))
       );
       target.ui = { ...localUi, ...stripLocalOnlyUiKeys(incoming.ui), ...localOnly };
-      // A settings file writes null for a ui key its source never set: fall back to the default.
-      // Only keys the incoming ui names are cleared, so a newer version's null key survives.
-      if (clearNullUiKeys) {
-        Object.entries(stripLocalOnlyUiKeys(incoming.ui)).forEach(([key, value]) => {
-          if (value === null) delete target.ui[key];
-        });
-      }
+      // A null ui key means the other side has that setting reset to its default (a sync file
+      // writes one for every shared key its device has not set; so does a settings file).
+      // Only keys the incoming ui names are cleared. A key of a newer version that arrives as
+      // null is left as sent, unless the caller asked for every null to clear.
+      Object.entries(stripLocalOnlyUiKeys(incoming.ui)).forEach(([key, value]) => {
+        if (value === null && (clearNullUiKeys || KNOWN_UI_KEYS.has(key))) delete target.ui[key];
+      });
       return;
     }
     target[field] = deepClone(incoming[field]);
@@ -288,10 +365,22 @@ function mergeSyncedProfileIntoConfig(
   return mergeFieldsIntoConfig(target, incoming, getSyncedFieldsForScope(syncScope));
 }
 
+// The ui keys this version shares between computers.
+const SHARED_UI_KEYS = [...KNOWN_UI_KEYS].filter((key) => !LOCAL_ONLY_UI_KEYS.has(key));
+
 function projectSection(config, sectionKey) {
-  return projectFields(config, SYNC_SCOPE_SECTION_FIELDS[sectionKey] || [], {
+  const data = projectFields(config, SYNC_SCOPE_SECTION_FIELDS[sectionKey] || [], {
     markCleared: true,
   });
+  // As a top-level field this device lacks is written as null, so is a shared ui key. Left out,
+  // a reset (an import, a restored backup) would not reach the other computers, which keep
+  // their value and push it straight back.
+  if (isObject(data.ui)) {
+    SHARED_UI_KEYS.forEach((key) => {
+      if (!Object.prototype.hasOwnProperty.call(data.ui, key)) data.ui[key] = null;
+    });
+  }
+  return data;
 }
 
 /**
@@ -377,8 +466,12 @@ function computeSectionHash(sectionKey, data) {
   // ui keys this version doesn't own are the file's business (they ride along on
   // push), so a change to one alone must not look like an edit of the section.
   if (isObject(projected.ui)) {
+    // A null key is the same as one left out: the file of a version that writes no null keys
+    // must not read as a different section.
     projected.ui = Object.fromEntries(
-      Object.entries(projected.ui).filter(([key]) => KNOWN_UI_KEYS.has(key))
+      Object.entries(projected.ui).filter(
+        ([key, value]) => KNOWN_UI_KEYS.has(key) && value !== null
+      )
     );
   }
   return computeProfileHash({ section: sectionKey, data: projected });
@@ -566,6 +659,10 @@ async function decryptProfilePayload(payload, passphrase) {
   const iv = Buffer.from(payload.iv || '', 'base64');
   const authTag = Buffer.from(payload.authTag || '', 'base64');
   const ciphertext = Buffer.from(payload.ciphertext || '', 'base64');
+  // Fields of the wrong size cannot come from a wrong passphrase: the file itself is damaged.
+  if (salt.length !== 16 || iv.length !== 12 || authTag.length !== 16) {
+    throw createSyncFileError('The encrypted payload is damaged', SYNC_FILE_DAMAGED);
+  }
   const key = await scryptAsync(passphrase, salt, 32);
   const decipher = nodeCrypto.createDecipheriv('aes-256-gcm', key, iv);
   decipher.setAuthTag(authTag);
@@ -677,8 +774,9 @@ function validateEnvelopeShape(envelope) {
       ? envelope.minReaderVersion
       : envelope.schemaVersion;
   if (minReaderVersion > SYNC_SCHEMA_VERSION) {
-    throw new Error(
-      'The sync file was written by a newer version of HA Desktop Widget. Update this device to keep syncing.'
+    throw createSyncFileError(
+      'The sync file was written by a newer version of HA Desktop Widget. Update this device to keep syncing.',
+      SYNC_FILE_NEWER_VERSION
     );
   }
   if (envelope.schemaVersion === 2) {
@@ -707,10 +805,16 @@ function parseSyncEnvelope(rawText) {
   try {
     parsed = JSON.parse(rawText);
   } catch {
-    throw new Error('Sync file is not valid JSON');
+    throw createSyncFileError('Sync file is not valid JSON', SYNC_FILE_DAMAGED);
   }
 
-  validateEnvelopeShape(parsed);
+  try {
+    validateEnvelopeShape(parsed);
+  } catch (error) {
+    // A newer writer's file is not damaged, and must never be replaced as if it were.
+    if (error.code === SYNC_FILE_NEWER_VERSION) throw error;
+    throw createSyncFileError(error.message, SYNC_FILE_DAMAGED);
+  }
   return parsed;
 }
 
@@ -743,6 +847,7 @@ function hasValidSectionFields(sectionKey, data) {
     if (SYNC_FIELD_ITEM_TYPES[field] && !hasItemsOfType(value, SYNC_FIELD_ITEM_TYPES[field])) {
       return false;
     }
+    if (!hasValidNestedShape(field, value)) return false;
     return Object.entries(SYNC_NESTED_FIELD_TYPES[field] || {}).every(([key, expected]) => {
       if (!Object.prototype.hasOwnProperty.call(value, key)) return true;
       if (getJsonType(value[key]) !== expected.type) return false;
@@ -823,7 +928,7 @@ async function decodeEnvelopeSections(envelope, passphrase) {
     ? await decryptProfilePayload(envelope.payload, passphrase)
     : deepClone(envelope.payload);
   if (!isObject(decoded)) {
-    throw new Error('Sync payload must be an object');
+    throw createSyncFileError('Sync payload must be an object', SYNC_FILE_DAMAGED);
   }
 
   if (envelope.schemaVersion < 3) {
@@ -837,7 +942,7 @@ async function decodeEnvelopeSections(envelope, passphrase) {
   }
 
   if (!isObject(decoded.sections)) {
-    throw new Error('Sync payload is missing sections');
+    throw createSyncFileError('Sync payload is missing sections', SYNC_FILE_DAMAGED);
   }
   const sections = {};
   // Known sections that are damaged are reported, not dropped: treating them as
@@ -889,6 +994,7 @@ module.exports = {
   encryptProfilePayload,
   decryptProfilePayload,
   isEnvelopeEncrypted,
+  isSyncFileDamagedError,
   buildSyncEnvelope,
   parseSyncEnvelope,
   serializeSyncEnvelope,

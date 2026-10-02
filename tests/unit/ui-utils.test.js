@@ -122,6 +122,19 @@ describe('UI Utilities', () => {
       expect(toast.textContent).toBe('Test message');
     });
 
+    it('shows the same message once while it is still up', () => {
+      const first = uiUtils.showToast('Your token was not saved', 'warning', 2000);
+      const second = uiUtils.showToast('Your token was not saved', 'warning', 2000);
+
+      expect(second).toBe(first);
+      expect(toastContainer.querySelectorAll('.toast')).toHaveLength(1);
+
+      // A different message, or the same text as another kind of toast, is its own toast.
+      uiUtils.showToast('Your token was not saved', 'error', 2000);
+      uiUtils.showToast('Something else', 'warning', 2000);
+      expect(toastContainer.querySelectorAll('.toast')).toHaveLength(3);
+    });
+
     it('should apply success type class', () => {
       uiUtils.showToast('Success', 'success', 2000);
 
@@ -201,6 +214,31 @@ describe('UI Utilities', () => {
 
       jest.advanceTimersByTime(300);
       expect(toastContainer.children.length).toBe(0);
+    });
+
+    it('should take focus with Tab and be dismissed from the keyboard', () => {
+      uiUtils.showToast('Press a key', 'warning', 20000);
+      const toast = toastContainer.querySelector('.toast');
+      expect(toast.tabIndex).toBe(0);
+
+      toast.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+      expect(toast.classList.contains('toast-closing')).toBe(false);
+
+      toast.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      expect(toast.classList.contains('toast-closing')).toBe(true);
+      jest.advanceTimersByTime(300);
+      expect(toastContainer.children.length).toBe(0);
+    });
+
+    it.each(['Enter', ' '])('should dismiss a toast with the %j key', (key) => {
+      uiUtils.showToast('Press a key', 'info', 20000);
+      const toast = toastContainer.querySelector('.toast');
+      const keydown = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+
+      toast.dispatchEvent(keydown);
+
+      expect(keydown.defaultPrevented).toBe(true);
+      expect(toast.classList.contains('toast-closing')).toBe(true);
     });
 
     it('should not remove a clicked toast twice when its timeout also fires', () => {
@@ -1204,6 +1242,36 @@ describe('UI Utilities', () => {
 
       const result = await promise;
       expect(result).toBe(true);
+    });
+
+    it('should leave Enter on the focused Cancel button to that button so it cancels', async () => {
+      const promise = uiUtils.showConfirm('Delete', 'Delete this?');
+
+      // The browser turns Enter on a button into a click; jsdom does not, so dispatch both.
+      cancelBtn.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      cancelBtn.click();
+
+      expect(await promise).toBe(false);
+    });
+
+    it('should leave Enter on the focused Confirm button to that button so it confirms', async () => {
+      const promise = uiUtils.showConfirm('Delete', 'Delete this?');
+
+      okBtn.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      okBtn.click();
+
+      expect(await promise).toBe(true);
+    });
+
+    it('should ignore a held-down Enter key repeating into the dialog', async () => {
+      const promise = uiUtils.showConfirm('Delete', 'Delete this?');
+
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', repeat: true, bubbles: true })
+      );
+      cancelBtn.click();
+
+      expect(await promise).toBe(false);
     });
 
     it('should return false when Escape key pressed', async () => {

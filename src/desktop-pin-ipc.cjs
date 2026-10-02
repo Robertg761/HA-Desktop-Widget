@@ -30,6 +30,17 @@ function createDesktopPinRendererConfig(inputConfig) {
   };
 }
 
+// Home Assistant's unit_system is a flat map of measurement -> unit string ({ temperature: '°F',
+// wind_speed: 'mph', ... }). Keep just those strings so nothing else crosses to the pin windows.
+function normalizeHaUnitSystem(value) {
+  if (!isPlainObject(value)) return null;
+  const normalized = {};
+  for (const [key, unit] of Object.entries(value)) {
+    if (typeof unit === 'string' && unit.length <= 32) normalized[key] = unit;
+  }
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
 function createDesktopPinConnectionState(
   inputConfig,
   { secureStoragePending = false, runtimeState } = {}
@@ -101,4 +112,5 @@ module.exports = {
   createDesktopPinConnectionState,
   createDesktopPinRendererConfig,
   normalizeDesktopPinActionRequest,
+  normalizeHaUnitSystem,
 };

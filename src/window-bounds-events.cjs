@@ -1,8 +1,9 @@
 /**
- * Electron emits 'moved' and 'resized' once a user move or resize ends, but only on macOS and
- * Windows. Linux (X11 and XWayland) only gets 'move' and 'resize', which fire for every bounds
- * change, programmatic ones included, so listeners there must debounce and skip bounds the app
- * applied itself.
+ * Electron emits 'moved' and 'resized' once a user move or resize ends only on Windows. On macOS
+ * 'moved' is an alias of 'move', so it fires continuously while the window is dragged, and
+ * 'resized' also fires when the app animates its own bounds. Linux (X11 and XWayland) has neither
+ * and only gets 'move' and 'resize', which fire for every bounds change, programmatic ones
+ * included. Listeners must debounce on every platform and skip bounds the app applied itself.
  */
 function emitsSettledBoundsEvents(platform) {
   return platform === 'darwin' || platform === 'win32';

@@ -3,7 +3,7 @@ import { resolve } from 'path';
 import { readFileSync } from 'fs';
 import modernMdiFontPlugin from './scripts/vite-mdi-font-plugin.cjs';
 
-const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
+const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'));
 
 // Builds the Home Assistant panel preview: the real renderer running in an
 // iframe served by the companion integration. preview/preview.html is
