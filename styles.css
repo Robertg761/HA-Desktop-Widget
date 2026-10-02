@@ -14690,19 +14690,13 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
 }
 
 /* --- Main view: tiles that stand apart from the panel ---
-   The Quick Access tiles, the hero pane holding the weather and time cards and the media card
-   take their fill and edge from --dash-tile-* (set per theme and glass mode with the other tile
-   tokens) by pointing --tile-* at them. Whatever sits inside and reads --tile-* follows: the
-   hairline between the cards, the seek track, the dashed edge of an unavailable tile. Settings,
-   dialogs, the header and pinned desktop tiles keep the softer values, and the readable preset
-   keeps its own tile tokens. */
-body:not(.high-contrast)
-  :is(
-    #quick-controls .control-item,
-    .status-grid:not(.single-card):not(.primary-cards-hidden),
-    .status-card,
-    .media-tile
-  ) {
+   The Quick Access tiles, the weather and time cards (the .status-grid holding them) and the
+   media card take their fill and edge from --dash-tile-* (set per theme and glass mode with the
+   other tile tokens) by pointing --tile-* at them. Whatever sits inside and reads --tile-*
+   follows: the hairline between the cards, the seek track, the dashed edge of an unavailable
+   tile. Settings, dialogs, the header and pinned desktop tiles keep the softer values, and the
+   readable preset keeps its own tile tokens. */
+body:not(.high-contrast) :is(#quick-controls .control-item, .status-grid, .media-tile) {
   --tile-bg: var(--dash-tile-bg);
   --tile-bg-hover: var(--dash-tile-bg-hover);
   --tile-border: var(--dash-tile-border);
