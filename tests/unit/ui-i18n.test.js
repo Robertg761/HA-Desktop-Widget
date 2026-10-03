@@ -259,16 +259,16 @@ describe('ui.js translations and number formatting', () => {
     expect(lightEnds()).toEqual(['Warm', 'Cool']);
   });
 
-  it('names the translated entity type in toggle desktop pin titles', () => {
+  it('titles a toggle desktop pin with the entity name, not a translated layout name', () => {
     useGerman({
       'Compact {{domain}} controls': 'Kompakte {{domain}}-Steuerung',
       'Domain: Switch': 'Schalter',
     });
-    const plug = entity('switch.plug', 'on');
+    const plug = entity('switch.plug', 'on', { friendly_name: 'Küchenstecker' });
     state.setStates({ [plug.entity_id]: plug });
     ui.renderDesktopPinnedTile(plug.entity_id, plug);
     expect(document.querySelector('#desktop-pin-content .desktop-pin-toggle-control').title).toBe(
-      'Kompakte Schalter-Steuerung'
+      'Küchenstecker'
     );
   });
 

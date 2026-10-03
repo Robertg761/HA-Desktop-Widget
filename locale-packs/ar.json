@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.53",
+  "version": "1.2.54",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1759,6 +1759,18 @@
     "Pin {{name}} to desktop": "تثبيت {{name}} على سطح المكتب",
     "Moved to position {{position}} of {{total}}": "تم النقل إلى الموضع {{position}} من {{total}}",
     "Reorganize mode enabled - Drag, select or press Alt+arrow keys to reorder, click X to remove, ESC to exit": "تم تفعيل وضع إعادة الترتيب - اسحب أو حدّد أو اضغط Alt مع مفاتيح الأسهم لإعادة الترتيب، وانقر X للإزالة، واضغط ESC للخروج",
-    "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "تم اختيار {{name}}. اختر البطاقة التي يجب أن يحل مكانها، أو اضغط Escape للإلغاء."
+    "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "تم اختيار {{name}}. اختر البطاقة التي يجب أن يحل مكانها، أو اضغط Escape للإلغاء.",
+    "Device class: Temperature": "درجة الحرارة",
+    "Device class: Power": "القدرة",
+    "Device class: Energy": "الطاقة",
+    "Device class: Battery": "البطارية",
+    "Device class: Pressure": "الضغط",
+    "Device class: Illuminance": "شدة الإضاءة",
+    "Device class: Voltage": "الجهد",
+    "Device class: Current": "التيار",
+    "Device class: Door": "باب",
+    "Device class: Window": "نافذة",
+    "Device class: Motion": "حركة",
+    "Device class: Occupancy": "الإشغال"
   }
 }

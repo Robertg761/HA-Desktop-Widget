@@ -56,4 +56,16 @@ describe('Climate capability detection', () => {
       presetModes: ['eco'],
     });
   });
+
+  it('steps a thermostat that publishes no step by a whole degree in Fahrenheit', () => {
+    const entity = thermostat({ temperature: 71 }, 'heat');
+    expect(getClimateControlCapabilities(entity).temperatureStep).toBe(0.5);
+    expect(getClimateControlCapabilities(entity, { unit: '°C' }).temperatureStep).toBe(0.5);
+    expect(getClimateControlCapabilities(entity, { unit: '°F' }).temperatureStep).toBe(1);
+    // An integration's own step still wins, in either unit.
+    expect(
+      getClimateControlCapabilities(thermostat({ target_temp_step: 0.5 }), { unit: '°F' })
+        .temperatureStep
+    ).toBe(0.5);
+  });
 });

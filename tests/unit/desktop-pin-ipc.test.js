@@ -130,6 +130,19 @@ describe('desktop pin IPC helpers', () => {
     });
   });
 
+  it('lets only a camera pin ask the main window to open its details', () => {
+    expect(normalizeDesktopPinActionRequest('camera.driveway', 'open-details', { x: 1 })).toEqual({
+      success: true,
+      entityId: 'camera.driveway',
+      action: 'open-details',
+      payload: {},
+    });
+    expect(normalizeDesktopPinActionRequest('light.office', 'open-details')).toEqual({
+      success: false,
+      error: 'Unauthorized desktop pin action',
+    });
+  });
+
   it('rejects arbitrary actions, cross-domain services, and invalid service names', () => {
     expect(normalizeDesktopPinActionRequest('light.office', 'open-external')).toEqual({
       success: false,

@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.53",
+  "version": "1.2.54",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget, including German date and time formats.",
   "messages": {
@@ -1759,6 +1759,18 @@
     "Pin {{name}} to desktop": "{{name}} an Desktop anheften",
     "Moved to position {{position}} of {{total}}": "Auf Position {{position}} von {{total}} verschoben",
     "Reorganize mode enabled - Drag, select or press Alt+arrow keys to reorder, click X to remove, ESC to exit": "Neu-Anordnen aktiv — Ziehen, Auswählen oder Alt+Pfeiltasten zum Sortieren, X zum Entfernen, ESC zum Beenden",
-    "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "{{name}} aufgenommen. Wähle die Kachel, an deren Stelle sie treten soll, oder drücke Esc zum Abbrechen."
+    "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "{{name}} aufgenommen. Wähle die Kachel, an deren Stelle sie treten soll, oder drücke Esc zum Abbrechen.",
+    "Device class: Temperature": "Temperatur",
+    "Device class: Power": "Leistung",
+    "Device class: Energy": "Energie",
+    "Device class: Battery": "Batterie",
+    "Device class: Pressure": "Druck",
+    "Device class: Illuminance": "Beleuchtungsstärke",
+    "Device class: Voltage": "Spannung",
+    "Device class: Current": "Stromstärke",
+    "Device class: Door": "Tür",
+    "Device class: Window": "Fenster",
+    "Device class: Motion": "Bewegung",
+    "Device class: Occupancy": "Belegung"
   }
 }

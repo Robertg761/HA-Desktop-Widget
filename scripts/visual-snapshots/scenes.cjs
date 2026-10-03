@@ -12,6 +12,8 @@
  *   media    CDP media features to emulate, e.g. forced-colors
  *   setup    async (ctx) that drives the UI; may return { capture } to photograph another
  *            window (a desktop pin) instead of the main one
+ *   pin      the entity a pin scene pins (only a label for the tests, which check that every
+ *            desktop pin family has a scene)
  *
  * The clock, the date, the running timer and the media progress follow the wall clock, so those
  * few pixels differ from run to run. Everything else comes from the fixture.
@@ -183,6 +185,16 @@ async function pinEntity(ctx, entityId) {
 
 const READABLE = { highContrast: true, opaquePanels: true };
 const sixPages = (activeTabId) => ({ customTabs: PAGE_SETS.six, activeTabId });
+// The page that holds an entity of every pin family; only Quick Access entities can be pinned.
+const pinsPage = { customTabs: PAGE_SETS.pins, activeTabId: 'pins' };
+const pinScene = (name, entityId, extra = {}) => ({
+  name,
+  pin: entityId,
+  config: pinsPage,
+  setup: (ctx) => pinEntity(ctx, entityId),
+  ...extra,
+});
+
 const pages = (set, activeTabId) => ({ customTabs: PAGE_SETS[set], activeTabId });
 
 // Keyboard focus rings only show after a key press, so press one before focusing from script.
@@ -601,8 +613,45 @@ const scenes = [
   },
 
   // Desktop pins are windows of their own, opened at the default 168x148.
-  { name: 'pin-light', setup: (ctx) => pinEntity(ctx, 'light.desk_lamp') },
-  { name: 'pin-sensor', setup: (ctx) => pinEntity(ctx, 'sensor.office_temp') },
+  { name: 'pin-light', pin: 'light.desk_lamp', setup: (ctx) => pinEntity(ctx, 'light.desk_lamp') },
+  {
+    name: 'pin-sensor',
+    pin: 'sensor.office_temp',
+    setup: (ctx) => pinEntity(ctx, 'sensor.office_temp'),
+  },
+
+  // Every pin family at the default size (media is wide), in English, then the families that
+  // strain it in German, French, Spanish and Arabic, at an enlarged interface, and in the light
+  // theme, where pins stay dark glass.
+  pinScene('pin-light-off', 'light.shelf_leds'),
+  pinScene('pin-light-long', 'light.upstairs_hallway_ceiling'),
+  pinScene('pin-climate', 'climate.bedroom'),
+  pinScene('pin-fan', 'fan.office'),
+  pinScene('pin-cover', 'cover.garage_door'),
+  pinScene('pin-media', 'media_player.kitchen_speaker'),
+  pinScene('pin-media-play-only', 'media_player.hall_chime'),
+  pinScene('pin-numeric', 'input_number.thermostat_offset'),
+  pinScene('pin-enum', 'input_select.house_mode'),
+  pinScene('pin-weather', 'weather.home'),
+  pinScene('pin-camera', 'camera.driveway'),
+  pinScene('pin-scene', 'scene.movie_time'),
+  pinScene('pin-script', 'script.goodnight'),
+  pinScene('pin-lock', 'lock.back_door'),
+  pinScene('pin-action', 'automation.morning_routine'),
+  pinScene('pin-presence', 'person.alex'),
+  pinScene('pin-vacuum', 'vacuum.robot'),
+  pinScene('pin-timer', 'timer.laundry'),
+  pinScene('pin-de-cover', 'cover.garage_door', { ui: { language: 'de' } }),
+  pinScene('pin-de-weather', 'weather.home', { ui: { language: 'de' } }),
+  pinScene('pin-fr-climate', 'climate.bedroom', { ui: { language: 'fr' } }),
+  pinScene('pin-fr-light', 'light.upstairs_hallway_ceiling', { ui: { language: 'fr' } }),
+  pinScene('pin-es-fan', 'fan.office', { ui: { language: 'es' } }),
+  pinScene('pin-ar-light', 'light.desk_lamp', { ui: { language: 'ar' } }),
+  pinScene('pin-ar-climate', 'climate.bedroom', { ui: { language: 'ar' } }),
+  pinScene('pin-large-light', 'light.desk_lamp', { ui: { scale: 1.5 } }),
+  pinScene('pin-large-climate', 'climate.bedroom', { ui: { scale: 1.5 } }),
+  pinScene('pin-large-weather', 'weather.home', { ui: { scale: 1.5 } }),
+  pinScene('pin-theme-light-climate', 'climate.bedroom', { ui: { theme: 'light' } }),
 
   // The fixture turns seasonal themes off so the scenes above do not change with the date; these
   // force a holiday on. They also switch the themes on explicitly: CI machines often ask for

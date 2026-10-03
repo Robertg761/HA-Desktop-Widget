@@ -5328,11 +5328,302 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(updatedPowerButton).toBe(originalPowerButton);
       expect(document.activeElement).toBe(updatedPowerButton);
       expect(updatedControl?.dataset.state).toBe('off');
-      expect(updatedPowerButton?.textContent).toBe('Off');
-      expect(updatedPowerButton?.getAttribute('aria-pressed')).toBe('false');
+      // An icon button: its label and tooltip name the state, and it is not also "pressed".
+      expect(updatedPowerButton?.getAttribute('aria-label')).toBe('Off');
+      expect(updatedPowerButton?.title).toBe('Off');
+      expect(updatedPowerButton?.hasAttribute('aria-pressed')).toBe(false);
       expect(mockCallService).toHaveBeenCalledWith('light', 'turn_off', {
         entity_id: 'light.office',
       });
+    });
+
+    it('draws the light power button as an icon that names the state, with percent presets', () => {
+      state.setStates({
+        'light.desk': {
+          entity_id: 'light.desk',
+          state: 'on',
+          attributes: { friendly_name: 'Desk lamp', brightness: 204 },
+        },
+      });
+      ui.renderDesktopPinnedTile('light.desk', state.STATES['light.desk']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-light-control');
+      const power = control.querySelector('.desktop-pin-light-power');
+      // The word stays as the button's name and tooltip, so it takes no room from the entity name.
+      expect(power.textContent.trim()).toBe('');
+      expect(power.querySelector('svg[data-icon="power"]')).toBeTruthy();
+      expect(power.getAttribute('aria-label')).toBe('On');
+      expect(power.title).toBe('On');
+      expect(power.dataset.active).toBe('true');
+
+      const presets = [...control.querySelectorAll('.desktop-pin-light-preset')];
+      expect(presets.map((preset) => preset.textContent)).toEqual(['25%', '50%', '75%', '100%']);
+      expect(presets.map((preset) => preset.getAttribute('aria-label'))).toEqual([
+        '25% brightness',
+        '50% brightness',
+        '75% brightness',
+        '100% brightness',
+      ]);
+      expect(control.querySelector('.desktop-pin-light-meter-value').textContent).toBe('80%');
+    });
+
+    it('shows an unlit lamp as 0% instead of repeating Off', () => {
+      state.setStates({
+        'light.desk': {
+          entity_id: 'light.desk',
+          state: 'off',
+          attributes: {
+            friendly_name: 'Desk lamp',
+            brightness: null,
+            supported_color_modes: ['brightness'],
+          },
+        },
+      });
+      ui.renderDesktopPinnedTile('light.desk', state.STATES['light.desk']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-light-control');
+      expect(control.querySelector('.desktop-pin-light-meter-value').textContent).toBe('0%');
+      expect(control.querySelector('.desktop-pin-light-power').getAttribute('aria-label')).toBe(
+        'Off'
+      );
+      expect(control.dataset.state).toBe('off');
+    });
+
+    it('does not switch a light off when the click lands beside the brightness track', () => {
+      state.setStates({
+        'light.desk': {
+          entity_id: 'light.desk',
+          state: 'on',
+          attributes: { friendly_name: 'Desk lamp', brightness: 204 },
+        },
+      });
+      ui.renderDesktopPinnedTile('light.desk', state.STATES['light.desk']);
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-light-control');
+
+      control.querySelector('.desktop-pin-light-brightness').click();
+      control.querySelector('.desktop-pin-light-brightness-label').click();
+      control.querySelector('.desktop-pin-light-presets').click();
+      expect(mockCallService).not.toHaveBeenCalled();
+
+      control.querySelector('.desktop-pin-light-glyph').click();
+      expect(mockCallService).toHaveBeenCalledWith('light', 'turn_off', {
+        entity_id: 'light.desk',
+      });
+    });
+
+    it('titles a pin with the entity name and keeps the title current', () => {
+      state.setStates({
+        'light.desk': {
+          entity_id: 'light.desk',
+          state: 'on',
+          attributes: { friendly_name: 'Upstairs hallway ceiling light', brightness: 100 },
+        },
+        'sensor.office': {
+          entity_id: 'sensor.office',
+          state: '21.4',
+          attributes: { friendly_name: 'Office temperature', unit_of_measurement: '°C' },
+        },
+      });
+
+      ui.renderDesktopPinnedTile('light.desk', state.STATES['light.desk']);
+      expect(document.querySelector('.desktop-pin-light-control').title).toBe(
+        'Upstairs hallway ceiling light'
+      );
+      ui.renderDesktopPinnedTile('light.desk', {
+        ...state.STATES['light.desk'],
+        attributes: { friendly_name: 'Landing light', brightness: 100 },
+      });
+      expect(document.querySelector('.desktop-pin-light-control').title).toBe('Landing light');
+
+      ui.renderDesktopPinnedTile('sensor.office', state.STATES['sensor.office']);
+      expect(document.querySelector('.desktop-pin-sensor-control').title).toBe(
+        'Office temperature'
+      );
+    });
+
+    it('rounds a long sensor reading like its Quick Access tile', () => {
+      const sensor = {
+        entity_id: 'sensor.grid',
+        state: '0.7160215353965759',
+        attributes: {
+          friendly_name: 'Grid power',
+          unit_of_measurement: 'W',
+          state_class: 'measurement',
+        },
+      };
+      state.setStates({ [sensor.entity_id]: sensor });
+      ui.renderDesktopPinnedTile(sensor.entity_id, sensor);
+
+      const value = document.querySelector('.desktop-pin-sensor-control .desktop-pin-panel-value');
+      expect(value.textContent).toBe('0.72 W');
+      expect(value.title).toBe('0.72 W');
+
+      ui.renderDesktopPinnedTile(sensor.entity_id, { ...sensor, state: '1234.5678901' });
+      expect(
+        document.querySelector('.desktop-pin-sensor-control .desktop-pin-panel-value').textContent
+      ).not.toContain('5678901');
+    });
+
+    it('captions a sensor pin with what it measures instead of the word Sensor', () => {
+      const sensor = {
+        entity_id: 'sensor.office',
+        state: '21.4',
+        attributes: {
+          friendly_name: 'Office',
+          unit_of_measurement: '°C',
+          device_class: 'temperature',
+        },
+      };
+      state.setStates({ [sensor.entity_id]: sensor });
+      ui.renderDesktopPinnedTile(sensor.entity_id, sensor);
+      const status = () =>
+        document.querySelector('.desktop-pin-sensor-control .desktop-pin-panel-status');
+      expect(status().textContent).toBe('Temperature');
+
+      // A class without a caption keeps the domain name.
+      ui.renderDesktopPinnedTile(sensor.entity_id, {
+        ...sensor,
+        attributes: { ...sensor.attributes, device_class: 'timestamp' },
+      });
+      expect(status().textContent).toBe('Sensor');
+    });
+
+    it('offers a docked vacuum Start when the pin window has no service list', () => {
+      state.setServices({});
+      state.setStates({ 'vacuum.roomba': sampleStates['vacuum.roomba'] });
+      ui.renderDesktopPinnedTile('vacuum.roomba', state.STATES['vacuum.roomba']);
+
+      const buttons = () => [
+        ...document.querySelectorAll('.desktop-pin-vacuum-control .desktop-pin-vacuum-action'),
+      ];
+      expect(buttons().map((button) => button.textContent.trim())).toEqual(['Start']);
+      buttons()[0].click();
+      expect(mockCallService).toHaveBeenCalledWith('vacuum', 'start', {
+        entity_id: 'vacuum.roomba',
+      });
+
+      state.setStates({
+        'vacuum.roomba': { ...sampleStates['vacuum.roomba'], state: 'cleaning' },
+      });
+      ui.renderDesktopPinnedTile('vacuum.roomba', state.STATES['vacuum.roomba']);
+      expect(buttons().map((button) => button.textContent.trim())).toEqual(['Pause', 'Return']);
+    });
+
+    it('asks the main window to open the camera viewer instead of drawing it in the pin', () => {
+      const camera = require('../../src/camera.js');
+      camera.openCamera.mockClear();
+      state.setStates({ 'camera.front_door': sampleStates['camera.front_door'] });
+      ui.renderDesktopPinnedTile('camera.front_door', state.STATES['camera.front_door']);
+
+      document.querySelector('.desktop-pin-camera-open').click();
+
+      expect(mockElectronAPI.requestDesktopPinAction).toHaveBeenCalledWith(
+        'camera.front_door',
+        'open-details'
+      );
+      expect(camera.openCamera).not.toHaveBeenCalled();
+    });
+
+    it('says what an idle media player is instead of calling it paused', () => {
+      const player = {
+        entity_id: 'media_player.hall',
+        state: 'idle',
+        attributes: { friendly_name: 'Hall speaker', supported_features: 16384 },
+      };
+      state.setStates({ [player.entity_id]: player });
+      ui.renderDesktopPinnedTile(player.entity_id, player);
+
+      const control = document.querySelector('.desktop-pin-media-control');
+      expect(control.querySelector('.desktop-pin-panel-status').textContent).toBe('Idle');
+      expect(control.querySelector('.desktop-pin-media-title').textContent).toBe('Nothing playing');
+
+      ui.renderDesktopPinnedTile(player.entity_id, {
+        ...player,
+        state: 'paused',
+        attributes: { ...player.attributes, media_title: 'Weightless' },
+      });
+      const paused = document.querySelector('.desktop-pin-media-control');
+      expect(paused.querySelector('.desktop-pin-panel-status').textContent).toBe('Paused');
+      expect(paused.querySelector('.desktop-pin-media-title').textContent).toBe('Weightless');
+    });
+
+    it('runs a scene pin from the keyboard', () => {
+      state.setStates({
+        'scene.movie': sampleStates['scene.movie'] || {
+          entity_id: 'scene.movie',
+          state: 'scening',
+          attributes: { friendly_name: 'Movie time' },
+        },
+      });
+      ui.renderDesktopPinnedTile('scene.movie', state.STATES['scene.movie']);
+
+      const control = document.querySelector('.desktop-pin-scene-control');
+      expect(control.getAttribute('role')).toBe('button');
+      expect(control.tabIndex).toBe(0);
+      expect(control.getAttribute('aria-label')).toBe(
+        state.STATES['scene.movie'].attributes.friendly_name
+      );
+
+      control.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      expect(mockCallService).toHaveBeenCalledWith('scene', 'turn_on', {
+        entity_id: 'scene.movie',
+      });
+    });
+
+    it('does not run a scene pin from the keyboard while the pin is being arranged', () => {
+      state.setStates({
+        'scene.movie': sampleStates['scene.movie'] || {
+          entity_id: 'scene.movie',
+          state: 'scening',
+          attributes: { friendly_name: 'Movie time' },
+        },
+      });
+      ui.renderDesktopPinnedTile('scene.movie', state.STATES['scene.movie']);
+      const control = document.querySelector('.desktop-pin-scene-control');
+
+      document.body.classList.add('desktop-pin-edit-mode');
+      try {
+        for (const key of ['Enter', ' ']) {
+          control.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+        }
+        expect(mockCallService).not.toHaveBeenCalled();
+      } finally {
+        document.body.classList.remove('desktop-pin-edit-mode');
+      }
+    });
+
+    it('keeps momentary pin buttons out of aria-pressed', () => {
+      state.setStates({
+        'climate.thermostat': {
+          ...sampleStates['climate.thermostat'],
+          attributes: {
+            ...sampleStates['climate.thermostat'].attributes,
+            hvac_modes: ['off', 'heat'],
+          },
+        },
+        'weather.home': sampleStates['weather.home'],
+        'input_number.target': sampleStates['input_number.target'] || {
+          entity_id: 'input_number.target',
+          state: '5',
+          attributes: { friendly_name: 'Target' },
+        },
+      });
+
+      ui.renderDesktopPinnedTile('climate.thermostat', state.STATES['climate.thermostat']);
+      for (const mode of document.querySelectorAll('.desktop-pin-climate-mode')) {
+        // A mode is one of several states of the same switch.
+        expect(['true', 'false']).toContain(mode.getAttribute('aria-pressed'));
+      }
+
+      ui.renderDesktopPinnedTile('weather.home', state.STATES['weather.home']);
+      expect(
+        document.querySelector('.desktop-pin-weather-focus').hasAttribute('aria-pressed')
+      ).toBe(false);
+
+      ui.renderDesktopPinnedTile('input_number.target', state.STATES['input_number.target']);
+      for (const step of document.querySelectorAll('.desktop-pin-numeric-step')) {
+        expect(step.hasAttribute('aria-pressed')).toBe(false);
+      }
     });
 
     it('renders compact climate controls and sends hvac mode changes', () => {
@@ -5490,6 +5781,41 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(control?.dataset.denseVariant).toBe('tight');
       expect(control?.querySelector('.desktop-pin-cover-visual')).toBeNull();
       expect(control?.querySelector('.desktop-pin-cover-slider')).toBeTruthy();
+      // The position is the meter's value, so the header does not repeat it.
+      expect(
+        control?.querySelector('.desktop-pin-panel-meter .desktop-pin-cover-position')?.textContent
+      ).toBe('55%');
+      expect(control?.querySelectorAll('.desktop-pin-cover-position')).toHaveLength(1);
+      expect(
+        control?.querySelector('.desktop-pin-panel-topline .desktop-pin-cover-position')
+      ).toBeNull();
+
+      state.setStates({
+        'cover.blinds': { ...state.STATES['cover.blinds'], attributes: { current_position: 20 } },
+      });
+      ui.renderDesktopPinnedTile('cover.blinds', state.STATES['cover.blinds']);
+      expect(document.querySelector('.desktop-pin-cover-position')?.textContent).toBe('20%');
+    });
+
+    it('keeps the cover position in the header of a pin big enough for the blind', () => {
+      setDesktopPinViewport(320, 260);
+      state.setStates({
+        'cover.blinds': {
+          entity_id: 'cover.blinds',
+          state: 'open',
+          attributes: { friendly_name: 'Living Room Blinds', current_position: 55 },
+        },
+      });
+
+      ui.renderDesktopPinnedTile('cover.blinds', state.STATES['cover.blinds']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-cover-control');
+      expect(control?.querySelector('.desktop-pin-cover-visual')).toBeTruthy();
+      expect(control?.querySelector('.desktop-pin-panel-meter')).toBeNull();
+      expect(
+        control?.querySelector('.desktop-pin-panel-topline .desktop-pin-cover-position')
+          ?.textContent
+      ).toBe('55%');
     });
 
     it('renders compact media controls and routes play pause actions', () => {
@@ -5891,6 +6217,80 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
     });
 
+    it('starts, stops and resumes a vacuum that only advertises the legacy on/off features', () => {
+      // TURN_ON (1) + TURN_OFF (2) + RETURN_HOME (16): no START, STOP or PAUSE.
+      const legacy = (vacuumState) => ({
+        ...sampleStates['vacuum.roomba'],
+        state: vacuumState,
+        attributes: { ...sampleStates['vacuum.roomba'].attributes, supported_features: 1 + 2 + 16 },
+      });
+      const actions = () => [
+        ...document.querySelectorAll('#desktop-pin-content .desktop-pin-vacuum-action'),
+      ];
+      const render = (vacuumState) => {
+        state.setServices({});
+        state.setStates({ 'vacuum.roomba': legacy(vacuumState) });
+        ui.renderDesktopPinnedTile('vacuum.roomba', state.STATES['vacuum.roomba'], {
+          hasSnapshot: true,
+        });
+      };
+
+      // Off, or docked: Start is vacuum.turn_on rather than "Open widget".
+      for (const vacuumState of ['off', 'docked']) {
+        mockCallService.mockClear();
+        render(vacuumState);
+        expect(actions().map((button) => button.textContent.trim())).toEqual(['Start']);
+        actions()[0].click();
+        expect(mockCallService).toHaveBeenCalledWith('vacuum', 'turn_on', {
+          entity_id: 'vacuum.roomba',
+        });
+      }
+
+      // On, while it works: Stop is vacuum.turn_off, with Return beside it.
+      mockCallService.mockClear();
+      render('on');
+      expect(actions().map((button) => button.textContent.trim())).toEqual(['Stop', 'Return']);
+      actions()[0].click();
+      expect(mockCallService).toHaveBeenCalledWith('vacuum', 'turn_off', {
+        entity_id: 'vacuum.roomba',
+      });
+
+      mockCallService.mockClear();
+      render('paused');
+      expect(actions().map((button) => button.textContent.trim())).toEqual(['Resume', 'Return']);
+      actions()[0].click();
+      expect(mockCallService).toHaveBeenCalledWith('vacuum', 'turn_on', {
+        entity_id: 'vacuum.roomba',
+      });
+    });
+
+    it('offers Stop while a vacuum without Pause is cleaning', () => {
+      // START (8192) + STOP (8) + RETURN_HOME (16)
+      state.setServices({});
+      state.setStates({
+        'vacuum.roomba': {
+          ...sampleStates['vacuum.roomba'],
+          state: 'cleaning',
+          attributes: {
+            ...sampleStates['vacuum.roomba'].attributes,
+            supported_features: 8192 + 8 + 16,
+          },
+        },
+      });
+      mockCallService.mockClear();
+      ui.renderDesktopPinnedTile('vacuum.roomba', state.STATES['vacuum.roomba'], {
+        hasSnapshot: true,
+      });
+      const actions = [
+        ...document.querySelectorAll('#desktop-pin-content .desktop-pin-vacuum-action'),
+      ];
+      expect(actions.map((button) => button.textContent.trim())).toEqual(['Stop', 'Return']);
+      actions[0].click();
+      expect(mockCallService).toHaveBeenCalledWith('vacuum', 'stop', {
+        entity_id: 'vacuum.roomba',
+      });
+    });
+
     it('keeps scenes and scripts on micro layout at the minimum floor without using nano', async () => {
       jest.useFakeTimers();
       setDesktopPinViewport(97, 83);
@@ -6055,8 +6455,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           expect(control?.querySelector('.desktop-pin-panel-status')?.textContent).toBe('Off');
           expect(control?.querySelector('.desktop-pin-toggle-action')?.textContent).toBe('Off');
           expect(
-            control?.querySelector('.desktop-pin-toggle-action')?.getAttribute('aria-pressed')
-          ).toBe('false');
+            control?.querySelector('.desktop-pin-toggle-action')?.hasAttribute('aria-pressed')
+          ).toBe(false);
         },
       },
       {
@@ -6433,8 +6833,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.getElementById('desktop-pin-content')?.classList.contains('hidden')).toBe(
         false
       );
+      // Rounded like the Quick Access tile, not printed with every digit Home Assistant sends.
       expect(recoveredControl?.querySelector('.desktop-pin-panel-value')?.textContent).toBe(
-        '24.0 °C'
+        '24 °C'
       );
     });
   });

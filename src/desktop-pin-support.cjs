@@ -37,6 +37,15 @@ const DESKTOP_PIN_FEATURES = Object.freeze({
     nextTrack: 32,
     play: 16384,
   }),
+  // Home Assistant's VacuumEntityFeature flags.
+  vacuum: Object.freeze({
+    turnOn: 1,
+    turnOff: 2,
+    pause: 4,
+    stop: 8,
+    returnHome: 16,
+    start: 8192,
+  }),
 });
 
 function hasFeature(attributes, feature) {
@@ -133,6 +142,36 @@ function getDesktopPinCapabilities(entity = null) {
     default:
       return {};
   }
+}
+
+/**
+ * The services a vacuum offers, read from its supported_features. A pin window never asks Home
+ * Assistant for its service list, so this is what tells it that Start, Pause or Return exist. A
+ * vacuum that publishes no feature flags is assumed to take the usual commands.
+ */
+function getDesktopPinVacuumServices(entity = null) {
+  const supportedFeatures = Number(entity?.attributes?.supported_features);
+  if (!Number.isFinite(supportedFeatures) || supportedFeatures <= 0) {
+    return {
+      start: true,
+      turn_on: false,
+      pause: true,
+      return_to_base: true,
+      stop: false,
+      turn_off: false,
+    };
+  }
+  const features = DESKTOP_PIN_FEATURES.vacuum;
+  const has = (feature) => (supportedFeatures & feature) === feature;
+  return {
+    start: has(features.start),
+    // Vacuums written before START existed are switched on and off instead.
+    turn_on: has(features.turnOn),
+    pause: has(features.pause),
+    return_to_base: has(features.returnHome),
+    stop: has(features.stop),
+    turn_off: has(features.turnOff),
+  };
 }
 
 function normalizeEntityId(entityId) {
@@ -235,7 +274,10 @@ function resolveDesktopPinProfile(entityOrEntityId = null) {
     };
   }
 
-  if (isTimerLikeEntity(entity)) {
+  // A timer entity is recognised by its ID alone, so a pin works before the first Home Assistant
+  // snapshot has loaded the entity (and for one that has since been deleted). Timer-like sensors
+  // need the entity's attributes.
+  if (domain === 'timer' || isTimerLikeEntity(entity)) {
     return {
       ...baseProfile,
       family: 'timer',
@@ -351,6 +393,7 @@ module.exports = {
   DESKTOP_PIN_FEATURES,
   DESKTOP_PIN_SUPPORTED_FAMILIES,
   getDesktopPinCapabilities,
+  getDesktopPinVacuumServices,
   normalizeEntityId,
   getDesktopPinDomain,
   isTimerSensorEntity,

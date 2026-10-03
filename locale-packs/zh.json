@@ -2,7 +2,7 @@
   "locale": "zh",
   "displayName": "简体中文",
   "englishName": "Chinese (Simplified)",
-  "version": "1.2.53",
+  "version": "1.2.54",
   "minAppVersion": "3.4.1",
   "notes": "Simplified Chinese language pack for HA Desktop Widget.",
   "messages": {
@@ -1759,6 +1759,18 @@
     "Pin {{name}} to desktop": "将 {{name}} 固定到桌面",
     "Moved to position {{position}} of {{total}}": "已移到第 {{position}} 位（共 {{total}} 个）",
     "Reorganize mode enabled - Drag, select or press Alt+arrow keys to reorder, click X to remove, ESC to exit": "已启用整理模式 - 拖动、选择或按 Alt+方向键以重新排序，点击 X 删除，按 ESC 退出",
-    "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "已选中 {{name}}。请选择它要移到的磁贴位置，或按 Esc 取消。"
+    "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "已选中 {{name}}。请选择它要移到的磁贴位置，或按 Esc 取消。",
+    "Device class: Temperature": "温度",
+    "Device class: Power": "功率",
+    "Device class: Energy": "能源",
+    "Device class: Battery": "电池",
+    "Device class: Pressure": "压力",
+    "Device class: Illuminance": "照度",
+    "Device class: Voltage": "电压",
+    "Device class: Current": "电流",
+    "Device class: Door": "门",
+    "Device class: Window": "窗户",
+    "Device class: Motion": "移动",
+    "Device class: Occupancy": "占用"
   }
 }

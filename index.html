@@ -16,18 +16,14 @@
   <body>
     <canvas id="weather-effects-canvas" aria-hidden="true"></canvas>
     <canvas id="seasonal-effects-canvas" aria-hidden="true"></canvas>
-    <div id="desktop-pin-app" class="desktop-pin-shell" aria-live="polite">
-      <div class="desktop-pin-header">
-        <div
-          class="desktop-pin-drag-region"
-          data-i18n-title="Move desktop tile"
-          data-i18n-aria-label="Move desktop tile"
-          aria-label="Move desktop tile"
-          title="Move desktop tile"
-        ></div>
-      </div>
+    <div id="desktop-pin-app" class="desktop-pin-shell">
       <div id="desktop-pin-content" class="desktop-pin-content"></div>
-      <div id="desktop-pin-empty" class="desktop-pin-empty hidden" data-state="waiting">
+      <div
+        id="desktop-pin-empty"
+        class="desktop-pin-empty hidden"
+        data-state="waiting"
+        role="status"
+      >
         <div class="desktop-pin-empty-kicker" id="desktop-pin-empty-kicker">Connecting</div>
         <div class="desktop-pin-empty-title" id="desktop-pin-empty-title">
           Waiting for first live update

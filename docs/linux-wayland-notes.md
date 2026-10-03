@@ -147,6 +147,9 @@ XWayland is unavailable:
 - Desktop pin windows cannot place themselves either: drags are not persisted and saved pin
   positions are not applied, though size edits still work. Their edit mode says so in the tile
   itself, and the per-pin titles above are what let a KWin rule remember each pin's position.
+  A resize from a top or left handle therefore grows the tile from the origin the compositor
+  keeps instead of holding the opposite edge still, and the saved x and y are left as they
+  were. Layer-shell pins (below) do hold the opposite edge.
 - Never call `minimize()` on the main window without a plan for bringing it back; the app
   cannot unminimize itself.
 
@@ -294,8 +297,20 @@ Operational notes:
   outranks the saved choice as a debugging knob.
 - Desktop pin windows pass through the same helper and become bottom-layer surfaces.
   The helper identifies each surface by its stable title, so every pin keeps its own
-  position per output, and new pins avoid existing pins when there is room. Popup
-  elevation targets the main widget only.
+  position, and new pins open in the first free spot and avoid existing pins when there is
+  room. On Hyprland the position is kept per output and a pin can be dragged in edit mode.
+  On Sway, niri and river there is no cursor or monitor query to drag or track outputs with:
+  pins are placed from the position they were pinned at, on the display Electron reports as
+  primary, and resizing works but moving does not. Resizing from a top or left handle keeps
+  the opposite edge where it is by moving the surface's position, which is saved with the
+  size, as the position of that output. The surface is resized from where it is drawn, which
+  after a drag is not the x and y the pin was saved with. Popup elevation targets the main
+  widget only.
+- Windows are transparent whatever the opacity on native Wayland and as layer surfaces. An
+  opaque window there is given a larger surface and no shape, which showed as a square plate
+  behind each rounded pin and moved the widget about 16px right and 10px down at 100%. The
+  opacity is still drawn, by CSS, so Settings no longer asks for a restart when it crosses
+  100%.
 - If the helper binary is missing, or `HA_WIDGET_LINUX_LAYER_SHELL=0` is set, the app
   logs a warning and continues as a normal toplevel. Hyprland then tiles the resizable
   main window, and Omarchy's default window opacity applies to it. Rules matching the

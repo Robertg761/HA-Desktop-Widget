@@ -21,7 +21,7 @@ Settings are organized into six pages on the left: **General** (Home Assistant c
 
 Use **Search settings** at the top of Settings to find an option by its name or help text. Choose a result to open its page and any collapsed section. Press Escape in the search field to clear the search.
 
-In **Appearance → Readability**, choose **Text and control size** (100%, 115%, 130%, or 150%) to enlarge the interface, dialogs, and desktop pins. Enable **High contrast with opaque panels** for a dark, solid background and brighter text and borders. These preferences save immediately. Small pins can scroll when their enlarged controls need more space.
+In **Appearance → Readability**, choose **Text and control size** (100%, 115%, 130%, or 150%) to enlarge the interface, dialogs, and desktop pins. Enable **High contrast with opaque panels** for a dark, solid background and brighter text and borders. These preferences save immediately. Desktop pins grow with it, so a pin keeps showing all of its controls.
 
 Light, climate, fan, cover, and media tiles include a **Controls** button (the sliders icon in the tile corner) to open their detailed controls. Keyboard users can also focus a tile and press **Shift+Enter**.
 

@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.53",
+  "version": "1.2.54",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1759,6 +1759,18 @@
     "Pin {{name}} to desktop": "Anclar {{name}} al escritorio",
     "Moved to position {{position}} of {{total}}": "Movido a la posición {{position}} de {{total}}",
     "Reorganize mode enabled - Drag, select or press Alt+arrow keys to reorder, click X to remove, ESC to exit": "Modo de reorganización activado: arrastra, selecciona o pulsa Alt+flechas para reordenar, haz clic en X para eliminar, ESC para salir",
-    "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "Has seleccionado {{name}}. Elige la tarjeta cuyo lugar debe ocupar, o pulsa Esc para cancelar."
+    "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "Has seleccionado {{name}}. Elige la tarjeta cuyo lugar debe ocupar, o pulsa Esc para cancelar.",
+    "Device class: Temperature": "Temperatura",
+    "Device class: Power": "Potencia",
+    "Device class: Energy": "Energía",
+    "Device class: Battery": "Batería",
+    "Device class: Pressure": "Presión",
+    "Device class: Illuminance": "Iluminancia",
+    "Device class: Voltage": "Tensión",
+    "Device class: Current": "Corriente",
+    "Device class: Door": "Puerta",
+    "Device class: Window": "Ventana",
+    "Device class: Motion": "Movimiento",
+    "Device class: Occupancy": "Ocupación"
   }
 }

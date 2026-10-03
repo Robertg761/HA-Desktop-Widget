@@ -15,6 +15,10 @@ const {
   buildStates,
 } = require('../../scripts/visual-snapshots/fixture.cjs');
 const { scenes } = require('../../scripts/visual-snapshots/scenes.cjs');
+const {
+  DESKTOP_PIN_SUPPORTED_FAMILIES,
+  resolveDesktopPinProfile,
+} = require('../../src/desktop-pin-support.cjs');
 
 describe('visual snapshot fixture', () => {
   const entityIds = new Set(buildStates().map((state) => state.entity_id));
@@ -123,6 +127,12 @@ describe('visual snapshot scenes', () => {
       'six-tabs',
       'media-tile',
       'pin-light',
+      'pin-light-long',
+      'pin-de-cover',
+      'pin-fr-climate',
+      'pin-ar-light',
+      'pin-large-climate',
+      'pin-theme-light-climate',
     ]) {
       expect(names).toContain(required);
     }
@@ -131,6 +141,25 @@ describe('visual snapshot scenes', () => {
     expect(scenes.find((scene) => scene.name === 'forced-colors-main').media).toEqual([
       { name: 'forced-colors', value: 'active' },
     ]);
+  });
+
+  it('shows every desktop pin family it can pin, and only pins entities the fixture holds', () => {
+    const states = new Map(buildStates().map((entity) => [entity.entity_id, entity]));
+    const families = new Set();
+    for (const scene of scenes.filter((entry) => entry.pin)) {
+      expect(states.has(scene.pin)).toBe(true);
+      families.add(resolveDesktopPinProfile(states.get(scene.pin)).family);
+    }
+    expect([...families].sort()).toEqual(
+      [...DESKTOP_PIN_SUPPORTED_FAMILIES].filter((family) => family !== 'unsupported').sort()
+    );
+  });
+
+  it('puts every pinned entity on a page the scene shows, since only those can be pinned', () => {
+    for (const scene of scenes.filter((entry) => entry.pin)) {
+      const pages = scene.config?.customTabs || PAGE_SETS.default;
+      expect(pages.some((page) => page.entityIds.includes(scene.pin))).toBe(true);
+    }
   });
 
   it('shows forced colours on a light contrast theme too', () => {

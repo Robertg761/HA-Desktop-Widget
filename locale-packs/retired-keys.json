@@ -158,5 +158,69 @@
   "Reorganize mode enabled - Drag to reorder, click X to remove, ESC to exit": {
     "retiredIn": "4.0.0",
     "reason": "Reworded by the page tab strip rebuild (#136)"
+  },
+  "Compact light controls": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact climate controls": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact fan controls": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact cover controls": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact media controls": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact scene tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact action tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact {{domain}} controls": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact camera tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact status tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact numeric tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact select tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact presence tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact weather tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact vacuum tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact entity tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
   }
 }

@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.53",
+  "version": "1.2.54",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1759,6 +1759,18 @@
     "Pin {{name}} to desktop": "{{name}} को डेस्कटॉप पर पिन करें",
     "Moved to position {{position}} of {{total}}": "{{total}} में से स्थिति {{position}} पर ले जाया गया",
     "Reorganize mode enabled - Drag, select or press Alt+arrow keys to reorder, click X to remove, ESC to exit": "पुनर्व्यवस्थित मोड सक्षम - क्रम बदलने के लिए खींचें, चुनें या Alt+तीर कुंजियाँ दबाएं, हटाने के लिए X क्लिक करें, बाहर निकलने के लिए ESC दबाएं",
-    "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "{{name}} चुना गया। जिस टाइल की जगह इसे लेनी है उसे चुनें, या रद्द करने के लिए Escape दबाएं।"
+    "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "{{name}} चुना गया। जिस टाइल की जगह इसे लेनी है उसे चुनें, या रद्द करने के लिए Escape दबाएं।",
+    "Device class: Temperature": "तापमान",
+    "Device class: Power": "पावर",
+    "Device class: Energy": "ऊर्जा",
+    "Device class: Battery": "बैटरी",
+    "Device class: Pressure": "दबाव",
+    "Device class: Illuminance": "रोशनी",
+    "Device class: Voltage": "वोल्टेज",
+    "Device class: Current": "करंट",
+    "Device class: Door": "दरवाज़ा",
+    "Device class: Window": "खिड़की",
+    "Device class: Motion": "गति",
+    "Device class: Occupancy": "अधिभोग"
   }
 }

@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.53",
+  "version": "1.2.54",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1759,6 +1759,18 @@
     "Pin {{name}} to desktop": "Épingler {{name}} au bureau",
     "Moved to position {{position}} of {{total}}": "Déplacé à la position {{position}} sur {{total}}",
     "Reorganize mode enabled - Drag, select or press Alt+arrow keys to reorder, click X to remove, ESC to exit": "Mode réorganisation activé - glissez, sélectionnez ou appuyez sur Alt+flèches pour réordonner, cliquez sur X pour supprimer, Échap pour quitter",
-    "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "{{name}} sélectionné. Choisissez la vignette dont il doit prendre la place, ou appuyez sur Échap pour annuler."
+    "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "{{name}} sélectionné. Choisissez la vignette dont il doit prendre la place, ou appuyez sur Échap pour annuler.",
+    "Device class: Temperature": "Température",
+    "Device class: Power": "Puissance",
+    "Device class: Energy": "Énergie",
+    "Device class: Battery": "Batterie",
+    "Device class: Pressure": "Pression",
+    "Device class: Illuminance": "Éclairement",
+    "Device class: Voltage": "Tension",
+    "Device class: Current": "Intensité",
+    "Device class: Door": "Porte",
+    "Device class: Window": "Fenêtre",
+    "Device class: Motion": "Mouvement",
+    "Device class: Occupancy": "Occupation"
   }
 }
