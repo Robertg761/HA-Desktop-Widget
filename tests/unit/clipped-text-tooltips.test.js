@@ -96,6 +96,48 @@ describe('clipped text tooltips', () => {
     expect(id.title).toBe('The entity id');
   });
 
+  it('leaves a name to the tile title that already carries it, hint and all', () => {
+    const tile = document.createElement('div');
+    tile.title = 'Desk lamp with a very long name: Click to toggle, hold for brightness control';
+    const name = label('Desk lamp with a very long name', { clamp: '2' });
+    size(name, { scrollWidth: 100, clientWidth: 100, scrollHeight: 60, clientHeight: 30 });
+    tile.append(name);
+    document.body.append(tile);
+
+    hover(name);
+
+    expect(name.hasAttribute('title')).toBe(false);
+    expect(tile.title).toContain('hold for brightness control');
+  });
+
+  it('still names a label that the title around it does not carry', () => {
+    const tile = document.createElement('div');
+    tile.title = 'Click to toggle';
+    const name = label('Desk lamp with a very long name', { clamp: '2' });
+    size(name, { scrollWidth: 100, clientWidth: 100, scrollHeight: 60, clientHeight: 30 });
+    tile.append(name);
+    document.body.append(tile);
+
+    hover(name);
+
+    expect(name.title).toBe('Desk lamp with a very long name');
+  });
+
+  it('takes its own title back when a title around it comes to carry the text', () => {
+    const tile = document.createElement('div');
+    const name = label('Desk lamp with a very long name', { clamp: '2' });
+    size(name, { scrollWidth: 100, clientWidth: 100, scrollHeight: 60, clientHeight: 30 });
+    tile.append(name);
+    document.body.append(tile);
+    hover(name);
+    expect(name.title).toBe('Desk lamp with a very long name');
+
+    tile.title = 'Desk lamp with a very long name: Click to toggle';
+    hover(name);
+
+    expect(name.hasAttribute('title')).toBe(false);
+  });
+
   it('takes its title back once the text fits, so it never goes stale', () => {
     const name = label('Living room', { ellipsis: true });
     size(name, { scrollWidth: 200, clientWidth: 100 });

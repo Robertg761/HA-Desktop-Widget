@@ -10156,7 +10156,10 @@ function createUnavailableElement(entityId) {
 }
 
 // A tile that opens controls has an instruction for its tooltip. The name leads it, so a name the
-// tile cuts short (it stops at two lines) can still be read in full.
+// tile cuts short (it stops at two lines) can still be read in full. The instruction goes through
+// the existing '{{name}}: {{state}}' string as its `state`, on purpose: it is already translated in
+// every language pack, so a new string would leave each pack to catch up. Keep the placeholder
+// names, which the packs spell out.
 function getControlTileTitle(entity, hint) {
   return t('{{name}}: {{state}}', { name: utils.getEntityDisplayName(entity), state: hint });
 }

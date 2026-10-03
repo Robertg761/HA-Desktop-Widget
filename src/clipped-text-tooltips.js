@@ -19,12 +19,21 @@ function isClipped(element) {
   return clamp && clamp !== 'none' && element.scrollHeight > element.clientHeight + 1;
 }
 
+// A tile's tooltip names the tile and says how to use it ("Desk lamp: Click to toggle, hold for
+// brightness control"). A title on the name inside it would take over while the pointer is on the
+// name and hide that hint, so a name the tile's own title already carries needs none.
+function isTitledByAncestor(element, text) {
+  for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+    const title = ancestor.title;
+    if (title && ancestor.dataset[OWN_TITLE] !== title && title.includes(text)) return true;
+  }
+  return false;
+}
+
 function syncTitle(element) {
   if (element.title && element.dataset[OWN_TITLE] !== element.title) return;
-  const clipped = isClipped(element);
-  if (clipped) {
-    const text = element.textContent.replace(/\s+/g, ' ').trim();
-    if (!text) return;
+  const text = isClipped(element) ? element.textContent.replace(/\s+/g, ' ').trim() : '';
+  if (text && !isTitledByAncestor(element, text)) {
     element.title = text;
     element.dataset[OWN_TITLE] = text;
   } else if (element.dataset[OWN_TITLE] !== undefined) {
