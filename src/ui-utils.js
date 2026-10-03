@@ -470,10 +470,7 @@ function applyAccentColor(color, accentId = 'custom-preview') {
   root.style.setProperty('--accent-text-dark-hover', getAccentTextOnDark(rgb, 6.5));
   // A focus ring is a graphic, so 3:1 is enough; most accents keep their own colour for it.
   root.style.setProperty('--accent-ring-dark', getAccentTextOnDark(rgb, 3.2));
-  root.style.setProperty('--primary', normalizedColor);
-  root.style.setProperty('--primary-hover', `rgb(${hoverRgb.r}, ${hoverRgb.g}, ${hoverRgb.b})`);
   root.style.setProperty('--accent-bg', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${accentBgAlpha})`);
-  root.style.setProperty('--border-focus', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.5)`);
   root.style.setProperty(
     '--glow-accent',
     `0 0 20px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${glowAlpha})`

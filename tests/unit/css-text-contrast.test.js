@@ -48,12 +48,6 @@ describe('text contrast of the rules', () => {
         <div class="form-help form-warning"></div>
         <div class="form-help form-error"></div>
         <div class="profile-sync-error"></div>
-        <div class="update-status available"></div>
-        <div class="update-status downloading"></div>
-        <div class="update-status downloaded"></div>
-        <div class="update-status error"></div>
-        <div class="update-status up-to-date"></div>
-        <div class="update-status checking"></div>
       </div></div>
       <div class="first-run-onboarding">
         <div class="first-run-status" data-status="success"></div>
@@ -69,7 +63,7 @@ describe('text contrast of the rules', () => {
       const surfaces = currentSurfaces(config.highContrast);
       const results = [];
       for (const element of document.querySelectorAll(
-        '.connection-test-status, .form-warning, .form-error, .profile-sync-error, .update-status, .first-run-status, [role=alert], .add-page-name-error'
+        '.connection-test-status, .form-warning, .form-error, .profile-sync-error, .first-run-status, [role=alert], .add-page-name-error'
       )) {
         // Settings text sits on the dialog; the first-run wizard and the state panel on the window.
         const surface = element.closest('#settings-modal') ? surfaces.dialog : surfaces.window;
@@ -79,7 +73,7 @@ describe('text contrast of the rules', () => {
         ]);
       }
       expect(results.filter(([, enough]) => !enough)).toEqual([]);
-      expect(results.length).toBeGreaterThan(10);
+      expect(results.length).toBeGreaterThanOrEqual(9);
     });
 
     it.each(THEME_SCOPES)('keeps the removed entity name and hint readable (%s)', (_, config) => {
@@ -317,6 +311,57 @@ describe('text contrast of the rules', () => {
           'input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"])'
         )
       ).toBe(true);
+    });
+  });
+
+  describe('the dividers between Settings rows', () => {
+    const rows = `<div id="settings-modal"><div class="settings-group-body">
+      <div class="form-group" id="a">first</div>
+      <div class="form-group hidden" id="skipped-by-class">hidden</div>
+      <div class="form-group" id="b">second</div>
+      <div class="form-group" id="skipped-by-style" style="display: none">hidden</div>
+      <div class="form-group" id="c">third</div>
+      <div class="form-group" id="skipped-last" style="display: none">hidden at the end</div>
+    </div></div>`;
+    const border = (id, side) =>
+      resolvedValue(document.getElementById(id), `border-${side}`) ??
+      resolvedValue(document.getElementById(id), 'border-' + side + '-width');
+
+    it('draw one hairline above each visible row that follows another, and none below', () => {
+      applyScope(SCOPES.dark, 'original');
+      render(rows);
+      // The first visible row has no divider against the pane's own edge.
+      expect(border('a', 'top')).toBeNull();
+      // Hidden rows between visible ones do not leave a gap in the dividers.
+      expect(border('b', 'top')).toMatch(/^1px solid /);
+      expect(border('c', 'top')).toMatch(/^1px solid /);
+      // The last visible row ends on the pane's border, whether or not a hidden row follows it.
+      for (const id of ['a', 'b', 'c']) expect(border(id, 'bottom')).toBeNull();
+    });
+
+    it('does not draw a hairline above a hidden row, or count it as the last row', () => {
+      applyScope(SCOPES.dark, 'original');
+      render(rows);
+      for (const id of ['skipped-by-class', 'skipped-by-style', 'skipped-last']) {
+        expect(resolvedValue(document.getElementById(id), 'display')).toBe('none');
+      }
+    });
+
+    it('leave the legacy section dividers to the shared rule', () => {
+      applyScope(SCOPES.light, 'original');
+      render(
+        `<div id="settings-modal"><div class="settings-group-body">
+          <div class="form-group language-section" id="language">language</div>
+          <details class="settings-details" id="details"><summary>Legacy</summary></details>
+          <div class="form-group update-section" id="update">update</div>
+        </div></div>`
+      );
+      // Each used to carry its own, brighter top border and margin, so the first row of a pane got a
+      // second line under the pane's rounded edge. Now a row has the shared hairline or none.
+      expect(border('language', 'top')).toBeNull();
+      const shared = resolvedValue(document.getElementById('details'), 'border-top');
+      expect(shared).toMatch(/^1px solid /);
+      expect(border('update', 'top')).toBe(shared);
     });
   });
 });
