@@ -93,15 +93,53 @@ function compareVersions(a, b) {
   return comparePrerelease(left.prerelease, right.prerelease);
 }
 
-// Walks `effects` from the package that carries an advisory up to the packages
-// the project depends on directly. Those are what decide whether the advisory
-// is dev-only, so the exception lists them rather than the vulnerable package.
+// npm audit writes `via` and `effects` as arrays, but a hand-edited or damaged
+// report should be skipped over rather than crash the walk.
+function viaOf(entry) {
+  return entry && Array.isArray(entry.via) ? entry.via : [];
+}
+
+function effectsOf(entry) {
+  return entry && Array.isArray(entry.effects) ? entry.effects : [];
+}
+
+// Maps each package name to the vulnerable packages that depend on it, which is
+// the direction an advisory spreads. `effects` lists them, and a string in `via`
+// says the same from the other side: "X has Y in via" means Y has X in effects.
 //
-// A package counts as top-level when nothing above it is vulnerable (empty
-// effects) or when package.json lists it directly. The second rule matters when
-// a directly installed package is also a dependency of another one: following
-// only the empty-effects entries would hide that it reaches the advisory itself.
-function findTopLevelPackages(vulnerabilities, start) {
+// Both sides are read because npm does not always write both. When packages
+// depend on each other (app-builder-lib and electron-builder-squirrel-windows do,
+// through a peer dependency) npm drops one side of that edge, and which side
+// differs by version: npm 10 and 11 leave electron-builder-squirrel-windows with
+// no effects at all, npm 12 keeps them. Following `effects` alone would then
+// take that package for a top-level one the exception does not allow.
+function buildDependents(vulnerabilities) {
+  const dependents = new Map();
+  const add = (name, dependent) => {
+    if (!dependents.has(name)) dependents.set(name, new Set());
+    dependents.get(name).add(dependent);
+  };
+
+  for (const [name, entry] of Object.entries(vulnerabilities)) {
+    for (const dependent of effectsOf(entry)) add(name, dependent);
+    for (const via of viaOf(entry)) {
+      if (typeof via === 'string') add(via, name);
+    }
+  }
+  return dependents;
+}
+
+// Walks `dependents` from the package that carries an advisory up to the
+// packages the project depends on directly. Those are what decide whether the
+// advisory is dev-only, so the exception lists them rather than the vulnerable
+// package.
+//
+// A package counts as top-level when nothing above it is vulnerable (no
+// dependents) or when package.json lists it directly. The second rule matters
+// when a directly installed package is also a dependency of another one:
+// following only the packages without dependents would hide that it reaches the
+// advisory itself.
+function findTopLevelPackages(vulnerabilities, dependents, start) {
   const seen = new Set([start]);
   const queue = [start];
   const topLevel = new Set();
@@ -109,11 +147,11 @@ function findTopLevelPackages(vulnerabilities, start) {
   while (queue.length > 0) {
     const name = queue.shift();
     const entry = vulnerabilities[name];
-    const effects = entry && Array.isArray(entry.effects) ? entry.effects : [];
-    if (effects.length === 0 || (entry && entry.isDirect === true)) {
+    const above = [...(dependents.get(name) || [])];
+    if (above.length === 0 || (entry && entry.isDirect === true)) {
       topLevel.add(name);
     }
-    for (const next of effects) {
+    for (const next of above) {
       if (!seen.has(next)) {
         seen.add(next);
         queue.push(next);
@@ -128,16 +166,17 @@ function findTopLevelPackages(vulnerabilities, start) {
 // just pointers to other vulnerable packages) at a blocking severity.
 function collectAdvisories(report) {
   const vulnerabilities = (report && report.vulnerabilities) || {};
+  const dependents = buildDependents(vulnerabilities);
   const advisories = new Map();
 
   for (const [entryName, entry] of Object.entries(vulnerabilities)) {
-    for (const via of (entry && entry.via) || []) {
+    for (const via of viaOf(entry)) {
       if (!via || typeof via !== 'object' || !BLOCKING_SEVERITIES.has(via.severity)) continue;
 
       const packageName = via.name || entryName;
       const ghsa = normalizeGhsa(via.url);
       const key = `${ghsa || `npm-${via.source}`}|${packageName}`;
-      const reaches = findTopLevelPackages(vulnerabilities, entryName);
+      const reaches = findTopLevelPackages(vulnerabilities, dependents, entryName);
       const existing = advisories.get(key);
 
       if (existing) {

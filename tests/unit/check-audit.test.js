@@ -18,11 +18,12 @@ const BRACES = 'GHSA-vfj7-8cjw-p6xm';
 const HTTP_CACHE = 'GHSA-ch52-4w7c-c8xp';
 
 // A real `npm audit --json` report taken when both advisories were published,
-// without the fixAvailable and nodes fields the checker never reads.
-function auditReport() {
-  return JSON.parse(
-    fs.readFileSync(path.join(ROOT, 'tests/fixtures/npm-audit-report.json'), 'utf8')
-  );
+// without the fixAvailable and nodes fields the checker never reads. Pass the
+// npm 10 fixture for the report CI gets on Node 20: the same tree, but npm 10
+// leaves out the effects that point back along app-builder-lib's peer-dependency
+// cycle.
+function auditReport(fixture = 'npm-audit-report.json') {
+  return JSON.parse(fs.readFileSync(path.join(ROOT, 'tests/fixtures', fixture), 'utf8'));
 }
 
 // Written out here, not read from the real exceptions file, so deleting an entry
@@ -111,6 +112,44 @@ describe('collectAdvisories', () => {
     });
   });
 
+  it('reaches the same top-level packages in the report npm 10 writes', () => {
+    const advisories = collectAdvisories(auditReport('npm-audit-report-npm10.json'));
+
+    expect(advisories.map(({ package: name, reaches }) => [name, reaches])).toEqual([
+      ['braces', ['stylelint']],
+      ['http-cache-semantics', ['electron-builder']],
+    ]);
+  });
+
+  it('reads the missing side of a dependency cycle from via', () => {
+    const report = { vulnerabilities: {} };
+    addAdvisory(report, 'root', { ghsa: 'GHSA-aaaa-bbbb-cccc', effects: ['a'], isDirect: false });
+    report.vulnerabilities.a = {
+      name: 'a',
+      severity: 'high',
+      isDirect: false,
+      via: ['root', 'b'],
+      effects: ['app', 'b'],
+    };
+    // b depends on a and a on b, but this report only wrote one direction.
+    report.vulnerabilities.b = {
+      name: 'b',
+      severity: 'high',
+      isDirect: false,
+      via: ['a'],
+      effects: [],
+    };
+    report.vulnerabilities.app = {
+      name: 'app',
+      severity: 'high',
+      isDirect: true,
+      via: ['a'],
+      effects: [],
+    };
+
+    expect(collectAdvisories(report)[0].reaches).toEqual(['app']);
+  });
+
   it('ignores advisories below high and string-only via pointers', () => {
     const report = { vulnerabilities: {} };
     addAdvisory(report, 'low-risk', { ghsa: 'GHSA-aaaa-bbbb-cccc', severity: 'moderate' });
@@ -169,6 +208,16 @@ describe('check', () => {
       'braces',
       'http-cache-semantics',
     ]);
+  });
+
+  it('passes on the report npm 10 writes, which is what the Node 20 CI job gets', () => {
+    const result = runCheck({ report: auditReport('npm-audit-report-npm10.json') });
+
+    expect(result.ok).toBe(true);
+    expect(result.stderr).toEqual([]);
+    expect(result.stdout.join('\n')).toContain(
+      `${HTTP_CACHE} http-cache-semantics <=4.2.0 via electron-builder`
+    );
   });
 
   it('passes a clean report with no exceptions', () => {
