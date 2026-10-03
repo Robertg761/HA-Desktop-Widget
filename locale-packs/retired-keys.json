@@ -250,5 +250,9 @@
   "Showing all {{count}} icons.": {
     "retiredIn": "4.0.0",
     "reason": "The icon picker lists the first icons and asks for a query instead of showing all of them"
+  },
+  "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": {
+    "retiredIn": "4.0.0",
+    "reason": "Shortened before release: the first wording wrapped to three lines at 500px and four at 340px, over the bottom tile row"
   }
 }

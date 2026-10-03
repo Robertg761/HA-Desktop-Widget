@@ -10050,7 +10050,9 @@ body.widget-state-active #quick-controls .status-message {
 }
 
 /* Information has its own blue, not the accent: with a rose, amber or emerald accent an accent-coloured
-   "Reorganize mode is on" read as an error, a warning or a success. */
+   "Reorganize mode is on" read as an error, a warning or a success. The two values below are fixed on
+   purpose (the blue the default accent started from, not a reference to --accent), and the light
+   theme restates the glyph further down; their exact shades belong with the status colours. */
 .toast.info {
   border-color: rgba(100, 181, 246, 0.5);
 }
@@ -10315,12 +10317,12 @@ body {
 
 .confirm-modal-content .modal-footer {
   display: flex;
-  gap: var(--space-3);
-  justify-content: flex-end;
   /* Three buttons (Save, Discard, Keep editing) do not fit in a 400px dialog, let alone a 340px
      window or a wordier language: the row wraps, still lined up on the end, rather than cutting
      the labels off. */
   flex-wrap: wrap;
+  gap: var(--space-3);
+  justify-content: flex-end;
   padding: var(--space-3) var(--space-5);
 }
 
@@ -10329,12 +10331,12 @@ body {
    end clipped otherwise. */
 .confirm-modal-content .btn {
   min-width: 88px;
-}
-
   max-width: 100%;
   white-space: normal;
   overflow-wrap: anywhere;
   text-align: center;
+}
+
 .confirm-modal-content .btn-danger {
   background: rgba(211, 47, 47, 0.95);
   color: white;

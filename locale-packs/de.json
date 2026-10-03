@@ -1779,6 +1779,7 @@
     "Press keys... (Esc to cancel)": "Tasten drücken… (Esc zum Abbrechen)",
     "Discard color edits": "Farbänderungen verwerfen",
     "Keep editing": "Weiter bearbeiten",
-    "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Die ersten {{shown}} von {{count}} Symbolen werden angezeigt. Tippe, um sie einzugrenzen."
+    "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Die ersten {{shown}} von {{count}} Symbolen werden angezeigt. Tippe, um sie einzugrenzen.",
+    "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "Neu-Anordnen aktiv. Ziehen oder Alt+Pfeiltasten zum Sortieren. Esc zum Beenden."
   }
 }

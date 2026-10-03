@@ -2108,9 +2108,7 @@ function toggleReorganizeMode() {
       });
       // A notice, not a question: passive, so it cannot swallow the first drag it sits over.
       uiUtils.showToast(
-        t(
-          'Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.'
-        ),
+        t('Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.'),
         'info',
         4500,
         { passive: true }
@@ -2148,6 +2146,8 @@ function toggleReorganizeMode() {
   } catch (error) {
     console.error('Error toggling reorganize mode:', error);
   }
+}
+
 /**
  * Leaves Reorganize mode if it is on. Main calls for this when it ended the pins' edit mode itself
  * (it hid the window, taking the exit controls with it), so the dashboard does not come back
@@ -2155,8 +2155,6 @@ function toggleReorganizeMode() {
  */
 function exitReorganizeMode() {
   if (isReorganizeMode) toggleReorganizeMode();
-}
-
 }
 
 function addRemoveButtons() {
@@ -15394,9 +15392,9 @@ export {
   startTimeTicker,
   stopTimeTicker,
   updateTimerDisplays,
-  exitReorganizeMode,
   renderPrimaryCards,
   toggleReorganizeMode,
+  exitReorganizeMode,
   populateQuickControlsList,
   addComparisonGraphTile,
   isEntityVisible,

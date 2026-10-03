@@ -1704,11 +1704,11 @@
   "Device class: Motion": "Motion",
   "Device class: Occupancy": "Occupancy",
   "Could not dismiss notification": "Could not dismiss notification",
-  "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.",
   "No network connection detected. Check your network connection and the widget will retry automatically.": "No network connection detected. Check your network connection and the widget will retry automatically.",
   "Stop recording": "Stop recording",
   "Press keys... (Esc to cancel)": "Press keys... (Esc to cancel)",
   "Discard color edits": "Discard color edits",
   "Keep editing": "Keep editing",
-  "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Showing the first {{shown}} of {{count}} icons. Type to narrow them."
+  "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Showing the first {{shown}} of {{count}} icons. Type to narrow them.",
+  "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish."
 }

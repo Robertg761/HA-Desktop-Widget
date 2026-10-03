@@ -1779,6 +1779,7 @@
     "Press keys... (Esc to cancel)": "Pulsa las teclas... (Esc para cancelar)",
     "Discard color edits": "Descartar cambios de color",
     "Keep editing": "Seguir editando",
-    "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Mostrando los primeros {{shown}} de {{count}} iconos. Escribe para acotarlos."
+    "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Mostrando los primeros {{shown}} de {{count}} iconos. Escribe para acotarlos.",
+    "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "Modo de reorganización activado. Arrastra o pulsa Alt+flechas para reordenar. Pulsa Esc para finalizar."
   }
 }

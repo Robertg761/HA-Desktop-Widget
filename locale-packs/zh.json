@@ -1779,6 +1779,7 @@
     "Press keys... (Esc to cancel)": "请按下按键...（按 Esc 取消）",
     "Discard color edits": "放弃颜色修改",
     "Keep editing": "继续编辑",
-    "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "正在显示前 {{shown}} 个图标，共 {{count}} 个。输入文字可缩小范围。"
+    "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "正在显示前 {{shown}} 个图标，共 {{count}} 个。输入文字可缩小范围。",
+    "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "已启用整理模式。拖动或按 Alt+方向键以重新排序。按 Esc 完成。"
   }
 }

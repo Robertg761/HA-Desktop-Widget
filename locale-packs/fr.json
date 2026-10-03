@@ -1779,6 +1779,7 @@
     "Press keys... (Esc to cancel)": "Appuyez sur des touches... (Échap pour annuler)",
     "Discard color edits": "Abandonner les modifications de couleur",
     "Keep editing": "Continuer la modification",
-    "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Affichage des {{shown}} premières icônes sur {{count}}. Saisissez du texte pour les affiner."
+    "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Affichage des {{shown}} premières icônes sur {{count}}. Saisissez du texte pour les affiner.",
+    "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "Mode réorganisation activé. Glissez ou appuyez sur Alt+flèches pour réordonner. Appuyez sur Échap pour terminer."
   }
 }
