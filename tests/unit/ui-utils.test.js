@@ -1289,14 +1289,33 @@ describe('UI Utilities', () => {
       expect(result).toBe(false);
     });
 
-    it('should return true when Enter key pressed', async () => {
-      const promise = uiUtils.showConfirm('Confirm', 'Continue?');
+    it('should return true when Enter is pressed outside a button, if the safe answer is yes', async () => {
+      const promise = uiUtils.showConfirm('Save', 'Save it?', { confirmFirst: true });
 
       const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
       document.dispatchEvent(enterEvent);
 
       const result = await promise;
       expect(result).toBe(true);
+    });
+
+    it('should not let a stray Enter confirm a question that starts on Cancel', async () => {
+      const promise = uiUtils.showConfirm('Delete', 'Delete this?');
+      let settled = false;
+      promise.then(() => {
+        settled = true;
+      });
+
+      // Focus has left the buttons (a click on the message text), and Enter lands on the body.
+      document.activeElement?.blur?.();
+      const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
+      document.body.dispatchEvent(enterEvent);
+      await Promise.resolve();
+
+      expect(settled).toBe(false);
+      expect(enterEvent.defaultPrevented).toBe(false);
+      cancelBtn.click();
+      expect(await promise).toBe(false);
     });
 
     it('should leave Enter on the focused Cancel button to that button so it cancels', async () => {

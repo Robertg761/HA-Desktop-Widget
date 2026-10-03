@@ -1833,6 +1833,9 @@ function routeDialogKeydown(event) {
     if (!modal && event.key === 'Escape') dismissNewestToastForEscape(event);
     return;
   }
+  // The key that opened this dialog is still on its way up to the document: it was meant for what
+  // raised the dialog, so it must not answer the dialog that just appeared.
+  if (event === layer.openingEvent) return;
   if (event.key === 'Escape') {
     if (!layer.dismiss) return;
     event.preventDefault();
@@ -1904,13 +1907,22 @@ function openDialog(modal, options = {}) {
     releaseFocusTrap(replaces, { restoreFocus: false });
   }
   openModal(modal, { display });
-  dialogLayers.set(modal, { dismiss, dismissOnBackdrop, onEnter });
+  // A dialog raised from a keydown handler (Enter on a row, Escape on a field) is opened while that
+  // very event is still being dispatched, so the router would otherwise hand it to the new dialog.
+  const openingEvent = typeof window !== 'undefined' ? window.event : null;
+  dialogLayers.set(modal, {
+    dismiss,
+    dismissOnBackdrop,
+    onEnter,
+    openingEvent: openingEvent?.type === 'keydown' ? openingEvent : null,
+  });
   wireDialogBackdrop(modal);
   installDialogKeyRouter();
 
   if (alreadyOpen) {
-    // Re-opened while showing (a second long-press): keep the opener it will return focus to.
-    focusInitialControl(resolveInitialFocus(modal, initialFocus));
+    // Re-opened while showing (a second long-press): keep the opener it will return focus to. A
+    // caller that took focus for itself (initialFocus: false) keeps it.
+    if (initialFocus !== false) focusInitialControl(resolveInitialFocus(modal, initialFocus));
   } else {
     // Each dialog opened over another sits one step higher, so the newest is always on top
     // whatever order the elements happen to be in the document.
@@ -2220,7 +2232,8 @@ window.electronAPI?.onHotkeyRegistrationFailed?.(({ hotkey }) => {
  *   two ways forward and a way back (save, discard, keep editing).
  * @param {string} [options.alternateClass='btn-secondary'] - Style class of the third button.
  * @param {boolean} [options.confirmFirst=false] - Start on the confirm button, for a question whose
- *   safe answer is yes.
+ *   safe answer is yes. Only then does Enter outside a button confirm; otherwise it does just what
+ *   the focused button does.
  * @param {HTMLElement|string|Function} [options.focusFallback] - Where focus goes afterwards if the
  *   control that raised the question is replaced meanwhile.
  * @returns {Promise<boolean|string>} True for confirm; false for cancel, Escape or a click outside;
@@ -2277,14 +2290,17 @@ function showConfirm(title, message, options = {}) {
       alternateBtn?.addEventListener('click', handleAlternate);
 
       // Show modal. Enter on a focused button is that button's own click, so the dialog's Enter
-      // (confirm) only applies elsewhere, and not while the key that opened it is held down.
+      // (confirm) only applies elsewhere, and not while the key that opened it is held down. It
+      // applies only to a question whose safe answer is yes: one that starts on Cancel is asking
+      // about something that cannot be undone, and an Enter that lands on the message text (after
+      // a click there) must not be the one that runs it.
       openDialog(modal, {
         alert: true,
         describedBy: messageEl,
         initialFocus: options.confirmFirst ? okBtn : cancelBtn,
         focusFallback: options.focusFallback,
         dismiss: handleCancel,
-        onEnter: handleConfirm,
+        onEnter: options.confirmFirst ? handleConfirm : null,
       });
     } catch (error) {
       console.error('Error showing confirm dialog:', error);

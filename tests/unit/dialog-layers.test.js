@@ -163,6 +163,33 @@ describe('opening a dialog', () => {
   });
 });
 
+describe('a dialog shown again while it is open', () => {
+  it('leaves focus alone for a caller that said focus is its own', async () => {
+    const modal = dialog('own', '<input id="field"><input id="mine">');
+    uiUtils.openDialog(modal, { initialFocus: false });
+    await tick();
+    document.getElementById('mine').focus();
+
+    // The wizard, palette, preview and hotkey capture all open this way and place focus themselves.
+    uiUtils.openDialog(modal, { initialFocus: false });
+    await tick();
+
+    expect(document.activeElement.id).toBe('mine');
+  });
+
+  it('still moves focus to its first control for a caller that did not say', async () => {
+    const modal = dialog('moves', '<input id="field"><input id="other">');
+    uiUtils.openDialog(modal);
+    await tick();
+    document.getElementById('other').focus();
+
+    uiUtils.openDialog(modal);
+    await tick();
+
+    expect(document.activeElement.id).toBe('field');
+  });
+});
+
 describe('Tab inside a dialog', () => {
   it('wraps from the last control to the first, and back, over controls that are not tab stops', async () => {
     const modal = dialog(
@@ -306,6 +333,33 @@ describe('Escape, Enter and the backdrop', () => {
     key(document.body, 'Enter', { repeat: true });
 
     expect(onEnter).not.toHaveBeenCalled();
+  });
+
+  it('does not answer a dialog with the keydown that opened it', async () => {
+    document.body.insertAdjacentHTML('beforeend', '<div id="row" tabindex="0">Row</div>');
+    const onEnter = jest.fn();
+    const dismiss = jest.fn();
+    const modal = dialog('raised');
+    // Enter or Escape on a row that is not a button raises a dialog while the key is still travelling
+    // up to the document, where the router would otherwise hand it to the dialog that just appeared.
+    document.getElementById('row').addEventListener('keydown', () => {
+      uiUtils.openDialog(modal, { onEnter, dismiss });
+    });
+
+    key(document.getElementById('row'), 'Enter');
+    expect(onEnter).not.toHaveBeenCalled();
+    await uiUtils.closeDialog(modal);
+    await tick();
+
+    key(document.getElementById('row'), 'Escape');
+    expect(dismiss).not.toHaveBeenCalled();
+    await tick();
+
+    // The next press is a new event, and does what it says.
+    key(document.body, 'Enter');
+    expect(onEnter).toHaveBeenCalledTimes(1);
+    key(document.body, 'Escape');
+    expect(dismiss).toHaveBeenCalledWith('escape');
   });
 
   it('dismisses on a click on the backdrop, not on a click inside', async () => {
