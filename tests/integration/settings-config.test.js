@@ -5716,6 +5716,40 @@ describe('Settings + Config Integration', () => {
       );
     });
 
+    test('relabels the media player options, the unavailable one included, when the language changes while open', async () => {
+      i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      state.CONFIG.primaryMediaPlayer = 'media_player.gone';
+      await settings.openSettings();
+      const select = document.getElementById('primary-media-player');
+      expect(select.selectedOptions[0].textContent).toBe('Unavailable: media_player.gone');
+
+      i18n.setLocaleBootstrap({
+        activeLocale: 'de',
+        messages: {
+          'None (Hide Media Tile)': 'Keine (Medienkachel ausblenden)',
+          'Unavailable: {{entityId}}': 'Nicht verfügbar: {{entityId}}',
+        },
+      });
+      await Promise.resolve();
+
+      expect(select.value).toBe('media_player.gone');
+      expect(select.selectedOptions[0].textContent).toBe('Nicht verfügbar: media_player.gone');
+      expect(select.options[0].textContent).toBe('Keine (Medienkachel ausblenden)');
+    });
+
+    test('keeps an unsaved media player choice when the language changes while open', async () => {
+      i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      await settings.openSettings();
+      const select = document.getElementById('primary-media-player');
+      select.value = 'media_player.spotify';
+      select.dispatchEvent(new Event('change'));
+
+      i18n.setLocaleBootstrap({ activeLocale: 'de', messages: GERMAN });
+      await Promise.resolve();
+
+      expect(select.value).toBe('media_player.spotify');
+    });
+
     test('asks the update UI to re-render its status line after a language change', async () => {
       i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
       const relocalizeUpdateStatus = jest.fn();

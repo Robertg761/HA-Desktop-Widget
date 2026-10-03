@@ -4906,8 +4906,17 @@ function relocalizeOpenSettings({ force = false } = {}) {
     } else {
       updateCustomEntityIconSummary();
     }
-    const noneOption = document.querySelector('#primary-media-player option[value=""]');
-    if (noneOption) noneOption.textContent = t('None (Hide Media Tile)');
+    // Rebuilt rather than relabelled: the player Home Assistant is not reporting right now is an
+    // option too, with the entity id in its label. A choice made but not saved yet stays.
+    const mediaPlayerSelect = document.getElementById('primary-media-player');
+    const pendingMediaPlayer = mediaPlayerSelect?.value;
+    populateMediaPlayerSelect();
+    if (
+      mediaPlayerSelect &&
+      Array.from(mediaPlayerSelect.options).some((option) => option.value === pendingMediaPlayer)
+    ) {
+      mediaPlayerSelect.value = pendingMediaPlayer;
+    }
     if (document.getElementById('entity-alerts-enabled')?.checked) renderAlertsListInline();
     relabelAlertAdvancedOptions();
     relocalizePopupHotkeyText();
