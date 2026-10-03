@@ -121,6 +121,23 @@ function addAdvisory(report, name, { ghsa, severity = 'high', effects = [], isDi
   };
 }
 
+const projects = [];
+
+// Builds a small project in a temporary directory from { 'relative/path': text }.
+function project(files) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'check-audit-'));
+  projects.push(root);
+  for (const [file, text] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(path.join(root, file), text);
+  }
+  return root;
+}
+
+afterEach(() => {
+  for (const root of projects.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+});
+
 // What the report looks like once a fix ships and braces drops out of the tree:
 // every entry that was only vulnerable because of it goes too.
 function withoutBraces(report) {
@@ -148,6 +165,60 @@ describe('collectAdvisories', () => {
       range: '<=4.2.0',
       reaches: ['electron-builder'],
     });
+  });
+
+  it('lists every package between each advisory and the top-level ones, in both reports', () => {
+    for (const fixture of ['npm-audit-report.json', 'npm-audit-report-npm10.json']) {
+      const advisories = collectAdvisories(auditReport(fixture));
+
+      expect(advisories.map(({ package: name, pathPackages }) => [name, pathPackages])).toEqual([
+        ['braces', ['braces', 'fast-glob', 'globby', 'micromatch', 'stylelint']],
+        [
+          'http-cache-semantics',
+          [
+            '@electron/get',
+            'app-builder-lib',
+            'cacheable-request',
+            'dmg-builder',
+            'electron-builder',
+            'electron-builder-squirrel-windows',
+            'got',
+            'http-cache-semantics',
+          ],
+        ],
+      ]);
+    }
+  });
+
+  it('keeps the path of a package that no advisory reaches through, and merges repeats', () => {
+    const report = { vulnerabilities: {} };
+    for (const [name, parent] of [
+      ['one', 'top-one'],
+      ['two', 'top-two'],
+    ]) {
+      addAdvisory(report, name, {
+        ghsa: 'GHSA-aaaa-bbbb-cccc',
+        effects: [parent],
+        isDirect: false,
+      });
+      // Both entries carry the same advisory for the same package.
+      report.vulnerabilities[name].via[0].name = 'shared';
+      report.vulnerabilities[parent] = {
+        name: parent,
+        severity: 'high',
+        isDirect: true,
+        via: [name],
+        effects: [],
+      };
+    }
+
+    expect(collectAdvisories(report)).toMatchObject([
+      {
+        package: 'shared',
+        reaches: ['top-one', 'top-two'],
+        pathPackages: ['one', 'shared', 'top-one', 'top-two', 'two'],
+      },
+    ]);
   });
 
   it('reaches the same top-level packages in the report npm 10 writes', () => {
@@ -402,6 +473,97 @@ describe('check', () => {
 
     expect(result.ok).toBe(false);
     expect(result.stderr[0]).toContain('now reaches micromatch');
+  });
+
+  it('fails when the app imports braces, which an allowed dev-only tool also pulls in', () => {
+    const pkg = packageJson();
+    const root = project({ 'main.js': "const braces = require('braces');\n" });
+
+    const result = runCheck({ packageJson: pkg, shippedPackages: findShippedPackages(root, pkg) });
+
+    expect(result.ok).toBe(false);
+    expect(result.stderr).toHaveLength(2);
+    expect(result.stderr[0]).toContain(`${BRACES} (braces <=3.0.3, high)`);
+    expect(result.stderr[0]).toContain('braces (imported by main.js) ships in the app');
+    expect(result.stderr[0]).toContain('on the path from the advisory to stylelint');
+    expect(result.stderr[1]).toContain('failed with 1 problem');
+    expect(result.stdout.join('\n')).not.toContain(`${BRACES} braces`);
+    expect(result.stdout.join('\n')).toContain(`${HTTP_CACHE} http-cache-semantics`);
+  });
+
+  it('fails when the app imports got, a package between http-cache-semantics and the build tool', () => {
+    const pkg = packageJson();
+    const root = project({ 'src/download.js': "import got from 'got';\n" });
+
+    const result = runCheck({ packageJson: pkg, shippedPackages: findShippedPackages(root, pkg) });
+
+    expect(result.ok).toBe(false);
+    expect(result.stderr).toHaveLength(2);
+    expect(result.stderr[0]).toContain(`${HTTP_CACHE} (http-cache-semantics <=4.2.0, high)`);
+    expect(result.stderr[0]).toContain('got (imported by src/download.js) ships in the app');
+    expect(result.stderr[0]).toContain('on the path from the advisory to electron-builder');
+    expect(result.stdout.join('\n')).not.toContain(`${HTTP_CACHE} http-cache-semantics`);
+    expect(result.stdout.join('\n')).toContain(`${BRACES} braces`);
+  });
+
+  // Every package from the advisory up to the top-level ones, in both reports.
+  it.each([
+    ...['braces', 'micromatch', 'fast-glob', 'globby'].map((name) => [BRACES, name, 'stylelint']),
+    ...[
+      'http-cache-semantics',
+      'cacheable-request',
+      'got',
+      '@electron/get',
+      'app-builder-lib',
+      'dmg-builder',
+      'electron-builder-squirrel-windows',
+    ].map((name) => [HTTP_CACHE, name, 'electron-builder']),
+  ])('fails the %s exception when the app ships %s, which is on its path', (ghsa, name, top) => {
+    for (const fixture of ['npm-audit-report.json', 'npm-audit-report-npm10.json']) {
+      const shipped = shippedPackages().set(name, 'imported by main.js');
+
+      const result = runCheck({ report: auditReport(fixture), shippedPackages: shipped });
+      const errors = result.stderr.join('\n');
+      const other = ghsa === BRACES ? HTTP_CACHE : BRACES;
+
+      expect(result.ok).toBe(false);
+      expect(errors).toContain(`${ghsa} (`);
+      expect(errors).toContain(
+        `cannot be excused because ${name} (imported by main.js) ships in the app`
+      );
+      expect(errors).toContain(`on the path from the advisory to ${top}`);
+      expect(errors).not.toContain(other);
+      expect(result.stdout.join('\n')).not.toContain(`${ghsa} `);
+      expect(result.stdout.join('\n')).toContain(`${other} `);
+    }
+  });
+
+  it('lists every shipped package on the path in one problem', () => {
+    const shipped = shippedPackages()
+      .set('micromatch', 'imported by main.js')
+      .set('fast-glob', 'listed under dependencies');
+
+    const result = runCheck({ shippedPackages: shipped });
+    const errors = result.stderr.filter((line) => line.includes('cannot be excused'));
+
+    expect(result.ok).toBe(false);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain(
+      'fast-glob (listed under dependencies), micromatch (imported by main.js) ship in the app ' +
+        'and are on the path from the advisory to stylelint'
+    );
+  });
+
+  it('reports an allowed package that ships once, without repeating it for the path', () => {
+    const shipped = shippedPackages().set('stylelint', 'imported by main.js');
+
+    const result = runCheck({ shippedPackages: shipped });
+    const errors = result.stderr.filter((line) => line.includes('stylelint'));
+
+    expect(result.ok).toBe(false);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain(`exception for ${BRACES} (braces) allows stylelint`);
+    expect(result.stderr.join('\n')).not.toContain('cannot be excused');
   });
 
   it('fails once an exception has expired but still works on its last day', () => {
@@ -712,23 +874,6 @@ describe('parseExceptions', () => {
 });
 
 describe('findShippedPackages', () => {
-  const roots = [];
-
-  // Builds a small project in a temporary directory from { 'relative/path': text }.
-  function project(files) {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'check-audit-'));
-    roots.push(root);
-    for (const [file, text] of Object.entries(files)) {
-      fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
-      fs.writeFileSync(path.join(root, file), text);
-    }
-    return root;
-  }
-
-  afterEach(() => {
-    for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
-  });
-
   const viteConfig = `
     export default defineConfig({
       resolve: {
@@ -923,6 +1068,54 @@ describe('findShippedPackages', () => {
     ]);
   });
 
+  it('finds packages that a page loads from node_modules or imports in a module script', () => {
+    const root = project({
+      'electron-builder.yml': ['files:', '  - index.html', '  - main.js', ''].join('\n'),
+      'index.html': `
+        <link rel="stylesheet" href="node_modules/braces/index.css" />
+        <link rel="stylesheet" href="./node_modules/@scope/styles/dist/base.css?v=1" />
+        <link rel="stylesheet" href="../node_modules/events/style.css" />
+        <script src='node_modules/micromatch/browser.js'></script>
+        <script type="module">
+          import "fast-glob";
+          import { x } from '@scope/inline';
+          const lazy = import('inline-dynamic');
+        </script>
+        <link rel="stylesheet" href="styles.css" />
+        <script type="module" src="dist-renderer/renderer.bundle.js"></script>
+        <!-- node_modules/.bin/tool, node_modules/\${name}/x.js and my_node_modules/other/x.js -->
+      `,
+      'src/panel.html': '<link href="node_modules/in-src/panel.css" />',
+      'website/index.html': '<link href="node_modules/not-packed/site.css" />',
+    });
+    const names = [...findShippedPackages(root, {}).keys()].sort();
+
+    expect(names).toEqual([
+      '@scope/inline',
+      '@scope/styles',
+      'braces',
+      'electron',
+      'events',
+      'fast-glob',
+      'in-src',
+      'inline-dynamic',
+      'micromatch',
+    ]);
+  });
+
+  it('rejects an exception whose package a page loads, and says which page', () => {
+    const root = project({
+      'electron-builder.yml': ['files:', '  - index.html', ''].join('\n'),
+      'index.html': '<link rel="stylesheet" href="node_modules/braces/x.css" />',
+    });
+    const shipped = findShippedPackages(root, {});
+    const result = runCheck({ shippedPackages: shipped });
+
+    expect(shipped.get('braces')).toBe('imported by index.html');
+    expect(result.ok).toBe(false);
+    expect(result.stderr.join('\n')).toContain('braces (imported by index.html)');
+  });
+
   it('does not take a template literal after from or a bare import for a specifier', () => {
     const root = project({
       'src/prose.js': "// Each holiday runs from `before` days ahead.\nconst s = 'import `after`';",
@@ -1070,6 +1263,98 @@ describe('findShippedPackages', () => {
     ]);
   });
 
+  it('scans a tests or coverage directory inside a root, because it is packed with the rest', () => {
+    const root = project({
+      'electron-builder.yml': ['files:', '  - extra/**/*', ''].join('\n'),
+      'src/tests/helper.js': "require('braces');",
+      'src/deep/coverage/report.js': "import 'micromatch';",
+      'extra/tests/spec.js': "require('from-extra-tests');",
+      // Not under a root, so nothing packs it.
+      'tests/unit/spec.js': "require('fast-glob');",
+      'coverage/lcov.js': "require('globby');",
+    });
+    const shipped = findShippedPackages(root, {});
+
+    expect(shipped.get('braces')).toBe('imported by src/tests/helper.js');
+    expect(shipped.get('micromatch')).toBe('imported by src/deep/coverage/report.js');
+    expect(shipped.has('from-extra-tests')).toBe(true);
+    expect(shipped.has('fast-glob')).toBe(false);
+    expect(shipped.has('globby')).toBe(false);
+
+    // The exception that passes without the helper is rejected with it.
+    const without = findShippedPackages(project({ 'src/app.js': '' }), {});
+    expect(runCheck({ shippedPackages: without }).ok).toBe(true);
+    expect(runCheck({ shippedPackages: shipped }).stderr.join('\n')).toContain(
+      'braces (imported by src/tests/helper.js)'
+    );
+  });
+
+  describe('with symbolic links', () => {
+    // Windows only lets some accounts make links, so the tests stand down there
+    // rather than fail for a reason that has nothing to do with the scan.
+    const canLink = (() => {
+      const root = project({ 'target.txt': '' });
+      try {
+        fs.symlinkSync(path.join(root, 'target.txt'), path.join(root, 'link.txt'), 'file');
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+    const itLinks = canLink ? it : it.skip;
+
+    // Makes `from` a link to `to`, both relative to the project root.
+    function link(root, from, to) {
+      const target = path.join(root, to);
+      fs.mkdirSync(path.dirname(path.join(root, from)), { recursive: true });
+      // 'junction' is the kind of directory link that needs no privilege on Windows.
+      fs.symlinkSync(
+        target,
+        path.join(root, from),
+        fs.statSync(target).isDirectory() ? 'junction' : 'file'
+      );
+    }
+
+    itLinks('reads a linked file and a linked directory, wherever they point', () => {
+      const root = project({
+        'outside/loader.js': "require('got');",
+        'outside/lib/deep.js': "import 'micromatch';",
+        'outside/lib/node_modules/skipped/index.js': "require('from-linked-node-modules');",
+      });
+      link(root, 'src/c.js', 'outside/loader.js');
+      link(root, 'src/lib', 'outside/lib');
+      const shipped = findShippedPackages(root, {});
+
+      expect(shipped.get('got')).toBe('imported by src/c.js');
+      expect(shipped.get('micromatch')).toBe('imported by src/lib/deep.js');
+      expect(shipped.has('from-linked-node-modules')).toBe(false);
+
+      const result = runCheck({ shippedPackages: shipped });
+      expect(result.ok).toBe(false);
+      expect(result.stderr.join('\n')).toContain('micromatch (imported by src/lib/deep.js)');
+    });
+
+    itLinks('finishes when a link leads back into the directory it is in', () => {
+      const root = project({ 'src/app.js': "require('once');" });
+      link(root, 'src/loop', 'src');
+      link(root, 'src/nested/up', 'src');
+      const names = [...findShippedPackages(root, {}).keys()].sort();
+
+      expect(names).toEqual(['electron', 'once']);
+    });
+
+    itLinks('skips a link to nothing and a link to itself without failing', () => {
+      const root = project({ 'src/app.js': "require('kept');" });
+      const fileLink = (name, target) =>
+        fs.symlinkSync(path.join(root, target), path.join(root, name), 'file');
+      fileLink('src/dangling.js', 'src/missing.js');
+      fileLink('src/self.js', 'src/self.js');
+      const names = [...findShippedPackages(root, {}).keys()].sort();
+
+      expect(names).toEqual(['electron', 'kept']);
+    });
+  });
+
   it('reads only the top-level files list of electron-builder.yml', () => {
     const root = project({
       'electron-builder.yml': [
@@ -1086,6 +1371,123 @@ describe('findShippedPackages', () => {
 
     expect(readBuilderFiles(root)).toEqual(['main.js', 'src/**/*']);
     expect(readBuilderFiles(project({}))).toEqual([]);
+  });
+
+  describe('with a lock file', () => {
+    // A package-lock.json with the root entry and the given packages.
+    function lockFile(packages) {
+      return JSON.stringify({ lockfileVersion: 3, packages: { '': { name: 'app' }, ...packages } });
+    }
+
+    it('adds what the lock installs for every package that ships, and nothing else', () => {
+      const root = project({
+        'src/ui.js': "import 'bundled';",
+        'package-lock.json': lockFile({
+          'node_modules/app-dep': {
+            dependencies: { middle: '^1.0.0', aliased: 'npm:real-name@^1.0.0' },
+            optionalDependencies: { 'optional-dep': '^1.0.0', 'not-installed': '^1.0.0' },
+            peerDependencies: { 'peer-dep': '^1.0.0' },
+          },
+          // app-dep and middle need each other, and middle has its own copy of leaf.
+          'node_modules/middle': { dependencies: { leaf: '^1.0.0', 'app-dep': '^1.0.0' } },
+          'node_modules/middle/node_modules/leaf': { dependencies: { 'nested-leaf': '^1.0.0' } },
+          'node_modules/nested-leaf': {},
+          'node_modules/aliased': { name: 'real-name', dependencies: { 'alias-dep': '^1.0.0' } },
+          'node_modules/alias-dep': {},
+          'node_modules/optional-dep': {},
+          'node_modules/peer-dep': {},
+          'node_modules/@acme/shared': { link: true, resolved: 'packages/shared' },
+          'packages/shared': { name: '@acme/shared', dependencies: { 'shared-dep': '^1.0.0' } },
+          'node_modules/shared-dep': {},
+          'node_modules/bundled': { dependencies: { 'bundled-dep': '^1.0.0' } },
+          'node_modules/bundled-dep': {},
+          'node_modules/tool': { dependencies: { 'tool-dep': '^1.0.0' } },
+          'node_modules/tool-dep': {},
+          // Electron's package fetches the runtime; it is not packed with the app.
+          'node_modules/electron': { dependencies: { '@electron/get': '^5.0.0' } },
+          'node_modules/@electron/get': { dependencies: { got: '^11.0.0' } },
+          'node_modules/got': {},
+        }),
+      });
+
+      const shipped = findShippedPackages(root, {
+        dependencies: { 'app-dep': '^1.0.0', '@acme/shared': '*' },
+        devDependencies: { bundled: '^1.0.0', tool: '^1.0.0', electron: '^43.0.0' },
+      });
+
+      expect([...shipped.keys()].sort()).toEqual([
+        '@acme/shared',
+        'alias-dep',
+        'aliased',
+        'app-dep',
+        'bundled',
+        'bundled-dep',
+        'electron',
+        'leaf',
+        'middle',
+        'nested-leaf',
+        'not-installed',
+        'optional-dep',
+        'peer-dep',
+        'real-name',
+        'shared-dep',
+      ]);
+      expect(shipped.get('middle')).toBe('needed by app-dep, which is listed under dependencies');
+      expect(shipped.get('nested-leaf')).toBe(
+        'needed by app-dep, which is listed under dependencies'
+      );
+      expect(shipped.get('real-name')).toBe(
+        'needed by app-dep, which is listed under dependencies'
+      );
+      expect(shipped.get('shared-dep')).toBe(
+        'needed by @acme/shared, which is listed under dependencies'
+      );
+      expect(shipped.get('bundled-dep')).toBe('needed by bundled, which is imported by src/ui.js');
+      expect(shipped.get('app-dep')).toBe('listed under dependencies');
+      expect(shipped.get('electron')).toContain('every package');
+    });
+
+    it('stops the exception for a package that only a shipped package requires', () => {
+      // consumer ships and needs micromatch, which needs braces. npm audit leaves
+      // consumer out of its report when its range allows a micromatch without
+      // braces, so only the lock file shows braces ships.
+      const pkg = {
+        dependencies: { consumer: '^1.0.0' },
+        devDependencies: { stylelint: '^16.0.0', 'electron-builder': '^26.0.0' },
+      };
+      const root = project({
+        'package-lock.json': lockFile({
+          'node_modules/consumer': { dependencies: { micromatch: '^4.0.0' } },
+          'node_modules/micromatch': { dependencies: { braces: '^3.0.3' } },
+          'node_modules/braces': {},
+        }),
+      });
+
+      const result = runCheck({
+        packageJson: pkg,
+        shippedPackages: findShippedPackages(root, pkg),
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.stderr).toHaveLength(2);
+      expect(result.stderr[0]).toContain(`${BRACES} (braces <=3.0.3, high)`);
+      expect(result.stderr[0]).toContain(
+        'braces (needed by consumer, which is listed under dependencies), micromatch (needed by ' +
+          'consumer, which is listed under dependencies) ship in the app'
+      );
+      expect(result.stdout.join('\n')).not.toContain(`${BRACES} braces`);
+      expect(result.stdout.join('\n')).toContain(`${HTTP_CACHE} http-cache-semantics`);
+    });
+
+    it('refuses a lock file it cannot read', () => {
+      const unreadable = project({ 'package-lock.json': '{ not json' });
+      const old = project({
+        'package-lock.json': JSON.stringify({ lockfileVersion: 1, dependencies: {} }),
+      });
+
+      expect(() => findShippedPackages(unreadable, {})).toThrow('Could not read package-lock.json');
+      expect(() => findShippedPackages(old, {})).toThrow('has no "packages" list');
+    });
   });
 
   describe('in this repository', () => {
@@ -1109,8 +1511,34 @@ describe('findShippedPackages', () => {
       expect(shipped.has('uiohook-napi')).toBe(true);
     });
 
-    it('leaves out the build tools and its own aliases and workspace packages', () => {
+    it('finds what the lock file installs for the runtime dependencies', () => {
+      const lock = JSON.parse(fs.readFileSync(path.join(ROOT, 'package-lock.json'), 'utf8'));
+      const needed = Object.keys(lock.packages['node_modules/electron-updater'].dependencies);
+
+      expect(needed.length).toBeGreaterThan(0);
+      for (const name of needed) {
+        expect(shipped.get(name)).toMatch(/^needed by .+, which is (listed under|imported by) /);
+      }
+    });
+
+    it('leaves out the build tools, what only they and Electron need, and its own aliases', () => {
       for (const name of ['stylelint', 'electron-builder', 'eslint', 'vite', 'jest', 'prettier']) {
+        expect(shipped.has(name)).toBe(false);
+      }
+      // The packages both audit exceptions rely on staying out of the app.
+      for (const name of [
+        'braces',
+        'micromatch',
+        'fast-glob',
+        'globby',
+        'http-cache-semantics',
+        'cacheable-request',
+        'got',
+        '@electron/get',
+        'app-builder-lib',
+        'dmg-builder',
+        'electron-builder-squirrel-windows',
+      ]) {
         expect(shipped.has(name)).toBe(false);
       }
       for (const name of ['@hadw/renderer', '@dev-climate-demo', '@', 'fs', 'path', 'node:fs']) {

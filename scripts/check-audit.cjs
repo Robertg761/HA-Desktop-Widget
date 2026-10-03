@@ -41,8 +41,12 @@ const APP_SOURCES = [
   'preview',
 ];
 const BUILDER_CONFIG = 'electron-builder.yml';
+const LOCK_FILE = 'package-lock.json';
+const DEPENDENCY_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies'];
 // Stylesheets are included because vite bundles the ones the app imports, and an
-// @import of a package in one loads that package like an import in a script.
+// @import of a package in one loads that package like an import in a script. So
+// is HTML: index.html is packed as it is, and it can load a package with an inline
+// module script or by pointing a <link> or <script> into node_modules.
 const SOURCE_EXTENSIONS = new Set([
   '.js',
   '.cjs',
@@ -53,8 +57,12 @@ const SOURCE_EXTENSIONS = new Set([
   '.mts',
   '.cts',
   '.css',
+  '.html',
 ]);
-const SKIPPED_DIRECTORIES = new Set(['node_modules', '.git', 'tests', 'coverage']);
+// Only what a build never packs from. A directory named tests or coverage is not
+// one of them: electron-builder packs src/**/* whole, so a src/tests ships, and
+// the repository's own tests/ is never walked because it is not a root.
+const SKIPPED_DIRECTORIES = new Set(['node_modules', '.git']);
 const VITE_CONFIG_PATTERN = /^vite(?:\..+)?\.config\.[cm]?[jt]s$/;
 // Whitespace and comments, which JavaScript allows between a keyword, a
 // parenthesis and the string, and which bundler hints put there on purpose:
@@ -89,6 +97,11 @@ const SPECIFIER_PATTERNS = [
   // @import url(y), which has no quote, so the empty group stands in for it.
   new RegExp(String.raw`@import${GAP}url\(${GAP}()([^'"()\s]+)`, 'g'),
 ];
+// A path into node_modules, such as the <link href="node_modules/x/y.css"> that
+// index.html uses to load a package straight from the one electron-builder packs.
+// It names the package directly, so unlike a specifier it is not looked up in the
+// vite aliases or taken for a Node built-in: node_modules/events is the npm package.
+const NODE_MODULES_PATH = /\bnode_modules\/((?:@[\w.~-]+\/)?[\w.~-]+)/g;
 const EXCEPTION_FIELDS = [
   'ghsa',
   'package',
@@ -203,7 +216,8 @@ function buildDependents(vulnerabilities) {
 // Walks `dependents` from the package that carries an advisory up to the
 // packages the project depends on directly. Those are what decide whether the
 // advisory is dev-only, so the exception lists them rather than the vulnerable
-// package.
+// package. Returns them as `topLevel`, and every package the walk went through,
+// the start and the top-level ones included, as `onPath`.
 //
 // A package counts as top-level when nothing above it is vulnerable (no
 // dependents) or when package.json lists it directly. The second rule matters
@@ -230,10 +244,13 @@ function findTopLevelPackages(vulnerabilities, dependents, start) {
     }
   }
 
-  return [...topLevel].sort();
+  return { topLevel: [...topLevel].sort(), onPath: [...seen].sort() };
 }
 
-// Collects the root advisories at a blocking severity.
+// Collects the root advisories at a blocking severity. Each one lists the
+// top-level packages it reaches, and in `pathPackages` every package between it
+// and them, itself included. The vulnerable package is in the app if any of those
+// ships, because a package that ships brings the ones it depends on.
 function collectAdvisories(report) {
   const vulnerabilities = (report && report.vulnerabilities) || {};
   const dependents = buildDependents(vulnerabilities);
@@ -246,11 +263,13 @@ function collectAdvisories(report) {
       const packageName = via.name || entryName;
       const ghsa = normalizeGhsa(via.url);
       const key = `${ghsa || `npm-${via.source}`}|${packageName}`;
-      const reaches = findTopLevelPackages(vulnerabilities, dependents, entryName);
+      const { topLevel, onPath } = findTopLevelPackages(vulnerabilities, dependents, entryName);
+      const pathPackages = [...new Set([packageName, ...onPath])].sort();
       const existing = advisories.get(key);
 
       if (existing) {
-        existing.reaches = [...new Set([...existing.reaches, ...reaches])].sort();
+        existing.reaches = [...new Set([...existing.reaches, ...topLevel])].sort();
+        existing.pathPackages = [...new Set([...existing.pathPackages, ...pathPackages])].sort();
         continue;
       }
       advisories.set(key, {
@@ -260,7 +279,8 @@ function collectAdvisories(report) {
         severity: via.severity,
         title: via.title || '',
         range: via.range || '',
-        reaches,
+        reaches: topLevel,
+        pathPackages,
       });
     }
   }
@@ -369,18 +389,27 @@ function sourceRoots(root) {
   return [...roots];
 }
 
-function* walkSources(file) {
+// Follows symbolic links, because what a link points at is packed like any other
+// file, so a link cannot hide a file from the scan. `visited` holds the real path
+// of every directory walked, so a link that loops back cannot keep it going.
+function* walkSources(file, visited = new Set()) {
   let stat;
   try {
-    stat = fs.lstatSync(file);
+    stat = fs.statSync(file);
   } catch (error) {
-    if (error.code === 'ENOENT') return;
+    // Nothing there, or a link to something that is not (or to itself).
+    if (error.code === 'ENOENT' || error.code === 'ELOOP') return;
     throw error;
   }
   if (stat.isFile()) {
     if (SOURCE_EXTENSIONS.has(path.extname(file))) yield file;
   } else if (stat.isDirectory() && !SKIPPED_DIRECTORIES.has(path.basename(file))) {
-    for (const name of fs.readdirSync(file).sort()) yield* walkSources(path.join(file, name));
+    const real = fs.realpathSync(file);
+    if (visited.has(real)) return;
+    visited.add(real);
+    for (const name of fs.readdirSync(file).sort()) {
+      yield* walkSources(path.join(file, name), visited);
+    }
   }
 }
 
@@ -476,12 +505,90 @@ function packageNameOf(specifier, aliases, workspaceNames) {
   // Relative and absolute paths, node:, data:, https: and the like.
   if (/^[./]/.test(resolved) || /^[a-z][a-z0-9+.-]*:/i.test(resolved)) return null;
 
-  const parts = resolved.split('/');
-  const name = resolved.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
+  return packageNamed(resolved, workspaceNames, aliased);
+}
+
+// The package at the start of 'x', 'x/y', '@scope/x' or '@scope/x/y', or null when
+// that is not an installable package's name. `isPackage` is for a caller that
+// already knows it is one, such as an alias target or a path into node_modules,
+// where a name that is also a Node built-in, like 'events', is still the package.
+function packageNamed(nameOrSubpath, workspaceNames, isPackage) {
+  const parts = nameOrSubpath.split('/');
+  const name = nameOrSubpath.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
   if (!PACKAGE_NAME_PATTERN.test(name) || workspaceNames.has(name)) return null;
-  // An alias target is always a package, even one named like a built-in.
-  if (!aliased && isBuiltin(name)) return null;
+  if (!isPackage && isBuiltin(name)) return null;
   return name;
+}
+
+// Adds to `shipped` every package the lock file installs for the ones already in
+// it. A package that ships brings the packages it depends on, so a vulnerable
+// package that one of them requires ships too. npm audit does not always say so:
+// it only reports a dependent whose version range has no safe release to move to,
+// and one whose range allows a fix, which could be that of a package between the
+// shipped one and the advisory, is left out of the report and so out of the path
+// that collectAdvisories() traces.
+//
+// Names are followed without regard to where in node_modules a copy sits, which
+// can only add packages. Electron is not followed: its npm package downloads the
+// runtime that every build packs, and is not itself packed. A missing lock file
+// adds nothing; npm audit does not run without one, so the gate has already
+// stopped by then.
+function addInstalledDependencies(shipped, root) {
+  const text = readTextIfPresent(path.join(root, LOCK_FILE));
+  if (text === null) return;
+
+  let lock;
+  try {
+    lock = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`Could not read ${LOCK_FILE}: ${error.message}`);
+  }
+  const packages = packageField(lock, 'packages');
+  if (Object.keys(packages).length === 0) {
+    throw new Error(
+      `${LOCK_FILE} has no "packages" list (lockfileVersion 1?), so the dependencies of the ` +
+        'packages that ship could not be listed.'
+    );
+  }
+
+  // Each name another package can require, with what is installed under it. A
+  // workspace is linked into node_modules, and the link stands for the workspace.
+  const installed = new Map();
+  for (const [location, entry] of Object.entries(packages)) {
+    const at = location.lastIndexOf('node_modules/');
+    const target = entry && entry.link ? packages[entry.resolved] : entry;
+    if (at === -1 || !target || typeof target !== 'object') continue;
+    const name = location.slice(at + 'node_modules/'.length);
+    if (!installed.has(name)) installed.set(name, []);
+    installed.get(name).push(target);
+  }
+
+  // Electron is already in `seen`, so nothing below it is queued.
+  const seen = new Set(shipped.keys());
+  const queue = [...shipped]
+    .filter(([name]) => name !== 'electron')
+    .map(([name, why]) => ({ name, origin: name, why }));
+  while (queue.length > 0) {
+    const { name, origin, why } = queue.shift();
+    for (const entry of installed.get(name) || []) {
+      for (const field of DEPENDENCY_FIELDS) {
+        for (const dependency of Object.keys(packageField(entry, field))) {
+          if (seen.has(dependency)) continue;
+          seen.add(dependency);
+          queue.push({ name: dependency, origin, why });
+
+          // An aliased dependency is installed under one name and audited under
+          // another, so both count.
+          const names = [dependency, ...(installed.get(dependency) || []).map((item) => item.name)];
+          for (const known of names) {
+            if (typeof known === 'string' && !shipped.has(known)) {
+              shipped.set(known, `needed by ${origin}, which is ${why}`);
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 // Every package the packaged app can load, each with the reason it counts, so
@@ -491,9 +598,16 @@ function packageNameOf(specifier, aliases, workspaceNames) {
 // node_modules while vite bundles whatever the renderer imports.
 //
 // So a package ships when it is Electron, is listed under dependencies or
-// optionalDependencies, or is imported by source the app loads, a script or a
-// stylesheet. The import scan is textual, so a commented-out import counts as
-// one; being too cautious only stops an exception from being granted.
+// optionalDependencies, is imported by source the app loads, a script, a
+// stylesheet or a page, or is installed for one of those. The scan is textual, so
+// a commented-out import counts as one; being too cautious only stops an exception
+// from being granted.
+//
+// It can also miss a package. It reads the names require, require.resolve and
+// import() with the package written out in a string, and paths into node_modules.
+// A loader bound to another name (const load = createRequire(__filename);
+// load('x')) and a specifier computed at run time are not seen. The app uses
+// neither today, and code that starts to needs a pattern of its own.
 function findShippedPackages(root, packageJson) {
   const shipped = new Map([['electron', 'its runtime is in every package']]);
   for (const field of ['dependencies', 'optionalDependencies']) {
@@ -512,14 +626,21 @@ function findShippedPackages(root, packageJson) {
 
       const relative = path.relative(root, file).split(path.sep).join('/');
       const text = fs.readFileSync(file, 'utf8');
+      const add = (name) => {
+        if (name && !shipped.has(name)) shipped.set(name, `imported by ${relative}`);
+      };
       for (const pattern of SPECIFIER_PATTERNS) {
         for (const match of text.matchAll(pattern)) {
-          const name = packageNameOf(match[2], aliases, workspaceNames);
-          if (name && !shipped.has(name)) shipped.set(name, `imported by ${relative}`);
+          add(packageNameOf(match[2], aliases, workspaceNames));
         }
+      }
+      for (const match of text.matchAll(NODE_MODULES_PATH)) {
+        add(packageNamed(match[1], workspaceNames, true));
       }
     }
   }
+
+  addInstalledDependencies(shipped, root);
   return shipped;
 }
 
@@ -689,6 +810,25 @@ function evaluate({
         `${label} now reaches ${outside.join(', ')}, which the exception does not allow ` +
           `(allowed: ${entry.allowedVia.join(', ')}). Check whether that path ships in the app ` +
           'and update the dependency instead of widening the exception.'
+      );
+    }
+    // allowedVia only names where the path ends. The advisory also ships when its
+    // own package, or any package between it and the allowed ones, is loaded by the
+    // app: application code can import braces while stylelint, the dev-only tool the
+    // exception allows, is only one more package that depends on it. The allowed
+    // packages themselves are judged above.
+    const shippedOnPath = advisory.pathPackages.filter(
+      (name) => shippedPackages.has(name) && !entry.allowedVia.includes(name)
+    );
+    if (shippedOnPath.length > 0) {
+      acceptable = false;
+      const named = shippedOnPath.map((name) => `${name} (${shippedPackages.get(name)})`);
+      const [verb, copula] = shippedOnPath.length === 1 ? ['ships', 'is'] : ['ship', 'are'];
+      problems.push(
+        `${label} cannot be excused because ${named.join(', ')} ${verb} in the app and ${copula} on ` +
+          `the path from the advisory to ${advisory.reaches.join(', ')}. An exception only ` +
+          'covers an advisory whose whole path stays out of the app, so update the dependency ' +
+          'instead.'
       );
     }
     if (today > entry.expires) {
