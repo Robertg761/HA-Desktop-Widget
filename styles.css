@@ -12482,19 +12482,21 @@ body.theme-light:not(.high-contrast)
 
 @media (forced-colors: none) {
   /* On the pale dialog the tracks above fade to 1.0 to 1.9:1 at their start and the white thumb to
-     1.2:1, so the light theme gives each track a stronger start stop and an edge, and the thumb a
-     ring. The Readable preset paints its own tracks, and forced colours draw a ButtonText bar and a
-     Highlight disc (see the end of this file), which the gradient and the shadows here must not
-     outrank. */
+     1.2:1, so the light theme gives each track a stronger start stop and a thin edge, and the
+     thumb a ring. The ring carries the 3:1 cue a slider needs; the rail only has to be seen, so
+     its far end stops short of the full accent (a full-strength end read as a progress bar) and
+     its edge stays faint. The Readable preset paints its own tracks, and forced colours draw a
+     ButtonText bar and a Highlight disc (see the end of this file), which the gradient and the
+     shadows here must not outrank. */
   body.theme-light:not(.high-contrast) {
-    --slider-edge: inset 0 0 0 1px rgba(0, 0, 0, 0.42);
+    --slider-edge: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
   }
 
   body.theme-light:not(.high-contrast) .brightness-slider {
     background: linear-gradient(
       var(--slider-dir),
       rgba(var(--lit-light-rgb), 0.3),
-      var(--lit-light)
+      color-mix(in srgb, var(--lit-light) 78%, transparent)
     );
     box-shadow: var(--slider-edge);
   }
@@ -12504,7 +12506,7 @@ body.theme-light:not(.high-contrast)
     background: linear-gradient(
       var(--slider-dir),
       color-mix(in srgb, var(--text-primary) 28%, transparent),
-      var(--accent-text)
+      color-mix(in srgb, var(--accent-text) 75%, transparent)
     );
     box-shadow: var(--slider-edge);
   }
@@ -13160,7 +13162,7 @@ body.theme-light #settings-modal .modal-footer {
     background: linear-gradient(
       var(--slider-dir),
       color-mix(in srgb, var(--text-primary) 28%, transparent),
-      var(--accent-text)
+      color-mix(in srgb, var(--accent-text) 75%, transparent)
     );
     box-shadow: var(--slider-edge);
   }
