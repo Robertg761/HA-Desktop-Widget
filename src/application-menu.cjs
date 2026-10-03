@@ -1,11 +1,16 @@
 const { platform: runtimePlatform } = require('node:process');
 
-function createApplicationMenuTemplate(platform = runtimePlatform) {
+// The menu bar is never drawn on the frameless widget, but its accelerators work: Ctrl+0 and Ctrl+/-
+// zoom the page (undoing the Text size setting), Ctrl+R reloads it, F11 takes it full screen and
+// Ctrl+Shift+I opens the DevTools, with no way in the interface to understand or undo any of them.
+// So a packaged build keeps the Edit menu (copy and paste have to work) and, on macOS, the app and
+// Window menus that the system expects; the View menu is for development builds.
+function createApplicationMenuTemplate(platform = runtimePlatform, { isDev = false } = {}) {
   return [
     ...(platform === 'darwin' ? [{ role: 'appMenu' }] : []),
     { role: 'editMenu' },
-    { role: 'viewMenu' },
-    { role: 'windowMenu' },
+    ...(isDev ? [{ role: 'viewMenu' }] : []),
+    ...(platform === 'darwin' || isDev ? [{ role: 'windowMenu' }] : []),
   ];
 }
 
@@ -57,8 +62,8 @@ function isPasteAcceleratorInput(input = {}, platform = runtimePlatform) {
   return platform === 'darwin' ? !!input.meta && !input.control : !!input.control && !input.meta;
 }
 
-function installApplicationMenu(Menu, platform = runtimePlatform) {
-  const menu = Menu.buildFromTemplate(createApplicationMenuTemplate(platform));
+function installApplicationMenu(Menu, platform = runtimePlatform, options = {}) {
+  const menu = Menu.buildFromTemplate(createApplicationMenuTemplate(platform, options));
   Menu.setApplicationMenu(menu);
   return menu;
 }

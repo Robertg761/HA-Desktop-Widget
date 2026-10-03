@@ -17,18 +17,36 @@ describe('application edit menus', () => {
     };
 
     expect(installApplicationMenu(Menu, 'darwin')).toBe(builtMenu);
+    // No View menu: its zoom, reload, full screen and DevTools accelerators work on the frameless
+    // widget although the bar is never drawn, and fight the Text size setting.
     expect(Menu.buildFromTemplate).toHaveBeenCalledWith([
       { role: 'appMenu' },
       { role: 'editMenu' },
-      { role: 'viewMenu' },
       { role: 'windowMenu' },
     ]);
     expect(Menu.setApplicationMenu).toHaveBeenCalledWith(builtMenu);
   });
 
-  test('keeps the Edit menu available on Windows and Linux', () => {
-    expect(createApplicationMenuTemplate('win32')).toContainEqual({ role: 'editMenu' });
-    expect(createApplicationMenuTemplate('linux')).toContainEqual({ role: 'editMenu' });
+  test('keeps the Edit menu available on Windows and Linux, and nothing that zooms or reloads', () => {
+    expect(createApplicationMenuTemplate('win32')).toEqual([{ role: 'editMenu' }]);
+    expect(createApplicationMenuTemplate('linux')).toEqual([{ role: 'editMenu' }]);
+  });
+
+  test('gives development builds the View and Window menus back', () => {
+    expect(createApplicationMenuTemplate('linux', { isDev: true })).toEqual([
+      { role: 'editMenu' },
+      { role: 'viewMenu' },
+      { role: 'windowMenu' },
+    ]);
+    expect(createApplicationMenuTemplate('darwin', { isDev: true })).toEqual([
+      { role: 'appMenu' },
+      { role: 'editMenu' },
+      { role: 'viewMenu' },
+      { role: 'windowMenu' },
+    ]);
+    const Menu = { buildFromTemplate: jest.fn(() => ({})), setApplicationMenu: jest.fn() };
+    installApplicationMenu(Menu, 'win32', { isDev: true });
+    expect(Menu.buildFromTemplate.mock.calls[0][0]).toContainEqual({ role: 'viewMenu' });
   });
 
   test('builds editable-field actions from Chromium edit flags', () => {

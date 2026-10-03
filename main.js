@@ -1036,7 +1036,10 @@ let appliedHideOnBlur = false;
 const windowAutoHide = createWindowAutoHideController({
   getWindow: () => mainWindow,
   isEnabled: () => appliedHideOnBlur && !isLayerShellChildProcess && !isQuitting,
-  isSuppressed: () => popupHotkeyPressed,
+  // Reorganize mode puts the pins in edit mode, and the pin windows are other windows: pressing one
+  // blurs the main window, which would hide it and strand every pin in an edit state whose exit
+  // controls (the Reorganize button, Escape) are in the window that just went away.
+  isSuppressed: () => popupHotkeyPressed || desktopPinEditMode,
   hideWindow: () => hideMainWindowToTray(),
   getCursorPosition: () => electronScreen.getCursorScreenPoint(),
 });
@@ -7096,6 +7099,8 @@ function createWindow() {
   // Any hide (tray toggle, close to tray, minimize) ends a popup raise, so a later show
   // from the tray or menu does not inherit the above-full-screen z-order.
   mainWindow.on('hide', () => {
+    // Whatever hid the window, the pins cannot stay in edit mode: nothing is left to end it.
+    if (desktopPinEditMode) setDesktopPinEditMode(false);
     windowAutoHide.handleHidden();
     popupWindowPresenter.handleWindowHidden(mainWindow);
     notifyDesktopCompanionStateChanged();
@@ -8518,18 +8523,26 @@ async function restoreHomeAssistantOAuthSession() {
 ipcMain.handle('start-home-assistant-oauth', async (event, rawUrl) => {
   const sender = authorizeIpcSender(event, 'start-home-assistant-oauth');
   if (!sender) return rejectUnauthorizedIpc('start-home-assistant-oauth');
+  // The authorization happens in the browser, which takes focus from the widget. With "hide when focus
+  // is lost" on, the widget would be gone by the time the person comes back to it.
+  const resumeAutoHide = windowAutoHide.suspend();
   try {
     const session = await getHomeAssistantOAuthClient().pair(rawUrl);
-    return await runSerializedConfigMutation(async () => ({
+    const result = await runSerializedConfigMutation(async () => ({
       success: true,
       config: await applyHomeAssistantOAuthSession(session, { persist: true }),
     }));
+    // Bring it back in front: the connection it was waiting for is made.
+    showMainWindowFromTray();
+    return result;
   } catch (error) {
     return {
       success: false,
       code: describeLinuxKeyringOAuthError(error?.code || 'OAUTH_PAIRING_FAILED'),
       error: error?.message || 'Home Assistant authorization failed',
     };
+  } finally {
+    resumeAutoHide();
   }
 });
 
@@ -9316,11 +9329,17 @@ ipcMain.handle('choose-profile-sync-folder', async (event, provider, currentFold
   const resumeAutoHide = windowAutoHide.suspend();
   let result;
   try {
-    result = await dialog.showOpenDialog({
+    const dialogOptions = {
       title: mainT('Choose Profile Sync Folder'),
       defaultPath,
       properties: ['openDirectory', 'createDirectory'],
-    });
+    };
+    // Parented to the Settings window, like the export and import pickers: a free-floating dialog
+    // can open behind an always-on-top widget on Windows, and is a panel rather than a sheet on macOS.
+    const parent = sender.window && !sender.window.isDestroyed?.() ? sender.window : null;
+    result = await (parent
+      ? dialog.showOpenDialog(parent, dialogOptions)
+      : dialog.showOpenDialog(dialogOptions));
   } finally {
     resumeAutoHide();
   }
@@ -12758,7 +12777,7 @@ app
       }
     }
 
-    installApplicationMenu(Menu);
+    installApplicationMenu(Menu, process.platform, { isDev: IS_DEV_MODE });
     protectAutoHideDuringMenu(Menu.getApplicationMenu());
     installSessionPermissionPolicy(session.defaultSession, {
       rendererEntryPath: path.join(__dirname, 'index.html'),

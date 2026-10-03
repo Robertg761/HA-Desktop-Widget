@@ -367,6 +367,36 @@ describe('optional hide on focus loss', () => {
     expect(r.hideWindow).not.toHaveBeenCalled();
   });
 
+  test('main-process opt-in keeps the widget while the pins are being edited', () => {
+    // Reorganize mode puts the pins in edit mode, and pressing a pin blurs the main window. Hiding it
+    // then would strand every pin in an edit state whose exit controls are in the hidden window.
+    const source = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
+    const start = source.indexOf('const windowAutoHide = createWindowAutoHideController({');
+    const end = source.indexOf('const popupWindowPresenter =', start);
+    const context = {
+      createWindowAutoHideController: jest.fn(),
+      popupHotkeyPressed: false,
+      desktopPinEditMode: false,
+    };
+    vm.runInNewContext(source.slice(start, end), context);
+    const { isSuppressed } = context.createWindowAutoHideController.mock.calls[0][0];
+    expect(isSuppressed()).toBe(false);
+    context.desktopPinEditMode = true;
+    expect(isSuppressed()).toBe(true);
+    context.desktopPinEditMode = false;
+    context.popupHotkeyPressed = true;
+    expect(isSuppressed()).toBe(true);
+  });
+
+  test('ends pin edit mode when the main window hides, whatever hid it', () => {
+    const source = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
+    const hideHandler = source.slice(
+      source.indexOf("mainWindow.on('hide', () => {"),
+      source.indexOf("mainWindow.on('show', () => {")
+    );
+    expect(hideHandler).toMatch(/if \(desktopPinEditMode\) setDesktopPinEditMode\(false\);/);
+  });
+
   test('main-process opt-in excludes desktop-layer mode and quitting', () => {
     const source = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
     const start = source.indexOf('const windowAutoHide = createWindowAutoHideController({');
