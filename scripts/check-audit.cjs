@@ -41,6 +41,8 @@ const APP_SOURCES = [
   'preview',
 ];
 const BUILDER_CONFIG = 'electron-builder.yml';
+const LOCK_FILE = 'package-lock.json';
+const DEPENDENCY_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies'];
 // Stylesheets are included because vite bundles the ones the app imports, and an
 // @import of a package in one loads that package like an import in a script.
 const SOURCE_EXTENSIONS = new Set([
@@ -491,6 +493,77 @@ function packageNameOf(specifier, aliases, workspaceNames) {
   return name;
 }
 
+// Adds to `shipped` every package the lock file installs for the ones already in
+// it. A package that ships brings the packages it depends on, so a vulnerable
+// package that one of them requires ships too. npm audit does not always say so:
+// it only reports a dependent whose version range has no safe release to move to,
+// and one whose range allows a fix, which could be that of a package between the
+// shipped one and the advisory, is left out of the report and so out of the path
+// that collectAdvisories() traces.
+//
+// Names are followed without regard to where in node_modules a copy sits, which
+// can only add packages. Electron is not followed: its npm package downloads the
+// runtime that every build packs, and is not itself packed. A missing lock file
+// adds nothing; npm audit does not run without one, so the gate has already
+// stopped by then.
+function addInstalledDependencies(shipped, root) {
+  const text = readTextIfPresent(path.join(root, LOCK_FILE));
+  if (text === null) return;
+
+  let lock;
+  try {
+    lock = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`Could not read ${LOCK_FILE}: ${error.message}`);
+  }
+  const packages = packageField(lock, 'packages');
+  if (Object.keys(packages).length === 0) {
+    throw new Error(
+      `${LOCK_FILE} has no "packages" list (lockfileVersion 1?), so the dependencies of the ` +
+        'packages that ship could not be listed.'
+    );
+  }
+
+  // Each name another package can require, with what is installed under it. A
+  // workspace is linked into node_modules, and the link stands for the workspace.
+  const installed = new Map();
+  for (const [location, entry] of Object.entries(packages)) {
+    const at = location.lastIndexOf('node_modules/');
+    const target = entry && entry.link ? packages[entry.resolved] : entry;
+    if (at === -1 || !target || typeof target !== 'object') continue;
+    const name = location.slice(at + 'node_modules/'.length);
+    if (!installed.has(name)) installed.set(name, []);
+    installed.get(name).push(target);
+  }
+
+  // Electron is already in `seen`, so nothing below it is queued.
+  const seen = new Set(shipped.keys());
+  const queue = [...shipped]
+    .filter(([name]) => name !== 'electron')
+    .map(([name, why]) => ({ name, origin: name, why }));
+  while (queue.length > 0) {
+    const { name, origin, why } = queue.shift();
+    for (const entry of installed.get(name) || []) {
+      for (const field of DEPENDENCY_FIELDS) {
+        for (const dependency of Object.keys(packageField(entry, field))) {
+          if (seen.has(dependency)) continue;
+          seen.add(dependency);
+          queue.push({ name: dependency, origin, why });
+
+          // An aliased dependency is installed under one name and audited under
+          // another, so both count.
+          const names = [dependency, ...(installed.get(dependency) || []).map((item) => item.name)];
+          for (const known of names) {
+            if (typeof known === 'string' && !shipped.has(known)) {
+              shipped.set(known, `needed by ${origin}, which is ${why}`);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 // Every package the packaged app can load, each with the reason it counts, so
 // the audit can tell a shipped package from a build tool. package.json alone
 // cannot: Electron and the renderer's own bundled libraries (hls.js, sortablejs)
@@ -498,9 +571,10 @@ function packageNameOf(specifier, aliases, workspaceNames) {
 // node_modules while vite bundles whatever the renderer imports.
 //
 // So a package ships when it is Electron, is listed under dependencies or
-// optionalDependencies, or is imported by source the app loads, a script or a
-// stylesheet. The import scan is textual, so a commented-out import counts as
-// one; being too cautious only stops an exception from being granted.
+// optionalDependencies, is imported by source the app loads, a script or a
+// stylesheet, or is installed for one of those. The import scan is textual, so a
+// commented-out import counts as one; being too cautious only stops an exception
+// from being granted.
 function findShippedPackages(root, packageJson) {
   const shipped = new Map([['electron', 'its runtime is in every package']]);
   for (const field of ['dependencies', 'optionalDependencies']) {
@@ -527,6 +601,8 @@ function findShippedPackages(root, packageJson) {
       }
     }
   }
+
+  addInstalledDependencies(shipped, root);
   return shipped;
 }
 

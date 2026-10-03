@@ -1233,6 +1233,123 @@ describe('findShippedPackages', () => {
     expect(readBuilderFiles(project({}))).toEqual([]);
   });
 
+  describe('with a lock file', () => {
+    // A package-lock.json with the root entry and the given packages.
+    function lockFile(packages) {
+      return JSON.stringify({ lockfileVersion: 3, packages: { '': { name: 'app' }, ...packages } });
+    }
+
+    it('adds what the lock installs for every package that ships, and nothing else', () => {
+      const root = project({
+        'src/ui.js': "import 'bundled';",
+        'package-lock.json': lockFile({
+          'node_modules/app-dep': {
+            dependencies: { middle: '^1.0.0', aliased: 'npm:real-name@^1.0.0' },
+            optionalDependencies: { 'optional-dep': '^1.0.0', 'not-installed': '^1.0.0' },
+            peerDependencies: { 'peer-dep': '^1.0.0' },
+          },
+          // app-dep and middle need each other, and middle has its own copy of leaf.
+          'node_modules/middle': { dependencies: { leaf: '^1.0.0', 'app-dep': '^1.0.0' } },
+          'node_modules/middle/node_modules/leaf': { dependencies: { 'nested-leaf': '^1.0.0' } },
+          'node_modules/nested-leaf': {},
+          'node_modules/aliased': { name: 'real-name', dependencies: { 'alias-dep': '^1.0.0' } },
+          'node_modules/alias-dep': {},
+          'node_modules/optional-dep': {},
+          'node_modules/peer-dep': {},
+          'node_modules/@acme/shared': { link: true, resolved: 'packages/shared' },
+          'packages/shared': { name: '@acme/shared', dependencies: { 'shared-dep': '^1.0.0' } },
+          'node_modules/shared-dep': {},
+          'node_modules/bundled': { dependencies: { 'bundled-dep': '^1.0.0' } },
+          'node_modules/bundled-dep': {},
+          'node_modules/tool': { dependencies: { 'tool-dep': '^1.0.0' } },
+          'node_modules/tool-dep': {},
+          // Electron's package fetches the runtime; it is not packed with the app.
+          'node_modules/electron': { dependencies: { '@electron/get': '^5.0.0' } },
+          'node_modules/@electron/get': { dependencies: { got: '^11.0.0' } },
+          'node_modules/got': {},
+        }),
+      });
+
+      const shipped = findShippedPackages(root, {
+        dependencies: { 'app-dep': '^1.0.0', '@acme/shared': '*' },
+        devDependencies: { bundled: '^1.0.0', tool: '^1.0.0', electron: '^43.0.0' },
+      });
+
+      expect([...shipped.keys()].sort()).toEqual([
+        '@acme/shared',
+        'alias-dep',
+        'aliased',
+        'app-dep',
+        'bundled',
+        'bundled-dep',
+        'electron',
+        'leaf',
+        'middle',
+        'nested-leaf',
+        'not-installed',
+        'optional-dep',
+        'peer-dep',
+        'real-name',
+        'shared-dep',
+      ]);
+      expect(shipped.get('middle')).toBe('needed by app-dep, which is listed under dependencies');
+      expect(shipped.get('nested-leaf')).toBe(
+        'needed by app-dep, which is listed under dependencies'
+      );
+      expect(shipped.get('real-name')).toBe(
+        'needed by app-dep, which is listed under dependencies'
+      );
+      expect(shipped.get('shared-dep')).toBe(
+        'needed by @acme/shared, which is listed under dependencies'
+      );
+      expect(shipped.get('bundled-dep')).toBe('needed by bundled, which is imported by src/ui.js');
+      expect(shipped.get('app-dep')).toBe('listed under dependencies');
+      expect(shipped.get('electron')).toContain('every package');
+    });
+
+    it('stops the exception for a package that only a shipped package requires', () => {
+      // consumer ships and needs micromatch, which needs braces. npm audit leaves
+      // consumer out of its report when its range allows a micromatch without
+      // braces, so only the lock file shows braces ships.
+      const pkg = {
+        dependencies: { consumer: '^1.0.0' },
+        devDependencies: { stylelint: '^16.0.0', 'electron-builder': '^26.0.0' },
+      };
+      const root = project({
+        'package-lock.json': lockFile({
+          'node_modules/consumer': { dependencies: { micromatch: '^4.0.0' } },
+          'node_modules/micromatch': { dependencies: { braces: '^3.0.3' } },
+          'node_modules/braces': {},
+        }),
+      });
+
+      const result = runCheck({
+        packageJson: pkg,
+        shippedPackages: findShippedPackages(root, pkg),
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.stderr).toHaveLength(2);
+      expect(result.stderr[0]).toContain(`${BRACES} (braces <=3.0.3, high)`);
+      expect(result.stderr[0]).toContain(
+        'braces (needed by consumer, which is listed under dependencies), micromatch (needed by ' +
+          'consumer, which is listed under dependencies) ship in the app'
+      );
+      expect(result.stdout.join('\n')).not.toContain(`${BRACES} braces`);
+      expect(result.stdout.join('\n')).toContain(`${HTTP_CACHE} http-cache-semantics`);
+    });
+
+    it('refuses a lock file it cannot read', () => {
+      const unreadable = project({ 'package-lock.json': '{ not json' });
+      const old = project({
+        'package-lock.json': JSON.stringify({ lockfileVersion: 1, dependencies: {} }),
+      });
+
+      expect(() => findShippedPackages(unreadable, {})).toThrow('Could not read package-lock.json');
+      expect(() => findShippedPackages(old, {})).toThrow('has no "packages" list');
+    });
+  });
+
   describe('in this repository', () => {
     const pkg = realPackageJson();
     const shipped = findShippedPackages(ROOT, pkg);
@@ -1254,8 +1371,34 @@ describe('findShippedPackages', () => {
       expect(shipped.has('uiohook-napi')).toBe(true);
     });
 
-    it('leaves out the build tools and its own aliases and workspace packages', () => {
+    it('finds what the lock file installs for the runtime dependencies', () => {
+      const lock = JSON.parse(fs.readFileSync(path.join(ROOT, 'package-lock.json'), 'utf8'));
+      const needed = Object.keys(lock.packages['node_modules/electron-updater'].dependencies);
+
+      expect(needed.length).toBeGreaterThan(0);
+      for (const name of needed) {
+        expect(shipped.get(name)).toMatch(/^needed by .+, which is (listed under|imported by) /);
+      }
+    });
+
+    it('leaves out the build tools, what only they and Electron need, and its own aliases', () => {
       for (const name of ['stylelint', 'electron-builder', 'eslint', 'vite', 'jest', 'prettier']) {
+        expect(shipped.has(name)).toBe(false);
+      }
+      // The packages both audit exceptions rely on staying out of the app.
+      for (const name of [
+        'braces',
+        'micromatch',
+        'fast-glob',
+        'globby',
+        'http-cache-semantics',
+        'cacheable-request',
+        'got',
+        '@electron/get',
+        'app-builder-lib',
+        'dmg-builder',
+        'electron-builder-squirrel-windows',
+      ]) {
         expect(shipped.has(name)).toBe(false);
       }
       for (const name of ['@hadw/renderer', '@dev-climate-demo', '@', 'fs', 'path', 'node:fs']) {
