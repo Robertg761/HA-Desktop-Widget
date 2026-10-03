@@ -203,7 +203,8 @@ function buildDependents(vulnerabilities) {
 // Walks `dependents` from the package that carries an advisory up to the
 // packages the project depends on directly. Those are what decide whether the
 // advisory is dev-only, so the exception lists them rather than the vulnerable
-// package.
+// package. Returns them as `topLevel`, and every package the walk went through,
+// the start and the top-level ones included, as `onPath`.
 //
 // A package counts as top-level when nothing above it is vulnerable (no
 // dependents) or when package.json lists it directly. The second rule matters
@@ -230,10 +231,13 @@ function findTopLevelPackages(vulnerabilities, dependents, start) {
     }
   }
 
-  return [...topLevel].sort();
+  return { topLevel: [...topLevel].sort(), onPath: [...seen].sort() };
 }
 
-// Collects the root advisories at a blocking severity.
+// Collects the root advisories at a blocking severity. Each one lists the
+// top-level packages it reaches, and in `pathPackages` every package between it
+// and them, itself included. The vulnerable package is in the app if any of those
+// ships, because a package that ships brings the ones it depends on.
 function collectAdvisories(report) {
   const vulnerabilities = (report && report.vulnerabilities) || {};
   const dependents = buildDependents(vulnerabilities);
@@ -246,11 +250,13 @@ function collectAdvisories(report) {
       const packageName = via.name || entryName;
       const ghsa = normalizeGhsa(via.url);
       const key = `${ghsa || `npm-${via.source}`}|${packageName}`;
-      const reaches = findTopLevelPackages(vulnerabilities, dependents, entryName);
+      const { topLevel, onPath } = findTopLevelPackages(vulnerabilities, dependents, entryName);
+      const pathPackages = [...new Set([packageName, ...onPath])].sort();
       const existing = advisories.get(key);
 
       if (existing) {
-        existing.reaches = [...new Set([...existing.reaches, ...reaches])].sort();
+        existing.reaches = [...new Set([...existing.reaches, ...topLevel])].sort();
+        existing.pathPackages = [...new Set([...existing.pathPackages, ...pathPackages])].sort();
         continue;
       }
       advisories.set(key, {
@@ -260,7 +266,8 @@ function collectAdvisories(report) {
         severity: via.severity,
         title: via.title || '',
         range: via.range || '',
-        reaches,
+        reaches: topLevel,
+        pathPackages,
       });
     }
   }
@@ -689,6 +696,25 @@ function evaluate({
         `${label} now reaches ${outside.join(', ')}, which the exception does not allow ` +
           `(allowed: ${entry.allowedVia.join(', ')}). Check whether that path ships in the app ` +
           'and update the dependency instead of widening the exception.'
+      );
+    }
+    // allowedVia only names where the path ends. The advisory also ships when its
+    // own package, or any package between it and the allowed ones, is loaded by the
+    // app: application code can import braces while stylelint, the dev-only tool the
+    // exception allows, is only one more package that depends on it. The allowed
+    // packages themselves are judged above.
+    const shippedOnPath = advisory.pathPackages.filter(
+      (name) => shippedPackages.has(name) && !entry.allowedVia.includes(name)
+    );
+    if (shippedOnPath.length > 0) {
+      acceptable = false;
+      const named = shippedOnPath.map((name) => `${name} (${shippedPackages.get(name)})`);
+      const [verb, copula] = shippedOnPath.length === 1 ? ['ships', 'is'] : ['ship', 'are'];
+      problems.push(
+        `${label} cannot be excused because ${named.join(', ')} ${verb} in the app and ${copula} on ` +
+          `the path from the advisory to ${advisory.reaches.join(', ')}. An exception only ` +
+          'covers an advisory whose whole path stays out of the app, so update the dependency ' +
+          'instead.'
       );
     }
     if (today > entry.expires) {

@@ -121,6 +121,23 @@ function addAdvisory(report, name, { ghsa, severity = 'high', effects = [], isDi
   };
 }
 
+const projects = [];
+
+// Builds a small project in a temporary directory from { 'relative/path': text }.
+function project(files) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'check-audit-'));
+  projects.push(root);
+  for (const [file, text] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(path.join(root, file), text);
+  }
+  return root;
+}
+
+afterEach(() => {
+  for (const root of projects.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+});
+
 // What the report looks like once a fix ships and braces drops out of the tree:
 // every entry that was only vulnerable because of it goes too.
 function withoutBraces(report) {
@@ -148,6 +165,60 @@ describe('collectAdvisories', () => {
       range: '<=4.2.0',
       reaches: ['electron-builder'],
     });
+  });
+
+  it('lists every package between each advisory and the top-level ones, in both reports', () => {
+    for (const fixture of ['npm-audit-report.json', 'npm-audit-report-npm10.json']) {
+      const advisories = collectAdvisories(auditReport(fixture));
+
+      expect(advisories.map(({ package: name, pathPackages }) => [name, pathPackages])).toEqual([
+        ['braces', ['braces', 'fast-glob', 'globby', 'micromatch', 'stylelint']],
+        [
+          'http-cache-semantics',
+          [
+            '@electron/get',
+            'app-builder-lib',
+            'cacheable-request',
+            'dmg-builder',
+            'electron-builder',
+            'electron-builder-squirrel-windows',
+            'got',
+            'http-cache-semantics',
+          ],
+        ],
+      ]);
+    }
+  });
+
+  it('keeps the path of a package that no advisory reaches through, and merges repeats', () => {
+    const report = { vulnerabilities: {} };
+    for (const [name, parent] of [
+      ['one', 'top-one'],
+      ['two', 'top-two'],
+    ]) {
+      addAdvisory(report, name, {
+        ghsa: 'GHSA-aaaa-bbbb-cccc',
+        effects: [parent],
+        isDirect: false,
+      });
+      // Both entries carry the same advisory for the same package.
+      report.vulnerabilities[name].via[0].name = 'shared';
+      report.vulnerabilities[parent] = {
+        name: parent,
+        severity: 'high',
+        isDirect: true,
+        via: [name],
+        effects: [],
+      };
+    }
+
+    expect(collectAdvisories(report)).toMatchObject([
+      {
+        package: 'shared',
+        reaches: ['top-one', 'top-two'],
+        pathPackages: ['one', 'shared', 'top-one', 'top-two', 'two'],
+      },
+    ]);
   });
 
   it('reaches the same top-level packages in the report npm 10 writes', () => {
@@ -402,6 +473,97 @@ describe('check', () => {
 
     expect(result.ok).toBe(false);
     expect(result.stderr[0]).toContain('now reaches micromatch');
+  });
+
+  it('fails when the app imports braces, which an allowed dev-only tool also pulls in', () => {
+    const pkg = packageJson();
+    const root = project({ 'main.js': "const braces = require('braces');\n" });
+
+    const result = runCheck({ packageJson: pkg, shippedPackages: findShippedPackages(root, pkg) });
+
+    expect(result.ok).toBe(false);
+    expect(result.stderr).toHaveLength(2);
+    expect(result.stderr[0]).toContain(`${BRACES} (braces <=3.0.3, high)`);
+    expect(result.stderr[0]).toContain('braces (imported by main.js) ships in the app');
+    expect(result.stderr[0]).toContain('on the path from the advisory to stylelint');
+    expect(result.stderr[1]).toContain('failed with 1 problem');
+    expect(result.stdout.join('\n')).not.toContain(`${BRACES} braces`);
+    expect(result.stdout.join('\n')).toContain(`${HTTP_CACHE} http-cache-semantics`);
+  });
+
+  it('fails when the app imports got, a package between http-cache-semantics and the build tool', () => {
+    const pkg = packageJson();
+    const root = project({ 'src/download.js': "import got from 'got';\n" });
+
+    const result = runCheck({ packageJson: pkg, shippedPackages: findShippedPackages(root, pkg) });
+
+    expect(result.ok).toBe(false);
+    expect(result.stderr).toHaveLength(2);
+    expect(result.stderr[0]).toContain(`${HTTP_CACHE} (http-cache-semantics <=4.2.0, high)`);
+    expect(result.stderr[0]).toContain('got (imported by src/download.js) ships in the app');
+    expect(result.stderr[0]).toContain('on the path from the advisory to electron-builder');
+    expect(result.stdout.join('\n')).not.toContain(`${HTTP_CACHE} http-cache-semantics`);
+    expect(result.stdout.join('\n')).toContain(`${BRACES} braces`);
+  });
+
+  // Every package from the advisory up to the top-level ones, in both reports.
+  it.each([
+    ...['braces', 'micromatch', 'fast-glob', 'globby'].map((name) => [BRACES, name, 'stylelint']),
+    ...[
+      'http-cache-semantics',
+      'cacheable-request',
+      'got',
+      '@electron/get',
+      'app-builder-lib',
+      'dmg-builder',
+      'electron-builder-squirrel-windows',
+    ].map((name) => [HTTP_CACHE, name, 'electron-builder']),
+  ])('fails the %s exception when the app ships %s, which is on its path', (ghsa, name, top) => {
+    for (const fixture of ['npm-audit-report.json', 'npm-audit-report-npm10.json']) {
+      const shipped = shippedPackages().set(name, 'imported by main.js');
+
+      const result = runCheck({ report: auditReport(fixture), shippedPackages: shipped });
+      const errors = result.stderr.join('\n');
+      const other = ghsa === BRACES ? HTTP_CACHE : BRACES;
+
+      expect(result.ok).toBe(false);
+      expect(errors).toContain(`${ghsa} (`);
+      expect(errors).toContain(
+        `cannot be excused because ${name} (imported by main.js) ships in the app`
+      );
+      expect(errors).toContain(`on the path from the advisory to ${top}`);
+      expect(errors).not.toContain(other);
+      expect(result.stdout.join('\n')).not.toContain(`${ghsa} `);
+      expect(result.stdout.join('\n')).toContain(`${other} `);
+    }
+  });
+
+  it('lists every shipped package on the path in one problem', () => {
+    const shipped = shippedPackages()
+      .set('micromatch', 'imported by main.js')
+      .set('fast-glob', 'listed under dependencies');
+
+    const result = runCheck({ shippedPackages: shipped });
+    const errors = result.stderr.filter((line) => line.includes('cannot be excused'));
+
+    expect(result.ok).toBe(false);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain(
+      'fast-glob (listed under dependencies), micromatch (imported by main.js) ship in the app ' +
+        'and are on the path from the advisory to stylelint'
+    );
+  });
+
+  it('reports an allowed package that ships once, without repeating it for the path', () => {
+    const shipped = shippedPackages().set('stylelint', 'imported by main.js');
+
+    const result = runCheck({ shippedPackages: shipped });
+    const errors = result.stderr.filter((line) => line.includes('stylelint'));
+
+    expect(result.ok).toBe(false);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain(`exception for ${BRACES} (braces) allows stylelint`);
+    expect(result.stderr.join('\n')).not.toContain('cannot be excused');
   });
 
   it('fails once an exception has expired but still works on its last day', () => {
@@ -712,23 +874,6 @@ describe('parseExceptions', () => {
 });
 
 describe('findShippedPackages', () => {
-  const roots = [];
-
-  // Builds a small project in a temporary directory from { 'relative/path': text }.
-  function project(files) {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'check-audit-'));
-    roots.push(root);
-    for (const [file, text] of Object.entries(files)) {
-      fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
-      fs.writeFileSync(path.join(root, file), text);
-    }
-    return root;
-  }
-
-  afterEach(() => {
-    for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
-  });
-
   const viteConfig = `
     export default defineConfig({
       resolve: {
