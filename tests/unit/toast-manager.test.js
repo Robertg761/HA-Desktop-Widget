@@ -56,6 +56,45 @@ describe('what stays on screen, and for how long', () => {
     expect(toast.isConnected).toBe(true);
   });
 
+  it('lets an error in a pin window go after a reading time, as a 168px pin cannot hold it', () => {
+    document.body.classList.add('desktop-pin-mode');
+    const toast = uiUtils.showToast('Failed to toggle Bed Light', 'error', 2000);
+
+    // The same floor as a warning, so the sentence can be read first.
+    jest.advanceTimersByTime(5900);
+    expect(toast.isConnected).toBe(true);
+    jest.advanceTimersByTime(200 + 300);
+    expect(toast.isConnected).toBe(false);
+  });
+
+  it('still holds a pin error while it is under the pointer, then resumes its clock', () => {
+    document.body.classList.add('desktop-pin-mode');
+    const toast = uiUtils.showToast('Could not run command', 'error', 2000);
+
+    toast.dispatchEvent(new Event('pointerenter'));
+    jest.advanceTimersByTime(60 * 1000);
+    expect(toast.isConnected).toBe(true);
+
+    toast.dispatchEvent(new Event('pointerleave'));
+    jest.advanceTimersByTime(5900);
+    expect(toast.isConnected).toBe(true);
+    jest.advanceTimersByTime(200 + 300);
+    expect(toast.isConnected).toBe(false);
+  });
+
+  it('refreshes the clock of a repeated pin error instead of stacking it', () => {
+    document.body.classList.add('desktop-pin-mode');
+    const first = uiUtils.showToast('Failed to toggle Bed Light', 'error', 2000);
+    jest.advanceTimersByTime(4000);
+    const again = uiUtils.showToast('Failed to toggle Bed Light', 'error', 2000);
+
+    expect(again).toBe(first);
+    jest.advanceTimersByTime(4000);
+    expect(first.isConnected).toBe(true);
+    jest.advanceTimersByTime(2100 + 300);
+    expect(first.isConnected).toBe(false);
+  });
+
   it('keeps a warning long enough to read, in proportion to its length', () => {
     uiUtils.showToast('Short', 'warning', 1000);
     const long = 'x'.repeat(300);

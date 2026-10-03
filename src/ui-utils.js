@@ -829,7 +829,10 @@ function openModal(modal, { display = 'flex' } = {}) {
 
 const TOAST_FOOTER_GAP_PX = 8;
 const TOAST_LIMIT = 3;
-// A pin window is 168px tall, so one toast at a time is all it can hold.
+// A pin window is 168px tall, so one toast at a time is all it can hold. For the same reason an
+// error there does not wait to be dismissed: it would sit over the pin's tile until someone clicked
+// it, and a pin on the desktop layer may never get the keyboard focus that closes it. It lives as
+// long as a warning does, with the same pause while it is being read.
 const TOAST_PIN_LIMIT = 1;
 // Warnings are read, not glanced at: long enough for the sentence at a reading pace.
 const TOAST_MIN_WARNING_MS = 6000;
@@ -940,12 +943,16 @@ function setToastPaused(toast, paused) {
   }
 }
 
+function isPinWindow() {
+  return !!document.body?.classList.contains('desktop-pin-mode');
+}
+
 // How long a toast stays when nobody is reading it. Problems wait to be dismissed: an error that
 // vanishes after two seconds is an error the user may never learn about, and it is announced as an
-// alert for the same reason.
-function getToastLifetime(type, message, timeout) {
-  if (type === 'error') return Infinity;
-  if (type === 'warning') {
+// alert for the same reason. A pin window cannot hold one that long (see TOAST_PIN_LIMIT).
+function getToastLifetime(type, message, timeout, inPin = false) {
+  if (type === 'error' && !inPin) return Infinity;
+  if (type === 'warning' || type === 'error') {
     return Math.max(timeout, TOAST_MIN_WARNING_MS, 1500 + TOAST_MS_PER_CHARACTER * message.length);
   }
   return timeout;
@@ -1019,10 +1026,10 @@ function dismissNewestToastForEscape(event) {
  *
  * The toast leads with a status icon matching its type and exits through the shared
  * `.toast-closing` animation. Errors and warnings are announced as alerts and carry a close
- * button; errors stay until dismissed and warnings stay long enough to read. Every toast pauses
- * while the pointer or keyboard focus is on it, is dismissed by click or from the keyboard
- * (Enter, Space or Escape), and is folded into an identical toast already showing. At most three
- * stay on screen at once (one in a pin window).
+ * button; errors stay until dismissed (in a pin window, as long as a warning) and warnings stay
+ * long enough to read. Every toast pauses while the pointer or keyboard focus is on it, is
+ * dismissed by click or from the keyboard (Enter, Space or Escape), and is folded into an
+ * identical toast already showing. At most three stay on screen at once (one in a pin window).
  *
  * @param {string} message - Text to show inside the toast.
  * @param {string} [type='success'] - Visual variant/class to apply ('success', 'error', 'warning' or 'info').
@@ -1044,7 +1051,8 @@ function showToast(
     wireToastLayout();
     const kind = TOAST_TYPES.has(type) ? type : 'info';
     const text = String(message ?? '');
-    const lifetime = getToastLifetime(kind, text, timeout);
+    const inPin = isPinWindow();
+    const lifetime = getToastLifetime(kind, text, timeout, inPin);
 
     // The same message twice at once is one problem reported twice: the first stays, with a fresh
     // clock, instead of a second toast joining the stack.
@@ -1061,9 +1069,7 @@ function showToast(
 
     // A full stack makes room by letting go of the oldest notice, an error last: it is the one
     // the user has not necessarily seen.
-    const limit = document.body?.classList.contains('desktop-pin-mode')
-      ? TOAST_PIN_LIMIT
-      : TOAST_LIMIT;
+    const limit = inPin ? TOAST_PIN_LIMIT : TOAST_LIMIT;
     let live = getLiveToasts(container);
     while (live.length >= limit) {
       const evicted = live.find((existing) => !existing.classList.contains('error')) || live[0];
