@@ -44,14 +44,32 @@ const BUILDER_CONFIG = 'electron-builder.yml';
 const SOURCE_EXTENSIONS = new Set(['.js', '.cjs', '.mjs', '.jsx', '.ts', '.tsx', '.mts', '.cts']);
 const SKIPPED_DIRECTORIES = new Set(['node_modules', '.git', 'tests', 'coverage']);
 const VITE_CONFIG_PATTERN = /^vite(?:\..+)?\.config\.[cm]?[jt]s$/;
-// Each pattern captures the quote in group 1 and the module specifier in group 2.
+// Whitespace and comments, which JavaScript allows between a keyword, a
+// parenthesis and the string, and which bundler hints put there on purpose:
+// import(/* @vite-ignore */ 'x'). A comment body cannot contain `*/` and a line
+// comment runs to the end of its line, so each comment can only be read one way.
+// Reading a block comment as lazily as possible instead (`[\s\S]*?`) lets the
+// match end it at any later `*/`, and a call with n comments before something
+// that is not a string then costs 2^n tries.
+const GAP = String.raw`(?:\s|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\/|\/\/[^\r\n]*(?![^\r\n]))*`;
+// A string literal, with the quote in group 1 and the specifier in group 2.
+const STRING = String.raw`(['"])([^'"\r\n]+)\1`;
+// The same, as the argument of import() or require(), where a template literal
+// counts too: rollup resolves import(`x`), with nothing interpolated, like
+// import('x'). One that does interpolate still names its package when the name
+// comes before the first ${, as in require(`x/${file}`), and packageNameOf()
+// drops it otherwise. After `from` or a bare `import` a backtick is not valid
+// syntax, and would only match prose such as "runs from `before` days ahead".
+const CALL_STRING = String.raw`(['"\`])([^'"\`\r\n]+)\1`;
 const SPECIFIER_PATTERNS = [
   // import x from 'y', export * from 'y', and the lines of a multi-line import.
-  /\bfrom\s*(['"])([^'"\r\n]+)\1/g,
-  // import 'y' and import('y').
-  /\bimport\s*(?:\(\s*)?(['"])([^'"\r\n]+)\1/g,
+  new RegExp(String.raw`\bfrom${GAP}${STRING}`, 'g'),
+  // import 'y'.
+  new RegExp(String.raw`\bimport${GAP}${STRING}`, 'g'),
+  // import('y').
+  new RegExp(String.raw`\bimport${GAP}\(${GAP}${CALL_STRING}`, 'g'),
   // require('y') and require.resolve('y').
-  /\brequire(?:\.resolve)?\s*\(\s*(['"])([^'"\r\n]+)\1/g,
+  new RegExp(String.raw`\brequire(?:\.resolve)?${GAP}\(${GAP}${CALL_STRING}`, 'g'),
 ];
 const EXCEPTION_FIELDS = [
   'ghsa',
@@ -419,7 +437,8 @@ function readWorkspaceNames(root, packageJson) {
 
 // The npm package an import specifier loads, or null when it loads the app's own
 // code, a Node built-in, or something that is not a package name. Subpaths
-// ('x/y', '@scope/x/y') reduce to the package.
+// ('x/y', '@scope/x/y') reduce to the package, and so does a vite query or hash
+// ('x?raw', 'x/y.css?inline'), which only says how to load the file.
 function packageNameOf(specifier, aliases, workspaceNames) {
   let resolved = specifier;
   let aliased = false;
@@ -431,6 +450,10 @@ function packageNameOf(specifier, aliases, workspaceNames) {
       break;
     }
   }
+
+  // The alias lookup above compares the whole specifier, as vite's alias plugin
+  // does, so the query and hash come off after it.
+  resolved = resolved.replace(/[?#].*$/, '');
 
   // Relative and absolute paths, node:, data:, https: and the like.
   if (/^[./]/.test(resolved) || /^[a-z][a-z0-9+.-]*:/i.test(resolved)) return null;

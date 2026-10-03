@@ -765,8 +765,9 @@ describe('findShippedPackages', () => {
       'main.js': `
         const a = require('plain-require');
         const b = require.resolve('resolved-only');
-        const c = require(\`template-is-ignored\`);
+        const c = require(\`template-literal\`);
         const d = require(variable);
+        const e = require(\`\${variable}\`);
       `,
       'src/esm.js': `
         import defaultThing from 'default-import';
@@ -811,7 +812,100 @@ describe('findShippedPackages', () => {
       'resolved-only',
       'side-effect',
       'star-import',
+      'template-literal',
     ]);
+  });
+
+  it('finds imports that a bundler still resolves: templates, comments and queries', () => {
+    const root = project({
+      'src/forms.js': `
+        const a = import(\`template-import\`);
+        const b = require(\`template-require\`);
+        const c = require.resolve(\`template-resolve\`);
+        const d = import(/* webpackChunkName: "x" */ 'block-comment');
+        const e = import(/* @vite-ignore */ \`ignore-hint\`);
+        const f = require(/* first */ /* second */
+          'two-comments');
+        const g = import(
+          // explained here
+          'line-comment'
+        );
+        import h from /* source */ 'from-comment';
+        import i from 'bare-query?raw';
+        import j from 'subpath-query/style.css?inline';
+        import k from '@scope/scoped-query?url';
+        import l from 'bare-hash#fragment';
+        import m from '@scope/scoped-subpath/file.js?worker&inline';
+        const n = import(\`interpolated-subpath/\${file}\`);
+      `,
+    });
+    const names = [...findShippedPackages(root, {}).keys()].sort();
+
+    expect(names).toEqual([
+      '@scope/scoped-query',
+      '@scope/scoped-subpath',
+      'bare-hash',
+      'bare-query',
+      'block-comment',
+      'electron',
+      'from-comment',
+      'ignore-hint',
+      'interpolated-subpath',
+      'line-comment',
+      'subpath-query',
+      'template-import',
+      'template-require',
+      'template-resolve',
+      'two-comments',
+    ]);
+  });
+
+  it('skips specifiers that name no package, however they are written', () => {
+    const root = project({
+      'src/not-packages.js': `
+        const a = import(\`\${name}\`);
+        const b = require(\`pkg-\${suffix}\`);
+        const c = import(\`@\${scope}/pkg\`);
+        const d = import(\`./local-\${locale}.js\`);
+        const e = import(/* @vite-ignore */ name);
+        const f = import(/* 'looks-like-a-string' */ name);
+        const g = require(// 'also-not-a-string'
+          name
+        );
+        import local from './local.js?raw';
+        import absolute from '/absolute.js?url';
+        import node from 'node:fs?x';
+        import virtual from 'virtual:module?x=a:b';
+        import internal from '#internal';
+        import queryOnly from '?raw';
+        const prose = "runs from \`before\` days ahead";
+      `,
+    });
+
+    expect([...findShippedPackages(root, {}).keys()]).toEqual(['electron']);
+  });
+
+  it('does not take a template literal after from or a bare import for a specifier', () => {
+    const root = project({
+      'src/prose.js': "// Each holiday runs from `before` days ahead.\nconst s = 'import `after`';",
+    });
+
+    expect([...findShippedPackages(root, {}).keys()]).toEqual(['electron']);
+  });
+
+  it('keeps reading when a call has many comments before something it cannot use', () => {
+    // A block comment read lazily can end at any later one, which takes 2^n tries.
+    const comments = '/* a */ '.repeat(30);
+    const root = project({
+      'src/comments.js': `import(${comments}name);\nimport(${comments}'after-comments');`,
+      'src/unfinished.js': `import(${'/* a\n'.repeat(500)}`,
+    });
+
+    const started = Date.now();
+    const names = [...findShippedPackages(root, {}).keys()].sort();
+
+    expect(names).toEqual(['after-comments', 'electron']);
+    expect(Date.now() - started).toBeLessThan(2000);
   });
 
   it('counts a devDependency that app source imports, and says which file', () => {
@@ -877,6 +971,26 @@ describe('findShippedPackages', () => {
     const names = [...findShippedPackages(root, {}).keys()].sort();
 
     expect(names).toEqual(['electron', 'real-shim']);
+  });
+
+  it('reads a query on an aliased name the way vite does', () => {
+    const root = project({
+      'vite.config.js': viteConfig,
+      'package.json': '{}',
+      'packages/shared/package.json': '{ "name": "@acme/shared" }',
+      'src/a.js': `
+        import raw from 'hls.js/dist/hls.js?raw';
+        import own from '@/ui.js?raw';
+        import shared from '@acme/shared?inline';
+        import events from 'events?raw';
+        import fixture from '@dev-fixture?url';
+      `,
+    });
+    const names = [...findShippedPackages(root, { workspaces: ['packages/*'] }).keys()].sort();
+
+    // vite's alias plugin compares the whole specifier, query included, so
+    // 'events?raw' is not the aliased 'events' and does not name a package.
+    expect(names).toEqual(['electron', 'hls.js']);
   });
 
   it('scans the paths electron-builder packs and the entries vite bundles, and nothing else', () => {
