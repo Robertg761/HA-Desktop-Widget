@@ -5053,10 +5053,13 @@ body.first-run-active .widget-content > * {
   align-items: center;
   justify-content: center;
   /* It may shrink to the card, so a long date (Spanish 'miércoles, 30 de septiembre de 2026')
-     wraps instead of being cut off at both ends. */
+     wraps instead of being cut off at both ends. The card's padding is 16px a side and a date
+     that only just fits used to spill a few pixels into it; those 8px a side stay available, so
+     only a date that really is too long wraps. */
   flex: 0 1 auto;
   min-width: 0;
-  max-width: 100%;
+  max-width: calc(100% + 16px);
+  margin-inline: -8px;
 }
 
 .status-card.time-card .time-main {
@@ -15037,8 +15040,19 @@ body.theme-light:not(.high-contrast) .status-card .weather-condition {
   background: var(--tile-bg);
 }
 
-/* Stacked in narrow windows, the hairline moves to the top edge. */
+/* Stacked in narrow windows, the hairline moves to the top edge. The cards stack where the
+   .status-grid rules above make them one column: under 420px except at enlarged text, where they
+   stay side by side and keep the vertical hairline, and under 300px at any text size. */
 @media (max-width: 420px) {
+  body:not(.large-interface)
+    .status-grid:not(.single-card):not(.primary-cards-hidden)
+    > .status-card
+    + .status-card {
+    box-shadow: inset 0 1px 0 var(--tile-border);
+  }
+}
+
+@media (max-width: 300px) {
   .status-grid:not(.single-card):not(.primary-cards-hidden) > .status-card + .status-card {
     box-shadow: inset 0 1px 0 var(--tile-border);
   }
