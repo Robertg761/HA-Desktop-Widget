@@ -243,8 +243,12 @@ function findFreeDesktopPinOrigin({ size, workArea, occupied = [], gap = 16 } = 
  * back inside it (which slid the far edge across the screen). `workArea` is the one the drag began
  * on, so a pin that grows across a monitor boundary keeps following the pointer.
  *
+ * The step starts from the window as it is drawn, not from the saved position: a scaled pin that
+ * was nudged back inside the work area is resized from where it appears, so it never jumps back to
+ * its saved origin once it shrinks enough to fit there. The returned position is that on-screen one.
+ *
  * @param {{x: number, y: number, width: number, height: number}} startBounds - Saved bounds before
- *   this step; sizes are at 100%, the position is on screen.
+ *   this step; sizes are at 100%, the position is the saved one, before any nudge back on screen.
  * @param {{width: number, height: number, corner?: string}} request - The size asked for.
  * @returns {{x: number, y: number, width: number, height: number}}
  */
@@ -269,9 +273,14 @@ function resizeDesktopPinBounds(
   };
   const startWidth = roundFinite(startBounds.width, baseBounds.width);
   const startHeight = roundFinite(startBounds.height, baseBounds.height);
-  const startX = roundFinite(startBounds.x, safeWorkArea.x);
-  const startY = roundFinite(startBounds.y, safeWorkArea.y);
-  const startWindow = scaleDesktopPinSize({ width: startWidth, height: startHeight }, factor);
+  const startWindow = getDesktopPinWindowBounds(startBounds, {
+    entityId,
+    contentMinBounds,
+    fallbackOrigin: safeWorkArea,
+    workArea: safeWorkArea,
+    scale: factor,
+  });
+  const { x: startX, y: startY } = startWindow;
   const right = startX + startWindow.width;
   const bottom = startY + startWindow.height;
   const corner = typeof request.corner === 'string' ? request.corner : 'bottom-right';

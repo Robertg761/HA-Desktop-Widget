@@ -257,6 +257,71 @@ describe('resizing a pin from a corner handle', () => {
     expect(next).toMatchObject({ x: 1700, width: 220 });
   });
 
+  describe('when the interface scale has nudged the pin back inside the work area', () => {
+    // A scene saved at x=1752 is 252px wide at 150% and shown at x=1668 (1920 - 252).
+    const saved = { x: 1752, y: 300, width: 168, height: 148 };
+    const options = { entityId: 'scene.relax', workArea, scale: 1.5 };
+    const windowOf = (bounds) => getDesktopPinWindowBounds(bounds, options);
+
+    test('shrinks from the right handle without jumping back to the saved origin', () => {
+      const next = resizeDesktopPinBounds(
+        saved,
+        { corner: 'bottom-right', width: 100, height: 148 },
+        options
+      );
+      // 100 * 1.5 = 150px fits at x=1752 now, but the window was drawn at 1668 and stays there.
+      expect(next).toEqual({ x: 1668, y: 300, width: 100, height: 148 });
+      expect(windowOf(next)).toMatchObject({ x: 1668, width: 150 });
+    });
+
+    test('keeps the window where it is drawn when the requested size has not changed', () => {
+      const next = resizeDesktopPinBounds(
+        saved,
+        { corner: 'bottom-right', width: 168, height: 148 },
+        options
+      );
+      expect(next).toEqual({ x: 1668, y: 300, width: 168, height: 148 });
+      expect(windowOf(next)).toEqual(windowOf(saved));
+    });
+
+    test('allows growing back out to the work area edge it was nudged against', () => {
+      const shrunk = resizeDesktopPinBounds(
+        saved,
+        { corner: 'bottom-right', width: 100, height: 148 },
+        options
+      );
+      const regrown = resizeDesktopPinBounds(
+        shrunk,
+        { corner: 'bottom-right', width: 400, height: 148 },
+        options
+      );
+      // 252px of room from the drawn origin at 1668.
+      expect(regrown).toEqual({ x: 1668, y: 300, width: 168, height: 148 });
+    });
+
+    test('measures the opposite edge from the drawn window for the left handles too', () => {
+      const next = resizeDesktopPinBounds(
+        saved,
+        { corner: 'top-left', width: 100, height: 100 },
+        options
+      );
+      // The drawn window ends at 1920, so that stays put rather than the saved 1752 + 252.
+      expect(windowOf(next).x + windowOf(next).width).toBe(1920);
+      expect(next).toMatchObject({ x: 1770, width: 100, height: 100 });
+    });
+
+    test('does the same for the bottom edge', () => {
+      const lowSaved = { x: 200, y: 1000, width: 168, height: 148 };
+      const next = resizeDesktopPinBounds(
+        lowSaved,
+        { corner: 'bottom-right', width: 168, height: 90 },
+        options
+      );
+      // 148 * 1.5 = 222px, drawn at y=858 (1080 - 222); 90 * 1.5 = 135px keeps that top edge.
+      expect(next).toEqual({ x: 200, y: 858, width: 168, height: 90 });
+    });
+  });
+
   test('lets a pin that starts on a second monitor grow across its own work area', () => {
     const second = { x: 1920, y: 0, width: 1920, height: 1080 };
     const next = resizeDesktopPinBounds(
