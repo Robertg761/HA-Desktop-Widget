@@ -14,6 +14,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { isBuiltin } = require('module');
 const { spawnSync } = require('child_process');
 
 const REPO_ROOT = path.join(__dirname, '..');
@@ -25,6 +26,33 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const GHSA_PATTERN = /GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}/i;
 const PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9~-][a-z0-9._~-]*\/)?[a-z0-9~-][a-z0-9._~-]*$/;
 const VERSION_PATTERN = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
+// Where the app's code lives, for working out which packages it loads: the main
+// process, the preload and renderer entries that vite bundles into dist-preload
+// and dist-renderer, the code they import, and the panel preview that
+// vite.panel.config.js builds. The electron-builder `files` list is read as well,
+// so a path added there is scanned without editing this list.
+const APP_SOURCES = [
+  'main.js',
+  'preload.js',
+  'renderer.js',
+  'profile-sync-core.js',
+  'src',
+  'packages',
+  'preview',
+];
+const BUILDER_CONFIG = 'electron-builder.yml';
+const SOURCE_EXTENSIONS = new Set(['.js', '.cjs', '.mjs', '.jsx', '.ts', '.tsx', '.mts', '.cts']);
+const SKIPPED_DIRECTORIES = new Set(['node_modules', '.git', 'tests', 'coverage']);
+const VITE_CONFIG_PATTERN = /^vite(?:\..+)?\.config\.[cm]?[jt]s$/;
+// Each pattern captures the quote in group 1 and the module specifier in group 2.
+const SPECIFIER_PATTERNS = [
+  // import x from 'y', export * from 'y', and the lines of a multi-line import.
+  /\bfrom\s*(['"])([^'"\r\n]+)\1/g,
+  // import 'y' and import('y').
+  /\bimport\s*(?:\(\s*)?(['"])([^'"\r\n]+)\1/g,
+  // require('y') and require.resolve('y').
+  /\brequire(?:\.resolve)?\s*\(\s*(['"])([^'"\r\n]+)\1/g,
+];
 const EXCEPTION_FIELDS = [
   'ghsa',
   'package',
@@ -249,15 +277,209 @@ function newestAffectedVersion(range) {
   return match && parseVersion(match[1]) ? match[1] : null;
 }
 
+function packageField(packageJson, field) {
+  const value = packageJson && packageJson[field];
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
 // Exceptions are for build tools. A name counts as dev-only when package.json
-// lists it under devDependencies and nowhere the packaged app loads from.
+// lists it under devDependencies and nowhere the packaged app loads from. That
+// is only the first half of the test: devDependencies also holds what vite
+// bundles into the app, so findShippedPackages() answers the other half.
 function isDevOnly(packageJson, name) {
-  const lists = (field) =>
-    Boolean(packageJson) &&
-    typeof packageJson[field] === 'object' &&
-    packageJson[field] !== null &&
-    Object.hasOwn(packageJson[field], name);
+  const lists = (field) => Object.hasOwn(packageField(packageJson, field), name);
   return lists('devDependencies') && !lists('dependencies') && !lists('optionalDependencies');
+}
+
+function readTextIfPresent(file) {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+// The top-level `files` list of electron-builder.yml, as written. The nested
+// per-platform `files` lists are indented, so they are not matched. Parsed by
+// hand because the audit job has no YAML parser.
+function readBuilderFiles(root) {
+  const text = readTextIfPresent(path.join(root, BUILDER_CONFIG));
+  const entries = [];
+  let inFiles = false;
+
+  for (const line of String(text || '').split(/\r?\n/)) {
+    if (/^files:\s*$/.test(line)) {
+      inFiles = true;
+    } else if (inFiles) {
+      const item = /^\s+-\s+(.+?)\s*$/.exec(line);
+      if (item) entries.push(item[1].replace(/^(['"])(.*)\1$/, '$2'));
+      else if (/^\S/.test(line)) break;
+    }
+  }
+  return entries;
+}
+
+// The files and directories the packaged app's code comes from. dist-* is build
+// output, which the sources it was built from already cover.
+function sourceRoots(root) {
+  const roots = new Set(APP_SOURCES);
+  for (const entry of readBuilderFiles(root)) {
+    if (entry.startsWith('!')) continue;
+    const base = entry.replace(/(?:\/\*\*)?(?:\/\*)?$/, '');
+    if (base === '' || /[*?{[]/.test(base) || /^dist/.test(base)) continue;
+    roots.add(base);
+  }
+  return [...roots];
+}
+
+function* walkSources(file) {
+  let stat;
+  try {
+    stat = fs.lstatSync(file);
+  } catch (error) {
+    if (error.code === 'ENOENT') return;
+    throw error;
+  }
+  if (stat.isFile()) {
+    if (SOURCE_EXTENSIONS.has(path.extname(file))) yield file;
+  } else if (stat.isDirectory() && !SKIPPED_DIRECTORIES.has(path.basename(file))) {
+    for (const name of fs.readdirSync(file).sort()) yield* walkSources(path.join(file, name));
+  }
+}
+
+// The text between the braces that follow `alias:`, or null.
+function aliasBlock(text) {
+  const start = /\balias\s*:\s*\{/.exec(text);
+  if (!start) return null;
+
+  let depth = 1;
+  for (let i = start.index + start[0].length; i < text.length; i += 1) {
+    if (text[i] === '{') depth += 1;
+    if (text[i] === '}') depth -= 1;
+    if (depth === 0) return text.slice(start.index + start[0].length, i);
+  }
+  return null;
+}
+
+// What the vite configs make an import specifier resolve to. A value that is a
+// path (a resolve(...) call, or a string starting with . or /) is the app's own
+// code, like '@hadw/renderer', and maps to null. A plain string names another
+// package, like 'hls.js' -> 'hls.js/dist/hls.light.mjs', and an import of the
+// key loads that package, even when the key is also a Node built-in, like
+// 'events'.
+function readViteAliases(root) {
+  const aliases = new Map();
+  // One `key: value` entry per line or after a comma, so the branches of a
+  // ternary inside a resolve() call are not read as entries.
+  const entry =
+    /(?:^|,)\s*(?:'([^']+)'|"([^"]+)"|([A-Za-z_$][\w$]*))\s*:\s*(?:(['"])([^'"]*)\4)?/gm;
+
+  for (const name of fs.readdirSync(root).sort()) {
+    if (!VITE_CONFIG_PATTERN.test(name)) continue;
+    const block = aliasBlock(fs.readFileSync(path.join(root, name), 'utf8'));
+    for (const match of String(block || '').matchAll(entry)) {
+      const key = match[1] || match[2] || match[3];
+      const target = match[5];
+      // If two configs disagree about a key, the package reading is the
+      // cautious one.
+      if (aliases.get(key)) continue;
+      aliases.set(key, target && !/^[./]/.test(target) ? target : null);
+    }
+  }
+  return aliases;
+}
+
+// The names of the workspace packages, such as @hadw/renderer. They are the
+// app's own code, linked into node_modules, not something installed from npm.
+function readWorkspaceNames(root, packageJson) {
+  const workspaces = packageJson && packageJson.workspaces;
+  const patterns = Array.isArray(workspaces)
+    ? workspaces
+    : (workspaces && workspaces.packages) || [];
+  const names = new Set();
+
+  for (const pattern of patterns) {
+    if (typeof pattern !== 'string') continue;
+    const base = path.join(root, pattern.replace(/\/\*$/, ''));
+    const directories = pattern.endsWith('/*')
+      ? (fs.existsSync(base) ? fs.readdirSync(base).sort() : []).map((name) =>
+          path.join(base, name)
+        )
+      : [base];
+    for (const directory of directories) {
+      const text = readTextIfPresent(path.join(directory, 'package.json'));
+      if (text === null) continue;
+      const { name } = JSON.parse(text);
+      if (typeof name === 'string') names.add(name);
+    }
+  }
+  return names;
+}
+
+// The npm package an import specifier loads, or null when it loads the app's own
+// code, a Node built-in, or something that is not a package name. Subpaths
+// ('x/y', '@scope/x/y') reduce to the package.
+function packageNameOf(specifier, aliases, workspaceNames) {
+  let resolved = specifier;
+  let aliased = false;
+  for (const [key, target] of aliases) {
+    if (specifier === key || specifier.startsWith(`${key}/`)) {
+      if (target === null) return null;
+      resolved = target + specifier.slice(key.length);
+      aliased = true;
+      break;
+    }
+  }
+
+  // Relative and absolute paths, node:, data:, https: and the like.
+  if (/^[./]/.test(resolved) || /^[a-z][a-z0-9+.-]*:/i.test(resolved)) return null;
+
+  const parts = resolved.split('/');
+  const name = resolved.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
+  if (!PACKAGE_NAME_PATTERN.test(name) || workspaceNames.has(name)) return null;
+  // An alias target is always a package, even one named like a built-in.
+  if (!aliased && isBuiltin(name)) return null;
+  return name;
+}
+
+// Every package the packaged app can load, each with the reason it counts, so
+// the audit can tell a shipped package from a build tool. package.json alone
+// cannot: Electron and the renderer's own bundled libraries (hls.js, sortablejs)
+// sit under devDependencies, because electron-builder packs dependencies from
+// node_modules while vite bundles whatever the renderer imports.
+//
+// So a package ships when it is Electron, is listed under dependencies or
+// optionalDependencies, or is imported by source the app loads. The import scan
+// is textual, so a commented-out import counts as one; being too cautious only
+// stops an exception from being granted.
+function findShippedPackages(root, packageJson) {
+  const shipped = new Map([['electron', 'its runtime is in every package']]);
+  for (const field of ['dependencies', 'optionalDependencies']) {
+    for (const name of Object.keys(packageField(packageJson, field))) {
+      if (!shipped.has(name)) shipped.set(name, `listed under ${field}`);
+    }
+  }
+
+  const aliases = readViteAliases(root);
+  const workspaceNames = readWorkspaceNames(root, packageJson);
+  const seen = new Set();
+  for (const sourceRoot of sourceRoots(root)) {
+    for (const file of walkSources(path.join(root, sourceRoot))) {
+      if (seen.has(file)) continue;
+      seen.add(file);
+
+      const relative = path.relative(root, file).split(path.sep).join('/');
+      const text = fs.readFileSync(file, 'utf8');
+      for (const pattern of SPECIFIER_PATTERNS) {
+        for (const match of text.matchAll(pattern)) {
+          const name = packageNameOf(match[2], aliases, workspaceNames);
+          if (name && !shipped.has(name)) shipped.set(name, `imported by ${relative}`);
+        }
+      }
+    }
+  }
+  return shipped;
 }
 
 function describeAdvisory(advisory) {
@@ -328,12 +550,25 @@ function parseExceptions(data) {
   return { entries, errors };
 }
 
-// The decision logic. `getLatestVersion(packageName)` returns the newest
-// published version and may throw when the registry cannot be reached; that
-// only skips the fix-available check for that one entry. An answer that is not a
-// version is a problem, not a skip: the registry was reached, and a check that
-// quietly did nothing is how an available fix would go unnoticed.
-function evaluate({ advisories, untraced = [], packageJson, exceptions, today, getLatestVersion }) {
+// The decision logic. `shippedPackages` is findShippedPackages()'s answer: a Map
+// from each package the app ships to why. `getLatestVersion(packageName)` returns
+// the newest published version and may throw when the registry cannot be reached;
+// that only skips the fix-available check for that one entry. An answer that is
+// not a version is a problem, not a skip: the registry was reached, and a check
+// that quietly did nothing is how an available fix would go unnoticed.
+function evaluate({
+  advisories,
+  untraced = [],
+  packageJson,
+  shippedPackages,
+  exceptions,
+  today,
+  getLatestVersion,
+}) {
+  if (!(shippedPackages instanceof Map)) {
+    throw new Error('evaluate needs the packages that ship in the app, as a Map.');
+  }
+
   const problems = [];
   const warnings = [];
   const excused = [];
@@ -350,13 +585,30 @@ function evaluate({ advisories, untraced = [], packageJson, exceptions, today, g
 
   for (const entry of exceptions) {
     const notDevOnly = entry.allowedVia.filter((name) => !isDevOnly(packageJson, name));
-    if (notDevOnly.length === 0) continue;
-    shipping.add(entry);
-    problems.push(
-      `The exception for ${entry.ghsa} (${entry.package}) allows ${notDevOnly.join(', ')}, which ` +
-        'package.json does not list only under devDependencies. An exception only covers tools ' +
-        'that never ship in the app, so update the dependency instead.'
+    // Listing a package only under devDependencies does not make it a build tool:
+    // Electron and the libraries vite bundles into the renderer are listed there.
+    const shipped = entry.allowedVia.filter(
+      (name) => !notDevOnly.includes(name) && shippedPackages.has(name)
     );
+    if (notDevOnly.length === 0 && shipped.length === 0) continue;
+    shipping.add(entry);
+    if (notDevOnly.length > 0) {
+      problems.push(
+        `The exception for ${entry.ghsa} (${entry.package}) allows ${notDevOnly.join(', ')}, ` +
+          'which package.json does not list only under devDependencies. An exception only ' +
+          'covers tools that never ship in the app, so update the dependency instead.'
+      );
+    }
+    if (shipped.length > 0) {
+      const named = shipped.map((name) => `${name} (${shippedPackages.get(name)})`);
+      const [verb, pronoun] = shipped.length === 1 ? ['ships', 'it'] : ['ship', 'them'];
+      problems.push(
+        `The exception for ${entry.ghsa} (${entry.package}) allows ${named.join(', ')}, ` +
+          `which ${verb} in the app even though package.json lists ${pronoun} under ` +
+          'devDependencies only. An exception only covers tools that never ship in the app, ' +
+          'so update the dependency instead.'
+      );
+    }
   }
 
   for (const advisory of advisories) {
@@ -475,7 +727,7 @@ function formatResult(result, advisoryCount) {
 }
 
 // Everything except process and network access, so tests can run it directly.
-function check({ report, exceptionsData, packageJson, today, getLatestVersion }) {
+function check({ report, exceptionsData, packageJson, shippedPackages, today, getLatestVersion }) {
   const { entries, errors } = parseExceptions(exceptionsData);
   if (errors.length > 0) {
     return {
@@ -490,6 +742,7 @@ function check({ report, exceptionsData, packageJson, today, getLatestVersion })
     advisories,
     untraced: findUntracedVulnerabilities(report),
     packageJson,
+    shippedPackages,
     exceptions: entries,
     today,
     getLatestVersion,
@@ -562,6 +815,7 @@ function main() {
       report: readAuditReport(),
       exceptionsData,
       packageJson,
+      shippedPackages: findShippedPackages(REPO_ROOT, packageJson),
       today: new Date().toISOString().slice(0, 10),
       getLatestVersion: fetchLatestVersion,
     });
@@ -585,8 +839,10 @@ module.exports = {
   collectAdvisories,
   compareVersions,
   evaluate,
+  findShippedPackages,
   findTopLevelPackages,
   findUntracedVulnerabilities,
+  readBuilderFiles,
   parseAuditReport,
   parseExceptions,
 };

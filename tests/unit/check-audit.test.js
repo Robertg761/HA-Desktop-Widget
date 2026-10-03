@@ -3,15 +3,18 @@
  */
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const {
   EXCEPTIONS_FILE,
   check,
   collectAdvisories,
   compareVersions,
+  findShippedPackages,
   findUntracedVulnerabilities,
   parseAuditReport,
   parseExceptions,
+  readBuilderFiles,
 } = require('../../scripts/check-audit.cjs');
 
 const ROOT = path.resolve(__dirname, '../..');
@@ -63,6 +66,20 @@ function packageJson() {
   };
 }
 
+// What findShippedPackages() says for the fixture package.json above: Electron's
+// runtime and the one runtime dependency, and nothing that stylelint or
+// electron-builder would be in.
+function shippedPackages() {
+  return new Map([
+    ['electron', 'its runtime is in every package'],
+    ['electron-updater', 'listed under dependencies'],
+  ]);
+}
+
+function realPackageJson() {
+  return JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+}
+
 function latestVersions(overrides = {}) {
   const versions = { braces: '3.0.3', 'http-cache-semantics': '4.2.0', ...overrides };
   return jest.fn((name) => {
@@ -76,6 +93,7 @@ function runCheck({ report = auditReport(), exceptions = exceptionsData(), ...op
     report,
     exceptionsData: exceptions,
     packageJson: packageJson(),
+    shippedPackages: shippedPackages(),
     today: '2026-10-02',
     getLatestVersion: latestVersions(),
     ...options,
@@ -508,6 +526,81 @@ describe('check', () => {
     }
   });
 
+  it.each(['electron', 'hls.js', 'sortablejs'])(
+    'rejects an exception that allows %s, a devDependency that ships in the app',
+    (name) => {
+      const pkg = realPackageJson();
+      const exceptions = exceptionsData();
+      exceptions.exceptions[0].allowedVia = [name];
+
+      // The real package.json and a scan of the real sources, not fixtures: this
+      // is what the audit job decides with.
+      expect(Object.keys(pkg.devDependencies)).toContain(name);
+      const result = runCheck({
+        exceptions,
+        packageJson: pkg,
+        shippedPackages: findShippedPackages(ROOT, pkg),
+      });
+      const errors = result.stderr.join('\n');
+
+      expect(result.ok).toBe(false);
+      expect(errors).toContain(`exception for ${BRACES} (braces) allows ${name} (`);
+      expect(errors).toContain('ships in the app');
+      expect(errors).not.toContain('does not list only under devDependencies');
+      expect(result.stdout.join('\n')).not.toContain(`${BRACES} braces`);
+    }
+  );
+
+  it('still passes the build tools the checked-in exceptions allow, against the real sources', () => {
+    const pkg = realPackageJson();
+    const result = runCheck({ packageJson: pkg, shippedPackages: findShippedPackages(ROOT, pkg) });
+
+    expect(result.stderr).toEqual([]);
+    expect(result.ok).toBe(true);
+    expect(result.stdout.join('\n')).toContain(`${BRACES} braces`);
+    expect(result.stdout.join('\n')).toContain(`${HTTP_CACHE} http-cache-semantics`);
+  });
+
+  it('lists every shipped package an exception allows, in one problem', () => {
+    const exceptions = exceptionsData();
+    exceptions.exceptions[0].allowedVia = ['stylelint', 'hls.js', 'sortablejs'];
+    const result = runCheck({
+      exceptions,
+      packageJson: {
+        devDependencies: { stylelint: '^16.0.0', 'hls.js': '^1.0.0', sortablejs: '^1.0.0' },
+      },
+      shippedPackages: new Map([
+        ['hls.js', 'imported by src/camera.js'],
+        ['sortablejs', 'imported by src/ui.js'],
+      ]),
+    });
+    const errors = result.stderr.filter((line) => line.includes(`exception for ${BRACES}`));
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain(
+      'allows hls.js (imported by src/camera.js), sortablejs (imported by src/ui.js), which ship in the app'
+    );
+    expect(errors[0]).not.toContain('stylelint');
+  });
+
+  it('reports a package that is both in dependencies and shipped once, as not dev-only', () => {
+    const result = runCheck({
+      packageJson: {
+        dependencies: { stylelint: '^16.0.0' },
+        devDependencies: { 'electron-builder': '^26.0.0', stylelint: '^16.0.0' },
+      },
+      shippedPackages: new Map([['stylelint', 'listed under dependencies']]),
+    });
+
+    expect(result.stderr.filter((line) => line.includes('allows stylelint'))).toHaveLength(1);
+    expect(result.stderr.join('\n')).toContain('does not list only under devDependencies');
+  });
+
+  it('refuses to run without the packages that ship in the app', () => {
+    expect(() => runCheck({ shippedPackages: undefined })).toThrow('needs the packages that ship');
+    expect(() => runCheck({ shippedPackages: ['electron'] })).toThrow('as a Map');
+  });
+
   it('checks the allowed packages of a stale exception too, and reports one problem each', () => {
     const result = runCheck({
       report: withoutBraces(auditReport()),
@@ -571,10 +664,13 @@ describe('parseExceptions', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
     const names = data.exceptions.flatMap((entry) => entry.allowedVia);
 
+    const shipped = findShippedPackages(ROOT, pkg);
+
     for (const name of names) {
       expect(Object.keys(pkg.devDependencies)).toContain(name);
       expect(Object.keys(pkg.dependencies)).not.toContain(name);
       expect(Object.keys(pkg.optionalDependencies || {})).not.toContain(name);
+      expect(shipped.has(name)).toBe(false);
     }
   });
 
@@ -612,6 +708,279 @@ describe('parseExceptions', () => {
     expect(parseExceptions({ exceptions: ['braces'] }).errors).toEqual([
       `${EXCEPTIONS_FILE} entry 1 must be an object.`,
     ]);
+  });
+});
+
+describe('findShippedPackages', () => {
+  const roots = [];
+
+  // Builds a small project in a temporary directory from { 'relative/path': text }.
+  function project(files) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'check-audit-'));
+    roots.push(root);
+    for (const [file, text] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+      fs.writeFileSync(path.join(root, file), text);
+    }
+    return root;
+  }
+
+  afterEach(() => {
+    for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  const viteConfig = `
+    export default defineConfig({
+      resolve: {
+        alias: {
+          // Dev-only fixture, resolved to a path.
+          '@dev-fixture': resolve(
+            __dirname,
+            isProduction ? 'src/fixture.production.js' : 'development/fixture.js'
+          ),
+          '@': resolve(__dirname, 'src'),
+          '@acme/shared': resolve(__dirname, 'packages/shared/src'),
+          events: 'events',
+          'hls.js': 'hls.js/dist/hls.light.mjs',
+        },
+      },
+    });
+  `;
+
+  it('always counts Electron, dependencies and optionalDependencies', () => {
+    const shipped = findShippedPackages(project({}), {
+      dependencies: { 'electron-updater': '^6.0.0' },
+      optionalDependencies: { 'uiohook-napi': '^1.0.0' },
+      devDependencies: { stylelint: '^16.0.0' },
+    });
+
+    expect([...shipped.keys()].sort()).toEqual(['electron', 'electron-updater', 'uiohook-napi']);
+    expect(shipped.get('electron')).toContain('every package');
+    expect(shipped.get('electron-updater')).toBe('listed under dependencies');
+    expect(shipped.get('uiohook-napi')).toBe('listed under optionalDependencies');
+  });
+
+  it('finds every kind of import, including scoped names and subpaths', () => {
+    const root = project({
+      'main.js': `
+        const a = require('plain-require');
+        const b = require.resolve('resolved-only');
+        const c = require(\`template-is-ignored\`);
+        const d = require(variable);
+      `,
+      'src/esm.js': `
+        import defaultThing from 'default-import';
+        import { first, second } from 'named-import';
+        import {
+          wrapped,
+          // a comment with an apostrophe: don't stop here
+          lines,
+        } from 'multi-line';
+        import * as everything from 'star-import';
+        import 'side-effect';
+        export { re } from 'reexport';
+        export * from 'reexport-all';
+        const lazy = () => import('dynamic-import');
+        const scoped = require('@scope/pkg');
+        import sub from 'pkg-with/sub/path.js';
+        import scopedSub from '@scope/other/deep/file.js';
+        import './sibling.js';
+        import up from '../up.js';
+        import abs from '/absolute.js';
+        import fs from 'fs';
+        import { readFile } from 'fs/promises';
+        import path from 'node:path';
+        import data from 'data:text/javascript,export default 1';
+        const sentence = "Copied from 'a sentence with spaces'";
+      `,
+    });
+    const names = [...findShippedPackages(root, {}).keys()].sort();
+
+    expect(names).toEqual([
+      '@scope/other',
+      '@scope/pkg',
+      'default-import',
+      'dynamic-import',
+      'electron',
+      'multi-line',
+      'named-import',
+      'pkg-with',
+      'plain-require',
+      'reexport',
+      'reexport-all',
+      'resolved-only',
+      'side-effect',
+      'star-import',
+    ]);
+  });
+
+  it('counts a devDependency that app source imports, and says which file', () => {
+    const files = { 'main.js': "require('electron');", 'src/feature.js': "import 'stylelint';" };
+    const pkg = {
+      devDependencies: { stylelint: '^16.0.0', 'electron-builder': '^26.0.0' },
+    };
+    const shipped = findShippedPackages(project(files), pkg);
+
+    expect(shipped.get('stylelint')).toBe('imported by src/feature.js');
+    expect(shipped.has('electron-builder')).toBe(false);
+
+    // The same exception that passes without the import is rejected with it.
+    const before = findShippedPackages(project({ 'main.js': "require('electron');" }), pkg);
+    const withoutImport = runCheck({ packageJson: pkg, shippedPackages: before });
+    const withImport = runCheck({ packageJson: pkg, shippedPackages: shipped });
+
+    expect(withoutImport.ok).toBe(true);
+    expect(withImport.ok).toBe(false);
+    expect(withImport.stderr.join('\n')).toContain(
+      `exception for ${BRACES} (braces) allows stylelint (imported by src/feature.js), which ships in the app`
+    );
+    expect(withImport.stderr.join('\n')).not.toContain(HTTP_CACHE);
+  });
+
+  it('does not take the vite aliases or workspace packages for npm packages', () => {
+    const root = project({
+      'vite.config.js': viteConfig,
+      'package.json': '{}',
+      'packages/shared/package.json': '{ "name": "@acme/shared" }',
+      'packages/widgets/package.json': '{ "name": "@acme/widgets" }',
+      'src/app.js': `
+        import { thing } from '@acme/shared/thing.js';
+        import widget from '@acme/widgets/widget.js';
+        import { ui } from '@/ui.js';
+        import fixture from '@dev-fixture';
+        import { EventEmitter } from 'events';
+        import Hls from 'hls.js';
+        import { x } from 'real-package';
+      `,
+    });
+    const names = [...findShippedPackages(root, { workspaces: ['packages/*'] }).keys()].sort();
+
+    expect(names).toEqual(['electron', 'events', 'hls.js', 'real-package']);
+  });
+
+  it('counts a bare Node built-in as a built-in unless a vite alias makes it a package', () => {
+    const source = "import { EventEmitter } from 'events'; import { join } from 'path';";
+    const withAlias = project({ 'vite.config.js': viteConfig, 'src/a.js': source });
+    const withoutAlias = project({ 'src/a.js': source });
+
+    expect(findShippedPackages(withAlias, {}).has('events')).toBe(true);
+    expect(findShippedPackages(withAlias, {}).has('path')).toBe(false);
+    expect(findShippedPackages(withoutAlias, {}).has('events')).toBe(false);
+  });
+
+  it('follows an alias to the package it points at', () => {
+    const root = project({
+      'vite.config.js':
+        'export default { resolve: { alias: { shim: "real-shim/dist/index.js" } } };',
+      'src/a.js': "import shim from 'shim'; import sub from 'shim/extra';",
+    });
+    const names = [...findShippedPackages(root, {}).keys()].sort();
+
+    expect(names).toEqual(['electron', 'real-shim']);
+  });
+
+  it('scans the paths electron-builder packs and the entries vite bundles, and nothing else', () => {
+    const root = project({
+      'electron-builder.yml': [
+        'files:',
+        '  - index.html',
+        '  # a comment in the list',
+        '  - main.js',
+        "  - 'extra/**/*'",
+        '  - dist-renderer/**/*',
+        "  - '!node_modules/skipped/**/*'",
+        'mac:',
+        '  files:',
+        "    - '!node_modules/nested/**/*'",
+        '  target: dmg',
+      ].join('\n'),
+      'main.js': "require('from-main');",
+      'renderer.js': "import 'from-renderer';",
+      'preload.js': "require('from-preload');",
+      'preview/entry.js': "import 'from-preview';",
+      'extra/lib/deep.cjs': "require('from-extra');",
+      'dist-renderer/bundle.js': "import 'from-build-output';",
+      'tests/unit/spec.js': "require('from-tests');",
+      'development/demo.js': "import 'from-development';",
+      'scripts/tool.cjs': "require('from-scripts');",
+      'node_modules/dep/index.js': "require('from-node-modules');",
+      'src/node_modules/dep/index.js': "require('from-nested-node-modules');",
+    });
+    const names = [...findShippedPackages(root, {}).keys()].sort();
+
+    expect(names).toEqual([
+      'electron',
+      'from-extra',
+      'from-main',
+      'from-preload',
+      'from-preview',
+      'from-renderer',
+    ]);
+  });
+
+  it('reads only the top-level files list of electron-builder.yml', () => {
+    const root = project({
+      'electron-builder.yml': [
+        'productName: Example',
+        'files:',
+        '  - main.js',
+        '  - "src/**/*"',
+        'win:',
+        '  files: &excludes',
+        "    - '!node_modules/x/**/*'",
+        '',
+      ].join('\n'),
+    });
+
+    expect(readBuilderFiles(root)).toEqual(['main.js', 'src/**/*']);
+    expect(readBuilderFiles(project({}))).toEqual([]);
+  });
+
+  describe('in this repository', () => {
+    const pkg = realPackageJson();
+    const shipped = findShippedPackages(ROOT, pkg);
+
+    it('finds the devDependencies vite bundles into the app', () => {
+      for (const name of ['hls.js', 'sortablejs', 'events', 'regenerate-unicode-properties']) {
+        expect(Object.keys(pkg.devDependencies)).toContain(name);
+        expect(shipped.get(name)).toMatch(/^imported by (src|preview)\//);
+      }
+      expect(shipped.get('hls.js')).toBe('imported by src/camera.js');
+      expect(shipped.get('sortablejs')).toBe('imported by src/ui.js');
+    });
+
+    it('finds Electron and the runtime dependencies', () => {
+      for (const name of Object.keys(pkg.dependencies)) {
+        expect(shipped.has(name)).toBe(true);
+      }
+      expect(shipped.has('electron')).toBe(true);
+      expect(shipped.has('uiohook-napi')).toBe(true);
+    });
+
+    it('leaves out the build tools and its own aliases and workspace packages', () => {
+      for (const name of ['stylelint', 'electron-builder', 'eslint', 'vite', 'jest', 'prettier']) {
+        expect(shipped.has(name)).toBe(false);
+      }
+      for (const name of ['@hadw/renderer', '@dev-climate-demo', '@', 'fs', 'path', 'node:fs']) {
+        expect(shipped.has(name)).toBe(false);
+      }
+    });
+
+    it('scans the paths the build configuration packs and bundles', () => {
+      const builderFiles = readBuilderFiles(ROOT);
+      expect(builderFiles).toEqual(
+        expect.arrayContaining(['main.js', 'profile-sync-core.js', 'src/**/*'])
+      );
+      expect(builderFiles).toContain('packages/widget-renderer/**/*');
+
+      // The entries the scanner adds on its own are the ones vite builds from.
+      const vite = fs.readFileSync(path.join(ROOT, 'vite.config.js'), 'utf8');
+      const preload = fs.readFileSync(path.join(ROOT, 'vite.preload.config.js'), 'utf8');
+      const panel = fs.readFileSync(path.join(ROOT, 'vite.panel.config.js'), 'utf8');
+      expect(vite).toContain("'renderer.js'");
+      expect(preload).toContain("'preload.js'");
+      expect(panel).toContain("'preview'");
+    });
   });
 });
 
