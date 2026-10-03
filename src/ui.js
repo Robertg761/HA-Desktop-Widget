@@ -69,6 +69,7 @@ import {
   setActiveQuickAccessView,
 } from './quick-access-tabs.js';
 import {
+  getFittedSensorValueFontSize,
   getNextQuickAccessFocusIndex,
   getNextQuickAccessFocusIndexByLayout,
   getQuickAccessTabOverflow,
@@ -4207,6 +4208,45 @@ function renderSensorTileChart(tile, entity, series = []) {
   sparkline.className = 'control-sensor-sparkline';
   sparkline.appendChild(svg);
   info.appendChild(sparkline);
+}
+
+/**
+ * Draws a number that is wider than its tile smaller, down to a floor, so it keeps all its digits
+ * ('123,456.79' cut to '123,456…' reads as a smaller number than it is). The ellipsis stays as the
+ * last resort.
+ *
+ * @param {HTMLElement} readout - The tile's `.control-sensor-readout`.
+ */
+function fitSensorTileValue(readout) {
+  const value = readout?.querySelector('.control-sensor-value');
+  if (!value?.isConnected) return;
+  value.style.removeProperty('font-size');
+  const fitted = getFittedSensorValueFontSize({
+    fontSize: parseFloat(getComputedStyle(value).fontSize),
+    naturalWidth: value.scrollWidth,
+    availableWidth: value.clientWidth,
+  });
+  if (fitted !== null) value.style.fontSize = `${fitted}px`;
+  readout.dataset.fitWidth = String(readout.clientWidth);
+}
+
+// Refits a reading when its tile's width changes (a resize, a different number of columns). The
+// height changes with the font size, so only a change of width counts, or fitting would loop.
+const sensorValueFitObserver =
+  typeof ResizeObserver === 'function'
+    ? new ResizeObserver((entries) => {
+        // Fitting changes layout, which an observer must not do while it is being delivered.
+        requestAnimationFrame(() => {
+          for (const { target } of entries) {
+            if (target.dataset.fitWidth !== String(target.clientWidth)) fitSensorTileValue(target);
+          }
+        });
+      })
+    : null;
+
+function observeSensorTileValueFit(tile) {
+  const readout = tile?.querySelector('.control-sensor-readout');
+  if (readout) sensorValueFitObserver?.observe(readout);
 }
 
 function mountSensorTileChart(tile, entity) {
@@ -10053,6 +10093,7 @@ function createControlElement(entity, options = {}) {
     }
     if (isQuickAccessContext && div.classList.contains('sensor-numeric-entity')) {
       mountSensorTileChart(div, entity);
+      observeSensorTileValueFit(div);
     }
     if (hasCameraPreview) {
       camera.mountCameraPreview(div, entity.entity_id, cameraPreviewRefresh);
@@ -10440,6 +10481,7 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
       if (value) value.textContent = sensorDisplay.value;
       const unit = div.querySelector('.control-sensor-unit');
       if (unit) unit.textContent = sensorDisplay.unit;
+      fitSensorTileValue(div.querySelector('.control-sensor-readout'));
       appendLiveSensorHistoryValue(displayEntity);
       const cachedHistory = sensorHistoryCache.get(displayEntity.entity_id);
       renderSensorTileChart(div, displayEntity, cachedHistory?.series || []);
@@ -14066,7 +14108,7 @@ function showClimateControls(climateEntity) {
         </div>
         <div class="modal-body">
           <div class="climate-content">
-            <div class="climate-temp-display">
+            <div class="climate-temp-display${capabilities.canSetRange ? ' is-range' : ''}">
               <div class="climate-current-temp">
                 <div class="climate-temp-label">${utils.escapeHtml(t('Current'))}</div>
                 <div class="climate-temp-value">${currentTemp === null ? '—' : `${formatNumber(currentTemp)}${tempUnit}`}</div>

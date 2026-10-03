@@ -3355,7 +3355,9 @@ body.first-run-active .widget-content > * {
 
 .media-tile-content {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(72px, 110px) auto;
+  /* The seek column has room for two h:mm:ss times and a bar between them (a film or a podcast
+     runs past an hour). At 72-110px the times ran into the bar and the previous button. */
+  grid-template-columns: minmax(0, 1fr) minmax(128px, 140px) auto;
   align-items: center;
   gap: 4px 8px;
   min-width: 0;
@@ -3393,23 +3395,25 @@ body.first-run-active .widget-content > * {
   align-items: center;
   gap: 4px;
   width: 100%;
-  max-width: 110px;
   grid-column: 2;
   justify-self: stretch;
 }
 
+/* A time takes the width of its own text, so a long one never runs under the bar. */
 .media-tile-time {
+  flex: none;
   font-size: var(--font-size-xs-plus);
   color: var(--muted-text);
   font-variant-numeric: tabular-nums;
-  min-width: 26px;
+  white-space: nowrap;
   text-align: center;
 }
 
 .media-tile-seek-bar {
   flex: 1;
   height: 3px;
-  background: var(--tile-border-hover);
+  /* The unfilled part of the track had the tile's hairline colour, about 1.5:1 against the tile. */
+  background: color-mix(in srgb, var(--text-primary) 22%, transparent);
   border-radius: var(--radius-full);
   position: relative;
   min-width: 36px;
@@ -5002,15 +5006,18 @@ body.first-run-active .widget-content > * {
 
 .weather-details {
   display: flex;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 2px 10px;
   margin-top: 6px;
 }
 
-/* Humidity and wind as quiet inline readouts, not chips. */
+/* Humidity and wind as quiet inline readouts, not chips. In a narrow card they wrap as a whole, one
+   under the other, and never inside ('12 km/' over 'h'). */
 .weather-detail {
   display: flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
   font-size: var(--font-size-xs-plus);
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
@@ -5033,6 +5040,9 @@ body.first-run-active .widget-content > * {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* The clock is sized to its card (see .time-display), so it shrinks in the half-width card that
+     enlarged text leaves instead of ending in an ellipsis. */
+  container-type: inline-size;
 }
 
 .status-card.time-card .time-content {
@@ -5042,8 +5052,11 @@ body.first-run-active .widget-content > * {
   height: 100%;
   align-items: center;
   justify-content: center;
-  flex: none;
-  min-width: auto;
+  /* It may shrink to the card, so a long date (Spanish 'miércoles, 30 de septiembre de 2026')
+     wraps instead of being cut off at both ends. */
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .status-card.time-card .time-main {
@@ -5054,7 +5067,7 @@ body.first-run-active .widget-content > * {
 }
 
 .status-card.time-card .time-display {
-  font-size: var(--font-size-3xl);
+  font-size: clamp(var(--font-size-lg), 16cqi, var(--font-size-3xl));
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
   line-height: 1;
@@ -5090,6 +5103,7 @@ body.theme-light .status-card.time-card .date-display {
   overflow-wrap: break-word;
   hyphens: auto;
   width: 100%;
+  text-wrap: balance;
 }
 
 /* Primary Entity Card Styles */
@@ -5797,6 +5811,8 @@ body.theme-light .status-card.time-card .date-display {
 }
 
 .light-color-picker {
+  /* It keeps its size, so a narrow dialog wraps the swatches instead of squeezing it to a sliver. */
+  flex: 0 0 44px;
   width: 44px;
   height: 36px;
   border: 1px solid var(--border-color);
@@ -5808,9 +5824,10 @@ body.theme-light .status-card.time-card .date-display {
 
 .light-color-swatches {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(28px, 1fr));
   gap: 0.4rem;
   flex: 1;
+  min-width: 0;
 }
 
 .light-color-swatch {
@@ -5879,7 +5896,9 @@ body.theme-light .status-card.time-card .date-display {
 
 .climate-temp-display {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, ...) because 1fr alone cannot go below its content: a wide reading pushed its
+     column past the card's edge. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-4);
   padding: var(--space-4);
   background: var(--surface-2);
@@ -5910,6 +5929,20 @@ body.theme-light .status-card.time-card .date-display {
   flex-direction: column;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
+}
+
+/* A heat/cool thermostat shows a range ('19.5–24.5°C'), about twice as wide as one target, so the
+   short current reading keeps what it needs and the range takes the rest. */
+.climate-temp-display.is-range {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+/* The target is sized to its column, one figure for a single target and a smaller one for a range,
+   and never wraps. It used to break after the dash as soon as a bound had a decimal or the window
+   was narrow, which grew the card by a line and shifted the dialog while a thumb was dragged. */
+.climate-target-temp {
+  container-type: inline-size;
 }
 
 .climate-temp-label {
@@ -5932,6 +5965,15 @@ body.theme-light .status-card.time-card .date-display {
   font-weight: 700;
   color: var(--accent-text);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.climate-target-temp .climate-temp-value-large {
+  font-size: clamp(var(--font-size-lg), 28cqi, var(--font-size-4xl));
+}
+
+.is-range .climate-target-temp .climate-temp-value-large {
+  font-size: clamp(var(--font-size-md), 15cqi, var(--font-size-4xl));
 }
 
 .climate-slider-wrapper {
@@ -7482,7 +7524,9 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   display: flex;
   align-items: center;
   gap: 5px;
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 100%;
   font-size: var(--font-size-xs-plus);
 }
 
@@ -7500,7 +7544,9 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 90px;
+  /* A name takes the room its tile has, and gives it back one item at a time as the legend wraps;
+     capped at 90px, 'Living room temperature' and 'Living room humidity' read the same. */
+  min-width: 0;
 }
 
 .comparison-graph-legend-value {
@@ -7570,7 +7616,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 110px;
+  max-width: 160px;
 }
 
 .comparison-graph-warning {
@@ -10361,15 +10407,19 @@ body {
   }
 
   .status-grid {
-    grid-template-columns: 1fr;
     gap: 6px;
     margin-bottom: 6px;
   }
 
+  /* Enlarged text shrinks the 500px window to 333-385 CSS px, where stacked cards took 40% of the
+     window and left room for one row of tiles, so they stay side by side (the 300px rule below
+     still stacks them). */
+  body:not(.large-interface) .status-grid {
+    grid-template-columns: 1fr;
+  }
+
   .media-tile {
     grid-template-columns: 48px minmax(0, 1fr);
-    gap: var(--space-2);
-    padding: var(--space-2);
     margin-bottom: 6px;
   }
 
@@ -10409,6 +10459,7 @@ body {
 
   .media-tile {
     grid-template-columns: 40px minmax(0, 1fr);
+    gap: var(--space-3);
     align-items: start;
   }
 
@@ -10434,7 +10485,7 @@ body {
   }
 
   .media-tile-controls {
-    justify-content: flex-start;
+    justify-content: center;
   }
 
   .media-tile-btn {
@@ -10470,14 +10521,6 @@ body {
   .control-icon {
     font-size: var(--font-size-2xl);
     width: 28px;
-  }
-
-  .control-name {
-    font-size: var(--font-size-xs);
-  }
-
-  .control-state {
-    font-size: var(--font-size-sm);
   }
 
   #quick-controls .control-item.sensor-numeric-entity {
@@ -10524,19 +10567,15 @@ body {
 
   .media-tile {
     grid-template-columns: 44px minmax(0, 1fr);
-    gap: var(--space-2);
+    gap: var(--space-3);
     min-height: 52px;
-    padding: var(--space-2);
+    padding: var(--space-3);
     margin-bottom: 6px;
   }
 
   .media-tile-artwork {
     width: 44px;
     height: 44px;
-  }
-
-  .media-tile-content {
-    grid-template-columns: minmax(0, 1fr) minmax(72px, 96px) auto;
   }
 
   .media-tile-btn {
@@ -10573,6 +10612,20 @@ body {
 @media (max-width: 300px) {
   .status-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* A narrow window that is also short (the 300x360 minimum, or 150% text in the default window)
+   leaves the two hero cards the most room to take, and pushed the Quick Access header below the
+   fold. The short-window rule above only covers windows wider than 420px. */
+@media (max-width: 420px) and (max-height: 460px) {
+  .status-card {
+    padding: 10px;
+  }
+
+  .weather-card,
+  .status-card.time-card {
+    min-height: 0;
   }
 }
 
@@ -13587,6 +13640,8 @@ body.theme-light .brightness-icon:not(.brightness-off) {
 .fan-preset-btn {
   flex: 1 1 0;
   min-width: 0;
+  /* The chip's own 12px side padding left 12px for '100%' in a 38px chip. */
+  padding-inline: 4px;
   height: 34px;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
@@ -15083,6 +15138,36 @@ body.density-compact #quick-controls {
 #quick-controls .control-item:not(.comparison-graph-tile):not(.media-player-entity) {
   height: var(--qa-tile-height);
   min-height: var(--qa-tile-height);
+  /* A tile too full for its height loses its bottom edge, not both ends: with plain centring the
+     icon above and the state below were cut off equally. */
+  justify-content: safe center;
+}
+
+/* A long name gives up its tail, not the icon above it or the state below it: Home Assistant's
+   own names run to 40-90 characters, and three or four wrapped lines pushed both out of the
+   fixed-height tile. The tooltip carries the whole name. Compact tiles have room for one line. */
+#quick-controls .control-item:not(.comparison-graph-tile):not(.media-player-entity) .control-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+body.density-compact
+  #quick-controls
+  .control-item:not(.comparison-graph-tile):not(.media-player-entity)
+  .control-name {
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+}
+
+/* One line for the state or value as well. */
+#quick-controls .control-item:not(.comparison-graph-tile):not(.media-player-entity) .control-state {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 #quick-controls .control-item.sensor-numeric-entity {
