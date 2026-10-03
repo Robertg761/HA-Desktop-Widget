@@ -33,7 +33,32 @@ const openBrightness = (ctx) => ctx.click(tileDetails('light.desk_lamp'));
 const openDetails = (entityId) => (ctx) => ctx.click(tileDetails(entityId));
 const openClimate = (ctx) => ctx.click(tileDetails('climate.living_room'));
 const openColourLight = (ctx) => ctx.click(tileDetails('light.colour_strip'));
-const toggleEditMode = (ctx) => ctx.click('#reorganize-quick-controls-btn');
+// The page being edited carries its rename, duplicate and delete buttons in the tab strip. However
+// long its name and however wordy Add page is in the interface's language, they have to lie inside
+// the strip and clear of the fades at its edges, or they cannot be seen or reached. Its name has to
+// keep some room as well: a lone page in a strip as wide as itself once lost all of it.
+const EDIT_BUTTONS_IN_STRIP = `(() => {
+  const strip = document.querySelector('.quick-access-tab-scroll');
+  const tab = document.querySelector('.quick-access-tab.active');
+  if (!strip || !tab) return false;
+  const bounds = strip.getBoundingClientRect();
+  const fade = parseFloat(getComputedStyle(strip).getPropertyValue('--qa-tab-fade')) || 0;
+  const overflow = strip.dataset.overflow || '';
+  const left = bounds.left + (overflow === 'left' || overflow === 'both' ? fade : 0);
+  const right = bounds.right - (overflow === 'right' || overflow === 'both' ? fade : 0);
+  const label = tab.querySelector('.quick-access-tab-label');
+  const named = !label || label.clientWidth >= Math.min(label.scrollWidth, 30);
+  return named && [...tab.children].every((part) => {
+    const box = part.getBoundingClientRect();
+    return box.left >= left - 1 && box.right <= right + 1;
+  });
+})()`;
+
+async function toggleEditMode(ctx) {
+  await ctx.click('#reorganize-quick-controls-btn');
+  // The strip scrolls the page into view, which takes a moment.
+  await ctx.waitForExpression(EDIT_BUTTONS_IN_STRIP, 'the edited page inside the tab strip');
+}
 
 async function openSettingsTab(ctx, tab) {
   await ctx.click('#settings-btn');
@@ -158,6 +183,14 @@ async function pinEntity(ctx, entityId) {
 
 const READABLE = { highContrast: true, opaquePanels: true };
 const sixPages = (activeTabId) => ({ customTabs: PAGE_SETS.six, activeTabId });
+const pages = (set, activeTabId) => ({ customTabs: PAGE_SETS[set], activeTabId });
+
+// Keyboard focus rings only show after a key press, so press one before focusing from script.
+async function focusWithKeyboard(ctx, selector) {
+  await ctx.pressKey('Shift', { code: 'ShiftLeft', keyCode: 16 });
+  await ctx.ev(`document.querySelector(${JSON.stringify(selector)})?.focus()`);
+}
+
 // The page whose tiles open the helper, vacuum, to-do, calendar and repair dialogs.
 const dialogsPage = { customTabs: PAGE_SETS.dialogs, activeTabId: 'default' };
 // A holiday shows for an hour, long enough for the whole run.
@@ -293,6 +326,92 @@ const scenes = [
     name: 'popup-input-number',
     config: sixPages('devices'),
     setup: (ctx) => ctx.click(tile('input_number.thermostat_offset')),
+  },
+
+  // The page tab strip with 1, 3, 6 and 12 pages (German names, the last of them very long), in
+  // normal and edit mode, light and dark, left to right and right to left. The active page is the
+  // last or next to last, which only shows if the strip scrolls it into view. In German, whose
+  // Add page is the wordiest, a long page name must still leave room for all its buttons.
+  { name: 'tabs-three', config: pages('three', 'kitchen') },
+  { name: 'tabs-three-edit', config: pages('three', 'kitchen'), setup: toggleEditMode },
+  { name: 'tabs-six-edit', config: sixPages('devices'), setup: toggleEditMode },
+  {
+    name: 'tabs-single-edit',
+    setup: toggleEditMode,
+    config: { customTabs: [PAGE_SETS.default[0]], activeTabId: 'default' },
+  },
+  { name: 'tabs-twelve', config: pages('twelve', 'page-12') },
+  { name: 'tabs-twelve-edit', config: pages('twelve', 'page-6'), setup: toggleEditMode },
+  { name: 'tabs-twelve-edit-last', config: pages('twelve', 'page-12'), setup: toggleEditMode },
+  {
+    name: 'tabs-twelve-de-edit',
+    ui: { language: 'de' },
+    config: pages('twelve', 'page-6'),
+    setup: toggleEditMode,
+  },
+  { name: 'tabs-twelve-light', ui: { theme: 'light' }, config: pages('twelve', 'page-12') },
+  {
+    name: 'tabs-twelve-light-edit',
+    ui: { theme: 'light' },
+    config: pages('twelve', 'page-6'),
+    setup: toggleEditMode,
+  },
+  { name: 'tabs-twelve-rtl', ui: { language: 'ar' }, config: pages('twelve', 'page-12') },
+  {
+    name: 'tabs-twelve-rtl-edit',
+    ui: { language: 'ar' },
+    config: pages('twelve', 'page-6'),
+    setup: toggleEditMode,
+  },
+  {
+    name: 'tabs-narrow-edit',
+    size: NARROW_WINDOW,
+    config: pages('six', 'media'),
+    setup: toggleEditMode,
+  },
+  {
+    name: 'tabs-focus',
+    config: pages('twelve', 'page-4'),
+    setup: (ctx) => focusWithKeyboard(ctx, '.quick-access-tab-link.active'),
+  },
+  {
+    name: 'tabs-focus-edit',
+    config: pages('twelve', 'page-4'),
+    setup: async (ctx) => {
+      await toggleEditMode(ctx);
+      await focusWithKeyboard(ctx, '.qa-tab-rename');
+    },
+  },
+  {
+    name: 'tabs-focus-add',
+    config: pages('three', 'default'),
+    setup: async (ctx) => {
+      await toggleEditMode(ctx);
+      await focusWithKeyboard(ctx, '.qa-tab-add');
+    },
+  },
+
+  // Edit mode puts a pin, edit and remove button on every tile; compact density and narrow
+  // windows leave the least room for them.
+  { name: 'edit-compact', ui: { density: 'compact' }, setup: toggleEditMode },
+  {
+    name: 'edit-compact-narrow',
+    ui: { density: 'compact' },
+    size: NARROW_WINDOW,
+    setup: toggleEditMode,
+  },
+  { name: 'edit-narrow', size: NARROW_WINDOW, setup: toggleEditMode },
+  { name: 'edit-media', config: sixPages('media'), setup: toggleEditMode },
+  {
+    name: 'edit-graph-camera',
+    config: {
+      ...pages('graph', 'default'),
+      comparisonGraphs: [
+        { id: 'graph:temps', name: 'Temperatures', span: 3, entityIds: ['sensor.office_temp'] },
+      ],
+      quickAccessTileOptions: { 'camera.driveway': { cameraPreviewRefresh: '30s' } },
+    },
+    setup: toggleEditMode,
   },
 
   // The light theme.

@@ -362,7 +362,6 @@
   "Could not save the token recovery acknowledgement. {{error}}": "Bestätigung der Token-Wiederherstellung konnte nicht gespeichert werden. {{error}}",
   "Failed to control {{entityName}}: {{errorMessage}}": "{{entityName}} konnte nicht gesteuert werden: {{errorMessage}}",
   "Service call failed: {{errorMessage}}": "Dienstaufruf fehlgeschlagen: {{errorMessage}}",
-  "Reorganize mode enabled - Drag to reorder, click X to remove, ESC to exit": "Neu-Anordnen aktiv — Ziehen zum Sortieren, X zum Entfernen, ESC zum Beenden",
   "Quick Access order saved": "Schnellzugriff-Reihenfolge gespeichert",
   "Failed to control media player": "Mediaplayer konnte nicht gesteuert werden",
   "Failed to toggle entity": "Entität konnte nicht umgeschaltet werden",
@@ -1705,5 +1704,14 @@
   "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.": "Schaltet Transparenz aus und erhöht den Kontrast von Text und Rahmen überall. Solange diese Einstellung aktiv ist, überschreibt sie deine Farben, den Milchglas-Hintergrund und die Feiertagsfarben.",
   "Add to dictionary": "Zum Wörterbuch hinzufügen",
   "Remove Custom Color": "Eigene Farbe entfernen",
-  "Remove \"{{name}}\" from your custom colors?": "„{{name}}“ aus den eigenen Farben entfernen?"
+  "Remove \"{{name}}\" from your custom colors?": "„{{name}}“ aus den eigenen Farben entfernen?",
+  "This page is empty": "Diese Seite ist leer",
+  "Add entities to {{page}} for one-click control.": "Füge {{page}} Entitäten für die Steuerung mit einem Klick hinzu.",
+  "Fill this page": "Diese Seite füllen",
+  "Edit settings for {{name}}": "Einstellungen für {{name}} bearbeiten",
+  "Remove {{name}} from Quick Access": "{{name}} aus Schnellzugriff entfernen",
+  "Pin {{name}} to desktop": "{{name}} an Desktop anheften",
+  "Moved to position {{position}} of {{total}}": "Auf Position {{position}} von {{total}} verschoben",
+  "Reorganize mode enabled - Drag, select or press Alt+arrow keys to reorder, click X to remove, ESC to exit": "Neu-Anordnen aktiv — Ziehen, Auswählen oder Alt+Pfeiltasten zum Sortieren, X zum Entfernen, ESC zum Beenden",
+  "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "{{name}} aufgenommen. Wähle die Kachel, an deren Stelle sie treten soll, oder drücke Esc zum Abbrechen."
 }

@@ -333,13 +333,12 @@ async function main() {
           const cfg = await window.electronAPI.getConfig();
           await window.electronAPI.updateConfig({ ...patch, ui: { ...cfg.ui, ...patch.ui } });
         })()`);
-        await waitFor(
-          () =>
-            cdp.evaluate(
-              `document.querySelector('#quick-access-tabs .quick-access-tab-link.active')?.dataset.tab === ${JSON.stringify(settings.activeTabId)}`
-            ),
-          { label: 'the page tabs', timeoutMs: 10000 }
-        );
+        // The tab bar stays hidden while there is a single page.
+        const tabsShown =
+          settings.customTabs.length > 1
+            ? `document.querySelector('#quick-access-tabs .quick-access-tab-link.active')?.dataset.tab === ${JSON.stringify(settings.activeTabId)}`
+            : `document.getElementById('quick-access-tabs')?.classList.contains('hidden')`;
+        await waitFor(() => cdp.evaluate(tabsShown), { label: 'the page tabs', timeoutMs: 10000 });
         // A new language takes longer to repaint than a theme.
         await sleep(settings.ui.language === baseConfig.ui.language ? 700 : 1100);
         applied.settings = key;

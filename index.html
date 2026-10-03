@@ -362,14 +362,8 @@
       <!-- Quick Access -->
       <div class="controls-section">
         <div class="section-header quick-access-header">
-          <div
-            id="quick-access-tabs"
-            class="quick-access-tabs hidden"
-            role="tablist"
-            aria-label="Quick Access views"
-            data-i18n-aria-label="Quick Access views"
-          >
-            <!-- Dynamic Quick Access views will be added here -->
+          <div id="quick-access-tabs" class="quick-access-tabs hidden">
+            <!-- The scrolling strip of Quick Access page tabs is added here -->
           </div>
           <!-- Shown only while there is a single view, so the section keeps a heading. -->
           <span class="section-label quick-access-label" data-i18n="Quick Access"
@@ -438,6 +432,7 @@
         <div
           class="modal-tabs"
           role="tablist"
+          aria-orientation="vertical"
           aria-label="Settings sections"
           data-i18n-aria-label="Settings sections"
         >
@@ -446,6 +441,8 @@
             class="tab-link active"
             role="tab"
             aria-selected="true"
+            id="settings-tab-general"
+            aria-controls="general-tab"
             data-tab="general"
             title="General"
             data-i18n-title="General"
@@ -474,6 +471,9 @@
             class="tab-link"
             role="tab"
             aria-selected="false"
+            id="settings-tab-personalization"
+            aria-controls="personalization-tab"
+            tabindex="-1"
             data-tab="personalization"
             title="Appearance"
             data-i18n-title="Appearance"
@@ -505,6 +505,9 @@
             class="tab-link"
             role="tab"
             aria-selected="false"
+            id="settings-tab-dashboard"
+            aria-controls="dashboard-tab"
+            tabindex="-1"
             data-tab="dashboard"
             title="Dashboard"
             data-i18n-title="Dashboard"
@@ -533,6 +536,9 @@
             class="tab-link"
             role="tab"
             aria-selected="false"
+            id="settings-tab-hotkeys"
+            aria-controls="hotkeys-tab"
+            tabindex="-1"
             data-tab="hotkeys"
             title="Hotkeys"
             data-i18n-title="Hotkeys"
@@ -566,6 +572,9 @@
             class="tab-link"
             role="tab"
             aria-selected="false"
+            id="settings-tab-alerts"
+            aria-controls="alerts-tab"
+            tabindex="-1"
             data-tab="alerts"
             title="Alerts"
             data-i18n-title="Alerts"
@@ -594,6 +603,9 @@
             class="tab-link"
             role="tab"
             aria-selected="false"
+            id="settings-tab-advanced"
+            aria-controls="advanced-tab"
+            tabindex="-1"
             data-tab="advanced"
             title="Advanced"
             data-i18n-title="Advanced"
@@ -633,7 +645,12 @@
             <p id="settings-search-status" class="form-help" role="status"></p>
           </div>
           <div id="settings-search-results" hidden></div>
-          <div id="general-tab" class="tab-content active">
+          <div
+            id="general-tab"
+            class="tab-content active"
+            role="tabpanel"
+            aria-labelledby="settings-tab-general"
+          >
             <header class="settings-page-header">
               <h3 class="settings-page-title" data-i18n="General">General</h3>
               <p
@@ -829,7 +846,12 @@
               </div>
             </section>
           </div>
-          <div id="personalization-tab" class="tab-content">
+          <div
+            id="personalization-tab"
+            class="tab-content"
+            role="tabpanel"
+            aria-labelledby="settings-tab-personalization"
+          >
             <header class="settings-page-header">
               <h3 class="settings-page-title" data-i18n="Appearance">Appearance</h3>
               <p
@@ -1448,7 +1470,12 @@
               </div>
             </section>
           </div>
-          <div id="dashboard-tab" class="tab-content">
+          <div
+            id="dashboard-tab"
+            class="tab-content"
+            role="tabpanel"
+            aria-labelledby="settings-tab-dashboard"
+          >
             <header class="settings-page-header">
               <h3 class="settings-page-title" data-i18n="Dashboard">Dashboard</h3>
               <p class="settings-page-description" data-i18n="What the main window shows.">
@@ -1788,7 +1815,12 @@
               </div>
             </section>
           </div>
-          <div id="hotkeys-tab" class="tab-content">
+          <div
+            id="hotkeys-tab"
+            class="tab-content"
+            role="tabpanel"
+            aria-labelledby="settings-tab-hotkeys"
+          >
             <header class="settings-page-header">
               <h3 class="settings-page-title" data-i18n="Hotkeys">Hotkeys</h3>
               <p
@@ -2007,7 +2039,12 @@
               </div>
             </section>
           </div>
-          <div id="alerts-tab" class="tab-content">
+          <div
+            id="alerts-tab"
+            class="tab-content"
+            role="tabpanel"
+            aria-labelledby="settings-tab-alerts"
+          >
             <header class="settings-page-header">
               <h3 class="settings-page-title" data-i18n="Alerts">Alerts</h3>
               <p
@@ -2047,7 +2084,12 @@
               </div>
             </section>
           </div>
-          <div id="advanced-tab" class="tab-content">
+          <div
+            id="advanced-tab"
+            class="tab-content"
+            role="tabpanel"
+            aria-labelledby="settings-tab-advanced"
+          >
             <header class="settings-page-header">
               <h3 class="settings-page-title" data-i18n="Advanced">Advanced</h3>
               <p

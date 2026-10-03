@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.52",
+  "version": "1.2.53",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1750,6 +1750,15 @@
     "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.": "Désactive la transparence et augmente le contraste du texte et des bordures partout. Tant qu'elle est activée, elle remplace vos couleurs, l'arrière-plan en verre dépoli et les couleurs de fête.",
     "Add to dictionary": "Ajouter au dictionnaire",
     "Remove Custom Color": "Supprimer la couleur personnalisée",
-    "Remove \"{{name}}\" from your custom colors?": "Supprimer « {{name}} » de vos couleurs personnalisées ?"
+    "Remove \"{{name}}\" from your custom colors?": "Supprimer « {{name}} » de vos couleurs personnalisées ?",
+    "This page is empty": "Cette page est vide",
+    "Add entities to {{page}} for one-click control.": "Ajoutez des entités à {{page}} pour les contrôler en un clic.",
+    "Fill this page": "Remplir cette page",
+    "Edit settings for {{name}}": "Modifier les paramètres de {{name}}",
+    "Remove {{name}} from Quick Access": "Retirer {{name}} de l'accès rapide",
+    "Pin {{name}} to desktop": "Épingler {{name}} au bureau",
+    "Moved to position {{position}} of {{total}}": "Déplacé à la position {{position}} sur {{total}}",
+    "Reorganize mode enabled - Drag, select or press Alt+arrow keys to reorder, click X to remove, ESC to exit": "Mode réorganisation activé - glissez, sélectionnez ou appuyez sur Alt+flèches pour réordonner, cliquez sur X pour supprimer, Échap pour quitter",
+    "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "{{name}} sélectionné. Choisissez la vignette dont il doit prendre la place, ou appuyez sur Échap pour annuler."
   }
 }

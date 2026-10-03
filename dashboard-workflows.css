@@ -354,10 +354,14 @@ body:not(.theme-light) .alert-advanced-options input[type='time'] {
   min-height: 32px;
 }
 
-/* Primary action on the right, matching the other dialogs, without reordering the markup. */
-.add-page-modal .modal-footer {
-  flex-direction: row-reverse;
-  justify-content: flex-start;
+/* A page name left empty is said so, in red, under the field. */
+.add-page-modal .add-page-name-error {
+  margin: var(--space-2) 0 0;
+  color: var(--error);
+}
+
+.add-page-modal .form-control[aria-invalid='true'] {
+  border-color: var(--error);
 }
 
 .room-dashboard-preview {

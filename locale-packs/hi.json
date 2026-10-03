@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.52",
+  "version": "1.2.53",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1750,6 +1750,15 @@
     "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.": "पारदर्शिता बंद करता है और हर जगह टेक्स्ट और किनारों का कंट्रास्ट बढ़ाता है। चालू रहने तक यह आपके रंग, फ्रॉस्टेड ग्लास पृष्ठभूमि और त्योहार के रंगों को ओवरराइड करता है।",
     "Add to dictionary": "शब्दकोश में जोड़ें",
     "Remove Custom Color": "कस्टम रंग हटाएं",
-    "Remove \"{{name}}\" from your custom colors?": "\"{{name}}\" को अपने कस्टम रंगों से हटाएं?"
+    "Remove \"{{name}}\" from your custom colors?": "\"{{name}}\" को अपने कस्टम रंगों से हटाएं?",
+    "This page is empty": "यह पेज खाली है",
+    "Add entities to {{page}} for one-click control.": "एक क्लिक में नियंत्रण के लिए {{page}} में एंटिटी जोड़ें।",
+    "Fill this page": "इस पेज को भरें",
+    "Edit settings for {{name}}": "{{name}} की सेटिंग्स संपादित करें",
+    "Remove {{name}} from Quick Access": "{{name}} को क्विक एक्सेस से हटाएं",
+    "Pin {{name}} to desktop": "{{name}} को डेस्कटॉप पर पिन करें",
+    "Moved to position {{position}} of {{total}}": "{{total}} में से स्थिति {{position}} पर ले जाया गया",
+    "Reorganize mode enabled - Drag, select or press Alt+arrow keys to reorder, click X to remove, ESC to exit": "पुनर्व्यवस्थित मोड सक्षम - क्रम बदलने के लिए खींचें, चुनें या Alt+तीर कुंजियाँ दबाएं, हटाने के लिए X क्लिक करें, बाहर निकलने के लिए ESC दबाएं",
+    "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "{{name}} चुना गया। जिस टाइल की जगह इसे लेनी है उसे चुनें, या रद्द करने के लिए Escape दबाएं।"
   }
 }

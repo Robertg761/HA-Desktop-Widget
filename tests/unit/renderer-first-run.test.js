@@ -750,6 +750,52 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(require('../../src/ui.js').showAddPageModal).toHaveBeenCalledWith({ starter: true });
   });
 
+  describe('the empty page card', () => {
+    const connectWithEmptyPage = async (customTabs, activeTabId) => {
+      await loadRenderer({ config: { ...oauthConfig(), customTabs, activeTabId } });
+      let nextRequestId = 123;
+      mockWebsocket.request.mockImplementation(({ type }) => {
+        const id = nextRequestId++;
+        const result =
+          type === 'get_states' || type === 'config/area_registry/list'
+            ? []
+            : type === 'get_services' || type === 'get_config'
+              ? {}
+              : null;
+        return Object.assign(Promise.resolve({ type: 'result', id, success: true, result }), {
+          id,
+        });
+      });
+      mockWebsocket.emit('message', { type: 'auth_ok' });
+      mockWebsocket.emit('message', { type: 'result', id: 123, success: true, result: [] });
+      await flushAsync();
+      return document.getElementById('widget-state-panel');
+    };
+
+    it('says it is this page that is empty beside other pages, and names it', async () => {
+      const panel = await connectWithEmptyPage(
+        [
+          { id: 'home', name: 'Home', entityIds: ['light.desk'] },
+          { id: 'garage', name: 'Garage', entityIds: [] },
+        ],
+        'garage'
+      );
+      expect(panel.textContent).toContain('This page is empty');
+      expect(panel.textContent).toContain('Add entities to Garage for one-click control.');
+      expect(panel.textContent).not.toContain('No Quick Access entities yet');
+      expect(panel.textContent).toContain('Choose rooms and devices');
+    });
+
+    it('keeps the first-run wording when the empty page is the only one', async () => {
+      const panel = await connectWithEmptyPage(
+        [{ id: 'default', name: 'Home', entityIds: [] }],
+        'default'
+      );
+      expect(panel.textContent).toContain('No Quick Access entities yet');
+      expect(panel.textContent).not.toContain('This page is empty');
+    });
+  });
+
   it('coalesces duplicate Connect clicks while browser authorization is pending', async () => {
     await loadRenderer();
     let resolveAuthorization;

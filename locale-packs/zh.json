@@ -2,7 +2,7 @@
   "locale": "zh",
   "displayName": "简体中文",
   "englishName": "Chinese (Simplified)",
-  "version": "1.2.52",
+  "version": "1.2.53",
   "minAppVersion": "3.4.1",
   "notes": "Simplified Chinese language pack for HA Desktop Widget.",
   "messages": {
@@ -1750,6 +1750,15 @@
     "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.": "关闭透明效果，并在所有位置提高文字和边框的对比度。开启期间，它会覆盖你的颜色、磨砂玻璃背景和节日配色。",
     "Add to dictionary": "添加到词典",
     "Remove Custom Color": "移除自定义颜色",
-    "Remove \"{{name}}\" from your custom colors?": "要从自定义颜色中移除“{{name}}”吗？"
+    "Remove \"{{name}}\" from your custom colors?": "要从自定义颜色中移除“{{name}}”吗？",
+    "This page is empty": "此页面为空",
+    "Add entities to {{page}} for one-click control.": "向 {{page}} 添加实体，一键控制。",
+    "Fill this page": "填充此页面",
+    "Edit settings for {{name}}": "编辑 {{name}} 的设置",
+    "Remove {{name}} from Quick Access": "从快捷访问中移除 {{name}}",
+    "Pin {{name}} to desktop": "将 {{name}} 固定到桌面",
+    "Moved to position {{position}} of {{total}}": "已移到第 {{position}} 位（共 {{total}} 个）",
+    "Reorganize mode enabled - Drag, select or press Alt+arrow keys to reorder, click X to remove, ESC to exit": "已启用整理模式 - 拖动、选择或按 Alt+方向键以重新排序，点击 X 删除，按 ESC 退出",
+    "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "已选中 {{name}}。请选择它要移到的磁贴位置，或按 Esc 取消。"
   }
 }

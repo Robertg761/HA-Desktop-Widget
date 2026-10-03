@@ -74,7 +74,10 @@ const replacement = {
 function setupConfig() {
   state.setConfig({
     homeAssistant: { url: 'http://ha.local', token: 'x' },
-    customTabs: [{ id: 'default', name: 'All', entityIds: [STALE_ID] }],
+    customTabs: [
+      { id: 'default', name: 'All', entityIds: [STALE_ID] },
+      { id: 'other', name: 'Other', entityIds: [] },
+    ],
     activeTabId: 'default',
     favoriteEntities: [STALE_ID],
     primaryCards: ['none', 'none'],
@@ -83,6 +86,12 @@ function setupConfig() {
 }
 
 const staleTile = () => document.querySelector(`.control-item[data-entity-id="${STALE_ID}"]`);
+
+// Redraws the grid from a config change, a page switch, rather than from renderActiveTab().
+async function switchAwayAndBack() {
+  await ui.switchQuickAccessPage('other');
+  await ui.switchQuickAccessPage('default');
+}
 
 describe('unavailable Quick Access tile repair affordance', () => {
   beforeEach(() => {
@@ -101,7 +110,7 @@ describe('unavailable Quick Access tile repair affordance', () => {
     // renderActiveTab() covers the empty-state grid with a "connecting" notice, but the grid also
     // re-renders on its own from config changes such as a page switch — that is where every
     // favorite would otherwise advertise a repair picker with nothing to pick from.
-    await ui.switchQuickAccessPage('default');
+    await switchAwayAndBack();
 
     const tile = staleTile();
     expect(tile).not.toBeNull();
@@ -161,7 +170,7 @@ describe('unavailable Quick Access tile repair affordance', () => {
 
   it('picks up the repair affordance when a reused tile sees entities arrive', async () => {
     state.setStates({});
-    await ui.switchQuickAccessPage('default');
+    await switchAwayAndBack();
     const firstTile = staleTile();
     expect(firstTile.classList.contains('repairable')).toBe(false);
 

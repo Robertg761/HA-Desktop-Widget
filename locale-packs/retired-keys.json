@@ -154,5 +154,9 @@
   "{{time}}: this computer’s {{sections}}": {
     "retiredIn": "4.0.0",
     "reason": "Used only by 4.0.0 betas 3 to 10; replaced before 4.0.0 (PR #129)."
+  },
+  "Reorganize mode enabled - Drag to reorder, click X to remove, ESC to exit": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded by the page tab strip rebuild (#136)"
   }
 }

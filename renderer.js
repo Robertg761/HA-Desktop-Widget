@@ -21,6 +21,11 @@ import { setLocaleBootstrap, t, translateDocument } from './src/i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './src/icons.js';
 import { lineIconMarkup, setLineIconContent } from './src/entity-icons.js';
 import { animateEnter, syncSlidingIndicator } from './src/motion.js';
+import {
+  bindTabListKeyboard,
+  bindTabListOrientation,
+  syncRovingTabIndex,
+} from './src/tab-navigation.js';
 import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
 import { WeatherEffectsManager } from './src/weather-effects.js';
 import { SeasonalEffectsManager } from './src/seasonal-effects.js';
@@ -650,12 +655,19 @@ function hasDashboardEntities() {
   );
 }
 
-function getActiveQuickAccessCount() {
+function getActiveQuickAccessPage() {
   const normalized = normalizeQuickAccessConfig(state.CONFIG || {});
-  const activeTab =
-    normalized.customTabs.find((tab) => tab.id === normalized.activeTabId) ||
-    normalized.customTabs[0];
-  return Array.isArray(activeTab?.entityIds) ? activeTab.entityIds.length : 0;
+  return {
+    page:
+      normalized.customTabs.find((tab) => tab.id === normalized.activeTabId) ||
+      normalized.customTabs[0],
+    pageCount: normalized.customTabs.length,
+  };
+}
+
+function getActiveQuickAccessCount() {
+  const { page } = getActiveQuickAccessPage();
+  return Array.isArray(page?.entityIds) ? page.entityIds.length : 0;
 }
 
 function removeWidgetStatePanel() {
@@ -907,10 +919,15 @@ function renderMainWidgetState() {
   }
 
   if (mainConnectionState === 'connected' && getActiveQuickAccessCount() === 0) {
+    // Beside other pages it is this page that is empty, not Quick Access as a whole.
+    const { page, pageCount } = getActiveQuickAccessPage();
+    const onePageOfMany = pageCount > 1;
     renderWidgetStatePanel({
       tone: 'empty',
-      title: t('No Quick Access entities yet'),
-      message: t('Add your favorite Home Assistant entities for one-click control.'),
+      title: onePageOfMany ? t('This page is empty') : t('No Quick Access entities yet'),
+      message: onePageOfMany
+        ? t('Add entities to {{page}} for one-click control.', { page: page.name })
+        : t('Add your favorite Home Assistant entities for one-click control.'),
       actions: [
         {
           label: t('Choose rooms and devices'),
@@ -3163,6 +3180,7 @@ function wireUI() {
         });
         button.classList.add('active');
         button.setAttribute('aria-selected', 'true');
+        syncRovingTabIndex(button.closest('.modal-tabs').querySelectorAll('.tab-link'), button);
         document
           .querySelectorAll('.modal-body .tab-content')
           .forEach((content) => content.classList.remove('active'));
@@ -3183,6 +3201,13 @@ function wireUI() {
           hotkeys.renderHotkeysTab();
         }
       });
+    });
+
+    // The rail is a column, and a row in a narrow window: either pair of arrows moves along it,
+    // and it says which it is.
+    document.querySelectorAll('.modal-tabs').forEach((tabList) => {
+      bindTabListKeyboard(tabList, '.tab-link', { orientation: 'both' });
+      bindTabListOrientation(tabList);
     });
 
     const hotkeySearch = document.getElementById('hotkey-entity-search');

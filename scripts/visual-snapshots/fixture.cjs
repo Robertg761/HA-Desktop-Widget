@@ -19,6 +19,8 @@ const RESETTABLE_SETTINGS = [
   'activeTabId',
   'entityAlerts',
   'primaryCards',
+  'comparisonGraphs',
+  'quickAccessTileOptions',
 ];
 
 // Where the main window opens. The default (100, 100) puts a 660px window under the taskbar on a
@@ -54,6 +56,22 @@ const PAGE_SETS = {
         'light.colour_strip',
       ],
     },
+  ],
+  // A comparison graph and a camera with a picture, the tiles that carry a label in the corner
+  // the edit buttons use. The graph and the camera's preview are set in the scene's config.
+  graph: [
+    {
+      id: 'default',
+      name: 'Home',
+      entityIds: ['graph:temps', 'camera.driveway', 'light.desk_lamp', 'sensor.office_temp'],
+    },
+    { id: 'bedroom', name: 'Bedroom', entityIds: ['light.shelf_leds', 'fan.bedroom'] },
+  ],
+  // Three pages: the point where the strip first has no room to spare beside the edit buttons.
+  three: [
+    { id: 'default', name: 'Home', entityIds: HOME_ENTITIES },
+    { id: 'bedroom', name: 'Bedroom', entityIds: ['light.shelf_leds', 'fan.bedroom'] },
+    { id: 'kitchen', name: 'Kitchen', entityIds: ['switch.coffee_maker', 'timer.laundry'] },
   ],
   // Enough pages that the tab strip overflows a 500px window. The last one holds the helpers.
   six: [
@@ -100,6 +118,27 @@ const PAGE_SETS = {
     { id: 'spare', name: 'Spare', entityIds: ['light.desk_lamp'] },
   ],
 };
+
+// Twelve pages with German names, two of them long enough to be cut short on the strip.
+const GERMAN_PAGE_NAMES = [
+  'Wohnzimmer',
+  'Schlafzimmer',
+  'Küche',
+  'Arbeitszimmer',
+  'Badezimmer',
+  'Kinderzimmer Obergeschoss',
+  'Gästezimmer',
+  'Heizungskeller',
+  'Terrasse',
+  'Waschküche',
+  'Garage',
+  'Donaudampfschifffahrtsgesellschaft',
+];
+PAGE_SETS.twelve = GERMAN_PAGE_NAMES.map((name, index) => ({
+  id: index === 0 ? 'default' : `page-${index + 1}`,
+  name,
+  entityIds: index === 0 ? HOME_ENTITIES : ['light.shelf_leds', 'switch.coffee_maker'],
+}));
 
 function buildStates(now = new Date()) {
   const stamp = now.toISOString();
@@ -371,6 +410,8 @@ function buildConfig(haUrl) {
     selectedWeatherEntity: 'weather.home',
     customTabs: PAGE_SETS.default,
     activeTabId: 'default',
+    comparisonGraphs: [],
+    quickAccessTileOptions: {},
     omarchyThemeDefaultApplied: true,
     globalHotkeys: { enabled: false, hotkeys: {} },
     entityAlerts: { enabled: false, alerts: {} },

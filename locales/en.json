@@ -362,7 +362,6 @@
   "Could not save the token recovery acknowledgement. {{error}}": "Could not save the token recovery acknowledgement. {{error}}",
   "Failed to control {{entityName}}: {{errorMessage}}": "Failed to control {{entityName}}: {{errorMessage}}",
   "Service call failed: {{errorMessage}}": "Service call failed: {{errorMessage}}",
-  "Reorganize mode enabled - Drag to reorder, click X to remove, ESC to exit": "Reorganize mode enabled - Drag to reorder, click X to remove, ESC to exit",
   "Quick Access order saved": "Quick Access order saved",
   "Failed to control media player": "Failed to control media player",
   "Failed to toggle entity": "Failed to toggle entity",
@@ -1705,5 +1704,14 @@
   "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.": "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.",
   "Add to dictionary": "Add to dictionary",
   "Remove Custom Color": "Remove Custom Color",
-  "Remove \"{{name}}\" from your custom colors?": "Remove \"{{name}}\" from your custom colors?"
+  "Remove \"{{name}}\" from your custom colors?": "Remove \"{{name}}\" from your custom colors?",
+  "This page is empty": "This page is empty",
+  "Add entities to {{page}} for one-click control.": "Add entities to {{page}} for one-click control.",
+  "Fill this page": "Fill this page",
+  "Edit settings for {{name}}": "Edit settings for {{name}}",
+  "Remove {{name}} from Quick Access": "Remove {{name}} from Quick Access",
+  "Pin {{name}} to desktop": "Pin {{name}} to desktop",
+  "Moved to position {{position}} of {{total}}": "Moved to position {{position}} of {{total}}",
+  "Reorganize mode enabled - Drag, select or press Alt+arrow keys to reorder, click X to remove, ESC to exit": "Reorganize mode enabled - Drag, select or press Alt+arrow keys to reorder, click X to remove, ESC to exit",
+  "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel."
 }

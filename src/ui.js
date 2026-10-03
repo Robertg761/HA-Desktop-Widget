@@ -41,7 +41,7 @@ import {
   renderEntityIcon,
   setLineIconContent,
 } from './entity-icons.js';
-import { animateEnter, pulse, syncSlidingIndicator } from './motion.js';
+import { animateEnter, prefersReducedMotion, pulse, syncSlidingIndicator } from './motion.js';
 import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
 import { buildSparklinePoints } from './sparklines.js';
 import {
@@ -68,7 +68,14 @@ import {
   reorderQuickAccessView,
   setActiveQuickAccessView,
 } from './quick-access-tabs.js';
-import { getNextQuickAccessFocusIndex } from './quick-access-ui-helpers.js';
+import {
+  getNextQuickAccessFocusIndex,
+  getNextQuickAccessFocusIndexByLayout,
+  getQuickAccessTabOverflow,
+  getQuickAccessTabRevealDelta,
+  getQuickAccessTabWheelDelta,
+} from './quick-access-ui-helpers.js';
+import { bindTabListKeyboard, getTextDirection } from './tab-navigation.js';
 import { duplicateQuickAccessView } from './page-duplication.js';
 import { getRendererHost } from '@hadw/renderer/host.js';
 import {
@@ -716,6 +723,8 @@ const QUICK_ACCESS_PAGE_PRESETS = [
 ];
 
 async function switchQuickAccessPage(tabId) {
+  // Choosing the page already shown changes nothing to save and nobody to tell.
+  if (tabId === state.CONFIG?.activeTabId) return { success: true, unchanged: true };
   const nextConfig = setActiveQuickAccessView(state.CONFIG, tabId);
   const result = await setQuickAccessConfig(nextConfig);
   if (result?.success !== false) {
@@ -724,17 +733,171 @@ async function switchQuickAccessPage(tabId) {
   return result;
 }
 
+// --- Quick Access page tabs ---
+// The pages sit in a strip inside the bar (#quick-access-tabs). The bar is the pill, or the
+// editing row; the strip is what scrolls, so the bar keeps its shape and the Add page button
+// beside it can never be scrolled out of reach.
+
+function getQuickAccessTabScroller(tabBar) {
+  let scroller = tabBar.querySelector(':scope > .quick-access-tab-scroll');
+  if (scroller) return scroller;
+
+  scroller = document.createElement('div');
+  scroller.className = 'quick-access-tab-scroll';
+  tabBar.appendChild(scroller);
+  bindQuickAccessTabScroller(scroller);
+  return scroller;
+}
+
+// Tells the stylesheet which edges have more pages beyond them, so it can fade them.
+function updateQuickAccessTabOverflow(scroller) {
+  const { left, right } = getQuickAccessTabOverflow({
+    scrollLeft: scroller.scrollLeft,
+    scrollWidth: scroller.scrollWidth,
+    clientWidth: scroller.clientWidth,
+    direction: getTextDirection(scroller),
+  });
+  const overflow = left && right ? 'both' : left ? 'left' : right ? 'right' : '';
+  if (overflow) scroller.dataset.overflow = overflow;
+  else delete scroller.dataset.overflow;
+}
+
+// Scrolls the strip so the active page is fully in view. The strip is scrolled itself, never with
+// scrollIntoView, which would also move the panel around it. While the strip has no layout (the
+// window is hidden) there is nothing to measure; its resize observer calls this again once it has.
+function revealActiveQuickAccessTab(scroller) {
+  const active = scroller.querySelector('.quick-access-tab.active');
+  if (!active || !scroller.clientWidth) return;
+
+  const view = scroller.getBoundingClientRect();
+  const box = active.getBoundingClientRect();
+  const delta = getQuickAccessTabRevealDelta({
+    itemLeft: box.left - view.left,
+    itemRight: box.right - view.left,
+    viewWidth: scroller.clientWidth,
+    direction: getTextDirection(scroller),
+  });
+  if (delta) {
+    // The first reveal (the window just opened) jumps; later ones glide, like the pill does.
+    const behavior =
+      scroller.dataset.revealed === 'true' && !prefersReducedMotion() ? 'smooth' : 'auto';
+    const left = scroller.scrollLeft + delta;
+    if (typeof scroller.scrollTo === 'function') scroller.scrollTo({ left, behavior });
+    else scroller.scrollLeft = left;
+  }
+  scroller.dataset.revealed = 'true';
+}
+
+function bindQuickAccessTabScroller(scroller) {
+  // The arrows move focus along the pages and choose the one reached (not while reorganizing,
+  // when the pages are buttons in a group). The switch rebuilds the bar, which puts focus back on
+  // the button for the same page.
+  bindTabListKeyboard(scroller, '.quick-access-tab-link');
+  scroller.addEventListener('scroll', () => updateQuickAccessTabOverflow(scroller), {
+    passive: true,
+  });
+  // A plain wheel only turns vertically, so it scrolls the row sideways. At either end it lets
+  // go, and the panel behind scrolls as usual.
+  scroller.addEventListener(
+    'wheel',
+    (event) => {
+      const direction = getTextDirection(scroller);
+      const delta = getQuickAccessTabWheelDelta(event, scroller.clientWidth, direction);
+      if (!delta) return;
+      const { left, right } = getQuickAccessTabOverflow({
+        scrollLeft: scroller.scrollLeft,
+        scrollWidth: scroller.scrollWidth,
+        clientWidth: scroller.clientWidth,
+        direction,
+      });
+      if (delta > 0 ? !right : !left) return;
+      event.preventDefault();
+      scroller.scrollLeft += delta;
+    },
+    { passive: false }
+  );
+  if (typeof ResizeObserver === 'function') {
+    // A resized window or a wider label can push the active page out of view, and a strip drawn
+    // while the window was hidden gets its first layout here.
+    new ResizeObserver(() => {
+      revealActiveQuickAccessTab(scroller);
+      updateQuickAccessTabOverflow(scroller);
+    }).observe(scroller);
+  }
+}
+
+// The buttons the bar rebuilds. Which one has focus is remembered so the rebuild can give it back
+// to its twin; the rename field is not among them, as it ends by handing focus back itself.
+const QUICK_ACCESS_TAB_CONTROLS = [
+  'quick-access-tab-link',
+  'qa-tab-rename',
+  'qa-tab-duplicate',
+  'qa-tab-delete',
+];
+
+function getFocusedQuickAccessTabControl(scroller) {
+  const focused = document.activeElement;
+  const tab = focused && scroller.contains(focused) ? focused.closest('.quick-access-tab') : null;
+  if (!tab) return null;
+  return {
+    tabId: tab.dataset.tab,
+    className: QUICK_ACCESS_TAB_CONTROLS.find((name) => focused.classList.contains(name)),
+  };
+}
+
+function restoreQuickAccessTabFocus(scroller, control) {
+  if (!control?.className) return;
+  const tab = [...scroller.querySelectorAll('.quick-access-tab')].find(
+    (element) => element.dataset.tab === control.tabId
+  );
+  const target =
+    tab?.querySelector(`.${control.className}`) || tab?.querySelector('.quick-access-tab-link');
+  target?.focus({ preventScroll: true });
+}
+
+// Add page lives beside the strip rather than in it, so it stays in reach however many pages
+// scroll. One element is kept between renders, so it keeps focus too.
+function syncQuickAccessAddPageButton(tabBar, show) {
+  let addBtn = tabBar.nextElementSibling?.classList.contains('qa-tab-add')
+    ? tabBar.nextElementSibling
+    : null;
+  if (!show) {
+    addBtn?.remove();
+    return;
+  }
+
+  if (!addBtn) {
+    addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'qa-tab-add';
+    setIconContent(addBtn, 'add', { size: 14 });
+    addBtn.appendChild(document.createElement('span'));
+    addBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      showAddPageModal();
+    });
+    tabBar.after(addBtn);
+  }
+  addBtn.title = t('Add page');
+  addBtn.setAttribute('aria-label', t('Add page'));
+  addBtn.querySelector('span').textContent = t('Add page');
+}
+
 function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
   const tabBar = document.getElementById('quick-access-tabs');
   if (!tabBar) return;
+  const scroller = getQuickAccessTabScroller(tabBar);
 
   const tabs = config.customTabs || [];
   const reorganizing = isReorganizeMode;
+  const focusedControl = getFocusedQuickAccessTabControl(scroller);
+  const scrollLeft = scroller.scrollLeft;
 
   // Clear everything but the sliding pill: the bar is rebuilt on every switch (often twice, once
   // for the optimistic update and once for the saved config), and replacing the pill would cut
   // its slide short.
-  [...tabBar.children].forEach((child) => {
+  [...scroller.children].forEach((child) => {
     if (!child.classList.contains('sliding-indicator')) child.remove();
   });
   tabBar.classList.toggle('reorganize', reorganizing);
@@ -743,12 +906,36 @@ function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
   // In reorganize mode, always show the bar so pages can be created/renamed.
   const shouldShow = reorganizing || tabs.length > 1;
   tabBar.classList.toggle('hidden', !shouldShow);
+  syncQuickAccessAddPageButton(tabBar, reorganizing);
+
+  // The pages are tabs for the grid below only outside reorganize mode. While reorganizing the
+  // bar also holds the rename, duplicate and delete buttons, which a tab list may not contain.
+  const asTabs = shouldShow && !reorganizing;
+  scroller.setAttribute('role', asTabs ? 'tablist' : 'group');
+  scroller.setAttribute('aria-label', t('Quick Access views'));
+  const panel = document.getElementById('quick-controls');
+  if (asTabs) {
+    // Named for the active tab, below.
+    panel?.setAttribute('role', 'tabpanel');
+  } else {
+    panel?.removeAttribute('role');
+    panel?.removeAttribute('aria-labelledby');
+  }
+
   if (!shouldShow) {
-    syncSlidingIndicator(tabBar, null);
+    syncSlidingIndicator(scroller, null);
+    updateQuickAccessTabOverflow(scroller);
     return;
   }
 
-  tabs.forEach((tab) => {
+  // A tab list has one tab stop and the arrow keys reach the rest: the active page, or the first.
+  // While reorganizing the pages are plain buttons beside their own edit buttons, and every one
+  // of them can be tabbed to.
+  const stopId = tabs.some((tab) => tab.id === config.activeTabId)
+    ? config.activeTabId
+    : tabs[0]?.id;
+
+  tabs.forEach((tab, index) => {
     const isActive = tab.id === config.activeTabId;
 
     const tabEl = document.createElement('div');
@@ -760,14 +947,29 @@ function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
     button.type = 'button';
     button.className = 'tab-link quick-access-tab-link';
     button.classList.toggle('active', isActive);
-    button.setAttribute('role', 'tab');
+    button.id = `quick-access-tab-${index}`;
     button.dataset.tab = tab.id;
-    button.textContent = tab.name;
-    button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    button.tabIndex = !asTabs || tab.id === stopId ? 0 : -1;
+    const label = document.createElement('span');
+    label.className = 'quick-access-tab-label';
+    // A name is in whatever script the person typed, which need not be the interface's: it is
+    // aligned and cut short from its own start.
+    label.dir = 'auto';
+    label.textContent = tab.name;
+    button.appendChild(label);
+    if (asTabs) {
+      button.setAttribute('role', 'tab');
+      button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      button.setAttribute('aria-controls', 'quick-controls');
+      if (isActive) panel?.setAttribute('aria-labelledby', button.id);
+    } else if (isActive) {
+      button.setAttribute('aria-current', 'page');
+    }
+    // A long name is cut short with an ellipsis; the tooltip has all of it.
+    button.title = reorganizing ? `${tab.name}\n${t('Double-click to rename')}` : tab.name;
     button.addEventListener('click', () => switchQuickAccessPage(tab.id));
 
     if (reorganizing) {
-      button.title = t('Double-click to rename');
       button.addEventListener('dblclick', (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -820,32 +1022,21 @@ function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
       }
     }
 
-    tabBar.appendChild(tabEl);
+    scroller.appendChild(tabEl);
   });
 
-  if (reorganizing) {
-    const addBtn = document.createElement('button');
-    addBtn.type = 'button';
-    addBtn.className = 'qa-tab-add';
-    addBtn.title = t('Add page');
-    addBtn.setAttribute('aria-label', t('Add page'));
-    setIconContent(addBtn, 'add', { size: 14 });
-    const addLabel = document.createElement('span');
-    addLabel.textContent = t('Add page');
-    addBtn.appendChild(addLabel);
-    addBtn.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      showAddPageModal();
-    });
-    tabBar.appendChild(addBtn);
-  }
+  // A rebuild must not move a strip the person has scrolled; only the active page's visibility
+  // may (below).
+  scroller.scrollLeft = scrollLeft;
 
   // A pill slides between pages; reorganize mode keeps its own editing highlight.
   syncSlidingIndicator(
-    tabBar,
-    reorganizing ? null : tabBar.querySelector('.quick-access-tab-link.active')
+    scroller,
+    reorganizing ? null : scroller.querySelector('.quick-access-tab-link.active')
   );
+  restoreQuickAccessTabFocus(scroller, focusedControl);
+  revealActiveQuickAccessTab(scroller);
+  updateQuickAccessTabOverflow(scroller);
 }
 
 function beginInlineTabRename(tabId, buttonEl) {
@@ -856,6 +1047,7 @@ function beginInlineTabRename(tabId, buttonEl) {
   const input = document.createElement('input');
   input.type = 'text';
   input.className = 'qa-tab-rename-input';
+  input.dir = 'auto';
   input.value = currentName;
   input.maxLength = 40;
   input.setAttribute('aria-label', t('Rename page'));
@@ -865,7 +1057,9 @@ function beginInlineTabRename(tabId, buttonEl) {
   input.select();
 
   let done = false;
-  const finish = (save) => {
+  // Enter and Escape hand focus back to the page's tab; leaving the field by clicking or tabbing
+  // away keeps focus wherever the person went.
+  const finish = (save, restoreFocus = false) => {
     if (done) return;
     done = true;
     const value = input.value.trim();
@@ -880,17 +1074,22 @@ function beginInlineTabRename(tabId, buttonEl) {
       // Re-render to restore the tab label (revert or no-op change).
       renderQuickAccessTabs();
     }
+    if (restoreFocus) {
+      [...document.querySelectorAll('#quick-access-tabs .quick-access-tab-link')]
+        .find((tab) => tab.dataset.tab === tabId)
+        ?.focus({ preventScroll: true });
+    }
   };
 
   input.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault();
       event.stopPropagation();
-      finish(true);
+      finish(true, true);
     } else if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation(); // do not exit reorganize mode mid-edit
-      finish(false);
+      finish(false, true);
     }
   });
   input.addEventListener('blur', () => finish(true));
@@ -996,6 +1195,14 @@ function closeAddPageModal() {
 function showAddPageModal({ starter = false } = {}) {
   closeAddPageModal();
 
+  // The starter dialog fills the empty page on screen rather than adding one. Beside other pages
+  // that page already has a name, which stays, and the dialog says it fills the page; as the only
+  // page it is the first-run page, named after the room chosen.
+  const activePage = starter ? getActiveQuickAccessTab(state.CONFIG) : null;
+  const fillsNamedPage =
+    !!activePage && !activePage.entityIds.length && (state.CONFIG.customTabs?.length ?? 0) > 1;
+  const dialogTitle = fillsNamedPage ? t('Fill this page') : t('Add Page');
+
   const chipsMarkup = QUICK_ACCESS_PAGE_PRESETS.map(
     (preset) => `
               <button type="button" class="qa-add-chip" data-name="${escapeHtmlAttribute(t(preset))}" data-preset="${escapeHtmlAttribute(preset)}">${utils.escapeHtml(t(preset))}</button>`
@@ -1006,25 +1213,27 @@ function showAddPageModal({ starter = false } = {}) {
   modal.className = 'modal add-page-modal';
   modal.setAttribute('role', 'dialog');
   modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'add-page-title');
   modal.innerHTML = `
     <div class="modal-content">
       <div class="modal-header">
-        <h2>${utils.escapeHtml(t('Add Page'))}</h2>
+        <h2 id="add-page-title">${utils.escapeHtml(dialogTitle)}</h2>
         <button class="close-btn" aria-label="${escapeHtmlAttribute(t('Close'))}">×</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
           <label for="add-page-name">${utils.escapeHtml(t('Page name:'))}</label>
-          <input type="text" id="add-page-name" class="form-control" maxlength="40" placeholder="${escapeHtmlAttribute(t('Enter page name'))}">
+          <input type="text" id="add-page-name" class="form-control" maxlength="40" value="${escapeHtmlAttribute(fillsNamedPage ? activePage.name : '')}" placeholder="${escapeHtmlAttribute(t('Enter page name'))}">
+          <p id="add-page-name-error" class="form-help add-page-name-error" role="alert" hidden>${utils.escapeHtml(t('Enter page name'))}</p>
         </div>
         <div class="form-group">
-          <label>${utils.escapeHtml(t('Quick picks:'))}</label>
-          <div class="qa-add-chips">${chipsMarkup}</div>
+          <span id="add-page-chips-label" class="form-label">${utils.escapeHtml(t('Quick picks:'))}</span>
+          <div class="qa-add-chips" role="group" aria-labelledby="add-page-chips-label">${chipsMarkup}</div>
         </div>
       </div>
       <div class="modal-footer">
-        <button id="add-page-save-btn" class="btn btn-primary">${utils.escapeHtml(t('Add Page'))}</button>
         <button id="add-page-cancel-btn" class="btn btn-secondary">${utils.escapeHtml(t('Cancel'))}</button>
+        <button id="add-page-save-btn" class="btn btn-primary">${utils.escapeHtml(dialogTitle)}</button>
       </div>
     </div>
   `;
@@ -1178,6 +1387,8 @@ function showAddPageModal({ starter = false } = {}) {
       loadRooms.textContent = t('Retry');
     } finally {
       if (!submissionInFlight) loadRooms.disabled = false;
+      // A failed load must not leave the dialog unable to save: an empty page is still a page.
+      if (starter && !submissionInFlight) saveBtn.disabled = false;
     }
   };
   roomSelect.onchange = () => {
@@ -1193,10 +1404,9 @@ function showAddPageModal({ starter = false } = {}) {
       return;
     }
     const area = registry.areas.find((entry) => entry.area_id === roomSelect.value);
-    const nameInput = modal.querySelector('#add-page-name');
-    if (!nameInput.value.trim() || nameInput.value === autoFilledName) {
-      nameInput.value = area?.name || (starter ? t('My devices') : '');
-      autoFilledName = nameInput.value;
+    if (!input.value.trim() || input.value === autoFilledName) {
+      setPageName(area?.name || (starter ? t('My devices') : ''));
+      autoFilledName = input.value;
     }
     const ids =
       !roomSelect.value && starter
@@ -1237,6 +1447,18 @@ function showAddPageModal({ starter = false } = {}) {
     updatePreview();
   };
   const input = modal.querySelector('#add-page-name');
+  const nameError = modal.querySelector('#add-page-name-error');
+  const clearNameError = () => {
+    nameError.hidden = true;
+    input.removeAttribute('aria-invalid');
+    input.removeAttribute('aria-describedby');
+  };
+  // A name filled in for the person (a room, a quick pick) answers a missing-name error the way
+  // typing one would, since setting .value fires no input event. An empty fill is still missing.
+  const setPageName = (name) => {
+    input.value = name;
+    if (name.trim()) clearNameError();
+  };
   const saveBtn = modal.querySelector('#add-page-save-btn');
   const cancelBtn = modal.querySelector('#add-page-cancel-btn');
   const closeBtn = modal.querySelector('.close-btn');
@@ -1267,7 +1489,11 @@ function showAddPageModal({ starter = false } = {}) {
     if (submissionInFlight || saveBtn.disabled) return;
     const name = (input?.value || '').trim();
     if (!name) {
-      if (input) input.focus();
+      // Say what is missing, in words and in the field's own state, and put the caret there.
+      nameError.hidden = false;
+      input?.setAttribute('aria-invalid', 'true');
+      input?.setAttribute('aria-describedby', nameError.id);
+      input?.focus();
       return;
     }
     setSubmissionInFlight(true);
@@ -1289,7 +1515,7 @@ function showAddPageModal({ starter = false } = {}) {
   modal.querySelectorAll('.qa-add-chip').forEach((chip) => {
     chip.addEventListener('click', () => {
       if (!input) return;
-      input.value = chip.dataset.name || chip.textContent || '';
+      setPageName(chip.dataset.name || chip.textContent || '');
       // A "Kitchen" page should hold the Kitchen room's devices when Home Assistant has that room,
       // whether the room is named in English or in the interface language ("Küche", "kuche").
       const names = [input.value, chip.dataset.preset].filter(Boolean).map((name) => name.trim());
@@ -1304,7 +1530,7 @@ function showAddPageModal({ starter = false } = {}) {
         roomSelect.value = area.area_id;
         roomSelect.onchange();
         // The page keeps the chip's name ("Küche") when the room is named "Kitchen".
-        input.value = chipName;
+        setPageName(chipName);
         autoFilledName = chipName;
       }
       input.focus();
@@ -1316,6 +1542,7 @@ function showAddPageModal({ starter = false } = {}) {
   if (closeBtn) closeBtn.onclick = close;
 
   if (input) {
+    input.addEventListener('input', clearNameError);
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
@@ -1328,7 +1555,6 @@ function showAddPageModal({ starter = false } = {}) {
     });
   }
 
-  modal.setAttribute('aria-label', t('Add Page'));
   uiUtils.trapFocus(modal);
   // The trap lands on the first control (the close button); the page name is where typing starts.
   setTimeout(() => {
@@ -1400,8 +1626,111 @@ function syncQuickAccessRovingTabIndex(preferredTile = null) {
   });
 }
 
+// Says something to screen readers without showing anything.
+function announceQuickAccessChange(message) {
+  let region = document.getElementById('quick-access-announcer');
+  if (!region) {
+    region = document.createElement('div');
+    region.id = 'quick-access-announcer';
+    region.className = 'sr-only';
+    region.setAttribute('role', 'status');
+    document.body.appendChild(region);
+  }
+  region.textContent = message;
+}
+
+// Puts a tile where another is, the other making way, and saves the order like a drag does.
+function moveQuickAccessTile(tile, target) {
+  const tiles = getQuickAccessTiles();
+  const index = tiles.indexOf(tile);
+  const targetIndex = tiles.indexOf(target);
+  if (index < 0 || targetIndex < 0 || index === targetIndex) return false;
+
+  tile.parentElement.insertBefore(tile, targetIndex > index ? target.nextSibling : target);
+  saveQuickAccessOrder(tile);
+  announceQuickAccessChange(
+    t('Moved to position {{position}} of {{total}}', {
+      position: getQuickAccessTiles().indexOf(tile) + 1,
+      total: tiles.length,
+    })
+  );
+  return true;
+}
+
+// Reorganize mode without a mouse: Alt and an arrow key move the tile that has focus (or one of its
+// buttons) to where its neighbour in that direction is.
+function handleQuickAccessReorderKeydown(event) {
+  if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+  const tile = event.target?.closest?.('#quick-controls .control-item[data-entity-id]');
+  if (!tile) return;
+
+  event.preventDefault();
+  const tiles = getQuickAccessTiles();
+  const index = tiles.indexOf(tile);
+  let targetIndex = getNextQuickAccessFocusIndexByLayout(
+    tiles.map((item) => item.getBoundingClientRect()),
+    index,
+    event.key
+  );
+  if (targetIndex < 0) {
+    // Nothing is laid out to go by: a step is a place in the order.
+    targetIndex = getNextQuickAccessFocusIndex(
+      index,
+      tiles.length,
+      event.key,
+      1,
+      window.getComputedStyle(tile.parentElement).direction || document.documentElement.dir
+    );
+  }
+  if (moveQuickAccessTile(tile, tiles[targetIndex])) {
+    // Moving a node drops its focus.
+    event.target.focus();
+  }
+}
+
+// Reorganize mode without dragging: select a tile, then the tile that should take its place. The
+// selection ends with the move, with Escape, or with leaving reorganize mode.
+let pickedUpTile = null;
+let lastQuickAccessDragEnd = 0;
+
+function clearPickedUpTile() {
+  pickedUpTile?.classList.remove('reorder-picked');
+  pickedUpTile = null;
+}
+
+function handleQuickAccessReorderClick(event) {
+  if (!isReorganizeMode) return;
+  // A drag that ends over a tile can still be followed by a click.
+  if (Date.now() - lastQuickAccessDragEnd < 400) return;
+  const tile = event.target?.closest?.('#quick-controls .control-item[data-entity-id]');
+  // The buttons on a tile do their own work.
+  if (!tile || event.target.closest('button')) return;
+
+  if (!pickedUpTile?.isConnected) {
+    clearPickedUpTile();
+    pickedUpTile = tile;
+    tile.classList.add('reorder-picked');
+    // Said, not shown: the highlight on the tile is the cue, and a toast would cover the tiles
+    // that come next.
+    announceQuickAccessChange(
+      t(
+        'Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.',
+        { name: getQuickAccessTileLabel(tile) }
+      )
+    );
+    return;
+  }
+  const moving = pickedUpTile;
+  clearPickedUpTile();
+  if (moving !== tile) moveQuickAccessTile(moving, tile);
+}
+
 function handleQuickAccessGridKeydown(event) {
-  if (isReorganizeMode) return;
+  if (isReorganizeMode) {
+    handleQuickAccessReorderKeydown(event);
+    return;
+  }
   if (event.ctrlKey || event.metaKey || event.altKey) return;
   const tile = event.target?.closest?.('#quick-controls .control-item');
   if (!tile) return;
@@ -1426,23 +1755,35 @@ function handleQuickAccessGridKeydown(event) {
   if (!container || currentIndex < 0) return;
 
   event.preventDefault();
-  const nextIndex = getNextQuickAccessFocusIndex(
+  // Wide tiles (media players, graphs, spans) make the tile one step on in the DOM a different tile
+  // from the one next to it on screen, so the arrows follow where the tiles are drawn.
+  let nextIndex = getNextQuickAccessFocusIndexByLayout(
+    visibleTiles.map((item) => item.getBoundingClientRect()),
     currentIndex,
-    visibleTiles.length,
-    event.key,
-    getQuickAccessGridColumnCount(container),
-    window.getComputedStyle(container).direction || document.documentElement.dir
+    event.key
   );
+  if (nextIndex < 0) {
+    // Nothing is laid out to go by; count in DOM order.
+    nextIndex = getNextQuickAccessFocusIndex(
+      currentIndex,
+      visibleTiles.length,
+      event.key,
+      getQuickAccessGridColumnCount(container),
+      window.getComputedStyle(container).direction || document.documentElement.dir
+    );
+    // Left and right stay within the row, and never jump to the far edge of the next one.
+    if (
+      (event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
+      Math.abs(
+        (visibleTiles[nextIndex] || tile).getBoundingClientRect().top -
+          tile.getBoundingClientRect().top
+      ) > 1
+    ) {
+      return;
+    }
+  }
   const nextTile = visibleTiles[nextIndex];
   if (!nextTile) return;
-  // Left and right move within the row on screen, in either direction and with wide tiles;
-  // they never jump to the far edge of the neighbouring row.
-  if (
-    (event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
-    Math.abs(nextTile.getBoundingClientRect().top - tile.getBoundingClientRect().top) > 1
-  ) {
-    return;
-  }
 
   syncQuickAccessRovingTabIndex(nextTile);
   (nextTile.querySelector('.tile-primary-button') || nextTile).focus();
@@ -1452,6 +1793,8 @@ function setupQuickAccessGridKeyboardNavigation() {
   const container = document.getElementById('quick-controls');
   if (!container || container.dataset.keyboardNavigationBound === 'true') return;
   container.addEventListener('keydown', handleQuickAccessGridKeydown);
+  // Capturing, as the tiles stop their own clicks while reorganizing.
+  container.addEventListener('click', handleQuickAccessReorderClick, true);
   container.dataset.keyboardNavigationBound = 'true';
 }
 
@@ -1759,6 +2102,8 @@ function toggleReorganizeMode() {
         filter: '.remove-btn, .rename-btn, .desktop-pin-quick-toggle', // Ignore edit controls
         preventOnFilter: false, // Allow clicks on filtered elements
         onEnd: (evt) => {
+          lastQuickAccessDragEnd = Date.now();
+          clearPickedUpTile();
           // SortableJS has already reordered the DOM
           // Just save the new order (pass moved item for duplicate cleanup)
           saveQuickAccessOrder(evt?.item || null);
@@ -1771,9 +2116,11 @@ function toggleReorganizeMode() {
         console.error('Failed to enable desktop pin edit mode:', error);
       });
       uiUtils.showToast(
-        t('Reorganize mode enabled - Drag to reorder, click X to remove, ESC to exit'),
+        t(
+          'Reorganize mode enabled - Drag, select or press Alt+arrow keys to reorder, click X to remove, ESC to exit'
+        ),
         'info',
-        3000
+        4500
       );
     } else {
       // Destroy Sortable instance
@@ -1783,6 +2130,7 @@ function toggleReorganizeMode() {
       }
 
       closeAddPageModal();
+      clearPickedUpTile();
       container.classList.remove('reorganize-mode');
       if (btn) {
         setLineIconContent(btn, 'grip-vertical');
@@ -1832,13 +2180,23 @@ function removeRemoveButtons() {
   }
 }
 
+// What a tile is called, for the labels of its edit buttons.
+function getQuickAccessTileLabel(item) {
+  const name = item.querySelector('.control-name, .comparison-graph-title')?.textContent.trim();
+  return name || item.dataset.entityId || '';
+}
+
 function addButtonsToElement(item) {
   try {
     if (!item || item.dataset.primaryCard === 'true') return;
     if (isDevelopmentClimateOverlayEntity(item.dataset.entityId)) return;
 
+    // A placeholder stands in for something Home Assistant has not reported: there is nothing
+    // to edit or pin, only to remove.
+    const isPlaceholder = item.classList.contains('unavailable-entity');
+
     // Add rename button
-    if (!item.querySelector('.rename-btn')) {
+    if (!isPlaceholder && !item.querySelector('.rename-btn')) {
       const renameBtn = document.createElement('button');
       renameBtn.className = 'rename-btn';
       setIconContent(renameBtn, 'edit', { size: 14 });
@@ -1920,7 +2278,17 @@ function addButtonsToElement(item) {
       item.appendChild(removeBtn);
     }
 
-    syncQuickAccessControlButton(item, item.dataset.entityId);
+    // The buttons are named for their tile, as the icons inside them only say "Edit" and "Close".
+    // Tiles are reused when renamed, so this runs every time.
+    const tileName = getQuickAccessTileLabel(item);
+    item
+      .querySelector('.rename-btn')
+      ?.setAttribute('aria-label', t('Edit settings for {{name}}', { name: tileName }));
+    item
+      .querySelector('.remove-btn')
+      ?.setAttribute('aria-label', t('Remove {{name}} from Quick Access', { name: tileName }));
+
+    if (!isPlaceholder) syncQuickAccessControlButton(item, item.dataset.entityId);
   } catch (error) {
     console.error('Error adding buttons to element:', error);
   }
@@ -8404,7 +8772,8 @@ function syncQuickAccessControlButton(control, entityId) {
       await toggleDesktopPinFromQuickAccess(entityId);
     });
 
-    control.appendChild(button);
+    // First in tab order, as it is on screen (the pin sits at the tile's start).
+    control.insertBefore(button, control.querySelector('.rename-btn'));
   }
 
   const isPinned = isEntityDesktopPinned(entityId);
@@ -8421,9 +8790,12 @@ function syncQuickAccessControlButton(control, entityId) {
     : supportProfile.supported
       ? t('Pin to desktop')
       : getDesktopPinUnsupportedMessage(resolvedEntityId);
-  // An icon rather than a word: "Pinned" in German or French ran under the edit buttons.
-  const label = isPinned ? t('Pinned') : supportProfile.supported ? t('Pin') : t('Unsupported');
-  button.setAttribute('aria-label', label);
+  // An icon rather than a word: "Pinned" in German or French ran under the edit buttons. The
+  // name stays the same whatever the state; aria-pressed says whether it is pinned.
+  button.setAttribute(
+    'aria-label',
+    t('Pin {{name}} to desktop', { name: getQuickAccessTileLabel(control) })
+  );
   const iconName = isPinned || supportProfile.supported ? 'pin' : 'pin-off';
   if (button.dataset.icon !== iconName) {
     button.innerHTML = lineIconMarkup(iconName);
@@ -14896,6 +15268,12 @@ function handleEscapeKey(e) {
   const addPageModal = document.getElementById('add-page-modal');
   if (addPageModal && !addPageModal.classList.contains('modal-closing')) return;
   if (document.querySelector('#quick-access-tabs .qa-tab-rename-input')) return;
+  if (pickedUpTile?.isConnected) {
+    e.preventDefault();
+    e.stopPropagation();
+    clearPickedUpTile();
+    return;
+  }
   const confirmModal = document.getElementById('confirm-modal');
   if (
     confirmModal &&

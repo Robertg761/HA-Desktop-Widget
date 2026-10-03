@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.52",
+  "version": "1.2.53",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1750,6 +1750,15 @@
     "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.": "Desactiva la transparencia y aumenta el contraste del texto y de los bordes en todas partes. Mientras está activada, sustituye tus colores, el fondo de cristal esmerilado y los colores festivos.",
     "Add to dictionary": "Añadir al diccionario",
     "Remove Custom Color": "Eliminar color personalizado",
-    "Remove \"{{name}}\" from your custom colors?": "¿Eliminar «{{name}}» de tus colores personalizados?"
+    "Remove \"{{name}}\" from your custom colors?": "¿Eliminar «{{name}}» de tus colores personalizados?",
+    "This page is empty": "Esta página está vacía",
+    "Add entities to {{page}} for one-click control.": "Añade entidades a {{page}} para controlarlas con un clic.",
+    "Fill this page": "Rellenar esta página",
+    "Edit settings for {{name}}": "Editar los ajustes de {{name}}",
+    "Remove {{name}} from Quick Access": "Quitar {{name}} del acceso rápido",
+    "Pin {{name}} to desktop": "Anclar {{name}} al escritorio",
+    "Moved to position {{position}} of {{total}}": "Movido a la posición {{position}} de {{total}}",
+    "Reorganize mode enabled - Drag, select or press Alt+arrow keys to reorder, click X to remove, ESC to exit": "Modo de reorganización activado: arrastra, selecciona o pulsa Alt+flechas para reordenar, haz clic en X para eliminar, ESC para salir",
+    "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "Has seleccionado {{name}}. Elige la tarjeta cuyo lugar debe ocupar, o pulsa Esc para cancelar."
   }
 }

@@ -2981,6 +2981,7 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 /* Status dot leads the title, with a soft halo in its own colour. */
 .connection-indicator {
   --indicator-color: var(--danger);
+  position: relative;
   order: -1;
   width: 8px;
   height: 8px;
@@ -3011,6 +3012,14 @@ body.desktop-pin-mode .desktop-pin-drag-region::before {
 .connection-indicator.connected {
   --indicator-color: #4ade80;
   animation: pulseIndicator 3s ease-in-out 2;
+}
+
+/* The dot is 8px, but it is a button (it opens the connection details), so its target reaches 24px. */
+.connection-indicator::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  -webkit-app-region: no-drag;
 }
 
 .connection-indicator:focus-visible {
@@ -3610,13 +3619,50 @@ body.first-run-active .widget-content > * {
 /* Controls grid */
 .quick-access-tabs {
   display: flex;
-  gap: var(--space-1);
   margin: 0 0 var(--space-2);
   padding: 0;
   border-bottom: 1px solid var(--border-color);
+}
+
+/* The pages scroll in here rather than in the bar, so the bar keeps its shape (the pill, or the
+   editing row) and Add page beside it never scrolls away. There is no scrollbar: a fade at an edge
+   that clips pages says the strip scrolls, and the wheel, touch and the arrow keys scroll it. */
+.quick-access-tab-scroll {
+  --qa-tab-fade: 20px;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  /* Focus scrolls a page clear of the fade, not just to the edge. */
+  scroll-padding-inline: var(--qa-tab-fade);
+  scrollbar-width: none;
+}
+
+.quick-access-tab-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* The scripts mark the edges that have more pages beyond them. */
+.quick-access-tab-scroll[data-overflow='right'] {
+  mask-image: linear-gradient(to right, #000 calc(100% - var(--qa-tab-fade)), transparent);
+}
+
+.quick-access-tab-scroll[data-overflow='left'] {
+  mask-image: linear-gradient(to left, #000 calc(100% - var(--qa-tab-fade)), transparent);
+}
+
+.quick-access-tab-scroll[data-overflow='both'] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 var(--qa-tab-fade),
+    #000 calc(100% - var(--qa-tab-fade)),
+    transparent
+  );
 }
 
 /* Views read as section labels; the active one is lit and carries the accent. */
@@ -3636,9 +3682,28 @@ body.first-run-active .widget-content > * {
   text-transform: uppercase;
   text-align: center;
   white-space: nowrap;
+  /* A long name is cut short (the tooltip has all of it) rather than filling the strip. The
+     capitals are tracked wide, so this is about 20 of them. */
+  max-width: 34ch;
+  /* It gives way to the page around it, below (the shared .tab-link never shrinks). */
+  flex-shrink: 1;
+  min-width: 0;
   transition:
     background-color var(--transition-fast),
     color var(--transition-fast);
+}
+
+/* The active page also carries its buttons while editing, so its name gives way sooner. */
+.quick-access-tabs.reorganize .tab-link {
+  max-width: 28ch;
+}
+
+/* The ellipsis needs a block to cut, which the flex button itself is not. */
+.quick-access-tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .quick-access-tabs .tab-link:hover {
@@ -3654,9 +3719,13 @@ body.first-run-active .widget-content > * {
   box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.28);
 }
 
-.quick-access-tabs .tab-link:focus-visible {
+/* The strip clips whatever lies outside it and the pill is only 3px deep, so the ring is drawn
+   inside the control. The longer selector outranks the global [tabindex] focus rule, which would
+   push it back outside. */
+.quick-access-tabs .quick-access-tab-scroll :is(.tab-link, .qa-tab-btn):focus-visible {
   outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
+  outline-offset: -2px;
+  box-shadow: none;
 }
 
 /* Quick Access header: the page tabs sit inline with the section buttons
@@ -3664,6 +3733,8 @@ body.first-run-active .widget-content > * {
 .section-header.quick-access-header {
   justify-content: flex-start;
   gap: var(--space-2);
+  /* The pill and the buttons line up with the cards and tiles; the heading's 4px inset is for text. */
+  padding-inline: 0;
 }
 
 .quick-access-header .section-buttons {
@@ -3679,23 +3750,36 @@ body.first-run-active .widget-content > * {
   border-bottom: none;
 }
 
-.quick-access-header .quick-access-tabs.reorganize {
-  flex-wrap: nowrap;
-  padding-bottom: 0;
-}
-
 /* --- Reorganize-mode page management on the Quick Access tab bar --- */
 .quick-access-tabs.reorganize {
-  flex-wrap: wrap;
+  /* Only as wide as its pages, so Add page sits right after the last one, and as tall as the pill
+     so the grid below does not move when editing starts. */
+  flex: 0 1 auto;
   align-items: center;
-  padding-bottom: var(--space-2);
+  min-height: 32px;
 }
 
 .quick-access-tab {
   display: inline-flex;
+  /* Keep its width; the strip scrolls instead of squeezing a page. */
+  flex: 0 0 auto;
+  /* But never one that is wider than the strip shows between the fades: a page with its buttons
+     in a narrow strip (a long Add page label beside it) would have its last button under the
+     fade or out of reach. The name gives way, ending in an ellipsis. */
+  max-width: calc(100% - 2 * var(--qa-tab-fade));
   align-items: center;
-  gap: 1px;
+  gap: var(--space-1);
   border-radius: var(--radius-sm);
+}
+
+/* A lone page has nothing to scroll to, so no fades: it only has to fit the strip. The strip is as
+   wide as its pages, so taking the fades off its width would trim the one page by 40px. */
+.quick-access-tab:only-child {
+  max-width: 100%;
+}
+
+.quick-access-tabs.reorganize .quick-access-tab {
+  min-height: 28px;
 }
 
 .quick-access-tabs.reorganize .quick-access-tab.active {
@@ -3715,22 +3799,31 @@ body.first-run-active .widget-content > * {
 
 .qa-tab-btn {
   display: inline-flex;
+  /* The name gives way, not the buttons. */
+  flex: none;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: var(--transition-base);
+  transition:
+    background-color var(--transition-base),
+    color var(--transition-base);
 }
 
 .qa-tab-btn:hover {
   background: var(--surface-hover);
   color: var(--text-primary);
+}
+
+/* Delete is the one that cannot be taken back with a click, so it keeps a little apart. */
+.qa-tab-delete {
+  margin-inline-start: var(--space-2);
 }
 
 .qa-tab-delete:hover {
@@ -3745,38 +3838,69 @@ body.first-run-active .widget-content > * {
 .qa-tab-rename-input {
   min-width: 90px;
   max-width: 160px;
-  min-height: 30px;
+  min-height: 28px;
   padding: 0 var(--space-3);
   border: 1px solid var(--accent);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--bg-elevated);
   color: var(--text-primary);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
 }
 
-/* The tab strip clips anything outside the field, so the ring is drawn over its border. */
+/* The strip clips anything outside the field, so the ring is drawn inside it, and replaces the
+   border rather than stacking on it. */
 .qa-tab-rename-input:focus {
-  border-color: var(--focus-ring);
+  border-color: transparent;
   outline: 2px solid var(--focus-ring);
-  outline-offset: -2px;
+  outline-offset: -1px;
+  box-shadow: none;
 }
 
+/* While a page is renamed the field stands alone: its other buttons wait, and the page's own
+   highlight would only show at the field's corners. */
+.quick-access-tab:has(.qa-tab-rename-input) .qa-tab-btn {
+  display: none;
+}
+
+.quick-access-tabs.reorganize .quick-access-tab.active:has(.qa-tab-rename-input) {
+  background: none;
+  box-shadow: none;
+}
+
+/* Add page sits beside the strip, in the header, typeset like the pages it adds to. */
 .qa-tab-add {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: var(--space-2);
-  min-height: 30px;
-  padding: var(--space-2) var(--space-3);
+  min-height: 28px;
+  padding: 0 var(--space-3);
   border: 1px dashed var(--border-hover);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-xs-plus);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   white-space: nowrap;
   cursor: pointer;
-  transition: var(--transition-base);
+  transition:
+    background-color var(--transition-base),
+    border-color var(--transition-base),
+    color var(--transition-base);
+}
+
+/* In a narrow window the button gives up its words (its name and tooltip remain). */
+@media (max-width: 400px) {
+  .qa-tab-add {
+    padding: 0 6px;
+  }
+
+  .qa-tab-add span {
+    display: none;
+  }
 }
 
 .qa-tab-add:hover {
@@ -3799,7 +3923,7 @@ body.first-run-active .widget-content > * {
 .add-page-modal .qa-add-chip {
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--glass-surface);
   color: var(--text-primary);
   font-size: var(--font-size-sm);
@@ -3824,12 +3948,13 @@ body.first-run-active .widget-content > * {
   font-style: italic;
 }
 
+/* Tiles sit in the order they are saved and tabbed in. The grid does not pack densely, which
+   would back-fill the gap beside a wide tile with a later one and part the picture from the order. */
 .controls-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 8px;
   align-items: stretch;
-  grid-auto-flow: dense; /* tighter packing */
 }
 
 .control-item {
@@ -8362,7 +8487,9 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   margin-bottom: var(--space-5);
 }
 
-.form-group label {
+/* A group of controls with no single field to point a label at is named by a .form-label. */
+.form-group label,
+.form-group .form-label {
   display: block;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
@@ -9877,6 +10004,21 @@ body {
   transition: transform var(--transition-slower);
 }
 
+/* A touch or pen drag moves a clone with an inline transform on every pointer event. The slow
+   settle above would make it trail the finger. */
+.reorganize-mode .control-item.sortable-drag,
+.reorganize-mode .control-item.sortable-fallback {
+  transition: none;
+}
+
+/* The lift and tilt of .sortable-drag are individual properties, which apply outside that
+   transform: on the clone they would scale and turn the finger's offset along with the tile, and
+   it would drift away from the finger. The clone keeps the shadow and the opacity. */
+.reorganize-mode .control-item.sortable-fallback {
+  scale: none;
+  rotate: none;
+}
+
 .reorganize-mode .control-item * {
   pointer-events: none;
   user-select: none;
@@ -9910,21 +10052,22 @@ body {
 /* SortableJS: Dragging element (item being dragged around) */
 .sortable-drag {
   cursor: grabbing !important;
-  transform: scale(1.05) rotate(2deg);
+  /* The individual properties leave transform to the touch clone, which is positioned with it. */
+  scale: 1.05;
+  rotate: 2deg;
   box-shadow:
     0 12px 32px rgba(0, 0, 0, 0.4),
     var(--glow-accent);
   opacity: 0.95;
-  transition: transform var(--transition-base);
   backdrop-filter: blur(var(--blur-md));
   -webkit-backdrop-filter: blur(var(--blur-md));
 }
 
-/* Disable animations for reduced motion preference */
+/* Reduced motion: lifted a little, but not tilted. */
 @media (prefers-reduced-motion: reduce) {
   .sortable-drag {
-    transition: none !important;
-    transform: scale(1.02) !important; /* Subtle scale only, no rotation */
+    rotate: 0deg;
+    scale: 1.02;
   }
 }
 
@@ -10159,10 +10302,11 @@ body {
   transform: none;
 }
 
+/* The buttons run to 32px down the tile; the content starts a little clear of them. */
 .reorganize-mode .control-item {
   position: relative;
   overflow: hidden;
-  padding-top: calc(var(--space-3) + 24px);
+  padding-top: calc(var(--space-3) + 28px);
 }
 
 /* Tile Settings (the only dialog with this class, built in ui.js) takes the shared dialog recipe;
@@ -12127,28 +12271,6 @@ body.linux-performance-mode .modal {
 body.linux-performance-mode .modal-content {
   backdrop-filter: blur(var(--blur-xl)) saturate(180%) !important;
   -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%) !important;
-}
-
-/* Skip to main content link (for screen readers) */
-.skip-to-main {
-  position: absolute;
-  top: -40px;
-  left: 0;
-  background: var(--accent);
-  color: var(--on-accent);
-  padding: var(--space-3) var(--space-5);
-  border-radius: var(--radius-md);
-  font-weight: var(--font-weight-semibold);
-  text-decoration: none;
-  z-index: var(--z-notification);
-  transition: var(--transition-base);
-}
-
-.skip-to-main:focus {
-  top: var(--space-3);
-  left: var(--space-3);
-  outline: 2px solid var(--text-primary);
-  outline-offset: 2px;
 }
 
 /* Ensure all interactive elements have visible focus */
@@ -14792,7 +14914,7 @@ body.theme-light:not(.high-contrast) .status-card .weather-condition {
 
 /* A highlight pill that slides between tabs: the Quick Access pages and the
    settings sections. While it is present, the active tab drops its own fill. */
-.quick-access-tabs,
+.quick-access-tab-scroll,
 #settings-modal .modal-tabs {
   position: relative;
 }
@@ -14813,7 +14935,7 @@ body.theme-light:not(.high-contrast) .status-card .weather-condition {
   z-index: 1;
 }
 
-.quick-access-tabs.has-sliding-indicator .tab-link.active,
+.quick-access-tab-scroll.has-sliding-indicator .tab-link.active,
 #settings-modal .modal-tabs.has-sliding-indicator .tab-link.active {
   border-color: transparent;
   background: transparent;
@@ -14858,7 +14980,7 @@ body.theme-light:not(.high-contrast) .status-card .weather-condition {
   border-radius: var(--radius-lg);
 }
 
-.quick-access-tabs:not(.reorganize) > .sliding-indicator {
+.quick-access-tabs:not(.reorganize) .quick-access-tab-scroll > .sliding-indicator {
   border-radius: var(--radius-full);
   background: rgba(var(--accent-rgb), 0.18);
   box-shadow: none;
@@ -15306,6 +15428,54 @@ body.theme-light
    The name and reading still identify it, so the icon steps aside while editing. */
 .reorganize-mode .control-item.sensor-numeric-entity .control-icon {
   visibility: hidden;
+}
+
+/* Reorganizing without dragging: the tile that was selected waits for the one to take its place. */
+.reorganize-mode .control-item.reorder-picked,
+.reorganize-mode .control-item.reorder-picked:hover {
+  box-shadow:
+    0 0 0 2px var(--accent),
+    var(--glow-accent);
+}
+
+/* The camera badge and a graph's range label sit in the corner the buttons use. */
+.reorganize-mode .control-item .camera-tile-preview-badge,
+.reorganize-mode .control-item .comparison-graph-range {
+  visibility: hidden;
+}
+
+/* Compact tiles are 78px tall, which has no room for the buttons above the icon and the name, so
+   they grow to 96px while editing. */
+body.density-compact #quick-controls.reorganize-mode {
+  --qa-tile-height: 96px;
+}
+
+body.density-compact
+  #quick-controls.reorganize-mode
+  .control-item:not(.comparison-graph-tile):not(.camera-preview-tile) {
+  padding-top: 32px;
+}
+
+/* In a narrow window tiles are as little as 82px wide, and three 24px buttons do not fit with
+   room between them: they shrink to 20px, still 24px apart centre to centre. */
+@media (max-width: 360px) {
+  .reorganize-mode .control-item :is(.rename-btn, .remove-btn, .desktop-pin-quick-toggle) {
+    width: 20px;
+    height: 20px;
+    top: 6px;
+  }
+
+  .reorganize-mode .control-item .desktop-pin-quick-toggle {
+    inset-inline-start: 6px;
+  }
+
+  .reorganize-mode .control-item .rename-btn {
+    inset-inline-end: 30px;
+  }
+
+  .reorganize-mode .control-item .remove-btn {
+    inset-inline-end: 6px;
+  }
 }
 
 /* ==========================================================================
