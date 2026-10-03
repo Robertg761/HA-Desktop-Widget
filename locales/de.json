@@ -833,7 +833,6 @@
   "Color Options (Accent)": "Farboptionen (Akzent)",
   "Accent: {{accent}} • Background: {{background}}": "Akzent: {{accent}} • Hintergrund: {{background}}",
   "Custom": "Eigene",
-  "Original dark base (no tint)": "Ursprüngliche dunkle Basis (ohne Tönung)",
   "Original accent blue": "Ursprüngliches Akzentblau",
   "Saved custom color": "Gespeicherte eigene Farbe",
   "Theme color": "Themefarbe",
@@ -1709,5 +1708,6 @@
   "Device class: Door": "Tür",
   "Device class: Window": "Fenster",
   "Device class: Motion": "Bewegung",
-  "Device class: Occupancy": "Belegung"
+  "Device class: Occupancy": "Belegung",
+  "Original base (no tint)": "Ursprüngliche Basis (ohne Tönung)"
 }

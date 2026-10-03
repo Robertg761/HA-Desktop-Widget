@@ -15,6 +15,7 @@ const {
   TEXT_MINIMUM,
   applyScope,
   currentSurfaces,
+  over,
 } = require('../helpers/theme-contrast.js');
 
 // Both themes, the Readable preset over either, and four accents that cover the light, the dark,
@@ -146,6 +147,23 @@ describe('text contrast of the rules', () => {
       });
     });
 
+    it.each(['dark', 'light'])('draws a lit icon in the text colour for slate (%s)', (scope) => {
+      applyScope(SCOPES[scope], 'slate');
+      document.body.classList.add('active-tile-glow');
+      render(markup);
+      const icon = document.querySelector('#quick-controls .control-icon');
+      expect(document.body.dataset.accentNeutral).toBe('true');
+      // The slate accent text is dimmer than an idle icon; the text colour is not.
+      expect(colorOf(icon)).toBe(resolvedValue(document.body, '--text-primary'));
+      // Other accents keep the accent on a lit icon.
+      applyScope(SCOPES[scope], 'indigo');
+      document.body.classList.add('active-tile-glow');
+      render(markup);
+      expect(colorOf(document.querySelector('#quick-controls .control-icon'))).toBe(
+        resolvedValue(document.body, '--accent-text')
+      );
+    });
+
     it('lets the segmented control keep its own colour in the light theme', () => {
       applyScope(SCOPES.light, 'original');
       render(markup);
@@ -158,6 +176,147 @@ describe('text contrast of the rules', () => {
         `color-mix(in srgb, ${resolvedValue(document.body, '--text-primary')} 65%, transparent)`
       );
       expect(colorOf(plain)).toBe(resolvedValue(document.body, '--accent-text'));
+    });
+  });
+
+  describe('disabled holiday rows', () => {
+    const markup = `<div id="settings-modal"><div id="seasonal-settings">
+      <div class="form-group setting-row seasonal-option is-disabled">
+        <label>Holiday colours <input type="checkbox" disabled></label>
+        <select disabled></select>
+        <p class="form-help">Dec 1 to Dec 31</p>
+      </div></div></div>`;
+
+    it('dim once, so the switch, the select and the dates are not dimmed again', () => {
+      applyScope(SCOPES.dark, 'original');
+      render(markup);
+      const opacity = (selector) => resolvedValue(document.querySelector(selector), 'opacity');
+      // The row carries the dimming. The global rules for a disabled control (0.5) and for a row
+      // with a disabled switch (0.6 on its help) would otherwise stack on it.
+      expect(opacity('.seasonal-option')).toBe('0.6');
+      expect(opacity('input')).toBe('1');
+      expect(opacity('select')).toBe('1');
+      expect(opacity('.form-help')).toBe('1');
+    });
+
+    it.each(['high-contrast', 'opaque-panels'])(
+      'hold the readable preset to a light dim (%s)',
+      (cls) => {
+        applyScope(SCOPES.dark, 'original');
+        document.body.classList.add(cls);
+        render(markup);
+        expect(resolvedValue(document.querySelector('.seasonal-option'), 'opacity')).toBe('0.85');
+      }
+    );
+  });
+
+  describe('colour swatches', () => {
+    const swatches = `<div id="theme-options">
+      <button class="theme-option" data-background-swatch="base"><span class="accent-theme-swatch"></span></button>
+      <button class="theme-option selected" data-background-swatch="base"><span class="accent-theme-swatch"></span></button>
+    </div><div class="theme-tooltip-flyout"></div>`;
+
+    it.each(['dark', 'light'])(
+      'mark the chosen swatch in the text colour, whatever its own colour is (%s)',
+      (scope) => {
+        applyScope(SCOPES[scope], 'original');
+        render(swatches);
+        const [plain, chosen] = document.querySelectorAll('.theme-option');
+        const text = resolvedValue(document.body, '--text-primary');
+        expect(resolvedValue(chosen, 'border-color')).toBe(text);
+        expect(resolvedValue(chosen, 'box-shadow')).toContain(text);
+        // No coloured glow under a swatch: the shadow of an unchosen one is plain.
+        expect(resolvedValue(plain, 'border-color')).not.toBe(text);
+        expect(resolvedValue(chosen, 'box-shadow')).not.toContain('--swatch-rgb');
+      }
+    );
+
+    it('draws a background swatch from the window colour it was given', () => {
+      applyScope(SCOPES.light, 'original');
+      render(
+        `<button class="theme-option" data-background-swatch="tinted" style="--swatch-window: #f1edfa; --swatch: #8b5cf6">
+          <span class="accent-theme-swatch"></span></button>`
+      );
+      expect(resolvedValue(document.querySelector('.accent-theme-swatch'), 'background')).toBe(
+        '#f1edfa'
+      );
+    });
+
+    it('draws the swatch tooltip on the dialog panel, so Linux shows no wallpaper through it', () => {
+      applyScope(SCOPES.light, 'original');
+      render(swatches);
+      const tooltip = document.querySelector('.theme-tooltip-flyout');
+      expect(resolvedValue(tooltip, 'background')).toContain(
+        resolvedValue(document.body, '--dialog-bg')
+      );
+    });
+  });
+
+  describe('unavailable tiles', () => {
+    const markup = `<div id="quick-controls"><div class="control-item" data-unavailable="true">
+      <div class="control-info"><div class="control-name"></div>
+      <div class="control-state"></div></div></div></div>`;
+
+    it.each(THEME_SCOPES)(
+      'keep the name and the state at 4.5:1 on their own pane (%s)',
+      (_, config) => {
+        applyScope(config, 'original');
+        // At full window opacity, where the tile keeps its whole fill (the cascade has no calc()).
+        document.body.style.setProperty('--dash-tile-keep', '100%');
+        render(markup);
+        const surfaces = currentSurfaces(config.highContrast);
+        const tile = document.querySelector('.control-item');
+        // The tile is a translucent pane (or clear) over the panel; measure on what it composes to.
+        const fill = resolvedValue(tile, 'background');
+        const pane = parseColor(fill)?.[3] > 0 ? over(fill, surfaces.panel) : surfaces.panel;
+        for (const selector of ['.control-name', '.control-state']) {
+          const color = colorOf(document.querySelector(selector));
+          expect({ selector, ratio: contrastRatio(color, pane) >= TEXT_MINIMUM }).toEqual({
+            selector,
+            ratio: true,
+          });
+        }
+      }
+    );
+  });
+
+  describe('the Settings panel where blur does not render', () => {
+    it.each(['dark', 'light'])('is nearly opaque in Linux no-blur mode (%s)', (scope) => {
+      applyScope(SCOPES[scope], 'original');
+      document.body.classList.add('linux-performance-mode');
+      expect(resolvedValue(document.body, '--settings-modal-bg-alpha')).toBe('0.96');
+      expect(resolvedValue(document.body, '--settings-modal-panel-alpha')).toBe('0.96');
+
+      // Real glass (Windows and macOS) keeps the translucent panel it was designed with.
+      document.body.classList.remove('linux-performance-mode');
+      document.body.classList.add('native-glass', 'frosted-glass');
+      expect(Number(resolvedValue(document.body, '--settings-modal-bg-alpha'))).toBeLessThan(0.9);
+    });
+  });
+
+  describe('field placeholders', () => {
+    // The cascade helper does not resolve pseudo-elements, so read the rule itself.
+    const placeholderRules = () =>
+      [...document.styleSheets]
+        .flatMap((sheet) => [...sheet.cssRules])
+        .filter((rule) => rule.selectorText?.includes('::placeholder'));
+
+    it('themes the placeholder of a field in any dialog, the hotkey rows included', () => {
+      // A hotkey row's "None" is a placeholder in an input that is not in a .form-group. It once
+      // took the browser's grey (3.7:1); the field recipe's :where(.modal-body, ...) selector
+      // reaches it, and sets the tertiary text colour, which the ratchet holds to 4.5:1.
+      const rule = placeholderRules().find((entry) => entry.selectorText.includes('.modal-body'));
+      expect(rule).toBeDefined();
+      expect(rule.style.getPropertyValue('color')).toBe('var(--text-tertiary)');
+      document.body.innerHTML =
+        '<div id="settings-modal"><div class="modal-body"><input class="hotkey-input" placeholder="None"></div></div>';
+      const input = document.querySelector('.hotkey-input');
+      expect(input.closest('.modal-body')).not.toBeNull();
+      expect(
+        input.matches(
+          'input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"])'
+        )
+      ).toBe(true);
     });
   });
 });

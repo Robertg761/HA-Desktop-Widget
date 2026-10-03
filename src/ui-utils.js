@@ -13,6 +13,8 @@ const pendingModalCloses = new WeakMap();
 const DEFAULT_FROSTED_STRENGTH = 60;
 const DEFAULT_FROSTED_TINT = 60;
 const MIN_BACKGROUND_OPACITY = 0.08;
+// How much of a Background colour is mixed into the window's own: a hint, not a repaint.
+const BACKGROUND_TINT = { dark: 0.12, light: 0.08 };
 const BACKGROUND_OPACITY_CURVE = 1.35;
 const CUSTOM_THEME_ID_PREFIX = 'custom-';
 // The shared modal exit animation runs for var(--duration-base) (200ms); the fallback timer only
@@ -186,6 +188,9 @@ const ACCENT_TEXT_SURFACES = {
 };
 
 const rgbString = ({ r, g, b }) => `rgb(${r}, ${g}, ${b})`;
+// Below this spread between the strongest and weakest channel an accent reads as grey (slate is
+// 0.14, the most muted of the other presets 0.52).
+const NEUTRAL_ACCENT_CHROMA = 0.25;
 
 /**
  * Text colour for content drawn on top of a colour: near-black or white, whichever contrasts
@@ -480,6 +485,11 @@ function applyAccentColor(color, accentId = 'custom-preview') {
 
   if (document.body) {
     document.body.dataset.accent = accentId;
+    // A grey-ish accent (slate, a custom grey) has no hue to tell a lit tile's icon from an idle
+    // one, so the stylesheet draws lit icons in the text colour for it.
+    const chroma = (Math.max(rgb.r, rgb.g, rgb.b) - Math.min(rgb.r, rgb.g, rgb.b)) / 255;
+    if (chroma < NEUTRAL_ACCENT_CHROMA) document.body.dataset.accentNeutral = 'true';
+    else delete document.body.dataset.accentNeutral;
   }
 
   return true;
@@ -537,7 +547,7 @@ function applyBackgroundColor(
 
   const isLightTheme = body.classList.contains('theme-light');
   const base = isLightTheme ? BACKGROUND_BASES.light : BACKGROUND_BASES.dark;
-  const tintAmount = disableTint ? 0 : isLightTheme ? 0.08 : 0.12;
+  const tintAmount = disableTint ? 0 : isLightTheme ? BACKGROUND_TINT.light : BACKGROUND_TINT.dark;
   const tint = (baseRgb) => mixRgb(baseRgb, rgb, tintAmount);
   const setRgbaVar = (name, baseEntry) => {
     const tinted = tint(baseEntry);
@@ -578,8 +588,28 @@ function applyBackgroundColor(
   setBodyRgb('--loading-overlay-rgb', loadingOverlay);
 
   body.dataset.background = backgroundId;
+  // The colour itself, for the Background chip in Settings to show next to the tinted window.
+  if (disableTint) root.style.removeProperty('--background-pick');
+  else root.style.setProperty('--background-pick', normalizedColor);
 
   return true;
+}
+
+/**
+ * The window colour a Background choice gives in the theme that is showing: the theme's own base
+ * with the colour mixed in as lightly as applyBackgroundColor mixes it. The colour picker draws
+ * its swatches with this, so a swatch shows the window it makes and not the full-strength colour.
+ * @param {string|null} color - The Background colour, or null for the untinted base.
+ * @returns {string|null} '#rrggbb', or null for a colour that cannot be read.
+ */
+function getBackgroundWindowColor(color = null) {
+  const isLightTheme = document.body?.classList.contains('theme-light');
+  const { bgColor } = isLightTheme ? BACKGROUND_BASES.light : BACKGROUND_BASES.dark;
+  const rgb = color === null ? null : hexToRgb(normalizeHexColor(color));
+  if (color !== null && !rgb) return null;
+  const tint = rgb ? (isLightTheme ? BACKGROUND_TINT.light : BACKGROUND_TINT.dark) : 0;
+  const mixed = mixRgb(bgColor, rgb || bgColor, tint);
+  return `#${[mixed.r, mixed.g, mixed.b].map((c) => c.toString(16).padStart(2, '0')).join('')}`;
 }
 
 /**
@@ -1773,6 +1803,7 @@ export {
   mixRgb,
   contrastBetween,
   getAccentHoverColor,
+  getBackgroundWindowColor,
   getAccentTextOnDark,
   getAccentTextOnLight,
   getReadableTextColor,

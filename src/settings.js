@@ -11,6 +11,7 @@ import {
   applyBackgroundTheme,
   applyBackgroundThemeFromColor,
   getAccentThemes,
+  getBackgroundWindowColor,
   setCustomThemes,
   applyUiPreferences,
   suspendSeasonalColors,
@@ -1790,7 +1791,7 @@ function renderColorThemeOptions() {
     const tooltipName = getThemeDisplayName(theme);
     const tooltipDescription = isOriginalTheme
       ? isBackgroundTarget
-        ? t('Original dark base (no tint)')
+        ? t('Original base (no tint)')
         : t('Original accent blue')
       : theme.isCustom
         ? t('Saved custom color')
@@ -1804,12 +1805,25 @@ function renderColorThemeOptions() {
       option.classList.add('selected');
     }
 
-    if (isOriginalTheme && isBackgroundTarget) {
-      const isLightTheme = document.body?.classList.contains('theme-light');
-      const swatchRgb = isLightTheme ? '250, 250, 250' : '18, 22, 30';
-      const swatchHex = isLightTheme ? '#fafafa' : '#12161e';
-      option.style.setProperty('--swatch', swatchHex);
-      option.style.setProperty('--swatch-rgb', swatchRgb);
+    if (isBackgroundTarget) {
+      // A background swatch is the window the choice gives (the colour mixed in lightly, in the
+      // theme that is showing), with the choice itself as a dot, so the picker does not promise
+      // a full-strength colour. The untinted base has no dot, and is the window colour itself.
+      const windowColor =
+        getBackgroundWindowColor(isOriginalTheme ? null : theme.color) ??
+        getBackgroundWindowColor();
+      const windowRgb = hexToRgb(windowColor);
+      option.dataset.backgroundSwatch = isOriginalTheme ? 'base' : 'tinted';
+      option.style.setProperty('--swatch-window', windowColor);
+      option.style.setProperty(
+        '--swatch',
+        isOriginalTheme ? windowColor : theme.color || windowColor
+      );
+      if (isOriginalTheme && windowRgb) {
+        option.style.setProperty('--swatch-rgb', `${windowRgb.r}, ${windowRgb.g}, ${windowRgb.b}`);
+      } else if (theme.rgb) {
+        option.style.setProperty('--swatch-rgb', theme.rgb);
+      }
     } else {
       if (theme.color) {
         option.style.setProperty('--swatch', theme.color);
@@ -1910,6 +1924,8 @@ function previewThemeMode(mode) {
   const values = getPreviewValuesFromInputs();
   applyWindowEffects(values || state.CONFIG || {});
   updateThemeModeControl();
+  // The background swatches are drawn in the theme that is showing.
+  if (activeColorTarget === COLOR_TARGETS.background) renderColorThemeOptions();
 }
 
 function restoreSavedThemeMode() {
@@ -1922,6 +1938,7 @@ function restoreSavedThemeMode() {
   applyBackgroundTheme(state.CONFIG?.ui?.background || getCurrentBackgroundTheme());
   applyDesktopAppearance(state.CONFIG || {});
   applyWindowEffects(state.CONFIG || {});
+  if (activeColorTarget === COLOR_TARGETS.background) renderColorThemeOptions();
 }
 
 function initThemeModeControl() {

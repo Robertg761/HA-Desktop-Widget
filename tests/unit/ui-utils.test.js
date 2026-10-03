@@ -2062,6 +2062,44 @@ describe('UI Utilities', () => {
       }
     });
 
+    it('mixes a Background colour into the base of the theme that is showing', () => {
+      document.body.classList.remove('theme-light');
+      expect(uiUtils.getBackgroundWindowColor()).toBe('#12161e');
+      // 12% of violet over the dark base.
+      expect(uiUtils.getBackgroundWindowColor('#8b5cf6')).toBe('#211e38');
+      expect(uiUtils.getBackgroundWindowColor('not a colour')).toBeNull();
+
+      document.body.classList.add('theme-light');
+      expect(uiUtils.getBackgroundWindowColor()).toBe('#fafafa');
+      // 8% of violet over the light base, the amount applyBackgroundColor mixes.
+      expect(uiUtils.getBackgroundWindowColor('#8b5cf6')).toBe('#f1edfa');
+      uiUtils.applyTheme('light');
+      uiUtils.applyBackgroundTheme('violet');
+      const applied = document.documentElement.style.getPropertyValue('--window-bg-rgb');
+      expect(applied).toBe('241, 237, 250');
+      document.body.classList.remove('theme-light');
+    });
+
+    it('keeps the picked Background colour for the Settings chip, and drops it for the base', () => {
+      uiUtils.applyBackgroundTheme('rose');
+      expect(document.documentElement.style.getPropertyValue('--background-pick')).toBe('#F43F5E');
+      uiUtils.applyBackgroundTheme('original');
+      expect(document.documentElement.style.getPropertyValue('--background-pick')).toBe('');
+    });
+
+    it('flags a grey accent, which has no hue for a lit tile to show', () => {
+      uiUtils.applyAccentTheme('slate');
+      expect(document.body.dataset.accentNeutral).toBe('true');
+      uiUtils.applyAccentTheme('original');
+      expect(document.body.dataset.accentNeutral).toBeUndefined();
+      uiUtils.applyAccentThemeFromColor('#808080');
+      expect(document.body.dataset.accentNeutral).toBe('true');
+      for (const theme of uiUtils.getAccentThemes().filter((entry) => entry.id !== 'slate')) {
+        uiUtils.applyAccentTheme(theme.id);
+        expect(document.body.dataset.accentNeutral).toBeUndefined();
+      }
+    });
+
     it('sets a text colour for both themes, and a ring colour, on the root', () => {
       uiUtils.applyAccentTheme('indigo');
       const style = document.documentElement.style;

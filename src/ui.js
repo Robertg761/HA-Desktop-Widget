@@ -20,6 +20,7 @@ import * as camera from './camera.js';
 import * as uiUtils from './ui-utils.js';
 import {
   formatDate,
+  formatDateTime,
   formatNumber,
   formatTime,
   getLocaleState,
@@ -4511,6 +4512,7 @@ function buildComparisonGraphLegend(entries) {
  */
 function attachComparisonGraphHover(frame, plot, entries) {
   const { svg, crosshair, timeDomain, plotWidth } = plot;
+  const spansDays = timeDomain.end - timeDomain.start >= 24 * 60 * 60 * 1000;
 
   const tooltip = document.createElement('div');
   tooltip.className = 'comparison-graph-tooltip';
@@ -4538,7 +4540,14 @@ function attachComparisonGraphHover(frame, plot, entries) {
 
     const heading = document.createElement('div');
     heading.className = 'comparison-graph-tooltip-time';
-    heading.textContent = formatTime(new Date(timestamp));
+    // Hour and minute, with the weekday once the graph reaches back a day or more, so a reading
+    // from yesterday does not look like one from today.
+    heading.textContent = formatDateTime(new Date(timestamp), {
+      ...(spansDays ? { weekday: 'short' } : {}),
+      hour: 'numeric',
+      minute: '2-digit',
+      ...getClockTimeOptions(),
+    });
     tooltip.appendChild(heading);
 
     entries.forEach((entry) => {
@@ -4558,7 +4567,8 @@ function attachComparisonGraphHover(frame, plot, entries) {
 
       const value = document.createElement('span');
       value.className = 'comparison-graph-tooltip-value';
-      const sampleValue = formatNumber(sample.value);
+      // Rounded as the legend rounds, so the same number is not 21.4567 here and 21.5 there.
+      const sampleValue = formatNumber(sample.value, { maximumFractionDigits: 1 });
       value.textContent = entry.unit ? `${sampleValue} ${entry.unit}` : sampleValue;
 
       const name = document.createElement('span');

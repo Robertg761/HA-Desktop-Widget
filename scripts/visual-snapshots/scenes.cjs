@@ -239,14 +239,18 @@ async function showConnectionResults(ctx) {
   })()`);
 }
 
-// The update line and the warnings under Advanced: the other status colours Settings uses.
-async function showUpdateStatus(ctx) {
+// The profile sync error and the on-device warning under Advanced: the other status colours
+// Settings uses. The sync section is hidden until sync is set up, so it is opened and filled here.
+async function showSyncError(ctx) {
   await openSettingsTab(ctx, 'advanced');
   await ctx.ev(`(() => {
-    const line = document.getElementById('update-status');
-    line.className = 'form-help update-status error';
-    document.getElementById('update-status-text').textContent = 'Update check failed: offline.';
-    line.scrollIntoView({ block: 'center' });
+    const error = document.getElementById('profile-sync-error');
+    error.textContent = 'The sync file could not be read. Sync is paused until it is fixed.';
+    error.closest('.hidden, [hidden]')?.classList.remove('hidden');
+    document.querySelectorAll('#settings-modal .form-warning').forEach((warning) => {
+      if (warning.closest('#advanced-tab')) warning.classList.remove('hidden');
+    });
+    error.scrollIntoView({ block: 'center' });
   })()`);
 }
 
@@ -707,6 +711,15 @@ const scenes = [
     name: 'christmas-light',
     ui: { theme: 'light', seasonal: holiday('christmas') },
   },
+  // The holiday art that was drawn pale for the dark theme: flutes, the bunny and the chicks.
+  {
+    name: 'new-year-light',
+    ui: { theme: 'light', seasonal: holiday('new-year') },
+  },
+  {
+    name: 'easter-light',
+    ui: { theme: 'light', seasonal: holiday('easter') },
+  },
 
   // Colour contrast of text and status colours, dark and light, with four accents.
   ...contrastScenes('main', () => ({})),
@@ -720,9 +733,9 @@ const scenes = [
     setup: showConnectionResults,
   })),
   ...['dark', 'light'].map((theme) => ({
-    name: `contrast-${theme}-update`,
+    name: `contrast-${theme}-sync-error`,
     ui: { theme },
-    setup: showUpdateStatus,
+    setup: showSyncError,
   })),
 
   // First run shows when no server is configured. The runner only puts the keys listed above

@@ -222,5 +222,9 @@
   "Compact entity tile": {
     "retiredIn": "4.0.0",
     "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Original dark base (no tint)": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the untinted background is not dark in the light theme"
   }
 }

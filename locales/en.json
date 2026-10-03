@@ -833,7 +833,6 @@
   "Color Options (Accent)": "Color Options (Accent)",
   "Accent: {{accent}} • Background: {{background}}": "Accent: {{accent}} • Background: {{background}}",
   "Custom": "Custom",
-  "Original dark base (no tint)": "Original dark base (no tint)",
   "Original accent blue": "Original accent blue",
   "Saved custom color": "Saved custom color",
   "Theme color": "Theme color",
@@ -1709,5 +1708,6 @@
   "Device class: Door": "Door",
   "Device class: Window": "Window",
   "Device class: Motion": "Motion",
-  "Device class: Occupancy": "Occupancy"
+  "Device class: Occupancy": "Occupancy",
+  "Original base (no tint)": "Original base (no tint)"
 }

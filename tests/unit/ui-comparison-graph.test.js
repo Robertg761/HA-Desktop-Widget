@@ -611,4 +611,46 @@ describe('comparison graph tile', () => {
     // hour after the time being hovered, compared against an Outside reading from 2h ago.
     expect(values).toEqual(['20 °C', '5 °C']);
   });
+
+  it('heads the tooltip with the weekday and the minute, and rounds values as the legend does', async () => {
+    const { warmId, coldId } = makeScenario();
+    mockRequest.mockResolvedValue(
+      historyResponse({
+        [warmId]: [
+          [20.04, NOW - 3 * HOUR],
+          [21.4567, NOW - 1 * HOUR],
+        ],
+        [coldId]: [[5, NOW - 2 * HOUR]],
+      })
+    );
+    setupConfig([warmId, coldId]);
+    ui.renderActiveTab();
+    await flush();
+
+    const tile = document.querySelector('.comparison-graph-tile');
+    const frame = tile.querySelector('.comparison-graph-frame');
+    tile.querySelector('.comparison-graph-svg').getBoundingClientRect = () => ({
+      left: 0,
+      top: 0,
+      width: 260,
+      height: 90,
+    });
+    const hoverAt = (hoursAgo) =>
+      frame.dispatchEvent(
+        new MouseEvent('pointermove', { clientX: ((24 - hoursAgo) / 24) * 260, bubbles: true })
+      );
+
+    hoverAt(0.5);
+    const heading = tile.querySelector('.comparison-graph-tooltip-time').textContent;
+    const hovered = new Date(NOW - 0.5 * HOUR);
+    // A 24 hour graph names the day, and the time has no seconds.
+    expect(heading).toContain(hovered.toLocaleDateString('en', { weekday: 'short' }));
+    expect(heading).toMatch(/\d{1,2}:\d{2}(\s?[AP]M)?$/i);
+    expect(heading).not.toMatch(/\d:\d{2}:\d{2}/);
+    // 21.4567 reads 21.5, like the legend.
+    const values = [...tile.querySelectorAll('.comparison-graph-tooltip-value')].map(
+      (el) => el.textContent
+    );
+    expect(values[0]).toBe('21.5 °C');
+  });
 });
