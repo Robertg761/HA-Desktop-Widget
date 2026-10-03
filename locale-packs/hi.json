@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.54",
+  "version": "1.2.55",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1771,6 +1771,14 @@
     "Device class: Door": "दरवाज़ा",
     "Device class: Window": "खिड़की",
     "Device class: Motion": "गति",
-    "Device class: Occupancy": "अधिभोग"
+    "Device class: Occupancy": "अधिभोग",
+    "Could not dismiss notification": "सूचना खारिज नहीं की जा सकी",
+    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "पुनर्व्यवस्थित मोड सक्षम। क्रम बदलने के लिए खींचें, चुनें या Alt+तीर कुंजियाँ दबाएं। पिन करने, नाम बदलने या हटाने के लिए टाइल के बटन उपयोग करें। पूरा करने के लिए Esc दबाएं।",
+    "No network connection detected. Check your network connection and the widget will retry automatically.": "कोई नेटवर्क कनेक्शन नहीं मिला। अपना नेटवर्क कनेक्शन जांचें और विजेट अपने आप फिर कोशिश करेगा।",
+    "Stop recording": "रिकॉर्डिंग रोकें",
+    "Press keys... (Esc to cancel)": "कुंजियाँ दबाएं... (रद्द करने के लिए Esc)",
+    "Discard color edits": "रंग के बदलाव छोड़ें",
+    "Keep editing": "संपादन जारी रखें",
+    "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "{{count}} में से पहले {{shown}} आइकन दिखाए जा रहे हैं। सीमित करने के लिए टाइप करें।"
   }
 }

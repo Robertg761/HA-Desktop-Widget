@@ -21,6 +21,7 @@ jest.mock('../../src/icons.js', () => ({
 }));
 jest.mock('sortablejs', () => ({ create: jest.fn(() => ({ destroy: jest.fn() })) }));
 jest.mock('../../src/ui-utils.js', () => ({
+  ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
   showToast: jest.fn(),
   showConfirm: jest.fn().mockResolvedValue(false),
   showLoading: jest.fn(),

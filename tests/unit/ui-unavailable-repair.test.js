@@ -21,12 +21,6 @@ jest.mock('../../src/icons.js', () => ({
 }));
 jest.mock('sortablejs', () => ({ create: jest.fn(() => ({ destroy: jest.fn() })) }));
 
-const mockReleaseCalls = [];
-const mockReleaseFocusTrap = jest.fn((modal) => {
-  // Record connectedness at call time: `isConnected` is live, so reading it after the assertion
-  // would always report false once the modal is detached.
-  mockReleaseCalls.push({ modal, wasConnected: !!modal?.isConnected });
-});
 jest.mock('../../src/ui-utils.js', () => ({
   showToast: jest.fn(),
   showConfirm: jest.fn().mockResolvedValue(false),
@@ -37,18 +31,7 @@ jest.mock('../../src/ui-utils.js', () => ({
   hexToRgb: jest.fn(() => null),
   miredsToKelvin: jest.fn(() => null),
   hasSupportedFeature: jest.fn(() => false),
-  trapFocus: jest.fn(),
-  releaseFocusTrap: (...args) => mockReleaseFocusTrap(...args),
-  // Mirrors the real shared modal helper, which settles synchronously under NODE_ENV=test.
-  closeModal: jest.fn((modal, { remove = false, onClosed } = {}) => {
-    if (modal) {
-      modal.classList.remove('modal-closing');
-      if (remove) modal.remove();
-      else modal.classList.add('hidden');
-      onClosed?.();
-    }
-    return Promise.resolve();
-  }),
+  ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
 }));
 
 jest.mock('../../src/websocket.js', () => ({
@@ -61,7 +44,6 @@ jest.mock('../../src/websocket.js', () => ({
 
 const ui = require('../../src/ui.js');
 const state = require('../../src/state.js').default;
-const uiUtils = require('../../src/ui-utils.js');
 
 const STALE_ID = 'light.renamed_away';
 
@@ -95,8 +77,6 @@ async function switchAwayAndBack() {
 
 describe('unavailable Quick Access tile repair affordance', () => {
   beforeEach(() => {
-    mockReleaseFocusTrap.mockClear();
-    mockReleaseCalls.length = 0;
     document.body.innerHTML = '<div id="quick-controls"></div>';
     state.setServices({});
     state.setAreas({});
@@ -186,7 +166,7 @@ describe('unavailable Quick Access tile repair affordance', () => {
     expect(document.getElementById('entity-repair-modal')).not.toBeNull();
   });
 
-  it('builds the picker from the shared field and list classes, with the search first', () => {
+  it('builds the picker from the shared field and list classes, with the search first', async () => {
     state.setStates({ [replacement.entity_id]: replacement });
     ui.renderActiveTab();
     staleTile().click();
@@ -197,24 +177,36 @@ describe('unavailable Quick Access tile repair affordance', () => {
     expect(search.spellcheck).toBe(false);
     expect(modal.querySelector('.modal-lead').textContent).toContain(STALE_ID);
     // The search is the first thing to do here, so focus starts on it, not on the close button.
-    expect(uiUtils.trapFocus).toHaveBeenCalledWith(modal, { initialFocus: search });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(document.activeElement).toBe(search);
+    expect(modal.getAttribute('role')).toBe('dialog');
+    expect(modal.getAttribute('aria-describedby')).toBe(modal.querySelector('.modal-lead').id);
 
     search.value = 'no such entity';
     search.dispatchEvent(new Event('input'));
     expect(modal.querySelector('.entity-selector-empty').textContent).toMatch(/No matching/);
   });
 
-  it('releases the repair modal focus trap by reference before detaching it', () => {
+  it('closes with Escape or the backdrop and returns focus to the tile it was opened from', async () => {
     state.setStates({ [replacement.entity_id]: replacement });
     ui.renderActiveTab();
-    staleTile().click();
-
+    const tile = staleTile();
+    tile.focus();
+    tile.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const modal = document.getElementById('entity-repair-modal');
-    modal.querySelector('.close-btn').click();
 
-    // Passing the modal matters: the no-argument fallback skips already-detached modals, so a
-    // release after remove() would restore no focus and could clear another modal's trap.
-    expect(mockReleaseCalls).toEqual([{ modal, wasConnected: true }]);
+    modal
+      .querySelector('input[type="search"]')
+      .dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+      );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(document.getElementById('entity-repair-modal')).toBeNull();
+    expect(document.activeElement).toBe(tile);
+
+    tile.click();
+    document.getElementById('entity-repair-modal').click();
     expect(document.getElementById('entity-repair-modal')).toBeNull();
   });
 });

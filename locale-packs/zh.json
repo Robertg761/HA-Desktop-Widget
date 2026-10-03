@@ -2,7 +2,7 @@
   "locale": "zh",
   "displayName": "简体中文",
   "englishName": "Chinese (Simplified)",
-  "version": "1.2.54",
+  "version": "1.2.55",
   "minAppVersion": "3.4.1",
   "notes": "Simplified Chinese language pack for HA Desktop Widget.",
   "messages": {
@@ -1771,6 +1771,14 @@
     "Device class: Door": "门",
     "Device class: Window": "窗户",
     "Device class: Motion": "移动",
-    "Device class: Occupancy": "占用"
+    "Device class: Occupancy": "占用",
+    "Could not dismiss notification": "无法忽略该通知",
+    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "已启用整理模式。拖动、选择或按 Alt+方向键以重新排序。使用磁贴上的按钮来固定、重命名或移除。按 Esc 完成。",
+    "No network connection detected. Check your network connection and the widget will retry automatically.": "未检测到网络连接。请检查网络连接，小组件会自动重试。",
+    "Stop recording": "停止录制",
+    "Press keys... (Esc to cancel)": "请按下按键...（按 Esc 取消）",
+    "Discard color edits": "放弃颜色修改",
+    "Keep editing": "继续编辑",
+    "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "正在显示前 {{shown}} 个图标，共 {{count}} 个。输入文字可缩小范围。"
   }
 }

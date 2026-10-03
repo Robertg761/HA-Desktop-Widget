@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.54",
+  "version": "1.2.55",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1771,6 +1771,14 @@
     "Device class: Door": "Puerta",
     "Device class: Window": "Ventana",
     "Device class: Motion": "Movimiento",
-    "Device class: Occupancy": "Ocupación"
+    "Device class: Occupancy": "Ocupación",
+    "Could not dismiss notification": "No se pudo descartar la notificación",
+    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "Modo de reorganización activado. Arrastra, selecciona o pulsa Alt+flechas para reordenar. Usa los botones de una tarjeta para anclarla, renombrarla o eliminarla. Pulsa Esc para finalizar.",
+    "No network connection detected. Check your network connection and the widget will retry automatically.": "No se detectó conexión de red. Revisa tu conexión de red y el widget lo intentará de nuevo automáticamente.",
+    "Stop recording": "Detener grabación",
+    "Press keys... (Esc to cancel)": "Pulsa las teclas... (Esc para cancelar)",
+    "Discard color edits": "Descartar cambios de color",
+    "Keep editing": "Seguir editando",
+    "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Mostrando los primeros {{shown}} de {{count}} iconos. Escribe para acotarlos."
   }
 }

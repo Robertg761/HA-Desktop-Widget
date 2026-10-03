@@ -222,5 +222,33 @@
   "Compact entity tile": {
     "retiredIn": "4.0.0",
     "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Reorganize mode enabled - Drag, select or press Alt+arrow keys to reorder, click X to remove, ESC to exit": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded when the Reorganize mode toast stopped using a dash and 'click X to remove'"
+  },
+  "No network connection detected. Reconnect to Wi-Fi and the widget will retry automatically.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: wired desktops have no Wi-Fi to reconnect to"
+  },
+  "Network restored. Reconnecting to Home Assistant...": {
+    "retiredIn": "4.0.0",
+    "reason": "The message was replaced by the connecting status in the same tick, so it was never shown"
+  },
+  "Press keys...": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to say that Esc cancels the recording"
+  },
+  "Continue Without Saving": {
+    "retiredIn": "4.0.0",
+    "reason": "The unsaved custom color prompt now offers Discard color edits and Keep editing"
+  },
+  "Main Save is temporarily disabled while editing custom color. Click outside these fields to continue.": {
+    "retiredIn": "4.0.0",
+    "reason": "Save is no longer disabled while a custom color field has focus"
+  },
+  "Showing all {{count}} icons.": {
+    "retiredIn": "4.0.0",
+    "reason": "The icon picker lists the first icons and asks for a query instead of showing all of them"
   }
 }

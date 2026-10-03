@@ -103,7 +103,10 @@ describe('UI Utilities', () => {
       document.body.appendChild(modal);
       const footer = modal.querySelector('.modal-footer');
       footer.getClientRects = () => [{}];
-      footer.getBoundingClientRect = () => ({ top: window.innerHeight - 60 });
+      footer.getBoundingClientRect = () => ({
+        top: window.innerHeight - 60,
+        bottom: window.innerHeight - 16,
+      });
 
       uiUtils.showToast('Failed to control Bed Light', 'error', 2000);
       expect(toastContainer.style.bottom).toBe('68px');
@@ -195,14 +198,14 @@ describe('UI Utilities', () => {
       expect(icon.classList.contains('toast-icon')).toBe(true);
       expect(icon.getAttribute('aria-hidden')).toBe('true');
       expect(icon.querySelector('svg')).toBeTruthy();
-      expect(icon.querySelector('svg').getAttribute('aria-label')).toBe('Success');
+      expect(icon.querySelector('svg').dataset.icon).toBe('circle-check');
     });
 
     it('should use the error icon for error toasts', () => {
       uiUtils.showToast('Broken', 'error', 2000);
 
       const icon = toastContainer.querySelector('.toast .toast-icon svg');
-      expect(icon.getAttribute('aria-label')).toBe('Error');
+      expect(icon.dataset.icon).toBe('circle-x');
     });
 
     it('should dismiss a toast when it is clicked', () => {
@@ -1410,6 +1413,83 @@ describe('UI Utilities', () => {
 
       expect(modal.classList.contains('hidden')).toBe(true);
       expect(modal.style.display).toBe('none');
+    });
+
+    it('is an alert dialog named by its title and described by its message', async () => {
+      const promise = uiUtils.showConfirm('Delete page', 'This removes the page.');
+
+      expect(modal.getAttribute('role')).toBe('alertdialog');
+      expect(modal.getAttribute('aria-modal')).toBe('true');
+      expect(modal.getAttribute('aria-describedby')).toBe('confirm-message');
+      expect(document.getElementById(modal.getAttribute('aria-labelledby'))).toBe(titleEl);
+
+      cancelBtn.click();
+      await promise;
+    });
+
+    it('starts on Cancel, so a stray Enter or Space declines, unless the safe answer is yes', async () => {
+      jest.useFakeTimers();
+      try {
+        const declining = uiUtils.showConfirm('Delete', 'Delete this?');
+        jest.advanceTimersByTime(0);
+        expect(document.activeElement).toBe(cancelBtn);
+        cancelBtn.click();
+        await declining;
+
+        const saving = uiUtils.showConfirm('Save', 'Save it?', { confirmFirst: true });
+        jest.advanceTimersByTime(0);
+        expect(document.activeElement).toBe(okBtn);
+        okBtn.click();
+        await saving;
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('offers a third choice for a question with two ways forward and a way back', async () => {
+      const alternateBtn = document.createElement('button');
+      alternateBtn.id = 'confirm-alternate-btn';
+      alternateBtn.hidden = true;
+      modal.querySelector('.modal-content').insertBefore(alternateBtn, okBtn);
+
+      const plain = uiUtils.showConfirm('Delete', 'Delete this?');
+      expect(alternateBtn.hidden).toBe(true);
+      cancelBtn.click();
+      await plain;
+
+      const promise = uiUtils.showConfirm('Unsaved', 'Save the colour first?', {
+        confirmText: 'Save and continue',
+        alternateText: 'Discard edits',
+        cancelText: 'Keep editing',
+      });
+      expect(alternateBtn.hidden).toBe(false);
+      expect(alternateBtn.textContent).toBe('Discard edits');
+      alternateBtn.click();
+      expect(await promise).toBe('alternate');
+
+      // Escape and a click outside go back, the way Cancel does: never to "discard".
+      const escaped = uiUtils.showConfirm('Unsaved', 'Save the colour first?', {
+        alternateText: 'Discard edits',
+      });
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      expect(await escaped).toBe(false);
+    });
+
+    it('closes over a dialog below it and leaves that dialog open', async () => {
+      const settings = document.createElement('div');
+      settings.className = 'modal';
+      settings.innerHTML = '<div class="modal-content"><button id="in-settings">x</button></div>';
+      document.body.appendChild(settings);
+      const dismissSettings = jest.fn();
+      uiUtils.openDialog(settings, { dismiss: dismissSettings });
+
+      const promise = uiUtils.showConfirm('Discard', 'Discard everything?');
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+      expect(await promise).toBe(false);
+      expect(dismissSettings).not.toHaveBeenCalled();
+      expect(settings.classList.contains('hidden')).toBe(false);
+      uiUtils.releaseFocusTrap(settings, { restoreFocus: false });
     });
 
     it('should handle missing modal elements gracefully', async () => {

@@ -3,7 +3,13 @@ import websocket from './websocket.js';
 import { restoreDashboard } from './ui.js';
 import { refreshRestoredDashboardSettings } from './settings.js';
 import { readDashboardHistory, writeDashboardHistory } from './dashboard-history.js';
-import { closeModal, copyTextToClipboard, trapFocus, showToast } from './ui-utils.js';
+import {
+  closeDialog,
+  copyTextToClipboard,
+  disableControlsKeepingFocus,
+  openDialog,
+  showToast,
+} from './ui-utils.js';
 import { formatDateTime, t } from './i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './icons.js';
 
@@ -91,8 +97,6 @@ function dialog(title, { key, onClose = null } = {}) {
   const modal = document.createElement('div');
   modal.className = 'modal dashboard-tools-modal';
   modal.dataset.tool = key;
-  modal.setAttribute('role', 'dialog');
-  modal.setAttribute('aria-modal', 'true');
   modal.setAttribute('aria-label', title);
   const content = document.createElement('div');
   content.className = 'modal-content';
@@ -104,31 +108,23 @@ function dialog(title, { key, onClose = null } = {}) {
   close.className = 'close-btn';
   close.textContent = '×';
   close.setAttribute('aria-label', t('Close'));
-  close.onclick = () =>
-    void closeModal(modal, { remove: true, releaseFocus: true, onClosed: onClose });
+  close.onclick = () => void closeDialog(modal, { remove: true, onClosed: onClose });
   header.append(heading, close);
   const body = document.createElement('div');
   body.className = 'modal-body';
   content.append(header, body);
   modal.append(content);
-  modal.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      event.stopPropagation();
-      close.click();
-    }
-  });
-  modal.addEventListener('click', (event) => {
-    if (event.target === modal) close.click();
-  });
   document.body.append(modal);
   applyCloseButtonIcons(modal);
-  return { modal, body, content };
+  // Called once the caller has filled the dialog in, so focus can start on its first control.
+  const show = () => openDialog(modal, { display: null, dismiss: () => close.click() });
+  return { modal, body, content, show };
 }
 
 function showDashboardHistory() {
   const opened = dialog(t('Restore dashboard'), { key: 'history' });
   if (!opened) return;
-  const { modal, body } = opened;
+  const { modal, body, show } = opened;
   const description = document.createElement('p');
   description.className = 'workflow-description';
   description.textContent = t(
@@ -159,25 +155,20 @@ function showDashboardHistory() {
     arrow.setAttribute('aria-hidden', 'true');
     button.append(date, pages, arrow);
     button.onclick = async () => {
-      const controls = modal.querySelectorAll('button');
-      controls.forEach((control) => {
-        control.disabled = true;
-      });
+      const reenable = disableControlsKeepingFocus(modal.querySelectorAll('button'));
       try {
         await restoreDashboard(entry.layout, { activeTabId: entry.activeTabId });
         refreshRestoredDashboardSettings();
-        void closeModal(modal, { remove: true, releaseFocus: true });
+        void closeDialog(modal, { remove: true });
         showToast(t('Dashboard restored'), 'success');
       } catch {
         showToast(t('Could not restore dashboard. Please retry.'), 'error');
-        controls.forEach((control) => {
-          control.disabled = false;
-        });
+        reenable();
       }
     };
     body.append(button);
   });
-  trapFocus(modal);
+  show();
 }
 
 function showConnectionDiagnostics() {
@@ -200,7 +191,7 @@ function showConnectionDiagnostics() {
     onClose: stopLiveUpdates,
   });
   if (!opened) return;
-  const { modal, body, content } = opened;
+  const { modal, body, content, show } = opened;
   const summary = document.createElement('p');
   summary.className = 'diagnostics-status';
   summary.setAttribute('role', 'status');
@@ -240,7 +231,7 @@ function showConnectionDiagnostics() {
   content.append(footer);
   update();
   liveEvents.forEach((event) => websocket.on(event, onLiveEvent));
-  trapFocus(modal);
+  show();
 }
 
 const sameEntry = (a, b) => a.at === b.at && JSON.stringify(a.layout) === JSON.stringify(b.layout);

@@ -25,6 +25,7 @@ import { animateEnter, syncSlidingIndicator } from './src/motion.js';
 import {
   bindTabListKeyboard,
   bindTabListOrientation,
+  bindTabTooltips,
   syncRovingTabIndex,
 } from './src/tab-navigation.js';
 import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
@@ -220,7 +221,6 @@ let uiTickNudgeTimerId = null;
 let offlineConnectionToastShown = false;
 // Kinds of connection failure already reported in this outage, and the toasts showing them.
 const shownConnectionToastKeys = new Set();
-const connectionToasts = new Set();
 let connectionErrorLoggedThisOutage = false;
 let browserReportedOffline = false;
 let lastDisconnectReason = '';
@@ -624,7 +624,7 @@ function getSettingsUiHooks() {
 }
 
 function openSettingsModal() {
-  dismissConnectionToasts();
+  dismissConnectionToasts({ includeStartupWarnings: true });
   settings.openSettings(getSettingsUiHooks());
 }
 
@@ -632,8 +632,8 @@ function openQuickAccessModal() {
   ui.populateQuickControlsList();
   const modal = document.getElementById('quick-controls-modal');
   if (!modal) return;
-  uiUtils.openModal(modal);
-  uiUtils.trapFocus(modal);
+  // The search is where a visit here starts; without it focus would land on the Close button.
+  uiUtils.openDialog(modal, { initialFocus: '#quick-controls-search' });
 }
 
 function createTextElement(tagName, className, text) {
@@ -673,43 +673,90 @@ function getActiveQuickAccessCount() {
   return Array.isArray(page?.entityIds) ? page.entityIds.length : 0;
 }
 
+// The title of the last problem the panel announced, so a retry that lands on the same problem again
+// stays quiet. Cleared when the panel goes away, which is when the problem has.
+let announcedWidgetStateTitle = '';
+
 function removeWidgetStatePanel() {
   const existingPanel = document.getElementById('widget-state-panel');
-  if (existingPanel) existingPanel.remove();
+  if (existingPanel) {
+    // The button that had focus (Retry) goes with the panel; keep the keyboard in the widget.
+    const hadFocus = existingPanel.contains(document.activeElement);
+    existingPanel.remove();
+    if (hadFocus) document.getElementById('settings-btn')?.focus();
+  }
   document.body.classList.remove('widget-state-active');
+  announcedWidgetStateTitle = '';
 }
 
-function renderWidgetStatePanel({ tone, title, message, actions }) {
+// Said through one persistent live region instead of by rebuilding a role="alert" panel: a panel
+// that is replaced on every retry is announced again on every retry, for as long as an outage lasts.
+function announceWidgetState(text) {
+  const live = document.getElementById('widget-state-live');
+  if (!live) return;
+  live.textContent = '';
+  // A tick later, so assistive technology sees a change rather than a region that never emptied.
+  setTimeout(() => {
+    live.textContent = text;
+  }, 50);
+}
+
+function createWidgetStateActions(actions) {
+  const actionRow = document.createElement('div');
+  actionRow.className = 'widget-state-actions';
+  actions.forEach((action) => {
+    const button = createActionButton(action.label, action.className, action.onClick);
+    // The labels name them for the next render, so focus stays on the button it was on.
+    button.dataset.focusKey = `widget-state:${action.label}`;
+    actionRow.appendChild(button);
+  });
+  return actionRow;
+}
+
+// One connect attempt renders the panel several times (connecting, error, close), and Retry is
+// pressed while it does. The panel is therefore kept and updated in place, and a render that would
+// change nothing changes nothing: replacing the node moved keyboard focus from Retry to Open Settings.
+function renderWidgetStatePanel({ tone, title, message, actions = [] }) {
   const widgetContent = document.querySelector('.widget-content');
   if (!widgetContent) return;
-  const previousPanel = document.getElementById('widget-state-panel');
-  // Pressing a panel button re-renders the panel; keep keyboard focus inside it.
-  const hadFocus = !!previousPanel?.contains(document.activeElement);
-  const previousTitle = previousPanel?.querySelector('.widget-state-title')?.textContent;
-  removeWidgetStatePanel();
-
-  const panel = document.createElement('div');
-  panel.id = 'widget-state-panel';
-  panel.className = `widget-state-panel ${tone ? `widget-state-${tone}` : ''}`.trim();
-  panel.setAttribute('role', tone === 'error' ? 'alert' : 'status');
-
-  panel.appendChild(createTextElement('h3', 'widget-state-title', title));
-  panel.appendChild(createTextElement('p', 'widget-state-copy', message));
-
-  if (actions?.length) {
-    const actionRow = document.createElement('div');
-    actionRow.className = 'widget-state-actions';
-    actions.forEach((action) => {
-      actionRow.appendChild(createActionButton(action.label, action.className, action.onClick));
-    });
-    panel.appendChild(actionRow);
+  const labels = actions.map((action) => action.label);
+  const signature = JSON.stringify([tone || '', title, message, labels]);
+  let panel = document.getElementById('widget-state-panel');
+  if (panel?.dataset.signature === signature) {
+    document.body.classList.add('widget-state-active');
+    return;
   }
 
-  widgetContent.appendChild(panel);
+  const isNew = !panel;
+  if (isNew) {
+    panel = document.createElement('div');
+    panel.id = 'widget-state-panel';
+    panel.appendChild(createTextElement('h3', 'widget-state-title', title));
+    panel.appendChild(createTextElement('p', 'widget-state-copy', message));
+    widgetContent.appendChild(panel);
+  } else {
+    panel.querySelector('.widget-state-title').textContent = title;
+    panel.querySelector('.widget-state-copy').textContent = message;
+  }
+  panel.className = `widget-state-panel ${tone ? `widget-state-${tone}` : ''}`.trim();
+
+  if (isNew || JSON.stringify(labels) !== panel.dataset.actionLabels) {
+    uiUtils.renderKeepingFocus(panel, () => {
+      panel.querySelector('.widget-state-actions')?.remove();
+      if (labels.length) panel.appendChild(createWidgetStateActions(actions));
+    });
+  }
+  panel.dataset.signature = signature;
+  panel.dataset.actionLabels = JSON.stringify(labels);
   document.body.classList.add('widget-state-active');
-  if (hadFocus) panel.querySelector('button')?.focus();
-  // The panel follows the tiles, so on a full page a new problem could appear below the fold.
-  if (tone === 'error' && title !== previousTitle) panel.scrollIntoView?.({ block: 'nearest' });
+
+  if (tone === 'error' && title !== announcedWidgetStateTitle) {
+    announcedWidgetStateTitle = title;
+    announceWidgetState(`${title}. ${message}`);
+    // The panel follows the tiles, so on a full page a new problem could appear below the fold.
+    // Only the first time: each retry used to pull a reader who had scrolled up back down.
+    panel.scrollIntoView?.({ block: 'nearest' });
+  }
 }
 
 async function retryOAuthRestore() {
@@ -954,13 +1001,29 @@ function setFirstRunWizardVisible(visible) {
   if (!firstRunWizard?.overlay) return;
   const wasVisible = firstRunWizard.visible;
   firstRunWizard.visible = !!visible;
-  firstRunWizard.overlay.classList.toggle('hidden', !visible);
   document.body.classList.toggle('first-run-active', !!visible);
-  // The wizard is modal: keep Tab inside it instead of on the header buttons behind it.
+  // The wizard is modal: keep Tab inside it instead of on the header buttons behind it. It starts
+  // below the header, which keeps the window's own buttons and drag area working, so the overlay
+  // is told where that ends. It asks for an answer, so Escape and the backdrop do nothing.
   if (visible && !wasVisible) {
-    uiUtils.trapFocus(firstRunWizard.overlay, { initialFocus: false });
+    const header = document.querySelector('.widget-header');
+    if (header) {
+      document.documentElement.style.setProperty(
+        '--header-height',
+        `${Math.ceil(header.getBoundingClientRect().bottom)}px`
+      );
+    }
+    uiUtils.openDialog(firstRunWizard.overlay, {
+      display: null,
+      labelledBy: 'first-run-title',
+      describedBy: 'first-run-copy',
+      initialFocus: false,
+      dismiss: null,
+    });
   } else if (!visible && wasVisible) {
-    uiUtils.releaseFocusTrap(firstRunWizard.overlay);
+    void uiUtils.closeDialog(firstRunWizard.overlay, { animate: false });
+  } else {
+    firstRunWizard.overlay.classList.toggle('hidden', !visible);
   }
   if (visible) focusWizardStep();
   renderMainWidgetState();
@@ -1068,6 +1131,14 @@ async function renderFirstRunDesktopHelp(content) {
   }
 }
 
+// The wizard's heading and lead paragraph name and describe its dialog. They are rebuilt for every
+// step, so only one carries each id at a time.
+function createWizardText(tagName, className, id, text) {
+  const element = createTextElement(tagName, className, text);
+  element.id = id;
+  return element;
+}
+
 function renderWizardStep() {
   if (!firstRunWizard?.content) return;
   const stepIndex = firstRunWizard.step;
@@ -1090,11 +1161,17 @@ function renderWizardStep() {
 
   if (stepIndex === 0) {
     content.appendChild(
-      createTextElement('h2', 'first-run-title', t('Welcome to Home Assistant Widget'))
+      createWizardText(
+        'h2',
+        'first-run-title',
+        'first-run-title',
+        t('Welcome to Home Assistant Widget')
+      )
     );
     content.appendChild(
-      createTextElement(
+      createWizardText(
         'p',
+        'first-run-copy',
         'first-run-copy',
         t(
           'Connect your Home Assistant server to start building a compact control panel for your desktop.'
@@ -1104,11 +1181,17 @@ function renderWizardStep() {
     void renderFirstRunDesktopHelp(content);
   } else if (stepIndex === 1) {
     content.appendChild(
-      createTextElement('h2', 'first-run-title', t('Enter your Home Assistant URL'))
+      createWizardText(
+        'h2',
+        'first-run-title',
+        'first-run-title',
+        t('Enter your Home Assistant URL')
+      )
     );
     content.appendChild(
-      createTextElement(
+      createWizardText(
         'p',
+        'first-run-copy',
         'first-run-copy',
         t('Use the address you normally open in your browser.')
       )
@@ -1133,10 +1216,13 @@ function renderWizardStep() {
     content.appendChild(label);
     content.appendChild(input);
   } else if (stepIndex === 3) {
-    content.appendChild(createTextElement('h2', 'first-run-title', t('Choose rooms and devices')));
     content.appendChild(
-      createTextElement(
+      createWizardText('h2', 'first-run-title', 'first-run-title', t('Choose rooms and devices'))
+    );
+    content.appendChild(
+      createWizardText(
         'p',
+        'first-run-copy',
         'first-run-copy',
         t(
           'Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.'
@@ -1145,11 +1231,12 @@ function renderWizardStep() {
     );
   } else {
     content.appendChild(
-      createTextElement('h2', 'first-run-title', t('Authorize in Home Assistant'))
+      createWizardText('h2', 'first-run-title', 'first-run-title', t('Authorize in Home Assistant'))
     );
     content.appendChild(
-      createTextElement(
+      createWizardText(
         'p',
+        'first-run-copy',
         'first-run-copy',
         t(
           'Continue to open Home Assistant in your browser. Sign in and approve HA Desktop Widget, then return here.'
@@ -1284,17 +1371,15 @@ function ensureFirstRunWizard() {
   overlay.className = 'first-run-onboarding hidden';
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
-  overlay.setAttribute('aria-labelledby', 'first-run-title');
 
   const panel = document.createElement('div');
   panel.className = 'first-run-panel';
 
   const content = document.createElement('div');
   content.className = 'first-run-content';
-  content.id = 'first-run-title';
 
   const status = document.createElement('div');
-  status.className = 'first-run-status hidden';
+  status.className = 'first-run-status connection-status-empty';
   status.setAttribute('role', 'status');
   status.setAttribute('aria-live', 'polite');
 
@@ -1520,7 +1605,8 @@ function showConfigPersistenceWarnings(persistenceWarnings = []) {
           'Your Home Assistant token needs to be re-entered. Token encryption is not available on this system.'
         ),
     'warning',
-    20000
+    10000,
+    { source: STARTUP_WARNING_TOAST_SOURCE }
   );
 }
 
@@ -1796,7 +1882,7 @@ function classifyConnectionError(error) {
     return {
       key: OFFLINE_CONNECTION_ERROR_KEY,
       message: t(
-        'No network connection detected. Reconnect to Wi-Fi and the widget will retry automatically.'
+        'No network connection detected. Check your network connection and the widget will retry automatically.'
       ),
       persistUntilOnline: true,
     };
@@ -1846,16 +1932,25 @@ function resetConnectionToastTracking() {
   connectionErrorLoggedThisOutage = false;
 }
 
+// Toasts that say why the connection failed are tagged, so the renderer can take them down again
+// without keeping hold of the elements: when Settings opens, and when the connection is back.
+const CONNECTION_TOAST_SOURCE = 'connection';
+// Notices about the saved token (a missing keyring); they outlast a reconnect but point at Settings too.
+const STARTUP_WARNING_TOAST_SOURCE = 'startup-warning';
+
 function showConnectionToast(message, timeout) {
-  const toast = uiUtils.showToast(message, 'error', timeout);
-  if (toast) connectionToasts.add(toast);
+  // While the connection panel is up it already says the widget is offline and keeps retrying,
+  // with Retry and Open Settings right under it. A toast on the same spot would cover those
+  // buttons, and the first click on them would dismiss the toast instead.
+  if (document.body.classList.contains('widget-state-active')) return;
+  uiUtils.showToast(message, 'error', timeout, { source: CONNECTION_TOAST_SOURCE });
 }
 
 // Connection toasts point the user at Settings. Once Settings is open they have done their job,
 // and left up they cover its footer, Save button included.
-function dismissConnectionToasts() {
-  connectionToasts.forEach((toast) => uiUtils.dismissToast?.(toast));
-  connectionToasts.clear();
+function dismissConnectionToasts({ includeStartupWarnings = false } = {}) {
+  uiUtils.dismissToasts?.(CONNECTION_TOAST_SOURCE);
+  if (includeStartupWarnings) uiUtils.dismissToasts?.(STARTUP_WARNING_TOAST_SOURCE);
 }
 
 function showClassifiedConnectionToast(error) {
@@ -2022,7 +2117,8 @@ window.addEventListener('online', () => {
   const shouldForceReconnect = browserReportedOffline;
   browserReportedOffline = false;
   if (shouldForceReconnect || !websocket.ws || websocket.ws.readyState !== WebSocket.OPEN) {
-    setDisconnectedStatus(t('Network restored. Reconnecting to Home Assistant...'));
+    // connectWebSocket() says it is connecting; a "network restored" message set first would be
+    // replaced in the same tick, before it could be painted.
     connectWebSocket();
   }
 });
@@ -2032,7 +2128,7 @@ window.addEventListener('offline', () => {
   clearReconnectTimer();
   updateMainConnectionState('disconnected');
   const disconnectedMessage = t(
-    'No network connection detected. Reconnect to Wi-Fi and the widget will retry automatically.'
+    'No network connection detected. Check your network connection and the widget will retry automatically.'
   );
   setDisconnectedStatus(disconnectedMessage);
   setDesktopPinConnectionIssue(disconnectedMessage);
@@ -2148,8 +2244,16 @@ websocket.on('message', (msg) => {
       setDisconnectedStatus(authFailureMessage);
       setDesktopPinConnectionIssue(authFailureMessage);
       uiUtils.showLoading(false);
-      // Show clear error message to user
-      showConnectionToast(authFailureMessage, 15000);
+      // Said once per outage: startup churn and every Retry would otherwise stack the same toast.
+      if (
+        shouldShowConnectionToast({
+          key: 'auth-invalid',
+          message: authFailureMessage,
+          persistUntilOnline: false,
+        })
+      ) {
+        showConnectionToast(authFailureMessage, 15000);
+      }
       // Render the UI so user can access settings
       renderCurrentMode();
     } else if (msg.type === 'event' && msg.event?.event_type === 'entity_registry_updated') {
@@ -2206,6 +2310,9 @@ websocket.on('message', (msg) => {
             publishOmarchyBarTiles({ force: true });
             updateMainConnectionState('connected');
             setConnectedStatus();
+            // Whatever the failure toasts said is over: a red "unable to reach Home Assistant"
+            // must not outlive the recovery.
+            dismissConnectionToasts();
             if (!IS_DESKTOP_PIN_MODE) {
               setTrayEntityConnectionState(true, Object.keys(newStates));
               refreshTrayEntityIcons({ force: true });
@@ -2317,7 +2424,12 @@ websocket.on('close', (closeInfo = {}) => {
     }
 
     updateMainConnectionState('disconnected');
-    setDisconnectedStatus(t('Disconnected from Home Assistant. Retrying automatically.'));
+    // A failed attempt is followed by a close. The reason the error gave ("Check your network or
+    // Home Assistant URL") says more than "disconnected", and is what the connection panel shows
+    // in place of a toast, so the close must not overwrite it.
+    if (!connectionErrorLoggedThisOutage) {
+      setDisconnectedStatus(t('Disconnected from Home Assistant. Retrying automatically.'));
+    }
     setDesktopPinConnectionIssue(t('Disconnected from Home Assistant. Retrying automatically.'));
     uiUtils.showLoading(false);
     if (IS_SPECIAL_PIN_MODE) {
@@ -2721,6 +2833,9 @@ async function init() {
     // Runtime recovery metadata is intentionally not part of renderer state so
     // later update-config calls cannot echo it back into persisted settings.
     delete config.configRecovery;
+    // A token the keyring could not decrypt is reported below with its own remedy. The persistence
+    // warning that arrives with the same config would name that cause a second time, with other advice.
+    if (config.tokenResetReason === 'encryption_unavailable') tokenPersistenceWarningShown = true;
     applyRendererConfig(config);
     wireUI();
     replaceEmojiIcons();
@@ -2785,9 +2900,7 @@ async function init() {
       log.info('[Init]', detailMessage);
 
       // Show prominent warning message with extended duration
-      uiUtils.showToast(message, 'warning', 20000);
-      // The same cause as the warning a save reports, which would only repeat it.
-      if (reason === 'encryption_unavailable') tokenPersistenceWarningShown = true;
+      uiUtils.showToast(message, 'warning', 10000, { source: STARTUP_WARNING_TOAST_SOURCE });
     }
 
     if (!isConfigured(state.CONFIG)) {
@@ -2854,24 +2967,6 @@ function wireUI() {
 
     const cancelSettingsBtn = document.getElementById('cancel-settings');
     if (cancelSettingsBtn) cancelSettingsBtn.onclick = settings.closeSettings;
-
-    // Escape works like Cancel, unless it is closing a dropdown open inside Settings. That is
-    // checked on the way down, because the dropdown closes itself before the event bubbles back.
-    const settingsModal = document.getElementById('settings-modal');
-    let settingsEscapeClosesDropdown = false;
-    settingsModal?.addEventListener(
-      'keydown',
-      (event) => {
-        if (event.key !== 'Escape') return;
-        settingsEscapeClosesDropdown = !!event.target?.closest?.('.custom-dropdown.open');
-      },
-      true
-    );
-    settingsModal?.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape' || event.defaultPrevented || settingsEscapeClosesDropdown) return;
-      event.preventDefault();
-      settings.closeSettings();
-    });
 
     const saveSettingsBtn = document.getElementById('save-settings');
     if (saveSettingsBtn) saveSettingsBtn.onclick = settings.saveSettings;
@@ -2981,18 +3076,12 @@ function wireUI() {
     const closeQuickControlsModal = () => {
       const modal = document.getElementById('quick-controls-modal');
       if (!modal) return Promise.resolve();
-      // Release focus trap and restore previous focus once the exit animation finishes.
-      return uiUtils.closeModal(modal, { releaseFocus: true });
+      // Releases the focus trap and restores previous focus once the exit animation finishes.
+      return uiUtils.closeDialog(modal);
     };
     if (closeQuickControlsBtn) {
       closeQuickControlsBtn.onclick = closeQuickControlsModal;
     }
-    document.getElementById('quick-controls-modal')?.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      event.stopPropagation(); // close the dialog without also exiting reorganize mode
-      void closeQuickControlsModal();
-    });
 
     const addComparisonGraphBtn = document.getElementById('add-comparison-graph-btn');
     if (addComparisonGraphBtn) {
@@ -3019,8 +3108,7 @@ function wireUI() {
       const modal = document.getElementById('weather-config-modal');
       if (!modal) return;
       ui.populateWeatherEntitiesList();
-      uiUtils.openModal(modal);
-      uiUtils.trapFocus(modal);
+      uiUtils.openDialog(modal);
     };
     statusCards.forEach((card) => {
       if (!card) return;
@@ -3095,19 +3183,13 @@ function wireUI() {
     const closeWeatherConfig = () => {
       const modal = document.getElementById('weather-config-modal');
       if (modal) {
-        void uiUtils.closeModal(modal, { releaseFocus: true });
+        void uiUtils.closeDialog(modal);
       }
     };
     const closeWeatherConfigBtn = document.getElementById('close-weather-config');
     if (closeWeatherConfigBtn) {
       closeWeatherConfigBtn.onclick = closeWeatherConfig;
     }
-    document.getElementById('weather-config-modal')?.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      event.stopPropagation(); // close the dialog without also exiting reorganize mode
-      closeWeatherConfig();
-    });
 
     const clearWeatherBtn = document.getElementById('clear-weather');
     if (clearWeatherBtn) {
@@ -3216,6 +3298,7 @@ function wireUI() {
     document.querySelectorAll('.modal-tabs').forEach((tabList) => {
       bindTabListKeyboard(tabList, '.tab-link', { orientation: 'both' });
       bindTabListOrientation(tabList);
+      bindTabTooltips(tabList, '.tab-link');
     });
 
     const hotkeySearch = document.getElementById('hotkey-entity-search');
@@ -3307,6 +3390,11 @@ function wireUI() {
             input.value = '';
             delete state.CONFIG.globalHotkeys.hotkeys[entityId];
             hotkeys.renderHotkeysTab();
+            // The list was rebuilt under the Clear button, which is hidden now there is nothing to
+            // clear; the row's own field is where the keyboard goes on.
+            hotkeysList
+              .querySelector(`.hotkey-input[data-focus-key="hotkey-input:${entityId}"]`)
+              ?.focus();
             if (result.warning) {
               uiUtils.showToast(result.warning, 'warning', 4000);
             }

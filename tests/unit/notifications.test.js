@@ -17,30 +17,16 @@ jest.mock('../../src/i18n.js', () => ({
   ),
 }));
 
-jest.mock('../../src/ui-utils.js', () => {
-  const releaseFocusTrap = jest.fn();
-  return {
-    releaseFocusTrap,
-    trapFocus: jest.fn(),
-    // Mirrors the real helper closely enough for visibility/focus assertions.
-    closeModal: jest.fn((modal, { releaseFocus = false } = {}) => {
-      modal?.classList.add('hidden');
-      if (releaseFocus) releaseFocusTrap(modal);
-      return Promise.resolve();
-    }),
-    openModal: jest.fn((modal) => {
-      modal?.classList.remove('modal-closing');
-      modal?.classList.remove('hidden');
-    }),
-  };
-});
+jest.mock('../../src/ui-utils.js', () => ({
+  ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
+  showToast: jest.fn(),
+}));
 
 const {
   applyPersistentNotificationEvent,
   formatRelativeTime,
   initializePersistentNotifications,
 } = require('../../src/notifications.js');
-const { releaseFocusTrap, trapFocus } = require('../../src/ui-utils.js');
 
 describe('persistent notification helpers', () => {
   test('merges current, added, updated, and removed notification events', () => {
@@ -112,25 +98,174 @@ describe('persistent notification helpers', () => {
     expect(formatRelativeTime('', now)).toBe('');
   });
 
-  test('traps focus while the notification dialog is open and releases it on close', () => {
-    document.body.innerHTML = `
+  describe('notifications panel', () => {
+    const panelHtml = `
       <button id="persistent-notifications-btn"></button>
       <span id="persistent-notifications-count"></span>
+      <button id="settings-btn"></button>
       <div id="persistent-notifications-modal" class="modal hidden">
-        <button id="close-persistent-notifications">Close</button>
-        <div id="persistent-notifications-list"></div>
-        <div id="persistent-notifications-empty"></div>
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 id="persistent-notifications-title">Notifications</h2>
+            <button id="close-persistent-notifications" class="close-btn">Close</button>
+          </div>
+          <div class="modal-body">
+            <div id="persistent-notifications-list"></div>
+            <div id="persistent-notifications-empty"></div>
+          </div>
+        </div>
       </div>
     `;
+    const notification = (id, createdAt = '2026-07-06T10:00:00Z') => ({
+      notification_id: id,
+      title: `Title ${id}`,
+      message: `Message ${id}`,
+      created_at: createdAt,
+    });
+    const nextTick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    let send;
+    let websocket;
+    let showToast;
 
-    initializePersistentNotifications();
-    document.getElementById('persistent-notifications-btn').click();
+    // A fresh module per test: the panel wires itself to its elements once, and each test builds new ones.
+    beforeEach(() => {
+      jest.resetModules();
+      document.body.innerHTML = panelHtml;
+      websocket = require('../../src/websocket.js').default;
+      showToast = require('../../src/ui-utils.js').showToast;
+      require('../../src/notifications.js').initializePersistentNotifications();
+      send = websocket.subscribeMessage.mock.calls.at(-1)[1];
+    });
 
-    const modal = document.getElementById('persistent-notifications-modal');
-    expect(trapFocus).toHaveBeenCalledWith(modal);
+    const load = (...ids) =>
+      send({
+        type: 'current',
+        notifications: Object.fromEntries(ids.map((id) => [id, notification(id)])),
+      });
+    const press = (target, key) => {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      target.dispatchEvent(event);
+      return event;
+    };
 
-    document.getElementById('close-persistent-notifications').click();
-    expect(releaseFocusTrap).toHaveBeenCalledWith(modal);
+    test('opens as a named dialog with focus on the first notification, not on Close', async () => {
+      load('a', 'b');
+      const bell = document.getElementById('persistent-notifications-btn');
+      bell.focus();
+      bell.click();
+      await nextTick();
+
+      const modal = document.getElementById('persistent-notifications-modal');
+      expect(modal.getAttribute('role')).toBe('dialog');
+      expect(modal.getAttribute('aria-modal')).toBe('true');
+      expect(document.getElementById(modal.getAttribute('aria-labelledby')).textContent).toBe(
+        'Notifications'
+      );
+      expect(document.activeElement.textContent).toBe('Dismiss');
+    });
+
+    test('Escape closes only the panel and hands focus back to the bell', async () => {
+      load('a');
+      const bell = document.getElementById('persistent-notifications-btn');
+      bell.focus();
+      bell.click();
+      await nextTick();
+      const pageEscape = jest.fn();
+      document.addEventListener('keydown', pageEscape);
+
+      const escape = press(document.activeElement, 'Escape');
+      await nextTick();
+
+      expect(escape.defaultPrevented).toBe(true);
+      expect(pageEscape).not.toHaveBeenCalled();
+      expect(document.getElementById('persistent-notifications-modal').classList).toContain(
+        'hidden'
+      );
+      expect(document.activeElement).toBe(bell);
+      document.removeEventListener('keydown', pageEscape);
+    });
+
+    test('a click on the backdrop closes the panel, a click inside it does not', async () => {
+      load('a');
+      document.getElementById('persistent-notifications-btn').click();
+      const modal = document.getElementById('persistent-notifications-modal');
+
+      modal.querySelector('.modal-body').click();
+      expect(modal.classList).not.toContain('hidden');
+      modal.click();
+      expect(modal.classList).toContain('hidden');
+    });
+
+    test('dismissing a notification moves focus to the next one instead of the page behind', async () => {
+      load('a', 'b', 'c');
+      document.getElementById('persistent-notifications-btn').click();
+      await nextTick();
+      const buttons = () => [...document.querySelectorAll('.persistent-notification-dismiss')];
+      buttons()[0].focus();
+      websocket.callService.mockResolvedValue({});
+
+      buttons()[0].click();
+      // Home Assistant answers with the removal, which rebuilds the list.
+      send({ type: 'removed', notifications: { c: {} } });
+
+      expect(buttons()).toHaveLength(2);
+      expect(document.activeElement).toBe(buttons()[0]);
+      expect(
+        document.getElementById('persistent-notifications-modal').contains(document.activeElement)
+      ).toBe(true);
+    });
+
+    test('keeps focus on the same notification when the list is rebuilt around it', async () => {
+      load('a', 'b');
+      document.getElementById('persistent-notifications-btn').click();
+      await nextTick();
+      const second = document.querySelectorAll('.persistent-notification-dismiss')[1];
+      second.focus();
+      const key = second.dataset.focusKey;
+
+      send({ type: 'updated', notifications: { a: notification('a') } });
+
+      expect(document.activeElement.dataset.focusKey).toBe(key);
+      expect(document.activeElement).not.toBe(second);
+    });
+
+    test('says so when a dismissal fails, and gives the button back', async () => {
+      load('a');
+      document.getElementById('persistent-notifications-btn').click();
+      websocket.callService.mockRejectedValue(new Error('offline'));
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const dismiss = document.querySelector('.persistent-notification-dismiss');
+
+      dismiss.click();
+      expect(dismiss.disabled).toBe(true);
+      await nextTick();
+
+      expect(dismiss.disabled).toBe(false);
+      expect(showToast).toHaveBeenCalledWith('Could not dismiss notification', 'error');
+      consoleError.mockRestore();
+    });
+
+    test('refreshes the ages while the panel stays open', () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(Date.parse('2026-07-06T10:00:30Z'));
+      try {
+        load('a');
+        document.getElementById('persistent-notifications-btn').click();
+        const time = () => document.querySelector('.persistent-notification-time').textContent;
+        expect(time()).toBe('just now');
+
+        jest.setSystemTime(Date.parse('2026-07-06T10:04:30Z'));
+        jest.advanceTimersByTime(60000);
+        expect(time()).toBe('5m ago');
+
+        document.getElementById('close-persistent-notifications').click();
+        jest.setSystemTime(Date.parse('2026-07-06T10:20:30Z'));
+        jest.advanceTimersByTime(120000);
+        expect(time()).toBe('5m ago');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
   });
 
   test('clicking a desktop notification opens the widget on its notification list', async () => {

@@ -286,22 +286,244 @@ describe('stylesheet cascade regressions', () => {
     });
   });
 
-  describe('confirmation dialog stacking', () => {
-    // The confirmation is a static element; dialogs built later are appended after it and share the
-    // backdrop tier, so only a higher tier keeps "Delete graph" from opening behind its own editor.
-    it('paints above dialogs that are appended to the page after it', () => {
+  describe('keyboard focus rings the global rule drew wrongly', () => {
+    // The global ring sits 2px outside the control with a glow. Wherever the control is clipped by a
+    // scrolling or overflow-hidden parent, or another rule removes the outline, that left a focused
+    // control looking like an unfocused one (or like a rendering glitch).
+    it('draws the weather card ring inside the card, where the hero pane cannot clip it', () => {
       render(
         '',
-        `<div id="confirm-modal" class="modal"></div>
-        <div id="comparison-graph-editor" class="modal"></div>`
+        `<div class="status-grid"><div id="weather-card" class="status-card weather-card" tabindex="0" data-focus-visible></div><div id="time-card" class="status-card"></div></div>`
+      );
+      const card = document.getElementById('weather-card');
+
+      expect(resolvedValue(card, 'outline-offset')).toBe('-4px');
+      expect(resolvedValue(card, 'outline')).toMatch(/^[23]px solid /);
+      expect(resolvedValue(card, 'box-shadow')).toBe('none');
+    });
+
+    it('keeps the divider between the two cards when the second one has the ring', () => {
+      render(
+        '',
+        `<div class="status-grid"><div class="status-card"></div><div id="time-card" class="status-card" tabindex="0" data-focus-visible></div></div>`
       );
 
-      const confirmModal = document.getElementById('confirm-modal');
-      const editor = document.getElementById('comparison-graph-editor');
-      expect(Number(resolvedValue(confirmModal, 'z-index'))).toBeGreaterThan(
-        Number(resolvedValue(editor, 'z-index'))
+      expect(resolvedValue(document.getElementById('time-card'), 'box-shadow')).toMatch(
+        /^inset 1px 0 0 /
       );
     });
+
+    it('still draws it outside in the single-card layout, where nothing clips it', () => {
+      render(
+        '',
+        `<div class="status-grid single-card"><div id="weather-card" class="status-card" tabindex="0" data-focus-visible></div></div>`
+      );
+
+      expect(resolvedValue(document.getElementById('weather-card'), 'outline-offset')).toBe('2px');
+    });
+
+    it('draws a picker option inside the scrolling list, on the hover tint', () => {
+      render(
+        '',
+        `<div class="entity-selector-list"><div id="option" class="entity-item" role="option" tabindex="0" data-focus-visible></div></div>`
+      );
+      const option = document.getElementById('option');
+
+      expect(resolvedValue(option, 'outline-offset')).toBe('-2px');
+      expect(resolvedValue(option, 'box-shadow')).toBe('none');
+      // The hover fill, rather than the plain row's transparent one.
+      expect(resolvedValue(option, 'background')).toBe('rgba(255, 255, 255, 0.075)');
+    });
+
+    it('draws the Settings window opacity slider ring, which the field rules had removed', () => {
+      render(
+        '',
+        `<div id="settings-modal"><div class="form-group setting-slider"><input id="opacity-slider" type="range" data-focus-visible></div></div>`
+      );
+      const slider = document.getElementById('opacity-slider');
+
+      expect(resolvedValue(slider, 'outline')).toMatch(/^2px solid /);
+      expect(resolvedValue(slider, 'outline-offset')).toBe('4px');
+    });
+
+    it('rounds the ring of a Settings disclosure summary and keeps it inside the pane', () => {
+      render(
+        '',
+        `<div id="settings-modal"><details class="settings-details settings-disclosure"><summary data-focus-visible>More</summary></details></div>`
+      );
+      const summary = document.querySelector('summary');
+
+      expect(resolvedValue(summary, 'border-radius')).not.toBe('0');
+      expect(resolvedValue(summary, 'outline-offset')).toBe('-2px');
+    });
+
+    it('lets Tab scroll a Settings control clear of the floating Save and Cancel pill', () => {
+      render('', '<div id="settings-modal"><div class="modal-body"></div></div>');
+
+      expect(resolvedValue(document.querySelector('.modal-body'), 'scroll-padding-block-end')).toBe(
+        '80px'
+      );
+    });
+
+    it('does not draw the global field ring around the command palette search, whose row has it', () => {
+      render(
+        '',
+        `<div class="command-palette-search"><input class="command-palette-input" data-focus-visible></div>`
+      );
+      const input = document.querySelector('input');
+
+      expect(resolvedValue(input, 'outline')).toBe('0');
+      expect(resolvedValue(input, 'box-shadow')).toBe('none');
+    });
+
+    it('tints a palette row under a resting pointer more lightly than the highlighted one', () => {
+      render(
+        '',
+        `<div class="command-palette-result" id="hover" data-hover></div>
+        <div class="command-palette-result highlighted" id="highlighted"></div>`
+      );
+      const hover = resolvedValue(document.getElementById('hover'), 'background');
+      const highlighted = resolvedValue(document.getElementById('highlighted'), 'background');
+
+      expect(hover).toContain('0.07');
+      expect(highlighted).toContain('0.14');
+      // The strong tint's accent border is not applied to a hover.
+      expect(resolvedValue(document.getElementById('hover'), 'border-color')).not.toBe(
+        resolvedValue(document.getElementById('highlighted'), 'border-color')
+      );
+    });
+  });
+
+  describe('collapsed Settings disclosures', () => {
+    it('are hidden to focus once collapsed, and visible while open', () => {
+      render(
+        '',
+        `<div id="settings-modal"><section class="personalization-section settings-disclosure-section collapsed"><div id="closed" class="section-body"></div></section>
+        <section class="personalization-section settings-disclosure-section"><div id="open" class="section-body"></div></section></div>`
+      );
+
+      expect(resolvedValue(document.getElementById('closed'), 'visibility')).toBe('hidden');
+      expect(resolvedValue(document.getElementById('open'), 'visibility')).toBeNull();
+    });
+
+    it('leave room beside an open body for the focus glow of a full-width field', () => {
+      render(
+        '',
+        `<div id="settings-modal"><section class="personalization-section settings-disclosure-section"><div id="open" class="section-body"></div></section></div>`
+      );
+      const body = document.getElementById('open');
+
+      expect(resolvedValue(body, 'padding-inline')).toBe('4px');
+      expect(resolvedValue(body, 'margin-inline')).toBe('-4px');
+      expect(resolvedValue(body, 'will-change')).toBeNull();
+    });
+  });
+
+  describe('the first-run wizard', () => {
+    it('starts below the header, so the window buttons and drag area keep working', () => {
+      render('first-run-active', '<div class="first-run-onboarding"></div>');
+      const overlay = document.querySelector('.first-run-onboarding');
+
+      // 40px until the renderer measures the header and says otherwise.
+      expect(resolvedValue(overlay, 'inset')).toBe('40px 0 0');
+    });
+
+    it('hides the gear while it is up, since Settings would open out of sight underneath', () => {
+      render('first-run-active', '<button id="settings-btn"></button>');
+
+      expect(resolvedValue(document.getElementById('settings-btn'), 'visibility')).toBe('hidden');
+    });
+  });
+
+  describe('a dialog heading that takes focus on open', () => {
+    // It is where a screen reader starts, not a control: the default ring would box its glyphs.
+    it('draws no ring, while a control in the same header still does', () => {
+      render(
+        '',
+        `<div class="modal"><div class="modal-header">
+          <h2 id="heading" tabindex="-1" data-focus-visible>Living room</h2>
+          <button id="close" class="close-btn" data-focus-visible>x</button>
+        </div></div>`
+      );
+
+      expect(resolvedValue(document.getElementById('heading'), 'outline')).toBe('none');
+      expect(resolvedValue(document.getElementById('close'), 'outline')).not.toBe('none');
+    });
+  });
+
+  describe('a dialog rebuilt in place', () => {
+    it('does not replay the entrance, but still leaves with the exit animation', () => {
+      render(
+        '',
+        `<div id="rebuilt" class="modal climate-modal modal-rebuilt"><div class="modal-content"></div></div>
+        <div id="leaving" class="modal modal-rebuilt modal-closing"><div class="modal-content"></div></div>`
+      );
+
+      expect(resolvedValue(document.getElementById('rebuilt'), 'animation')).toBe('none');
+      expect(resolvedValue(document.getElementById('leaving'), 'animation')).toContain(
+        'modalFadeOut'
+      );
+    });
+  });
+
+  describe('toasts', () => {
+    // Anchored at left: 50% the stack could only grow into the right half of the window, so at the
+    // default size every toast wrapped at half its width.
+    it('spans the window and centres its toasts, instead of shrinking to half of it', () => {
+      render('', '<div class="toast-container"><div class="toast info"></div></div>');
+      const stack = document.querySelector('.toast-container');
+
+      expect(resolvedValue(stack, 'inset-inline')).toBe('0.75rem');
+      expect(resolvedValue(stack, 'transform')).toBeNull();
+      expect(resolvedValue(stack, 'align-items')).toBe('center');
+      expect(resolvedValue(document.querySelector('.toast'), 'max-width')).toBe('min(420px, 100%)');
+    });
+
+    it('puts the icon against the first line of a toast that wraps', () => {
+      render('', '<div class="toast-container"><div class="toast error"></div></div>');
+
+      expect(resolvedValue(document.querySelector('.toast'), 'align-items')).toBe('flex-start');
+    });
+
+    it.each(['rose', 'amber', 'emerald'])(
+      'draws an information toast in its own blue, whatever the %s accent',
+      (accent) => {
+        render(
+          `accent-${accent}`,
+          '<div class="toast info"><span class="toast-icon"></span></div>'
+        );
+        document.body.style.setProperty('--accent-rgb', '244, 63, 94');
+
+        const toast = document.querySelector('.toast');
+        expect(resolvedValue(toast, 'border-color')).toBe('rgba(100, 181, 246, 0.5)');
+        expect(resolvedValue(toast.querySelector('.toast-icon'), 'color')).toBe('#64b5f6');
+      }
+    );
+
+    it('keeps a notice that asks nothing out of the way of a drag', () => {
+      render('', '<div class="toast toast-passive"></div>');
+
+      expect(resolvedValue(document.querySelector('.toast'), 'pointer-events')).toBe('none');
+    });
+  });
+
+  describe('dialog stacking', () => {
+    // Dialogs are stacked by the order they were opened, not by where their elements happen to sit
+    // in the document: openDialog() gives each one a --dialog-depth, and the tier is lifted by it, so
+    // the confirmation over the graph editor, or either over Settings, is always the one on top.
+    it.each(['modal', 'camera-expanded-preview'])(
+      'lifts a .%s by its dialog depth',
+      (className) => {
+        render(
+          '',
+          `<div id="under" class="${className}"></div>
+        <div id="over" class="${className}" style="--dialog-depth: 2"></div>`
+        );
+
+        expect(resolvedValue(document.getElementById('under'), 'z-index')).toBe('calc(1300 + 0)');
+        expect(resolvedValue(document.getElementById('over'), 'z-index')).toBe('calc(1300 + 2)');
+      }
+    );
   });
 
   describe('custom colour hex field', () => {
@@ -1000,9 +1222,10 @@ describe('stylesheet cascade regressions', () => {
       const toast = document.querySelector('.toast');
       expect(resolvedValue(toast, 'min-width', options)).toBe('0');
       expect(resolvedValue(toast, 'max-width', options)).toBe('100%');
-      expect(resolvedValue(document.querySelector('.toast-container'), 'width', options)).toBe(
-        'calc(100vw - 16px)'
-      );
+      // The stack spans the window, so the toast can use all of it.
+      const stack = document.querySelector('.toast-container');
+      expect(resolvedValue(stack, 'inset-inline', options)).toBe('0.5rem');
+      expect(resolvedValue(stack, 'width', options)).toBeNull();
     });
 
     it('keeps the glass rim the same in the light theme', () => {

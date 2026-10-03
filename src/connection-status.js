@@ -13,7 +13,8 @@ import { t } from './i18n.js';
  */
 
 function syncProgressIndicator(status) {
-  const shouldShow = status.dataset.busy === 'true' && !status.classList.contains('hidden');
+  const shouldShow =
+    status.dataset.busy === 'true' && !status.classList.contains('connection-status-empty');
   const existing = status.querySelector('.connection-progress');
   if (!shouldShow) {
     existing?.remove();
@@ -44,9 +45,16 @@ function renderConnectionStatus(status, message = '', type = '') {
     text.className = 'connection-status-text';
     status.appendChild(text);
   }
-  text.textContent = message;
+  // An error interrupts; progress and results wait their turn. The role is set before the text, so the
+  // region already has it when the message arrives.
+  status.setAttribute('role', type === 'error' ? 'alert' : 'status');
   status.dataset.status = type || '';
-  status.classList.toggle('hidden', !message);
+  // Empty is visually hidden but not display:none. A live region that is taken out of the page and put
+  // back in the same breath as its text gets no announcement from some screen readers, so it stays
+  // rendered, and the words are written into a region that is already there.
+  status.classList.remove('hidden');
+  status.classList.toggle('connection-status-empty', !message);
+  text.textContent = message;
   syncProgressIndicator(status);
 }
 

@@ -48,36 +48,12 @@ jest.mock('../../src/camera.js', () => ({
 }));
 
 jest.mock('../../src/ui-utils.js', () => {
-  const releaseFocusTrap = jest.fn();
   return {
     showToast: jest.fn(),
     showConfirm: jest.fn().mockResolvedValue(false),
     showLoading: jest.fn(),
     setStatus: jest.fn(),
-    trapFocus: jest.fn(),
-    releaseFocusTrap,
-    // Mirrors the real shared modal helper, which settles synchronously under NODE_ENV=test.
-    closeModal: jest.fn((modal, { remove = false, releaseFocus = false, onClosed } = {}) => {
-      if (modal) {
-        modal.classList.remove('modal-closing');
-        if (remove) {
-          modal.remove();
-        } else {
-          modal.classList.add('hidden');
-          if (modal.style.display) modal.style.display = 'none';
-        }
-        if (releaseFocus) releaseFocusTrap(modal);
-        onClosed?.();
-      }
-      return Promise.resolve();
-    }),
-    openModal: jest.fn((modal, { display = 'flex' } = {}) => {
-      if (!modal) return;
-      modal.classList.remove('modal-closing');
-      modal.classList.remove('hidden');
-      if (display) modal.style.display = display;
-      else modal.style.removeProperty('display');
-    }),
+    ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
     applyTheme: jest.fn(),
     applyUiPreferences: jest.fn(),
     isFrostedGlassAvailable: jest.fn(() => true),
@@ -779,6 +755,68 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(
         [...modal.querySelectorAll('.modal-footer button')].map((button) => button.id)
       ).toEqual(['add-page-cancel-btn', 'add-page-save-btn']);
+    });
+
+    describe('keyboard', () => {
+      const press = (target, key) => {
+        const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+        target.dispatchEvent(event);
+        return event;
+      };
+      const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+      it('starts on the page name, where typing begins', async () => {
+        ui.showAddPageModal();
+        await settle();
+
+        expect(document.activeElement).toBe(document.getElementById('add-page-name'));
+        expect(document.getElementById('add-page-modal').getAttribute('role')).toBe('dialog');
+      });
+
+      it('closes on Escape and on the backdrop, and the Escape goes no further', async () => {
+        ui.showAddPageModal();
+        await settle();
+        const pageEscape = jest.fn();
+        document.addEventListener('keydown', pageEscape);
+
+        expect(press(document.activeElement, 'Escape').defaultPrevented).toBe(true);
+        await settle();
+        expect(document.getElementById('add-page-modal')).toBeNull();
+        expect(pageEscape).not.toHaveBeenCalled();
+        document.removeEventListener('keydown', pageEscape);
+
+        ui.showAddPageModal();
+        document.getElementById('add-page-modal').click();
+        await settle();
+        expect(document.getElementById('add-page-modal')).toBeNull();
+      });
+
+      it('adds the page on Enter in the name field, and says what is missing when it is empty', async () => {
+        ui.showAddPageModal();
+        await settle();
+        const input = document.getElementById('add-page-name');
+
+        input.value = '';
+        press(input, 'Enter');
+        expect(document.getElementById('add-page-name-error').hidden).toBe(false);
+        expect(document.activeElement).toBe(input);
+        expect(document.getElementById('add-page-modal')).not.toBeNull();
+      });
+
+      it('keeps Tab inside, and leaves Enter on a button to that button', async () => {
+        ui.showAddPageModal();
+        await settle();
+        const modal = document.getElementById('add-page-modal');
+        const cancel = document.getElementById('add-page-cancel-btn');
+        const save = document.getElementById('add-page-save-btn');
+        const first = modal.querySelector('.close-btn');
+
+        expect(press(cancel, 'Enter').defaultPrevented).toBe(false);
+        save.focus();
+        const forward = press(save, 'Tab');
+        expect(forward.defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(first);
+      });
     });
 
     it('names the group of quick picks', () => {
@@ -1937,8 +1975,11 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       },
     ])('gives the $label dialog a focus lifecycle', ({ entity, modalSelector, closeSelector }) => {
       jest.useFakeTimers();
+      const opener = document.createElement('button');
+      document.body.appendChild(opener);
       try {
         state.setStates({ [entity.entity_id]: entity });
+        opener.focus();
         ui.openEntityDetailModal(entity);
         jest.advanceTimersByTime(0);
 
@@ -1948,14 +1989,17 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         expect(modal?.getAttribute('aria-modal')).toBe('true');
         expect(labelledBy).toBeTruthy();
         expect(modal?.querySelector('h2')?.id).toBe(labelledBy);
-        expect(uiUtils.trapFocus).toHaveBeenCalledWith(modal);
+        // These controls act on a device with one keypress, so focus starts on the heading: not
+        // on Close, and not on a control a stray key could move.
+        expect(document.activeElement).toBe(modal.querySelector('h2'));
 
         modal.querySelector(closeSelector).click();
         jest.advanceTimersByTime(250);
 
-        expect(uiUtils.releaseFocusTrap).toHaveBeenCalledWith(modal);
         expect(modal.isConnected).toBe(false);
+        expect(document.activeElement).toBe(opener);
       } finally {
+        opener.remove();
         jest.clearAllTimers();
         jest.useRealTimers();
       }
@@ -2063,6 +2107,82 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   // GROUP 2: Config Management (2 tests)
   // Note: toggleQuickAccess, saveQuickAccessOrder, removeFromQuickAccess not exported
   // ==============================================================================
+
+  describe('weather picker keyboard', () => {
+    const key = (target, name, init = {}) => {
+      const event = new KeyboardEvent('keydown', {
+        key: name,
+        bubbles: true,
+        cancelable: true,
+        ...init,
+      });
+      target.dispatchEvent(event);
+      return event;
+    };
+
+    beforeEach(() => {
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        '<span id="current-weather-name"></span><div id="weather-entities-list"></div>'
+      );
+      state.setStates(
+        Object.fromEntries(
+          ['alpha', 'bravo', 'charlie'].map((id) => [
+            `weather.${id}`,
+            { entity_id: `weather.${id}`, state: 'sunny', attributes: { friendly_name: id } },
+          ])
+        )
+      );
+      state.CONFIG.selectedWeatherEntity = 'weather.bravo';
+      ui.populateWeatherEntitiesList();
+    });
+
+    const options = () => [...document.querySelectorAll('#weather-entities-list [role="option"]')];
+
+    it('is one Tab stop, on the selected option', () => {
+      expect(options().map((option) => option.tabIndex)).toEqual([-1, 0, -1]);
+    });
+
+    it('falls back to the first option when none is selected', () => {
+      state.CONFIG.selectedWeatherEntity = null;
+      ui.populateWeatherEntitiesList();
+      expect(options().map((option) => option.tabIndex)).toEqual([0, -1, -1]);
+    });
+
+    it('moves between options with the arrows, Home and End, and carries the Tab stop along', () => {
+      options()[1].focus();
+      expect(key(options()[1], 'ArrowDown').defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(options()[2]);
+      expect(options().map((option) => option.tabIndex)).toEqual([-1, -1, 0]);
+
+      key(options()[2], 'ArrowDown');
+      expect(document.activeElement).toBe(options()[0]);
+      key(options()[0], 'End');
+      expect(document.activeElement).toBe(options()[2]);
+      key(options()[2], 'Home');
+      expect(document.activeElement).toBe(options()[0]);
+      key(options()[0], 'ArrowUp');
+      expect(document.activeElement).toBe(options()[2]);
+    });
+
+    it('leaves modified arrows, Tab and letters to the browser', () => {
+      options()[1].focus();
+      expect(key(options()[1], 'ArrowDown', { altKey: true }).defaultPrevented).toBe(false);
+      expect(key(options()[1], 'Tab').defaultPrevented).toBe(false);
+      expect(key(options()[1], 'a').defaultPrevented).toBe(false);
+      expect(document.activeElement).toBe(options()[1]);
+    });
+
+    it('keeps focus on the same option when picking it rebuilds the list', async () => {
+      options()[2].focus();
+      key(options()[2], 'Enter');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(options()).toHaveLength(3);
+      expect(document.activeElement).toBe(options()[2]);
+      expect(options()[2].tabIndex).toBe(0);
+    });
+  });
 
   describe('selectWeatherEntity', () => {
     it('sends a narrow patch and applies the authoritative config response', async () => {
@@ -3617,6 +3737,129 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         .click();
       return document.querySelector('.rename-modal');
     }
+
+    describe('keyboard', () => {
+      const press = (target, key, init = {}) => {
+        const event = new KeyboardEvent('keydown', {
+          key,
+          bubbles: true,
+          cancelable: true,
+          ...init,
+        });
+        target.dispatchEvent(event);
+        return event;
+      };
+      const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+      const editMode = () => document.getElementById('quick-controls').classList;
+
+      it('is a named dialog that opens with the name selected, not on Close', async () => {
+        const modal = seedOfficeTemperatureTile();
+        await settle();
+        const input = modal.querySelector('#rename-input');
+
+        expect(modal.getAttribute('role')).toBe('dialog');
+        expect(modal.getAttribute('aria-modal')).toBe('true');
+        expect(document.getElementById(modal.getAttribute('aria-labelledby')).textContent).toBe(
+          'Tile Settings'
+        );
+        // Typing replaces the name instead of landing in front of it.
+        expect(document.activeElement).toBe(input);
+        expect([input.selectionStart, input.selectionEnd]).toEqual([0, input.value.length]);
+      });
+
+      it('closes on Escape without ending Reorganize mode behind it', async () => {
+        const modal = seedOfficeTemperatureTile();
+        await settle();
+        expect(editMode()).toContain('reorganize-mode');
+
+        const event = press(document.activeElement, 'Escape');
+        await settle();
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(document.querySelector('.rename-modal')).toBeNull();
+        expect(modal.isConnected).toBe(false);
+        expect(editMode()).toContain('reorganize-mode');
+      });
+
+      it('ends Reorganize mode on the next Escape, once nothing is open over it', async () => {
+        seedOfficeTemperatureTile();
+        await settle();
+        press(document.activeElement, 'Escape');
+        await settle();
+
+        press(document.body, 'Escape');
+
+        expect(editMode()).not.toContain('reorganize-mode');
+      });
+
+      it('saves on Enter in the name field', async () => {
+        const modal = seedOfficeTemperatureTile();
+        await settle();
+        const input = modal.querySelector('#rename-input');
+        input.value = 'Desk temperature';
+
+        const event = press(input, 'Enter');
+        await settle();
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(state.CONFIG.customEntityNames['sensor.office_temperature']).toBe(
+          'Desk temperature'
+        );
+        expect(document.querySelector('.rename-modal')).toBeNull();
+      });
+
+      it('leaves Enter on a button to that button', async () => {
+        const modal = seedOfficeTemperatureTile();
+        await settle();
+        const cancel = modal.querySelector('#cancel-rename-btn');
+
+        expect(press(cancel, 'Enter').defaultPrevented).toBe(false);
+        expect(document.querySelector('.rename-modal')).toBe(modal);
+      });
+
+      it('keeps Tab inside the dialog and wraps at its ends', async () => {
+        const modal = seedOfficeTemperatureTile();
+        await settle();
+        const first = modal.querySelector('.close-btn');
+        const last = modal.querySelector('#save-rename-btn');
+
+        last.focus();
+        expect(press(last, 'Tab').defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(first);
+        expect(press(first, 'Tab', { shiftKey: true }).defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(last);
+      });
+
+      it('closes on a click on the backdrop, and not on a click inside the dialog', async () => {
+        const modal = seedOfficeTemperatureTile();
+        await settle();
+
+        modal.querySelector('.modal-body').click();
+        expect(document.querySelector('.rename-modal')).toBe(modal);
+        modal.click();
+        await settle();
+
+        expect(document.querySelector('.rename-modal')).toBeNull();
+      });
+
+      it('gives keyboard focus back to the control it had when a failed save puts the form back', async () => {
+        const modal = seedOfficeTemperatureTile();
+        await settle();
+        const save = modal.querySelector('#save-rename-btn');
+        modal.querySelector('#rename-input').value = 'Desk temperature';
+        mockElectronAPI.updateConfig.mockRejectedValueOnce(new Error('disk full'));
+        save.focus();
+
+        save.click();
+        // Disabling the focused button drops the browser's focus to <body>.
+        save.blur();
+        await settle();
+        await settle();
+
+        expect(save.disabled).toBe(false);
+        expect(document.activeElement).toBe(save);
+      });
+    });
 
     it('lists the Tile Settings buttons in the order they are read and tabbed through', () => {
       const modal = seedOfficeTemperatureTile();
@@ -7689,9 +7932,10 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.querySelector('.comparison-graph-modal')).toBeNull();
 
       // A connection change closes open detail dialogs; the deleted editor must not be among them.
-      uiUtils.closeModal.mockClear();
+      const closeDialog = jest.spyOn(uiUtils, 'closeDialog');
       ui.ensureEntityCacheScope({ force: true });
-      expect(uiUtils.closeModal).not.toHaveBeenCalledWith(modal, expect.anything());
+      expect(closeDialog).not.toHaveBeenCalledWith(modal, expect.anything());
+      closeDialog.mockRestore();
     });
 
     it('limits a comparison graph name like a page name', async () => {
@@ -7796,15 +8040,20 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       nameInput.value = 'Rooms';
       nameInput.dispatchEvent(new Event('change', { bubbles: true }));
 
-      expect(nameInput.disabled).toBe(true);
-      expect(widthSelect.disabled).toBe(true);
-      expect(modal.querySelector('.comparison-graph-modal-footer button').disabled).toBe(true);
-      expect(modal.querySelector('.close-btn').disabled).toBe(true);
+      // Nothing is disabled while the save runs: disabling the focused control drops the keyboard
+      // to <body>, and Done or Close would swallow the click that follows the field's change.
+      expect(nameInput.disabled).toBe(false);
+      expect(widthSelect.disabled).toBe(false);
+      expect(modal.querySelector('.comparison-graph-modal-footer button').disabled).toBe(false);
+      expect(modal.querySelector('.close-btn').disabled).toBe(false);
+
+      // Closing while it saves waits for the save instead of dropping the click or the Escape.
       modal.querySelector('.close-btn').click();
       modal.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       modal.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       expect(document.querySelector('.comparison-graph-modal')).toBe(modal);
 
+      // A second change while one is saving is ignored, not queued behind it.
       widthSelect.value = '2';
       widthSelect.dispatchEvent(new Event('change', { bubbles: true }));
       expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(1);
@@ -7815,9 +8064,101 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(nameInput.disabled).toBe(false);
-      expect(widthSelect.disabled).toBe(false);
       expect(state.CONFIG.comparisonGraphs[0].name).toBe('Rooms');
+      expect(document.querySelector('.comparison-graph-modal')).toBeNull();
+    });
+
+    it('closes the graph editor on the first click of Done after renaming, even while the rename saves', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      state.setConfig({ ...state.CONFIG, comparisonGraphs: [] });
+      ui.renderActiveTab();
+      await ui.addComparisonGraphTile();
+      const modal = document.querySelector('.comparison-graph-modal');
+      const beforeEdit = JSON.parse(JSON.stringify(state.CONFIG));
+      let resolveEdit;
+      let editPatch;
+      mockElectronAPI.updateConfig.mockImplementationOnce(
+        (patch) =>
+          new Promise((resolve) => {
+            editPatch = patch;
+            resolveEdit = resolve;
+          })
+      );
+
+      const nameInput = modal.querySelector('input.form-control');
+      nameInput.focus();
+      nameInput.value = 'Garage';
+      // Pressing Done blurs the field, which saves, and then clicks.
+      nameInput.dispatchEvent(new Event('change', { bubbles: true }));
+      modal.querySelector('.comparison-graph-modal-footer .btn-primary').click();
+      expect(document.querySelector('.comparison-graph-modal')).toBe(modal);
+
+      resolveEdit({ ...beforeEdit, ...editPatch });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(document.querySelector('.comparison-graph-modal')).toBeNull();
+      expect(state.CONFIG.comparisonGraphs[0].name).toBe('Garage');
+    });
+
+    it('keeps the keyboard on a sensor row while it is added and removed, and the list where it was', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      state.setConfig({ ...state.CONFIG, comparisonGraphs: [] });
+      state.setStates({
+        'sensor.hall_temp': {
+          entity_id: 'sensor.hall_temp',
+          state: '19',
+          attributes: { friendly_name: 'Hall temp', unit_of_measurement: '°C' },
+        },
+        'sensor.attic_temp': {
+          entity_id: 'sensor.attic_temp',
+          state: '21',
+          attributes: { friendly_name: 'Attic temp', unit_of_measurement: '°C' },
+        },
+      });
+      ui.renderActiveTab();
+      await ui.addComparisonGraphTile();
+      const modal = document.querySelector('.comparison-graph-modal');
+      const rowButton = (entityId) =>
+        modal.querySelector(`[data-focus-key="graph-sensor:${entityId}"]`);
+      const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+      // The editor takes its own focus (the name field) as it opens; then the user tabs to a row.
+      await settle();
+      expect(document.activeElement).toBe(modal.querySelector('input.form-control'));
+
+      const addAttic = rowButton('sensor.attic_temp');
+      addAttic.focus();
+      addAttic.click();
+      await settle();
+      // The row moved to the top as a selected sensor; focus moved with it, not to <body>.
+      expect(rowButton('sensor.attic_temp').textContent).toBe('Remove');
+      expect(document.activeElement).toBe(rowButton('sensor.attic_temp'));
+
+      rowButton('sensor.attic_temp').click();
+      await settle();
+      expect(rowButton('sensor.attic_temp').textContent).toBe('Add');
+      expect(document.activeElement).toBe(rowButton('sensor.attic_temp'));
+    });
+
+    it('closes the graph editor on Escape without ending Reorganize mode behind it', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      state.setConfig({ ...state.CONFIG, comparisonGraphs: [] });
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+      await ui.addComparisonGraphTile();
+      const modal = document.querySelector('.comparison-graph-modal');
+      expect(modal).not.toBeNull();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const event = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      });
+      document.activeElement.dispatchEvent(event);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.querySelector('.comparison-graph-modal')).toBeNull();
+      expect(document.getElementById('quick-controls').classList).toContain('reorganize-mode');
     });
 
     it('closes the add-page modal when leaving reorganize mode', () => {

@@ -16,14 +16,16 @@ import {
   suspendSeasonalColors,
   applyWindowEffects,
   isFrostedGlassAvailable,
-  trapFocus,
-  closeModal,
-  openModal,
+  openDialog,
+  closeDialog,
+  disableControlsKeepingFocus,
+  findFocusKey,
   showToast,
   showConfirm,
   copyTextToClipboard,
 } from './ui-utils.js';
 import { cleanupHotkeyEventListeners } from './hotkeys.js';
+import { getNextTabIndex, getTextDirection, syncRovingTabIndex } from './tab-navigation.js';
 import { syncSlidingIndicator } from './motion.js';
 import {
   describeHomeAssistantOAuthFailure,
@@ -1026,12 +1028,7 @@ function getCustomColorEditorElements() {
     nameInput: document.getElementById('custom-color-name-input'),
     renameBtn: document.getElementById('rename-custom-color-btn'),
     removeBtn: document.getElementById('remove-custom-color-btn'),
-    lockHint: document.getElementById('custom-editor-save-lock-hint'),
   };
-}
-
-function getMainSettingsSaveButton() {
-  return document.getElementById('save-settings');
 }
 
 function isElementInsideCustomEditor(element) {
@@ -1041,24 +1038,12 @@ function isElementInsideCustomEditor(element) {
   return !!element.closest?.(CUSTOM_EDITOR_SCOPE_SELECTOR);
 }
 
-function setMainSettingsSaveLocked(isLocked) {
-  if (isCustomEditorActive === isLocked) return;
-  isCustomEditorActive = isLocked;
-
-  const saveBtn = getMainSettingsSaveButton();
-  if (saveBtn) {
-    saveBtn.disabled = isLocked;
-    if (isLocked) {
-      saveBtn.setAttribute('aria-disabled', 'true');
-    } else {
-      saveBtn.removeAttribute('aria-disabled');
-    }
-  }
-
-  const { lockHint } = getCustomColorEditorElements();
-  if (lockHint) {
-    lockHint.classList.toggle('hidden', !isLocked);
-  }
+// Whether a custom colour field is being used. Re-labelling Settings while it is must not rebuild the
+// swatches under a draft. Save stays available throughout: it asks what to do with an unsaved colour
+// (handlePendingCustomEditorChangesBeforeSave), and a Save that went disabled the moment a field took
+// focus swallowed a quick first click, since the field's blur re-enabled it only after the press.
+function setCustomEditorActive(isActive) {
+  isCustomEditorActive = isActive;
 }
 
 function setCustomColorHexInvalid(invalid) {
@@ -1300,14 +1285,14 @@ function initCustomColorEditor() {
   const scheduleUnlockIfOutsideEditor = () => {
     setTimeout(() => {
       if (!isElementInsideCustomEditor(document.activeElement)) {
-        setMainSettingsSaveLocked(false);
+        setCustomEditorActive(false);
       }
     }, 0);
   };
 
   customEditorControls.forEach((control) => {
     if (control.dataset.saveLockBound === 'true') return;
-    control.addEventListener('focus', () => setMainSettingsSaveLocked(true));
+    control.addEventListener('focus', () => setCustomEditorActive(true));
     control.addEventListener('blur', scheduleUnlockIfOutsideEditor);
     control.dataset.saveLockBound = 'true';
   });
@@ -1315,7 +1300,7 @@ function initCustomColorEditor() {
   if (picker) {
     picker.oninput = () => {
       if (isSyncingCustomColorEditor) return;
-      setMainSettingsSaveLocked(true);
+      setCustomEditorActive(true);
       const normalized = normalizeHexColor(picker.value);
       if (!normalized) return;
       setCustomColorEditorValues(normalized);
@@ -1326,7 +1311,7 @@ function initCustomColorEditor() {
   // `event` is absent when blur re-applies the clamped value, so every field is rewritten then.
   const handleRgbInput = (event) => {
     if (isSyncingCustomColorEditor) return;
-    setMainSettingsSaveLocked(true);
+    setCustomEditorActive(true);
     const color = getCustomColorHexFromChannels();
     if (!color) return;
     setCustomColorEditorValues(color, { skipField: event?.target });
@@ -1380,43 +1365,43 @@ function initCustomColorEditor() {
       // An Enter that commits an IME composition belongs to the IME, not to Save.
       if (event.key !== 'Enter' || event.isComposing) return;
       event.preventDefault();
-      if (saveCustomColorFromEditor()) setMainSettingsSaveLocked(false);
+      if (saveCustomColorFromEditor()) setCustomEditorActive(false);
     };
   });
 
   if (saveBtn) {
     saveBtn.onclick = () => {
-      if (saveCustomColorFromEditor()) setMainSettingsSaveLocked(false);
+      if (saveCustomColorFromEditor()) setCustomEditorActive(false);
     };
   }
 
   if (renameBtn) {
     renameBtn.onclick = () => {
       renameSelectedCustomColor();
-      setMainSettingsSaveLocked(false);
+      setCustomEditorActive(false);
     };
   }
 
   if (nameInput) {
     nameInput.oninput = () => {
-      setMainSettingsSaveLocked(true);
+      setCustomEditorActive(true);
     };
     nameInput.onkeydown = (event) => {
       if (event.key !== 'Enter') return;
       event.preventDefault();
       renameSelectedCustomColor();
-      setMainSettingsSaveLocked(false);
+      setCustomEditorActive(false);
     };
   }
 
   if (removeBtn) {
     removeBtn.onclick = async () => {
       await removeSelectedCustomColor();
-      setMainSettingsSaveLocked(false);
+      setCustomEditorActive(false);
     };
   }
 
-  setMainSettingsSaveLocked(false);
+  setCustomEditorActive(false);
   syncCustomColorEditorFromSelectedTheme();
 }
 
@@ -1437,17 +1422,23 @@ async function handlePendingCustomEditorChangesBeforeSave() {
   const hasNameDraft = hasPendingCustomNameEdit();
   if (!hasPendingColorDraft && !hasNameDraft) return true;
 
-  const shouldSavePendingChanges = await showConfirm(
+  // Three ways out. Escape, a click outside and the Cancel button all mean "go back", the way they
+  // do in every dialog: the draft survives and Settings stays open, instead of the draft being thrown
+  // away and the whole form saved and closed behind the user's back.
+  const choice = await showConfirm(
     t('Unsaved Custom Color Changes'),
     t('You have unsaved custom color edits. Save them before applying settings?'),
     {
       confirmText: t('Save and Continue'),
-      cancelText: t('Continue Without Saving'),
+      alternateText: t('Discard color edits'),
+      cancelText: t('Keep editing'),
       confirmClass: 'btn-primary',
+      confirmFirst: true,
     }
   );
 
-  if (!shouldSavePendingChanges) return true;
+  if (choice === false) return false;
+  if (choice === 'alternate') return true;
 
   if (hasPendingColorDraft) {
     const saved = saveCustomColorFromEditor();
@@ -1592,6 +1583,11 @@ function updateThemeSelectionUI() {
     option.classList.toggle('selected', isSelected);
     option.setAttribute('aria-checked', isSelected ? 'true' : 'false');
   });
+  // One Tab stop for the group: the chosen swatch, or the first when the choice is not listed.
+  syncRovingTabIndex(
+    options,
+    [...options].find((option) => option.dataset.theme === selectedTheme)
+  );
 }
 
 function updateColorTargetUI() {
@@ -1830,6 +1826,23 @@ function renderColorThemeOptions() {
         selectAccentTheme(theme.id, { preview: true });
       }
     });
+    // A radio group answers the arrow keys, Home and End by choosing and focusing the neighbour; the
+    // pair of arrows for each direction means the grid works whichever way the eye reads it.
+    option.addEventListener('keydown', (event) => {
+      if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+      const swatches = [...container.querySelectorAll('.color-theme-option')];
+      const next =
+        swatches[
+          getNextTabIndex(swatches.indexOf(option), swatches.length, event.key, {
+            direction: getTextDirection(container),
+            orientation: 'both',
+          })
+        ];
+      if (!next) return;
+      event.preventDefault();
+      next.focus({ preventScroll: true });
+      next.click();
+    });
     option.addEventListener('mouseenter', () => {
       showThemeTooltip(option, tooltipName, tooltipDescription);
     });
@@ -1845,6 +1858,7 @@ function renderColorThemeOptions() {
     container.appendChild(option);
   });
 
+  updateThemeSelectionUI();
   updateThemeOptionsLabel();
   updateThemeSummary();
   syncCustomColorEditorFromSelectedTheme();
@@ -2021,6 +2035,9 @@ function applyPersonalizationSectionState(section, toggle, isCollapsed, options 
   }
 
   body.hidden = false;
+  // A collapsed body is only 0px high, which does not stop Tab entering it or a screen reader reading
+  // it. Inert does, at once, in both directions.
+  body.inert = isCollapsed;
 
   if (!isCollapsed) {
     hydratePersonalizationSectionIfNeeded(section);
@@ -2402,6 +2419,10 @@ function getCustomEntityIconChoiceLabel(choice) {
   return codepointLabel ? codepointLabel.toUpperCase() : t('Emoji');
 }
 
+// A grid of every emoji (nearly four thousand) is slow to build and a mile to scroll, so the picker
+// shows the best matches and asks for a query to narrow the rest.
+const CUSTOM_ENTITY_ICON_PICKER_LIMIT = 120;
+
 function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '') {
   if (!pickerEl) return;
   const choices = Array.isArray(customEntityIconChoices) ? customEntityIconChoices : [];
@@ -2432,16 +2453,25 @@ function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '
   const filteredChoices = getFilteredCustomEntityIconChoices(filterValue);
   pickerEl.innerHTML = '';
 
+  const shownChoices = filteredChoices.slice(0, CUSTOM_ENTITY_ICON_PICKER_LIMIT);
   const summary = document.createElement('div');
   summary.className = 'custom-entity-icon-picker-meta';
-  if (filterValue) {
+  // The count changes as the query does; saying so lets a screen reader follow the narrowing.
+  summary.setAttribute('aria-live', 'polite');
+  if (filteredChoices.length > shownChoices.length) {
+    summary.textContent = t(
+      'Showing the first {{shown}} of {{count}} icons. Type to narrow them.',
+      {
+        shown: shownChoices.length,
+        count: filteredChoices.length,
+      }
+    );
+  } else {
     summary.textContent = t('Showing {{shown}} of {{total}} icons for "{{query}}".', {
       shown: filteredChoices.length,
       total: choices.length,
       query: filterValue,
     });
-  } else {
-    summary.textContent = t('Showing all {{count}} icons.', { count: choices.length });
   }
   pickerEl.appendChild(summary);
 
@@ -2455,13 +2485,17 @@ function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '
 
   const grid = document.createElement('div');
   grid.className = 'custom-entity-icon-picker-grid';
-  grid.setAttribute('role', 'listbox');
+  // The choices are buttons, not options: a listbox needs role="option" children.
+  grid.setAttribute('role', 'group');
   grid.setAttribute('aria-label', t('Choose icon for {{entityId}}', { entityId }));
+  grid.addEventListener('keydown', handleCustomEntityIconGridKeydown);
 
-  filteredChoices.forEach((choice) => {
+  shownChoices.forEach((choice, index) => {
     const choiceBtn = document.createElement('button');
     choiceBtn.type = 'button';
     choiceBtn.className = 'custom-entity-icon-choice';
+    // One Tab stop for the grid, whatever its size; the arrow keys move within it.
+    choiceBtn.tabIndex = index === 0 ? 0 : -1;
     choiceBtn.textContent = choice.icon;
     const choiceLabel = getCustomEntityIconChoiceLabel(choice);
     choiceBtn.title = choiceLabel;
@@ -2472,6 +2506,34 @@ function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '
   });
 
   pickerEl.appendChild(grid);
+}
+
+// Arrow keys, Home and End move through the icon grid, which is a single Tab stop. Up and Down jump
+// a row, worked out from where the buttons are laid out.
+function handleCustomEntityIconGridKeydown(event) {
+  const choices = [...event.currentTarget.querySelectorAll('.custom-entity-icon-choice')];
+  const current = choices.indexOf(event.target.closest('.custom-entity-icon-choice'));
+  if (current < 0) return;
+  const rtl = getComputedStyle(event.currentTarget).direction === 'rtl';
+  const firstRowTop = choices[0].offsetTop;
+  const secondRowStart = choices.findIndex((button) => button.offsetTop !== firstRowTop);
+  const rowLength = secondRowStart > 0 ? secondRowStart : choices.length;
+  const steps = {
+    ArrowRight: rtl ? -1 : 1,
+    ArrowLeft: rtl ? 1 : -1,
+    ArrowDown: rowLength,
+    ArrowUp: -rowLength,
+  };
+  let next;
+  if (event.key === 'Home') next = 0;
+  else if (event.key === 'End') next = choices.length - 1;
+  else if (event.key in steps)
+    next = Math.min(Math.max(current + steps[event.key], 0), choices.length - 1);
+  else return;
+  event.preventDefault();
+  choices[current].tabIndex = -1;
+  choices[next].tabIndex = 0;
+  choices[next].focus();
 }
 
 function renderCustomEntityIconsList() {
@@ -2679,6 +2741,8 @@ function initCustomEntityIconsUI() {
       activeCustomEntityIconPickerEntityId =
         activeCustomEntityIconPickerEntityId === entityId ? null : entityId;
       renderCustomEntityIconsList();
+      // The list was rebuilt under the Search button; the keyboard stays on it.
+      section.querySelector(`[data-custom-icon-picker-toggle="${entityId}"]`)?.focus();
       return;
     }
 
@@ -2689,6 +2753,8 @@ function initCustomEntityIconsUI() {
       const entityId = choiceBtn.dataset.customIconChoiceEntity;
       const icon = choiceBtn.dataset.customIconChoice;
       applyCustomEntityIconFromInput(entityId, icon || '');
+      // The picker closed with the choice; the row's field is where to carry on.
+      refocusCustomEntityIconInput(section, entityId);
       return;
     }
 
@@ -2697,12 +2763,16 @@ function initCustomEntityIconsUI() {
       const entityId = applyBtn.dataset.customIconApply;
       const input = section.querySelector(`[data-custom-icon-input="${entityId}"]`);
       applyCustomEntityIconFromInput(entityId, input?.value || '');
+      section.querySelector(`[data-custom-icon-apply="${entityId}"]`)?.focus();
       return;
     }
 
     const resetBtn = event.target.closest('[data-custom-icon-reset]');
     if (resetBtn) {
-      resetCustomEntityIcon(resetBtn.dataset.customIconReset);
+      const entityId = resetBtn.dataset.customIconReset;
+      resetCustomEntityIcon(entityId);
+      // Reset is disabled now that there is nothing to reset, so focus moves to the row's field.
+      refocusCustomEntityIconInput(section, entityId);
     }
   });
 
@@ -2724,17 +2794,6 @@ function initCustomEntityIconsUI() {
     const query = getCustomEntityIconPickerQuery(entityId);
     renderCustomEntityIconPickerChoices(pickerEl, entityId, query);
     syncPersonalizationSectionHeight(document.getElementById('custom-entity-icons-section'));
-  });
-
-  section.addEventListener('focusin', (event) => {
-    const input = event.target.closest('[data-custom-icon-input]');
-    if (!input) return;
-    const entityId = input.dataset.customIconInput;
-    if (!entityId || activeCustomEntityIconPickerEntityId === entityId) return;
-    syncCustomEntityIconPickerQueryFromInput(entityId, input.value);
-    activeCustomEntityIconPickerEntityId = entityId;
-    renderCustomEntityIconsList();
-    refocusCustomEntityIconInput(section, entityId);
   });
 
   section.addEventListener('focusout', (event) => {
@@ -2760,6 +2819,17 @@ function initCustomEntityIconsUI() {
   });
 
   section.addEventListener('keydown', (event) => {
+    // Escape closes the open picker and nothing else. Left alone it would reach Settings and discard
+    // every unsaved edit on every page, when all that was meant was to dismiss a grid.
+    if (event.key === 'Escape' && activeCustomEntityIconPickerEntityId) {
+      event.preventDefault();
+      event.stopPropagation();
+      const entityId = activeCustomEntityIconPickerEntityId;
+      activeCustomEntityIconPickerEntityId = null;
+      renderCustomEntityIconsList();
+      refocusCustomEntityIconInput(section, entityId);
+      return;
+    }
     if (event.key !== 'Enter') return;
     const input = event.target.closest('[data-custom-icon-input]');
     if (!input) return;
@@ -3808,15 +3878,37 @@ function bindSupportDevelopmentUi() {
   const openBtn = document.getElementById('open-donate-modal-btn');
   if (!modal || !openBtn) return;
 
-  const closeDonateModal = () => closeModal(modal, { releaseFocus: true });
+  const closeDonateModal = () => closeDialog(modal);
 
+  const continueBtn = modal.querySelector('#donate-continue-btn');
   openBtn.onclick = () => {
-    openModal(modal);
-    trapFocus(modal);
+    openDialog(modal, {
+      describedBy: 'donate-intro',
+      dismiss: closeDonateModal,
+      // Enter in the amount field goes on, as it does in the confirmation dialog.
+      onEnter: (event) => {
+        if (event.target === customInput) continueBtn?.click();
+      },
+    });
   };
 
   const customInput = modal.querySelector('#donate-custom-amount');
   const chips = [...modal.querySelectorAll('.donate-amount-chip')];
+  const amountError = modal.querySelector('#donate-amount-error');
+  // The error stays under the field until the amount changes, and the field says so: a toast gone in
+  // a few seconds is not tied to the field and covered the paragraph below it.
+  const setAmountError = (message) => {
+    if (!customInput || !amountError) return;
+    amountError.textContent = message;
+    amountError.hidden = !message;
+    if (message) {
+      customInput.setAttribute('aria-invalid', 'true');
+      customInput.setAttribute('aria-describedby', amountError.id);
+    } else {
+      customInput.removeAttribute('aria-invalid');
+      customInput.removeAttribute('aria-describedby');
+    }
+  };
   const setChipSelected = (chip, selected) => {
     chip.classList.toggle('selected', selected);
     chip.setAttribute('aria-pressed', String(selected));
@@ -3825,10 +3917,12 @@ function bindSupportDevelopmentUi() {
     chip.onclick = () => {
       chips.forEach((other) => setChipSelected(other, other === chip));
       if (customInput) customInput.value = '';
+      setAmountError('');
     };
   });
   if (customInput) {
     customInput.oninput = () => {
+      setAmountError('');
       if (customInput.value !== '' || customInput.validity.badInput) {
         chips.forEach((chip) => setChipSelected(chip, false));
       }
@@ -3839,23 +3933,11 @@ function bindSupportDevelopmentUi() {
   if (closeBtn) closeBtn.onclick = () => closeDonateModal();
   const cancelBtn = modal.querySelector('#donate-cancel-btn');
   if (cancelBtn) cancelBtn.onclick = () => closeDonateModal();
-  modal.onclick = (event) => {
-    if (event.target === modal) closeDonateModal();
-  };
-  const continueBtn = modal.querySelector('#donate-continue-btn');
-  modal.onkeydown = (event) => {
-    if (event.key === 'Escape') closeDonateModal();
-    // Enter in the amount field goes on, as it does in the confirmation dialog.
-    if (event.key === 'Enter' && event.target === customInput && !event.isComposing) {
-      event.preventDefault();
-      continueBtn?.click();
-    }
-  };
 
   if (continueBtn) {
     continueBtn.onclick = async () => {
       if (!getSelectedDonationAmount(modal).valid) {
-        showToast(t('Please enter a whole dollar amount between $1 and $12,000.'), 'error', 3500);
+        setAmountError(t('Please enter a whole dollar amount between $1 and $12,000.'));
         customInput?.focus();
         customInput?.select();
         return;
@@ -5196,7 +5278,7 @@ async function openSettings(uiHooks) {
     renderColorThemeOptions();
     initColorTargetSelect();
     initThemeModeControl();
-    setMainSettingsSaveLocked(false);
+    setCustomEditorActive(false);
     initCustomColorEditor();
     initColorThemeSectionToggle();
 
@@ -5290,7 +5372,15 @@ async function openSettings(uiHooks) {
     // Initialize popup hotkey UI
     initializePopupHotkey();
 
-    openModal(modal);
+    // Focus starts on the page the user is on, not on the header's Close button, where a stray Enter
+    // or Space would discard every unsaved edit. Only Escape and the buttons close Settings: a
+    // click that misses a control must not throw away a form this large.
+    openDialog(modal, {
+      initialFocus: () =>
+        modal.querySelector('.tab-link.active') || document.getElementById('settings-search'),
+      dismiss: () => closeSettings(),
+      dismissOnBackdrop: false,
+    });
     initializeSettingsSearch(modal);
     requestAnimationFrame(() => {
       refreshPersonalizationSectionHeights();
@@ -5301,7 +5391,6 @@ async function openSettings(uiHooks) {
         refreshPersonalizationSectionHeights();
       });
     });
-    trapFocus(modal);
   } catch (error) {
     log.error('Error opening settings:', error);
   }
@@ -5316,7 +5405,10 @@ function closeSettings() {
   clearTimeout(primaryCardSearchTimer);
   primaryCardPage = 0;
   try {
-    setMainSettingsSaveLocked(false);
+    // A recording left armed would swallow the next key pressed anywhere in the widget, and register
+    // a combination such as Ctrl+K as the global popup hotkey.
+    if (isCapturingPopupHotkey) stopCapturingPopupHotkey();
+    setCustomEditorActive(false);
     // Holiday colours come back with the saved or restored colours below.
     suspendSeasonalColors(false);
     cancelPreviewWindowEffects();
@@ -5356,7 +5448,7 @@ function closeSettings() {
 
     const modal = document.getElementById('settings-modal');
     if (modal) {
-      void closeModal(modal, { releaseFocus: true });
+      void closeDialog(modal);
     }
   } catch (error) {
     log.error('Error closing settings:', error);
@@ -6255,7 +6347,7 @@ async function saveSettings() {
     previewBackground = null;
     pendingBackground = null;
     hasDraftColorPreview = false;
-    setMainSettingsSaveLocked(false);
+    setCustomEditorActive(false);
     closeSettings();
     applyTheme(state.CONFIG.ui?.theme || 'auto');
     applyAccentTheme(state.CONFIG.ui?.accent || getCurrentAccentTheme());
@@ -6301,6 +6393,19 @@ async function saveSettings() {
     }
     showToast(failureMessage, 'error', 4000);
   }
+}
+
+// The list is rebuilt after every change, so each control says what it is for. A dialog opened
+// from one hands focus back to its replacement, and a deleted row lands on the Add button.
+function alertFocusKey(kind, entityId = '') {
+  return entityId ? `alert-${kind}:${entityId}` : `alert-${kind}`;
+}
+
+function findAlertControl(entityId = '') {
+  return (
+    (entityId && findFocusKey(alertFocusKey('edit', entityId))) ||
+    findFocusKey(alertFocusKey('add'))
+  );
 }
 
 function renderAlertsListInline() {
@@ -6353,8 +6458,8 @@ function renderAlertsListInline() {
           </div>
         </div>
         <div class="alert-actions">
-          <button class="btn btn-sm btn-secondary edit-alert" data-entity="${utils.escapeHtmlAttribute(entityId)}">${utils.escapeHtml(t('Edit'))}</button>
-          <button class="btn btn-sm btn-danger remove-alert" data-entity="${utils.escapeHtmlAttribute(entityId)}">${utils.escapeHtml(t('Remove'))}</button>
+          <button class="btn btn-sm btn-secondary edit-alert" data-entity="${utils.escapeHtmlAttribute(entityId)}" data-focus-key="${utils.escapeHtmlAttribute(alertFocusKey('edit', entityId))}">${utils.escapeHtml(t('Edit'))}</button>
+          <button class="btn btn-sm btn-danger remove-alert" data-entity="${utils.escapeHtmlAttribute(entityId)}" data-focus-key="${utils.escapeHtmlAttribute(alertFocusKey('remove', entityId))}">${utils.escapeHtml(t('Remove'))}</button>
         </div>
       `;
 
@@ -6365,6 +6470,7 @@ function renderAlertsListInline() {
     const addButton = document.createElement('button');
     addButton.className = 'btn btn-secondary btn-block add-alert-btn';
     addButton.textContent = `+ ${t('Add New Alert')}`;
+    addButton.dataset.focusKey = alertFocusKey('add');
     addButton.onclick = () => openAlertEntityPicker();
     addButton.style.marginTop = '10px';
     alertsList.appendChild(addButton);
@@ -6387,8 +6493,10 @@ function openAlertEntityPicker() {
     populateAlertEntityPicker();
     const modal = document.getElementById('alert-entity-picker-modal');
     if (modal) {
-      openModal(modal);
-      trapFocus(modal);
+      openDialog(modal, {
+        initialFocus: '#alert-entity-picker-search',
+        focusFallback: () => findAlertControl(),
+      });
     }
   } catch (error) {
     log.error('Error opening alert entity picker:', error);
@@ -6399,7 +6507,7 @@ function closeAlertEntityPicker() {
   try {
     const modal = document.getElementById('alert-entity-picker-modal');
     if (modal) {
-      void closeModal(modal, { releaseFocus: true });
+      void closeDialog(modal);
     }
   } catch (error) {
     log.error('Error closing alert entity picker:', error);
@@ -6583,17 +6691,6 @@ function openAlertConfigModal(entityId) {
       modal.querySelector('.modal-body').append(group);
     }
     relabelAlertAdvancedOptions(modal);
-    // Enter in a single-line field saves the alert, as it does in the confirmation dialog. The
-    // dialog outlives each opening, so the listener goes on once.
-    if (!modal.dataset.enterSaves) {
-      modal.dataset.enterSaves = 'true';
-      modal.addEventListener('keydown', (event) => {
-        if (event.key !== 'Enter' || event.defaultPrevented || event.isComposing) return;
-        if (!event.target.matches?.('input:not([type="checkbox"], [type="radio"])')) return;
-        event.preventDefault();
-        void saveAlert();
-      });
-    }
     modal.querySelector('.alert-type-options').parentElement.hidden = true;
     const condition = modal.querySelector('#alert-condition');
     condition.value = alertConfig?.onNumericThreshold
@@ -6634,8 +6731,15 @@ function openAlertConfigModal(entityId) {
     // can keep reading them.
     syncCondition();
     syncQuietHours();
-    openModal(modal);
-    trapFocus(modal);
+    openDialog(modal, {
+      initialFocus: '#alert-condition',
+      focusFallback: () => findAlertControl(entityId),
+      // Enter in a single-line field saves the alert, as it does in the confirmation dialog.
+      onEnter: (event) => {
+        if (event.target.matches?.('input')) void saveAlert();
+      },
+      dismiss: closeAlertConfigModal,
+    });
   } catch (error) {
     log.error('Error opening alert config modal:', error);
   }
@@ -6646,7 +6750,7 @@ function closeAlertConfigModal() {
     const modal = document.getElementById('alert-config-modal');
     if (modal) {
       currentAlertEntity = null;
-      void closeModal(modal, { releaseFocus: true });
+      void closeDialog(modal);
     }
   } catch (error) {
     log.error('Error closing alert config modal:', error);
@@ -6744,6 +6848,8 @@ async function removeAlert(entityId) {
       {
         confirmText: t('Remove'),
         confirmClass: 'btn-danger',
+        // The Remove button is gone once the row is, so focus goes to the Add button instead.
+        focusFallback: () => findAlertControl(),
       }
     );
 
@@ -6853,10 +6959,10 @@ function relocalizePopupHotkeyText() {
   renderPopupHotkeyModeText();
   const input = document.getElementById('popup-hotkey-input');
   const setBtn = document.getElementById('popup-hotkey-set-btn');
-  if (setBtn) setBtn.textContent = isCapturingPopupHotkey ? t('Cancel') : t('Set hotkey');
+  if (setBtn) setBtn.textContent = isCapturingPopupHotkey ? t('Stop recording') : t('Set hotkey');
   if (input) {
     if (isCapturingPopupHotkey) {
-      input.value = t('Press keys...');
+      input.value = t('Press keys... (Esc to cancel)');
     } else if (popupHotkeyAvailable === false) {
       input.placeholder = t('Not available on this platform');
     } else {
@@ -6964,7 +7070,7 @@ async function initializePopupHotkey() {
         const previousValue = !!state.CONFIG.popupHotkeyToggleMode;
         const requestedValue = !!toggleModeCheckbox.checked;
         let updatePersisted = false;
-        toggleModeCheckbox.disabled = true;
+        const reenable = disableControlsKeepingFocus([toggleModeCheckbox]);
 
         try {
           const updatedConfig = await window.electronAPI.updateConfig({
@@ -7011,7 +7117,7 @@ async function initializePopupHotkey() {
           });
           showToast(failureMessage, 'error', 3000);
         } finally {
-          toggleModeCheckbox.disabled = false;
+          reenable();
           updateMutualExclusivity();
         }
       };
@@ -7024,7 +7130,7 @@ async function initializePopupHotkey() {
         const previousValue = !!state.CONFIG.popupHotkeyHideOnRelease;
         const requestedValue = !!hideOnReleaseCheckbox.checked;
         let updatePersisted = false;
-        hideOnReleaseCheckbox.disabled = true;
+        const reenable = disableControlsKeepingFocus([hideOnReleaseCheckbox]);
 
         try {
           const updatedConfig = await window.electronAPI.updateConfig({
@@ -7071,7 +7177,7 @@ async function initializePopupHotkey() {
           });
           showToast(failureMessage, 'error', 3000);
         } finally {
-          hideOnReleaseCheckbox.disabled = false;
+          reenable();
           updateMutualExclusivity();
         }
       };
@@ -7091,6 +7197,7 @@ async function initializePopupHotkey() {
 
     // Clear button
     clearBtn.onclick = async () => {
+      if (isCapturingPopupHotkey) stopCapturingPopupHotkey();
       try {
         const result = await window.electronAPI.unregisterPopupHotkey();
         if (result.success) {
@@ -7115,6 +7222,7 @@ async function initializePopupHotkey() {
     const presetButtons = document.querySelectorAll('.preset-hotkey-btn');
     presetButtons.forEach((btn) => {
       btn.onclick = async () => {
+        if (isCapturingPopupHotkey) stopCapturingPopupHotkey();
         const hotkey = btn.dataset.hotkey;
         try {
           const result = await window.electronAPI.registerPopupHotkey(hotkey);
@@ -7149,23 +7257,45 @@ async function initializePopupHotkey() {
   }
 }
 
+// The suggestion chips and Clear sit beside the recorder; while it listens they would only be a
+// way to abandon it halfway.
+function setPopupHotkeyControlsRecording(recording) {
+  document.querySelectorAll('.preset-hotkey-btn, #popup-hotkey-clear-btn').forEach((control) => {
+    control.disabled = recording;
+  });
+}
+
 function startCapturingPopupHotkey() {
   isCapturingPopupHotkey = true;
   const input = document.getElementById('popup-hotkey-input');
   const setBtn = document.getElementById('popup-hotkey-set-btn');
 
   if (input) {
-    input.value = t('Press keys...');
+    input.value = t('Press keys... (Esc to cancel)');
     input.focus();
   }
   if (setBtn) {
-    setBtn.textContent = t('Cancel');
+    // The footer's Cancel throws away the whole form; this one only ends the recording.
+    setBtn.textContent = t('Stop recording');
     setBtn.classList.add('btn-danger');
     setBtn.classList.remove('btn-secondary');
   }
+  setPopupHotkeyControlsRecording(true);
 
   // Capture keydown event
   const captureHandler = async (e) => {
+    // Escape ends the recording, as the hint says, instead of being offered as the hotkey (and
+    // turned into an error toast); Tab leaves the field, which ends it too.
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      stopCapturingPopupHotkey();
+      return;
+    }
+    if (e.key === 'Tab') {
+      stopCapturingPopupHotkey({ keepFocus: true });
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
 
@@ -7232,20 +7362,37 @@ function startCapturingPopupHotkey() {
     }
   };
 
-  // Store handler for cleanup
+  // Clicking elsewhere, or switching to another window, leaves nothing to record into. Pressing the
+  // recorder's own button blurs the field first and is left to that button's click, which ends the
+  // recording; abandoning here would let the click start a new one.
+  const abandon = (event) => {
+    if (event?.relatedTarget === setBtn) return;
+    stopCapturingPopupHotkey({ keepFocus: true });
+  };
+
+  // Store handlers for cleanup
   input._captureHandler = captureHandler;
+  input._captureAbandon = abandon;
   document.addEventListener('keydown', captureHandler, true);
+  input?.addEventListener('blur', abandon);
+  window.addEventListener('blur', abandon);
 }
 
-function stopCapturingPopupHotkey() {
+function stopCapturingPopupHotkey({ keepFocus = false } = {}) {
   isCapturingPopupHotkey = false;
   const input = document.getElementById('popup-hotkey-input');
   const setBtn = document.getElementById('popup-hotkey-set-btn');
 
   if (input) {
+    // The blur listeners go first: blurring the field below would otherwise stop the recording again.
+    if (input._captureAbandon) {
+      input.removeEventListener('blur', input._captureAbandon);
+      window.removeEventListener('blur', input._captureAbandon);
+      input._captureAbandon = null;
+    }
     input.value = state.CONFIG.popupHotkey || '';
     input.placeholder = state.CONFIG.popupHotkey || t('Not set');
-    input.blur();
+    if (!keepFocus) input.blur();
 
     if (input._captureHandler) {
       document.removeEventListener('keydown', input._captureHandler, true);
@@ -7258,6 +7405,7 @@ function stopCapturingPopupHotkey() {
     setBtn.classList.remove('btn-danger');
     setBtn.classList.add('btn-secondary');
   }
+  setPopupHotkeyControlsRecording(false);
 }
 
 function handleProfileSyncStatusUpdate(status) {
@@ -7340,13 +7488,13 @@ function renderDesktopBlur(status) {
   button.textContent =
     status.enabled && !needsRetry ? t('Turn off widget blur') : t('Turn on blur for the widget');
   button.onclick = async () => {
-    button.disabled = true;
+    const reenable = disableControlsKeepingFocus([button]);
     try {
       const result = await window.electronAPI.setDesktopBlur(!status.enabled || needsRetry);
       if (!result?.success) showToast(t("Could not change Hyprland's blur."), 'error');
       renderDesktopBlur(result?.status || status);
     } finally {
-      button.disabled = false;
+      reenable();
     }
   };
 }

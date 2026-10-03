@@ -209,14 +209,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       applyUiPreferences: jest.fn(),
       suspendSeasonalColors: jest.fn(),
       applyWindowEffects: jest.fn(),
-      closeModal: (...args) => jest.requireActual('../../src/ui-utils.js').closeModal(...args),
-      openModal: (...args) => jest.requireActual('../../src/ui-utils.js').openModal(...args),
-      trapFocus: jest.fn((...args) =>
-        jest.requireActual('../../src/ui-utils.js').trapFocus(...args)
-      ),
-      releaseFocusTrap: jest.fn((...args) =>
-        jest.requireActual('../../src/ui-utils.js').releaseFocusTrap(...args)
-      ),
+      ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
     };
     jest.doMock('../../src/ui-utils.js', () => mockUiUtils);
     jest.doMock('../../src/utils.js', () => ({
@@ -330,43 +323,39 @@ describe('Renderer first-run Home Assistant authorization', () => {
     }
   );
 
-  it('closes Settings with Escape like Cancel, but lets an open dropdown take Escape first', async () => {
-    await loadRenderer({
-      bodyHtml: settingsNavigationHtml().replace(
-        '<div id="settings-modal" class="modal hidden">',
-        `<div id="settings-modal" class="modal hidden">
-          <div class="custom-dropdown open"><button class="custom-dropdown-trigger">Player</button></div>`
-      ),
-    });
-    await clickButton('Full Settings');
-    const modal = document.getElementById('settings-modal');
-    const trigger = modal.querySelector('.custom-dropdown-trigger');
-    trigger.addEventListener('keydown', () => trigger.parentElement.classList.remove('open'));
-    const escape = (target) =>
-      target.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
-      );
-
-    escape(trigger);
-    expect(mockSettings.closeSettings).not.toHaveBeenCalled();
-    escape(document.getElementById('cancel-settings'));
-    expect(mockSettings.closeSettings).toHaveBeenCalledTimes(1);
-    await flushAsync();
-    expect(modal.classList.contains('hidden')).toBe(true);
-  });
-
-  it.each(['quick-controls-modal', 'weather-config-modal'])(
+  it.each([
+    [
+      'quick-controls-modal',
+      '#manage-quick-controls-btn',
+      '<button id="manage-quick-controls-btn"></button>',
+    ],
+    [
+      'weather-config-modal',
+      '#weather-card',
+      '<div id="weather-card" class="status-card weather-card" data-primary-type="weather" tabindex="0" role="button"></div><div id="time-card" class="status-card"></div>',
+    ],
+  ])(
     'closes %s with Escape without also leaving reorganize mode',
-    async (id) => {
+    async (id, opener, openerHtml) => {
       const page = new DOMParser().parseFromString(
         fs.readFileSync(path.join(__dirname, '../../index.html'), 'utf8'),
         'text/html'
       );
       await loadRenderer({
-        bodyHtml: `<main class="widget-content"></main>${page.getElementById(id).outerHTML}`,
+        bodyHtml: `<main class="widget-content"><div class="status-grid">${openerHtml}</div></main>${page.getElementById(id).outerHTML}`,
       });
       const modal = document.getElementById(id);
-      modal.classList.remove('hidden');
+      const trigger = document.querySelector(opener);
+      trigger.focus();
+      if (id === 'weather-config-modal') {
+        trigger.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+        );
+      } else {
+        trigger.click();
+      }
+      await flushAsync();
+      expect(modal.classList.contains('hidden')).toBe(false);
       const pageEscape = jest.fn();
       document.addEventListener('keydown', pageEscape);
       modal
@@ -380,6 +369,53 @@ describe('Renderer first-run Home Assistant authorization', () => {
       document.removeEventListener('keydown', pageEscape);
     }
   );
+
+  it('opens Manage Quick Access on its search field, and returns to the button that opened it', async () => {
+    const page = new DOMParser().parseFromString(
+      fs.readFileSync(path.join(__dirname, '../../index.html'), 'utf8'),
+      'text/html'
+    );
+    await loadRenderer({
+      bodyHtml: `<main class="widget-content"><button id="manage-quick-controls-btn"></button></main>${page.getElementById('quick-controls-modal').outerHTML}`,
+    });
+    const opener = document.getElementById('manage-quick-controls-btn');
+    const modal = document.getElementById('quick-controls-modal');
+    opener.focus();
+    opener.click();
+    await flushAsync();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // The search is what a visit starts with; Close first meant typing did nothing, and a stray
+    // Enter or Space dismissed the dialog.
+    expect(document.activeElement.id).toBe('quick-controls-search');
+    expect(modal.getAttribute('role')).toBe('dialog');
+
+    document.activeElement.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    );
+    await flushAsync();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(modal.classList.contains('hidden')).toBe(true);
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('keeps Escape and the backdrop from dismissing the first-run wizard, and leaves the header usable', async () => {
+    await loadRenderer({
+      bodyHtml: `<header class="widget-header"><button id="close-btn">x</button></header>${settingsNavigationHtml()}`,
+    });
+    const wizard = document.getElementById('first-run-onboarding');
+    expect(wizard.classList.contains('hidden')).toBe(false);
+
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    document.activeElement.dispatchEvent(escape);
+    wizard.click();
+
+    // It asks for an answer: nothing but its own buttons closes it.
+    expect(wizard.classList.contains('hidden')).toBe(false);
+    // The overlay starts under the header, whose height it was told, so the window's own buttons and
+    // drag area keep working. Layout is not computed here, so the measured height is zero.
+    expect(document.documentElement.style.getPropertyValue('--header-height')).toBe('0px');
+  });
 
   it.each(['Enter', ' ', 'ContextMenu'])(
     'opens the weather picker from the keyboard (%p) and returns focus to the card',
@@ -419,13 +455,21 @@ describe('Renderer first-run Home Assistant authorization', () => {
     await loadRenderer({ bodyHtml: settingsNavigationHtml() });
     const wizard = document.getElementById('first-run-onboarding');
     expect(document.activeElement).toBe(wizard.querySelector('.first-run-title'));
-    expect(mockUiUtils.trapFocus).toHaveBeenCalledWith(wizard, { initialFocus: false });
+    // It is named by the step's heading, not by the whole step, and described by its lead text.
+    const accessibleName = () =>
+      document.getElementById(wizard.getAttribute('aria-labelledby')).textContent;
+    expect(wizard.getAttribute('role')).toBe('dialog');
+    expect(wizard.getAttribute('aria-modal')).toBe('true');
+    expect(accessibleName()).toBe('Welcome to Home Assistant Widget');
+    expect(document.getElementById(wizard.getAttribute('aria-describedby')).tagName).toBe('P');
 
     await clickButton('Next');
     expect(document.activeElement).toBe(document.getElementById('first-run-ha-url'));
+    expect(accessibleName()).toBe('Enter your Home Assistant URL');
     enterInput('#first-run-ha-url', 'http://ha.local:8123');
     await clickButton('Next');
     expect(document.activeElement.textContent).toBe('Authorize in Home Assistant');
+    expect(accessibleName()).toBe('Authorize in Home Assistant');
 
     const buttons = Array.from(wizard.querySelectorAll('button:not(:disabled)'));
     const last = buttons[buttons.length - 1];
@@ -1075,7 +1119,8 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockUiUtils.showToast).toHaveBeenCalledWith(
       expect.stringContaining('Token encryption is not available'),
       'warning',
-      20000
+      10000,
+      { source: 'startup-warning' }
     );
     expect(mockState.CONFIG).not.toHaveProperty('persistenceWarnings');
   });
@@ -1155,7 +1200,8 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockUiUtils.showToast).toHaveBeenCalledWith(
       expect.stringContaining('No unlocked system keyring (Secret Service) was found'),
       'warning',
-      20000
+      10000,
+      { source: 'startup-warning' }
     );
   });
 
@@ -1169,7 +1215,8 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockUiUtils.showToast).toHaveBeenCalledWith(
       expect.stringContaining('Your system keyring is locked or not running'),
       'warning',
-      20000
+      10000,
+      { source: 'startup-warning' }
     );
     mockUiUtils.showToast.mockClear();
 
@@ -1177,6 +1224,24 @@ describe('Renderer first-run Home Assistant authorization', () => {
     await flushAsync();
 
     expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+  });
+
+  it('says a missing keyring once when the config carries both the reset notice and the persistence warning', async () => {
+    await loadRenderer({
+      config: {
+        ...unconfiguredConfig(),
+        tokenResetReason: 'encryption_unavailable',
+        persistenceWarnings: [{ code: 'home_assistant_token_not_persisted' }],
+      },
+      configureApi(api) {
+        api.platform = 'linux';
+      },
+    });
+
+    // Two toasts for one cause, with two different remedies, used to arrive together at startup.
+    const warnings = mockUiUtils.showToast.mock.calls.filter(([, type]) => type === 'warning');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0][0]).toContain('Your system keyring is locked or not running');
   });
 
   it('continues startup but reports when token recovery acknowledgement is not persisted', async () => {
@@ -1198,7 +1263,8 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockUiUtils.showToast).toHaveBeenCalledWith(
       expect.stringContaining('needs to be re-entered'),
       'warning',
-      20000
+      10000,
+      { source: 'startup-warning' }
     );
     expect(mockElectronAPI.signalRendererReady).toHaveBeenCalledTimes(1);
   });
@@ -1314,6 +1380,38 @@ describe('Renderer first-run Home Assistant authorization', () => {
     });
     expect(mockHotkeys.renderHotkeysTab).not.toHaveBeenCalled();
     expect(mockUiUtils.showToast).toHaveBeenCalledWith('Portal removal failed', 'error', 3000);
+  });
+  it('moves focus to the cleared row field, since the list is rebuilt and the Clear button is gone', async () => {
+    const config = unconfiguredConfig();
+    config.globalHotkeys.hotkeys['light.office'] = { hotkey: 'Ctrl+Shift+L', action: 'toggle' };
+    await loadRenderer({
+      config,
+      bodyHtml: `
+        <main class="widget-content"></main>
+        <div id="hotkeys-list">
+          <div>
+            <input class="hotkey-input" data-entity-id="light.office" data-focus-key="hotkey-input:light.office" value="Ctrl+Shift+L">
+            <button class="btn-clear-hotkey">Clear</button>
+          </div>
+        </div>
+      `,
+      configureApi(api) {
+        api.unregisterHotkey.mockResolvedValueOnce({ success: true });
+      },
+    });
+    // What renderHotkeysTab does: rebuild the rows, which destroys the Clear button that had focus.
+    mockHotkeys.renderHotkeysTab.mockImplementation(() => {
+      document.getElementById('hotkeys-list').innerHTML =
+        '<div><input class="hotkey-input" data-entity-id="light.office" data-focus-key="hotkey-input:light.office" value=""></div>';
+    });
+    const clear = document.querySelector('.btn-clear-hotkey');
+    clear.focus();
+
+    clear.click();
+    await flushAsync();
+
+    expect(mockHotkeys.renderHotkeysTab).toHaveBeenCalled();
+    expect(document.activeElement).toBe(document.querySelector('.hotkey-input'));
   });
   it.each(['Enter', ' '])(
     'starts hotkey recording with %s and restores focus after cancellation',

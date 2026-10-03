@@ -11,19 +11,8 @@ const { sampleStates } = require('../fixtures/ha-data.js');
 
 // Mock dependencies
 jest.mock('../../src/ui-utils.js', () => ({
+  ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
   showToast: jest.fn(),
-  // Mirrors the real shared modal helper, which settles synchronously under NODE_ENV=test.
-  closeModal: jest.fn((modal, { remove = false, releaseFocus = false, onClosed } = {}) => {
-    if (modal) {
-      modal.classList.remove('modal-closing');
-      if (remove) modal.remove();
-      else modal.classList.add('hidden');
-      if (releaseFocus) jest.requireActual('../../src/ui-utils.js').releaseFocusTrap(modal);
-      onClosed?.();
-    }
-    return Promise.resolve();
-  }),
-  trapFocus: jest.fn((...args) => jest.requireActual('../../src/ui-utils.js').trapFocus(...args)),
 }));
 
 jest.mock('../../src/utils.js', () => ({
@@ -502,10 +491,7 @@ describe('hotkeys module', () => {
       settings.innerHTML = '<div class="modal-content"><button>Save</button></div>';
       document.body.appendChild(settings);
       const settingsEscape = jest.fn();
-      settings.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') settingsEscape();
-      });
-      uiUtils.trapFocus(settings, { initialFocus: false });
+      uiUtils.openDialog(settings, { initialFocus: false, dismiss: settingsEscape });
 
       const capture = hotkeys.captureHotkey();
       // A click on the overlay's text leaves focus on <body>.
@@ -525,6 +511,97 @@ describe('hotkeys module', () => {
       expect(settingsEscape).toHaveBeenCalledTimes(1);
       uiUtils.releaseFocusTrap(settings);
       settings.remove();
+    });
+
+    it('can be cancelled with the mouse or a tap, which used to need the keyboard', async () => {
+      const capture = hotkeys.captureHotkey();
+      const cancel = document.querySelector('.hotkey-capture-cancel');
+
+      expect(cancel.textContent).toBe('Cancel');
+      // Pressing a key could not reach it anyway: every key is the recording's.
+      expect(cancel.tabIndex).toBe(-1);
+      cancel.click();
+
+      await expect(capture).resolves.toBeNull();
+      expect(document.querySelector('.hotkey-capture-modal')).toBeNull();
+    });
+
+    it('is cancelled by a click on the backdrop, and not by a click on its prompt', async () => {
+      const capture = hotkeys.captureHotkey();
+      const overlay = document.querySelector('.hotkey-capture-modal');
+
+      overlay.querySelector('.modal-content').click();
+      expect(document.querySelector('.hotkey-capture-modal')).toBe(overlay);
+      overlay.click();
+
+      await expect(capture).resolves.toBeNull();
+      expect(document.querySelector('.hotkey-capture-modal')).toBeNull();
+    });
+
+    it('is a named dialog', () => {
+      void hotkeys.captureHotkey();
+      const overlay = document.querySelector('.hotkey-capture-modal');
+
+      expect(overlay.getAttribute('role')).toBe('dialog');
+      expect(overlay.getAttribute('aria-modal')).toBe('true');
+      expect(overlay.getAttribute('aria-label')).toBe('Press the desired key combination...');
+      overlay
+        .querySelector('.hotkey-capture-cancel')
+        .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+  });
+
+  describe('the hotkey list in Settings', () => {
+    const entity = (id) => ({
+      entity_id: id,
+      state: 'off',
+      attributes: { friendly_name: id.split('.')[1] },
+    });
+    const press = (target, key) => {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      target.dispatchEvent(event);
+      return event;
+    };
+
+    beforeEach(() => {
+      const config = getMockConfig();
+      config.globalHotkeys = {
+        enabled: true,
+        hotkeys: { 'light.kitchen': { hotkey: 'Ctrl+K', action: 'toggle' } },
+      };
+      state.setConfig(config);
+      state.setStates({
+        'light.kitchen': entity('light.kitchen'),
+        'light.hall': entity('light.hall'),
+      });
+      // The list wires itself once; a test builds a new one each time.
+      hotkeys.cleanupHotkeyEventListeners();
+      document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+      hotkeys.renderHotkeysTab();
+    });
+
+    it('keeps the keyboard on the same control when the list is rebuilt', () => {
+      const trigger = document.querySelector('[data-focus-key="hotkey-action:light.hall"]');
+      trigger.focus();
+
+      hotkeys.renderHotkeysTab();
+
+      const after = document.querySelector('[data-focus-key="hotkey-action:light.hall"]');
+      expect(after).not.toBe(trigger);
+      expect(document.activeElement).toBe(after);
+    });
+
+    it('lets Escape close an open action menu without also closing Settings', () => {
+      const trigger = document.querySelector('.custom-dropdown-trigger');
+      const dropdown = trigger.closest('.custom-dropdown');
+      dropdown.classList.add('open');
+
+      const open = press(trigger, 'Escape');
+      expect(open.defaultPrevented).toBe(true);
+      expect(dropdown.classList.contains('open')).toBe(false);
+
+      // Closed, Escape is the dialog's: it must not be claimed.
+      expect(press(trigger, 'Escape').defaultPrevented).toBe(false);
     });
   });
 
