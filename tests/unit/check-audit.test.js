@@ -416,6 +416,7 @@ describe('compareVersions', () => {
 
 describe('CI wiring', () => {
   const ci = fs.readFileSync(path.join(ROOT, '.github/workflows/ci.yml'), 'utf8');
+  const release = fs.readFileSync(path.join(ROOT, '.github/workflows/release.yml'), 'utf8');
   const auditJob = ci.slice(ci.indexOf('\n  audit:'), ci.indexOf('\n  lint-and-test:'));
   const otherJobs = ci.slice(ci.indexOf('\n  lint-and-test:'));
 
@@ -424,6 +425,20 @@ describe('CI wiring', () => {
     expect(auditJob).not.toContain('npm ci');
     expect(auditJob).not.toContain('npm audit');
     expect(auditJob).toContain("node-version: '20'");
+  });
+
+  it('gates a release on the same checker, after dependencies are installed', () => {
+    const validateJob = release.slice(
+      release.indexOf('\n  validate:'),
+      release.indexOf('\n  build:')
+    );
+    const installed = validateJob.indexOf('run: npm ci');
+    const audited = validateJob.indexOf('run: node scripts/check-audit.cjs');
+
+    expect(installed).toBeGreaterThan(-1);
+    expect(audited).toBeGreaterThan(installed);
+    expect(release).not.toMatch(/run:\s*npm audit/);
+    expect(release.match(/check-audit\.cjs/g)).toHaveLength(1);
   });
 
   it('lets an audit failure stand alone instead of cancelling lint, tests, and packaging', () => {

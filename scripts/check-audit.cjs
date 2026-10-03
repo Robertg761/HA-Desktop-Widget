@@ -9,6 +9,8 @@
 // moment the situation it describes changes.
 //
 // The audit job runs this without `npm ci`, so it may only use Node built-ins.
+// The release workflow runs it too, after `npm ci`, so a tag cannot ship past an
+// advisory that CI would have failed on.
 
 const fs = require('fs');
 const path = require('path');

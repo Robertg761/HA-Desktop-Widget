@@ -51,7 +51,7 @@ Expected handling is best effort for a maintainer-run project:
 
 ### Dependency Audit Exceptions
 
-CI runs `node scripts/check-audit.cjs` instead of a bare `npm audit`. It fails on any high or critical advisory in the whole dependency tree, development dependencies included, because Electron's runtime ships in every package.
+CI and the release workflow run `node scripts/check-audit.cjs` instead of a bare `npm audit`. It fails on any high or critical advisory in the whole dependency tree, development dependencies included, because Electron's runtime ships in every package.
 
 An advisory with no patched release yet can be excused in [`.github/audit-exceptions.json`](.github/audit-exceptions.json) so one unfixable advisory in a build tool does not turn every branch red. Each entry names the advisory (`ghsa`) and the vulnerable `package`, the newest affected version (`affectedUpTo`), the top-level packages it may be reached through (`allowedVia`), a one-sentence `reason`, and `added` and `expires` dates.
 
