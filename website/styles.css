@@ -59,7 +59,7 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+html { scroll-behavior: smooth; scroll-padding-top: 96px; }
 body {
   margin: 0;
   background: var(--bg);
@@ -136,6 +136,7 @@ code {
   display: flex;
   align-items: center;
   gap: 10px;
+  white-space: nowrap;
   text-decoration: none;
   font: 600 15px/1 var(--font-display);
   letter-spacing: -0.01em;
@@ -144,6 +145,7 @@ code {
 .nav-links { display: flex; gap: 4px; margin-left: auto; }
 .nav-links a {
   text-decoration: none;
+  white-space: nowrap;
   color: var(--muted);
   font-size: 14px;
   padding: 7px 12px;
@@ -1309,7 +1311,15 @@ kbd {
   .tile.t-wide { grid-column: span 6; }
   .tile { grid-column: span 3; }
   .tile.t-half { grid-column: span 3; }
-  .bento > .tile:nth-child(2) { grid-column: span 6; }
+  /* Two tiles to a row leave one over, so the second tile and the last one take a whole row. */
+  .bento > .tile:nth-child(2), .bento > .tile:last-child { grid-column: span 6; }
+}
+
+/* The links and the buttons need about 880px; narrower than that the brand and 'Cloud Sync' wrapped
+   and the header grew taller than the offset anchored headings scroll to. */
+@media (max-width: 900px) {
+  .nav-links { display: none; }
+  .nav-actions { margin-left: auto; }
 }
 
 @media (max-width: 420px) {
@@ -1317,9 +1327,6 @@ kbd {
 }
 
 @media (max-width: 760px) {
-  .nav-links { display: none; }
-  .nav-actions { margin-left: auto; }
-  .brand { white-space: nowrap; }
   .hero { padding-top: 56px; }
   .stage-wrap { margin: 48px -12px 0; }
   .stage {
@@ -1364,7 +1371,7 @@ kbd {
   .section { padding-top: 88px; }
   .section-head { margin-bottom: 32px; }
   .bento, .steps, .shots { grid-template-columns: 1fr; }
-  .tile, .tile.t-wide, .tile.t-half, .bento > .tile:nth-child(2) { grid-column: auto; }
+  .tile, .tile.t-wide, .tile.t-half, .bento > .tile:nth-child(2), .bento > .tile:last-child { grid-column: auto; }
   .tile.t-wide { grid-template-columns: 1fr; }
   .tile, .steps li { padding: 22px; }
   .shots { max-width: 420px; margin: 0 auto; }
