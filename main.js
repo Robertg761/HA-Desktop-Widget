@@ -2999,7 +2999,7 @@ function getDesktopPinResizeSession(entityId, startBounds, layerPlacement = null
 }
 
 // Ends a drag the renderer went quiet on (or never finished) by writing the size it reached. The
-// write is durable and the session stays until it has succeeded: if it fails the pin goes back to
+// write is durable and the session is kept until it has finished: if it fails the pin goes back to
 // what config.json holds, so a drag that resumes does not take an unsaved size for its starting
 // point, and a later failed save does not "restore" one. Runs in the config queue, behind any
 // step already waiting there; a step that got in first has carried the drag on, and the new idle
@@ -3092,10 +3092,11 @@ async function updateDesktopPinBounds(entityId, nextBounds = {}) {
   // Where the app places windows that is the saved x and y. A layer surface is placed from its
   // layer position, so that carries the move; on any other native Wayland session the compositor
   // keeps the origin, the window grows from it, and the saved x and y stay as they were.
-  // The position is written on every step, even for a handle that leaves the origin where it was.
-  // A pin the app placed itself (to clear its neighbours) has no saved position, and without one
-  // its surface would be placed afresh from the pin's saved x and y as soon as its size changed,
-  // which can be another spot. Resizing a pin pins it where it is drawn.
+  //
+  // The layer position is written on every step, even for a handle that leaves the origin where
+  // it was. A pin the app placed itself (to clear its neighbours) has no saved position, and
+  // without one its surface would be placed afresh from the pin's saved x and y as soon as its
+  // size changed, which can be another spot. Resizing a pin pins it where it is drawn.
   if (layerPlacement) {
     setDesktopPinLayerPosition(normalizedEntityId, layerPlacement.monitor.name, {
       x: clampedBounds.x - layerPlacement.monitor.x,
