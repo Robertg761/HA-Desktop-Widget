@@ -6,7 +6,8 @@
  * on an element using specificity, !important, source order, simple width/height media queries,
  * inheritance for colours and custom properties, inline styles, var() fallbacks and srgb
  * color-mix(). Interaction states are modelled with attributes: give the element
- * `data-focus-visible`, `data-focus` or `data-hover`.
+ * `data-focus-visible`, `data-focus` or `data-hover`. Pass `forcedColors: true` or
+ * `prefersContrast: 'more'` in the options to apply those media blocks.
  */
 const fs = require('fs');
 const path = require('path');
@@ -146,6 +147,8 @@ function toMatchableSelector(selector) {
   return unwrapIsInsideNot(
     selector
       .replace(/\s+/g, ' ')
+      .replace(/\(\s+/g, '(')
+      .replace(/\s+\)/g, ')')
       .replace(/:where\(/g, ':is(')
       .replace(/:(focus-visible|focus|hover)(?![\w-])/g, (match, name) => {
         return `[data-${STATE_PSEUDO_CLASSES[name]}]`;
@@ -153,21 +156,53 @@ function toMatchableSelector(selector) {
   );
 }
 
+/**
+ * jsdom's selector engine answers false for a :not() inside :is() (and fails to parse one followed
+ * by a comma), so a top-level :is() group that holds one is spelled out as a selector per
+ * alternative: `a :is(b:not(.x), c)` becomes `a b:not(.x)` and `a c`.
+ */
+function expandIsGroups(selector) {
+  let depth = 0;
+  for (let index = 0; index < selector.length; index += 1) {
+    if (depth === 0 && selector.startsWith(':is(', index)) {
+      const close = findClosing(selector, index + ':is'.length);
+      const inner = selector.slice(index + ':is('.length, close);
+      if (inner.includes(':not(')) {
+        const before = selector.slice(0, index);
+        const after = selector.slice(close + 1);
+        return splitTopLevel(inner).flatMap((alternative) =>
+          expandIsGroups(before + alternative + after)
+        );
+      }
+    }
+    if (selector[index] === '(') depth += 1;
+    if (selector[index] === ')') depth -= 1;
+  }
+  return [selector];
+}
+
 function selectorMatches(element, selector) {
   const matchable = toMatchableSelector(selector);
   if (!matchable) return false;
-  try {
-    return element.matches(matchable);
-  } catch {
-    // Selectors jsdom cannot parse (e.g. vendor pseudo-classes) never match in the app's tests.
-    return false;
-  }
+  return expandIsGroups(matchable).some((alternative) => {
+    try {
+      return element.matches(alternative);
+    } catch {
+      // Selectors jsdom cannot parse (e.g. vendor pseudo-classes) never match in the app's tests.
+      return false;
+    }
+  });
 }
 
-function mediaMatches(mediaText, viewport) {
+function mediaMatches(mediaText, viewport, { forcedColors = false, prefersContrast } = {}) {
   return splitTopLevel(mediaText).some((query) =>
     query.split(/\band\b/).every((condition) => {
       const feature = condition.trim().replace(/^\(|\)$/g, '');
+      if (feature === 'forced-colors: active') return forcedColors;
+      if (feature === 'forced-colors: none') return !forcedColors;
+      if (/^prefers-contrast:/.test(feature)) {
+        return feature.split(':')[1].trim() === (prefersContrast || 'no-preference');
+      }
       let match = feature.match(/^(max|min)-(width|height):\s*(\d+)px$/);
       if (match) {
         const [, bound, axis, size] = match;
@@ -183,13 +218,13 @@ function mediaMatches(mediaText, viewport) {
   );
 }
 
-function collectDeclarations(document, property, viewport) {
+function collectDeclarations(document, property, viewport, features) {
   const declarations = [];
   let order = 0;
   const visit = (rules) => {
     for (const rule of rules) {
       if (rule.cssRules && rule.media) {
-        if (mediaMatches(rule.media.mediaText, viewport)) visit(rule.cssRules);
+        if (mediaMatches(rule.media.mediaText, viewport, features)) visit(rule.cssRules);
         continue;
       }
       if (rule.cssRules && rule.conditionText !== undefined) {
@@ -216,9 +251,19 @@ function collectDeclarations(document, property, viewport) {
  * The winning declaration for `property` on `element` (before var() substitution), or null.
  * Returns `{ value, selector, specificity, important }`.
  */
-function cascadedDeclaration(element, property, { viewport = { width: 500, height: 600 } } = {}) {
+function cascadedDeclaration(
+  element,
+  property,
+  { viewport = { width: 500, height: 600 }, forcedColors, prefersContrast } = {}
+) {
   let winner = null;
-  for (const declaration of collectDeclarations(element.ownerDocument, property, viewport)) {
+  const features = { forcedColors, prefersContrast };
+  for (const declaration of collectDeclarations(
+    element.ownerDocument,
+    property,
+    viewport,
+    features
+  )) {
     for (const selector of splitTopLevel(declaration.selectorText)) {
       if (!selectorMatches(element, selector)) continue;
       const candidate = {

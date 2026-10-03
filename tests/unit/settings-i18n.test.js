@@ -23,7 +23,7 @@ describe('index.html static Settings text', () => {
         'Show an entity on a card': 'Entität auf einer Karte anzeigen',
         'Profile sync': 'Profilsynchronisierung',
         'Search entities...': 'Entitäten suchen...',
-        'Theme colors': 'Themenfarben',
+        'Search entities': 'Entitäten suchen',
         'Card {{index}}': 'Karte {{index}}',
         'Click the button and press your desired key combination. Press <code>ESC</code> to clear.':
           'Klicke auf die Schaltfläche und drücke die Tastenkombination. <code>ESC</code> löscht sie.',
@@ -63,9 +63,14 @@ describe('index.html static Settings text', () => {
     expect(document.getElementById('alert-entity-picker-search').placeholder).toBe(
       'Entitäten suchen...'
     );
-    expect(document.getElementById('theme-options').getAttribute('aria-label')).toBe(
-      'Themenfarben'
+    expect(document.getElementById('hotkey-entity-search').getAttribute('aria-label')).toBe(
+      'Entitäten suchen'
     );
+    // The colour swatches take their name from the caption above them, whatever its language.
+    expect(document.getElementById('theme-options').getAttribute('aria-labelledby')).toBe(
+      'theme-options-label'
+    );
+    expect(document.getElementById('theme-options-label')).not.toBeNull();
     const viewLogs = document.getElementById('view-logs-btn');
     expect(viewLogs.title).toBe('Öffnet den Speicherort der Protokolldatei im Dateimanager');
     expect(viewLogs.textContent).toContain('Protokolle anzeigen');

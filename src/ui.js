@@ -1938,6 +1938,17 @@ function getTickTargets() {
   };
 }
 
+// The primary light card's warm icon and glow key on the card's own data-state, and the card
+// outlives the control inside it, so every repaint of that control has to refresh it too.
+function syncPrimaryCardState(cardEl, entity) {
+  const displayState = getEntityForDisplay(entity)?.state;
+  if (displayState) {
+    cardEl.dataset.state = displayState;
+  } else {
+    cardEl.removeAttribute('data-state');
+  }
+}
+
 function renderPrimaryEntityCard(cardEl, entityId) {
   if (!cardEl) return;
 
@@ -1964,11 +1975,7 @@ function renderPrimaryEntityCard(cardEl, entityId) {
   cardEl.classList.toggle('primary-light-card', resolvedEntityId.startsWith('light.'));
   cardEl.dataset.primaryType = 'entity';
   cardEl.dataset.entityId = resolvedEntityId;
-  if (entity?.state) {
-    cardEl.dataset.state = entity.state;
-  } else {
-    cardEl.removeAttribute('data-state');
-  }
+  syncPrimaryCardState(cardEl, entity);
 
   cardEl.innerHTML = '';
   cardEl.appendChild(control);
@@ -2429,9 +2436,9 @@ function showRenameModal(entityId) {
           ${trayControlMarkup}
         </div>
         <div class="modal-footer">
-          <button id="save-rename-btn" class="btn btn-primary">${utils.escapeHtml(t('Save'))}</button>
-          <button id="reset-rename-btn" class="btn btn-secondary">${utils.escapeHtml(t('Reset to Default'))}</button>
           <button id="cancel-rename-btn" class="btn btn-secondary">${utils.escapeHtml(t('Cancel'))}</button>
+          <button id="reset-rename-btn" class="btn btn-secondary">${utils.escapeHtml(t('Reset to Default'))}</button>
+          <button id="save-rename-btn" class="btn btn-primary">${utils.escapeHtml(t('Save'))}</button>
         </div>
       </div>
     `;
@@ -2913,6 +2920,10 @@ function updateEntityInUI(entity, options = {}) {
     );
     items.forEach((item) => {
       const isDesktopPin = item.dataset.desktopPin === 'true';
+      if (item.dataset.primaryCard === 'true') {
+        const card = item.closest('.primary-entity-card');
+        if (card) syncPrimaryCardState(card, renderEntity);
+      }
       if (isDesktopPin && updateExistingDesktopPinPanelControl(item, renderEntity)) {
         return;
       }
@@ -4632,6 +4643,9 @@ function createComparisonGraphTile(graphId) {
   }
 
   tile.dataset.renderSignature = getComparisonGraphSignature(graph);
+  // Without a name the tile reads as loose text and a chart; the title names the whole group.
+  tile.setAttribute('role', 'group');
+  tile.setAttribute('aria-label', graph.name);
 
   const header = document.createElement('div');
   header.className = 'comparison-graph-header';
@@ -4863,7 +4877,9 @@ function showComparisonGraphModal(graphId) {
   nameGroup.className = 'form-group';
   const nameLabel = document.createElement('label');
   nameLabel.textContent = t('Graph name');
+  nameLabel.htmlFor = `comparison-graph-name-${graphId}`;
   const nameInput = document.createElement('input');
+  nameInput.id = nameLabel.htmlFor;
   nameInput.type = 'text';
   nameInput.className = 'form-control';
   nameInput.maxLength = 40;
@@ -4876,7 +4892,9 @@ function showComparisonGraphModal(graphId) {
   widthGroup.className = 'form-group';
   const widthLabel = document.createElement('label');
   widthLabel.textContent = t('Width');
+  widthLabel.htmlFor = `comparison-graph-width-${graphId}`;
   const widthSelect = document.createElement('select');
+  widthSelect.id = widthLabel.htmlFor;
   widthSelect.className = 'form-control';
   COMPARISON_GRAPH_SPAN_OPTIONS.forEach((option) => {
     const optionEl = document.createElement('option');
@@ -4898,14 +4916,15 @@ function showComparisonGraphModal(graphId) {
   hint.className = 'form-help';
   body.appendChild(hint);
 
-  // The app scopes .form-control styling to .form-group, so these need the wrapper or they render
-  // as raw unstyled inputs.
+  // The group spaces the field like the others above it.
   const searchGroup = document.createElement('div');
   searchGroup.className = 'form-group';
   const search = document.createElement('input');
   search.type = 'text';
   search.className = 'form-control';
+  search.spellcheck = false;
   search.placeholder = t('Search sensors…');
+  search.setAttribute('aria-label', t('Search sensors…'));
   searchGroup.appendChild(search);
   body.appendChild(searchGroup);
 
@@ -5102,6 +5121,7 @@ function showComparisonGraphModal(graphId) {
 
       const name = document.createElement('span');
       name.className = 'entity-name';
+      name.id = `comparison-graph-sensor-${entityId}`;
       name.textContent = utils.getEntityDisplayName(entity);
 
       // For attribute-backed entities the entity id alone doesn't say what gets plotted, so name
@@ -5130,6 +5150,8 @@ function showComparisonGraphModal(graphId) {
       button.type = 'button';
       button.className = `entity-selector-btn ${isSelected ? 'remove' : 'add'}`;
       button.textContent = isSelected ? t('Remove') : t('Add');
+      // A column of identical Add or Remove buttons says nothing; the sensor's name does.
+      button.setAttribute('aria-describedby', name.id);
       button.disabled = graphMutationInFlight || (!isSelected && atCapacity);
       button.addEventListener('click', async () => {
         if (graphMutationInFlight) return;
@@ -5164,6 +5186,8 @@ function showComparisonGraphModal(graphId) {
 
   nameInput.addEventListener('change', async () => {
     await save({ name: nameInput.value });
+    // A blank name keeps the old one, so show it again instead of leaving the field empty.
+    if (modal.isConnected) reconcileEditor();
   });
   widthSelect.addEventListener('change', async () => {
     await save({ span: Number(widthSelect.value) });
@@ -10139,18 +10163,23 @@ function openEntityRepairModal(staleEntityId) {
   const body = document.createElement('div');
   body.className = 'modal-body';
   const explanation = document.createElement('p');
+  explanation.className = 'modal-lead';
   explanation.textContent = t(
     'Choose the entity that replaces {{entityId}}. Favorites, pages, pins, hotkeys, alerts, graphs, and saved display settings will all be updated.',
     { entityId: staleEntityId }
   );
+  const searchGroup = document.createElement('div');
+  searchGroup.className = 'form-group';
   const search = document.createElement('input');
   search.type = 'search';
   search.className = 'form-control';
+  search.spellcheck = false;
   search.placeholder = t('Search replacement entities...');
   search.setAttribute('aria-label', t('Search replacement entities'));
+  searchGroup.appendChild(search);
   const list = document.createElement('div');
   list.className = 'entity-selector-list';
-  body.append(explanation, search, list);
+  body.append(explanation, searchGroup, list);
   content.append(header, body);
   modal.appendChild(content);
   document.body.appendChild(modal);
@@ -10217,7 +10246,7 @@ function openEntityRepairModal(staleEntityId) {
     list.replaceChildren();
     if (!candidates.length) {
       const empty = document.createElement('p');
-      empty.className = 'form-help';
+      empty.className = 'entity-selector-empty';
       empty.textContent = t('No matching replacement entities found.');
       list.appendChild(empty);
       return;
@@ -10260,7 +10289,8 @@ function openEntityRepairModal(staleEntityId) {
   });
   search.addEventListener('input', renderCandidates);
   renderCandidates();
-  uiUtils.trapFocus(modal);
+  // The search is the first thing to do here; without it focus would start on the close button.
+  uiUtils.trapFocus(modal, { initialFocus: search });
 }
 
 function updateExistingQuickAccessControl(div, entity, options = {}) {
@@ -10697,21 +10727,27 @@ function showHelperControls(entity) {
   const live = () => state.STATES?.[entity.entity_id];
   const form = document.createElement('form');
   const readout = document.createElement('p');
+  readout.className = 'modal-lead';
   readout.setAttribute('role', 'status');
   body.append(readout, form);
   let input = null;
   if (domain !== 'vacuum') {
+    const group = document.createElement('div');
+    group.className = 'form-group';
     const label = document.createElement('label');
     label.textContent = utils.getEntityDisplayName(entity);
+    label.htmlFor = `helper-controls-${entity.entity_id}`;
     input = document.createElement(
       ['select', 'input_select'].includes(domain) ? 'select' : 'input'
     );
+    input.id = label.htmlFor;
     input.className = 'form-control';
     if (input.tagName === 'INPUT') input.type = 'number';
-    label.append(input);
-    form.append(label);
+    group.append(label, input);
+    form.append(group);
   }
   const actions = document.createElement('div');
+  actions.className = 'entity-detail-actions';
   form.append(actions);
   const refresh = () => {
     const current = live();
@@ -10743,10 +10779,11 @@ function showHelperControls(entity) {
       ? document.activeElement.dataset.service
       : null;
     actions.replaceChildren();
-    supported.forEach((action) => {
+    supported.forEach((action, index) => {
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'btn-primary';
+      // The first action is the dialog's main one; a vacuum's others sit beside it, quieter.
+      button.className = index === 0 ? 'btn btn-primary' : 'btn btn-secondary';
       button.dataset.service = action.service;
       button.textContent = t(action.label);
       button.disabled = !available || busy;
@@ -10818,9 +10855,13 @@ function requestAlarmCode(entity) {
       },
     });
     const form = document.createElement('form');
+    const group = document.createElement('div');
+    group.className = 'form-group';
     const label = document.createElement('label');
     label.textContent = t('Alarm code');
+    label.htmlFor = 'alarm-code-input';
     input = document.createElement('input');
+    input.id = label.htmlFor;
     input.className = 'form-control';
     input.type = 'password';
     input.required = true;
@@ -10830,12 +10871,15 @@ function requestAlarmCode(entity) {
       input.inputMode = 'numeric';
       input.pattern = '[0-9]+';
     }
-    label.append(input);
+    group.append(label, input);
     const submit = document.createElement('button');
     submit.type = 'submit';
-    submit.className = 'btn-primary';
+    submit.className = 'btn btn-primary';
     submit.textContent = t('Apply');
-    form.append(label, submit);
+    const actions = document.createElement('div');
+    actions.className = 'entity-detail-actions';
+    actions.append(submit);
+    form.append(group, actions);
     modal.querySelector('.modal-body').append(form);
     form.onsubmit = (event) => {
       event.preventDefault();
@@ -10916,6 +10960,14 @@ function renderTodoItemsInto(container, entity, items, getEntity = () => liveTod
   container.appendChild(list);
 }
 
+// A status line in a detail dialog's list area (Loading..., Unavailable), set like the empty list.
+function showDetailMessage(container, text) {
+  const message = document.createElement('div');
+  message.className = 'entity-detail-empty';
+  message.textContent = text;
+  container.replaceChildren(message);
+}
+
 // Reloading replaces the list, so the checkbox or Retry button that started it is gone and focus
 // falls to <body>. `focusUid` (an item uid, or true for the first control) puts it back.
 async function loadTodoItemsInto(
@@ -10923,7 +10975,7 @@ async function loadTodoItemsInto(
   entity,
   { focusUid = null, getEntity = () => liveTodoEntity(entity) } = {}
 ) {
-  container.textContent = t('Loading...');
+  showDetailMessage(container, t('Loading...'));
   try {
     const items = await fetchTodoItems(entity.entity_id, { force: true });
     if (!container.isConnected || container.closest('.modal-closing')) return;
@@ -10983,7 +11035,7 @@ function showTodoDetails(entity) {
 
     const listContainer = document.createElement('div');
     listContainer.className = 'todo-detail-list-container';
-    listContainer.textContent = t('Loading...');
+    showDetailMessage(listContainer, t('Loading...'));
 
     let busy = false;
     const readOnly = document.createElement('p');
@@ -11047,7 +11099,7 @@ function showTodoDetails(entity) {
     refreshTodo();
     if (isEntityAvailable(entity)) {
       void loadTodoItemsInto(listContainer, entity, { getEntity: liveTodo });
-    } else listContainer.textContent = t('Unavailable');
+    } else showDetailMessage(listContainer, t('Unavailable'));
   } catch (error) {
     console.error('Error showing todo details:', error);
   }
@@ -11132,18 +11184,23 @@ function showCalendarDetails(entity) {
     const listContainer = document.createElement('div');
     listContainer.className = 'calendar-events-list';
     listContainer.setAttribute('role', 'status');
+    const toolbar = document.createElement('div');
+    toolbar.className = 'calendar-toolbar';
     const range = document.createElement('p');
+    range.className = 'modal-lead';
     range.textContent = t('Upcoming events for the next 7 days');
     const refresh = document.createElement('button');
     refresh.type = 'button';
+    refresh.className = 'btn btn-secondary btn-sm';
     refresh.textContent = t('Refresh');
-    body.append(range, refresh, listContainer);
+    toolbar.append(range, refresh);
+    body.append(toolbar, listContainer);
     let loading = false;
     refresh.onclick = async () => {
       if (loading) return;
       loading = true;
       refresh.setAttribute('aria-busy', 'true');
-      listContainer.textContent = t('Loading...');
+      showDetailMessage(listContainer, t('Loading...'));
       const start = new Date();
       const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
       try {
@@ -11160,7 +11217,7 @@ function showCalendarDetails(entity) {
         refresh.textContent = t('Refresh');
       } catch {
         if (!modal.isConnected || modal.classList.contains('modal-closing')) return;
-        listContainer.textContent = t('Unable to load events');
+        showDetailMessage(listContainer, t('Unable to load events'));
         refresh.textContent = t('Retry');
       } finally {
         loading = false;
@@ -11682,6 +11739,21 @@ function getMediaDetailControls(entity) {
   ];
 }
 
+// "+10s" and "−10s" (a real minus), in the active language: the seek buttons say how far they
+// jump. The unit comes from Intl, so it needs no string of its own. Arabic wraps the sign in
+// direction marks that would put it behind the number, and the transport row keeps its signs in
+// front, so the marks go.
+function formatSeekStep(seconds) {
+  return formatNumber(seconds, {
+    style: 'unit',
+    unit: 'second',
+    unitDisplay: 'narrow',
+    signDisplay: 'always',
+  })
+    .replace(/[\u061C\u200E\u200F]/g, '')
+    .replace('-', '\u2212');
+}
+
 function showMediaDetail(entity) {
   try {
     ensureEntityCacheScope();
@@ -11740,7 +11812,7 @@ function showMediaDetail(entity) {
                 id="media-mute-toggle"
                 type="button"
                 aria-pressed="${initialMuted ? 'true' : 'false'}"
-              >${utils.escapeHtml(initialMuted ? t('Muted') : t('Mute'))}</button>
+              >${utils.escapeHtml(t('Mute'))}</button>
             `
                 : ''
             }
@@ -11775,9 +11847,9 @@ function showMediaDetail(entity) {
           ${volumeControlsMarkup}
           <div class="media-detail-controls">
             ${mediaCapabilities.canPreviousTrack ? `<button class="btn media-detail-prev-btn" data-action="previous_track" title="${escapeHtmlAttribute(t('Previous'))}" aria-label="${escapeHtmlAttribute(t('Previous track'))}"></button>` : ''}
-            ${supportsSeek ? `<button class="btn media-detail-seek-btn" data-action="seek_relative" data-seek-delta="-10" title="${escapeHtmlAttribute(t('Rewind 10 seconds'))}" aria-label="${escapeHtmlAttribute(t('Rewind 10 seconds'))}">-10</button>` : ''}
+            ${supportsSeek ? `<button class="btn media-detail-seek-btn" data-action="seek_relative" data-seek-delta="-10" title="${escapeHtmlAttribute(t('Rewind 10 seconds'))}" aria-label="${escapeHtmlAttribute(t('Rewind 10 seconds'))}">${formatSeekStep(-10)}</button>` : ''}
             ${supportsAnyPlaybackToggle ? `<button class="btn play-pause-btn media-detail-play-btn" data-action="play_pause" title="${escapeHtmlAttribute(t('Play/Pause'))}" aria-label="${escapeHtmlAttribute(t('Play or pause'))}"></button>` : ''}
-            ${supportsSeek ? `<button class="btn media-detail-seek-btn" data-action="seek_relative" data-seek-delta="10" title="${escapeHtmlAttribute(t('Forward 10 seconds'))}" aria-label="${escapeHtmlAttribute(t('Forward 10 seconds'))}">+10</button>` : ''}
+            ${supportsSeek ? `<button class="btn media-detail-seek-btn" data-action="seek_relative" data-seek-delta="10" title="${escapeHtmlAttribute(t('Forward 10 seconds'))}" aria-label="${escapeHtmlAttribute(t('Forward 10 seconds'))}">${formatSeekStep(10)}</button>` : ''}
             ${mediaCapabilities.canNextTrack ? `<button class="btn media-detail-next-btn" data-action="next_track" title="${escapeHtmlAttribute(t('Next'))}" aria-label="${escapeHtmlAttribute(t('Next track'))}"></button>` : ''}
             ${
               !mediaCapabilities.canPreviousTrack &&
@@ -11856,7 +11928,6 @@ function showMediaDetail(entity) {
         const isMuted = attrs.is_volume_muted === true;
         muteToggle.classList.toggle('active', isMuted);
         muteToggle.setAttribute('aria-pressed', isMuted ? 'true' : 'false');
-        muteToggle.textContent = isMuted ? t('Muted') : t('Mute');
       }
     };
 
@@ -11944,7 +12015,6 @@ function showMediaDetail(entity) {
         const nextMuted = muteToggle.getAttribute('aria-pressed') !== 'true';
         muteToggle.classList.toggle('active', nextMuted);
         muteToggle.setAttribute('aria-pressed', nextMuted ? 'true' : 'false');
-        muteToggle.textContent = nextMuted ? t('Muted') : t('Mute');
         callMediaPlayerService(entity.entity_id, 'volume_mute', {
           isVolumeMuted: nextMuted,
         });
@@ -14047,6 +14117,7 @@ function showClimateControls(climateEntity) {
         button.className = `climate-mode-btn ${modeValue === currentMode ? 'active' : ''}`.trim();
         button.dataset.mode = modeValue;
         button.title = modeLabel;
+        button.setAttribute('aria-pressed', String(modeValue === currentMode));
 
         const icon = document.createElement('span');
         icon.className = 'climate-mode-icon';
@@ -14072,6 +14143,7 @@ function showClimateControls(climateEntity) {
         button.className = `${className} ${modeValue === currentValue ? 'active' : ''}`.trim();
         button.dataset.mode = modeValue;
         button.title = modeLabel;
+        button.setAttribute('aria-pressed', String(modeValue === currentValue));
         button.textContent = modeLabel;
         container.appendChild(button);
       });
@@ -14103,7 +14175,9 @@ function showClimateControls(climateEntity) {
     let missedLiveUpdate = false;
     const setActiveClimateOption = (buttons, value) => {
       buttons.forEach((button) => {
-        button.classList.toggle('active', button.getAttribute('data-mode') === value);
+        const isActive = button.getAttribute('data-mode') === value;
+        button.classList.toggle('active', isActive);
+        button.setAttribute('aria-pressed', String(isActive));
       });
     };
 
@@ -14794,11 +14868,14 @@ function populateQuickControlsList({ resetSearch = true } = {}) {
     }
     const previous = document.createElement('button');
     previous.type = 'button';
+    previous.className = 'btn btn-secondary btn-sm';
     previous.textContent = t('Previous');
     const count = document.createElement('span');
+    count.className = 'entity-selector-pagination-status';
     count.setAttribute('role', 'status');
     const next = document.createElement('button');
     next.type = 'button';
+    next.className = 'btn btn-secondary btn-sm';
     next.textContent = t('Next');
     pager.replaceChildren(previous, count, next);
 
@@ -14838,9 +14915,9 @@ function populateQuickControlsList({ resetSearch = true } = {}) {
       page = Math.min(page, pages - 1);
       list.dataset.page = String(page);
       count.textContent = t('Page {{page}} of {{pages}} · {{count}} entities', {
-        page: page + 1,
-        pages,
-        count: scoredEntities.length,
+        page: formatNumber(page + 1),
+        pages: formatNumber(pages),
+        count: formatNumber(scoredEntities.length),
       });
       previous.setAttribute('aria-disabled', String(page === 0));
       next.setAttribute('aria-disabled', String(page >= pages - 1));

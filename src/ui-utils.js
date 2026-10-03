@@ -53,6 +53,9 @@ let seasonalColorsSuspended = false;
 // came in raw (the Omarchy palette or a Settings draft), which seasonal colours leave alone.
 let lastAccentKey = null;
 let lastBackgroundKey = null;
+// Whether the chosen theme is the light one, or null before one was applied. Kept apart from the
+// body class because the Readable preset paints its own dark palette over whichever it is.
+let chosenThemeIsLight = null;
 let uiPreferencesObserver = null;
 let connectionStatusTooltip = null;
 let connectionStatusTooltipTarget = null;
@@ -912,19 +915,31 @@ function showToast(message, type = 'success', timeout = 2000) {
   }
 }
 
+/**
+ * Put the theme class on the body: the chosen theme, except that the Readable preset is always
+ * dark. Saying so on the body (rather than leaving theme-light beside the preset's dark palette)
+ * keeps every light-only rule, light-tuned colour and canvas decoration out of it.
+ */
+function syncThemeClass() {
+  if (chosenThemeIsLight === null) return;
+  const body = document.body;
+  const light = chosenThemeIsLight && !body.classList.contains('high-contrast');
+  body.classList.toggle('theme-light', light);
+  body.classList.toggle('theme-dark', !light);
+}
+
 function applyTheme(mode = 'auto') {
   try {
-    const body = document.body;
-    body.classList.remove('theme-dark', 'theme-light');
     if (mode === 'dark') {
-      body.classList.add('theme-dark');
+      chosenThemeIsLight = false;
     } else if (mode === 'light') {
-      body.classList.add('theme-light');
+      chosenThemeIsLight = true;
     } else {
       const prefersDark =
         window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-      body.classList.add(prefersDark ? 'theme-dark' : 'theme-light');
+      chosenThemeIsLight = !prefersDark;
     }
+    syncThemeClass();
   } catch (error) {
     console.error('Error applying theme:', error);
   }
@@ -948,7 +963,14 @@ function applyUiPreferences(ui = {}) {
     if (window.electronAPI?.setUiScale) window.electronAPI.setUiScale(scale);
     else document.documentElement.style.zoom = String(scale);
     body.classList.toggle('large-interface', scale > 1);
+    const wasLight = body.classList.contains('theme-light');
     body.classList.toggle('high-contrast', !!ui.highContrast);
+    syncThemeClass();
+    if (body.classList.contains('theme-light') !== wasLight) {
+      // The accent and background tints are worked out per theme, so they follow the change.
+      if (lastAccentKey !== null) applyAccentTheme(lastAccentKey);
+      if (lastBackgroundKey !== null) applyBackgroundTheme(lastBackgroundKey);
+    }
     body.classList.toggle('opaque-panels', !!ui.opaquePanels);
     body.classList.toggle('density-compact', (ui.density || 'comfortable') === 'compact');
     // Opt-out rather than opt-in: the glow is how a tile shows it is on.

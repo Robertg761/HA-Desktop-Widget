@@ -1,0 +1,157 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "@electron/get": {
+      "name": "@electron/get",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["got"],
+      "effects": ["app-builder-lib"],
+      "range": "<=4.0.3"
+    },
+    "app-builder-lib": {
+      "name": "app-builder-lib",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["@electron/get", "dmg-builder", "electron-builder-squirrel-windows"],
+      "effects": ["dmg-builder", "electron-builder", "electron-builder-squirrel-windows"],
+      "range": "26.6.0 - 27.0.0-alpha.2"
+    },
+    "braces": {
+      "name": "braces",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1240992,
+          "name": "braces",
+          "dependency": "braces",
+          "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns",
+          "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+          "severity": "high",
+          "cwe": ["CWE-674"],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": "<=3.0.3"
+        }
+      ],
+      "effects": ["micromatch"],
+      "range": "*"
+    },
+    "cacheable-request": {
+      "name": "cacheable-request",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["http-cache-semantics"],
+      "effects": ["got"],
+      "range": ">=0.1.0"
+    },
+    "dmg-builder": {
+      "name": "dmg-builder",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["app-builder-lib"],
+      "effects": ["app-builder-lib", "electron-builder"],
+      "range": "26.6.0 - 27.0.0-alpha.2"
+    },
+    "electron-builder": {
+      "name": "electron-builder",
+      "severity": "high",
+      "isDirect": true,
+      "via": ["app-builder-lib", "dmg-builder"],
+      "effects": [],
+      "range": "19.25.0 || 26.6.0 - 27.0.0-alpha.2"
+    },
+    "electron-builder-squirrel-windows": {
+      "name": "electron-builder-squirrel-windows",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["app-builder-lib"],
+      "effects": ["app-builder-lib"],
+      "range": "26.6.0 - 27.0.0-alpha.2"
+    },
+    "fast-glob": {
+      "name": "fast-glob",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["micromatch"],
+      "effects": ["globby", "stylelint"],
+      "range": "*"
+    },
+    "globby": {
+      "name": "globby",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["fast-glob"],
+      "effects": ["stylelint"],
+      "range": ">=8.0.0"
+    },
+    "got": {
+      "name": "got",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["cacheable-request"],
+      "effects": ["@electron/get"],
+      "range": ">=8.0.0"
+    },
+    "http-cache-semantics": {
+      "name": "http-cache-semantics",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1240991,
+          "name": "http-cache-semantics",
+          "dependency": "http-cache-semantics",
+          "title": "http-cache-semantics max-stale handling can disclose cross-user cached responses",
+          "url": "https://github.com/advisories/GHSA-ch52-4w7c-c8xp",
+          "severity": "high",
+          "cwe": ["CWE-524"],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+          },
+          "range": "<=4.2.0"
+        }
+      ],
+      "effects": ["cacheable-request"],
+      "range": "*"
+    },
+    "micromatch": {
+      "name": "micromatch",
+      "severity": "high",
+      "isDirect": false,
+      "via": ["braces"],
+      "effects": ["fast-glob", "stylelint"],
+      "range": ">=0.2.0"
+    },
+    "stylelint": {
+      "name": "stylelint",
+      "severity": "high",
+      "isDirect": true,
+      "via": ["fast-glob", "globby", "micromatch"],
+      "effects": [],
+      "range": ">=7.7.1"
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 13,
+      "critical": 0,
+      "total": 13
+    },
+    "dependencies": {
+      "prod": 56,
+      "dev": 870,
+      "optional": 109,
+      "peer": 13,
+      "peerOptional": 0,
+      "total": 931
+    }
+  }
+}

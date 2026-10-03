@@ -266,6 +266,7 @@ function createSettingsModalDOM() {
       <input type="range" id="opacity-slider" min="1" max="100" />
       <span id="opacity-value">90</span>
 
+      <section id="colors-section" data-readable-overrides></section>
       <select id="ui-scale-select"><option value="1">100%</option><option value="1.5">150%</option></select>
       <input type="checkbox" id="readable-preset" />
       <label for="density-select">Layout density</label>
@@ -475,13 +476,8 @@ function createSettingsModalDOM() {
         </div>
       </div>
 
-      <label>Primary Media Player</label>
-      <div id="primary-media-player-dropdown" class="custom-dropdown">
-        <div id="primary-media-player-trigger">
-          <span class="custom-dropdown-value">None</span>
-        </div>
-        <div id="primary-media-player-menu" class="custom-dropdown-menu"></div>
-      </div>
+      <label for="primary-media-player">Primary Media Player</label>
+      <select id="primary-media-player"></select>
 
       <div id="popup-hotkey-container">
         <label id="popup-hotkey-mode-label">Popup hotkey</label>
@@ -1451,6 +1447,24 @@ describe('Settings + Config Integration', () => {
       document.querySelector('[data-primary-card="0"][data-primary-value="time"]').click();
       await settings.saveSettings();
       expect(state.CONFIG.primaryCards[0]).toBe('time');
+    });
+
+    test('exposes the chosen source as pressed and keeps "(default)" with its own card', async () => {
+      await settings.openSettings();
+      const button = (card, value) =>
+        document.querySelector(`[data-primary-card="${card}"][data-primary-value="${value}"]`);
+
+      expect(button(0, 'weather').getAttribute('aria-pressed')).toBe('true');
+      expect(button(0, 'time').getAttribute('aria-pressed')).toBe('false');
+      expect(document.getElementById('primary-card-1-current').textContent).toBe(
+        'Weather (default)'
+      );
+
+      button(0, 'time').click();
+      expect(button(0, 'time').getAttribute('aria-pressed')).toBe('true');
+      expect(button(0, 'weather').getAttribute('aria-pressed')).toBe('false');
+      // Time is Card 2's default, not Card 1's, so after the swap Card 1 no longer claims it.
+      expect(document.getElementById('primary-card-1-current').textContent).toBe('Time');
     });
   });
 
@@ -2996,6 +3010,8 @@ describe('Settings + Config Integration', () => {
 
       removeBtn.focus();
       removeBtn.click();
+      // Removing asks first; the lock lifts once the confirmation has been answered.
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       // Assert
       expect(mainSave.disabled).toBe(false);
@@ -3130,8 +3146,14 @@ describe('Settings + Config Integration', () => {
       await settings.openSettings();
       const removeButton = document.getElementById('remove-custom-color-btn');
       removeButton.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       // Assert
+      expect(mockUiUtils.showConfirm).toHaveBeenLastCalledWith(
+        'Remove Custom Color',
+        'Remove "My Slate" from your custom colors?',
+        expect.objectContaining({ confirmClass: 'btn-danger' })
+      );
       const customOptions = document.querySelectorAll(
         '.color-theme-option[data-custom-theme="true"]'
       );
@@ -3139,6 +3161,29 @@ describe('Settings + Config Integration', () => {
 
       const selected = document.querySelector('.color-theme-option.selected');
       expect(selected?.dataset.theme).toBe('original');
+    });
+  });
+
+  describe('Custom Color removal', () => {
+    test('keeps the colour when the confirmation is declined', async () => {
+      await settings.openSettings();
+      const hexInput = document.getElementById('custom-color-hex');
+      hexInput.value = '#778899';
+      hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+      document.getElementById('save-custom-color-btn').click();
+
+      mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+      document.getElementById('remove-custom-color-btn').click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(
+        document.querySelectorAll('.color-theme-option[data-custom-theme="true"]')
+      ).toHaveLength(1);
+      expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+        'Custom color removed.',
+        'success',
+        expect.any(Number)
+      );
     });
   });
 
@@ -3151,23 +3196,13 @@ describe('Settings + Config Integration', () => {
         renderPrimaryCards: mockUI.renderPrimaryCards,
       });
 
-      // Simulate selecting a media player
-      const menu = document.getElementById('primary-media-player-menu');
-      expect(menu.innerHTML).toContain('Spotify'); // Verify dropdown populated
+      // Pick a media player in the select
+      const select = document.getElementById('primary-media-player');
+      expect(select.innerHTML).toContain('Spotify'); // Verify the select is populated
+      expect(select.options[0].value).toBe('');
 
-      // Find the Spotify option and mark it as selected
-      const options = menu.querySelectorAll('.custom-dropdown-option');
-
-      // First remove 'selected' class from all options
-      options.forEach((opt) => opt.classList.remove('selected'));
-
-      // Then add 'selected' class to the Spotify option
-      const spotifyOption = Array.from(options).find(
-        (opt) => opt.getAttribute('data-value') === 'media_player.spotify'
-      );
-
-      expect(spotifyOption).toBeDefined();
-      spotifyOption.classList.add('selected'); // Simulate selection
+      select.value = 'media_player.spotify';
+      select.dispatchEvent(new Event('change'));
 
       await settings.saveSettings();
 
@@ -3176,6 +3211,31 @@ describe('Settings + Config Integration', () => {
 
       // Verify active tab re-render was triggered
       expect(mockUI.renderActiveTab).toHaveBeenCalled();
+    });
+
+    test('keeps a configured media player that Home Assistant is not reporting', async () => {
+      state.CONFIG.primaryMediaPlayer = 'media_player.gone';
+      await settings.openSettings();
+
+      const select = document.getElementById('primary-media-player');
+      expect(select.value).toBe('media_player.gone');
+      expect(select.selectedOptions[0].textContent).toContain('media_player.gone');
+
+      await settings.saveSettings();
+      expect(state.CONFIG.primaryMediaPlayer).toBe('media_player.gone');
+    });
+
+    test('clears the media player when None is chosen', async () => {
+      state.CONFIG.primaryMediaPlayer = 'media_player.spotify';
+      await settings.openSettings();
+      const select = document.getElementById('primary-media-player');
+      expect(select.value).toBe('media_player.spotify');
+
+      select.value = '';
+      select.dispatchEvent(new Event('change'));
+      await settings.saveSettings();
+
+      expect(state.CONFIG.primaryMediaPlayer).toBeNull();
     });
 
     test('theme and UI preferences applied immediately', async () => {
@@ -3274,6 +3334,40 @@ describe('Settings + Config Integration', () => {
         expect.objectContaining({ density: 'compact' })
       );
       expect(mockUiUtils.applyUiPreferences.mock.lastCall[0].scale).toBeUndefined();
+    });
+
+    test('dims the rows the Readable preset replaces while it is on', async () => {
+      await settings.openSettings();
+      const colors = document.getElementById('colors-section');
+      const preset = document.getElementById('readable-preset');
+      expect(colors.classList.contains('is-overridden')).toBe(false);
+
+      preset.checked = true;
+      preset.dispatchEvent(new Event('change'));
+      expect(colors.classList.contains('is-overridden')).toBe(true);
+
+      preset.checked = false;
+      preset.dispatchEvent(new Event('change'));
+      expect(colors.classList.contains('is-overridden')).toBe(false);
+    });
+
+    test('opens with those rows dimmed when the preset is already saved on', async () => {
+      state.CONFIG.ui.highContrast = true;
+      state.CONFIG.ui.opaquePanels = true;
+      await settings.openSettings();
+      expect(document.getElementById('colors-section').classList.contains('is-overridden')).toBe(
+        true
+      );
+    });
+
+    test('leaves those rows alone when only one of the preset flags is saved', async () => {
+      state.CONFIG.ui.highContrast = true;
+      state.CONFIG.ui.opaquePanels = false;
+      await settings.openSettings();
+      expect(document.getElementById('readable-preset').checked).toBe(false);
+      expect(document.getElementById('colors-section').classList.contains('is-overridden')).toBe(
+        false
+      );
     });
 
     test('saving unrelated settings keeps split contrast flags the preset does not represent', async () => {
@@ -5461,6 +5555,42 @@ describe('Settings + Config Integration', () => {
       expect(end.disabled).toBe(false);
     });
 
+    test('saves on Enter in a single-line field, but not on a switch', async () => {
+      settings.openAlertConfigModal('sensor.office_temperature');
+      const modal = document.getElementById('alert-config-modal');
+      const duration = document.getElementById('alert-duration');
+      const press = (target) => {
+        const event = new KeyboardEvent('keydown', {
+          key: 'Enter',
+          bubbles: true,
+          cancelable: true,
+        });
+        target.dispatchEvent(event);
+        return event;
+      };
+
+      // A bad value reaches saveAlert's own validation, which proves Enter ran the save.
+      duration.value = '90000';
+      expect(press(duration).defaultPrevented).toBe(true);
+      await Promise.resolve();
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        'Enter a whole number of seconds from 0 to 86400.',
+        'error'
+      );
+
+      mockUiUtils.showToast.mockClear();
+      expect(press(document.getElementById('alert-quiet-enabled')).defaultPrevented).toBe(false);
+      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+
+      // Opening again must not stack a second listener.
+      settings.openAlertConfigModal('sensor.office_temperature');
+      document.getElementById('alert-duration').value = '90000';
+      press(document.getElementById('alert-duration'));
+      await Promise.resolve();
+      expect(mockUiUtils.showToast).toHaveBeenCalledTimes(1);
+      expect(modal.dataset.enterSaves).toBe('true');
+    });
+
     test('rejects out-of-range durations with a toast instead of a native bubble', async () => {
       settings.openAlertConfigModal('sensor.office_temperature');
       const duration = document.getElementById('alert-duration');
@@ -5474,6 +5604,38 @@ describe('Settings + Config Integration', () => {
       );
       expect(document.activeElement).toBe(duration);
       expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Support Development dialog', () => {
+    afterEach(() => {
+      document.getElementById('donate-modal')?.remove();
+      document.getElementById('open-donate-modal-btn')?.remove();
+    });
+
+    test('continues on Enter in the custom amount field', async () => {
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        `<button id="open-donate-modal-btn" type="button"></button>
+        <div id="donate-modal" class="modal hidden">
+          <input name="donate-frequency" type="radio" value="one-time" checked />
+          <input id="donate-custom-amount" type="number" min="1" max="12000" step="1" />
+          <button id="donate-continue-btn" type="button">Continue</button>
+        </div>`
+      );
+      mockElectronAPI.openExternal = jest.fn().mockResolvedValue({ success: true });
+      await settings.openSettings();
+
+      const amount = document.getElementById('donate-custom-amount');
+      amount.value = '25';
+      const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+      amount.dispatchEvent(enter);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(enter.defaultPrevented).toBe(true);
+      expect(mockElectronAPI.openExternal).toHaveBeenCalledWith(
+        expect.stringContaining('amount=25')
+      );
     });
   });
 

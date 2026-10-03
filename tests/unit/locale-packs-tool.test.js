@@ -50,6 +50,22 @@ function run(root, ...argv) {
   return { code, out: out.join('\n'), err: err.join('\n') };
 }
 
+/** Retires `Old` by hand, the way an earlier release's pack text would sit in every pack. */
+function withRetiredKey(root) {
+  writeJson(root, 'locale-packs/retired-keys.json', {
+    Old: { retiredIn: '2.0.0', reason: 'Replaced by Hello' },
+  });
+  for (const [locale, text] of [
+    ['de', 'Alt'],
+    ['fr', 'Ancien'],
+  ]) {
+    const pack = readJson(root, `locale-packs/${locale}.json`);
+    pack.messages.Old = text;
+    writeJson(root, `locale-packs/${locale}.json`, pack);
+  }
+  tool.syncManifest(tool.pathsFor(root));
+}
+
 /** A tiny but complete set of catalogs: English, a bundled German catalog and two packs. */
 function createRepo() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'locale-packs-test-'));
@@ -68,6 +84,7 @@ function createRepo() {
     notes: `${displayName} pack`,
     messages,
   });
+  writeJson(root, 'locale-packs/retired-keys.json', {});
   writeJson(root, 'locale-packs/de.json', pack('de', 'German', german));
   writeJson(root, 'locale-packs/fr.json', pack('fr', 'French', french));
   writeJson(root, 'locale-packs/manifest.json', {
@@ -130,9 +147,107 @@ describe('locale-packs check', () => {
     const problems = tool.checkPacks(tool.pathsFor(root));
     expect(problems).toEqual([
       expect.stringContaining('locale-packs/fr.json is missing 1 keys: "Hello"'),
-      expect.stringContaining('locale-packs/fr.json has 1 keys en.json lacks: "Surplus"'),
+      expect.stringContaining(
+        'locale-packs/fr.json has 1 keys that neither en.json nor retired-keys.json lists: "Surplus"'
+      ),
       expect.stringContaining('changes the {{placeholders}} of: "Count: {{count}}"'),
     ]);
+  });
+
+  it('accepts retired keys in the packs and wants every pack to carry them', () => {
+    const root = createRepo();
+    const paths = tool.pathsFor(root);
+    withRetiredKey(root);
+    expect(tool.checkPacks(paths)).toEqual([]);
+
+    const pack = readJson(root, 'locale-packs/fr.json');
+    delete pack.messages.Old;
+    writeJson(root, 'locale-packs/fr.json', pack);
+    tool.syncManifest(paths);
+    expect(tool.checkPacks(paths)).toEqual([
+      expect.stringContaining(
+        'locale-packs/fr.json is missing 1 retired keys that older apps still use: "Old"'
+      ),
+    ]);
+  });
+
+  it('keeps retired keys out of the bundled catalogs and compares them without the retired keys', () => {
+    const root = createRepo();
+    withRetiredKey(root);
+    const german = readJson(root, 'locales/de.json');
+    german.Old = 'Alt';
+    writeJson(root, 'locales/de.json', german);
+    expect(tool.checkPacks(tool.pathsFor(root))).toEqual([
+      'locales/de.json has 1 keys en.json lacks: "Old"',
+      'locales/de.json differs from locale-packs/de.json',
+    ]);
+  });
+
+  it('reports a retired key that en.json still has and entries without a version or reason', () => {
+    const root = createRepo();
+    writeJson(root, 'locale-packs/retired-keys.json', {
+      Hello: { retiredIn: '4.0.0', reason: 'Still current' },
+      NoVersion: { retiredIn: '4', reason: 'Bad version' },
+      NoReason: { retiredIn: '4.0.0', reason: ' ' },
+      BlankEnglish: { retiredIn: '4.0.0', reason: 'Blank en', en: '' },
+      Broken: 'text',
+    });
+    for (const locale of ['de', 'fr']) {
+      const pack = readJson(root, `locale-packs/${locale}.json`);
+      Object.assign(pack.messages, {
+        NoVersion: 'x',
+        NoReason: 'x',
+        BlankEnglish: 'x',
+        Broken: 'x',
+      });
+      writeJson(root, `locale-packs/${locale}.json`, pack);
+    }
+    tool.syncManifest(tool.pathsFor(root));
+
+    const problems = tool.checkPacks(tool.pathsFor(root));
+    expect(problems).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          'retired-keys.json needs an object of {retiredIn, reason} for: "Broken"'
+        ),
+        expect.stringContaining(
+          'retired-keys.json needs retiredIn as major.minor.patch for: "NoVersion"'
+        ),
+        expect.stringContaining('retired-keys.json needs a reason for: "NoReason"'),
+        expect.stringContaining('retired-keys.json has blank en text for: "BlankEnglish"'),
+        expect.stringContaining('retired-keys.json lists keys en.json still has: "Hello"'),
+      ])
+    );
+    // The key that is current is required once, as a current key, not again as a retired one.
+    expect(problems.filter((problem) => /is missing/.test(problem))).toEqual([]);
+  });
+
+  it('checks the placeholders of a retired translation against the English text it had', () => {
+    const root = createRepo();
+    writeJson(root, 'locale-packs/retired-keys.json', {
+      'Old: {{count}}': { retiredIn: '2.0.0', reason: 'Reworded' },
+      Name: { retiredIn: '2.0.0', reason: 'Reworded', en: 'Name for {{user}}' },
+    });
+    for (const [locale, name] of [
+      ['de', 'Name für {{user}}'],
+      ['fr', 'Nom'],
+    ]) {
+      const pack = readJson(root, `locale-packs/${locale}.json`);
+      pack.messages['Old: {{count}}'] = 'Alt: {{count}}';
+      pack.messages.Name = name;
+      writeJson(root, `locale-packs/${locale}.json`, pack);
+    }
+    tool.syncManifest(tool.pathsFor(root));
+
+    expect(tool.checkPacks(tool.pathsFor(root))).toEqual([
+      'locale-packs/fr.json changes the {{placeholders}} of: "Name"',
+    ]);
+  });
+
+  it('treats a missing retired-keys.json as an empty list', () => {
+    const root = createRepo();
+    fs.rmSync(path.join(root, 'locale-packs/retired-keys.json'));
+    expect(tool.checkPacks(tool.pathsFor(root))).toEqual([]);
   });
 
   it('reports empty and whitespace-only values in a pack and in a bundled catalog', () => {
@@ -296,6 +411,42 @@ describe('locale-packs add', () => {
     );
   });
 
+  it('takes a retired key off the retired list when it is added again', () => {
+    const root = createRepo();
+    const paths = tool.pathsFor(root);
+    tool.removeStrings(paths, ['Hello'], { retiredIn: '2.0.0', reason: 'Gone for now' });
+    expect(readJson(root, 'locale-packs/retired-keys.json')).toHaveProperty('Hello');
+
+    const { added, revived } = tool.addStrings(paths, {
+      Hello: { en: 'Hello', de: 'Hallo!', fr: 'Salut' },
+    });
+    expect(added).toEqual(['Hello']);
+    expect(revived).toEqual(['Hello']);
+    expect(readJson(root, 'locale-packs/retired-keys.json')).toEqual({});
+    expect(readJson(root, 'locales/en.json')).toHaveProperty('Hello');
+    expect(readJson(root, 'locales/de.json').Hello).toBe('Hallo!');
+    expect(readJson(root, 'locale-packs/de.json').messages.Hello).toBe('Hallo!');
+    expect(readJson(root, 'locale-packs/fr.json').messages.Hello).toBe('Salut');
+    tool.bumpPacks(paths);
+    expect(tool.checkPacks(paths)).toEqual([]);
+  });
+
+  it('keeps a retired key retired when its entry is refused', () => {
+    const root = createRepo();
+    const paths = tool.pathsFor(root);
+    tool.removeStrings(paths, ['Hello'], { retiredIn: '2.0.0', reason: 'Gone for now' });
+    const retired = fs.readFileSync(path.join(root, 'locale-packs/retired-keys.json'), 'utf8');
+
+    // A retired key is not in en.json, so it needs the full entry like any new key.
+    expect(() => tool.addStrings(paths, { Hello: { de: 'Hallo!' } })).toThrow(
+      /"Hello": missing en, fr/
+    );
+    expect(fs.readFileSync(path.join(root, 'locale-packs/retired-keys.json'), 'utf8')).toBe(
+      retired
+    );
+    expect(readJson(root, 'locales/en.json')).not.toHaveProperty('Hello');
+  });
+
   it('is available as a command that reads a file', () => {
     const root = createRepo();
     writeJson(root, 'strings.json', newString);
@@ -309,15 +460,136 @@ describe('locale-packs add', () => {
 });
 
 describe('locale-packs remove', () => {
-  it('deletes keys everywhere and rejects unknown ones', () => {
+  const retire = { retiredIn: '4.0.0', reason: 'Replaced by something else' };
+
+  it('retires a key: gone from the app catalogs, kept with its translations in every pack', () => {
     const root = createRepo();
-    tool.removeStrings(tool.pathsFor(root), ['Hello']);
+    const packsBefore = ['de', 'fr'].map((locale) =>
+      fs.readFileSync(path.join(root, `locale-packs/${locale}.json`), 'utf8')
+    );
+
+    const result = tool.removeStrings(tool.pathsFor(root), ['Hello'], retire);
+
+    expect(result).toEqual({ retired: ['Hello'], purged: [] });
+    expect(readJson(root, 'locales/en.json')).not.toHaveProperty('Hello');
+    expect(readJson(root, 'locales/de.json')).not.toHaveProperty('Hello');
+    expect(readJson(root, 'locale-packs/retired-keys.json')).toEqual({ Hello: retire });
+    // The packs are untouched, so no pack needs a new version for a retirement alone.
+    expect(
+      ['de', 'fr'].map((locale) =>
+        fs.readFileSync(path.join(root, `locale-packs/${locale}.json`), 'utf8')
+      )
+    ).toEqual(packsBefore);
+    expect(readJson(root, 'locale-packs/fr.json').messages.Hello).toBe('Bonjour');
+    expect(tool.checkPacks(tool.pathsFor(root))).toEqual([]);
+    expect(tool.bumpPacks(tool.pathsFor(root))).toEqual([]);
+  });
+
+  it('records the English text only when it differs from the key', () => {
+    const root = createRepo();
+    const paths = tool.pathsFor(root);
+    tool.addStrings(paths, {
+      'State: on': { en: 'on', de: 'an', fr: 'allumé' },
+      'Left: {{count}}': { en: 'Left: {{count}}', de: 'Übrig: {{count}}', fr: 'Reste : {{count}}' },
+    });
+    tool.removeStrings(paths, ['State: on', 'Left: {{count}}'], retire);
+
+    expect(readJson(root, 'locale-packs/retired-keys.json')).toEqual({
+      'State: on': { ...retire, en: 'on' },
+      'Left: {{count}}': retire,
+    });
+  });
+
+  it('refuses to retire without a version and a reason, an unknown key or a retired key', () => {
+    const root = createRepo();
+    const paths = tool.pathsFor(root);
+    const files = ['locales/en.json', 'locales/de.json', 'locale-packs/retired-keys.json'];
+    const before = files.map((file) => fs.readFileSync(path.join(root, file), 'utf8'));
+
+    expect(() => tool.removeStrings(paths, ['Hello'])).toThrow(/needs --in <version>/);
+    expect(() => tool.removeStrings(paths, ['Hello'], { retiredIn: '4', reason: 'x' })).toThrow(
+      /needs --in <version>/
+    );
+    expect(() => tool.removeStrings(paths, ['Hello'], { retiredIn: '4.0.0' })).toThrow(
+      /needs --reason/
+    );
+    expect(() => tool.removeStrings(paths, ['Hello', 'Nope'], retire)).toThrow(
+      /Not in en.json: "Nope"/
+    );
+    expect(files.map((file) => fs.readFileSync(path.join(root, file), 'utf8'))).toEqual(before);
+
+    tool.removeStrings(paths, ['Hello'], retire);
+    expect(() => tool.removeStrings(paths, ['Hello'], retire)).toThrow(
+      /Already retired \(use --purge to delete\): "Hello"/
+    );
+  });
+
+  it('purges a key that never shipped: deleted everywhere and not retired', () => {
+    const root = createRepo();
+    const result = tool.removeStrings(tool.pathsFor(root), ['Hello'], { purge: true });
+
+    expect(result).toEqual({ retired: [], purged: ['Hello'] });
     expect(readJson(root, 'locales/en.json')).not.toHaveProperty('Hello');
     expect(readJson(root, 'locales/de.json')).not.toHaveProperty('Hello');
     expect(readJson(root, 'locale-packs/fr.json').messages).not.toHaveProperty('Hello');
-    expect(() => tool.removeStrings(tool.pathsFor(root), ['Nope'])).toThrow(
-      /Not in en.json: "Nope"/
+    expect(readJson(root, 'locale-packs/retired-keys.json')).toEqual({});
+    expect(() => tool.removeStrings(tool.pathsFor(root), ['Nope'], { purge: true })).toThrow(
+      /Not in en.json or retired-keys.json: "Nope"/
     );
+    // Without a retired list there is nothing to write one for.
+    fs.rmSync(path.join(root, 'locale-packs/retired-keys.json'));
+    tool.removeStrings(tool.pathsFor(root), ['Count: {{count}}'], { purge: true });
+    expect(fs.existsSync(path.join(root, 'locale-packs/retired-keys.json'))).toBe(false);
+  });
+
+  it('purges a retired key only once minAppVersion has passed the release that retired it', () => {
+    const root = createRepo();
+    const paths = tool.pathsFor(root);
+    tool.removeStrings(paths, ['Hello'], retire);
+
+    expect(() => tool.removeStrings(paths, ['Hello'], { purge: true })).toThrow(
+      /Cannot purge "Hello": apps from 3\.4\.1 on can still install a pack/
+    );
+    expect(readJson(root, 'locale-packs/fr.json').messages).toHaveProperty('Hello');
+    expect(readJson(root, 'locale-packs/retired-keys.json')).toHaveProperty('Hello');
+
+    // The manifest alone is not enough: a pack that still says 3.4.1 can be installed from it.
+    const manifest = readJson(root, 'locale-packs/manifest.json');
+    manifest.packs.forEach((entry) => {
+      entry.minAppVersion = '4.0.0';
+    });
+    writeJson(root, 'locale-packs/manifest.json', manifest);
+    expect(() => tool.removeStrings(paths, ['Hello'], { purge: true })).toThrow(/Cannot purge/);
+
+    for (const locale of ['de', 'fr']) {
+      const pack = readJson(root, `locale-packs/${locale}.json`);
+      pack.minAppVersion = '4.0.0';
+      writeJson(root, `locale-packs/${locale}.json`, pack);
+    }
+    tool.removeStrings(paths, ['Hello'], { purge: true });
+    expect(readJson(root, 'locale-packs/fr.json').messages).not.toHaveProperty('Hello');
+    expect(readJson(root, 'locale-packs/de.json').messages).not.toHaveProperty('Hello');
+    expect(readJson(root, 'locale-packs/retired-keys.json')).toEqual({});
+    tool.bumpPacks(paths);
+    expect(tool.checkPacks(paths)).toEqual([]);
+  });
+
+  it('is available as a command with --in, --reason and --purge', () => {
+    const root = createRepo();
+    const retired = run(root, 'remove', '--in', '4.0.0', '--reason', 'Reworded', 'Hello');
+    expect(retired.code).toBe(0);
+    expect(retired.out).toContain('Retired 1 keys');
+    expect(readJson(root, 'locale-packs/retired-keys.json')).toEqual({
+      Hello: { retiredIn: '4.0.0', reason: 'Reworded' },
+    });
+    expect(run(root, 'check').code).toBe(0);
+
+    expect(run(root, 'remove', 'Count: {{count}}').err).toMatch(/needs --in <version>/);
+    const both = run(root, 'remove', '--purge', '--reason', 'x', 'Hello');
+    expect(both.code).toBe(1);
+    expect(both.err).toMatch(/--purge deletes keys outright/);
+    expect(run(root, 'remove', '--purge', 'Hello').err).toMatch(/Cannot purge "Hello"/);
+    expect(run(root, 'remove', '--purge', 'Count: {{count}}').out).toContain('Purged 1 keys');
   });
 });
 
@@ -403,9 +675,9 @@ describe('locale-packs merge recipe', () => {
     const paths = tool.pathsFor(root);
 
     git(root, 'checkout', '-q', '-b', 'feature');
-    tool.removeStrings(paths, ['Hello']);
+    tool.removeStrings(paths, ['Hello'], { retiredIn: '2.0.0', reason: 'Feature drops Hello' });
     tool.bumpPacks(paths);
-    git(root, 'commit', '-q', '-am', 'feature removes Hello');
+    git(root, 'commit', '-q', '-am', 'feature retires Hello');
 
     git(root, 'checkout', '-q', 'main');
     tool.addStrings(paths, { Beta: { en: 'Beta', de: 'Beta-de', fr: 'Beta-fr' } });
@@ -423,12 +695,24 @@ describe('locale-packs merge recipe', () => {
     // The export has no way to say "deleted", so main's catalogs bring the key back.
     expect(readJson(root, 'locales/en.json')).toHaveProperty('Hello');
 
-    expect(run(root, 'remove', 'Hello').code).toBe(0);
+    // Retiring again brings the key back onto the retired list that main's catalogs overwrote.
+    const removed = run(
+      root,
+      'remove',
+      '--in',
+      '2.0.0',
+      '--reason',
+      'Feature drops Hello',
+      'Hello'
+    );
+    expect(removed.code).toBe(0);
     expect(run(root, 'bump', '--against', 'MERGE_HEAD').code).toBe(0);
     expect(run(root, 'check', '--against', 'MERGE_HEAD').code).toBe(0);
     expect(readJson(root, 'locales/en.json')).not.toHaveProperty('Hello');
     expect(readJson(root, 'locale-packs/fr.json').messages).toHaveProperty('Beta');
-    expect(readJson(root, 'locale-packs/fr.json').messages).not.toHaveProperty('Hello');
+    // The translation stays for the older apps that still ask for it.
+    expect(readJson(root, 'locale-packs/fr.json').messages.Hello).toBe('Bonjour');
+    expect(readJson(root, 'locale-packs/retired-keys.json')).toHaveProperty('Hello');
   });
 });
 
@@ -548,9 +832,9 @@ describe('locale-packs merge recipe, one key changed on both sides', () => {
 
     git(root, 'checkout', '-q', 'main');
     tool.addStrings(paths, beta);
-    tool.removeStrings(paths, ['Hello']);
+    tool.removeStrings(paths, ['Hello'], { retiredIn: '2.0.0', reason: 'Main drops Hello' });
     tool.bumpPacks(paths);
-    git(root, 'commit', '-q', '-am', 'main removes Hello');
+    git(root, 'commit', '-q', '-am', 'main retires Hello');
 
     git(root, 'checkout', '-q', 'feature');
     expect(git(root, 'merge', 'main').status).not.toBe(0);
@@ -562,7 +846,9 @@ describe('locale-packs merge recipe, one key changed on both sides', () => {
     expect(add.err).toMatch(/"Hello": missing en, fr/);
     expect(readJson(root, 'locales/en.json')).not.toHaveProperty('Hello');
     expect(readJson(root, 'locales/en.json')).not.toHaveProperty('Alpha');
-    expect(readJson(root, 'locale-packs/de.json').messages).not.toHaveProperty('Hello');
+    // Main's retirement stands, so its translation is still there for the older apps.
+    expect(readJson(root, 'locale-packs/de.json').messages.Hello).toBe('Hallo');
+    expect(readJson(root, 'locale-packs/retired-keys.json')).toHaveProperty('Hello');
   });
 });
 
@@ -578,6 +864,7 @@ describe('locale-packs command line', () => {
     const root = createRepo();
     expect(run(root, 'add').err).toMatch(/strings JSON file/);
     expect(run(root, 'remove').err).toMatch(/at least one key/);
+    expect(run(root, 'remove', '--in').err).toMatch(/--in needs a value/);
     expect(run(root, 'export').err).toMatch(/base ref/);
     expect(run(root, 'check', '--against').err).toMatch(/--against needs a value/);
   });

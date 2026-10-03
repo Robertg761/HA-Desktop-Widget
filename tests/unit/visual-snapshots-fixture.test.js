@@ -7,6 +7,7 @@ const path = require('path');
 
 const {
   PAGE_SETS,
+  RESETTABLE_SETTINGS,
   WINDOW_POSITION,
   WINDOW_SIZE,
   buildConfig,
@@ -27,7 +28,8 @@ describe('visual snapshot fixture', () => {
           .map((entityId) => `${setName}/${page.id}: ${entityId}`)
       )
     );
-    expect(unknown).toEqual([]);
+    // The dialogs page keeps one favourite Home Assistant no longer has: the repair picker's tile.
+    expect(unknown).toEqual(['dialogs/default: light.old_kitchen']);
   });
 
   it('starts on a page set that has the page it activates', () => {
@@ -61,6 +63,17 @@ describe('visual snapshot scenes', () => {
     for (const name of names) expect(name).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
   });
 
+  it('leaves the scenes that change unrestored settings to the end', () => {
+    const changesMore = (scene) =>
+      Object.keys(scene.config || {}).some((key) => !RESETTABLE_SETTINGS.includes(key));
+    const firstIndex = scenes.findIndex(changesMore);
+
+    expect(firstIndex).toBeGreaterThan(0);
+    // Everything after the first such scene changes them too, so no scene starts from a state an
+    // earlier one left behind.
+    expect(scenes.slice(firstIndex).every(changesMore)).toBe(true);
+  });
+
   it('activates pages that exist in the page set it brings', () => {
     for (const scene of scenes.filter((entry) => entry.config?.customTabs)) {
       expect(scene.config.customTabs.map((page) => page.id)).toContain(scene.config.activeTabId);
@@ -85,6 +98,11 @@ describe('visual snapshot scenes', () => {
       'popup-brightness-light',
       'popup-climate-light',
       'popup-input-number',
+      'popup-input-select',
+      'popup-vacuum',
+      'popup-todo',
+      'popup-calendar',
+      'popup-repair',
       'popup-alarm-code',
       'dialog-manage-quick-access',
       'de-main',
@@ -94,6 +112,14 @@ describe('visual snapshot scenes', () => {
       'narrow-main',
       'forced-colors-main',
       'forced-colors-popup',
+      'forced-colors-popup-climate',
+      'forced-colors-popup-colour',
+      'forced-colors-settings-appearance',
+      'forced-colors-light-main',
+      'forced-colors-light-popup-climate',
+      'readable-main',
+      'readable-light-main',
+      'readable-light-popup-climate',
       'six-tabs',
       'media-tile',
       'pin-light',
@@ -105,5 +131,34 @@ describe('visual snapshot scenes', () => {
     expect(scenes.find((scene) => scene.name === 'forced-colors-main').media).toEqual([
       { name: 'forced-colors', value: 'active' },
     ]);
+  });
+
+  it('shows forced colours on a light contrast theme too', () => {
+    for (const scene of scenes.filter((entry) => entry.name.startsWith('forced-colors-light-'))) {
+      expect(scene.ui.theme).toBe('light');
+      expect(scene.media).toEqual(
+        expect.arrayContaining([
+          { name: 'forced-colors', value: 'active' },
+          { name: 'prefers-color-scheme', value: 'light' },
+        ])
+      );
+    }
+  });
+
+  it('shows the Readable preset over both themes', () => {
+    for (const scene of scenes.filter((entry) => entry.name.startsWith('readable-'))) {
+      expect(scene.ui).toMatchObject({ highContrast: true, opaquePanels: true });
+    }
+    expect(scenes.find((scene) => scene.name === 'readable-light-main').ui.theme).toBe('light');
+  });
+
+  it('has a light with colour controls for the colour pop-up', () => {
+    const colourStrip = buildStates().find((state) => state.entity_id === 'light.colour_strip');
+    expect(colourStrip.attributes.supported_color_modes).toEqual(
+      expect.arrayContaining(['color_temp', 'hs'])
+    );
+    const scene = scenes.find((entry) => entry.name === 'forced-colors-popup-colour');
+    const page = PAGE_SETS.default.find((entry) => entry.id === scene.config.activeTabId);
+    expect(page.entityIds).toContain('light.colour_strip');
   });
 });

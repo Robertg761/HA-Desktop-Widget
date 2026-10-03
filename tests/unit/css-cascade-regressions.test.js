@@ -877,15 +877,26 @@ describe('stylesheet cascade regressions', () => {
       ).toMatch(/^linear-gradient\(to right, #ffb45f/);
     });
 
-    it('leaves transparent tile and transport buttons alone', () => {
+    it('leaves transparent tile buttons alone', () => {
       render(
         THEMES['readable light'],
-        `<div class="control-item"><button class="tile-primary-button"></button></div>
-        <div class="media-detail-controls"><button class="btn"></button></div>`
+        `<div class="control-item"><button class="tile-primary-button"></button></div>`
+      );
+
+      expect(resolvedValue(document.querySelector('button'), 'background')).toBe('transparent');
+    });
+
+    // The transport buttons are round chips now, so they take the readable fill like every other
+    // button instead of staying bare glyphs.
+    it.each(readableThemes)('draws the media transport as readable buttons (%s)', (theme) => {
+      render(
+        theme,
+        `<div class="media-detail-controls"><button class="btn"></button>
+        <button class="btn play-pause-btn"></button></div>`
       );
 
       for (const button of document.querySelectorAll('button')) {
-        expect(resolvedValue(button, 'background')).toBe('transparent');
+        expect(isOpaque(resolvedValue(button, 'background'))).toBe(true);
       }
     });
   });
@@ -916,6 +927,23 @@ describe('stylesheet cascade regressions', () => {
 
       for (const button of buttons) expect(resolvedValue(button, 'flex')).toBe('0 1 auto');
       expect(minimumButtons + minimumGap * (buttons.length - 1)).toBeLessThanOrEqual(rowWidth);
+    });
+  });
+
+  describe('media dialog seek chips', () => {
+    it('grow into pills for a unit longer than a letter, as in "−10 Sek."', () => {
+      render(
+        '',
+        `<div class="media-detail-controls">
+          <button class="btn media-detail-seek-btn">\u221210 Sek.</button>
+          <button class="btn media-detail-prev-btn"></button>
+        </div>`
+      );
+      const [seek, previous] = document.querySelectorAll('button');
+
+      expect(resolvedValue(seek, 'width')).toBe('auto');
+      expect(resolvedValue(seek, 'min-width')).toBe('44px');
+      expect(resolvedValue(previous, 'width')).toBe('44px');
     });
   });
 
