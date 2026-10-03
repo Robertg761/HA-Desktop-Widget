@@ -1404,10 +1404,9 @@ function showAddPageModal({ starter = false } = {}) {
       return;
     }
     const area = registry.areas.find((entry) => entry.area_id === roomSelect.value);
-    const nameInput = modal.querySelector('#add-page-name');
-    if (!nameInput.value.trim() || nameInput.value === autoFilledName) {
-      nameInput.value = area?.name || (starter ? t('My devices') : '');
-      autoFilledName = nameInput.value;
+    if (!input.value.trim() || input.value === autoFilledName) {
+      setPageName(area?.name || (starter ? t('My devices') : ''));
+      autoFilledName = input.value;
     }
     const ids =
       !roomSelect.value && starter
@@ -1449,6 +1448,17 @@ function showAddPageModal({ starter = false } = {}) {
   };
   const input = modal.querySelector('#add-page-name');
   const nameError = modal.querySelector('#add-page-name-error');
+  const clearNameError = () => {
+    nameError.hidden = true;
+    input.removeAttribute('aria-invalid');
+    input.removeAttribute('aria-describedby');
+  };
+  // A name filled in for the person (a room, a quick pick) answers a missing-name error the way
+  // typing one would, since setting .value fires no input event. An empty fill is still missing.
+  const setPageName = (name) => {
+    input.value = name;
+    if (name.trim()) clearNameError();
+  };
   const saveBtn = modal.querySelector('#add-page-save-btn');
   const cancelBtn = modal.querySelector('#add-page-cancel-btn');
   const closeBtn = modal.querySelector('.close-btn');
@@ -1505,7 +1515,7 @@ function showAddPageModal({ starter = false } = {}) {
   modal.querySelectorAll('.qa-add-chip').forEach((chip) => {
     chip.addEventListener('click', () => {
       if (!input) return;
-      input.value = chip.dataset.name || chip.textContent || '';
+      setPageName(chip.dataset.name || chip.textContent || '');
       // A "Kitchen" page should hold the Kitchen room's devices when Home Assistant has that room,
       // whether the room is named in English or in the interface language ("Küche", "kuche").
       const names = [input.value, chip.dataset.preset].filter(Boolean).map((name) => name.trim());
@@ -1520,7 +1530,7 @@ function showAddPageModal({ starter = false } = {}) {
         roomSelect.value = area.area_id;
         roomSelect.onchange();
         // The page keeps the chip's name ("Küche") when the room is named "Kitchen".
-        input.value = chipName;
+        setPageName(chipName);
         autoFilledName = chipName;
       }
       input.focus();
@@ -1532,11 +1542,7 @@ function showAddPageModal({ starter = false } = {}) {
   if (closeBtn) closeBtn.onclick = close;
 
   if (input) {
-    input.addEventListener('input', () => {
-      nameError.hidden = true;
-      input.removeAttribute('aria-invalid');
-      input.removeAttribute('aria-describedby');
-    });
+    input.addEventListener('input', clearNameError);
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();

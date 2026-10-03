@@ -707,6 +707,70 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(input.hasAttribute('aria-describedby')).toBe(false);
     });
 
+    describe('when the page name is filled in for the person', () => {
+      const submitEmptyName = () => {
+        const input = document.querySelector('#add-page-name');
+        input.value = '';
+        document.querySelector('#add-page-save-btn').click();
+        expect(document.querySelector('#add-page-name-error').hidden).toBe(false);
+        expect(input.getAttribute('aria-invalid')).toBe('true');
+        return input;
+      };
+      const expectNameValid = (input) => {
+        expect(document.querySelector('#add-page-name-error').hidden).toBe(true);
+        expect(input.hasAttribute('aria-invalid')).toBe(false);
+        expect(input.hasAttribute('aria-describedby')).toBe(false);
+      };
+
+      it('stops calling the name missing once a quick pick supplies it', () => {
+        ui.showAddPageModal();
+        const input = submitEmptyName();
+
+        document.querySelector('.qa-add-chip[data-name="Office"]').click();
+        expect(input.value).toBe('Office');
+        expectNameValid(input);
+      });
+
+      it('stops calling the name missing once a quick pick supplies it along with its room', async () => {
+        registryResponses();
+        ui.showAddPageModal();
+        await flush();
+        const input = submitEmptyName();
+
+        document.querySelector('.qa-add-chip[data-name="Kitchen"]').click();
+        expect(document.querySelector('#add-page-room').value).toBe('kitchen');
+        expect(input.value).toBe('Kitchen');
+        expectNameValid(input);
+      });
+
+      it('stops calling the name missing once choosing a room supplies it', async () => {
+        registryResponses();
+        ui.showAddPageModal();
+        await flush();
+        const input = submitEmptyName();
+
+        const room = document.querySelector('#add-page-room');
+        room.value = 'office';
+        room.onchange();
+        expect(input.value).toBe('Office');
+        expectNameValid(input);
+      });
+
+      it('keeps saying the name is missing while a room leaves it empty', async () => {
+        registryResponses();
+        ui.showAddPageModal();
+        await flush();
+        const input = submitEmptyName();
+
+        const room = document.querySelector('#add-page-room');
+        room.value = '';
+        room.onchange();
+        expect(input.value).toBe('');
+        expect(document.querySelector('#add-page-name-error').hidden).toBe(false);
+        expect(input.getAttribute('aria-invalid')).toBe('true');
+      });
+    });
+
     it('is named by its heading, with Cancel before Add Page in both order and look', () => {
       ui.showAddPageModal();
       const modal = document.getElementById('add-page-modal');
