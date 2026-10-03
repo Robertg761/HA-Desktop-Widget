@@ -425,8 +425,8 @@ function resolveBackgroundThemeId(backgroundKey) {
  * The fill a primary button takes on hover: the accent stepped toward white in the dark theme and
  * toward black in the light one. The label colour was picked for the accent at rest, so the step
  * must not take it below 4.5:1 (or below what it had at rest): an accent whose label is white
- * steps the other way, since a lighter fill only costs it contrast, and any other step is
- * shortened until the label holds.
+ * steps the other way, in the dark theme too (so Indigo hovers darker there), since a lighter
+ * fill only costs it contrast, and any other step is shortened until the label holds.
  * @param {{r:number, g:number, b:number}} rgb - Accent colour.
  * @param {string} onAccent - The label colour picked for the accent, '#0a0c10' or '#ffffff'.
  * @param {boolean} isLightTheme
