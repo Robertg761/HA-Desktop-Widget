@@ -732,6 +732,28 @@ const scenes = [
     ui: { theme },
     setup: showConnectionResults,
   })),
+  // The Background picker: swatches drawn as the window a choice gives, with the choice as a dot,
+  // with a tinted background picked so the Background chip carries it too.
+  ...['dark', 'light'].map((theme) => ({
+    name: `contrast-${theme}-background-swatches`,
+    ui: { theme, background: 'rose' },
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'personalization');
+      await ctx.click('.color-target-option[data-color-target="background"]');
+      await ctx.ev(`document.querySelector('#theme-options')?.scrollIntoView({ block: 'center' })`);
+    },
+  })),
+  // The hotkey prompt, which drew white text on the light panel.
+  ...['dark', 'light'].map((theme) => ({
+    name: `contrast-${theme}-hotkey-capture`,
+    ui: { theme },
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'hotkeys');
+      await ctx.waitForSelector('#hotkeys-list .hotkey-input');
+      await ctx.ev(`document.querySelector('#hotkeys-list .hotkey-input').click()`);
+      await ctx.waitForSelector('.hotkey-capture-modal');
+    },
+  })),
   ...['dark', 'light'].map((theme) => ({
     name: `contrast-${theme}-sync-error`,
     ui: { theme },

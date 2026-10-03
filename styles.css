@@ -719,22 +719,6 @@ body.frosted-glass .widget-content {
   -webkit-backdrop-filter: none;
 }
 
-body.software-glass.frosted-glass .modal-content {
-  background:
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, var(--software-acrylic-highlight-alpha, 0.08)),
-      rgba(255, 255, 255, 0)
-    ),
-    linear-gradient(var(--glass-elevated), var(--glass-elevated)), var(--modal-backstop);
-  backdrop-filter: blur(var(--bg-blur)) saturate(170%) contrast(108%);
-  -webkit-backdrop-filter: blur(var(--bg-blur)) saturate(170%) contrast(108%);
-  box-shadow:
-    var(--shadow-sm),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.12);
-}
-
 body.linux-performance-mode,
 body.linux-performance-mode .widget-header,
 body.linux-performance-mode .widget-content,
@@ -787,12 +771,6 @@ body.frosted-glass .loading-overlay {
 
 body.theme-light.frosted-glass .loading-overlay {
   background: rgba(var(--loading-overlay-rgb, 245, 245, 250), 0.7);
-}
-
-/* Modal content in frosted glass mode */
-body.frosted-glass .modal-content {
-  background: linear-gradient(var(--glass-elevated), var(--glass-elevated)), var(--modal-backstop);
-  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 /* Base styles */
@@ -12498,59 +12476,67 @@ body.theme-light:not(.high-contrast)
   transform: scale(1.05);
 }
 
-/* On the pale dialog the tracks above fade to 1.0 to 1.9:1 at their start and the white thumb to
-   1.2:1, so the light theme gives each track a stronger start stop and an edge, and the thumb a
-   ring. The Readable preset paints its own tracks. */
-body.theme-light:not(.high-contrast) {
-  --slider-edge: inset 0 0 0 1px rgba(0, 0, 0, 0.42);
-}
+@media (forced-colors: none) {
+  /* On the pale dialog the tracks above fade to 1.0 to 1.9:1 at their start and the white thumb to
+     1.2:1, so the light theme gives each track a stronger start stop and an edge, and the thumb a
+     ring. The Readable preset paints its own tracks, and forced colours draw a ButtonText bar and a
+     Highlight disc (see the end of this file), which the gradient and the shadows here must not
+     outrank. */
+  body.theme-light:not(.high-contrast) {
+    --slider-edge: inset 0 0 0 1px rgba(0, 0, 0, 0.42);
+  }
 
-body.theme-light:not(.high-contrast) .brightness-slider {
-  background: linear-gradient(var(--slider-dir), rgba(var(--lit-light-rgb), 0.3), var(--lit-light));
-  box-shadow: var(--slider-edge);
-}
+  body.theme-light:not(.high-contrast) .brightness-slider {
+    background: linear-gradient(
+      var(--slider-dir),
+      rgba(var(--lit-light-rgb), 0.3),
+      var(--lit-light)
+    );
+    box-shadow: var(--slider-edge);
+  }
 
-body.theme-light:not(.high-contrast)
-  :is(.fan-slider, .cover-slider, .climate-slider, .media-volume-slider) {
-  background: linear-gradient(
-    var(--slider-dir),
-    color-mix(in srgb, var(--text-primary) 28%, transparent),
-    var(--accent-text)
-  );
-  box-shadow: var(--slider-edge);
-}
+  body.theme-light:not(.high-contrast)
+    :is(.fan-slider, .cover-slider, .climate-slider, .media-volume-slider) {
+    background: linear-gradient(
+      var(--slider-dir),
+      color-mix(in srgb, var(--text-primary) 28%, transparent),
+      var(--accent-text)
+    );
+    box-shadow: var(--slider-edge);
+  }
 
-body.theme-light:not(.high-contrast) .light-color-temp-slider {
-  box-shadow: var(--slider-edge);
-}
+  body.theme-light:not(.high-contrast) .light-color-temp-slider {
+    box-shadow: var(--slider-edge);
+  }
 
-body.theme-light:not(.high-contrast)
-  :is(
-    .brightness-slider,
-    .light-color-temp-slider,
-    .fan-slider,
-    .cover-slider,
-    .climate-slider,
-    .media-volume-slider
-  )::-webkit-slider-thumb {
-  box-shadow:
-    0 2px 6px rgba(0, 0, 0, 0.25),
-    0 0 0 1.5px rgba(0, 0, 0, 0.45);
-}
+  body.theme-light:not(.high-contrast)
+    :is(
+      .brightness-slider,
+      .light-color-temp-slider,
+      .fan-slider,
+      .cover-slider,
+      .climate-slider,
+      .media-volume-slider
+    )::-webkit-slider-thumb {
+    box-shadow:
+      0 2px 6px rgba(0, 0, 0, 0.25),
+      0 0 0 1.5px rgba(0, 0, 0, 0.45);
+  }
 
-body.theme-light:not(.high-contrast)
-  :is(
-    .brightness-slider,
-    .light-color-temp-slider,
-    .fan-slider,
-    .cover-slider,
-    .climate-slider,
-    .media-volume-slider
-  )::-webkit-slider-thumb:hover {
-  box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.3),
-    0 0 0 1.5px rgba(0, 0, 0, 0.45),
-    0 0 0 6px rgba(var(--accent-rgb), 0.18);
+  body.theme-light:not(.high-contrast)
+    :is(
+      .brightness-slider,
+      .light-color-temp-slider,
+      .fan-slider,
+      .cover-slider,
+      .climate-slider,
+      .media-volume-slider
+    )::-webkit-slider-thumb:hover {
+    box-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.3),
+      0 0 0 1.5px rgba(0, 0, 0, 0.45),
+      0 0 0 6px rgba(var(--accent-rgb), 0.18);
+  }
 }
 
 /* Chips: presets, HVAC modes and cover actions share the tile recipe. */
@@ -13165,22 +13151,24 @@ body.theme-light #settings-modal .modal-footer {
     0 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
-body.theme-light:not(.high-contrast) #settings-modal .setting-slider input[type='range'] {
-  background: linear-gradient(
-    var(--slider-dir),
-    color-mix(in srgb, var(--text-primary) 28%, transparent),
-    var(--accent-text)
-  );
-  box-shadow: var(--slider-edge);
-}
+@media (forced-colors: none) {
+  body.theme-light:not(.high-contrast) #settings-modal .setting-slider input[type='range'] {
+    background: linear-gradient(
+      var(--slider-dir),
+      color-mix(in srgb, var(--text-primary) 28%, transparent),
+      var(--accent-text)
+    );
+    box-shadow: var(--slider-edge);
+  }
 
-body.theme-light:not(.high-contrast)
-  #settings-modal
-  .setting-slider
-  input[type='range']::-webkit-slider-thumb {
-  box-shadow:
-    0 2px 6px rgba(0, 0, 0, 0.25),
-    0 0 0 1.5px rgba(0, 0, 0, 0.45);
+  body.theme-light:not(.high-contrast)
+    #settings-modal
+    .setting-slider
+    input[type='range']::-webkit-slider-thumb {
+    box-shadow:
+      0 2px 6px rgba(0, 0, 0, 0.25),
+      0 0 0 1.5px rgba(0, 0, 0, 0.45);
+  }
 }
 
 .setting-slider-value {
@@ -15516,6 +15504,16 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
     .media-volume-slider
   )::-webkit-slider-thumb,
   .desktop-pin-light-slider::-webkit-slider-thumb {
+    background: Highlight;
+    border: 2px solid ButtonText;
+    box-shadow: none;
+  }
+
+  #settings-modal .setting-slider input[type='range'] {
+    background: ButtonText;
+  }
+
+  #settings-modal .setting-slider input[type='range']::-webkit-slider-thumb {
     background: Highlight;
     border: 2px solid ButtonText;
     box-shadow: none;
