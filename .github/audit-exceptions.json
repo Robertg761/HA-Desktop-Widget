@@ -1,0 +1,22 @@
+{
+  "exceptions": [
+    {
+      "ghsa": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "affectedUpTo": "3.0.3",
+      "allowedVia": ["stylelint"],
+      "reason": "Only reachable through stylelint, a dev-only lint tool that is not shipped in the app, and no patched braces release exists yet.",
+      "added": "2026-10-02",
+      "expires": "2026-10-31"
+    },
+    {
+      "ghsa": "GHSA-ch52-4w7c-c8xp",
+      "package": "http-cache-semantics",
+      "affectedUpTo": "4.2.0",
+      "allowedVia": ["electron-builder"],
+      "reason": "Only reachable through electron-builder, which downloads Electron at build time and is not shipped in the app, and no patched http-cache-semantics release exists yet.",
+      "added": "2026-10-02",
+      "expires": "2026-10-31"
+    }
+  ]
+}
