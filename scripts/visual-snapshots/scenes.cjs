@@ -57,6 +57,29 @@ const EDIT_BUTTONS_IN_STRIP = `(() => {
   });
 })()`;
 
+// A custom colour typed but not saved, then Save: the three-way prompt, focused on Save and continue.
+async function raiseUnsavedColorPrompt(ctx) {
+  await ctx.pressKey('Shift', { code: 'ShiftLeft', keyCode: 16 });
+  await openSettingsTab(ctx, 'personalization');
+  await revealInSettings(ctx, '#custom-color-hex');
+  await ctx.ev(`(() => {
+    const hex = document.getElementById('custom-color-hex');
+    hex.value = '#8E24AA';
+    hex.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await ctx.click('#save-settings');
+  await ctx.waitForExpression(
+    `!document.querySelector('#confirm-modal')?.classList.contains('hidden') &&
+      document.activeElement?.id === 'confirm-ok-btn'`,
+    'the three-way prompt, focused on Save and continue'
+  );
+}
+
+async function raiseReorganizeNotice(ctx) {
+  await ctx.click('#reorganize-quick-controls-btn');
+  await ctx.waitForExpression(`document.querySelector('#toast-container .toast.info')`);
+}
+
 async function toggleEditMode(ctx) {
   await ctx.click('#reorganize-quick-controls-btn');
   // The strip scrolls the page into view, which takes a moment.
@@ -237,6 +260,38 @@ const scenes = [
     setup: async (ctx) => {
       await ctx.click(tile('todo.shopping'));
       await ctx.waitForSelector('.todo-item-row');
+    },
+  },
+  // A list taller than the dialog scrolls, and the add field stays at the top of it instead of
+  // going off with the first rows.
+  {
+    name: 'popup-todo-scrolled',
+    config: dialogsPage,
+    size: { width: 500, height: 420 },
+    setup: async (ctx) => {
+      await ctx.click(tile('todo.shopping'));
+      await ctx.waitForSelector('.todo-item-row');
+      await ctx.ev(`(() => {
+        const body = document.querySelector('.todo-modal .modal-body');
+        body.scrollTop = body.scrollHeight;
+      })()`);
+      await ctx.waitForExpression(
+        `(() => {
+          const content = document.querySelector('.todo-modal .modal-content');
+          const body = content.querySelector('.modal-body');
+          const form = document.querySelector('.todo-add-form').getBoundingClientRect();
+          const field = document.querySelector('.todo-add-form');
+          // Once the dialog has stopped sliding in, the field sits on the body's top edge, over
+          // its own backing.
+          return (
+            !content.getAnimations().length &&
+            body.scrollTop > 0 &&
+            Math.abs(form.top - body.getBoundingClientRect().top) < 1 &&
+            getComputedStyle(field, '::before').opacity === '1'
+          );
+        })()`,
+        'the add field held at the top of a scrolled list'
+      );
     },
   },
   {
@@ -442,22 +497,24 @@ const scenes = [
   },
   {
     name: 'focus-confirm-unsaved-color',
-    setup: async (ctx) => {
-      await ctx.pressKey('Shift', { code: 'ShiftLeft', keyCode: 16 });
-      await openSettingsTab(ctx, 'personalization');
-      await revealInSettings(ctx, '#custom-color-hex');
-      await ctx.ev(`(() => {
-        const hex = document.getElementById('custom-color-hex');
-        hex.value = '#8E24AA';
-        hex.dispatchEvent(new Event('input', { bubbles: true }));
-      })()`);
-      await ctx.click('#save-settings');
-      await ctx.waitForExpression(
-        `!document.querySelector('#confirm-modal')?.classList.contains('hidden') &&
-          document.activeElement?.id === 'confirm-ok-btn'`,
-        'the three-way prompt, focused on Save and continue'
-      );
-    },
+    setup: raiseUnsavedColorPrompt,
+  },
+  // Three buttons in a 400px dialog: in a narrow window, or with the wordier translations, they
+  // have to wrap onto a second row rather than lose the end of their labels.
+  {
+    name: 'focus-confirm-unsaved-color-narrow',
+    size: NARROW_WINDOW,
+    setup: raiseUnsavedColorPrompt,
+  },
+  {
+    name: 'focus-confirm-unsaved-color-de',
+    ui: { language: 'de' },
+    setup: raiseUnsavedColorPrompt,
+  },
+  {
+    name: 'focus-confirm-unsaved-color-ar',
+    ui: { language: 'ar' },
+    setup: raiseUnsavedColorPrompt,
   },
   {
     name: 'focus-weather-card',
@@ -531,13 +588,26 @@ const scenes = [
       );
     },
   },
+  // The notice sits over the bottom tile row, so it has to be short: two lines at the default
+  // width, and not much more where the window is narrow or the language is wordy.
+  { name: 'toast-reorganize-notice', keepToasts: true, setup: raiseReorganizeNotice },
   {
-    name: 'toast-reorganize-notice',
+    name: 'toast-reorganize-notice-narrow',
+    size: NARROW_WINDOW,
     keepToasts: true,
-    setup: async (ctx) => {
-      await ctx.click('#reorganize-quick-controls-btn');
-      await ctx.waitForExpression(`document.querySelector('#toast-container .toast.info')`);
-    },
+    setup: raiseReorganizeNotice,
+  },
+  {
+    name: 'toast-reorganize-notice-de',
+    ui: { language: 'de' },
+    keepToasts: true,
+    setup: raiseReorganizeNotice,
+  },
+  {
+    name: 'toast-reorganize-notice-ar',
+    ui: { language: 'ar' },
+    keepToasts: true,
+    setup: raiseReorganizeNotice,
   },
 
   // Edit mode puts a pin, edit and remove button on every tile; compact density and narrow
