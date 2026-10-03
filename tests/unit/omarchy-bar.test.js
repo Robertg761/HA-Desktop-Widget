@@ -126,18 +126,33 @@ describe('Omarchy panel keyboard support', () => {
     expect(qml).toContain('Component.onCompleted: root.tileItems[tileRoot.flatIndex] = tileRoot');
     expect(qml).toContain('delete root.tileItems[tileRoot.flatIndex]');
     const scrollBody = qml.slice(
-      qml.indexOf('function ensureCursorVisible()'),
-      qml.indexOf('function moveCursor(')
+      qml.indexOf('function ensureVisible('),
+      qml.indexOf('function ensureCursorVisible()')
     );
     expect(scrollBody).toContain('item.mapToItem(flick.contentItem, 0, 0).y');
     expect(scrollBody).toContain('flick.contentY =');
+    const cursorScroll = qml.slice(
+      qml.indexOf('function ensureCursorVisible()'),
+      qml.indexOf('function moveCursor(')
+    );
     // The controls view has no tiles to scroll to.
-    expect(scrollBody).toContain('showingControls');
+    expect(cursorScroll).toContain('if (showingControls) return');
+    expect(cursorScroll).toContain('ensureVisible(tileItems[cursorIndex])');
+  });
+
+  it('shows a scrollbar while there are tiles below the fold, and none when everything fits', () => {
+    expect(qml).toContain('import QtQuick.Controls as Controls');
+    expect(qml).toContain(
+      'policy: flick.contentHeight > flick.height ? Controls.ScrollBar.AlwaysOn : Controls.ScrollBar.AlwaysOff'
+    );
   });
 
   it('opens the highlighted tile controls from the keyboard, where the adjustment itself is possible', () => {
+    // Connected rather than bound with onTextKey, which fails the whole panel's load on a shell whose
+    // key catcher has no such signal; Connections ignores a signal it does not find.
+    expect(qml).not.toMatch(/^\s*onTextKey:/m);
     expect(qml).toMatch(
-      /onTextKey: function\(text\) \{\s*if \(text === "a" \|\| text === "A"\) root\.adjustCursorTile\(\)/
+      /Connections \{\s*target: keyCatcher\s*ignoreUnknownSignals: true\s*function onTextKey\(text\) \{\s*if \(text === "a" \|\| text === "A"\) root\.adjustCursorTile\(\)/
     );
     const adjustBody = qml.slice(
       qml.indexOf('function adjustCursorTile()'),
@@ -148,6 +163,68 @@ describe('Omarchy panel keyboard support', () => {
     expect(adjustBody).toContain('adjustTile(tile)');
     expect(fs.readFileSync(path.resolve(__dirname, '../../docs/omarchy.md'), 'utf8')).toContain(
       'and A opens its controls'
+    );
+  });
+});
+
+describe('Omarchy tile controls from the keyboard', () => {
+  const qml = fs.readFileSync(path.join(pluginDir, 'Widget.qml'), 'utf8');
+  const view = qml.slice(qml.indexOf('component ControlsView: Column'));
+
+  it('sends the arrows to the controls view, which keeps its place as a row and a column', () => {
+    const moveBody = qml.slice(
+      qml.indexOf('function moveCursor('),
+      qml.indexOf('function adjustCursorTile')
+    );
+    // Both axes go there now: Up and Down used to be dropped while a tile's controls were open.
+    expect(moveBody).toContain('controlsView.move(dx, dy)');
+    // A change rebuilds the buttons, so the place is not an item that would be gone a moment later.
+    expect(view).toContain('property int stopRow: -1');
+    expect(view).toContain('property int stopCol: 0');
+    expect(view).toContain('onCtlChanged: Qt.callLater(revalidateStop)');
+  });
+
+  it('keeps Left, Right and Enter acting on the tile until a control has been selected', () => {
+    const moveBody = view.slice(
+      view.indexOf('function move('),
+      view.indexOf('function activate()')
+    );
+    // Down from nothing selects the first row; Up from the first row gives the tile back.
+    expect(moveBody).toContain('stopRow < 0 ? (dy > 0 ? 0 : -1) : stopRow + dy');
+    expect(moveBody).toContain('if (row < 0) clearStop()');
+    // With no selection, Left and Right still move the main slider.
+    expect(moveBody).toContain('nudge(dx)');
+    const activateBody = view.slice(
+      view.indexOf('function activate()'),
+      view.indexOf('function nudge(')
+    );
+    expect(activateBody).toContain('item.pressStop()');
+    // No selection, or a slider: Enter still switches the tile (light, fan) or plays and pauses.
+    expect(activateBody).toContain('root.setControl("power", !ctl.on)');
+    expect(activateBody).toContain('root.setControl("play_pause")');
+  });
+
+  it('lets the keyboard reach every button, swatch and slider the pointer can', () => {
+    expect(view).toContain('if (kid.keyStop === true && kid.enabled !== false) out.push(kid)');
+    // Preset, cover, media and climate-mode buttons, the climate step buttons and mute, Open in
+    // widget, the colour swatches, and every slider.
+    expect(qml).toContain('component KeyButton: Button');
+    expect(qml).toContain('component KeyActionButton: PanelActionButton');
+    expect(qml.match(/delegate: KeyButton \{/g)).toHaveLength(2);
+    expect(qml.match(/\bKeyActionButton \{/g)).toHaveLength(3);
+    expect(qml).toMatch(/\/\/ Everything else the widget's own dialog has\.\s*KeyButton \{/);
+    expect(qml).toContain('function pressStop() { root.setControl("color", modelData) }');
+    expect(qml).toContain('readonly property bool isSlider: true');
+    // No control the keyboard cannot see: the plain buttons are gone from the controls view.
+    expect(view).not.toMatch(/delegate: Button \{/);
+  });
+
+  it('outlines the control inside its own bounds, so a full-width one keeps its sides', () => {
+    expect(qml).toContain('x: controlsView.ringRect.x\n');
+    expect(qml).toContain('width: controlsView.ringRect.width\n');
+    expect(qml).toContain('root.ensureVisible(currentStop(rows))');
+    expect(fs.readFileSync(path.resolve(__dirname, '../../docs/omarchy.md'), 'utf8')).toContain(
+      'Up and Down move between its controls'
     );
   });
 });

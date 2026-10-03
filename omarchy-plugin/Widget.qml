@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls as Controls
 import Quickshell
 import Quickshell.Io
 import qs.Commons
@@ -218,11 +219,11 @@ Panel {
   // The tile drawn for each position in flatTiles, so the cursor can be brought into view.
   property var tileItems: ({})
 
-  // Scroll the panel so the highlighted tile is fully inside it. With more tiles than fit, the
-  // cursor used to walk off the bottom, and Enter then switched something the person could not see.
-  function ensureCursorVisible() {
-    var item = tileItems[cursorIndex]
-    if (!item || showingControls) return
+  // Scroll the panel so an item (the highlighted tile, or the control the keyboard is on) is fully
+  // inside it. With more tiles than fit, the cursor used to walk off the bottom, and Enter then
+  // switched something the person could not see.
+  function ensureVisible(item) {
+    if (!item) return
     var top = item.mapToItem(flick.contentItem, 0, 0).y
     var margin = Style.space(6)
     var visibleTop = flick.contentY
@@ -234,9 +235,14 @@ Panel {
     }
   }
 
+  function ensureCursorVisible() {
+    if (showingControls) return
+    ensureVisible(tileItems[cursorIndex])
+  }
+
   function moveCursor(dx, dy) {
     if (showingControls) {
-      if (dx !== 0) controlsView.nudge(dx)
+      controlsView.move(dx, dy)
       return
     }
     var count = flatTiles.length
@@ -394,9 +400,16 @@ Panel {
         if (root.showingControls) controlsView.activate()
         else if (root.cursorActive) root.activateTile(root.flatTiles[root.cursorIndex])
       }
-      // A on a tile opens its controls, which the arrows then adjust.
-      onTextKey: function(text) {
-        if (text === "a" || text === "A") root.adjustCursorTile()
+
+      // A on a tile opens its controls, which the arrows then adjust. Connected, rather than bound
+      // with onTextKey on the catcher, so that a shell whose catcher has no textKey signal loses
+      // this one shortcut instead of failing to load the whole panel.
+      Connections {
+        target: keyCatcher
+        ignoreUnknownSignals: true
+        function onTextKey(text) {
+          if (text === "a" || text === "A") root.adjustCursorTile()
+        }
       }
 
       Flickable {
@@ -405,6 +418,34 @@ Panel {
         contentHeight: content.implicitHeight
         interactive: contentHeight > height
         clip: true
+
+        // With more tiles than fit, the ones below the fold gave no sign they were there. A thin bar
+        // that stays while there is more to scroll to, in the panel's own text colour.
+        Controls.ScrollBar.vertical: Controls.ScrollBar {
+          policy: flick.contentHeight > flick.height ? Controls.ScrollBar.AlwaysOn : Controls.ScrollBar.AlwaysOff
+          contentItem: Rectangle {
+            implicitWidth: Style.space(3)
+            radius: width / 2
+            color: Util.alpha(root.foreground, 0.4)
+          }
+        }
+
+        // The control the keyboard is on in a tile's controls. It lives in the scrolled content,
+        // so it moves with what it outlines.
+        Rectangle {
+          parent: flick.contentItem
+          z: 100
+          visible: controlsView.visible && controlsView.ringRect.width > 0
+          // Inside the control's own bounds: one that spans the panel would lose its sides to the clip.
+          x: controlsView.ringRect.x
+          y: controlsView.ringRect.y
+          width: controlsView.ringRect.width
+          height: controlsView.ringRect.height
+          radius: Style.cornerRadius
+          color: "transparent"
+          border.width: 2
+          border.color: Color.accent
+        }
 
         Column {
           id: content
@@ -508,6 +549,7 @@ Panel {
             id: controlsView
             visible: root.showingControls
             width: parent.width
+            ringHost: flick.contentItem
           }
         }
       }
@@ -671,6 +713,9 @@ Panel {
     property var format: function(v) { return Math.round(v) + "%" }
     property real heldValue: 0
     readonly property real shownValue: holdTimer.running ? heldValue : value
+    // A stop for the keyboard in the controls view; Left and Right nudge it (see ControlsView.move).
+    property bool keyStop: true
+    readonly property bool isSlider: true
     signal valueSet(real value)
 
     function snap(v) {
@@ -735,6 +780,18 @@ Panel {
     }
   }
 
+  // Buttons the keyboard can land on in the controls view (see ControlsView.move). Enter presses
+  // the one it is on, through pressStop(), the same as a click.
+  component KeyButton: Button {
+    property bool keyStop: true
+    function pressStop() { clicked() }
+  }
+
+  component KeyActionButton: PanelActionButton {
+    property bool keyStop: true
+    function pressStop() { clicked() }
+  }
+
   // A row of equal-width buttons (presets, cover and media actions, climate modes).
   component ChoiceRow: Row {
     id: rowRoot
@@ -746,7 +803,7 @@ Panel {
     Repeater {
       model: rowRoot.choices
 
-      delegate: Button {
+      delegate: KeyButton {
         required property var modelData
         width: (rowRoot.width - (rowRoot.columns - 1) * rowRoot.spacing) / rowRoot.columns
         text: modelData.label || ""
@@ -778,14 +835,136 @@ Panel {
     readonly property string kind: ctl ? ctl.kind : ""
     spacing: Style.space(12)
 
-    // Enter: turn the light or fan on or off, or play and pause.
+    // The keyboard model. Until Down is pressed the arrows and Enter act on the tile as a whole
+    // (Left and Right move its main slider, Enter switches it), as they always have. Down then walks
+    // a ring through the controls row by row: a slider (Left and Right move it), a button, a colour.
+    // Enter presses the one it is on, and Up from the first row hands back to the tile. The place
+    // is kept as a row and a column rather than as an item, because a change rebuilds the buttons
+    // (the preset that was just pressed is a new object a moment later).
+    property int stopRow: -1
+    property int stopCol: 0
+    // Where the ring is drawn, in the coordinates of ringHost (the scrolled content).
+    property Item ringHost: null
+    property rect ringRect: Qt.rect(0, 0, 0, 0)
+
+    onTileChanged: clearStop()
+    onCtlChanged: Qt.callLater(revalidateStop)
+    onHeightChanged: Qt.callLater(syncRing)
+
+    function collectStops(item, out) {
+      var kids = item.children
+      for (var i = 0; i < kids.length; i++) {
+        var kid = kids[i]
+        if (!kid.visible) continue
+        if (kid.keyStop === true && kid.enabled !== false) out.push(kid)
+        collectStops(kid, out)
+      }
+    }
+
+    // The stops that can be reached now, in rows: a stop starts a new row when its centre is more
+    // than 10px below the row's first, and each row runs left to right.
+    function stopRows() {
+      var all = []
+      collectStops(view, all)
+      var placed = all.map(function(item) {
+        var at = item.mapToItem(view, 0, 0)
+        return { item: item, x: at.x, cy: at.y + item.height / 2 }
+      })
+      placed.sort(function(a, b) { return a.cy - b.cy || a.x - b.x })
+      var rows = []
+      var rowTop = 0
+      placed.forEach(function(entry) {
+        if (rows.length === 0 || entry.cy - rowTop > 10) {
+          rows.push([])
+          rowTop = entry.cy
+        }
+        rows[rows.length - 1].push(entry)
+      })
+      return rows.map(function(row) {
+        row.sort(function(a, b) { return a.x - b.x })
+        return row.map(function(entry) { return entry.item })
+      })
+    }
+
+    function currentStop(rows) {
+      if (stopRow < 0 || stopRow >= rows.length) return null
+      var row = rows[stopRow]
+      return row[Math.min(stopCol, row.length - 1)]
+    }
+
+    function setStop(row, col) {
+      stopRow = row
+      stopCol = col
+      syncRing()
+      var rows = stopRows()
+      root.ensureVisible(currentStop(rows))
+    }
+
+    function clearStop() {
+      stopRow = -1
+      stopCol = 0
+      ringRect = Qt.rect(0, 0, 0, 0)
+    }
+
+    function syncRing() {
+      var item = stopRow >= 0 && ringHost ? currentStop(stopRows()) : null
+      if (!item) {
+        ringRect = Qt.rect(0, 0, 0, 0)
+        return
+      }
+      var at = item.mapToItem(ringHost, 0, 0)
+      ringRect = Qt.rect(at.x, at.y, item.width, item.height)
+    }
+
+    // After the controls change: keep the ring on the same place, or drop it when the control it was
+    // on is gone (a row that no longer exists).
+    function revalidateStop() {
+      if (stopRow < 0) return
+      var rows = stopRows()
+      if (rows.length === 0) {
+        clearStop()
+        return
+      }
+      stopRow = Math.min(stopRow, rows.length - 1)
+      stopCol = Math.min(stopCol, rows[stopRow].length - 1)
+      syncRing()
+    }
+
+    // The arrows. Up and Down change row; Left and Right move along a row of buttons or a row of
+    // colours, and move a slider that has the ring.
+    function move(dx, dy) {
+      var rows = stopRows()
+      if (dy !== 0) {
+        var row = stopRow < 0 ? (dy > 0 ? 0 : -1) : stopRow + dy
+        if (row < 0) clearStop()
+        else if (row < rows.length) setStop(row, 0)
+        return
+      }
+      var item = currentStop(rows)
+      if (item && item.isSlider !== true) {
+        var col = stopCol + dx
+        if (col >= 0 && col < rows[stopRow].length) setStop(stopRow, col)
+      } else if (item) {
+        item.nudge(dx)
+      } else {
+        nudge(dx)
+      }
+    }
+
+    // Enter: press the control the ring is on; with none, turn the light or fan on or off, or play
+    // and pause.
     function activate() {
+      var item = stopRow >= 0 ? currentStop(stopRows()) : null
+      if (item && item.isSlider !== true) {
+        item.pressStop()
+        return
+      }
       if (!ctl) return
       if (kind === "light" || kind === "fan") root.setControl("power", !ctl.on)
       else if (kind === "media") root.setControl("play_pause")
     }
 
-    // Left and right arrows: the main slider.
+    // Left and right arrows with no control selected: the main slider.
     function nudge(direction) {
       if (kind === "light" && ctl.canSetBrightness) brightnessSlider.nudge(direction)
       else if (kind === "fan" && ctl.canSetPercentage) speedSlider.nudge(direction)
@@ -921,6 +1100,8 @@ Panel {
 
             delegate: Rectangle {
               required property string modelData
+              property bool keyStop: true
+              function pressStop() { root.setControl("color", modelData) }
               width: Style.space(28)
               height: Style.space(28)
               radius: width / 2
@@ -1007,7 +1188,7 @@ Panel {
         width: parent.width
         height: Style.space(56)
 
-        PanelActionButton {
+        KeyActionButton {
           anchors.left: parent.left
           anchors.verticalCenter: parent.verticalCenter
           size: Style.space(40)
@@ -1041,7 +1222,7 @@ Panel {
           }
         }
 
-        PanelActionButton {
+        KeyActionButton {
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
           size: Style.space(40)
@@ -1067,7 +1248,7 @@ Panel {
         Repeater {
           model: view.kind === "climate" ? view.ctl.modes : []
 
-          delegate: Button {
+          delegate: KeyButton {
             required property string modelData
             text: root.modeLabel(modelData)
             active: view.ctl.mode === modelData
@@ -1133,7 +1314,7 @@ Panel {
         width: parent.width
         spacing: Style.space(8)
 
-        PanelActionButton {
+        KeyActionButton {
           id: muteButton
           anchors.bottom: parent.bottom
           visible: view.kind === "media" && view.ctl.canMute
@@ -1156,7 +1337,7 @@ Panel {
     }
 
     // Everything else the widget's own dialog has.
-    Button {
+    KeyButton {
       width: parent.width
       text: "Open in widget"
       iconText: "󰏌"
