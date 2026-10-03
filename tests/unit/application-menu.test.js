@@ -27,12 +27,19 @@ describe('application edit menus', () => {
     expect(Menu.setApplicationMenu).toHaveBeenCalledWith(builtMenu);
   });
 
-  test('keeps the Edit menu available on Windows and Linux, and nothing that zooms or reloads', () => {
-    expect(createApplicationMenuTemplate('win32')).toEqual([{ role: 'editMenu' }]);
-    expect(createApplicationMenuTemplate('linux')).toEqual([{ role: 'editMenu' }]);
+  test('keeps the Edit and Window menus on Windows and Linux, and nothing that zooms or reloads', () => {
+    // The Window menu carries Ctrl+W, which hides the widget like the title-bar X and Alt+F4.
+    expect(createApplicationMenuTemplate('win32')).toEqual([
+      { role: 'editMenu' },
+      { role: 'windowMenu' },
+    ]);
+    expect(createApplicationMenuTemplate('linux')).toEqual([
+      { role: 'editMenu' },
+      { role: 'windowMenu' },
+    ]);
   });
 
-  test('gives development builds the View and Window menus back', () => {
+  test('gives development builds the View menu back', () => {
     expect(createApplicationMenuTemplate('linux', { isDev: true })).toEqual([
       { role: 'editMenu' },
       { role: 'viewMenu' },

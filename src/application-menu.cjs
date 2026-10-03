@@ -3,14 +3,15 @@ const { platform: runtimePlatform } = require('node:process');
 // The menu bar is never drawn on the frameless widget, but its accelerators work: Ctrl+0 and Ctrl+/-
 // zoom the page (undoing the Text size setting), Ctrl+R reloads it, F11 takes it full screen and
 // Ctrl+Shift+I opens the DevTools, with no way in the interface to understand or undo any of them.
-// So a packaged build keeps the Edit menu (copy and paste have to work) and, on macOS, the app and
-// Window menus that the system expects; the View menu is for development builds.
+// So a packaged build keeps the Edit menu (copy and paste have to work), the Window menu (its
+// Ctrl+W and Cmd+W close the window, which hides the widget like the title-bar X and Alt+F4) and,
+// on macOS, the app menu the system expects; the View menu is for development builds.
 function createApplicationMenuTemplate(platform = runtimePlatform, { isDev = false } = {}) {
   return [
     ...(platform === 'darwin' ? [{ role: 'appMenu' }] : []),
     { role: 'editMenu' },
     ...(isDev ? [{ role: 'viewMenu' }] : []),
-    ...(platform === 'darwin' || isDev ? [{ role: 'windowMenu' }] : []),
+    { role: 'windowMenu' },
   ];
 }
 
