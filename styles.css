@@ -8439,11 +8439,40 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   filter: drop-shadow(0 2px 8px rgba(var(--accent-rgb), 0.22));
 }
 
+/* In a long list the add field used to scroll away with the first rows, and adding is what this
+   dialog is for. It stays at the top of the scrolling body. The negative margin and the padding that
+   gives the space back let its backing reach the body's edges, and the negative top is the body's
+   padding: a sticky box is held at the content edge, not the scrollport's. */
 .todo-add-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
-  margin-bottom: 14px;
+  position: sticky;
+  top: calc(-1 * var(--space-5));
+  z-index: 1;
+  margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) 0;
+  padding: var(--space-5) var(--space-5) 14px;
+  container-type: scroll-state;
+}
+
+/* The panel's own glass, blurred behind, so the rows passing under the field do not show through.
+   Only while it is held at the top: at rest it would be a second layer of glass on the dialog's. */
+.todo-add-form::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(var(--glass-elevated), var(--glass-elevated)), var(--modal-backstop);
+  backdrop-filter: blur(var(--blur-lg));
+  -webkit-backdrop-filter: blur(var(--blur-lg));
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+@container scroll-state(stuck: top) {
+  .todo-add-form::before {
+    opacity: 1;
+  }
 }
 
 .calendar-toolbar {
@@ -10288,14 +10317,24 @@ body {
   display: flex;
   gap: var(--space-3);
   justify-content: flex-end;
+  /* Three buttons (Save, Discard, Keep editing) do not fit in a 400px dialog, let alone a 340px
+     window or a wordier language: the row wraps, still lined up on the end, rather than cutting
+     the labels off. */
+  flex-wrap: wrap;
   padding: var(--space-3) var(--space-5);
 }
 
-/* Size, corners and fill come from the dialog buttons; this only sets how wide they are. */
+/* Size, corners and fill come from the dialog buttons; this only sets how wide they are. A label
+   longer than the dialog wraps inside its button, which is the shared button's single line with the
+   end clipped otherwise. */
 .confirm-modal-content .btn {
   min-width: 88px;
 }
 
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
 .confirm-modal-content .btn-danger {
   background: rgba(211, 47, 47, 0.95);
   color: white;

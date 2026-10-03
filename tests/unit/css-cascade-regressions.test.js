@@ -507,6 +507,49 @@ describe('stylesheet cascade regressions', () => {
     });
   });
 
+  describe('the confirmation dialog buttons', () => {
+    // Save, Discard and Keep editing do not fit in a row in a 400px dialog, a 340px window or a
+    // wordy language; the shared button clips its label to one line, so the row has to wrap.
+    it('wraps three buttons onto a second row instead of cutting their labels', () => {
+      render(
+        '',
+        `<div class="confirm-modal-content">
+          <div class="modal-footer">
+            <button class="btn btn-secondary" id="confirm-cancel-btn">Keep editing</button>
+            <button class="btn btn-secondary" id="confirm-alternate-btn">Discard color edits</button>
+            <button class="btn btn-primary" id="confirm-ok-btn">Save and Continue</button>
+          </div>
+        </div>`
+      );
+
+      const footer = document.querySelector('.modal-footer');
+      expect(resolvedValue(footer, 'flex-wrap')).toBe('wrap');
+      expect(resolvedValue(footer, 'justify-content')).toBe('flex-end');
+      for (const button of document.querySelectorAll('.btn')) {
+        // A label longer than the dialog wraps inside its button rather than being clipped.
+        expect(resolvedValue(button, 'white-space')).toBe('normal');
+        expect(resolvedValue(button, 'max-width')).toBe('100%');
+      }
+    });
+  });
+
+  describe('the to-do add field', () => {
+    // The field scrolled away with the first rows of a long list. A sticky box is held at the
+    // scroll container's content edge, so it needs the container's padding as a negative top.
+    it('stays at the top of the scrolling body, reaching its edges', () => {
+      render('', '<div class="modal-body"><form class="todo-add-form"></form></div>');
+
+      const form = document.querySelector('.todo-add-form');
+      const inset = resolvedValue(document.querySelector('.modal-body'), 'padding');
+      expect(resolvedValue(form, 'position')).toBe('sticky');
+      // Held at the content edge, so the body's own padding is taken back: negative top and margins,
+      // and the same amount as padding on the field itself, which leaves the layout at rest as it was.
+      expect(resolvedValue(form, 'top')).toBe(`calc(-1 * ${inset})`);
+      expect(resolvedValue(form, 'margin')).toBe(`calc(-1 * ${inset}) calc(-1 * ${inset}) 0`);
+      expect(resolvedValue(form, 'padding')).toBe(`${inset} ${inset} 14px`);
+    });
+  });
+
   describe('dialog stacking', () => {
     // Dialogs are stacked by the order they were opened, not by where their elements happen to sit
     // in the document: openDialog() gives each one a --dialog-depth, and the tier is lifted by it, so
