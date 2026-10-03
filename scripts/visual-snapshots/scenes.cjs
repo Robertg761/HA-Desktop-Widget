@@ -14,6 +14,10 @@
  *            window (a desktop pin) instead of the main one
  *   pin      the entity a pin scene pins (only a label for the tests, which check that every
  *            desktop pin family has a scene)
+ *   keepToasts  leave the toasts on screen for the capture (they are cleared otherwise)
+ *
+ * A setup can also fail its scene with ctx.expect(expression, label), a layout check that compares
+ * boxes with each other (a button lies inside its dialog) and so holds on any machine's fonts.
  *
  * The clock, the date, the running timer and the media progress follow the wall clock, so those
  * few pixels differ from run to run. Everything else comes from the fixture.
@@ -22,6 +26,12 @@
 const { PAGE_SETS, WINDOW_SIZE } = require('./fixture.cjs');
 
 const NARROW_WINDOW = { width: 340, height: WINDOW_SIZE.height };
+// The size the app opens at (the fixture's window is 60px taller to fit a 768px display), a window
+// as narrow as 150% text makes it, the smallest the window can be, and a wide one.
+const DEFAULT_SIZE = { width: 500, height: 600 };
+const NARROW_SIZE = { width: 340, height: 600 };
+const MINIMUM_SIZE = { width: 320, height: 360 };
+const WIDE_SIZE = { width: 900, height: 700 };
 const FORCED_COLORS = [{ name: 'forced-colors', value: 'active' }];
 // A light contrast theme (Windows High Contrast White): Chromium picks the light palette from the
 // colour scheme.
@@ -207,6 +217,136 @@ async function focusWithKeyboard(ctx, selector) {
 const dialogsPage = { customTabs: PAGE_SETS.dialogs, activeTabId: 'default' };
 // A holiday shows for an hour, long enough for the whole run.
 const holiday = (show) => ({ enabled: true, show, showUntil: Date.now() + 3600000 });
+
+// Layout checks. They only compare boxes with each other, so they hold whatever the fonts of the
+// machine running them: a dialog's buttons lie inside it and inside the window, a tile holds what
+// is in it, a title leaves the close button its room.
+const DIALOG_FITS = `(() => {
+  const open = [...document.querySelectorAll('.modal')].filter((modal) =>
+    !modal.classList.contains('hidden') && !modal.classList.contains('modal-closing') &&
+    modal.getClientRects().length > 0);
+  const modal = open[open.length - 1];
+  const content = modal?.querySelector('.modal-content');
+  if (!content) return false;
+  const box = content.getBoundingClientRect();
+  const inside = (element) => {
+    const part = element.getBoundingClientRect();
+    return part.left >= box.left - 1 && part.right <= box.right + 1 &&
+      part.top >= box.top - 1 && part.bottom <= box.bottom + 1;
+  };
+  return box.left >= -1 && box.right <= innerWidth + 1 && box.top >= -1 && box.bottom <= innerHeight + 1 &&
+    [...content.querySelectorAll('.modal-header .close-btn, .modal-footer .btn')]
+      .filter((element) => element.getClientRects().length > 0).every(inside);
+})()`;
+const TILES_HOLD_THEIR_CONTENT = `[...document.querySelectorAll('#quick-controls .control-item')].every((tile) => {
+  const box = tile.getBoundingClientRect();
+  return [...tile.querySelectorAll('.control-icon, .control-name, .control-state')]
+    .filter((part) => part.getClientRects().length > 0)
+    .every((part) => {
+      const rect = part.getBoundingClientRect();
+      return rect.top >= box.top - 1 && rect.bottom <= box.bottom + 1 &&
+        rect.left >= box.left - 1 && rect.right <= box.right + 1;
+    });
+})`;
+const NO_SIDEWAYS_SCROLL = `document.documentElement.scrollWidth <= innerWidth + 1`;
+// Every label in a Settings row keeps room to be read, at 150% text size and in a narrow window.
+const SETTING_LABELS_READABLE = `[...document.querySelectorAll('#settings-modal .tab-content.active .setting-text')]
+  .filter((text) => text.getClientRects().length > 0).every((text) => text.getBoundingClientRect().width >= 100)`;
+
+const withPage = (set, activeTabId = 'default') => ({
+  customTabs: PAGE_SETS[set],
+  activeTabId,
+});
+const edgePage = withPage('edge');
+// Hotkeys for two rows, so the Hotkeys scenes show a row with a hotkey beside one without.
+const hotkeyPage = {
+  ...edgePage,
+  globalHotkeys: {
+    enabled: false,
+    hotkeys: {
+      'light.hallway_ceiling_long': { hotkey: 'Ctrl+Shift+Space', action: 'toggle' },
+      'light.desk_lamp': { hotkey: 'Ctrl+Alt+L', action: 'toggle' },
+    },
+  },
+};
+
+async function openHotkeysFor(ctx, filter) {
+  await openSettingsTab(ctx, 'hotkeys');
+  await ctx.waitForSelector('#hotkeys-list .hotkey-item');
+  await ctx.ev(`(() => {
+    const search = document.getElementById('hotkey-entity-search');
+    if (!search) return;
+    search.value = ${JSON.stringify(filter)};
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await ctx.sleep(300);
+  await revealInSettings(ctx, '#hotkeys-list');
+}
+
+async function openPrimaryCardsList(ctx) {
+  await openSettingsTab(ctx, 'dashboard');
+  await ctx.click('#primary-cards-section .section-toggle');
+  await ctx.waitForSelector('#primary-cards-list .entity-item');
+  // The section opens with a transition; its heading is only where it will stay once it is open.
+  await ctx.sleep(600);
+  await revealInSettings(ctx, '#primary-cards-section');
+}
+
+// Holding the weather card opens its entity picker.
+async function openWeatherPicker(ctx) {
+  await ctx.ev(
+    `document.getElementById('weather-card').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`
+  );
+  await ctx.sleep(700);
+  await ctx.waitForExpression(
+    `!document.querySelector('#weather-config-modal')?.classList.contains('hidden')`
+  );
+}
+
+async function openAlertPicker(ctx) {
+  await openSettingsTab(ctx, 'alerts');
+  await ctx.click('.add-alert-btn');
+  await ctx.waitForExpression(
+    `!document.querySelector('#alert-entity-picker-modal')?.classList.contains('hidden')`
+  );
+}
+
+// The comparison graph editor opens on a new graph from Manage Quick Access.
+async function openGraphEditor(ctx) {
+  await ctx.click('#manage-quick-controls-btn');
+  await ctx.waitForSelector('#add-comparison-graph-btn');
+  await ctx.click('#add-comparison-graph-btn');
+  await ctx.waitForSelector('.comparison-graph-modal .entity-selector-list .entity-item');
+}
+
+// The command palette with a query that finds the longest row type.
+async function openPaletteFor(ctx, query) {
+  await ctx.ev(`document.activeElement?.blur?.()`);
+  await ctx.pressKey('k', { code: 'KeyK', keyCode: 75, modifiers: ctx.CTRL });
+  await ctx.waitForExpression(
+    `document.activeElement?.classList.contains('command-palette-input')`
+  );
+  await ctx.insertText(query);
+  await ctx.waitForSelector('.command-palette-result');
+}
+
+// The edit-mode hint is a long toast; a second one stands in for a pair of warnings.
+async function showToasts(ctx) {
+  await ctx.ev(
+    `document.querySelectorAll('#toast-container .toast').forEach((toast) => toast.remove())`
+  );
+  await ctx.click('#reorganize-quick-controls-btn');
+  await ctx.waitForSelector('#toast-container .toast');
+  await ctx.ev(`(() => {
+    const toast = document.createElement('div');
+    toast.className = 'toast warning';
+    toast.innerHTML = '<span class="toast-message"></span>';
+    toast.firstChild.textContent =
+      'The system keyring is locked, so the access token cannot be saved. Unlock it and restart.';
+    document.getElementById('toast-container').appendChild(toast);
+  })()`);
+  await ctx.sleep(500);
+}
 
 const scenes = [
   // The main view and the dialogs opened from it, dark and in English.
@@ -664,6 +804,374 @@ const scenes = [
   {
     name: 'christmas-light',
     ui: { theme: 'light', seasonal: holiday('christmas') },
+  },
+
+  // Layout robustness. The edge page has a 95-character light, a seven-figure reading, one
+  // unbroken German word as a name and a 90-character sensor; the scenes show it, and the dialogs
+  // and Settings pages, at the default 500x600 window, a window as narrow as 150% text makes it
+  // (340px), the smallest window, 130% and 150% text, a wide 900x700 window, and in the languages
+  // with the longest labels. Each one that has a check fails when a box leaves its parent.
+  {
+    name: 'layout-edge-main',
+    size: DEFAULT_SIZE,
+    config: edgePage,
+    setup: async (ctx) => ctx.expect(TILES_HOLD_THEIR_CONTENT, 'every tile holds its content'),
+  },
+  {
+    name: 'layout-edge-compact',
+    size: DEFAULT_SIZE,
+    ui: { density: 'compact' },
+    config: edgePage,
+    setup: async (ctx) => ctx.expect(TILES_HOLD_THEIR_CONTENT, 'every tile holds its content'),
+  },
+  {
+    name: 'layout-edge-narrow',
+    size: NARROW_SIZE,
+    config: edgePage,
+    setup: async (ctx) => ctx.expect(NO_SIDEWAYS_SCROLL, 'no sideways scroll'),
+  },
+  { name: 'layout-edge-s130', size: DEFAULT_SIZE, ui: { scale: 1.3 }, config: edgePage },
+  { name: 'layout-edge-s150', size: DEFAULT_SIZE, ui: { scale: 1.5 }, config: edgePage },
+  {
+    name: 'layout-main-minimum',
+    size: MINIMUM_SIZE,
+    setup: async (ctx) => ctx.expect(NO_SIDEWAYS_SCROLL, 'no sideways scroll'),
+  },
+  { name: 'layout-main-s150', size: DEFAULT_SIZE, ui: { scale: 1.5 } },
+  { name: 'layout-main-wide', size: WIDE_SIZE },
+  // A film runs past an hour: the times need an h:mm:ss, and the bar sits between them.
+  {
+    name: 'layout-media-long',
+    size: DEFAULT_SIZE,
+    config: { primaryMediaPlayer: 'media_player.theater' },
+  },
+  {
+    name: 'layout-media-long-narrow',
+    size: NARROW_SIZE,
+    config: { primaryMediaPlayer: 'media_player.theater' },
+  },
+  { name: 'layout-time-long-date-es', ui: { language: 'es', dateFormat: 'long' } },
+  {
+    name: 'layout-time-long-date-es-narrow',
+    size: NARROW_SIZE,
+    ui: { language: 'es', dateFormat: 'long' },
+  },
+
+  // Control pop-ups at the default window, where the 60vh cap used to make them scroll, with a
+  // title that is one long word, and narrow.
+  {
+    name: 'layout-popup-colour',
+    size: DEFAULT_SIZE,
+    config: dialogsPage,
+    setup: async (ctx) => {
+      await openDetails('light.color_strip')(ctx);
+      await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
+    },
+  },
+  {
+    name: 'layout-popup-colour-narrow',
+    size: NARROW_SIZE,
+    config: dialogsPage,
+    setup: async (ctx) => {
+      await openDetails('light.color_strip')(ctx);
+      await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
+    },
+  },
+  {
+    name: 'layout-popup-cover',
+    size: DEFAULT_SIZE,
+    config: dialogsPage,
+    setup: async (ctx) => {
+      await openDetails('cover.garage')(ctx);
+      await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
+    },
+  },
+  {
+    name: 'layout-popup-long-title',
+    size: DEFAULT_SIZE,
+    config: edgePage,
+    setup: async (ctx) => {
+      await openDetails('cover.patio_awning_long')(ctx);
+      await ctx.expect(DIALOG_FITS, 'the close button lies inside the dialog');
+    },
+  },
+  {
+    name: 'layout-popup-long-title-narrow',
+    size: NARROW_SIZE,
+    config: edgePage,
+    setup: async (ctx) => {
+      await openDetails('cover.patio_awning_long')(ctx);
+      await ctx.expect(DIALOG_FITS, 'the close button lies inside the dialog');
+    },
+  },
+  {
+    name: 'layout-popup-climate-range',
+    size: DEFAULT_SIZE,
+    config: edgePage,
+    setup: async (ctx) => {
+      await openDetails('climate.heat_pump')(ctx);
+      await ctx.expect(
+        `(() => {
+          const value = document.getElementById('climate-target-value');
+          return value && value.getClientRects().length === 1 &&
+            value.scrollWidth <= value.clientWidth + 1;
+        })()`,
+        'the target range is one line inside its card'
+      );
+    },
+  },
+  {
+    name: 'layout-popup-climate-range-narrow',
+    size: NARROW_SIZE,
+    config: edgePage,
+    setup: async (ctx) => {
+      await openDetails('climate.heat_pump')(ctx);
+      await ctx.expect(
+        `document.getElementById('climate-target-value').getClientRects().length === 1`,
+        'the target range is one line'
+      );
+    },
+  },
+  {
+    name: 'layout-popup-climate-range-s150',
+    size: DEFAULT_SIZE,
+    ui: { scale: 1.5 },
+    config: edgePage,
+    setup: openDetails('climate.heat_pump'),
+  },
+  {
+    name: 'layout-popup-brightness-narrow',
+    size: NARROW_SIZE,
+    setup: async (ctx) => {
+      await openBrightness(ctx);
+      await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
+    },
+  },
+  {
+    name: 'layout-popup-media-minimum',
+    size: MINIMUM_SIZE,
+    config: dialogsPage,
+    setup: openDetails('media_player.den_stereo'),
+  },
+  {
+    name: 'layout-popup-colour-minimum',
+    size: MINIMUM_SIZE,
+    config: dialogsPage,
+    setup: async (ctx) => {
+      await openDetails('light.color_strip')(ctx);
+      await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
+    },
+  },
+
+  // Dialogs built around a list: one scrollbar, the search field kept in view.
+  {
+    name: 'layout-dialog-manage',
+    size: DEFAULT_SIZE,
+    setup: async (ctx) => {
+      await ctx.click('#manage-quick-controls-btn');
+      await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
+    },
+  },
+  {
+    name: 'layout-dialog-manage-narrow-de',
+    size: NARROW_SIZE,
+    ui: { language: 'de' },
+    setup: async (ctx) => {
+      await ctx.click('#manage-quick-controls-btn');
+      await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
+    },
+  },
+  {
+    name: 'layout-dialog-repair',
+    size: DEFAULT_SIZE,
+    config: dialogsPage,
+    setup: async (ctx) => {
+      await ctx.click(tile('light.old_kitchen'));
+      await ctx.waitForSelector('#entity-repair-modal .entity-item');
+      await ctx.expect(DIALOG_FITS, 'the dialog lies inside the window');
+    },
+  },
+  {
+    name: 'layout-dialog-alert-picker',
+    size: DEFAULT_SIZE,
+    config: alertsConfig,
+    setup: async (ctx) => {
+      await openAlertPicker(ctx);
+      await ctx.expect(DIALOG_FITS, 'the dialog lies inside the window');
+    },
+  },
+  {
+    name: 'layout-dialog-alert-picker-de',
+    size: DEFAULT_SIZE,
+    ui: { language: 'de' },
+    config: alertsConfig,
+    setup: openAlertPicker,
+  },
+  {
+    name: 'layout-dialog-alert-picker-ar',
+    size: DEFAULT_SIZE,
+    ui: { language: 'ar' },
+    config: alertsConfig,
+    setup: openAlertPicker,
+  },
+  {
+    name: 'layout-dialog-weather-picker',
+    size: DEFAULT_SIZE,
+    setup: async (ctx) => {
+      await openWeatherPicker(ctx);
+      await ctx.expect(DIALOG_FITS, 'the dialog lies inside the window');
+    },
+  },
+  {
+    name: 'layout-dialog-graph-editor',
+    size: DEFAULT_SIZE,
+    setup: async (ctx) => {
+      await openGraphEditor(ctx);
+      await ctx.expect(DIALOG_FITS, 'Done and Delete lie inside the dialog');
+    },
+  },
+  {
+    name: 'layout-dialog-alert-config',
+    size: DEFAULT_SIZE,
+    config: alertsConfig,
+    setup: async (ctx) => {
+      await openAlertConfig(ctx);
+      await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
+    },
+  },
+  {
+    name: 'layout-dialog-confirm-minimum',
+    size: MINIMUM_SIZE,
+    setup: async (ctx) => {
+      await openRemoveConfirmation(ctx);
+      await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
+    },
+  },
+  {
+    name: 'layout-dialog-tile-settings-narrow',
+    size: NARROW_SIZE,
+    setup: (ctx) => openTileSettings(ctx),
+  },
+
+  // Settings at 150% and 130% text size, in a narrow window, wide, and in German, French, Spanish
+  // and Arabic: the label of every row keeps room to be read.
+  ...['general', 'personalization', 'dashboard', 'advanced'].map((page) => ({
+    name: `layout-settings-${page === 'personalization' ? 'appearance' : page}-s150`,
+    size: DEFAULT_SIZE,
+    ui: { scale: 1.5 },
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, page);
+      await ctx.expect(SETTING_LABELS_READABLE, 'every setting label keeps 100px');
+    },
+  })),
+  {
+    name: 'layout-settings-appearance-s130',
+    size: DEFAULT_SIZE,
+    ui: { scale: 1.3 },
+    setup: (ctx) => openSettingsTab(ctx, 'personalization'),
+  },
+  {
+    name: 'layout-settings-appearance-narrow',
+    size: NARROW_SIZE,
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'personalization');
+      await ctx.expect(SETTING_LABELS_READABLE, 'every setting label keeps 100px');
+    },
+  },
+  {
+    name: 'layout-settings-appearance-de',
+    size: DEFAULT_SIZE,
+    ui: { language: 'de' },
+    setup: (ctx) => openSettingsTab(ctx, 'personalization'),
+  },
+  {
+    name: 'layout-settings-appearance-wide',
+    size: WIDE_SIZE,
+    setup: (ctx) => openSettingsTab(ctx, 'personalization'),
+  },
+  {
+    name: 'layout-settings-dashboard-wide',
+    size: WIDE_SIZE,
+    setup: (ctx) => openSettingsTab(ctx, 'dashboard'),
+  },
+  ...['de', 'fr', 'es', 'ar'].map((language) => ({
+    name: `layout-settings-primary-cards-${language}`,
+    size: DEFAULT_SIZE,
+    ui: { language },
+    setup: openPrimaryCardsList,
+  })),
+  {
+    name: 'layout-settings-primary-cards-s150',
+    size: DEFAULT_SIZE,
+    ui: { scale: 1.5 },
+    setup: openPrimaryCardsList,
+  },
+  {
+    name: 'layout-settings-dashboard-de',
+    size: DEFAULT_SIZE,
+    ui: { language: 'de' },
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'dashboard');
+      await revealInSettings(ctx, '#date-format');
+    },
+  },
+  {
+    name: 'layout-settings-hotkeys',
+    size: DEFAULT_SIZE,
+    config: hotkeyPage,
+    setup: (ctx) => openHotkeysFor(ctx, 'light'),
+  },
+  {
+    name: 'layout-settings-hotkeys-de',
+    size: DEFAULT_SIZE,
+    ui: { language: 'de' },
+    config: hotkeyPage,
+    setup: (ctx) => openHotkeysFor(ctx, 'light'),
+  },
+  {
+    name: 'layout-settings-hotkeys-ar',
+    size: DEFAULT_SIZE,
+    ui: { language: 'ar' },
+    config: hotkeyPage,
+    setup: (ctx) => openHotkeysFor(ctx, 'light'),
+  },
+  {
+    name: 'layout-settings-hotkeys-s150',
+    size: DEFAULT_SIZE,
+    ui: { scale: 1.5 },
+    config: hotkeyPage,
+    setup: (ctx) => openHotkeysFor(ctx, 'light'),
+  },
+
+  // The command palette's longest rows, and the toasts at the sizes that capped them at half the
+  // window.
+  { name: 'layout-palette', size: DEFAULT_SIZE, setup: (ctx) => openPaletteFor(ctx, 'alarm') },
+  {
+    name: 'layout-palette-narrow',
+    size: NARROW_SIZE,
+    setup: (ctx) => openPaletteFor(ctx, 'alarm'),
+  },
+  {
+    name: 'layout-palette-de',
+    size: DEFAULT_SIZE,
+    ui: { language: 'de' },
+    setup: (ctx) => openPaletteFor(ctx, 'a'),
+  },
+  { name: 'layout-toast', size: DEFAULT_SIZE, keepToasts: true, setup: showToasts },
+  { name: 'layout-toast-narrow', size: NARROW_SIZE, keepToasts: true, setup: showToasts },
+  {
+    name: 'layout-toast-s150',
+    size: DEFAULT_SIZE,
+    ui: { scale: 1.5 },
+    keepToasts: true,
+    setup: showToasts,
+  },
+  {
+    name: 'layout-toast-ar',
+    size: DEFAULT_SIZE,
+    ui: { language: 'ar' },
+    keepToasts: true,
+    setup: showToasts,
   },
 
   // First run shows when no server is configured. The runner only puts the keys listed above

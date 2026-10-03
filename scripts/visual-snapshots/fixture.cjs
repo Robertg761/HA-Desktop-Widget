@@ -19,6 +19,8 @@ const RESETTABLE_SETTINGS = [
   'activeTabId',
   'entityAlerts',
   'primaryCards',
+  'primaryMediaPlayer',
+  'globalHotkeys',
   'comparisonGraphs',
   'quickAccessTileOptions',
 ];
@@ -153,6 +155,22 @@ const PAGE_SETS = {
     { id: 'spare', name: 'Spare', entityIds: ['light.desk_lamp'] },
   ],
 };
+
+// Names and readings that strain a tile, a dialog title or a row: what Home Assistant's own
+// generated names, an unbroken German compound and a long-running film do to the layout. The edge
+// scenes show this page; the entities are listed here so the fixture test can see them.
+const EDGE_ENTITIES = [
+  'light.hallway_ceiling_long',
+  'sensor.energy_total',
+  'switch.compound_name',
+  'sensor.long_named_temperature',
+  'climate.heat_pump',
+  'cover.patio_awning_long',
+];
+PAGE_SETS.edge = [
+  { id: 'default', name: 'Home', entityIds: EDGE_ENTITIES },
+  { id: 'spare', name: 'Spare', entityIds: ['light.desk_lamp'] },
+];
 
 // Twelve pages with German names, two of them long enough to be cut short on the strip.
 const GERMAN_PAGE_NAMES = [
@@ -403,6 +421,60 @@ function buildStates(now = new Date()) {
     entity('automation.morning_routine', 'on', { friendly_name: 'Morning routine' }),
     entity('person.alex', 'home', { friendly_name: 'Alex' })
   );
+  // The edge-case page: a 95-character light, a seven-figure energy reading, a name that is one
+  // unbroken word, a 90-character sensor, a heat/cool thermostat with half-degree bounds, and a
+  // cover with an entity-id style name; plus a film that runs past an hour for the media card.
+  states.push(
+    entity('light.hallway_ceiling_long', 'on', {
+      friendly_name:
+        'Upstairs hallway ceiling light above the stairs next to the master bedroom door (dimmable, warm)',
+      brightness: 153,
+      supported_color_modes: ['brightness'],
+      color_mode: 'brightness',
+    }),
+    entity('sensor.energy_total', '1234567890.12', {
+      friendly_name: 'Energy total',
+      unit_of_measurement: 'Wh',
+      device_class: 'energy',
+      state_class: 'total_increasing',
+    }),
+    entity('switch.compound_name', 'off', {
+      friendly_name: 'Wohnzimmerdeckenbeleuchtungsschalterhinterdemgroßenfensterlinks',
+    }),
+    entity('sensor.long_named_temperature', '123456.79', {
+      friendly_name:
+        'Living room north wall temperature sensor behind the bookshelf next to the window frame',
+      unit_of_measurement: 'W',
+      device_class: 'power',
+      state_class: 'measurement',
+    }),
+    entity('climate.heat_pump', 'heat_cool', {
+      friendly_name: 'Heat pump',
+      current_temperature: 21.5,
+      target_temp_low: 19.5,
+      target_temp_high: 24.5,
+      target_temp_step: 0.5,
+      hvac_modes: ['off', 'heat', 'cool', 'heat_cool', 'fan_only'],
+      min_temp: 7,
+      max_temp: 30,
+      supported_features: 2,
+    }),
+    entity('cover.patio_awning_long', 'open', {
+      friendly_name: 'sensor_living_room_north_wall_temperature_sensor_behind_bookshelf',
+      current_position: 70,
+      supported_features: 15,
+    }),
+    entity('media_player.theater', 'playing', {
+      friendly_name: 'Theater',
+      media_title: 'The Long Goodbye',
+      media_artist: "Director's cut",
+      volume_level: 0.5,
+      media_duration: 6750,
+      media_position: 4350,
+      media_position_updated_at: stamp,
+      supported_features: 152463,
+    })
+  );
   // Enough other entities that the Manage Quick Access list runs past its 50-row page.
   for (let index = 1; index <= 40; index += 1) {
     const number = String(index).padStart(2, '0');
@@ -510,6 +582,10 @@ function buildConfig(haUrl) {
       background: 'original',
       language: 'en',
       density: 'comfortable',
+      // Reset by every scene: the runner merges a scene's settings over the app's, so a scene that
+      // enlarges the interface would otherwise leave it enlarged for the ones after it.
+      scale: 1,
+      dateFormat: 'system',
       activeTileGlow: true,
       // On by default, taking the theme from an installed Omarchy (so a developer's machine
       // would not show the light theme); omarchyThemeDefaultApplied below makes the app keep it off.

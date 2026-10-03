@@ -243,6 +243,11 @@ async function main() {
           label: selector,
           timeoutMs: 10000,
         }),
+      /** Fail the scene unless a page expression is truthy right now (a layout check). */
+      async expect(expression, label) {
+        if (!(await cdp.evaluate(`!!(${expression})`)))
+          throw new Error(`Layout check failed: ${label}`);
+      },
       /** Wait until a page expression is truthy. */
       waitForExpression: (expression, label = expression) =>
         waitFor(() => cdp.evaluate(`!!(${expression})`), { label, timeoutMs: 10000 }),
@@ -347,8 +352,16 @@ async function main() {
       const size = scene.size || WINDOW_SIZE;
       if (size.width !== applied.size.width || size.height !== applied.size.height) {
         await cdp.evaluate(`window.resizeTo(${size.width}, ${size.height})`);
+        // The window is sized in screen pixels, but an enlarged interface zooms the page, so the
+        // page sees fewer CSS pixels than the window has.
+        const zoom = settings.ui.scale || 1;
+        const cssWidth = Math.round(size.width / zoom);
+        const cssHeight = Math.round(size.height / zoom);
         await waitFor(
-          () => cdp.evaluate(`innerWidth === ${size.width} && innerHeight === ${size.height}`),
+          () =>
+            cdp.evaluate(
+              `Math.abs(innerWidth - ${cssWidth}) <= 1 && Math.abs(innerHeight - ${cssHeight}) <= 1`
+            ),
           { label: `a ${size.width}x${size.height} window`, timeoutMs: 5000 }
         ).catch((error) => console.warn(`${scene.name}: ${error.message}`));
         applied.size = size;
@@ -370,8 +383,8 @@ async function main() {
       }
     }
 
-    async function capture(name, source) {
-      await source.evaluate(REMOVE_TOASTS);
+    async function capture(name, source, { keepToasts = false } = {}) {
+      if (!keepToasts) await source.evaluate(REMOVE_TOASTS);
       const { data } = await source.send('Page.captureScreenshot', { format: 'png' });
       const base = path.join(OUT_DIR, `${platformTag}-${name}`);
       fs.writeFileSync(`${base}-page.png`, Buffer.from(data, 'base64'));
@@ -387,7 +400,7 @@ async function main() {
         await prepare(scene);
         const result = scene.setup ? await scene.setup(ctx) : null;
         await sleep(scene.settle ?? 900);
-        await capture(scene.name, result?.capture || cdp);
+        await capture(scene.name, result?.capture || cdp, { keepToasts: scene.keepToasts });
         console.log(`Captured ${scene.name}`);
       } catch (error) {
         failures.push(scene.name);
