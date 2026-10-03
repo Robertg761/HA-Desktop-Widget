@@ -48,6 +48,14 @@ describe('shared layout rules for narrow windows and long labels', () => {
       expect(resolvedValue(body, 'max-height')).toBeNull();
     });
 
+    it('caps a dialog the same at every text size', () => {
+      render('large-interface', dialog());
+      expect(resolvedValue(document.querySelector('.modal-content'), 'max-height')).toBe(
+        'calc(100dvh - 1.5rem)'
+      );
+      expect(resolvedValue(document.querySelector('.modal-content'), 'min-height')).toBe('0');
+    });
+
     it.each([
       ['brightness-modal', 'brightness-modal-content'],
       ['climate-modal', 'climate-modal-content'],
@@ -100,6 +108,13 @@ describe('shared layout rules for narrow windows and long labels', () => {
       const list = document.querySelector('.entity-selector-list');
       expect(resolvedValue(list, 'max-height')).toBe('none');
       expect(resolvedValue(list.parentElement, 'min-height')).toBe('0');
+    });
+
+    it('lets the alert rows in Settings scroll with the page', () => {
+      render('', '<div id="settings-modal"><div class="inline-alerts-container"></div></div>');
+      const list = document.querySelector('.inline-alerts-container');
+      expect(resolvedValue(list, 'max-height')).toBeNull();
+      expect(resolvedValue(list, 'overflow-y')).toBeNull();
     });
 
     it('leaves the lists inside Settings pages with their own cap', () => {
@@ -246,6 +261,28 @@ describe('shared layout rules for narrow windows and long labels', () => {
       ).toBe('1fr 1fr');
     });
 
+    // The divider between the two cards follows how they sit: a vertical line while side by side,
+    // a line along the top of the second card once they stack.
+    it('draws the divider where the hero cards meet', () => {
+      const cards =
+        '<div class="status-grid"><div class="status-card weather-card"></div><div class="status-card time-card"></div></div>';
+      const divider = (viewport) =>
+        resolvedValue(document.querySelector('.time-card'), 'box-shadow', { viewport });
+      const vertical = /^inset 1px 0 0 /;
+      const horizontal = /^inset 0 1px 0 /;
+      const stacked = { width: 280, height: 600 };
+
+      render('', cards);
+      expect(divider(DEFAULT.viewport)).toMatch(vertical);
+      expect(divider(NARROW.viewport)).toMatch(horizontal);
+      expect(divider(stacked)).toMatch(horizontal);
+      // Enlarged text turns the 500px window into 333-385 CSS px and keeps the cards side by side.
+      render('large-interface', cards);
+      expect(divider(NARROW.viewport)).toMatch(vertical);
+      expect(divider({ width: 333, height: 400 })).toMatch(vertical);
+      expect(divider(stacked)).toMatch(horizontal);
+    });
+
     it('trims the hero cards in a window that is narrow and short', () => {
       render('', '<div class="status-card weather-card"></div>');
       const card = document.querySelector('.status-card');
@@ -263,12 +300,50 @@ describe('shared layout rules for narrow windows and long labels', () => {
       );
     });
 
+    it('sizes the seek column to its times, and gives the bar more in a wide window', () => {
+      render('', '<div class="media-tile-content"></div>');
+      const content = document.querySelector('.media-tile-content');
+      expect(resolvedValue(content, 'grid-template-columns', DEFAULT)).toBe(
+        'minmax(0, 1fr) fit-content(140px) auto'
+      );
+      expect(resolvedValue(content, 'grid-template-columns', NARROW)).toBe('minmax(0, 1fr)');
+      expect(
+        resolvedValue(content, 'grid-template-columns', { viewport: { width: 900, height: 700 } })
+      ).toBe('minmax(0, 1fr) minmax(min-content, 200px) auto');
+    });
+
     it('draws the seek times at their own width', () => {
       render('', '<div class="media-tile-seek"><span class="media-tile-time">1:12:30</span></div>');
       const time = document.querySelector('.media-tile-time');
       expect(resolvedValue(time, 'flex')).toBe('none');
       expect(resolvedValue(time, 'white-space')).toBe('nowrap');
       expect(resolvedValue(document.querySelector('.media-tile-seek'), 'max-width')).toBeNull();
+    });
+  });
+
+  describe('the connection panel and the dimmed tiles', () => {
+    it('keeps a gap under the panel only where tiles follow it', () => {
+      render(
+        '',
+        '<div class="widget-content"><div class="widget-state-panel" id="above"></div><div class="controls-section"></div></div>'
+      );
+      const above = document.getElementById('above');
+      expect(resolvedValue(above, 'margin-bottom')).not.toBeNull();
+      document.querySelector('.controls-section').remove();
+      expect(resolvedValue(above, 'margin-bottom')).toBeNull();
+      expect(resolvedValue(above, 'margin')).toBe('0');
+    });
+
+    it('dims what Home Assistant said, and leaves the computer clock lit', () => {
+      render(
+        'ha-offline',
+        `<div class="weather-card"></div><div class="time-card"></div><div class="media-tile"></div>
+        <div id="quick-controls"><div class="control-item"></div></div>`
+      );
+      for (const selector of ['.weather-card', '.media-tile', '.control-item']) {
+        expect(resolvedValue(document.querySelector(selector), 'opacity')).toBe('0.55');
+      }
+      expect(resolvedValue(document.querySelector('.time-card'), 'opacity')).toBeNull();
     });
   });
 
@@ -298,17 +373,38 @@ describe('shared layout rules for narrow windows and long labels', () => {
       );
     });
 
-    it('keeps the climate target on one line and the colour picker its size', () => {
+    it('keeps the climate target on one line, under the current reading when it must', () => {
       render(
         '',
-        '<div class="climate-temp-display is-range"><div class="climate-target-temp"><div class="climate-temp-value-large"></div></div></div><input class="light-color-picker" />'
+        '<div class="climate-temp-display is-range"><div class="climate-current-temp"></div><div class="climate-target-temp"><div class="climate-temp-value-large"></div></div></div>'
       );
-      const value = document.querySelector('.climate-temp-value-large');
-      expect(resolvedValue(value, 'white-space')).toBe('nowrap');
       expect(
-        resolvedValue(document.querySelector('.climate-temp-display'), 'grid-template-columns')
-      ).toBe('auto minmax(0, 1fr)');
+        resolvedValue(document.querySelector('.climate-temp-value-large'), 'white-space')
+      ).toBe('nowrap');
+      const display = document.querySelector('.climate-temp-display');
+      expect(resolvedValue(display, 'display')).toBe('flex');
+      expect(resolvedValue(display, 'flex-wrap')).toBe('wrap');
+      // The range asks for 11rem beside the current reading, so a card without it wraps the range
+      // below at the full width instead of shrinking the target to the smaller figure.
+      expect(resolvedValue(document.querySelector('.climate-target-temp'), 'flex')).toBe(
+        '3 1 11rem'
+      );
+      expect(resolvedValue(document.querySelector('.climate-current-temp'), 'flex')).toBe(
+        '1 1 auto'
+      );
+    });
+
+    it('keeps the colour picker its size beside the swatches', () => {
+      render('', '<input class="light-color-picker" />');
       expect(resolvedValue(document.querySelector('.light-color-picker'), 'flex')).toBe('0 0 44px');
+    });
+
+    it('lets a long date use a little of the card padding before it wraps', () => {
+      render('', '<div class="status-card time-card"><div class="time-content"></div></div>');
+      const content = document.querySelector('.time-content');
+      expect(resolvedValue(content, 'min-width')).toBe('0');
+      expect(resolvedValue(content, 'max-width')).toBe('calc(100% + 16px)');
+      expect(resolvedValue(content, 'margin-inline')).toBe('-8px');
     });
 
     it('sizes the clock to its card instead of ending it with an ellipsis', () => {
