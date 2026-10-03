@@ -1246,6 +1246,61 @@ kbd {
   *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
 }
 
+/* ---------------- Forced colours ---------------- */
+
+/* Windows High Contrast turns backgrounds into the system Canvas colour, which erases anything the
+   page shows with a fill alone: the demo's accent swatches, its selected states, the switch, the
+   slider and the progress bar. Each gets an edge or an outline, in system colours. */
+@media (forced-colors: active) {
+  .swatch {
+    forced-color-adjust: none;
+    border: 2px solid CanvasText;
+    box-shadow: none;
+  }
+  .swatch.is-on,
+  .qa[aria-pressed='true'],
+  .seg button.is-on,
+  .page-tabs button.is-on {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+  .qa[aria-pressed='true'],
+  .seg button.is-on,
+  .page-tabs button.is-on {
+    outline-offset: -2px;
+  }
+  /* The sliding page pill is a fill too; the active tab outlines itself. */
+  .page-tabs::before { display: none; }
+  .page-tabs button { border-radius: 999px; }
+  .conn span {
+    border: 2px solid Highlight;
+    background: Highlight;
+    box-shadow: none;
+  }
+  .toggle {
+    border: 2px solid CanvasText;
+    background: Highlight;
+  }
+  .toggle::after { background: HighlightText; }
+  #bright-slider { background: ButtonText; }
+  #bright-slider::-webkit-slider-thumb {
+    background: Highlight;
+    border: 2px solid ButtonText;
+    box-shadow: none;
+  }
+  #bright-slider::-moz-range-thumb {
+    background: Highlight;
+    border: 2px solid ButtonText;
+    box-shadow: none;
+  }
+  .media-track {
+    box-sizing: border-box;
+    height: 6px;
+    border: 1px solid ButtonText;
+  }
+  #media-bar { background: Highlight; }
+}
+
 /* ---------------- Responsive ---------------- */
 
 @media (max-width: 1020px) {

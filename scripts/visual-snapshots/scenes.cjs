@@ -6,7 +6,8 @@
  * each other and can be run alone with SNAPSHOT_SCENES=<regex>. What a scene may set:
  *
  *   ui       settings merged over the fixture's ui settings (theme, language, seasonal, ...)
- *   config   other settings merged over the fixture's (frostedGlass, customTabs, activeTabId)
+ *   config   other settings merged over the fixture's (frostedGlass, customTabs, activeTabId,
+ *            entityAlerts)
  *   size     { width, height } to resize the window to
  *   media    CDP media features to emulate, e.g. forced-colors
  *   setup    async (ctx) that drives the UI; may return { capture } to photograph another
@@ -22,14 +23,44 @@ const { PAGE_SETS, WINDOW_SIZE } = require('./fixture.cjs');
 
 const NARROW_WINDOW = { width: 340, height: WINDOW_SIZE.height };
 const FORCED_COLORS = [{ name: 'forced-colors', value: 'active' }];
+// A light contrast theme (Windows High Contrast White): Chromium picks the light palette from the
+// colour scheme.
+const FORCED_COLORS_LIGHT = [...FORCED_COLORS, { name: 'prefers-color-scheme', value: 'light' }];
 
 const tileDetails = (entityId) =>
   `#quick-controls [data-entity-id="${entityId}"] .tile-details-button`;
 const tile = (entityId) => `#quick-controls [data-entity-id="${entityId}"]`;
 
 const openBrightness = (ctx) => ctx.click(tileDetails('light.desk_lamp'));
+const openDetails = (entityId) => (ctx) => ctx.click(tileDetails(entityId));
 const openClimate = (ctx) => ctx.click(tileDetails('climate.living_room'));
-const toggleEditMode = (ctx) => ctx.click('#reorganize-quick-controls-btn');
+const openColourLight = (ctx) => ctx.click(tileDetails('light.colour_strip'));
+// The page being edited carries its rename, duplicate and delete buttons in the tab strip. However
+// long its name and however wordy Add page is in the interface's language, they have to lie inside
+// the strip and clear of the fades at its edges, or they cannot be seen or reached. Its name has to
+// keep some room as well: a lone page in a strip as wide as itself once lost all of it.
+const EDIT_BUTTONS_IN_STRIP = `(() => {
+  const strip = document.querySelector('.quick-access-tab-scroll');
+  const tab = document.querySelector('.quick-access-tab.active');
+  if (!strip || !tab) return false;
+  const bounds = strip.getBoundingClientRect();
+  const fade = parseFloat(getComputedStyle(strip).getPropertyValue('--qa-tab-fade')) || 0;
+  const overflow = strip.dataset.overflow || '';
+  const left = bounds.left + (overflow === 'left' || overflow === 'both' ? fade : 0);
+  const right = bounds.right - (overflow === 'right' || overflow === 'both' ? fade : 0);
+  const label = tab.querySelector('.quick-access-tab-label');
+  const named = !label || label.clientWidth >= Math.min(label.scrollWidth, 30);
+  return named && [...tab.children].every((part) => {
+    const box = part.getBoundingClientRect();
+    return box.left >= left - 1 && box.right <= right + 1;
+  });
+})()`;
+
+async function toggleEditMode(ctx) {
+  await ctx.click('#reorganize-quick-controls-btn');
+  // The strip scrolls the page into view, which takes a moment.
+  await ctx.waitForExpression(EDIT_BUTTONS_IN_STRIP, 'the edited page inside the tab strip');
+}
 
 async function openSettingsTab(ctx, tab) {
   await ctx.click('#settings-btn');
@@ -65,10 +96,94 @@ async function openAlarmCodeDialog(ctx) {
   await ctx.waitForSelector('.alarm-code-modal');
 }
 
+// The first-run wizard is one panel that outlives config changes: it only starts over when it
+// was hidden, so a scene that follows another first-run scene finds it on that scene's step.
+// Back is disabled on the welcome step, so stepping back until then starts every scene from the
+// same place, however the scenes were selected.
+async function showFirstRunWelcome(ctx) {
+  await ctx.waitForSelector('.first-run-onboarding:not(.hidden)');
+  const back = `document.querySelector('.first-run-actions .btn-secondary:nth-child(2)')`;
+  await ctx.ev(`(async () => {
+    const back = ${back};
+    // The URL and authorization steps are the most there is to step back from.
+    for (let attempt = 0; attempt < 2 && !back.disabled; attempt += 1) {
+      back.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  })()`);
+  await ctx.waitForExpression(`${back}.disabled`, 'the first-run welcome step');
+}
+
+// Settings opens one page at a time; this scrolls the wanted element to the top and opens any
+// disclosure it sits in.
+async function revealInSettings(ctx, selector) {
+  await ctx.ev(`(() => {
+    const element = document.querySelector(${JSON.stringify(selector)});
+    element?.closest('details')?.setAttribute('open', '');
+    element?.scrollIntoView({ block: 'start' });
+  })()`);
+}
+
+// Two alerts: one for a state change and one for a number crossing a threshold.
+const alertsConfig = {
+  entityAlerts: {
+    enabled: true,
+    alerts: {
+      'binary_sensor.front_door': {
+        onStateChange: true,
+        onSpecificState: false,
+        onNumericThreshold: false,
+        targetState: '',
+        comparison: 'above',
+        threshold: null,
+        durationSeconds: 0,
+        cooldownSeconds: 0,
+        quietHours: { enabled: false, start: '22:00', end: '07:00' },
+      },
+      'sensor.office_temp': {
+        onStateChange: false,
+        onSpecificState: false,
+        onNumericThreshold: true,
+        targetState: '',
+        comparison: 'above',
+        threshold: 25,
+        durationSeconds: 60,
+        cooldownSeconds: 300,
+        quietHours: { enabled: true, start: '22:00', end: '07:00' },
+      },
+    },
+  },
+};
+
+async function openAlertConfig(ctx) {
+  await openSettingsTab(ctx, 'alerts');
+  await ctx.waitForSelector('.edit-alert');
+  await ctx.click('.edit-alert[data-entity="sensor.office_temp"]');
+  await ctx.waitForExpression(
+    `!document.querySelector('#alert-config-modal')?.classList.contains('hidden')`
+  );
+}
+
+// Edit mode puts a rename and a remove button on every tile.
+async function openTileSettings(ctx, entityId = 'sensor.office_temp') {
+  await toggleEditMode(ctx);
+  await ctx.click(`${tile(entityId)} .rename-btn`);
+  await ctx.waitForSelector('.rename-modal');
+}
+
+async function openRemoveConfirmation(ctx) {
+  await toggleEditMode(ctx);
+  await ctx.click(`${tile('scene.movie_time')} .remove-btn`);
+  await ctx.waitForExpression(
+    `!document.querySelector('#confirm-modal')?.classList.contains('hidden')`
+  );
+}
+
 async function pinEntity(ctx, entityId) {
   return { capture: await ctx.openPin(entityId) };
 }
 
+const READABLE = { highContrast: true, opaquePanels: true };
 const sixPages = (activeTabId) => ({ customTabs: PAGE_SETS.six, activeTabId });
 // The page that holds an entity of every pin family; only Quick Access entities can be pinned.
 const pinsPage = { customTabs: PAGE_SETS.pins, activeTabId: 'pins' };
@@ -79,6 +194,17 @@ const pinScene = (name, entityId, extra = {}) => ({
   setup: (ctx) => pinEntity(ctx, entityId),
   ...extra,
 });
+
+const pages = (set, activeTabId) => ({ customTabs: PAGE_SETS[set], activeTabId });
+
+// Keyboard focus rings only show after a key press, so press one before focusing from script.
+async function focusWithKeyboard(ctx, selector) {
+  await ctx.pressKey('Shift', { code: 'ShiftLeft', keyCode: 16 });
+  await ctx.ev(`document.querySelector(${JSON.stringify(selector)})?.focus()`);
+}
+
+// The page whose tiles open the helper, vacuum, to-do, calendar and repair dialogs.
+const dialogsPage = { customTabs: PAGE_SETS.dialogs, activeTabId: 'default' };
 // A holiday shows for an hour, long enough for the whole run.
 const holiday = (show) => ({ enabled: true, show, showUntil: Date.now() + 3600000 });
 
@@ -93,6 +219,118 @@ const scenes = [
   { name: 'dialog-manage-quick-access', setup: (ctx) => ctx.click('#manage-quick-controls-btn') },
   { name: 'popup-alarm-code', config: sixPages('default'), setup: openAlarmCodeDialog },
 
+  // The dialogs the dialogs page opens, each built by the app rather than by index.html.
+  {
+    name: 'popup-input-select',
+    config: dialogsPage,
+    setup: (ctx) => ctx.click(tile('input_select.house_mode')),
+  },
+  {
+    name: 'popup-vacuum',
+    config: dialogsPage,
+    setup: (ctx) => ctx.click(tile('vacuum.robot')),
+  },
+  {
+    name: 'popup-todo',
+    config: dialogsPage,
+    setup: async (ctx) => {
+      await ctx.click(tile('todo.shopping'));
+      await ctx.waitForSelector('.todo-item-row');
+    },
+  },
+  {
+    name: 'popup-calendar',
+    config: dialogsPage,
+    setup: async (ctx) => {
+      await ctx.click(tile('calendar.family'));
+      await ctx.waitForSelector('.calendar-event-row');
+    },
+  },
+  {
+    name: 'popup-repair',
+    config: dialogsPage,
+    setup: async (ctx) => {
+      await ctx.click(tile('light.old_kitchen'));
+      await ctx.waitForSelector('#entity-repair-modal .entity-item');
+    },
+  },
+
+  {
+    name: 'popup-light-colour',
+    config: dialogsPage,
+    setup: openDetails('light.color_strip'),
+  },
+  { name: 'popup-fan', config: dialogsPage, setup: openDetails('fan.office') },
+  { name: 'popup-cover', config: dialogsPage, setup: openDetails('cover.garage') },
+  {
+    name: 'popup-media',
+    config: dialogsPage,
+    setup: openDetails('media_player.den_stereo'),
+  },
+  {
+    name: 'dialog-tile-settings',
+    setup: (ctx) => openTileSettings(ctx),
+  },
+  { name: 'dialog-confirm-remove', setup: openRemoveConfirmation },
+  {
+    name: 'dialog-alert-config',
+    config: alertsConfig,
+    setup: openAlertConfig,
+  },
+
+  // The sensor pop-up with its history period, and the dialogs the Advanced page opens.
+  { name: 'popup-sensor', setup: (ctx) => ctx.click(tile('sensor.office_temp')) },
+  {
+    name: 'dialog-support',
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'advanced');
+      await ctx.click('#open-donate-modal-btn');
+      await ctx.waitForExpression(
+        `!document.querySelector('#donate-modal')?.classList.contains('hidden')`
+      );
+    },
+  },
+  {
+    name: 'dialog-diagnostics',
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'advanced');
+      await ctx.click('#connection-diagnostics-btn');
+      await ctx.waitForSelector('.diagnostics-report');
+    },
+  },
+
+  // Settings pages the first scenes do not reach, and the custom colour editor.
+  { name: 'settings-dashboard', setup: (ctx) => openSettingsTab(ctx, 'dashboard') },
+  { name: 'settings-hotkeys', setup: (ctx) => openSettingsTab(ctx, 'hotkeys') },
+  {
+    name: 'settings-alerts',
+    config: alertsConfig,
+    setup: (ctx) => openSettingsTab(ctx, 'alerts'),
+  },
+  { name: 'settings-advanced', setup: (ctx) => openSettingsTab(ctx, 'advanced') },
+  {
+    name: 'settings-custom-color',
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'personalization');
+      await revealInSettings(ctx, '#custom-color-picker');
+    },
+  },
+
+  // A light as a primary card: the lit lamp warms its icon and glow.
+  { name: 'primary-light-card', config: { primaryCards: ['light.desk_lamp', 'time'] } },
+
+  // A page with nothing on it says so instead of showing an empty grid.
+  {
+    name: 'empty-page',
+    config: {
+      customTabs: [
+        { id: 'default', name: 'Home', entityIds: [] },
+        { id: 'spare', name: 'Spare', entityIds: ['light.desk_lamp'] },
+      ],
+      activeTabId: 'default',
+    },
+  },
+
   // Pages the six-tab set adds: a tab strip that overflows, media tiles and a helper dialog.
   { name: 'six-tabs', config: sixPages('devices') },
   { name: 'media-tile', config: sixPages('media') },
@@ -100,6 +338,92 @@ const scenes = [
     name: 'popup-input-number',
     config: sixPages('devices'),
     setup: (ctx) => ctx.click(tile('input_number.thermostat_offset')),
+  },
+
+  // The page tab strip with 1, 3, 6 and 12 pages (German names, the last of them very long), in
+  // normal and edit mode, light and dark, left to right and right to left. The active page is the
+  // last or next to last, which only shows if the strip scrolls it into view. In German, whose
+  // Add page is the wordiest, a long page name must still leave room for all its buttons.
+  { name: 'tabs-three', config: pages('three', 'kitchen') },
+  { name: 'tabs-three-edit', config: pages('three', 'kitchen'), setup: toggleEditMode },
+  { name: 'tabs-six-edit', config: sixPages('devices'), setup: toggleEditMode },
+  {
+    name: 'tabs-single-edit',
+    setup: toggleEditMode,
+    config: { customTabs: [PAGE_SETS.default[0]], activeTabId: 'default' },
+  },
+  { name: 'tabs-twelve', config: pages('twelve', 'page-12') },
+  { name: 'tabs-twelve-edit', config: pages('twelve', 'page-6'), setup: toggleEditMode },
+  { name: 'tabs-twelve-edit-last', config: pages('twelve', 'page-12'), setup: toggleEditMode },
+  {
+    name: 'tabs-twelve-de-edit',
+    ui: { language: 'de' },
+    config: pages('twelve', 'page-6'),
+    setup: toggleEditMode,
+  },
+  { name: 'tabs-twelve-light', ui: { theme: 'light' }, config: pages('twelve', 'page-12') },
+  {
+    name: 'tabs-twelve-light-edit',
+    ui: { theme: 'light' },
+    config: pages('twelve', 'page-6'),
+    setup: toggleEditMode,
+  },
+  { name: 'tabs-twelve-rtl', ui: { language: 'ar' }, config: pages('twelve', 'page-12') },
+  {
+    name: 'tabs-twelve-rtl-edit',
+    ui: { language: 'ar' },
+    config: pages('twelve', 'page-6'),
+    setup: toggleEditMode,
+  },
+  {
+    name: 'tabs-narrow-edit',
+    size: NARROW_WINDOW,
+    config: pages('six', 'media'),
+    setup: toggleEditMode,
+  },
+  {
+    name: 'tabs-focus',
+    config: pages('twelve', 'page-4'),
+    setup: (ctx) => focusWithKeyboard(ctx, '.quick-access-tab-link.active'),
+  },
+  {
+    name: 'tabs-focus-edit',
+    config: pages('twelve', 'page-4'),
+    setup: async (ctx) => {
+      await toggleEditMode(ctx);
+      await focusWithKeyboard(ctx, '.qa-tab-rename');
+    },
+  },
+  {
+    name: 'tabs-focus-add',
+    config: pages('three', 'default'),
+    setup: async (ctx) => {
+      await toggleEditMode(ctx);
+      await focusWithKeyboard(ctx, '.qa-tab-add');
+    },
+  },
+
+  // Edit mode puts a pin, edit and remove button on every tile; compact density and narrow
+  // windows leave the least room for them.
+  { name: 'edit-compact', ui: { density: 'compact' }, setup: toggleEditMode },
+  {
+    name: 'edit-compact-narrow',
+    ui: { density: 'compact' },
+    size: NARROW_WINDOW,
+    setup: toggleEditMode,
+  },
+  { name: 'edit-narrow', size: NARROW_WINDOW, setup: toggleEditMode },
+  { name: 'edit-media', config: sixPages('media'), setup: toggleEditMode },
+  {
+    name: 'edit-graph-camera',
+    config: {
+      ...pages('graph', 'default'),
+      comparisonGraphs: [
+        { id: 'graph:temps', name: 'Temperatures', span: 3, entityIds: ['sensor.office_temp'] },
+      ],
+      quickAccessTileOptions: { 'camera.driveway': { cameraPreviewRefresh: '30s' } },
+    },
+    setup: toggleEditMode,
   },
 
   // The light theme.
@@ -118,12 +442,175 @@ const scenes = [
     setup: (ctx) => openSettingsTab(ctx, 'general'),
   },
 
+  // The same dialogs in German (long labels) and Arabic (mirrored), and the light theme.
+  {
+    name: 'de-popup-fan',
+    ui: { language: 'de' },
+    config: dialogsPage,
+    setup: openDetails('fan.office'),
+  },
+  {
+    name: 'de-dialog-tile-settings',
+    ui: { language: 'de' },
+    setup: (ctx) => openTileSettings(ctx),
+  },
+  {
+    name: 'de-settings-hotkeys',
+    ui: { language: 'de' },
+    setup: (ctx) => openSettingsTab(ctx, 'hotkeys'),
+  },
+  {
+    name: 'de-popup-media',
+    ui: { language: 'de' },
+    config: dialogsPage,
+    setup: openDetails('media_player.den_stereo'),
+  },
+  {
+    name: 'ar-popup-media',
+    ui: { language: 'ar' },
+    config: dialogsPage,
+    setup: openDetails('media_player.den_stereo'),
+  },
+  {
+    name: 'ar-dialog-tile-settings',
+    ui: { language: 'ar' },
+    setup: (ctx) => openTileSettings(ctx),
+  },
+  {
+    name: 'de-popup-input-select',
+    ui: { language: 'de' },
+    config: dialogsPage,
+    setup: (ctx) => ctx.click(tile('input_select.house_mode')),
+  },
+  {
+    name: 'de-dialog-alert-config',
+    ui: { language: 'de' },
+    config: alertsConfig,
+    setup: openAlertConfig,
+  },
+  {
+    name: 'de-dialog-manage-quick-access',
+    ui: { language: 'de' },
+    setup: (ctx) => ctx.click('#manage-quick-controls-btn'),
+  },
+  {
+    name: 'ar-dialog-alert-config',
+    ui: { language: 'ar' },
+    config: alertsConfig,
+    setup: openAlertConfig,
+  },
+  {
+    name: 'ar-dialog-manage-quick-access',
+    ui: { language: 'ar' },
+    setup: (ctx) => ctx.click('#manage-quick-controls-btn'),
+  },
+  {
+    name: 'ar-settings-hotkeys',
+    ui: { language: 'ar' },
+    setup: (ctx) => openSettingsTab(ctx, 'hotkeys'),
+  },
+  {
+    name: 'popup-media-light',
+    ui: { theme: 'light' },
+    config: dialogsPage,
+    setup: openDetails('media_player.den_stereo'),
+  },
+  {
+    name: 'popup-light-colour-light',
+    ui: { theme: 'light' },
+    config: dialogsPage,
+    setup: openDetails('light.color_strip'),
+  },
+  {
+    name: 'dialog-tile-settings-light',
+    ui: { theme: 'light' },
+    setup: (ctx) => openTileSettings(ctx),
+  },
+  {
+    name: 'dialog-alert-config-light',
+    ui: { theme: 'light' },
+    config: alertsConfig,
+    setup: openAlertConfig,
+  },
+  {
+    name: 'settings-dashboard-light',
+    ui: { theme: 'light' },
+    setup: (ctx) => openSettingsTab(ctx, 'dashboard'),
+  },
+  {
+    name: 'settings-hotkeys-light',
+    ui: { theme: 'light' },
+    setup: (ctx) => openSettingsTab(ctx, 'hotkeys'),
+  },
+  {
+    name: 'popup-input-select-light',
+    ui: { theme: 'light' },
+    config: dialogsPage,
+    setup: (ctx) => ctx.click(tile('input_select.house_mode')),
+  },
+  {
+    name: 'popup-todo-light',
+    ui: { theme: 'light' },
+    config: dialogsPage,
+    setup: async (ctx) => {
+      await ctx.click(tile('todo.shopping'));
+      await ctx.waitForSelector('.todo-item-row');
+    },
+  },
+  {
+    name: 'dialog-manage-quick-access-light',
+    ui: { theme: 'light' },
+    setup: (ctx) => ctx.click('#manage-quick-controls-btn'),
+  },
+
   // A window dragged narrower than the 500px it opens at.
   { name: 'narrow-main', size: NARROW_WINDOW },
 
-  // Windows High Contrast, as Chromium emulates it.
+  // Windows High Contrast, as Chromium emulates it: a dark contrast theme, then a light one.
   { name: 'forced-colors-main', media: FORCED_COLORS },
   { name: 'forced-colors-popup', media: FORCED_COLORS, setup: openBrightness },
+  { name: 'forced-colors-popup-climate', media: FORCED_COLORS, setup: openClimate },
+  {
+    name: 'forced-colors-popup-colour',
+    config: { activeTabId: 'bedroom' },
+    media: FORCED_COLORS,
+    setup: openColourLight,
+  },
+  {
+    name: 'forced-colors-settings-appearance',
+    media: FORCED_COLORS,
+    setup: (ctx) => openSettingsTab(ctx, 'personalization'),
+  },
+  {
+    name: 'forced-colors-dialog-alarm-code',
+    config: sixPages('default'),
+    media: FORCED_COLORS,
+    setup: openAlarmCodeDialog,
+  },
+  { name: 'forced-colors-edit-mode', media: FORCED_COLORS, setup: toggleEditMode },
+  { name: 'forced-colors-light-main', ui: { theme: 'light' }, media: FORCED_COLORS_LIGHT },
+  {
+    name: 'forced-colors-light-popup-climate',
+    ui: { theme: 'light' },
+    media: FORCED_COLORS_LIGHT,
+    setup: openClimate,
+  },
+  {
+    name: 'forced-colors-light-settings-appearance',
+    ui: { theme: 'light' },
+    media: FORCED_COLORS_LIGHT,
+    setup: (ctx) => openSettingsTab(ctx, 'personalization'),
+  },
+
+  // The Readable preset (high contrast with opaque panels), on both themes.
+  { name: 'readable-main', ui: READABLE },
+  { name: 'readable-light-main', ui: { theme: 'light', ...READABLE } },
+  { name: 'readable-light-popup-climate', ui: { theme: 'light', ...READABLE }, setup: openClimate },
+  {
+    name: 'readable-light-settings-appearance',
+    ui: { theme: 'light', ...READABLE },
+    setup: (ctx) => openSettingsTab(ctx, 'personalization'),
+  },
 
   // Desktop pins are windows of their own, opened at the default 168x148.
   { name: 'pin-light', pin: 'light.desk_lamp', setup: (ctx) => pinEntity(ctx, 'light.desk_lamp') },
@@ -177,6 +664,30 @@ const scenes = [
   {
     name: 'christmas-light',
     ui: { theme: 'light', seasonal: holiday('christmas') },
+  },
+
+  // First run shows when no server is configured. The runner only puts the keys listed above
+  // back after a scene, so these stay last: later scenes would find the app unconnected. The
+  // wizard stays open between them, so each one steps it back to the welcome page first.
+  {
+    name: 'first-run',
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: showFirstRunWelcome,
+  },
+  {
+    name: 'first-run-url',
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await showFirstRunWelcome(ctx);
+      await ctx.click('.first-run-actions .btn-primary');
+      await ctx.waitForSelector('.first-run-content input');
+    },
+  },
+  {
+    name: 'first-run-light',
+    ui: { theme: 'light' },
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: showFirstRunWelcome,
   },
 ];
 

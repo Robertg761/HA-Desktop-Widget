@@ -5,7 +5,9 @@
 const {
   decodeFrames,
   encodeFrame,
+  resultFor,
 } = require('../../scripts/visual-snapshots/mock-home-assistant.cjs');
+const { buildServiceResponses } = require('../../scripts/visual-snapshots/fixture.cjs');
 
 function maskedClientFrame(text) {
   const payload = Buffer.from(text, 'utf8');
@@ -43,5 +45,30 @@ describe('visual snapshot mock Home Assistant framing', () => {
     const large = encodeFrame('x'.repeat(70000));
     expect(large[1]).toBe(127);
     expect(Number(large.readBigUInt64BE(2))).toBe(70000);
+  });
+});
+
+describe('visual snapshot mock Home Assistant service responses', () => {
+  const context = { states: [], services: {}, serviceResponses: buildServiceResponses() };
+  const call = (domain, service, extra = {}) => ({
+    type: 'call_service',
+    domain,
+    service,
+    service_data: { entity_id: `${domain}.sample` },
+    ...extra,
+  });
+
+  test('answers the services that return data with the entity keyed response', () => {
+    const todo = resultFor(call('todo', 'get_items', { return_response: true }), context);
+    expect(Object.keys(todo.response)).toEqual(['todo.sample']);
+    expect(todo.response['todo.sample'].items.length).toBeGreaterThan(1);
+
+    const calendar = resultFor(call('calendar', 'get_events', { return_response: true }), context);
+    expect(calendar.response['calendar.sample'].events[0]).toHaveProperty('summary');
+  });
+
+  test('just succeeds for every other call, or when no response was asked for', () => {
+    expect(resultFor(call('todo', 'get_items'), context)).toBeNull();
+    expect(resultFor(call('light', 'turn_on', { return_response: true }), context)).toBeNull();
   });
 });

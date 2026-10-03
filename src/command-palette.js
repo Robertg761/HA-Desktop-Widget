@@ -10,6 +10,7 @@ import websocket from './websocket.js';
 import { releaseFocusTrap, showToast, trapFocus } from './ui-utils.js';
 import { t } from './i18n.js';
 import { renderEntityIcon, setLineIconContent } from './entity-icons.js';
+import { applyCloseButtonIcons } from './icons.js';
 import { getActiveQuickAccessTab } from './quick-access-tabs.js';
 
 const MAX_RESULTS = 20;
@@ -183,11 +184,12 @@ function createPaletteShell() {
   input.setAttribute('aria-autocomplete', 'list');
   input.setAttribute('aria-expanded', 'false');
 
-  const closeButton = createElement('button', 'command-palette-close', '×');
+  const closeButton = createElement('button', 'close-btn command-palette-close', '×');
   closeButton.type = 'button';
   closeButton.addEventListener('click', closeCommandPalette);
 
   searchWrap.append(input, closeButton);
+  applyCloseButtonIcons(searchWrap);
 
   list = createElement('div', 'command-palette-results');
   list.id = 'command-palette-results';

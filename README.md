@@ -187,11 +187,11 @@ Assistant can flag out-of-date desktops.
 
 ### Quick Access Management
 
-- **Start with a useful dashboard**: After browser authorization, choose **Choose rooms and devices** or **Skip for now**. The same action is available from an empty Quick Access dashboard. A populated room is suggested with up to eight available everyday controls selected; review the preview, search and adjust the devices, name the page, and choose **Add Page**. This adds a page without replacing existing pages. If room registry access is unavailable, choose directly from your device states. The picker waits for the connection to finish starting; use **Retry** if it cannot connect.
+- **Start with a useful dashboard**: After browser authorization, choose **Choose rooms and devices** or **Skip for now**. The same action is available from an empty Quick Access dashboard. A populated room is suggested with up to eight available everyday controls selected; review the preview, search and adjust the devices, name the page, and choose **Add Page**. Beside other pages, an empty page offers **Fill this page** instead and keeps its name. Either way, pages that already hold entities are never replaced. If room registry access is unavailable, choose directly from your device states. The picker waits for the connection to finish starting; use **Retry** if it cannot connect.
 - **Build a page from a room**: Enter reorganize mode and choose **Add page**. Rooms load automatically when connected; use **Load rooms** or **Retry** if needed. Select a Home Assistant area, choose its entities, review the preview, and save. Entity area overrides take precedence over device areas; hidden and disabled registry entries are omitted. Registry access requires permission from Home Assistant.
 - **Undo and restore**: The undo arrow reverses the latest dashboard edit. **Settings > Advanced > Restore dashboard** lists up to 20 local restore points, retained across restarts and separated by Home Assistant server. Restoring a saved layout first backs up the current layout. These backups contain dashboard data, including names, icons, tile options, and comparison graphs, but exclude authorization, desktop pins, hotkeys, and connection settings. They depend on local browser storage being available.
 - **Add Entities**: Click the "+" button to search and add entities to your dashboard
-- **Reorder**: Click the Reorganize button to enter reorganize mode, then drag and drop to reorder
+- **Reorder**: Click the Reorganize button to enter reorganize mode, then drag and drop to reorder. Without dragging, select a tile and then the tile whose place it should take, or press Alt and an arrow key on a tile's buttons to move it
 - **Rename**: In reorganize mode, click the edit icon to set custom display names
 - **Camera Previews**: Edit a camera tile to choose an HLS live feed or a 30-second, 10-second, or 5-second snapshot cadence; previews pause while the app or tile is hidden, clicking expands the current feed without restarting it, and the expanded live view includes a Reconnect action for stale sessions
 - **Remove**: In reorganize mode, click the remove button to remove entities
@@ -238,6 +238,8 @@ Open **Settings > General > Connection diagnostics** to inspect connection attem
 
 Use Tab to focus a primary card or the Quick Access grid. Arrow keys move between Quick Access
 tiles; Enter or Space activates the focused device. Shift+Enter opens its available detail controls.
+With several pages, Tab reaches the page tabs once: Left and Right (or Home and End) move along them
+and switch page. The tabs scroll to keep the active page in view, and the mouse wheel scrolls them.
 Heat/cool thermostats provide separate heating and cooling targets, and on/off-only lights show
 power controls without a brightness slider.
 

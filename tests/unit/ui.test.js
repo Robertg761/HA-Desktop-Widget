@@ -661,6 +661,190 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.querySelector('.room-dashboard button').textContent).toBe('Retry');
       expect(document.querySelector('.room-dashboard button').disabled).toBe(false);
     });
+
+    it('leaves the starter able to save a named page after the rooms fail to load', async () => {
+      state.setConfig({
+        ...state.CONFIG,
+        customTabs: [{ id: 'default', name: 'All', entityIds: [] }],
+        activeTabId: 'default',
+      });
+      mockRequest.mockRejectedValue(new Error('Home Assistant is slow'));
+      ui.showAddPageModal({ starter: true });
+      await flush();
+
+      expect(document.querySelector('.room-dashboard [role="status"]').textContent).toContain(
+        'Could not load rooms'
+      );
+      const save = document.querySelector('#add-page-save-btn');
+      expect(save.disabled).toBe(false);
+
+      document.querySelector('#add-page-name').value = 'Attic';
+      save.click();
+      await flush();
+      expect(state.CONFIG.customTabs).toEqual([{ id: 'default', name: 'Attic', entityIds: [] }]);
+    });
+
+    it('says an empty page name is missing instead of doing nothing', async () => {
+      ui.showAddPageModal();
+      const input = document.querySelector('#add-page-name');
+      const error = document.querySelector('#add-page-name-error');
+      expect(error.hidden).toBe(true);
+      expect(input.hasAttribute('aria-describedby')).toBe(false);
+      const pages = state.CONFIG.customTabs;
+
+      document.querySelector('#add-page-save-btn').click();
+      expect(error.hidden).toBe(false);
+      expect(error.textContent).toBe('Enter page name');
+      expect(input.getAttribute('aria-invalid')).toBe('true');
+      expect(input.getAttribute('aria-describedby')).toBe('add-page-name-error');
+      expect(document.activeElement).toBe(input);
+      expect(state.CONFIG.customTabs).toBe(pages);
+
+      input.value = 'A';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      expect(error.hidden).toBe(true);
+      expect(input.hasAttribute('aria-invalid')).toBe(false);
+      expect(input.hasAttribute('aria-describedby')).toBe(false);
+    });
+
+    describe('when the page name is filled in for the person', () => {
+      const submitEmptyName = () => {
+        const input = document.querySelector('#add-page-name');
+        input.value = '';
+        document.querySelector('#add-page-save-btn').click();
+        expect(document.querySelector('#add-page-name-error').hidden).toBe(false);
+        expect(input.getAttribute('aria-invalid')).toBe('true');
+        return input;
+      };
+      const expectNameValid = (input) => {
+        expect(document.querySelector('#add-page-name-error').hidden).toBe(true);
+        expect(input.hasAttribute('aria-invalid')).toBe(false);
+        expect(input.hasAttribute('aria-describedby')).toBe(false);
+      };
+
+      it('stops calling the name missing once a quick pick supplies it', () => {
+        ui.showAddPageModal();
+        const input = submitEmptyName();
+
+        document.querySelector('.qa-add-chip[data-name="Office"]').click();
+        expect(input.value).toBe('Office');
+        expectNameValid(input);
+      });
+
+      it('stops calling the name missing once a quick pick supplies it along with its room', async () => {
+        registryResponses();
+        ui.showAddPageModal();
+        await flush();
+        const input = submitEmptyName();
+
+        document.querySelector('.qa-add-chip[data-name="Kitchen"]').click();
+        expect(document.querySelector('#add-page-room').value).toBe('kitchen');
+        expect(input.value).toBe('Kitchen');
+        expectNameValid(input);
+      });
+
+      it('stops calling the name missing once choosing a room supplies it', async () => {
+        registryResponses();
+        ui.showAddPageModal();
+        await flush();
+        const input = submitEmptyName();
+
+        const room = document.querySelector('#add-page-room');
+        room.value = 'office';
+        room.onchange();
+        expect(input.value).toBe('Office');
+        expectNameValid(input);
+      });
+
+      it('keeps saying the name is missing while a room leaves it empty', async () => {
+        registryResponses();
+        ui.showAddPageModal();
+        await flush();
+        const input = submitEmptyName();
+
+        const room = document.querySelector('#add-page-room');
+        room.value = '';
+        room.onchange();
+        expect(input.value).toBe('');
+        expect(document.querySelector('#add-page-name-error').hidden).toBe(false);
+        expect(input.getAttribute('aria-invalid')).toBe('true');
+      });
+    });
+
+    it('is named by its heading, with Cancel before Add Page in both order and look', () => {
+      ui.showAddPageModal();
+      const modal = document.getElementById('add-page-modal');
+      expect(modal.getAttribute('aria-labelledby')).toBe('add-page-title');
+      expect(document.getElementById('add-page-title').textContent).toBe('Add Page');
+      expect(
+        [...modal.querySelectorAll('.modal-footer button')].map((button) => button.id)
+      ).toEqual(['add-page-cancel-btn', 'add-page-save-btn']);
+    });
+
+    it('names the group of quick picks', () => {
+      ui.showAddPageModal();
+      const chips = document.querySelector('.qa-add-chips');
+      expect(chips.getAttribute('role')).toBe('group');
+      const label = document.getElementById(chips.getAttribute('aria-labelledby'));
+      expect(label.textContent).toBe('Quick picks:');
+      expect(label.tagName).toBe('SPAN');
+    });
+
+    describe('filling an empty page beside other pages', () => {
+      const pagesWithEmpty = () => ({
+        ...state.CONFIG,
+        customTabs: [
+          { id: 'garage', name: 'Garage', entityIds: [] },
+          { id: 'home', name: 'Home', entityIds: ['light.desk'] },
+        ],
+        activeTabId: 'garage',
+      });
+
+      it('says it fills the page and keeps the page its name', async () => {
+        state.setConfig(pagesWithEmpty());
+        registryResponses();
+        ui.showAddPageModal({ starter: true });
+        await flush();
+
+        expect(document.getElementById('add-page-title').textContent).toBe('Fill this page');
+        expect(document.querySelector('#add-page-save-btn').textContent).toBe('Fill this page');
+        // Choosing a room (the dialog picked one) does not rename the page.
+        expect(document.querySelector('#add-page-room').value).toBe('kitchen');
+        expect(document.querySelector('#add-page-name').value).toBe('Garage');
+
+        document.querySelector('#add-page-save-btn').click();
+        await flush();
+        expect(state.CONFIG.customTabs).toEqual([
+          { id: 'garage', name: 'Garage', entityIds: ['light.stove'] },
+          { id: 'home', name: 'Home', entityIds: ['light.desk'] },
+        ]);
+      });
+
+      it('still lets the person type another name', async () => {
+        state.setConfig(pagesWithEmpty());
+        registryResponses();
+        ui.showAddPageModal({ starter: true });
+        await flush();
+        document.querySelector('#add-page-name').value = 'Workshop';
+        document.querySelector('#add-page-save-btn').click();
+        await flush();
+        expect(state.CONFIG.customTabs[0].name).toBe('Workshop');
+        expect(state.CONFIG.customTabs).toHaveLength(2);
+      });
+
+      it('keeps the first-run wording and room name for the only page', async () => {
+        state.setConfig({
+          ...state.CONFIG,
+          customTabs: [{ id: 'default', name: 'All', entityIds: [] }],
+          activeTabId: 'default',
+        });
+        registryResponses();
+        ui.showAddPageModal({ starter: true });
+        await flush();
+        expect(document.getElementById('add-page-title').textContent).toBe('Add Page');
+        expect(document.querySelector('#add-page-name').value).toBe('Kitchen');
+      });
+    });
   });
 
   describe('dashboard recovery', () => {
@@ -1433,6 +1617,50 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(mockCallService).toHaveBeenCalledWith('switch', 'turn_off', {
         entity_id: 'switch.bedroom',
       });
+    });
+
+    it('follows the tiles where they are drawn when a wide tile parts the screen from the DOM order', () => {
+      const ids = ['light.bedroom', 'switch.bedroom', 'light.living_room', 'light.office'];
+      const config = state.CONFIG;
+      config.favoriteEntities = ids;
+      config.customTabs = [{ id: 'main', name: 'Main', entityIds: ids }];
+      config.activeTabId = 'main';
+      state.setConfig(config);
+      state.setStates(
+        Object.fromEntries(
+          ids.map((id) => [id, sampleStates[id] || { entity_id: id, state: 'off', attributes: {} }])
+        )
+      );
+      ui.renderActiveTab();
+      const tiles = Array.from(document.querySelectorAll('#quick-controls .control-item'));
+      // A wide first tile and a narrow one beside it, then two narrow tiles in the row below. A
+      // step along the DOM from the first tile would land on the narrow one beside it, but down
+      // on the screen is the third.
+      const boxes = [
+        { left: 0, right: 208, top: 0, bottom: 80 },
+        { left: 216, right: 316, top: 0, bottom: 80 },
+        { left: 0, right: 100, top: 88, bottom: 168 },
+        { left: 108, right: 208, top: 88, bottom: 168 },
+      ];
+      tiles.forEach((tile, index) => {
+        tile.getBoundingClientRect = () => boxes[index];
+      });
+      const press = (tile, key) =>
+        tile.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+      const focusedTile = () => document.activeElement?.closest('.control-item');
+
+      press(tiles[0], 'ArrowDown');
+      expect(focusedTile()).toBe(tiles[2]);
+      press(tiles[2], 'ArrowRight');
+      expect(focusedTile()).toBe(tiles[3]);
+      press(tiles[3], 'ArrowUp');
+      expect(focusedTile()).toBe(tiles[0]);
+      press(tiles[0], 'ArrowRight');
+      expect(focusedTile()).toBe(tiles[1]);
+      press(tiles[1], 'ArrowDown');
+      expect(focusedTile()).toBe(tiles[3]);
+      // Leave the roving tab stop where tests expect to find it.
+      press(tiles[3], 'Home');
     });
 
     it('lets non-admin users repair an unavailable entity with an explicit replacement', async () => {
@@ -3390,6 +3618,14 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       return document.querySelector('.rename-modal');
     }
 
+    it('lists the Tile Settings buttons in the order they are read and tabbed through', () => {
+      const modal = seedOfficeTemperatureTile();
+
+      expect(
+        [...modal.querySelectorAll('.modal-footer button')].map((button) => button.id)
+      ).toEqual(['cancel-rename-btn', 'reset-rename-btn', 'save-rename-btn']);
+    });
+
     it('switches a sensor tile to a gauge with a custom range from the settings modal', async () => {
       const modal = seedOfficeTemperatureTile();
       const chartSelect = modal.querySelector('#tile-chart-type-select');
@@ -4044,6 +4280,30 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       jest.useRealTimers();
     });
 
+    it('tells assistive technology which climate mode and fan mode is on', () => {
+      ui.executeEntityPrimaryAction(sampleStates['climate.bedroom_air_conditioner']);
+
+      const modal = document.querySelector('.climate-modal');
+      const pressed = (selector) =>
+        [...modal.querySelectorAll(selector)].map((button) => [
+          button.classList.contains('active'),
+          button.getAttribute('aria-pressed'),
+        ]);
+      for (const selector of ['.climate-mode-btn', '.climate-fan-mode-btn']) {
+        const buttons = pressed(selector);
+        expect(buttons.filter(([active]) => active)).toHaveLength(1);
+        for (const [active, ariaPressed] of buttons) expect(ariaPressed).toBe(String(active));
+      }
+
+      // Choosing another one moves the state with the highlight.
+      const other = [...modal.querySelectorAll('.climate-mode-btn')].find(
+        (button) => !button.classList.contains('active')
+      );
+      other.click();
+      expect(other.getAttribute('aria-pressed')).toBe('true');
+      expect(modal.querySelectorAll('.climate-mode-btn[aria-pressed="true"]')).toHaveLength(1);
+    });
+
     it('rolls back an optimistic climate temperature when the service rejects', async () => {
       jest.useFakeTimers();
       try {
@@ -4172,7 +4432,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         '.control-item[data-entity-id="light.bedroom"] .desktop-pin-quick-toggle'
       );
       expect(pinButton).toBeTruthy();
-      expect(pinButton.getAttribute('aria-label')).toBe('Pin');
+      // The name is the same whatever the state; aria-pressed carries whether it is pinned.
+      expect(pinButton.getAttribute('aria-label')).toBe('Pin Bedroom Light to desktop');
+      expect(pinButton.getAttribute('aria-pressed')).toBe('false');
 
       pinButton.click();
       await Promise.resolve();
@@ -4230,7 +4492,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         '.control-item[data-entity-id="light.bedroom"] .desktop-pin-quick-toggle'
       );
       expect(pinButton).toBeTruthy();
-      expect(pinButton.getAttribute('aria-label')).toBe('Pinned');
+      expect(pinButton.getAttribute('aria-label')).toBe('Pin Bedroom Light to desktop');
+      expect(pinButton.getAttribute('aria-pressed')).toBe('true');
 
       pinButton.click();
       await Promise.resolve();
@@ -4244,9 +4507,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
 
     it.each([
-      [{}, 'Pinned'],
-      [{ 'light.bedroom': { x: 10, y: 20, width: 168, height: 148 } }, 'Pin'],
-    ])('keeps keyboard focus on the Pin button after the tiles rebuild', async (pins, label) => {
+      [{}, 'true'],
+      [{ 'light.bedroom': { x: 10, y: 20, width: 168, height: 148 } }, 'false'],
+    ])('keeps keyboard focus on the Pin button after the tiles rebuild', async (pins, pressed) => {
       state.setConfig({
         ...state.CONFIG,
         favoriteEntities: ['light.bedroom'],
@@ -4274,8 +4537,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       expect(pinButton.isConnected).toBe(false);
       expect(document.activeElement.dataset.desktopPinQuickToggle).toBe('light.bedroom');
-      // The button shows a pin icon; its state is carried by the accessible name.
-      expect(document.activeElement.getAttribute('aria-label')).toBe(label);
+      // The button shows a pin icon; whether it is pinned is carried by aria-pressed.
+      expect(document.activeElement.getAttribute('aria-pressed')).toBe(pressed);
 
       ui.toggleReorganizeMode();
     });
@@ -4303,7 +4566,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         '.control-item[data-entity-id="calendar.family"] .desktop-pin-quick-toggle'
       );
       expect(pinButton).toBeTruthy();
-      expect(pinButton.getAttribute('aria-label')).toBe('Unsupported');
+      expect(pinButton.getAttribute('aria-label')).toBe('Pin Family Calendar to desktop');
       expect(pinButton.disabled).toBe(true);
       expect(pinButton.title).toContain('does not have a desktop-pin profile yet');
     });
@@ -6818,10 +7081,14 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     let tabBar;
 
     beforeEach(() => {
+      // As in the page: the bar sits in the section header, where Add page is placed beside it.
+      const header = document.createElement('div');
+      header.className = 'section-header quick-access-header';
       tabBar = document.createElement('div');
       tabBar.id = 'quick-access-tabs';
       tabBar.className = 'quick-access-tabs hidden';
-      document.body.appendChild(tabBar);
+      header.appendChild(tabBar);
+      document.body.appendChild(header);
     });
 
     const setPages = (pages, activeTabId) => {
@@ -6856,7 +7123,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(activeLinks).toHaveLength(1);
       expect(activeLinks[0].dataset.tab).toBe('default');
       // No page-management affordances outside reorganize mode.
-      expect(tabBar.querySelector('.qa-tab-add')).toBeNull();
+      expect(document.querySelector('.qa-tab-add')).toBeNull();
       expect(tabBar.querySelector('.qa-tab-rename')).toBeNull();
     });
 
@@ -6867,7 +7134,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       expect(tabBar.classList.contains('hidden')).toBe(false);
       expect(tabBar.classList.contains('reorganize')).toBe(true);
-      expect(tabBar.querySelector('.qa-tab-add')).not.toBeNull();
+      expect(document.querySelector('.qa-tab-add')).not.toBeNull();
 
       // Active page exposes rename; delete is hidden while only one page exists.
       const activeTab = tabBar.querySelector('.quick-access-tab.active');
@@ -7050,7 +7317,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       setPages([{ id: 'default', name: 'All', entityIds: [] }]);
       ui.toggleReorganizeMode();
 
-      tabBar.querySelector('.qa-tab-add').click();
+      document.querySelector('.qa-tab-add').click();
 
       const modal = document.getElementById('add-page-modal');
       expect(modal).not.toBeNull();
@@ -7097,7 +7364,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         })
       );
 
-      tabBar.querySelector('.qa-tab-add').click();
+      document.querySelector('.qa-tab-add').click();
       const modal = document.getElementById('add-page-modal');
       modal.querySelector('#add-page-name').value = 'Bedroom';
       modal.querySelector('#add-page-save-btn').click();
@@ -7139,7 +7406,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
 
       try {
-        tabBar.querySelector('.qa-tab-add').click();
+        document.querySelector('.qa-tab-add').click();
         const modal = document.getElementById('add-page-modal');
         modal.querySelector('#add-page-name').value = 'Bedroom';
         modal.querySelector('#add-page-save-btn').click();
@@ -7366,6 +7633,58 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(nameInput.maxLength).toBe(40);
     });
 
+    it('names the comparison graph editor fields, the sensor buttons and the graph tile', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      state.setConfig({ ...state.CONFIG, comparisonGraphs: [] });
+      state.setStates({
+        'sensor.hall_temp': {
+          entity_id: 'sensor.hall_temp',
+          state: '19',
+          attributes: { friendly_name: 'Hall temp', unit_of_measurement: '°C' },
+        },
+      });
+      ui.renderActiveTab();
+      await ui.addComparisonGraphTile();
+
+      const modal = document.querySelector('.comparison-graph-modal');
+      const [nameLabel, widthLabel] = modal.querySelectorAll('label');
+      const nameInput = modal.querySelector('input.form-control');
+      const widthSelect = modal.querySelector('select.form-control');
+      expect(nameLabel.htmlFor).toBe(nameInput.id);
+      expect(widthLabel.htmlFor).toBe(widthSelect.id);
+      expect(nameInput.id).not.toBe('');
+
+      const search = [...modal.querySelectorAll('input')].find((input) => input !== nameInput);
+      expect(search.getAttribute('aria-label')).toBe('Search sensors…');
+      expect(search.spellcheck).toBe(false);
+
+      const row = modal.querySelector('.entity-item');
+      const described = document.getElementById(
+        row.querySelector('button').getAttribute('aria-describedby')
+      );
+      expect(described.textContent).toBe('Hall temp');
+
+      const tile = document.querySelector('.comparison-graph-tile');
+      expect(tile.getAttribute('role')).toBe('group');
+      expect(tile.getAttribute('aria-label')).toBe(nameInput.value);
+    });
+
+    it('shows the kept name again when the graph name is cleared', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      state.setConfig({ ...state.CONFIG, comparisonGraphs: [] });
+      ui.renderActiveTab();
+      await ui.addComparisonGraphTile();
+
+      const nameInput = document.querySelector('.comparison-graph-modal input.form-control');
+      const kept = nameInput.value;
+      expect(kept).not.toBe('');
+      nameInput.value = '';
+      nameInput.dispatchEvent(new Event('change'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(nameInput.value).toBe(kept);
+    });
+
     it('serializes comparison graph editor mutations while persistence is pending', async () => {
       setPages([{ id: 'default', name: 'All', entityIds: [] }]);
       state.setConfig({
@@ -7430,11 +7749,712 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     it('closes the add-page modal when leaving reorganize mode', () => {
       setPages([{ id: 'default', name: 'All', entityIds: [] }]);
       ui.toggleReorganizeMode();
-      tabBar.querySelector('.qa-tab-add').click();
+      document.querySelector('.qa-tab-add').click();
       expect(document.getElementById('add-page-modal')).not.toBeNull();
 
       ui.toggleReorganizeMode();
       expect(document.getElementById('add-page-modal')).toBeNull();
+    });
+
+    describe('page tab strip', () => {
+      const pagesNamed = (count) =>
+        Array.from({ length: count }, (_, index) => ({
+          id: `p${index + 1}`,
+          name: `Page ${index + 1}`,
+          entityIds: [],
+        }));
+      const strip = () => tabBar.querySelector('.quick-access-tab-scroll');
+      const links = () => [...tabBar.querySelectorAll('.quick-access-tab-link')];
+      const press = (target, key, init = {}) => {
+        const event = new KeyboardEvent('keydown', {
+          key,
+          bubbles: true,
+          cancelable: true,
+          ...init,
+        });
+        target.dispatchEvent(event);
+        return event;
+      };
+      const settle = async () => {
+        for (let tick = 0; tick < 6; tick += 1) await Promise.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      };
+
+      it('is a tab list whose one Tab stop is the active page', () => {
+        setPages(pagesNamed(4), 'p3');
+        ui.renderActiveTab();
+
+        expect(strip().getAttribute('role')).toBe('tablist');
+        expect(strip().getAttribute('aria-label')).toBe('Quick Access views');
+        expect(tabBar.getAttribute('role')).toBeNull();
+        expect(links().map((link) => link.getAttribute('role'))).toEqual(Array(4).fill('tab'));
+        expect(links().map((link) => link.tabIndex)).toEqual([-1, -1, 0, -1]);
+        expect(links().map((link) => link.getAttribute('aria-selected'))).toEqual([
+          'false',
+          'false',
+          'true',
+          'false',
+        ]);
+      });
+
+      it('names the grid as the panel of the active tab, and drops that when there are no tabs', () => {
+        const grid = document.getElementById('quick-controls');
+        setPages(pagesNamed(3), 'p2');
+        ui.renderActiveTab();
+        const activeTab = links()[1];
+        expect(
+          links().every((link) => link.getAttribute('aria-controls') === 'quick-controls')
+        ).toBe(true);
+        expect(grid.getAttribute('role')).toBe('tabpanel');
+        expect(grid.getAttribute('aria-labelledby')).toBe(activeTab.id);
+        expect(activeTab.id).toBeTruthy();
+
+        ui.toggleReorganizeMode();
+        expect(grid.getAttribute('role')).toBeNull();
+        expect(grid.getAttribute('aria-labelledby')).toBeNull();
+        ui.toggleReorganizeMode();
+        expect(grid.getAttribute('role')).toBe('tabpanel');
+
+        setPages(pagesNamed(1));
+        ui.renderActiveTab();
+        expect(grid.getAttribute('role')).toBeNull();
+      });
+
+      it('moves to the next, previous, first and last page with the arrows, Home and End', async () => {
+        setPages(pagesNamed(4), 'p2');
+        ui.renderActiveTab();
+        links()[1].focus();
+
+        const right = press(links()[1], 'ArrowRight');
+        await settle();
+        expect(right.defaultPrevented).toBe(true);
+        expect(state.CONFIG.activeTabId).toBe('p3');
+        // The bar was rebuilt by the switch; focus is on the new active page's button.
+        expect(document.activeElement).toBe(links()[2]);
+        expect(document.activeElement.classList.contains('active')).toBe(true);
+
+        press(document.activeElement, 'End');
+        await settle();
+        expect(state.CONFIG.activeTabId).toBe('p4');
+        press(document.activeElement, 'ArrowRight');
+        await settle();
+        expect(state.CONFIG.activeTabId).toBe('p1');
+        press(document.activeElement, 'ArrowLeft');
+        await settle();
+        expect(state.CONFIG.activeTabId).toBe('p4');
+        press(document.activeElement, 'Home');
+        await settle();
+        expect(state.CONFIG.activeTabId).toBe('p1');
+        expect(document.activeElement.dataset.tab).toBe('p1');
+        expect(links().map((link) => link.tabIndex)).toEqual([0, -1, -1, -1]);
+      });
+
+      it('swaps the arrows when the text runs right to left', async () => {
+        setPages(pagesNamed(3), 'p2');
+        ui.renderActiveTab();
+        strip().style.direction = 'rtl';
+        links()[1].focus();
+
+        press(links()[1], 'ArrowLeft');
+        await settle();
+        expect(state.CONFIG.activeTabId).toBe('p3');
+        press(document.activeElement, 'ArrowRight');
+        await settle();
+        expect(state.CONFIG.activeTabId).toBe('p2');
+      });
+
+      it('does not hijack keys with modifiers or arrows aimed at the page buttons', () => {
+        setPages(pagesNamed(3), 'p1');
+        ui.toggleReorganizeMode();
+        const rename = tabBar.querySelector('.qa-tab-rename');
+        rename.focus();
+        expect(press(rename, 'ArrowRight').defaultPrevented).toBe(false);
+        expect(press(links()[0], 'ArrowRight', { shiftKey: true }).defaultPrevented).toBe(false);
+        expect(state.CONFIG.activeTabId).toBe('p1');
+      });
+
+      it('leaves the arrows alone while the pages are being edited', () => {
+        setPages(pagesNamed(3), 'p1');
+        ui.toggleReorganizeMode();
+        links()[0].focus();
+
+        // The pages are buttons in a group then, each one a Tab stop, so no arrow key is promised.
+        expect(press(links()[0], 'ArrowRight').defaultPrevented).toBe(false);
+        expect(press(links()[0], 'End').defaultPrevented).toBe(false);
+        expect(state.CONFIG.activeTabId).toBe('p1');
+      });
+
+      it('keeps keyboard focus on a page button through rebuilds of the bar', () => {
+        setPages(pagesNamed(3), 'p2');
+        ui.renderActiveTab();
+        links()[2].focus();
+        const before = links()[2];
+
+        ui.renderActiveTab();
+        ui.renderActiveTab();
+
+        expect(before.isConnected).toBe(false);
+        expect(document.activeElement).toBe(links()[2]);
+        expect(document.activeElement.dataset.tab).toBe('p3');
+      });
+
+      it('does not steal focus the bar never had', () => {
+        setPages(pagesNamed(3), 'p2');
+        ui.renderActiveTab();
+        const outside = document.createElement('button');
+        document.body.appendChild(outside);
+        outside.focus();
+
+        ui.renderActiveTab();
+
+        expect(document.activeElement).toBe(outside);
+      });
+
+      it('saves nothing and tells nobody when the page already shown is chosen', async () => {
+        setPages(pagesNamed(3), 'p2');
+        ui.renderActiveTab();
+        const changed = jest.fn();
+        window.addEventListener('desktop-companion-page-changed', changed);
+        mockElectronAPI.updateConfig.mockClear();
+        try {
+          links()[1].click();
+          await settle();
+          expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+          expect(changed).not.toHaveBeenCalled();
+          expect(await ui.switchQuickAccessPage('p2')).toEqual(
+            expect.objectContaining({ success: true })
+          );
+
+          links()[2].click();
+          await settle();
+          expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(1);
+          expect(changed).toHaveBeenCalledTimes(1);
+        } finally {
+          window.removeEventListener('desktop-companion-page-changed', changed);
+        }
+      });
+
+      it('gives a long page name an ellipsis box, its own text direction and a tooltip', () => {
+        const longName = 'Donaudampfschifffahrtsgesellschaft Kapitänspatent';
+        setPages([
+          { id: 'a', name: 'Home', entityIds: [] },
+          { id: 'b', name: longName, entityIds: [] },
+        ]);
+        ui.renderActiveTab();
+
+        const [home, long] = links();
+        expect(long.title).toBe(longName);
+        expect(home.title).toBe('Home');
+        expect(long.textContent).toBe(longName);
+        const label = long.querySelector('.quick-access-tab-label');
+        expect(label.dir).toBe('auto');
+        expect(label.textContent).toBe(longName);
+
+        ui.toggleReorganizeMode();
+        expect(links()[1].title).toBe(`${longName}\nDouble-click to rename`);
+      });
+
+      describe('with a strip that overflows', () => {
+        let scrollTo;
+        let scrollLeft;
+        const restore = [];
+
+        // jsdom has no layout, so the strip is given one: 300px wide, 1200px of 90px tabs placed
+        // 100px apart, scrolled by `scrollLeft`.
+        const mockLayout = () => {
+          scrollLeft = 0;
+          // As a browser keeps the offset between the start and the end of the content.
+          const clamp = (value) => Math.max(0, Math.min(value, 900));
+          scrollTo = jest.fn(({ left }) => {
+            scrollLeft = clamp(left);
+          });
+          const isStrip = (element) => element.classList?.contains('quick-access-tab-scroll');
+          const patch = (name, descriptor) => {
+            const original = Object.getOwnPropertyDescriptor(Element.prototype, name);
+            Object.defineProperty(Element.prototype, name, { configurable: true, ...descriptor });
+            restore.push(() => {
+              if (original) Object.defineProperty(Element.prototype, name, original);
+              else delete Element.prototype[name];
+            });
+          };
+          const fallback = (name) => Object.getOwnPropertyDescriptor(Element.prototype, name)?.get;
+          const clientWidth = fallback('clientWidth');
+          const scrollWidth = fallback('scrollWidth');
+          const scrollLeftGetter = fallback('scrollLeft');
+          patch('clientWidth', {
+            get: function get() {
+              return isStrip(this) ? 300 : clientWidth?.call(this);
+            },
+          });
+          patch('scrollWidth', {
+            get: function get() {
+              return isStrip(this) ? 1200 : scrollWidth?.call(this);
+            },
+          });
+          patch('scrollLeft', {
+            get: function get() {
+              return isStrip(this) ? scrollLeft : scrollLeftGetter?.call(this);
+            },
+            set: function set(value) {
+              if (isStrip(this)) scrollLeft = clamp(value);
+            },
+          });
+          patch('scrollTo', {
+            value: function scroll(options) {
+              if (isStrip(this)) scrollTo(options);
+            },
+          });
+          const getBoundingClientRect = Element.prototype.getBoundingClientRect;
+          patch('getBoundingClientRect', {
+            value: function boundingRect() {
+              const rect = (left, right) => ({
+                left,
+                right,
+                top: 0,
+                bottom: 24,
+                width: right - left,
+              });
+              if (isStrip(this)) return rect(0, 300);
+              if (this.classList?.contains('quick-access-tab')) {
+                const index = [...this.parentElement.querySelectorAll('.quick-access-tab')].indexOf(
+                  this
+                );
+                return rect(index * 100 - scrollLeft, index * 100 + 90 - scrollLeft);
+              }
+              return getBoundingClientRect.call(this);
+            },
+          });
+        };
+
+        beforeEach(() => {
+          mockLayout();
+          setPages(pagesNamed(12), 'p1');
+          ui.renderActiveTab();
+          scrollTo.mockClear();
+        });
+
+        afterEach(() => {
+          restore
+            .splice(0)
+            .reverse()
+            .forEach((undo) => undo());
+        });
+
+        it('glides the active page into view after a switch, clear of the faded edge', async () => {
+          await ui.switchQuickAccessPage('p10');
+          // Tab 10 is at 900..990 in a 300px strip: its right edge goes 20px inside the strip's.
+          expect(scrollTo).toHaveBeenCalledWith({ left: 710, behavior: 'smooth' });
+        });
+
+        it('glides to an earlier page the same way, unless motion is reduced', async () => {
+          await ui.switchQuickAccessPage('p10');
+          scrollTo.mockClear();
+          await ui.switchQuickAccessPage('p2');
+          // Tab 2 is at 100..190, and the strip is scrolled to 710.
+          expect(scrollTo).toHaveBeenLastCalledWith({ left: 80, behavior: 'smooth' });
+
+          window.matchMedia = jest.fn(() => ({ matches: true }));
+          try {
+            scrollTo.mockClear();
+            await ui.switchQuickAccessPage('p11');
+            expect(scrollTo).toHaveBeenLastCalledWith(
+              expect.objectContaining({ behavior: 'auto' })
+            );
+          } finally {
+            delete window.matchMedia;
+          }
+        });
+
+        it('leaves the strip alone when the active page is already in view', async () => {
+          scrollTo.mockClear();
+          await ui.switchQuickAccessPage('p2');
+          expect(scrollTo).not.toHaveBeenCalled();
+        });
+
+        it('scrolls to the page that is active when the bar is first drawn', () => {
+          // A restart: the saved page is the last, and nothing has been scrolled yet.
+          strip().remove();
+          scrollLeft = 0;
+          setPages(pagesNamed(12), 'p12');
+          ui.renderActiveTab();
+
+          // Tab 12 is at 1100..1190; the browser stops at the end, 10px short of the margin.
+          expect(scrollTo).toHaveBeenCalledWith({ left: 910, behavior: 'auto' });
+        });
+
+        it('keeps where the person scrolled across a rebuild when the active page is in view', async () => {
+          await ui.switchQuickAccessPage('p2');
+          scrollLeft = 40;
+          ui.renderActiveTab();
+          expect(scrollLeft).toBe(40);
+        });
+
+        it('fades the edges that have pages beyond them', () => {
+          const fade = () => strip().dataset.overflow || '';
+          ui.renderActiveTab();
+          expect(fade()).toBe('right');
+
+          scrollLeft = 400;
+          strip().dispatchEvent(new Event('scroll'));
+          expect(fade()).toBe('both');
+
+          scrollLeft = 900;
+          strip().dispatchEvent(new Event('scroll'));
+          expect(fade()).toBe('left');
+        });
+
+        it('scrolls sideways with a plain wheel, and lets go at the ends', () => {
+          const wheel = (init) => {
+            const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, ...init });
+            strip().dispatchEvent(event);
+            return event;
+          };
+
+          const down = wheel({ deltaY: 120 });
+          expect(down.defaultPrevented).toBe(true);
+          expect(scrollLeft).toBe(120);
+
+          const up = wheel({ deltaY: -50 });
+          expect(up.defaultPrevented).toBe(true);
+          expect(scrollLeft).toBe(70);
+
+          // Already at the start: the wheel goes on to scroll the panel.
+          scrollLeft = 0;
+          expect(wheel({ deltaY: -50 }).defaultPrevented).toBe(false);
+          // At the end the same.
+          scrollLeft = 900;
+          expect(wheel({ deltaY: 50 }).defaultPrevented).toBe(false);
+          expect(scrollLeft).toBe(900);
+          // Sideways wheels and swipes are the browser's.
+          scrollLeft = 100;
+          expect(wheel({ deltaX: 80, deltaY: 10 }).defaultPrevented).toBe(false);
+          expect(scrollLeft).toBe(100);
+        });
+      });
+
+      describe('while reorganizing', () => {
+        it('holds buttons, not tabs, and marks the current page', () => {
+          setPages(pagesNamed(3), 'p2');
+          ui.toggleReorganizeMode();
+
+          expect(strip().getAttribute('role')).toBe('group');
+          expect(strip().querySelectorAll('[role="tab"]')).toHaveLength(0);
+          expect(links().map((link) => link.getAttribute('aria-current'))).toEqual([
+            null,
+            'page',
+            null,
+          ]);
+          expect(links().map((link) => link.getAttribute('aria-selected'))).toEqual([
+            null,
+            null,
+            null,
+          ]);
+          // Without a tab list's arrow keys, Tab has to reach every page, then the active page's
+          // own buttons.
+          expect(links().map((link) => link.tabIndex)).toEqual([0, 0, 0]);
+          expect(
+            [...tabBar.querySelectorAll('button')].every((button) => button.tabIndex === 0)
+          ).toBe(true);
+        });
+
+        it('keeps Add page beside the strip, and the same button between renders', () => {
+          setPages(pagesNamed(12), 'p12');
+          ui.toggleReorganizeMode();
+
+          const add = document.querySelector('.qa-tab-add');
+          expect(add).not.toBeNull();
+          expect(strip().contains(add)).toBe(false);
+          expect(add.parentElement).toBe(tabBar.parentElement);
+          expect(tabBar.nextElementSibling).toBe(add);
+
+          add.focus();
+          ui.renderActiveTab();
+          expect(document.querySelector('.qa-tab-add')).toBe(add);
+          expect(document.activeElement).toBe(add);
+
+          ui.toggleReorganizeMode();
+          expect(document.querySelector('.qa-tab-add')).toBeNull();
+        });
+
+        it('keeps focus on a page button such as Duplicate through a rebuild', () => {
+          setPages(pagesNamed(3), 'p2');
+          ui.toggleReorganizeMode();
+          const duplicate = tabBar.querySelector('.qa-tab-duplicate');
+          duplicate.focus();
+
+          ui.renderActiveTab();
+
+          expect(document.activeElement.classList.contains('qa-tab-duplicate')).toBe(true);
+          expect(document.activeElement.isConnected).toBe(true);
+        });
+      });
+
+      describe('renaming a page', () => {
+        const startRename = () => {
+          tabBar.querySelector('.qa-tab-rename').click();
+          const input = tabBar.querySelector('.qa-tab-rename-input');
+          expect(document.activeElement).toBe(input);
+          return input;
+        };
+
+        it('puts focus back on the page after Enter', async () => {
+          setPages(pagesNamed(2), 'p1');
+          ui.toggleReorganizeMode();
+          const input = startRename();
+          expect(input.dir).toBe('auto');
+          input.value = 'Hall';
+          press(input, 'Enter');
+          await settle();
+
+          expect(state.CONFIG.customTabs[0].name).toBe('Hall');
+          expect(document.activeElement).toBe(links()[0]);
+          expect(document.activeElement.textContent).toBe('Hall');
+        });
+
+        it('puts focus back on the page after Escape, without leaving reorganize mode', async () => {
+          setPages(pagesNamed(2), 'p1');
+          ui.toggleReorganizeMode();
+          const input = startRename();
+          input.value = 'Hall';
+          press(input, 'Escape');
+          await settle();
+
+          expect(state.CONFIG.customTabs[0].name).toBe('Page 1');
+          expect(document.activeElement).toBe(links()[0]);
+          expect(tabBar.classList.contains('reorganize')).toBe(true);
+        });
+
+        it('keeps focus where the person went when the field loses it', async () => {
+          setPages(pagesNamed(2), 'p1');
+          ui.toggleReorganizeMode();
+          const input = startRename();
+          const elsewhere = document.createElement('button');
+          document.body.appendChild(elsewhere);
+          input.value = 'Hall';
+          elsewhere.focus();
+          await settle();
+
+          expect(state.CONFIG.customTabs[0].name).toBe('Hall');
+          expect(document.activeElement).toBe(elsewhere);
+        });
+      });
+    });
+
+    describe('reorganize mode tiles', () => {
+      const lamp = (id, name) => ({
+        entity_id: id,
+        state: 'off',
+        attributes: { friendly_name: name },
+      });
+      const tileIds = () =>
+        [...document.querySelectorAll('#quick-controls .control-item')].map(
+          (tile) => tile.dataset.entityId
+        );
+      const tile = (id) => document.querySelector(`#quick-controls [data-entity-id="${id}"]`);
+      const announcement = () => document.getElementById('quick-access-announcer')?.textContent;
+      const press = (target, key, init = {}) => {
+        const event = new KeyboardEvent('keydown', {
+          key,
+          bubbles: true,
+          cancelable: true,
+          ...init,
+        });
+        target.dispatchEvent(event);
+        return event;
+      };
+
+      beforeEach(() => {
+        state.setStates({
+          'light.a': lamp('light.a', 'Lamp A'),
+          'light.b': lamp('light.b', 'Lamp B'),
+          'light.c': lamp('light.c', 'Lamp C'),
+        });
+        setPages([{ id: 'home', name: 'Home', entityIds: ['light.a', 'light.b', 'light.c'] }]);
+        ui.renderActiveTab();
+        ui.toggleReorganizeMode();
+      });
+
+      it('names the buttons of a tile for the tile, and keeps the names after a rename', () => {
+        const edit = tile('light.b').querySelector('.rename-btn');
+        const remove = tile('light.b').querySelector('.remove-btn');
+        expect(edit.getAttribute('aria-label')).toBe('Edit settings for Lamp B');
+        expect(remove.getAttribute('aria-label')).toBe('Remove Lamp B from Quick Access');
+        expect(
+          tile('light.b').querySelector('.desktop-pin-quick-toggle').getAttribute('aria-label')
+        ).toBe('Pin Lamp B to desktop');
+
+        // Renaming the tile names its buttons again.
+        state.setConfig({
+          ...state.CONFIG,
+          customEntityNames: { 'light.b': 'Reading lamp' },
+        });
+        ui.renderActiveTab();
+        expect(tile('light.b').querySelector('.rename-btn').getAttribute('aria-label')).toBe(
+          'Edit settings for Reading lamp'
+        );
+      });
+
+      it('tabs through a tile in the order of the screen: pin, edit, remove', () => {
+        const order = [...tile('light.a').querySelectorAll('button')].map((button) =>
+          ['desktop-pin-quick-toggle', 'rename-btn', 'remove-btn'].find((name) =>
+            button.classList.contains(name)
+          )
+        );
+        expect(order.filter(Boolean)).toEqual([
+          'desktop-pin-quick-toggle',
+          'rename-btn',
+          'remove-btn',
+        ]);
+
+        // Also when the buttons are made again after being removed.
+        ui.toggleReorganizeMode();
+        ui.toggleReorganizeMode();
+        const again = [...tile('light.a').querySelectorAll('button')].map(
+          (button) => button.className
+        );
+        expect(again.findIndex((name) => name.includes('desktop-pin'))).toBeLessThan(
+          again.findIndex((name) => name.includes('rename-btn'))
+        );
+        expect(again.findIndex((name) => name.includes('rename-btn'))).toBeLessThan(
+          again.findIndex((name) => name.includes('remove-btn'))
+        );
+      });
+
+      it('offers only Remove on a placeholder for an entity Home Assistant has not reported', () => {
+        setPages([{ id: 'home', name: 'Home', entityIds: ['light.a', 'light.gone'] }]);
+        ui.renderActiveTab();
+        ui.toggleReorganizeMode();
+        ui.toggleReorganizeMode();
+
+        const placeholder = tile('light.gone');
+        expect(placeholder.classList.contains('unavailable-entity')).toBe(true);
+        expect(placeholder.querySelector('.remove-btn')).not.toBeNull();
+        expect(placeholder.querySelector('.rename-btn')).toBeNull();
+        expect(placeholder.querySelector('.desktop-pin-quick-toggle')).toBeNull();
+        expect(tile('light.a').querySelector('.rename-btn')).not.toBeNull();
+      });
+
+      describe('with the keyboard', () => {
+        it('moves the focused tile along the order with Alt and the arrow keys, and saves it', () => {
+          const edit = tile('light.a').querySelector('.rename-btn');
+          edit.focus();
+
+          const event = press(edit, 'ArrowRight', { altKey: true });
+          expect(event.defaultPrevented).toBe(true);
+          expect(tileIds()).toEqual(['light.b', 'light.a', 'light.c']);
+          expect(state.CONFIG.customTabs[0].entityIds).toEqual(['light.b', 'light.a', 'light.c']);
+          // The tile was moved in the page, and focus is back on the same button.
+          expect(document.activeElement).toBe(edit);
+          expect(announcement()).toBe('Moved to position 2 of 3');
+
+          press(edit, 'ArrowDown', { altKey: true });
+          expect(tileIds()).toEqual(['light.b', 'light.c', 'light.a']);
+          press(edit, 'ArrowLeft', { altKey: true });
+          press(edit, 'ArrowUp', { altKey: true });
+          expect(tileIds()).toEqual(['light.a', 'light.b', 'light.c']);
+          expect(announcement()).toBe('Moved to position 1 of 3');
+        });
+
+        it('stops at the ends of the page', () => {
+          const edit = tile('light.a').querySelector('.rename-btn');
+          expect(press(edit, 'ArrowLeft', { altKey: true }).defaultPrevented).toBe(true);
+          expect(tileIds()).toEqual(['light.a', 'light.b', 'light.c']);
+        });
+
+        it('moves the other way in right-to-left text', () => {
+          const edit = tile('light.a').querySelector('.rename-btn');
+          document.getElementById('quick-controls').style.direction = 'rtl';
+          press(edit, 'ArrowLeft', { altKey: true });
+          expect(tileIds()).toEqual(['light.b', 'light.a', 'light.c']);
+        });
+
+        it('needs Alt, so the arrows alone and other combinations are left alone', () => {
+          const edit = tile('light.a').querySelector('.rename-btn');
+          expect(press(edit, 'ArrowRight').defaultPrevented).toBe(false);
+          expect(press(edit, 'ArrowRight', { altKey: true, ctrlKey: true }).defaultPrevented).toBe(
+            false
+          );
+          expect(tileIds()).toEqual(['light.a', 'light.b', 'light.c']);
+        });
+      });
+
+      describe('without dragging', () => {
+        const click = (target) =>
+          target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        const picked = () =>
+          [...document.querySelectorAll('.reorder-picked')].map((item) => item.dataset.entityId);
+
+        it('selects a tile, then moves it to where the next selected tile is', () => {
+          click(tile('light.a'));
+          expect(picked()).toEqual(['light.a']);
+          expect(announcement()).toContain('Picked up Lamp A');
+
+          click(tile('light.c'));
+          expect(picked()).toEqual([]);
+          expect(tileIds()).toEqual(['light.b', 'light.c', 'light.a']);
+          expect(state.CONFIG.customTabs[0].entityIds).toEqual(['light.b', 'light.c', 'light.a']);
+          expect(announcement()).toBe('Moved to position 3 of 3');
+        });
+
+        it('moves a tile earlier the same way', () => {
+          click(tile('light.c'));
+          click(tile('light.a'));
+          expect(tileIds()).toEqual(['light.c', 'light.a', 'light.b']);
+        });
+
+        it('lets go of a tile selected again, and does not count its own buttons', () => {
+          click(tile('light.a'));
+          click(tile('light.a').querySelector('.rename-btn'));
+          expect(picked()).toEqual(['light.a']);
+          click(tile('light.a'));
+          expect(picked()).toEqual([]);
+          expect(tileIds()).toEqual(['light.a', 'light.b', 'light.c']);
+        });
+
+        it('lets Escape cancel a selection before it leaves reorganize mode', () => {
+          click(tile('light.b'));
+          const escape = () =>
+            document.dispatchEvent(
+              new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+            );
+
+          escape();
+          expect(picked()).toEqual([]);
+          expect(
+            document.getElementById('quick-controls').classList.contains('reorganize-mode')
+          ).toBe(true);
+          escape();
+          expect(
+            document.getElementById('quick-controls').classList.contains('reorganize-mode')
+          ).toBe(false);
+        });
+
+        it('leaves reorganize mode on the first Escape once the picked tile is gone', () => {
+          click(tile('light.b'));
+          tile('light.b').remove();
+          document.dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+          );
+          expect(
+            document.getElementById('quick-controls').classList.contains('reorganize-mode')
+          ).toBe(false);
+        });
+
+        it('drops a selection when reorganize mode ends', () => {
+          click(tile('light.b'));
+          ui.toggleReorganizeMode();
+          expect(picked()).toEqual([]);
+          ui.toggleReorganizeMode();
+          click(tile('light.c'));
+          expect(picked()).toEqual(['light.c']);
+        });
+
+        it('does nothing when the tiles are not being reorganized', () => {
+          ui.toggleReorganizeMode();
+          click(tile('light.a'));
+          expect(picked()).toEqual([]);
+        });
+      });
     });
 
     it('renders the active page hint in the manage modal without a per-entity view select', () => {

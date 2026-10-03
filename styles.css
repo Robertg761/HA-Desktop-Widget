@@ -223,13 +223,39 @@ html {
   --surface-hover: rgba(42, 47, 58, 0.95);
   --card-bg: rgba(24, 28, 37, 0.7);
 
-  /* Tiles and cards on the main view: a faint wash over the window glass, so
-     they read as lifted panes of the same glass rather than separate slabs. */
+  /* Panes in Settings, dialogs and the header rule: a faint wash over the window
+     glass, so they read as lifted panes of the same glass rather than separate
+     slabs. */
   --tile-bg: rgba(255, 255, 255, 0.045);
   --tile-bg-hover: rgba(255, 255, 255, 0.075);
   --tile-border: rgba(255, 255, 255, 0.06);
   --tile-border-hover: rgba(255, 255, 255, 0.12);
   --window-highlight: rgba(255, 255, 255, 0.1);
+
+  /* The main view's tiles and cards need more than that to read as separate blocks
+     against the panel, so they take these instead (see "Main view: tiles that stand apart
+     from the panel", further down). These are for the dark solid panel (Windows without
+     acrylic, or Frosted glass off): the window colour lifted toward white, mostly opaque,
+     with a clear edge. A background theme still tints it. An active tile adds the wash
+     percentages of its accent. */
+  --dash-tile-bg: color-mix(
+    in srgb,
+    color-mix(in srgb, rgb(var(--window-bg-rgb)) 87%, white) 86%,
+    transparent
+  );
+  --dash-tile-bg-hover: color-mix(
+    in srgb,
+    color-mix(in srgb, rgb(var(--window-bg-rgb)) 81%, white) 91%,
+    transparent
+  );
+  --dash-tile-border: rgba(255, 255, 255, 0.18);
+  --dash-tile-border-hover: rgba(255, 255, 255, 0.28);
+  --dash-tile-wash: 24%;
+  --dash-tile-wash-hover: 30%;
+
+  /* How much black the panel behind the tiles gets at full window opacity, so the
+     tiles stand out from it (see the panel veil beside the solid panel rule). */
+  --panel-veil: 0.3;
 
   /* Borders */
   --border-color: rgba(255, 255, 255, 0.1);
@@ -478,6 +504,15 @@ body {
   --tile-border-hover: rgba(0, 0, 0, 0.13);
   --window-highlight: rgba(255, 255, 255, 0.55);
 
+  /* Main view tiles on the solid light panel: near-white panes on a panel veiled a soft grey. */
+  --dash-tile-bg: rgba(255, 255, 255, 0.88);
+  --dash-tile-bg-hover: rgba(255, 255, 255, 0.96);
+  --dash-tile-border: rgba(0, 0, 0, 0.26);
+  --dash-tile-border-hover: rgba(0, 0, 0, 0.36);
+  --dash-tile-wash: 18%;
+  --dash-tile-wash-hover: 24%;
+  --panel-veil: 0.09;
+
   /* Glass Effects */
   --glass-surface: rgba(255, 255, 255, 0.7);
   --glass-elevated: rgba(250, 250, 250, 0.8);
@@ -548,6 +583,22 @@ body.frosted-glass {
     var(--frosted-glass-overlay-alpha, 0.5)
   );
 
+  /* Main view tiles on glass (Windows 11 acrylic, macOS vibrancy, the Linux tint): the
+     wallpaper shows through the panel, so a tile needs a darker, more opaque pane than on
+     the solid panel to stay readable over a bright photo. The panel keeps its blur and gets
+     only a light veil. */
+  --dash-tile-bg: color-mix(
+    in srgb,
+    color-mix(in srgb, rgb(var(--window-bg-rgb)) 94%, white) 94%,
+    transparent
+  );
+  --dash-tile-bg-hover: color-mix(
+    in srgb,
+    color-mix(in srgb, rgb(var(--window-bg-rgb)) 90%, white) 99%,
+    transparent
+  );
+  --panel-veil: 0.06;
+
   /* Update blur variable for child elements */
   --bg-blur: var(--frosted-blur, 32px);
   --glass-blur-strong: var(--bg-blur);
@@ -595,6 +646,13 @@ body.theme-light.frosted-glass {
     var(--frosted-glass-overlay-alpha, 0.6)
   );
 
+  /* Main view tiles on light glass: the same near-white panes as on the solid light panel. */
+  --dash-tile-bg: rgba(255, 255, 255, 0.88);
+  --dash-tile-bg-hover: rgba(255, 255, 255, 0.96);
+  --dash-tile-border: rgba(0, 0, 0, 0.26);
+  --dash-tile-border-hover: rgba(0, 0, 0, 0.36);
+  --panel-veil: 0.05;
+
   --bg-blur: var(--frosted-blur, 32px);
 }
 
@@ -628,11 +686,13 @@ body.software-glass.frosted-glass {
 
 /* 
  * Frosted Glass Header & Content
- * When frosted glass is enabled, these elements need proper glass styling
+ * When frosted glass is enabled, these elements need proper glass styling: clear, apart from
+ * the panel veil (see the solid panel rule), which is painted here rather than on the body so
+ * that dialogs, which show the body through their own glass, keep their look.
  */
 body.frosted-glass .widget-header,
 body.frosted-glass .widget-content {
-  background: transparent;
+  background: var(--panel-veil-layer);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -732,6 +792,18 @@ body {
   */
 }
 
+/* Buttons and fields do not take the page font on their own: the browser gives them the system
+   control font (Arial on Linux and Windows, system-ui on macOS), so a button that only sets its
+   size and weight shows a different face from the Inter text beside it. Say it once here. Only
+   the family: sizes and weights stay with each component, and any rule that names its own
+   family (the pins' display font, the mono hotkey fields) still wins at this specificity. */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
 /* Home Assistant exposes explicit entity icons as Material Design Icons codepoints.
    Keep the MDI font first only in icon containers so normal text and custom emoji
    continue to use the platform's preferred fonts. */
@@ -748,10 +820,33 @@ body {
     'Material Design Icons', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
 }
 
+/* The panel behind the main view's tiles is deepened a little (a soft grey in the light theme)
+   so the tiles stand out from it. The veil is a black layer over the panel's own paint, so a
+   background theme still tints the panel, and it is scaled by the window opacity, so a lower
+   Window opacity still gets more transparent. --panel-veil is its strength at full opacity, set
+   with the tile tokens for each theme and glass mode. The readable preset, opaque panels and
+   pinned desktop tiles get no layer at all. The header and content paint it. On the solid panel
+   the body does during a holiday, so the snow and confetti are drawn above it (see SEASONAL
+   THEMES). On glass the header and content keep painting it then: the veil is 5 to 6% there, and
+   the canvas it dims is only art, so nothing is lost. */
+body {
+  --panel-veil-color: rgba(0, 0, 0, calc(var(--panel-veil) * var(--window-bg-alpha, 1)));
+  --panel-veil-layer: linear-gradient(var(--panel-veil-color), var(--panel-veil-color));
+}
+
+body:is(.high-contrast, .opaque-panels, .desktop-pin-mode) {
+  --panel-veil-layer: none;
+}
+
 body:not(.desktop-pin-mode):not(.frosted-glass),
 body:not(.desktop-pin-mode):not(.frosted-glass) .widget-header,
 body:not(.desktop-pin-mode):not(.frosted-glass) .widget-content {
   background: rgba(var(--window-bg-rgb), var(--window-bg-alpha, 1)) !important;
+}
+
+/* The header and content lay the veil over that colour. */
+body:not(.desktop-pin-mode):not(.frosted-glass) :is(.widget-header, .widget-content) {
+  background-image: var(--panel-veil-layer) !important;
 }
 
 html.desktop-pin-mode,
@@ -2932,6 +3027,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 /* Status dot leads the title, with a soft halo in its own colour. */
 .connection-indicator {
   --indicator-color: var(--danger);
+  position: relative;
   order: -1;
   width: 8px;
   height: 8px;
@@ -2962,6 +3058,14 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 .connection-indicator.connected {
   --indicator-color: #4ade80;
   animation: pulseIndicator 3s ease-in-out 2;
+}
+
+/* The dot is 8px, but it is a button (it opens the connection details), so its target reaches 24px. */
+.connection-indicator::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  -webkit-app-region: no-drag;
 }
 
 .connection-indicator:focus-visible {
@@ -3561,13 +3665,50 @@ body.first-run-active .widget-content > * {
 /* Controls grid */
 .quick-access-tabs {
   display: flex;
-  gap: var(--space-1);
   margin: 0 0 var(--space-2);
   padding: 0;
   border-bottom: 1px solid var(--border-color);
+}
+
+/* The pages scroll in here rather than in the bar, so the bar keeps its shape (the pill, or the
+   editing row) and Add page beside it never scrolls away. There is no scrollbar: a fade at an edge
+   that clips pages says the strip scrolls, and the wheel, touch and the arrow keys scroll it. */
+.quick-access-tab-scroll {
+  --qa-tab-fade: 20px;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  /* Focus scrolls a page clear of the fade, not just to the edge. */
+  scroll-padding-inline: var(--qa-tab-fade);
+  scrollbar-width: none;
+}
+
+.quick-access-tab-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* The scripts mark the edges that have more pages beyond them. */
+.quick-access-tab-scroll[data-overflow='right'] {
+  mask-image: linear-gradient(to right, #000 calc(100% - var(--qa-tab-fade)), transparent);
+}
+
+.quick-access-tab-scroll[data-overflow='left'] {
+  mask-image: linear-gradient(to left, #000 calc(100% - var(--qa-tab-fade)), transparent);
+}
+
+.quick-access-tab-scroll[data-overflow='both'] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 var(--qa-tab-fade),
+    #000 calc(100% - var(--qa-tab-fade)),
+    transparent
+  );
 }
 
 /* Views read as section labels; the active one is lit and carries the accent. */
@@ -3587,9 +3728,28 @@ body.first-run-active .widget-content > * {
   text-transform: uppercase;
   text-align: center;
   white-space: nowrap;
+  /* A long name is cut short (the tooltip has all of it) rather than filling the strip. The
+     capitals are tracked wide, so this is about 20 of them. */
+  max-width: 34ch;
+  /* It gives way to the page around it, below (the shared .tab-link never shrinks). */
+  flex-shrink: 1;
+  min-width: 0;
   transition:
     background-color var(--transition-fast),
     color var(--transition-fast);
+}
+
+/* The active page also carries its buttons while editing, so its name gives way sooner. */
+.quick-access-tabs.reorganize .tab-link {
+  max-width: 28ch;
+}
+
+/* The ellipsis needs a block to cut, which the flex button itself is not. */
+.quick-access-tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .quick-access-tabs .tab-link:hover {
@@ -3605,9 +3765,13 @@ body.first-run-active .widget-content > * {
   box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.28);
 }
 
-.quick-access-tabs .tab-link:focus-visible {
+/* The strip clips whatever lies outside it and the pill is only 3px deep, so the ring is drawn
+   inside the control. The longer selector outranks the global [tabindex] focus rule, which would
+   push it back outside. */
+.quick-access-tabs .quick-access-tab-scroll :is(.tab-link, .qa-tab-btn):focus-visible {
   outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
+  outline-offset: -2px;
+  box-shadow: none;
 }
 
 /* Quick Access header: the page tabs sit inline with the section buttons
@@ -3615,6 +3779,8 @@ body.first-run-active .widget-content > * {
 .section-header.quick-access-header {
   justify-content: flex-start;
   gap: var(--space-2);
+  /* The pill and the buttons line up with the cards and tiles; the heading's 4px inset is for text. */
+  padding-inline: 0;
 }
 
 .quick-access-header .section-buttons {
@@ -3630,23 +3796,36 @@ body.first-run-active .widget-content > * {
   border-bottom: none;
 }
 
-.quick-access-header .quick-access-tabs.reorganize {
-  flex-wrap: nowrap;
-  padding-bottom: 0;
-}
-
 /* --- Reorganize-mode page management on the Quick Access tab bar --- */
 .quick-access-tabs.reorganize {
-  flex-wrap: wrap;
+  /* Only as wide as its pages, so Add page sits right after the last one, and as tall as the pill
+     so the grid below does not move when editing starts. */
+  flex: 0 1 auto;
   align-items: center;
-  padding-bottom: var(--space-2);
+  min-height: 32px;
 }
 
 .quick-access-tab {
   display: inline-flex;
+  /* Keep its width; the strip scrolls instead of squeezing a page. */
+  flex: 0 0 auto;
+  /* But never one that is wider than the strip shows between the fades: a page with its buttons
+     in a narrow strip (a long Add page label beside it) would have its last button under the
+     fade or out of reach. The name gives way, ending in an ellipsis. */
+  max-width: calc(100% - 2 * var(--qa-tab-fade));
   align-items: center;
-  gap: 1px;
+  gap: var(--space-1);
   border-radius: var(--radius-sm);
+}
+
+/* A lone page has nothing to scroll to, so no fades: it only has to fit the strip. The strip is as
+   wide as its pages, so taking the fades off its width would trim the one page by 40px. */
+.quick-access-tab:only-child {
+  max-width: 100%;
+}
+
+.quick-access-tabs.reorganize .quick-access-tab {
+  min-height: 28px;
 }
 
 .quick-access-tabs.reorganize .quick-access-tab.active {
@@ -3666,22 +3845,31 @@ body.first-run-active .widget-content > * {
 
 .qa-tab-btn {
   display: inline-flex;
+  /* The name gives way, not the buttons. */
+  flex: none;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: var(--transition-base);
+  transition:
+    background-color var(--transition-base),
+    color var(--transition-base);
 }
 
 .qa-tab-btn:hover {
   background: var(--surface-hover);
   color: var(--text-primary);
+}
+
+/* Delete is the one that cannot be taken back with a click, so it keeps a little apart. */
+.qa-tab-delete {
+  margin-inline-start: var(--space-2);
 }
 
 .qa-tab-delete:hover {
@@ -3696,38 +3884,69 @@ body.first-run-active .widget-content > * {
 .qa-tab-rename-input {
   min-width: 90px;
   max-width: 160px;
-  min-height: 30px;
+  min-height: 28px;
   padding: 0 var(--space-3);
   border: 1px solid var(--accent);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--bg-elevated);
   color: var(--text-primary);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
 }
 
-/* The tab strip clips anything outside the field, so the ring is drawn over its border. */
+/* The strip clips anything outside the field, so the ring is drawn inside it, and replaces the
+   border rather than stacking on it. */
 .qa-tab-rename-input:focus {
-  border-color: var(--focus-ring);
+  border-color: transparent;
   outline: 2px solid var(--focus-ring);
-  outline-offset: -2px;
+  outline-offset: -1px;
+  box-shadow: none;
 }
 
+/* While a page is renamed the field stands alone: its other buttons wait, and the page's own
+   highlight would only show at the field's corners. */
+.quick-access-tab:has(.qa-tab-rename-input) .qa-tab-btn {
+  display: none;
+}
+
+.quick-access-tabs.reorganize .quick-access-tab.active:has(.qa-tab-rename-input) {
+  background: none;
+  box-shadow: none;
+}
+
+/* Add page sits beside the strip, in the header, typeset like the pages it adds to. */
 .qa-tab-add {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: var(--space-2);
-  min-height: 30px;
-  padding: var(--space-2) var(--space-3);
+  min-height: 28px;
+  padding: 0 var(--space-3);
   border: 1px dashed var(--border-hover);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-xs-plus);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   white-space: nowrap;
   cursor: pointer;
-  transition: var(--transition-base);
+  transition:
+    background-color var(--transition-base),
+    border-color var(--transition-base),
+    color var(--transition-base);
+}
+
+/* In a narrow window the button gives up its words (its name and tooltip remain). */
+@media (max-width: 400px) {
+  .qa-tab-add {
+    padding: 0 6px;
+  }
+
+  .qa-tab-add span {
+    display: none;
+  }
 }
 
 .qa-tab-add:hover {
@@ -3750,7 +3969,7 @@ body.first-run-active .widget-content > * {
 .add-page-modal .qa-add-chip {
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--glass-surface);
   color: var(--text-primary);
   font-size: var(--font-size-sm);
@@ -3775,12 +3994,13 @@ body.first-run-active .widget-content > * {
   font-style: italic;
 }
 
+/* Tiles sit in the order they are saved and tabbed in. The grid does not pack densely, which
+   would back-fill the gap beside a wide tile with a later one and part the picture from the order. */
 .controls-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 8px;
   align-items: stretch;
-  grid-auto-flow: dense; /* tighter packing */
 }
 
 .control-item {
@@ -4387,12 +4607,6 @@ body.first-run-active .widget-content > * {
 .weather-info span {
   font-weight: 500;
   color: var(--text-primary);
-}
-
-.btn-sm {
-  padding: 6px 12px;
-  font-size: var(--font-size-sm);
-  border-radius: var(--radius-sm);
 }
 
 /* Enhanced Weather Card Styles */
@@ -5567,34 +5781,8 @@ body.theme-light .status-card.time-card .date-display {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 8px;
-  background: linear-gradient(to right, #ffb45f 0%, #fff4d6 46%, #9fd8ff 100%);
-  border-radius: var(--radius-sm);
   outline: none;
   cursor: pointer;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-
-.light-color-temp-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 22px;
-  height: 22px;
-  background: var(--surface-1);
-  border: 2px solid var(--accent);
-  border-radius: 50%;
-  cursor: grab;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.light-color-temp-slider::-moz-range-thumb {
-  width: 22px;
-  height: 22px;
-  background: var(--surface-1);
-  border: 2px solid var(--accent);
-  border-radius: 50%;
-  cursor: grab;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .brightness-color-row {
@@ -5775,15 +5963,6 @@ body.theme-light .status-card.time-card .date-display {
   transition: var(--transition-base);
 }
 
-.climate-slider:hover {
-  background: linear-gradient(
-    to right,
-    rgba(33, 150, 243, 0.5) 0%,
-    var(--accent-hover) 50%,
-    rgba(255, 152, 0, 1) 100%
-  );
-}
-
 .climate-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
@@ -5795,37 +5974,6 @@ body.theme-light .status-card.time-card .date-display {
   cursor: pointer;
   transition: var(--transition-base);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.climate-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.2);
-  background: var(--accent-hover);
-  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.4);
-}
-
-.climate-slider::-webkit-slider-thumb:active {
-  transform: scale(1.1);
-}
-
-.climate-slider::-moz-range-thumb {
-  width: 24px;
-  height: 24px;
-  background: var(--accent);
-  border: 3px solid var(--surface-1);
-  border-radius: 50%;
-  cursor: pointer;
-  transition: var(--transition-base);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.climate-slider::-moz-range-thumb:hover {
-  transform: scale(1.2);
-  background: var(--accent-hover);
-  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.4);
-}
-
-.climate-slider::-moz-range-thumb:active {
-  transform: scale(1.1);
 }
 
 .climate-slider-labels {
@@ -6043,15 +6191,6 @@ body.theme-light .status-card.time-card .date-display {
   transition: var(--transition-base);
 }
 
-.fan-slider:hover {
-  background: linear-gradient(
-    to right,
-    var(--surface-3) 0%,
-    rgba(var(--accent-rgb), 0.5) 30%,
-    var(--accent-hover) 100%
-  );
-}
-
 .fan-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
@@ -6065,37 +6204,6 @@ body.theme-light .status-card.time-card .date-display {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
-.fan-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.2);
-  background: var(--accent-hover);
-  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.4);
-}
-
-.fan-slider::-webkit-slider-thumb:active {
-  transform: scale(1.1);
-}
-
-.fan-slider::-moz-range-thumb {
-  width: 24px;
-  height: 24px;
-  background: var(--accent);
-  border: 3px solid var(--surface-1);
-  border-radius: 50%;
-  cursor: pointer;
-  transition: var(--transition-base);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.fan-slider::-moz-range-thumb:hover {
-  transform: scale(1.2);
-  background: var(--accent-hover);
-  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.4);
-}
-
-.fan-slider::-moz-range-thumb:active {
-  transform: scale(1.1);
-}
-
 .fan-presets {
   display: flex;
   gap: var(--space-2);
@@ -6104,7 +6212,7 @@ body.theme-light .status-card.time-card .date-display {
 
 .fan-preset-btn {
   flex: 1;
-  padding: var(--space-3);
+  padding: 0 var(--space-4);
   background: var(--surface-2);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -6256,15 +6364,6 @@ body.theme-light .status-card.time-card .date-display {
   transition: var(--transition-base);
 }
 
-.cover-slider:hover {
-  background: linear-gradient(
-    to right,
-    rgba(158, 158, 158, 0.5) 0%,
-    rgba(var(--accent-rgb), 0.5) 50%,
-    var(--accent-hover) 100%
-  );
-}
-
 .cover-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
@@ -6276,37 +6375,6 @@ body.theme-light .status-card.time-card .date-display {
   cursor: pointer;
   transition: var(--transition-base);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.cover-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.2);
-  background: var(--accent-hover);
-  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.4);
-}
-
-.cover-slider::-webkit-slider-thumb:active {
-  transform: scale(1.1);
-}
-
-.cover-slider::-moz-range-thumb {
-  width: 24px;
-  height: 24px;
-  background: var(--accent);
-  border: 3px solid var(--surface-1);
-  border-radius: 50%;
-  cursor: pointer;
-  transition: var(--transition-base);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.cover-slider::-moz-range-thumb:hover {
-  transform: scale(1.2);
-  background: var(--accent-hover);
-  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.4);
-}
-
-.cover-slider::-moz-range-thumb:active {
-  transform: scale(1.1);
 }
 
 .cover-slider-labels {
@@ -6446,15 +6514,23 @@ body.theme-light .status-card.time-card .date-display {
 
 /* Tiles are styled the same whatever they are, except for the opt-out accent glow that
    marks a Quick Access tile whose entity is currently on (Personalization > Window
-   Effects): an accent-tinted pane, an accent icon with a soft halo, and a brighter
-   state line. Read-only tiles never carry data-active, so they never glow. */
+   Effects): the resting pane plus a wash of the accent, an accent icon with a soft halo,
+   and a brighter state line. Read-only tiles never carry data-active, so they never glow. */
 body.active-tile-glow #quick-controls .control-item[data-active='true'] {
-  background-color: rgba(var(--accent-rgb), 0.16);
+  background-color: color-mix(
+    in srgb,
+    rgb(var(--accent-rgb)) var(--dash-tile-wash),
+    var(--tile-bg)
+  );
   border-color: rgba(var(--accent-rgb), 0.42);
 }
 
 body.active-tile-glow #quick-controls .control-item[data-active='true']:hover {
-  background-color: rgba(var(--accent-rgb), 0.2);
+  background-color: color-mix(
+    in srgb,
+    rgb(var(--accent-rgb)) var(--dash-tile-wash-hover),
+    var(--tile-bg-hover)
+  );
   border-color: rgba(var(--accent-rgb), 0.55);
 }
 
@@ -6985,34 +7061,17 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   box-shadow: 0 0 0 2px rgba(255, 152, 0, 0.16);
 }
 
-.camera-expanded-preview-close {
-  display: grid;
-  width: 34px;
-  height: 34px;
+/* The viewer is dark in every theme, so its close button (the dialogs' .close-btn) keeps light
+   ink instead of the theme's. */
+.camera-expanded-preview .camera-expanded-preview-close {
   flex: 0 0 auto;
-  padding: 0 0 2px;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.06);
   color: rgba(255, 255, 255, 0.8);
-  font: inherit;
-  font-size: var(--font-size-2xl);
-  line-height: 1;
-  transition:
-    background var(--transition-fast),
-    border-color var(--transition-fast),
-    color var(--transition-fast),
-    transform var(--transition-fast);
-  cursor: pointer;
 }
 
-.camera-expanded-preview-close:hover,
-.camera-expanded-preview-close:focus-visible {
-  border-color: rgba(255, 255, 255, 0.22);
+.camera-expanded-preview .camera-expanded-preview-close:hover,
+.camera-expanded-preview .camera-expanded-preview-close:focus-visible {
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
-  transform: scale(1.04);
 }
 
 .camera-expanded-preview-stage {
@@ -8175,8 +8234,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .modal-body::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 9px;
+  height: 9px;
 }
 
 .modal-body::-webkit-scrollbar-track {
@@ -8184,12 +8243,15 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .modal-body::-webkit-scrollbar-thumb {
-  background: var(--border-color);
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+  border: 2px solid transparent;
   border-radius: var(--radius-full);
 }
 
 .modal-body::-webkit-scrollbar-thumb:hover {
-  background: var(--border-hover);
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
 }
 
 .persistent-notifications-modal-content {
@@ -8296,6 +8358,15 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   text-align: center;
 }
 
+/* The line that introduces a dialog's content: the repair explanation, the calendar's date window,
+   a helper's current value. */
+.modal-lead {
+  margin: 0 0 var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+}
+
 .sensor-detail-summary {
   display: flex;
   align-items: center;
@@ -8360,6 +8431,22 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   margin-bottom: 14px;
 }
 
+.calendar-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.calendar-toolbar .modal-lead {
+  margin: 0;
+}
+
+.calendar-toolbar .btn {
+  flex-shrink: 0;
+}
+
 .todo-items-list,
 .calendar-events-list {
   display: grid;
@@ -8385,6 +8472,18 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   gap: 10px;
   padding: 10px 12px;
   cursor: pointer;
+}
+
+.todo-item-row input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.todo-item-row input[type='checkbox']:disabled {
+  cursor: not-allowed;
 }
 
 .todo-item-row[data-status='completed'] .todo-item-summary {
@@ -8434,7 +8533,9 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   margin-bottom: var(--space-5);
 }
 
-.form-group label {
+/* A group of controls with no single field to point a label at is named by a .form-label. */
+.form-group label,
+.form-group .form-label {
   display: block;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
@@ -8443,9 +8544,19 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   letter-spacing: 0.01em;
 }
 
+/* The field recipe. A field built without the .form-group wrapper (the helper, alarm-code and
+   to-do dialogs, the repair search) takes it from the :where() selectors, which add no
+   specificity, so a class that styles its own field still wins and nothing in a dialog is left
+   with the browser's inset border. */
 .form-group input,
 .form-group select,
-.form-group textarea {
+.form-group textarea,
+:where(.modal-body, .first-run-content)
+  :where(
+    input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
+    select,
+    textarea
+  ) {
   width: 100%;
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border-color);
@@ -8458,23 +8569,41 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .form-group input::placeholder,
-.form-group textarea::placeholder {
+.form-group textarea::placeholder,
+:where(.modal-body, .first-run-content)
+  :where(
+    input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
+    select,
+    textarea
+  )::placeholder {
   color: var(--text-tertiary);
 }
 
 .form-group input:hover,
 .form-group select:hover,
-.form-group textarea:hover {
+.form-group textarea:hover,
+:where(.modal-body, .first-run-content)
+  :where(
+    input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
+    select,
+    textarea
+  ):hover {
   border-color: var(--border-hover);
-  background: var(--tile-bg-hover);
+  background-color: var(--tile-bg-hover);
 }
 
 .form-group input:focus,
 .form-group select:focus,
-.form-group textarea:focus {
+.form-group textarea:focus,
+:where(.modal-body, .first-run-content)
+  :where(
+    input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
+    select,
+    textarea
+  ):focus {
   outline: none;
   border-color: var(--focus-ring);
-  background: var(--tile-bg-hover);
+  background-color: var(--tile-bg-hover);
   box-shadow: var(--glow-focus);
 }
 
@@ -8957,39 +9086,37 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   width: 100%;
 }
 
+/* The trigger is a select that draws its own menu, so it takes the select's recipe: the same fill,
+   border, height and thin chevron (see the field recipe above and the select rules below). */
 .custom-dropdown-trigger {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+  min-height: 36px;
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--blur-sm));
-  -webkit-backdrop-filter: blur(var(--blur-sm));
+  background: var(--tile-bg);
   color: var(--text-primary);
   font-size: var(--font-size-base);
   font-family: inherit;
   text-align: start;
   cursor: pointer;
   transition: var(--transition-base);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .custom-dropdown-trigger:hover {
   border-color: var(--border-hover);
-  background: var(--glass-elevated);
+  background: var(--tile-bg-hover);
 }
 
 .custom-dropdown-trigger:focus {
   outline: none;
   border-color: var(--focus-ring);
-  background: var(--glass-elevated);
-  box-shadow:
-    var(--glow-focus),
-    inset 0 1px 2px rgba(0, 0, 0, 0.05);
+  background: var(--tile-bg-hover);
+  box-shadow: var(--glow-focus);
 }
 
 .custom-dropdown-value {
@@ -9040,6 +9167,9 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .custom-dropdown-option {
   padding: var(--space-3) var(--space-4);
+  /* The 3px accent edge takes room the trigger's 1px border does not, so the text still lines
+     up with the trigger's. */
+  padding-inline-start: calc(var(--space-4) - 2px);
   color: var(--text-primary);
   font-size: var(--font-size-base);
   cursor: pointer;
@@ -9064,7 +9194,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 /* Custom scrollbar for dropdown menu */
 .custom-dropdown-menu::-webkit-scrollbar {
-  width: 6px;
+  width: 10px;
 }
 
 .custom-dropdown-menu::-webkit-scrollbar-track {
@@ -9072,26 +9202,15 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .custom-dropdown-menu::-webkit-scrollbar-thumb {
-  background: var(--border-color);
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+  border: 2px solid transparent;
   border-radius: var(--radius-sm);
 }
 
 .custom-dropdown-menu::-webkit-scrollbar-thumb:hover {
-  background: var(--border-hover);
-}
-
-/* Settings: keep primary media dropdown within scroll flow to avoid clipping */
-#primary-media-player-dropdown .custom-dropdown-menu {
-  position: static;
-  margin-top: var(--space-2);
-  display: none;
-  opacity: 1;
-  visibility: visible;
-  transform: none;
-}
-
-#primary-media-player-dropdown.open .custom-dropdown-menu {
-  display: block;
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
 }
 
 /* Buttons */
@@ -9431,28 +9550,44 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   line-height: 1.5;
 }
 
+/* Each step moves focus to its heading so screen readers start there. It is not a control, so
+   it draws no ring: the browser's default one wraps the glyphs and looks like a field. */
+.first-run-title:focus,
+.first-run-title:focus-visible {
+  outline: none;
+}
+
+/* The reassurance under the instruction: quieter than it, not louder. */
+.first-run-security-note {
+  margin: 0 0 18px;
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+/* On Hyprland the wizard adds shortcut help: two paragraphs, two buttons and a result line. */
+#first-run-desktop-help {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+#first-run-desktop-help > p {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+#first-run-desktop-help > p:empty {
+  display: none;
+}
+
 .first-run-label {
   display: block;
   margin-bottom: 8px;
   color: var(--text-primary);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
-}
-
-.first-run-content input {
-  width: 100%;
-  min-height: 42px;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  color: var(--text-primary);
-}
-
-.first-run-content input:focus-visible {
-  outline: none;
-  border-color: var(--focus-ring);
-  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.22);
 }
 
 .first-run-test-row {
@@ -9474,16 +9609,20 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .widget-state-panel {
-  margin-top: 12px;
-  padding: 18px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  background: rgba(var(--settings-modal-panel-rgb), 0.48);
-  box-shadow: var(--shadow-sm);
+  /* The tiles above end with the controls section's own bottom margin. */
+  margin-top: 0;
+  padding: var(--space-6) var(--space-4);
+  border: 1px dashed var(--tile-border-hover);
+  border-radius: var(--radius-tile);
+  text-align: center;
+  /* Scrolled into view for an error, the panel keeps the content's bottom padding clear. */
+  scroll-margin-bottom: 14px;
 }
 
 .widget-state-error {
-  border-color: rgba(239, 83, 80, 0.38);
+  border-style: solid;
+  border-color: rgba(239, 83, 80, 0.45);
+  background: rgba(239, 83, 80, 0.08);
 }
 
 .widget-state-empty {
@@ -9491,33 +9630,40 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .widget-state-title {
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-2);
   color: var(--text-primary);
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
 }
 
 .widget-state-copy {
-  margin: 0;
+  margin: 0 auto;
+  max-width: 34ch;
   color: var(--text-secondary);
-  line-height: 1.45;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  text-wrap: balance;
 }
 
 .widget-state-actions {
   display: flex;
+  justify-content: center;
   gap: var(--space-2);
   margin-top: 14px;
   flex-wrap: wrap;
 }
 
-/* The accent tint of .btn-secondary washes out on the red error panel and reads as disabled. */
+/* The accent tint of .btn-secondary washes out on the red error panel and reads as disabled, so
+   the panel's second action is the neutral button the dialogs use for Cancel. */
 .widget-state-actions .btn-secondary {
-  background: var(--surface-2);
+  background: var(--tile-bg);
+  border-color: var(--tile-border-hover);
   color: var(--text-primary);
-  border-color: var(--border-hover);
 }
 
 .widget-state-actions .btn-secondary:hover {
-  background: var(--surface-hover);
+  background: var(--tile-bg-hover);
+  border-color: var(--border-hover);
   color: var(--text-primary);
 }
 
@@ -9864,10 +10010,18 @@ body.widget-state-active #quick-controls .status-message {
   display: none !important;
 }
 
-/* Scrollbar styling */
+/* Scrollbar styling. The thumb is the text colour at half strength (a hairline border colour was
+   about 1.3:1 against the panel). It still draws 5px, but inside a 9px scrollbar (10px in menus),
+   so there is something to grab. The scrollbar takes layout space on Windows and Linux, so a pane
+   that scrolls is 4px narrower than it was and a few long help paragraphs wrap one line more. */
+body {
+  --scrollbar-thumb: color-mix(in srgb, var(--text-primary) 50%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--text-primary) 70%, transparent);
+}
+
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 9px;
+  height: 9px;
 }
 
 ::-webkit-scrollbar-track {
@@ -9875,12 +10029,15 @@ body.widget-state-active #quick-controls .status-message {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-color);
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+  border: 2px solid transparent;
   border-radius: var(--radius-full);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--border-hover);
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
 }
 
 /* Reorganize mode styles */
@@ -9891,6 +10048,21 @@ body.widget-state-active #quick-controls .status-message {
   position: relative;
   overflow: visible; /* allow overlay buttons to hover outside edges */
   transition: transform var(--transition-slower);
+}
+
+/* A touch or pen drag moves a clone with an inline transform on every pointer event. The slow
+   settle above would make it trail the finger. */
+.reorganize-mode .control-item.sortable-drag,
+.reorganize-mode .control-item.sortable-fallback {
+  transition: none;
+}
+
+/* The lift and tilt of .sortable-drag are individual properties, which apply outside that
+   transform: on the clone they would scale and turn the finger's offset along with the tile, and
+   it would drift away from the finger. The clone keeps the shadow and the opacity. */
+.reorganize-mode .control-item.sortable-fallback {
+  scale: none;
+  rotate: none;
 }
 
 .reorganize-mode .control-item * {
@@ -9926,21 +10098,22 @@ body.widget-state-active #quick-controls .status-message {
 /* SortableJS: Dragging element (item being dragged around) */
 .sortable-drag {
   cursor: grabbing !important;
-  transform: scale(1.05) rotate(2deg);
+  /* The individual properties leave transform to the touch clone, which is positioned with it. */
+  scale: 1.05;
+  rotate: 2deg;
   box-shadow:
     0 12px 32px rgba(0, 0, 0, 0.4),
     var(--glow-accent);
   opacity: 0.95;
-  transition: transform var(--transition-base);
   backdrop-filter: blur(var(--blur-md));
   -webkit-backdrop-filter: blur(var(--blur-md));
 }
 
-/* Disable animations for reduced motion preference */
+/* Reduced motion: lifted a little, but not tilted. */
 @media (prefers-reduced-motion: reduce) {
   .sortable-drag {
-    transition: none !important;
-    transform: scale(1.02) !important; /* Subtle scale only, no rotation */
+    rotate: 0deg;
+    scale: 1.02;
   }
 }
 
@@ -10026,7 +10199,8 @@ body.widget-state-active #quick-controls .status-message {
 }
 
 .confirm-modal-content .modal-body {
-  padding: var(--space-6);
+  /* The header and footer pad by --space-5, so the message starts where the title does. */
+  padding: var(--space-5);
 }
 
 #confirm-message {
@@ -10039,34 +10213,11 @@ body.widget-state-active #quick-controls .status-message {
   gap: var(--space-3);
   justify-content: flex-end;
   padding: var(--space-3) var(--space-5);
-  border-top: 1px solid var(--border-color);
-  background: transparent;
-  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
+/* Size, corners and fill come from the dialog buttons; this only sets how wide they are. */
 .confirm-modal-content .btn {
-  padding: var(--space-4) var(--space-6);
-  min-width: 100px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-base);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--transition-base);
-  backdrop-filter: blur(var(--blur-sm));
-  -webkit-backdrop-filter: blur(var(--blur-sm));
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-.confirm-modal-content .btn-secondary {
-  background: var(--surface-2);
-  color: var(--text-primary);
-}
-
-.confirm-modal-content .btn-secondary:hover {
-  background: var(--surface-hover);
-  border-color: var(--border-hover);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  min-width: 88px;
 }
 
 .confirm-modal-content .btn-danger {
@@ -10078,11 +10229,6 @@ body.widget-state-active #quick-controls .status-message {
 .confirm-modal-content .btn-danger:hover {
   background: rgba(183, 28, 28, 1);
   border-color: rgba(183, 28, 28, 0.8);
-  box-shadow: 0 4px 12px rgba(211, 47, 47, 0.5);
-}
-
-.confirm-modal-content .btn:active {
-  transform: scale(0.98);
 }
 
 /* Rename button in reorganize mode - with glassmorphism */
@@ -10202,38 +10348,22 @@ body.widget-state-active #quick-controls .status-message {
   transform: none;
 }
 
+/* The buttons run to 32px down the tile; the content starts a little clear of them. */
 .reorganize-mode .control-item {
   position: relative;
   overflow: hidden;
-  padding-top: calc(var(--space-3) + 24px);
+  padding-top: calc(var(--space-3) + 28px);
 }
 
-/* Rename modal styles */
-.rename-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--z-modal-backdrop);
-}
-
+/* Tile Settings (the only dialog with this class, built in ui.js) takes the shared dialog recipe;
+   what is left here is its width, a scrolling body that keeps the header and footer in view, and
+   a footer that wraps. The panel, fields, switch and buttons all come from the dialogs section. */
 .rename-modal .modal-content {
-  background: var(--bg-primary);
-  border-radius: var(--radius-lg);
-  padding: 0;
-  width: min(520px, calc(100vw - 24px));
+  width: min(480px, calc(100vw - 24px));
   max-width: calc(100vw - 24px);
   max-height: calc(100dvh - 24px);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  box-shadow: var(--shadow-lg);
-  border: 1px solid var(--border-color);
 }
 
 .rename-modal .modal-body {
@@ -10247,119 +10377,14 @@ body.widget-state-active #quick-controls .status-message {
   flex-shrink: 0;
 }
 
+/* Three buttons, one of them a long "Reset to Default", wrap rather than overflow. */
 .rename-modal .modal-footer {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  flex-wrap: wrap;
 }
 
-.rename-modal .modal-footer .btn {
-  min-width: 0;
-  padding: var(--space-2);
-  white-space: normal;
-  overflow-wrap: anywhere;
-  text-overflow: clip;
-}
-
-.rename-modal .modal-footer .btn-primary {
-  grid-column: 1 / -1;
-}
-
-.rename-modal h3 {
-  margin: 0 0 16px 0;
-  color: var(--text-primary);
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-}
-
-.rename-modal p {
-  margin: 0 0 16px 0;
-  color: var(--text-secondary);
-  font-size: var(--font-size-base);
-}
-
-.rename-modal code {
-  background: var(--bg-secondary);
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
-  color: var(--accent-text);
-}
-
-.rename-modal .form-group {
-  margin-bottom: 20px;
-}
-
-.rename-modal label {
-  display: block;
-  margin-bottom: 8px;
-  color: var(--text-primary);
-  font-weight: 500;
-  font-size: var(--font-size-base);
-}
-
-.rename-modal input:not([type='checkbox']),
-.rename-modal select {
-  width: 100%;
-  padding: 12px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  font-size: var(--font-size-base);
-  transition: border-color var(--transition-base);
-  box-sizing: border-box;
-  user-select: text;
-  -webkit-user-select: text;
-  cursor: text;
-}
-
-.rename-modal select {
-  cursor: pointer;
-}
-
-.rename-modal input:focus,
-.rename-modal select:focus {
-  outline: none;
-  border-color: var(--focus-ring);
-  box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
-}
-
-.rename-modal .modal-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-}
-
-.rename-modal .btn {
-  padding: 10px 20px;
-  border: none;
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-base);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--transition-base);
-}
-
-.rename-modal .btn-primary {
-  background: var(--accent);
-  color: var(--on-accent);
-}
-
-.rename-modal .btn-primary:hover {
-  background: var(--accent-hover);
-  transform: translateY(-1px);
-}
-
-.rename-modal .btn-secondary {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-}
-
-.rename-modal .btn-secondary:hover {
-  background: var(--bg-tertiary);
-  transform: translateY(-1px);
+/* The last field needs no margin of its own: the body's padding already closes the dialog. */
+.rename-modal .modal-body > .form-group:last-child {
+  margin-bottom: 0;
 }
 
 /* Responsive adjustments */
@@ -11052,9 +11077,9 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   gap: 10px;
   margin: 14px 0 4px;
   padding: 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  border-radius: var(--radius-tile);
 }
 
 .media-volume-row {
@@ -11081,53 +11106,32 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 6px;
-  background: linear-gradient(to right, var(--surface-3), var(--accent));
-  border-radius: var(--radius-sm);
   outline: none;
   cursor: pointer;
 }
 
-.media-volume-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  background: var(--surface-1);
-  border: 2px solid var(--accent);
-  border-radius: 50%;
-  cursor: grab;
-}
-
-.media-volume-slider::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  background: var(--surface-1);
-  border: 2px solid var(--accent);
-  border-radius: 50%;
-  cursor: grab;
-}
-
 .media-mute-toggle {
   min-height: 34px;
-  border: 1px solid var(--border-color);
-  background: var(--surface-1);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--tile-border-hover);
+  background: var(--tile-bg);
   color: var(--text-primary);
   border-radius: var(--radius-md);
   cursor: pointer;
   font-size: var(--font-size-sm);
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold);
   transition: var(--transition-base);
 }
 
 .media-mute-toggle:hover {
-  border-color: var(--accent);
-  background: var(--surface-hover);
+  border-color: var(--border-hover);
+  background: var(--tile-bg-hover);
 }
 
+/* Pressed says it all: the label stays "Mute", and the state is aria-pressed plus this tint. */
 .media-mute-toggle.active {
   color: var(--accent-text);
-  border-color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.45);
   background: var(--accent-bg);
 }
 
@@ -11142,120 +11146,71 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 .media-detail-controls .btn {
-  appearance: none;
-  background: transparent !important;
-  border: none !important;
   flex: 0 1 auto;
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   min-width: 40px;
+  min-height: 0;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
-  transition: var(--transition-base);
-  color: var(--accent-text);
-  font-size: var(--font-size-2xl);
+  /* Round chips like the other dialogs' presets: fill, edge and hover come from .btn. */
+  border-radius: var(--radius-full);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
   line-height: 1;
-  padding: 0 !important;
   text-transform: none;
   letter-spacing: 0;
-  outline: none;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  border-radius: 0 !important;
 }
 
-.media-detail-controls .btn:hover {
-  color: var(--accent-text-hover);
-  transform: scale(1.2);
-  filter: drop-shadow(0 2px 8px rgba(var(--accent-rgb), 0.4));
-  background: transparent !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
-.media-detail-controls .btn:active {
-  transform: scale(1);
-  background: transparent !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
-/* The buttons have no border or background of their own, so focus needs a visible outline. */
-.media-detail-controls .btn:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
+/* The seek chips carry their unit ("+10s", "−10 Sek."), so they grow into pills where the
+   language's unit is longer than a letter. */
+.media-detail-controls .media-detail-seek-btn {
+  width: auto;
+  min-width: 44px;
+  padding: 0 var(--space-3);
 }
 
 .media-detail-controls .btn:disabled {
   cursor: not-allowed;
   opacity: 0.38;
-  transform: none;
-  filter: none;
 }
 
-.media-detail-controls .btn:disabled:hover {
-  color: var(--accent-text);
-  transform: none;
-  filter: none;
-}
-
-.media-detail-controls .media-detail-seek-btn {
-  font-size: var(--font-size-md);
-  font-weight: 700;
-}
-
+/* Play and pause is the one action that matters here: a filled accent circle. */
 .media-detail-controls .play-pause-btn {
   width: 56px;
   height: 56px;
   min-width: 44px;
-  color: var(--accent-text);
-  background: transparent !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
-.media-detail-controls .play-pause-btn svg {
-  width: 40px;
-  height: 40px;
-}
-
+/* The tile's play button grows and glows on hover and while playing; here the circle just
+   changes shade, like the dialogs' other buttons. */
 .media-detail-controls .play-pause-btn:hover {
-  color: var(--accent-text-hover);
-  transform: scale(1.25);
-  filter: drop-shadow(0 4px 12px rgba(var(--accent-rgb), 0.6));
-  background: transparent !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  border-color: transparent;
+  background: var(--accent-hover);
+  color: var(--on-accent);
+  transform: none;
+  filter: none;
 }
 
 .media-detail-controls .play-pause-btn:active {
-  transform: scale(1.1);
-  background: transparent !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  transform: scale(0.97);
 }
 
-/* Add subtle glow when playing */
 .media-detail-controls .play-pause-btn.playing {
-  color: var(--accent-text);
-  animation: iconGlow 2s ease-in-out infinite;
-  background: transparent !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  color: var(--on-accent);
+  animation: none;
 }
 
-.media-detail-controls .play-pause-btn.playing svg {
-  width: 40px;
-  height: 40px;
+.media-detail-controls .play-pause-btn svg {
+  width: 28px;
+  height: 28px;
 }
 
 .camera-stream {
@@ -11450,11 +11405,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   font-family: var(--font-mono);
   font-size: var(--font-size-base);
   letter-spacing: 0.5px;
-  padding: 8px 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  color: var(--text-color);
 }
 
 /* The saved hotkey and the "Not set" hint are placeholders; read them as text, not as code. */
@@ -11492,7 +11442,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   overflow-y: auto;
   overflow-x: hidden;
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
 }
 
 .hotkey-item {
@@ -11550,6 +11500,9 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   /* Sized to the placeholder or hotkey so "No hotkey set" is never clipped when translated. */
   field-sizing: content;
   flex-shrink: 1;
+  /* Compact, level with the action dropdown beside it. The fill, border and corners come from
+     the field recipe; only the value is set in mono. */
+  min-height: 32px;
   min-width: 120px;
   max-width: 100%;
   text-align: center;
@@ -11576,7 +11529,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   padding: 6px 8px;
   font-size: var(--font-size-sm);
   gap: 6px;
-  min-height: auto;
+  min-height: 32px;
 }
 
 .hotkey-action-dropdown .custom-dropdown-arrow {
@@ -11853,74 +11806,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   padding: 12px;
   border-radius: var(--radius-md);
   margin-bottom: 16px;
-}
-
-.hotkey-btn,
-.alert-btn {
-  padding: 6px 12px;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-  transition: all var(--transition-base);
-}
-
-.hotkey-btn.primary,
-.alert-btn.primary {
-  background: var(--primary);
-  color: var(--on-accent);
-}
-
-.hotkey-btn.primary:hover,
-.alert-btn.primary:hover {
-  background: var(--primary-hover);
-}
-
-.hotkey-btn.secondary,
-.alert-btn.secondary {
-  background: var(--surface-3);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-}
-
-.hotkey-btn.secondary:hover,
-.alert-btn.secondary:hover {
-  background: var(--surface-hover);
-}
-
-.hotkey-btn.danger,
-.alert-btn.danger {
-  background: var(--danger);
-  color: white;
-}
-
-.hotkey-btn.danger:hover,
-.alert-btn.danger:hover {
-  background: var(--danger-hover);
-}
-
-.hotkey-input,
-.alert-input {
-  padding: 6px 8px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--surface-1);
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
-}
-
-.hotkey-input:focus,
-.alert-input:focus {
-  outline: none;
-  border-color: var(--focus-ring);
-  box-shadow: 0 0 0 2px var(--accent-bg);
-}
-
-.hotkey-input.invalid,
-.alert-input.invalid {
-  border-color: var(--danger);
-  background: var(--danger-bg);
 }
 
 .hotkey-help,
@@ -12373,11 +12258,35 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   }
 }
 
-/* High contrast mode support */
-@media (prefers-contrast: high) {
-  :root {
-    --border-color: rgba(255, 255, 255, 0.3);
-    --border-hover: rgba(255, 255, 255, 0.5);
+/* The OS asked for more contrast (macOS Increase contrast, GNOME and KDE high-contrast settings).
+   "more" is the value the query knows; "high" never matched. A Windows contrast theme reports it
+   too, but forced colours already redraw every border there. The borders are declared on the body
+   and on the light theme, which declares its own, since :root loses to both. */
+@media (prefers-contrast: more) and (forced-colors: none) {
+  body {
+    --border-color: rgba(255, 255, 255, 0.4);
+    --border-hover: rgba(255, 255, 255, 0.6);
+  }
+
+  body.theme-light {
+    --border-color: rgba(0, 0, 0, 0.5);
+    --border-hover: rgba(0, 0, 0, 0.7);
+  }
+
+  /* Tiles and chips draw their edges from the tile tokens rather than the border ones. */
+  body,
+  body.theme-light {
+    --tile-border: var(--border-color);
+    --tile-border-hover: var(--border-hover);
+  }
+
+  /* The main view's tiles take their edges from the dashboard tile tokens, which each theme and
+     glass mode sets on its own, so the stronger edge goes there as well. */
+  body,
+  body.theme-light,
+  body.theme-light.frosted-glass {
+    --dash-tile-border: var(--border-color);
+    --dash-tile-border-hover: var(--border-hover);
   }
 
   .status-card,
@@ -12408,28 +12317,6 @@ body.linux-performance-mode .modal {
 body.linux-performance-mode .modal-content {
   backdrop-filter: blur(var(--blur-xl)) saturate(180%) !important;
   -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%) !important;
-}
-
-/* Skip to main content link (for screen readers) */
-.skip-to-main {
-  position: absolute;
-  top: -40px;
-  left: 0;
-  background: var(--accent);
-  color: var(--on-accent);
-  padding: var(--space-3) var(--space-5);
-  border-radius: var(--radius-md);
-  font-weight: var(--font-weight-semibold);
-  text-decoration: none;
-  z-index: var(--z-notification);
-  transition: var(--transition-base);
-}
-
-.skip-to-main:focus {
-  top: var(--space-3);
-  left: var(--space-3);
-  outline: 2px solid var(--text-primary);
-  outline-offset: 2px;
 }
 
 /* Ensure all interactive elements have visible focus */
@@ -12500,6 +12387,24 @@ textarea:disabled,
   pointer-events: none;
 }
 
+/* A switch that says why it is off in its title (Always on top in desktop layer mode, say) has to
+   be hovered to show it, and to show the not-allowed cursor. A disabled input ignores a click, and
+   a switch draws no hover of its own. Buttons keep the rule above: their title is their plain name,
+   and hovering one would light it up as if it could be pressed. */
+input[type='checkbox']:disabled[title]:not([title='']) {
+  pointer-events: auto;
+}
+
+/* The switch sets a pointer cursor of its own, which the rule above would not outrank. */
+.form-group input[type='checkbox']:disabled {
+  cursor: not-allowed;
+}
+
+/* A disabled switch dims its whole row, not only the label and the switch. */
+.setting-row:has(input:disabled) .form-help {
+  opacity: 0.6;
+}
+
 /* Disabled label styling for mutually exclusive options */
 label.disabled {
   opacity: 0.5;
@@ -12530,9 +12435,11 @@ label.disabled {
 /* Buttons are position: static, so the spinner above escapes to the nearest
    positioned ancestor (the modal) and lands centred over unrelated content.
    These rows report progress through the sweep bar on their status line
-   instead, so opt them out rather than stacking two indicators. */
+   instead (the calendar's list says "Loading..." itself), so opt them out rather than stacking
+   two indicators. */
 .connection-test-row [aria-busy='true']::after,
-.first-run-actions [aria-busy='true']::after {
+.first-run-actions [aria-busy='true']::after,
+.calendar-toolbar [aria-busy='true']::after {
   content: none;
 }
 
@@ -12633,33 +12540,6 @@ label.disabled {
 
 .command-palette-close {
   flex: none;
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--surface-1);
-  color: var(--text-secondary);
-  font-size: var(--font-size-lg);
-  line-height: 1;
-  cursor: pointer;
-  transition:
-    background var(--transition-fast),
-    color var(--transition-fast),
-    border-color var(--transition-fast);
-}
-
-.command-palette-close:hover,
-.command-palette-close:focus-visible {
-  border-color: rgba(var(--accent-rgb), 0.4);
-  background: rgba(var(--accent-rgb), 0.14);
-  color: var(--text-primary);
-}
-
-.command-palette-close:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
 }
 
 .command-palette-results {
@@ -12953,6 +12833,9 @@ body.high-contrast {
   --text-secondary: #eee !important;
   --text-tertiary: #ddd !important;
   --muted-text: #ddd !important;
+  /* Help text, captions and unavailable tiles are the smallest text; they keep to 7:1 as well. */
+  --text-dim: #ddd !important;
+  --text-faint: #ccc !important;
   --bg-color: #141414 !important;
   --bg-primary: #141414 !important;
   --bg-secondary: #202020 !important;
@@ -12984,8 +12867,13 @@ body.high-contrast {
   --settings-modal-panel-alpha: 1 !important;
   --desktop-pin-ink-rgb: 255, 255, 255 !important;
   --focus-ring: #fff !important;
+  /* Dialogs, toasts, the command palette and menus draw their edge and backdrop from these; the
+     defaults are a 10% hairline, which barely separates a panel from what is behind it. */
+  --dialog-border: #aaa !important;
+  --dialog-scrim: rgba(8, 10, 14, 0.7) !important;
+  --window-highlight: rgba(255, 255, 255, 0.1) !important;
   color: #fff;
-  color-scheme: dark;
+  color-scheme: dark !important;
 }
 
 body.opaque-panels,
@@ -13004,40 +12892,91 @@ body.opaque-panels
   -webkit-backdrop-filter: none !important;
 }
 
-/* Ranges are handled below; :where keeps this rule's specificity unchanged. Section headers and
-   tabs are text-like buttons: a fill would draw a bar across the panel, and their own hover,
-   active and focus styles stay visible without it. */
-body.high-contrast
-  :is(button, input, select, textarea):not(:where([type='range'], .section-toggle, .tab-link)) {
-  color: #fff !important;
-  background: #202020 !important;
-  border-color: #aaa !important;
+/* That leaves the main view's tiles the colour of the panel, told apart only by their edge, so
+   they get a small lift: a touch toward white on the dark panel, and white on the pale one. */
+body.opaque-panels:not(.high-contrast)
+  :is(#quick-controls .control-item, .status-card, .media-tile) {
+  background: color-mix(in srgb, var(--bg-primary), white 7%) !important;
 }
 
-/* The primary fill marks the main action and the selected choice (Primary Cards), so it stays a
-   solid accent fill with dark text instead of the grey fill every other button gets. */
-body.high-contrast .btn-primary {
-  color: #141414 !important;
-  background: var(--accent) !important;
-  border-color: #fff !important;
+body.theme-light.opaque-panels:not(.high-contrast)
+  :is(#quick-controls .control-item, .status-card, .media-tile) {
+  background: color-mix(in srgb, var(--bg-primary), white 70%) !important;
 }
 
-body.high-contrast :is(#settings-modal, .quick-access-tabs) .tab-link.active {
-  border-color: var(--accent);
-  color: #fff;
+/* A primary card holds its entity's tile, which fills the card. The panel colour rule above
+   reaches that tile too and would cover the card's lift, so it stays clear and the card shows. */
+body.opaque-panels .status-card.primary-entity-card .control-item {
+  background: transparent !important;
 }
 
-/* Without the grey fill a hovered tab needs its own edge; the refreshed tabs hover with a fill
-   that barely differs from the readable panels. */
-body.high-contrast :is(#settings-modal, .quick-access-tabs) .tab-link:not(.active):hover {
-  border-color: var(--border-hover);
-}
+/* The Readable preset's colours for buttons, fields, chips, tabs and slider tracks. Forced colours
+   (a Windows contrast theme) replace each of them with a system colour, so none is ever drawn, yet
+   a rule they discard still outranks a lower one that names a system colour. With the preset on as
+   well, its white edge beat the primary action's Highlight edge, its white text beat GrayText on a
+   control that is only aria-disabled, and its accent edge on the active page link beat the Canvas
+   one that keeps edit mode from drawing a second box around it. So they stay out while forced
+   colours are active, and the rules for forced colours at the end of this file decide. */
+@media (forced-colors: none) {
+  /* Ranges are handled below; :where keeps this rule's specificity unchanged. Section headers and
+     tabs are text-like buttons: a fill would draw a bar across the panel, and their own hover,
+     active and focus styles stay visible without it. A colour swatch is its fill. */
+  body.high-contrast
+    :is(button, input, select, textarea):not(
+      :where([type='range'], .section-toggle, .tab-link, .light-color-swatch)
+    ) {
+    color: #fff !important;
+    background: #202020 !important;
+    border-color: #aaa !important;
+  }
 
-/* A range input's background is its track: give it one that stands out from the #141414 panels.
-   The colour temperature gradient already does, and the pin light slider is a transparent
-   overlay above its own track. */
-body.high-contrast input[type='range']:not(.light-color-temp-slider, .desktop-pin-light-slider) {
-  background: #8a8a8a !important;
+  /* The primary fill marks the main action and the selected choice (Primary Cards, the theme mode),
+     so it stays a solid accent fill with dark text instead of the grey fill every other button
+     gets. */
+  body.high-contrast :is(.btn-primary, .segmented-option.active) {
+    color: #141414 !important;
+    background: var(--accent) !important;
+    border-color: #fff !important;
+  }
+
+  body.high-contrast :is(#settings-modal, .quick-access-tabs) .tab-link.active {
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  /* Without the grey fill a hovered tab needs its own edge; the refreshed tabs hover with a fill
+     that barely differs from the readable panels. */
+  body.high-contrast :is(#settings-modal, .quick-access-tabs) .tab-link:not(.active):hover {
+    border-color: var(--border-hover);
+  }
+
+  /* The grey fill above also flattens the selected chip, whose accent border and tint were its
+     mark, so the chip keeps a heavier accent edge. */
+  body.high-contrast
+    :is(
+      .climate-mode-btn,
+      .climate-fan-mode-btn,
+      .climate-preset-mode-btn,
+      .media-mute-toggle
+    ).active,
+  body.high-contrast .donate-amount-chip.selected {
+    border-color: var(--accent) !important;
+    box-shadow: inset 0 0 0 2px var(--accent);
+  }
+
+  /* The rail marks its active page with the sliding pill (the active tab's own border is cancelled
+     while the pill is there), and the pill is faint by default, so the preset gives it an edge. */
+  body.high-contrast #settings-modal .modal-tabs > .sliding-indicator {
+    background: rgba(var(--accent-rgb), 0.3);
+    box-shadow: inset 0 0 0 2px var(--accent);
+  }
+
+  /* A range input's background is its track: give it one that stands out from the #141414 panels.
+     The colour temperature gradient already does, and the pin light slider is a transparent
+     overlay above its own track. */
+  body.high-contrast input[type='range']:not(.light-color-temp-slider, .desktop-pin-light-slider) {
+    background: #8a8a8a !important;
+  }
 }
 
 body.high-contrast :focus-visible {
@@ -13187,10 +13126,15 @@ body.theme-light {
   --dialog-scrim: rgba(240, 242, 246, 0.5);
 }
 
+/* Toasts, the command palette, menus and tooltips draw --dialog-bg, which is 96% opaque, so a
+   tile's text would ghost through a toast over it. */
+body.opaque-panels {
+  --dialog-bg: color-mix(in srgb, var(--text-primary) 5%, rgb(var(--window-bg-rgb)));
+}
+
 /* --- Backdrop and panel --- */
 
 .modal,
-.rename-modal,
 .hotkey-capture-modal {
   background: var(--dialog-scrim);
   backdrop-filter: blur(8px);
@@ -13202,7 +13146,6 @@ body.theme-light {
 .climate-modal-content,
 .fan-modal-content,
 .cover-modal-content,
-.rename-modal .modal-content,
 body.frosted-glass .modal-content,
 body.software-glass.frosted-glass .modal-content {
   background: var(--dialog-bg);
@@ -13267,7 +13210,6 @@ body.software-glass.frosted-glass .modal-content {
 /* --- Buttons --- */
 
 .btn,
-.rename-modal .btn-secondary,
 .confirm-modal-content .btn-secondary {
   min-height: 34px;
   border: 1px solid var(--tile-border-hover);
@@ -13283,7 +13225,6 @@ body.software-glass.frosted-glass .modal-content {
 }
 
 .btn:hover,
-.rename-modal .btn-secondary:hover,
 .confirm-modal-content .btn-secondary:hover {
   background: var(--tile-bg-hover);
   border-color: var(--border-hover);
@@ -13296,16 +13237,14 @@ body.software-glass.frosted-glass .modal-content {
   box-shadow: none;
 }
 
-.btn-primary,
-.rename-modal .btn-primary {
+.btn-primary {
   background: var(--accent);
   border-color: transparent;
   color: var(--on-accent);
   font-weight: var(--font-weight-semibold);
 }
 
-.btn-primary:hover,
-.rename-modal .btn-primary:hover {
+.btn-primary:hover {
   background: var(--accent-hover);
   border-color: transparent;
 }
@@ -13341,6 +13280,82 @@ body.software-glass.frosted-glass .modal-content {
 
 body.theme-light .btn-secondary:not([id*='cancel']):not([id*='close']):not([id*='reset']) {
   color: color-mix(in srgb, var(--accent) 72%, #000);
+}
+
+/* Compact buttons for rows and inline actions (Edit, Remove, language packs, hotkey presets).
+   Only the size changes; the colours come from the variant beside it. */
+.btn.btn-sm {
+  min-height: 28px;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+}
+
+/* A destructive action outside a confirmation (Remove, Clear, Delete graph, a hotkey being
+   recorded): the secondary button's shape in red, so it reads as a warning without a wall of solid
+   red. The confirmation dialog keeps its own solid red, which is why these stay at one class of
+   specificity. The text colour goes through a property so the light theme can step it down to
+   read on white without out-ranking that dialog. */
+.btn-danger {
+  --btn-danger-text: #ff8a80;
+  background: rgba(239, 83, 80, 0.14);
+  border-color: rgba(239, 83, 80, 0.45);
+  color: var(--btn-danger-text);
+}
+
+.btn-danger:hover {
+  background: rgba(239, 83, 80, 0.22);
+  border-color: rgba(239, 83, 80, 0.6);
+}
+
+body.theme-light .btn-danger {
+  --btn-danger-text: #c62828;
+}
+
+/* --- Fields --- */
+
+/* The select's chevron is a background image, which cannot read currentColor, so it comes in the
+   two text colours the themes use. */
+body {
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23b0b0b0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+}
+
+body.theme-light {
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23666666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+}
+
+/* One height for text fields and selects, so a native select no longer stands 2px taller than the
+   input beside it, and both match the custom dropdown trigger. */
+.form-group
+  :is(input, select):not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
+:where(.modal-body, .first-run-content)
+  :where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']), select) {
+  min-height: 36px;
+}
+
+/* A native select drawn like the custom dropdown: the browser's heavy chevron (which each OS
+   draws differently) gives way to the same thin one, set at the end of the line and mirrored in
+   right-to-left. The menu itself is still the browser's. The fill comes from the field recipe;
+   only the background image is set here, so a rule that sets just the colour keeps the chevron.
+   The readable preset repaints every field with a plain background shorthand, which would take
+   the chevron with it, so it keeps the browser's own select. */
+body:not(.high-contrast) select:not([multiple]) {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-inline-end: 36px;
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px 16px;
+  text-overflow: ellipsis;
+}
+
+[dir='rtl'] body:not(.high-contrast) select:not([multiple]) {
+  background-position: left 12px center;
+}
+
+textarea {
+  resize: vertical;
 }
 
 /* --- Control pop-ups: brightness, climate, fan, cover, sensor --- */
@@ -13426,6 +13441,8 @@ body.theme-light .brightness-icon:not(.brightness-off) {
 }
 
 .brightness-label,
+.brightness-control-heading,
+.brightness-slider-labels,
 .fan-speed-label,
 .cover-position-label,
 .climate-temp-label,
@@ -13461,41 +13478,66 @@ body.theme-light .brightness-icon:not(.brightness-off) {
   filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.5));
 }
 
-/* Sliders: a slim rounded track and a white thumb, as on the pinned tiles. */
+/* Sliders: a slim rounded track and a white thumb, as on the pinned tiles. Every slider in a
+   dialog (brightness, colour temperature, fan, cover, climate, media volume) shares them. */
+:root {
+  /* The way a track fills, towards the end the thumb moves to. Chromium mirrors a range input in
+     right-to-left, so the gradient has to turn with it. */
+  --slider-dir: to right;
+}
+
+[dir='rtl'] {
+  --slider-dir: to left;
+}
+
 .brightness-slider,
+.light-color-temp-slider,
 .fan-slider,
 .cover-slider,
-.climate-slider {
+.climate-slider,
+.media-volume-slider {
   height: 6px;
   border-radius: var(--radius-full);
-  background: linear-gradient(90deg, var(--tile-border-hover), var(--accent));
+  background: linear-gradient(var(--slider-dir), var(--tile-border-hover), var(--accent));
   box-shadow: none;
 }
 
 .brightness-slider {
-  background: linear-gradient(90deg, rgba(255, 208, 138, 0.18), #ffd08a);
+  background: linear-gradient(var(--slider-dir), rgba(255, 208, 138, 0.18), #ffd08a);
+}
+
+.light-color-temp-slider {
+  background: linear-gradient(var(--slider-dir), #ffb45f 0%, #fff4d6 46%, #9fd8ff 100%);
 }
 
 .brightness-slider:hover,
 .brightness-slider:focus,
+.light-color-temp-slider:hover,
 .fan-slider:hover,
 .cover-slider:hover,
-.climate-slider:hover {
+.climate-slider:hover,
+.media-volume-slider:hover {
   box-shadow: none;
 }
 
 .brightness-slider:focus-visible,
+.light-color-temp-slider:focus-visible,
 .fan-slider:focus-visible,
 .cover-slider:focus-visible,
-.climate-slider:focus-visible {
+.climate-slider:focus-visible,
+.media-volume-slider:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 6px;
 }
 
 .brightness-slider::-webkit-slider-thumb,
+.light-color-temp-slider::-webkit-slider-thumb,
 .fan-slider::-webkit-slider-thumb,
 .cover-slider::-webkit-slider-thumb,
-.climate-slider::-webkit-slider-thumb {
+.climate-slider::-webkit-slider-thumb,
+.media-volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
   width: 18px;
   height: 18px;
   border: none;
@@ -13508,9 +13550,11 @@ body.theme-light .brightness-icon:not(.brightness-off) {
 }
 
 .brightness-slider::-webkit-slider-thumb:hover,
+.light-color-temp-slider::-webkit-slider-thumb:hover,
 .fan-slider::-webkit-slider-thumb:hover,
 .cover-slider::-webkit-slider-thumb:hover,
-.climate-slider::-webkit-slider-thumb:hover {
+.climate-slider::-webkit-slider-thumb:hover,
+.media-volume-slider::-webkit-slider-thumb:hover {
   transform: scale(1.12);
   box-shadow:
     0 2px 8px rgba(0, 0, 0, 0.4),
@@ -13518,9 +13562,11 @@ body.theme-light .brightness-icon:not(.brightness-off) {
 }
 
 .brightness-slider::-webkit-slider-thumb:active,
+.light-color-temp-slider::-webkit-slider-thumb:active,
 .fan-slider::-webkit-slider-thumb:active,
 .cover-slider::-webkit-slider-thumb:active,
-.climate-slider::-webkit-slider-thumb:active {
+.climate-slider::-webkit-slider-thumb:active,
+.media-volume-slider::-webkit-slider-thumb:active {
   transform: scale(1.05);
 }
 
@@ -13542,7 +13588,8 @@ body.theme-light .brightness-icon:not(.brightness-off) {
     transform var(--duration-fast) var(--ease-emphasized);
 }
 
-.brightness-preset-btn {
+.brightness-preset-btn,
+.fan-preset-btn {
   flex: 1 1 0;
   min-width: 0;
   height: 34px;
@@ -14110,7 +14157,8 @@ body.theme-light #settings-modal .modal-footer {
   width: auto;
   min-width: 120px;
   max-width: 62%;
-  padding: 7px 10px;
+  padding-block: 7px;
+  padding-inline-start: 10px;
   font-size: var(--font-size-sm);
 }
 
@@ -14182,9 +14230,11 @@ body.theme-light #settings-modal .form-help.form-error {
   display: none;
 }
 
-/* --- Switches --- */
+/* --- Switches ---
+   One switch everywhere a toggle sits in a form group: Settings, the alert dialog's quiet hours and
+   Tile Settings' tray option. Pick lists with real checkboxes (the Add Page rooms) stay outside it. */
 
-#settings-modal .form-group input[type='checkbox'] {
+:is(#settings-modal, #alert-config-modal, .rename-modal) .form-group input[type='checkbox'] {
   flex-shrink: 0;
   margin-inline-end: 0;
   width: 38px;
@@ -14195,15 +14245,23 @@ body.theme-light #settings-modal .form-help.form-error {
   box-shadow: none;
 }
 
-body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked) {
+body.theme-light
+  :is(#settings-modal, #alert-config-modal, .rename-modal)
+  .form-group
+  input[type='checkbox']:not(:checked) {
   background: color-mix(in srgb, var(--text-primary) 38%, transparent);
 }
 
-#settings-modal .form-group label:has(input[type='checkbox']) input[type='checkbox'] {
+/* A switch that leads its text (Tile Settings' tray option) keeps a gap to it. One that trails its
+   label (the alert dialog's quiet hours) sits flush with the fields' edge. */
+:is(#settings-modal, #alert-config-modal, .rename-modal)
+  .form-group
+  label:has(input[type='checkbox'])
+  input[type='checkbox']:where(:first-child) {
   margin-inline-end: 10px;
 }
 
-#settings-modal .form-group input[type='checkbox']::after {
+:is(#settings-modal, #alert-config-modal, .rename-modal) .form-group input[type='checkbox']::after {
   top: 3px;
   left: 3px;
   width: 16px;
@@ -14212,12 +14270,16 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
-#settings-modal .form-group input[type='checkbox']:checked {
+:is(#settings-modal, #alert-config-modal, .rename-modal)
+  .form-group
+  input[type='checkbox']:checked {
   background: var(--accent);
   border-color: transparent;
 }
 
-#settings-modal .form-group input[type='checkbox']:checked::after {
+:is(#settings-modal, #alert-config-modal, .rename-modal)
+  .form-group
+  input[type='checkbox']:checked::after {
   transform: translateX(16px);
   background: #fff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
@@ -14430,7 +14492,9 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
 #settings-modal .custom-color-editor-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  /* More between the rows than between a label and its field, so each label reads as belonging
+     to the field under it, not the row above. */
+  gap: 14px 8px;
   align-items: end;
 }
 
@@ -14455,7 +14519,7 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
 
 #settings-modal .custom-color-field-label {
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: 0;
   font-size: var(--font-size-xs-plus);
   font-weight: var(--font-weight-semibold);
   letter-spacing: 0.04em;
@@ -14470,9 +14534,32 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
   font-variant-numeric: tabular-nums;
 }
 
+/* The swatch is as tall as the hex field beside it, and its colour fills the well instead of
+   sitting in the browser's square grey frame. */
 #settings-modal #custom-color-picker {
+  height: 36px;
+  min-height: 36px;
   padding: 3px;
   cursor: pointer;
+}
+
+#custom-color-picker::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+#custom-color-picker::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-md) - 4px);
+}
+
+/* The management row follows the Save button above it; the form-group rule above zeroed its
+   margin. */
+#settings-modal .custom-theme-management {
+  margin-top: var(--space-4);
+}
+
+#settings-modal .custom-editor-save-lock-hint {
+  margin-top: var(--space-3);
 }
 
 #settings-modal .primary-card-value {
@@ -14722,6 +14809,83 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
   margin: 4px 0;
 }
 
+/* --- Main view: tiles that stand apart from the panel ---
+   The Quick Access tiles, the weather and time cards (the .status-grid holding them) and the
+   media card take their fill and edge from --dash-tile-* (set per theme and glass mode with the
+   other tile tokens) by pointing --tile-* at them. Whatever sits inside and reads --tile-*
+   follows: the hairline between the cards, the seek track, the dashed edge of an unavailable
+   tile. Settings, dialogs, the header and pinned desktop tiles keep the softer values, and the
+   readable preset keeps its own tile tokens. */
+body:not(.high-contrast) :is(#quick-controls .control-item, .status-grid, .media-tile) {
+  --tile-bg: color-mix(in srgb, var(--dash-tile-bg) var(--dash-tile-keep), transparent);
+  --tile-bg-hover: color-mix(in srgb, var(--dash-tile-bg-hover) var(--dash-tile-keep), transparent);
+  --tile-border: var(--dash-tile-border);
+  --tile-border-hover: var(--dash-tile-border-hover);
+}
+
+/* A tile keeps its whole fill from about 90% Window opacity up. Below that the fill thins out
+   (about 84% of itself at 60%, so a dark glass tile goes from 94% to 79% opaque), so lowering the
+   slider still makes the dashboard more see-through, instead of leaving dark blocks on a clear
+   panel. Only the fill follows: the edge stays as it is and keeps each tile apart as the fill
+   thins. This is declared on the body, where var(--window-bg-alpha) is the value the slider
+   writes. */
+body {
+  --dash-tile-keep: min(100%, calc(78% + 30% * var(--window-bg-alpha, 1)));
+}
+
+/* The tab pill above the tiles takes the same edge, so it does not look fainter than they do. */
+body:not(.high-contrast) .quick-access-tabs:not(.hidden):not(.reorganize) {
+  --tile-border: var(--dash-tile-border);
+}
+
+/* These states paint their own wash straight onto the panel, or reset the fill to transparent,
+   so they would fall behind the new fill. Each sits on it now, like an active tile does. */
+body:not(.high-contrast)
+  #quick-controls
+  .timer-entity:is([data-state='active'], [data-state='paused']) {
+  background-color: color-mix(in srgb, rgb(var(--timer-rgb)) 18%, var(--tile-bg));
+}
+
+/* The state gradient of a media player tile is a background shorthand, which reset the fill. An
+   unavailable one is left out: it stays clear like every other unavailable tile (see below). */
+body:not(.high-contrast) #quick-controls .media-player-entity:not([data-unavailable='true']) {
+  background-color: var(--tile-bg);
+}
+
+/* An unavailable tile stays dashed and dimmed. On glass it gets a pane of its own so its dimmed
+   labels keep their contrast over a bright wallpaper; on the solid dark panel it stays clear. */
+body.frosted-glass:not(.theme-light, .high-contrast)
+  #quick-controls
+  .control-item[data-unavailable='true'] {
+  background: color-mix(
+    in srgb,
+    rgba(var(--window-bg-rgb), 0.9) var(--dash-tile-keep),
+    transparent
+  );
+}
+
+body.theme-light:not(.high-contrast) #quick-controls .control-item[data-unavailable='true'] {
+  background: color-mix(in srgb, var(--tile-bg) 70%, transparent);
+}
+
+/* The light pane is nearly white, but the text on it is set for a pane that was half see-through,
+   and a few pairs fall short of 4.5:1 on it: the secondary and tertiary text, the media
+   timestamps, the date line and the weather condition. Each is darkened a notch, on the main
+   view's tiles only, so Settings and dialogs keep theirs. */
+body.theme-light:not(.high-contrast) :is(#quick-controls .control-item, .status-grid, .media-tile) {
+  --text-dim: color-mix(in srgb, var(--text-primary) 78%, transparent);
+  --text-faint: color-mix(in srgb, var(--text-primary) 70%, transparent);
+  --muted-text: #626268;
+}
+
+body.theme-light:not(.high-contrast) .status-card.time-card .date-display {
+  color: color-mix(in srgb, var(--accent) 55%, #000);
+}
+
+body.theme-light:not(.high-contrast) .status-card .weather-condition {
+  color: var(--text-dim);
+}
+
 /* --- Main view: one hero pane for the primary cards --- */
 
 .status-grid:not(.single-card):not(.primary-cards-hidden) {
@@ -14784,7 +14948,7 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
 
 /* A highlight pill that slides between tabs: the Quick Access pages and the
    settings sections. While it is present, the active tab drops its own fill. */
-.quick-access-tabs,
+.quick-access-tab-scroll,
 #settings-modal .modal-tabs {
   position: relative;
 }
@@ -14805,7 +14969,7 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
   z-index: 1;
 }
 
-.quick-access-tabs.has-sliding-indicator .tab-link.active,
+.quick-access-tab-scroll.has-sliding-indicator .tab-link.active,
 #settings-modal .modal-tabs.has-sliding-indicator .tab-link.active {
   border-color: transparent;
   background: transparent;
@@ -14850,7 +15014,7 @@ body.theme-light #settings-modal .form-group input[type='checkbox']:not(:checked
   border-radius: var(--radius-lg);
 }
 
-.quick-access-tabs:not(.reorganize) > .sliding-indicator {
+.quick-access-tabs:not(.reorganize) .quick-access-tab-scroll > .sliding-indicator {
   border-radius: var(--radius-full);
   background: rgba(var(--accent-rgb), 0.18);
   box-shadow: none;
@@ -15142,14 +15306,20 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   gap: var(--space-2);
 }
 
-/* Manage Quick Access: one scrolling list under a fixed search box, with the secondary
-   "comparison graph" action moved to the footer. */
-#quick-controls-modal .quick-controls-modal-body {
+/* Manage Quick Access and the repair picker: one scrolling list under a fixed search box, with
+   Manage's secondary "comparison graph" action moved to the footer. */
+#quick-controls-modal .quick-controls-modal-body,
+#entity-repair-modal .modal-body {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   min-height: 0;
   overflow-y: auto;
+}
+
+#entity-repair-modal .modal-lead,
+#entity-repair-modal .form-group {
+  margin: 0;
 }
 
 #quick-controls-modal .quick-controls-target-hint {
@@ -15163,7 +15333,8 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   margin: 0;
 }
 
-#quick-controls-modal .entity-selector-list {
+#quick-controls-modal .entity-selector-list,
+#entity-repair-modal .entity-selector-list {
   flex: 1 1 auto;
   min-height: 120px;
   max-height: none;
@@ -15291,6 +15462,54 @@ body.theme-light
    The name and reading still identify it, so the icon steps aside while editing. */
 .reorganize-mode .control-item.sensor-numeric-entity .control-icon {
   visibility: hidden;
+}
+
+/* Reorganizing without dragging: the tile that was selected waits for the one to take its place. */
+.reorganize-mode .control-item.reorder-picked,
+.reorganize-mode .control-item.reorder-picked:hover {
+  box-shadow:
+    0 0 0 2px var(--accent),
+    var(--glow-accent);
+}
+
+/* The camera badge and a graph's range label sit in the corner the buttons use. */
+.reorganize-mode .control-item .camera-tile-preview-badge,
+.reorganize-mode .control-item .comparison-graph-range {
+  visibility: hidden;
+}
+
+/* Compact tiles are 78px tall, which has no room for the buttons above the icon and the name, so
+   they grow to 96px while editing. */
+body.density-compact #quick-controls.reorganize-mode {
+  --qa-tile-height: 96px;
+}
+
+body.density-compact
+  #quick-controls.reorganize-mode
+  .control-item:not(.comparison-graph-tile):not(.camera-preview-tile) {
+  padding-top: 32px;
+}
+
+/* In a narrow window tiles are as little as 82px wide, and three 24px buttons do not fit with
+   room between them: they shrink to 20px, still 24px apart centre to centre. */
+@media (max-width: 360px) {
+  .reorganize-mode .control-item :is(.rename-btn, .remove-btn, .desktop-pin-quick-toggle) {
+    width: 20px;
+    height: 20px;
+    top: 6px;
+  }
+
+  .reorganize-mode .control-item .desktop-pin-quick-toggle {
+    inset-inline-start: 6px;
+  }
+
+  .reorganize-mode .control-item .rename-btn {
+    inset-inline-end: 30px;
+  }
+
+  .reorganize-mode .control-item .remove-btn {
+    inset-inline-end: 6px;
+  }
 }
 
 /* ==========================================================================
@@ -15463,12 +15682,12 @@ body.desktop-pin-mode .desktop-pin-empty-action:hover {
 
 /* A solid window paints its colour on the body and again on the header and content, and those
    two would hide the canvas between them. During a holiday the body alone carries the colour, at
-   the strength both layers made together (1 - (1 - a)²), so the window looks the same. */
+   the strength both layers made together (1 - (1 - a)²), so the window looks the same. The panel
+   veil goes on the body too, where the header and content no longer paint it. */
 body[data-season]:not(.desktop-pin-mode):not(.frosted-glass) {
-  background: rgba(
-    var(--window-bg-rgb),
-    calc(var(--window-bg-alpha, 1) * (2 - var(--window-bg-alpha, 1)))
-  ) !important;
+  background:
+    var(--panel-veil-layer),
+    rgba(var(--window-bg-rgb), calc(var(--window-bg-alpha, 1) * (2 - var(--window-bg-alpha, 1)))) !important;
 }
 
 body[data-season]:not(.desktop-pin-mode):not(.frosted-glass) .widget-header,
@@ -16102,6 +16321,14 @@ body[data-season='thanksgiving'] .control-item {
   opacity: 0.5;
 }
 
+/* The Readable preset replaces these rows' effects (see syncReadablePresetOverrides). The whole
+   row dims as one unit, since its label and help text say as much as its control does. The dim is
+   light because the people who turn the preset on want 7:1: the smallest text token, on the
+   lighter panel, would fall to about 5.7:1 at 0.7, and stays above 7:1 at this strength. */
+#settings-modal .is-overridden {
+  opacity: 0.85;
+}
+
 /* ==========================================================================
    RIGHT-TO-LEFT AND FORCED COLOURS
    ========================================================================== */
@@ -16115,20 +16342,102 @@ body[data-season='thanksgiving'] .control-item {
 
 /* Readings and their units are handled with the other right-to-left text rules at the end. */
 
-/* Windows High Contrast replaces backgrounds with system colours, which erases the accent fills
-   that mark "on" tiles, selected tabs and switches. Draw those states with outlines instead. */
+/* Windows High Contrast and other contrast themes replace the page's colours with the system
+   palette: backgrounds become Canvas, borders ButtonText, and gradients, shadows and glows go.
+   That erases everything drawn with a fill alone (the accent on "on" tiles and selected chips,
+   slider tracks and thumbs, swatches, progress bars, the connection dot), so each of those gets an
+   outline, an edge or a system colour of its own here. System colour keywords written in author
+   CSS are kept, which is how the Highlight and ButtonText below survive. */
 @media (forced-colors: active) {
-  .sliding-indicator {
-    background: none;
-    border: 2px solid Highlight;
+  /* The panel veil is a gradient. Forced colours keep gradients while they swap every background
+     colour for Canvas, so the veil would be painted over the system colour. */
+  body {
+    --panel-veil-layer: none;
   }
 
+  /* The window is one solid pane. Its tint keeps its alpha under forced colours, which lets the
+     desktop show through and makes Chromium paint an opaque plate behind every line of text. */
+  html {
+    background: Canvas;
+  }
+
+  /* A desktop pin is a transparent window around a rounded shell, so it keeps its see-through
+     corners. Only the body carries the pin class, hence the :has(). */
+  html:has(body.desktop-pin-mode) {
+    background: transparent;
+  }
+
+  /* Selected and "on" states are a Highlight outline in place of the accent fill. A running timer
+     is solid and a paused one dashed, as the tint and its colour tell them apart otherwise. */
   #quick-controls .control-item[data-active='true'],
+  .timer-entity[data-state='active'],
   .segmented-option.active,
   .tab-link.active,
-  .quick-access-tab.active {
+  .quick-access-tabs.reorganize .quick-access-tab.active,
+  .climate-mode-btn.active,
+  .climate-fan-mode-btn.active,
+  .climate-preset-mode-btn.active,
+  .media-mute-toggle.active,
+  .custom-dropdown-option.selected,
+  .donate-amount-chip.selected,
+  .desktop-pin-panel-button[data-active='true'],
+  .desktop-pin-light-power[data-active='true'] {
     outline: 2px solid Highlight;
     outline-offset: -2px;
+  }
+
+  .timer-entity[data-state='paused'] {
+    outline: 2px dashed Highlight;
+    outline-offset: -2px;
+  }
+
+  /* In edit mode the active page's wrapper owns the highlight. The link inside it would ring as
+     well, and its transparent border is redrawn in ButtonText, which makes a second box around the
+     page name; a Canvas border is not drawn against the pane. */
+  .quick-access-tabs.reorganize .quick-access-tab.active .tab-link.active {
+    outline: none;
+    border-color: Canvas;
+  }
+
+  /* The pill that slides behind the active tab is a fill too. The tab rings itself instead, which
+     also avoids two rings with notches where their corner radii differ. */
+  .sliding-indicator {
+    display: none;
+  }
+
+  /* The primary action is told from the others by its heavier edge, not its fill. */
+  .btn-primary {
+    border: 2px solid Highlight !important;
+  }
+
+  /* Fields signal focus with a border colour and a shadow, and some switch their outline off,
+     which leaves nothing once forced colours take the first two away. */
+  :is(input, select, textarea, .custom-dropdown-trigger):focus-visible {
+    outline: 2px solid Highlight !important;
+    outline-offset: 2px;
+  }
+
+  /* The Readable preset's focus ring keeps its 3px width and its offset but takes the system
+     colour: the white it asks for is drawn as written on whatever opts out of forced colours (the
+     switches and the light colour swatches), which is invisible on a light contrast theme. */
+  body.high-contrast :focus-visible {
+    outline-color: Highlight !important;
+  }
+
+  /* Disabled controls are already GrayText; halving their opacity on top washes them out. A control
+     that is only aria-disabled gets the colour itself. */
+  :disabled,
+  [aria-disabled='true'],
+  label.disabled,
+  .is-disabled,
+  .is-overridden {
+    opacity: 1 !important;
+  }
+
+  [aria-disabled='true']:not(.btn-primary),
+  label.disabled,
+  .is-disabled {
+    color: GrayText;
   }
 
   /* !important: the Settings switch rules carry #settings-modal and would otherwise win. */
@@ -16153,6 +16462,165 @@ body[data-season='thanksgiving'] .control-item {
   .form-group input[type='checkbox']:checked::after,
   .entity-toggle.active::after {
     background: HighlightText !important;
+  }
+
+  /* Range sliders paint a gradient track and a white thumb with no border, and all of it goes.
+     The track is a ButtonText bar and the thumb a Highlight disc with an edge. */
+  :is(
+    .brightness-slider,
+    .fan-slider,
+    .cover-slider,
+    .climate-slider,
+    .light-color-temp-slider,
+    .media-volume-slider
+  ) {
+    background: ButtonText;
+  }
+
+  :is(
+    .brightness-slider,
+    .fan-slider,
+    .cover-slider,
+    .climate-slider,
+    .light-color-temp-slider,
+    .media-volume-slider
+  )::-webkit-slider-thumb,
+  .desktop-pin-light-slider::-webkit-slider-thumb {
+    background: Highlight;
+    border: 2px solid ButtonText;
+    box-shadow: none;
+  }
+
+  /* The pin's slider is a transparent overlay above its own fill, so its track is only an edge. */
+  .desktop-pin-light-slider::-webkit-slider-runnable-track {
+    background: transparent;
+    border: 1px solid ButtonText;
+    box-shadow: none;
+  }
+
+  /* Colour is the information in a swatch, so it keeps its own colour and gets an edge against
+     Canvas. */
+  .light-color-swatch,
+  .color-target-swatch,
+  .accent-theme-swatch {
+    forced-color-adjust: none;
+    border: 1px solid CanvasText;
+    box-shadow: none;
+  }
+
+  .theme-tooltip-name::before,
+  .comparison-graph-swatch {
+    forced-color-adjust: none;
+  }
+
+  .theme-option.selected,
+  .color-target-option.active,
+  .light-color-swatch:focus-visible {
+    outline: 3px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  /* The connection dot is a ring when disconnected and a solid dot when connected. */
+  .connection-indicator {
+    box-sizing: border-box;
+    border: 2px solid ButtonText;
+    box-shadow: none;
+  }
+
+  .connection-indicator.connected {
+    border-color: Highlight;
+    background: Highlight;
+  }
+
+  /* Progress is a Highlight fill in an outlined track. */
+  .media-tile-seek-bar,
+  .media-tile-seek-bar:hover {
+    box-sizing: border-box;
+    height: 6px;
+    border: 1px solid ButtonText;
+    overflow: hidden;
+  }
+
+  .media-tile-seek-fill::after {
+    display: none;
+  }
+
+  .connection-progress,
+  .desktop-pin-panel-progress {
+    border: 1px solid ButtonText;
+  }
+
+  .desktop-pin-timer-progress {
+    border-top: 1px solid ButtonText;
+  }
+
+  .media-tile-seek-fill,
+  .media-progress-fill,
+  .progress-fill,
+  .connection-progress-bar,
+  .desktop-pin-panel-progress-fill,
+  .desktop-pin-timer-progress-fill,
+  .desktop-pin-light-brightness-fill {
+    background: Highlight;
+    box-shadow: none;
+  }
+
+  /* The hero pane's divider is an inset shadow, which is dropped; a border stays. */
+  .status-grid:not(.single-card):not(.primary-cards-hidden) > .status-card + .status-card {
+    box-shadow: none;
+    border-inline-start: 1px solid CanvasText;
+  }
+
+  @media (max-width: 420px) {
+    .status-grid:not(.single-card):not(.primary-cards-hidden) > .status-card + .status-card {
+      border-inline-start: none;
+      border-block-start: 1px solid CanvasText;
+    }
+  }
+
+  /* An inline icon keeps a colour written on the icon itself in forced colours, so the active
+     rail icon would stay a pale blue whatever the contrast theme. */
+  #settings-modal .tab-link.active .tab-link-icon {
+    color: ButtonText;
+    filter: none;
+  }
+
+  /* The weather glyph is drawn with fixed pale fills and strokes; draw it as an outline. */
+  .weather-glyph,
+  .weather-glyph * {
+    forced-color-adjust: none;
+    stroke: CanvasText;
+    fill: none;
+    filter: none;
+  }
+
+  .weather-glyph .weather-glyph-fill,
+  .weather-glyph .weather-glyph-hail {
+    fill: CanvasText;
+  }
+
+  /* A custom scrollbar thumb is a background, which is the Canvas colour here. */
+  ::-webkit-scrollbar,
+  .modal-body::-webkit-scrollbar,
+  .custom-dropdown-menu::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+
+  ::-webkit-scrollbar-thumb,
+  ::-webkit-scrollbar-thumb:hover,
+  .modal-body::-webkit-scrollbar-thumb,
+  .modal-body::-webkit-scrollbar-thumb:hover,
+  .custom-dropdown-menu::-webkit-scrollbar-thumb,
+  .custom-dropdown-menu::-webkit-scrollbar-thumb:hover {
+    background: ButtonText;
+    border: 3px solid Canvas;
+  }
+
+  ::-webkit-scrollbar-track,
+  .modal-body::-webkit-scrollbar-track,
+  .custom-dropdown-menu::-webkit-scrollbar-track {
+    background: Canvas;
   }
 
   .entity-line-icon {
@@ -16181,6 +16649,7 @@ body[data-season='thanksgiving'] .control-item {
     .control-state,
     .brightness-value-large,
     .brightness-preset-btn,
+    .fan-preset-btn,
     .climate-temp-value,
     .climate-temp-value-large,
     .cover-position-value,

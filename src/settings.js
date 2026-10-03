@@ -1251,9 +1251,18 @@ function renameSelectedCustomColor() {
   showToast(t('Custom color renamed.'), 'success', 1800);
 }
 
-function removeSelectedCustomColor() {
+async function removeSelectedCustomColor() {
   const selectedTheme = getSelectedThemeForActiveTarget();
   if (!selectedTheme?.isCustom) return;
+
+  // Removing saves at once (Cancel in Settings cannot bring the colour back), and the accent or
+  // background using it falls back to the default, so a stray click should not do it.
+  const confirmed = await showConfirm(
+    t('Remove Custom Color'),
+    t('Remove "{{name}}" from your custom colors?', { name: selectedTheme.name }),
+    { confirmText: t('Remove'), confirmClass: 'btn-danger' }
+  );
+  if (!confirmed) return;
 
   pendingCustomColors = pendingCustomColors.filter((entry) => entry.id !== selectedTheme.id);
   markSettingsTouched('ui.customColors');
@@ -1401,8 +1410,8 @@ function initCustomColorEditor() {
   }
 
   if (removeBtn) {
-    removeBtn.onclick = () => {
-      removeSelectedCustomColor();
+    removeBtn.onclick = async () => {
+      await removeSelectedCustomColor();
       setMainSettingsSaveLocked(false);
     };
   }
@@ -2116,14 +2125,6 @@ function syncPersonalizationSectionHeight(section) {
   }
 }
 
-function schedulePersonalizationSectionHeightSync(sourceEl) {
-  const section = sourceEl?.closest?.('.personalization-section');
-  if (!section) return;
-  requestAnimationFrame(() => {
-    syncPersonalizationSectionHeight(section);
-  });
-}
-
 function refreshPersonalizationSectionHeights() {
   const sections = document.querySelectorAll('.personalization-section');
   if (!sections.length) return;
@@ -2157,10 +2158,12 @@ function getPrimaryCardEntityOptions(filter = '') {
     });
 }
 
-function getPrimaryCardDisplay(selection) {
+// "(default)" belongs to the slot, not the item: Weather is Card 1's default and Time is Card 2's,
+// so after swapping them neither card claims it.
+function getPrimaryCardDisplay(selection, slotIndex) {
   if (selection === PRIMARY_CARD_NONE) return t('Hidden');
-  if (selection === 'weather') return t('Weather (default)');
-  if (selection === 'time') return t('Time (default)');
+  if (selection === 'weather') return slotIndex === 0 ? t('Weather (default)') : t('Weather');
+  if (selection === 'time') return slotIndex === 1 ? t('Time (default)') : t('Time');
   const entity = state.STATES?.[selection];
   if (entity) return `${utils.getEntityDisplayName(entity)} (${selection})`;
   return t('Unavailable: {{entityId}}', { entityId: selection });
@@ -2170,8 +2173,8 @@ function updatePrimaryCardSummary() {
   const selections = getPendingPrimaryCards();
   const cardOne = document.getElementById('primary-card-1-current');
   const cardTwo = document.getElementById('primary-card-2-current');
-  if (cardOne) cardOne.textContent = getPrimaryCardDisplay(selections[0]);
-  if (cardTwo) cardTwo.textContent = getPrimaryCardDisplay(selections[1]);
+  if (cardOne) cardOne.textContent = getPrimaryCardDisplay(selections[0], 0);
+  if (cardTwo) cardTwo.textContent = getPrimaryCardDisplay(selections[1], 1);
 }
 
 function updatePrimaryCardActionButtons() {
@@ -2182,6 +2185,8 @@ function updatePrimaryCardActionButtons() {
     const isActive = selections[cardIndex] === value;
     btn.classList.toggle('btn-primary', isActive);
     btn.classList.toggle('btn-secondary', !isActive);
+    // The fill is the only visual cue; this is what a screen reader hears.
+    btn.setAttribute('aria-pressed', String(isActive));
   });
   syncSegmentedIndicators(document.getElementById('settings-modal') || document);
 }
@@ -3837,11 +3842,16 @@ function bindSupportDevelopmentUi() {
   modal.onclick = (event) => {
     if (event.target === modal) closeDonateModal();
   };
+  const continueBtn = modal.querySelector('#donate-continue-btn');
   modal.onkeydown = (event) => {
     if (event.key === 'Escape') closeDonateModal();
+    // Enter in the amount field goes on, as it does in the confirmation dialog.
+    if (event.key === 'Enter' && event.target === customInput && !event.isComposing) {
+      event.preventDefault();
+      continueBtn?.click();
+    }
   };
 
-  const continueBtn = modal.querySelector('#donate-continue-btn');
   if (continueBtn) {
     continueBtn.onclick = async () => {
       if (!getSelectedDonationAmount(modal).valid) {
@@ -4382,7 +4392,7 @@ function renderLanguagePackList() {
     if (pack.installed && versionAhead) {
       const updateBtn = document.createElement('button');
       updateBtn.type = 'button';
-      updateBtn.className = 'btn btn-secondary btn-small';
+      updateBtn.className = 'btn btn-secondary btn-sm';
       updateBtn.dataset.localeAction = 'download';
       updateBtn.dataset.locale = pack.locale;
       updateBtn.textContent = t('Update');
@@ -4391,7 +4401,7 @@ function renderLanguagePackList() {
     } else if (!pack.installed) {
       const downloadBtn = document.createElement('button');
       downloadBtn.type = 'button';
-      downloadBtn.className = 'btn btn-secondary btn-small';
+      downloadBtn.className = 'btn btn-secondary btn-sm';
       downloadBtn.dataset.localeAction = 'download';
       downloadBtn.dataset.locale = pack.locale;
       downloadBtn.textContent = t('Download');
@@ -4402,7 +4412,7 @@ function renderLanguagePackList() {
     if (pack.installed) {
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
-      removeBtn.className = 'btn btn-secondary btn-small';
+      removeBtn.className = 'btn btn-secondary btn-sm';
       removeBtn.dataset.localeAction = 'remove';
       removeBtn.dataset.locale = pack.locale;
       removeBtn.textContent = t('Remove');
@@ -4631,9 +4641,24 @@ function syncSeasonalControls(ui) {
   status.classList.toggle('hidden', !message);
 }
 
+/**
+ * Dim the rows the Readable preset replaces (the colours, the glass, the window opacity and the
+ * holiday colours) while it is on. They stay editable, since they take effect again once it is off.
+ * @param {object} ui - The appearance settings being shown.
+ */
+function syncReadablePresetOverrides(ui) {
+  // The switch reads as on only when both flags are, so the dimming follows the same rule; a
+  // config with just one of them does not claim that the preset replaced anything.
+  const overridden = !!ui.highContrast && !!ui.opaquePanels;
+  document.querySelectorAll('[data-readable-overrides]').forEach((element) => {
+    element.classList.toggle('is-overridden', overridden);
+  });
+}
+
 function previewAppearance() {
   const ui = getAppearanceFromInputs();
   syncSeasonalControls(ui);
+  syncReadablePresetOverrides(ui);
   applyUiPreferences(ui);
 }
 
@@ -4685,6 +4710,7 @@ function bindAppearanceSettingsUi() {
   for (const control of [scale, preset, activeTileGlow, densitySelect].filter(Boolean)) {
     control.onchange = previewAppearance;
   }
+  syncReadablePresetOverrides(ui);
   bindSeasonalSettingsUi(ui);
 }
 
@@ -4880,16 +4906,8 @@ function relocalizeOpenSettings({ force = false } = {}) {
     } else {
       updateCustomEntityIconSummary();
     }
-    const noneOption = document.querySelector(
-      '#primary-media-player-menu .custom-dropdown-option[data-value=""]'
-    );
-    if (noneOption) {
-      noneOption.textContent = t('None (Hide Media Tile)');
-      if (noneOption.classList.contains('selected')) {
-        const valueSpan = document.querySelector('.custom-dropdown-value');
-        if (valueSpan) valueSpan.textContent = noneOption.textContent;
-      }
-    }
+    const noneOption = document.querySelector('#primary-media-player option[value=""]');
+    if (noneOption) noneOption.textContent = t('None (Hide Media Tile)');
     if (document.getElementById('entity-alerts-enabled')?.checked) renderAlertsListInline();
     relabelAlertAdvancedOptions();
     relocalizePopupHotkeyText();
@@ -5216,7 +5234,7 @@ async function openSettings(uiHooks) {
     }
 
     // Populate media player dropdown after UI hooks (when states are loaded)
-    populateMediaPlayerDropdown();
+    populateMediaPlayerSelect();
     initPrimaryCardsUI();
     const primarySection = document.getElementById('primary-cards-section');
     const primaryCardsList = document.getElementById('primary-cards-list');
@@ -5806,13 +5824,8 @@ async function saveSettings() {
     nextConfig.entityAlerts = nextConfig.entityAlerts || { enabled: false, alerts: {} };
     if (entityAlertsEnabled) nextConfig.entityAlerts.enabled = entityAlertsEnabled.checked;
 
-    // Save primary media player selection from custom dropdown
-    // Read directly from DOM to avoid using global state variable
-    const selectedOption = document.querySelector(
-      '#primary-media-player-menu .custom-dropdown-option.selected'
-    );
-    const selectedValue = selectedOption ? selectedOption.getAttribute('data-value') : '';
-    nextConfig.primaryMediaPlayer = selectedValue || null;
+    // Save the primary media player straight from its select
+    nextConfig.primaryMediaPlayer = document.getElementById('primary-media-player')?.value || null;
 
     nextConfig.primaryCards = getPendingPrimaryCards();
     nextConfig.customEntityIcons = getPendingCustomEntityIconsForSave();
@@ -6340,8 +6353,8 @@ function renderAlertsListInline() {
           </div>
         </div>
         <div class="alert-actions">
-          <button class="btn btn-small btn-secondary edit-alert" data-entity="${utils.escapeHtmlAttribute(entityId)}">${utils.escapeHtml(t('Edit'))}</button>
-          <button class="btn btn-small btn-danger remove-alert" data-entity="${utils.escapeHtmlAttribute(entityId)}">${utils.escapeHtml(t('Remove'))}</button>
+          <button class="btn btn-sm btn-secondary edit-alert" data-entity="${utils.escapeHtmlAttribute(entityId)}">${utils.escapeHtml(t('Edit'))}</button>
+          <button class="btn btn-sm btn-danger remove-alert" data-entity="${utils.escapeHtmlAttribute(entityId)}">${utils.escapeHtml(t('Remove'))}</button>
         </div>
       `;
 
@@ -6570,6 +6583,17 @@ function openAlertConfigModal(entityId) {
       modal.querySelector('.modal-body').append(group);
     }
     relabelAlertAdvancedOptions(modal);
+    // Enter in a single-line field saves the alert, as it does in the confirmation dialog. The
+    // dialog outlives each opening, so the listener goes on once.
+    if (!modal.dataset.enterSaves) {
+      modal.dataset.enterSaves = 'true';
+      modal.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' || event.defaultPrevented || event.isComposing) return;
+        if (!event.target.matches?.('input:not([type="checkbox"], [type="radio"])')) return;
+        event.preventDefault();
+        void saveAlert();
+      });
+    }
     modal.querySelector('.alert-type-options').parentElement.hidden = true;
     const condition = modal.querySelector('#alert-condition');
     condition.value = alertConfig?.onNumericThreshold
@@ -6741,155 +6765,48 @@ async function removeAlert(entityId) {
   }
 }
 
-// Custom Dropdown Management
-function initCustomDropdown() {
+// The media tile's player is a native select: it brings the keyboard model and the screen reader
+// roles for free, and it looks like the other selects on the page.
+function populateMediaPlayerSelect() {
   try {
-    const dropdown = document.getElementById('primary-media-player-dropdown');
-    const trigger = document.getElementById('primary-media-player-trigger');
-    const menu = document.getElementById('primary-media-player-menu');
-
-    if (!dropdown || !trigger || !menu) {
-      console.warn('Custom dropdown elements not found');
+    const select = document.getElementById('primary-media-player');
+    if (!select) {
+      console.warn('Media player select not found');
       return;
     }
 
-    // Toggle dropdown
-    trigger.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isOpen = dropdown.classList.contains('open');
-
-      if (isOpen) {
-        closeCustomDropdown();
-      } else {
-        dropdown.classList.add('open');
-        trigger.setAttribute('aria-expanded', 'true');
-        schedulePersonalizationSectionHeightSync(dropdown);
-      }
-    });
-
-    // Close dropdown when clicking outside
-    document.addEventListener('click', (e) => {
-      if (!dropdown.contains(e.target)) {
-        closeCustomDropdown();
-      }
-    });
-
-    // Handle keyboard navigation
-    trigger.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        const isOpen = dropdown.classList.toggle('open');
-        trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        schedulePersonalizationSectionHeightSync(dropdown);
-      } else if (e.key === 'Escape') {
-        closeCustomDropdown();
-      }
-    });
-
-    // Option selection handled in populateMediaPlayerDropdown
-  } catch (error) {
-    log.error('Error initializing custom dropdown:', error);
-  }
-}
-
-function closeCustomDropdown() {
-  const dropdown = document.getElementById('primary-media-player-dropdown');
-  const trigger = document.getElementById('primary-media-player-trigger');
-
-  if (dropdown) {
-    dropdown.classList.remove('open');
-    schedulePersonalizationSectionHeightSync(dropdown);
-  }
-  if (trigger) {
-    trigger.setAttribute('aria-expanded', 'false');
-  }
-}
-
-function setCustomDropdownValue(value, displayText) {
-  // Update displayed value
-  const valueSpan = document.querySelector('.custom-dropdown-value');
-  if (valueSpan) {
-    valueSpan.textContent = displayText;
-  }
-
-  // Update selected state on options (the DOM itself stores the selection state)
-  const options = document.querySelectorAll('.custom-dropdown-option');
-  options.forEach((opt) => {
-    if (opt.getAttribute('data-value') === value) {
-      opt.classList.add('selected');
-    } else {
-      opt.classList.remove('selected');
-    }
-  });
-}
-
-function populateMediaPlayerDropdown() {
-  try {
-    const menu = document.getElementById('primary-media-player-menu');
-    if (!menu) {
-      console.warn('Media player dropdown menu not found');
-      return;
-    }
-
-    // Clear existing options
-    menu.innerHTML = '';
-
-    // Add "None" option
-    const noneOption = document.createElement('div');
-    noneOption.className = 'custom-dropdown-option';
-    noneOption.setAttribute('role', 'option');
-    noneOption.setAttribute('data-value', '');
-    noneOption.textContent = t('None (Hide Media Tile)');
-    menu.appendChild(noneOption);
-
-    // Get all media player entities
     const mediaPlayers = Object.values(state.STATES || {})
       .filter((entity) => entity.entity_id.startsWith('media_player.'))
       .sort((a, b) => {
-        // utils already imported at top
         const nameA = utils.getEntityDisplayName(a).toLowerCase();
         const nameB = utils.getEntityDisplayName(b).toLowerCase();
         return nameA.localeCompare(nameB);
       });
 
-    // Populate dropdown
-    mediaPlayers.forEach((entity) => {
-      const option = document.createElement('div');
-      option.className = 'custom-dropdown-option';
-      option.setAttribute('role', 'option');
-      option.setAttribute('data-value', entity.entity_id);
-      // utils already imported at top
-      option.textContent = utils.getEntityDisplayName(entity);
-      menu.appendChild(option);
-    });
-
-    // Add click handlers to all options
-    const options = menu.querySelectorAll('.custom-dropdown-option');
-    options.forEach((option) => {
-      option.addEventListener('click', () => {
-        const value = option.getAttribute('data-value');
-        const displayText = option.textContent;
-        markSettingsTouched('primaryMediaPlayer');
-        setCustomDropdownValue(value, displayText);
-        closeCustomDropdown();
-      });
-    });
-
-    // Set current selection
+    const options = [
+      new Option(t('None (Hide Media Tile)'), ''),
+      ...mediaPlayers.map(
+        (entity) => new Option(utils.getEntityDisplayName(entity), entity.entity_id)
+      ),
+    ];
     const currentValue = state.CONFIG.primaryMediaPlayer || '';
-    const selectedOption = Array.from(options).find(
-      (opt) => opt.getAttribute('data-value') === currentValue
-    );
-    const displayText = selectedOption ? selectedOption.textContent : t('None (Hide Media Tile)');
-    setCustomDropdownValue(currentValue, displayText);
+    // A player Home Assistant is not reporting right now (offline, renamed) keeps its place;
+    // without it the select would show "None" and saving would quietly clear the choice.
+    if (currentValue && !mediaPlayers.some((entity) => entity.entity_id === currentValue)) {
+      options.push(
+        new Option(t('Unavailable: {{entityId}}', { entityId: currentValue }), currentValue)
+      );
+    }
+    select.replaceChildren(...options);
+    select.value = currentValue;
 
-    // Initialize dropdown behavior (only once)
-    if (!menu.dataset.initialized) {
-      initCustomDropdown();
-      menu.dataset.initialized = 'true';
+    // Bound once: the select outlives each opening of Settings.
+    if (!select.dataset.bound) {
+      select.addEventListener('change', () => markSettingsTouched('primaryMediaPlayer'));
+      select.dataset.bound = 'true';
     }
   } catch (error) {
-    log.error('Error populating media player dropdown:', error);
+    log.error('Error populating media player select:', error);
   }
 }
 

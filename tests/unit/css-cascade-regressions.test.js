@@ -63,6 +63,229 @@ describe('stylesheet cascade regressions', () => {
     );
   });
 
+  describe('Quick Access page tab strip', () => {
+    const strip = (barClass = '', otherPage = '') => `
+      <div class="section-header quick-access-header">
+        <div id="quick-access-tabs" class="quick-access-tabs ${barClass}">
+          <div class="quick-access-tab-scroll">
+            <div class="quick-access-tab active">
+              <button class="tab-link quick-access-tab-link active" tabindex="0" data-focus-visible>
+                <span class="quick-access-tab-label">Home</span>
+              </button>
+              <button class="qa-tab-btn qa-tab-rename" data-focus-visible></button>
+              <button class="qa-tab-btn qa-tab-delete"></button>
+            </div>${otherPage}
+          </div>
+        </div>
+        <button class="qa-tab-add" data-focus-visible><span>Add page</span></button>
+        <div class="section-buttons"></div>
+      </div>`;
+
+    // The pages scroll inside the bar; the bar is the pill, so it keeps its shape.
+    it('scrolls the pages in the strip, without a scrollbar, and not the bar itself', () => {
+      render('', strip());
+      const scroller = document.querySelector('.quick-access-tab-scroll');
+      const bar = document.getElementById('quick-access-tabs');
+
+      expect(resolvedValue(scroller, 'overflow-x')).toBe('auto');
+      expect(resolvedValue(scroller, 'scrollbar-width')).toBe('none');
+      expect(resolvedValue(bar, 'overflow-x')).toBeNull();
+      expect(resolvedValue(bar, 'overflow-y')).toBeNull();
+    });
+
+    it('does not squeeze a page to make room, since the strip scrolls', () => {
+      render('', strip());
+      expect(resolvedValue(document.querySelector('.quick-access-tab'), 'flex')).toBe('0 0 auto');
+    });
+
+    // The strip clips whatever is outside a page, and the global focus rule would put it there.
+    it.each(THEME_CASES)(
+      'draws the focus ring inside the pages and their buttons (%s)',
+      (_, theme) => {
+        render(theme, strip());
+
+        for (const control of document.querySelectorAll(
+          '.quick-access-tab-scroll [data-focus-visible]'
+        )) {
+          expect(resolvedValue(control, 'outline-offset')).toBe('-2px');
+          // The readable preset draws a thicker ring of its own, in the same place.
+          expect(resolvedValue(control, 'outline')).toMatch(/^[23]px solid /);
+          expect(resolvedValue(control, 'box-shadow')).toBe('none');
+        }
+      }
+    );
+
+    it('fades the edge that clips pages', () => {
+      render('', strip());
+      const scroller = document.querySelector('.quick-access-tab-scroll');
+      expect(resolvedValue(scroller, 'mask-image')).toBeNull();
+      scroller.dataset.overflow = 'right';
+      expect(resolvedValue(scroller, 'mask-image')).toMatch(/linear-gradient\(to right/);
+      scroller.dataset.overflow = 'both';
+      expect(resolvedValue(scroller, 'mask-image')).toMatch(/transparent/);
+    });
+
+    it('lets the rename field stand alone, without the page buttons or highlight behind it', () => {
+      render('reorganize', strip('reorganize'));
+      const page = document.querySelector('.quick-access-tab');
+      const button = page.querySelector('.qa-tab-rename');
+      expect(resolvedValue(button, 'display')).not.toBe('none');
+      expect(resolvedValue(page, 'box-shadow')).not.toBe('none');
+
+      page.insertAdjacentHTML('afterbegin', '<input class="qa-tab-rename-input" type="text">');
+      expect(resolvedValue(button, 'display')).toBe('none');
+      expect(resolvedValue(page, 'box-shadow')).toBe('none');
+      expect(resolvedValue(page, 'background')).toBe('none');
+    });
+
+    it('is as tall editing as it is as the pill, so the grid does not move', () => {
+      render('reorganize', strip('reorganize'));
+      expect(resolvedValue(document.getElementById('quick-access-tabs'), 'min-height')).toBe(
+        '32px'
+      );
+      expect(resolvedValue(document.querySelector('.quick-access-tab'), 'min-height')).toBe('28px');
+      expect(resolvedValue(document.querySelector('.qa-tab-add'), 'min-height')).toBe('28px');
+    });
+
+    it('lines up with the cards and tiles, and keeps Add page in the header beside the strip', () => {
+      render('reorganize', strip('reorganize'));
+      const header = document.querySelector('.quick-access-header');
+      expect(resolvedValue(header, 'padding-inline')).toBe('0');
+      expect(resolvedValue(document.getElementById('quick-access-tabs'), 'flex')).toBe('0 1 auto');
+      expect(resolvedValue(document.querySelector('.qa-tab-add'), 'flex')).toBe('0 0 auto');
+    });
+
+    it('gives the page buttons targets of at least 24px, and the delete button some room', () => {
+      render('reorganize', strip('reorganize'));
+      const rename = document.querySelector('.qa-tab-rename');
+      expect(resolvedValue(rename, 'width')).toBe('24px');
+      expect(resolvedValue(rename, 'height')).toBe('24px');
+      expect(resolvedValue(document.querySelector('.qa-tab-delete'), 'margin-inline-start')).toBe(
+        '0.25rem'
+      );
+    });
+
+    it('cuts a long page name short rather than letting it fill the strip', () => {
+      render('', strip());
+      const link = document.querySelector('.quick-access-tab-link');
+      const label = document.querySelector('.quick-access-tab-label');
+      expect(resolvedValue(link, 'max-width')).toBe('34ch');
+      expect(resolvedValue(label, 'text-overflow')).toBe('ellipsis');
+      expect(resolvedValue(label, 'overflow')).toBe('hidden');
+      render('reorganize', strip('reorganize'));
+      expect(resolvedValue(document.querySelector('.quick-access-tab-link'), 'max-width')).toBe(
+        '28ch'
+      );
+    });
+
+    it('keeps a page and its buttons inside the strip, clear of the fades', () => {
+      const other = `<div class="quick-access-tab"><button class="tab-link"></button></div>`;
+      render('reorganize', strip('reorganize', other));
+      const tab = document.querySelector('.quick-access-tab');
+      // A page wider than the strip would have its last button under the fade or out of reach, so
+      // the name gives way: the page is capped, its link may shrink, its buttons may not.
+      expect(resolvedValue(tab, 'max-width')).toMatch(/^calc\(100% - 2 \* \d+px\)$/);
+      const link = document.querySelector('.quick-access-tab-link');
+      expect(resolvedValue(link, 'min-width')).toBe('0');
+      expect(resolvedValue(link, 'flex-shrink')).toBe('1');
+      expect(resolvedValue(document.querySelector('.qa-tab-rename'), 'flex')).toBe('none');
+    });
+
+    // The strip is as wide as its pages, so a lone page that gave up the width of the fades would
+    // be trimmed for nothing: its name would shrink to nothing in the default one-page dashboard.
+    it('lets a lone page use the whole strip, since there is nothing to scroll to', () => {
+      render('reorganize', strip('reorganize'));
+      expect(resolvedValue(document.querySelector('.quick-access-tab'), 'max-width')).toBe('100%');
+    });
+
+    it('gives up the words of Add page in a narrow window, and keeps them otherwise', () => {
+      render('reorganize', strip('reorganize'));
+      const label = document.querySelector('.qa-tab-add span');
+      expect(resolvedValue(label, 'display')).toBeNull();
+      expect(resolvedValue(label, 'display', { viewport: { width: 360, height: 600 } })).toBe(
+        'none'
+      );
+    });
+  });
+
+  describe('edit mode on the Quick Access grid', () => {
+    const tiles = () => `
+      <div id="quick-controls" class="controls-grid reorganize-mode">
+        <div class="control-item" data-entity-id="light.a"></div>
+        <div class="control-item comparison-graph-tile" data-entity-id="graph:g"></div>
+      </div>`;
+
+    it('does not pack the grid densely, which would part the picture from the saved order', () => {
+      render('', tiles());
+      expect(resolvedValue(document.getElementById('quick-controls'), 'grid-auto-flow')).toBeNull();
+    });
+
+    it('makes room for the buttons above the content of a compact tile', () => {
+      render('density-compact', tiles());
+      const tile = document.querySelector('[data-entity-id="light.a"]');
+      const grid = document.getElementById('quick-controls');
+      expect(resolvedValue(grid, '--qa-tile-height')).toBe('96px');
+      expect(resolvedValue(tile, 'padding-top')).toBe('32px');
+
+      render('density-compact', tiles().replace(' reorganize-mode', ''));
+      expect(resolvedValue(document.getElementById('quick-controls'), '--qa-tile-height')).toBe(
+        '78px'
+      );
+    });
+
+    it('hides the corner labels the buttons would cover', () => {
+      render(
+        '',
+        `<div class="reorganize-mode"><div class="control-item">
+          <span class="camera-tile-preview-badge"></span><span class="comparison-graph-range"></span>
+        </div></div>`
+      );
+      for (const label of document.querySelectorAll('.control-item span')) {
+        expect(resolvedValue(label, 'visibility')).toBe('hidden');
+      }
+    });
+
+    it('shrinks the buttons to fit the 82px tiles of a narrow window', () => {
+      const markup = `<div class="reorganize-mode"><div class="control-item">
+        <button class="rename-btn"></button><button class="remove-btn"></button>
+        <button class="desktop-pin-quick-toggle"></button>
+      </div></div>`;
+      render('', markup);
+      const rename = document.querySelector('.rename-btn');
+      expect(resolvedValue(rename, 'width')).toBe('24px');
+      const narrow = { viewport: { width: 340, height: 600 } };
+      for (const button of document.querySelectorAll('.control-item button')) {
+        expect(resolvedValue(button, 'width', narrow)).toBe('20px');
+      }
+      // Centre to centre they stay 24px apart: 6px in, 20px wide, then 30px from the far edge.
+      expect(resolvedValue(rename, 'inset-inline-end', narrow)).toBe('30px');
+      expect(resolvedValue(document.querySelector('.remove-btn'), 'inset-inline-end', narrow)).toBe(
+        '6px'
+      );
+    });
+
+    it('lets a touch or pen drag follow the pointer, and tilts the native drag image', () => {
+      render(
+        '',
+        `<div class="reorganize-mode">
+          <div class="control-item sortable-drag sortable-fallback"></div>
+          <div class="control-item sortable-drag"></div>
+        </div>`
+      );
+      const [clone, native] = document.querySelectorAll('.control-item');
+      // The settle that eases tiles into place would make the clone trail behind the pointer.
+      expect(resolvedValue(clone, 'transition')).toBe('none');
+      // The clone is positioned with an inline transform, which a transform rule would replace.
+      expect(resolvedValue(clone, 'transform')).toBeNull();
+      // The individual properties apply outside that transform, so a lift or tilt on the clone
+      // would scale and turn the finger's offset: the clone would drift away from the finger.
+      expect(resolvedValue(clone, 'scale')).toBe('none');
+      expect(resolvedValue(clone, 'rotate')).toBe('none');
+      expect(resolvedValue(native, 'scale')).toBe('1.05');
+      expect(resolvedValue(native, 'rotate')).toBe('2deg');
+    });
+  });
+
   describe('confirmation dialog stacking', () => {
     // The confirmation is a static element; dialogs built later are appended after it and share the
     // backdrop tier, so only a higher tier keeps "Delete graph" from opening behind its own editor.
@@ -892,15 +1115,26 @@ describe('stylesheet cascade regressions', () => {
       ).toMatch(/^linear-gradient\(to right, #ffb45f/);
     });
 
-    it('leaves transparent tile and transport buttons alone', () => {
+    it('leaves transparent tile buttons alone', () => {
       render(
         THEMES['readable light'],
-        `<div class="control-item"><button class="tile-primary-button"></button></div>
-        <div class="media-detail-controls"><button class="btn"></button></div>`
+        `<div class="control-item"><button class="tile-primary-button"></button></div>`
+      );
+
+      expect(resolvedValue(document.querySelector('button'), 'background')).toBe('transparent');
+    });
+
+    // The transport buttons are round chips now, so they take the readable fill like every other
+    // button instead of staying bare glyphs.
+    it.each(readableThemes)('draws the media transport as readable buttons (%s)', (theme) => {
+      render(
+        theme,
+        `<div class="media-detail-controls"><button class="btn"></button>
+        <button class="btn play-pause-btn"></button></div>`
       );
 
       for (const button of document.querySelectorAll('button')) {
-        expect(resolvedValue(button, 'background')).toBe('transparent');
+        expect(isOpaque(resolvedValue(button, 'background'))).toBe(true);
       }
     });
   });
@@ -931,6 +1165,23 @@ describe('stylesheet cascade regressions', () => {
 
       for (const button of buttons) expect(resolvedValue(button, 'flex')).toBe('0 1 auto');
       expect(minimumButtons + minimumGap * (buttons.length - 1)).toBeLessThanOrEqual(rowWidth);
+    });
+  });
+
+  describe('media dialog seek chips', () => {
+    it('grow into pills for a unit longer than a letter, as in "−10 Sek."', () => {
+      render(
+        '',
+        `<div class="media-detail-controls">
+          <button class="btn media-detail-seek-btn">\u221210 Sek.</button>
+          <button class="btn media-detail-prev-btn"></button>
+        </div>`
+      );
+      const [seek, previous] = document.querySelectorAll('button');
+
+      expect(resolvedValue(seek, 'width')).toBe('auto');
+      expect(resolvedValue(seek, 'min-width')).toBe('44px');
+      expect(resolvedValue(previous, 'width')).toBe('44px');
     });
   });
 

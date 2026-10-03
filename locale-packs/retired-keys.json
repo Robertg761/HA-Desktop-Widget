@@ -1,0 +1,226 @@
+{
+  "Enable Profile Sync (Opt-in)": {
+    "retiredIn": "4.0.0",
+    "reason": "Profile Sync settings were rebuilt for 4.0 (PR #104)."
+  },
+  "Sync your widget profile across devices using a shared JSON file in iCloud, Dropbox, OneDrive, or similar.": {
+    "retiredIn": "4.0.0",
+    "reason": "Profile Sync settings were rebuilt for 4.0 (PR #104)."
+  },
+  "Profile Sync is still experimental. Use it at your own risk, and please report bugs in the Issues section.": {
+    "retiredIn": "4.0.0",
+    "reason": "Profile Sync settings were rebuilt for 4.0 (PR #104)."
+  },
+  "Issues section": {
+    "retiredIn": "4.0.0",
+    "reason": "Profile Sync settings were rebuilt for 4.0 (PR #104)."
+  },
+  "First-time conflict:": {
+    "retiredIn": "4.0.0",
+    "reason": "Profile Sync settings were rebuilt for 4.0 (PR #104)."
+  },
+  "Both local and remote profiles have data.": {
+    "retiredIn": "4.0.0",
+    "reason": "Profile Sync settings were rebuilt for 4.0 (PR #104)."
+  },
+  "Profile sync: idle": {
+    "retiredIn": "4.0.0",
+    "reason": "Profile Sync settings were rebuilt for 4.0 (PR #104).",
+    "en": "idle"
+  },
+  "Profile sync: success": {
+    "retiredIn": "4.0.0",
+    "reason": "Profile Sync settings were rebuilt for 4.0 (PR #104).",
+    "en": "success"
+  },
+  "Profile sync: error": {
+    "retiredIn": "4.0.0",
+    "reason": "Profile Sync settings were rebuilt for 4.0 (PR #104).",
+    "en": "error"
+  },
+  "Profile sync: needs resolution": {
+    "retiredIn": "4.0.0",
+    "reason": "Profile Sync settings were rebuilt for 4.0 (PR #104).",
+    "en": "needs resolution"
+  },
+  "Status: {{state}} | Last sync: {{time}}": {
+    "retiredIn": "4.0.0",
+    "reason": "Profile Sync settings were rebuilt for 4.0 (PR #104)."
+  },
+  "Cloud Folder File (Free)": {
+    "retiredIn": "4.0.0",
+    "reason": "Profile Sync settings were rebuilt for 4.0 (PR #104)."
+  },
+  "Defaults to this device's local app data folder. Change it to a shared cloud/sync folder when you want cross-device sync.": {
+    "retiredIn": "4.0.0",
+    "reason": "Profile Sync settings were rebuilt for 4.0 (PR #104)."
+  },
+  "Quick Access/Layout (favorites, desktop pins, custom names/icons, tabs, primary cards)": {
+    "retiredIn": "4.0.0",
+    "reason": "Profile Sync settings were rebuilt for 4.0 (PR #104)."
+  },
+  "Visual Personalization (theme, accent/background, opacity, frosted glass, always-on-top)": {
+    "retiredIn": "4.0.0",
+    "reason": "Profile Sync settings were rebuilt for 4.0 (PR #104)."
+  },
+  "Automation & Alerts (global hotkeys, alerts, popup hotkey behavior)": {
+    "retiredIn": "4.0.0",
+    "reason": "Profile Sync settings were rebuilt for 4.0 (PR #104)."
+  },
+  "Connection/Media Preferences (weather entity and primary media player)": {
+    "retiredIn": "4.0.0",
+    "reason": "Profile Sync settings were rebuilt for 4.0 (PR #104)."
+  },
+  "Open setup instructions for profile sync.": {
+    "retiredIn": "4.0.0",
+    "reason": "Profile Sync settings were rebuilt for 4.0 (PR #104)."
+  },
+  "<strong>Warning:</strong> Profile Sync is still experimental. Use it at your own risk, and please report bugs in the <a href='https://github.com/Robertg761/HA-Desktop-Widget/issues' target='_blank' rel='noopener noreferrer'>Issues section</a>.": {
+    "retiredIn": "4.0.0",
+    "reason": "Profile Sync settings were rebuilt for 4.0 (PR #104)."
+  },
+  "Encryption is still waiting to be enabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.": {
+    "retiredIn": "4.0.0",
+    "reason": "Sync and encryption messages were rewritten for 4.0 (PR #129)."
+  },
+  "Encryption is still waiting to be disabled. Enter the current passphrase and save again, or restore the encryption checkbox to cancel. Sync is paused until this is resolved.": {
+    "retiredIn": "4.0.0",
+    "reason": "Sync and encryption messages were rewritten for 4.0 (PR #129)."
+  },
+  "That passphrase does not unlock the remote profile. Enter the current remote passphrase before attempting a key change.": {
+    "retiredIn": "4.0.0",
+    "reason": "Sync and encryption messages were rewritten for 4.0 (PR #129)."
+  },
+  "Profile sync conflict resolved.": {
+    "retiredIn": "4.0.0",
+    "reason": "Sync and encryption messages were rewritten for 4.0 (PR #129)."
+  },
+  "Remove the saved sync passphrase from this device?": {
+    "retiredIn": "4.0.0",
+    "reason": "Sync and encryption messages were rewritten for 4.0 (PR #129)."
+  },
+  "Copy the existing sync data file into the new folder and switch sync there?": {
+    "retiredIn": "4.0.0",
+    "reason": "Sync and encryption messages were rewritten for 4.0 (PR #129)."
+  },
+  "Kept current sync folder.": {
+    "retiredIn": "4.0.0",
+    "reason": "Sync and encryption messages were rewritten for 4.0 (PR #129)."
+  },
+  "A sync file already exists in the new folder. Overwrite it with your current synced data?": {
+    "retiredIn": "4.0.0",
+    "reason": "Sync and encryption messages were rewritten for 4.0 (PR #129)."
+  },
+  "Overwrite & Switch": {
+    "retiredIn": "4.0.0",
+    "reason": "Sync and encryption messages were rewritten for 4.0 (PR #129)."
+  },
+  "All Syncable Settings": {
+    "retiredIn": "4.0.0",
+    "reason": "Sync and encryption messages were rewritten for 4.0 (PR #129)."
+  },
+  "Visual Personalization Only": {
+    "retiredIn": "4.0.0",
+    "reason": "Sync and encryption messages were rewritten for 4.0 (PR #129)."
+  },
+  "Quick Access/Layout Only": {
+    "retiredIn": "4.0.0",
+    "reason": "Sync and encryption messages were rewritten for 4.0 (PR #129)."
+  },
+  "Custom (Advanced)": {
+    "retiredIn": "4.0.0",
+    "reason": "Sync and encryption messages were rewritten for 4.0 (PR #129)."
+  },
+  "Keep Quick Access, appearance, alerts, and weather and media choices the same on every computer through a folder your cloud or sync app already keeps in sync. The Home Assistant connection, desktop pins, hotkeys and window position stay on each computer.": {
+    "retiredIn": "4.0.0",
+    "reason": "Used only by 4.0.0 betas 3 to 10; replaced before 4.0.0 (PR #129)."
+  },
+  "Used to suggest its usual folder and to recognize its conflict copies.": {
+    "retiredIn": "4.0.0",
+    "reason": "Used only by 4.0.0 betas 3 to 10; replaced before 4.0.0 (PR #129)."
+  },
+  "Other synced folder": {
+    "retiredIn": "4.0.0",
+    "reason": "Used only by 4.0.0 betas 3 to 10; replaced before 4.0.0 (PR #129)."
+  },
+  "Encrypts the sync file with AES-256-GCM. Every computer needs the same passphrase.": {
+    "retiredIn": "4.0.0",
+    "reason": "Used only by 4.0.0 betas 3 to 10; replaced before 4.0.0 (PR #129)."
+  },
+  "{{time}}: the sync file’s {{sections}}": {
+    "retiredIn": "4.0.0",
+    "reason": "Used only by 4.0.0 betas 3 to 10; replaced before 4.0.0 (PR #129)."
+  },
+  "{{time}}: this computer’s {{sections}}": {
+    "retiredIn": "4.0.0",
+    "reason": "Used only by 4.0.0 betas 3 to 10; replaced before 4.0.0 (PR #129)."
+  },
+  "Reorganize mode enabled - Drag to reorder, click X to remove, ESC to exit": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded by the page tab strip rebuild (#136)"
+  },
+  "Compact light controls": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact climate controls": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact fan controls": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact cover controls": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact media controls": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact scene tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact action tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact {{domain}} controls": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact camera tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact status tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact numeric tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact select tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact presence tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact weather tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact vacuum tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  },
+  "Compact entity tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Pin windows are named after their entity now (#137)"
+  }
+}

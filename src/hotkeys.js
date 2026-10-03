@@ -100,7 +100,7 @@ function createCustomDropdownHTML(options, selectedAction, entityId) {
         <div class="custom-dropdown hotkey-action-dropdown" data-entity-id="${escapedEntityId}">
             <button type="button" class="custom-dropdown-trigger" aria-haspopup="listbox" aria-controls="${listboxId}" aria-expanded="false">
                 <span class="custom-dropdown-value">${selectedLabel}</span>
-                <svg class="custom-dropdown-arrow" width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <svg class="custom-dropdown-arrow" aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
             </button>

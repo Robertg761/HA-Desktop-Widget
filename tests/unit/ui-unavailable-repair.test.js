@@ -61,6 +61,7 @@ jest.mock('../../src/websocket.js', () => ({
 
 const ui = require('../../src/ui.js');
 const state = require('../../src/state.js').default;
+const uiUtils = require('../../src/ui-utils.js');
 
 const STALE_ID = 'light.renamed_away';
 
@@ -73,7 +74,10 @@ const replacement = {
 function setupConfig() {
   state.setConfig({
     homeAssistant: { url: 'http://ha.local', token: 'x' },
-    customTabs: [{ id: 'default', name: 'All', entityIds: [STALE_ID] }],
+    customTabs: [
+      { id: 'default', name: 'All', entityIds: [STALE_ID] },
+      { id: 'other', name: 'Other', entityIds: [] },
+    ],
     activeTabId: 'default',
     favoriteEntities: [STALE_ID],
     primaryCards: ['none', 'none'],
@@ -82,6 +86,12 @@ function setupConfig() {
 }
 
 const staleTile = () => document.querySelector(`.control-item[data-entity-id="${STALE_ID}"]`);
+
+// Redraws the grid from a config change, a page switch, rather than from renderActiveTab().
+async function switchAwayAndBack() {
+  await ui.switchQuickAccessPage('other');
+  await ui.switchQuickAccessPage('default');
+}
 
 describe('unavailable Quick Access tile repair affordance', () => {
   beforeEach(() => {
@@ -100,7 +110,7 @@ describe('unavailable Quick Access tile repair affordance', () => {
     // renderActiveTab() covers the empty-state grid with a "connecting" notice, but the grid also
     // re-renders on its own from config changes such as a page switch — that is where every
     // favorite would otherwise advertise a repair picker with nothing to pick from.
-    await ui.switchQuickAccessPage('default');
+    await switchAwayAndBack();
 
     const tile = staleTile();
     expect(tile).not.toBeNull();
@@ -160,7 +170,7 @@ describe('unavailable Quick Access tile repair affordance', () => {
 
   it('picks up the repair affordance when a reused tile sees entities arrive', async () => {
     state.setStates({});
-    await ui.switchQuickAccessPage('default');
+    await switchAwayAndBack();
     const firstTile = staleTile();
     expect(firstTile.classList.contains('repairable')).toBe(false);
 
@@ -174,6 +184,24 @@ describe('unavailable Quick Access tile repair affordance', () => {
 
     tile.click();
     expect(document.getElementById('entity-repair-modal')).not.toBeNull();
+  });
+
+  it('builds the picker from the shared field and list classes, with the search first', () => {
+    state.setStates({ [replacement.entity_id]: replacement });
+    ui.renderActiveTab();
+    staleTile().click();
+
+    const modal = document.getElementById('entity-repair-modal');
+    const search = modal.querySelector('input[type="search"]');
+    expect(search.closest('.form-group')).not.toBeNull();
+    expect(search.spellcheck).toBe(false);
+    expect(modal.querySelector('.modal-lead').textContent).toContain(STALE_ID);
+    // The search is the first thing to do here, so focus starts on it, not on the close button.
+    expect(uiUtils.trapFocus).toHaveBeenCalledWith(modal, { initialFocus: search });
+
+    search.value = 'no such entity';
+    search.dispatchEvent(new Event('input'));
+    expect(modal.querySelector('.entity-selector-empty').textContent).toMatch(/No matching/);
   });
 
   it('releases the repair modal focus trap by reference before detaching it', () => {
