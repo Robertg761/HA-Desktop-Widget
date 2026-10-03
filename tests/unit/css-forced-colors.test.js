@@ -93,7 +93,10 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
       'segmented option': '<button class="segmented-option active">Dark</button>',
       'Settings rail tab': '<button class="tab-link active">Appearance</button>',
       'running timer': '<div class="control-item timer-entity" data-state="active"></div>',
-      'pin power button': '<button class="desktop-pin-light-power" data-active="true"></button>',
+      'light pin power button':
+        '<button class="desktop-pin-power desktop-pin-light-power" data-active="true"></button>',
+      'fan pin power button':
+        '<button class="desktop-pin-power desktop-pin-fan-power" data-active="true"></button>',
       'pin panel button': '<button class="desktop-pin-panel-button" data-active="true"></button>',
       'lit tile':
         '<div id="quick-controls"><div class="control-item" data-active="true"></div></div>',

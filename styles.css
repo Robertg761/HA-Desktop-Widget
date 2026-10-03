@@ -6597,11 +6597,6 @@ body.theme-light.active-tile-glow #quick-controls .control-item[data-active='tru
   color: var(--text-faint);
 }
 
-body.active-tile-glow.high-contrast #quick-controls .control-item[data-active='true'] {
-  background-color: rgba(var(--accent-rgb), 0.26);
-  border-color: rgba(var(--accent-rgb), 0.8);
-}
-
 .control-icon {
   font-size: var(--font-size-2xl);
   width: 32px;
@@ -12934,6 +12929,28 @@ body.theme-light.opaque-panels:not(.high-contrast)
   background: color-mix(in srgb, var(--bg-primary), white 70%) !important;
 }
 
+/* The opaque fill above is a background shorthand, which also wiped the accent wash of an "on" tile
+   and the tint of a running or paused timer. Each is painted back as a layer over that fill: only
+   the background image is set, so the opaque colour underneath (the panel's, or the lifted tile's)
+   stays. */
+body.opaque-panels.active-tile-glow #quick-controls .control-item[data-active='true'] {
+  --active-tile-wash: color-mix(in srgb, rgb(var(--accent-rgb)) var(--dash-tile-wash), transparent);
+  background-image: linear-gradient(var(--active-tile-wash), var(--active-tile-wash)) !important;
+}
+
+body.opaque-panels.active-tile-glow #quick-controls .control-item[data-active='true']:hover {
+  --active-tile-wash: color-mix(
+    in srgb,
+    rgb(var(--accent-rgb)) var(--dash-tile-wash-hover),
+    transparent
+  );
+}
+
+body.opaque-panels #quick-controls .timer-entity:is([data-state='active'], [data-state='paused']) {
+  --timer-wash: color-mix(in srgb, rgb(var(--timer-rgb)) 18%, transparent);
+  background-image: linear-gradient(var(--timer-wash), var(--timer-wash)) !important;
+}
+
 /* A primary card holds its entity's tile, which fills the card. The panel colour rule above
    reaches that tile too and would cover the card's lift, so it stays clear and the card shows. */
 body.opaque-panels .status-card.primary-entity-card .control-item {
@@ -12981,7 +12998,8 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
   }
 
   /* The grey fill above also flattens the selected chip, whose accent border and tint were its
-     mark, so the chip keeps a heavier accent edge. */
+     mark, so the chip keeps a heavier accent edge. The same goes for the selected colour, the
+     Accent and Background choice, the edit button while editing, and a pin's on or current chip. */
   body.high-contrast
     :is(
       .climate-mode-btn,
@@ -12989,9 +13007,72 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
       .climate-preset-mode-btn,
       .media-mute-toggle
     ).active,
-  body.high-contrast .donate-amount-chip.selected {
+  body.high-contrast :is(.color-target-option.active, .section-btn.reorganize-active),
+  body.high-contrast .theme-option.selected,
+  body.high-contrast .donate-amount-chip.selected,
+  body.high-contrast :is(.desktop-pin-panel-button, .desktop-pin-power)[data-active='true'] {
     border-color: var(--accent) !important;
     box-shadow: inset 0 0 0 2px var(--accent);
+  }
+
+  /* The grey fill is !important, so a button's own hover colour never shows and nothing answered
+     the pointer. A hovered button lightens and takes a white edge instead. The primary fill and
+     the selected chips outrank this rule and keep theirs, and the tile's overlay button has to
+     stay clear or it would cover the tile's text. */
+  body.high-contrast
+    :is(button, select):hover:not(
+      :where(
+        :disabled,
+        [aria-disabled='true'],
+        .tile-primary-button,
+        .section-toggle,
+        .tab-link,
+        .light-color-swatch
+      )
+    ) {
+    background: #333 !important;
+    border-color: #fff !important;
+  }
+
+  /* Without a fill of their own these icon buttons were flat grey blocks, as dark as the panel
+     around them; an edge shows where they are. */
+  body.high-contrast :is(.media-tile-btn, .section-btn) {
+    border: 1px solid #aaa;
+    border-radius: var(--radius-md);
+  }
+
+  /* An on switch and an off one shared the grey track, told apart only by the side the knob sat
+     on. On is the accent with a dark knob, as the primary button is. */
+  body.high-contrast .form-group input[type='checkbox']:checked {
+    background: var(--accent) !important;
+    border-color: #fff !important;
+  }
+
+  body.high-contrast .form-group input[type='checkbox']:checked::after {
+    background: #141414 !important;
+    box-shadow: none !important;
+  }
+
+  /* An "on" tile is a wash of the accent in an accent edge two pixels wide, and a running or paused
+     timer takes its own colour the same way, the paused one dashed. With the opaque panels' fill
+     the wash is the layer set above; the edge is drawn on top. */
+  body.active-tile-glow.high-contrast #quick-controls .control-item[data-active='true'] {
+    background-color: rgba(var(--accent-rgb), 0.26);
+    border-color: var(--accent);
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+
+  body.high-contrast
+    #quick-controls
+    .timer-entity:is([data-state='active'], [data-state='paused']) {
+    border-color: rgb(var(--timer-rgb));
+    outline: 2px solid rgb(var(--timer-rgb));
+    outline-offset: -2px;
+  }
+
+  body.high-contrast #quick-controls .timer-entity[data-state='paused'] {
+    outline: 2px dashed rgb(var(--timer-rgb));
   }
 
   /* The rail marks its active page with the sliding pill (the active tab's own border is cancelled
@@ -16430,7 +16511,7 @@ body[data-season='thanksgiving'] .control-item {
   .custom-dropdown-option.selected,
   .donate-amount-chip.selected,
   .desktop-pin-panel-button[data-active='true'],
-  .desktop-pin-light-power[data-active='true'] {
+  .desktop-pin-power[data-active='true'] {
     outline: 2px solid Highlight;
     outline-offset: -2px;
   }
