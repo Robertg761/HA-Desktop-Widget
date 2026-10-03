@@ -749,11 +749,12 @@ body.linux-performance-mode {
 }
 
 /* Settings is the most see-through dialog (82 to 84% fill), counting on a 56px backdrop blur to
-   soften the dashboard behind it. Where that blur does not render (Linux's no-blur mode and the
-   software glass, or a machine without GPU compositing), the clock and tile labels show through
-   it crisp, so the panel carries its own legibility there, like the other dialogs. Windows and
-   macOS keep the glass. */
-body:is(.linux-performance-mode, .software-glass) {
+   soften the dashboard behind it. On Linux that blur is not a given (the software glass has none,
+   and a machine without GPU compositing draws none), so the clock and tile labels show through
+   the panel crisp, and it carries its own legibility there, like the other dialogs. Windows and
+   macOS keep the translucent panel, with or without Frosted glass: linux-performance-mode is not
+   Linux-only, so this keys on the platform. */
+body[data-platform='linux'] {
   --settings-modal-bg-alpha: 0.96;
   --settings-modal-panel-alpha: 0.96;
 }

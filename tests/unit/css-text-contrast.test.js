@@ -9,6 +9,7 @@ const {
   parseColor,
   resolvedValue,
 } = require('../helpers/css-cascade.js');
+const { applyWindowEffects } = require('../../src/ui-utils.js');
 const {
   NON_TEXT_MINIMUM,
   SCOPES,
@@ -275,17 +276,52 @@ describe('text contrast of the rules', () => {
   });
 
   describe('the Settings panel where blur does not render', () => {
-    it.each(['dark', 'light'])('is nearly opaque in Linux no-blur mode (%s)', (scope) => {
-      applyScope(SCOPES[scope], 'original');
-      document.body.classList.add('linux-performance-mode');
-      expect(resolvedValue(document.body, '--settings-modal-bg-alpha')).toBe('0.96');
-      expect(resolvedValue(document.body, '--settings-modal-panel-alpha')).toBe('0.96');
+    // The body each platform and Frosted glass choice gets, from the real applyWindowEffects.
+    const withoutAcrylic = { nativeGlassSupported: false };
+    const BODIES = {
+      'Linux without Frosted glass': ['linux', false],
+      'Linux with Frosted glass': ['linux', true],
+      'Windows 11 22H2 acrylic': ['win32', true],
+      'Windows without Frosted glass': ['win32', false],
+      'Windows before 11 22H2': ['win32', true, withoutAcrylic],
+      'macOS vibrancy': ['darwin', true],
+      'macOS without Frosted glass': ['darwin', false],
+    };
+    const settingsAlphas = (label) => {
+      const [platform, frostedGlass, desktopCapabilities] = BODIES[label];
+      window.electronAPI = { platform };
+      applyWindowEffects({ opacity: 0.8, frostedGlass, desktopCapabilities });
+      return [
+        Number(resolvedValue(document.body, '--settings-modal-bg-alpha')),
+        Number(resolvedValue(document.body, '--settings-modal-panel-alpha')),
+      ];
+    };
 
-      // Real glass (Windows and macOS) keeps the translucent panel it was designed with.
-      document.body.classList.remove('linux-performance-mode');
-      document.body.classList.add('native-glass', 'frosted-glass');
-      expect(Number(resolvedValue(document.body, '--settings-modal-bg-alpha'))).toBeLessThan(0.9);
+    afterEach(() => {
+      delete window.electronAPI;
+      delete document.body.dataset.platform;
     });
+
+    it.each(['dark', 'light'])('is nearly opaque on Linux, with or without glass (%s)', (scope) => {
+      for (const label of ['Linux without Frosted glass', 'Linux with Frosted glass']) {
+        applyScope(SCOPES[scope], 'original');
+        expect({ label, alphas: settingsAlphas(label) }).toEqual({ label, alphas: [0.96, 0.96] });
+      }
+    });
+
+    it.each(['dark', 'light'])(
+      'keeps the translucent panel on Windows and macOS, with glass or without (%s)',
+      (scope) => {
+        const kept = [];
+        for (const label of Object.keys(BODIES).filter((name) => !name.startsWith('Linux'))) {
+          applyScope(SCOPES[scope], 'original');
+          const [background, panel] = settingsAlphas(label);
+          kept.push({ label, translucent: background < 0.9 && panel < 0.95 });
+        }
+        expect(kept.filter(({ translucent }) => !translucent)).toEqual([]);
+        expect(kept).toHaveLength(5);
+      }
+    );
   });
 
   describe('field placeholders', () => {

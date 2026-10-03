@@ -1108,6 +1108,11 @@ function applyWindowEffects(config = {}) {
     const backgroundAlpha = mapWindowOpacityToBackgroundAlpha(opacity);
 
     body.classList.toggle('linux-performance-mode', linuxPerformanceMode);
+    // linux-performance-mode is also what Windows draws without acrylic, so a rule meant for Linux
+    // alone cannot key on it. An attribute rather than a class keeps the body's class list, which
+    // the glass tests pin per platform, as it was.
+    if (platform) body.dataset.platform = platform;
+    else delete body.dataset.platform;
     body.style.setProperty('--window-opacity', opacity.toFixed(3));
     body.style.setProperty('--window-bg-alpha', backgroundAlpha.toFixed(3));
     body.style.setProperty('--desktop-pin-window-opacity', backgroundAlpha.toFixed(3));

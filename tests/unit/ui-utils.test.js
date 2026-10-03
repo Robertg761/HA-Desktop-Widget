@@ -1598,6 +1598,22 @@ describe('UI Utilities', () => {
       expect(document.body.style.opacity).toBe('');
     });
 
+    it('names the platform on the body, since linux-performance-mode is not Linux alone', () => {
+      mockElectronAPI.platform = 'win32';
+      uiUtils.applyWindowEffects({ opacity: 0.75, frostedGlass: false });
+      // Windows without Frosted glass draws the Linux class but must not read as Linux.
+      expect(document.body.classList.contains('linux-performance-mode')).toBe(true);
+      expect(document.body.dataset.platform).toBe('win32');
+
+      mockElectronAPI.platform = 'linux';
+      uiUtils.applyWindowEffects({ opacity: 0.75, frostedGlass: true });
+      expect(document.body.dataset.platform).toBe('linux');
+
+      mockElectronAPI.platform = undefined;
+      uiUtils.applyWindowEffects({ opacity: 0.75, frostedGlass: false });
+      expect('platform' in document.body.dataset).toBe(false);
+    });
+
     it('keeps backdrop filters on Windows when frosted glass is enabled', () => {
       mockElectronAPI.platform = 'win32';
 
