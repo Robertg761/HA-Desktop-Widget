@@ -4749,6 +4749,41 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(mockElectronAPI.setDesktopPinEditMode).toHaveBeenLastCalledWith(false);
     });
 
+    it('leaves Reorganize mode when main ends the pins edit mode, and does nothing when it is off', () => {
+      state.setConfig({
+        ...state.CONFIG,
+        favoriteEntities: ['light.bedroom'],
+        customTabs: [{ id: 'default', name: 'All', entityIds: ['light.bedroom'] }],
+        activeTabId: 'default',
+      });
+      state.setStates({
+        'light.bedroom': {
+          entity_id: 'light.bedroom',
+          state: 'on',
+          attributes: { friendly_name: 'Bedroom Light' },
+        },
+      });
+      ui.renderActiveTab();
+      const quickControls = document.getElementById('quick-controls');
+
+      // Not reorganizing: no toggle, so a hide from the tray does not switch it on.
+      ui.exitReorganizeMode();
+      expect(quickControls.classList.contains('reorganize-mode')).toBe(false);
+      expect(mockElectronAPI.setDesktopPinEditMode).not.toHaveBeenCalled();
+
+      ui.toggleReorganizeMode();
+      expect(quickControls.classList.contains('reorganize-mode')).toBe(true);
+
+      // Main hid the window and ended the pins' edit mode: the dashboard follows it out, so the
+      // Reorganize button is back to starting the mode instead of needing two presses.
+      ui.exitReorganizeMode();
+      expect(quickControls.classList.contains('reorganize-mode')).toBe(false);
+      expect(mockElectronAPI.setDesktopPinEditMode).toHaveBeenLastCalledWith(false);
+      ui.toggleReorganizeMode();
+      expect(quickControls.classList.contains('reorganize-mode')).toBe(true);
+      ui.toggleReorganizeMode();
+    });
+
     it.each([
       [{}, 'true'],
       [{ 'light.bedroom': { x: 10, y: 20, width: 168, height: 148 } }, 'false'],

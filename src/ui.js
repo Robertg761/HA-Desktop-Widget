@@ -2148,6 +2148,15 @@ function toggleReorganizeMode() {
   } catch (error) {
     console.error('Error toggling reorganize mode:', error);
   }
+/**
+ * Leaves Reorganize mode if it is on. Main calls for this when it ended the pins' edit mode itself
+ * (it hid the window, taking the exit controls with it), so the dashboard does not come back
+ * reorganizing while the pins are no longer editable.
+ */
+function exitReorganizeMode() {
+  if (isReorganizeMode) toggleReorganizeMode();
+}
+
 }
 
 function addRemoveButtons() {
@@ -15385,6 +15394,7 @@ export {
   startTimeTicker,
   stopTimeTicker,
   updateTimerDisplays,
+  exitReorganizeMode,
   renderPrimaryCards,
   toggleReorganizeMode,
   populateQuickControlsList,

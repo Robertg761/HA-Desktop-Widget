@@ -388,13 +388,101 @@ describe('optional hide on focus loss', () => {
     expect(isSuppressed()).toBe(true);
   });
 
-  test('ends pin edit mode when the main window hides, whatever hid it', () => {
+  describe('ending pin edit mode when the main window hides', () => {
     const source = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
-    const hideHandler = source.slice(
-      source.indexOf("mainWindow.on('hide', () => {"),
-      source.indexOf("mainWindow.on('show', () => {")
-    );
-    expect(hideHandler).toMatch(/if \(desktopPinEditMode\) setDesktopPinEditMode\(false\);/);
+
+    // main.js's own functions and its real 'hide' handler, run against stand-ins for the rest.
+    function loadHideRuntime({ editMode = true } = {}) {
+      const mainWindow = new EventEmitter();
+      mainWindow.isDestroyed = () => false;
+      mainWindow.webContents = { send: jest.fn() };
+      const pinWindow = { isDestroyed: () => false, setMovable: jest.fn() };
+      const context = {
+        mainWindow,
+        desktopPinEditMode: editMode,
+        desktopPinResizeSessions: new Map(),
+        desktopPinWindows: new Map([['light.desk', pinWindow]]),
+        sendDesktopPinUpdate: jest.fn(),
+        endDesktopPinResizeSession: jest.fn(),
+        runBackgroundConfigMutation: jest.fn(),
+        saveConfig: jest.fn(),
+        pushConfigToRenderer: jest.fn(),
+        log: { warn: jest.fn() },
+        windowAutoHide: { handleHidden: jest.fn() },
+        popupWindowPresenter: { handleWindowHidden: jest.fn() },
+        notifyDesktopCompanionStateChanged: jest.fn(),
+      };
+      const slice = (from, to) => source.slice(source.indexOf(from), source.indexOf(to));
+      vm.runInNewContext(
+        [
+          slice('function applyDesktopPinEditModeToWindow(', '// A corner drag reports itself'),
+          slice("mainWindow.on('hide', () => {", "mainWindow.on('show', () => {"),
+        ].join('\n'),
+        context
+      );
+      return { context, mainWindow, pinWindow };
+    }
+
+    // The tray toggle, close to tray and minimize all end in this one 'hide' event.
+    test('ends it and tells the dashboard to leave Reorganize mode, whatever hid the window', () => {
+      const { context, mainWindow, pinWindow } = loadHideRuntime();
+
+      mainWindow.emit('hide');
+
+      expect(context.desktopPinEditMode).toBe(false);
+      expect(pinWindow.setMovable).toHaveBeenLastCalledWith(false);
+      expect(context.sendDesktopPinUpdate).toHaveBeenCalledWith('light.desk', {
+        type: 'edit-mode',
+      });
+      // The dashboard has to follow, or it shows Reorganize mode over pins that cannot be edited.
+      expect(mainWindow.webContents.send).toHaveBeenCalledTimes(1);
+      expect(mainWindow.webContents.send).toHaveBeenCalledWith('desktop-pin-edit-mode-ended');
+      expect(context.windowAutoHide.handleHidden).toHaveBeenCalled();
+    });
+
+    test('says nothing to the dashboard when the pins were not being edited', () => {
+      const { context, mainWindow, pinWindow } = loadHideRuntime({ editMode: false });
+
+      mainWindow.emit('hide');
+
+      expect(context.desktopPinEditMode).toBe(false);
+      expect(pinWindow.setMovable).not.toHaveBeenCalled();
+      expect(mainWindow.webContents.send).not.toHaveBeenCalled();
+      expect(context.windowAutoHide.handleHidden).toHaveBeenCalled();
+    });
+
+    test('sends the dashboard back out of Reorganize mode once per edit session', () => {
+      const { mainWindow } = loadHideRuntime();
+
+      mainWindow.emit('hide');
+      mainWindow.emit('hide');
+
+      expect(mainWindow.webContents.send).toHaveBeenCalledTimes(1);
+    });
+
+    test('the renderer subscribes and leaves Reorganize mode, but not in a desktop pin window', () => {
+      const rendererSource = fs.readFileSync(path.resolve(__dirname, '../../renderer.js'), 'utf8');
+      const block = rendererSource.slice(
+        rendererSource.indexOf('window.electronAPI.onDesktopPinEditModeEnded'),
+        rendererSource.indexOf('window.electronAPI.onEntityTileHotkeyRequested')
+      );
+      const run = (isPin) => {
+        let listener;
+        const context = {
+          IS_DESKTOP_PIN_MODE: isPin,
+          ui: { exitReorganizeMode: jest.fn() },
+          window: {
+            electronAPI: { onDesktopPinEditModeEnded: (callback) => (listener = callback) },
+          },
+        };
+        vm.runInNewContext(block, context);
+        listener();
+        return context.ui.exitReorganizeMode;
+      };
+
+      expect(run(false)).toHaveBeenCalledTimes(1);
+      expect(run(true)).not.toHaveBeenCalled();
+    });
   });
 
   test('main-process opt-in excludes desktop-layer mode and quitting', () => {

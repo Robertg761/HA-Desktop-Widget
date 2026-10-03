@@ -2903,6 +2903,20 @@ function setDesktopPinEditMode(enabled) {
   return { success: true, enabled: desktopPinEditMode };
 }
 
+/**
+ * Ends pin edit mode from the main process, because the window that holds its exit controls (the
+ * Reorganize button, Escape) is going away. Pin edit mode follows the main renderer's Reorganize
+ * mode, so the renderer is told too: left alone it would come back on show still reorganizing, with
+ * pins that are no longer editable, and the first press of the button would seem to do nothing.
+ */
+function endDesktopPinEditModeFromMainProcess() {
+  if (!desktopPinEditMode) return;
+  setDesktopPinEditMode(false);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('desktop-pin-edit-mode-ended');
+  }
+}
+
 // A corner drag reports itself in the bounds it sends: { width, height, resize: { corner, final } }.
 function normalizeDesktopPinResizeRequest(resize) {
   if (!isPlainObject(resize) || !DESKTOP_PIN_RESIZE_CORNERS.has(resize.corner)) return null;
@@ -7100,7 +7114,7 @@ function createWindow() {
   // from the tray or menu does not inherit the above-full-screen z-order.
   mainWindow.on('hide', () => {
     // Whatever hid the window, the pins cannot stay in edit mode: nothing is left to end it.
-    if (desktopPinEditMode) setDesktopPinEditMode(false);
+    endDesktopPinEditModeFromMainProcess();
     windowAutoHide.handleHidden();
     popupWindowPresenter.handleWindowHidden(mainWindow);
     notifyDesktopCompanionStateChanged();

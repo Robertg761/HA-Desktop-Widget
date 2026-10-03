@@ -2624,6 +2624,12 @@ window.electronAPI.onDesktopPinActionRequested((payload) => {
   ui.handleDesktopPinActionRequest(payload);
 });
 
+// Main ended the pins' edit mode because it hid this window; Reorganize mode goes with it.
+window.electronAPI.onDesktopPinEditModeEnded?.(() => {
+  if (IS_DESKTOP_PIN_MODE) return;
+  ui.exitReorganizeMode();
+});
+
 window.electronAPI.onEntityTileHotkeyRequested(({ entityId } = {}) => {
   if (IS_DESKTOP_PIN_MODE || !entityId) return;
   hotkeys.assignHotkeyToEntity(entityId);

@@ -87,6 +87,7 @@ const eventListeners = {
   desktopPinSnapshotNeeded: [],
   trayEntitiesRefreshNeeded: [],
   desktopPinActionRequested: [],
+  desktopPinEditModeEnded: [],
   entityTileHotkeyRequested: [],
   desktopCompanionStateChanged: [],
 };
@@ -459,6 +460,13 @@ function createMockElectronAPI() {
         if (index > -1) eventListeners.desktopPinActionRequested.splice(index, 1);
       };
     }),
+    onDesktopPinEditModeEnded: jest.fn((callback) => {
+      eventListeners.desktopPinEditModeEnded.push(callback);
+      return () => {
+        const index = eventListeners.desktopPinEditModeEnded.indexOf(callback);
+        if (index > -1) eventListeners.desktopPinEditModeEnded.splice(index, 1);
+      };
+    }),
     onEntityTileHotkeyRequested: jest.fn((callback) => {
       eventListeners.entityTileHotkeyRequested.push(callback);
       return () => {
@@ -571,6 +579,7 @@ function resetMockElectronAPI() {
   eventListeners.configPersistenceWarning = [];
   eventListeners.desktopPinUpdate = [];
   eventListeners.desktopPinActionRequested = [];
+  eventListeners.desktopPinEditModeEnded = [];
   eventListeners.entityTileHotkeyRequested = [];
   eventListeners.desktopCompanionStateChanged = [];
 }
