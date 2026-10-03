@@ -9885,16 +9885,16 @@ function createControlElement(entity, options = {}) {
       div.title = t('Click to toggle {{name}}', { name: utils.getEntityDisplayName(entity) });
     } else if (entity.entity_id.startsWith('light.')) {
       setupLightControls(div, entity);
-      div.title = t('Click to toggle, hold for brightness control');
+      div.title = getControlTileTitle(entity, t('Click to toggle, hold for brightness control'));
     } else if (entity.entity_id.startsWith('climate.')) {
       setupClimateControls(div, entity);
-      div.title = t('Click to toggle, hold for temperature control');
+      div.title = getControlTileTitle(entity, t('Click to toggle, hold for temperature control'));
     } else if (entity.entity_id.startsWith('fan.')) {
       setupFanControls(div, entity);
-      div.title = t('Click to toggle, hold for speed control');
+      div.title = getControlTileTitle(entity, t('Click to toggle, hold for speed control'));
     } else if (entity.entity_id.startsWith('cover.')) {
       setupCoverControls(div, entity);
-      div.title = t('Click to toggle, hold for position control');
+      div.title = getControlTileTitle(entity, t('Click to toggle, hold for position control'));
     } else if (entity.entity_id.startsWith('media_player.')) {
       div.title = t('Click to play/pause, hold for controls');
     } else if (domain === 'todo') {
@@ -10153,6 +10153,12 @@ function createUnavailableElement(entityId) {
     console.error('Error creating unavailable element:', error);
     return document.createElement('div');
   }
+}
+
+// A tile that opens controls has an instruction for its tooltip. The name leads it, so a name the
+// tile cuts short (it stops at two lines) can still be read in full.
+function getControlTileTitle(entity, hint) {
+  return t('{{name}}: {{state}}', { name: utils.getEntityDisplayName(entity), state: hint });
 }
 
 function applyQuickAccessTileAccessibility(div, entity) {
@@ -10520,12 +10526,18 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   }
 
   if (displayEntity.entity_id.startsWith('light.')) {
-    div.title = t('Click to toggle, hold for brightness control');
+    div.title = getControlTileTitle(
+      displayEntity,
+      t('Click to toggle, hold for brightness control')
+    );
     return true;
   }
 
   if (displayEntity.entity_id.startsWith('climate.')) {
-    div.title = t('Click to toggle, hold for temperature control');
+    div.title = getControlTileTitle(
+      displayEntity,
+      t('Click to toggle, hold for temperature control')
+    );
     if (stateEl) {
       const temp = getClimateTileTemperature(displayEntity);
       stateEl.textContent =
@@ -10535,12 +10547,12 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   }
 
   if (displayEntity.entity_id.startsWith('fan.')) {
-    div.title = t('Click to toggle, hold for speed control');
+    div.title = getControlTileTitle(displayEntity, t('Click to toggle, hold for speed control'));
     return true;
   }
 
   if (displayEntity.entity_id.startsWith('cover.')) {
-    div.title = t('Click to toggle, hold for position control');
+    div.title = getControlTileTitle(displayEntity, t('Click to toggle, hold for position control'));
     return true;
   }
 

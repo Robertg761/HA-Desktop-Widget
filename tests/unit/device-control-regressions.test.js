@@ -274,6 +274,27 @@ describe('device control and live data regressions', () => {
     expect(tile(item.entity_id).title).not.toMatch(/toggle/);
     expect(mockCallService).not.toHaveBeenCalled();
   });
+  // A tile stops a long name at two lines, so the tooltip is where the whole name can be read.
+  test.each([
+    ['light.audit_long', 'brightness'],
+    ['climate.audit_long', 'temperature'],
+    ['fan.audit_long', 'speed'],
+    ['cover.audit_long', 'position'],
+  ])(
+    'the %s tile names itself in front of its instruction, and keeps it after an update',
+    (id, control) => {
+      const longName =
+        'Upstairs hallway ceiling light above the stairs next to the master bedroom door';
+      const item = {
+        ...entity(id, id.startsWith('climate') ? 'heat' : 'on'),
+        attributes: { friendly_name: longName },
+      };
+      renderTiles([item]);
+      expect(tile(id).title).toBe(`${longName}: Click to toggle, hold for ${control} control`);
+      liveUpdate({ ...item, attributes: { ...item.attributes, friendly_name: `${longName} 2` } });
+      expect(tile(id).title).toContain(`${longName} 2: Click to toggle`);
+    }
+  );
   test('tile state is included in its accessible description and stays current', () => {
     const light = entity('light.audit', 'off');
     renderTiles([light]);
