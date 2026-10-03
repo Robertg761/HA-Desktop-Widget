@@ -351,6 +351,24 @@ describe('resizing a desktop pin in the main process', () => {
       expect(context.config.desktopPins['light.office']).toEqual(start);
     });
 
+    it('does not bring back a pin that was unpinned before the failed write ran', async () => {
+      jest.useFakeTimers();
+      const { context, pinWindow } = loadResizeRuntime({ bounds: start });
+      await frame(context, 200);
+      // Unpinning removes the pin from the config but leaves the drag's session to run out.
+      delete context.config.desktopPins['light.office'];
+      pinWindow.setBounds.mockClear();
+      context.sendDesktopPinUpdate.mockClear();
+      context.saveConfigDurably.mockResolvedValueOnce({ success: false, error: 'disk full' });
+
+      await jest.advanceTimersByTimeAsync(1600);
+
+      expect(context.config.desktopPins).not.toHaveProperty('light.office');
+      expect(pinWindow.setBounds).not.toHaveBeenCalled();
+      expect(context.sendDesktopPinUpdate).not.toHaveBeenCalled();
+      expect(context.desktopPinResizeSessions.size).toBe(0);
+    });
+
     it('restores a single keyboard step that cannot be saved', async () => {
       const { context, pinWindow } = loadResizeRuntime({ bounds: start });
       context.saveConfigDurably.mockResolvedValueOnce({ success: false, error: 'disk full' });

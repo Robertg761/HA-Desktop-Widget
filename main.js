@@ -3024,8 +3024,10 @@ function settleDesktopPinResize(entityId) {
 
 // Puts a pin back to what config.json holds after a drag whose save failed: the saved bounds and
 // layer position, in the config and on screen. A surface with no saved position goes back to where
-// it was drawn.
+// it was drawn. A pin unpinned while its save was running stays gone: unpinning does not end a
+// resize session, and restoring would put the removed pin back for the next save to write out.
 function restoreDesktopPinPersistedBounds(entityId, persisted, workArea) {
+  if (!config.desktopPins?.[entityId]) return;
   config.desktopPins[entityId] = persisted.bounds;
   if (persisted.layer) {
     setDesktopPinLayerPosition(entityId, persisted.layer.monitorName, persisted.layer.position);
