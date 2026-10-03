@@ -1,4 +1,5 @@
 import { applyDesktopAppearance } from './src/desktop-appearance.js';
+import { installClippedTextTooltips } from './src/clipped-text-tooltips.js';
 import { installLayerDrag } from './src/layer-drag.js';
 import desktopPinResize from './src/desktop-pin-resize.cjs';
 // Load all required modules (ES Modules)
@@ -3509,3 +3510,4 @@ window.addEventListener(
 );
 
 installLayerDrag();
+installClippedTextTooltips();
