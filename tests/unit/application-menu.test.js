@@ -2,6 +2,8 @@ const {
   attachEditHandlers,
   createApplicationMenuTemplate,
   createEditableContextMenuTemplate,
+  createSelectionContextMenuTemplate,
+  createSpellingContextMenuItems,
   installApplicationMenu,
   isPasteAcceleratorInput,
 } = require('../../src/application-menu.cjs');
@@ -160,4 +162,71 @@ describe('application edit menus', () => {
       expect(resume).toHaveBeenCalledTimes(1);
     }
   );
+  describe('spelling and selected text', () => {
+    function openMenu(params, translate) {
+      let handler;
+      const popup = jest.fn();
+      const Menu = { buildFromTemplate: jest.fn(() => ({ popup })) };
+      const webContents = {
+        on: (eventName, callback) => {
+          if (eventName === 'context-menu') handler = callback;
+        },
+        replaceMisspelling: jest.fn(),
+        session: { addWordToSpellCheckerDictionary: jest.fn() },
+      };
+      attachEditHandlers({ webContents }, Menu, 'linux', { translate });
+      const event = { preventDefault: jest.fn() };
+      handler(event, params);
+      return { Menu, webContents, event };
+    }
+
+    test('offers the dictionary suggestions and a way to add a misspelled word', () => {
+      const { Menu, webContents } = openMenu(
+        {
+          isEditable: true,
+          misspelledWord: 'recieve',
+          dictionarySuggestions: ['receive', 'relieve'],
+          editFlags: { canPaste: true },
+        },
+        (key) => (key === 'Add to dictionary' ? 'Zum Wörterbuch hinzufügen' : key)
+      );
+      const template = Menu.buildFromTemplate.mock.lastCall[0];
+
+      expect(template.slice(0, 4).map((item) => item.label ?? item.type)).toEqual([
+        'receive',
+        'relieve',
+        'Zum Wörterbuch hinzufügen',
+        'separator',
+      ]);
+      template[1].click();
+      expect(webContents.replaceMisspelling).toHaveBeenCalledWith('relieve');
+      template[2].click();
+      expect(webContents.session.addWordToSpellCheckerDictionary).toHaveBeenCalledWith('recieve');
+      // The edit actions still follow.
+      expect(template.map((item) => item.role).filter(Boolean)).toContain('paste');
+    });
+
+    test('adds nothing for a field without a misspelled word', () => {
+      const { Menu } = openMenu({ isEditable: true });
+
+      expect(Menu.buildFromTemplate.mock.lastCall[0][0]).toMatchObject({ role: 'undo' });
+      expect(createSpellingContextMenuItems({}, {})).toEqual([]);
+    });
+
+    test('copies selected text outside a field, and shows nothing without a selection', () => {
+      const selected = openMenu({
+        isEditable: false,
+        selectionText: 'light.desk_lamp',
+        editFlags: { canCopy: true },
+      });
+      expect(selected.event.preventDefault).toHaveBeenCalled();
+      expect(selected.Menu.buildFromTemplate.mock.lastCall[0]).toEqual([
+        { role: 'copy', label: 'Copy', enabled: true },
+      ]);
+
+      const plain = openMenu({ isEditable: false, selectionText: '   ' });
+      expect(plain.Menu.buildFromTemplate).not.toHaveBeenCalled();
+      expect(createSelectionContextMenuTemplate({ canCopy: false })[0].enabled).toBe(false);
+    });
+  });
 });

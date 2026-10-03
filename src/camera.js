@@ -1044,7 +1044,7 @@ function openExpandedCameraPreview(record, camera) {
           </span>
           <h2>${escapeHtml(displayName)}</h2>
         </div>
-        <button type="button" class="camera-expanded-preview-close" aria-label="${escapeHtmlAttribute(t('Close'))}">×</button>
+        <button type="button" class="close-btn camera-expanded-preview-close" aria-label="${escapeHtmlAttribute(t('Close'))}">×</button>
       </header>
       <div class="camera-expanded-preview-stage"></div>
       <footer class="camera-expanded-preview-footer">
@@ -1058,6 +1058,7 @@ function openExpandedCameraPreview(record, camera) {
     </div>
   `;
 
+  applyCloseButtonIcons(overlay);
   const stage = overlay.querySelector('.camera-expanded-preview-stage');
   const closeButton = overlay.querySelector('.camera-expanded-preview-close');
   const reconnectButton = overlay.querySelector('.camera-expanded-preview-reconnect');

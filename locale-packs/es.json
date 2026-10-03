@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.51",
+  "version": "1.2.52",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1608,9 +1608,9 @@
     "Turn on blur for the widget": "Activar el desenfoque para el widget",
     "Could not change Hyprland's blur.": "No se pudo cambiar el desenfoque de Hyprland.",
     "This list is read-only.": "Esta lista es de solo lectura.",
-    "No controls available": "No controls available",
-    "Invalid value": "Invalid value",
-    "Alarm code": "Alarm code",
+    "No controls available": "No hay controles disponibles",
+    "Invalid value": "Valor no válido",
+    "Alarm code": "Código de la alarma",
     "Hotkey for {{name}}": "Hotkey for {{name}}",
     "Arm {{name}} at home": "Arm {{name}} at home",
     "Arm {{name}} away": "Arm {{name}} away",
@@ -1619,9 +1619,9 @@
     "Arm {{name}} for vacation": "Arm {{name}} for vacation",
     "Disarm {{name}}": "Disarm {{name}}",
     "To control {{name}}, type \"arm\" or \"disarm\".": "To control {{name}}, type \"arm\" or \"disarm\".",
-    "Upcoming events for the next 7 days": "Upcoming events for the next 7 days",
-    "Page {{page}} of {{pages}} · {{count}} entities": "Page {{page}} of {{pages}} · {{count}} entities",
-    "Return to base": "Return to base",
+    "Upcoming events for the next 7 days": "Eventos de los próximos 7 días",
+    "Page {{page}} of {{pages}} · {{count}} entities": "Página {{page}} de {{pages}} · {{count}} entidades",
+    "Return to base": "Volver a la base",
     "Search settings": "Buscar ajustes",
     "{{count}} matching settings": "{{count}} ajustes coincidentes",
     "No matching settings": "No hay ajustes coincidentes",
@@ -1747,6 +1747,9 @@
     "Encrypts the sync file with AES-256-GCM. Every computer needs the same passphrase.": "Cifra el archivo de sincronización con AES-256-GCM. Todos los equipos necesitan la misma frase de contraseña.",
     "{{time}}: the sync file’s {{sections}}": "{{time}}: {{sections}} del archivo de sincronización",
     "{{time}}: this computer’s {{sections}}": "{{time}}: {{sections}} de este equipo",
-    "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.": "Desactiva la transparencia y aumenta el contraste del texto y de los bordes en todas partes. Mientras está activada, sustituye tus colores, el fondo de cristal esmerilado y los colores festivos."
+    "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.": "Desactiva la transparencia y aumenta el contraste del texto y de los bordes en todas partes. Mientras está activada, sustituye tus colores, el fondo de cristal esmerilado y los colores festivos.",
+    "Add to dictionary": "Añadir al diccionario",
+    "Remove Custom Color": "Eliminar color personalizado",
+    "Remove \"{{name}}\" from your custom colors?": "¿Eliminar «{{name}}» de tus colores personalizados?"
   }
 }

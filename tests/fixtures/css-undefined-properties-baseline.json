@@ -16,10 +16,8 @@
     "styles.css|--button-secondary-bg": 1,
     "styles.css|--button-secondary-bg-hover": 1,
     "styles.css|--button-secondary-text": 1,
-    "styles.css|--danger-bg": 1,
     "styles.css|--primary-alpha": 2,
     "styles.css|--primary-color": 2,
-    "styles.css|--surface": 1,
     "styles.css|--text-muted": 4
   }
 }

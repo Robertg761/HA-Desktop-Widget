@@ -11,6 +11,16 @@
 
 const TOKEN = 'visual-snapshot-token';
 
+// The settings a scene may change and the runner puts back afterwards (see run.cjs). A scene that
+// changes any other setting leaves it changed for every scene after it.
+const RESETTABLE_SETTINGS = [
+  'frostedGlass',
+  'customTabs',
+  'activeTabId',
+  'entityAlerts',
+  'primaryCards',
+];
+
 // Where the main window opens. The default (100, 100) puts a 660px window under the taskbar on a
 // 768px display; y=20 keeps all of it on screen. Pins are placed by the app, off to the side.
 const WINDOW_SIZE = { width: 500, height: 660 };
@@ -66,6 +76,28 @@ const PAGE_SETS = {
         'switch.coffee_maker',
       ],
     },
+  ],
+  // One tile for each dialog the other pages do not open: the helpers, a vacuum, a to-do list and a
+  // calendar, plus a favourite Home Assistant no longer has, which opens the repair picker.
+  dialogs: [
+    {
+      id: 'default',
+      name: 'Home',
+      entityIds: [
+        'input_select.house_mode',
+        'vacuum.robot',
+        'todo.shopping',
+        'calendar.family',
+        'light.old_kitchen',
+        'media_player.living_room',
+        'light.color_strip',
+        'fan.office',
+        'cover.garage',
+        'media_player.den_stereo',
+      ],
+    },
+    // The tab strip only exists with two pages, and the runner waits for it.
+    { id: 'spare', name: 'Spare', entityIds: ['light.desk_lamp'] },
   ],
 };
 
@@ -181,6 +213,61 @@ function buildStates(now = new Date()) {
       mode: 'slider',
       unit_of_measurement: '°C',
     }),
+    // An RGB light that also dims its white, a fan with speeds and presets, and a garage door
+    // with a position: the pop-ups with a slider and a row of chips.
+    entity('light.color_strip', 'on', {
+      friendly_name: 'Colour strip',
+      brightness: 180,
+      supported_color_modes: ['color_temp', 'rgb'],
+      color_mode: 'color_temp',
+      color_temp_kelvin: 3200,
+      min_color_temp_kelvin: 2000,
+      max_color_temp_kelvin: 6500,
+      rgb_color: [255, 180, 100],
+    }),
+    entity('fan.office', 'on', {
+      friendly_name: 'Office fan',
+      percentage: 66,
+      percentage_step: 33.3,
+      preset_modes: ['auto', 'sleep'],
+      preset_mode: null,
+      supported_features: 9,
+    }),
+    // A player that can seek, skip tracks and mute: every button of the media pop-up.
+    entity('media_player.den_stereo', 'playing', {
+      friendly_name: 'Den stereo',
+      media_title: 'Kind of Blue',
+      media_artist: 'Miles Davis',
+      volume_level: 0.4,
+      is_volume_muted: false,
+      media_duration: 540,
+      media_position: 120,
+      media_position_updated_at: stamp,
+      supported_features: 152511,
+    }),
+    entity('cover.garage', 'open', {
+      friendly_name: 'Garage door',
+      current_position: 70,
+      device_class: 'garage',
+      supported_features: 15,
+    }),
+    entity('input_select.house_mode', 'Home', {
+      friendly_name: 'House mode',
+      options: ['Home', 'Away', 'Night', 'Guests'],
+    }),
+    // Start, pause, stop and return to base (HA's VacuumEntityFeature bits 8192, 4, 8 and 16).
+    entity('vacuum.robot', 'docked', {
+      friendly_name: 'Robot vacuum',
+      supported_features: 8220,
+    }),
+    // Create and update items (TodoListEntityFeature bits 1 and 4).
+    entity('todo.shopping', '3', { friendly_name: 'Shopping list', supported_features: 5 }),
+    entity('calendar.family', 'off', {
+      friendly_name: 'Family calendar',
+      message: 'Dentist',
+      start_time: new Date(now.getTime() + 26 * 3600000).toISOString(),
+      all_day: false,
+    }),
     entity('alarm_control_panel.home_alarm', 'armed_home', {
       friendly_name: 'Home alarm',
       code_format: 'number',
@@ -211,10 +298,19 @@ function buildServices() {
   return {
     light: domain('turn_on', 'turn_off', 'toggle'),
     switch: domain('turn_on', 'turn_off', 'toggle'),
-    fan: domain('turn_on', 'turn_off', 'toggle', 'set_percentage'),
+    fan: domain('turn_on', 'turn_off', 'toggle', 'set_percentage', 'set_preset_mode'),
     lock: domain('lock', 'unlock', 'open'),
     climate: domain('set_temperature', 'set_hvac_mode', 'turn_on', 'turn_off'),
-    media_player: domain('media_play', 'media_pause', 'media_play_pause', 'volume_set'),
+    media_player: domain(
+      'media_play',
+      'media_pause',
+      'media_play_pause',
+      'media_previous_track',
+      'media_next_track',
+      'media_seek',
+      'volume_set',
+      'volume_mute'
+    ),
     alarm_control_panel: domain(
       'alarm_disarm',
       'alarm_arm_home',
@@ -224,8 +320,41 @@ function buildServices() {
       'alarm_arm_vacation'
     ),
     input_number: domain('set_value', 'increment', 'decrement'),
+    cover: domain('open_cover', 'close_cover', 'stop_cover', 'set_cover_position'),
+    input_select: domain('select_option'),
+    vacuum: domain('start', 'pause', 'stop', 'return_to_base'),
+    todo: domain('add_item', 'update_item', 'get_items'),
+    calendar: domain('get_events'),
     scene: domain('turn_on'),
     timer: domain('start', 'pause', 'cancel', 'finish'),
+  };
+}
+
+/**
+ * What the services that return data answer, keyed `domain.service`: the shopping list's items
+ * and the family calendar's events for the next week.
+ */
+function buildServiceResponses(now = new Date()) {
+  const at = (hours) => new Date(now.getTime() + hours * 3600000).toISOString();
+  return {
+    'todo.get_items': (message) => ({
+      [message.service_data?.entity_id || 'todo.shopping']: {
+        items: [
+          { uid: 'milk', summary: 'Oat milk', status: 'needs_action' },
+          { uid: 'bread', summary: 'Sourdough bread', status: 'needs_action' },
+          { uid: 'coffee', summary: 'Coffee beans', status: 'needs_action' },
+          { uid: 'soap', summary: 'Dish soap', status: 'completed' },
+        ],
+      },
+    }),
+    'calendar.get_events': (message) => ({
+      [message.service_data?.entity_id || 'calendar.family']: {
+        events: [
+          { summary: 'Dentist', start: at(26), end: at(27), description: 'Bring the new forms.' },
+          { summary: 'Parents evening', start: at(74), end: at(76) },
+        ],
+      },
+    }),
   };
 }
 
@@ -264,10 +393,12 @@ function buildConfig(haUrl) {
 
 module.exports = {
   PAGE_SETS,
+  RESETTABLE_SETTINGS,
   TOKEN,
   WINDOW_POSITION,
   WINDOW_SIZE,
   buildConfig,
+  buildServiceResponses,
   buildServices,
   buildStates,
 };

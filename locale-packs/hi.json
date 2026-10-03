@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.51",
+  "version": "1.2.52",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1608,9 +1608,9 @@
     "Turn on blur for the widget": "विजेट के लिए ब्लर चालू करें",
     "Could not change Hyprland's blur.": "Hyprland का ब्लर बदला नहीं जा सका।",
     "This list is read-only.": "यह सूची केवल पढ़ने के लिए है।",
-    "No controls available": "No controls available",
-    "Invalid value": "Invalid value",
-    "Alarm code": "Alarm code",
+    "No controls available": "कोई नियंत्रण उपलब्ध नहीं है",
+    "Invalid value": "अमान्य मान",
+    "Alarm code": "अलार्म कोड",
     "Hotkey for {{name}}": "Hotkey for {{name}}",
     "Arm {{name}} at home": "Arm {{name}} at home",
     "Arm {{name}} away": "Arm {{name}} away",
@@ -1619,9 +1619,9 @@
     "Arm {{name}} for vacation": "Arm {{name}} for vacation",
     "Disarm {{name}}": "Disarm {{name}}",
     "To control {{name}}, type \"arm\" or \"disarm\".": "To control {{name}}, type \"arm\" or \"disarm\".",
-    "Upcoming events for the next 7 days": "Upcoming events for the next 7 days",
-    "Page {{page}} of {{pages}} · {{count}} entities": "Page {{page}} of {{pages}} · {{count}} entities",
-    "Return to base": "Return to base",
+    "Upcoming events for the next 7 days": "अगले 7 दिनों के आगामी इवेंट",
+    "Page {{page}} of {{pages}} · {{count}} entities": "पेज {{page}} / {{pages}} · {{count}} एंटिटी",
+    "Return to base": "डॉक पर वापस भेजें",
     "Search settings": "सेटिंग खोजें",
     "{{count}} matching settings": "{{count}} मेल खाती सेटिंग",
     "No matching settings": "कोई मेल खाती सेटिंग नहीं",
@@ -1747,6 +1747,9 @@
     "Encrypts the sync file with AES-256-GCM. Every computer needs the same passphrase.": "सिंक फ़ाइल को AES-256-GCM से एन्क्रिप्ट करता है। हर कंप्यूटर को एक ही पासफ़्रेज़ चाहिए।",
     "{{time}}: the sync file’s {{sections}}": "{{time}}: सिंक फ़ाइल की {{sections}}",
     "{{time}}: this computer’s {{sections}}": "{{time}}: इस कंप्यूटर की {{sections}}",
-    "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.": "पारदर्शिता बंद करता है और हर जगह टेक्स्ट और किनारों का कंट्रास्ट बढ़ाता है। चालू रहने तक यह आपके रंग, फ्रॉस्टेड ग्लास पृष्ठभूमि और त्योहार के रंगों को ओवरराइड करता है।"
+    "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.": "पारदर्शिता बंद करता है और हर जगह टेक्स्ट और किनारों का कंट्रास्ट बढ़ाता है। चालू रहने तक यह आपके रंग, फ्रॉस्टेड ग्लास पृष्ठभूमि और त्योहार के रंगों को ओवरराइड करता है।",
+    "Add to dictionary": "शब्दकोश में जोड़ें",
+    "Remove Custom Color": "कस्टम रंग हटाएं",
+    "Remove \"{{name}}\" from your custom colors?": "\"{{name}}\" को अपने कस्टम रंगों से हटाएं?"
   }
 }

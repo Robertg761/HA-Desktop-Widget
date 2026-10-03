@@ -2,7 +2,7 @@
   "locale": "zh",
   "displayName": "简体中文",
   "englishName": "Chinese (Simplified)",
-  "version": "1.2.51",
+  "version": "1.2.52",
   "minAppVersion": "3.4.1",
   "notes": "Simplified Chinese language pack for HA Desktop Widget.",
   "messages": {
@@ -1608,9 +1608,9 @@
     "Turn on blur for the widget": "为小部件开启模糊",
     "Could not change Hyprland's blur.": "无法更改 Hyprland 的模糊设置。",
     "This list is read-only.": "此列表为只读。",
-    "No controls available": "No controls available",
-    "Invalid value": "Invalid value",
-    "Alarm code": "Alarm code",
+    "No controls available": "没有可用的控制项",
+    "Invalid value": "值无效",
+    "Alarm code": "警报代码",
     "Hotkey for {{name}}": "Hotkey for {{name}}",
     "Arm {{name}} at home": "Arm {{name}} at home",
     "Arm {{name}} away": "Arm {{name}} away",
@@ -1619,9 +1619,9 @@
     "Arm {{name}} for vacation": "Arm {{name}} for vacation",
     "Disarm {{name}}": "Disarm {{name}}",
     "To control {{name}}, type \"arm\" or \"disarm\".": "To control {{name}}, type \"arm\" or \"disarm\".",
-    "Upcoming events for the next 7 days": "Upcoming events for the next 7 days",
-    "Page {{page}} of {{pages}} · {{count}} entities": "Page {{page}} of {{pages}} · {{count}} entities",
-    "Return to base": "Return to base",
+    "Upcoming events for the next 7 days": "未来 7 天内的日程",
+    "Page {{page}} of {{pages}} · {{count}} entities": "第 {{page}} 页 / 共 {{pages}} 页 · {{count}} 个实体",
+    "Return to base": "返回基座",
     "Search settings": "搜索设置",
     "{{count}} matching settings": "{{count}} 项匹配的设置",
     "No matching settings": "没有匹配的设置",
@@ -1747,6 +1747,9 @@
     "Encrypts the sync file with AES-256-GCM. Every computer needs the same passphrase.": "使用 AES-256-GCM 加密同步文件。每台电脑都需要相同的密码短语。",
     "{{time}}: the sync file’s {{sections}}": "{{time}}：同步文件的{{sections}}",
     "{{time}}: this computer’s {{sections}}": "{{time}}：此电脑的{{sections}}",
-    "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.": "关闭透明效果，并在所有位置提高文字和边框的对比度。开启期间，它会覆盖你的颜色、磨砂玻璃背景和节日配色。"
+    "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.": "关闭透明效果，并在所有位置提高文字和边框的对比度。开启期间，它会覆盖你的颜色、磨砂玻璃背景和节日配色。",
+    "Add to dictionary": "添加到词典",
+    "Remove Custom Color": "移除自定义颜色",
+    "Remove \"{{name}}\" from your custom colors?": "要从自定义颜色中移除“{{name}}”吗？"
   }
 }

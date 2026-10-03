@@ -1702,5 +1702,8 @@
   "Details": "Details",
   "No unlocked system keyring (Secret Service) was found, so this computer cannot remember your Home Assistant sign-in or sync passphrase. Start gnome-keyring or KWallet, then restart the widget.": "No unlocked system keyring (Secret Service) was found, so this computer cannot remember your Home Assistant sign-in or sync passphrase. Start gnome-keyring or KWallet, then restart the widget.",
   "Needs Windows 11 version 22H2 or later.": "Needs Windows 11 version 22H2 or later.",
-  "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.": "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors."
+  "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.": "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.",
+  "Add to dictionary": "Add to dictionary",
+  "Remove Custom Color": "Remove Custom Color",
+  "Remove \"{{name}}\" from your custom colors?": "Remove \"{{name}}\" from your custom colors?"
 }

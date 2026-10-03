@@ -26,10 +26,12 @@ const os = require('os');
 const path = require('path');
 const { startMockHomeAssistant } = require('./mock-home-assistant.cjs');
 const {
+  RESETTABLE_SETTINGS,
   TOKEN,
   WINDOW_POSITION,
   WINDOW_SIZE,
   buildConfig,
+  buildServiceResponses,
   buildServices,
   buildStates,
 } = require('./fixture.cjs');
@@ -178,6 +180,7 @@ async function main() {
     token: TOKEN,
     states: buildStates(),
     services: buildServices(),
+    serviceResponses: buildServiceResponses(),
   });
   const haUrl = `http://127.0.0.1:${server.address().port}`;
   const baseConfig = buildConfig(haUrl);
@@ -215,7 +218,7 @@ async function main() {
     await sleep(1500);
 
     // What each scene is measured against: the fixture's own settings and window.
-    const settingsToReset = ['frostedGlass', 'customTabs', 'activeTabId'];
+    const settingsToReset = RESETTABLE_SETTINGS;
     function sceneSettings(scene) {
       const settings = Object.fromEntries(settingsToReset.map((key) => [key, baseConfig[key]]));
       return { ...settings, ...scene.config, ui: { ...baseConfig.ui, ...scene.ui } };

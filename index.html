@@ -14,7 +14,7 @@
   </head>
 
   <body>
-    <canvas id="weather-effects-canvas"></canvas>
+    <canvas id="weather-effects-canvas" aria-hidden="true"></canvas>
     <canvas id="seasonal-effects-canvas" aria-hidden="true"></canvas>
     <div id="desktop-pin-app" class="desktop-pin-shell" aria-live="polite">
       <div class="desktop-pin-header">
@@ -37,6 +37,7 @@
         </div>
         <div id="desktop-pin-empty-actions" class="desktop-pin-empty-actions hidden">
           <button
+            type="button"
             id="desktop-pin-focus-btn"
             class="control-btn desktop-pin-action desktop-pin-empty-action"
             data-i18n="Open widget"
@@ -112,6 +113,7 @@
       </div>
       <div class="header-controls">
         <button
+          type="button"
           id="persistent-notifications-btn"
           class="control-btn notification-bell-btn hidden"
           data-i18n-title="Home Assistant Notifications"
@@ -141,7 +143,13 @@
           </span>
           <span id="persistent-notifications-count" class="notification-bell-count">0</span>
         </button>
-        <button id="settings-btn" class="control-btn" data-i18n-title="Settings" title="Settings">
+        <button
+          type="button"
+          id="settings-btn"
+          class="control-btn"
+          data-i18n-title="Settings"
+          title="Settings"
+        >
           <svg
             class="icon line-icon"
             width="16"
@@ -160,7 +168,13 @@
             <circle cx="12" cy="12" r="3" />
           </svg>
         </button>
-        <button id="minimize-btn" class="control-btn" data-i18n-title="Minimize" title="Minimize">
+        <button
+          type="button"
+          id="minimize-btn"
+          class="control-btn"
+          data-i18n-title="Minimize"
+          title="Minimize"
+        >
           <svg
             class="icon line-icon"
             width="16"
@@ -221,7 +235,12 @@
               <div class="weather-condition" id="weather-condition">--</div>
             </div>
             <div class="weather-details">
-              <div class="weather-detail">
+              <div
+                class="weather-detail"
+                role="group"
+                aria-label="Humidity"
+                data-i18n-aria-label="Humidity"
+              >
                 <span class="detail-icon detail-icon-humidity" aria-hidden="true">
                   <svg
                     class="entity-line-icon"
@@ -241,7 +260,12 @@
                 </span>
                 <span class="detail-value" id="weather-humidity">--%</span>
               </div>
-              <div class="weather-detail">
+              <div
+                class="weather-detail"
+                role="group"
+                aria-label="Wind"
+                data-i18n-aria-label="Wind"
+              >
                 <span class="detail-icon detail-icon-wind" aria-hidden="true">
                   <svg
                     class="entity-line-icon"
@@ -311,18 +335,21 @@
           </div>
           <div class="media-tile-controls">
             <button
+              type="button"
               class="media-tile-btn"
               id="media-tile-prev"
               data-i18n-title="Previous"
               title="Previous"
             ></button>
             <button
+              type="button"
               class="media-tile-btn media-tile-btn-play"
               id="media-tile-play"
               data-i18n-title="Play/Pause"
               title="Play/Pause"
             ></button>
             <button
+              type="button"
               class="media-tile-btn"
               id="media-tile-next"
               data-i18n-title="Next"
@@ -350,6 +377,7 @@
           >
           <div class="section-buttons">
             <button
+              type="button"
               id="undo-dashboard-btn"
               class="section-btn"
               data-i18n-title="Undo dashboard edit"
@@ -361,6 +389,7 @@
               ↶
             </button>
             <button
+              type="button"
               id="reorganize-quick-controls-btn"
               class="section-btn"
               data-i18n-title="Reorganize Quick Access"
@@ -369,6 +398,7 @@
               ⋮⋮
             </button>
             <button
+              type="button"
               id="manage-quick-controls-btn"
               class="section-btn"
               data-i18n-title="Manage Quick Access"
@@ -412,6 +442,7 @@
           data-i18n-aria-label="Settings sections"
         >
           <button
+            type="button"
             class="tab-link active"
             role="tab"
             aria-selected="true"
@@ -439,6 +470,7 @@
             <span class="tab-link-label" data-i18n="General">General</span>
           </button>
           <button
+            type="button"
             class="tab-link"
             role="tab"
             aria-selected="false"
@@ -469,6 +501,7 @@
             <span class="tab-link-label" data-i18n="Appearance">Appearance</span>
           </button>
           <button
+            type="button"
             class="tab-link"
             role="tab"
             aria-selected="false"
@@ -496,6 +529,7 @@
             <span class="tab-link-label" data-i18n="Dashboard">Dashboard</span>
           </button>
           <button
+            type="button"
             class="tab-link"
             role="tab"
             aria-selected="false"
@@ -528,6 +562,7 @@
             <span class="tab-link-label" data-i18n="Hotkeys">Hotkeys</span>
           </button>
           <button
+            type="button"
             class="tab-link"
             role="tab"
             aria-selected="false"
@@ -555,6 +590,7 @@
             <span class="tab-link-label" data-i18n="Alerts">Alerts</span>
           </button>
           <button
+            type="button"
             class="tab-link"
             role="tab"
             aria-selected="false"
@@ -586,6 +622,8 @@
             <label for="settings-search" data-i18n="Search settings">Search settings</label>
             <input
               id="settings-search"
+              spellcheck="false"
+              autocapitalize="off"
               type="search"
               autocomplete="off"
               placeholder="Search settings"
@@ -613,6 +651,9 @@
                   <input
                     type="text"
                     id="ha-url"
+                    spellcheck="false"
+                    autocapitalize="off"
+                    autocomplete="off"
                     placeholder="http://homeassistant.local"
                     data-i18n-placeholder="http://homeassistant.local"
                   />
@@ -687,6 +728,7 @@
                 </details>
                 <div class="setting-row setting-row-action">
                   <button
+                    type="button"
                     id="connection-diagnostics-btn"
                     class="btn btn-secondary"
                     data-i18n="Connection diagnostics"
@@ -922,8 +964,7 @@
                     id="theme-options"
                     class="accent-theme-grid"
                     role="radiogroup"
-                    aria-label="Theme colors"
-                    data-i18n-aria-label="Theme colors"
+                    aria-labelledby="theme-options-label"
                   ></div>
                   <div class="form-help" id="theme-current-selection"></div>
                 </div>
@@ -963,8 +1004,6 @@
                             step="1"
                             placeholder="0-255"
                             inputmode="numeric"
-                            aria-label="Red channel"
-                            data-i18n-aria-label="Red channel"
                           />
                         </div>
                         <div class="custom-color-field">
@@ -982,8 +1021,6 @@
                             step="1"
                             placeholder="0-255"
                             inputmode="numeric"
-                            aria-label="Green channel"
-                            data-i18n-aria-label="Green channel"
                           />
                         </div>
                         <div class="custom-color-field">
@@ -1001,8 +1038,6 @@
                             step="1"
                             placeholder="0-255"
                             inputmode="numeric"
-                            aria-label="Blue channel"
-                            data-i18n-aria-label="Blue channel"
                           />
                         </div>
                         <div class="custom-color-field">
@@ -1014,6 +1049,9 @@
                           >
                           <input
                             id="custom-color-hex"
+                            spellcheck="false"
+                            autocapitalize="off"
+                            autocomplete="off"
                             type="text"
                             maxlength="7"
                             placeholder="#RRGGBB"
@@ -1066,6 +1104,9 @@
                       <div class="custom-theme-management-row">
                         <input
                           id="custom-color-name-input"
+                          spellcheck="false"
+                          autocapitalize="off"
+                          autocomplete="off"
                           type="text"
                           maxlength="48"
                           placeholder="Custom color name"
@@ -1131,7 +1172,11 @@
                 >
                   <p id="desktop-blur-status" class="form-help" role="status"></p>
                   <div class="setting-row-action">
-                    <button id="desktop-blur-toggle" class="btn btn-secondary hidden"></button>
+                    <button
+                      type="button"
+                      id="desktop-blur-toggle"
+                      class="btn btn-secondary hidden"
+                    ></button>
                   </div>
                 </div>
                 <div class="form-group setting-row setting-row-stacked" data-readable-overrides>
@@ -1412,9 +1457,16 @@
             </header>
             <section class="settings-group">
               <div class="settings-group-caption-row">
-                <h4 class="settings-group-caption" data-i18n="Primary Cards">Primary Cards</h4>
+                <h4
+                  id="primary-cards-title"
+                  class="settings-group-caption"
+                  data-i18n="Primary Cards"
+                >
+                  Primary Cards
+                </h4>
                 <button
                   id="primary-cards-reset"
+                  aria-describedby="primary-cards-title"
                   class="btn btn-link btn-sm"
                   type="button"
                   data-i18n="Reset"
@@ -1426,6 +1478,7 @@
                 <div class="form-group setting-row primary-card-row">
                   <div class="setting-text">
                     <span
+                      id="primary-card-1-label"
                       class="setting-label"
                       data-i18n="Card {{index}}"
                       data-i18n-vars='{"index": 1}'
@@ -1434,7 +1487,12 @@
                       >Weather (default)</span
                     >
                   </div>
-                  <div class="primary-card-actions segmented-control" data-primary-card="0">
+                  <div
+                    class="primary-card-actions segmented-control"
+                    data-primary-card="0"
+                    role="group"
+                    aria-labelledby="primary-card-1-label"
+                  >
                     <button
                       class="btn btn-secondary btn-sm"
                       type="button"
@@ -1467,6 +1525,7 @@
                 <div class="form-group setting-row primary-card-row">
                   <div class="setting-text">
                     <span
+                      id="primary-card-2-label"
                       class="setting-label"
                       data-i18n="Card {{index}}"
                       data-i18n-vars='{"index": 2}'
@@ -1475,7 +1534,12 @@
                       >Time (default)</span
                     >
                   </div>
-                  <div class="primary-card-actions segmented-control" data-primary-card="1">
+                  <div
+                    class="primary-card-actions segmented-control"
+                    data-primary-card="1"
+                    role="group"
+                    aria-labelledby="primary-card-2-label"
+                  >
                     <button
                       class="btn btn-secondary btn-sm"
                       type="button"
@@ -1540,13 +1604,23 @@
                       <input
                         type="text"
                         id="primary-cards-search"
+                        spellcheck="false"
+                        autocapitalize="off"
+                        autocomplete="off"
                         placeholder="Search entities..."
                         data-i18n-placeholder="Search entities..."
                       />
                     </div>
                     <div class="form-group">
-                      <label data-i18n="Available entities">Available entities</label>
-                      <div id="primary-cards-list" class="entity-selector-list"></div>
+                      <label id="primary-cards-list-label" data-i18n="Available entities"
+                        >Available entities</label
+                      >
+                      <div
+                        id="primary-cards-list"
+                        class="entity-selector-list"
+                        role="group"
+                        aria-labelledby="primary-cards-list-label"
+                      ></div>
                     </div>
                     <div
                       class="form-help"
@@ -1610,41 +1684,14 @@
               <h4 class="settings-group-caption" data-i18n="Media Tile">Media Tile</h4>
               <div class="settings-group-body">
                 <div class="form-group">
-                  <label for="primary-media-player-trigger" data-i18n="Primary media player">
+                  <label for="primary-media-player" data-i18n="Primary media player">
                     Primary media player
                   </label>
-                  <div class="custom-dropdown" id="primary-media-player-dropdown">
-                    <button
-                      type="button"
-                      class="custom-dropdown-trigger"
-                      id="primary-media-player-trigger"
-                      aria-haspopup="listbox"
-                      aria-expanded="false"
-                    >
-                      <span class="custom-dropdown-value">None (Hide Media Tile)</span>
-                      <svg
-                        class="custom-dropdown-arrow"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 16 16"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                      >
-                        <path
-                          d="M4 6L8 10L12 6"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                        />
-                      </svg>
-                    </button>
-                    <div class="custom-dropdown-menu" role="listbox" id="primary-media-player-menu">
-                      <div class="custom-dropdown-option" role="option" data-value="">
-                        None (Hide Media Tile)
-                      </div>
-                    </div>
-                  </div>
+                  <select id="primary-media-player">
+                    <option value="" data-i18n="None (Hide Media Tile)">
+                      None (Hide Media Tile)
+                    </option>
+                  </select>
                   <p class="form-help" data-i18n="Shown in the media bar under the top cards.">
                     Shown in the media bar under the top cards.
                   </p>
@@ -1692,6 +1739,9 @@
                         <input
                           type="text"
                           id="custom-entity-icons-search"
+                          spellcheck="false"
+                          autocapitalize="off"
+                          autocomplete="off"
                           placeholder="Search entities..."
                           data-i18n-placeholder="Search entities..."
                         />
@@ -1706,8 +1756,15 @@
                       </button>
                     </div>
                     <div class="form-group">
-                      <label data-i18n="Entity icon overrides">Entity icon overrides</label>
-                      <div id="custom-entity-icons-list" class="entity-selector-list"></div>
+                      <label id="custom-entity-icons-list-label" data-i18n="Entity icon overrides"
+                        >Entity icon overrides</label
+                      >
+                      <div
+                        id="custom-entity-icons-list"
+                        class="entity-selector-list"
+                        role="group"
+                        aria-labelledby="custom-entity-icons-list-label"
+                      ></div>
                     </div>
                     <div class="form-help" id="custom-entity-icons-summary">
                       No custom icons configured.
@@ -1776,6 +1833,9 @@
                 <div class="form-group">
                   <textarea
                     id="desktop-bindings"
+                    spellcheck="false"
+                    autocapitalize="off"
+                    autocomplete="off"
                     readonly
                     rows="4"
                     aria-label="Hyprland bindings"
@@ -1784,6 +1844,7 @@
                 </div>
                 <div class="setting-row setting-row-action">
                   <button
+                    type="button"
                     id="desktop-bindings-copy"
                     class="btn btn-secondary"
                     data-i18n="Copy bindings"
@@ -1791,6 +1852,7 @@
                     Copy bindings
                   </button>
                   <button
+                    type="button"
                     id="desktop-integration-refresh"
                     class="btn btn-secondary"
                     data-i18n="Refresh shortcut status"
@@ -1818,13 +1880,25 @@
                     Popup hotkey changes take effect immediately.
                   </p>
                   <div class="popup-hotkey-config">
-                    <input type="text" id="popup-hotkey-input" readonly />
-                    <button id="popup-hotkey-set-btn" class="btn btn-secondary btn-small">
+                    <input
+                      type="text"
+                      id="popup-hotkey-input"
+                      spellcheck="false"
+                      autocapitalize="off"
+                      autocomplete="off"
+                      readonly
+                    />
+                    <button
+                      type="button"
+                      id="popup-hotkey-set-btn"
+                      class="btn btn-secondary btn-sm"
+                    >
                       Set hotkey
                     </button>
                     <button
+                      type="button"
                       id="popup-hotkey-clear-btn"
-                      class="btn btn-danger btn-small"
+                      class="btn btn-danger btn-sm"
                       style="display: none"
                       data-i18n="Action: Clear"
                     >
@@ -1834,19 +1908,22 @@
                   <div class="preset-hotkey-row">
                     <span class="setting-label" data-i18n="Suggestions">Suggestions</span>
                     <button
-                      class="btn btn-secondary btn-small preset-hotkey-btn"
+                      type="button"
+                      class="btn btn-secondary btn-sm preset-hotkey-btn"
                       data-hotkey="Ctrl+Shift+Space"
                     >
                       Ctrl+Shift+Space
                     </button>
                     <button
-                      class="btn btn-secondary btn-small preset-hotkey-btn"
+                      type="button"
+                      class="btn btn-secondary btn-sm preset-hotkey-btn"
                       data-hotkey="Ctrl+Alt+H"
                     >
                       Ctrl+Alt+H
                     </button>
                     <button
-                      class="btn btn-secondary btn-small preset-hotkey-btn"
+                      type="button"
+                      class="btn btn-secondary btn-sm preset-hotkey-btn"
                       data-hotkey="Ctrl+Shift+F12"
                     >
                       Ctrl+Shift+F12
@@ -1916,6 +1993,11 @@
                     <input
                       type="text"
                       id="hotkey-entity-search"
+                      spellcheck="false"
+                      autocapitalize="off"
+                      autocomplete="off"
+                      aria-label="Search entities"
+                      data-i18n-aria-label="Search entities"
                       placeholder="Search entities to assign hotkeys..."
                       data-i18n-placeholder="Search entities to assign hotkeys..."
                     />
@@ -1991,10 +2073,10 @@
                     </p>
                   </div>
                   <div class="update-actions">
-                    <button id="check-updates-btn" class="btn btn-secondary" disabled>
+                    <button type="button" id="check-updates-btn" class="btn btn-secondary" disabled>
                       <span id="check-updates-text">Check for updates</span>
                     </button>
-                    <button id="install-update-btn" class="btn btn-primary hidden">
+                    <button type="button" id="install-update-btn" class="btn btn-primary hidden">
                       <span id="install-update-text">Install update</span>
                     </button>
                   </div>
@@ -2154,6 +2236,9 @@
                       <input
                         type="text"
                         id="profile-sync-folder-path"
+                        spellcheck="false"
+                        autocapitalize="off"
+                        autocomplete="off"
                         class="form-control"
                         placeholder="Choose a synced folder..."
                         data-i18n-placeholder="Choose a synced folder..."
@@ -2497,6 +2582,7 @@
                 </div>
                 <div class="setting-row setting-row-action">
                   <button
+                    type="button"
                     id="dashboard-history-btn"
                     class="btn btn-secondary"
                     data-i18n="Restore dashboard"
@@ -2504,6 +2590,7 @@
                     Restore dashboard
                   </button>
                   <button
+                    type="button"
                     id="view-logs-btn"
                     class="btn btn-secondary"
                     title="Opens the log file location in your file explorer"
@@ -2544,8 +2631,12 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button id="save-settings" class="btn btn-primary" data-i18n="Save">Save</button>
-          <button id="cancel-settings" class="btn btn-secondary" data-i18n="Cancel">Cancel</button>
+          <button type="button" id="save-settings" class="btn btn-primary" data-i18n="Save">
+            Save
+          </button>
+          <button type="button" id="cancel-settings" class="btn btn-secondary" data-i18n="Cancel">
+            Cancel
+          </button>
         </div>
       </div>
     </div>
@@ -2577,6 +2668,11 @@
             <input
               type="text"
               id="quick-controls-search"
+              spellcheck="false"
+              autocapitalize="off"
+              autocomplete="off"
+              aria-label="Search entities"
+              data-i18n-aria-label="Search entities"
               placeholder="Search entities..."
               data-i18n-placeholder="Search entities..."
               class="form-control"
@@ -2626,10 +2722,17 @@
           <p id="confirm-message">Are you sure?</p>
         </div>
         <div class="modal-footer">
-          <button id="confirm-cancel-btn" class="btn btn-secondary" data-i18n="Cancel">
+          <button
+            type="button"
+            id="confirm-cancel-btn"
+            class="btn btn-secondary"
+            data-i18n="Cancel"
+          >
             Cancel
           </button>
-          <button id="confirm-ok-btn" class="btn btn-danger" data-i18n="Remove">Remove</button>
+          <button type="button" id="confirm-ok-btn" class="btn btn-danger" data-i18n="Remove">
+            Remove
+          </button>
         </div>
       </div>
     </div>
@@ -2766,16 +2869,35 @@
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label data-i18n="Select weather entity">Select weather entity</label>
-            <div id="weather-entities-list" class="entity-selector-list">
+            <label id="weather-entities-list-label" data-i18n="Select weather entity"
+              >Select weather entity</label
+            >
+            <div
+              id="weather-entities-list"
+              class="entity-selector-list"
+              role="group"
+              aria-labelledby="weather-entities-list-label"
+            >
               <!-- Available weather entities will be loaded here -->
             </div>
           </div>
           <div class="form-group">
-            <label data-i18n="Current weather entity">Current weather entity</label>
-            <div id="current-weather-info" class="weather-info">
+            <label id="current-weather-label" data-i18n="Current weather entity"
+              >Current weather entity</label
+            >
+            <div
+              id="current-weather-info"
+              class="weather-info"
+              role="group"
+              aria-labelledby="current-weather-label"
+            >
               <span id="current-weather-name">None selected</span>
-              <button id="clear-weather" class="btn btn-secondary btn-sm" data-i18n="Action: Clear">
+              <button
+                type="button"
+                id="clear-weather"
+                class="btn btn-secondary btn-sm"
+                data-i18n="Action: Clear"
+              >
                 Clear
               </button>
             </div>
@@ -2810,6 +2932,11 @@
             <input
               type="text"
               id="hotkey-search"
+              aria-label="Search entities"
+              data-i18n-aria-label="Search entities"
+              spellcheck="false"
+              autocapitalize="off"
+              autocomplete="off"
               placeholder="Search entities..."
               data-i18n-placeholder="Search entities..."
               class="form-control"
@@ -2868,6 +2995,11 @@
             <input
               type="text"
               id="alert-search"
+              aria-label="Search entities"
+              data-i18n-aria-label="Search entities"
+              spellcheck="false"
+              autocapitalize="off"
+              autocomplete="off"
               placeholder="Search entities..."
               data-i18n-placeholder="Search entities..."
               class="form-control"
@@ -2929,8 +3061,9 @@
           <div class="form-group">
             <label for="hotkey-input" data-i18n="Hotkey combination">Hotkey combination</label>
             <button
+              type="button"
               id="hotkey-input"
-              class="form-control hotkey-capture-btn"
+              class="btn btn-secondary btn-block hotkey-capture-btn"
               data-i18n="Click to set hotkey"
             >
               Click to set hotkey
@@ -2945,8 +3078,12 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button id="save-hotkey" class="btn btn-primary" data-i18n="Save">Save</button>
-          <button id="cancel-hotkey" class="btn btn-secondary" data-i18n="Cancel">Cancel</button>
+          <button type="button" id="save-hotkey" class="btn btn-primary" data-i18n="Save">
+            Save
+          </button>
+          <button type="button" id="cancel-hotkey" class="btn btn-secondary" data-i18n="Cancel">
+            Cancel
+          </button>
         </div>
       </div>
     </div>
@@ -3041,6 +3178,9 @@
             <input
               type="text"
               id="target-state-input"
+              spellcheck="false"
+              autocapitalize="off"
+              autocomplete="off"
               maxlength="255"
               placeholder="e.g., on, off, open, closed"
               data-i18n-placeholder="e.g., on, off, open, closed"
@@ -3052,8 +3192,12 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button id="save-alert" class="btn btn-primary" data-i18n="Save">Save</button>
-          <button id="cancel-alert" class="btn btn-secondary" data-i18n="Cancel">Cancel</button>
+          <button type="button" id="save-alert" class="btn btn-primary" data-i18n="Save">
+            Save
+          </button>
+          <button type="button" id="cancel-alert" class="btn btn-secondary" data-i18n="Cancel">
+            Cancel
+          </button>
         </div>
       </div>
     </div>
@@ -3084,14 +3228,26 @@
             <input
               type="text"
               id="alert-entity-picker-search"
+              spellcheck="false"
+              autocapitalize="off"
+              autocomplete="off"
+              aria-label="Search entities"
+              data-i18n-aria-label="Search entities"
               placeholder="Search entities..."
               data-i18n-placeholder="Search entities..."
               class="form-control"
             />
           </div>
           <div class="form-group">
-            <label data-i18n="Select an entity for the alert">Select an entity for the alert</label>
-            <div id="alert-entity-picker-list" class="entity-selector-list">
+            <label id="alert-entity-picker-list-label" data-i18n="Select an entity for the alert"
+              >Select an entity for the alert</label
+            >
+            <div
+              id="alert-entity-picker-list"
+              class="entity-selector-list"
+              role="group"
+              aria-labelledby="alert-entity-picker-list-label"
+            >
               <!-- Available entities will be loaded here -->
             </div>
           </div>

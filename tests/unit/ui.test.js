@@ -3390,6 +3390,14 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       return document.querySelector('.rename-modal');
     }
 
+    it('lists the Tile Settings buttons in the order they are read and tabbed through', () => {
+      const modal = seedOfficeTemperatureTile();
+
+      expect(
+        [...modal.querySelectorAll('.modal-footer button')].map((button) => button.id)
+      ).toEqual(['cancel-rename-btn', 'reset-rename-btn', 'save-rename-btn']);
+    });
+
     it('switches a sensor tile to a gauge with a custom range from the settings modal', async () => {
       const modal = seedOfficeTemperatureTile();
       const chartSelect = modal.querySelector('#tile-chart-type-select');
@@ -7061,6 +7069,58 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       const nameInput = document.querySelector('.comparison-graph-modal input.form-control');
       expect(nameInput.maxLength).toBe(40);
+    });
+
+    it('names the comparison graph editor fields, the sensor buttons and the graph tile', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      state.setConfig({ ...state.CONFIG, comparisonGraphs: [] });
+      state.setStates({
+        'sensor.hall_temp': {
+          entity_id: 'sensor.hall_temp',
+          state: '19',
+          attributes: { friendly_name: 'Hall temp', unit_of_measurement: '°C' },
+        },
+      });
+      ui.renderActiveTab();
+      await ui.addComparisonGraphTile();
+
+      const modal = document.querySelector('.comparison-graph-modal');
+      const [nameLabel, widthLabel] = modal.querySelectorAll('label');
+      const nameInput = modal.querySelector('input.form-control');
+      const widthSelect = modal.querySelector('select.form-control');
+      expect(nameLabel.htmlFor).toBe(nameInput.id);
+      expect(widthLabel.htmlFor).toBe(widthSelect.id);
+      expect(nameInput.id).not.toBe('');
+
+      const search = [...modal.querySelectorAll('input')].find((input) => input !== nameInput);
+      expect(search.getAttribute('aria-label')).toBe('Search sensors…');
+      expect(search.spellcheck).toBe(false);
+
+      const row = modal.querySelector('.entity-item');
+      const described = document.getElementById(
+        row.querySelector('button').getAttribute('aria-describedby')
+      );
+      expect(described.textContent).toBe('Hall temp');
+
+      const tile = document.querySelector('.comparison-graph-tile');
+      expect(tile.getAttribute('role')).toBe('group');
+      expect(tile.getAttribute('aria-label')).toBe(nameInput.value);
+    });
+
+    it('shows the kept name again when the graph name is cleared', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      state.setConfig({ ...state.CONFIG, comparisonGraphs: [] });
+      ui.renderActiveTab();
+      await ui.addComparisonGraphTile();
+
+      const nameInput = document.querySelector('.comparison-graph-modal input.form-control');
+      const kept = nameInput.value;
+      expect(kept).not.toBe('');
+      nameInput.value = '';
+      nameInput.dispatchEvent(new Event('change'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(nameInput.value).toBe(kept);
     });
 
     it('serializes comparison graph editor mutations while persistence is pending', async () => {

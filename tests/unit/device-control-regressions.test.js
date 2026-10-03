@@ -322,6 +322,23 @@ describe('device control and live data regressions', () => {
     expect(new Set(readoutIds).size).toBe(2);
     expect(document.querySelectorAll(`[id="${readoutIds[0]}"]`)).toHaveLength(1);
   });
+  test('a primary light card carries the light state its warm icon and glow key on', () => {
+    const light = entity('light.audit', 'on', { brightness: 200 });
+    document.body.innerHTML +=
+      '<div class="status-grid"><div id="weather-card"></div><div id="time-card"></div></div>';
+    state.setStates({ [light.entity_id]: light });
+    state.setConfig({ ...state.CONFIG, primaryCards: [light.entity_id, 'none'] });
+    ui.renderPrimaryCards();
+
+    const card = document.querySelector('.primary-light-card');
+    expect(card.dataset.state).toBe('on');
+
+    // The card outlives the control inside it, so a live change has to move the attribute too.
+    liveUpdate({ ...light, state: 'off', attributes: {} });
+    expect(card.dataset.state).toBe('off');
+    liveUpdate({ ...light, state: 'on' });
+    expect(card.dataset.state).toBe('on');
+  });
   test('calendar explains the date window and retries after an error', async () => {
     const calendar = entity('calendar.audit', 'off');
     state.setEntityState(calendar);
@@ -776,5 +793,118 @@ describe('device control and live data regressions', () => {
     });
     state.setEntityState(climate);
     expect(ui.describeQuickAccessTile(climate.entity_id).value).toBe(expected);
+  });
+  describe('dialogs built from the shared control classes', () => {
+    const classesOf = (element) => [...element.classList];
+
+    test('the helper dialog labels its field and gives it the form-group, button and lead classes', () => {
+      const helper = entity('input_number.audit', '3', { min: 0, max: 10, step: 1 });
+      state.setServices({ input_number: { set_value: {} } });
+      renderTiles([helper]);
+      tile(helper.entity_id).click();
+
+      const modal = document.querySelector('.helper-controls-modal');
+      const input = modal.querySelector('input');
+      const label = modal.querySelector('label');
+      expect(input.closest('.form-group')).not.toBeNull();
+      expect(label.htmlFor).toBe(input.id);
+      expect(modal.querySelector('.modal-lead').getAttribute('role')).toBe('status');
+      const apply = modal.querySelector('.entity-detail-actions button');
+      expect(classesOf(apply)).toEqual(['btn', 'btn-primary']);
+    });
+
+    test('a vacuum has one main action and quieter ones beside it', () => {
+      const robot = entity('vacuum.audit', 'docked', { supported_features: 8192 | 4 | 8 });
+      state.setServices({ vacuum: { start: {}, pause: {}, stop: {} } });
+      renderTiles([robot]);
+      tile(robot.entity_id).click();
+
+      const buttons = [...document.querySelectorAll('.helper-controls-modal button')].filter(
+        (button) => !button.classList.contains('close-btn')
+      );
+      expect(buttons.map((button) => classesOf(button).join(' '))).toEqual([
+        'btn btn-primary',
+        'btn btn-secondary',
+        'btn btn-secondary',
+      ]);
+    });
+
+    test('the alarm prompt labels its field and submits with a real button', () => {
+      void ui.requestAlarmCode(entity('alarm_control_panel.audit', 'armed_home', {}));
+      const modal = document.querySelector('.alarm-code-modal');
+      const input = modal.querySelector('input');
+
+      expect(modal.querySelector('label').htmlFor).toBe(input.id);
+      expect(input.closest('.form-group')).not.toBeNull();
+      const submit = modal.querySelector('button[type="submit"]');
+      expect(classesOf(submit)).toEqual(['btn', 'btn-primary']);
+      modal.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+
+    test('the calendar keeps its refresh in a toolbar with the date window', async () => {
+      const calendar = entity('calendar.audit', 'off');
+      state.setEntityState(calendar);
+      mockCallServiceWithResponse.mockResolvedValue({ 'calendar.audit': { events: [] } });
+      ui.openEntityControls(calendar);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const toolbar = document.querySelector('.calendar-modal .calendar-toolbar');
+      expect(toolbar.querySelector('.modal-lead').textContent).toContain('next 7 days');
+      expect(classesOf(toolbar.querySelector('button'))).toEqual([
+        'btn',
+        'btn-secondary',
+        'btn-sm',
+      ]);
+    });
+
+    test('the Manage Quick Access pager is made of compact secondary buttons', () => {
+      document.body.innerHTML += `<div id="quick-controls-modal"><div id="quick-controls-target-hint"></div>
+        <input id="quick-controls-search"><div id="quick-controls-list"></div></div>`;
+      state.setStates(
+        Object.fromEntries(
+          Array.from({ length: 60 }, (_, index) => {
+            const id = `sensor.pager_${index}`;
+            return [id, entity(id, String(index))];
+          })
+        )
+      );
+      ui.populateQuickControlsList();
+
+      const pager = document.getElementById('quick-controls-pagination');
+      const [previous, next] = pager.querySelectorAll('button');
+      expect(classesOf(previous)).toEqual(['btn', 'btn-secondary', 'btn-sm']);
+      expect(classesOf(next)).toEqual(['btn', 'btn-secondary', 'btn-sm']);
+      expect(pager.querySelector('.entity-selector-pagination-status').textContent).toBe(
+        'Page 1 of 2 · 60 entities'
+      );
+    });
+
+    test('the media dialog keeps one Mute label, flips aria-pressed, and says how far a seek jumps', () => {
+      state.setServices({
+        media_player: { media_seek: {}, volume_mute: {}, media_play_pause: {} },
+      });
+      const player = entity('media_player.audit', 'playing', {
+        supported_features: 2 | 4 | 8 | 16384,
+        volume_level: 0.5,
+        is_volume_muted: false,
+        media_duration: 300,
+        media_position: 30,
+      });
+      state.setEntityState(player);
+      ui.openEntityControls(player);
+      jest.advanceTimersByTime(20);
+
+      const mute = document.querySelector('.media-modal #media-mute-toggle');
+      expect(mute.textContent).toBe('Mute');
+      expect(mute.getAttribute('aria-pressed')).toBe('false');
+      mute.click();
+      expect(mute.textContent).toBe('Mute');
+      expect(mute.getAttribute('aria-pressed')).toBe('true');
+      expect(mute.classList.contains('active')).toBe(true);
+
+      const seek = [...document.querySelectorAll('.media-modal .media-detail-seek-btn')];
+      expect(seek.map((button) => button.textContent)).toEqual(['\u221210s', '+10s']);
+    });
   });
 });
