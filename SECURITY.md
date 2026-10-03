@@ -49,6 +49,18 @@ Expected handling is best effort for a maintainer-run project:
 - **Error handling**: Avoid logging Home Assistant tokens, sync passphrases, or other secrets.
 - **Token storage**: Preserve the existing token encryption and recovery behavior when changing config persistence.
 
+### Dependency Audit Exceptions
+
+CI runs `node scripts/check-audit.cjs` instead of a bare `npm audit`. It fails on any high or critical advisory in the whole dependency tree, development dependencies included, because Electron's runtime ships in every package.
+
+An advisory with no patched release yet can be excused in [`.github/audit-exceptions.json`](.github/audit-exceptions.json) so one unfixable advisory in a build tool does not turn every branch red. Each entry names the advisory (`ghsa`) and the vulnerable `package`, the newest affected version (`affectedUpTo`), the top-level packages it may be reached through (`allowedVia`), a one-sentence `reason`, and `added` and `expires` dates.
+
+Keep exceptions narrow, dated, and temporary:
+
+- **Narrow**: Only for advisories that are reached solely through build, lint, or packaging tools that never ship in the app. Never excuse something in the packaged runtime. An advisory that starts reaching any package outside `allowedVia` fails the check.
+- **Dated**: Set `expires` about a month out. After that date CI fails until someone re-checks for a patched release and either updates the dependency or renews the entry with a new date.
+- **Removed as soon as a fix exists**: The check fails when the registry has a version newer than `affectedUpTo`, and when an entry no longer matches any current advisory. Update the dependency and delete the entry in the same change. If the registry cannot be reached, only the newer-version check is skipped, with a warning.
+
 ## Current Security Model
 
 ### Local Data And Profile Sync
@@ -112,4 +124,4 @@ Thank you to security researchers and community members who help keep HA Desktop
 
 ---
 
-**Last updated**: September 30, 2026
+**Last updated**: October 2, 2026
