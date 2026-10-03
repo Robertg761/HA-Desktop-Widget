@@ -254,6 +254,48 @@ describe('WeatherEffectsManager', () => {
       expect(mockContext.stroke).toHaveBeenCalled();
     });
 
+    describe('with reduced motion, where the scene is drawn once', () => {
+      const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+      let mediaQuery;
+
+      beforeEach(() => {
+        mediaQuery = { matches: true, addEventListener: jest.fn(), removeEventListener: jest.fn() };
+        window.matchMedia = jest.fn().mockReturnValue(mediaQuery);
+      });
+
+      it('redraws it in the new theme when the theme changes', async () => {
+        const manager = new WeatherEffectsManager('weather-effects-canvas');
+        manager.setEffect('snowy');
+        expect(window.requestAnimationFrame).not.toHaveBeenCalled();
+        expect(mockContext.fillStyle).toBe('#ffffff');
+
+        document.body.classList.add('theme-light');
+        await flush();
+        expect(mockContext.fillStyle).not.toBe('#ffffff');
+        expect(mockContext.stroke).toHaveBeenCalled();
+
+        document.body.classList.remove('theme-light');
+        await flush();
+        expect(mockContext.fillStyle).toBe('#ffffff');
+        manager.destroy();
+      });
+
+      it('leaves it alone for a class change that is not the theme, and once destroyed', async () => {
+        const manager = new WeatherEffectsManager('weather-effects-canvas');
+        manager.setEffect('snowy');
+        mockContext.clearRect.mockClear();
+
+        document.body.classList.add('density-compact');
+        await flush();
+        expect(mockContext.clearRect).not.toHaveBeenCalled();
+
+        manager.destroy();
+        document.body.classList.add('theme-light');
+        await flush();
+        expect(mockContext.clearRect).not.toHaveBeenCalled();
+      });
+    });
+
     it('draws rain, cloud and sun in tones that show on white', () => {
       run('rainy', true);
       expect(contrastOnWhite(mockContext.strokeStyle)).toBeGreaterThanOrEqual(3);

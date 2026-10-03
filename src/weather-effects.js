@@ -50,6 +50,7 @@ export class WeatherEffectsManager {
     this.lightningOpacity = 0;
     this.reducedMotionQuery = null;
     this.reducedMotionChangeHandler = null;
+    this.themeObserver = null;
 
     // Resize handler
     this.resizeCanvas = this.resizeCanvas.bind(this);
@@ -58,11 +59,33 @@ export class WeatherEffectsManager {
 
     this.loop = this.loop.bind(this);
     this.setupReducedMotionListener();
+    this.setupThemeListener();
+  }
+
+  isLightTheme() {
+    return !!document.body?.classList.contains('theme-light');
   }
 
   /** The tones for the theme that is showing, read as each frame is drawn. */
   get colors() {
-    return document.body?.classList.contains('theme-light') ? LIGHT_COLORS : DARK_COLORS;
+    return this.isLightTheme() ? LIGHT_COLORS : DARK_COLORS;
+  }
+
+  /**
+   * An animated scene picks up a new theme on its next frame, but a reduced-motion scene is drawn
+   * once, so it would keep the old theme's tones (white snow on a light window) until something
+   * else redrew it. The theme is a class on the body, whoever changes it.
+   */
+  setupThemeListener() {
+    if (typeof MutationObserver !== 'function' || !document.body) return;
+    let wasLight = this.isLightTheme();
+    this.themeObserver = new MutationObserver(() => {
+      const isLight = this.isLightTheme();
+      if (isLight === wasLight) return;
+      wasLight = isLight;
+      if (this.activeEffect && this.prefersReducedMotion()) this.renderStaticFrame();
+    });
+    this.themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
   }
 
   setupReducedMotionListener() {
@@ -463,6 +486,7 @@ export class WeatherEffectsManager {
   destroy() {
     window.removeEventListener('resize', this.resizeCanvas);
     this.stopAnimation();
+    this.themeObserver?.disconnect();
     if (this.reducedMotionQuery && this.reducedMotionChangeHandler) {
       if (typeof this.reducedMotionQuery.removeEventListener === 'function') {
         this.reducedMotionQuery.removeEventListener('change', this.reducedMotionChangeHandler);
