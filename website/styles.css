@@ -1315,11 +1315,13 @@ kbd {
   .bento > .tile:nth-child(2), .bento > .tile:last-child { grid-column: span 6; }
 }
 
-/* The links and the buttons need about 880px; narrower than that the brand and 'Cloud Sync' wrapped
-   and the header grew taller than the offset anchored headings scroll to. */
-@media (max-width: 900px) {
-  .nav-links { display: none; }
-  .nav-actions { margin-left: auto; }
+/* The brand, the four links and the buttons need about 790px at full spacing. Just above the
+   760px where the links give way, the brand and 'Cloud Sync' used to wrap and the header grew
+   taller than the offset anchored headings scroll to; closer links keep them on one line down to
+   761px, so a tablet keeps its in-page links. */
+@media (max-width: 840px) {
+  .nav-inner { gap: 16px; }
+  .nav-links a { padding: 7px 8px; }
 }
 
 @media (max-width: 420px) {
@@ -1327,6 +1329,8 @@ kbd {
 }
 
 @media (max-width: 760px) {
+  .nav-links { display: none; }
+  .nav-actions { margin-left: auto; }
   .hero { padding-top: 56px; }
   .stage-wrap { margin: 48px -12px 0; }
   .stage {
