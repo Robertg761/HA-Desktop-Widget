@@ -251,6 +251,17 @@ function getAvailableWeatherEntities() {
     .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)));
 }
 
+// Desktop layer mode keeps the widget behind normal windows, so it has no use for being on top or
+// for hiding when it loses focus, and Settings turns both switches off. A disabled switch ignores
+// clicks but still shows its title on hover, which is where it says why.
+function syncLayerModeSwitchReasons() {
+  const reason = t('Desktop layer mode keeps the widget behind normal windows.');
+  for (const id of ['always-on-top', 'hide-on-blur']) {
+    const input = document.getElementById(id);
+    if (input) input.title = input.disabled ? reason : '';
+  }
+}
+
 function populateWeatherEntitySelect() {
   const select = document.getElementById('weather-entity-select');
   const help = document.getElementById('weather-entity-help');
@@ -4875,12 +4886,7 @@ function relocalizeOpenSettings({ force = false } = {}) {
     ) {
       weatherSelect.value = pendingWeather;
     }
-    const alwaysOnTop = document.getElementById('always-on-top');
-    if (alwaysOnTop) {
-      alwaysOnTop.title = alwaysOnTop.disabled
-        ? t('Desktop layer mode keeps the widget behind normal windows.')
-        : '';
-    }
+    syncLayerModeSwitchReasons();
     syncLanguageSelectOptions();
     renderLanguagePackList();
     updateLanguageSummaryText();
@@ -5106,15 +5112,13 @@ async function openSettings(uiHooks) {
       alwaysOnTop.checked =
         !state.CONFIG.desktopCapabilities?.layerMode && state.CONFIG.alwaysOnTop !== false;
       alwaysOnTop.disabled = !!state.CONFIG.desktopCapabilities?.layerMode;
-      alwaysOnTop.title = alwaysOnTop.disabled
-        ? t('Desktop layer mode keeps the widget behind normal windows.')
-        : '';
     }
     if (hideOnBlur) {
       hideOnBlur.checked =
         !state.CONFIG.desktopCapabilities?.layerMode && state.CONFIG.hideOnBlur === true;
       hideOnBlur.disabled = !!state.CONFIG.desktopCapabilities?.layerMode;
     }
+    syncLayerModeSwitchReasons();
     const followOmarchy = document.getElementById('follow-omarchy');
     if (followOmarchy) {
       followOmarchy.checked = !!state.CONFIG.ui?.followOmarchy;
