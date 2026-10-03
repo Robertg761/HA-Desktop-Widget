@@ -215,6 +215,9 @@ function buildStates(now = new Date()) {
       max_color_temp_kelvin: 6500,
     }),
     entity('switch.coffee_maker', 'off', { friendly_name: 'Coffee maker' }),
+    // On no page. The mock server refuses every service call for it, so a scene that runs its
+    // command from the command palette gets the "could not run command" error toast.
+    entity('light.unreachable', 'on', { friendly_name: 'Unreachable lamp' }),
     entity('sensor.office_temp', '21.4', {
       friendly_name: 'Office temp',
       unit_of_measurement: '°C',
@@ -520,7 +523,11 @@ function buildConfig(haUrl) {
   };
 }
 
+// Entities whose service calls the mock Home Assistant answers with an error.
+const FAILING_ENTITIES = ['light.unreachable'];
+
 module.exports = {
+  FAILING_ENTITIES,
   PAGE_SETS,
   RESETTABLE_SETTINGS,
   TOKEN,

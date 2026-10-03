@@ -14,6 +14,7 @@
  *            window (a desktop pin) instead of the main one
  *   pin      the entity a pin scene pins (only a label for the tests, which check that every
  *            desktop pin family has a scene)
+ *   keepToasts  photograph the toasts the setup raised; they are cleared before a capture otherwise
  *
  * The clock, the date, the running timer and the media progress follow the wall clock, so those
  * few pixels differ from run to run. Everything else comes from the fixture.
@@ -400,6 +401,142 @@ const scenes = [
     setup: async (ctx) => {
       await toggleEditMode(ctx);
       await focusWithKeyboard(ctx, '.qa-tab-add');
+    },
+  },
+
+  // Keyboard focus in dialogs, and the toasts docked above them. A key is pressed first, because
+  // the focus ring only shows after one.
+  {
+    name: 'focus-settings-opens-on-tab',
+    setup: async (ctx) => {
+      await ctx.pressKey('Shift', { code: 'ShiftLeft', keyCode: 16 });
+      await ctx.click('#settings-btn');
+      await ctx.waitForExpression(
+        `document.activeElement?.matches('#settings-modal .tab-link.active')`,
+        'focus on the current Settings page, not on Close'
+      );
+    },
+  },
+  {
+    name: 'focus-settings-rail-label',
+    setup: async (ctx) => {
+      await ctx.pressKey('Shift', { code: 'ShiftLeft', keyCode: 16 });
+      await ctx.click('#settings-btn');
+      await ctx.waitForExpression(`document.activeElement?.matches('#settings-modal .tab-link')`);
+      await ctx.ev(
+        `document.querySelector('#settings-modal [data-tab="personalization"]').focus()`
+      );
+      await ctx.waitForExpression(
+        `document.querySelector('.tab-tooltip.visible')`,
+        'the page label'
+      );
+    },
+  },
+  {
+    name: 'focus-settings-opacity-slider',
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'personalization');
+      await revealInSettings(ctx, '#opacity-slider');
+      await focusWithKeyboard(ctx, '#opacity-slider');
+    },
+  },
+  {
+    name: 'focus-confirm-unsaved-color',
+    setup: async (ctx) => {
+      await ctx.pressKey('Shift', { code: 'ShiftLeft', keyCode: 16 });
+      await openSettingsTab(ctx, 'personalization');
+      await revealInSettings(ctx, '#custom-color-hex');
+      await ctx.ev(`(() => {
+        const hex = document.getElementById('custom-color-hex');
+        hex.value = '#8E24AA';
+        hex.dispatchEvent(new Event('input', { bubbles: true }));
+      })()`);
+      await ctx.click('#save-settings');
+      await ctx.waitForExpression(
+        `!document.querySelector('#confirm-modal')?.classList.contains('hidden') &&
+          document.activeElement?.id === 'confirm-ok-btn'`,
+        'the three-way prompt, focused on Save and continue'
+      );
+    },
+  },
+  {
+    name: 'focus-weather-card',
+    setup: (ctx) => focusWithKeyboard(ctx, '#weather-card'),
+  },
+  {
+    name: 'focus-weather-picker',
+    setup: async (ctx) => {
+      await focusWithKeyboard(ctx, '#weather-card');
+      await ctx.pressKey('Enter', { code: 'Enter', keyCode: 13, text: '\r' });
+      await ctx.waitForSelector('#weather-config-modal .entity-item[role="option"]');
+      await ctx.waitForExpression(
+        `document.activeElement?.matches('#weather-config-modal [role="option"], #weather-config-modal button')`
+      );
+      await ctx.ev(`document.querySelector('#weather-config-modal [role="option"]')?.focus()`);
+    },
+  },
+  {
+    name: 'focus-command-palette',
+    setup: async (ctx) => {
+      await ctx.ev(`document.activeElement?.blur?.()`);
+      await ctx.pressKey('k', { code: 'KeyK', keyCode: 75, modifiers: ctx.CTRL });
+      await ctx.waitForExpression(
+        `document.activeElement?.classList.contains('command-palette-input')`
+      );
+      await ctx.insertText('lamp');
+      await ctx.waitForExpression(`document.querySelector('.command-palette-result.highlighted')`);
+    },
+  },
+  {
+    name: 'focus-tile-settings',
+    setup: async (ctx) => {
+      await ctx.pressKey('Shift', { code: 'ShiftLeft', keyCode: 16 });
+      await openTileSettings(ctx);
+      await ctx.waitForExpression(
+        `document.activeElement?.id === 'rename-input' &&
+          document.activeElement.selectionStart === 0 &&
+          document.activeElement.selectionEnd === document.activeElement.value.length`,
+        'the name field, selected'
+      );
+    },
+  },
+  {
+    name: 'toast-error-over-settings',
+    keepToasts: true,
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'general');
+      await ctx.ev(`document.activeElement?.blur?.()`);
+      await ctx.pressKey('k', { code: 'KeyK', keyCode: 75, modifiers: ctx.CTRL });
+      await ctx.waitForExpression(
+        `document.activeElement?.classList.contains('command-palette-input')`
+      );
+      await ctx.insertText('turn off unreachable');
+      await ctx.waitForExpression(
+        `document.querySelector('.command-palette-result.highlighted')?.textContent.includes('Turn off')`,
+        'the Turn off command'
+      );
+      await ctx.pressKey('Enter', { code: 'Enter', keyCode: 13, text: '\r' });
+      await ctx.waitForExpression(
+        `document.querySelector('#toast-container .toast.error')`,
+        'the error toast'
+      );
+      // The toast stack sits above the Save and Cancel pill, clear of both buttons.
+      await ctx.waitForExpression(
+        `(() => {
+        const toast = document.querySelector('#toast-container .toast.error').getBoundingClientRect();
+        const footer = document.querySelector('#settings-modal .modal-footer').getBoundingClientRect();
+        return toast.bottom <= footer.top;
+      })()`,
+        'the toast above the footer'
+      );
+    },
+  },
+  {
+    name: 'toast-reorganize-notice',
+    keepToasts: true,
+    setup: async (ctx) => {
+      await ctx.click('#reorganize-quick-controls-btn');
+      await ctx.waitForExpression(`document.querySelector('#toast-container .toast.info')`);
     },
   },
 
