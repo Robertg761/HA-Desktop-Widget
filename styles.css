@@ -10902,7 +10902,10 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   display: none;
 }
 
+/* Unlike the other dialogs this one has no header, body or footer to pad it, so the card pads its
+   own text; without it the prompt touched the top edge and the preview box ran edge to edge. */
 .hotkey-capture-modal .modal-content {
+  padding: var(--space-6) var(--space-5);
   text-align: center;
   color: var(--text-primary);
 }
