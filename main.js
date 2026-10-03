@@ -2907,11 +2907,16 @@ function endDesktopPinResizeSession(entityId) {
 
 // The work area a drag began on. Re-picking the display for every step would hand a pin that
 // straddles two monitors to whichever holds more of it, and it would jump between them.
+//
+// The session also keeps the bounds config.json held when the drag began. Every step of a drag
+// changes the config and the window in memory and the file is written once at the end, so a final
+// save that fails has to go back to these, not to the step before it.
 function getDesktopPinResizeSession(entityId, startBounds) {
   let session = desktopPinResizeSessions.get(entityId);
   if (!session) {
     session = {
       workArea: getDesktopPinWorkArea(getDesktopPinWindowBounds(entityId, startBounds)),
+      persistedBounds: startBounds,
       idleTimer: null,
     };
     desktopPinResizeSessions.set(entityId, session);
@@ -2925,6 +2930,17 @@ function getDesktopPinResizeSession(entityId, startBounds) {
     }, 'desktop pin resize save');
   }, DESKTOP_PIN_RESIZE_IDLE_SAVE_MS);
   return session;
+}
+
+// Puts a pin back to the bounds config.json holds after a drag whose final save failed, in the
+// config and on screen.
+function restoreDesktopPinPersistedBounds(entityId, persistedBounds, workArea) {
+  config.desktopPins[entityId] = persistedBounds;
+  const window = desktopPinWindows.get(entityId);
+  if (window && !window.isDestroyed()) {
+    applyDesktopPinBoundsToWindow(window, persistedBounds, workArea);
+  }
+  sendDesktopPinUpdate(entityId, { type: 'bounds' });
 }
 
 async function updateDesktopPinBounds(entityId, nextBounds = {}) {
@@ -2947,6 +2963,10 @@ async function updateDesktopPinBounds(entityId, nextBounds = {}) {
   const resizeSession = resizeRequest
     ? getDesktopPinResizeSession(normalizedEntityId, previousBounds)
     : null;
+  // What a failed save goes back to; a drag still open when a plain update arrives keeps its own.
+  const persistedBounds =
+    (resizeSession || desktopPinResizeSessions.get(normalizedEntityId))?.persistedBounds ||
+    previousBounds;
 
   const clampedBounds = resizeRequest
     ? resizeDesktopPinBoundsInWorkArea(
@@ -2990,11 +3010,11 @@ async function updateDesktopPinBounds(entityId, nextBounds = {}) {
   endDesktopPinResizeSession(normalizedEntityId);
   const persistence = await saveConfigDurably();
   if (!persistence.success) {
-    config.desktopPins[normalizedEntityId] = previousBounds;
+    restoreDesktopPinPersistedBounds(normalizedEntityId, persistedBounds, workArea);
     return {
       success: false,
       error: mainT('Failed to save desktop pin position: {{error}}', { error: persistence.error }),
-      pinBounds: previousBounds,
+      pinBounds: persistedBounds,
     };
   }
 

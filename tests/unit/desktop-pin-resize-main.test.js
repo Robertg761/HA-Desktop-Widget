@@ -201,6 +201,64 @@ describe('resizing a desktop pin in the main process', () => {
     });
   });
 
+  describe('when the final save fails', () => {
+    const start = { x: 100, y: 100, width: 168, height: 148 };
+    const frame = (context, width, corner = 'top-left', final = false) =>
+      context.updateDesktopPinBounds('light.office', {
+        width,
+        height: 148,
+        resize: { corner, final },
+      });
+
+    it('puts the pin back to what was saved before the drag, not to the last step', async () => {
+      const { context, pinWindow } = loadResizeRuntime({ bounds: start });
+      await frame(context, 200);
+      await frame(context, 220);
+      expect(context.config.desktopPins['light.office']).toMatchObject({ x: 48, width: 220 });
+      context.sendDesktopPinUpdate.mockClear();
+      context.saveConfigDurably.mockResolvedValueOnce({ success: false, error: 'disk full' });
+
+      const result = await frame(context, 240, 'top-left', true);
+
+      expect(result).toMatchObject({ success: false, pinBounds: start });
+      expect(result.error).toContain('Failed to save desktop pin position');
+      // Neither the config, which a later unrelated save would write out, nor the window keeps
+      // a size that was never written.
+      expect(context.config.desktopPins['light.office']).toEqual(start);
+      expect(pinWindow.setBounds).toHaveBeenLastCalledWith(start);
+      expect(context.sendDesktopPinUpdate).toHaveBeenCalledWith('light.office', { type: 'bounds' });
+      expect(context.desktopPinResizeSessions.size).toBe(0);
+    });
+
+    it('goes back to the size an earlier idle save wrote', async () => {
+      jest.useFakeTimers();
+      const { context } = loadResizeRuntime({ bounds: start });
+      await frame(context, 200);
+      // The renderer went quiet for a moment, so main wrote the size it had reached.
+      jest.advanceTimersByTime(1600);
+      expect(context.saveConfig).toHaveBeenCalledTimes(1);
+      const written = { ...context.config.desktopPins['light.office'] };
+      await frame(context, 220);
+      context.saveConfigDurably.mockResolvedValueOnce({ success: false, error: 'disk full' });
+
+      const result = await frame(context, 240, 'top-left', true);
+
+      expect(result.pinBounds).toEqual(written);
+      expect(context.config.desktopPins['light.office']).toEqual(written);
+    });
+
+    it('restores a single keyboard step that cannot be saved', async () => {
+      const { context, pinWindow } = loadResizeRuntime({ bounds: start });
+      context.saveConfigDurably.mockResolvedValueOnce({ success: false, error: 'disk full' });
+
+      const result = await frame(context, 200, 'bottom-right', true);
+
+      expect(result).toMatchObject({ success: false, pinBounds: start });
+      expect(context.config.desktopPins['light.office']).toEqual(start);
+      expect(pinWindow.setBounds).toHaveBeenLastCalledWith(start);
+    });
+  });
+
   it('still moves a pin with a plain position update', async () => {
     const { context } = loadResizeRuntime({
       bounds: { x: 100, y: 100, width: 168, height: 148 },
