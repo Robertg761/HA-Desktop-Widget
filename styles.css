@@ -5508,9 +5508,6 @@ body.theme-light .status-card.time-card .date-display {
   max-width: 360px;
   width: 90vw;
   padding: 0;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
 }
 
 .brightness-modal-content {
@@ -5518,15 +5515,6 @@ body.theme-light .status-card.time-card .date-display {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  max-height: 90vh;
-}
-
-.brightness-modal .modal-body {
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
 }
 
 .brightness-content {
@@ -5861,9 +5849,6 @@ body.theme-light .status-card.time-card .date-display {
   max-width: 400px;
   width: 90vw;
   padding: 0;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
 }
 
 .climate-modal-content {
@@ -5871,14 +5856,6 @@ body.theme-light .status-card.time-card .date-display {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.climate-modal .modal-body {
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
 }
 
 .climate-content {
@@ -6104,9 +6081,6 @@ body.theme-light .status-card.time-card .date-display {
   max-width: 360px;
   width: 90vw;
   padding: 0;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
 }
 
 .fan-modal-content {
@@ -6114,14 +6088,6 @@ body.theme-light .status-card.time-card .date-display {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.fan-modal .modal-body {
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
 }
 
 .fan-content {
@@ -6265,9 +6231,6 @@ body.theme-light .status-card.time-card .date-display {
   max-width: 360px;
   width: 90vw;
   padding: 0;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
 }
 
 .cover-modal-content {
@@ -6275,14 +6238,6 @@ body.theme-light .status-card.time-card .date-display {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.cover-modal .modal-body {
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
 }
 
 .cover-content {
@@ -7616,11 +7571,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   font-size: var(--font-size-sm);
 }
 
-.comparison-graph-modal-footer {
-  display: flex;
+.modal-footer.comparison-graph-modal-footer {
   justify-content: space-between;
-  gap: var(--space-2);
-  margin-top: 12px;
 }
 
 /* Unit sits beside the Add button, clear of the entity id's ellipsis, so a mismatched scale is
@@ -7930,7 +7882,11 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   border-radius: var(--radius-xl);
   max-width: 85vw;
   width: 85%;
-  max-height: 85vh;
+  /* The window less a small margin, whatever the dialog holds. The body is the one part that
+     scrolls (see .modal-body), so the header and footer stay in view in a short window. */
+  max-height: calc(100dvh - var(--space-6));
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   backdrop-filter: blur(var(--blur-xl)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
@@ -8233,9 +8189,21 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .modal-body {
   padding: var(--space-5);
-  max-height: 60vh;
   overflow-y: auto;
   position: relative;
+}
+
+/* The body takes the height the header and footer leave, and scrolls when the content is taller.
+   A fixed share of the window (60vh) used to cap it, which made every dialog scroll in the default
+   500x600 window while a third of it stayed empty, and let header, body and footer add up to more
+   than a short window. */
+.modal-content > .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.modal-content > :is(.modal-header, .modal-footer) {
+  flex: none;
 }
 
 .modal-body::-webkit-scrollbar {
@@ -8261,10 +8229,6 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .persistent-notifications-modal-content {
   width: min(420px, 92vw);
-}
-
-.persistent-notifications-body {
-  max-height: min(60vh, 460px);
 }
 
 .persistent-notifications-list {
@@ -10199,8 +10163,9 @@ body {
 }
 
 .confirm-modal-content {
-  max-width: 400px;
-  min-width: 320px;
+  /* No minimum width: a window narrower than that would push the buttons off both sides. */
+  width: min(400px, calc(100vw - 24px));
+  max-width: none;
 }
 
 .confirm-modal-content .modal-body {
@@ -10361,25 +10326,11 @@ body {
 }
 
 /* Tile Settings (the only dialog with this class, built in ui.js) takes the shared dialog recipe;
-   what is left here is its width, a scrolling body that keeps the header and footer in view, and
-   a footer that wraps. The panel, fields, switch and buttons all come from the dialogs section. */
+   what is left here is its width and a footer that wraps. The panel, fields, switch and buttons
+   all come from the dialogs section. */
 .rename-modal .modal-content {
   width: min(480px, calc(100vw - 24px));
   max-width: calc(100vw - 24px);
-  max-height: calc(100dvh - 24px);
-  display: flex;
-  flex-direction: column;
-}
-
-.rename-modal .modal-body {
-  min-height: 0;
-  max-height: none;
-  overflow-y: auto;
-}
-
-.rename-modal .modal-header,
-.rename-modal .modal-footer {
-  flex-shrink: 0;
 }
 
 /* Three buttons, one of them a long "Reset to Default", wrap rather than overflow. */
@@ -13168,15 +13119,30 @@ body.software-glass.frosted-glass .modal-content {
 }
 
 .modal-header {
+  gap: var(--space-3);
   padding: 14px 16px;
   background: transparent;
   border-bottom: 1px solid var(--tile-border);
 }
 
+/* The pop-ups title themselves with the entity's name, which can be one long token (a German
+   compound, an entity id) that would otherwise keep the title at its full width and push the
+   close button out of the dialog. It breaks anywhere, and stops at two lines. */
 .modal-header h2 {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-semibold);
   letter-spacing: -0.01em;
+}
+
+.modal-header .close-btn {
+  flex: none;
 }
 
 .modal-footer {
@@ -13240,6 +13206,12 @@ body.software-glass.frosted-glass .modal-content {
 .btn:active {
   transform: scale(0.97);
   box-shadow: none;
+}
+
+/* A long label (a translation, or text at 150%) goes onto a second line inside a dialog instead of
+   being cut off with an ellipsis. */
+.modal .btn {
+  white-space: normal;
 }
 
 .btn-primary {
@@ -13822,6 +13794,26 @@ body.theme-light .entity-selector-btn.remove:focus-visible {
 select option {
   background-color: rgb(var(--window-bg-rgb));
   color: var(--text-primary);
+}
+
+/* A short window: the header, footer and the dialog's own padding are most of what is on screen,
+   so control pop-ups give some of it back. Their bodies scroll if they still do not fit. */
+@media (max-height: 480px) {
+  .modal-header {
+    padding-block: 10px;
+  }
+
+  .modal-body {
+    padding: var(--space-4);
+  }
+
+  .brightness-content,
+  .climate-content,
+  .fan-content,
+  .cover-content {
+    padding: var(--space-3) var(--space-4);
+    gap: var(--space-3);
+  }
 }
 
 /* ============================================
@@ -15311,20 +15303,40 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   gap: var(--space-2);
 }
 
-/* Manage Quick Access and the repair picker: one scrolling list under a fixed search box, with
-   Manage's secondary "comparison graph" action moved to the footer. */
-#quick-controls-modal .quick-controls-modal-body,
-#entity-repair-modal .modal-body {
+/* A dialog built around a pick list (Manage Quick Access, the repair, alert and weather pickers,
+   the comparison graph editor): the fields keep their place and the list takes the height that is
+   left, so the list is the only thing that scrolls. Capped at 400px inside a body that scrolled as
+   well, the list showed a second scrollbar, scrolled the search box away and trapped the wheel.
+   Manage's secondary "comparison graph" action sits in the footer. */
+.modal-body:has(> .entity-selector-list, > .form-group > .entity-selector-list) {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  min-height: 0;
-  overflow-y: auto;
 }
 
-#entity-repair-modal .modal-lead,
-#entity-repair-modal .form-group {
+.modal-body:has(> .entity-selector-list, > .form-group > .entity-selector-list) > .modal-lead,
+.modal-body:has(> .entity-selector-list, > .form-group > .entity-selector-list) > .form-group {
   margin: 0;
+}
+
+.modal-body > .form-group:has(> .entity-selector-list) {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.modal-body > .entity-selector-list,
+.modal-body > .form-group > .entity-selector-list {
+  flex: 1 1 auto;
+  max-height: none;
+}
+
+/* A list of three rows or more keeps room for three, however short the window: below that the
+   dialog's body scrolls instead. A shorter list is only as tall as its rows. */
+.modal-body > .entity-selector-list:has(> :nth-child(3)),
+.modal-body > .form-group > .entity-selector-list:has(> :nth-child(3)) {
+  min-height: 120px;
 }
 
 #quick-controls-modal .quick-controls-target-hint {
@@ -15336,14 +15348,6 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
 
 #quick-controls-modal .quick-controls-search-group {
   margin: 0;
-}
-
-#quick-controls-modal .entity-selector-list,
-#entity-repair-modal .entity-selector-list {
-  flex: 1 1 auto;
-  min-height: 120px;
-  max-height: none;
-  overflow-y: auto;
 }
 
 #quick-controls-modal .entity-item.is-added .entity-icon {

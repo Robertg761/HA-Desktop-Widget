@@ -4944,8 +4944,9 @@ function showComparisonGraphModal(graphId) {
   listGroup.appendChild(list);
   body.appendChild(listGroup);
 
+  // The footer sits outside the scrolling body so Done and Delete stay in view.
   const footer = document.createElement('div');
-  footer.className = 'comparison-graph-modal-footer';
+  footer.className = 'modal-footer comparison-graph-modal-footer';
   const deleteBtn = document.createElement('button');
   deleteBtn.type = 'button';
   deleteBtn.className = 'btn btn-danger';
@@ -4957,7 +4958,7 @@ function showComparisonGraphModal(graphId) {
   doneBtn.className = 'btn btn-primary';
   doneBtn.textContent = t('Done');
   footer.appendChild(doneBtn);
-  body.appendChild(footer);
+  modal.querySelector('.modal-content')?.appendChild(footer);
 
   const modalCloseBtn = modal.querySelector('.close-btn');
   doneBtn.addEventListener('click', () => modalCloseBtn?.click());
