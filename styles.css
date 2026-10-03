@@ -11497,7 +11497,11 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 #hotkeys-list {
-  /* Rows are two lines tall now; 40vh of the default window showed less than three. */
+  /* The list holds every entity that can take a hotkey, hundreds in a large home, so it keeps its
+     own scroller inside the Settings page, as do the primary cards and custom icons lists; the
+     wheel passes on to the page at either end. The alert rows are a handful the user added and
+     scroll with the page. Rows are two lines tall now; 40vh of the default window showed less
+     than three. */
   max-height: max(40vh, 20rem);
   overflow-y: auto;
   overflow-x: hidden;
@@ -11825,8 +11829,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 
 .inline-alerts-container {
   margin-top: 16px;
-  max-height: 400px;
-  overflow-y: auto;
   padding: 4px;
 }
 
