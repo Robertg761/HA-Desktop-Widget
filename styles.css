@@ -3355,13 +3355,22 @@ body.first-run-active .widget-content > * {
 
 .media-tile-content {
   display: grid;
-  /* The seek column has room for two h:mm:ss times and a bar between them (a film or a podcast
-     runs past an hour). At 72-110px the times ran into the bar and the previous button. */
-  grid-template-columns: minmax(0, 1fr) minmax(128px, 140px) auto;
+  /* The seek column is as wide as its two times and a bar between them, so a film or a podcast
+     (h:mm:ss) gets the room it needs and an ordinary track (m:ss) leaves that room to the title.
+     At 72-110px the long times ran into the bar and the previous button. */
+  grid-template-columns: minmax(0, 1fr) fit-content(140px) auto;
   align-items: center;
   gap: 4px 8px;
   min-width: 0;
   flex: 1;
+}
+
+/* A wide window has room to spare for the bar, which at 36px reads as a stub beside a title with
+   hundreds of pixels to itself. */
+@media (min-width: 640px) {
+  .media-tile-content {
+    grid-template-columns: minmax(0, 1fr) minmax(min-content, 200px) auto;
+  }
 }
 
 .media-tile-info {
