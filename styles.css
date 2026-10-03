@@ -5944,10 +5944,21 @@ body.theme-light .status-card.time-card .date-display {
   min-width: 0;
 }
 
-/* A heat/cool thermostat shows a range ('19.5–24.5°C'), about twice as wide as one target, so the
-   short current reading keeps what it needs and the range takes the rest. */
+/* A heat/cool thermostat shows a range ('19.5–24.5°C'), about twice as wide as one target. The
+   short current reading keeps what it needs and the range takes the rest; where the range would
+   not get 11rem beside it, as in a narrow window or at enlarged text, it drops under the current
+   reading and keeps the width of the card, so the target stays the biggest figure of the dialog. */
 .climate-temp-display.is-range {
-  grid-template-columns: auto minmax(0, 1fr);
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.is-range .climate-current-temp {
+  flex: 1 1 auto;
+}
+
+.is-range .climate-target-temp {
+  flex: 3 1 11rem;
 }
 
 /* The target is sized to its column, one figure for a single target and a smaller one for a range,
