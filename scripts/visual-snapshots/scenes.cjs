@@ -208,6 +208,48 @@ const dialogsPage = { customTabs: PAGE_SETS.dialogs, activeTabId: 'default' };
 // A holiday shows for an hour, long enough for the whole run.
 const holiday = (show) => ({ enabled: true, show, showUntil: Date.now() + 3600000 });
 
+// Text and status colour in both themes for accents from the pale to the saturated end. The
+// wizard's scenes come last (see below), because they empty the server address.
+const CONTRAST_ACCENTS = ['original', 'indigo', 'rose', 'aqua'];
+const contrastScenes = (suffix, make) =>
+  ['dark', 'light'].flatMap((theme) =>
+    CONTRAST_ACCENTS.map((accent) => ({
+      name: `contrast-${theme}-${accent}-${suffix}`,
+      ui: { theme, accent },
+      ...make(theme),
+    }))
+  );
+
+// The connection result lines Settings shows, in the three states, without needing a server that
+// fails: written the way renderConnectionStatus writes them.
+async function showConnectionResults(ctx) {
+  await openSettingsTab(ctx, 'general');
+  await ctx.ev(`(() => {
+    document.querySelector('#test-ha-connection-btn')?.closest('details')?.setAttribute('open', '');
+    const write = (id, type, message) => {
+      const status = document.getElementById(id);
+      status.classList.remove('hidden');
+      status.dataset.status = type;
+      status.innerHTML = '<span class="connection-status-text"></span>';
+      status.firstChild.textContent = message;
+    };
+    write('ha-oauth-status', 'success', 'Connected with Home Assistant authorization.');
+    write('test-ha-connection-status', 'error', 'Could not reach Home Assistant at that URL.');
+    document.querySelector('#test-ha-connection-btn')?.scrollIntoView({ block: 'center' });
+  })()`);
+}
+
+// The update line and the warnings under Advanced: the other status colours Settings uses.
+async function showUpdateStatus(ctx) {
+  await openSettingsTab(ctx, 'advanced');
+  await ctx.ev(`(() => {
+    const line = document.getElementById('update-status');
+    line.className = 'form-help update-status error';
+    document.getElementById('update-status-text').textContent = 'Update check failed: offline.';
+    line.scrollIntoView({ block: 'center' });
+  })()`);
+}
+
 const scenes = [
   // The main view and the dialogs opened from it, dark and in English.
   { name: 'main-dark' },
@@ -666,6 +708,23 @@ const scenes = [
     ui: { theme: 'light', seasonal: holiday('christmas') },
   },
 
+  // Colour contrast of text and status colours, dark and light, with four accents.
+  ...contrastScenes('main', () => ({})),
+  ...contrastScenes('settings', () => ({
+    setup: (ctx) => openSettingsTab(ctx, 'personalization'),
+  })),
+  ...contrastScenes('popup', () => ({ setup: openBrightness })),
+  ...['dark', 'light'].map((theme) => ({
+    name: `contrast-${theme}-connection`,
+    ui: { theme },
+    setup: showConnectionResults,
+  })),
+  ...['dark', 'light'].map((theme) => ({
+    name: `contrast-${theme}-update`,
+    ui: { theme },
+    setup: showUpdateStatus,
+  })),
+
   // First run shows when no server is configured. The runner only puts the keys listed above
   // back after a scene, so these stay last: later scenes would find the app unconnected. The
   // wizard stays open between them, so each one steps it back to the welcome page first.
@@ -689,6 +748,10 @@ const scenes = [
     config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
     setup: showFirstRunWelcome,
   },
+  ...contrastScenes('first-run', () => ({
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: showFirstRunWelcome,
+  })),
 ];
 
 module.exports = { scenes };
