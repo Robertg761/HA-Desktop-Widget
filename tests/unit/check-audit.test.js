@@ -885,6 +885,44 @@ describe('findShippedPackages', () => {
     expect([...findShippedPackages(root, {}).keys()]).toEqual(['electron']);
   });
 
+  it('finds packages that a stylesheet imports', () => {
+    const root = project({
+      'electron-builder.yml': ['files:', '  - styles.css', '  - main.js', ''].join('\n'),
+      'styles.css': `
+        /* a comment, then the imports */
+        @import 'plain-css/theme.css';
+        @import url("quoted-url/reset.css");
+        @import url('@scope/styles/base.css') layer(base);
+        @import /* hint */ 'with-comment';
+        @import 'bare-query?inline';
+        @import './local.css';
+        @import '../up.css';
+        @import '/absolute.css';
+        @import url('https://fonts.example/css?family=Inter');
+        @import url(unquoted/reset.css);
+        @import url( spaced-unquoted/reset.css );
+        @import url(https://fonts.example/unquoted.css);
+        @import url(//cdn.example/protocol-relative.css);
+        .a { background: url('image.png'); }
+      `,
+      'src/panel.css': "@import 'in-src/panel.css';",
+      'website/site.css': "@import 'not-packed/site.css';",
+    });
+    const names = [...findShippedPackages(root, {}).keys()].sort();
+
+    expect(names).toEqual([
+      '@scope/styles',
+      'bare-query',
+      'electron',
+      'in-src',
+      'plain-css',
+      'quoted-url',
+      'spaced-unquoted',
+      'unquoted',
+      'with-comment',
+    ]);
+  });
+
   it('does not take a template literal after from or a bare import for a specifier', () => {
     const root = project({
       'src/prose.js': "// Each holiday runs from `before` days ahead.\nconst s = 'import `after`';",

@@ -41,7 +41,19 @@ const APP_SOURCES = [
   'preview',
 ];
 const BUILDER_CONFIG = 'electron-builder.yml';
-const SOURCE_EXTENSIONS = new Set(['.js', '.cjs', '.mjs', '.jsx', '.ts', '.tsx', '.mts', '.cts']);
+// Stylesheets are included because vite bundles the ones the app imports, and an
+// @import of a package in one loads that package like an import in a script.
+const SOURCE_EXTENSIONS = new Set([
+  '.js',
+  '.cjs',
+  '.mjs',
+  '.jsx',
+  '.ts',
+  '.tsx',
+  '.mts',
+  '.cts',
+  '.css',
+]);
 const SKIPPED_DIRECTORIES = new Set(['node_modules', '.git', 'tests', 'coverage']);
 const VITE_CONFIG_PATTERN = /^vite(?:\..+)?\.config\.[cm]?[jt]s$/;
 // Whitespace and comments, which JavaScript allows between a keyword, a
@@ -70,6 +82,12 @@ const SPECIFIER_PATTERNS = [
   new RegExp(String.raw`\bimport${GAP}\(${GAP}${CALL_STRING}`, 'g'),
   // require('y') and require.resolve('y').
   new RegExp(String.raw`\brequire(?:\.resolve)?${GAP}\(${GAP}${CALL_STRING}`, 'g'),
+  // @import 'y' and @import url('y') in a stylesheet. Vite tries the file next to
+  // the stylesheet first and a package second, so a path without ./ is read as a
+  // package here; packageNameOf() drops relative and remote ones.
+  new RegExp(String.raw`@import${GAP}(?:url\(${GAP})?${STRING}`, 'g'),
+  // @import url(y), which has no quote, so the empty group stands in for it.
+  new RegExp(String.raw`@import${GAP}url\(${GAP}()([^'"()\s]+)`, 'g'),
 ];
 const EXCEPTION_FIELDS = [
   'ghsa',
@@ -473,9 +491,9 @@ function packageNameOf(specifier, aliases, workspaceNames) {
 // node_modules while vite bundles whatever the renderer imports.
 //
 // So a package ships when it is Electron, is listed under dependencies or
-// optionalDependencies, or is imported by source the app loads. The import scan
-// is textual, so a commented-out import counts as one; being too cautious only
-// stops an exception from being granted.
+// optionalDependencies, or is imported by source the app loads, a script or a
+// stylesheet. The import scan is textual, so a commented-out import counts as
+// one; being too cautious only stops an exception from being granted.
 function findShippedPackages(root, packageJson) {
   const shipped = new Map([['electron', 'its runtime is in every package']]);
   for (const field of ['dependencies', 'optionalDependencies']) {
