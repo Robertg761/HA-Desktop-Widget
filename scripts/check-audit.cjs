@@ -602,6 +602,12 @@ function addInstalledDependencies(shipped, root) {
 // stylesheet or a page, or is installed for one of those. The scan is textual, so
 // a commented-out import counts as one; being too cautious only stops an exception
 // from being granted.
+//
+// It can also miss a package. It reads the names require, require.resolve and
+// import() with the package written out in a string, and paths into node_modules.
+// A loader bound to another name (const load = createRequire(__filename);
+// load('x')) and a specifier computed at run time are not seen. The app uses
+// neither today, and code that starts to needs a pattern of its own.
 function findShippedPackages(root, packageJson) {
   const shipped = new Map([['electron', 'its runtime is in every package']]);
   for (const field of ['dependencies', 'optionalDependencies']) {
