@@ -812,6 +812,72 @@ describe('Renderer desktop pin waiting escape hatch', () => {
       });
     });
 
+    it('builds each arrow press on the size the one before asked for, however fast they repeat', async () => {
+      await loadRenderer({ bootstrapOverrides: { editMode: true, pinBounds: bounds } });
+      const handle = document.querySelector('[data-corner="bottom-right"]');
+      // Main answers slowly: every key repeat arrives before the first reply.
+      const replies = [];
+      mockElectronAPI.updateDesktopPinBounds.mockImplementation(
+        (_entityId, sent) =>
+          new Promise((resolve) => {
+            replies.push(() => resolve({ success: true, pinBounds: { ...bounds, ...sent } }));
+          })
+      );
+
+      const press = (key) =>
+        handle.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+      press('ArrowRight');
+      press('ArrowRight');
+      press('ArrowRight');
+      await flushAsync();
+      // One request is out; the other two steps wait for it and go together.
+      expect(mockElectronAPI.updateDesktopPinBounds).toHaveBeenCalledTimes(1);
+      expect(mockElectronAPI.updateDesktopPinBounds.mock.calls[0][1].width).toBe(176);
+
+      replies.shift()();
+      await flushAsync();
+      expect(mockElectronAPI.updateDesktopPinBounds).toHaveBeenCalledTimes(2);
+      expect(mockElectronAPI.updateDesktopPinBounds).toHaveBeenLastCalledWith('light.bedroom', {
+        width: 192,
+        height: 148,
+        resize: { corner: 'bottom-right', final: true },
+      });
+
+      // Nothing waits any more, so the next press starts from the size Main confirmed.
+      replies.shift()();
+      await flushAsync();
+      press('ArrowDown');
+      await flushAsync();
+      expect(mockElectronAPI.updateDesktopPinBounds).toHaveBeenLastCalledWith('light.bedroom', {
+        width: 192,
+        height: 156,
+        resize: { corner: 'bottom-right', final: true },
+      });
+      replies.shift()();
+      await flushAsync();
+    });
+
+    it('starts again from the confirmed size after a step Main could not apply', async () => {
+      await loadRenderer({ bootstrapOverrides: { editMode: true, pinBounds: bounds } });
+      const handle = document.querySelector('[data-corner="bottom-right"]');
+      mockElectronAPI.updateDesktopPinBounds.mockImplementationOnce(() =>
+        Promise.reject(new Error('save failed'))
+      );
+      const press = (key) =>
+        handle.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+
+      press('ArrowRight');
+      await flushAsync();
+      // The failed request left the bounds as they were.
+      press('ArrowRight');
+      await flushAsync();
+      expect(mockElectronAPI.updateDesktopPinBounds).toHaveBeenLastCalledWith('light.bedroom', {
+        width: 176,
+        height: 148,
+        resize: { corner: 'bottom-right', final: true },
+      });
+    });
+
     it('ignores the handles outside edit mode', async () => {
       await loadRenderer({ bootstrapOverrides: { editMode: false, pinBounds: bounds } });
       const handle = document.querySelector('[data-corner="bottom-right"]');
