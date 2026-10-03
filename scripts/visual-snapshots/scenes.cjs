@@ -21,6 +21,9 @@ const { PAGE_SETS, WINDOW_SIZE } = require('./fixture.cjs');
 
 const NARROW_WINDOW = { width: 340, height: WINDOW_SIZE.height };
 const FORCED_COLORS = [{ name: 'forced-colors', value: 'active' }];
+// A light contrast theme (Windows High Contrast White): Chromium picks the light palette from the
+// colour scheme.
+const FORCED_COLORS_LIGHT = [...FORCED_COLORS, { name: 'prefers-color-scheme', value: 'light' }];
 
 const tileDetails = (entityId) =>
   `#quick-controls [data-entity-id="${entityId}"] .tile-details-button`;
@@ -29,6 +32,7 @@ const tile = (entityId) => `#quick-controls [data-entity-id="${entityId}"]`;
 const openBrightness = (ctx) => ctx.click(tileDetails('light.desk_lamp'));
 const openDetails = (entityId) => (ctx) => ctx.click(tileDetails(entityId));
 const openClimate = (ctx) => ctx.click(tileDetails('climate.living_room'));
+const openColourLight = (ctx) => ctx.click(tileDetails('light.colour_strip'));
 const toggleEditMode = (ctx) => ctx.click('#reorganize-quick-controls-btn');
 
 async function openSettingsTab(ctx, tab) {
@@ -152,6 +156,7 @@ async function pinEntity(ctx, entityId) {
   return { capture: await ctx.openPin(entityId) };
 }
 
+const READABLE = { highContrast: true, opaquePanels: true };
 const sixPages = (activeTabId) => ({ customTabs: PAGE_SETS.six, activeTabId });
 // The page whose tiles open the helper, vacuum, to-do, calendar and repair dialogs.
 const dialogsPage = { customTabs: PAGE_SETS.dialogs, activeTabId: 'default' };
@@ -430,9 +435,51 @@ const scenes = [
   // A window dragged narrower than the 500px it opens at.
   { name: 'narrow-main', size: NARROW_WINDOW },
 
-  // Windows High Contrast, as Chromium emulates it.
+  // Windows High Contrast, as Chromium emulates it: a dark contrast theme, then a light one.
   { name: 'forced-colors-main', media: FORCED_COLORS },
   { name: 'forced-colors-popup', media: FORCED_COLORS, setup: openBrightness },
+  { name: 'forced-colors-popup-climate', media: FORCED_COLORS, setup: openClimate },
+  {
+    name: 'forced-colors-popup-colour',
+    config: { activeTabId: 'bedroom' },
+    media: FORCED_COLORS,
+    setup: openColourLight,
+  },
+  {
+    name: 'forced-colors-settings-appearance',
+    media: FORCED_COLORS,
+    setup: (ctx) => openSettingsTab(ctx, 'personalization'),
+  },
+  {
+    name: 'forced-colors-dialog-alarm-code',
+    config: sixPages('default'),
+    media: FORCED_COLORS,
+    setup: openAlarmCodeDialog,
+  },
+  { name: 'forced-colors-edit-mode', media: FORCED_COLORS, setup: toggleEditMode },
+  { name: 'forced-colors-light-main', ui: { theme: 'light' }, media: FORCED_COLORS_LIGHT },
+  {
+    name: 'forced-colors-light-popup-climate',
+    ui: { theme: 'light' },
+    media: FORCED_COLORS_LIGHT,
+    setup: openClimate,
+  },
+  {
+    name: 'forced-colors-light-settings-appearance',
+    ui: { theme: 'light' },
+    media: FORCED_COLORS_LIGHT,
+    setup: (ctx) => openSettingsTab(ctx, 'personalization'),
+  },
+
+  // The Readable preset (high contrast with opaque panels), on both themes.
+  { name: 'readable-main', ui: READABLE },
+  { name: 'readable-light-main', ui: { theme: 'light', ...READABLE } },
+  { name: 'readable-light-popup-climate', ui: { theme: 'light', ...READABLE }, setup: openClimate },
+  {
+    name: 'readable-light-settings-appearance',
+    ui: { theme: 'light', ...READABLE },
+    setup: (ctx) => openSettingsTab(ctx, 'personalization'),
+  },
 
   // Desktop pins are windows of their own, opened at the default 168x148.
   { name: 'pin-light', setup: (ctx) => pinEntity(ctx, 'light.desk_lamp') },

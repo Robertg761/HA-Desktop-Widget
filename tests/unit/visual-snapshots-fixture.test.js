@@ -111,6 +111,14 @@ describe('visual snapshot scenes', () => {
       'narrow-main',
       'forced-colors-main',
       'forced-colors-popup',
+      'forced-colors-popup-climate',
+      'forced-colors-popup-colour',
+      'forced-colors-settings-appearance',
+      'forced-colors-light-main',
+      'forced-colors-light-popup-climate',
+      'readable-main',
+      'readable-light-main',
+      'readable-light-popup-climate',
       'six-tabs',
       'media-tile',
       'pin-light',
@@ -122,5 +130,34 @@ describe('visual snapshot scenes', () => {
     expect(scenes.find((scene) => scene.name === 'forced-colors-main').media).toEqual([
       { name: 'forced-colors', value: 'active' },
     ]);
+  });
+
+  it('shows forced colours on a light contrast theme too', () => {
+    for (const scene of scenes.filter((entry) => entry.name.startsWith('forced-colors-light-'))) {
+      expect(scene.ui.theme).toBe('light');
+      expect(scene.media).toEqual(
+        expect.arrayContaining([
+          { name: 'forced-colors', value: 'active' },
+          { name: 'prefers-color-scheme', value: 'light' },
+        ])
+      );
+    }
+  });
+
+  it('shows the Readable preset over both themes', () => {
+    for (const scene of scenes.filter((entry) => entry.name.startsWith('readable-'))) {
+      expect(scene.ui).toMatchObject({ highContrast: true, opaquePanels: true });
+    }
+    expect(scenes.find((scene) => scene.name === 'readable-light-main').ui.theme).toBe('light');
+  });
+
+  it('has a light with colour controls for the colour pop-up', () => {
+    const colourStrip = buildStates().find((state) => state.entity_id === 'light.colour_strip');
+    expect(colourStrip.attributes.supported_color_modes).toEqual(
+      expect.arrayContaining(['color_temp', 'hs'])
+    );
+    const scene = scenes.find((entry) => entry.name === 'forced-colors-popup-colour');
+    const page = PAGE_SETS.default.find((entry) => entry.id === scene.config.activeTabId);
+    expect(page.entityIds).toContain('light.colour_strip');
   });
 });

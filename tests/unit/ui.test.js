@@ -4052,6 +4052,30 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       jest.useRealTimers();
     });
 
+    it('tells assistive technology which climate mode and fan mode is on', () => {
+      ui.executeEntityPrimaryAction(sampleStates['climate.bedroom_air_conditioner']);
+
+      const modal = document.querySelector('.climate-modal');
+      const pressed = (selector) =>
+        [...modal.querySelectorAll(selector)].map((button) => [
+          button.classList.contains('active'),
+          button.getAttribute('aria-pressed'),
+        ]);
+      for (const selector of ['.climate-mode-btn', '.climate-fan-mode-btn']) {
+        const buttons = pressed(selector);
+        expect(buttons.filter(([active]) => active)).toHaveLength(1);
+        for (const [active, ariaPressed] of buttons) expect(ariaPressed).toBe(String(active));
+      }
+
+      // Choosing another one moves the state with the highlight.
+      const other = [...modal.querySelectorAll('.climate-mode-btn')].find(
+        (button) => !button.classList.contains('active')
+      );
+      other.click();
+      expect(other.getAttribute('aria-pressed')).toBe('true');
+      expect(modal.querySelectorAll('.climate-mode-btn[aria-pressed="true"]')).toHaveLength(1);
+    });
+
     it('rolls back an optimistic climate temperature when the service rejects', async () => {
       jest.useFakeTimers();
       try {

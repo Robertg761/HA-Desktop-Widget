@@ -18,8 +18,12 @@ describe('release workflow hardening', () => {
   });
 
   test('audits Electron even though the shipped runtime is a development dependency', () => {
+    // Both go through scripts/check-audit.cjs, which runs the same audit and then
+    // applies .github/audit-exceptions.json (see check-audit.test.js). A bare
+    // `npm audit` in either would ignore the exceptions and block the other one.
     for (const workflow of [ci, release]) {
-      expect(workflow).toContain('npm audit --audit-level=high');
+      expect(workflow).toContain('run: node scripts/check-audit.cjs');
+      expect(workflow).not.toContain('npm audit --audit-level=high');
       expect(workflow).not.toContain('npm audit --omit=dev');
     }
   });

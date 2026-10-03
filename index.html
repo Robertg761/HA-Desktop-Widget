@@ -895,7 +895,7 @@
                 </div>
               </div>
             </section>
-            <section class="settings-group">
+            <section class="settings-group" data-readable-overrides>
               <h4 class="settings-group-caption" data-i18n="Colors">Colors</h4>
               <div class="settings-group-body">
                 <div class="form-group">
@@ -1139,7 +1139,7 @@
             <section class="settings-group">
               <h4 class="settings-group-caption" data-i18n="Window Effects">Window Effects</h4>
               <div class="settings-group-body">
-                <div class="form-group setting-row">
+                <div class="form-group setting-row" data-readable-overrides>
                   <div class="setting-text">
                     <label for="frosted-glass" data-i18n="Frosted glass background"
                       >Frosted glass background</label
@@ -1179,7 +1179,7 @@
                     ></button>
                   </div>
                 </div>
-                <div class="form-group setting-row setting-row-stacked">
+                <div class="form-group setting-row setting-row-stacked" data-readable-overrides>
                   <div class="setting-text">
                     <label for="opacity-slider" data-i18n="Window opacity">Window opacity</label>
                     <p
@@ -1283,7 +1283,7 @@
                     aria-describedby="seasonal-enabled-help seasonal-status"
                   />
                 </div>
-                <div class="form-group setting-row seasonal-option">
+                <div class="form-group setting-row seasonal-option" data-readable-overrides>
                   <div class="setting-text">
                     <label for="seasonal-colors" data-i18n="Holiday colors">Holiday colors</label>
                     <p
@@ -1430,8 +1430,20 @@
                         >High contrast with opaque panels</span
                       ></label
                     >
+                    <p
+                      class="form-help"
+                      id="readable-preset-help"
+                      data-i18n="Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors."
+                    >
+                      Turns off transparency and raises text and border contrast everywhere. While
+                      it is on, it overrides your colors, glass and holiday colors.
+                    </p>
                   </div>
-                  <input type="checkbox" id="readable-preset" />
+                  <input
+                    type="checkbox"
+                    id="readable-preset"
+                    aria-describedby="readable-preset-help"
+                  />
                 </div>
               </div>
             </section>
