@@ -285,7 +285,11 @@ async function openHotkeysFor(ctx, filter) {
 
 async function openPrimaryCardsList(ctx) {
   await openSettingsTab(ctx, 'dashboard');
-  await ctx.click('#primary-cards-section .section-toggle');
+  // A section remembers whether it was open, so only open it when it is shut.
+  await ctx.ev(`(() => {
+    const section = document.getElementById('primary-cards-section');
+    if (section.classList.contains('collapsed')) section.querySelector('.section-toggle').click();
+  })()`);
   await ctx.waitForSelector('#primary-cards-list .entity-item');
   // The section opens with a transition; its heading is only where it will stay once it is open.
   await ctx.sleep(600);
