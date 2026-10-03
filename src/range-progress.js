@@ -15,7 +15,9 @@ export function syncRangeProgress(input) {
 
 // The app moves its sliders from script as often as the user drags them (Home Assistant reports a
 // new level, a failed command puts the old one back), and assigning .value fires no event, so the
-// setter is wrapped on each slider as well as listening for `input`.
+// setter is wrapped on each slider as well as listening for `input`. The other ways a thumb moves
+// (form.reset(), setAttribute('value') on an untouched slider, stepUp() and stepDown()) fire
+// nothing this can hear and are not covered; no slider in the app is moved that way.
 function trackRange(input) {
   if (Object.prototype.hasOwnProperty.call(input, 'value')) return;
   const nativeValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
