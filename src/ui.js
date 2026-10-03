@@ -4228,6 +4228,7 @@ function fitSensorTileValue(readout) {
   });
   if (fitted !== null) value.style.fontSize = `${fitted}px`;
   readout.dataset.fitWidth = String(readout.clientWidth);
+  readout.dataset.fitSize = readout.closest('.control-item')?.dataset.valueSize || '';
 }
 
 // Refits a reading when its tile's width changes (a resize, a different number of columns). The
@@ -10478,10 +10479,16 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
       div.classList.add('sensor-numeric-entity');
       if (stateEl) stateEl.setAttribute('aria-label', sensorDisplay.text);
       const value = div.querySelector('.control-sensor-value');
-      if (value) value.textContent = sensorDisplay.value;
       const unit = div.querySelector('.control-sensor-unit');
+      const readout = div.querySelector('.control-sensor-readout');
+      // A reading that did not change keeps its fit: measuring it again costs a layout.
+      const needsFit =
+        value?.textContent !== sensorDisplay.value ||
+        (unit && unit.textContent !== sensorDisplay.unit) ||
+        readout?.dataset.fitSize !== (div.dataset.valueSize || '');
+      if (value) value.textContent = sensorDisplay.value;
       if (unit) unit.textContent = sensorDisplay.unit;
-      fitSensorTileValue(div.querySelector('.control-sensor-readout'));
+      if (needsFit) fitSensorTileValue(readout);
       appendLiveSensorHistoryValue(displayEntity);
       const cachedHistory = sensorHistoryCache.get(displayEntity.entity_id);
       renderSensorTileChart(div, displayEntity, cachedHistory?.series || []);
