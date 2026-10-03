@@ -389,18 +389,27 @@ function sourceRoots(root) {
   return [...roots];
 }
 
-function* walkSources(file) {
+// Follows symbolic links, because what a link points at is packed like any other
+// file, so a link cannot hide a file from the scan. `visited` holds the real path
+// of every directory walked, so a link that loops back cannot keep it going.
+function* walkSources(file, visited = new Set()) {
   let stat;
   try {
-    stat = fs.lstatSync(file);
+    stat = fs.statSync(file);
   } catch (error) {
-    if (error.code === 'ENOENT') return;
+    // Nothing there, or a link to something that is not (or to itself).
+    if (error.code === 'ENOENT' || error.code === 'ELOOP') return;
     throw error;
   }
   if (stat.isFile()) {
     if (SOURCE_EXTENSIONS.has(path.extname(file))) yield file;
   } else if (stat.isDirectory() && !SKIPPED_DIRECTORIES.has(path.basename(file))) {
-    for (const name of fs.readdirSync(file).sort()) yield* walkSources(path.join(file, name));
+    const real = fs.realpathSync(file);
+    if (visited.has(real)) return;
+    visited.add(real);
+    for (const name of fs.readdirSync(file).sort()) {
+      yield* walkSources(path.join(file, name), visited);
+    }
   }
 }
 

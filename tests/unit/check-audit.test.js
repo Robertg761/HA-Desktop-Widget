@@ -1289,6 +1289,72 @@ describe('findShippedPackages', () => {
     );
   });
 
+  describe('with symbolic links', () => {
+    // Windows only lets some accounts make links, so the tests stand down there
+    // rather than fail for a reason that has nothing to do with the scan.
+    const canLink = (() => {
+      const root = project({ 'target.txt': '' });
+      try {
+        fs.symlinkSync(path.join(root, 'target.txt'), path.join(root, 'link.txt'), 'file');
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+    const itLinks = canLink ? it : it.skip;
+
+    // Makes `from` a link to `to`, both relative to the project root.
+    function link(root, from, to) {
+      const target = path.join(root, to);
+      fs.mkdirSync(path.dirname(path.join(root, from)), { recursive: true });
+      // 'junction' is the kind of directory link that needs no privilege on Windows.
+      fs.symlinkSync(
+        target,
+        path.join(root, from),
+        fs.statSync(target).isDirectory() ? 'junction' : 'file'
+      );
+    }
+
+    itLinks('reads a linked file and a linked directory, wherever they point', () => {
+      const root = project({
+        'outside/loader.js': "require('got');",
+        'outside/lib/deep.js': "import 'micromatch';",
+        'outside/lib/node_modules/skipped/index.js': "require('from-linked-node-modules');",
+      });
+      link(root, 'src/c.js', 'outside/loader.js');
+      link(root, 'src/lib', 'outside/lib');
+      const shipped = findShippedPackages(root, {});
+
+      expect(shipped.get('got')).toBe('imported by src/c.js');
+      expect(shipped.get('micromatch')).toBe('imported by src/lib/deep.js');
+      expect(shipped.has('from-linked-node-modules')).toBe(false);
+
+      const result = runCheck({ shippedPackages: shipped });
+      expect(result.ok).toBe(false);
+      expect(result.stderr.join('\n')).toContain('micromatch (imported by src/lib/deep.js)');
+    });
+
+    itLinks('finishes when a link leads back into the directory it is in', () => {
+      const root = project({ 'src/app.js': "require('once');" });
+      link(root, 'src/loop', 'src');
+      link(root, 'src/nested/up', 'src');
+      const names = [...findShippedPackages(root, {}).keys()].sort();
+
+      expect(names).toEqual(['electron', 'once']);
+    });
+
+    itLinks('skips a link to nothing and a link to itself without failing', () => {
+      const root = project({ 'src/app.js': "require('kept');" });
+      const fileLink = (name, target) =>
+        fs.symlinkSync(path.join(root, target), path.join(root, name), 'file');
+      fileLink('src/dangling.js', 'src/missing.js');
+      fileLink('src/self.js', 'src/self.js');
+      const names = [...findShippedPackages(root, {}).keys()].sort();
+
+      expect(names).toEqual(['electron', 'kept']);
+    });
+  });
+
   it('reads only the top-level files list of electron-builder.yml', () => {
     const root = project({
       'electron-builder.yml': [
