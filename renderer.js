@@ -1381,7 +1381,6 @@ function ensureFirstRunWizard() {
   const status = document.createElement('div');
   status.className = 'first-run-status connection-status-empty';
   status.setAttribute('role', 'status');
-  status.setAttribute('aria-live', 'polite');
 
   const actions = document.createElement('div');
   actions.className = 'first-run-actions';

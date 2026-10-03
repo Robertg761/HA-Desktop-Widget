@@ -1051,10 +1051,13 @@ describe('Settings + Config Integration', () => {
 
       connectionStatus.renderConnectionStatus(status, 'Could not reach Home Assistant.', 'error');
       expect(status.getAttribute('role')).toBe('alert');
+      // An explicit aria-live outranks the role's own, so the two have to agree.
+      expect(status.getAttribute('aria-live')).toBe('assertive');
       expect(status.classList.contains('connection-status-empty')).toBe(false);
 
       connectionStatus.renderConnectionStatus(status, 'Connected.', 'success');
       expect(status.getAttribute('role')).toBe('status');
+      expect(status.getAttribute('aria-live')).toBe('polite');
     });
 
     test('discovers available weather entities and selects the saved source', async () => {

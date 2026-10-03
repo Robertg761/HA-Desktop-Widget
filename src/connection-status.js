@@ -45,9 +45,13 @@ function renderConnectionStatus(status, message = '', type = '') {
     text.className = 'connection-status-text';
     status.appendChild(text);
   }
-  // An error interrupts; progress and results wait their turn. The role is set before the text, so the
-  // region already has it when the message arrives.
-  status.setAttribute('role', type === 'error' ? 'alert' : 'status');
+  // An error interrupts; progress and results wait their turn. The role and the politeness are set
+  // as a pair, before the text: an explicit aria-live outranks the one a role implies, so a
+  // role="alert" left on aria-live="polite" would still be announced politely. The markup gives
+  // these lines only role="status", so nothing pins the politeness before the first message.
+  const interrupting = type === 'error';
+  status.setAttribute('role', interrupting ? 'alert' : 'status');
+  status.setAttribute('aria-live', interrupting ? 'assertive' : 'polite');
   status.dataset.status = type || '';
   // Empty is visually hidden but not display:none. A live region that is taken out of the page and put
   // back in the same breath as its text gets no announcement from some screen readers, so it stays

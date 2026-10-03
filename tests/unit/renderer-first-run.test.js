@@ -958,6 +958,9 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(wizard.classList).not.toContain('hidden');
     expect(status.dataset.status).toBe('error');
     expect(status.textContent).toContain('authorization denied');
+    // An error interrupts: the role and the explicit politeness have to agree, or it is read politely.
+    expect(status.getAttribute('role')).toBe('alert');
+    expect(status.getAttribute('aria-live')).toBe('assertive');
     expect(mockUiUtils.showToast).toHaveBeenCalledWith(
       expect.stringContaining('authorization denied'),
       'error',
