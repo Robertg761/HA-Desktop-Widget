@@ -6971,7 +6971,8 @@ function watchMainWindowBounds(targetWindow) {
 /**
  * The main window's minimum size for the current "Text and control size". A desktop-layer surface
  * is sized by the helper from the saved size, which is already held to the unscaled minimum, so it
- * keeps that one.
+ * keeps that one. At 150% such a surface can be as narrow as 213 CSS pixels, under the 320 the
+ * layout is designed for: the header and Settings are cramped there but still reachable.
  */
 function getMainWindowMinimumSizeForConfig(targetConfig) {
   return getMainWindowMinimumSize(isLayerShellChildProcess ? 1 : targetConfig?.ui?.scale);

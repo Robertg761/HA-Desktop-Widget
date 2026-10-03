@@ -6,6 +6,8 @@ const {
   isEnabledEnvFlag,
 } = require('./platform.cjs');
 const { CONFIG_FILE_NAME } = require('./config-write-guard.cjs');
+// The "Text and control size" steps live with the pin bounds, which zoom by the same factor.
+const { normalizeDesktopPinScale } = require('./desktop-pin-bounds.js');
 
 /**
  * Wayland layer-shell relaunch policy for tiling compositors (issue #79).
@@ -58,7 +60,6 @@ const DEFAULT_WINDOW_SIZE = { width: 500, height: 600 };
 // this size, and below it they do not. The window has no title bar of its own to grab, so a size
 // that hides the buttons cannot be undone from inside.
 const MIN_WINDOW_SIZE = { width: 320, height: 360 };
-const UI_SCALES = [1, 1.15, 1.3, 1.5];
 const VALID_ANCHOR_EDGES = new Set(['top', 'bottom', 'left', 'right']);
 const VALID_LAYERS = new Set(['background', 'bottom']);
 
@@ -225,7 +226,7 @@ function normalizeMargin(value, onInvalid) {
  * @returns {{width: number, height: number}}
  */
 function getMainWindowMinimumSize(uiScale = 1) {
-  const scale = UI_SCALES.includes(Number(uiScale)) ? Number(uiScale) : 1;
+  const scale = normalizeDesktopPinScale(uiScale);
   return {
     width: Math.round(MIN_WINDOW_SIZE.width * scale),
     height: Math.round(MIN_WINDOW_SIZE.height * scale),
