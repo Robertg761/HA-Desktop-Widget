@@ -1106,8 +1106,16 @@ describe('stylesheet cascade regressions', () => {
       );
       const panel = resolvedValue(document.body, '--bg-primary');
 
+      // The track is the accent up to the thumb and grey beyond it (see src/range-progress.js).
       for (const slider of document.querySelectorAll('input:not(.light-color-temp-slider)')) {
-        expect(contrastRatio(resolvedValue(slider, 'background'), panel)).toBeGreaterThanOrEqual(3);
+        slider.style.setProperty('--range-progress', '40%');
+        const track = resolvedValue(slider, 'background')
+          .replace(/\s+/g, ' ')
+          .match(/^linear-gradient\( ?to right, (#\w+) 40%, (#\w+) 40% ?\)$/);
+        expect(track).not.toBeNull();
+        expect(contrastRatio(track[1], panel)).toBeGreaterThanOrEqual(3);
+        expect(contrastRatio(track[2], panel)).toBeGreaterThanOrEqual(3);
+        expect(track[1]).not.toBe(track[2]);
       }
       // The colour temperature scale keeps its warm-to-cool gradient.
       expect(

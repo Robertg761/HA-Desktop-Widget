@@ -1,5 +1,6 @@
 import { applyDesktopAppearance } from './src/desktop-appearance.js';
 import { installLayerDrag } from './src/layer-drag.js';
+import { installRangeProgress } from './src/range-progress.js';
 import desktopPinResize from './src/desktop-pin-resize.cjs';
 // Load all required modules (ES Modules)
 import log from './src/logger.js';
@@ -1715,9 +1716,11 @@ function renderCurrentMode() {
     document
       .getElementById('desktop-pin-content')
       ?.setAttribute('data-edit-hint', t('Drag or resize'));
+    // The notice that the desktop decides where the tile sits is for sessions where nothing in the
+    // app can move it. A layer surface on Hyprland is dragged by the app itself.
     document.body.classList.toggle(
       'desktop-pin-compositor-placement',
-      !desktopPinSupportsWindowPositioning
+      !desktopPinSupportsWindowPositioning && state.CONFIG?.desktopCapabilities?.canDrag !== true
     );
     ui.renderDesktopPinnedTile(DESKTOP_PIN_ENTITY_ID, entity, {
       hasSnapshot: desktopPinHasSnapshot,
@@ -3255,10 +3258,9 @@ function wireUI() {
           try {
             const hotkey = await hotkeys.captureHotkey();
             if (hotkey) {
-              // Get selected action from custom dropdown
-              const dropdown = target.parentElement.querySelector('.hotkey-action-dropdown');
-              const selectedOption = dropdown?.querySelector('.custom-dropdown-option.selected');
-              const action = selectedOption?.dataset?.value || 'toggle';
+              // The action picked in the row's select
+              const actionSelect = target.parentElement.querySelector('.hotkey-action-select');
+              const action = actionSelect?.value || 'toggle';
               const result = await window.electronAPI.registerHotkey(entityId, hotkey, action);
               if (result?.success) {
                 target.value = hotkey;
@@ -3337,27 +3339,46 @@ function wireDesktopPinUI() {
       };
     }
 
+    // Main works out the position from the corner and the size asked for: the edge opposite the
+    // handle stays put whatever the interface scale, and the work area the drag began on limits it.
+    const sendResize = async (corner, size, final) => {
+      const result = await window.electronAPI.updateDesktopPinBounds(DESKTOP_PIN_ENTITY_ID, {
+        width: size.width,
+        height: size.height,
+        resize: { corner, final },
+      });
+      if (result?.success && result.pinBounds) {
+        desktopPinBounds = result.pinBounds;
+      }
+      return result;
+    };
+    const getInterfaceScale = () => {
+      const scale = Number(state.CONFIG?.ui?.scale);
+      return scale > 1 ? scale : 1;
+    };
+    // The arrow keys' resizes in progress, shared by the handles: the size the latest press asked
+    // for, the request waiting to be sent, and the loop sending them.
+    const keyboardResize = { asked: null, queued: null, running: null };
+    const sendQueuedKeyboardResizes = async () => {
+      try {
+        while (keyboardResize.queued) {
+          const { corner, size } = keyboardResize.queued;
+          keyboardResize.queued = null;
+          try {
+            await sendResize(corner, size, true);
+          } catch (error) {
+            log.error('Failed to resize desktop tile from the keyboard:', error);
+          }
+        }
+      } finally {
+        keyboardResize.asked = null;
+        keyboardResize.running = null;
+      }
+    };
+
     document.querySelectorAll('.desktop-pin-resize-handle').forEach((resizeHandle) => {
       if (resizeHandle.dataset.bound) return;
       resizeHandle.dataset.bound = 'true';
-
-      // Main works out the position from the corner and the size asked for: the edge opposite the
-      // handle stays put whatever the interface scale, and the work area the drag began on limits it.
-      const sendResize = async (corner, size, final) => {
-        const result = await window.electronAPI.updateDesktopPinBounds(DESKTOP_PIN_ENTITY_ID, {
-          width: size.width,
-          height: size.height,
-          resize: { corner, final },
-        });
-        if (result?.success && result.pinBounds) {
-          desktopPinBounds = result.pinBounds;
-        }
-        return result;
-      };
-      const getInterfaceScale = () => {
-        const scale = Number(state.CONFIG?.ui?.scale);
-        return scale > 1 ? scale : 1;
-      };
 
       resizeHandle.addEventListener(
         'pointerdown',
@@ -3461,25 +3482,29 @@ function wireDesktopPinUI() {
       );
 
       // The handles are focusable buttons, so the arrow keys resize too: a step per press, a larger
-      // one with Shift.
-      resizeHandle.addEventListener('keydown', async (event) => {
+      // one with Shift. A held key repeats faster than a resize round trip (every step is saved),
+      // and the bounds only update when a reply arrives, so each step builds on the size the
+      // previous one asked for, and the steps that arrive while a request is out go in the next one
+      // together. Once nothing is waiting the bounds Main confirmed (which it may have limited) are
+      // the starting point again.
+      resizeHandle.addEventListener('keydown', (event) => {
         if (!desktopPinEditMode || !desktopPinBounds) return;
         const delta = getDesktopPinResizeKeyDelta(event.key, { shiftKey: event.shiftKey });
         if (!delta) return;
         event.preventDefault();
         event.stopPropagation();
         const corner = resizeHandle.dataset.corner || 'bottom-right';
-        try {
-          await sendResize(
-            corner,
-            getDesktopPinResizeRequest(desktopPinBounds, corner, delta, {
-              scale: getInterfaceScale(),
-            }),
-            true
-          );
-        } catch (error) {
-          log.error('Failed to resize desktop tile from the keyboard:', error);
-        }
+        const size = getDesktopPinResizeRequest(
+          keyboardResize.asked || desktopPinBounds,
+          corner,
+          delta,
+          {
+            scale: getInterfaceScale(),
+          }
+        );
+        keyboardResize.asked = size;
+        keyboardResize.queued = { corner, size };
+        keyboardResize.running ||= sendQueuedKeyboardResizes();
       });
     });
   } catch (error) {
@@ -3509,3 +3534,4 @@ window.addEventListener(
 );
 
 installLayerDrag();
+installRangeProgress();

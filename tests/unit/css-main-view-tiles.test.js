@@ -36,6 +36,9 @@ const MAIN_VIEW_TILES = [
   '#quick-controls .control-item',
 ];
 
+/** A value with the line breaks Prettier puts in long declarations collapsed to single spaces. */
+const flat = (value) => value.replace(/\s+/g, ' ');
+
 function render(bodyClass, html = MAIN_VIEW_MARKUP) {
   document.body.className = bodyClass;
   document.body.innerHTML = html;
@@ -393,6 +396,52 @@ describe('main view tiles', () => {
         );
       }
       expect(panel).toBeTruthy();
+    });
+
+    // The opaque fill is a background shorthand, which wiped the wash of an "on" tile and the tint
+    // of a timer. They come back as an image layer, so the opaque colour underneath stays.
+    it.each([
+      ['dark', 'active-tile-glow opaque-panels', '24%', '30%'],
+      ['light', 'theme-light active-tile-glow opaque-panels', '18%', '24%'],
+      ['readable', 'active-tile-glow high-contrast opaque-panels', '24%', '30%'],
+    ])(
+      'keeps the wash of an on tile and a timer over the fill (%s)',
+      (_, bodyClass, wash, hover) => {
+        render(
+          bodyClass,
+          `<div id="quick-controls">
+          <div class="control-item" data-active="true" id="lit"></div>
+          <div class="control-item" id="idle"></div>
+          <div class="control-item timer-entity" data-state="active" id="timer"></div>
+        </div>`
+        );
+        const [lit, idle, timer] = ['#lit', '#idle', '#timer'].map((id) =>
+          document.querySelector(id)
+        );
+
+        for (const tile of [lit, timer]) {
+          expect(cascadedDeclaration(tile, 'background-image').important).toBe(true);
+          expect(cascadedDeclaration(tile, 'background-image').value).toMatch(/^linear-gradient/);
+          // The opaque colour is still the one that paints under the wash.
+          expect(cascadedDeclaration(tile, 'background').important).toBe(true);
+        }
+        expect(cascadedDeclaration(idle, 'background-image')).toBeNull();
+        expect(resolvedValue(lit, '--active-tile-wash')).toContain(`${wash}, transparent`);
+        expect(resolvedValue(timer, '--timer-wash')).toContain('18%, transparent');
+
+        lit.setAttribute('data-hover', '');
+        expect(flat(resolvedValue(lit, '--active-tile-wash'))).toContain(`${hover}, transparent`);
+      }
+    );
+
+    it('leaves the wash to the glass themes, which paint it as a fill', () => {
+      render(
+        'active-tile-glow',
+        '<div id="quick-controls"><div class="control-item" data-active="true"></div></div>'
+      );
+      expect(cascadedDeclaration(document.querySelector('.control-item'), 'background-image')).toBe(
+        null
+      );
     });
 
     // A primary card holds its entity's tile, which fills the card. The card paints the lift, so

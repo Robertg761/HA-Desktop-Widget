@@ -302,6 +302,14 @@ const scenes = [
   // Settings pages the first scenes do not reach, and the custom colour editor.
   { name: 'settings-dashboard', setup: (ctx) => openSettingsTab(ctx, 'dashboard') },
   { name: 'settings-hotkeys', setup: (ctx) => openSettingsTab(ctx, 'hotkeys') },
+  // The entity list, where each row picks the action its hotkey runs from a select.
+  {
+    name: 'settings-hotkeys-entities',
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'hotkeys');
+      await revealInSettings(ctx, '#hotkeys-list');
+    },
+  },
   {
     name: 'settings-alerts',
     config: alertsConfig,
@@ -460,6 +468,14 @@ const scenes = [
     setup: (ctx) => openSettingsTab(ctx, 'hotkeys'),
   },
   {
+    name: 'de-settings-hotkeys-entities',
+    ui: { language: 'de' },
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'hotkeys');
+      await revealInSettings(ctx, '#hotkeys-list');
+    },
+  },
+  {
     name: 'de-popup-media',
     ui: { language: 'de' },
     config: dialogsPage,
@@ -604,7 +620,41 @@ const scenes = [
 
   // The Readable preset (high contrast with opaque panels), on both themes.
   { name: 'readable-main', ui: READABLE },
+  // A running timer is a tile that takes keyboard focus itself, and draws its on edge as an outline.
+  // The white focus ring has to stay on top of that edge.
+  {
+    name: 'readable-timer-focus',
+    ui: READABLE,
+    setup: (ctx) => focusWithKeyboard(ctx, tile('timer.laundry')),
+  },
   { name: 'readable-light-main', ui: { theme: 'light', ...READABLE } },
+  // The selected and on states of the preset, each of which has to differ from its off state by
+  // more than hue: the lit tiles, the selected theme mode, switches, chips, swatches and pins.
+  {
+    name: 'readable-settings-appearance',
+    ui: READABLE,
+    setup: (ctx) => openSettingsTab(ctx, 'personalization'),
+  },
+  {
+    name: 'readable-settings-general',
+    ui: READABLE,
+    setup: (ctx) => openSettingsTab(ctx, 'general'),
+  },
+  { name: 'readable-edit-mode', ui: READABLE, setup: toggleEditMode },
+  { name: 'readable-popup-brightness', ui: READABLE, setup: openBrightness },
+  { name: 'readable-popup-climate', ui: READABLE, setup: openClimate },
+  {
+    name: 'readable-popup-colour',
+    ui: READABLE,
+    config: { activeTabId: 'bedroom' },
+    setup: openColourLight,
+  },
+  {
+    name: 'readable-popup-fan',
+    ui: READABLE,
+    config: dialogsPage,
+    setup: openDetails('fan.office'),
+  },
   { name: 'readable-light-popup-climate', ui: { theme: 'light', ...READABLE }, setup: openClimate },
   {
     name: 'readable-light-settings-appearance',
@@ -652,6 +702,14 @@ const scenes = [
   pinScene('pin-large-climate', 'climate.bedroom', { ui: { scale: 1.5 } }),
   pinScene('pin-large-weather', 'weather.home', { ui: { scale: 1.5 } }),
   pinScene('pin-theme-light-climate', 'climate.bedroom', { ui: { theme: 'light' } }),
+  // The Readable preset reaches pin windows too: the power chip, the panel chips and the sliders.
+  pinScene('readable-pin-light', 'light.desk_lamp', { ui: READABLE }),
+  pinScene('readable-pin-climate', 'climate.bedroom', { ui: READABLE }),
+  pinScene('readable-pin-cover', 'cover.garage_door', { ui: READABLE }),
+  pinScene('readable-pin-fan', 'fan.office', { ui: READABLE }),
+  // The pin's own track, thumb and fill in system colours.
+  pinScene('forced-colors-pin-climate', 'climate.bedroom', { media: FORCED_COLORS }),
+  pinScene('forced-colors-pin-light', 'light.desk_lamp', { media: FORCED_COLORS }),
 
   // The fixture turns seasonal themes off so the scenes above do not change with the date; these
   // force a holiday on. They also switch the themes on explicitly: CI machines often ask for

@@ -614,6 +614,27 @@ describe('Settings + Config Integration', () => {
       expect(mockUiHooks.initUpdateUI).toHaveBeenCalled();
     });
 
+    test('says in a title why layer mode turns the on top and hide on blur switches off', async () => {
+      const reason = 'Desktop layer mode keeps the widget behind normal windows.';
+      const alwaysOnTop = document.getElementById('always-on-top');
+      const hideOnBlur = document.getElementById('hide-on-blur');
+      state.CONFIG.desktopCapabilities = { layerMode: false };
+      await settings.openSettings();
+      expect([alwaysOnTop.title, hideOnBlur.title]).toEqual(['', '']);
+      settings.closeSettings();
+
+      state.CONFIG.desktopCapabilities = { layerMode: true };
+      await settings.openSettings();
+      expect([alwaysOnTop.disabled, hideOnBlur.disabled]).toEqual([true, true]);
+      expect([alwaysOnTop.title, hideOnBlur.title]).toEqual([reason, reason]);
+      settings.closeSettings();
+
+      // And the reason goes again once the switches are usable.
+      state.CONFIG.desktopCapabilities = { layerMode: false };
+      await settings.openSettings();
+      expect([alwaysOnTop.title, hideOnBlur.title]).toEqual(['', '']);
+    });
+
     test('closing Settings after an import keeps the imported window effects', async () => {
       window.electronAPI.previewWindowEffects = jest.fn().mockResolvedValue(undefined);
       window.electronAPI.previewSettingsImport = jest.fn().mockResolvedValue({
@@ -5714,6 +5735,62 @@ describe('Settings + Config Integration', () => {
       expect(document.getElementById('primary-card-1-current').textContent).toBe(
         'Wetter (Standard)'
       );
+    });
+
+    test('relabels the media player options, the unavailable one included, when the language changes while open', async () => {
+      i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      state.CONFIG.primaryMediaPlayer = 'media_player.gone';
+      await settings.openSettings();
+      const select = document.getElementById('primary-media-player');
+      expect(select.selectedOptions[0].textContent).toBe('Unavailable: media_player.gone');
+
+      i18n.setLocaleBootstrap({
+        activeLocale: 'de',
+        messages: {
+          'None (Hide Media Tile)': 'Keine (Medienkachel ausblenden)',
+          'Unavailable: {{entityId}}': 'Nicht verfügbar: {{entityId}}',
+        },
+      });
+      await Promise.resolve();
+
+      expect(select.value).toBe('media_player.gone');
+      expect(select.selectedOptions[0].textContent).toBe('Nicht verfügbar: media_player.gone');
+      expect(select.options[0].textContent).toBe('Keine (Medienkachel ausblenden)');
+    });
+
+    test('translates the layer mode reasons when the language changes while open', async () => {
+      i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      state.CONFIG.desktopCapabilities = { layerMode: true };
+      await settings.openSettings();
+      const hideOnBlur = document.getElementById('hide-on-blur');
+      expect(hideOnBlur.title).toBe('Desktop layer mode keeps the widget behind normal windows.');
+
+      i18n.setLocaleBootstrap({
+        activeLocale: 'de',
+        messages: {
+          'Desktop layer mode keeps the widget behind normal windows.':
+            'Der Desktop-Layer-Modus hält das Widget hinter normalen Fenstern.',
+        },
+      });
+      await Promise.resolve();
+
+      expect(hideOnBlur.title).toBe(
+        'Der Desktop-Layer-Modus hält das Widget hinter normalen Fenstern.'
+      );
+      expect(document.getElementById('always-on-top').title).toBe(hideOnBlur.title);
+    });
+
+    test('keeps an unsaved media player choice when the language changes while open', async () => {
+      i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      await settings.openSettings();
+      const select = document.getElementById('primary-media-player');
+      select.value = 'media_player.spotify';
+      select.dispatchEvent(new Event('change'));
+
+      i18n.setLocaleBootstrap({ activeLocale: 'de', messages: GERMAN });
+      await Promise.resolve();
+
+      expect(select.value).toBe('media_player.spotify');
     });
 
     test('asks the update UI to re-render its status line after a language change', async () => {

@@ -1356,6 +1356,32 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(document.activeElement).toBe(input);
     expect(mockUiUtils.showToast).toHaveBeenCalledWith('Already registered', 'error');
   });
+  it('registers a recorded hotkey with the action picked in the same row', async () => {
+    await loadRenderer({
+      config: unconfiguredConfig(),
+      bodyHtml: `<main class="widget-content"></main><div id="hotkeys-list"><div>
+        <input readonly class="hotkey-input" data-entity-id="light.office">
+        <select class="hotkey-action-select" data-entity-id="light.office">
+          <option value="toggle">Toggle</option><option value="turn_on" selected>Turn On</option>
+        </select></div></div>`,
+    });
+    mockHotkeys.captureHotkey.mockResolvedValueOnce('Ctrl+K');
+    mockElectronAPI.registerHotkey.mockResolvedValueOnce({ success: true });
+
+    document.querySelector('.hotkey-input').click();
+    await flushAsync();
+
+    expect(mockElectronAPI.registerHotkey).toHaveBeenCalledWith(
+      'light.office',
+      'Ctrl+K',
+      'turn_on'
+    );
+    expect(mockState.CONFIG.globalHotkeys.hotkeys['light.office']).toEqual({
+      hotkey: 'Ctrl+K',
+      action: 'turn_on',
+    });
+  });
+
   it('announces a successful keyboard hotkey assignment', async () => {
     await loadRenderer({
       config: unconfiguredConfig(),

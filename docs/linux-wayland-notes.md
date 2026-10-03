@@ -304,8 +304,11 @@ Operational notes:
   primary, and resizing works but moving does not. Resizing from a top or left handle keeps
   the opposite edge where it is by moving the surface's position, which is saved with the
   size, as the position of that output. The surface is resized from where it is drawn, which
-  after a drag is not the x and y the pin was saved with. Popup elevation targets the main
-  widget only.
+  after a drag is not the x and y the pin was saved with. Any resize saves that position, a
+  bottom or right handle included: a pin the app placed itself, to clear its neighbours, has no
+  saved position, and would otherwise be placed afresh (possibly elsewhere) as soon as its size
+  changed. If the size cannot be saved the pin goes back to its saved size and, with no saved
+  position, to where it was drawn. Popup elevation targets the main widget only.
 - Windows are transparent whatever the opacity on native Wayland and as layer surfaces. An
   opaque window there is given a larger surface and no shape, which showed as a square plate
   behind each rounded pin and moved the widget about 16px right and 10px down at 100%. The

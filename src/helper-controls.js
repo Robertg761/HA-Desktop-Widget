@@ -1,19 +1,35 @@
-// HA's feature flags apply per entity, even when its domain exposes the service globally.
+// HA's feature flags apply per entity, even when its domain exposes the service globally. A vacuum
+// written before START and STOP existed advertises TURN_ON and TURN_OFF instead, and those stand in
+// for Start and Stop when the newer ones are missing, as they do on its desktop pin.
 const VACUUM_ACTIONS = [
-  { service: 'start', feature: 8192, label: 'Start' },
-  { service: 'pause', feature: 4, label: 'Pause' },
-  { service: 'stop', feature: 8, label: 'Stop' },
-  { service: 'return_to_base', feature: 16, label: 'Return to base' },
+  {
+    label: 'Start',
+    services: [
+      { service: 'start', feature: 8192 },
+      { service: 'turn_on', feature: 1 },
+    ],
+  },
+  { label: 'Pause', services: [{ service: 'pause', feature: 4 }] },
+  {
+    label: 'Stop',
+    services: [
+      { service: 'stop', feature: 8 },
+      { service: 'turn_off', feature: 2 },
+    ],
+  },
+  { label: 'Return to base', services: [{ service: 'return_to_base', feature: 16 }] },
 ];
 
 function getHelperActions(entity, services) {
   const domain = entity?.entity_id?.split('.')[0];
   if (domain === 'vacuum') {
     const features = Number(entity.attributes?.supported_features) || 0;
-    return VACUUM_ACTIONS.filter(
-      (action) =>
-        services?.vacuum?.[action.service] && (features & action.feature) === action.feature
-    );
+    return VACUUM_ACTIONS.flatMap(({ label, services: alternatives }) => {
+      const usable = alternatives.find(
+        ({ service, feature }) => services?.vacuum?.[service] && (features & feature) === feature
+      );
+      return usable ? [{ service: usable.service, label }] : [];
+    });
   }
   const service = ['number', 'input_number'].includes(domain) ? 'set_value' : 'select_option';
   return services?.[domain]?.[service] ? [{ service, label: 'Apply' }] : [];
