@@ -520,6 +520,22 @@ function packageNamed(nameOrSubpath, workspaceNames, isPackage) {
   return name;
 }
 
+const NODE_MODULES = 'node_modules/';
+
+// Where Node finds `dependency` for the package installed at `location`: in that
+// package's own node_modules, then in each node_modules around it up to the
+// root's. Returns the lock file's location for it, or null when nothing installs it.
+function resolveInstalled(packages, location, dependency) {
+  let base = location;
+  for (;;) {
+    const candidate = `${base ? `${base}/` : ''}${NODE_MODULES}${dependency}`;
+    if (packages[candidate]) return candidate;
+    if (!base) return null;
+    const enclosing = base.lastIndexOf(`/${NODE_MODULES}`);
+    base = enclosing === -1 ? '' : base.slice(0, enclosing);
+  }
+}
+
 // Adds to `shipped` every package the lock file installs for the ones already in
 // it. A package that ships brings the packages it depends on, so a vulnerable
 // package that one of them requires ships too. npm audit does not always say so:
@@ -528,11 +544,15 @@ function packageNamed(nameOrSubpath, workspaceNames, isPackage) {
 // shipped one and the advisory, is left out of the report and so out of the path
 // that collectAdvisories() traces.
 //
-// Names are followed without regard to where in node_modules a copy sits, which
-// can only add packages. Electron is not followed: its npm package downloads the
-// runtime that every build packs, and is not itself packed. A missing lock file
-// adds nothing; npm audit does not run without one, so the gate has already
-// stopped by then.
+// A dependency is followed to the copy its dependent would load: the one in the
+// dependent's own node_modules, else the nearest one above. Following the name
+// alone would merge unrelated copies, so a shipped package using its nested js-yaml 4
+// would drag in the build tools' js-yaml 3 and what that needs. The packages already
+// in `shipped` are the starting points, and every copy of those counts, since
+// nothing says which of them the app loads. Electron is not followed: its npm
+// package downloads the runtime that every build packs, and is not itself packed. A
+// missing lock file adds nothing; npm audit does not run without one, so the gate has
+// already stopped by then.
 function addInstalledDependencies(shipped, root) {
   const text = readTextIfPresent(path.join(root, LOCK_FILE));
   if (text === null) return;
@@ -551,41 +571,51 @@ function addInstalledDependencies(shipped, root) {
     );
   }
 
-  // Each name another package can require, with what is installed under it. A
-  // workspace is linked into node_modules, and the link stands for the workspace.
-  const installed = new Map();
-  for (const [location, entry] of Object.entries(packages)) {
-    const at = location.lastIndexOf('node_modules/');
-    const target = entry && entry.link ? packages[entry.resolved] : entry;
-    if (at === -1 || !target || typeof target !== 'object') continue;
-    const name = location.slice(at + 'node_modules/'.length);
-    if (!installed.has(name)) installed.set(name, []);
-    installed.get(name).push(target);
+  // A workspace is linked into node_modules, and the link stands for the workspace:
+  // its dependencies are found from where it lives.
+  const realLocation = (location) => {
+    const entry = packages[location];
+    return entry && entry.link && packages[entry.resolved] ? entry.resolved : location;
+  };
+  const entryAt = (location) => {
+    const entry = packages[location];
+    return entry && typeof entry === 'object' ? entry : null;
+  };
+
+  const queue = [];
+  const seenLocations = new Set();
+  const visit = (location, origin, why) => {
+    const real = realLocation(location);
+    if (seenLocations.has(real)) return;
+    seenLocations.add(real);
+    queue.push({ location: real, origin, why });
+  };
+  for (const location of Object.keys(packages)) {
+    const at = location.lastIndexOf(NODE_MODULES);
+    const name = at === -1 ? null : location.slice(at + NODE_MODULES.length);
+    if (name !== null && name !== 'electron' && shipped.has(name)) {
+      visit(location, name, shipped.get(name));
+    }
   }
 
-  // Electron is already in `seen`, so nothing below it is queued.
-  const seen = new Set(shipped.keys());
-  const queue = [...shipped]
-    .filter(([name]) => name !== 'electron')
-    .map(([name, why]) => ({ name, origin: name, why }));
   while (queue.length > 0) {
-    const { name, origin, why } = queue.shift();
-    for (const entry of installed.get(name) || []) {
-      for (const field of DEPENDENCY_FIELDS) {
-        for (const dependency of Object.keys(packageField(entry, field))) {
-          if (seen.has(dependency)) continue;
-          seen.add(dependency);
-          queue.push({ name: dependency, origin, why });
-
-          // An aliased dependency is installed under one name and audited under
-          // another, so both count.
-          const names = [dependency, ...(installed.get(dependency) || []).map((item) => item.name)];
-          for (const known of names) {
-            if (typeof known === 'string' && !shipped.has(known)) {
-              shipped.set(known, `needed by ${origin}, which is ${why}`);
-            }
+    const { location, origin, why } = queue.shift();
+    const entry = entryAt(location);
+    if (!entry) continue;
+    for (const field of DEPENDENCY_FIELDS) {
+      for (const dependency of Object.keys(packageField(entry, field))) {
+        if (dependency === 'electron') continue;
+        const found = resolveInstalled(packages, location, dependency);
+        const target = found && entryAt(realLocation(found));
+        // An aliased dependency is installed under one name and audited under another, so
+        // both count. A dependency nothing installs (an optional one for another platform)
+        // still counts by its name.
+        for (const known of [dependency, target && target.name]) {
+          if (typeof known === 'string' && !shipped.has(known)) {
+            shipped.set(known, `needed by ${origin}, which is ${why}`);
           }
         }
+        if (found) visit(found, origin, why);
       }
     }
   }
