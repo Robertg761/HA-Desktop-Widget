@@ -12884,23 +12884,35 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
 
   /* An "on" tile is a wash of the accent in an accent edge two pixels wide, and a running or paused
      timer takes its own colour the same way, the paused one dashed. With the opaque panels' fill
-     the wash is the layer set above; the edge is drawn on top. */
+     the wash is the layer set above; the edge is drawn on top. The outline half of the edge steps
+     aside while the tile has keyboard focus: the focus ring is white whatever this says, but it
+     took this rule's -2px offset and sat on top of the edge, hiding it. */
+  body.active-tile-glow.high-contrast
+    #quick-controls
+    .control-item[data-active='true']:not(:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+
   body.active-tile-glow.high-contrast #quick-controls .control-item[data-active='true'] {
     background-color: rgba(var(--accent-rgb), 0.26);
     border-color: var(--accent);
-    outline: 2px solid var(--accent);
-    outline-offset: -2px;
   }
 
   body.high-contrast
     #quick-controls
     .timer-entity:is([data-state='active'], [data-state='paused']) {
     border-color: rgb(var(--timer-rgb));
+  }
+
+  body.high-contrast
+    #quick-controls
+    .timer-entity:is([data-state='active'], [data-state='paused']):not(:focus-visible) {
     outline: 2px solid rgb(var(--timer-rgb));
     outline-offset: -2px;
   }
 
-  body.high-contrast #quick-controls .timer-entity[data-state='paused'] {
+  body.high-contrast #quick-controls .timer-entity[data-state='paused']:not(:focus-visible) {
     outline: 2px dashed rgb(var(--timer-rgb));
   }
 

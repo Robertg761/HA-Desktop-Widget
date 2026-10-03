@@ -620,6 +620,13 @@ const scenes = [
 
   // The Readable preset (high contrast with opaque panels), on both themes.
   { name: 'readable-main', ui: READABLE },
+  // A running timer is a tile that takes keyboard focus itself, and draws its on edge as an outline.
+  // The white focus ring has to stay on top of that edge.
+  {
+    name: 'readable-timer-focus',
+    ui: READABLE,
+    setup: (ctx) => focusWithKeyboard(ctx, tile('timer.laundry')),
+  },
   { name: 'readable-light-main', ui: { theme: 'light', ...READABLE } },
   // The selected and on states of the preset, each of which has to differ from its off state by
   // more than hue: the lit tiles, the selected theme mode, switches, chips, swatches and pins.

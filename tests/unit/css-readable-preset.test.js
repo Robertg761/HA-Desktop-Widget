@@ -168,6 +168,23 @@ describe('the Readable preset', () => {
       expect(resolvedValue(running, 'border-color')).toBe('rgb(129, 199, 132)');
     });
 
+    it('keeps the focus ring on a lit tile or timer that holds keyboard focus itself', () => {
+      render('active-tile-glow high-contrast opaque-panels', TILES);
+      for (const id of ['#lit', '#running', '#paused']) {
+        document.querySelector(id).setAttribute('data-focus-visible', '');
+      }
+      const [lit, running, paused] = ['#lit', '#running', '#paused'].map((id) =>
+        document.querySelector(id)
+      );
+      for (const tile of [lit, running, paused]) {
+        expect(resolvedValue(tile, 'outline')).toBe('3px solid #fff');
+        expect(resolvedValue(tile, 'outline-offset')).toBe('2px');
+      }
+      // The on state stays readable from the edge and the fill while the outline is the ring.
+      expect(resolvedValue(lit, 'border-color')).toBe('#8ed1ff');
+      expect(resolvedValue(running, 'border-color')).toBe('rgb(129, 199, 132)');
+    });
+
     it('leaves the tiles to forced colours, which outline them in Highlight', () => {
       render('active-tile-glow high-contrast opaque-panels', TILES);
       const lit = document.querySelector('#lit');
