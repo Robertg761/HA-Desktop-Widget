@@ -1068,6 +1068,54 @@ describe('findShippedPackages', () => {
     ]);
   });
 
+  it('finds packages that a page loads from node_modules or imports in a module script', () => {
+    const root = project({
+      'electron-builder.yml': ['files:', '  - index.html', '  - main.js', ''].join('\n'),
+      'index.html': `
+        <link rel="stylesheet" href="node_modules/braces/index.css" />
+        <link rel="stylesheet" href="./node_modules/@scope/styles/dist/base.css?v=1" />
+        <link rel="stylesheet" href="../node_modules/events/style.css" />
+        <script src='node_modules/micromatch/browser.js'></script>
+        <script type="module">
+          import "fast-glob";
+          import { x } from '@scope/inline';
+          const lazy = import('inline-dynamic');
+        </script>
+        <link rel="stylesheet" href="styles.css" />
+        <script type="module" src="dist-renderer/renderer.bundle.js"></script>
+        <!-- node_modules/.bin/tool, node_modules/\${name}/x.js and my_node_modules/other/x.js -->
+      `,
+      'src/panel.html': '<link href="node_modules/in-src/panel.css" />',
+      'website/index.html': '<link href="node_modules/not-packed/site.css" />',
+    });
+    const names = [...findShippedPackages(root, {}).keys()].sort();
+
+    expect(names).toEqual([
+      '@scope/inline',
+      '@scope/styles',
+      'braces',
+      'electron',
+      'events',
+      'fast-glob',
+      'in-src',
+      'inline-dynamic',
+      'micromatch',
+    ]);
+  });
+
+  it('rejects an exception whose package a page loads, and says which page', () => {
+    const root = project({
+      'electron-builder.yml': ['files:', '  - index.html', ''].join('\n'),
+      'index.html': '<link rel="stylesheet" href="node_modules/braces/x.css" />',
+    });
+    const shipped = findShippedPackages(root, {});
+    const result = runCheck({ shippedPackages: shipped });
+
+    expect(shipped.get('braces')).toBe('imported by index.html');
+    expect(result.ok).toBe(false);
+    expect(result.stderr.join('\n')).toContain('braces (imported by index.html)');
+  });
+
   it('does not take a template literal after from or a bare import for a specifier', () => {
     const root = project({
       'src/prose.js': "// Each holiday runs from `before` days ahead.\nconst s = 'import `after`';",

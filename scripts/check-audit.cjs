@@ -44,7 +44,9 @@ const BUILDER_CONFIG = 'electron-builder.yml';
 const LOCK_FILE = 'package-lock.json';
 const DEPENDENCY_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies'];
 // Stylesheets are included because vite bundles the ones the app imports, and an
-// @import of a package in one loads that package like an import in a script.
+// @import of a package in one loads that package like an import in a script. So
+// is HTML: index.html is packed as it is, and it can load a package with an inline
+// module script or by pointing a <link> or <script> into node_modules.
 const SOURCE_EXTENSIONS = new Set([
   '.js',
   '.cjs',
@@ -55,6 +57,7 @@ const SOURCE_EXTENSIONS = new Set([
   '.mts',
   '.cts',
   '.css',
+  '.html',
 ]);
 // Only what a build never packs from. A directory named tests or coverage is not
 // one of them: electron-builder packs src/**/* whole, so a src/tests ships, and
@@ -94,6 +97,11 @@ const SPECIFIER_PATTERNS = [
   // @import url(y), which has no quote, so the empty group stands in for it.
   new RegExp(String.raw`@import${GAP}url\(${GAP}()([^'"()\s]+)`, 'g'),
 ];
+// A path into node_modules, such as the <link href="node_modules/x/y.css"> that
+// index.html uses to load a package straight from the one electron-builder packs.
+// It names the package directly, so unlike a specifier it is not looked up in the
+// vite aliases or taken for a Node built-in: node_modules/events is the npm package.
+const NODE_MODULES_PATH = /\bnode_modules\/((?:@[\w.~-]+\/)?[\w.~-]+)/g;
 const EXCEPTION_FIELDS = [
   'ghsa',
   'package',
@@ -488,11 +496,18 @@ function packageNameOf(specifier, aliases, workspaceNames) {
   // Relative and absolute paths, node:, data:, https: and the like.
   if (/^[./]/.test(resolved) || /^[a-z][a-z0-9+.-]*:/i.test(resolved)) return null;
 
-  const parts = resolved.split('/');
-  const name = resolved.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
+  return packageNamed(resolved, workspaceNames, aliased);
+}
+
+// The package at the start of 'x', 'x/y', '@scope/x' or '@scope/x/y', or null when
+// that is not an installable package's name. `isPackage` is for a caller that
+// already knows it is one, such as an alias target or a path into node_modules,
+// where a name that is also a Node built-in, like 'events', is still the package.
+function packageNamed(nameOrSubpath, workspaceNames, isPackage) {
+  const parts = nameOrSubpath.split('/');
+  const name = nameOrSubpath.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
   if (!PACKAGE_NAME_PATTERN.test(name) || workspaceNames.has(name)) return null;
-  // An alias target is always a package, even one named like a built-in.
-  if (!aliased && isBuiltin(name)) return null;
+  if (!isPackage && isBuiltin(name)) return null;
   return name;
 }
 
@@ -574,9 +589,9 @@ function addInstalledDependencies(shipped, root) {
 // node_modules while vite bundles whatever the renderer imports.
 //
 // So a package ships when it is Electron, is listed under dependencies or
-// optionalDependencies, is imported by source the app loads, a script or a
-// stylesheet, or is installed for one of those. The import scan is textual, so a
-// commented-out import counts as one; being too cautious only stops an exception
+// optionalDependencies, is imported by source the app loads, a script, a
+// stylesheet or a page, or is installed for one of those. The scan is textual, so
+// a commented-out import counts as one; being too cautious only stops an exception
 // from being granted.
 function findShippedPackages(root, packageJson) {
   const shipped = new Map([['electron', 'its runtime is in every package']]);
@@ -596,11 +611,16 @@ function findShippedPackages(root, packageJson) {
 
       const relative = path.relative(root, file).split(path.sep).join('/');
       const text = fs.readFileSync(file, 'utf8');
+      const add = (name) => {
+        if (name && !shipped.has(name)) shipped.set(name, `imported by ${relative}`);
+      };
       for (const pattern of SPECIFIER_PATTERNS) {
         for (const match of text.matchAll(pattern)) {
-          const name = packageNameOf(match[2], aliases, workspaceNames);
-          if (name && !shipped.has(name)) shipped.set(name, `imported by ${relative}`);
+          add(packageNameOf(match[2], aliases, workspaceNames));
         }
+      }
+      for (const match of text.matchAll(NODE_MODULES_PATH)) {
+        add(packageNamed(match[1], workspaceNames, true));
       }
     }
   }
