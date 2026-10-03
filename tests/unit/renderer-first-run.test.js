@@ -536,6 +536,93 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 3 of 4');
   });
 
+  describe('visual snapshot first-run scenes', () => {
+    const { scenes } = require('../../scripts/visual-snapshots/scenes.cjs');
+    const firstRunScenes = scenes.filter((scene) => scene.name.startsWith('first-run'));
+
+    // The runner's side of a scene: the page expressions and clicks its setup asks for.
+    const snapshotContext = () => {
+      const waitFor = async (check, label) => {
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          if (check()) return;
+          await flushAsync();
+        }
+        throw new Error(`Timed out waiting for ${label}`);
+      };
+      return {
+        ev: (expression) => window.eval(expression),
+        click: async (selector) => {
+          const element = document.querySelector(selector);
+          if (!element) throw new Error(`Nothing matches ${selector}`);
+          element.click();
+          await flushAsync();
+        },
+        waitForSelector: (selector) => waitFor(() => document.querySelector(selector), selector),
+        waitForExpression: (expression, label = expression) =>
+          waitFor(() => window.eval(`!!(${expression})`), label),
+      };
+    };
+
+    // A scene changes the settings the runner lists for it, which reaches the page as a config
+    // broadcast, and then drives the page.
+    const playScene = async (scene) => {
+      triggerMockEvent('configUpdated', {
+        ...unconfiguredConfig(),
+        ui: { ...unconfiguredConfig().ui, ...scene.ui },
+      });
+      await flushAsync();
+      await scene.setup(snapshotContext());
+      return document.querySelector('.first-run-step-label').textContent;
+    };
+
+    const orderings = (names) =>
+      names.length < 2
+        ? [names]
+        : names.flatMap((name, index) =>
+            orderings([...names.slice(0, index), ...names.slice(index + 1)]).map((rest) => [
+              name,
+              ...rest,
+            ])
+          );
+
+    it('has the three first-run scenes this test is about', () => {
+      expect(firstRunScenes.map((scene) => scene.name)).toEqual([
+        'first-run',
+        'first-run-url',
+        'first-run-light',
+      ]);
+    });
+
+    it('captures each scene on the same wizard step whichever scenes ran before it', async () => {
+      const alone = {};
+      for (const scene of firstRunScenes) {
+        await loadRenderer();
+        alone[scene.name] = await playScene(scene);
+      }
+      expect(alone).toEqual({
+        'first-run': 'Step 1 of 4',
+        'first-run-url': 'Step 2 of 4',
+        'first-run-light': 'Step 1 of 4',
+      });
+
+      // The full run plays them in the order of the list; a filtered run plays some of them, and
+      // a scene may be played again, so every sequence has to agree with the single runs.
+      const names = firstRunScenes.map((scene) => scene.name);
+      const sequences = [...orderings(names), ['first-run-url', 'first-run-url']];
+      for (const sequence of sequences) {
+        await loadRenderer();
+        for (const name of sequence) {
+          const step = await playScene(firstRunScenes.find((scene) => scene.name === name));
+          expect({ sequence: sequence.join(' > '), name, step }).toEqual({
+            sequence: sequence.join(' > '),
+            name,
+            step: alone[name],
+          });
+        }
+      }
+    });
+  });
+
   it('distinguishes the title bar Hide from the Settings Close action', async () => {
     await loadRenderer({ bodyHtml: settingsNavigationHtml() });
     expect(document.querySelector('button[aria-label="Close"]').id).toBe('close-settings');

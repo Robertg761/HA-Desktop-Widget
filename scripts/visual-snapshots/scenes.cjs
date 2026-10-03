@@ -65,6 +65,24 @@ async function openAlarmCodeDialog(ctx) {
   await ctx.waitForSelector('.alarm-code-modal');
 }
 
+// The first-run wizard is one panel that outlives config changes: it only starts over when it
+// was hidden, so a scene that follows another first-run scene finds it on that scene's step.
+// Back is disabled on the welcome step, so stepping back until then starts every scene from the
+// same place, however the scenes were selected.
+async function showFirstRunWelcome(ctx) {
+  await ctx.waitForSelector('.first-run-onboarding:not(.hidden)');
+  const back = `document.querySelector('.first-run-actions .btn-secondary:nth-child(2)')`;
+  await ctx.ev(`(async () => {
+    const back = ${back};
+    // The URL and authorization steps are the most there is to step back from.
+    for (let attempt = 0; attempt < 2 && !back.disabled; attempt += 1) {
+      back.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  })()`);
+  await ctx.waitForExpression(`${back}.disabled`, 'the first-run welcome step');
+}
+
 // Settings opens one page at a time; this scrolls the wanted element to the top and opens any
 // disclosure it sits in.
 async function revealInSettings(ctx, selector) {
@@ -434,17 +452,18 @@ const scenes = [
   },
 
   // First run shows when no server is configured. The runner only puts the keys listed above
-  // back after a scene, so this one stays last: later scenes would find the app unconnected.
+  // back after a scene, so these stay last: later scenes would find the app unconnected. The
+  // wizard stays open between them, so each one steps it back to the welcome page first.
   {
     name: 'first-run',
     config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
-    setup: (ctx) => ctx.waitForSelector('.first-run-onboarding:not(.hidden)'),
+    setup: showFirstRunWelcome,
   },
   {
     name: 'first-run-url',
     config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
     setup: async (ctx) => {
-      await ctx.waitForSelector('.first-run-onboarding:not(.hidden)');
+      await showFirstRunWelcome(ctx);
       await ctx.click('.first-run-actions .btn-primary');
       await ctx.waitForSelector('.first-run-content input');
     },
@@ -453,7 +472,7 @@ const scenes = [
     name: 'first-run-light',
     ui: { theme: 'light' },
     config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
-    setup: (ctx) => ctx.waitForSelector('.first-run-onboarding:not(.hidden)'),
+    setup: showFirstRunWelcome,
   },
 ];
 
