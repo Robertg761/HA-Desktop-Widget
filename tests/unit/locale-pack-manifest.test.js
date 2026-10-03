@@ -1,10 +1,18 @@
 const nodeCrypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
 const { expectNoNewEntries, expectNoStaleEntries } = require('../helpers/ratchet.js');
 const allowlist = require('../fixtures/locale-pack-untranslated-allowlist.json');
 const baseline = require('../fixtures/locale-pack-untranslated-baseline.json');
+const releasedFixture = require('../fixtures/locale-pack-released-keys.json');
+const retiredKeys = require('../../locale-packs/retired-keys.json');
+
+// Version -> the keys that release's locales/en.json had.
+const releasedKeys = Object.fromEntries(
+  Object.entries(releasedFixture).filter(([name]) => name !== 'comment')
+);
 
 const ALLOWLIST_FILE = 'tests/fixtures/locale-pack-untranslated-allowlist.json';
 const BASELINE_FILE = 'tests/fixtures/locale-pack-untranslated-baseline.json';
@@ -37,20 +45,20 @@ describe('downloadable locale-pack manifest', () => {
     }
   });
 
-  test('publishes every bundled English message in every downloadable pack', () => {
+  test('publishes every bundled English message, and nothing but retired keys besides, in every pack', () => {
     const packDir = path.resolve(__dirname, '../../locale-packs');
     const englishMessages = JSON.parse(
       fs.readFileSync(path.resolve(__dirname, '../../locales/en.json'), 'utf8')
     );
     const manifest = JSON.parse(fs.readFileSync(path.join(packDir, 'manifest.json'), 'utf8'));
-    const englishKeys = Object.keys(englishMessages).sort();
+    const expectedKeys = [...Object.keys(englishMessages), ...Object.keys(retiredKeys)].sort();
 
     for (const manifestEntry of manifest.packs) {
       const pack = JSON.parse(
         fs.readFileSync(path.join(packDir, `${manifestEntry.locale}.json`), 'utf8')
       );
       expect(pack.version).toBe(manifestEntry.version);
-      expect(Object.keys(pack.messages).sort()).toEqual(englishKeys);
+      expect(Object.keys(pack.messages).sort()).toEqual(expectedKeys);
     }
   });
 
@@ -90,7 +98,11 @@ describe('downloadable locale-pack manifest', () => {
     expect(Object.keys(germanMessages).sort()).toEqual(Object.keys(englishMessages).sort());
     expect(pack.locale).toBe('de');
     expect(pack.displayName).toBe('Deutsch');
-    expect(pack.messages).toEqual(germanMessages);
+    // The pack also carries the retired keys, which only apps older than this one still look up.
+    const withoutRetired = Object.fromEntries(
+      Object.entries(pack.messages).filter(([key]) => !(key in retiredKeys))
+    );
+    expect(withoutRetired).toEqual(germanMessages);
   });
   test('translates onboarding and readability messages without losing placeholders', () => {
     const keys = [
@@ -168,6 +180,55 @@ describe('downloadable locale-pack manifest', () => {
     // Without an isolate the neutral "#" drifts to the wrong side of the digits in right-to-left text.
     expect(messages['Use 3 or 6 hex digits, for example #2E9BD6']).toMatch(/\u2066#2E9BD6\u2069$/);
   });
+});
+
+describe('retired pack strings', () => {
+  const packDir = path.resolve(__dirname, '../../locale-packs');
+  const manifest = JSON.parse(fs.readFileSync(path.join(packDir, 'manifest.json'), 'utf8'));
+  const readPack = (locale) =>
+    JSON.parse(fs.readFileSync(path.join(packDir, `${locale}.json`), 'utf8')).messages;
+
+  test('are kept out of the catalogs the app reads for itself', () => {
+    const german = require('../../locales/de.json');
+    const english = require('../../locales/en.json');
+    for (const key of Object.keys(retiredKeys)) {
+      expect(english).not.toHaveProperty(key);
+      expect(german).not.toHaveProperty(key);
+    }
+  });
+
+  test('keep every key a released app version uses in every pack, current or retired', () => {
+    const versions = Object.keys(releasedKeys);
+    expect(versions.length).toBeGreaterThan(0);
+    for (const { locale } of manifest.packs) {
+      const messages = readPack(locale);
+      for (const version of versions) {
+        const lost = releasedKeys[version].filter((key) => !(key in messages));
+        // Packs are merged over each app's own English, so a key missing here turns English in
+        // that release. Retire the key (remove --in --reason) instead of deleting it.
+        expect({ locale, version, lost }).toEqual({ locale, version, lost: [] });
+      }
+    }
+  });
+
+  // Without the tag (a shallow CI checkout) the fixture is all there is, so nothing is registered.
+  const repoRoot = path.resolve(__dirname, '../..');
+  const taggedVersions = Object.keys(releasedKeys).filter(
+    (version) =>
+      spawnSync('git', ['rev-parse', '--verify', '--quiet', `v${version}^{commit}`], {
+        cwd: repoRoot,
+      }).status === 0
+  );
+  for (const version of taggedVersions) {
+    test(`the fixture lists exactly the keys of v${version}`, () => {
+      const result = spawnSync('git', ['show', `v${version}:locales/en.json`], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        maxBuffer: 16 * 1024 * 1024,
+      });
+      expect(releasedKeys[version]).toEqual(Object.keys(JSON.parse(result.stdout)));
+    });
+  }
 });
 
 describe('untranslated pack strings', () => {
