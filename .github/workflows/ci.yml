@@ -14,8 +14,10 @@ permissions:
 jobs:
   # Kept separate from lint-and-test so a newly published advisory fails on its
   # own instead of masking the lint, test, and packaging steps that used to run
-  # behind it. npm audit resolves the tree from package-lock.json alone, so this
-  # job intentionally skips npm ci and needs no native build toolchain.
+  # behind it. For the same reason this job does not cancel the run when it
+  # fails, unlike the others. npm audit resolves the tree from package-lock.json
+  # alone, so this job intentionally skips npm ci and needs no native build
+  # toolchain; scripts/check-audit.cjs uses only Node built-ins to match.
   audit:
     runs-on: ubuntu-latest
     steps:
@@ -30,13 +32,9 @@ jobs:
       - name: Audit dependency tree
         # Electron is a devDependency, but its runtime ships in every package.
         # Include the build toolchain so runtime advisories cannot be skipped.
-        run: npm audit --audit-level=high
-
-      - name: Cancel remaining CI jobs
-        if: failure()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
+        # High and critical advisories fail unless .github/audit-exceptions.json
+        # has a narrow, unexpired entry for them (see SECURITY.md).
+        run: node scripts/check-audit.cjs
 
   lint-and-test:
     runs-on: windows-latest
