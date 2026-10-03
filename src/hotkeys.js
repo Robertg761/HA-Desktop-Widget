@@ -382,36 +382,6 @@ function captureHotkey() {
   });
 }
 
-function renderExistingHotkeys() {
-  try {
-    const container = document.getElementById('existing-hotkeys-list');
-    if (!container) return;
-
-    container.innerHTML = '';
-    const hotkeys = state.CONFIG.globalHotkeys?.hotkeys || {};
-
-    Object.entries(hotkeys).forEach(([entityId, hotkey]) => {
-      const entity = state.STATES[entityId];
-      if (!entity) return;
-
-      const item = document.createElement('div');
-      item.className = 'existing-hotkey-item';
-      const displayName = escapeHtml(getEntityDisplayName(entity));
-      const hotkeyDisplay =
-        typeof hotkey === 'string' ? escapeHtml(hotkey) : escapeHtml(hotkey.hotkey || '');
-      const escapedEntityId = escapeHtmlAttribute(entityId);
-      item.innerHTML = `
-                <span class="entity-name">${displayName}</span>
-                <span class="hotkey-display">${hotkeyDisplay}</span>
-                <button class="btn-remove-hotkey" data-entity-id="${escapedEntityId}">${escapeHtml(t('Remove'))}</button>
-            `;
-      container.appendChild(item);
-    });
-  } catch (error) {
-    console.error('Error rendering existing hotkeys:', error);
-  }
-}
-
 // Flag to track if listeners have been set up
 let listenersSetUp = false;
 // Store reference to document-level click handler for cleanup
@@ -671,7 +641,6 @@ export {
   renderHotkeysTab,
   toggleHotkeys,
   captureHotkey,
-  renderExistingHotkeys,
   assignHotkeyToEntity,
   setupHotkeyEventListeners,
   cleanupHotkeyEventListeners,

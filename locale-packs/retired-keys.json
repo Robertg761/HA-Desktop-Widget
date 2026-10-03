@@ -226,5 +226,69 @@
   "Original dark base (no tint)": {
     "retiredIn": "4.0.0",
     "reason": "Reworded: the untinted background is not dark in the light theme"
+  },
+  "Alert types": {
+    "retiredIn": "4.0.0",
+    "reason": "Removed with the legacy hotkey and alert dialogs, which no code opened"
+  },
+  "Available modifiers:": {
+    "retiredIn": "4.0.0",
+    "reason": "Removed with the legacy hotkey and alert dialogs, which no code opened"
+  },
+  "Click the button and press your desired key combination. Press <code>ESC</code> to clear.": {
+    "retiredIn": "4.0.0",
+    "reason": "Removed with the legacy hotkey and alert dialogs, which no code opened"
+  },
+  "Click to set hotkey": {
+    "retiredIn": "4.0.0",
+    "reason": "Removed with the legacy hotkey and alert dialogs, which no code opened"
+  },
+  "Configure Hotkey": {
+    "retiredIn": "4.0.0",
+    "reason": "Removed with the legacy hotkey and alert dialogs, which no code opened"
+  },
+  "Configure alerts": {
+    "retiredIn": "4.0.0",
+    "reason": "Removed with the legacy hotkey and alert dialogs, which no code opened"
+  },
+  "Configure hotkeys": {
+    "retiredIn": "4.0.0",
+    "reason": "Removed with the legacy hotkey and alert dialogs, which no code opened"
+  },
+  "Existing alerts": {
+    "retiredIn": "4.0.0",
+    "reason": "Removed with the legacy hotkey and alert dialogs, which no code opened"
+  },
+  "Existing hotkeys": {
+    "retiredIn": "4.0.0",
+    "reason": "Removed with the legacy hotkey and alert dialogs, which no code opened"
+  },
+  "Hotkey combination": {
+    "retiredIn": "4.0.0",
+    "reason": "Removed with the legacy hotkey and alert dialogs, which no code opened"
+  },
+  "Hotkey format": {
+    "retiredIn": "4.0.0",
+    "reason": "Removed with the legacy hotkey and alert dialogs, which no code opened"
+  },
+  "Manage Entity Alerts": {
+    "retiredIn": "4.0.0",
+    "reason": "Removed with the legacy hotkey and alert dialogs, which no code opened"
+  },
+  "Manage Global Hotkeys": {
+    "retiredIn": "4.0.0",
+    "reason": "Removed with the legacy hotkey and alert dialogs, which no code opened"
+  },
+  "Specific State:": {
+    "retiredIn": "4.0.0",
+    "reason": "Removed with the legacy hotkey and alert dialogs, which no code opened"
+  },
+  "State Change:": {
+    "retiredIn": "4.0.0",
+    "reason": "Removed with the legacy hotkey and alert dialogs, which no code opened"
+  },
+  "Use combinations like:": {
+    "retiredIn": "4.0.0",
+    "reason": "Removed with the legacy hotkey and alert dialogs, which no code opened"
   }
 }
