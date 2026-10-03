@@ -324,6 +324,21 @@ describe('text contrast of the rules', () => {
     );
   });
 
+  describe('a pin in the light theme', () => {
+    it('keeps the dark dialog its light text is drawn for', () => {
+      applyScope(SCOPES.light, 'original');
+      document.body.classList.add('desktop-pin-mode');
+      const text = resolvedValue(document.body, '--text-primary');
+      const results = ['--dialog-bg', '--dialog-bg-solid'].map((name) => {
+        const fill = resolvedValue(document.body, name);
+        // --dialog-bg is 96% opaque; measure it over the pin's own window colour.
+        const pane = over(fill, `rgb(${resolvedValue(document.body, '--window-bg-rgb')})`);
+        return { name, ratio: contrastRatio(text, pane) >= TEXT_MINIMUM };
+      });
+      expect(results.filter(({ ratio }) => !ratio)).toEqual([]);
+    });
+  });
+
   describe('field placeholders', () => {
     // The cascade helper does not resolve pseudo-elements, so read the rule itself.
     const placeholderRules = () =>

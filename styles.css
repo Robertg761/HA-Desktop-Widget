@@ -14545,6 +14545,14 @@ body.desktop-pin-mode.theme-light {
   --accent-text-hover: var(--accent-text-dark-hover, var(--accent-hover));
   --desktop-pin-ink-rgb: 255, 255, 255;
   --focus-ring: var(--accent-ring-dark, var(--accent));
+  /* The light theme lifts a dialog toward white, which on the pin's dark window colour is a mid
+     grey under near-white text. A pin keeps the dark dialog it always had. */
+  --dialog-bg: color-mix(
+    in srgb,
+    color-mix(in srgb, rgb(var(--window-bg-rgb)), var(--text-primary) 5%) 96%,
+    transparent
+  );
+  --dialog-bg-solid: color-mix(in srgb, rgb(var(--window-bg-rgb)), var(--text-primary) 5%);
 }
 
 /* Only the light and scene pins act wherever they are clicked. The others have buttons and sliders

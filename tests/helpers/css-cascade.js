@@ -326,11 +326,17 @@ function parseColor(value) {
     .replace(/,?\s+\)/g, ')');
   const mix = text.match(/^color-mix\(in srgb,\s*(.+)\)$/i);
   if (mix) {
-    // Only the form the stylesheets use: color-mix(in srgb, <color> <p>%, <color>).
+    // The forms the stylesheets use: a percentage on the first colour, or on the second (which
+    // leaves the first the rest), as color-mix(in srgb, <color> [<p>%], <color> [<p>%]).
     const [first, second] = splitTopLevel(mix[1]);
-    const [, firstColor, percent] = first.match(/^(.*?)\s+([\d.]+)%$/);
-    const weight = Number(percent) / 100;
-    const [a, b] = [parseColor(firstColor), parseColor(second)];
+    const withPercent = (part) => {
+      const found = part.match(/^(.*?)\s+([\d.]+)%$/);
+      return found ? [found[1], Number(found[2]) / 100] : [part, null];
+    };
+    const [firstColor, firstWeight] = withPercent(first);
+    const [secondColor, secondWeight] = withPercent(second);
+    const weight = firstWeight ?? (secondWeight === null ? 0.5 : 1 - secondWeight);
+    const [a, b] = [parseColor(firstColor), parseColor(secondColor)];
     // Like the browser, interpolate premultiplied by alpha, so mixing with transparent keeps the
     // colour and only lowers its alpha.
     const alpha = a[3] * weight + b[3] * (1 - weight);
