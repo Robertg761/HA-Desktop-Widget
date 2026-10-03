@@ -110,6 +110,39 @@ describe('Omarchy bar plugin package', () => {
       expect(qml).toContain(`status.${field}`)
     );
   });
+
+  // The bar slot is as wide as its text, so a long media title must not push the other widgets
+  // off the bar, and a vertical bar's slot is one glyph wide.
+  describe('the bar readout', () => {
+    const qml = fs.readFileSync(path.join(pluginDir, 'Widget.qml'), 'utf8');
+
+    it('cuts each value and the whole readout short, with the full text in the tooltip', () => {
+      expect(qml).toContain('readonly property int barValueChars: 16');
+      expect(qml).toContain('readonly property int barTextChars: 48');
+      expect(qml).toContain(
+        'barValues.map(function(value) { return clipText(value, barValueChars) }).join("  "),'
+      );
+      // The tooltip lists every value in full on its own line.
+      expect(qml).toContain('"\\n" + root.barValues.join("  ")');
+    });
+
+    it('shows only the glyph on a vertical bar', () => {
+      expect(qml).toContain(
+        'readonly property bool verticalBar: bar ? bar.vertical === true : false'
+      );
+      expect(qml).toContain('readonly property string barText: verticalBar ? "" : clipText(');
+      expect(qml).toContain('text: root.barText !== "" ? "󰟐  " + root.barText : "󰟐"');
+    });
+
+    it('ends a clipped text with an ellipsis inside its limit', () => {
+      const source = qml.match(/function clipText\(text, limit\) \{[^}]*\}/)[0];
+      const clipText = vm.runInNewContext(`(${source})`);
+      expect(clipText('short', 16)).toBe('short');
+      expect(clipText('x'.repeat(16), 16)).toBe('x'.repeat(16));
+      expect(clipText('A very long media title indeed', 16)).toBe('A very long med…');
+      expect(clipText('A very long media title indeed', 16)).toHaveLength(16);
+    });
+  });
 });
 
 describe('Omarchy bar settings in shell.json', () => {
