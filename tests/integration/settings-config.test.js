@@ -1540,6 +1540,23 @@ describe('Settings + Config Integration', () => {
       expect(state.CONFIG.opacity).toBeCloseTo(0.9545, 4);
     });
 
+    test('the opacity readout is a percentage of the opacity, not the slider position', async () => {
+      state.CONFIG.opacity = 0.95;
+      await settings.openSettings();
+      const readout = document.getElementById('opacity-value');
+      // Position 90 stands for the stored 95%, and the ends of the slider for 50% and 100%.
+      expect(readout.textContent).toBe('95%');
+
+      const slider = document.getElementById('opacity-slider');
+      slider.value = '1';
+      settings.updateOpacityReadout();
+      expect(readout.textContent).toBe('50%');
+      slider.value = '100';
+      settings.updateOpacityReadout();
+      expect(readout.textContent).toBe('100%');
+      settings.closeSettings();
+    });
+
     test('save valid settings updates config and IPC', async () => {
       // Open settings first
       await settings.openSettings();

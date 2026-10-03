@@ -196,6 +196,10 @@ html {
   --focus-ring: var(--accent-ring-dark, var(--accent));
   --primary: #64b5f6;
   --primary-hover: #90caf9;
+  /* The warm glow of a lit light: the bulb glyph on a primary light card and in the brightness
+     dialog, and the end of the brightness track. The light theme steps it down to 3:1 and up. */
+  --lit-light: #ffd08a;
+  --lit-light-rgb: 255, 208, 138;
 
   /* Chart series (dark). Fixed categorical slots for comparison graphs — assigned in order,
      never cycled or generated. Validated as a set against the dark card surface for lightness,
@@ -270,6 +274,10 @@ html {
   --border-color: rgba(255, 255, 255, 0.1);
   --border-hover: rgba(255, 255, 255, 0.2);
   --border-focus: rgba(var(--accent-rgb), 0.5);
+  /* The edge of a text field or select, which is all that tells it from the pane around it: about
+     3:1 against the dialog, where --border-color (for dividers) is 1.4:1. */
+  --control-border: rgba(255, 255, 255, 0.36);
+  --control-border-hover: rgba(255, 255, 255, 0.5);
 
   /* ============================================
      GLASSMORPHISM SYSTEM
@@ -457,12 +465,17 @@ html {
    theme (the 50% mix it replaces was 4.3:1 there), the veiled panel under the page tabs in the
    light one. */
 body {
-  --text-dim: color-mix(in srgb, var(--text-primary) 66%, transparent);
-  --text-faint: color-mix(in srgb, var(--text-primary) 58%, transparent);
+  --text-dim: var(--palette-text-dim, color-mix(in srgb, var(--text-primary) 66%, transparent));
+  --text-faint: var(--palette-text-faint, color-mix(in srgb, var(--text-primary) 58%, transparent));
 }
 
-/* Light Theme (Glassmorphism) */
-.theme-light {
+/* Light Theme (Glassmorphism).
+   The window and pane colours sit on the root, where the dark theme's do, and not on the body that
+   carries the theme class: the Background setting, a holiday and an Omarchy palette tint them with
+   inline styles on the root (see applyBackgroundColor), and a declaration on the body would shadow
+   that inline value, so in the light theme no background did anything unless Frosted glass was on.
+   The frosted rules below still override them on the body, as they do in the dark theme. */
+:root:has(> body.theme-light) {
   /* Base Colors */
   --bg-color: rgba(250, 250, 250, 0.8);
   --window-bg-rgb: 250, 250, 250;
@@ -471,6 +484,20 @@ body {
   --bg-secondary: rgba(255, 255, 255, 0.9);
   --bg-tertiary: rgba(240, 240, 245, 0.85);
 
+  /* Surfaces */
+  --surface-1: rgba(250, 250, 255, 0.8);
+  --surface-2: rgba(255, 255, 255, 0.85);
+  --surface-3: rgba(255, 255, 255, 0.9);
+  --surface-hover: rgba(240, 240, 245, 0.95);
+  --card-bg: rgba(255, 255, 255, 0.7);
+
+  /* Glass Effects */
+  --glass-surface: rgba(255, 255, 255, 0.7);
+  --glass-elevated: rgba(250, 250, 250, 0.8);
+  --glass-overlay: rgba(245, 245, 250, 0.85);
+}
+
+.theme-light {
   /* Text Colors */
   --text-color: #2c2c2c;
   --text-primary: #1a1a1a;
@@ -480,8 +507,8 @@ body {
   --text-secondary: #595959;
   --text-tertiary: #5c5c62;
   --muted-text: #5f5f66;
-  --text-dim: color-mix(in srgb, var(--text-primary) 70%, transparent);
-  --text-faint: color-mix(in srgb, var(--text-primary) 66%, transparent);
+  --text-dim: var(--palette-text-dim, color-mix(in srgb, var(--text-primary) 70%, transparent));
+  --text-faint: var(--palette-text-faint, color-mix(in srgb, var(--text-primary) 66%, transparent));
 
   /* Status colours as text: the darker steps of the same hues, past 4.5:1 on the veiled light
      panel and on the tint behind a status line. They are restated here because a token on
@@ -490,13 +517,8 @@ body {
   --warning-text: #8a5300;
   --error-text: #b71c1c;
   --danger-text: #b71c1c;
-
-  /* Surfaces */
-  --surface-1: rgba(250, 250, 255, 0.8);
-  --surface-2: rgba(255, 255, 255, 0.85);
-  --surface-3: rgba(255, 255, 255, 0.9);
-  --surface-hover: rgba(240, 240, 245, 0.95);
-  --card-bg: rgba(255, 255, 255, 0.7);
+  --lit-light: #b36a00;
+  --lit-light-rgb: 179, 106, 0;
 
   /* Chart series (light). The same seven hues re-stepped for the light card surface — not an
      automatic flip of the dark set. Several sit below 3:1 contrast here, which is why the graph
@@ -513,6 +535,8 @@ body {
   --border-color: rgba(0, 0, 0, 0.1);
   --border-hover: rgba(0, 0, 0, 0.2);
   --border-focus: rgba(var(--accent-rgb), 0.5);
+  --control-border: rgba(0, 0, 0, 0.42);
+  --control-border-hover: rgba(0, 0, 0, 0.55);
   /* ui-utils computes these per accent; the mixes are the fallback before it runs. */
   --accent-text: var(--accent-text-light, color-mix(in srgb, var(--accent) 55%, #000));
   --accent-text-hover: var(--accent-text-light-hover, color-mix(in srgb, var(--accent) 45%, #000));
@@ -534,9 +558,6 @@ body {
   --panel-veil: 0.09;
 
   /* Glass Effects */
-  --glass-surface: rgba(255, 255, 255, 0.7);
-  --glass-elevated: rgba(250, 250, 250, 0.8);
-  --glass-overlay: rgba(245, 245, 250, 0.85);
   --modal-backstop-rgb: 248, 248, 252;
   --settings-modal-bg-rgb: 248, 248, 252;
   --settings-modal-bg-alpha: 0.84;
@@ -3046,7 +3067,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 /* Status dot leads the title, with a soft halo in its own colour. */
 .connection-indicator {
-  --indicator-color: var(--danger);
+  --indicator-color: var(--error);
   position: relative;
   order: -1;
   width: 8px;
@@ -3078,6 +3099,24 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 .connection-indicator.connected {
   --indicator-color: #4ade80;
   animation: pulseIndicator 3s ease-in-out 2;
+}
+
+/* Not connected is a ring and connected a solid dot, so the state does not rest on hue alone. */
+.connection-indicator:not(.connected) {
+  background: transparent;
+  box-shadow:
+    inset 0 0 0 2px var(--indicator-color),
+    0 0 0 3px color-mix(in srgb, var(--indicator-color) 18%, transparent),
+    0 0 10px color-mix(in srgb, var(--indicator-color) 50%, transparent);
+}
+
+/* The pastel dot colours are 1.7:1 and 2.2:1 on the light header; these are past 3:1 there. */
+body.theme-light .connection-indicator {
+  --indicator-color: var(--error-text);
+}
+
+body.theme-light .connection-indicator.connected {
+  --indicator-color: #15803d;
 }
 
 /* The dot is 8px, but it is a button (it opens the connection details), so its target reaches 24px. */
@@ -3122,7 +3161,9 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 .connection-status-tooltip::after {
   content: '';
   position: absolute;
-  left: 50%;
+  /* ui-utils sets --arrow-x so the arrow points at the dot, which sits near the tooltip's start
+     once the tooltip is held inside the window. */
+  left: var(--arrow-x, 50%);
   bottom: -8px;
   transform: translateX(-50%);
   border-width: 8px 8px 0 8px;
@@ -3217,20 +3258,28 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 .notification-bell-count {
   position: absolute;
   top: -6px;
-  right: -7px;
+  inset-inline-end: -7px;
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
   border-radius: var(--radius-full);
   border: 1px solid rgba(255, 255, 255, 0.28);
   background: var(--danger);
-  color: #ffffff;
+  /* White on this pink was 2.2:1; the dark label is 8.8:1. (Not --on-accent, which follows the
+     accent and can be white.) */
+  color: #0a0c10;
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-bold);
   line-height: 14px;
   text-align: center;
   box-shadow: var(--shadow-sm);
   pointer-events: none;
+}
+
+/* On the white header the pink badge fades into it, so the light theme's badge is the error red. */
+body.theme-light .notification-bell-count {
+  background: var(--error-text);
+  color: #ffffff;
 }
 
 #settings-btn:hover {
@@ -4762,6 +4811,62 @@ body.first-run-active .widget-content > * {
   --weather-secondary: #f47c7c;
 }
 
+/* The palette above is drawn for a dark card: pale cloud, pale rays and a white halo come out at
+   1.0 to 1.6:1 on the light one. The light theme gets the same hues stepped down to 3:1 and up on
+   the near-white card (and the dialog behind the weather picker). The Readable preset is dark
+   whatever theme is chosen, so it keeps the palette above. */
+body.theme-light:not(.high-contrast) .weather-icon {
+  --weather-primary: #c07800;
+  --weather-secondary: #2b86a8;
+  --weather-cloud: #5f7c99;
+  --weather-cloud-fill: #dbe6f2;
+}
+
+body.theme-light:not(.high-contrast) :is(.weather-icon-cloudy, .weather-icon-partlycloudy) {
+  --weather-cloud: #5f7c99;
+  --weather-cloud-fill: #e6eef7;
+}
+
+body.theme-light:not(.high-contrast) .weather-icon-fog {
+  --weather-primary: #4f93ad;
+  --weather-secondary: #2b86a8;
+}
+
+body.theme-light:not(.high-contrast) .weather-icon-clear-night {
+  --weather-primary: #5a78c8;
+  --weather-secondary: #8a6fc0;
+}
+
+body.theme-light:not(.high-contrast) .weather-icon-exceptional {
+  --weather-primary: #c07800;
+  --weather-secondary: #c8423f;
+}
+
+body.theme-light:not(.high-contrast) :is(.weather-glyph-ray, .weather-glyph-bolt) {
+  stroke: #c07800;
+}
+
+body.theme-light:not(.high-contrast) .weather-glyph-precip {
+  stroke: #1f8fc0;
+}
+
+body.theme-light:not(.high-contrast) .weather-glyph-hail {
+  fill: #2f8fc4;
+}
+
+body.theme-light:not(.high-contrast) :is(.weather-glyph-wind, .weather-glyph-fog) {
+  stroke: #4f93ad;
+}
+
+body.theme-light:not(.high-contrast) .weather-glyph-alert {
+  fill: #c8423f;
+  stroke: #c07800;
+}
+
+body.theme-light:not(.high-contrast) .weather-glyph {
+  filter: drop-shadow(0 1px 2px rgba(20, 30, 50, 0.3));
+}
+
 .weather-icon.animated {
   animation: weatherPulse 2s ease-in-out infinite;
 }
@@ -5150,8 +5255,14 @@ body.first-run-active .widget-content > * {
 
 /* A lit primary light card warms its icon to match the glow behind it. */
 .status-card.primary-entity-card.primary-light-card[data-state='on'] .control-icon {
-  color: #ffd08a;
+  color: var(--lit-light);
   filter: drop-shadow(0 0 10px rgba(255, 196, 110, 0.55));
+}
+
+body.theme-light:not(.high-contrast)
+  .status-card.primary-entity-card.primary-light-card[data-state='on']
+  .control-icon {
+  filter: drop-shadow(0 0 8px rgba(var(--lit-light-rgb), 0.4));
 }
 
 .status-card.primary-entity-card .control-item {
@@ -6857,7 +6968,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
 .camera-preview-tile[data-camera-preview-state='fallback'] .camera-tile-preview-dot,
 .camera-preview-tile[data-camera-preview-state='stale'] .camera-tile-preview-dot,
 .camera-preview-tile[data-camera-preview-state='unavailable'] .camera-tile-preview-dot {
-  background: var(--warning);
+  background: var(--warning-text);
   box-shadow: 0 0 0 2px rgba(255, 152, 0, 0.16);
 }
 
@@ -6931,14 +7042,24 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
   box-shadow: none;
 }
 
+/* The caption colours above are for a picture. A tile with none shows its status on a plain pane,
+   in every state: the white and pale orange it keeps otherwise vanish on the light one. A failed
+   or stale snapshot says so in a warning tone that follows the theme. */
 #quick-controls
-  .camera-preview-tile:not([data-camera-preview-has-frame='true']):is(
-    [data-camera-preview-state='loading'],
-    [data-camera-preview-state='unavailable']
-  )
+  .camera-preview-tile:not([data-camera-preview-has-frame='true'])
   .camera-tile-preview-status {
   color: var(--text-dim);
   text-shadow: none;
+}
+
+#quick-controls
+  .camera-preview-tile:not([data-camera-preview-has-frame='true']):is(
+    [data-camera-preview-state='error'],
+    [data-camera-preview-state='fallback'],
+    [data-camera-preview-state='stale']
+  )
+  .camera-tile-preview-status {
+  color: color-mix(in srgb, var(--warning-text) 70%, var(--text-primary));
 }
 
 /* Offline with nothing to show: the same dashed, dimmed pane as any other unavailable tile, in
@@ -8103,7 +8224,7 @@ body.theme-light:not(.high-contrast)
 #settings-modal input[type='text']:hover,
 #settings-modal input[type='password']:hover,
 #settings-modal select:hover {
-  border-color: var(--border-hover);
+  border-color: var(--control-border-hover);
   background-color: var(--tile-bg-hover);
 }
 
@@ -8602,7 +8723,7 @@ body.theme-light:not(.high-contrast)
   ) {
   width: 100%;
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-md);
   background: var(--tile-bg);
   color: var(--text-primary);
@@ -8631,7 +8752,7 @@ body.theme-light:not(.high-contrast)
     select,
     textarea
   ):hover {
-  border-color: var(--border-hover);
+  border-color: var(--control-border-hover);
   background-color: var(--tile-bg-hover);
 }
 
@@ -10785,7 +10906,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 
 /* Media control title (entity name within tile) */
 .media-player-entity .control-name {
-  font-size: 0.85em;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-color);
   white-space: nowrap;
@@ -10814,7 +10935,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 
 /* Media text lines. A line that does not fit ends in an ellipsis; the full text is its tooltip. */
 .media-title {
-  font-size: 0.75em;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-color);
   white-space: nowrap;
@@ -10826,7 +10947,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 .media-artist {
-  font-size: 0.7em;
+  font-size: var(--font-size-xs-plus);
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -10837,7 +10958,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 .media-album {
-  font-size: 0.65em;
+  font-size: var(--font-size-xs-plus);
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -10845,6 +10966,20 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   line-height: 1.2;
   width: 100%;
   text-align: center;
+}
+
+/* The pill is a black wash in the dark theme, which on the light tile is a dull taupe slab with the
+   secondary text at 2.9 to 3.3:1 on it. In the light theme it is a faint tint with an edge, and
+   the artist and album lines take the shared dim tone. */
+body.theme-light:not(.high-contrast) .media-info {
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  border: 1px solid var(--tile-border);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
+  color: var(--text-dim);
 }
 
 /* Media Controls */
@@ -10949,15 +11084,11 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   border-color: rgba(var(--accent-rgb), 0.3);
 }
 
-.media-player-entity[data-state='paused'] {
-  background: linear-gradient(135deg, rgba(255, 183, 77, 0.1), rgba(255, 183, 77, 0.05));
-  border-color: rgba(255, 183, 77, 0.3);
-}
-
-.media-player-entity[data-state='idle'],
-.media-player-entity[data-state='off'] {
-  background: linear-gradient(135deg, rgba(158, 158, 158, 0.1), rgba(158, 158, 158, 0.05));
-  border-color: rgba(158, 158, 158, 0.3);
+/* Only a playing player takes the accent tint. A paused one is the plain tile, with the warning
+   tone on its play button (an amber wash looked like the playing tint under the warm accents), and
+   an idle or off one is the plain tile too instead of a grey slab. */
+.media-player-entity[data-state='paused'] .play-pause-btn {
+  color: var(--warning-text);
 }
 
 /* Condensed state for idle/off media players */
@@ -11007,16 +11138,16 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   }
 
   .media-title {
-    font-size: 0.7em;
+    font-size: var(--font-size-xs-plus);
   }
 
   .media-artist,
   .media-album {
-    font-size: 0.65em;
+    font-size: var(--font-size-xs);
   }
 
   .media-player-entity .control-name {
-    font-size: 0.8em;
+    font-size: var(--font-size-xs-plus);
   }
 }
 
@@ -11636,6 +11767,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 
 .hotkey-capture-modal .modal-content {
   text-align: center;
+  color: var(--text-primary);
 }
 
 /* The full-screen overlay takes focus while recording; a ring around the window would only distract. */
@@ -11666,7 +11798,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -11674,7 +11805,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
      keypress, so a toast must never paint over the keys being shown. The
      loading overlay stays *below* toasts on purpose (see the :root scale). */
   z-index: calc(var(--z-notification) + 1);
-  color: white;
   font-size: var(--font-size-lg);
 }
 
@@ -13155,6 +13285,8 @@ body {
     color-mix(in srgb, rgb(var(--window-bg-rgb)), var(--text-primary) 5%) 96%,
     transparent
   );
+  /* The same colour without the alpha, for a tooltip's arrow, which has to match its panel. */
+  --dialog-bg-solid: color-mix(in srgb, rgb(var(--window-bg-rgb)), var(--text-primary) 5%);
   --dialog-border: rgba(255, 255, 255, 0.1);
   --dialog-shadow: 0 24px 60px -16px rgba(0, 0, 0, 0.8), 0 2px 6px rgba(0, 0, 0, 0.25);
   --dialog-scrim: rgba(8, 10, 14, 0.55);
@@ -13162,15 +13294,25 @@ body {
 
 body.theme-light {
   color-scheme: light;
+  /* A light dialog lifts toward white: mixing the dark text colour in (as the dark theme mixes
+     light in) made it about #eee, darker than the window it floats over and the same grey as its
+     own scrim. The scrim is a cool shade so the page behind a dialog steps back instead. */
+  --dialog-bg: color-mix(
+    in srgb,
+    color-mix(in srgb, rgb(var(--window-bg-rgb)), white 60%) 96%,
+    transparent
+  );
+  --dialog-bg-solid: color-mix(in srgb, rgb(var(--window-bg-rgb)), white 60%);
   --dialog-border: rgba(0, 0, 0, 0.1);
   --dialog-shadow: 0 24px 60px -16px rgba(20, 24, 40, 0.35), 0 2px 6px rgba(20, 24, 40, 0.12);
-  --dialog-scrim: rgba(240, 242, 246, 0.5);
+  --dialog-scrim: rgba(40, 44, 60, 0.18);
 }
 
 /* Toasts, the command palette, menus and tooltips draw --dialog-bg, which is 96% opaque, so a
    tile's text would ghost through a toast over it. */
 body.opaque-panels {
   --dialog-bg: color-mix(in srgb, var(--text-primary) 5%, rgb(var(--window-bg-rgb)));
+  --dialog-bg-solid: var(--dialog-bg);
 }
 
 /* --- Backdrop and panel --- */
@@ -13415,7 +13557,7 @@ textarea {
 
 /* The bulb glows warmer and brighter as the level rises. */
 .brightness-icon {
-  color: #ffd08a;
+  color: var(--lit-light);
   animation: none;
 }
 
@@ -13444,10 +13586,6 @@ textarea {
   opacity: 1;
   filter: drop-shadow(0 0 14px rgba(255, 196, 110, 0.7));
   animation: none;
-}
-
-body.theme-light .brightness-icon:not(.brightness-off) {
-  color: #d98a1c;
 }
 
 .brightness-value-large,
@@ -13503,6 +13641,12 @@ body.theme-light .brightness-icon:not(.brightness-off) {
   color: color-mix(in srgb, var(--text-primary) 80%, transparent);
 }
 
+/* The closed part of the blind is a dark overlay in every theme, and the glyph sits above it. In the
+   light theme the overlay is a soft grey instead, which keeps the dark glyph readable on it. */
+body.theme-light:not(.high-contrast) .cover-overlay {
+  background: color-mix(in srgb, var(--text-primary) 22%, transparent);
+}
+
 .sensor-detail-icon {
   display: flex;
   color: var(--accent-text);
@@ -13534,7 +13678,11 @@ body.theme-light .brightness-icon:not(.brightness-off) {
 }
 
 .brightness-slider {
-  background: linear-gradient(var(--slider-dir), rgba(255, 208, 138, 0.18), #ffd08a);
+  background: linear-gradient(
+    var(--slider-dir),
+    rgba(var(--lit-light-rgb), 0.18),
+    var(--lit-light)
+  );
 }
 
 .light-color-temp-slider {
@@ -13549,6 +13697,18 @@ body.theme-light .brightness-icon:not(.brightness-off) {
 .climate-slider:hover,
 .media-volume-slider:hover {
   box-shadow: none;
+}
+
+body.theme-light:not(.high-contrast)
+  :is(
+    .brightness-slider,
+    .light-color-temp-slider,
+    .fan-slider,
+    .cover-slider,
+    .climate-slider,
+    .media-volume-slider
+  ):is(:hover, :focus) {
+  box-shadow: var(--slider-edge);
 }
 
 .brightness-slider:focus-visible,
@@ -13599,6 +13759,61 @@ body.theme-light .brightness-icon:not(.brightness-off) {
 .climate-slider::-webkit-slider-thumb:active,
 .media-volume-slider::-webkit-slider-thumb:active {
   transform: scale(1.05);
+}
+
+/* On the pale dialog the tracks above fade to 1.0 to 1.9:1 at their start and the white thumb to
+   1.2:1, so the light theme gives each track a stronger start stop and an edge, and the thumb a
+   ring. The Readable preset paints its own tracks. */
+body.theme-light:not(.high-contrast) {
+  --slider-edge: inset 0 0 0 1px rgba(0, 0, 0, 0.42);
+}
+
+body.theme-light:not(.high-contrast) .brightness-slider {
+  background: linear-gradient(var(--slider-dir), rgba(var(--lit-light-rgb), 0.3), var(--lit-light));
+  box-shadow: var(--slider-edge);
+}
+
+body.theme-light:not(.high-contrast)
+  :is(.fan-slider, .cover-slider, .climate-slider, .media-volume-slider) {
+  background: linear-gradient(
+    var(--slider-dir),
+    color-mix(in srgb, var(--text-primary) 28%, transparent),
+    var(--accent-text)
+  );
+  box-shadow: var(--slider-edge);
+}
+
+body.theme-light:not(.high-contrast) .light-color-temp-slider {
+  box-shadow: var(--slider-edge);
+}
+
+body.theme-light:not(.high-contrast)
+  :is(
+    .brightness-slider,
+    .light-color-temp-slider,
+    .fan-slider,
+    .cover-slider,
+    .climate-slider,
+    .media-volume-slider
+  )::-webkit-slider-thumb {
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.25),
+    0 0 0 1.5px rgba(0, 0, 0, 0.45);
+}
+
+body.theme-light:not(.high-contrast)
+  :is(
+    .brightness-slider,
+    .light-color-temp-slider,
+    .fan-slider,
+    .cover-slider,
+    .climate-slider,
+    .media-volume-slider
+  )::-webkit-slider-thumb:hover {
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.3),
+    0 0 0 1.5px rgba(0, 0, 0, 0.45),
+    0 0 0 6px rgba(var(--accent-rgb), 0.18);
 }
 
 /* Chips: presets, HVAC modes and cover actions share the tile recipe. */
@@ -13830,7 +14045,7 @@ body.theme-light .brightness-icon:not(.brightness-off) {
 }
 
 .connection-status-tooltip::after {
-  border-top-color: var(--dialog-border);
+  border-top-color: var(--dialog-bg-solid);
 }
 
 /* Windows and Linux draw <select> popups in-page; give options the dialog
@@ -14211,8 +14426,52 @@ body.theme-light #settings-modal .modal-footer {
   margin: 0;
 }
 
+/* The Window opacity range wears the dialog sliders' rail and thumb (see "Sliders" above). Left to
+   the browser it paints the part past the thumb from the accent's brightness, so the rail ended in
+   a black bar on the light theme and a white one with some accents. The rail here is a fixed
+   gradient, like theirs. */
+#settings-modal .setting-slider input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(var(--slider-dir), var(--tile-border-hover), var(--accent));
+  box-shadow: none;
+}
+
+#settings-modal .setting-slider input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+body.theme-light:not(.high-contrast) #settings-modal .setting-slider input[type='range'] {
+  background: linear-gradient(
+    var(--slider-dir),
+    color-mix(in srgb, var(--text-primary) 28%, transparent),
+    var(--accent-text)
+  );
+  box-shadow: var(--slider-edge);
+}
+
+body.theme-light:not(.high-contrast)
+  #settings-modal
+  .setting-slider
+  input[type='range']::-webkit-slider-thumb {
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.25),
+    0 0 0 1.5px rgba(0, 0, 0, 0.45);
+}
+
 .setting-slider-value {
-  min-width: 30px;
+  min-width: 40px;
   text-align: end;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
@@ -14241,11 +14500,6 @@ body.theme-light #settings-modal .modal-footer {
   margin-top: 2px;
 }
 
-/* On non-Omarchy desktops the Follow Omarchy switch can never turn on; hide it. */
-#follow-omarchy-row:has(#follow-omarchy:disabled) {
-  display: none;
-}
-
 /* --- Switches ---
    One switch everywhere a toggle sits in a form group: Settings, the alert dialog's quiet hours and
    Tile Settings' tray option. Pick lists with real checkboxes (the Add Page rooms) stay outside it. */
@@ -14256,8 +14510,10 @@ body.theme-light #settings-modal .modal-footer {
   width: 38px;
   height: 22px;
   border-color: transparent;
-  /* An off switch still has to read as a control (3:1 against the pane), not a faint smudge. */
-  background: color-mix(in srgb, var(--text-primary) 26%, transparent);
+  /* An off switch still has to read as a control (3:1 against the pane), not a faint smudge: the
+     track is the text colour at 40% in the dark theme and 50% in the light one, which measure 3.5:1
+     and 3.3:1 on the dialog (the 26% and 38% they were gave 2.3:1 and 2.5:1). */
+  background: color-mix(in srgb, var(--text-primary) 40%, transparent);
   box-shadow: none;
 }
 
@@ -14265,7 +14521,7 @@ body.theme-light
   :is(#settings-modal, #alert-config-modal, .rename-modal)
   .form-group
   input[type='checkbox']:not(:checked) {
-  background: color-mix(in srgb, var(--text-primary) 38%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 50%, transparent);
 }
 
 /* A switch that leads its text (Tile Settings' tray option) keeps a gap to it. One that trails its
@@ -14286,11 +14542,20 @@ body.theme-light
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
+/* An on switch is the accent, solved for the theme like the other accent graphics: a dark custom
+   accent stays visible on the dark pane, and the light theme's pale accents (2:1 on white) darken. */
 :is(#settings-modal, #alert-config-modal, .rename-modal)
   .form-group
   input[type='checkbox']:checked {
-  background: var(--accent);
+  background: var(--accent-ring-dark, var(--accent));
   border-color: transparent;
+}
+
+body.theme-light
+  :is(#settings-modal, #alert-config-modal, .rename-modal)
+  .form-group
+  input[type='checkbox']:checked {
+  background: var(--accent-text);
 }
 
 :is(#settings-modal, #alert-config-modal, .rename-modal)
@@ -14884,11 +15149,21 @@ body.theme-light:not(.high-contrast) #quick-controls .control-item[data-unavaila
   background: color-mix(in srgb, var(--tile-bg) 70%, transparent);
 }
 
+/* A near-white tile barely changes when its fill goes from 88% to 96% white, so on the light panel
+   the hover rested on a slightly darker edge alone. It also tints toward the accent and lifts a
+   little. Lit and unavailable tiles keep their own hover. */
+body.theme-light:not(.high-contrast)
+  #quick-controls
+  .control-item:not([data-active='true'], [data-unavailable='true']):hover {
+  background-color: color-mix(in srgb, rgb(var(--accent-rgb)) 6%, var(--tile-bg-hover));
+  box-shadow: var(--shadow-sm);
+}
+
 /* The main view's tiles are near-white and their text can run a notch darker than Settings
    and dialogs, which keep the global mixes. */
 body.theme-light:not(.high-contrast) :is(#quick-controls .control-item, .status-grid, .media-tile) {
-  --text-dim: color-mix(in srgb, var(--text-primary) 78%, transparent);
-  --text-faint: color-mix(in srgb, var(--text-primary) 70%, transparent);
+  --text-dim: var(--palette-text-dim, color-mix(in srgb, var(--text-primary) 78%, transparent));
+  --text-faint: var(--palette-text-faint, color-mix(in srgb, var(--text-primary) 70%, transparent));
 }
 
 /* --- Main view: one hero pane for the primary cards --- */

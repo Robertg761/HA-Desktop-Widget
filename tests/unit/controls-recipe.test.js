@@ -157,9 +157,9 @@ describe('the control recipe', () => {
       const input = document.querySelector('input');
 
       expect(resolvedValue(input, 'border')).toBe(
-        '1px solid var(--border-color)'.replace(
-          /var\(--border-color\)/,
-          resolvedValue(input, '--border-color')
+        '1px solid var(--control-border)'.replace(
+          /var\(--control-border\)/,
+          resolvedValue(input, '--control-border')
         )
       );
       expect(resolvedValue(input, 'border-radius')).toBe('0.5rem');

@@ -20,8 +20,11 @@ const RECHECK_INTERVAL_MS = 10 * 60 * 1000;
 // Tiles, cards and the header frost the scene behind them, so it reads as depth rather than
 // clutter. The frost is drawn into this canvas instead of using CSS backdrop-filter, which Linux
 // performance mode turns off and which would cost a blur per tile: the whole scene is blurred
-// once at quarter resolution and that copy stands in for the sharp one under each surface.
-const FROSTED_SELECTOR = '.widget-header, .status-card, .media-tile, .control-item';
+// once at quarter resolution and that copy stands in for the sharp one under each surface. The
+// state panel (errors, an empty page) frosts as well: its copy is on the screen where reading
+// matters most, and its own fill is only a faint tint.
+const FROSTED_SELECTOR =
+  '.widget-header, .status-card, .media-tile, .control-item, .widget-state-panel';
 const FROST_SCALE = 0.25;
 // At quarter resolution; upscaling softens it further, to roughly a 12px blur.
 const FROST_BLUR_PX = 3;

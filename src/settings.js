@@ -1920,8 +1920,8 @@ function restoreSavedThemeMode() {
   applyTheme(getSavedThemeMode());
   applyAccentTheme(state.CONFIG?.ui?.accent || getCurrentAccentTheme());
   applyBackgroundTheme(state.CONFIG?.ui?.background || getCurrentBackgroundTheme());
-  applyWindowEffects(state.CONFIG || {});
   applyDesktopAppearance(state.CONFIG || {});
+  applyWindowEffects(state.CONFIG || {});
 }
 
 function initThemeModeControl() {
@@ -2810,6 +2810,19 @@ function sliderValueToOpacity(sliderValue, storedOpacity) {
 }
 
 /**
+ * Write the Window opacity readout beside the slider: the opacity its position stands for, as a
+ * percentage. The slider runs 1 to 100 over opacities of 50 to 100%, so its raw position is not
+ * a figure anyone can read as a percentage.
+ */
+function updateOpacityReadout() {
+  const slider = document.getElementById('opacity-slider');
+  const readout = document.getElementById('opacity-value');
+  if (!slider || !readout) return;
+  const opacity = sliderValueToOpacity(parseInt(slider.value, 10) || 90, state.CONFIG?.opacity);
+  readout.textContent = `${Math.round(opacity * 100)}%`;
+}
+
+/**
  * Read preview controls from the DOM and derive window effect values.
  *
  * Reads the #opacity-slider and #frosted-glass inputs; if either is missing, returns `null`.
@@ -3591,8 +3604,8 @@ function applyConfigFromProfileSync(nextConfig) {
   applyAccentTheme(state.CONFIG.ui?.accent || 'original');
   applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
   applyUiPreferences(state.CONFIG.ui || {});
-  applyWindowEffects(state.CONFIG || {});
   applyDesktopAppearance(state.CONFIG);
+  applyWindowEffects(state.CONFIG || {});
 }
 
 /**
@@ -5063,7 +5076,6 @@ async function openSettings(uiHooks) {
     const alwaysOnTop = document.getElementById('always-on-top');
     const hideOnBlur = document.getElementById('hide-on-blur');
     const opacitySlider = document.getElementById('opacity-slider');
-    const opacityValue = document.getElementById('opacity-value');
     const frostedGlass = document.getElementById('frosted-glass');
     const enableInteractionDebugLogs = document.getElementById('enable-interaction-debug-logs');
     const allowPrereleaseUpdates = document.getElementById('allow-prerelease-updates');
@@ -5157,7 +5169,7 @@ async function openSettings(uiHooks) {
     const storedOpacity = Math.max(0.5, Math.min(1, state.CONFIG.opacity || 0.95));
     const sliderScale = opacityToSliderValue(storedOpacity);
     if (opacitySlider) opacitySlider.value = sliderScale;
-    if (opacityValue) opacityValue.textContent = `${sliderScale}`;
+    updateOpacityReadout();
 
     const weatherEffectsEnabled = document.getElementById('weather-effects-enabled');
     const weatherOverrideSelect = document.getElementById('weather-override-select');
@@ -6261,8 +6273,8 @@ async function saveSettings() {
     applyAccentTheme(state.CONFIG.ui?.accent || getCurrentAccentTheme());
     applyBackgroundTheme(state.CONFIG.ui?.background || getCurrentBackgroundTheme());
     applyUiPreferences(state.CONFIG.ui || {});
-    applyWindowEffects(state.CONFIG || {});
     applyDesktopAppearance(state.CONFIG);
+    applyWindowEffects(state.CONFIG || {});
 
     // Update UI to reflect the newly saved settings selection.
     if (settingsUiHooks?.renderActiveTab) {
@@ -7281,6 +7293,7 @@ function showProfileSyncAttention() {
 }
 
 export {
+  updateOpacityReadout,
   syncSegmentedIndicators,
   refreshRestoredDashboardSettings,
   openSettings,

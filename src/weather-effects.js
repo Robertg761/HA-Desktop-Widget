@@ -10,6 +10,30 @@ const BASELINE_FRAME_INTERVAL_MS = 1000 / 60;
 // (120/144Hz) are still capped near the target rate.
 const FRAME_INTERVAL_TOLERANCE_MS = 2;
 
+// Pale tones show on the dark theme and vanish on the light one (white snow on a white window), so
+// the light theme gets slate flakes with an edge, deeper rain and cloud, and an amber sun.
+const DARK_COLORS = {
+  rain: 'rgba(165, 218, 255, 0.85)',
+  rainStatic: 'rgba(165, 218, 255, 0.45)',
+  flash: (opacity) => `rgba(235, 245, 255, ${opacity})`,
+  snow: '#ffffff',
+  snowEdge: null,
+  cloud: (opacity) => `rgba(200, 210, 225, ${opacity})`,
+  sun: ['rgba(255, 225, 150, 0.25)', 'rgba(255, 200, 110, 0.08)', 'rgba(255, 200, 110, 0)'],
+  sunStatic: ['rgba(255, 225, 150, 0.2)', 'rgba(255, 200, 110, 0.07)', 'rgba(255, 200, 110, 0)'],
+};
+const LIGHT_COLORS = {
+  rain: 'rgba(37, 117, 196, 0.8)',
+  rainStatic: 'rgba(37, 117, 196, 0.5)',
+  // A flash of white would be invisible, so a storm darkens the pane for a moment instead.
+  flash: (opacity) => `rgba(40, 60, 110, ${opacity * 0.4})`,
+  snow: '#8aa6c6',
+  snowEdge: 'rgba(70, 100, 140, 0.55)',
+  cloud: (opacity) => `rgba(110, 130, 160, ${opacity})`,
+  sun: ['rgba(245, 170, 40, 0.34)', 'rgba(245, 160, 30, 0.12)', 'rgba(245, 160, 30, 0)'],
+  sunStatic: ['rgba(245, 170, 40, 0.28)', 'rgba(245, 160, 30, 0.1)', 'rgba(245, 160, 30, 0)'],
+};
+
 export class WeatherEffectsManager {
   constructor(canvasId) {
     this.canvas = document.getElementById(canvasId);
@@ -34,6 +58,11 @@ export class WeatherEffectsManager {
 
     this.loop = this.loop.bind(this);
     this.setupReducedMotionListener();
+  }
+
+  /** The tones for the theme that is showing, read as each frame is drawn. */
+  get colors() {
+    return document.body?.classList.contains('theme-light') ? LIGHT_COLORS : DARK_COLORS;
   }
 
   setupReducedMotionListener() {
@@ -234,7 +263,7 @@ export class WeatherEffectsManager {
 
   updateAndDrawRain(frameScale = 1) {
     if (!this.ctx || !this.canvas) return;
-    this.ctx.strokeStyle = 'rgba(165, 218, 255, 0.85)';
+    this.ctx.strokeStyle = this.colors.rain;
     this.ctx.lineWidth = 1.5;
 
     for (const p of this.particles) {
@@ -260,7 +289,7 @@ export class WeatherEffectsManager {
 
   drawRainStatic() {
     if (!this.ctx || !this.canvas) return;
-    this.ctx.strokeStyle = 'rgba(165, 218, 255, 0.45)';
+    this.ctx.strokeStyle = this.colors.rainStatic;
     this.ctx.lineWidth = 1.2;
     const drops = this.particles.slice(0, this.activeEffect === 'stormy' ? 48 : 32);
     for (const p of drops) {
@@ -311,14 +340,17 @@ export class WeatherEffectsManager {
     }
 
     if (this.lightningOpacity > 0) {
-      this.ctx.fillStyle = `rgba(235, 245, 255, ${this.lightningOpacity})`;
+      this.ctx.fillStyle = this.colors.flash(this.lightningOpacity);
       this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     }
   }
 
   updateAndDrawSnow(frameScale = 1) {
     if (!this.ctx || !this.canvas) return;
-    this.ctx.fillStyle = '#ffffff';
+    const { snow, snowEdge } = this.colors;
+    this.ctx.fillStyle = snow;
+    this.ctx.strokeStyle = snowEdge || 'transparent';
+    this.ctx.lineWidth = 0.75;
 
     for (const p of this.particles) {
       p.y += p.vy * frameScale;
@@ -334,24 +366,30 @@ export class WeatherEffectsManager {
       this.ctx.globalAlpha = p.opacity;
       this.ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
       this.ctx.fill();
+      if (snowEdge) this.ctx.stroke();
     }
     this.ctx.globalAlpha = 1.0;
   }
 
   drawSnowStatic() {
     if (!this.ctx || !this.canvas) return;
-    this.ctx.fillStyle = '#ffffff';
+    const { snow, snowEdge } = this.colors;
+    this.ctx.fillStyle = snow;
+    this.ctx.strokeStyle = snowEdge || 'transparent';
+    this.ctx.lineWidth = 0.75;
     for (const p of this.particles.slice(0, 36)) {
       this.ctx.beginPath();
       this.ctx.globalAlpha = Math.min(p.opacity || 0.45, 0.65);
       this.ctx.arc(p.x, p.y, p.radius || 2, 0, Math.PI * 2);
       this.ctx.fill();
+      if (snowEdge) this.ctx.stroke();
     }
     this.ctx.globalAlpha = 1.0;
   }
 
   updateAndDrawClouds(frameScale = 1) {
     if (!this.ctx || !this.canvas) return;
+    const { cloud } = this.colors;
     for (const c of this.clouds) {
       c.x += c.vx * frameScale;
       if (c.x - c.radius > this.canvas.width) {
@@ -359,9 +397,9 @@ export class WeatherEffectsManager {
       }
 
       const gradient = this.ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, c.radius);
-      gradient.addColorStop(0, `rgba(200, 210, 225, ${c.opacity})`);
-      gradient.addColorStop(0.5, `rgba(200, 210, 225, ${c.opacity * 0.4})`);
-      gradient.addColorStop(1, 'rgba(200, 210, 225, 0)');
+      gradient.addColorStop(0, cloud(c.opacity));
+      gradient.addColorStop(0.5, cloud(c.opacity * 0.4));
+      gradient.addColorStop(1, cloud(0));
 
       this.ctx.fillStyle = gradient;
       this.ctx.beginPath();
@@ -395,9 +433,7 @@ export class WeatherEffectsManager {
       this.sun.y,
       radius
     );
-    gradient.addColorStop(0, 'rgba(255, 225, 150, 0.25)');
-    gradient.addColorStop(0.5, 'rgba(255, 200, 110, 0.08)');
-    gradient.addColorStop(1, 'rgba(255, 200, 110, 0)');
+    this.colors.sun.forEach((color, index) => gradient.addColorStop(index / 2, color));
 
     this.ctx.fillStyle = gradient;
     this.ctx.beginPath();
@@ -416,9 +452,7 @@ export class WeatherEffectsManager {
       this.sun.y,
       radius
     );
-    gradient.addColorStop(0, 'rgba(255, 225, 150, 0.2)');
-    gradient.addColorStop(0.5, 'rgba(255, 200, 110, 0.07)');
-    gradient.addColorStop(1, 'rgba(255, 200, 110, 0)');
+    this.colors.sunStatic.forEach((color, index) => gradient.addColorStop(index / 2, color));
 
     this.ctx.fillStyle = gradient;
     this.ctx.beginPath();

@@ -1151,6 +1151,32 @@ describe('UI Utilities', () => {
       expect(tooltip.classList.contains('visible')).toBe(false);
     });
 
+    it('points the arrow at the dot, even when the tooltip is held inside the window', () => {
+      const rect = (left, top, width, height) => ({
+        left,
+        top,
+        width,
+        height,
+        right: left + width,
+        bottom: top + height,
+      });
+      uiUtils.initializeConnectionStatusTooltip();
+      const tooltip = document.getElementById('connection-status-tooltip');
+      tooltip.getBoundingClientRect = () => rect(0, 0, 180, 60);
+      // The dot sits at the far left of the window, where a 180px tooltip cannot centre on it.
+      statusIndicator.getBoundingClientRect = () => rect(15, 12, 8, 8);
+      statusIndicator.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+      // The tooltip is held at the 12px padding; its centre would be at 90, but the dot is at 19.
+      expect(tooltip.style.left).toBe('12px');
+      expect(tooltip.style.getPropertyValue('--arrow-x')).toBe('14px');
+
+      // Away from the edge the tooltip centres on the dot and the arrow is in the middle.
+      statusIndicator.getBoundingClientRect = () => rect(300, 12, 8, 8);
+      statusIndicator.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+      expect(tooltip.style.left).toBe('214px');
+      expect(tooltip.style.getPropertyValue('--arrow-x')).toBe('90px');
+    });
+
     it('should show tooltip on focus and hide on blur', () => {
       uiUtils.initializeConnectionStatusTooltip();
       statusIndicator.dispatchEvent(new FocusEvent('focus', { bubbles: true }));

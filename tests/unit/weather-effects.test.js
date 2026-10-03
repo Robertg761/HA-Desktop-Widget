@@ -214,4 +214,63 @@ describe('WeatherEffectsManager', () => {
     expect(removeListenerSpy).toHaveBeenCalledWith('resize', expect.any(Function));
     expect(window.cancelAnimationFrame).toHaveBeenCalledWith(frameId);
   });
+
+  describe('on the light theme', () => {
+    const luminance = ([r, g, b]) => {
+      const linear = (v) =>
+        v / 255 <= 0.03928 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4;
+      return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+    };
+    const channels = (color) => {
+      if (color.startsWith('#')) return [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16));
+      return color
+        .match(/[\d.]+/g)
+        .slice(0, 3)
+        .map(Number);
+    };
+    const contrastOnWhite = (color) => 1.05 / (luminance(channels(color)) + 0.05);
+    const run = (effect, light) => {
+      jest.useFakeTimers();
+      document.body.classList.toggle('theme-light', light);
+      const manager = new WeatherEffectsManager('weather-effects-canvas');
+      manager.setEffect(effect);
+      jest.advanceTimersByTime(60);
+      manager.destroy();
+    };
+
+    afterEach(() => {
+      document.body.className = '';
+    });
+
+    it('draws snow in white on the dark theme and as slate flakes with an edge on the light one', () => {
+      run('snowy', false);
+      expect(mockContext.fillStyle).toBe('#ffffff');
+      expect(mockContext.stroke).not.toHaveBeenCalled();
+
+      run('snowy', true);
+      expect(mockContext.fillStyle).not.toBe('#ffffff');
+      // A flake shows on a white window at 2.5:1 or better, and each gets an edge.
+      expect(contrastOnWhite(mockContext.fillStyle)).toBeGreaterThanOrEqual(2.5);
+      expect(mockContext.stroke).toHaveBeenCalled();
+    });
+
+    it('draws rain, cloud and sun in tones that show on white', () => {
+      run('rainy', true);
+      expect(contrastOnWhite(mockContext.strokeStyle)).toBeGreaterThanOrEqual(3);
+
+      mockGradient.addColorStop.mockClear();
+      run('cloudy', true);
+      const cloudStops = mockGradient.addColorStop.mock.calls.map(([, color]) => color);
+      expect(cloudStops.length).toBeGreaterThan(0);
+      expect(cloudStops.every((color) => color.startsWith('rgba(110, 130, 160'))).toBe(true);
+
+      mockGradient.addColorStop.mockClear();
+      run('sunny', true);
+      expect(mockGradient.addColorStop.mock.calls[0][1]).toBe('rgba(245, 170, 40, 0.34)');
+
+      mockGradient.addColorStop.mockClear();
+      run('sunny', false);
+      expect(mockGradient.addColorStop.mock.calls[0][1]).toBe('rgba(255, 225, 150, 0.25)');
+    });
+  });
 });

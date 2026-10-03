@@ -1451,6 +1451,14 @@ function positionConnectionStatusTooltip(target) {
   connectionStatusTooltip.style.top = `${top}px`;
   connectionStatusTooltip.style.left = `${left}px`;
   connectionStatusTooltip.dataset.placement = placeBelow ? 'bottom' : 'top';
+  // Keeping the tooltip inside the window moves it off the dot, so the arrow slides to stay under
+  // it, short of the rounded corners.
+  const arrowInset = 14;
+  const arrowX = Math.max(
+    arrowInset,
+    Math.min(tooltipRect.width - arrowInset, rect.left + rect.width / 2 - left)
+  );
+  connectionStatusTooltip.style.setProperty('--arrow-x', `${arrowX}px`);
 }
 
 function showConnectionStatusTooltip(target, { pinned = false } = {}) {
@@ -1762,6 +1770,8 @@ export {
   setStatus,
   showConfirm,
   hexToRgb,
+  mixRgb,
+  contrastBetween,
   getAccentHoverColor,
   getAccentTextOnDark,
   getAccentTextOnLight,

@@ -94,10 +94,41 @@ Panel {
   readonly property bool showingControls: controlsTile !== null && controlState !== null
 
   readonly property color foreground: bar ? bar.foreground : Color.popups.text
-  readonly property color dimColor: Qt.darker(foreground, 1.55)
+  // The tone of secondary lines (status text, counts, "Unavailable"): the foreground blended toward
+  // the panel, and no further than still reads at 4.5:1 there. Qt.darker made a light theme's dim
+  // text darker than its primary text, and left several dark themes under 4.5:1 at 10 px.
+  readonly property color dimColor: quietTone(foreground, Color.popups.background)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property int columns: Math.max(1, Math.min(4, flatTiles.length))
   readonly property real tileGap: Style.space(8)
+
+  function colorChannel(value) {
+    return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4)
+  }
+
+  function luminance(c) {
+    return 0.2126 * colorChannel(c.r) + 0.7152 * colorChannel(c.g) + 0.0722 * colorChannel(c.b)
+  }
+
+  function contrastRatio(a, b) {
+    var x = luminance(a)
+    var y = luminance(b)
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)
+  }
+
+  // A tone between background and foreground, starting at 70% of the way to the foreground and going
+  // on only until it reads. A foreground that does not reach 4.5:1 itself is returned as it is.
+  function quietTone(fg, bg) {
+    var tone = fg
+    for (var share = 0.7; share <= 1.0001; share += 0.05) {
+      var amount = Math.min(1, share)
+      tone = Qt.rgba(bg.r + (fg.r - bg.r) * amount,
+                     bg.g + (fg.g - bg.g) * amount,
+                     bg.b + (fg.b - bg.b) * amount, 1)
+      if (contrastRatio(tone, bg) >= 4.5) break
+    }
+    return tone
+  }
 
   // Keyboard cursor, shared with mouse hover so only one tile is ever highlighted.
   property bool cursorActive: false
@@ -544,7 +575,6 @@ Panel {
       anchors.leftMargin: Style.space(6)
       anchors.rightMargin: Style.space(6)
       spacing: Style.space(3)
-      opacity: tileRoot.available ? 1 : 0.55
 
       TileIcon {
         anchors.horizontalCenter: parent.horizontalCenter
@@ -552,7 +582,9 @@ Panel {
         height: Style.space(22)
         icon: tileRoot.tile.icon || null
         color: tileRoot.iconColor
-        iconOpacity: tileRoot.active ? 1 : 0.72
+        // An unavailable tile is dimmed by its name's tone and its icon, not by fading the whole
+        // column, which put its text under 3:1 on most themes.
+        iconOpacity: tileRoot.active ? 1 : (tileRoot.available ? 0.72 : 0.45)
       }
 
       Text {

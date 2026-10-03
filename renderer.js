@@ -1622,8 +1622,9 @@ function applyRendererConfig(nextConfig) {
     uiUtils.applyAccentTheme(state.CONFIG.ui?.accent || 'original');
     uiUtils.applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
     uiUtils.applyUiPreferences(state.CONFIG.ui || {});
-    uiUtils.applyWindowEffects(state.CONFIG || {});
+    // The palette can change the theme, which the window effects' alphas follow, so it goes first.
     applyDesktopAppearance(state.CONFIG);
+    uiUtils.applyWindowEffects(state.CONFIG || {});
 
     if (ui.updateWeatherEffects) {
       ui.updateWeatherEffects();
@@ -2903,13 +2904,10 @@ function wireUI() {
     // Opacity slider handler with real-time preview
     // Scale: 1-100 where 1 = 50% opacity, 100 = 100% opacity
     const opacitySlider = document.getElementById('opacity-slider');
-    const opacityValue = document.getElementById('opacity-value');
-    if (opacitySlider && opacityValue) {
-      opacitySlider.addEventListener('input', (e) => {
-        const sliderValue = parseInt(e.target.value) || 90;
-        // Convert slider value (1-100) to opacity (0.5-1.0)
-        // Formula: opacity = 0.5 + (sliderValue - 1) * 0.5 / 99
-        opacityValue.textContent = `${sliderValue}`;
+    if (opacitySlider && document.getElementById('opacity-value')) {
+      opacitySlider.addEventListener('input', () => {
+        // The readout shows the opacity the position stands for (0.5-1.0), as a percentage.
+        settings.updateOpacityReadout?.();
         // Apply preview without persisting
         if (settings.previewWindowEffects) {
           settings.previewWindowEffects();
