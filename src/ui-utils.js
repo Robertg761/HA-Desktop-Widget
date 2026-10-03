@@ -53,6 +53,10 @@ let seasonalColorsSuspended = false;
 // came in raw (the Omarchy palette or a Settings draft), which seasonal colours leave alone.
 let lastAccentKey = null;
 let lastBackgroundKey = null;
+// The raw colours behind those nulls, so a change of the theme class (the Readable preset paints
+// dark over a light theme) can work their tints out again for the theme that is showing.
+let lastAccentColor = null;
+let lastBackgroundColor = null;
 // Whether the chosen theme is the light one, or null before one was applied. Kept apart from the
 // body class because the Readable preset paints its own dark palette over whichever it is.
 let chosenThemeIsLight = null;
@@ -445,6 +449,7 @@ function applyAccentTheme(accentKey) {
 function applyAccentThemeFromColor(hex) {
   try {
     lastAccentKey = null;
+    lastAccentColor = hex;
     return applyAccentColor(hex, 'custom-preview');
   } catch (error) {
     console.error('Error applying accent preview color:', error);
@@ -547,6 +552,7 @@ function applyBackgroundTheme(backgroundKey) {
 function applyBackgroundThemeFromColor(hex) {
   try {
     lastBackgroundKey = null;
+    lastBackgroundColor = hex;
     return applyBackgroundColor(hex, 'custom-preview');
   } catch (error) {
     console.error('Error applying background preview color:', error);
@@ -967,9 +973,12 @@ function applyUiPreferences(ui = {}) {
     body.classList.toggle('high-contrast', !!ui.highContrast);
     syncThemeClass();
     if (body.classList.contains('theme-light') !== wasLight) {
-      // The accent and background tints are worked out per theme, so they follow the change.
+      // The accent and background tints are worked out per theme, so they follow the change. A
+      // colour that came in raw (the Omarchy palette, a Settings draft) is worked out again too.
       if (lastAccentKey !== null) applyAccentTheme(lastAccentKey);
+      else if (lastAccentColor !== null) applyAccentThemeFromColor(lastAccentColor);
       if (lastBackgroundKey !== null) applyBackgroundTheme(lastBackgroundKey);
+      else if (lastBackgroundColor !== null) applyBackgroundThemeFromColor(lastBackgroundColor);
     }
     body.classList.toggle('opaque-panels', !!ui.opaquePanels);
     body.classList.toggle('density-compact', (ui.density || 'comfortable') === 'compact');
