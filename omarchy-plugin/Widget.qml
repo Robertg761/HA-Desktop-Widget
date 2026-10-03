@@ -215,6 +215,25 @@ Panel {
     sendRequest(request)
   }
 
+  // The tile drawn for each position in flatTiles, so the cursor can be brought into view.
+  property var tileItems: ({})
+
+  // Scroll the panel so the highlighted tile is fully inside it. With more tiles than fit, the
+  // cursor used to walk off the bottom, and Enter then switched something the person could not see.
+  function ensureCursorVisible() {
+    var item = tileItems[cursorIndex]
+    if (!item || showingControls) return
+    var top = item.mapToItem(flick.contentItem, 0, 0).y
+    var margin = Style.space(6)
+    var visibleTop = flick.contentY
+    var visibleBottom = flick.contentY + flick.height
+    if (top - margin < visibleTop) {
+      flick.contentY = Math.max(0, top - margin)
+    } else if (top + item.height + margin > visibleBottom) {
+      flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, top + item.height + margin - flick.height))
+    }
+  }
+
   function moveCursor(dx, dy) {
     if (showingControls) {
       if (dx !== 0) controlsView.nudge(dx)
@@ -224,10 +243,20 @@ Panel {
     if (count === 0) return
     if (!cursorActive) {
       cursorActive = true
+      ensureCursorVisible()
       return
     }
     var next = cursorIndex + dx + dy * columns
     cursorIndex = Math.max(0, Math.min(count - 1, next))
+    ensureCursorVisible()
+  }
+
+  // The highlighted tile's controls, from the keyboard: the same as press-and-hold, the Adjust
+  // button or a right-click.
+  function adjustCursorTile() {
+    if (showingControls || !cursorActive) return
+    var tile = flatTiles[cursorIndex]
+    if (tile && canAdjust(tile)) adjustTile(tile)
   }
 
   // Icon SVGs from the widget draw with currentColor; paint them in the tile's colour.
@@ -364,6 +393,10 @@ Panel {
       onActivateRequested: {
         if (root.showingControls) controlsView.activate()
         else if (root.cursorActive) root.activateTile(root.flatTiles[root.cursorIndex])
+      }
+      // A on a tile opens its controls, which the arrows then adjust.
+      onTextKey: function(text) {
+        if (text === "a" || text === "A") root.adjustCursorTile()
       }
 
       Flickable {
@@ -521,6 +554,11 @@ Panel {
     readonly property bool available: tile.available === true
     readonly property bool actionable: root.canActivate(tile)
     readonly property color iconColor: active ? Color.accent : root.foreground
+
+    Component.onCompleted: root.tileItems[tileRoot.flatIndex] = tileRoot
+    Component.onDestruction: {
+      if (root.tileItems[tileRoot.flatIndex] === tileRoot) delete root.tileItems[tileRoot.flatIndex]
+    }
 
     height: Style.space(92)
     radius: Style.cornerRadius

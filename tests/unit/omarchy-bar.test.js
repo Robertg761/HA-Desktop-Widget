@@ -112,6 +112,46 @@ describe('Omarchy bar plugin package', () => {
   });
 });
 
+describe('Omarchy panel keyboard support', () => {
+  const qml = fs.readFileSync(path.join(pluginDir, 'Widget.qml'), 'utf8');
+
+  it('brings the highlighted tile into view as the cursor moves, so Enter never acts on one that is off screen', () => {
+    const moveBody = qml.slice(
+      qml.indexOf('function moveCursor('),
+      qml.indexOf('function adjustCursorTile')
+    );
+    // Both the first press (which only shows the cursor) and every step scroll to it.
+    expect(moveBody.match(/ensureCursorVisible\(\)/g)).toHaveLength(2);
+    // Each tile registers itself by position, so the scroll can find where it is drawn.
+    expect(qml).toContain('Component.onCompleted: root.tileItems[tileRoot.flatIndex] = tileRoot');
+    expect(qml).toContain('delete root.tileItems[tileRoot.flatIndex]');
+    const scrollBody = qml.slice(
+      qml.indexOf('function ensureCursorVisible()'),
+      qml.indexOf('function moveCursor(')
+    );
+    expect(scrollBody).toContain('item.mapToItem(flick.contentItem, 0, 0).y');
+    expect(scrollBody).toContain('flick.contentY =');
+    // The controls view has no tiles to scroll to.
+    expect(scrollBody).toContain('showingControls');
+  });
+
+  it('opens the highlighted tile controls from the keyboard, where the adjustment itself is possible', () => {
+    expect(qml).toMatch(
+      /onTextKey: function\(text\) \{\s*if \(text === "a" \|\| text === "A"\) root\.adjustCursorTile\(\)/
+    );
+    const adjustBody = qml.slice(
+      qml.indexOf('function adjustCursorTile()'),
+      qml.indexOf('// Icon SVGs from the widget draw')
+    );
+    expect(adjustBody).toContain('if (showingControls || !cursorActive) return');
+    expect(adjustBody).toContain('canAdjust(tile)');
+    expect(adjustBody).toContain('adjustTile(tile)');
+    expect(fs.readFileSync(path.resolve(__dirname, '../../docs/omarchy.md'), 'utf8')).toContain(
+      'and A opens its controls'
+    );
+  });
+});
+
 describe('Omarchy bar settings in shell.json', () => {
   it('finds the widget entry and its inline settings in any section', () => {
     const shellJson = JSON.stringify({
