@@ -12999,64 +12999,73 @@ body.opaque-panels
   -webkit-backdrop-filter: none !important;
 }
 
-/* Ranges are handled below; :where keeps this rule's specificity unchanged. Section headers and
-   tabs are text-like buttons: a fill would draw a bar across the panel, and their own hover,
-   active and focus styles stay visible without it. A colour swatch is its fill. */
-body.high-contrast
-  :is(button, input, select, textarea):not(
-    :where([type='range'], .section-toggle, .tab-link, .light-color-swatch)
-  ) {
-  color: #fff !important;
-  background: #202020 !important;
-  border-color: #aaa !important;
-}
+/* The Readable preset's colours for buttons, fields, chips, tabs and slider tracks. Forced colours
+   (a Windows contrast theme) replace each of them with a system colour, so none is ever drawn, yet
+   a rule they discard still outranks a lower one that names a system colour. With the preset on as
+   well, its white edge beat the primary action's Highlight edge, its white text beat GrayText on a
+   control that is only aria-disabled, and its accent edge on the active page link beat the Canvas
+   one that keeps edit mode from drawing a second box around it. So they stay out while forced
+   colours are active, and the rules for forced colours at the end of this file decide. */
+@media (forced-colors: none) {
+  /* Ranges are handled below; :where keeps this rule's specificity unchanged. Section headers and
+     tabs are text-like buttons: a fill would draw a bar across the panel, and their own hover,
+     active and focus styles stay visible without it. A colour swatch is its fill. */
+  body.high-contrast
+    :is(button, input, select, textarea):not(
+      :where([type='range'], .section-toggle, .tab-link, .light-color-swatch)
+    ) {
+    color: #fff !important;
+    background: #202020 !important;
+    border-color: #aaa !important;
+  }
 
-/* The primary fill marks the main action and the selected choice (Primary Cards, the theme mode),
-   so it stays a solid accent fill with dark text instead of the grey fill every other button
-   gets. */
-body.high-contrast :is(.btn-primary, .segmented-option.active) {
-  color: #141414 !important;
-  background: var(--accent) !important;
-  border-color: #fff !important;
-}
+  /* The primary fill marks the main action and the selected choice (Primary Cards, the theme mode),
+     so it stays a solid accent fill with dark text instead of the grey fill every other button
+     gets. */
+  body.high-contrast :is(.btn-primary, .segmented-option.active) {
+    color: #141414 !important;
+    background: var(--accent) !important;
+    border-color: #fff !important;
+  }
 
-body.high-contrast :is(#settings-modal, .quick-access-tabs) .tab-link.active {
-  border-color: var(--accent);
-  color: #fff;
-}
+  body.high-contrast :is(#settings-modal, .quick-access-tabs) .tab-link.active {
+    border-color: var(--accent);
+    color: #fff;
+  }
 
-/* Without the grey fill a hovered tab needs its own edge; the refreshed tabs hover with a fill
-   that barely differs from the readable panels. */
-body.high-contrast :is(#settings-modal, .quick-access-tabs) .tab-link:not(.active):hover {
-  border-color: var(--border-hover);
-}
+  /* Without the grey fill a hovered tab needs its own edge; the refreshed tabs hover with a fill
+     that barely differs from the readable panels. */
+  body.high-contrast :is(#settings-modal, .quick-access-tabs) .tab-link:not(.active):hover {
+    border-color: var(--border-hover);
+  }
 
-/* The grey fill above also flattens the selected chip, whose accent border and tint were its mark,
-   so the chip keeps a heavier accent edge. */
-body.high-contrast
-  :is(
-    .climate-mode-btn,
-    .climate-fan-mode-btn,
-    .climate-preset-mode-btn,
-    .media-mute-toggle
-  ).active,
-body.high-contrast .donate-amount-chip.selected {
-  border-color: var(--accent) !important;
-  box-shadow: inset 0 0 0 2px var(--accent);
-}
+  /* The grey fill above also flattens the selected chip, whose accent border and tint were its
+     mark, so the chip keeps a heavier accent edge. */
+  body.high-contrast
+    :is(
+      .climate-mode-btn,
+      .climate-fan-mode-btn,
+      .climate-preset-mode-btn,
+      .media-mute-toggle
+    ).active,
+  body.high-contrast .donate-amount-chip.selected {
+    border-color: var(--accent) !important;
+    box-shadow: inset 0 0 0 2px var(--accent);
+  }
 
-/* The rail marks its active page with the sliding pill (the active tab's own border is cancelled
-   while the pill is there), and the pill is faint by default, so the preset gives it an edge. */
-body.high-contrast #settings-modal .modal-tabs > .sliding-indicator {
-  background: rgba(var(--accent-rgb), 0.3);
-  box-shadow: inset 0 0 0 2px var(--accent);
-}
+  /* The rail marks its active page with the sliding pill (the active tab's own border is cancelled
+     while the pill is there), and the pill is faint by default, so the preset gives it an edge. */
+  body.high-contrast #settings-modal .modal-tabs > .sliding-indicator {
+    background: rgba(var(--accent-rgb), 0.3);
+    box-shadow: inset 0 0 0 2px var(--accent);
+  }
 
-/* A range input's background is its track: give it one that stands out from the #141414 panels.
-   The colour temperature gradient already does, and the pin light slider is a transparent
-   overlay above its own track. */
-body.high-contrast input[type='range']:not(.light-color-temp-slider, .desktop-pin-light-slider) {
-  background: #8a8a8a !important;
+  /* A range input's background is its track: give it one that stands out from the #141414 panels.
+     The colour temperature gradient already does, and the pin light slider is a transparent
+     overlay above its own track. */
+  body.high-contrast input[type='range']:not(.light-color-temp-slider, .desktop-pin-light-slider) {
+    background: #8a8a8a !important;
+  }
 }
 
 body.high-contrast :focus-visible {
@@ -16211,6 +16220,13 @@ body[data-season='thanksgiving'] .control-item {
     outline-offset: 2px;
   }
 
+  /* The Readable preset's focus ring keeps its 3px width and its offset but takes the system
+     colour: the white it asks for is drawn as written on whatever opts out of forced colours (the
+     switches and the light colour swatches), which is invisible on a light contrast theme. */
+  body.high-contrast :focus-visible {
+    outline-color: Highlight !important;
+  }
+
   /* Disabled controls are already GrayText; halving their opacity on top washes them out. A control
      that is only aria-disabled gets the colour itself. */
   :disabled,
@@ -16276,12 +16292,6 @@ body[data-season='thanksgiving'] .control-item {
     background: Highlight;
     border: 2px solid ButtonText;
     box-shadow: none;
-  }
-
-  /* The Readable preset paints these tracks #8a8a8a, an author colour that forced colours would
-     turn into Canvas, so the same selector (it outranks the rule above) restates the system one. */
-  body.high-contrast input[type='range']:not(.light-color-temp-slider, .desktop-pin-light-slider) {
-    background: ButtonText !important;
   }
 
   /* The pin's slider is a transparent overlay above its own fill, so its track is only an edge. */

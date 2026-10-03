@@ -1,13 +1,43 @@
 const fs = require('fs');
 const path = require('path');
-const { loadAppStylesheets, resolvedValue } = require('../helpers/css-cascade.js');
+const {
+  cascadedDeclaration,
+  compareSpecificity,
+  loadAppStylesheets,
+  resolvedValue,
+} = require('../helpers/css-cascade.js');
 
 const FORCED = { forcedColors: true };
 const STYLES = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
 
+// The Readable preset as the app turns it on: its own class and the opaque panels it comes with.
+const READABLE = 'high-contrast opaque-panels';
+
 function render(bodyClass, html) {
   document.body.className = bodyClass;
   document.body.innerHTML = html;
+}
+
+// jsdom does not expand `border: 2px solid Highlight` into the colour it sets, and the cascade
+// helper reads each property on its own, so the colour of a border or an outline is whichever of
+// the longhand and the shorthand would win in the browser.
+const SHORTHAND_OF = { 'border-color': 'border', 'outline-color': 'outline' };
+const NOT_A_COLOUR =
+  /^(?:thin|medium|thick|[\d.]+[a-z]*|none|hidden|dotted|dashed|solid|double|groove|ridge|inset|outset)$/i;
+
+function outranks(candidate, winner) {
+  if (candidate.important !== winner.important) return candidate.important;
+  const bySpecificity = compareSpecificity(candidate.specificity, winner.specificity);
+  return bySpecificity === 0 ? candidate.order >= winner.order : bySpecificity > 0;
+}
+
+function resolvedColour(element, property, options) {
+  const shorthand = SHORTHAND_OF[property];
+  if (!shorthand) return resolvedValue(element, property, options);
+  const longhand = cascadedDeclaration(element, property, options);
+  const whole = cascadedDeclaration(element, shorthand, options);
+  if (!whole || (longhand && outranks(longhand, whole))) return longhand?.value ?? null;
+  return whole.value.split(/\s+/).find((token) => !NOT_A_COLOUR.test(token)) ?? 'currentcolor';
 }
 
 /** The text between the braces of every `@media (forced-colors: active)` block in the stylesheet. */
@@ -315,6 +345,121 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
       const rule = forcedRule('::-webkit-scrollbar-thumb');
       expect(rule).toContain('background: ButtonText');
       expect(rule).toContain('border: 3px solid Canvas');
+    });
+  });
+
+  // Forced colours throw away the Readable preset's palette, yet a rule they discard still outranks
+  // a lower one that names a system colour. Each case is a property the forced-colours rules set to
+  // a system colour; turning the preset on must not change it.
+  describe('with the Readable preset on as well', () => {
+    const PRIMARY = '<button class="btn btn-primary">Save</button>';
+    const EDIT_MODE_TAB = `<div class="quick-access-tabs reorganize">
+      <div class="quick-access-tab active"><button class="tab-link active">Home</button></div>
+    </div>`;
+    const CASES = [
+      ['primary action', PRIMARY, 'button', 'border-color', 'Highlight'],
+      [
+        'primary action that is aria-disabled',
+        '<button class="btn btn-primary" aria-disabled="true">Card 1</button>',
+        'button',
+        'border-color',
+        'Highlight',
+      ],
+      [
+        'button that is only aria-disabled',
+        '<button class="btn btn-secondary" aria-disabled="true">Next</button>',
+        'button',
+        'color',
+        'GrayText',
+      ],
+      ['active page link in edit mode', EDIT_MODE_TAB, '.tab-link', 'border-color', 'Canvas'],
+      [
+        'active page in edit mode',
+        EDIT_MODE_TAB,
+        '.quick-access-tab',
+        'outline-color',
+        'Highlight',
+      ],
+      [
+        'selected segmented option',
+        '<div class="segmented-control"><button class="segmented-option active">Dark</button></div>',
+        'button',
+        'outline-color',
+        'Highlight',
+      ],
+      [
+        'selected HVAC mode',
+        '<button class="climate-mode-btn active">Heat</button>',
+        'button',
+        'outline-color',
+        'Highlight',
+      ],
+      [
+        'selected donate amount',
+        '<button class="donate-amount-chip selected">$5</button>',
+        'button',
+        'outline-color',
+        'Highlight',
+      ],
+      // Chromium draws the preset's white ring as Highlight on a field anyway; the rule should not
+      // depend on that.
+      [
+        'focused text field',
+        '<div class="form-group"><input type="text" data-focus-visible></div>',
+        'input',
+        'outline-color',
+        'Highlight',
+      ],
+      // These opt out of forced colours, so a colour written in the stylesheet is drawn as it is:
+      // a white ring would vanish on a light contrast theme.
+      [
+        'focused switch',
+        '<div class="form-group"><input type="checkbox" data-focus-visible></div>',
+        'input',
+        'outline-color',
+        'Highlight',
+      ],
+      [
+        'focused light colour swatch',
+        '<button class="light-color-swatch" data-focus-visible></button>',
+        'button',
+        'outline-color',
+        'Highlight',
+      ],
+      [
+        'range slider track',
+        '<input type="range" class="brightness-slider">',
+        'input',
+        'background',
+        'ButtonText',
+      ],
+    ];
+
+    it.each(CASES)(
+      'keeps the %s as the forced-colours rules draw it',
+      (_, html, target, property, expected) => {
+        render('', html);
+        const element = document.querySelector(target);
+        expect(resolvedColour(element, property, FORCED)).toBe(expected);
+        document.body.className = READABLE;
+        expect(resolvedColour(element, property, FORCED)).toBe(expected);
+      }
+    );
+
+    it('tells the primary action from the others by a Highlight edge', () => {
+      render(READABLE, `${PRIMARY}<button class="btn btn-secondary" id="cancel">Cancel</button>`);
+      const [primary, secondary] = document.querySelectorAll('button');
+      expect(resolvedColour(primary, 'border-color', FORCED)).toBe('Highlight');
+      expect(resolvedColour(secondary, 'border-color', FORCED)).not.toBe('Highlight');
+    });
+
+    it('leaves the Readable palette alone when forced colours are off', () => {
+      render(READABLE, `${PRIMARY}<button class="btn btn-secondary">Cancel</button>`);
+      const [primary, secondary] = document.querySelectorAll('button');
+      expect(resolvedValue(primary, 'background')).toBe('#8ed1ff');
+      expect(resolvedColour(primary, 'border-color')).toBe('#fff');
+      expect(resolvedValue(secondary, 'background')).toBe('#202020');
+      expect(resolvedValue(secondary, 'border-color')).toBe('#aaa');
     });
   });
 
