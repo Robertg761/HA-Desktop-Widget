@@ -56,7 +56,10 @@ const SOURCE_EXTENSIONS = new Set([
   '.cts',
   '.css',
 ]);
-const SKIPPED_DIRECTORIES = new Set(['node_modules', '.git', 'tests', 'coverage']);
+// Only what a build never packs from. A directory named tests or coverage is not
+// one of them: electron-builder packs src/**/* whole, so a src/tests ships, and
+// the repository's own tests/ is never walked because it is not a root.
+const SKIPPED_DIRECTORIES = new Set(['node_modules', '.git']);
 const VITE_CONFIG_PATTERN = /^vite(?:\..+)?\.config\.[cm]?[jt]s$/;
 // Whitespace and comments, which JavaScript allows between a keyword, a
 // parenthesis and the string, and which bundler hints put there on purpose:

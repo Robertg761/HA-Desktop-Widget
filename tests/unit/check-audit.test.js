@@ -1215,6 +1215,32 @@ describe('findShippedPackages', () => {
     ]);
   });
 
+  it('scans a tests or coverage directory inside a root, because it is packed with the rest', () => {
+    const root = project({
+      'electron-builder.yml': ['files:', '  - extra/**/*', ''].join('\n'),
+      'src/tests/helper.js': "require('braces');",
+      'src/deep/coverage/report.js': "import 'micromatch';",
+      'extra/tests/spec.js': "require('from-extra-tests');",
+      // Not under a root, so nothing packs it.
+      'tests/unit/spec.js': "require('fast-glob');",
+      'coverage/lcov.js': "require('globby');",
+    });
+    const shipped = findShippedPackages(root, {});
+
+    expect(shipped.get('braces')).toBe('imported by src/tests/helper.js');
+    expect(shipped.get('micromatch')).toBe('imported by src/deep/coverage/report.js');
+    expect(shipped.has('from-extra-tests')).toBe(true);
+    expect(shipped.has('fast-glob')).toBe(false);
+    expect(shipped.has('globby')).toBe(false);
+
+    // The exception that passes without the helper is rejected with it.
+    const without = findShippedPackages(project({ 'src/app.js': '' }), {});
+    expect(runCheck({ shippedPackages: without }).ok).toBe(true);
+    expect(runCheck({ shippedPackages: shipped }).stderr.join('\n')).toContain(
+      'braces (imported by src/tests/helper.js)'
+    );
+  });
+
   it('reads only the top-level files list of electron-builder.yml', () => {
     const root = project({
       'electron-builder.yml': [
