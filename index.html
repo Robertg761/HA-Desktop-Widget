@@ -1671,12 +1671,6 @@
                 <div class="form-group setting-row">
                   <div class="setting-text">
                     <label for="date-format" data-i18n="Date format">Date format</label>
-                    <p
-                      class="form-help"
-                      data-i18n="Date and time always use your selected language and regional conventions."
-                    >
-                      Date and time always use your selected language and regional conventions.
-                    </p>
                   </div>
                   <select id="date-format">
                     <option value="system" data-i18n="System default">System default</option>
@@ -1687,6 +1681,14 @@
                     <option value="numeric" data-i18n="Numeric date">Numeric date</option>
                   </select>
                 </div>
+                <!-- It covers both rows above, so it sits under them instead of squeezing the
+                     Date format row's label beside its select. -->
+                <p
+                  class="form-help"
+                  data-i18n="Date and time always use your selected language and regional conventions."
+                >
+                  Date and time always use your selected language and regional conventions.
+                </p>
               </div>
             </section>
             <section class="settings-group">

@@ -1688,24 +1688,36 @@ function ensureThemeTooltip() {
 /**
  * Position the theme tooltip relative to a target element.
  *
- * Computes whether the tooltip should be placed above or below the target based on available space,
- * clamps horizontal placement within the viewport with a padding margin, sets the tooltip's `top`
- * and `left` CSS properties, and records the chosen placement in `dataset.placement`.
+ * The tooltip sits under the whole swatch grid (above it when the window has no room below), not
+ * beside the one swatch: centred over a swatch it hid the swatches being compared, and over the
+ * first column it spilled across the icon rail. It stays inside the settings page, the arrow keeps
+ * pointing at the swatch, and the chosen placement is recorded in `dataset.placement`.
  * @param {Element} target - The DOM element to anchor the tooltip to.
  */
 function positionThemeTooltip(target) {
   if (!themeTooltip || !target) return;
   const rect = target.getBoundingClientRect();
+  const grid = (target.closest('.accent-theme-grid') || target).getBoundingClientRect();
+  const page = (
+    document.querySelector('#settings-modal .modal-body') || document.body
+  ).getBoundingClientRect();
   const tooltipRect = themeTooltip.getBoundingClientRect();
   const padding = 12;
-  const preferredTop = rect.top - tooltipRect.height - 12;
-  const placeBelow = preferredTop < padding;
-  const top = placeBelow ? rect.bottom + 12 : preferredTop;
-  let left = rect.left + rect.width / 2 - tooltipRect.width / 2;
-  left = Math.max(padding, Math.min(left, window.innerWidth - tooltipRect.width - padding));
+  const below = grid.bottom + 12;
+  const placeAbove = below + tooltipRect.height > window.innerHeight - padding;
+  const top = placeAbove ? grid.top - tooltipRect.height - 12 : below;
+  const minLeft = Math.max(padding, page.left + padding);
+  const maxLeft = Math.min(window.innerWidth, page.right) - tooltipRect.width - padding;
+  const centred = rect.left + rect.width / 2 - tooltipRect.width / 2;
+  const left = Math.max(minLeft, Math.min(centred, maxLeft));
+  const arrowX = rect.left + rect.width / 2 - left;
   themeTooltip.style.top = `${top}px`;
   themeTooltip.style.left = `${left}px`;
-  themeTooltip.dataset.placement = placeBelow ? 'bottom' : 'top';
+  themeTooltip.style.setProperty(
+    '--tooltip-arrow-x',
+    `${Math.max(16, Math.min(arrowX, tooltipRect.width - 16))}px`
+  );
+  themeTooltip.dataset.placement = placeAbove ? 'top' : 'bottom';
 }
 
 /**
@@ -2095,6 +2107,8 @@ function initColorThemeSectionToggle() {
   sections.forEach((section) => {
     const toggle = section.querySelector('.section-toggle');
     if (!toggle) return;
+    const body = section.querySelector('.section-body');
+    if (body) personalizationSectionObserver?.observe(body);
 
     const isCollapsed =
       savedSectionStates[section.id] === true ? true : section.classList.contains('collapsed');
@@ -2107,6 +2121,23 @@ function initColorThemeSectionToggle() {
     };
   });
 }
+
+// A section's open height is measured when it opens and whenever its list is drawn, so a window
+// made narrower (or a tiling manager resizing it) while one is open reflowed the text inside it and
+// cut off its last rows. Watching the body re-measures it when its width changes.
+const personalizationSectionObserver =
+  typeof ResizeObserver === 'function'
+    ? new ResizeObserver((entries) => {
+        // Measuring changes layout, which an observer must not do while it is being delivered.
+        requestAnimationFrame(() => {
+          for (const { target } of entries) {
+            // A hidden Settings dialog measures as zero, which would collapse the section.
+            if (!target.getClientRects().length) continue;
+            syncPersonalizationSectionHeight(target.closest('.personalization-section'));
+          }
+        });
+      })
+    : null;
 
 function syncPersonalizationSectionHeight(section) {
   if (!section) return;
@@ -7393,7 +7424,10 @@ async function refreshDesktopIntegration() {
   const format = document.getElementById('desktop-bindings-format');
   const renderBindings = () => {
     const field = format?.value === 'hyprlang' ? 'legacyBinding' : 'binding';
-    output.value = (info.shortcuts || []).map((shortcut) => shortcut[field] || '').join('\n');
+    const lines = (info.shortcuts || []).map((shortcut) => shortcut[field]).filter(Boolean);
+    output.value = lines.join('\n');
+    // Every bind is visible without scrolling, up to ten lines.
+    output.rows = Math.min(10, Math.max(4, lines.length));
   };
   renderBindings();
   if (format) format.onchange = renderBindings;

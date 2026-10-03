@@ -4312,11 +4312,15 @@ body.first-run-active .widget-content > * {
   background: var(--surface-hover);
 }
 
+/* A row's actions wrap under the name when the name would be left with less than 9rem, as in
+   German, where 'Als Karte 1 festlegen' alone takes most of a 500px window, or at 150% text size.
+   Squeezing the name instead left only its first letter. */
 .entity-item {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px 12px;
   padding: 12px;
   border-bottom: 1px solid var(--border-color);
   transition: background-color var(--transition-base);
@@ -4384,7 +4388,7 @@ body.first-run-active .widget-content > * {
   display: flex;
   align-items: center;
   gap: 12px;
-  flex: 1;
+  flex: 1 1 9rem;
   min-width: 0;
   overflow: hidden;
 }
@@ -5206,7 +5210,7 @@ body.theme-light .status-card.time-card .date-display {
   font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-primary);
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .primary-card-row {
@@ -5240,9 +5244,11 @@ body.theme-light .status-card.time-card .date-display {
 
 .primary-cards-list-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-  flex-shrink: 0;
+  max-width: 100%;
+  margin-inline-start: auto;
 }
 
 .primary-cards-list-actions .btn {
@@ -5298,7 +5304,7 @@ body.theme-light .status-card.time-card .date-display {
 
 .custom-entity-icons-toolbar .form-group {
   flex: 1;
-  min-width: 220px;
+  min-width: min(220px, 100%);
   margin-bottom: 0;
 }
 
@@ -5429,7 +5435,13 @@ body.theme-light .status-card.time-card .date-display {
 @media (width <= 640px) {
   .custom-entity-icon-item {
     flex-direction: column;
+    flex-wrap: nowrap;
     align-items: stretch;
+  }
+
+  /* In a column the 9rem basis of a list row's name would be a height. */
+  .custom-entity-icon-item > .entity-item-main {
+    flex: none;
   }
 
   .custom-entity-icon-controls {
@@ -8119,11 +8131,6 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   padding: var(--space-4) var(--space-5);
 }
 
-#settings-modal .tab-content {
-  max-width: 100%;
-  margin: 0;
-}
-
 #settings-modal .modal-footer {
   grid-area: footer;
   padding: var(--space-2) var(--space-4);
@@ -8723,14 +8730,17 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   pointer-events: none;
 }
 
+/* Two cards side by side while each keeps 150px, one above the other when the pane is narrower
+   (a small window, or 130-150% text size), where 'Background' used to spill out of its card. */
 .color-target-control {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
   gap: var(--space-3);
   margin-top: var(--space-3);
 }
 
 .color-target-option {
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -8801,6 +8811,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .color-target-name {
   font-weight: var(--font-weight-semibold);
   font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
 }
 
 .color-target-note {
@@ -8902,7 +8913,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .theme-tooltip-flyout::after {
   content: '';
   position: absolute;
-  left: 50%;
+  left: var(--tooltip-arrow-x, 50%);
   bottom: -8px;
   transform: translateX(-50%);
   border-width: 8px 8px 0 8px;
@@ -11394,7 +11405,8 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 #hotkeys-list {
-  max-height: 40vh;
+  /* Rows are two lines tall now; 40vh of the default window showed less than three. */
+  max-height: max(40vh, 20rem);
   overflow-y: auto;
   overflow-x: hidden;
   border: 1px solid var(--border-color);
@@ -11425,27 +11437,35 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   align-items: flex-start;
 }
 
+/* Every row has two tiers: the name on its own line, wrapping to a second one for a long name,
+   and the controls under it. Beside the controls the name had about 90px at the default window
+   and was cut to 'Coffee ma...', and a row that gained a clear button once a hotkey was set no
+   longer fitted and jumped to two lines while the others stayed on one. */
 .hotkey-item .entity-name {
   font-size: var(--font-size-base);
   font-weight: 500;
   color: var(--text-color);
-  flex: 1 1 80px;
-  min-width: 80px;
-  max-width: 100%;
+  flex: 1 1 100%;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
+/* The hotkey takes what the action and the clear button leave, and the action drops under it when
+   the row is too narrow for both (150% text, a small window). The clear button keeps its place
+   when there is nothing to clear, so setting or recording a hotkey moves nothing, and every row
+   wraps alike. */
 .hotkey-input-container {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  flex-wrap: nowrap;
-  flex: 0 1 auto;
+  flex: 1 1 100%;
   min-width: 0;
-  max-width: 100%;
-  margin-inline-start: auto;
 }
 
 .hotkey-input-container:has(.hotkey-action-dropdown.open) {
@@ -11453,14 +11473,11 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 .hotkey-input {
-  /* Sized to the placeholder or hotkey so "No hotkey set" is never clipped when translated. */
-  field-sizing: content;
-  flex-shrink: 1;
   /* Compact, level with the action dropdown beside it. The fill, border and corners come from
      the field recipe; only the value is set in mono. */
   min-height: 32px;
-  min-width: 120px;
-  max-width: 100%;
+  flex: 1 1 8rem;
+  min-width: 0;
   text-align: center;
   cursor: pointer;
   padding: 6px 10px;
@@ -11472,9 +11489,8 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 /* Hotkey Action Custom Dropdown - Compact version */
 .hotkey-action-dropdown {
   position: relative;
-  width: 120px;
-  flex-shrink: 1;
-  min-width: 100px;
+  flex: 0 1 120px;
+  min-width: min(96px, 100%);
 }
 
 .hotkey-action-dropdown.open {
@@ -11540,9 +11556,10 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   border-color: rgba(239, 83, 80, 0.45);
 }
 
-/* Nothing to clear until a hotkey is set. */
-.hotkey-input:placeholder-shown ~ .btn-clear-hotkey {
-  display: none;
+/* Nothing to clear until a hotkey is set, or while one is being recorded. */
+.hotkey-input:placeholder-shown ~ .btn-clear-hotkey,
+.hotkey-input[data-recording='true'] ~ .btn-clear-hotkey {
+  visibility: hidden;
 }
 
 .hotkey-capture-modal .modal-content {
@@ -12765,17 +12782,18 @@ body.layer-drag-enabled.desktop-pin-edit-mode .control-item {
   -webkit-app-region: no-drag;
 }
 
+/* Each bind is a line of about 100 characters that has to be copied whole, so it scrolls sideways.
+   Wrapped, a line broke inside the entity id and read as two commands. */
 #desktop-bindings {
   width: 100%;
   min-height: 110px;
   resize: vertical;
-  font-family: monospace;
-  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
   line-height: 1.5;
-}
-
-#desktop-integration .btn {
-  margin-bottom: 8px;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
 }
 
 /* Readability preferences deliberately override custom palettes and glass effects. */
@@ -13916,9 +13934,21 @@ body.opaque-panels #settings-modal .modal-header {
   filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.6));
 }
 
-/* The bottom padding keeps the last setting clear of the floating Save/Cancel pill. */
+/* The bottom padding keeps the last setting clear of the floating Save/Cancel pill. The gutter is
+   always reserved, so a page that scrolls (General) and one that does not (Alerts) are the same
+   width and nothing shifts sideways when switching pages or when a search result list grows past
+   the window; the end padding gives it back, so both margins stay 18px. */
 #settings-modal .modal-body {
   padding: 18px 18px 76px;
+  padding-inline-end: 9px;
+  scrollbar-gutter: stable;
+}
+
+/* A column of at most 680px, centred: across a 900px window the labels sat 750px from their
+   switches and help text ran to 125 characters a line. */
+#settings-modal .modal-body > * {
+  max-width: 680px;
+  margin-inline: auto;
 }
 
 /* Save/Cancel float as a small raised pill in the bottom corner instead of a full-width bar.
@@ -14139,21 +14169,25 @@ body.theme-light #settings-modal .modal-footer {
 
 .setting-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 10px 16px;
 }
 
+/* The label keeps room to be read: a control that would leave it less than 9rem (a wide select, a
+   segmented control, a button, or anything at 130-150% text size or in a narrow window) wraps
+   under it instead of squeezing it to a sliver. */
 .setting-text {
-  flex: 1 1 0;
-  min-width: 0;
+  flex: 1 1 9rem;
+  min-width: min(9rem, 100%);
 }
 
 #settings-modal .setting-row > select {
   flex: 0 0 auto;
   width: auto;
-  min-width: 120px;
-  max-width: 62%;
+  min-width: min(120px, 100%);
+  max-width: 100%;
   padding-block: 7px;
   padding-inline-start: 10px;
   font-size: var(--font-size-sm);
@@ -14161,12 +14195,20 @@ body.theme-light #settings-modal .modal-footer {
 
 .setting-row > .btn {
   flex-shrink: 0;
+  max-width: 100%;
 }
 
 .setting-row-stacked {
   flex-direction: column;
+  flex-wrap: nowrap;
   align-items: stretch;
   gap: 10px;
+}
+
+/* A stacked row is a column, where the text's 9rem basis would be a height. */
+.setting-row-stacked > .setting-text {
+  flex: none;
+  min-width: 0;
 }
 
 .setting-row-action {
@@ -14301,6 +14343,8 @@ body.theme-light
 .segmented-control {
   display: inline-flex;
   flex-shrink: 0;
+  flex-wrap: wrap;
+  max-width: 100%;
   gap: 2px;
   padding: 3px;
   border-radius: var(--radius-md);
@@ -14797,6 +14841,7 @@ body.theme-light
   display: flex;
   flex-shrink: 0;
   flex-direction: column;
+  max-width: 100%;
   gap: 6px;
 }
 
