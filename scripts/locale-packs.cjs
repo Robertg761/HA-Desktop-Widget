@@ -11,8 +11,13 @@
  *   check   [--against <ref>]          packs, catalogs and manifest agree (keys, placeholders,
  *                                      no blank text, versions, sha256); with --against, content
  *                                      that changed since <ref> must also carry a higher version
- *   add     <strings.json>             add or update keys everywhere from {key: {en, ar, de, ...}}
- *   remove  <key>...                   delete keys everywhere
+ *   add     <strings.json>             add or update keys everywhere from {key: {en, ar, de, ...}};
+ *                                      a retired key that is added again stops being retired
+ *   remove  --in <version> --reason <text> <key>...
+ *                                      retire keys: drop them from en.json and the bundled catalogs,
+ *                                      keep their translations in the packs and list them in
+ *                                      locale-packs/retired-keys.json
+ *   remove  --purge <key>...           delete keys everywhere, retired list included
  *   export  <base-ref> [<head-ref>]    print the texts added or changed between two refs, in the
  *                                      format `add` reads (head defaults to HEAD); a new key lists
  *                                      every language, an existing key only the ones that changed
@@ -22,8 +27,14 @@
  *                                      named packs; then refreshes the manifest
  *   manifest                           copy each pack's version and sha256 into manifest.json
  *
+ * Packs outlive the app versions that wrote them: installed apps download whatever is on main,
+ * merge it over their own bundled English and look strings up by English text. A key a newer
+ * release stops using is still needed by every older release the manifest serves, so removing it
+ * from the packs would silently turn it English there. Retiring keeps it. See "Language packs" in
+ * CONTRIBUTING.md for when to retire, when to purge and the merge-conflict recipe.
+ *
  * Files are written as JSON.stringify(value, null, 2) + "\n", which is what the manifest's sha256
- * is computed over. See "Language packs" in CONTRIBUTING.md for the merge-conflict recipe.
+ * is computed over.
  */
 
 const nodeCrypto = require('crypto');
@@ -32,6 +43,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const ENGLISH = 'en';
+const RETIRED_FILE = 'retired-keys.json';
 // The same pattern src/i18n-main.cjs interpolates with.
 const PLACEHOLDER_PATTERN = /\{\{\s*([\w.]+)\s*\}\}/g;
 const MAX_LISTED = 8;
@@ -43,6 +55,7 @@ function pathsFor(root) {
     bundledDir: path.join(root, 'locales'),
     packDir: path.join(root, 'locale-packs'),
     manifest: path.join(root, 'locale-packs', 'manifest.json'),
+    retired: path.join(root, 'locale-packs', RETIRED_FILE),
   };
 }
 
@@ -105,7 +118,7 @@ function bumpPatch(version) {
 function packLocales(paths) {
   return fs
     .readdirSync(paths.packDir)
-    .filter((file) => file.endsWith('.json') && file !== 'manifest.json')
+    .filter((file) => file.endsWith('.json') && file !== 'manifest.json' && file !== RETIRED_FILE)
     .map((file) => path.basename(file, '.json'))
     .sort();
 }
@@ -147,14 +160,93 @@ function sameContent(left, right) {
   return JSON.stringify(withoutVersion(left)) === JSON.stringify(withoutVersion(right));
 }
 
-function checkMessages(label, english, messages, problems) {
+/**
+ * The retired keys as a map of key -> {retiredIn, reason, en?}. A missing file is an empty list, so
+ * a checkout from before the list existed still works.
+ */
+function readRetired(paths) {
+  return fs.existsSync(paths.retired) ? readJson(paths.retired) : {};
+}
+
+/** The English text a retired key had; it is the key itself unless the entry says otherwise. */
+function retiredEnglish(retired, key) {
+  const text = retired[key]?.en;
+  return isBlankText(text) ? key : text;
+}
+
+/** `messages` without the retired keys, which only the packs carry. */
+function withoutRetired(messages, english, retired) {
+  return Object.fromEntries(
+    Object.entries(messages).filter(([key]) => key in english || !(key in retired))
+  );
+}
+
+/**
+ * The problems with the retired list itself. Returns the list to check packs against: the entries
+ * that are not also current English, which would otherwise be required twice.
+ */
+function checkRetired(english, retired, problems) {
+  const label = `locale-packs/${RETIRED_FILE}`;
+  if (!retired || typeof retired !== 'object' || Array.isArray(retired)) {
+    problems.push(`${label} must be an object of {key: {retiredIn, reason}}`);
+    return {};
+  }
+  const entries = Object.entries(retired);
+  const malformed = entries.filter(
+    ([, entry]) => !entry || typeof entry !== 'object' || Array.isArray(entry)
+  );
+  if (malformed.length) {
+    problems.push(
+      `${label} needs an object of {retiredIn, reason} for: ${listKeys(malformed.map(([key]) => key))}`
+    );
+  }
+  const objects = entries.filter((entry) => !malformed.includes(entry));
+  const keysWhere = (test) => objects.filter(([, entry]) => test(entry)).map(([key]) => key);
+  const noVersion = keysWhere((entry) => !parseVersion(entry.retiredIn));
+  if (noVersion.length) {
+    problems.push(`${label} needs retiredIn as major.minor.patch for: ${listKeys(noVersion)}`);
+  }
+  const noReason = keysWhere((entry) => isBlankText(entry.reason));
+  if (noReason.length) problems.push(`${label} needs a reason for: ${listKeys(noReason)}`);
+  const blankEnglish = keysWhere((entry) => 'en' in entry && isBlankText(entry.en));
+  if (blankEnglish.length) {
+    problems.push(`${label} has blank en text for: ${listKeys(blankEnglish)}`);
+  }
+  const alsoCurrent = entries.map(([key]) => key).filter((key) => key in english);
+  if (alsoCurrent.length) {
+    problems.push(
+      `${label} lists keys en.json still has: ${listKeys(alsoCurrent)} ("add" a key again to un-retire it)`
+    );
+  }
+  return Object.fromEntries(entries.filter(([key]) => !(key in english)));
+}
+
+/**
+ * `retired` is given for packs, which must carry every current and every retired key, and left out
+ * for the bundled catalogs, which only ever hold current keys.
+ */
+function checkMessages(label, english, messages, problems, retired = null) {
   const englishKeys = Object.keys(english);
+  const retiredKeys = retired ? Object.keys(retired) : [];
   const missing = englishKeys.filter((key) => !(key in messages));
-  const extra = Object.keys(messages).filter((key) => !(key in english));
+  const missingRetired = retiredKeys.filter((key) => !(key in messages));
+  const extra = Object.keys(messages).filter(
+    (key) => !(key in english) && !(retired && key in retired)
+  );
   if (missing.length)
     problems.push(`${label} is missing ${missing.length} keys: ${listKeys(missing)}`);
-  if (extra.length)
-    problems.push(`${label} has ${extra.length} keys en.json lacks: ${listKeys(extra)}`);
+  if (missingRetired.length) {
+    problems.push(
+      `${label} is missing ${missingRetired.length} retired keys that older apps still use: ${listKeys(missingRetired)}`
+    );
+  }
+  if (extra.length) {
+    problems.push(
+      retired
+        ? `${label} has ${extra.length} keys that neither en.json nor ${RETIRED_FILE} lists: ${listKeys(extra)}`
+        : `${label} has ${extra.length} keys en.json lacks: ${listKeys(extra)}`
+    );
+  }
 
   const notStrings = Object.keys(messages).filter((key) => typeof messages[key] !== 'string');
   if (notStrings.length)
@@ -165,12 +257,17 @@ function checkMessages(label, english, messages, problems) {
   );
   if (blank.length) problems.push(`${label} has blank text for: ${listKeys(blank)}`);
 
-  const drifted = englishKeys.filter(
-    (key) =>
-      key in messages &&
-      !isBlankText(messages[key]) &&
-      !sameList(placeholderNames(english[key]), placeholderNames(messages[key]))
-  );
+  const drifted = [
+    ...englishKeys.map((key) => [key, english[key]]),
+    ...retiredKeys.map((key) => [key, retiredEnglish(retired, key)]),
+  ]
+    .filter(
+      ([key, text]) =>
+        key in messages &&
+        !isBlankText(messages[key]) &&
+        !sameList(placeholderNames(text), placeholderNames(messages[key]))
+    )
+    .map(([key]) => key);
   if (drifted.length) {
     problems.push(`${label} changes the {{placeholders}} of: ${listKeys(drifted)}`);
   }
@@ -183,6 +280,7 @@ function checkPacks(paths, { against } = {}) {
   const manifest = readJson(paths.manifest);
   const entries = new Map(manifest.packs.map((entry) => [entry.locale, entry]));
   const locales = packLocales(paths);
+  const retired = checkRetired(english, readRetired(paths), problems);
 
   for (const locale of entries.keys()) {
     if (!locales.includes(locale)) {
@@ -201,7 +299,7 @@ function checkPacks(paths, { against } = {}) {
 
     if (pack.locale !== locale)
       problems.push(`${label} declares locale ${JSON.stringify(pack.locale)}`);
-    checkMessages(label, english, pack.messages || {}, problems);
+    checkMessages(label, english, pack.messages || {}, problems, retired);
 
     if (!parseVersion(pack.version)) {
       problems.push(
@@ -237,7 +335,8 @@ function checkPacks(paths, { against } = {}) {
     checkMessages(label, english, messages, problems);
     if (locales.includes(locale)) {
       const pack = readJson(packFile(paths, locale));
-      if (JSON.stringify(messages) !== JSON.stringify(pack.messages)) {
+      const current = withoutRetired(pack.messages || {}, english, retired);
+      if (JSON.stringify(messages) !== JSON.stringify(current)) {
         problems.push(`${label} differs from locale-packs/${locale}.json`);
       }
     }
@@ -250,13 +349,15 @@ function checkPacks(paths, { against } = {}) {
  * Add or update keys in en.json, every pack and every bundled catalog.
  * `strings` maps each key to {en, <locale>: text, ...}. A new key needs a value for every locale;
  * an existing key may name only the locales whose text changes. Every value given must be text
- * with a visible character. Nothing is written when any entry is invalid.
+ * with a visible character. A retired key counts as new, and adding it again takes it off the
+ * retired list. Nothing is written when any entry is invalid.
  */
 function addStrings(paths, strings) {
   if (!strings || typeof strings !== 'object' || Array.isArray(strings)) {
     throw new Error('Expected a JSON object of {key: {en, ar, de, ...}}.');
   }
   const english = readJson(paths.english);
+  const retired = readRetired(paths);
   const locales = packLocales(paths);
   const catalogs = new Map();
   for (const locale of locales) {
@@ -317,7 +418,10 @@ function addStrings(paths, strings) {
   for (const [key, entry] of Object.entries(strings)) {
     if (typeof entry.en === 'string') english[key] = entry.en;
     for (const [locale, catalog] of catalogs) {
-      if (typeof entry[locale] === 'string') catalog.data.messages[key] = entry[locale];
+      if (typeof entry[locale] !== 'string') continue;
+      // A retired key is dropped first so it lands at the end, where the bundled catalog puts it.
+      if (key in retired) delete catalog.data.messages[key];
+      catalog.data.messages[key] = entry[locale];
     }
     for (const [locale, catalog] of bundled) {
       if (typeof entry[locale] === 'string') catalog.data[key] = entry[locale];
@@ -325,26 +429,98 @@ function addStrings(paths, strings) {
   }
   writeJson(paths.english, english);
   for (const { file, data } of [...catalogs.values(), ...bundled.values()]) writeJson(file, data);
-  return { added, updated };
+  const revived = Object.keys(strings).filter((key) => key in retired);
+  if (revived.length) {
+    for (const key of revived) delete retired[key];
+    writeJson(paths.retired, retired);
+  }
+  return { added, updated, revived };
 }
 
-/** Delete keys from en.json, every pack and every bundled catalog. */
-function removeStrings(paths, keys) {
+/** The lowest minAppVersion any pack is offered to apps from, in the manifest or the pack itself. */
+function lowestMinAppVersion(paths) {
+  const fromManifest = readJson(paths.manifest).packs.map((entry) => entry.minAppVersion);
+  const fromPacks = packLocales(paths).map(
+    (locale) => readJson(packFile(paths, locale)).minAppVersion
+  );
+  const versions = [...fromManifest, ...fromPacks].filter(parseVersion);
+  return versions.sort(compareVersions)[0] || '0.0.0';
+}
+
+/**
+ * Take keys out of the app, either by retiring them or, with `purge`, by deleting them outright.
+ *
+ * Retiring drops a key from en.json and the bundled catalogs, which only the current release
+ * reads, and lists it in retired-keys.json with the release that stops using it. The packs keep
+ * their translations, because older apps download them and still look the key up.
+ *
+ * Purging also deletes the key from every pack and from the retired list. A retired key may only
+ * be purged once no app that can install a pack still uses it, which is when the lowest
+ * minAppVersion has reached the release that retired it. A current key may be purged at any time;
+ * that is for text that never shipped. Nothing is written when any key is refused.
+ */
+function removeStrings(paths, keys, { purge = false, retiredIn, reason } = {}) {
+  const unique = [...new Set(keys)];
   const english = readJson(paths.english);
-  const unknown = keys.filter((key) => !(key in english));
-  if (unknown.length) throw new Error(`Not in en.json: ${listKeys(unknown)}`);
-  for (const key of keys) delete english[key];
-  writeJson(paths.english, english);
-  for (const locale of packLocales(paths)) {
-    const pack = readJson(packFile(paths, locale));
-    for (const key of keys) delete pack.messages[key];
-    writeJson(packFile(paths, locale), pack);
+  const retired = readRetired(paths);
+  const unknown = unique.filter((key) => !(key in english) && !(key in retired));
+  if (unknown.length) {
+    throw new Error(`Not in en.json${purge ? ` or ${RETIRED_FILE}` : ''}: ${listKeys(unknown)}`);
   }
+
+  if (purge) {
+    const lowest = lowestMinAppVersion(paths);
+    const inUse = unique.filter(
+      (key) =>
+        !(key in english) &&
+        (parseVersion(retired[key]?.retiredIn)
+          ? compareVersions(lowest, retired[key].retiredIn) < 0
+          : true)
+    );
+    if (inUse.length) {
+      throw new Error(
+        `Cannot purge ${listKeys(inUse)}: apps from ${lowest} on can still install a pack and use ` +
+          `it. Raise minAppVersion in the manifest and every pack to the release that retired it first.`
+      );
+    }
+  } else {
+    const already = unique.filter((key) => !(key in english));
+    if (already.length)
+      throw new Error(`Already retired (use --purge to delete): ${listKeys(already)}`);
+    if (!parseVersion(retiredIn)) {
+      throw new Error('Retiring a key needs --in <version>, the release that stops using it.');
+    }
+    if (isBlankText(reason)) throw new Error('Retiring a key needs --reason <text>.');
+  }
+
+  const touchesRetired = !purge || unique.some((key) => key in retired);
+  for (const key of unique) {
+    if (purge) {
+      delete retired[key];
+    } else {
+      retired[key] = {
+        retiredIn,
+        reason,
+        ...(english[key] === key ? {} : { en: english[key] }),
+      };
+    }
+    delete english[key];
+  }
+  writeJson(paths.english, english);
+  if (touchesRetired) writeJson(paths.retired, retired);
   for (const locale of bundledLocales(paths)) {
     const messages = readJson(bundledFile(paths, locale));
-    for (const key of keys) delete messages[key];
+    for (const key of unique) delete messages[key];
     writeJson(bundledFile(paths, locale), messages);
   }
+  if (purge) {
+    for (const locale of packLocales(paths)) {
+      const pack = readJson(packFile(paths, locale));
+      for (const key of unique) delete pack.messages[key];
+      writeJson(packFile(paths, locale), pack);
+    }
+  }
+  return { retired: purge ? [] : unique, purged: purge ? unique : [] };
 }
 
 /**
@@ -437,6 +613,13 @@ function bumpPacks(paths, { against = 'HEAD', locales = [] } = {}) {
   return bumps;
 }
 
+function takeFlag(args, name) {
+  const index = args.indexOf(name);
+  if (index === -1) return false;
+  args.splice(index, 1);
+  return true;
+}
+
 function takeOption(args, name) {
   const index = args.indexOf(name);
   if (index === -1) return null;
@@ -450,7 +633,9 @@ const USAGE = `Usage: node scripts/locale-packs.cjs <command>
 
   check [--against <ref>]               verify packs, catalogs and manifest agree
   add <strings.json>                    add or update keys from {key: {en, ar, de, es, fr, hi, zh}}
-  remove <key>...                       delete keys everywhere
+  remove --in <version> --reason <text> <key>...
+                                        retire keys: gone from the app, translations stay in the packs
+  remove --purge <key>...               delete keys everywhere (see "Language packs" in CONTRIBUTING.md)
   export <base-ref> [<head-ref>]        print texts changed between refs, in the "add" format
   bump [--against <ref>] [locale...]    patch-bump changed (or named) packs, then refresh the manifest
   manifest                              copy every pack's version and sha256 into manifest.json
@@ -478,16 +663,30 @@ function main(
       }
       case 'add': {
         if (!args[0]) throw new Error('add needs the path of a strings JSON file.');
-        const { added, updated } = addStrings(paths, readJson(path.resolve(args[0])));
+        const { added, updated, revived } = addStrings(paths, readJson(path.resolve(args[0])));
         stdout(
-          `Added ${added.length} keys, updated ${updated.length}. Next: "bump", then "check".`
+          `Added ${added.length} keys, updated ${updated.length}` +
+            `${revived.length ? ` (${revived.length} of them no longer retired)` : ''}. ` +
+            'Next: "bump", then "check".'
         );
         return 0;
       }
       case 'remove': {
+        const purge = takeFlag(args, '--purge');
+        const retiredIn = takeOption(args, '--in');
+        const reason = takeOption(args, '--reason');
         if (!args.length) throw new Error('remove needs at least one key.');
-        removeStrings(paths, args);
-        stdout(`Removed ${args.length} keys. Next: "bump", then "check".`);
+        if (purge && (retiredIn || reason)) {
+          throw new Error(
+            '--purge deletes keys outright; --in and --reason only apply to retiring.'
+          );
+        }
+        const { retired, purged } = removeStrings(paths, args, { purge, retiredIn, reason });
+        stdout(
+          purge
+            ? `Purged ${purged.length} keys. Next: "bump", then "check".`
+            : `Retired ${retired.length} keys; the packs keep their translations. Next: "check".`
+        );
         return 0;
       }
       case 'export': {
@@ -535,6 +734,7 @@ module.exports = {
   main,
   pathsFor,
   placeholderNames,
+  readRetired,
   removeStrings,
   syncManifest,
 };
