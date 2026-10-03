@@ -1,6 +1,7 @@
 const path = require('path');
 const {
   DEFAULT_WINDOW_SIZE,
+  MIN_WINDOW_SIZE,
   LAYER_SHELL_ANCHOR_ENV,
   LAYER_SHELL_CHILD_ENV,
   LAYER_SHELL_ENV_OVERRIDE,
@@ -15,6 +16,7 @@ const {
   detectTilingLayerShellCompositor,
   disableHyprlandLayerMoveAnimation,
   getLayerShellControlSocketPath,
+  getMainWindowMinimumSize,
   isLayerShellChild,
   isProcessAlive,
   layerShellSocketName,
@@ -747,12 +749,25 @@ describe('buildLayerShellSpawnPlan', () => {
     expect(blank.args).toContain('/app/widget');
   });
 
+  test('holds the main window to a minimum size that grows with the text size', () => {
+    expect(getMainWindowMinimumSize()).toEqual(MIN_WINDOW_SIZE);
+    expect(getMainWindowMinimumSize(1)).toEqual({ width: 320, height: 360 });
+    expect(getMainWindowMinimumSize(1.3)).toEqual({ width: 416, height: 468 });
+    expect(getMainWindowMinimumSize(1.5)).toEqual({ width: 480, height: 540 });
+    // A value the setting cannot hold is the default size.
+    expect(getMainWindowMinimumSize(7)).toEqual(MIN_WINDOW_SIZE);
+    expect(getMainWindowMinimumSize('big')).toEqual(MIN_WINDOW_SIZE);
+    // The default window stays above it at every text size.
+    expect(getMainWindowMinimumSize(1.5).width).toBeLessThan(DEFAULT_WINDOW_SIZE.width);
+    expect(getMainWindowMinimumSize(1.5).height).toBeLessThan(DEFAULT_WINDOW_SIZE.height);
+  });
+
   test('clamps the surface size to something a compositor will accept', () => {
     const plan = buildLayerShellSpawnPlan({
       ...basePlanInput,
       windowSize: { width: 8, height: 999999 },
     });
-    expect(plan.args).toContain('100x16384');
+    expect(plan.args).toContain(`${MIN_WINDOW_SIZE.width}x16384`);
     const defaulted = buildLayerShellSpawnPlan({ ...basePlanInput, windowSize: undefined });
     expect(defaulted.args).toContain(`${DEFAULT_WINDOW_SIZE.width}x${DEFAULT_WINDOW_SIZE.height}`);
   });

@@ -61,6 +61,7 @@ function baseContext(platform) {
     process: { platform },
     usesCompositorOwnedPlacement: false,
     isLayerShellChildProcess: false,
+    MIN_WINDOW_SIZE: { width: 320, height: 360 },
     onWindowBoundsChanged,
     setTimeout,
     clearTimeout,
@@ -143,6 +144,15 @@ describe('main window bounds on Linux', () => {
     jest.advanceTimersByTime(400);
     expect(context.config.windowPosition).toEqual({ x: 100, y: 100 });
     expect(context.config.windowSize).toEqual({ width: 560, height: 600 });
+  });
+
+  // A window manager that ignores the minimum size must not get a sliver saved, which the next
+  // start would open with its buttons out of reach.
+  it('never saves a size below the minimum', () => {
+    const { context, mainWindow } = loadMainWindowRuntime('linux');
+    mainWindow.setBounds({ x: 100, y: 100, width: 100, height: 1 });
+    jest.advanceTimersByTime(400);
+    expect(context.config.windowSize).toEqual({ width: 320, height: 360 });
   });
 
   it('leaves layer-shell placement to the layer drag path', () => {

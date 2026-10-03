@@ -22,6 +22,7 @@ function loadConfigNormalizers() {
   const context = {
     isPlainObject: (value) => !!value && typeof value === 'object' && !Array.isArray(value),
     DEFAULT_WINDOW_SIZE: { width: 500, height: 600 },
+    MIN_WINDOW_SIZE: { width: 320, height: 360 },
     normalizeEntityId: (value) =>
       typeof value === 'string' && /^[a-z_]+\.[a-z0-9_]+$/i.test(value) ? value.toLowerCase() : '',
     normalizeTrayEntitiesConfig: (value) => value || {},
@@ -109,7 +110,15 @@ describe('a damaged config does not stop the widget from starting', () => {
 
     const absurd = { windowSize: { width: 1e9, height: 0 }, windowPosition: { x: 1, y: 1 } };
     normalizeWindowGeometryConfig(absurd);
-    expect(absurd.windowSize).toEqual({ width: 16384, height: 100 });
+    expect(absurd.windowSize).toEqual({ width: 16384, height: 360 });
+  });
+
+  // A corner dragged far past the header once saved a 100x1 window, and the next start opened it
+  // that size with Settings and Close out of reach.
+  test('raises a sliver of a window to the minimum size', () => {
+    const sliver = { windowSize: { width: 100, height: 1 }, windowPosition: { x: 1, y: 1 } };
+    normalizeWindowGeometryConfig(sliver);
+    expect(sliver.windowSize).toEqual({ width: 320, height: 360 });
   });
 
   test('loadConfig applies it to the config it merged from disk', () => {

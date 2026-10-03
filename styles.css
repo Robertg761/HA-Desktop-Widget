@@ -3012,9 +3012,13 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   gap: 8px;
   -webkit-app-region: drag;
   flex: 1;
+  /* Without this the nowrap title keeps the area as wide as itself, so in a narrow window it
+     pushes the header buttons out of the window instead of being cut short. */
+  min-width: 0;
 }
 
 .widget-title {
+  min-width: 0;
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
@@ -3136,6 +3140,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 .header-controls {
   display: flex;
+  flex: none;
   gap: 4px;
   -webkit-app-region: no-drag;
 }
