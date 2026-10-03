@@ -13062,6 +13062,12 @@ body.theme-light.opaque-panels:not(.high-contrast)
   background: color-mix(in srgb, var(--bg-primary), white 70%) !important;
 }
 
+/* A primary card holds its entity's tile, which fills the card. The panel colour rule above
+   reaches that tile too and would cover the card's lift, so it stays clear and the card shows. */
+body.opaque-panels .status-card.primary-entity-card .control-item {
+  background: transparent !important;
+}
+
 /* Ranges are handled below; :where keeps this rule's specificity unchanged. Section headers and
    tabs are text-like buttons: a fill would draw a bar across the panel, and their own hover,
    active and focus styles stay visible without it. */

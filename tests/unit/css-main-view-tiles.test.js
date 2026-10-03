@@ -394,6 +394,61 @@ describe('main view tiles', () => {
       }
       expect(panel).toBeTruthy();
     });
+
+    // A primary card holds its entity's tile, which fills the card. The card paints the lift, so
+    // the tile has to stay clear or it covers it (every .control-item gets the panel colour).
+    const PRIMARY_CARDS_MARKUP = `
+      <div class="widget-content">
+        <div class="status-grid">
+          <div class="status-card primary-entity-card" data-state="on">
+            <div class="control-item" data-primary-card="true"><span class="control-name"></span></div>
+          </div>
+          <div class="status-card primary-entity-card primary-light-card" data-state="off">
+            <div class="control-item" data-primary-card="true"></div>
+          </div>
+          <div class="status-card primary-entity-card">
+            <div class="control-item unavailable-entity" data-primary-card="true"></div>
+          </div>
+        </div>
+        <div class="media-tile"></div>
+        <div id="quick-controls"><div class="control-item"></div></div>
+      </div>`;
+
+    it.each([
+      ['dark', 'opaque-panels'],
+      ['light', 'theme-light opaque-panels'],
+      ['readable', 'high-contrast opaque-panels'],
+    ])('let the lifted primary card show through its entity tile (%s)', (_, bodyClass) => {
+      render(bodyClass, PRIMARY_CARDS_MARKUP);
+
+      const cards = document.querySelectorAll('.status-card');
+      expect(cards).toHaveLength(3);
+      for (const card of cards) {
+        const tile = card.querySelector('.control-item');
+        const declaration = cascadedDeclaration(tile, 'background');
+
+        expect(declaration.value).toBe('transparent');
+        expect(declaration.important).toBe(true);
+        // The card underneath is what paints, so there is still a surface to show.
+        expect(cascadedDeclaration(card, 'background').important).toBe(true);
+      }
+    });
+
+    it('lets no tile nested in a lifted surface cover it, and still lifts the tiles that are not', () => {
+      render('opaque-panels', PRIMARY_CARDS_MARKUP);
+      const surfaces = '.status-card, .media-tile, #quick-controls .control-item';
+
+      for (const tile of document.querySelectorAll('.control-item')) {
+        const nested = tile.parentElement.closest(surfaces) !== null;
+        const value = cascadedDeclaration(tile, 'background').value;
+
+        if (nested) {
+          expect(value).toBe('transparent');
+        } else {
+          expect(value).toMatch(/^color-mix\(in srgb, var\(--bg-primary\), white \d+%\)$/);
+        }
+      }
+    });
   });
 });
 
