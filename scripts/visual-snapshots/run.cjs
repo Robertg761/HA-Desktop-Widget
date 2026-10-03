@@ -289,6 +289,9 @@ async function main() {
         })()`);
         const pin = await connectCdp(pinTarget.webSocketDebuggerUrl);
         extraTargets.push(pin);
+        // Emulation belongs to one page, so a pin window needs the scene's media features too.
+        const features = JSON.parse(applied.media);
+        if (features.length) await pin.send('Emulation.setEmulatedMedia', { features });
         await waitFor(() => pin.evaluate(`!!document.querySelector('.desktop-pin-shell')`), {
           label: `the ${entityId} pin content`,
         });

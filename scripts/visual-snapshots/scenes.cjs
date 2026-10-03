@@ -707,6 +707,9 @@ const scenes = [
   pinScene('readable-pin-climate', 'climate.bedroom', { ui: READABLE }),
   pinScene('readable-pin-cover', 'cover.garage_door', { ui: READABLE }),
   pinScene('readable-pin-fan', 'fan.office', { ui: READABLE }),
+  // The pin's own track, thumb and fill in system colours.
+  pinScene('forced-colors-pin-climate', 'climate.bedroom', { media: FORCED_COLORS }),
+  pinScene('forced-colors-pin-light', 'light.desk_lamp', { media: FORCED_COLORS }),
 
   // The fixture turns seasonal themes off so the scenes above do not change with the date; these
   // force a holiday on. They also switch the themes on explicitly: CI machines often ask for

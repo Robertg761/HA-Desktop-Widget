@@ -16467,7 +16467,13 @@ body[data-season='thanksgiving'] .control-item {
     box-shadow: none;
   }
 
-  /* The other pin sliders fill their own track, so it keeps its gradient in system colours. */
+  /* The other pin sliders fill their own track, so it keeps its gradient in system colours. Forced
+     colours take a slider's background image away, so the slider opts out; the colours below are
+     all system keywords, and the focus ring above is Highlight whatever the slider opts out of. */
+  .desktop-pin-panel-slider {
+    forced-color-adjust: none;
+  }
+
   .desktop-pin-panel-slider::-webkit-slider-runnable-track {
     background: linear-gradient(
       var(--slider-dir),

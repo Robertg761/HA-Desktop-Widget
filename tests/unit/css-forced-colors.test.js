@@ -195,6 +195,11 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
       expect(forcedRule('.desktop-pin-panel-slider::-webkit-slider-thumb')).toContain(
         'background: Highlight'
       );
+      // Forced colours drop a background image from a slider unless it opts out, which left
+      // these tracks without their fill.
+      expect(resolvedValue(document.querySelector('input'), 'forced-color-adjust', FORCED)).toBe(
+        'none'
+      );
     });
 
     it('keeps the track system-coloured when the Readable preset is on as well', () => {
