@@ -249,6 +249,22 @@ const TILES_HOLD_THEIR_CONTENT = `[...document.querySelectorAll('#quick-controls
     });
 })`;
 const NO_SIDEWAYS_SCROLL = `document.documentElement.scrollWidth <= innerWidth + 1`;
+// A lost connection: the panel sits above Quick Access with its buttons in view, the page has not
+// scrolled, and the tiles are dimmed.
+const OFFLINE_PANEL_IN_VIEW = `(() => {
+  const panel = document.getElementById('widget-state-panel');
+  const retry = panel?.querySelector('.btn-secondary');
+  if (!retry) return false;
+  const box = retry.getBoundingClientRect();
+  return panel.nextElementSibling === document.querySelector('.controls-section') &&
+    document.querySelector('.widget-content').scrollTop === 0 &&
+    box.top >= 0 && box.bottom <= innerHeight &&
+    getComputedStyle(document.querySelector('#quick-controls .control-item')).opacity < 1;
+})()`;
+const showOffline = async (ctx) => {
+  await ctx.goOffline();
+  await ctx.expect(OFFLINE_PANEL_IN_VIEW, 'the connection panel is in view above dimmed tiles');
+};
 // Every label in a Settings row keeps room to be read, at 150% text size and in a narrow window.
 const SETTING_LABELS_READABLE = `[...document.querySelectorAll('#settings-modal .tab-content.active .setting-text')]
   .filter((text) => text.getClientRects().length > 0).every((text) => text.getBoundingClientRect().width >= 100)`;
@@ -1161,6 +1177,10 @@ const scenes = [
     ui: { language: 'de' },
     setup: (ctx) => openPaletteFor(ctx, 'a'),
   },
+  // Home Assistant goes away with a full page of tiles: the panel is above them without a scroll,
+  // and they are dimmed.
+  { name: 'layout-offline', size: DEFAULT_SIZE, config: edgePage, setup: showOffline },
+  { name: 'layout-offline-narrow', size: NARROW_SIZE, config: edgePage, setup: showOffline },
   { name: 'layout-toast', size: DEFAULT_SIZE, keepToasts: true, setup: showToasts },
   { name: 'layout-toast-narrow', size: NARROW_SIZE, keepToasts: true, setup: showToasts },
   {

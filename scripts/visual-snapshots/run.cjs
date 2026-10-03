@@ -228,6 +228,7 @@ async function main() {
 
     const openPins = [];
     const extraTargets = [];
+    let offline = false;
     const ctx = {
       CTRL,
       sleep,
@@ -247,6 +248,16 @@ async function main() {
       async expect(expression, label) {
         if (!(await cdp.evaluate(`!!(${expression})`)))
           throw new Error(`Layout check failed: ${label}`);
+      },
+      /** Take Home Assistant away, as an outage does; the runner brings it back after the scene. */
+      async goOffline() {
+        offline = true;
+        server.refuseConnections(true);
+        await waitFor(() => cdp.evaluate(`document.body.classList.contains('ha-offline')`), {
+          label: 'the app to notice the outage',
+          timeoutMs: 15000,
+        });
+        await sleep(500);
       },
       /** Wait until a page expression is truthy. */
       waitForExpression: (expression, label = expression) =>
@@ -318,6 +329,17 @@ async function main() {
     }
 
     async function restore() {
+      if (offline) {
+        // Retry connects at once; waiting for the app's own backoff would run into the next scene.
+        offline = false;
+        server.refuseConnections(false);
+        await cdp.evaluate(`document.querySelector('#widget-state-panel .btn-secondary')?.click()`);
+        await waitFor(() => cdp.evaluate(`!document.body.classList.contains('ha-offline')`), {
+          label: 'the app to reconnect',
+          timeoutMs: 20000,
+        });
+        await sleep(600);
+      }
       for (const pin of extraTargets.splice(0)) pin.close();
       for (const entityId of openPins.splice(0)) {
         await cdp.evaluate(

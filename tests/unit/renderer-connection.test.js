@@ -296,7 +296,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
 
       expect(panelText()).toContain('Home Assistant authorization expired');
       expect(panelText()).not.toMatch(/token/i);
-      expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+      expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
       expect(mockUiUtils.setStatus).toHaveBeenLastCalledWith(
         false,
         'Home Assistant authorization expired. Reconnect with Home Assistant in Settings.'
@@ -663,6 +663,42 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       connectSuccessfully();
       await flushAsync();
       expect(document.body.classList).not.toContain('ha-offline');
+    });
+
+    // Every retry reports a connection attempt, and login is followed by a wait for the state
+    // snapshot; the tiles are as stale then as after the failure, so they must not flash bright.
+    it('keeps the tiles dimmed through each retry and until the states arrive', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      failAttempt();
+      mockWebsocket.emit('connect-attempt');
+      expect(document.body.classList).toContain('ha-offline');
+      failAttempt();
+      expect(document.body.classList).toContain('ha-offline');
+
+      mockWebsocket.emit('connect-attempt');
+      mockWebsocket.emit('message', { type: 'auth_ok' });
+      expect(document.body.classList).toContain('ha-offline');
+
+      connectSuccessfully();
+      await flushAsync();
+      expect(document.body.classList).not.toContain('ha-offline');
+    });
+
+    it('leaves the scroll alone for an empty page too, and ends the page with its panel', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      const content = document.querySelector('.widget-content');
+      content.insertAdjacentHTML('beforeend', '<section class="controls-section"></section>');
+      const scrollIntoView = jest.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+
+      connectSuccessfully();
+      await flushAsync();
+
+      const panel = document.getElementById('widget-state-panel');
+      expect(panel.textContent).toContain('No Quick Access entities yet');
+      expect(content.lastElementChild).toBe(panel);
+      expect(scrollIntoView).not.toHaveBeenCalled();
+      delete Element.prototype.scrollIntoView;
     });
 
     it('shows one connection state instead of a placeholder beside the panel', async () => {

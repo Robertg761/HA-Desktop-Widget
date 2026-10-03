@@ -9635,13 +9635,17 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .widget-state-panel {
-  margin: 0 0 var(--space-4);
+  margin: 0;
   padding: var(--space-6) var(--space-4);
   border: 1px dashed var(--tile-border-hover);
   border-radius: var(--radius-tile);
   text-align: center;
-  /* Scrolled into view for an error, the panel keeps the content's bottom padding clear. */
-  scroll-margin-bottom: 14px;
+}
+
+/* A connection panel sits above Quick Access and needs its own gap. The empty-page panel ends
+   the page after the controls section's bottom margin, so it takes none. */
+.widget-state-panel:not(:last-child) {
+  margin-bottom: var(--space-4);
 }
 
 .widget-state-error {
@@ -9700,8 +9704,9 @@ body.widget-state-active #quick-controls .status-message {
 }
 
 /* While Home Assistant cannot be reached the tiles still show what it last said. Dimmed, they no
-   longer pass for live: a lamp that has been switched off since, or a timer that has stopped. */
-body.ha-offline #quick-controls .control-item {
+   longer pass for live: a lamp that has been switched off since, or a timer that has stopped. The
+   weather and media cards are Home Assistant's too; the clock is the computer's and stays lit. */
+body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
   opacity: 0.55;
   filter: saturate(0.6);
 }

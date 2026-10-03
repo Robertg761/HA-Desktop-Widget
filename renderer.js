@@ -686,7 +686,6 @@ function renderWidgetStatePanel({ tone, title, message, actions }) {
   const previousPanel = document.getElementById('widget-state-panel');
   // Pressing a panel button re-renders the panel; keep keyboard focus inside it.
   const hadFocus = !!previousPanel?.contains(document.activeElement);
-  const previousTitle = previousPanel?.querySelector('.widget-state-title')?.textContent;
   removeWidgetStatePanel();
 
   const panel = document.createElement('div');
@@ -709,13 +708,13 @@ function renderWidgetStatePanel({ tone, title, message, actions }) {
   // A connection problem sits above Quick Access, where it is seen without scrolling and the
   // tiles stay in place; at the end of the page it was below the fold on a full page, and
   // scrolling it into view threw the dashboard to the bottom at every restart of Home Assistant. An
-  // empty page has no tiles to push down, so its panel stays where the tiles would be.
+  // empty page has no tiles to push down, so its panel stays where the tiles would be. Neither
+  // scrolls the page: the user's place in it is not the panel's to take.
   const tiles = tone === 'empty' ? null : widgetContent.querySelector('.controls-section');
   if (tiles) widgetContent.insertBefore(panel, tiles);
   else widgetContent.appendChild(panel);
   document.body.classList.add('widget-state-active');
   if (hadFocus) panel.querySelector('button')?.focus();
-  if (tone === 'empty' && title !== previousTitle) panel.scrollIntoView?.({ block: 'nearest' });
 }
 
 async function retryOAuthRestore() {
@@ -871,9 +870,12 @@ function retryConnection() {
 function renderMainWidgetState() {
   // Tiles keep showing what Home Assistant last said while it cannot be reached; the page dims
   // them so a lamp that has since been switched off, or a timer that stopped, does not look live.
+  // Connecting counts: every retry and the wait for the first state snapshot after login still
+  // show the old values, and the tiles would otherwise flash back to full brightness at each try.
   document.body.classList.toggle(
     'ha-offline',
-    !IS_DESKTOP_PIN_MODE && ['disconnected', 'auth-failed'].includes(mainConnectionState)
+    !IS_DESKTOP_PIN_MODE &&
+      ['disconnected', 'auth-failed', 'connecting'].includes(mainConnectionState)
   );
   if (IS_DESKTOP_PIN_MODE || firstRunWizard?.visible) {
     removeWidgetStatePanel();
