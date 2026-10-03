@@ -9635,8 +9635,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .widget-state-panel {
-  /* The tiles above end with the controls section's own bottom margin. */
-  margin-top: 0;
+  margin: 0 0 var(--space-4);
   padding: var(--space-6) var(--space-4);
   border: 1px dashed var(--tile-border-hover);
   border-radius: var(--radius-tile);
@@ -9698,6 +9697,13 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
    failed"). */
 body.widget-state-active #quick-controls .status-message {
   display: none;
+}
+
+/* While Home Assistant cannot be reached the tiles still show what it last said. Dimmed, they no
+   longer pass for live: a lamp that has been switched off since, or a timer that has stopped. */
+body.ha-offline #quick-controls .control-item {
+  opacity: 0.55;
+  filter: saturate(0.6);
 }
 
 .language-section {
@@ -9882,13 +9888,18 @@ body.widget-state-active #quick-controls .status-message {
 }
 
 /* Toast notifications */
+/* The container spans the window and centres its toasts. Centred with left: 50% and no width it
+   could only be as wide as the half of the window to its right, so every toast was capped at 250px
+   in the default window and wrapped to three or four lines over the tiles. */
 .toast-container {
   position: fixed;
-  left: 50%;
+  left: 0;
+  right: 0;
   bottom: var(--space-5);
-  transform: translateX(-50%);
+  padding-inline: var(--space-4);
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: var(--space-3);
   /* Above --z-overlay: a toast raised while the connection overlay is up used
      to be painted underneath it and was simply invisible. */
@@ -9908,8 +9919,8 @@ body.widget-state-active #quick-controls .status-message {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: var(--space-4) var(--space-5);
-  min-width: 200px;
-  max-width: min(420px, 90vw);
+  min-width: min(200px, 100%);
+  max-width: min(420px, 100%);
   text-align: start;
   box-shadow: var(--shadow-2);
   backdrop-filter: blur(var(--bg-blur));
@@ -12558,6 +12569,8 @@ label.disabled {
   color: var(--text-primary);
   font: inherit;
   font-size: var(--font-size-md);
+  /* Chromium draws the placeholder's cut with it too. */
+  text-overflow: ellipsis;
 }
 
 .command-palette-input::placeholder {
@@ -12579,7 +12592,8 @@ label.disabled {
   width: 100%;
   min-height: 44px;
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) auto;
+  /* The name is what is scanned for, so it keeps a floor and the type and state give way. */
+  grid-template-columns: 30px minmax(140px, 1fr) minmax(0, auto);
   align-items: center;
   gap: 12px;
   border: 1px solid transparent;
@@ -12645,11 +12659,13 @@ label.disabled {
   display: flex;
   align-items: center;
   gap: 10px;
+  overflow: hidden;
 }
 
 .command-palette-result-domain {
-  flex: none;
-  max-width: 140px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -12664,7 +12680,8 @@ label.disabled {
 }
 
 .command-palette-result-state {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 140px;
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
@@ -12700,6 +12717,14 @@ label.disabled {
     width: 28px;
     height: 28px;
     font-size: var(--font-size-md);
+  }
+}
+
+/* The row's icon already says what kind of thing it is, so a narrow window gives the name the
+   room the type pill took. */
+@media (width <= 400px) {
+  .command-palette-result-domain {
+    display: none;
   }
 }
 
@@ -15762,7 +15787,7 @@ body.desktop-pin-mode
    instead of keeping its 200px minimum, and it is dark like the pin whatever the theme. */
 body.desktop-pin-mode .toast-container {
   bottom: var(--space-2);
-  width: calc(100vw - 16px);
+  padding-inline: var(--space-3);
 }
 
 body.desktop-pin-mode .toast {

@@ -638,6 +638,33 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       expect(document.getElementById('settings-modal').classList).not.toContain('hidden');
     });
 
+    // The panel used to be appended below every tile and scrolled into view, which threw the
+    // dashboard to the bottom at each restart of Home Assistant.
+    it('puts the panel above Quick Access and leaves the scroll where it was', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      const content = document.querySelector('.widget-content');
+      content.insertAdjacentHTML('beforeend', '<section class="controls-section"></section>');
+      const scrollIntoView = jest.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+
+      failAttempt();
+
+      const panel = document.getElementById('widget-state-panel');
+      expect(panel.nextElementSibling).toBe(content.querySelector('.controls-section'));
+      expect(scrollIntoView).not.toHaveBeenCalled();
+      delete Element.prototype.scrollIntoView;
+    });
+
+    it('dims the tiles while Home Assistant cannot be reached', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      failAttempt();
+      expect(document.body.classList).toContain('ha-offline');
+
+      connectSuccessfully();
+      await flushAsync();
+      expect(document.body.classList).not.toContain('ha-offline');
+    });
+
     it('shows one connection state instead of a placeholder beside the panel', async () => {
       const styles = require('fs').readFileSync(
         require('path').resolve(__dirname, '../../styles.css'),

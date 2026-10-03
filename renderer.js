@@ -706,11 +706,16 @@ function renderWidgetStatePanel({ tone, title, message, actions }) {
     panel.appendChild(actionRow);
   }
 
-  widgetContent.appendChild(panel);
+  // A connection problem sits above Quick Access, where it is seen without scrolling and the
+  // tiles stay in place; at the end of the page it was below the fold on a full page, and
+  // scrolling it into view threw the dashboard to the bottom at every restart of Home Assistant. An
+  // empty page has no tiles to push down, so its panel stays where the tiles would be.
+  const tiles = tone === 'empty' ? null : widgetContent.querySelector('.controls-section');
+  if (tiles) widgetContent.insertBefore(panel, tiles);
+  else widgetContent.appendChild(panel);
   document.body.classList.add('widget-state-active');
   if (hadFocus) panel.querySelector('button')?.focus();
-  // The panel follows the tiles, so on a full page a new problem could appear below the fold.
-  if (tone === 'error' && title !== previousTitle) panel.scrollIntoView?.({ block: 'nearest' });
+  if (tone === 'empty' && title !== previousTitle) panel.scrollIntoView?.({ block: 'nearest' });
 }
 
 async function retryOAuthRestore() {
@@ -864,6 +869,12 @@ function retryConnection() {
 }
 
 function renderMainWidgetState() {
+  // Tiles keep showing what Home Assistant last said while it cannot be reached; the page dims
+  // them so a lamp that has since been switched off, or a timer that stopped, does not look live.
+  document.body.classList.toggle(
+    'ha-offline',
+    !IS_DESKTOP_PIN_MODE && ['disconnected', 'auth-failed'].includes(mainConnectionState)
+  );
   if (IS_DESKTOP_PIN_MODE || firstRunWizard?.visible) {
     removeWidgetStatePanel();
     return;
