@@ -95,6 +95,9 @@ These checks need a packaged Electron build and a real close/relaunch cycle:
 - [ ] Resize a pin at 150% interface size from each corner, and drag one across the boundary
       between two monitors: the edge opposite the handle must not move, and the pin must not
       jump to the other monitor.
+- [ ] On Hyprland, Sway, niri or river (layer-shell pins), resize a pin from each corner,
+      after dragging it first where the compositor allows: the edge opposite the handle must
+      not move, and a restart must bring the pin back at the size and position it ended with.
 - [ ] Pin several tiles in a row, unpin one, and pin another: new pins open in the first free
       spot from the top-right corner of the widget's monitor and never on top of each other.
 

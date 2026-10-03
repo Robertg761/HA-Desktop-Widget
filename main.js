@@ -915,7 +915,7 @@ function refreshLayerPlacement() {
     return;
   }
   placeLayerWindow(mainWindow);
-  desktopPinWindows.forEach(placeLayerWindow);
+  desktopPinWindows.forEach((pinWindow) => placeLayerWindow(pinWindow));
 }
 // The monitor surfaces are placed on, from Electron's own display layout, where there is no
 // Hyprland to ask: Sway, niri and river. The surface lands on the compositor's chosen output, which
@@ -943,20 +943,26 @@ function getElectronLayerMonitor() {
   }
 }
 
-function placeLayerWindow(targetWindow) {
+// The monitor layer surfaces are placed on.
+function getLayerPlacementMonitor() {
+  return isHyprland() ? layerActualMonitor : getElectronLayerMonitor();
+}
+
+// `windowSize` is the size the surface is being given, which getBounds may not report yet.
+function placeLayerWindow(targetWindow, windowSize = null) {
   if (!layerShellRaiser || !targetWindow || targetWindow.isDestroyed()) return;
   const id = targetWindow.__desktopPinEntityId || 'main';
   // Hyprland reports its monitors and cursor, which placing the main widget and dragging need. On
   // the other compositors only the pins are placed, so they stop piling up in one corner.
   if (!isHyprland() && id === 'main') return;
-  const monitor = isHyprland() ? layerActualMonitor : getElectronLayerMonitor();
+  const monitor = getLayerPlacementMonitor();
   const saved = config.layerPositions?.[id]?.[monitor?.name];
   const pin = config.desktopPins?.[id];
   const initial =
     saved || (pin ? { x: pin.x - (monitor?.x || 0), y: pin.y - (monitor?.y || 0) } : null);
-  let position = clampLayerPosition(initial, targetWindow.getBounds(), monitor);
+  const size = windowSize || targetWindow.getBounds();
+  let position = clampLayerPosition(initial, size, monitor);
   if (pin && !saved && monitor) {
-    const size = targetWindow.getBounds();
     const occupied = [...desktopPinWindows.entries()]
       .filter(([entityId]) => entityId !== id)
       .map(([entityId, win]) => ({ ...win.getBounds(), ...layerPositions.get(entityId) }));
@@ -2261,7 +2267,9 @@ function applyDesktopPinBoundsToWindow(targetWindow, nextBounds, workArea = null
       targetWindow.setBounds(windowBounds);
     }
     applyDesktopPinWindowShape(targetWindow, windowBounds);
-    if (isLayerShellChildProcess) placeLayerWindow(targetWindow);
+    if (isLayerShellChildProcess) {
+      placeLayerWindow(targetWindow, { width: windowBounds.width, height: windowBounds.height });
+    }
     targetWindow.__desktopPinApplyingBounds = false;
   } catch (error) {
     targetWindow.__desktopPinApplyingBounds = false;
@@ -2905,18 +2913,58 @@ function endDesktopPinResizeSession(entityId) {
   desktopPinResizeSessions.delete(entityId);
 }
 
+// Where a layer surface sits. It is placed from layerPositions, in its monitor's own coordinates,
+// not from the x and y the pin saved. Null wherever the app does not place the surface itself.
+function getDesktopPinLayerPlacement(entityId) {
+  if (!isLayerShellChildProcess) return null;
+  const monitor = getLayerPlacementMonitor();
+  const origin = layerPositions.get(entityId);
+  if (!monitor?.name || !origin) return null;
+  const { workArea } = monitor;
+  return {
+    monitor,
+    origin,
+    workArea: {
+      x: monitor.x + workArea.x,
+      y: monitor.y + workArea.y,
+      width: workArea.width,
+      height: workArea.height,
+    },
+  };
+}
+
+// Sets or, with a null position, removes the saved spot of a layer surface on one monitor. The
+// config is replaced rather than edited so an earlier reference to it stays what it was.
+function setDesktopPinLayerPosition(entityId, monitorName, position) {
+  const next = { ...config.layerPositions };
+  const outputs = { ...next[entityId] };
+  if (position) outputs[monitorName] = position;
+  else delete outputs[monitorName];
+  if (Object.keys(outputs).length > 0) next[entityId] = outputs;
+  else delete next[entityId];
+  config.layerPositions = next;
+}
+
 // The work area a drag began on. Re-picking the display for every step would hand a pin that
 // straddles two monitors to whichever holds more of it, and it would jump between them.
 //
-// The session also keeps the bounds config.json held when the drag began. Every step of a drag
-// changes the config and the window in memory and the file is written once at the end, so a final
-// save that fails has to go back to these, not to the step before it.
-function getDesktopPinResizeSession(entityId, startBounds) {
+// The session also keeps what config.json held when the drag began. Every step of a drag changes
+// the config and the window in memory and the file is written once at the end, so a final save
+// that fails has to go back to this, not to the step before it.
+function getDesktopPinResizeSession(entityId, startBounds, layerPlacement = null) {
   let session = desktopPinResizeSessions.get(entityId);
   if (!session) {
+    const monitorName = layerPlacement?.monitor.name;
     session = {
-      workArea: getDesktopPinWorkArea(getDesktopPinWindowBounds(entityId, startBounds)),
-      persistedBounds: startBounds,
+      workArea:
+        layerPlacement?.workArea ||
+        getDesktopPinWorkArea(getDesktopPinWindowBounds(entityId, startBounds)),
+      persisted: {
+        bounds: startBounds,
+        layer: layerPlacement
+          ? { monitorName, position: config.layerPositions?.[entityId]?.[monitorName] || null }
+          : null,
+      },
       idleTimer: null,
     };
     desktopPinResizeSessions.set(entityId, session);
@@ -2932,13 +2980,16 @@ function getDesktopPinResizeSession(entityId, startBounds) {
   return session;
 }
 
-// Puts a pin back to the bounds config.json holds after a drag whose final save failed, in the
-// config and on screen.
-function restoreDesktopPinPersistedBounds(entityId, persistedBounds, workArea) {
-  config.desktopPins[entityId] = persistedBounds;
+// Puts a pin back to what config.json holds after a drag whose final save failed: the saved
+// bounds and layer position, in the config and on screen.
+function restoreDesktopPinPersistedBounds(entityId, persisted, workArea) {
+  config.desktopPins[entityId] = persisted.bounds;
+  if (persisted.layer) {
+    setDesktopPinLayerPosition(entityId, persisted.layer.monitorName, persisted.layer.position);
+  }
   const window = desktopPinWindows.get(entityId);
   if (window && !window.isDestroyed()) {
-    applyDesktopPinBoundsToWindow(window, persistedBounds, workArea);
+    applyDesktopPinBoundsToWindow(window, persisted.bounds, workArea);
   }
   sendDesktopPinUpdate(entityId, { type: 'bounds' });
 }
@@ -2960,17 +3011,23 @@ async function updateDesktopPinBounds(entityId, nextBounds = {}) {
   const { resize, ...requestedBounds } = isPlainObject(nextBounds) ? nextBounds : {};
   const resizeRequest = normalizeDesktopPinResizeRequest(resize);
   const previousBounds = config.desktopPins[normalizedEntityId];
+  const layerPlacement = resizeRequest ? getDesktopPinLayerPlacement(normalizedEntityId) : null;
   const resizeSession = resizeRequest
-    ? getDesktopPinResizeSession(normalizedEntityId, previousBounds)
+    ? getDesktopPinResizeSession(normalizedEntityId, previousBounds, layerPlacement)
     : null;
   // What a failed save goes back to; a drag still open when a plain update arrives keeps its own.
-  const persistedBounds =
-    (resizeSession || desktopPinResizeSessions.get(normalizedEntityId))?.persistedBounds ||
-    previousBounds;
+  const persisted = (resizeSession || desktopPinResizeSessions.get(normalizedEntityId))
+    ?.persisted || { bounds: previousBounds, layer: null };
 
   const clampedBounds = resizeRequest
     ? resizeDesktopPinBoundsInWorkArea(
-        previousBounds,
+        layerPlacement
+          ? {
+              ...previousBounds,
+              x: layerPlacement.monitor.x + layerPlacement.origin.x,
+              y: layerPlacement.monitor.y + layerPlacement.origin.y,
+            }
+          : previousBounds,
         { ...requestedBounds, corner: resizeRequest.corner },
         {
           entityId: normalizedEntityId,
@@ -2988,6 +3045,16 @@ async function updateDesktopPinBounds(entityId, nextBounds = {}) {
         0,
         previousBounds
       );
+  // A handle on the top or left edge moves the window's origin so the opposite edge stays put.
+  // Where the app places windows that is the saved x and y. A layer surface is placed from its
+  // layer position, so that carries the move; on any other native Wayland session the compositor
+  // keeps the origin, the window grows from it, and the saved x and y stay as they were.
+  if (layerPlacement) {
+    setDesktopPinLayerPosition(normalizedEntityId, layerPlacement.monitor.name, {
+      x: clampedBounds.x - layerPlacement.monitor.x,
+      y: clampedBounds.y - layerPlacement.monitor.y,
+    });
+  }
   if (usesCompositorOwnedPlacement) {
     clampedBounds.x = previousBounds.x;
     clampedBounds.y = previousBounds.y;
@@ -3010,11 +3077,11 @@ async function updateDesktopPinBounds(entityId, nextBounds = {}) {
   endDesktopPinResizeSession(normalizedEntityId);
   const persistence = await saveConfigDurably();
   if (!persistence.success) {
-    restoreDesktopPinPersistedBounds(normalizedEntityId, persistedBounds, workArea);
+    restoreDesktopPinPersistedBounds(normalizedEntityId, persisted, workArea);
     return {
       success: false,
       error: mainT('Failed to save desktop pin position: {{error}}', { error: persistence.error }),
-      pinBounds: persistedBounds,
+      pinBounds: persisted.bounds,
     };
   }
 
