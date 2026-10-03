@@ -1701,5 +1701,6 @@
   "The sync file is in use by another program or is read-only. Try again in a moment, and check the folder’s permissions if it keeps happening.": "Die Sync-Datei wird von einem anderen Programm verwendet oder ist schreibgeschützt. Versuche es gleich noch einmal und prüfe die Berechtigungen des Ordners, falls es weiterhin auftritt.",
   "Details": "Details",
   "No unlocked system keyring (Secret Service) was found, so this computer cannot remember your Home Assistant sign-in or sync passphrase. Start gnome-keyring or KWallet, then restart the widget.": "Es wurde kein entsperrter Systemschlüsselbund (Secret Service) gefunden, daher kann dieser Computer deine Home-Assistant-Anmeldung und die Sync-Passphrase nicht speichern. Starte gnome-keyring oder KWallet und starte das Widget dann neu.",
-  "Needs Windows 11 version 22H2 or later.": "Erfordert Windows 11, Version 22H2 oder höher."
+  "Needs Windows 11 version 22H2 or later.": "Erfordert Windows 11, Version 22H2 oder höher.",
+  "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.": "Schaltet Transparenz aus und erhöht den Kontrast von Text und Rahmen überall. Solange diese Einstellung aktiv ist, überschreibt sie deine Farben, den Milchglas-Hintergrund und die Feiertagsfarben."
 }

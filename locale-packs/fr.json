@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.50",
+  "version": "1.2.51",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1746,6 +1746,7 @@
     "Other synced folder": "Autre dossier synchronisé",
     "Encrypts the sync file with AES-256-GCM. Every computer needs the same passphrase.": "Chiffre le fichier de synchronisation avec AES-256-GCM. Chaque ordinateur a besoin de la même phrase secrète.",
     "{{time}}: the sync file’s {{sections}}": "{{time}} : {{sections}} du fichier de synchronisation",
-    "{{time}}: this computer’s {{sections}}": "{{time}} : {{sections}} de cet ordinateur"
+    "{{time}}: this computer’s {{sections}}": "{{time}} : {{sections}} de cet ordinateur",
+    "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.": "Désactive la transparence et augmente le contraste du texte et des bordures partout. Tant qu'elle est activée, elle remplace vos couleurs, l'arrière-plan en verre dépoli et les couleurs de fête."
   }
 }

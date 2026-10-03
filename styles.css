@@ -8220,8 +8220,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .modal-body::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 9px;
+  height: 9px;
 }
 
 .modal-body::-webkit-scrollbar-track {
@@ -8229,12 +8229,15 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .modal-body::-webkit-scrollbar-thumb {
-  background: var(--border-color);
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+  border: 2px solid transparent;
   border-radius: var(--radius-full);
 }
 
 .modal-body::-webkit-scrollbar-thumb:hover {
-  background: var(--border-hover);
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
 }
 
 .persistent-notifications-modal-content {
@@ -9109,7 +9112,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 /* Custom scrollbar for dropdown menu */
 .custom-dropdown-menu::-webkit-scrollbar {
-  width: 6px;
+  width: 10px;
 }
 
 .custom-dropdown-menu::-webkit-scrollbar-track {
@@ -9117,12 +9120,15 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .custom-dropdown-menu::-webkit-scrollbar-thumb {
-  background: var(--border-color);
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+  border: 2px solid transparent;
   border-radius: var(--radius-sm);
 }
 
 .custom-dropdown-menu::-webkit-scrollbar-thumb:hover {
-  background: var(--border-hover);
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
 }
 
 /* Settings: keep primary media dropdown within scroll flow to avoid clipping */
@@ -9909,10 +9915,18 @@ body.widget-state-active #quick-controls .status-message {
   display: none !important;
 }
 
-/* Scrollbar styling */
+/* Scrollbar styling. The thumb is the text colour at half strength (a hairline border colour was
+   about 1.3:1 against the panel). It still draws 5px, but inside a 9px scrollbar (10px in menus),
+   so there is something to grab. The scrollbar takes layout space on Windows and Linux, so a pane
+   that scrolls is 4px narrower than it was and a few long help paragraphs wrap one line more. */
+body {
+  --scrollbar-thumb: color-mix(in srgb, var(--text-primary) 50%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--text-primary) 70%, transparent);
+}
+
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 9px;
+  height: 9px;
 }
 
 ::-webkit-scrollbar-track {
@@ -9920,12 +9934,15 @@ body.widget-state-active #quick-controls .status-message {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-color);
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+  border: 2px solid transparent;
   border-radius: var(--radius-full);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--border-hover);
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
 }
 
 /* Reorganize mode styles */
@@ -12418,11 +12435,35 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   }
 }
 
-/* High contrast mode support */
-@media (prefers-contrast: high) {
-  :root {
-    --border-color: rgba(255, 255, 255, 0.3);
-    --border-hover: rgba(255, 255, 255, 0.5);
+/* The OS asked for more contrast (macOS Increase contrast, GNOME and KDE high-contrast settings).
+   "more" is the value the query knows; "high" never matched. A Windows contrast theme reports it
+   too, but forced colours already redraw every border there. The borders are declared on the body
+   and on the light theme, which declares its own, since :root loses to both. */
+@media (prefers-contrast: more) and (forced-colors: none) {
+  body {
+    --border-color: rgba(255, 255, 255, 0.4);
+    --border-hover: rgba(255, 255, 255, 0.6);
+  }
+
+  body.theme-light {
+    --border-color: rgba(0, 0, 0, 0.5);
+    --border-hover: rgba(0, 0, 0, 0.7);
+  }
+
+  /* Tiles and chips draw their edges from the tile tokens rather than the border ones. */
+  body,
+  body.theme-light {
+    --tile-border: var(--border-color);
+    --tile-border-hover: var(--border-hover);
+  }
+
+  /* The main view's tiles take their edges from the dashboard tile tokens, which each theme and
+     glass mode sets on its own, so the stronger edge goes there as well. */
+  body,
+  body.theme-light,
+  body.theme-light.frosted-glass {
+    --dash-tile-border: var(--border-color);
+    --dash-tile-border-hover: var(--border-hover);
   }
 
   .status-card,
@@ -12999,6 +13040,9 @@ body.high-contrast {
   --text-secondary: #eee !important;
   --text-tertiary: #ddd !important;
   --muted-text: #ddd !important;
+  /* Help text, captions and unavailable tiles are the smallest text; they keep to 7:1 as well. */
+  --text-dim: #ddd !important;
+  --text-faint: #ccc !important;
   --bg-color: #141414 !important;
   --bg-primary: #141414 !important;
   --bg-secondary: #202020 !important;
@@ -13030,8 +13074,13 @@ body.high-contrast {
   --settings-modal-panel-alpha: 1 !important;
   --desktop-pin-ink-rgb: 255, 255, 255 !important;
   --focus-ring: #fff !important;
+  /* Dialogs, toasts, the command palette and menus draw their edge and backdrop from these; the
+     defaults are a 10% hairline, which barely separates a panel from what is behind it. */
+  --dialog-border: #aaa !important;
+  --dialog-scrim: rgba(8, 10, 14, 0.7) !important;
+  --window-highlight: rgba(255, 255, 255, 0.1) !important;
   color: #fff;
-  color-scheme: dark;
+  color-scheme: dark !important;
 }
 
 body.opaque-panels,
@@ -13068,40 +13117,73 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
   background: transparent !important;
 }
 
-/* Ranges are handled below; :where keeps this rule's specificity unchanged. Section headers and
-   tabs are text-like buttons: a fill would draw a bar across the panel, and their own hover,
-   active and focus styles stay visible without it. */
-body.high-contrast
-  :is(button, input, select, textarea):not(:where([type='range'], .section-toggle, .tab-link)) {
-  color: #fff !important;
-  background: #202020 !important;
-  border-color: #aaa !important;
-}
+/* The Readable preset's colours for buttons, fields, chips, tabs and slider tracks. Forced colours
+   (a Windows contrast theme) replace each of them with a system colour, so none is ever drawn, yet
+   a rule they discard still outranks a lower one that names a system colour. With the preset on as
+   well, its white edge beat the primary action's Highlight edge, its white text beat GrayText on a
+   control that is only aria-disabled, and its accent edge on the active page link beat the Canvas
+   one that keeps edit mode from drawing a second box around it. So they stay out while forced
+   colours are active, and the rules for forced colours at the end of this file decide. */
+@media (forced-colors: none) {
+  /* Ranges are handled below; :where keeps this rule's specificity unchanged. Section headers and
+     tabs are text-like buttons: a fill would draw a bar across the panel, and their own hover,
+     active and focus styles stay visible without it. A colour swatch is its fill. */
+  body.high-contrast
+    :is(button, input, select, textarea):not(
+      :where([type='range'], .section-toggle, .tab-link, .light-color-swatch)
+    ) {
+    color: #fff !important;
+    background: #202020 !important;
+    border-color: #aaa !important;
+  }
 
-/* The primary fill marks the main action and the selected choice (Primary Cards), so it stays a
-   solid accent fill with dark text instead of the grey fill every other button gets. */
-body.high-contrast .btn-primary {
-  color: #141414 !important;
-  background: var(--accent) !important;
-  border-color: #fff !important;
-}
+  /* The primary fill marks the main action and the selected choice (Primary Cards, the theme mode),
+     so it stays a solid accent fill with dark text instead of the grey fill every other button
+     gets. */
+  body.high-contrast :is(.btn-primary, .segmented-option.active) {
+    color: #141414 !important;
+    background: var(--accent) !important;
+    border-color: #fff !important;
+  }
 
-body.high-contrast :is(#settings-modal, .quick-access-tabs) .tab-link.active {
-  border-color: var(--accent);
-  color: #fff;
-}
+  body.high-contrast :is(#settings-modal, .quick-access-tabs) .tab-link.active {
+    border-color: var(--accent);
+    color: #fff;
+  }
 
-/* Without the grey fill a hovered tab needs its own edge; the refreshed tabs hover with a fill
-   that barely differs from the readable panels. */
-body.high-contrast :is(#settings-modal, .quick-access-tabs) .tab-link:not(.active):hover {
-  border-color: var(--border-hover);
-}
+  /* Without the grey fill a hovered tab needs its own edge; the refreshed tabs hover with a fill
+     that barely differs from the readable panels. */
+  body.high-contrast :is(#settings-modal, .quick-access-tabs) .tab-link:not(.active):hover {
+    border-color: var(--border-hover);
+  }
 
-/* A range input's background is its track: give it one that stands out from the #141414 panels.
-   The colour temperature gradient already does, and the pin light slider is a transparent
-   overlay above its own track. */
-body.high-contrast input[type='range']:not(.light-color-temp-slider, .desktop-pin-light-slider) {
-  background: #8a8a8a !important;
+  /* The grey fill above also flattens the selected chip, whose accent border and tint were its
+     mark, so the chip keeps a heavier accent edge. */
+  body.high-contrast
+    :is(
+      .climate-mode-btn,
+      .climate-fan-mode-btn,
+      .climate-preset-mode-btn,
+      .media-mute-toggle
+    ).active,
+  body.high-contrast .donate-amount-chip.selected {
+    border-color: var(--accent) !important;
+    box-shadow: inset 0 0 0 2px var(--accent);
+  }
+
+  /* The rail marks its active page with the sliding pill (the active tab's own border is cancelled
+     while the pill is there), and the pill is faint by default, so the preset gives it an edge. */
+  body.high-contrast #settings-modal .modal-tabs > .sliding-indicator {
+    background: rgba(var(--accent-rgb), 0.3);
+    box-shadow: inset 0 0 0 2px var(--accent);
+  }
+
+  /* A range input's background is its track: give it one that stands out from the #141414 panels.
+     The colour temperature gradient already does, and the pin light slider is a transparent
+     overlay above its own track. */
+  body.high-contrast input[type='range']:not(.light-color-temp-slider, .desktop-pin-light-slider) {
+    background: #8a8a8a !important;
+  }
 }
 
 body.high-contrast :focus-visible {
@@ -13260,6 +13342,12 @@ body.theme-light {
   --dialog-border: rgba(0, 0, 0, 0.1);
   --dialog-shadow: 0 24px 60px -16px rgba(20, 24, 40, 0.35), 0 2px 6px rgba(20, 24, 40, 0.12);
   --dialog-scrim: rgba(240, 242, 246, 0.5);
+}
+
+/* Toasts, the command palette, menus and tooltips draw --dialog-bg, which is 96% opaque, so a
+   tile's text would ghost through a toast over it. */
+body.opaque-panels {
+  --dialog-bg: color-mix(in srgb, var(--text-primary) 5%, rgb(var(--window-bg-rgb)));
 }
 
 /* --- Backdrop and panel --- */
@@ -16237,6 +16325,14 @@ body[data-season='thanksgiving'] .control-item {
   opacity: 0.5;
 }
 
+/* The Readable preset replaces these rows' effects (see syncReadablePresetOverrides). The whole
+   row dims as one unit, since its label and help text say as much as its control does. The dim is
+   light because the people who turn the preset on want 7:1: the smallest text token, on the
+   lighter panel, would fall to about 5.7:1 at 0.7, and stays above 7:1 at this strength. */
+#settings-modal .is-overridden {
+  opacity: 0.85;
+}
+
 /* ==========================================================================
    RIGHT-TO-LEFT AND FORCED COLOURS
    ========================================================================== */
@@ -16250,8 +16346,12 @@ body[data-season='thanksgiving'] .control-item {
 
 /* Readings and their units are handled with the other right-to-left text rules at the end. */
 
-/* Windows High Contrast replaces backgrounds with system colours, which erases the accent fills
-   that mark "on" tiles, selected tabs and switches. Draw those states with outlines instead. */
+/* Windows High Contrast and other contrast themes replace the page's colours with the system
+   palette: backgrounds become Canvas, borders ButtonText, and gradients, shadows and glows go.
+   That erases everything drawn with a fill alone (the accent on "on" tiles and selected chips,
+   slider tracks and thumbs, swatches, progress bars, the connection dot), so each of those gets an
+   outline, an edge or a system colour of its own here. System colour keywords written in author
+   CSS are kept, which is how the Highlight and ButtonText below survive. */
 @media (forced-colors: active) {
   /* The panel veil is a gradient. Forced colours keep gradients while they swap every background
      colour for Canvas, so the veil would be painted over the system colour. */
@@ -16259,17 +16359,89 @@ body[data-season='thanksgiving'] .control-item {
     --panel-veil-layer: none;
   }
 
-  .sliding-indicator {
-    background: none;
-    border: 2px solid Highlight;
+  /* The window is one solid pane. Its tint keeps its alpha under forced colours, which lets the
+     desktop show through and makes Chromium paint an opaque plate behind every line of text. */
+  html {
+    background: Canvas;
   }
 
+  /* A desktop pin is a transparent window around a rounded shell, so it keeps its see-through
+     corners. Only the body carries the pin class, hence the :has(). */
+  html:has(body.desktop-pin-mode) {
+    background: transparent;
+  }
+
+  /* Selected and "on" states are a Highlight outline in place of the accent fill. A running timer
+     is solid and a paused one dashed, as the tint and its colour tell them apart otherwise. */
   #quick-controls .control-item[data-active='true'],
+  .timer-entity[data-state='active'],
   .segmented-option.active,
   .tab-link.active,
-  .quick-access-tab.active {
+  .quick-access-tabs.reorganize .quick-access-tab.active,
+  .climate-mode-btn.active,
+  .climate-fan-mode-btn.active,
+  .climate-preset-mode-btn.active,
+  .media-mute-toggle.active,
+  .custom-dropdown-option.selected,
+  .donate-amount-chip.selected,
+  .desktop-pin-panel-button[data-active='true'],
+  .desktop-pin-light-power[data-active='true'] {
     outline: 2px solid Highlight;
     outline-offset: -2px;
+  }
+
+  .timer-entity[data-state='paused'] {
+    outline: 2px dashed Highlight;
+    outline-offset: -2px;
+  }
+
+  /* In edit mode the active page's wrapper owns the highlight. The link inside it would ring as
+     well, and its transparent border is redrawn in ButtonText, which makes a second box around the
+     page name; a Canvas border is not drawn against the pane. */
+  .quick-access-tabs.reorganize .quick-access-tab.active .tab-link.active {
+    outline: none;
+    border-color: Canvas;
+  }
+
+  /* The pill that slides behind the active tab is a fill too. The tab rings itself instead, which
+     also avoids two rings with notches where their corner radii differ. */
+  .sliding-indicator {
+    display: none;
+  }
+
+  /* The primary action is told from the others by its heavier edge, not its fill. */
+  .btn-primary {
+    border: 2px solid Highlight !important;
+  }
+
+  /* Fields signal focus with a border colour and a shadow, and some switch their outline off,
+     which leaves nothing once forced colours take the first two away. */
+  :is(input, select, textarea, .custom-dropdown-trigger):focus-visible {
+    outline: 2px solid Highlight !important;
+    outline-offset: 2px;
+  }
+
+  /* The Readable preset's focus ring keeps its 3px width and its offset but takes the system
+     colour: the white it asks for is drawn as written on whatever opts out of forced colours (the
+     switches and the light colour swatches), which is invisible on a light contrast theme. */
+  body.high-contrast :focus-visible {
+    outline-color: Highlight !important;
+  }
+
+  /* Disabled controls are already GrayText; halving their opacity on top washes them out. A control
+     that is only aria-disabled gets the colour itself. */
+  :disabled,
+  [aria-disabled='true'],
+  label.disabled,
+  .is-disabled,
+  .is-overridden {
+    opacity: 1 !important;
+  }
+
+  [aria-disabled='true']:not(.btn-primary),
+  label.disabled,
+  .is-disabled {
+    color: GrayText;
   }
 
   /* !important: the Settings switch rules carry #settings-modal and would otherwise win. */
@@ -16294,6 +16466,165 @@ body[data-season='thanksgiving'] .control-item {
   .form-group input[type='checkbox']:checked::after,
   .entity-toggle.active::after {
     background: HighlightText !important;
+  }
+
+  /* Range sliders paint a gradient track and a white thumb with no border, and all of it goes.
+     The track is a ButtonText bar and the thumb a Highlight disc with an edge. */
+  :is(
+    .brightness-slider,
+    .fan-slider,
+    .cover-slider,
+    .climate-slider,
+    .light-color-temp-slider,
+    .media-volume-slider
+  ) {
+    background: ButtonText;
+  }
+
+  :is(
+    .brightness-slider,
+    .fan-slider,
+    .cover-slider,
+    .climate-slider,
+    .light-color-temp-slider,
+    .media-volume-slider
+  )::-webkit-slider-thumb,
+  .desktop-pin-light-slider::-webkit-slider-thumb {
+    background: Highlight;
+    border: 2px solid ButtonText;
+    box-shadow: none;
+  }
+
+  /* The pin's slider is a transparent overlay above its own fill, so its track is only an edge. */
+  .desktop-pin-light-slider::-webkit-slider-runnable-track {
+    background: transparent;
+    border: 1px solid ButtonText;
+    box-shadow: none;
+  }
+
+  /* Colour is the information in a swatch, so it keeps its own colour and gets an edge against
+     Canvas. */
+  .light-color-swatch,
+  .color-target-swatch,
+  .accent-theme-swatch {
+    forced-color-adjust: none;
+    border: 1px solid CanvasText;
+    box-shadow: none;
+  }
+
+  .theme-tooltip-name::before,
+  .comparison-graph-swatch {
+    forced-color-adjust: none;
+  }
+
+  .theme-option.selected,
+  .color-target-option.active,
+  .light-color-swatch:focus-visible {
+    outline: 3px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  /* The connection dot is a ring when disconnected and a solid dot when connected. */
+  .connection-indicator {
+    box-sizing: border-box;
+    border: 2px solid ButtonText;
+    box-shadow: none;
+  }
+
+  .connection-indicator.connected {
+    border-color: Highlight;
+    background: Highlight;
+  }
+
+  /* Progress is a Highlight fill in an outlined track. */
+  .media-tile-seek-bar,
+  .media-tile-seek-bar:hover {
+    box-sizing: border-box;
+    height: 6px;
+    border: 1px solid ButtonText;
+    overflow: hidden;
+  }
+
+  .media-tile-seek-fill::after {
+    display: none;
+  }
+
+  .connection-progress,
+  .desktop-pin-panel-progress {
+    border: 1px solid ButtonText;
+  }
+
+  .desktop-pin-timer-progress {
+    border-top: 1px solid ButtonText;
+  }
+
+  .media-tile-seek-fill,
+  .media-progress-fill,
+  .progress-fill,
+  .connection-progress-bar,
+  .desktop-pin-panel-progress-fill,
+  .desktop-pin-timer-progress-fill,
+  .desktop-pin-light-brightness-fill {
+    background: Highlight;
+    box-shadow: none;
+  }
+
+  /* The hero pane's divider is an inset shadow, which is dropped; a border stays. */
+  .status-grid:not(.single-card):not(.primary-cards-hidden) > .status-card + .status-card {
+    box-shadow: none;
+    border-inline-start: 1px solid CanvasText;
+  }
+
+  @media (max-width: 420px) {
+    .status-grid:not(.single-card):not(.primary-cards-hidden) > .status-card + .status-card {
+      border-inline-start: none;
+      border-block-start: 1px solid CanvasText;
+    }
+  }
+
+  /* An inline icon keeps a colour written on the icon itself in forced colours, so the active
+     rail icon would stay a pale blue whatever the contrast theme. */
+  #settings-modal .tab-link.active .tab-link-icon {
+    color: ButtonText;
+    filter: none;
+  }
+
+  /* The weather glyph is drawn with fixed pale fills and strokes; draw it as an outline. */
+  .weather-glyph,
+  .weather-glyph * {
+    forced-color-adjust: none;
+    stroke: CanvasText;
+    fill: none;
+    filter: none;
+  }
+
+  .weather-glyph .weather-glyph-fill,
+  .weather-glyph .weather-glyph-hail {
+    fill: CanvasText;
+  }
+
+  /* A custom scrollbar thumb is a background, which is the Canvas colour here. */
+  ::-webkit-scrollbar,
+  .modal-body::-webkit-scrollbar,
+  .custom-dropdown-menu::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+
+  ::-webkit-scrollbar-thumb,
+  ::-webkit-scrollbar-thumb:hover,
+  .modal-body::-webkit-scrollbar-thumb,
+  .modal-body::-webkit-scrollbar-thumb:hover,
+  .custom-dropdown-menu::-webkit-scrollbar-thumb,
+  .custom-dropdown-menu::-webkit-scrollbar-thumb:hover {
+    background: ButtonText;
+    border: 3px solid Canvas;
+  }
+
+  ::-webkit-scrollbar-track,
+  .modal-body::-webkit-scrollbar-track,
+  .custom-dropdown-menu::-webkit-scrollbar-track {
+    background: Canvas;
   }
 
   .entity-line-icon {

@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.50",
+  "version": "1.2.51",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1746,6 +1746,7 @@
     "Other synced folder": "مجلد متزامن آخر",
     "Encrypts the sync file with AES-256-GCM. Every computer needs the same passphrase.": "يشفّر ملف المزامنة باستخدام AES-256-GCM. يحتاج كل كمبيوتر إلى عبارة المرور نفسها.",
     "{{time}}: the sync file’s {{sections}}": "{{time}}: {{sections}} من ملف المزامنة",
-    "{{time}}: this computer’s {{sections}}": "{{time}}: {{sections}} من هذا الكمبيوتر"
+    "{{time}}: this computer’s {{sections}}": "{{time}}: {{sections}} من هذا الكمبيوتر",
+    "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.": "يوقف الشفافية ويرفع تباين النص والحدود في كل مكان. وما دام مفعّلًا يتجاوز ألوانك والخلفية الزجاجية الضبابية وألوان الأعياد."
   }
 }

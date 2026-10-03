@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.50",
+  "version": "1.2.51",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget, including German date and time formats.",
   "messages": {
@@ -1746,6 +1746,7 @@
     "Other synced folder": "Anderer synchronisierter Ordner",
     "Encrypts the sync file with AES-256-GCM. Every computer needs the same passphrase.": "Verschlüsselt die Sync-Datei mit AES-256-GCM. Jeder Computer braucht dieselbe Passphrase.",
     "{{time}}: the sync file’s {{sections}}": "{{time}}: {{sections}} aus der Sync-Datei",
-    "{{time}}: this computer’s {{sections}}": "{{time}}: {{sections}} dieses Computers"
+    "{{time}}: this computer’s {{sections}}": "{{time}}: {{sections}} dieses Computers",
+    "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.": "Schaltet Transparenz aus und erhöht den Kontrast von Text und Rahmen überall. Solange diese Einstellung aktiv ist, überschreibt sie deine Farben, den Milchglas-Hintergrund und die Feiertagsfarben."
   }
 }

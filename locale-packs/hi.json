@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.50",
+  "version": "1.2.51",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1746,6 +1746,7 @@
     "Other synced folder": "अन्य सिंक फ़ोल्डर",
     "Encrypts the sync file with AES-256-GCM. Every computer needs the same passphrase.": "सिंक फ़ाइल को AES-256-GCM से एन्क्रिप्ट करता है। हर कंप्यूटर को एक ही पासफ़्रेज़ चाहिए।",
     "{{time}}: the sync file’s {{sections}}": "{{time}}: सिंक फ़ाइल की {{sections}}",
-    "{{time}}: this computer’s {{sections}}": "{{time}}: इस कंप्यूटर की {{sections}}"
+    "{{time}}: this computer’s {{sections}}": "{{time}}: इस कंप्यूटर की {{sections}}",
+    "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.": "पारदर्शिता बंद करता है और हर जगह टेक्स्ट और किनारों का कंट्रास्ट बढ़ाता है। चालू रहने तक यह आपके रंग, फ्रॉस्टेड ग्लास पृष्ठभूमि और त्योहार के रंगों को ओवरराइड करता है।"
   }
 }

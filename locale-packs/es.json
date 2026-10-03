@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.50",
+  "version": "1.2.51",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1746,6 +1746,7 @@
     "Other synced folder": "Otra carpeta sincronizada",
     "Encrypts the sync file with AES-256-GCM. Every computer needs the same passphrase.": "Cifra el archivo de sincronización con AES-256-GCM. Todos los equipos necesitan la misma frase de contraseña.",
     "{{time}}: the sync file’s {{sections}}": "{{time}}: {{sections}} del archivo de sincronización",
-    "{{time}}: this computer’s {{sections}}": "{{time}}: {{sections}} de este equipo"
+    "{{time}}: this computer’s {{sections}}": "{{time}}: {{sections}} de este equipo",
+    "Turns off transparency and raises text and border contrast everywhere. While it is on, it overrides your colors, glass and holiday colors.": "Desactiva la transparencia y aumenta el contraste del texto y de los bordes en todas partes. Mientras está activada, sustituye tus colores, el fondo de cristal esmerilado y los colores festivos."
   }
 }

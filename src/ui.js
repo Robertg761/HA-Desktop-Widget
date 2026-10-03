@@ -13675,6 +13675,7 @@ function showClimateControls(climateEntity) {
         button.className = `climate-mode-btn ${modeValue === currentMode ? 'active' : ''}`.trim();
         button.dataset.mode = modeValue;
         button.title = modeLabel;
+        button.setAttribute('aria-pressed', String(modeValue === currentMode));
 
         const icon = document.createElement('span');
         icon.className = 'climate-mode-icon';
@@ -13700,6 +13701,7 @@ function showClimateControls(climateEntity) {
         button.className = `${className} ${modeValue === currentValue ? 'active' : ''}`.trim();
         button.dataset.mode = modeValue;
         button.title = modeLabel;
+        button.setAttribute('aria-pressed', String(modeValue === currentValue));
         button.textContent = modeLabel;
         container.appendChild(button);
       });
@@ -13731,7 +13733,9 @@ function showClimateControls(climateEntity) {
     let missedLiveUpdate = false;
     const setActiveClimateOption = (buttons, value) => {
       buttons.forEach((button) => {
-        button.classList.toggle('active', button.getAttribute('data-mode') === value);
+        const isActive = button.getAttribute('data-mode') === value;
+        button.classList.toggle('active', isActive);
+        button.setAttribute('aria-pressed', String(isActive));
       });
     };
 
