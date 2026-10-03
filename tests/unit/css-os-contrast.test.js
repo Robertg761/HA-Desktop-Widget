@@ -74,11 +74,7 @@ describe('scrollbar thumbs', () => {
   });
 
   it('use that colour on every custom scrollbar', () => {
-    for (const selector of [
-      '::-webkit-scrollbar-thumb',
-      '.modal-body::-webkit-scrollbar-thumb',
-      '.custom-dropdown-menu::-webkit-scrollbar-thumb',
-    ]) {
+    for (const selector of ['::-webkit-scrollbar-thumb', '.modal-body::-webkit-scrollbar-thumb']) {
       const rule = STYLES.match(
         new RegExp(`\\n${selector.replace(/[.:]/g, '\\$&')} \\{([^}]*)\\}`)
       );

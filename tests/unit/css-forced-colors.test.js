@@ -89,7 +89,6 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
       'preset mode': '<button class="climate-preset-mode-btn active">Eco</button>',
       'mute toggle': '<button class="media-mute-toggle active">Muted</button>',
       'donate amount': '<button class="donate-amount-chip selected">$5</button>',
-      'dropdown option': '<div class="custom-dropdown-option selected">Option</div>',
       'segmented option': '<button class="segmented-option active">Dark</button>',
       'Settings rail tab': '<button class="tab-link active">Appearance</button>',
       'running timer': '<div class="control-item timer-entity" data-state="active"></div>',
@@ -104,9 +103,7 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
 
     it.each(Object.entries(SELECTED))('outlines the selected %s in Highlight', (_, html) => {
       render('', html);
-      const element = document.body.querySelector(
-        'button, div.custom-dropdown-option, .control-item'
-      );
+      const element = document.body.querySelector('button, .control-item');
       expect(resolvedValue(element, 'outline', FORCED)).toBe('2px solid Highlight');
       expect(resolvedValue(element, 'outline-offset', FORCED)).toBe('-2px');
       expect(resolvedValue(element, 'outline')).not.toBe('2px solid Highlight');
@@ -332,8 +329,8 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
       ['a hotkey field', '<input class="hotkey-input" type="text" data-focus data-focus-visible>'],
       ['an alert field', '<input class="alert-input" type="text" data-focus data-focus-visible>'],
       [
-        'a dropdown trigger',
-        '<button class="custom-dropdown-trigger" data-focus data-focus-visible></button>',
+        'a hotkey action select',
+        '<div id="settings-modal"><select class="hotkey-action-select" data-focus-visible></select></div>',
       ],
     ])('keeps a focus outline on %s', (_, html) => {
       render('', html);

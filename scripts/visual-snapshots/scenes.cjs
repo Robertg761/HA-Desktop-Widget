@@ -302,6 +302,14 @@ const scenes = [
   // Settings pages the first scenes do not reach, and the custom colour editor.
   { name: 'settings-dashboard', setup: (ctx) => openSettingsTab(ctx, 'dashboard') },
   { name: 'settings-hotkeys', setup: (ctx) => openSettingsTab(ctx, 'hotkeys') },
+  // The entity list, where each row picks the action its hotkey runs from a select.
+  {
+    name: 'settings-hotkeys-entities',
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'hotkeys');
+      await revealInSettings(ctx, '#hotkeys-list');
+    },
+  },
   {
     name: 'settings-alerts',
     config: alertsConfig,
@@ -458,6 +466,14 @@ const scenes = [
     name: 'de-settings-hotkeys',
     ui: { language: 'de' },
     setup: (ctx) => openSettingsTab(ctx, 'hotkeys'),
+  },
+  {
+    name: 'de-settings-hotkeys-entities',
+    ui: { language: 'de' },
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'hotkeys');
+      await revealInSettings(ctx, '#hotkeys-list');
+    },
   },
   {
     name: 'de-popup-media',

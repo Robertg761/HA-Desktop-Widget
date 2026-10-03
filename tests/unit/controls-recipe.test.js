@@ -188,19 +188,38 @@ describe('the control recipe', () => {
       expect(resolvedValue(field, 'min-height')).toBe('32px');
     });
 
-    it('draws a native select like the custom dropdown trigger', () => {
+    it('draws a native select like the text field beside it, with the thin chevron', () => {
       render(
         '',
-        `<div class="modal-body"><div class="form-group"><select></select></div>
-        <button class="custom-dropdown-trigger"></button></div>`
+        `<div class="modal-body"><div class="form-group"><select></select>
+        <input type="text"></div></div>`
       );
       const select = document.querySelector('select');
-      const trigger = document.querySelector('.custom-dropdown-trigger');
+      const field = document.querySelector('input');
 
       expect(resolvedValue(select, 'appearance')).toBe('none');
       expect(resolvedValue(select, 'background-image')).toMatch(/^url\("data:image\/svg\+xml/);
-      expect(resolvedValue(select, 'min-height')).toBe(resolvedValue(trigger, 'min-height'));
-      expect(resolvedValue(select, 'background')).toBe(resolvedValue(trigger, 'background'));
+      expect(resolvedValue(select, 'min-height')).toBe(resolvedValue(field, 'min-height'));
+      expect(resolvedValue(select, 'background')).toBe(resolvedValue(field, 'background'));
+    });
+
+    it('sizes the hotkey action select for its row and keeps the chevron clear of the text', () => {
+      render(
+        '',
+        `<div id="settings-modal"><div class="hotkey-input-container">
+          <input class="hotkey-input" readonly>
+          <select class="hotkey-action-select"></select>
+        </div></div>`
+      );
+      const select = document.querySelector('select');
+      const field = document.querySelector('input');
+
+      expect(resolvedValue(select, 'width')).toBe('120px');
+      expect(resolvedValue(select, 'min-height')).toBe(resolvedValue(field, 'min-height'));
+      expect(resolvedValue(select, 'background-size')).toBe('12px 12px');
+      expect(resolvedValue(select, 'background-position')).toBe('right 8px center');
+      // Same fill and edge as every other select: the row only sets its size.
+      expect(resolvedValue(select, 'background-image')).toMatch(/^url\("data:image\/svg\+xml/);
     });
 
     it('leaves a select native under the readable preset, which repaints fields itself', () => {
@@ -361,9 +380,8 @@ describe('the control recipe', () => {
       expect(untyped).toEqual([]);
     });
 
-    it('hides the weather canvas and the dropdown arrow from assistive technology', () => {
+    it('hides the weather canvas from assistive technology', () => {
       expect(html).toMatch(/<canvas id="weather-effects-canvas" aria-hidden="true">/);
-      expect(read('src/hotkeys.js')).toMatch(/class="custom-dropdown-arrow" aria-hidden="true"/);
     });
 
     it.each([

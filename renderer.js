@@ -3258,10 +3258,9 @@ function wireUI() {
           try {
             const hotkey = await hotkeys.captureHotkey();
             if (hotkey) {
-              // Get selected action from custom dropdown
-              const dropdown = target.parentElement.querySelector('.hotkey-action-dropdown');
-              const selectedOption = dropdown?.querySelector('.custom-dropdown-option.selected');
-              const action = selectedOption?.dataset?.value || 'toggle';
+              // The action picked in the row's select
+              const actionSelect = target.parentElement.querySelector('.hotkey-action-select');
+              const action = actionSelect?.value || 'toggle';
               const result = await window.electronAPI.registerHotkey(entityId, hotkey, action);
               if (result?.success) {
                 target.value = hotkey;

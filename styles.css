@@ -9105,139 +9105,6 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   }
 }
 
-/* Custom Dropdown */
-.custom-dropdown {
-  position: relative;
-  width: 100%;
-}
-
-/* The trigger is a select that draws its own menu, so it takes the select's recipe: the same fill,
-   border, height and thin chevron (see the field recipe above and the select rules below). */
-.custom-dropdown-trigger {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  min-height: 36px;
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--tile-bg);
-  color: var(--text-primary);
-  font-size: var(--font-size-base);
-  font-family: inherit;
-  text-align: start;
-  cursor: pointer;
-  transition: var(--transition-base);
-}
-
-.custom-dropdown-trigger:hover {
-  border-color: var(--border-hover);
-  background: var(--tile-bg-hover);
-}
-
-.custom-dropdown-trigger:focus {
-  outline: none;
-  border-color: var(--focus-ring);
-  background: var(--tile-bg-hover);
-  box-shadow: var(--glow-focus);
-}
-
-.custom-dropdown-value {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.custom-dropdown-arrow {
-  flex-shrink: 0;
-  color: var(--text-secondary);
-  transition: transform var(--transition-base);
-}
-
-.custom-dropdown.open .custom-dropdown-arrow {
-  transform: rotate(180deg);
-}
-
-.custom-dropdown-menu {
-  position: absolute;
-  top: calc(100% + var(--space-2));
-  left: 0;
-  right: 0;
-  max-height: 300px;
-  overflow-y: auto;
-  background: var(--glass-elevated);
-  backdrop-filter: blur(var(--blur-md));
-  -webkit-backdrop-filter: blur(var(--blur-md));
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(-8px);
-  transition:
-    opacity var(--transition-base),
-    transform var(--transition-base),
-    visibility var(--transition-base);
-  z-index: var(--z-dropdown);
-}
-
-.custom-dropdown.open .custom-dropdown-menu {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0);
-}
-
-.custom-dropdown-option {
-  padding: var(--space-3) var(--space-4);
-  /* The 3px accent edge takes room the trigger's 1px border does not, so the text still lines
-     up with the trigger's. */
-  padding-inline-start: calc(var(--space-4) - 2px);
-  color: var(--text-primary);
-  font-size: var(--font-size-base);
-  cursor: pointer;
-  transition: var(--transition-base);
-  border-inline-start: 3px solid transparent;
-}
-
-.custom-dropdown-option:hover {
-  background: var(--tile-bg-hover);
-  border-inline-start-color: var(--accent);
-}
-
-.custom-dropdown-option.selected {
-  background: var(--accent-bg);
-  border-inline-start-color: var(--accent);
-  color: var(--accent-text);
-}
-
-.custom-dropdown-option:active {
-  background: var(--accent-bg);
-}
-
-/* Custom scrollbar for dropdown menu */
-.custom-dropdown-menu::-webkit-scrollbar {
-  width: 10px;
-}
-
-.custom-dropdown-menu::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.custom-dropdown-menu::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  background-clip: padding-box;
-  border: 2px solid transparent;
-  border-radius: var(--radius-sm);
-}
-
-.custom-dropdown-menu::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
-  background-clip: padding-box;
-}
-
 /* Buttons */
 .btn {
   padding: var(--space-3) var(--space-5);
@@ -11490,10 +11357,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   background: rgba(255, 255, 255, 0.02);
 }
 
-.hotkey-item:has(.hotkey-action-dropdown.open) {
-  align-items: flex-start;
-}
-
 .hotkey-item .entity-name {
   font-size: var(--font-size-base);
   font-weight: 500;
@@ -11517,10 +11380,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   margin-inline-start: auto;
 }
 
-.hotkey-input-container:has(.hotkey-action-dropdown.open) {
-  align-items: flex-start;
-}
-
 .hotkey-input {
   /* Sized to the placeholder or hotkey so "No hotkey set" is never clipped when translated. */
   field-sizing: content;
@@ -11538,52 +11397,22 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   letter-spacing: 0.5px;
 }
 
-/* Hotkey Action Custom Dropdown - Compact version */
-.hotkey-action-dropdown {
-  position: relative;
+/* The action select, compact and level with the hotkey field beside it. Its chevron is the shared
+   select one, set closer to the edge for the narrower field; the ID outranks the select rules. */
+#settings-modal .hotkey-input-container select.hotkey-action-select {
   width: 120px;
   flex-shrink: 1;
   min-width: 100px;
-}
-
-.hotkey-action-dropdown.open {
-  z-index: var(--z-dropdown);
-}
-
-.hotkey-action-dropdown .custom-dropdown-trigger {
-  padding: 6px 8px;
-  font-size: var(--font-size-sm);
-  gap: 6px;
   min-height: 32px;
-}
-
-.hotkey-action-dropdown .custom-dropdown-arrow {
-  width: 12px;
-  height: 12px;
-}
-
-.hotkey-action-dropdown .custom-dropdown-value {
+  padding-block: 6px;
+  padding-inline: 8px 24px;
   font-size: var(--font-size-sm);
+  background-position: right 8px center;
+  background-size: 12px 12px;
 }
 
-.hotkey-action-dropdown .custom-dropdown-menu {
-  font-size: var(--font-size-sm);
-  max-height: 200px;
-  position: static;
-  display: none;
-  margin-top: var(--space-2);
-  opacity: 1;
-  visibility: visible;
-  transform: none;
-}
-
-.hotkey-action-dropdown.open .custom-dropdown-menu {
-  display: block;
-}
-
-.hotkey-action-dropdown .custom-dropdown-option {
-  padding: 6px 8px;
-  font-size: var(--font-size-sm);
+[dir='rtl'] #settings-modal .hotkey-input-container select.hotkey-action-select {
+  background-position: left 8px center;
 }
 
 .btn-clear-hotkey {
@@ -13455,7 +13284,7 @@ body.theme-light {
 }
 
 /* One height for text fields and selects, so a native select no longer stands 2px taller than the
-   input beside it, and both match the custom dropdown trigger. */
+   input beside it. */
 .form-group
   :is(input, select):not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
 :where(.modal-body, .first-run-content)
@@ -13463,9 +13292,9 @@ body.theme-light {
   min-height: 36px;
 }
 
-/* A native select drawn like the custom dropdown: the browser's heavy chevron (which each OS
-   draws differently) gives way to the same thin one, set at the end of the line and mirrored in
-   right-to-left. The menu itself is still the browser's. The fill comes from the field recipe;
+/* A native select with a thin chevron: the browser's heavy one (which each OS draws differently)
+   gives way to it, set at the end of the line and mirrored in right-to-left. The menu itself is
+   still the browser's. The fill comes from the field recipe;
    only the background image is set here, so a rule that sets just the colour keeps the chevron.
    The readable preset repaints every field with a plain background shorthand, which would take
    the chevron with it, so it keeps the browser's own select. */
@@ -13924,9 +13753,8 @@ body.theme-light .entity-selector-btn.remove:focus-visible {
   color: color-mix(in srgb, var(--text-primary) 72%, transparent);
 }
 
-/* --- Menus and tooltips drawn by the app --- */
+/* --- Tooltips drawn by the app --- */
 
-.custom-dropdown-menu,
 .connection-status-tooltip {
   background: var(--dialog-bg);
   border: 1px solid var(--dialog-border);
@@ -14265,7 +14093,6 @@ body.theme-light #settings-modal .modal-footer {
 /* A label above a full-width field (URL, search, the media picker) keeps a gap. */
 #settings-modal .form-group > label + input,
 #settings-modal .form-group > label + select,
-#settings-modal .form-group > label + .custom-dropdown,
 #settings-modal .form-group > label + textarea {
   margin-top: 8px;
 }
@@ -16508,7 +16335,6 @@ body[data-season='thanksgiving'] .control-item {
   .climate-fan-mode-btn.active,
   .climate-preset-mode-btn.active,
   .media-mute-toggle.active,
-  .custom-dropdown-option.selected,
   .donate-amount-chip.selected,
   .desktop-pin-panel-button[data-active='true'],
   .desktop-pin-power[data-active='true'] {
@@ -16542,7 +16368,7 @@ body[data-season='thanksgiving'] .control-item {
 
   /* Fields signal focus with a border colour and a shadow, and some switch their outline off,
      which leaves nothing once forced colours take the first two away. */
-  :is(input, select, textarea, .custom-dropdown-trigger):focus-visible {
+  :is(input, select, textarea):focus-visible {
     outline: 2px solid Highlight !important;
     outline-offset: 2px;
   }
@@ -16743,8 +16569,7 @@ body[data-season='thanksgiving'] .control-item {
 
   /* A custom scrollbar thumb is a background, which is the Canvas colour here. */
   ::-webkit-scrollbar,
-  .modal-body::-webkit-scrollbar,
-  .custom-dropdown-menu::-webkit-scrollbar {
+  .modal-body::-webkit-scrollbar {
     width: 12px;
     height: 12px;
   }
@@ -16752,16 +16577,13 @@ body[data-season='thanksgiving'] .control-item {
   ::-webkit-scrollbar-thumb,
   ::-webkit-scrollbar-thumb:hover,
   .modal-body::-webkit-scrollbar-thumb,
-  .modal-body::-webkit-scrollbar-thumb:hover,
-  .custom-dropdown-menu::-webkit-scrollbar-thumb,
-  .custom-dropdown-menu::-webkit-scrollbar-thumb:hover {
+  .modal-body::-webkit-scrollbar-thumb:hover {
     background: ButtonText;
     border: 3px solid Canvas;
   }
 
   ::-webkit-scrollbar-track,
-  .modal-body::-webkit-scrollbar-track,
-  .custom-dropdown-menu::-webkit-scrollbar-track {
+  .modal-body::-webkit-scrollbar-track {
     background: Canvas;
   }
 
