@@ -1716,9 +1716,11 @@ function renderCurrentMode() {
     document
       .getElementById('desktop-pin-content')
       ?.setAttribute('data-edit-hint', t('Drag or resize'));
+    // The notice that the desktop decides where the tile sits is for sessions where nothing in the
+    // app can move it. A layer surface on Hyprland is dragged by the app itself.
     document.body.classList.toggle(
       'desktop-pin-compositor-placement',
-      !desktopPinSupportsWindowPositioning
+      !desktopPinSupportsWindowPositioning && state.CONFIG?.desktopCapabilities?.canDrag !== true
     );
     ui.renderDesktopPinnedTile(DESKTOP_PIN_ENTITY_ID, entity, {
       hasSnapshot: desktopPinHasSnapshot,

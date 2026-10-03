@@ -718,6 +718,27 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     expect(content.getAttribute('data-edit-hint')).toBe('Ziehen oder Größe ändern');
   });
 
+  describe('the notice that the desktop decides where a tile sits', () => {
+    const bootstrap = (supportsWindowPositioning, canDrag) => ({
+      editMode: true,
+      supportsWindowPositioning,
+      config: {
+        homeAssistant: { url: 'http://homeassistant.local:8123' },
+        ui: {},
+        desktopCapabilities: { layerMode: !supportsWindowPositioning, canDrag },
+      },
+    });
+
+    it.each([
+      ['shows it on native Wayland or a layer surface the app cannot drag', false, false, true],
+      ['hides it on a layer surface on Hyprland, which the app drags itself', false, true, false],
+      ['hides it where the app places windows', true, false, false],
+    ])('%s', async (_, supportsWindowPositioning, canDrag, shown) => {
+      await loadRenderer({ bootstrapOverrides: bootstrap(supportsWindowPositioning, canDrag) });
+      expect(document.body.classList.contains('desktop-pin-compositor-placement')).toBe(shown);
+    });
+  });
+
   it('takes the tile out of the focus order while it is being arranged', async () => {
     await loadRenderer({ bootstrapOverrides: { editMode: true } });
     const content = document.getElementById('desktop-pin-content');
