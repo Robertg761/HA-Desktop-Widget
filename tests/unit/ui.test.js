@@ -6217,6 +6217,80 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
     });
 
+    it('starts, stops and resumes a vacuum that only advertises the legacy on/off features', () => {
+      // TURN_ON (1) + TURN_OFF (2) + RETURN_HOME (16): no START, STOP or PAUSE.
+      const legacy = (vacuumState) => ({
+        ...sampleStates['vacuum.roomba'],
+        state: vacuumState,
+        attributes: { ...sampleStates['vacuum.roomba'].attributes, supported_features: 1 + 2 + 16 },
+      });
+      const actions = () => [
+        ...document.querySelectorAll('#desktop-pin-content .desktop-pin-vacuum-action'),
+      ];
+      const render = (vacuumState) => {
+        state.setServices({});
+        state.setStates({ 'vacuum.roomba': legacy(vacuumState) });
+        ui.renderDesktopPinnedTile('vacuum.roomba', state.STATES['vacuum.roomba'], {
+          hasSnapshot: true,
+        });
+      };
+
+      // Off, or docked: Start is vacuum.turn_on rather than "Open widget".
+      for (const vacuumState of ['off', 'docked']) {
+        mockCallService.mockClear();
+        render(vacuumState);
+        expect(actions().map((button) => button.textContent.trim())).toEqual(['Start']);
+        actions()[0].click();
+        expect(mockCallService).toHaveBeenCalledWith('vacuum', 'turn_on', {
+          entity_id: 'vacuum.roomba',
+        });
+      }
+
+      // On, while it works: Stop is vacuum.turn_off, with Return beside it.
+      mockCallService.mockClear();
+      render('on');
+      expect(actions().map((button) => button.textContent.trim())).toEqual(['Stop', 'Return']);
+      actions()[0].click();
+      expect(mockCallService).toHaveBeenCalledWith('vacuum', 'turn_off', {
+        entity_id: 'vacuum.roomba',
+      });
+
+      mockCallService.mockClear();
+      render('paused');
+      expect(actions().map((button) => button.textContent.trim())).toEqual(['Resume', 'Return']);
+      actions()[0].click();
+      expect(mockCallService).toHaveBeenCalledWith('vacuum', 'turn_on', {
+        entity_id: 'vacuum.roomba',
+      });
+    });
+
+    it('offers Stop while a vacuum without Pause is cleaning', () => {
+      // START (8192) + STOP (8) + RETURN_HOME (16)
+      state.setServices({});
+      state.setStates({
+        'vacuum.roomba': {
+          ...sampleStates['vacuum.roomba'],
+          state: 'cleaning',
+          attributes: {
+            ...sampleStates['vacuum.roomba'].attributes,
+            supported_features: 8192 + 8 + 16,
+          },
+        },
+      });
+      mockCallService.mockClear();
+      ui.renderDesktopPinnedTile('vacuum.roomba', state.STATES['vacuum.roomba'], {
+        hasSnapshot: true,
+      });
+      const actions = [
+        ...document.querySelectorAll('#desktop-pin-content .desktop-pin-vacuum-action'),
+      ];
+      expect(actions.map((button) => button.textContent.trim())).toEqual(['Stop', 'Return']);
+      actions[0].click();
+      expect(mockCallService).toHaveBeenCalledWith('vacuum', 'stop', {
+        entity_id: 'vacuum.roomba',
+      });
+    });
+
     it('keeps scenes and scripts on micro layout at the minimum floor without using nano', async () => {
       jest.useFakeTimers();
       setDesktopPinViewport(97, 83);

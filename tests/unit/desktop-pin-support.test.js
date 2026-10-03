@@ -43,6 +43,7 @@ describe('vacuum services from supported features', () => {
     // START (8192) + PAUSE (4) + RETURN_HOME (16)
     expect(getDesktopPinVacuumServices(vacuum(8192 + 4 + 16))).toEqual({
       start: true,
+      turn_on: false,
       pause: true,
       return_to_base: true,
       stop: false,
@@ -56,12 +57,30 @@ describe('vacuum services from supported features', () => {
     });
   });
 
+  it('offers turn_on to a vacuum written before START existed', () => {
+    // TURN_ON (1) + TURN_OFF (2) + RETURN_HOME (16)
+    expect(getDesktopPinVacuumServices(vacuum(1 + 2 + 16))).toEqual({
+      start: false,
+      turn_on: true,
+      pause: false,
+      return_to_base: true,
+      stop: false,
+      turn_off: true,
+    });
+    // A vacuum with START does not need it.
+    expect(getDesktopPinVacuumServices(vacuum(8192))).toMatchObject({
+      start: true,
+      turn_on: false,
+    });
+  });
+
   it('assumes the usual commands when the vacuum advertises no features', () => {
     for (const entity of [vacuum(undefined), vacuum(0), vacuum('')]) {
       expect(getDesktopPinVacuumServices(entity)).toMatchObject({
         start: true,
         pause: true,
         return_to_base: true,
+        turn_on: false,
       });
     }
   });

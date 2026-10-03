@@ -152,12 +152,21 @@ function getDesktopPinCapabilities(entity = null) {
 function getDesktopPinVacuumServices(entity = null) {
   const supportedFeatures = Number(entity?.attributes?.supported_features);
   if (!Number.isFinite(supportedFeatures) || supportedFeatures <= 0) {
-    return { start: true, pause: true, return_to_base: true, stop: false, turn_off: false };
+    return {
+      start: true,
+      turn_on: false,
+      pause: true,
+      return_to_base: true,
+      stop: false,
+      turn_off: false,
+    };
   }
   const features = DESKTOP_PIN_FEATURES.vacuum;
   const has = (feature) => (supportedFeatures & feature) === feature;
   return {
     start: has(features.start),
+    // Vacuums written before START existed are switched on and off instead.
+    turn_on: has(features.turnOn),
     pause: has(features.pause),
     return_to_base: has(features.returnHome),
     stop: has(features.stop),

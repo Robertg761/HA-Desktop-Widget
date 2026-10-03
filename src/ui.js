@@ -8589,10 +8589,11 @@ function updateExistingDesktopPinWeatherControl(root, entity) {
 
 function getDesktopPinVacuumActionConfig(entity) {
   const stateValue = typeof entity?.state === 'string' ? entity.state.trim().toLowerCase() : '';
-  const hasStart = hasEntityService(entity, 'start');
   const hasPause = hasEntityService(entity, 'pause');
   const hasReturn = hasEntityService(entity, 'return_to_base');
-  const hasStop = hasEntityService(entity, 'stop') || hasEntityService(entity, 'turn_off');
+  // A vacuum written before START and STOP existed is switched on and off instead.
+  const startService = ['start', 'turn_on'].find((service) => hasEntityService(entity, service));
+  const stopService = ['stop', 'turn_off'].find((service) => hasEntityService(entity, service));
 
   const name = utils.getEntityDisplayName(entity);
   const makeServiceAction = (label, ariaLabel, serviceName) => ({
@@ -8609,41 +8610,36 @@ function getDesktopPinVacuumActionConfig(entity) {
   const returnAction = hasReturn
     ? makeServiceAction(t('Return'), t('Return {{name}}', { name }), 'return_to_base')
     : focusAction;
+  const stopAction = stopService
+    ? makeServiceAction(t('Stop'), t('Stop {{name}}', { name }), stopService)
+    : focusAction;
 
-  if (stateValue === 'cleaning') {
+  // A vacuum that can only be switched on and off reports "on" while it works.
+  if (stateValue === 'cleaning' || stateValue === 'on') {
     return {
       primary: hasPause
         ? makeServiceAction(t('Pause'), t('Pause {{name}}', { name }), 'pause')
-        : focusAction,
+        : stopAction,
       secondary: returnAction,
     };
   }
 
   if (stateValue === 'paused') {
     return {
-      primary: hasStart
-        ? makeServiceAction(t('Resume'), t('Resume {{name}}', { name }), 'start')
+      primary: startService
+        ? makeServiceAction(t('Resume'), t('Resume {{name}}', { name }), startService)
         : focusAction,
       secondary: returnAction,
     };
   }
 
   if (stateValue === 'returning') {
-    return {
-      primary: hasStop
-        ? makeServiceAction(
-            t('Stop'),
-            t('Stop {{name}}', { name }),
-            hasEntityService(entity, 'stop') ? 'stop' : 'turn_off'
-          )
-        : focusAction,
-      secondary: returnAction,
-    };
+    return { primary: stopAction, secondary: returnAction };
   }
 
   return {
-    primary: hasStart
-      ? makeServiceAction(t('Start'), t('Start {{name}}', { name }), 'start')
+    primary: startService
+      ? makeServiceAction(t('Start'), t('Start {{name}}', { name }), startService)
       : focusAction,
     secondary: null,
   };
