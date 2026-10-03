@@ -189,7 +189,7 @@ const ACCENT_TEXT_SURFACES = {
 
 const rgbString = ({ r, g, b }) => `rgb(${r}, ${g}, ${b})`;
 // Below this spread between the strongest and weakest channel an accent reads as grey (slate is
-// 0.14, the most muted of the other presets 0.52).
+// 0.14, the most muted of the other presets 0.56).
 const NEUTRAL_ACCENT_CHROMA = 0.25;
 
 /**
