@@ -27,6 +27,7 @@ Object.defineProperty(window, 'matchMedia', {
 
 // Now load the module
 const uiUtils = require('../../src/ui-utils.js');
+const { SEASONAL_HOLIDAYS } = require('../../src/seasonal-calendar.js');
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -1942,6 +1943,115 @@ describe('UI Utilities', () => {
       });
       // An accent that already reads well is left alone.
       expect(uiUtils.getAccentTextOnLight({ r: 30, g: 41, b: 120 })).toBe('rgb(30, 41, 120)');
+    });
+
+    const channels = (rgbString) => {
+      const [r, g, b] = rgbString.match(/\d+/g).map(Number);
+      return { r, g, b };
+    };
+    const contrast = (first, second) => {
+      const [lighter, darker] = [
+        luminance(first.r, first.g, first.b),
+        luminance(second.r, second.g, second.b),
+      ].sort((a, b) => b - a);
+      return (lighter + 0.05) / (darker + 0.05);
+    };
+    const mixed = (base, other, amount) => ({
+      r: base.r + (other.r - base.r) * amount,
+      g: base.g + (other.g - base.g) * amount,
+      b: base.b + (other.b - base.b) * amount,
+    });
+    const presets = () => uiUtils.getAccentThemes().map((theme) => uiUtils.hexToRgb(theme.color));
+    const seasonal = () =>
+      SEASONAL_HOLIDAYS.map((holiday) => uiUtils.hexToRgb(holiday.colors.accent));
+    // Colours a user can pick: dark, saturated, and the extremes.
+    const custom = () =>
+      ['#ab1234', '#1a237e', '#000000', '#ffffff', '#ffff00'].map(uiUtils.hexToRgb);
+
+    // The lightest dark surface accent text sits on is a main view tile; the darkest light one is
+    // the veiled panel. The accent's own tint (secondary buttons, the active tab, a lit tile) lies
+    // on top of it.
+    const DARK_TILE = { r: 44, g: 47, b: 54 };
+    const LIGHT_PANEL = { r: 228, g: 228, b: 228 };
+
+    it('lightens any accent enough to read as text on the dark theme tiles', () => {
+      for (const accent of [...presets(), ...seasonal(), ...custom()]) {
+        const text = channels(uiUtils.getAccentTextOnDark(accent));
+        expect(contrast(text, DARK_TILE)).toBeGreaterThanOrEqual(4.5);
+        expect(contrast(text, mixed(DARK_TILE, accent, 0.18))).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    it('leaves an accent that already reads on the dark tiles as it is', () => {
+      expect(uiUtils.getAccentTextOnDark({ r: 34, g: 211, b: 238 })).toBe('rgb(34, 211, 238)');
+      // The raw indigo is 2.9:1 there, and the solved text is a lighter indigo, not white.
+      const indigo = channels(uiUtils.getAccentTextOnDark(uiUtils.hexToRgb('#5f62ef')));
+      expect(indigo.b).toBeGreaterThan(indigo.r);
+      expect(indigo.r).toBeGreaterThan(95);
+    });
+
+    it('darkens any accent enough to read on the veiled light panel, tint included', () => {
+      for (const accent of [...presets(), ...seasonal(), ...custom()]) {
+        const text = channels(uiUtils.getAccentTextOnLight(accent));
+        expect(contrast(text, LIGHT_PANEL)).toBeGreaterThanOrEqual(4.5);
+        expect(contrast(text, mixed(LIGHT_PANEL, accent, 0.14))).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    it('keeps the white label of every preset at 4.5:1 or better', () => {
+      for (const accent of presets()) {
+        const label = uiUtils.hexToRgb(uiUtils.getReadableTextColor(accent));
+        expect(contrast(label, accent)).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    it('steps a hover fill the way that keeps its label readable', () => {
+      const light = { r: 100, g: 181, b: 246 };
+      const indigo = uiUtils.hexToRgb('#5f62ef');
+      const violet = uiUtils.hexToRgb('#8b5cf6');
+      const WHITE = '#ffffff';
+      const BLACK = '#0a0c10';
+
+      // A dark label on a light fill: lighter on dark, and darker on light only as far as it holds.
+      expect(uiUtils.getAccentHoverColor(light, BLACK, false).r).toBeGreaterThan(light.r);
+      expect(uiUtils.getAccentHoverColor(light, BLACK, true).r).toBeLessThan(light.r);
+      // A white label on indigo would lose contrast on a lighter fill, so dark hovers darken it too.
+      expect(uiUtils.getAccentHoverColor(indigo, WHITE, false).b).toBeLessThan(indigo.b);
+
+      for (const [accent, label, isLight] of [
+        [light, BLACK, true],
+        [light, BLACK, false],
+        [indigo, WHITE, true],
+        [indigo, WHITE, false],
+        [violet, BLACK, true],
+        [violet, BLACK, false],
+        ...presets().map((rgb) => [rgb, uiUtils.getReadableTextColor(rgb), true]),
+        ...presets().map((rgb) => [rgb, uiUtils.getReadableTextColor(rgb), false]),
+      ]) {
+        const hover = uiUtils.getAccentHoverColor(accent, label, isLight);
+        const labelRgb = uiUtils.hexToRgb(label);
+        expect(contrast(labelRgb, hover)).toBeGreaterThanOrEqual(
+          Math.min(4.5, contrast(labelRgb, accent)) - 0.001
+        );
+      }
+    });
+
+    it('sets a text colour for both themes, and a ring colour, on the root', () => {
+      uiUtils.applyAccentTheme('indigo');
+      const style = document.documentElement.style;
+      for (const name of [
+        '--accent-text-light',
+        '--accent-text-light-hover',
+        '--accent-text-dark',
+        '--accent-text-dark-hover',
+        '--accent-ring-dark',
+      ]) {
+        expect(style.getPropertyValue(name)).toMatch(/^rgb\(\d+, \d+, \d+\)$/);
+      }
+      // The ring only needs 3:1, so it stays closer to the accent than the text colour does.
+      const ring = channels(style.getPropertyValue('--accent-ring-dark'));
+      const text = channels(style.getPropertyValue('--accent-text-dark'));
+      expect(ring.r).toBeLessThanOrEqual(text.r);
     });
   });
 

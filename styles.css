@@ -177,7 +177,8 @@ html {
      against the current slate. The previous #808080 sat at ~3.7:1, under the
      4.5:1 WCAG AA floor for body text. */
   --text-tertiary: #9a9aa3;
-  --muted-text: #a0a0a0;
+  /* 5.7:1 on a lifted main view tile; the old #a0a0a0 was 5.1:1 there and 3.8:1 on a lit one. */
+  --muted-text: #a8a8ae;
 
   /* Brand & Accent */
   --accent: #64b5f6;
@@ -185,12 +186,14 @@ html {
   --accent-hover: #90caf9;
   /* Text on an accent fill; ui-utils picks black or white per accent. */
   --on-accent: #0a0c10;
-  /* Accent used as text. The light theme darkens it so labels and links clear 4.5:1 on white. */
-  --accent-text: var(--accent);
-  --accent-text-hover: var(--accent-hover);
+  /* Accent used as text and as a glyph. ui-utils solves a colour per accent for each theme (the
+     accent itself where it already reads well, lightened here for the dark tiles, darkened in the
+     light theme), so labels and links clear 4.5:1 for any accent, a custom one included. */
+  --accent-text: var(--accent-text-dark, var(--accent));
+  --accent-text-hover: var(--accent-text-dark-hover, var(--accent-hover));
   --accent-bg: rgba(var(--accent-rgb), 0.15);
   /* Keyboard focus outlines and focus borders. */
-  --focus-ring: var(--accent);
+  --focus-ring: var(--accent-ring-dark, var(--accent));
   --primary: #64b5f6;
   --primary-hover: #90caf9;
 
@@ -206,7 +209,9 @@ html {
   --chart-series-6: #d55181;
   --chart-series-7: #d95926;
 
-  /* State Colors */
+  /* State Colors. These are fills and borders; the pale dark-theme hues fail as text on the
+     light panes, and --error is under 4:1 on the lifted dark tiles, so any status colour used
+     as text reads its -text twin below, which each theme solves for its own surfaces. */
   --success: #81c784;
   --success-hover: #a5d6a7;
   --danger: #f48fb1;
@@ -215,6 +220,10 @@ html {
   --warning-hover: #ffcc80;
   --error: #ef5350;
   --error-hover: #e57373;
+  --success-text: var(--success);
+  --warning-text: var(--warning);
+  --error-text: #ff8a80;
+  --danger-text: var(--error-text);
 
   /* Surfaces */
   --surface-1: rgba(20, 24, 32, 0.8);
@@ -443,11 +452,13 @@ html {
 }
 
 /* Secondary lines on tiles and rows (state lines, captions, help text). Mixed from the text
-   colour on body, where the Omarchy palette overrides it; the light theme uses stronger mixes to
-   stay above 4.5:1 on white panes. */
+   colour on body, where the Omarchy palette overrides it. The mixes are set so the dimmest of
+   them stays above 4.5:1 on the lightest surface it sits on: a lifted main view tile in the dark
+   theme (the 50% mix it replaces was 4.3:1 there), the veiled panel under the page tabs in the
+   light one. */
 body {
-  --text-dim: color-mix(in srgb, var(--text-primary) 58%, transparent);
-  --text-faint: color-mix(in srgb, var(--text-primary) 50%, transparent);
+  --text-dim: color-mix(in srgb, var(--text-primary) 66%, transparent);
+  --text-faint: color-mix(in srgb, var(--text-primary) 58%, transparent);
 }
 
 /* Light Theme (Glassmorphism) */
@@ -463,13 +474,22 @@ body {
   /* Text Colors */
   --text-color: #2c2c2c;
   --text-primary: #1a1a1a;
-  --text-secondary: #666666;
-  /* 5.1:1 against the light window background (#fafafa). The previous #999999
-     sat at ~2.8:1, well under the 4.5:1 WCAG AA floor for body text. */
-  --text-tertiary: #6b6b70;
-  --muted-text: #808080;
+  /* The secondary text tokens are held to 4.5:1 on the darkest light surface they sit on, the
+     main view's panel under its grey veil (about #e3e3e3), not just on the near-white window:
+     #666666, #6b6b70 and #808080 were 4.5, 4.2 and 3.1:1 there. */
+  --text-secondary: #595959;
+  --text-tertiary: #5c5c62;
+  --muted-text: #5f5f66;
   --text-dim: color-mix(in srgb, var(--text-primary) 70%, transparent);
-  --text-faint: color-mix(in srgb, var(--text-primary) 62%, transparent);
+  --text-faint: color-mix(in srgb, var(--text-primary) 66%, transparent);
+
+  /* Status colours as text: the darker steps of the same hues, past 4.5:1 on the veiled light
+     panel and on the tint behind a status line. They are restated here because a token on
+     :root would resolve against the dark values. */
+  --success-text: #1f6b2a;
+  --warning-text: #8a5300;
+  --error-text: #b71c1c;
+  --danger-text: #b71c1c;
 
   /* Surfaces */
   --surface-1: rgba(250, 250, 255, 0.8);
@@ -494,8 +514,8 @@ body {
   --border-hover: rgba(0, 0, 0, 0.2);
   --border-focus: rgba(var(--accent-rgb), 0.5);
   /* ui-utils computes these per accent; the mixes are the fallback before it runs. */
-  --accent-text: var(--accent-text-light, color-mix(in srgb, var(--accent) 62%, #000));
-  --accent-text-hover: var(--accent-text-light-hover, color-mix(in srgb, var(--accent) 50%, #000));
+  --accent-text: var(--accent-text-light, color-mix(in srgb, var(--accent) 55%, #000));
+  --accent-text-hover: var(--accent-text-light-hover, color-mix(in srgb, var(--accent) 45%, #000));
 
   /* Tiles: white panes on the pale glass, edged just enough to separate. */
   --tile-bg: rgba(255, 255, 255, 0.5);
@@ -3227,7 +3247,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 #close-btn:hover {
   background: rgba(239, 83, 80, 0.18);
-  color: var(--error);
+  color: var(--error-text);
 }
 
 /* Main content */
@@ -3417,7 +3437,7 @@ body.first-run-active .widget-content > * {
 
 .media-tile-seek-fill {
   height: 100%;
-  background: var(--accent);
+  background: var(--accent-text);
   transition: width var(--duration-slower) linear;
   border-radius: var(--radius-full);
   box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.5);
@@ -3873,7 +3893,7 @@ body.first-run-active .widget-content > * {
 }
 
 .qa-tab-delete:hover {
-  color: var(--error);
+  color: var(--error-text);
   background: rgba(239, 83, 80, 0.15);
 }
 
@@ -4175,12 +4195,12 @@ body.first-run-active .widget-content > * {
     inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
-/* Unavailable entity styling: the same pane, dashed and dimmed. */
+/* Unavailable entity styling: the same pane, dashed and dimmed by colour. Fading the whole tile
+   as well took its name under 3:1 and left the hint brighter than the name. */
 .control-item.unavailable-entity {
   background: transparent;
   border-style: dashed;
   border-color: var(--tile-border-hover);
-  opacity: 0.75;
   cursor: not-allowed;
 }
 
@@ -4202,17 +4222,16 @@ body.first-run-active .widget-content > * {
 }
 
 .control-item.unavailable-entity .unavailable-icon {
-  color: var(--warning);
+  color: var(--warning-text);
   opacity: 0.85;
 }
 
 .control-item.unavailable-entity .control-name {
-  opacity: 0.8;
-  color: var(--text-secondary);
+  color: var(--text-dim);
 }
 
 .control-item.unavailable-entity .unavailable-state {
-  color: var(--text-muted);
+  color: var(--text-faint);
   font-size: var(--font-size-xs-plus);
   font-style: italic;
 }
@@ -4327,16 +4346,16 @@ body.first-run-active .widget-content > * {
 }
 
 .entity-item.selected {
-  background: var(--primary-alpha);
-  border-inline-start: 3px solid var(--primary-color);
+  background: var(--accent-bg);
+  border-inline-start: 3px solid var(--accent);
 }
 
 .selected-badge {
-  color: var(--primary-color);
-  font-size: var(--font-size-base);
+  color: var(--accent-text);
+  font-size: var(--font-size-sm);
   font-weight: 600;
   padding: 4px 8px;
-  background: var(--primary-alpha);
+  background: var(--accent-bg);
   border-radius: var(--radius-sm);
 }
 
@@ -4366,13 +4385,12 @@ body.first-run-active .widget-content > * {
 
 .entity-item .entity-id {
   font-size: var(--font-size-xs-plus);
-  color: var(--text-secondary);
+  color: var(--text-dim);
   font-family: var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   display: block;
-  opacity: 0.7;
 }
 
 .entity-item-main {
@@ -4592,21 +4610,34 @@ body.first-run-active .widget-content > * {
   }
 }
 
-/* Weather Configuration Styles */
+/* Weather Configuration Styles. The current entity sits in the same pane as the list below it. */
 .weather-info {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  margin-top: 8px;
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  border-radius: var(--radius-tile);
 }
 
 .weather-info span {
   font-weight: 500;
   color: var(--text-primary);
+}
+
+.weather-info #current-weather-name[data-state='selected'] {
+  font-weight: 600;
+  color: var(--accent-text);
+}
+
+.weather-info #current-weather-name:is([data-state='auto'], [data-state='none']) {
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.weather-info #current-weather-name[data-state='auto'] {
+  font-style: italic;
 }
 
 /* Enhanced Weather Card Styles */
@@ -4985,7 +5016,7 @@ body.first-run-active .widget-content > * {
 
 .weather-condition {
   font-size: var(--font-size-sm);
-  color: color-mix(in srgb, var(--text-primary) 60%, transparent);
+  color: var(--text-dim);
   line-height: 1.2;
   word-wrap: break-word;
   overflow-wrap: break-word;
@@ -5063,10 +5094,6 @@ body.first-run-active .widget-content > * {
   max-width: 100%;
   box-sizing: border-box;
   padding: 0 4px;
-}
-
-body.theme-light .status-card.time-card .date-display {
-  color: color-mix(in srgb, var(--accent) 72%, #000);
 }
 
 .status-card.time-card .date-display {
@@ -5318,8 +5345,8 @@ body.theme-light .status-card.time-card .date-display {
   font-weight: 600;
   letter-spacing: 0.3px;
   color: var(--accent-text);
-  background: rgb(var(--accent-rgb) / 14%);
-  border: 1px solid rgb(var(--accent-rgb) / 28%);
+  background: rgba(var(--accent-rgb), 0.14);
+  border: 1px solid rgba(var(--accent-rgb), 0.28);
   border-radius: var(--radius-full);
   padding: 2px 8px;
   margin-top: 3px;
@@ -5379,7 +5406,7 @@ body.theme-light .status-card.time-card .date-display {
   gap: 8px;
   padding: 10px;
   border-radius: var(--radius-md);
-  border: 1px solid rgb(var(--accent-rgb) / 35%);
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
   background: var(--surface-1);
   box-shadow: 0 10px 24px rgb(0 0 0 / 22%);
   z-index: 2;
@@ -5387,12 +5414,12 @@ body.theme-light .status-card.time-card .date-display {
 
 .custom-entity-icon-picker-meta {
   font-size: var(--font-size-sm);
-  color: var(--text-muted);
+  color: var(--text-dim);
 }
 
 .custom-entity-icon-picker-empty {
   font-size: var(--font-size-sm);
-  color: var(--text-muted);
+  color: var(--text-dim);
 }
 
 .custom-entity-icon-picker-grid {
@@ -5418,7 +5445,7 @@ body.theme-light .status-card.time-card .date-display {
 .custom-entity-icon-choice:hover,
 .custom-entity-icon-choice:focus-visible {
   border-color: var(--focus-ring);
-  background: rgb(var(--accent-rgb) / 14%);
+  background: rgba(var(--accent-rgb), 0.14);
 }
 
 @media (width <= 640px) {
@@ -6543,9 +6570,9 @@ body.active-tile-glow #quick-controls .control-item[data-active='true'] .control
   color: color-mix(in srgb, var(--text-primary) 82%, transparent);
 }
 
-/* Light theme: the accent is darkened for the icon so it holds contrast on pale glass. */
+/* Light theme: the icon takes the same solved accent text (3:1 and up on the tinted tile), with a
+   softer halo, since a glow around a dark glyph on a pale tile reads as a smudge. */
 body.theme-light.active-tile-glow #quick-controls .control-item[data-active='true'] .control-icon {
-  color: color-mix(in srgb, var(--accent) 72%, #000);
   filter: drop-shadow(0 0 6px rgba(var(--accent-rgb), 0.45));
 }
 
@@ -7327,6 +7354,22 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   height: 100%;
   overflow: visible;
   filter: drop-shadow(0 1px 3px rgba(var(--accent-rgb), 0.2));
+}
+
+/* The dark tile's faint accent line is about 1.3:1 on the near-white one, so the light theme draws
+   the sparkline and the gauge in the solved accent text. */
+body.theme-light:not(.high-contrast)
+  #quick-controls
+  .control-item.sensor-numeric-entity
+  :is(.control-sensor-sparkline, .control-sensor-gauge) {
+  color: var(--accent-text);
+}
+
+body.theme-light:not(.high-contrast)
+  #quick-controls
+  .control-item.sensor-numeric-entity
+  .control-sensor-sparkline {
+  opacity: 0.85;
 }
 
 /* Per-tile chart type: the gauge needs a taller band, "none" gives the space back. */
@@ -9486,12 +9529,12 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .connection-test-status[data-status='success'],
 .first-run-status[data-status='success'] {
-  color: var(--success);
+  color: var(--success-text);
 }
 
 .connection-test-status[data-status='error'],
 .first-run-status[data-status='error'] {
-  color: var(--error);
+  color: var(--error-text);
 }
 
 .connection-test-status[data-status='pending'],
@@ -9757,25 +9800,25 @@ body.widget-state-active #quick-controls .status-message {
 .update-status.available {
   background: rgba(129, 199, 132, 0.1);
   border-color: rgba(129, 199, 132, 0.3);
-  color: var(--success);
+  color: var(--success-text);
 }
 
 .update-status.downloading {
   background: rgba(255, 183, 77, 0.1);
   border-color: rgba(255, 183, 77, 0.3);
-  color: var(--warning);
+  color: var(--warning-text);
 }
 
 .update-status.downloaded {
   background: rgba(129, 199, 132, 0.1);
   border-color: rgba(129, 199, 132, 0.3);
-  color: var(--success);
+  color: var(--success-text);
 }
 
 .update-status.error {
   background: rgba(244, 143, 177, 0.1);
   border-color: rgba(244, 143, 177, 0.3);
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 .update-status.up-to-date {
@@ -10077,17 +10120,19 @@ body {
   pointer-events: auto;
 }
 
-.reorganize-mode .control-item:not(.dragging):hover {
+.reorganize-mode .control-item:not(.sortable-chosen, .sortable-ghost):hover {
   /* Only apply visual effects, no transform to avoid conflicts with shift animations */
   box-shadow: var(--shadow-lg), var(--glow-accent);
   filter: brightness(1.05);
 }
 
-/* SortableJS: Ghost element (visual placeholder where item will be dropped) */
+/* SortableJS: Ghost element (visual placeholder where item will be dropped). The dashed slot is an
+   outline drawn inside the tile, so the ghost's content does not shift by a border width. */
 .sortable-ghost {
-  opacity: 0.3;
-  background: var(--bg-panel);
-  border: 2px dashed var(--accent-primary);
+  opacity: 0.55;
+  background: rgba(var(--accent-rgb), 0.1);
+  outline: 2px dashed var(--accent-text);
+  outline-offset: -2px;
 }
 
 /* SortableJS: Chosen element (item being picked up) */
@@ -11580,7 +11625,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 
 .btn-clear-hotkey:hover {
   background: rgba(239, 83, 80, 0.14);
-  color: #ff8a80;
+  color: var(--error-text);
   border-color: rgba(239, 83, 80, 0.45);
 }
 
@@ -11777,15 +11822,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   opacity: 1;
 }
 
-.entity-selector-btn.edit {
-  background: var(--button-secondary-bg);
-  color: var(--button-secondary-text);
-}
-
-.entity-selector-btn.edit:hover {
-  background: var(--button-secondary-bg-hover);
-}
-
 .btn-block {
   width: 100%;
   display: block;
@@ -11892,7 +11928,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 .form-warning {
-  color: var(--warning);
+  color: var(--warning-text);
 }
 
 .form-help code {
@@ -12093,7 +12129,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 .existing-alert-btn.remove {
-  color: var(--error);
+  color: var(--error-text);
   border-color: var(--error);
 }
 
@@ -12210,7 +12246,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 .existing-hotkey-btn.remove {
-  color: var(--error);
+  color: var(--error-text);
   border-color: var(--error);
 }
 
@@ -12446,7 +12482,7 @@ label.disabled {
 /* Improve error message visibility */
 .error-message,
 [role='alert'] {
-  color: var(--error);
+  color: var(--error-text);
   font-weight: var(--font-weight-medium);
   padding: var(--space-3);
   background: rgba(239, 83, 80, 0.1);
@@ -12457,7 +12493,7 @@ label.disabled {
 
 /* Success message styling */
 .success-message {
-  color: var(--success);
+  color: var(--success-text);
   font-weight: var(--font-weight-medium);
   padding: var(--space-3);
   background: rgba(129, 199, 132, 0.1);
@@ -12836,6 +12872,11 @@ body.high-contrast {
   /* Help text, captions and unavailable tiles are the smallest text; they keep to 7:1 as well. */
   --text-dim: #ddd !important;
   --text-faint: #ccc !important;
+  /* Status colours as text, on the dark panels whichever theme sits beneath: 7:1 and up. */
+  --success-text: #a5d6a7 !important;
+  --warning-text: #ffcc80 !important;
+  --error-text: #ff9e99 !important;
+  --danger-text: #ff9e99 !important;
   --bg-color: #141414 !important;
   --bg-primary: #141414 !important;
   --bg-secondary: #202020 !important;
@@ -13278,10 +13319,6 @@ body.software-glass.frosted-glass .modal-content {
   box-shadow: none;
 }
 
-body.theme-light .btn-secondary:not([id*='cancel']):not([id*='close']):not([id*='reset']) {
-  color: color-mix(in srgb, var(--accent) 72%, #000);
-}
-
 /* Compact buttons for rows and inline actions (Edit, Remove, language packs, hotkey presets).
    Only the size changes; the colours come from the variant beside it. */
 .btn.btn-sm {
@@ -13294,22 +13331,16 @@ body.theme-light .btn-secondary:not([id*='cancel']):not([id*='close']):not([id*=
 /* A destructive action outside a confirmation (Remove, Clear, Delete graph, a hotkey being
    recorded): the secondary button's shape in red, so it reads as a warning without a wall of solid
    red. The confirmation dialog keeps its own solid red, which is why these stay at one class of
-   specificity. The text colour goes through a property so the light theme can step it down to
-   read on white without out-ranking that dialog. */
+   specificity. The text is the theme's error text, which already reads on white. */
 .btn-danger {
-  --btn-danger-text: #ff8a80;
   background: rgba(239, 83, 80, 0.14);
   border-color: rgba(239, 83, 80, 0.45);
-  color: var(--btn-danger-text);
+  color: var(--error-text);
 }
 
 .btn-danger:hover {
   background: rgba(239, 83, 80, 0.22);
   border-color: rgba(239, 83, 80, 0.6);
-}
-
-body.theme-light .btn-danger {
-  --btn-danger-text: #c62828;
 }
 
 /* --- Fields --- */
@@ -13725,17 +13756,7 @@ body.theme-light .brightness-icon:not(.brightness-off) {
 .entity-selector-btn.remove:focus-visible {
   background: rgba(239, 83, 80, 0.14);
   border-color: rgba(239, 83, 80, 0.45);
-  color: #ff8a80;
-}
-
-body.theme-light .entity-selector-btn.add,
-body.theme-light .entity-selector-btn.edit {
-  color: var(--accent-text);
-}
-
-body.theme-light .entity-selector-btn.remove:hover,
-body.theme-light .entity-selector-btn.remove:focus-visible {
-  color: #c62828;
+  color: var(--error-text);
 }
 
 .alert-badge {
@@ -13998,7 +14019,7 @@ body.theme-light #settings-modal .modal-footer {
 }
 
 .settings-search-result small {
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .settings-page-header {
@@ -14209,16 +14230,11 @@ body.theme-light #settings-modal .modal-footer {
 
 /* Warnings share the help text's spot but must still read as warnings. */
 #settings-modal .form-help.form-warning {
-  color: var(--warning);
+  color: var(--warning-text);
 }
 
 #settings-modal .form-help.form-error {
-  color: var(--error);
-}
-
-/* --error is tuned for dark surfaces; this is the same hue re-stepped to read as text on white. */
-body.theme-light #settings-modal .form-help.form-error {
-  color: #c62828;
+  color: var(--error-text);
 }
 
 #settings-modal .setting-text > .form-help:first-of-type {
@@ -14721,7 +14737,7 @@ body.theme-light
 }
 
 #settings-modal .profile-sync-error {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 #settings-modal .profile-sync-error:empty {
@@ -14868,22 +14884,11 @@ body.theme-light:not(.high-contrast) #quick-controls .control-item[data-unavaila
   background: color-mix(in srgb, var(--tile-bg) 70%, transparent);
 }
 
-/* The light pane is nearly white, but the text on it is set for a pane that was half see-through,
-   and a few pairs fall short of 4.5:1 on it: the secondary and tertiary text, the media
-   timestamps, the date line and the weather condition. Each is darkened a notch, on the main
-   view's tiles only, so Settings and dialogs keep theirs. */
+/* The main view's tiles are near-white and their text can run a notch darker than Settings
+   and dialogs, which keep the global mixes. */
 body.theme-light:not(.high-contrast) :is(#quick-controls .control-item, .status-grid, .media-tile) {
   --text-dim: color-mix(in srgb, var(--text-primary) 78%, transparent);
   --text-faint: color-mix(in srgb, var(--text-primary) 70%, transparent);
-  --muted-text: #626268;
-}
-
-body.theme-light:not(.high-contrast) .status-card.time-card .date-display {
-  color: color-mix(in srgb, var(--accent) 55%, #000);
-}
-
-body.theme-light:not(.high-contrast) .status-card .weather-condition {
-  color: var(--text-dim);
 }
 
 /* --- Main view: one hero pane for the primary cards --- */
@@ -15099,10 +15104,12 @@ body.density-compact #quick-controls {
   height: 56px;
 }
 
-/* The arc's end labels are drawn in gauge units, which the tile scales up. */
+/* The arc's end labels are drawn in gauge units, which the tile scales up, so they come out near
+   11px; they are secondary text and take the shared faint tone (the 45% mix they had was 3.2:1 on
+   a light tile). */
 #quick-controls .control-sensor-gauge-bound {
-  font-size: calc(var(--font-size-3xs) * 0.8);
-  fill: color-mix(in srgb, var(--text-primary) 45%, transparent);
+  font-size: calc(var(--font-size-3xs) * 0.9);
+  fill: var(--text-faint);
 }
 
 /* Compact rows: the value carries the tile, so the icon steps aside. */
@@ -15559,10 +15566,15 @@ body.desktop-pin-mode.theme-light {
   --text-primary: #f5f5f5;
   --text-secondary: #b0b0b0;
   --text-tertiary: #9a9aa3;
-  --accent-text: var(--accent);
-  --accent-text-hover: var(--accent-hover);
+  --muted-text: #a8a8ae;
+  --success-text: var(--success);
+  --warning-text: var(--warning);
+  --error-text: #ff8a80;
+  --danger-text: #ff8a80;
+  --accent-text: var(--accent-text-dark, var(--accent));
+  --accent-text-hover: var(--accent-text-dark-hover, var(--accent-hover));
   --desktop-pin-ink-rgb: 255, 255, 255;
-  --focus-ring: var(--accent);
+  --focus-ring: var(--accent-ring-dark, var(--accent));
 }
 
 /* Only the light and scene pins act wherever they are clicked. The others have buttons and sliders
@@ -16379,6 +16391,7 @@ body[data-season='thanksgiving'] .control-item {
   .climate-preset-mode-btn.active,
   .media-mute-toggle.active,
   .custom-dropdown-option.selected,
+  .entity-item.selected,
   .donate-amount-chip.selected,
   .desktop-pin-panel-button[data-active='true'],
   .desktop-pin-light-power[data-active='true'] {

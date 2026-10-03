@@ -12967,9 +12967,7 @@ function populateWeatherEntitiesList() {
         currentNameEl.textContent = t('{{name}} ✓ (selected)', {
           name: utils.getEntityDisplayName(state.STATES[selectedEntityId]),
         });
-        currentNameEl.style.fontWeight = '600';
-        currentNameEl.style.color = 'var(--primary-color)';
-        currentNameEl.style.fontStyle = 'normal';
+        currentNameEl.dataset.state = 'selected';
       } else {
         // Find the actual fallback entity being used (alphabetically first)
         const fallbackEntity = Object.values(state.STATES)
@@ -12982,14 +12980,10 @@ function populateWeatherEntitiesList() {
           currentNameEl.textContent = t('{{name}} (auto-detected)', {
             name: utils.getEntityDisplayName(fallbackEntity),
           });
-          currentNameEl.style.fontWeight = '400';
-          currentNameEl.style.color = 'var(--text-secondary)';
-          currentNameEl.style.fontStyle = 'italic';
+          currentNameEl.dataset.state = 'auto';
         } else {
           currentNameEl.textContent = t('None available');
-          currentNameEl.style.fontWeight = '400';
-          currentNameEl.style.color = 'var(--text-secondary)';
-          currentNameEl.style.fontStyle = 'normal';
+          currentNameEl.dataset.state = 'none';
         }
       }
     }

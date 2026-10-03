@@ -6320,9 +6320,6 @@ function renderAlertsListInline() {
       noAlertsMsg.textContent = t(
         'No alerts configured yet. Click the button below to add your first alert.'
       );
-      noAlertsMsg.style.padding = '20px';
-      noAlertsMsg.style.textAlign = 'center';
-      noAlertsMsg.style.color = 'var(--text-muted)';
       alertsList.appendChild(noAlertsMsg);
     }
 

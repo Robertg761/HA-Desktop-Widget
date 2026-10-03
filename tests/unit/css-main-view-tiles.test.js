@@ -307,6 +307,9 @@ describe('main view tiles', () => {
     // An 88% white pane over a dark photo is never darker than this.
     const WORST_PANE = '#e0e0e0';
     const TEXT_TOKENS = ['--text-dim', '--text-faint', '--muted-text'];
+    // The global light values already clear 4.5:1 on the panel; the tiles run a notch darker for
+    // the two alpha mixes, and take --muted-text as it is.
+    const TILE_MIXES = ['--text-dim', '--text-faint'];
 
     it.each(['theme-light', 'theme-light frosted-glass'])(
       'are darkened to 4.5:1 or better on the pane (%s)',
@@ -315,9 +318,14 @@ describe('main view tiles', () => {
         const tile = document.querySelector('.status-card');
 
         for (const token of TEXT_TOKENS) {
-          expect(resolvedValue(tile, token)).not.toBe(resolvedValue(document.body, token));
           expect(contrastRatio(resolvedValue(tile, token), WORST_PANE)).toBeGreaterThanOrEqual(4.5);
         }
+        for (const token of TILE_MIXES) {
+          expect(resolvedValue(tile, token)).not.toBe(resolvedValue(document.body, token));
+        }
+        expect(resolvedValue(tile, '--muted-text')).toBe(
+          resolvedValue(document.body, '--muted-text')
+        );
         // The media timestamps read --muted-text from the media card, the tiles from their own.
         for (const selector of ['.media-tile', '#quick-controls .control-item']) {
           for (const token of TEXT_TOKENS) {
@@ -366,13 +374,9 @@ describe('main view tiles', () => {
       for (const token of TEXT_TOKENS) {
         expect(resolvedValue(tile, token)).toBe(resolvedValue(document.body, token));
       }
+      // The date takes the solved accent text in every theme.
       expect(resolvedValue(document.querySelector('.date-display'), 'color')).toBe(
-        bodyClass.includes('theme-light')
-          ? 'color-mix(in srgb, var(--accent) 72%, #000)'.replace(
-              'var(--accent)',
-              resolvedValue(document.body, '--accent')
-            )
-          : resolvedValue(document.body, '--accent-text')
+        resolvedValue(document.body, '--accent-text')
       );
     });
   });

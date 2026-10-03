@@ -318,7 +318,12 @@ function resolvedValue(element, property, options = {}) {
 }
 
 function parseColor(value) {
-  const text = String(value).trim();
+  // Prettier wraps a long color-mix() over several lines.
+  const text = String(value)
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/\(\s+/g, '(')
+    .replace(/,?\s+\)/g, ')');
   const mix = text.match(/^color-mix\(in srgb,\s*(.+)\)$/i);
   if (mix) {
     // Only the form the stylesheets use: color-mix(in srgb, <color> <p>%, <color>).
@@ -335,6 +340,8 @@ function parseColor(value) {
     return [...channels, alpha];
   }
   if (text.toLowerCase() === 'transparent') return [0, 0, 0, 0];
+  if (text.toLowerCase() === 'white') return [255, 255, 255, 1];
+  if (text.toLowerCase() === 'black') return [0, 0, 0, 1];
   const hex = text.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
   if (hex) {
     const digits =
