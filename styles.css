@@ -1311,8 +1311,8 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .desktop-pin-light-brightness {
-  --desktop-pin-light-slider-track-size: 8px;
-  --desktop-pin-light-slider-thumb-size: 16px;
+  --desktop-pin-slider-track-size: 8px;
+  --desktop-pin-slider-thumb-size: 16px;
   display: grid;
   align-content: center;
   gap: 8px;
@@ -1382,7 +1382,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   top: 50%;
   left: 0;
   width: 100%;
-  height: var(--desktop-pin-light-slider-thumb-size);
+  height: var(--desktop-pin-slider-thumb-size);
   transform: translateY(-50%);
   margin: 0;
   background: transparent;
@@ -1397,25 +1397,27 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 /* The slider is a transparent overlay on the track, so the ring hugs the track. */
-.desktop-pin-light-slider:focus-visible {
+.desktop-pin-light-slider:focus-visible,
+.desktop-pin-panel-slider:focus-visible {
   border-radius: var(--radius-full);
   outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
 }
 
 .desktop-pin-light-slider::-webkit-slider-runnable-track {
-  height: var(--desktop-pin-light-slider-track-size);
+  height: var(--desktop-pin-slider-track-size);
   background: transparent;
   border-radius: var(--radius-full);
   border: none;
 }
 
-.desktop-pin-light-slider::-webkit-slider-thumb {
+.desktop-pin-light-slider::-webkit-slider-thumb,
+.desktop-pin-panel-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: var(--desktop-pin-light-slider-thumb-size);
-  height: var(--desktop-pin-light-slider-thumb-size);
+  width: var(--desktop-pin-slider-thumb-size);
+  height: var(--desktop-pin-slider-thumb-size);
   margin-top: calc(
-    (var(--desktop-pin-light-slider-track-size) - var(--desktop-pin-light-slider-thumb-size)) / 2
+    (var(--desktop-pin-slider-track-size) - var(--desktop-pin-slider-thumb-size)) / 2
   );
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.95);
@@ -1426,14 +1428,15 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   transition: transform var(--transition-fast);
 }
 
-.desktop-pin-light-slider::-webkit-slider-thumb:hover {
+.desktop-pin-light-slider::-webkit-slider-thumb:hover,
+.desktop-pin-panel-slider::-webkit-slider-thumb:hover {
   transform: scale(1.1);
 }
 
 /* Doubled class: .desktop-pin-panel-progress, declared later, clips its overflow, which would
    cut the slider's round thumb down to the track's height. */
 .desktop-pin-light-brightness-track.desktop-pin-panel-progress {
-  height: var(--desktop-pin-light-slider-track-size);
+  height: var(--desktop-pin-slider-track-size);
   margin: 8px 0;
   border-radius: var(--radius-full);
   overflow: visible;
@@ -1598,9 +1601,10 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   gap: 6px;
 }
 
-.desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-slider {
-  --desktop-pin-light-slider-track-size: 6px;
-  --desktop-pin-light-slider-thumb-size: 12px;
+.desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-slider,
+.desktop-pin-panel-control[data-layout='micro'] .desktop-pin-panel-slider {
+  --desktop-pin-slider-track-size: 6px;
+  --desktop-pin-slider-thumb-size: 12px;
 }
 
 .desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-presets {
@@ -1648,9 +1652,10 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   gap: 0;
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-slider {
-  --desktop-pin-light-slider-track-size: 7px;
-  --desktop-pin-light-slider-thumb-size: 14px;
+.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-slider,
+.desktop-pin-panel-control[data-layout='compact'] .desktop-pin-panel-slider {
+  --desktop-pin-slider-track-size: 7px;
+  --desktop-pin-slider-thumb-size: 14px;
 }
 
 .desktop-pin-light-control[data-layout='compact']
@@ -2019,11 +2024,36 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   align-items: center;
 }
 
+/* The climate, fan, cover and numeric pins' sliders are drawn like the lamp's: a round track in a
+   pale wash with a hairline rim, filled in the pin's tint up to a white thumb. The fill is a
+   gradient because CSS cannot read the value; --range-progress carries it (src/range-progress.js).
+   The input is as tall as its thumb, so the thumb is not clipped to the thinner track. */
 .desktop-pin-panel-slider {
+  --desktop-pin-slider-track-size: 8px;
+  --desktop-pin-slider-thumb-size: 16px;
   width: 100%;
+  height: var(--desktop-pin-slider-thumb-size);
   margin: 0;
-  accent-color: var(--accent);
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
   cursor: ew-resize;
+}
+
+.desktop-pin-panel-slider:focus {
+  outline: none;
+}
+
+.desktop-pin-panel-slider::-webkit-slider-runnable-track {
+  height: var(--desktop-pin-slider-track-size);
+  border-radius: var(--radius-full);
+  background: linear-gradient(
+    var(--slider-dir),
+    rgba(var(--desktop-pin-tint-rgb, var(--accent-rgb)), 0.7),
+    rgb(var(--desktop-pin-tint-rgb, var(--accent-rgb))) var(--range-progress, 0%),
+    rgba(var(--desktop-pin-ink-rgb), 0.16) var(--range-progress, 0%)
+  );
+  box-shadow: inset 0 0 0 1px rgba(var(--desktop-pin-ink-rgb), 0.14);
 }
 
 /* One row of equal columns, however many buttons a family offers: a lone button fills the row
@@ -12971,11 +13001,30 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
     box-shadow: inset 0 0 0 2px var(--accent);
   }
 
-  /* A range input's background is its track: give it one that stands out from the #141414 panels.
-     The colour temperature gradient already does, and the pin light slider is a transparent
-     overlay above its own track. */
-  body.high-contrast input[type='range']:not(.light-color-temp-slider, .desktop-pin-light-slider) {
-    background: #8a8a8a !important;
+  /* A range input's background is its track: give it one that stands out from the #141414 panels,
+     filled in the accent up to the thumb so the value shows without relying on the thumb alone.
+     The colour temperature gradient already stands out, the pin light slider is a transparent
+     overlay above its own track, and the other pin sliders draw their track below. */
+  body.high-contrast
+    input[type='range']:not(
+      .light-color-temp-slider,
+      .desktop-pin-light-slider,
+      .desktop-pin-panel-slider
+    ) {
+    background: linear-gradient(
+      var(--slider-dir),
+      var(--accent) var(--range-progress, 0%),
+      #8a8a8a var(--range-progress, 0%)
+    ) !important;
+  }
+
+  body.high-contrast .desktop-pin-panel-slider::-webkit-slider-runnable-track {
+    background: linear-gradient(
+      var(--slider-dir),
+      var(--accent) var(--range-progress, 0%),
+      #8a8a8a var(--range-progress, 0%)
+    );
+    box-shadow: none;
   }
 }
 
@@ -16485,7 +16534,8 @@ body[data-season='thanksgiving'] .control-item {
     .light-color-temp-slider,
     .media-volume-slider
   )::-webkit-slider-thumb,
-  .desktop-pin-light-slider::-webkit-slider-thumb {
+  .desktop-pin-light-slider::-webkit-slider-thumb,
+  .desktop-pin-panel-slider::-webkit-slider-thumb {
     background: Highlight;
     border: 2px solid ButtonText;
     box-shadow: none;
@@ -16494,6 +16544,17 @@ body[data-season='thanksgiving'] .control-item {
   /* The pin's slider is a transparent overlay above its own fill, so its track is only an edge. */
   .desktop-pin-light-slider::-webkit-slider-runnable-track {
     background: transparent;
+    border: 1px solid ButtonText;
+    box-shadow: none;
+  }
+
+  /* The other pin sliders fill their own track, so it keeps its gradient in system colours. */
+  .desktop-pin-panel-slider::-webkit-slider-runnable-track {
+    background: linear-gradient(
+      var(--slider-dir),
+      Highlight var(--range-progress, 0%),
+      Canvas var(--range-progress, 0%)
+    );
     border: 1px solid ButtonText;
     box-shadow: none;
   }

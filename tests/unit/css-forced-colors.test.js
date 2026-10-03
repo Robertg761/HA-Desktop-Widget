@@ -187,6 +187,16 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
       );
     });
 
+    it('draws the other pins sliders as a Highlight fill in an edged track', () => {
+      render('', '<input type="range" class="desktop-pin-panel-slider">');
+      const track = forcedRule('.desktop-pin-panel-slider::-webkit-slider-runnable-track');
+      expect(track).toContain('Highlight var(--range-progress, 0%)');
+      expect(track).toContain('border: 1px solid ButtonText');
+      expect(forcedRule('.desktop-pin-panel-slider::-webkit-slider-thumb')).toContain(
+        'background: Highlight'
+      );
+    });
+
     it('keeps the track system-coloured when the Readable preset is on as well', () => {
       render('high-contrast', '<input type="range" class="brightness-slider">');
       expect(resolvedValue(document.querySelector('input'), 'background', FORCED)).toBe(

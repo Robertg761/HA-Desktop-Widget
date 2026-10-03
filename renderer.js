@@ -1,5 +1,6 @@
 import { applyDesktopAppearance } from './src/desktop-appearance.js';
 import { installLayerDrag } from './src/layer-drag.js';
+import { installRangeProgress } from './src/range-progress.js';
 import desktopPinResize from './src/desktop-pin-resize.cjs';
 // Load all required modules (ES Modules)
 import log from './src/logger.js';
@@ -3509,3 +3510,4 @@ window.addEventListener(
 );
 
 installLayerDrag();
+installRangeProgress();
