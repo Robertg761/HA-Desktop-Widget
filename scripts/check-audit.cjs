@@ -79,8 +79,9 @@ function comparePrerelease(a, b) {
   return 0;
 }
 
-// Returns -1, 0 or 1. Throws for anything that is not a semver version so a
-// malformed registry answer cannot be mistaken for "no newer release".
+// Returns -1, 0 or 1. Throws for anything that is not a semver version rather
+// than guessing an order. evaluate() checks the registry's answer first and
+// reports a malformed one as a problem, so it never reaches this throw.
 function compareVersions(a, b) {
   const left = parseVersion(a);
   const right = parseVersion(b);
@@ -101,6 +102,12 @@ function viaOf(entry) {
 
 function effectsOf(entry) {
   return entry && Array.isArray(entry.effects) ? entry.effects : [];
+}
+
+// A `via` entry that is an object is a root advisory; a string is only a
+// pointer to another vulnerable package.
+function isBlockingAdvisory(via) {
+  return Boolean(via) && typeof via === 'object' && BLOCKING_SEVERITIES.has(via.severity);
 }
 
 // Maps each package name to the vulnerable packages that depend on it, which is
@@ -162,8 +169,7 @@ function findTopLevelPackages(vulnerabilities, dependents, start) {
   return [...topLevel].sort();
 }
 
-// Collects the root advisories (the `via` entries that are objects; strings are
-// just pointers to other vulnerable packages) at a blocking severity.
+// Collects the root advisories at a blocking severity.
 function collectAdvisories(report) {
   const vulnerabilities = (report && report.vulnerabilities) || {};
   const dependents = buildDependents(vulnerabilities);
@@ -171,7 +177,7 @@ function collectAdvisories(report) {
 
   for (const [entryName, entry] of Object.entries(vulnerabilities)) {
     for (const via of viaOf(entry)) {
-      if (!via || typeof via !== 'object' || !BLOCKING_SEVERITIES.has(via.severity)) continue;
+      if (!isBlockingAdvisory(via)) continue;
 
       const packageName = via.name || entryName;
       const ghsa = normalizeGhsa(via.url);
@@ -198,6 +204,60 @@ function collectAdvisories(report) {
   return [...advisories.values()].sort(
     (a, b) => a.package.localeCompare(b.package) || String(a.ghsa).localeCompare(String(b.ghsa))
   );
+}
+
+// Names of the high or critical entries that no root advisory leads to. The gate
+// only judges an entry through the dependents path that starts at a root
+// advisory, because that path decides whether the advisory is dev-only. A high
+// entry off every such path was never judged, so it has to fail the check;
+// counting on npm to always write a complete report would let one slip through
+// as a pass.
+function findUntracedVulnerabilities(report) {
+  const vulnerabilities = (report && report.vulnerabilities) || {};
+  const dependents = buildDependents(vulnerabilities);
+  const traced = new Set();
+  const queue = [];
+
+  for (const [name, entry] of Object.entries(vulnerabilities)) {
+    if (viaOf(entry).some(isBlockingAdvisory)) {
+      traced.add(name);
+      queue.push(name);
+    }
+  }
+  while (queue.length > 0) {
+    for (const next of dependents.get(queue.shift()) || []) {
+      if (!traced.has(next)) {
+        traced.add(next);
+        queue.push(next);
+      }
+    }
+  }
+
+  return Object.entries(vulnerabilities)
+    .filter(
+      ([name, entry]) => entry && BLOCKING_SEVERITIES.has(entry.severity) && !traced.has(name)
+    )
+    .map(([name]) => name)
+    .sort();
+}
+
+// The newest affected version an advisory states, from a range such as
+// "<=3.0.3". Any other shape (an exclusive bound, a wildcard) gives null, so only
+// the plain case is compared against an exception.
+function newestAffectedVersion(range) {
+  const match = /<=\s*(\S+)\s*$/.exec(String(range || ''));
+  return match && parseVersion(match[1]) ? match[1] : null;
+}
+
+// Exceptions are for build tools. A name counts as dev-only when package.json
+// lists it under devDependencies and nowhere the packaged app loads from.
+function isDevOnly(packageJson, name) {
+  const lists = (field) =>
+    Boolean(packageJson) &&
+    typeof packageJson[field] === 'object' &&
+    packageJson[field] !== null &&
+    Object.hasOwn(packageJson[field], name);
+  return lists('devDependencies') && !lists('dependencies') && !lists('optionalDependencies');
 }
 
 function describeAdvisory(advisory) {
@@ -270,12 +330,34 @@ function parseExceptions(data) {
 
 // The decision logic. `getLatestVersion(packageName)` returns the newest
 // published version and may throw when the registry cannot be reached; that
-// only skips the fix-available check for that one entry.
-function evaluate({ advisories, exceptions, today, getLatestVersion }) {
+// only skips the fix-available check for that one entry. An answer that is not a
+// version is a problem, not a skip: the registry was reached, and a check that
+// quietly did nothing is how an available fix would go unnoticed.
+function evaluate({ advisories, untraced = [], packageJson, exceptions, today, getLatestVersion }) {
   const problems = [];
   const warnings = [];
   const excused = [];
   const matched = new Set();
+  const shipping = new Set();
+
+  if (untraced.length > 0) {
+    problems.push(
+      `The high or critical entries for ${untraced.join(', ')} do not lead back to any advisory ` +
+        'in the npm audit report, so the report could not be fully traced and cannot be ' +
+        'excused. Run npm audit and look at them by hand.'
+    );
+  }
+
+  for (const entry of exceptions) {
+    const notDevOnly = entry.allowedVia.filter((name) => !isDevOnly(packageJson, name));
+    if (notDevOnly.length === 0) continue;
+    shipping.add(entry);
+    problems.push(
+      `The exception for ${entry.ghsa} (${entry.package}) allows ${notDevOnly.join(', ')}, which ` +
+        'package.json does not list only under devDependencies. An exception only covers tools ' +
+        'that never ship in the app, so update the dependency instead.'
+    );
+  }
 
   for (const advisory of advisories) {
     const label = describeAdvisory(advisory);
@@ -292,7 +374,15 @@ function evaluate({ advisories, exceptions, today, getLatestVersion }) {
     }
     matched.add(entry);
 
-    let acceptable = true;
+    let acceptable = !shipping.has(entry);
+    const stated = newestAffectedVersion(advisory.range);
+    if (stated && compareVersions(stated, entry.affectedUpTo) !== 0) {
+      warnings.push(
+        `npm audit now lists ${advisory.package} as affected up to ${stated}, but the ` +
+          `${entry.ghsa} exception says "affectedUpTo" is ${entry.affectedUpTo}. Check the ` +
+          'advisory and correct the entry.'
+      );
+    }
     if (advisory.reaches.length === 0) {
       acceptable = false;
       problems.push(
@@ -331,18 +421,26 @@ function evaluate({ advisories, exceptions, today, getLatestVersion }) {
     let latest;
     try {
       latest = getLatestVersion(entry.package);
-      if (compareVersions(latest, entry.affectedUpTo) > 0) {
-        problems.push(
-          `${entry.package} ${latest} is published and newer than ${entry.affectedUpTo}, the ` +
-            `last version the ${entry.ghsa} exception covers, so a fix may exist. Update to it ` +
-            `and delete the exception. If ${latest} is still affected, review the advisory ` +
-            'before raising "affectedUpTo".'
-        );
-      }
     } catch (error) {
       warnings.push(
         `Could not check for a newer ${entry.package} release (${error.message}); skipped the ` +
           `fix-available check for ${entry.ghsa}.`
+      );
+      continue;
+    }
+
+    if (!parseVersion(latest)) {
+      problems.push(
+        `The registry answered "${latest}" for the newest ${entry.package} release, which is not ` +
+          `a version, so the fix-available check for ${entry.ghsa} could not run. Run it again, ` +
+          'and check by hand whether a patched release exists if it keeps happening.'
+      );
+    } else if (compareVersions(latest, entry.affectedUpTo) > 0) {
+      problems.push(
+        `${entry.package} ${latest} is published and newer than ${entry.affectedUpTo}, the ` +
+          `last version the ${entry.ghsa} exception covers, so a fix may exist. Update to it ` +
+          `and delete the exception. If ${latest} is still affected, review the advisory ` +
+          'before raising "affectedUpTo".'
       );
     }
   }
@@ -377,7 +475,7 @@ function formatResult(result, advisoryCount) {
 }
 
 // Everything except process and network access, so tests can run it directly.
-function check({ report, exceptionsData, today, getLatestVersion }) {
+function check({ report, exceptionsData, packageJson, today, getLatestVersion }) {
   const { entries, errors } = parseExceptions(exceptionsData);
   if (errors.length > 0) {
     return {
@@ -388,7 +486,14 @@ function check({ report, exceptionsData, today, getLatestVersion }) {
   }
 
   const advisories = collectAdvisories(report);
-  const result = evaluate({ advisories, exceptions: entries, today, getLatestVersion });
+  const result = evaluate({
+    advisories,
+    untraced: findUntracedVulnerabilities(report),
+    packageJson,
+    exceptions: entries,
+    today,
+    getLatestVersion,
+  });
   return { ok: result.ok, ...formatResult(result, advisories.length) };
 }
 
@@ -452,9 +557,11 @@ function main() {
     const exceptionsData = JSON.parse(
       fs.readFileSync(path.join(REPO_ROOT, EXCEPTIONS_FILE), 'utf8')
     );
+    const packageJson = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
     const { stdout, stderr, ok } = check({
       report: readAuditReport(),
       exceptionsData,
+      packageJson,
       today: new Date().toISOString().slice(0, 10),
       getLatestVersion: fetchLatestVersion,
     });
@@ -479,6 +586,7 @@ module.exports = {
   compareVersions,
   evaluate,
   findTopLevelPackages,
+  findUntracedVulnerabilities,
   parseAuditReport,
   parseExceptions,
 };

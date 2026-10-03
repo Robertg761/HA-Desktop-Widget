@@ -9,6 +9,7 @@ const {
   check,
   collectAdvisories,
   compareVersions,
+  findUntracedVulnerabilities,
   parseAuditReport,
   parseExceptions,
 } = require('../../scripts/check-audit.cjs');
@@ -53,6 +54,15 @@ function exceptionsData() {
   };
 }
 
+// The two tools the checked-in exceptions allow, listed the way the real
+// package.json lists them, next to a runtime dependency.
+function packageJson() {
+  return {
+    dependencies: { 'electron-updater': '^6.0.0' },
+    devDependencies: { stylelint: '^16.0.0', 'electron-builder': '^26.0.0' },
+  };
+}
+
 function latestVersions(overrides = {}) {
   const versions = { braces: '3.0.3', 'http-cache-semantics': '4.2.0', ...overrides };
   return jest.fn((name) => {
@@ -65,6 +75,7 @@ function runCheck({ report = auditReport(), exceptions = exceptionsData(), ...op
   return check({
     report,
     exceptionsData: exceptions,
+    packageJson: packageJson(),
     today: '2026-10-02',
     getLatestVersion: latestVersions(),
     ...options,
@@ -90,6 +101,15 @@ function addAdvisory(report, name, { ghsa, severity = 'high', effects = [], isDi
     effects,
     range: '*',
   };
+}
+
+// What the report looks like once a fix ships and braces drops out of the tree:
+// every entry that was only vulnerable because of it goes too.
+function withoutBraces(report) {
+  for (const name of ['braces', 'micromatch', 'fast-glob', 'globby', 'stylelint']) {
+    delete report.vulnerabilities[name];
+  }
+  return report;
 }
 
 describe('collectAdvisories', () => {
@@ -119,6 +139,7 @@ describe('collectAdvisories', () => {
       ['braces', ['stylelint']],
       ['http-cache-semantics', ['electron-builder']],
     ]);
+    expect(findUntracedVulnerabilities(auditReport('npm-audit-report-npm10.json'))).toEqual([]);
   });
 
   it('reads the missing side of a dependency cycle from via', () => {
@@ -186,6 +207,81 @@ describe('collectAdvisories', () => {
     const advisories = collectAdvisories(report);
 
     expect(advisories.find((item) => item.package === 'a').reaches).toEqual(['ghost']);
+  });
+});
+
+describe('findUntracedVulnerabilities', () => {
+  it('finds nothing in a complete report', () => {
+    expect(findUntracedVulnerabilities(auditReport())).toEqual([]);
+    expect(findUntracedVulnerabilities({ vulnerabilities: {} })).toEqual([]);
+  });
+
+  it('flags a high entry that points at a package the report does not contain', () => {
+    const report = auditReport();
+    report.vulnerabilities.evil = {
+      name: 'evil',
+      severity: 'high',
+      isDirect: true,
+      via: ['nonexistent'],
+      effects: [],
+    };
+
+    expect(findUntracedVulnerabilities(report)).toEqual(['evil']);
+  });
+
+  it('flags a high entry whose only link is a root that is below high', () => {
+    const report = auditReport();
+    addAdvisory(report, 'minor', { ghsa: 'GHSA-aaaa-bbbb-cccc', severity: 'moderate' });
+    report.vulnerabilities.stray = {
+      name: 'stray',
+      severity: 'high',
+      isDirect: true,
+      via: ['minor'],
+      effects: [],
+    };
+
+    expect(findUntracedVulnerabilities(report)).toEqual(['stray']);
+  });
+
+  it('counts a link that only one side of the report mentions', () => {
+    const viaOnly = auditReport();
+    viaOnly.vulnerabilities.stray = {
+      name: 'stray',
+      severity: 'high',
+      isDirect: false,
+      via: ['braces'],
+      effects: [],
+    };
+    const effectsOnly = auditReport();
+    effectsOnly.vulnerabilities.stray = {
+      name: 'stray',
+      severity: 'high',
+      isDirect: false,
+      via: [],
+      effects: [],
+    };
+    effectsOnly.vulnerabilities.braces.effects.push('stray');
+
+    expect(findUntracedVulnerabilities(viaOnly)).toEqual([]);
+    expect(findUntracedVulnerabilities(effectsOnly)).toEqual([]);
+  });
+
+  it('ignores entries below high, however they are linked', () => {
+    const report = auditReport();
+    report.vulnerabilities.minor = { name: 'minor', severity: 'low', via: ['ghost'], effects: [] };
+
+    expect(findUntracedVulnerabilities(report)).toEqual([]);
+  });
+
+  it('follows effects through cycles and tolerates malformed entries', () => {
+    const report = { vulnerabilities: {} };
+    addAdvisory(report, 'root', { ghsa: 'GHSA-aaaa-bbbb-cccc', effects: ['a'], isDirect: false });
+    report.vulnerabilities.a = { severity: 'high', via: ['root', 'b'], effects: ['b'] };
+    report.vulnerabilities.b = { severity: 'high', via: ['a'], effects: ['a', 'root'] };
+    report.vulnerabilities.broken = { severity: 'high', via: 'root', effects: 'a' };
+    report.vulnerabilities.empty = null;
+
+    expect(findUntracedVulnerabilities(report)).toEqual(['broken']);
   });
 });
 
@@ -303,12 +399,8 @@ describe('check', () => {
   });
 
   it('fails on a stale exception and asks for it to be deleted', () => {
-    const report = auditReport();
-    delete report.vulnerabilities.braces;
-    delete report.vulnerabilities.micromatch;
-
     const getLatestVersion = latestVersions();
-    const result = runCheck({ report, getLatestVersion });
+    const result = runCheck({ report: withoutBraces(auditReport()), getLatestVersion });
 
     expect(result.ok).toBe(false);
     expect(result.stderr[0]).toContain(`exception for ${BRACES} (braces) matches no current`);
@@ -353,11 +445,106 @@ describe('check', () => {
     expect(result.stderr.join('\n')).toContain('Warning: Could not check for a newer braces');
   });
 
-  it('warns instead of guessing when the registry answers with something unusable', () => {
+  it('fails instead of skipping the check when the registry answers with something unusable', () => {
     const result = runCheck({ getLatestVersion: latestVersions({ braces: 'not-a-version' }) });
 
-    expect(result.ok).toBe(true);
-    expect(result.stderr[0]).toContain('Warning: Could not check for a newer braces release');
+    expect(result.ok).toBe(false);
+    expect(result.stderr).toHaveLength(2);
+    expect(result.stderr[0]).toContain(
+      'The registry answered "not-a-version" for the newest braces'
+    );
+    expect(result.stderr[0]).toContain('not a version');
+    expect(result.stderr.join('\n')).not.toContain('Warning');
+  });
+
+  it('fails on an empty registry answer too', () => {
+    const result = runCheck({ getLatestVersion: latestVersions({ 'http-cache-semantics': '' }) });
+
+    expect(result.ok).toBe(false);
+    expect(result.stderr[0]).toContain(
+      'The registry answered "" for the newest http-cache-semantics'
+    );
+  });
+
+  it('fails when a high entry cannot be traced to any advisory', () => {
+    const report = auditReport();
+    report.vulnerabilities.evil = {
+      name: 'evil',
+      severity: 'high',
+      isDirect: true,
+      via: ['nonexistent'],
+      effects: [],
+    };
+
+    const result = runCheck({ report });
+
+    expect(result.ok).toBe(false);
+    expect(result.stderr).toHaveLength(2);
+    expect(result.stderr[0]).toContain('entries for evil do not lead back to any advisory');
+    expect(result.stderr[0]).toContain('could not be fully traced');
+    expect(result.stderr[1]).toContain('failed with 1 problem');
+    expect(result.stdout.join('\n')).toContain('excused until');
+  });
+
+  it('fails when an exception allows a package that ships in the app', () => {
+    const buildTool = { 'electron-builder': '^26.0.0' };
+    const stylelint = { stylelint: '^16.0.0' };
+
+    for (const shipped of [
+      { dependencies: stylelint, devDependencies: { ...buildTool, ...stylelint } },
+      { optionalDependencies: stylelint, devDependencies: { ...buildTool, ...stylelint } },
+      { dependencies: stylelint, devDependencies: buildTool },
+      { devDependencies: buildTool },
+    ]) {
+      const result = runCheck({ packageJson: shipped });
+      const errors = result.stderr.join('\n');
+
+      expect(result.ok).toBe(false);
+      expect(errors).toContain(`exception for ${BRACES} (braces) allows stylelint`);
+      expect(errors).toContain('does not list only under devDependencies');
+      expect(errors).not.toContain(HTTP_CACHE);
+      expect(result.stdout.join('\n')).not.toContain(`${BRACES} braces`);
+      expect(result.stdout.join('\n')).toContain(`${HTTP_CACHE} http-cache-semantics`);
+    }
+  });
+
+  it('checks the allowed packages of a stale exception too, and reports one problem each', () => {
+    const result = runCheck({
+      report: withoutBraces(auditReport()),
+      packageJson: { devDependencies: {} },
+    });
+
+    expect(result.stderr.filter((line) => line.includes('allows'))).toHaveLength(2);
+    expect(result.stderr.filter((line) => line.includes('matches no current'))).toHaveLength(1);
+  });
+
+  it('warns when npm audit states a different newest affected version than the exception', () => {
+    for (const [range, stated] of [
+      ['<=3.0.4', '3.0.4'],
+      ['>=3.0.0 <=3.0.2', '3.0.2'],
+    ]) {
+      const report = auditReport();
+      report.vulnerabilities.braces.via[0].range = range;
+
+      const result = runCheck({ report });
+
+      expect(result.ok).toBe(true);
+      expect(result.stderr).toHaveLength(1);
+      expect(result.stderr[0]).toContain(`braces as affected up to ${stated}`);
+      expect(result.stderr[0]).toContain('"affectedUpTo" is 3.0.3');
+    }
+  });
+
+  it('stays quiet about ranges it cannot read or that match the exception', () => {
+    for (const range of ['<=3.0.3', '<3.0.4', '*', '']) {
+      const report = auditReport();
+      report.vulnerabilities.braces.via[0].range = range;
+
+      const result = runCheck({ report });
+
+      expect(result.ok).toBe(true);
+      expect(result.stderr).toEqual([]);
+    }
   });
 
   it('fails with the file problems when the exceptions file is malformed', () => {
@@ -377,6 +564,18 @@ describe('parseExceptions', () => {
 
     expect(errors).toEqual([]);
     expect(entries.length).toBe(data.exceptions.length);
+  });
+
+  it('only lets the checked-in exceptions name dev-only packages', () => {
+    const data = JSON.parse(fs.readFileSync(path.join(ROOT, EXCEPTIONS_FILE), 'utf8'));
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+    const names = data.exceptions.flatMap((entry) => entry.allowedVia);
+
+    for (const name of names) {
+      expect(Object.keys(pkg.devDependencies)).toContain(name);
+      expect(Object.keys(pkg.dependencies)).not.toContain(name);
+      expect(Object.keys(pkg.optionalDependencies || {})).not.toContain(name);
+    }
   });
 
   it('reports every problem in an entry', () => {
