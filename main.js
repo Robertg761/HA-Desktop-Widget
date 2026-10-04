@@ -8581,13 +8581,10 @@ ipcMain.handle('start-home-assistant-oauth', async (event, rawUrl) => {
   const resumeAutoHide = windowAutoHide.suspend();
   try {
     const session = await getHomeAssistantOAuthClient().pair(rawUrl);
-    const result = await runSerializedConfigMutation(async () => ({
+    return await runSerializedConfigMutation(async () => ({
       success: true,
       config: await applyHomeAssistantOAuthSession(session, { persist: true }),
     }));
-    // Bring it back in front: the connection it was waiting for is made.
-    showMainWindowFromTray();
-    return result;
   } catch (error) {
     return {
       success: false,
@@ -8595,7 +8592,17 @@ ipcMain.handle('start-home-assistant-oauth', async (event, rawUrl) => {
       error: error?.message || 'Home Assistant authorization failed',
     };
   } finally {
-    resumeAutoHide();
+    // Bring it back in front whatever the outcome: the connection it was waiting for is made, or
+    // the reason it was declined, timed out or failed is waiting in the form. Raising comes first
+    // because the browser still has focus, and resuming auto-hide rechecks that blur and would
+    // hide the widget about 200 ms later with the message in it.
+    try {
+      showMainWindowFromTray();
+    } catch (error) {
+      log.warn('Failed to raise the widget after Home Assistant authorization:', error.message);
+    } finally {
+      resumeAutoHide();
+    }
   }
 });
 

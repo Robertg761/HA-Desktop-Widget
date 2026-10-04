@@ -485,6 +485,116 @@ describe('optional hide on focus loss', () => {
     });
   });
 
+  describe('Home Assistant browser authorization', () => {
+    const source = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
+    const start = source.indexOf("ipcMain.handle('start-home-assistant-oauth'");
+    const handlerSource = source.slice(start, source.indexOf('\n});\n', start) + 5);
+    const flush = async () => {
+      for (let index = 0; index < 12; index += 1) await Promise.resolve();
+    };
+
+    // The real handler, auto-hide controller and popup presenter, against a pairing the test settles.
+    function startPairing() {
+      const r = setup();
+      let settle;
+      const handlers = {};
+      const context = {
+        ipcMain: { handle: (channel, handler) => (handlers[channel] = handler) },
+        authorizeIpcSender: () => ({ type: 'main' }),
+        rejectUnauthorizedIpc: jest.fn(),
+        windowAutoHide: r.controller,
+        showMainWindowFromTray: jest.fn(() => r.presenter.showAboveFullScreen(r.window)),
+        getHomeAssistantOAuthClient: () => ({
+          pair: () => new Promise((resolve, reject) => (settle = { resolve, reject })),
+        }),
+        runSerializedConfigMutation: (task) => Promise.resolve().then(task),
+        applyHomeAssistantOAuthSession: jest.fn(async () => ({ homeAssistant: {} })),
+        describeLinuxKeyringOAuthError: (code) => code,
+        log: { warn: jest.fn() },
+      };
+      vm.runInNewContext(handlerSource, context);
+      const pending = handlers['start-home-assistant-oauth']({}, 'http://ha.local:8123');
+      // The browser opens and takes focus from the widget while the person authorizes.
+      r.blur();
+      return { r, context, pending, settle: () => settle };
+    }
+
+    const failures = [
+      ['declined', 'OAUTH_AUTHORIZATION_DECLINED'],
+      ['timed out', 'OAUTH_AUTHORIZATION_TIMEOUT'],
+      ['failed', 'OAUTH_CALLBACK_FAILED'],
+      ['failed with no code', undefined],
+    ];
+
+    test('holds the widget while the browser has focus', async () => {
+      const { r, pending, settle } = startPairing();
+      jest.advanceTimersByTime(5000);
+      expect(r.hideWindow).not.toHaveBeenCalled();
+      settle().resolve({});
+      await pending;
+    });
+
+    test.each(failures)(
+      'raises the widget when authorization %s, so its message stays visible',
+      async (_label, code) => {
+        const { r, context, pending, settle } = startPairing();
+        settle().reject(Object.assign(new Error('not authorized'), code ? { code } : {}));
+
+        await expect(pending).resolves.toMatchObject({
+          success: false,
+          error: 'not authorized',
+        });
+        await flush();
+        expect(context.showMainWindowFromTray).toHaveBeenCalledTimes(1);
+        expect(r.window.focus).toHaveBeenCalled();
+        // Resuming auto-hide rechecks the browser's blur; the raise has to be in before that.
+        jest.advanceTimersByTime(5000);
+        expect(r.hideWindow).not.toHaveBeenCalled();
+        expect(r.window.hide).not.toHaveBeenCalled();
+      }
+    );
+
+    test('raises the widget once the connection is made', async () => {
+      const { r, context, pending, settle } = startPairing();
+      settle().resolve({ accessToken: 'token' });
+
+      await expect(pending).resolves.toMatchObject({ success: true });
+      expect(context.applyHomeAssistantOAuthSession).toHaveBeenCalledTimes(1);
+      expect(context.showMainWindowFromTray).toHaveBeenCalledTimes(1);
+      jest.advanceTimersByTime(5000);
+      expect(r.hideWindow).not.toHaveBeenCalled();
+    });
+
+    test('raises the widget when saving the authorization fails', async () => {
+      const { r, context, pending, settle } = startPairing();
+      context.applyHomeAssistantOAuthSession.mockRejectedValue(
+        Object.assign(new Error('keyring locked'), { code: 'OAUTH_STORE_WRITE' })
+      );
+      settle().resolve({});
+
+      await expect(pending).resolves.toMatchObject({ success: false, code: 'OAUTH_STORE_WRITE' });
+      expect(context.showMainWindowFromTray).toHaveBeenCalledTimes(1);
+      jest.advanceTimersByTime(5000);
+      expect(r.hideWindow).not.toHaveBeenCalled();
+    });
+
+    test('still resumes auto-hide, and keeps the result, if the raise throws', async () => {
+      const { r, context, pending, settle } = startPairing();
+      context.showMainWindowFromTray.mockImplementation(() => {
+        throw new Error('window gone');
+      });
+      settle().reject(
+        Object.assign(new Error('declined'), { code: 'OAUTH_AUTHORIZATION_DECLINED' })
+      );
+
+      await expect(pending).resolves.toMatchObject({ success: false, error: 'declined' });
+      expect(context.log.warn).toHaveBeenCalled();
+      // The suspension is released: with focus still in the browser, the widget goes back to hiding.
+      jest.advanceTimersByTime(200);
+      expect(r.hideWindow).toHaveBeenCalledTimes(1);
+    });
+  });
+
   test('main-process opt-in excludes desktop-layer mode and quitting', () => {
     const source = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
     const start = source.indexOf('const windowAutoHide = createWindowAutoHideController({');
