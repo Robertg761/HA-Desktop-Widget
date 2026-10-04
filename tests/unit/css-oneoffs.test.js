@@ -586,18 +586,18 @@ describe('stylesheet one-offs', () => {
         'the Authorize step',
         '<p class="first-run-security-note">Your password never enters this app.</p>',
       ],
-    ])('keeps room for a status line of two lines on %s, even when it is empty', (_, content) => {
+    ])('keeps room for a one-line status on %s, even when it is empty', (_, content) => {
       render(step(content));
       const status = document.querySelector('.first-run-status');
       expect(resolvedValue(status, 'position')).toBe('static');
-      expect(resolvedValue(status, 'min-height')).toBe('2.8em');
+      expect(resolvedValue(status, 'min-height')).toBe('1.4em');
     });
 
-    it('keeps the same room once it has a message', () => {
+    it('keeps the same room once it has a one-line message', () => {
       render(step('<label class="first-run-label">Home Assistant URL</label>'));
       const status = document.querySelector('.first-run-status');
       status.classList.remove('connection-status-empty');
-      expect(resolvedValue(status, 'min-height')).toBe('2.8em');
+      expect(resolvedValue(status, 'min-height')).toBe('1.4em');
     });
 
     it('leaves the welcome step, which has no status line to show, as it was', () => {
