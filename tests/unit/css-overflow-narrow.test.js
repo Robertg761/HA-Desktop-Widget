@@ -268,7 +268,8 @@ describe('shared layout rules for narrow windows and long labels', () => {
         '<div class="status-grid"><div class="status-card weather-card"></div><div class="status-card time-card"></div></div>';
       const divider = (viewport) =>
         resolvedValue(document.querySelector('.time-card'), 'box-shadow', { viewport });
-      const vertical = /^inset 1px 0 0 /;
+      // The side of the hairline is a multiplier, 1 in a left-to-right page and -1 in the other.
+      const vertical = /^inset calc\(1px \* 1\) 0 0 /;
       const horizontal = /^inset 0 1px 0 /;
       const stacked = { width: 280, height: 600 };
 
