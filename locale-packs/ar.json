@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.65",
+  "version": "1.2.66",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1822,6 +1822,7 @@
     "Arm": "تسليح",
     "Disarm": "إلغاء تسليح",
     "None selected": "لم يتم اختيار أي شيء",
-    "Home Assistant has no weather entities. Add a weather integration, then reopen this list.": "لا توجد كيانات طقس في Home Assistant. أضف تكامل طقس ثم أعد فتح هذه القائمة."
+    "Home Assistant has no weather entities. Add a weather integration, then reopen this list.": "لا توجد كيانات طقس في Home Assistant. أضف تكامل طقس ثم أعد فتح هذه القائمة.",
+    "Not downloaded": "غير منزّل"
   }
 }

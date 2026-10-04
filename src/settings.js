@@ -4491,9 +4491,10 @@ function syncLanguageSelectOptions() {
     const option = document.createElement('option');
     option.value = pack.locale;
     option.textContent = getLanguagePackDisplayName(pack);
+    option.lang = pack.locale;
     if (!pack.installed) {
       option.disabled = true;
-      option.textContent += ` (${t('Download first')})`;
+      option.textContent += ` (${t('Not downloaded')})`;
     }
     languageSelect.appendChild(option);
   });
@@ -4505,7 +4506,7 @@ function syncLanguageSelectOptions() {
     const fallbackOption = document.createElement('option');
     fallbackOption.value = selectedValue;
     fallbackOption.disabled = !builtinValues.has(selectedValue);
-    fallbackOption.textContent = `${getLanguageDisplayName(selectedValue, selectedValue)} (${fallbackOption.disabled ? t('Download first') : t('Available')})`;
+    fallbackOption.textContent = `${getLanguageDisplayName(selectedValue, selectedValue)}${fallbackOption.disabled ? ` (${t('Not downloaded')})` : ''}`;
     languageSelect.appendChild(fallbackOption);
   }
 
@@ -4547,10 +4548,14 @@ function renderLanguagePackList() {
     const name = document.createElement('div');
     name.className = 'language-pack-name';
     name.textContent = language;
+    // The name is in its own language ("العربية", "हिन्दी"): marked as such, a screen reader reads it
+    // in that voice and the browser picks that script's font, not the interface's.
+    name.lang = pack.locale;
 
     const meta = document.createElement('div');
     meta.className = 'language-pack-meta';
-    const stateLabel = pack.installed ? t('Installed') : t('Available');
+    // The same words as the selector's suffix: a language is either downloaded or it is not.
+    const stateLabel = pack.installed ? t('Installed') : t('Not downloaded');
     const versionLabel = pack.version ? `v${pack.version}` : '';
     const downloadedLabel = pack.downloadedAt ? ` • ${formatDateTime(pack.downloadedAt)}` : '';
     meta.textContent = `${stateLabel}${versionLabel ? ` • ${versionLabel}` : ''}${downloadedLabel}`;

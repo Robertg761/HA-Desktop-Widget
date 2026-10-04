@@ -88,7 +88,6 @@
   "Language Mode": "Sprachmodus",
   "Auto (System Default)": "Auto (Systemstandard)",
   "English": "Englisch",
-  "Download first": "Zuerst herunterladen",
   "Offline Language Packs": "Offline-Sprachpakete",
   "Download a language pack below to enable it in the selector.": "Lade unten ein Sprachpaket herunter, um es im Auswahlmenü zu aktivieren.",
   "Download, update, or remove offline language packs. English is always available offline.": "Lade Offline-Sprachpakete herunter, aktualisiere oder entferne sie. Englisch ist immer offline verfügbar.",
@@ -96,7 +95,6 @@
   "System language detected: {{language}}": "Erkannte Systemsprache: {{language}}",
   "Using English until the selected language pack is installed.": "Englisch wird verwendet, bis das gewählte Sprachpaket installiert ist.",
   "Installed": "Installiert",
-  "Available": "Verfügbar",
   "Download": "Herunterladen",
   "Update": "Aktualisieren",
   "Remove": "Entfernen",
@@ -1726,5 +1724,6 @@
   "Arm": "Scharfstellen",
   "Disarm": "Unscharf stellen",
   "None selected": "Keine ausgewählt",
-  "Home Assistant has no weather entities. Add a weather integration, then reopen this list.": "Home Assistant hat keine Wetterentitäten. Füge eine Wetter-Integration hinzu und öffne diese Liste dann erneut."
+  "Home Assistant has no weather entities. Add a weather integration, then reopen this list.": "Home Assistant hat keine Wetterentitäten. Füge eine Wetter-Integration hinzu und öffne diese Liste dann erneut.",
+  "Not downloaded": "Nicht heruntergeladen"
 }

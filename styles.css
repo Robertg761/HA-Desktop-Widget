@@ -9253,12 +9253,16 @@ body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
   min-width: 0;
 }
 
+/* An explicit line height: "normal" takes it from the font, and the Arabic, Hindi and Chinese
+   names fall back to fonts with different metrics, so the rows were three different heights. */
 .language-pack-name {
   font-weight: 600;
+  line-height: 1.3;
 }
 
 .language-pack-meta {
   font-size: var(--font-size-sm);
+  line-height: 1.3;
   color: var(--muted-text);
 }
 

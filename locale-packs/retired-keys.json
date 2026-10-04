@@ -358,5 +358,13 @@
   "Install Update": {
     "retiredIn": "4.0.0",
     "reason": "The Settings button reads Install update, like the update panel that sets it"
+  },
+  "Download first": {
+    "retiredIn": "4.0.0",
+    "reason": "The language selector and the pack list now both say Not downloaded"
+  },
+  "Available": {
+    "retiredIn": "4.0.0",
+    "reason": "The language selector and the pack list now both say Not downloaded"
   }
 }

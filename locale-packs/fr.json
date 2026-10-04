@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.64",
+  "version": "1.2.65",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1822,6 +1822,7 @@
     "Arm": "Armer",
     "Disarm": "Désarmer",
     "None selected": "Aucune sélectionnée",
-    "Home Assistant has no weather entities. Add a weather integration, then reopen this list.": "Home Assistant n'a aucune entité météo. Ajoutez une intégration météo, puis rouvrez cette liste."
+    "Home Assistant has no weather entities. Add a weather integration, then reopen this list.": "Home Assistant n'a aucune entité météo. Ajoutez une intégration météo, puis rouvrez cette liste.",
+    "Not downloaded": "Non téléchargé"
   }
 }

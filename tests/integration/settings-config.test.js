@@ -1849,9 +1849,21 @@ describe('Settings + Config Integration', () => {
       );
       expect(spanishOption).toBeTruthy();
       expect(spanishOption.disabled).toBe(true);
-      expect(spanishOption.textContent).toContain('Download first');
+      expect(spanishOption.textContent).toContain('Not downloaded');
       expect(frenchOption).toBeTruthy();
       expect(frenchOption.disabled).toBe(false);
+      // The pack list says the same thing, in the same words, and marks each name's language.
+      const rows = [...document.querySelectorAll('#language-packs-list .language-pack-row')];
+      const rowFor = (name) => rows.find((row) => row.textContent.includes(name));
+      expect(rowFor('Español').querySelector('.language-pack-meta').textContent).toBe(
+        'Not downloaded • v1.0.0'
+      );
+      expect(rowFor('Français').querySelector('.language-pack-meta').textContent).toContain(
+        'Installed'
+      );
+      expect(rowFor('Español').querySelector('.language-pack-name').lang).toBe('es');
+      expect(spanishOption.lang).toBe('es');
+      expect(document.body.textContent).not.toContain('Download first');
     });
 
     test('changing the language selector persists immediately without waiting for Save', async () => {
