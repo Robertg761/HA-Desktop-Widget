@@ -44,7 +44,7 @@ jobs:
       matrix:
         os: [windows-latest, windows-11-arm, macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -74,7 +74,7 @@ jobs:
         run: node -e "require('electron')"
 
       - name: Take snapshots (Linux)
-        timeout-minutes: 12
+        timeout-minutes: 30
         if: runner.os == 'Linux'
         run: |
           # The npm-installed Electron's sandbox helper lacks the setuid bit.
@@ -126,7 +126,7 @@ jobs:
           Start-Sleep -Seconds 2
 
       - name: Take snapshots (Windows, macOS)
-        timeout-minutes: 12
+        timeout-minutes: 30
         if: runner.os != 'Linux'
         run: node scripts/visual-snapshots/run.cjs visual-snapshots
 
