@@ -402,6 +402,8 @@ function createResultRow(item, index) {
   row.id = `command-palette-result-${index}`;
   row.setAttribute('role', 'option');
   row.setAttribute('aria-selected', 'false');
+  // A dead entity is dimmed as its tile is, so it does not look as ready as a working one.
+  if (entity?.state === 'unavailable') row.classList.add('is-unavailable');
 
   const icon = createElement('span', 'command-palette-result-icon');
   if (entity) renderEntityIcon(icon, entity);

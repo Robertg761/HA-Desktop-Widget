@@ -11687,6 +11687,16 @@ label.disabled {
   font-size: var(--font-size-sm);
 }
 
+/* An entity Home Assistant cannot reach, dimmed as its tile is: the name by colour, so it stays
+   readable, and the icon by opacity. */
+.command-palette-result.is-unavailable .command-palette-result-name {
+  color: var(--text-dim);
+}
+
+.command-palette-result.is-unavailable .command-palette-result-icon {
+  opacity: 0.55;
+}
+
 /* A page row has no state. Its empty item would still take a flex gap and inset the type chip. */
 .command-palette-result-state:empty {
   display: none;
