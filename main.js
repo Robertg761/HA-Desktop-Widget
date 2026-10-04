@@ -442,6 +442,7 @@ const { createWindowAutoHideController } = require('./src/window-auto-hide.cjs')
 const { createMainWindowReveal } = require('./src/main-window-reveal.cjs');
 const { installSystemShutdownHandlers } = require('./src/system-shutdown.cjs');
 const { createKWinWindowRaiser } = require('./src/kwin-window-raise.cjs');
+const { createPortalColorSchemeWatcher } = require('./src/portal-color-scheme.cjs');
 const { installSessionPermissionPolicy } = require('./src/session-permissions.cjs');
 const {
   createSerializedTaskRunner,
@@ -7065,9 +7066,12 @@ function applyHyprlandWidgetBlur(override) {
  */
 // The OS's own light or dark setting, which the tray (a part of the OS shell) follows. Once the app
 // pins nativeTheme.themeSource to Dark or Light, nativeTheme.shouldUseDarkColors and the renderer's
-// prefers-color-scheme report the app's choice, not the OS's, so Linux's answer is remembered from
-// the moments the source is still 'system'. Windows keeps the two apart and answers directly.
+// prefers-color-scheme report the app's choice, not the OS's. Windows keeps the two apart and
+// answers directly. Linux answers from nativeTheme while the source is still 'system', and from the
+// desktop's settings portal (src/portal-color-scheme.cjs), which the pin does not override, once
+// it is not. Without a portal the last answer from before the pin is all there is.
 let lastSystemColorScheme = null;
+let portalColorSchemeWatcher = null;
 
 function getSystemColorScheme() {
   try {
@@ -7076,6 +7080,8 @@ function getSystemColorScheme() {
     }
     if (nativeTheme.themeSource === 'system') {
       lastSystemColorScheme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+    } else {
+      lastSystemColorScheme = portalColorSchemeWatcher?.get() || lastSystemColorScheme;
     }
   } catch (error) {
     log.debug('Could not read the system color scheme:', error.message);
@@ -7086,12 +7092,20 @@ function getSystemColorScheme() {
 /** Tell the renderer when the OS changes its scheme, so the tray's value icons are redrawn. */
 function watchSystemColorScheme() {
   let announced = getSystemColorScheme();
-  nativeTheme?.on?.('updated', () => {
+  const announceIfChanged = () => {
     const current = getSystemColorScheme();
     if (current === announced) return;
     announced = current;
     pushConfigToRenderer();
-  });
+  };
+  nativeTheme?.on?.('updated', announceIfChanged);
+  if (process.platform === 'linux') {
+    portalColorSchemeWatcher = createPortalColorSchemeWatcher({
+      log,
+      onChange: announceIfChanged,
+    });
+    void portalColorSchemeWatcher.start();
+  }
 }
 
 function applyNativeThemeSource() {
@@ -12947,6 +12961,7 @@ function shutDownRuntimeAfterConfigFlush() {
   trayHostWatch = null;
   stopOmarchyBarIntegration();
   kwinWindowRaiser?.close();
+  portalColorSchemeWatcher?.close();
 }
 
 // A logout or shutdown cannot wait out the bounded save a user's quit waits on, and must never
