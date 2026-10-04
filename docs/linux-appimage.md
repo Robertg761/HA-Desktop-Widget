@@ -15,6 +15,8 @@ Any one of these gets it running:
   (`~/.local/share/applications/com.github.robertg761.hadesktopwidget.desktop`) keeps the flag, so
   starting it from the application menu works afterwards. A launcher the widget wrote earlier,
   without the flag, gets it the same way the next time the AppImage is started with `--no-sandbox`.
+  So does a menu launcher an integration tool such as AppImageLauncher made for an earlier version:
+  when the widget repoints it from the deleted AppImage to this one, it adds the flag too.
 - Let the AppImage create the namespace with an AppArmor profile, as Ubuntu does for Chromium and
   Electron packages it ships.
 

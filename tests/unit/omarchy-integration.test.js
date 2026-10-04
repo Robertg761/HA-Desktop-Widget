@@ -546,6 +546,87 @@ describe('an AppImage on a system that blocks the Chromium sandbox', () => {
     });
   });
 
+  describe('with a menu launcher an integration tool left pointing at a deleted AppImage', () => {
+    // An AppImageLauncher launcher whose update removed the AppImage it named.
+    function setUpIntegration(suffix, name = 'ha_desktop_widget.desktop') {
+      const env = { APPIMAGE: path.join(root, 'widget.AppImage'), XDG_DATA_HOME: root };
+      fs.writeFileSync(env.APPIMAGE, 'app');
+      const dir = path.join(root, 'applications');
+      fs.mkdirSync(dir, { recursive: true });
+      const gone = path.join(root, 'old.AppImage');
+      const file = path.join(dir, name);
+      fs.writeFileSync(
+        file,
+        `[Desktop Entry]\nName=HA Desktop Widget\nTryExec=${gone}\nExec=env DESKTOPINTEGRATION=1 ${quoteDesktopExecArg(gone)}${suffix}\nX-AppImage-Version=3.9.0\n`
+      );
+      const repair = ({ sandboxDisabled = true, restriction = '1\n' } = {}) =>
+        repairStaleAppImageLaunchers({
+          env,
+          sandboxDisabled,
+          fsModule: {
+            ...fs,
+            readFileSync: (target, ...rest) => {
+              if (String(target).endsWith('apparmor_restrict_unprivileged_userns')) {
+                if (restriction === null) throw new Error('ENOENT');
+                return restriction;
+              }
+              return fs.readFileSync(target, ...rest);
+            },
+          },
+        });
+      return { env, file, repair, read: () => fs.readFileSync(file, 'utf8') };
+    }
+
+    test('adds --no-sandbox to the repaired launcher when the sandbox is blocked and switched off', () => {
+      const { env, file, repair, read } = setUpIntegration(' --show %U');
+      expect(repair()).toEqual([file]);
+      expect(read()).toContain(
+        `\nExec=${buildDesktopExecPrefix(env.APPIMAGE)} --no-sandbox --show %U\n`
+      );
+      expect(read()).toContain(`\nTryExec=${env.APPIMAGE}\n`);
+      // Repaired launchers are skipped from then on, so the flag is not added a second time.
+      expect(repair()).toEqual([]);
+    });
+
+    test('adds the flag to a launcher with no arguments, ahead of the ones it has', () => {
+      const bare = setUpIntegration('');
+      expect(bare.repair()).toEqual([bare.file]);
+      expect(bare.read()).toContain(
+        `\nExec=${buildDesktopExecPrefix(bare.env.APPIMAGE)} --no-sandbox\n`
+      );
+    });
+
+    test('does not repeat a flag the launcher already has', () => {
+      const { env, file, repair, read } = setUpIntegration(' --no-sandbox %U');
+      expect(repair()).toEqual([file]);
+      expect(read()).toContain(`\nExec=${buildDesktopExecPrefix(env.APPIMAGE)} --no-sandbox %U\n`);
+      expect(read().match(/--no-sandbox/g)).toHaveLength(1);
+    });
+
+    test('repairs only the path when the sandbox is not blocked or not switched off', () => {
+      for (const options of [
+        { restriction: '0\n' },
+        { restriction: null },
+        { sandboxDisabled: false },
+      ]) {
+        const { env, file, repair, read } = setUpIntegration(' --show %U');
+        expect(repair(options)).toEqual([file]);
+        expect(read()).toContain(`\nExec=${buildDesktopExecPrefix(env.APPIMAGE)} --show %U\n`);
+        fs.rmSync(path.join(root, 'applications'), { recursive: true, force: true });
+      }
+    });
+
+    test('leaves a launcher that still starts a working executable alone', () => {
+      const { file, repair, read } = setUpIntegration(' --show %U');
+      const working = path.join(root, 'working.AppImage');
+      fs.writeFileSync(working, 'app');
+      const content = `[Desktop Entry]\nName=HA Desktop Widget\nExec=${quoteDesktopExecArg(working)} --show %U\nX-AppImage-Version=3.9.0\n`;
+      fs.writeFileSync(file, content);
+      expect(repair()).toEqual([]);
+      expect(read()).toBe(content);
+    });
+  });
+
   test('reads the AppArmor restriction from /proc', () => {
     const read = (value) => ({
       readFileSync: jest.fn(() => {

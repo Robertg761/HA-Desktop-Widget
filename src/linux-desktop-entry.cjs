@@ -27,6 +27,16 @@ function replaceExecCommand(content, command, token) {
   return content.replace(/^Exec=.*$/m, () => `Exec=${token}${command.suffix}`);
 }
 
+// The flag a launcher this process writes or repairs must carry: this process runs without the
+// sandbox, on a system that blocks it, so a launcher without the flag would die the same way.
+function sandboxFlagWhenBlocked(fsModule, sandboxDisabled) {
+  return sandboxDisabled && appArmorRestrictsUserNamespaces(fsModule) ? ' --no-sandbox' : '';
+}
+
+function launcherHasSandboxFlag(command) {
+  return /(?:^|\s)--no-sandbox(?:\s|$)/.test(command.suffix);
+}
+
 // AppImages need a desktop identity for the host portal registry. Package-owned
 // entries and user launchers take precedence over this fallback.
 function ensureAppImageDesktopEntry({
@@ -46,8 +56,7 @@ function ensureAppImageDesktopEntry({
     .filter(Boolean)
     .map((dir) => path.join(dir, 'applications', name));
   if (systemEntries.some((file) => fsModule.existsSync(file))) return false;
-  const sandboxFlag =
-    sandboxDisabled && appArmorRestrictsUserNamespaces(fsModule) ? ' --no-sandbox' : '';
+  const sandboxFlag = sandboxFlagWhenBlocked(fsModule, sandboxDisabled);
   if (fsModule.existsSync(destination)) {
     const previous = fsModule.readFileSync(destination, 'utf8');
     if (!/^X-HA-Widget-Launcher=true$/m.test(previous)) return false;
@@ -60,9 +69,7 @@ function ensureAppImageDesktopEntry({
     const startsThisAppImage =
       stale || path.resolve(command.executable) === path.resolve(env.APPIMAGE);
     const needsSandboxFlag =
-      sandboxFlag !== '' &&
-      startsThisAppImage &&
-      !/(?:^|\s)--no-sandbox(?:\s|$)/.test(command.suffix);
+      sandboxFlag !== '' && startsThisAppImage && !launcherHasSandboxFlag(command);
     if (!stale && !needsSandboxFlag) return false;
     const token = stale ? buildDesktopExecPrefix(env.APPIMAGE) : command.rawToken;
     // The flag goes right after the command, ahead of the arguments the launcher already has.
@@ -103,6 +110,8 @@ function repairStaleAppImageLaunchers({
   home = os.homedir(),
   fsModule = fs,
   onError = () => {},
+  // Whether this process runs without Chromium's sandbox, because it was started with --no-sandbox.
+  sandboxDisabled = process.argv.includes('--no-sandbox'),
 } = {}) {
   const executable = env.APPIMAGE;
   if (!executable || !path.isAbsolute(executable)) return [];
@@ -115,6 +124,7 @@ function repairStaleAppImageLaunchers({
     if (error?.code !== 'ENOENT') throw error;
     return [];
   }
+  const sandboxFlag = sandboxFlagWhenBlocked(fsModule, sandboxDisabled);
   const repaired = [];
   for (const name of names) {
     if (!name.endsWith('.desktop')) continue;
@@ -133,10 +143,14 @@ function repairStaleAppImageLaunchers({
     const command = parseDesktopExecCommand(content);
     if (!command || !path.isAbsolute(command.executable)) continue;
     if (fsModule.existsSync(command.executable)) continue;
+    // The launcher now starts this AppImage, so it gets what a launcher the widget wrote itself
+    // gets. Repointed alone, it would still exit with "No usable sandbox" from the menu, even
+    // though this run only started because the user passed the flag by hand.
+    const needsSandboxFlag = sandboxFlag !== '' && !launcherHasSandboxFlag(command);
     const updated = replaceExecCommand(
       content,
       command,
-      buildDesktopExecPrefix(executable)
+      `${buildDesktopExecPrefix(executable)}${needsSandboxFlag ? sandboxFlag : ''}`
     ).replace(/^TryExec=.*$/m, () => `TryExec=${executable}`);
     try {
       fsModule.writeFileSync(file, updated, { mode: 0o644 });
