@@ -8104,6 +8104,17 @@ body.theme-light:not(.high-contrast)
 .calendar-event-description {
   margin-top: 4px;
   color: var(--text-secondary);
+/* The window cannot be selected (a drag would select tiles), but a meeting link, a phone number or
+   an address in an event is meant to be copied. */
+.calendar-event-summary,
+.calendar-event-time,
+.calendar-event-location,
+.calendar-event-description {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
   font-size: var(--font-size-sm);
 }
 

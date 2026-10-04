@@ -66,6 +66,20 @@ describe('stylesheet one-offs', () => {
     });
   });
 
+  describe('calendar event text can be copied', () => {
+    it.each([
+      'calendar-event-summary',
+      'calendar-event-time',
+      'calendar-event-location',
+      'calendar-event-description',
+    ])('selects .%s although the window does not', (name) => {
+      render(
+        `<div class="calendar-event-row"><div class="${name}">Join https://meet.example</div></div>`
+      );
+      expect(resolvedValue(document.querySelector(`.${name}`), 'user-select')).toBe('text');
+    });
+  });
+
   describe('reduced motion keeps the waiting indicators moving', () => {
     // The blanket "no animation" rule gives every animation 0.01ms and one iteration. A spinner or a
     // progress bar frozen that way reads as a stalled app, and the bar as a finished one.
