@@ -86,6 +86,10 @@ for the starting commit, not for the Electron update made during this audit.
   `[4.0.0] - Unreleased` changelog section. The Tag Release workflow requires these
   on main. Replace the changelog's Unreleased date with the actual release date
   after completing the checks below. Preparation does not create a release tag.
+- Check that the website is deployed from the commit being released: run
+  `node scripts/check-website-deploy.cjs` (the Website deploy check workflow does it after each
+  change to `website/` on main). The site deploys when main changes, before the release is tagged,
+  so it reads correctly on both sides of the release; it needs no edit on release day.
 - Run CI on the final release commit. In particular, the Electron update needs new
   Windows and universal macOS package and smoke results.
 - Check a real Home Assistant login, reconnect after sleep, and profile sync between
