@@ -1307,13 +1307,11 @@ function showAddPageModal({ starter = false } = {}) {
   roomGroup.appendChild(preview);
   const updatePreview = () => {
     const selected = [...roomEntities.querySelectorAll('input:checked')];
-    preview.replaceChildren();
-    const title = document.createElement('p');
     title.textContent =
       selected.length === 1
         ? t('Page preview: 1 entity')
         : t('Page preview: {{count}} entities', { count: selected.length });
-    preview.appendChild(title);
+    preview.replaceChildren(title);
     selected.slice(0, 8).forEach(({ value }) => {
       const tile = document.createElement('div');
       tile.className = 'room-preview-tile';
@@ -10384,6 +10382,7 @@ function openEntityRepairModal(staleEntityId) {
     if (!candidates.length) {
       const empty = document.createElement('p');
       empty.className = 'entity-selector-empty';
+      empty.setAttribute('role', 'status');
       empty.textContent = t('No matching replacement entities found.');
       list.appendChild(empty);
       return;
@@ -15080,6 +15079,8 @@ function populateQuickControlsList({ resetSearch = true } = {}) {
       if (!scoredEntities.length) {
         const empty = document.createElement('p');
         empty.className = 'entity-selector-empty';
+        // So a search that finds nothing is said, not only drawn.
+        empty.setAttribute('role', 'status');
         empty.textContent = t('No matching entities');
         list.appendChild(empty);
         return;

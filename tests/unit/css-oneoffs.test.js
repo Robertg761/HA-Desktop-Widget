@@ -530,6 +530,36 @@ describe('stylesheet one-offs', () => {
     });
   });
 
+  describe('entity pick lists', () => {
+    it('keeps the Manage Quick Access dialog one height whatever a search leaves in it', () => {
+      render(
+        '<div id="quick-controls-modal" class="modal"><div class="modal-content"></div></div>'
+      );
+      expect(resolvedValue(document.querySelector('.modal-content'), 'height')).toBe(
+        'min(620px, calc(100dvh - 1.5rem))'
+      );
+    });
+
+    it('centres the no-match message in the list it fills', () => {
+      render(
+        '<div class="modal-body"><div class="entity-selector-list"><p class="entity-selector-empty">No matching entities</p></div></div>'
+      );
+      const empty = document.querySelector('.entity-selector-empty');
+      expect(resolvedValue(empty, 'display')).toBe('grid');
+      expect(resolvedValue(empty, 'place-items')).toBe('center');
+      expect(resolvedValue(empty, 'min-height')).toBe('100%');
+    });
+
+    it('does not stretch a message that shares the list with rows', () => {
+      render(
+        '<div class="entity-selector-list"><div class="entity-item"></div><p class="entity-selector-empty">x</p></div>'
+      );
+      expect(resolvedValue(document.querySelector('.entity-selector-empty'), 'display')).not.toBe(
+        'grid'
+      );
+    });
+  });
+
   describe('reduced motion keeps the waiting indicators moving', () => {
     // The blanket "no animation" rule gives every animation 0.01ms and one iteration. A spinner or a
     // progress bar frozen that way reads as a stalled app, and the bar as a finished one.

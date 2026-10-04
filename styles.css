@@ -14911,6 +14911,12 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   min-height: 120px;
 }
 
+/* The dialog is centred, so one that shrank to the rows a search left in it moved the search field
+   (by 100px at the least) under the person's typing. It keeps the height a full list gives it. */
+#quick-controls-modal .modal-content {
+  height: min(620px, calc(100dvh - var(--space-6)));
+}
+
 #quick-controls-modal .quick-controls-target-hint {
   margin: 0;
   color: var(--text-dim);
@@ -14936,6 +14942,14 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   color: var(--text-dim);
   font-size: var(--font-size-sm);
   text-align: center;
+}
+
+/* In a list that keeps a minimum height, the message sits in the middle of it and not at the top. */
+.entity-selector-list > .entity-selector-empty:only-child {
+  display: grid;
+  place-items: center;
+  min-height: 100%;
+  box-sizing: border-box;
 }
 
 /* Pop-up for an entity Home Assistant reports as unavailable. */
