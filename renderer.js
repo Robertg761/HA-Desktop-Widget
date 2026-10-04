@@ -2599,7 +2599,11 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
   try {
     if (!nextConfig || !nextConfig.homeAssistant) return;
     const wasConfigured = isConfigured(state.CONFIG);
-    const wasSecureStoragePending = isSecureStoragePending();
+    // The push that ends the secure-storage wait usually repeats a sign-in that is already
+    // connected (a plaintext legacy token connects before it arrives). Closing that socket dropped
+    // its first requests and flickered the status, so only a wait that left nothing connected
+    // counts here.
+    const wasSecureStoragePending = isSecureStoragePending() && !websocket.ws;
     const previousConnection = getConnectionIdentity(state.CONFIG);
     const previousToken = state.CONFIG?.homeAssistant?.token || '';
     const applied = applyRendererConfig(nextConfig);
@@ -2623,13 +2627,12 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
     if (!wizardShown && nowConfigured) {
       if (!configuredRuntimeStarted) {
         startConfiguredRuntime();
-      } else if (!wasConfigured || previousConnection !== nextConnection) {
+      } else if (
+        !wasConfigured ||
+        wasSecureStoragePending ||
+        previousConnection !== nextConnection
+      ) {
         websocket.close();
-        connectWebSocket();
-      } else if (wasSecureStoragePending && !websocket.ws) {
-        // The deferred secure-storage push repeats a connection that is already up (a plaintext
-        // legacy token connects before it arrives), and closing that socket dropped the first
-        // requests and flickered the status. Only a connection that never came up is retried.
         connectWebSocket();
       } else if (previousToken !== (state.CONFIG?.homeAssistant?.token || '') && !websocket.ws) {
         // A refreshed OAuth access token is only needed for the next handshake: an open socket
