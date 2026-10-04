@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.58",
+  "version": "1.2.59",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1785,6 +1785,10 @@
     "Home Assistant did not answer. Check that it is running and that the URL is correct.": "لم يستجب Home Assistant. تحقق من أنه يعمل وأن الرابط صحيح.",
     "Retrying...": "جارٍ إعادة المحاولة...",
     "Still can't reach Home Assistant (tried {{time}}).": "ما زال الوصول إلى Home Assistant متعذرًا (آخر محاولة {{time}}).",
-    "Waiting for you to approve in your browser...": "بانتظار موافقتك في المتصفح..."
+    "Waiting for you to approve in your browser...": "بانتظار موافقتك في المتصفح...",
+    "Show log file": "إظهار ملف السجل",
+    "Shows the log file in your file manager": "يعرض ملف السجل في مستكشف الملفات",
+    "Showing the log file: {{path}}": "عرض ملف السجل: {{path}}",
+    "No file manager opened. The path of the log file was copied: {{path}}": "لم يُفتح مستكشف ملفات. تم نسخ مسار ملف السجل: {{path}}"
   }
 }

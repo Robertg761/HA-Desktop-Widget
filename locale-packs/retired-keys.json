@@ -326,5 +326,13 @@
   "Opening Home Assistant for authorization...": {
     "retiredIn": "4.0.0",
     "reason": "Authorization now waits for approval in the browser, so the status says that instead"
+  },
+  "View logs": {
+    "retiredIn": "4.0.0",
+    "reason": "The button shows the log file in the file manager, and says so, instead of opening it in a file explorer"
+  },
+  "Opens the log file location in your file explorer": {
+    "retiredIn": "4.0.0",
+    "reason": "The button shows the log file in the file manager, and says so, instead of opening it in a file explorer"
   }
 }

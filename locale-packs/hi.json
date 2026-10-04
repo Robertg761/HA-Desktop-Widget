@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.58",
+  "version": "1.2.59",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1785,6 +1785,10 @@
     "Home Assistant did not answer. Check that it is running and that the URL is correct.": "Home Assistant ने जवाब नहीं दिया। जांचें कि वह चालू है और URL सही है।",
     "Retrying...": "पुनः प्रयास हो रहा है...",
     "Still can't reach Home Assistant (tried {{time}}).": "Home Assistant तक अब भी पहुंचा नहीं जा सका ({{time}} पर प्रयास किया)।",
-    "Waiting for you to approve in your browser...": "ब्राउज़र में आपकी स्वीकृति की प्रतीक्षा है..."
+    "Waiting for you to approve in your browser...": "ब्राउज़र में आपकी स्वीकृति की प्रतीक्षा है...",
+    "Show log file": "लॉग फ़ाइल दिखाएं",
+    "Shows the log file in your file manager": "आपके फ़ाइल एक्सप्लोरर में लॉग फ़ाइल दिखाता है",
+    "Showing the log file: {{path}}": "लॉग फ़ाइल दिखाई जा रही है: {{path}}",
+    "No file manager opened. The path of the log file was copied: {{path}}": "कोई फ़ाइल एक्सप्लोरर नहीं खुला। लॉग फ़ाइल का पथ कॉपी कर लिया गया: {{path}}"
   }
 }

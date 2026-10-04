@@ -218,6 +218,7 @@ function createRendererHarness() {
         applyWindowEffects: jest.fn(),
         dismissToast: jest.fn(),
         dismissToasts: jest.fn(),
+        copyTextToClipboard: jest.fn(async () => true),
         ...require('./ui-utils-dialogs').realDialogHelpers(),
         ...uiUtils,
       };

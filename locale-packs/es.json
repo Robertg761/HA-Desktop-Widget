@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.57",
+  "version": "1.2.58",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1785,6 +1785,10 @@
     "Home Assistant did not answer. Check that it is running and that the URL is correct.": "Home Assistant no responde. Comprueba que esté en marcha y que la URL sea correcta.",
     "Retrying...": "Reintentando...",
     "Still can't reach Home Assistant (tried {{time}}).": "Sigue sin poder accederse a Home Assistant (intento a las {{time}}).",
-    "Waiting for you to approve in your browser...": "Esperando a que lo apruebes en tu navegador..."
+    "Waiting for you to approve in your browser...": "Esperando a que lo apruebes en tu navegador...",
+    "Show log file": "Mostrar archivo de registro",
+    "Shows the log file in your file manager": "Muestra el archivo de registro en el explorador de archivos",
+    "Showing the log file: {{path}}": "Mostrando el archivo de registro: {{path}}",
+    "No file manager opened. The path of the log file was copied: {{path}}": "No se abrió ningún explorador de archivos. Se copió la ruta del archivo de registro: {{path}}"
   }
 }

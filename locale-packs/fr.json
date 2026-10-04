@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.57",
+  "version": "1.2.58",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1785,6 +1785,10 @@
     "Home Assistant did not answer. Check that it is running and that the URL is correct.": "Home Assistant ne répond pas. Vérifiez qu'il est en marche et que l'URL est correcte.",
     "Retrying...": "Nouvelle tentative...",
     "Still can't reach Home Assistant (tried {{time}}).": "Home Assistant reste injoignable (essai à {{time}}).",
-    "Waiting for you to approve in your browser...": "En attente de votre approbation dans le navigateur..."
+    "Waiting for you to approve in your browser...": "En attente de votre approbation dans le navigateur...",
+    "Show log file": "Afficher le fichier journal",
+    "Shows the log file in your file manager": "Affiche le fichier journal dans votre explorateur de fichiers",
+    "Showing the log file: {{path}}": "Affichage du fichier journal : {{path}}",
+    "No file manager opened. The path of the log file was copied: {{path}}": "Aucun explorateur de fichiers ne s'est ouvert. Le chemin du fichier journal a été copié : {{path}}"
   }
 }

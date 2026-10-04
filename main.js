@@ -339,6 +339,7 @@ if (
 const profileSyncCore = require('./profile-sync-core.js');
 const { createLocalizationService } = require('./src/i18n-main.cjs');
 const { createLocalePackRefresher } = require('./src/locale-pack-refresh.cjs');
+const { revealFile } = require('./src/reveal-file.cjs');
 const { fetchChecked } = require('./src/net-fetch.cjs');
 const {
   normalizeEntityId,
@@ -10676,7 +10677,7 @@ ipcMain.handle('get-os-info', (event) => {
 });
 
 // Log file viewer functionality
-ipcMain.handle('open-logs', (event) => {
+ipcMain.handle('open-logs', async (event) => {
   const sender = authorizeIpcSender(event, 'open-logs');
   if (!sender) return rejectUnauthorizedIpc('open-logs');
   try {
@@ -10708,8 +10709,8 @@ ipcMain.handle('open-logs', (event) => {
     }
 
     log.info(`Opening log file at: ${logFilePath}`);
-    shell.showItemInFolder(logFilePath);
-    return { success: true, path: logFilePath };
+    // The path comes back either way, so the renderer can offer it when no file manager opened.
+    return await revealFile(shell, logFilePath);
   } catch (error) {
     log.error('Failed to open log file:', error);
     return { success: false, error: error?.message || String(error) };

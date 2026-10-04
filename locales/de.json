@@ -1186,7 +1186,6 @@
   "Select which media player to display in the main media tile": "Wähle, welcher Mediaplayer in der Hauptmedienkachel angezeigt wird",
   "Enable interaction diagnostics logs": "Diagnoseprotokolle für Interaktionen aktivieren",
   "Writes detailed UI interaction debug events to logs. Keep off for normal use.": "Schreibt detaillierte Debug-Ereignisse zu UI-Interaktionen in die Protokolle. Im normalen Betrieb ausgeschaltet lassen.",
-  "Opens the log file location in your file explorer": "Öffnet den Speicherort der Protokolldatei im Dateimanager",
   "View Logs": "Protokolle anzeigen",
   "Popup hotkey changes take effect immediately.": "Änderungen am Popup-Tastenkürzel werden sofort wirksam.",
   "Recommended presets (click to use):": "Empfohlene Vorlagen (zum Verwenden klicken):",
@@ -1414,7 +1413,6 @@
   "Sync passphrase": "Sync-Passphrase",
   "Interaction diagnostics logs": "Protokolle zur Interaktionsdiagnose",
   "Writes detailed UI interaction events to the log. Keep off for normal use.": "Schreibt detaillierte Interaktionsereignisse der Oberfläche ins Protokoll. Im normalen Betrieb ausgeschaltet lassen.",
-  "View logs": "Protokolle anzeigen",
   "Select weather entity": "Wetter-Entität auswählen",
   "Current weather entity": "Aktuelle Wetter-Entität",
   "Use combinations like: <code>Ctrl+Alt+L</code>, <code>Ctrl+Shift+1</code>, <code>Alt+F1</code>": "Verwende Kombinationen wie: <code>Ctrl+Alt+L</code>, <code>Ctrl+Shift+1</code>, <code>Alt+F1</code>",
@@ -1697,5 +1695,9 @@
   "Home Assistant did not answer. Check that it is running and that the URL is correct.": "Home Assistant antwortet nicht. Prüfe, ob es läuft und ob die URL stimmt.",
   "Retrying...": "Wird erneut versucht…",
   "Still can't reach Home Assistant (tried {{time}}).": "Home Assistant ist weiterhin nicht erreichbar (Versuch um {{time}}).",
-  "Waiting for you to approve in your browser...": "Warte darauf, dass du es in deinem Browser genehmigst…"
+  "Waiting for you to approve in your browser...": "Warte darauf, dass du es in deinem Browser genehmigst…",
+  "Show log file": "Protokolldatei zeigen",
+  "Shows the log file in your file manager": "Zeigt die Protokolldatei im Dateimanager",
+  "Showing the log file: {{path}}": "Protokolldatei wird angezeigt: {{path}}",
+  "No file manager opened. The path of the log file was copied: {{path}}": "Es wurde kein Dateimanager geöffnet. Der Pfad der Protokolldatei wurde kopiert: {{path}}"
 }

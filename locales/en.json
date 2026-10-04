@@ -1187,7 +1187,6 @@
   "Select which media player to display in the main media tile": "Select which media player to display in the main media tile",
   "Enable interaction diagnostics logs": "Enable interaction diagnostics logs",
   "Writes detailed UI interaction debug events to logs. Keep off for normal use.": "Writes detailed UI interaction debug events to logs. Keep off for normal use.",
-  "Opens the log file location in your file explorer": "Opens the log file location in your file explorer",
   "View Logs": "View Logs",
   "Popup hotkey changes take effect immediately.": "Popup hotkey changes take effect immediately.",
   "Recommended presets (click to use):": "Recommended presets (click to use):",
@@ -1415,7 +1414,6 @@
   "Sync passphrase": "Sync passphrase",
   "Interaction diagnostics logs": "Interaction diagnostics logs",
   "Writes detailed UI interaction events to the log. Keep off for normal use.": "Writes detailed UI interaction events to the log. Keep off for normal use.",
-  "View logs": "View logs",
   "Select weather entity": "Select weather entity",
   "Current weather entity": "Current weather entity",
   "Use combinations like: <code>Ctrl+Alt+L</code>, <code>Ctrl+Shift+1</code>, <code>Alt+F1</code>": "Use combinations like: <code>Ctrl+Alt+L</code>, <code>Ctrl+Shift+1</code>, <code>Alt+F1</code>",
@@ -1697,5 +1695,9 @@
   "Home Assistant did not answer. Check that it is running and that the URL is correct.": "Home Assistant did not answer. Check that it is running and that the URL is correct.",
   "Retrying...": "Retrying...",
   "Still can't reach Home Assistant (tried {{time}}).": "Still can't reach Home Assistant (tried {{time}}).",
-  "Waiting for you to approve in your browser...": "Waiting for you to approve in your browser..."
+  "Waiting for you to approve in your browser...": "Waiting for you to approve in your browser...",
+  "Show log file": "Show log file",
+  "Shows the log file in your file manager": "Shows the log file in your file manager",
+  "Showing the log file: {{path}}": "Showing the log file: {{path}}",
+  "No file manager opened. The path of the log file was copied: {{path}}": "No file manager opened. The path of the log file was copied: {{path}}"
 }

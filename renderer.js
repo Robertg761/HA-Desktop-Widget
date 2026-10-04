@@ -3155,11 +3155,25 @@ function wireUI() {
           const result = await window.electronAPI.openLogs();
           if (result.success) {
             log.info('Log file opened successfully');
+            // The file manager opens somewhere else on the screen, or behind the widget; this says
+            // that something happened, and where the file is.
+            uiUtils.showToast(
+              t('Showing the log file: {{path}}', { path: result.path }),
+              'info',
+              5000
+            );
           } else {
             log.error('Failed to open log file:', result.error);
+            // No file manager answered (a bare window manager), so hand over the path instead.
+            const copied = result.path ? await uiUtils.copyTextToClipboard(result.path) : false;
             uiUtils.showToast(
-              t('Failed to open log file: {{error}}', { error: result.error }),
-              'error'
+              copied
+                ? t('No file manager opened. The path of the log file was copied: {{path}}', {
+                    path: result.path,
+                  })
+                : t('Failed to open log file: {{error}}', { error: result.error }),
+              'error',
+              8000
             );
           }
         } catch (error) {
