@@ -80,6 +80,19 @@ describe('stylesheet one-offs', () => {
     });
   });
 
+  describe('the media tile progress bar', () => {
+    // It shows the position and does nothing else (seeking is the dialog's), so it must not grow or
+    // grow a scrub knob under the pointer as if it could be dragged.
+    it('keeps its height under the pointer', () => {
+      render('<div class="media-tile"><div class="media-tile-seek-bar" data-hover></div></div>');
+      expect(resolvedValue(document.querySelector('.media-tile-seek-bar'), 'height')).toBe('3px');
+    });
+
+    it('draws no scrub knob', () => {
+      expect(fs.readFileSync(STYLESHEET, 'utf8')).not.toMatch(/media-tile-seek-fill::after/);
+    });
+  });
+
   describe('reduced motion keeps the waiting indicators moving', () => {
     // The blanket "no animation" rule gives every animation 0.01ms and one iteration. A spinner or a
     // progress bar frozen that way reads as a stalled app, and the bar as a finished one.

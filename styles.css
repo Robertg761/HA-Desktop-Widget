@@ -3482,11 +3482,6 @@ body.first-run-active .widget-content > * {
   border-radius: var(--radius-full);
   position: relative;
   min-width: 36px;
-  transition: height var(--transition-base);
-}
-
-.media-tile-seek-bar:hover {
-  height: 5px;
 }
 
 .media-tile-seek-fill {
@@ -3496,27 +3491,6 @@ body.first-run-active .widget-content > * {
   border-radius: var(--radius-full);
   box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.5);
   position: relative;
-}
-
-.media-tile-seek-fill::after {
-  content: '';
-  position: absolute;
-  right: -4px;
-  top: 50%;
-  transform: translateY(-50%) scale(0);
-  width: 8px;
-  height: 8px;
-  background: var(--text-primary);
-  border-radius: 50%;
-  box-shadow:
-    0 0 8px var(--accent),
-    var(--shadow-sm);
-  transition: transform var(--transition-base);
-  pointer-events: none;
-}
-
-.media-tile-seek-bar:hover .media-tile-seek-fill::after {
-  transform: translateY(-50%) scale(1);
 }
 
 .media-tile-controls {
@@ -16078,16 +16052,11 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   }
 
   /* Progress is a Highlight fill in an outlined track. */
-  .media-tile-seek-bar,
-  .media-tile-seek-bar:hover {
+  .media-tile-seek-bar {
     box-sizing: border-box;
     height: 6px;
     border: 1px solid ButtonText;
     overflow: hidden;
-  }
-
-  .media-tile-seek-fill::after {
-    display: none;
   }
 
   .connection-progress,
