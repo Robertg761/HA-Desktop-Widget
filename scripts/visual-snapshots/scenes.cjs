@@ -395,7 +395,7 @@ async function showToasts(ctx) {
 // Home Assistant's notifications arrive over a subscription the mock does not serve (and a bell in
 // every scene's header is not wanted), so the panel is filled the way createNotificationListItem
 // fills it: English text, as Home Assistant writes it, under whatever language the app is in.
-async function showNotificationsPanel(ctx) {
+async function showNotificationsPanel(ctx, { footer = false } = {}) {
   await ctx.ev(`(() => {
     const notes = [
       ['Front door left open.', 'The front door has been open for 10 minutes. Check /config/automations.yaml.'],
@@ -414,6 +414,12 @@ async function showNotificationsPanel(ctx) {
       return item;
     }));
     document.getElementById('persistent-notifications-empty').classList.add('hidden');
+    // The footer a long list gets: how many there are, and one way to clear them. The text is the
+    // English the app writes (the rows above are drawn by hand in the same way).
+    if (${footer}) {
+      document.getElementById('persistent-notifications-summary').textContent = '2 notifications';
+      document.getElementById('persistent-notifications-toolbar').classList.remove('hidden');
+    }
     document.getElementById('persistent-notifications-modal').classList.remove('hidden');
   })()`);
 }
@@ -627,6 +633,21 @@ const scenes = [
   // A light as a primary card: the lit lamp warms its icon and glow.
   { name: 'primary-light-card', config: { primaryCards: ['light.desk_lamp', 'time'] } },
 
+  // The starter that fills the empty page opens on the entities a first page is made of.
+  {
+    name: 'dialog-starter',
+    config: {
+      customTabs: [
+        { id: 'default', name: 'Home', entityIds: [] },
+        { id: 'spare', name: 'Spare', entityIds: ['light.desk_lamp'] },
+      ],
+      activeTabId: 'default',
+    },
+    setup: async (ctx) => {
+      await ctx.click('.widget-state-actions .btn-primary');
+      await ctx.waitForSelector('#add-page-modal .room-entity-list label');
+    },
+  },
   // A page with nothing on it says so instead of showing an empty grid.
   {
     name: 'empty-page',
@@ -1024,6 +1045,10 @@ const scenes = [
     },
   },
   { name: 'ar-dialog-notifications', ui: { language: 'ar' }, setup: showNotificationsPanel },
+  {
+    name: 'dialog-notifications-footer',
+    setup: (ctx) => showNotificationsPanel(ctx, { footer: true }),
+  },
   { name: 'ar-dialog-diagnostics', ui: { language: 'ar' }, setup: openDiagnostics },
   { name: 'hi-main', ui: { language: 'hi' } },
   {
@@ -1635,6 +1660,17 @@ const scenes = [
   // and they are dimmed.
   { name: 'layout-offline', size: DEFAULT_SIZE, config: edgePage, setup: showOffline },
   { name: 'layout-offline-narrow', size: NARROW_SIZE, config: edgePage, setup: showOffline },
+  // Retry against a refused connection: the panel says the retry did not get through, and when.
+  {
+    name: 'layout-offline-retry-failed',
+    size: DEFAULT_SIZE,
+    config: edgePage,
+    setup: async (ctx) => {
+      await showOffline(ctx);
+      await ctx.click('.widget-state-actions .btn-secondary');
+      await ctx.waitForSelector('.widget-state-note');
+    },
+  },
   { name: 'layout-toast', size: DEFAULT_SIZE, keepToasts: true, setup: showToasts },
   { name: 'layout-toast-narrow', size: NARROW_SIZE, keepToasts: true, setup: showToasts },
   {
@@ -1667,6 +1703,20 @@ const scenes = [
       await showFirstRunWelcome(ctx);
       await ctx.click('.first-run-actions .btn-primary');
       await ctx.waitForSelector('.first-run-content input');
+    },
+  },
+  // The authorization step names the address it is about to open.
+  {
+    name: 'first-run-authorize',
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await showFirstRunWelcome(ctx);
+      await ctx.click('.first-run-actions .btn-primary');
+      await ctx.waitForSelector('.first-run-content input');
+      await ctx.click('.first-run-content input');
+      await ctx.insertText('homeassistant.local:8123');
+      await ctx.click('.first-run-actions .btn-primary');
+      await ctx.waitForSelector('.first-run-url');
     },
   },
   {
