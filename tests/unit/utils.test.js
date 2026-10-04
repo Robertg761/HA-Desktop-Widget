@@ -45,6 +45,20 @@ describe('Utils Module', () => {
       ).toBe('garage door battery');
     });
 
+    test('gives two entities that share an object id and have no friendly_name the same words', () => {
+      state.CONFIG = sampleConfig;
+      // Accepted as rare: Home Assistant gives nearly every entity a friendly_name. The words are
+      // what the tile and the missing-entity placeholder already say, and the entity id itself is
+      // still what the pickers search, so the two can be told apart there.
+      const light = { entity_id: 'light.kitchen', attributes: {} };
+      const switchEntity = { entity_id: 'switch.kitchen', attributes: {} };
+      expect(utils.getEntityDisplayName(light)).toBe('kitchen');
+      expect(utils.getEntityDisplayName(switchEntity)).toBe(utils.getEntityDisplayName(light));
+      // A name someone typed still wins over the words, so the pair can always be told apart.
+      state.CONFIG = { ...sampleConfig, customEntityNames: { 'switch.kitchen': 'Kitchen fan' } };
+      expect(utils.getEntityDisplayName(switchEntity)).toBe('Kitchen fan');
+    });
+
     test('should not reduce an id that has no object part to nothing', () => {
       state.CONFIG = sampleConfig;
       expect(utils.humanizeEntityId('light.')).toBe('light.');
