@@ -10870,6 +10870,15 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   letter-spacing: 0;
 }
 
+/* While a field listens its value is an instruction ('Press keys...', 'Recording...') and not a
+   hotkey, so it is text too. As code it fell to a mismatched fallback face in Arabic, Hindi and
+   Chinese. */
+#popup-hotkey-input[data-recording='true'],
+.hotkey-input[data-recording='true'] {
+  font-family: var(--font-sans);
+  letter-spacing: 0;
+}
+
 .help-text {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
@@ -11041,7 +11050,18 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   background: var(--surface-2);
   color: var(--accent-text);
   font-size: var(--font-size-lg);
-  min-height: 24px;
+  line-height: 1.5;
+  /* One line of text, so the box (and the dialog around it) keeps its height when the first key
+     is pressed and the combination is written into it. */
+  min-height: calc(var(--font-size-lg) * 1.5 + 26px);
+  display: grid;
+  place-items: center;
+}
+
+/* Until a key is pressed the strip holds a quiet ellipsis instead of looking like a missing field. */
+.hotkey-preview-box:empty::before {
+  content: '\2026';
+  color: var(--text-dim);
 }
 
 .hotkey-capture-modal {

@@ -93,6 +93,26 @@ describe('stylesheet one-offs', () => {
     });
   });
 
+  describe('a hotkey field that records', () => {
+    // Its value is an instruction, not a hotkey, so it is set as text: the monospace stack that suits
+    // 'Ctrl+Shift+K' falls to a mismatched face for the same words in Arabic, Hindi and Chinese.
+    it.each([
+      ['the popup hotkey field', '<input id="popup-hotkey-input" data-recording="true" />'],
+      ['an entity hotkey field', '<input class="hotkey-input" data-recording="true" />'],
+    ])('sets %s in the text face while it listens', (_, html) => {
+      render(html);
+      const field = document.querySelector('input');
+      expect(resolvedValue(field, 'font-family')).toBe(resolvedValue(field, '--font-sans'));
+      expect(resolvedValue(field, 'letter-spacing')).toBe('0');
+    });
+
+    it('keeps a saved hotkey in the code face', () => {
+      render('<input class="hotkey-input" value="Ctrl+Shift+K" />');
+      const field = document.querySelector('input');
+      expect(resolvedValue(field, 'font-family')).toBe(resolvedValue(field, '--font-mono'));
+    });
+  });
+
   describe('touch targets on a coarse pointer', () => {
     // The 44px minimum comes first in the file, and the dialog recipe's 34px button and 28px close
     // button have the same weight, so they used to win on a touch screen.
@@ -655,6 +675,24 @@ describe('stylesheet one-offs', () => {
       expect(resolvedValue(document.querySelector('#history'), 'color')).toBe(
         resolvedValue(document.body, '--text-secondary')
       );
+    });
+  });
+
+  describe('the hotkey capture dialog', () => {
+    it('keeps the preview strip one line tall before and after the first key', () => {
+      render(
+        '<div class="hotkey-capture-modal"><div class="modal-content"><div id="hotkey-preview" class="hotkey-preview-box"></div></div></div>'
+      );
+      const box = document.querySelector('#hotkey-preview');
+      // One 18px line at 1.5, the 24px of padding and the 2px of border.
+      expect(resolvedValue(box, 'min-height')).toBe('calc(1.125rem * 1.5 + 26px)');
+      expect(resolvedValue(box, 'line-height')).toBe('1.5');
+      expect(resolvedValue(box, 'display')).toBe('grid');
+    });
+
+    it('shows a quiet ellipsis in the empty strip instead of a missing field', () => {
+      const css = fs.readFileSync(STYLESHEET, 'utf8');
+      expect(css).toMatch(/\.hotkey-preview-box:empty::before\s*\{\s*content: '\\2026';/);
     });
   });
 
