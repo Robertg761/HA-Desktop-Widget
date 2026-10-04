@@ -2531,7 +2531,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       ui.updateWeatherFromHA();
 
-      expect(document.getElementById('weather-wind').textContent).toBe('20 km/h');
+      expect(document.getElementById('weather-wind').textContent).toBe('20\u00a0km/h');
     });
 
     it('should set sunny icon for clear/sunny conditions', () => {
@@ -2724,12 +2724,26 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.updateTimeDisplay();
 
       expect(document.getElementById('current-time').textContent).toBe(
+        // A 12-hour clock has no leading zero ("8:05 PM"), like every other time label.
         new Date('2025-01-15T20:05:00').toLocaleTimeString('en', {
-          hour: '2-digit',
+          hour: 'numeric',
           minute: '2-digit',
           hour12: true,
         })
       );
+      jest.useRealTimers();
+    });
+
+    it('keeps the leading zero on a 24-hour clock', () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2025-01-15T07:05:00'));
+      const config = state.CONFIG;
+      config.ui = { ...(config.ui || {}), timeFormat: '24-hour' };
+      state.setConfig(config);
+
+      ui.updateTimeDisplay();
+
+      expect(document.getElementById('current-time').textContent).toBe('07:05');
       jest.useRealTimers();
     });
 
@@ -3726,7 +3740,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(sensorTile.dataset.valueSize).toBe('auto');
       expect(sensorTile.querySelector('.control-sensor-value').textContent).toBe('29.3');
       expect(sensorTile.querySelector('.control-sensor-unit').textContent).toBe('°C');
-      expect(sensorTile.title).toBe('Office Temperature: 29.3 °C');
+      expect(sensorTile.title).toBe('Office Temperature: 29.3°C');
     });
 
     it('saves quick access tile value font size from the pencil settings modal', async () => {
@@ -4003,6 +4017,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
       expect(bounds).toEqual(['10', '40']);
       expect(gaugeSvg.querySelector('.control-sensor-gauge-value')).not.toBeNull();
+      // The bound labels are anchored by the writing direction, so the gauge always reads left to
+      // right, in a right-to-left language too.
+      expect(gaugeSvg.style.direction).toBe('ltr');
     });
 
     it('rejects a gauge range whose minimum is not below its maximum', async () => {
@@ -4295,6 +4312,69 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(sensorTile.querySelector('.control-name').textContent).toBe('Office Temperature');
     });
 
+    it.each([
+      ['an empty field', ''],
+      ['the Home Assistant name typed back', 'Office Temperature'],
+    ])('gives the tile its own name back when the Display Name is %s', async (_label, typed) => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.office_temperature'];
+      config.customEntityNames = { 'sensor.office_temperature': 'Desk' };
+      state.setConfig(config);
+      state.setStates({
+        'sensor.office_temperature': {
+          entity_id: 'sensor.office_temperature',
+          state: '21',
+          attributes: { friendly_name: 'Office Temperature', unit_of_measurement: '°C' },
+        },
+      });
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+      document
+        .querySelector('.control-item[data-entity-id="sensor.office_temperature"] .rename-btn')
+        .click();
+
+      const modal = document.querySelector('.rename-modal');
+      expect(modal.querySelector('#rename-input').value).toBe('Desk');
+      modal.querySelector('#rename-input').value = typed;
+      modal.querySelector('#save-rename-btn').click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(state.CONFIG.customEntityNames['sensor.office_temperature']).toBeUndefined();
+      expect(
+        document.querySelector(
+          '.control-item[data-entity-id="sensor.office_temperature"] .control-name'
+        ).textContent
+      ).toBe('Office Temperature');
+    });
+
+    it('draws the Reorganize chips with line icons and names them', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.office_temperature'];
+      state.setConfig(config);
+      state.setStates({
+        'sensor.office_temperature': {
+          entity_id: 'sensor.office_temperature',
+          state: '21',
+          attributes: { friendly_name: 'Office Temperature' },
+        },
+      });
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+
+      const tile = document.querySelector(
+        '.control-item[data-entity-id="sensor.office_temperature"]'
+      );
+      expect(tile.querySelector('.rename-btn svg').dataset.icon).toBe('pencil');
+      expect(tile.querySelector('.remove-btn svg').dataset.icon).toBe('x');
+      // The icons are hidden from screen readers; the buttons keep their own names.
+      expect(tile.querySelector('.rename-btn').getAttribute('aria-label')).toContain(
+        'Office Temperature'
+      );
+      expect(tile.querySelector('.remove-btn').getAttribute('aria-label')).toContain(
+        'Office Temperature'
+      );
+    });
+
     it('limits a tile display name to what a settings file can carry', () => {
       const config = state.CONFIG;
       config.favoriteEntities = ['sensor.office_temperature'];
@@ -4341,6 +4421,51 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(sensorTile).toBeTruthy();
       expect(sensorTile.querySelector('.control-sensor-value').textContent).toBe('37');
       expect(sensorTile.querySelector('.control-sensor-unit').textContent).toBe('%');
+    });
+
+    it.each([
+      ['02134', 'a code with a leading zero'],
+      ['1e3', 'an exponent'],
+      ['0x10', 'a hex number'],
+    ])('shows %s (%s) as text, with no readout or chart', (reading) => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.zip'];
+      state.setConfig(config);
+      state.setStates({
+        'sensor.zip': {
+          entity_id: 'sensor.zip',
+          state: reading,
+          attributes: { friendly_name: 'Zip code' },
+        },
+      });
+
+      ui.renderActiveTab();
+
+      const tile = document.querySelector('.control-item[data-entity-id="sensor.zip"]');
+      expect(tile.classList.contains('sensor-numeric-entity')).toBe(false);
+      expect(tile.querySelector('.control-state').textContent).toBe(reading);
+    });
+
+    it('keeps a value just below zero from reading "-0"', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.cold_room'];
+      state.setConfig(config);
+      state.setStates({
+        'sensor.cold_room': {
+          entity_id: 'sensor.cold_room',
+          state: '-0.04',
+          attributes: {
+            friendly_name: 'Cold room',
+            unit_of_measurement: '°C',
+            device_class: 'temperature',
+          },
+        },
+      });
+
+      ui.renderActiveTab();
+
+      const tile = document.querySelector('.control-item[data-entity-id="sensor.cold_room"]');
+      expect(tile.querySelector('.control-sensor-value').textContent).toBe('-0.04');
     });
 
     it('caps other quick access numeric sensor readouts at two decimals', () => {
@@ -4516,9 +4641,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(primarySensorTile).toBeTruthy();
       expect(primarySensorTile.classList.contains('sensor-numeric-entity')).toBe(false);
       expect(primarySensorTile.querySelector('.control-sensor-value')).toBeNull();
-      expect(primarySensorTile.querySelector('.control-state').textContent).toBe(
-        '29.2999988132053 °C'
-      );
+      // The text is rounded like the tile's readout, not printed with every digit Home Assistant sends.
+      expect(primarySensorTile.querySelector('.control-state').textContent).toBe('29.3°C');
     });
 
     it('re-renders climate tiles when temperature attributes change', () => {
@@ -5828,8 +5952,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.renderDesktopPinnedTile(sensor.entity_id, sensor);
 
       const value = document.querySelector('.desktop-pin-sensor-control .desktop-pin-panel-value');
-      expect(value.textContent).toBe('0.72 W');
-      expect(value.title).toBe('0.72 W');
+      expect(value.textContent).toBe('0.72\u00a0W');
+      expect(value.title).toBe('0.72\u00a0W');
 
       ui.renderDesktopPinnedTile(sensor.entity_id, { ...sensor, state: '1234.5678901' });
       expect(
@@ -6161,6 +6285,37 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       state.setStates({ 'cover.shade': moved });
       ui.renderDesktopPinnedTile('cover.shade', moved);
       expect(shadeSlider().getAttribute('aria-valuetext')).toBe('20%');
+    });
+
+    it('speaks a pinned slider in the number format the readout is written in', () => {
+      const i18n = require('../../src/i18n.js');
+      i18n.setLocaleBootstrap({
+        languageSetting: 'fr',
+        requestedLocale: 'fr',
+        activeLocale: 'fr',
+        messages: {},
+      });
+      try {
+        state.setStates({
+          'cover.blinds': {
+            entity_id: 'cover.blinds',
+            state: 'open',
+            attributes: {
+              friendly_name: 'Living Room Blinds',
+              current_position: 55,
+              supported_features: 15,
+            },
+          },
+        });
+        ui.renderDesktopPinnedTile('cover.blinds', state.STATES['cover.blinds']);
+        const slider = document.querySelector('#desktop-pin-content .desktop-pin-cover-slider');
+        const readout = document.querySelector('#desktop-pin-content .desktop-pin-cover-position');
+        // French writes "55 %" with a space, and the spoken text must agree with what is shown.
+        expect(slider.getAttribute('aria-valuetext')).toMatch(/^55\s%$/);
+        expect(slider.getAttribute('aria-valuetext')).toBe(readout.textContent);
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
     });
 
     it('renders compact cover controls and sends cover actions', () => {
@@ -6944,7 +7099,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         },
         selector: '.desktop-pin-sensor-control',
         assertUpdated: (control) => {
-          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('23.1 °C');
+          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('23.1°C');
         },
       },
       {
@@ -6960,11 +7115,11 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         selector: '.desktop-pin-sensor-control',
         assertUpdated: (control) => {
           expect(control?.dataset.state).toBe('on');
-          // The value reads "Detected"; the raw "on" no longer repeats it in the header.
+          // The value reads the motion sensor's own word; the raw "on" no longer repeats it.
           expect(
             control?.querySelector('.desktop-pin-panel-topline .desktop-pin-panel-kpi')
           ).toBeNull();
-          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('Detected');
+          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('Motion');
         },
       },
       {
@@ -7030,7 +7185,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         },
         selector: '.desktop-pin-numeric-control',
         assertUpdated: (control) => {
-          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('50 °C');
+          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('50°C');
         },
       },
       {
@@ -7289,9 +7444,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         false
       );
       // Rounded like the Quick Access tile, not printed with every digit Home Assistant sends.
-      expect(recoveredControl?.querySelector('.desktop-pin-panel-value')?.textContent).toBe(
-        '24 °C'
-      );
+      expect(recoveredControl?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('24°C');
     });
   });
 
@@ -8945,6 +9098,31 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           expect(tabBar.classList.contains('reorganize')).toBe(true);
         });
 
+        it('keeps renaming through the Enter that commits an input method candidate', async () => {
+          setPages(pagesNamed(2), 'p1');
+          ui.toggleReorganizeMode();
+          const input = startRename();
+          input.value = '客厅';
+
+          for (const init of [{ isComposing: true }, { keyCode: 229 }]) {
+            const event = new KeyboardEvent('keydown', {
+              key: 'Enter',
+              bubbles: true,
+              cancelable: true,
+              ...init,
+            });
+            input.dispatchEvent(event);
+            expect(event.defaultPrevented).toBe(false);
+          }
+          await settle();
+
+          expect(state.CONFIG.customTabs[0].name).toBe('Page 1');
+          expect(tabBar.querySelector('.qa-tab-rename-input')).toBe(input);
+          press(input, 'Enter');
+          await settle();
+          expect(state.CONFIG.customTabs[0].name).toBe('客厅');
+        });
+
         it('keeps focus where the person went when the field loses it', async () => {
           setPages(pagesNamed(2), 'p1');
           ui.toggleReorganizeMode();
@@ -9359,6 +9537,123 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
   });
 
+  describe('hasEntityAction, for what the command palette can do with a row', () => {
+    const entity = (id, entityState = 'on') => ({
+      entity_id: id,
+      state: entityState,
+      attributes: { friendly_name: id },
+    });
+
+    it.each([
+      'sun.sun',
+      'person.sam',
+      'weather.home',
+      'device_tracker.phone',
+      'update.core',
+      'zone.home',
+      'binary_sensor.door',
+    ])('is false for %s, which has no controls and nothing to run', (id) => {
+      expect(ui.hasEntityAction(entity(id))).toBe(false);
+    });
+
+    it.each([
+      'light.desk',
+      'switch.plug',
+      'fan.attic',
+      'cover.garage',
+      'climate.hall',
+      'media_player.tv',
+      'camera.porch',
+      'sensor.temperature',
+      'timer.kitchen',
+      'todo.shopping',
+      'calendar.family',
+      'number.volume',
+      'input_number.level',
+      'select.mode',
+      'input_select.mode',
+      'vacuum.robot',
+      'scene.movie',
+      'script.goodnight',
+      'button.restart',
+      'input_button.ring',
+      'input_boolean.guest',
+      'automation.sunset',
+    ])('is true for %s', (id) => {
+      expect(ui.hasEntityAction(entity(id))).toBe(true);
+    });
+
+    it('is false for locks and alarm panels, which the palette runs only by named command', () => {
+      expect(ui.hasEntityAction(entity('lock.front', 'locked'))).toBe(false);
+      expect(ui.hasEntityAction(entity('alarm_control_panel.home', 'disarmed'))).toBe(false);
+    });
+
+    it('is false for what only toggles or runs while it is unavailable, and true for what opens a dialog', () => {
+      for (const id of ['switch.plug', 'scene.movie', 'button.restart', 'automation.sunset']) {
+        expect(ui.hasEntityAction(entity(id, 'unavailable'))).toBe(false);
+      }
+      for (const id of ['light.desk', 'sensor.temperature', 'climate.hall']) {
+        expect(ui.hasEntityAction(entity(id, 'unavailable'))).toBe(true);
+      }
+    });
+
+    it('reads the live entity, not the one the row was built from', () => {
+      state.setStates({ 'switch.plug': entity('switch.plug', 'unavailable') });
+      expect(ui.hasEntityAction(entity('switch.plug', 'on'))).toBe(false);
+      state.setStates({ 'switch.plug': entity('switch.plug', 'on') });
+      expect(ui.hasEntityAction(entity('switch.plug', 'unavailable'))).toBe(true);
+    });
+
+    it('is false for nothing at all', () => {
+      expect(ui.hasEntityAction(undefined)).toBe(false);
+      expect(ui.hasEntityAction({})).toBe(false);
+    });
+
+    it('agrees with what Enter really does for the domains it says have an action', () => {
+      // Whatever it says is runnable must reach Home Assistant or open a dialog, never nothing.
+      state.setStates({ 'switch.plug': entity('switch.plug', 'off') });
+      mockCallService.mockClear();
+      ui.executeEntityPrimaryAction(entity('scene.movie', 'scening'));
+      expect(mockCallService).toHaveBeenCalledWith('scene', 'turn_on', expect.any(Object));
+      // And the ones it says have none do nothing.
+      mockCallService.mockClear();
+      for (const id of ['sun.sun', 'person.sam', 'binary_sensor.door', 'update.core']) {
+        ui.executeEntityPrimaryAction(entity(id));
+      }
+      expect(mockCallService).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('service errors', () => {
+    it('tells a failed connection from Home Assistant refusing the call', () => {
+      for (const message of [
+        'WebSocket not connected',
+        'WebSocket not authenticated',
+        'WebSocket connection closed',
+        'WebSocket connection replaced',
+        'Home Assistant connection lost',
+        'WebSocket request timeout',
+      ]) {
+        expect(ui.isConnectionServiceError(new Error(message))).toBe(true);
+      }
+      expect(ui.isConnectionServiceError(new Error('Invalid alarm code provided'))).toBe(false);
+      expect(ui.isConnectionServiceError(undefined)).toBe(false);
+    });
+
+    it('says what Home Assistant said, and a plain line for an outage', () => {
+      expect(ui.describeServiceErrorMessage(new Error('Invalid alarm code provided'))).toBe(
+        'Invalid alarm code provided'
+      );
+      expect(ui.describeServiceErrorMessage(new Error('WebSocket not connected'))).toBe(
+        'Not connected to Home Assistant'
+      );
+      expect(ui.describeServiceErrorMessage(new Error('WebSocket request timeout'))).toBe(
+        'Home Assistant did not respond'
+      );
+      expect(ui.describeServiceErrorMessage(new Error(''))).toBe('Unknown error');
+    });
+  });
+
   describe('describeQuickAccessTile', () => {
     it('publishes deadlines for native timers and timer sensors, clearing them on pause or stop', () => {
       jest.useFakeTimers();
@@ -9407,6 +9702,66 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       } finally {
         jest.useRealTimers();
       }
+    });
+
+    it.each([
+      ['scene.movie', 'scene'],
+      ['button.restart', 'button'],
+      ['input_button.go', 'input_button'],
+      ['script.goodnight', 'script'],
+    ])('does not report a never-used %s as unknown or unavailable', (entityId) => {
+      state.setStates({ [entityId]: { entity_id: entityId, state: 'unknown', attributes: {} } });
+      const tile = ui.describeQuickAccessTile(entityId);
+      // Home Assistant says `unknown` until the first press; the bar must not dim it.
+      expect(tile.available).toBe(true);
+      expect(tile.value).not.toBe('Unknown');
+      state.setStates({
+        [entityId]: { entity_id: entityId, state: 'unavailable', attributes: {} },
+      });
+      expect(ui.describeQuickAccessTile(entityId).available).toBe(false);
+      expect(ui.describeQuickAccessTile(entityId).value).toBe('Unavailable');
+    });
+
+    it('still reports an unknown sensor as unknown and unavailable-looking', () => {
+      state.setStates({
+        'sensor.flaky': { entity_id: 'sensor.flaky', state: 'unknown', attributes: {} },
+      });
+      const tile = ui.describeQuickAccessTile('sensor.flaky');
+      expect(tile.available).toBe(false);
+      expect(tile.value).toBe('Unknown');
+    });
+
+    it('words a tile the way the palette and the pin do', () => {
+      state.setStates({
+        'binary_sensor.router': {
+          entity_id: 'binary_sensor.router',
+          state: 'off',
+          attributes: { device_class: 'connectivity' },
+        },
+        'binary_sensor.door': {
+          entity_id: 'binary_sensor.door',
+          state: 'off',
+          attributes: { device_class: 'door' },
+        },
+        'sun.sun': { entity_id: 'sun.sun', state: 'below_horizon', attributes: {} },
+        'input_number.offset': {
+          entity_id: 'input_number.offset',
+          state: '1.5',
+          attributes: { unit_of_measurement: '°C', step: 0.5 },
+        },
+        'sensor.travel': {
+          entity_id: 'sensor.travel',
+          state: '23.4',
+          attributes: { unit_of_measurement: 'min', duration: 1404 },
+        },
+      });
+      const value = (id) => ui.describeQuickAccessTile(id).value;
+      expect(value('binary_sensor.router')).toBe('Disconnected');
+      expect(value('binary_sensor.door')).toBe('Closed');
+      expect(value('sun.sun')).toBe('Below horizon');
+      expect(value('input_number.offset')).toBe('1.5°C');
+      // A travel time is a reading with a unit, not a countdown.
+      expect(value('sensor.travel')).toBe('23.4\u00a0min');
     });
 
     it('anchors remaining-only timers to their state update across republication', () => {

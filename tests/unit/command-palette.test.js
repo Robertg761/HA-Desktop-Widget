@@ -3,6 +3,10 @@ jest.mock('../../src/ui.js', () => ({
   switchQuickAccessPage: jest.fn(async () => ({ success: true })),
   requestAlarmCode: jest.fn(async () => null),
   getEntityDomain: (entityId) => String(entityId || '').split('.')[0],
+  // Whether an entity has anything to open or run is ui.js's rule, tested there.
+  hasEntityAction: jest.fn(() => true),
+  describeServiceErrorMessage: jest.fn((error) => error?.message || 'Unknown error'),
+  isConnectionServiceError: jest.fn((error) => /^WebSocket/.test(error?.message || '')),
 }));
 jest.mock('../../src/websocket.js', () => ({
   __esModule: true,
@@ -250,17 +254,31 @@ describe('command palette recents', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
   };
 
+  // Every fresh copy of the module that is initialised puts its shortcut handler on the shared
+  // document, and a handler from an earlier test would answer this test's keys too.
+  const documentListeners = [];
   beforeEach(() => {
     global.requestAnimationFrame = (callback) => callback();
     HTMLElement.prototype.scrollIntoView = jest.fn();
     localStorage.clear();
     document.body.innerHTML = '';
     jest.resetModules();
+    const add = EventTarget.prototype.addEventListener;
+    jest.spyOn(document, 'addEventListener').mockImplementation(function (type, listener, options) {
+      documentListeners.push([type, listener, options]);
+      return add.call(this, type, listener, options);
+    });
   });
   afterEach(() => {
     global.requestAnimationFrame = originalRequestAnimationFrame;
     HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
     document.body.innerHTML = '';
+    document.addEventListener.mockRestore();
+    documentListeners
+      .splice(0)
+      .forEach(([type, listener, options]) =>
+        document.removeEventListener(type, listener, options)
+      );
   });
 
   const load = () => {
@@ -545,7 +563,8 @@ describe('command palette recents', () => {
       const { palette, paletteState } = loadLocks();
       paletteState.setStates({ 'lock.front_door': frontDoor('locked') });
       palette.openCommandPalette();
-      const input = document.querySelector('.command-palette-input');
+      // Searched by id, so the row is found without the Unlock command that would answer Enter.
+      const input = search('lock.front');
       expect(highlightedName()).toBe('Front Door');
 
       press(input, 'Enter');
@@ -568,7 +587,7 @@ describe('command palette recents', () => {
         },
       });
       palette.openCommandPalette();
-      press(document.querySelector('.command-palette-input'), 'Enter');
+      press(search('home alarm'), 'Enter');
       expect(paletteOpen()).toBe(true);
       expect(document.querySelector('.command-palette-hint').textContent).toBe(
         'No command is available for Home alarm.'
@@ -640,6 +659,676 @@ describe('command palette recents', () => {
     });
   });
 
+  describe('typing with an input method (IME)', () => {
+    const press = (target, key, init = {}) => {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init });
+      target.dispatchEvent(event);
+      return event;
+    };
+    const setup = () => {
+      const loaded = load();
+      loaded.paletteState.setStates({
+        'light.bed_light': bedLight('off'),
+        'light.desk': { entity_id: 'light.desk', state: 'off', attributes: {} },
+      });
+      loaded.palette.openCommandPalette();
+      const input = document.querySelector('.command-palette-input');
+      input.value = 'turn on';
+      input.dispatchEvent(new Event('input'));
+      return { ...loaded, input };
+    };
+    const highlighted = () =>
+      document.querySelector('.command-palette-result.highlighted').textContent;
+    const paletteOpen = () =>
+      !document.querySelector('.command-palette-overlay').classList.contains('hidden');
+
+    it.each([
+      ['isComposing', { isComposing: true }],
+      ['keyCode 229, which some engines report after the composition has ended', { keyCode: 229 }],
+    ])(
+      'does not run the highlighted result on the Enter that commits a composition (%s)',
+      async (_label, init) => {
+        const { input } = setup();
+        const websocket = require('../../src/websocket.js').default;
+
+        const event = press(input, 'Enter', init);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        // The key is the input method's: the palette neither acts on it nor takes it away.
+        expect(event.defaultPrevented).toBe(false);
+        expect(websocket.callService).not.toHaveBeenCalled();
+        expect(paletteOpen()).toBe(true);
+      }
+    );
+
+    it('leaves the arrows to the candidate list of a composition', () => {
+      const { input } = setup();
+      const before = highlighted();
+
+      const down = press(input, 'ArrowDown', { isComposing: true });
+      const up = press(input, 'ArrowUp', { keyCode: 229 });
+
+      expect(down.defaultPrevented).toBe(false);
+      expect(up.defaultPrevented).toBe(false);
+      expect(highlighted()).toBe(before);
+    });
+
+    it('does not close on the Escape that cancels a composition', () => {
+      const { input } = setup();
+
+      const event = press(input, 'Escape', { isComposing: true });
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(paletteOpen()).toBe(true);
+    });
+
+    it('still works with the keyboard once the composition is over', async () => {
+      const { input } = setup();
+      const websocket = require('../../src/websocket.js').default;
+      const before = highlighted();
+
+      press(input, 'ArrowDown', { isComposing: false });
+      expect(highlighted()).not.toBe(before);
+      press(input, 'Enter', { isComposing: false });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(websocket.callService).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('an entity with nothing to open or run', () => {
+    const sun = {
+      entity_id: 'sun.sun',
+      state: 'above_horizon',
+      attributes: { friendly_name: 'Sun' },
+    };
+    const searchFor = (query) => {
+      const input = document.querySelector('.command-palette-input');
+      input.value = query;
+      input.dispatchEvent(new Event('input'));
+      return input;
+    };
+
+    it('keeps the palette open and says so, instead of closing as if the click failed', () => {
+      const { palette, paletteState } = load();
+      const { openEntityDetailModal } = require('../../src/ui.js');
+      const { hasEntityAction } = require('../../src/ui.js');
+      hasEntityAction.mockReturnValue(false);
+      paletteState.setStates({ 'sun.sun': sun });
+      palette.openCommandPalette();
+      const input = searchFor('sun');
+
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+      );
+
+      expect(openEntityDetailModal).not.toHaveBeenCalled();
+      expect(document.querySelector('.command-palette-overlay').classList).not.toContain('hidden');
+      expect(document.activeElement).toBe(input);
+      const hint = document.querySelector('.command-palette-hint');
+      expect(hint.hidden).toBe(false);
+      expect(hint.textContent).toBe('No command is available for Sun.');
+      // Spoken too, which the visible hint alone was not.
+      expect(document.querySelector('[role="status"]').textContent).toBe(
+        'No command is available for Sun.'
+      );
+      // And not remembered as something that was run.
+      expect(Object.values(localStorage)).toEqual([]);
+      hasEntityAction.mockReturnValue(true);
+    });
+
+    it('opens an entity that has controls, and remembers it', () => {
+      const { palette, paletteState } = load();
+      const { openEntityDetailModal } = require('../../src/ui.js');
+      paletteState.setStates({ 'sun.sun': sun });
+      palette.openCommandPalette();
+      const input = searchFor('sun');
+
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+      );
+
+      expect(openEntityDetailModal).toHaveBeenCalledWith(
+        expect.objectContaining({ entity_id: 'sun.sun' }),
+        {
+          source: 'command-palette',
+        }
+      );
+      expect(JSON.parse(Object.values(localStorage)[0])).toEqual(['entity:sun.sun']);
+    });
+  });
+
+  describe('a command that fails', () => {
+    const lamp = () => ({
+      entity_id: 'light.desk',
+      state: 'off',
+      attributes: { friendly_name: 'Desk lamp' },
+    });
+    const toastsFor = async (error) => {
+      const { palette, paletteState } = load();
+      const uiUtils = require('../../src/ui-utils.js');
+      const websocket = require('../../src/websocket.js').default;
+      const toast = jest.spyOn(uiUtils, 'showToast').mockImplementation(() => {});
+      paletteState.setStates({ 'light.desk': lamp() });
+      palette.openCommandPalette();
+      const input = document.querySelector('.command-palette-input');
+      input.value = 'turn on desk';
+      input.dispatchEvent(new Event('input'));
+      if (error) websocket.callService.mockRejectedValueOnce(error);
+      await run('Turn on Desk lamp');
+      const messages = toast.mock.calls.map(([message, type]) => [message, type]);
+      toast.mockRestore();
+      return messages;
+    };
+
+    it("says Home Assistant's own reason, such as a wrong alarm code, not a connection problem", async () => {
+      const messages = await toastsFor(new Error('Invalid alarm code provided'));
+
+      expect(messages).toEqual([['Could not run command: Invalid alarm code provided', 'error']]);
+    });
+
+    it('keeps the advice to check the connection for an outage', async () => {
+      const messages = await toastsFor(new Error('WebSocket not connected'));
+
+      expect(messages).toEqual([
+        ['Could not run command. Check your connection and retry.', 'error'],
+      ]);
+    });
+
+    it('says the connection is the problem when the socket is down before the call', async () => {
+      const websocket = require('../../src/websocket.js').default;
+      websocket.isConnected.mockReturnValueOnce(false);
+
+      const messages = await toastsFor(null);
+
+      expect(messages).toEqual([
+        ['Could not run command. Check your connection and retry.', 'error'],
+      ]);
+      expect(websocket.callService).not.toHaveBeenCalled();
+    });
+
+    it('says an entity that went unavailable is unavailable', async () => {
+      const { palette, paletteState } = load();
+      const uiUtils = require('../../src/ui-utils.js');
+      const toast = jest.spyOn(uiUtils, 'showToast').mockImplementation(() => {});
+      paletteState.setStates({ 'light.desk': lamp() });
+      palette.openCommandPalette();
+      const input = document.querySelector('.command-palette-input');
+      input.value = 'turn on desk';
+      input.dispatchEvent(new Event('input'));
+      paletteState.setStates({ 'light.desk': { ...lamp(), state: 'unavailable' } });
+      await run('Turn on Desk lamp');
+
+      expect(toast).toHaveBeenCalledWith('Could not run command: Entity is unavailable', 'error');
+      toast.mockRestore();
+    });
+  });
+
+  describe('search quality', () => {
+    const entities = [
+      ['media_player.bedroom_tv', 'Bedroom TV'],
+      ['media_player.living_room', 'Living room'],
+      ['calendar.family', 'Family calendar'],
+      ['climate.hallway_thermostat', 'Hallway thermostat'],
+      [
+        'light.upstairs_hallway_ceiling_pendant_light_above_the_stairs',
+        'Upstairs hallway ceiling pendant light above the stairs',
+      ],
+      [
+        'sensor.living_room_north_wall_temperature_sensor',
+        'Living room north wall temperature sensor',
+      ],
+      ['alarm_control_panel.home_alarm', 'Home alarm'],
+      ['sensor.next_alarm', 'Next alarm'],
+      ['light.kitchen', 'Kitchen Light'],
+      ['light.desk_lamp', 'Desk lamp'],
+    ].map(([entity_id, friendly_name]) => ({
+      entity_id,
+      state: 'on',
+      attributes: { friendly_name },
+    }));
+    const names = (query) =>
+      rankCommandPaletteEntities(entities, query, {
+        getDisplayName: (entity) => entity.attributes.friendly_name,
+      }).map((item) => item.displayName);
+
+    it('lists only the alarms for "alarm", not every name its letters are scattered through', () => {
+      expect(names('alarm').sort()).toEqual(['Home alarm', 'Next alarm']);
+    });
+
+    it('finds nothing for "disarm" among names that do not say it', () => {
+      expect(names('disarm')).toEqual([]);
+    });
+
+    it('lists only the lamp for "lamp", not the alarm', () => {
+      expect(names('lamp')).toEqual(['Desk lamp']);
+    });
+
+    it('still finds an abbreviation of one word, as "ktn" finds Kitchen Light', () => {
+      expect(names('ktn')).toEqual(['Kitchen Light']);
+    });
+
+    it('does not scatter one or two letters through every name', () => {
+      expect(scoreCommandPaletteMatch('Hallway thermostat', 'ht')).toBe(0);
+      expect(scoreCommandPaletteMatch('Kitchen Light', 'kl')).toBe(0);
+      // Substrings and prefixes still count at any length.
+      expect(scoreCommandPaletteMatch('Kitchen Light', 'k')).toBeGreaterThan(0);
+      expect(scoreCommandPaletteMatch('Kitchen Light', 'ch')).toBeGreaterThan(0);
+    });
+
+    it('does not let the domain act as a name prefix for a one-letter search', () => {
+      // "a" used to rank alarm_control_panel.home_alarm (an id prefix) above the names it is in.
+      const ranked = names('a');
+      expect(ranked.indexOf('Family calendar')).toBeLessThan(ranked.indexOf('Home alarm'));
+      const ids = rankCommandPaletteEntities(entities, 'alarm_control', {
+        getDisplayName: (entity) => entity.attributes.friendly_name,
+      });
+      expect(ids).toEqual([]);
+    });
+
+    it('finds an entity by its object id, and by a full id once the query has a dot', () => {
+      expect(names('desk_lamp')).toEqual(['Desk lamp']);
+      expect(names('light.kit')).toEqual(['Kitchen Light']);
+      expect(names('light.')).toEqual(expect.arrayContaining(['Kitchen Light', 'Desk lamp']));
+    });
+
+    it('finds a name by all of its words, in any order', () => {
+      expect(names('lamp desk')).toEqual(['Desk lamp']);
+      expect(names('light kitchen')).toEqual(['Kitchen Light']);
+    });
+
+    it('ranks the better tiers first', () => {
+      const scores = ['Desk', 'Desk lamp', 'My desk lamp', 'Dark eskimo mess kit'].map((name) =>
+        scoreCommandPaletteMatch(name, 'desk')
+      );
+      expect(scores[0]).toBeGreaterThan(scores[1]);
+      expect(scores[1]).toBeGreaterThan(scores[2]);
+      expect(scores[2]).toBeGreaterThan(scores[3]);
+    });
+  });
+
+  describe('what an empty search lists', () => {
+    const entity = (id, name, state = 'off') => ({
+      entity_id: id,
+      state,
+      attributes: { friendly_name: name },
+    });
+    const rows = () =>
+      [...document.querySelectorAll('.command-palette-result')].map((row) => ({
+        name: row.querySelector('.command-palette-result-name').textContent,
+        type: row.querySelector('.command-palette-result-domain').textContent,
+        state: row.querySelector('.command-palette-result-state').textContent,
+      }));
+    const loadPages = (activeEntityIds) => {
+      const loaded = load();
+      loaded.paletteState.setConfig({
+        homeAssistant: { url: 'http://ha.local:8123', token: 'secret-token' },
+        customTabs: [
+          { id: 'main', name: 'Main', entityIds: activeEntityIds },
+          { id: 'kitchen', name: 'Kitchen', entityIds: [] },
+          { id: 'garage', name: 'Garage', entityIds: [] },
+        ],
+        activeTabId: 'main',
+      });
+      loaded.paletteState.setServices({ light: { turn_on: {}, turn_off: {} } });
+      return loaded;
+    };
+
+    it('starts with the pages, then the entities of the page on screen, then the rest by name', () => {
+      const { palette, paletteState } = loadPages(['light.zulu', 'light.mike']);
+      paletteState.setStates({
+        'light.alpha': entity('light.alpha', 'Alpha'),
+        'light.mike': entity('light.mike', 'Mike'),
+        'light.zulu': entity('light.zulu', 'Zulu'),
+        'light.bravo': entity('light.bravo', 'Bravo'),
+      });
+
+      palette.openCommandPalette();
+
+      expect(
+        rows()
+          .map((row) => row.name)
+          .slice(0, 8)
+      ).toEqual([
+        'Switch to Kitchen',
+        'Switch to Garage',
+        'Zulu',
+        'Mike',
+        'Alpha',
+        'Bravo',
+        'Turn on Alpha',
+        'Turn on Bravo',
+      ]);
+    });
+
+    it('puts what was used last ahead of everything, entities opened and commands run alike', async () => {
+      const { palette, paletteState } = loadPages([]);
+      paletteState.setStates({
+        'light.alpha': entity('light.alpha', 'Alpha'),
+        'light.bravo': entity('light.bravo', 'Bravo'),
+        'light.charlie': entity('light.charlie', 'Charlie'),
+      });
+      palette.openCommandPalette();
+      const input = document.querySelector('.command-palette-input');
+      input.value = 'charlie';
+      input.dispatchEvent(new Event('input'));
+      await run('Charlie');
+      input.value = 'turn on bravo';
+      input.dispatchEvent(new Event('input'));
+      await run('Turn on Bravo');
+
+      palette.openCommandPalette();
+
+      expect(
+        rows()
+          .map((row) => row.name)
+          .slice(0, 4)
+      ).toEqual(['Turn on Bravo', 'Charlie', 'Switch to Kitchen', 'Switch to Garage']);
+    });
+
+    it('tells a command row from an entity row, with a chip and without the state it is about to change', () => {
+      const { palette, paletteState } = loadPages([]);
+      paletteState.setStates({ 'light.alpha': entity('light.alpha', 'Alpha', 'off') });
+
+      palette.openCommandPalette();
+
+      const byName = Object.fromEntries(rows().map((row) => [row.name, row]));
+      expect(byName['Turn on Alpha']).toEqual({
+        name: 'Turn on Alpha',
+        type: 'Command',
+        state: '',
+      });
+      expect(byName['Switch to Kitchen']).toEqual({
+        name: 'Switch to Kitchen',
+        type: 'Page',
+        state: '',
+      });
+      expect(byName.Alpha.state).toBe('Off');
+      expect(byName.Alpha.type).not.toBe('Command');
+    });
+
+    it('says when the list is cut, and how much of it is shown', () => {
+      const { palette, paletteState } = loadPages([]);
+      paletteState.setStates(
+        Object.fromEntries(
+          Array.from({ length: 30 }, (_, index) => {
+            const id = `sensor.s${String(index).padStart(2, '0')}`;
+            return [id, entity(id, `Sensor ${String(index).padStart(2, '0')}`, '1')];
+          })
+        )
+      );
+
+      palette.openCommandPalette();
+
+      const footer = document.querySelector('.command-palette-footer');
+      expect(rows()).toHaveLength(20);
+      expect(footer.hidden).toBe(false);
+      expect(footer.textContent).toBe('Showing 20 of 32 results');
+      expect(document.querySelector('[role="status"]').textContent).toBe(
+        'Showing 20 of 32 results'
+      );
+    });
+
+    it('has no footer when everything fits', () => {
+      const { palette, paletteState } = loadPages([]);
+      paletteState.setStates({ 'light.alpha': entity('light.alpha', 'Alpha') });
+
+      palette.openCommandPalette();
+
+      expect(document.querySelector('.command-palette-footer').hidden).toBe(true);
+      expect(document.querySelector('.command-palette-footer').textContent).toBe('');
+    });
+  });
+
+  describe('for assistive technology', () => {
+    const search = (query) => {
+      const input = document.querySelector('.command-palette-input');
+      input.value = query;
+      input.dispatchEvent(new Event('input'));
+      return input;
+    };
+    const status = () =>
+      document.querySelector('.command-palette > [role="status"], [role="status"]');
+
+    it('names its list of results', () => {
+      const { palette, paletteState } = load();
+      paletteState.setStates({ 'light.bed_light': bedLight('off') });
+
+      palette.openCommandPalette();
+
+      const list = document.querySelector('[role="listbox"]');
+      expect(list.getAttribute('aria-label')).toBe('Search results');
+      expect(document.querySelector('.command-palette-input').getAttribute('aria-controls')).toBe(
+        list.id
+      );
+    });
+
+    it('says how many results there are, and when there are none, in a region that is always there', () => {
+      const { palette, paletteState } = load();
+      paletteState.setStates({ 'light.bed_light': bedLight('off') });
+      palette.openCommandPalette();
+      const region = status();
+      expect(region.hidden).toBe(false);
+      expect(region.getAttribute('aria-live')).toBe('polite');
+
+      search('bed light');
+      expect(region.textContent).toMatch(/^Results: \d+$/);
+
+      search('zzzzz');
+      expect(status()).toBe(region);
+      expect(region.textContent).toBe('No matching results');
+    });
+
+    it('keeps aria-expanded true only while there are results to move through', () => {
+      const { palette, paletteState } = load();
+      paletteState.setStates({ 'light.bed_light': bedLight('off') });
+      palette.openCommandPalette();
+      const input = document.querySelector('.command-palette-input');
+      expect(input.getAttribute('aria-expanded')).toBe('true');
+
+      search('zzzzz');
+      expect(input.getAttribute('aria-expanded')).toBe('false');
+      search('bed');
+      expect(input.getAttribute('aria-expanded')).toBe('true');
+
+      palette.closeCommandPalette();
+      expect(input.getAttribute('aria-expanded')).toBe('false');
+      expect(status().textContent).toBe('');
+    });
+
+    it('speaks the hint that sends a lock to its command, and the visible copy stays out of the way', () => {
+      const { palette, paletteState } = load();
+      paletteState.setServices({ lock: { lock: {}, unlock: {} } });
+      paletteState.setStates({
+        'lock.front_door': {
+          entity_id: 'lock.front_door',
+          state: 'locked',
+          attributes: { friendly_name: 'Front Door' },
+        },
+      });
+      palette.openCommandPalette();
+      const input = search('lock.front');
+
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+      );
+
+      expect(status().textContent).toBe('To control Front Door, type "lock" or "unlock".');
+      expect(document.querySelector('.command-palette-hint').getAttribute('aria-hidden')).toBe(
+        'true'
+      );
+    });
+  });
+
+  describe('when there is nothing to list', () => {
+    const search = (query) => {
+      const input = document.querySelector('.command-palette-input');
+      input.value = query;
+      input.dispatchEvent(new Event('input'));
+    };
+    const emptyText = () => document.querySelector('.command-palette-empty:not([hidden])');
+    const emptyLoad = () => {
+      const loaded = load();
+      loaded.paletteState.setConfig({
+        homeAssistant: { url: 'http://ha.local:8123', token: 'secret-token' },
+        customTabs: [],
+      });
+      loaded.paletteState.setStates({});
+      return loaded;
+    };
+
+    it('says it is waiting for Home Assistant while no entities have arrived, not that nothing matched', () => {
+      const { palette } = emptyLoad();
+
+      palette.openCommandPalette();
+
+      expect(emptyText().textContent).toBe('Waiting for live Home Assistant data...');
+      expect(emptyText().textContent).not.toContain('No matching');
+    });
+
+    it('says the connection is down when it is', () => {
+      const { palette } = emptyLoad();
+      require('../../src/websocket.js').default.isConnected.mockReturnValueOnce(false);
+
+      palette.openCommandPalette();
+
+      expect(emptyText().textContent).toBe('Not connected to Home Assistant');
+    });
+
+    it('fills in when the entities arrive while it is open', () => {
+      const { palette, paletteState } = emptyLoad();
+      palette.openCommandPalette();
+      expect(document.querySelectorAll('.command-palette-result')).toHaveLength(0);
+
+      paletteState.setStates({ 'light.bed_light': bedLight('off') });
+
+      expect(emptyText()).toBeNull();
+      expect(resultNames()).toContain('Bed Light');
+    });
+
+    it('stops listening for entities once it is closed', () => {
+      const { palette, paletteState } = emptyLoad();
+      palette.openCommandPalette();
+      palette.closeCommandPalette();
+
+      paletteState.setStates({ 'light.bed_light': bedLight('off') });
+
+      expect(document.querySelectorAll('.command-palette-result')).toHaveLength(0);
+    });
+
+    it('suggests what to try when a search finds nothing', () => {
+      const { palette, paletteState } = emptyLoad();
+      paletteState.setStates({ 'light.bed_light': bedLight('off') });
+      palette.openCommandPalette();
+
+      search('zzzzz');
+
+      expect(emptyText().querySelector('.command-palette-empty-title').textContent).toBe(
+        'No matching results'
+      );
+      expect(emptyText().querySelector('.command-palette-empty-hint').textContent).toBe(
+        'Try a device name, a command like "turn on", or a page name'
+      );
+    });
+  });
+
+  describe('the Ctrl+K shortcut from a focused control', () => {
+    const shortcut = (target, init = {}) => {
+      const event = new KeyboardEvent('keydown', {
+        key: 'k',
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+        ...init,
+      });
+      target.dispatchEvent(event);
+      return event;
+    };
+    const paletteOpen = () => {
+      const overlay = document.querySelector('.command-palette-overlay');
+      return !!overlay && !overlay.classList.contains('hidden');
+    };
+    const setup = (markup) => {
+      const { palette } = load();
+      palette.initializeCommandPalette();
+      document.body.insertAdjacentHTML('beforeend', markup);
+      return document.body.lastElementChild;
+    };
+
+    it.each([
+      ['a checkbox', '<input type="checkbox" id="c" />'],
+      ['a radio button', '<input type="radio" id="c" />'],
+      ['a slider', '<input type="range" id="c" />'],
+      ['a button', '<button id="c">Go</button>'],
+      ['a select', '<select id="c"><option>One</option></select>'],
+    ])('opens from %s, where it used to be ignored', (_label, markup) => {
+      const control = setup(markup);
+      control.focus();
+
+      const event = shortcut(control);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(paletteOpen()).toBe(true);
+    });
+
+    it('opens from the Quick Access search field that advertises it, and from any text field', () => {
+      for (const markup of [
+        '<input type="search" id="quick-controls-search" />',
+        '<input type="text" id="c" />',
+        '<textarea id="c"></textarea>',
+      ]) {
+        document.body.innerHTML = '';
+        jest.resetModules();
+        const control = setup(markup);
+        control.focus();
+
+        shortcut(control);
+
+        expect(paletteOpen()).toBe(true);
+      }
+    });
+
+    it('leaves Ctrl+K in a Mac text field alone, since it deletes to the end of the line there', () => {
+      window.electronAPI = { platform: 'darwin' };
+      try {
+        const control = setup('<input type="text" id="c" />');
+        control.focus();
+
+        expect(shortcut(control).defaultPrevented).toBe(false);
+        expect(paletteOpen()).toBe(false);
+        // Cmd+K is the Mac's own shortcut, and opens it from there.
+        expect(shortcut(control, { ctrlKey: false, metaKey: true }).defaultPrevented).toBe(true);
+        expect(paletteOpen()).toBe(true);
+      } finally {
+        delete window.electronAPI;
+      }
+    });
+
+    it('still opens from a Mac checkbox with Ctrl, which edits nothing there', () => {
+      window.electronAPI = { platform: 'darwin' };
+      try {
+        const control = setup('<input type="checkbox" id="c" />');
+        control.focus();
+
+        shortcut(control);
+
+        expect(paletteOpen()).toBe(true);
+      } finally {
+        delete window.electronAPI;
+      }
+    });
+
+    it('ignores other combinations from a control', () => {
+      const control = setup('<input type="checkbox" id="c" />');
+      control.focus();
+
+      for (const init of [{ altKey: true }, { shiftKey: true }, { key: 'j' }]) {
+        expect(shortcut(control, init).defaultPrevented).toBe(false);
+      }
+      expect(paletteOpen()).toBe(false);
+    });
+  });
+
   it('shows commands, labels, and entity states in the active language', () => {
     const { palette, paletteState } = load();
     const i18n = require('../../src/i18n.js');
@@ -698,7 +1387,10 @@ describe('command palette recents', () => {
     const search = document.getElementById('quick-controls-search');
     const hint = document.getElementById(search.getAttribute('aria-describedby'));
     expect(search.nextElementSibling).toBe(hint);
-    expect(hint.textContent.trim()).toBe(hint.dataset.i18n);
+    // The shortcut is a placeholder, so the platform can name its own modifier (Cmd+K on macOS).
+    const { shortcut } = JSON.parse(hint.dataset.i18nVars);
+    expect(shortcut).toBe('Ctrl+K');
+    expect(hint.textContent.trim()).toBe(hint.dataset.i18n.replace('{{shortcut}}', shortcut));
     expect(hint.textContent).toContain('Ctrl+K');
   });
 });

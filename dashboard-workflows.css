@@ -315,6 +315,38 @@
   display: none;
 }
 
+/* A switch with a line of help under its label (Notify when unavailable or unknown). It sits in a
+   row like the quiet hours switch and shares its divider. */
+.alert-advanced-options .alert-switch-row {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.alert-advanced-options .alert-switch-row[hidden] {
+  display: none;
+}
+
+.alert-advanced-options .alert-switch-text {
+  min-width: 0;
+}
+
+.alert-advanced-options .alert-switch-text > label {
+  display: block;
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+}
+
+.alert-advanced-options .alert-switch-text > .form-help {
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
 /* The target state field comes from the older alert markup; match the fields around it. */
 .alert-advanced-options > .form-group {
   margin: 0;
@@ -338,12 +370,9 @@
   display: none;
 }
 
-.alert-advanced-options label:has(input:disabled) {
+.alert-advanced-options label:has(input:disabled),
+.alert-advanced-options label:has(select:disabled) {
   opacity: 0.55;
-}
-
-body:not(.theme-light) .alert-advanced-options input[type='time'] {
-  color-scheme: dark;
 }
 
 /* The fields take the shared field recipe from styles.css; a grid or flex cell only has to let

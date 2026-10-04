@@ -178,6 +178,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       executeHotkeyAction: jest.fn(),
       handleDesktopPinActionRequest: jest.fn(),
       callMediaTileService: jest.fn(),
+      openEntityControls: jest.fn(),
       getTickTargets: jest.fn(() => ({ hasVisibleTimers: false })),
       switchQuickAccessPage: jest.fn(),
       showAddPageModal: jest.fn(),
@@ -719,6 +720,58 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockSettings.closeSettings).not.toHaveBeenCalled();
   });
 
+  describe('the main window outside the wizard', () => {
+    it("opens the primary media player's controls from the track, which has no volume of its own", async () => {
+      const player = {
+        entity_id: 'media_player.living_room',
+        state: 'playing',
+        attributes: { friendly_name: 'Living room' },
+      };
+      await loadRenderer({
+        config: { ...unconfiguredConfig(), primaryMediaPlayer: 'media_player.living_room' },
+        bodyHtml:
+          '<main class="widget-content"><button id="media-tile-info" type="button"></button></main>',
+      });
+      mockState.STATES = { [player.entity_id]: player };
+      mockState.CONFIG = { ...mockState.CONFIG, primaryMediaPlayer: player.entity_id };
+
+      document.getElementById('media-tile-info').click();
+
+      expect(require('../../src/ui.js').openEntityControls).toHaveBeenCalledWith(player);
+    });
+
+    it('does nothing from the track while the player is not in Home Assistant', async () => {
+      await loadRenderer({
+        config: { ...unconfiguredConfig(), primaryMediaPlayer: 'media_player.gone' },
+        bodyHtml:
+          '<main class="widget-content"><button id="media-tile-info" type="button"></button></main>',
+      });
+      mockState.STATES = {};
+
+      document.getElementById('media-tile-info').click();
+
+      expect(require('../../src/ui.js').openEntityControls).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['darwin', 'Cmd+K'],
+      ['win32', 'Ctrl+K'],
+      ['linux', 'Ctrl+K'],
+    ])('tells %s to press %s for the command palette', async (platform, shortcut) => {
+      await loadRenderer({
+        configureApi(api) {
+          api.platform = platform;
+        },
+        bodyHtml:
+          '<main class="widget-content"></main><div id="command-palette-hint" data-i18n-vars=\'{"shortcut":"Ctrl+K"}\'></div>',
+      });
+
+      expect(
+        JSON.parse(document.getElementById('command-palette-hint').getAttribute('data-i18n-vars'))
+      ).toEqual({ shortcut });
+    });
+  });
+
   it('starts fresh installs with an empty URL and the Home Assistant 2026.8 address hint', async () => {
     await loadRenderer();
 
@@ -727,6 +780,11 @@ describe('Renderer first-run Home Assistant authorization', () => {
 
     expect(input.value).toBe('');
     expect(input.placeholder).toBe('http://homeassistant.local');
+    // An address is not prose: no spelling underline, no capital, no autofill, a URL keyboard
+    expect(input.getAttribute('spellcheck')).toBe('false');
+    expect(input.getAttribute('autocapitalize')).toBe('off');
+    expect(input.getAttribute('autocomplete')).toBe('off');
+    expect(input.getAttribute('inputmode')).toBe('url');
   });
 
   it('authorizes a fresh Home Assistant 2026.8 install without adding the legacy port', async () => {
@@ -1422,48 +1480,25 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockHotkeys.renderHotkeysTab).toHaveBeenCalled();
     expect(document.activeElement).toBe(document.querySelector('.hotkey-input'));
   });
-  it.each(['Enter', ' '])(
-    'starts hotkey recording with %s and restores focus after cancellation',
-    async (key) => {
-      const config = unconfiguredConfig();
-      config.globalHotkeys.hotkeys['light.office'] = { hotkey: 'Ctrl+L', action: 'toggle' };
-      await loadRenderer({
-        config,
-        bodyHtml:
-          '<main class="widget-content"></main><div id="hotkeys-list"><div><input readonly class="hotkey-input" data-entity-id="light.office" value="Ctrl+L"></div></div>',
-      });
-      mockHotkeys.captureHotkey.mockResolvedValueOnce(null);
-      const input = document.querySelector('.hotkey-input');
-      input.focus();
-      input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-      await flushAsync();
-      expect(mockHotkeys.captureHotkey).toHaveBeenCalledTimes(1);
-      expect(input.value).toBe('Ctrl+L');
-      expect(document.activeElement).toBe(input);
-      expect(input.hasAttribute('aria-busy')).toBe(false);
-    }
-  );
-  it('restores the configured hotkey and focus after a registration conflict', async () => {
-    const config = unconfiguredConfig();
-    config.globalHotkeys.hotkeys['light.office'] = 'Ctrl+L';
+  // Recording itself (the dialog, the clash message, focus afterwards, the saved-while-off warning)
+  // is the shared recorder's, tested in hotkeys.test.js; the list only has to start it for its row.
+  it.each(['Enter', ' '])('starts the shared recorder for a row with %s', async (key) => {
     await loadRenderer({
-      config,
+      config: unconfiguredConfig(),
       bodyHtml:
         '<main class="widget-content"></main><div id="hotkeys-list"><div><input readonly class="hotkey-input" data-entity-id="light.office" value="Ctrl+L"></div></div>',
-      configureApi(api) {
-        api.registerHotkey.mockResolvedValueOnce({ success: false, error: 'Already registered' });
-      },
     });
-    mockHotkeys.captureHotkey.mockResolvedValueOnce('Ctrl+K');
     const input = document.querySelector('.hotkey-input');
-    input.click();
+    input.focus();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
     await flushAsync();
-    expect(mockElectronAPI.registerHotkey).toHaveBeenCalledWith('light.office', 'Ctrl+K', 'toggle');
-    expect(input.value).toBe('Ctrl+L');
-    expect(document.activeElement).toBe(input);
-    expect(mockUiUtils.showToast).toHaveBeenCalledWith('Already registered', 'error');
+    expect(mockHotkeys.assignHotkeyToEntity).toHaveBeenCalledTimes(1);
+    expect(mockHotkeys.assignHotkeyToEntity).toHaveBeenCalledWith('light.office', {
+      action: undefined,
+    });
   });
-  it('registers a recorded hotkey with the action picked in the same row', async () => {
+
+  it('records a row with the action picked in the same row', async () => {
     await loadRenderer({
       config: unconfiguredConfig(),
       bodyHtml: `<main class="widget-content"></main><div id="hotkeys-list"><div>
@@ -1472,43 +1507,13 @@ describe('Renderer first-run Home Assistant authorization', () => {
           <option value="toggle">Toggle</option><option value="turn_on" selected>Turn On</option>
         </select></div></div>`,
     });
-    mockHotkeys.captureHotkey.mockResolvedValueOnce('Ctrl+K');
-    mockElectronAPI.registerHotkey.mockResolvedValueOnce({ success: true });
 
     document.querySelector('.hotkey-input').click();
     await flushAsync();
 
-    expect(mockElectronAPI.registerHotkey).toHaveBeenCalledWith(
-      'light.office',
-      'Ctrl+K',
-      'turn_on'
-    );
-    expect(mockState.CONFIG.globalHotkeys.hotkeys['light.office']).toEqual({
-      hotkey: 'Ctrl+K',
+    expect(mockHotkeys.assignHotkeyToEntity).toHaveBeenCalledWith('light.office', {
       action: 'turn_on',
     });
-  });
-
-  it('announces a successful keyboard hotkey assignment', async () => {
-    await loadRenderer({
-      config: unconfiguredConfig(),
-      bodyHtml:
-        '<main class="widget-content"></main><div id="hotkeys-list"><div><input readonly class="hotkey-input" data-entity-id="light.office"></div></div>',
-    });
-    mockHotkeys.captureHotkey.mockResolvedValueOnce('Ctrl+K');
-    mockElectronAPI.registerHotkey.mockResolvedValueOnce({ success: true });
-    const input = document.querySelector('.hotkey-input');
-    input.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
-    );
-    await flushAsync();
-    expect(input.value).toBe('Ctrl+K');
-    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-      expect.stringContaining('Hotkey set for'),
-      'success',
-      2200
-    );
-    expect(document.activeElement).toBe(input);
   });
 
   it('publishes stale status until a fresh snapshot arrives, and preserves actionable auth failure', async () => {
