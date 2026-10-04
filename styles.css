@@ -3041,6 +3041,10 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 .widget-title {
   min-width: 0;
+  /* An h1 for the window's landmark outline, drawn as the small title it was. */
+  margin: 0;
+  font-family: inherit;
+  line-height: inherit;
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
@@ -3435,9 +3439,25 @@ body.first-run-active .widget-content > * {
   gap: 2px;
   min-width: 0;
   grid-column: 1;
+  /* A button, so the track opens the player's controls from the keyboard too; drawn as text. */
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.media-tile-info:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .media-tile-title {
+  display: block;
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-semibold);
   letter-spacing: -0.01em;
@@ -3448,6 +3468,7 @@ body.first-run-active .widget-content > * {
 }
 
 .media-tile-artist {
+  display: block;
   font-size: var(--font-size-sm);
   color: var(--text-dim);
   white-space: nowrap;
@@ -3686,6 +3707,10 @@ body.first-run-active .widget-content > * {
 
 /* Section labels: small, tracked capitals, well below the content in weight. */
 .section-label {
+  /* The Quick Access label is an h2, for heading navigation; it keeps the look of a caption. */
+  margin: 0;
+  font-family: inherit;
+  line-height: inherit;
   font-size: var(--font-size-xs-plus);
   font-weight: var(--font-weight-semibold);
   letter-spacing: 0.1em;
@@ -5044,7 +5069,9 @@ body.theme-light:not(.high-contrast)
 
 /* Keyboard focus scrolls rows clear of the sticky pager (about 38px tall) and its focus ring,
    instead of just to the list edge. */
-#primary-cards-list:has(> .primary-cards-pagination) {
+:is(#primary-cards-list, #custom-entity-icons-list, #hotkeys-list):has(
+  > .primary-cards-pagination
+) {
   scroll-padding-bottom: 48px;
 }
 
@@ -8696,8 +8723,10 @@ body.theme-light:not(.high-contrast)
 }
 
 /* Scoped to beat the settings modal's own :focus-visible border, so a rejected value stays red
-   while the field has focus too. */
-#settings-modal #custom-color-hex[aria-invalid='true'] {
+   while the field has focus too. The attribute is written twice on purpose: that raises the
+   selector's specificity to match `input[type='text']:focus-visible` (an :is() counts only as its
+   strongest argument), and this rule comes later. */
+#settings-modal :is(input, select, textarea)[aria-invalid='true'][aria-invalid='true'] {
   border-color: var(--error);
 }
 
@@ -8760,6 +8789,11 @@ body.theme-light:not(.high-contrast)
   gap: var(--space-2);
 }
 
+/* display above would otherwise win over the hidden attribute, and an empty button would show. */
+.btn[hidden] {
+  display: none;
+}
+
 .btn:hover {
   border-color: var(--border-hover);
   background: var(--glass-elevated);
@@ -8819,13 +8853,13 @@ body.theme-light:not(.high-contrast)
   box-shadow: none;
 }
 
-.btn-secondary:not([id*='cancel']):not([id*='close']):not([id*='reset']) {
+.btn-secondary:not([id*='cancel']):not([id*='close']):not(.btn-reset) {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   transition: all var(--transition-base);
 }
 
-.btn-secondary:not([id*='cancel']):not([id*='close']):not([id*='reset']):active {
+.btn-secondary:not([id*='cancel']):not([id*='close']):not(.btn-reset):active {
   transform: scale(0.98);
 }
 
@@ -8841,7 +8875,7 @@ body.theme-light:not(.high-contrast)
 /* Neutral actions keep lower emphasis even with accent-forward button styling */
 .btn-secondary[id*='cancel'],
 .btn-secondary[id*='close'],
-.btn-secondary[id*='reset'] {
+.btn-secondary.btn-reset {
   background: transparent;
   color: var(--text-secondary);
   border-color: var(--border-color);
@@ -8850,7 +8884,7 @@ body.theme-light:not(.high-contrast)
 
 .btn-secondary[id*='cancel']:hover,
 .btn-secondary[id*='close']:hover,
-.btn-secondary[id*='reset']:hover {
+.btn-secondary.btn-reset:hover {
   background: var(--glass-surface);
   color: var(--text-primary);
   border-color: var(--border-hover);
@@ -9702,6 +9736,39 @@ body {
 
 #confirm-message {
   white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+/* A confirmation with facts to scan (the settings import): the one thing to heed first, then label and
+   value rows. Plain-text confirmations above are unaffected. */
+.confirm-callout {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3);
+  border-inline-start: 3px solid var(--warning-text);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--warning-text) 12%, transparent);
+  color: var(--text-primary);
+  font-weight: var(--font-weight-medium);
+  white-space: normal;
+}
+
+.confirm-facts {
+  display: grid;
+  /* The labels share the width with the values and wrap, rather than one long label ("Missing from
+     this connection") taking the room a file name needs. */
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  white-space: normal;
+}
+
+.confirm-facts dt {
+  color: var(--text-dim);
+}
+
+.confirm-facts dd {
+  margin: 0;
+  color: var(--text-primary);
   overflow-wrap: anywhere;
 }
 
@@ -12465,7 +12532,7 @@ body.software-glass.frosted-glass .modal-content {
 
 .btn-secondary[id*='cancel'],
 .btn-secondary[id*='close'],
-.btn-secondary[id*='reset'] {
+.btn-secondary.btn-reset {
   background: transparent;
   border-color: var(--tile-border-hover);
   color: var(--text-secondary);
@@ -12474,7 +12541,7 @@ body.software-glass.frosted-glass .modal-content {
 
 .btn-secondary[id*='cancel']:hover,
 .btn-secondary[id*='close']:hover,
-.btn-secondary[id*='reset']:hover {
+.btn-secondary.btn-reset:hover {
   background: var(--tile-bg-hover);
   color: var(--text-primary);
   box-shadow: none;
@@ -13275,6 +13342,10 @@ body.opaque-panels #settings-modal .modal-header {
      Without this, Tab scrolled a control that was already inside the box under the pill, and its
      ring and state were hidden. */
   scroll-padding-block-end: 80px;
+  /* The Save/Cancel pill floats over the bottom corner, where the switches and selects of the last
+     visible row sit. Rows fade out before they reach it, so none is left half under the pill, and
+     the end padding above keeps the last row fully clear at the end of the page. */
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 80px), transparent calc(100% - 52px));
 }
 
 /* A column of at most 680px, centred: across a 900px window the labels sat 750px from their
@@ -13388,6 +13459,22 @@ body.theme-light #settings-modal .modal-footer {
   .settings-search-target {
     animation: none;
   }
+}
+
+/* No result: the page is the empty state, not one faint caption over a blank panel. */
+#settings-modal .settings-search-empty {
+  margin-block-start: var(--space-6);
+  padding-block: var(--space-8);
+}
+
+#settings-modal .settings-search-empty-icon {
+  color: var(--text-secondary);
+}
+
+#settings-modal .settings-search-empty-title {
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
 }
 
 #settings-modal .settings-search-result {
@@ -14022,9 +14109,13 @@ body.theme-light
   margin-top: 10px;
 }
 
-#settings-modal #primary-cards-body > .form-help,
 #settings-modal #custom-entity-icons-body > .form-help {
   margin-top: 8px;
+}
+
+/* The top cards' help leads the disclosure, above the search and list it describes. */
+#settings-modal #primary-cards-body > .form-help {
+  margin: 0 0 10px;
 }
 
 #settings-modal .preset-hotkey-row {
@@ -14074,6 +14165,15 @@ body.theme-light
   background: rgba(var(--accent-rgb), 0.12);
 }
 
+/* A link to a page in the browser: the arrow says so, and it sits flush under the text it follows. */
+#settings-modal .btn-link.link-external {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-block-start: 2px;
+  margin-inline-start: -6px;
+}
+
 /* Profile sync reveals its options as rows of their own, under the switch that
    turns it on. */
 #settings-modal .settings-group-body > .profile-sync-settings {
@@ -14096,6 +14196,12 @@ body.theme-light
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+/* A row of actions whose buttons are all hidden (the passphrase block's Clear and Cancel change)
+   would still cost a gap in the column it sits in. */
+.profile-sync-actions:not(:has(> :not(.hidden))) {
+  display: none;
 }
 
 /* The passphrase gets the line; its Show button sits beside it and wraps under it when narrow. */
@@ -14647,6 +14753,13 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   text-align: center;
 }
 
+/* The weather card ships with an empty icon slot, filled once a weather entity reports. Until then
+   (disconnected, loading, no weather source) the 40px slot would push the "--" readings off the
+   card's centre, where the time card sits. */
+.weather-card .weather-icon:empty {
+  display: none;
+}
+
 /* Quick Access before the first connection, or while it is still connecting. */
 #quick-controls .status-message {
   grid-column: 1 / -1;
@@ -14839,6 +14952,14 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
 .modal-body > .form-group > .entity-selector-list {
   flex: 1 1 auto;
   max-height: none;
+}
+
+/* The alert picker's list keeps one height whatever a query leaves in it. The dialog is centred, so
+   a list that shrank to two rows, or to none, moved the search field down the window under the
+   person's typing. */
+#alert-entity-picker-list {
+  flex: none;
+  height: min(400px, 45vh);
 }
 
 /* A list of three rows or more keeps room for three, however short the window: below that the
@@ -15864,6 +15985,14 @@ body[data-season='thanksgiving'] .control-item {
   width: 100%;
   margin-bottom: 4px;
   padding: 0;
+  /* The list's own heading, set apart from the holiday names under it, which share its class. */
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+#settings-modal .seasonal-holiday-list > .form-help {
+  margin: 0;
 }
 
 #settings-modal .seasonal-holiday-option {

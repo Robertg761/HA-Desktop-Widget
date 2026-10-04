@@ -2,6 +2,10 @@ import { applyDesktopAppearance } from './desktop-appearance.js';
 import { getAlertStateSuggestions, normalizeAlertState } from './alert-rules.js';
 import { initializeSettingsSearch } from './settings-search.js';
 import { initializeSettingsFiles } from './settings-files-ui.js';
+import { createEmojiSupportCheck } from './emoji-support.js';
+import { clearFieldError, clearFieldErrors, showFieldError } from './field-errors.js';
+import { paginate, renderListPager } from './list-pager.js';
+import { linkSettingsHelpText, setDescribedByLine } from './settings-help-links.js';
 import state from './state.js';
 import log from './logger.js';
 import websocket from './websocket.js';
@@ -107,9 +111,13 @@ const COLOR_TARGETS = {
 };
 // Called at render time so the warning follows the active language.
 const getFrostedGlassUnavailableMessage = () => t('Needs Windows 11 version 22H2 or later.');
-const getWeatherEffectsGlassWarning = () =>
+// While Frosted glass is off the effects are held back, not turned off: the switch keeps its
+// position and the effects return with the glass. The line says which of the two it is.
+const getWeatherEffectsGlassWarning = (effectsOn = false) =>
   isFrostedGlassAvailable(state.CONFIG)
-    ? t('Turn on Frosted glass background before enabling subtle weather effects.')
+    ? effectsOn
+      ? t('Subtle weather effects need Frosted glass, so they are paused.')
+      : t('Turn on Frosted glass background before enabling subtle weather effects.')
     : getFrostedGlassUnavailableMessage();
 const WEATHER_UNAVAILABLE_STATES = new Set(['unknown', 'unavailable']);
 let activeColorTarget = COLOR_TARGETS.accent;
@@ -120,6 +128,8 @@ let pendingCustomEntityIcons = {};
 let activeCustomEntityIconPickerEntityId = null;
 let customEntityIconPickerQueryByEntityId = {};
 let lastCustomEntityIconAction = null;
+let customEntityIconPage = 0;
+let customEntityIconSearchTimer;
 let pendingCustomColors = [];
 let activeCustomManagementThemeId = null;
 let isSyncingCustomColorEditor = false;
@@ -238,27 +248,27 @@ function syncWeatherEffectsAvailability(options = {}) {
   if (!weatherEffectsEnabled) return true;
 
   const frostedGlassEnabled = !!frostedGlass?.checked;
-  const wasChecked = !!weatherEffectsEnabled.checked;
+  // Where the glass cannot be drawn at all the switch reads off (the saved choice is left alone, as
+  // Save skips a locked switch). Where the person only turned the glass off, it keeps its position.
+  if (!isFrostedGlassAvailable(state.CONFIG)) weatherEffectsEnabled.checked = false;
+  const effectsOn = !!weatherEffectsEnabled.checked;
+  // Locked, not cleared: turning Frosted glass off used to untick this switch, so turning the glass
+  // back on found the person's choice gone.
   weatherEffectsEnabled.disabled = !frostedGlassEnabled;
   weatherEffectsEnabled.setAttribute('aria-disabled', String(!frostedGlassEnabled));
-  weatherEffectsEnabled.title = frostedGlassEnabled ? '' : getWeatherEffectsGlassWarning();
-
-  if (!frostedGlassEnabled) {
-    weatherEffectsEnabled.checked = false;
-  }
+  weatherEffectsEnabled.title = frostedGlassEnabled ? '' : getWeatherEffectsGlassWarning(effectsOn);
 
   if (weatherOverrideGroup) {
-    weatherOverrideGroup.style.display =
-      frostedGlassEnabled && weatherEffectsEnabled.checked ? 'block' : 'none';
+    weatherOverrideGroup.style.display = frostedGlassEnabled && effectsOn ? '' : 'none';
   }
 
   if (warning) {
     warning.classList.toggle('hidden', frostedGlassEnabled);
-    warning.textContent = getWeatherEffectsGlassWarning();
+    warning.textContent = getWeatherEffectsGlassWarning(effectsOn);
   }
 
-  if (!frostedGlassEnabled && showWarning && wasChecked) {
-    showToast(getWeatherEffectsGlassWarning(), 'warning', 3500);
+  if (!frostedGlassEnabled && showWarning && effectsOn) {
+    showToast(getWeatherEffectsGlassWarning(true), 'warning', 3500);
   }
 
   return frostedGlassEnabled;
@@ -877,50 +887,67 @@ function buildCustomEntityIconSearchTerms(icon, aliases, codepointTerms) {
   return Array.from(searchTerms);
 }
 
+// Skin tones, joined people and objects (family, profession), flags and their tag sequences are
+// about three quarters of the emoji list and near-duplicates of one another. They stay findable by
+// searching and by pasting, but the list a person scrolls through does not open with them.
+const ICON_VARIANT_PATTERN = /[\u{1F3FB}-\u{1F3FF}\u{1F1E6}-\u{1F1FF}\u{E0020}-\u{E007F}]|\u200D/u;
+
+function isCustomEntityIconVariant(icon) {
+  return ICON_VARIANT_PATTERN.test(icon);
+}
+
 function buildCustomEntityIconChoices(rgiEmojiData) {
-  const iconSet = new Set(CUSTOM_ENTITY_ICON_FALLBACKS);
+  // The icons made for the home first, in the order they were written, then the rest of Unicode's
+  // emoji. A sorted catalogue opened on copyright signs and keycap digits.
+  const curatedIcons = new Set(CUSTOM_ENTITY_ICON_FALLBACKS);
 
   Object.values(CUSTOM_ENTITY_ICON_KEYWORD_GROUPS).forEach((icons) => {
     (Array.isArray(icons) ? icons : []).forEach((icon) => {
       const normalized = normalizeCustomEntityIcon(icon);
-      if (normalized) iconSet.add(normalized);
+      if (normalized) curatedIcons.add(normalized);
     });
   });
 
-  if (Array.isArray(rgiEmojiData?.strings)) {
-    rgiEmojiData.strings.forEach((icon) => {
-      const normalized = normalizeCustomEntityIcon(icon);
-      if (normalized) iconSet.add(normalized);
-    });
-  }
+  // An emoji the computer's fonts cannot draw would be an empty box here and on the saved tile.
+  // Only the list a person scrolls through is checked: the variants are three quarters of the
+  // emoji and cost three quarters of the check, and they are only ever found by searching.
+  const isDrawn = createEmojiSupportCheck(getComputedStyle(document.body).fontFamily || undefined);
+  const otherIcons = new Set();
+  const addOther = (icon) => {
+    const normalized = normalizeCustomEntityIcon(icon);
+    if (!normalized || curatedIcons.has(normalized)) return;
+    if (isCustomEntityIconVariant(normalized) || isDrawn(normalized)) otherIcons.add(normalized);
+  };
+  if (Array.isArray(rgiEmojiData?.strings)) rgiEmojiData.strings.forEach(addOther);
 
   if (rgiEmojiData?.characters && typeof rgiEmojiData.characters.toArray === 'function') {
     rgiEmojiData.characters.toArray().forEach((codepoint) => {
-      if (!Number.isInteger(codepoint)) return;
-      const normalized = normalizeCustomEntityIcon(String.fromCodePoint(codepoint));
-      if (normalized) iconSet.add(normalized);
+      // Digits, # and * are only emoji as part of a keycap sequence, which the strings carry.
+      if (!Number.isInteger(codepoint) || codepoint < 0x80) return;
+      addOther(String.fromCodePoint(codepoint));
     });
   }
 
-  return Array.from(iconSet)
-    .map((icon) => {
-      const stripped = stripEmojiVariationSelectors(icon);
-      const aliases = getCustomEntityIconSearchAliases(icon);
-      const codepointTerms = getIconCodepointTerms(icon);
-      const searchTerms = buildCustomEntityIconSearchTerms(icon, aliases, codepointTerms);
-      const searchText = [icon, stripped, ...aliases, ...codepointTerms, ...searchTerms]
-        .join(' ')
-        .toLowerCase();
+  // Unicode order keeps the neighbours together (faces, animals, food, travel).
+  const byCodepoint = (a, b) => a.codePointAt(0) - b.codePointAt(0) || (a < b ? -1 : a > b ? 1 : 0);
+  return [...curatedIcons, ...[...otherIcons].sort(byCodepoint)].map((icon) => {
+    const stripped = stripEmojiVariationSelectors(icon);
+    const aliases = getCustomEntityIconSearchAliases(icon);
+    const codepointTerms = getIconCodepointTerms(icon);
+    const searchTerms = buildCustomEntityIconSearchTerms(icon, aliases, codepointTerms);
+    const searchText = [icon, stripped, ...aliases, ...codepointTerms, ...searchTerms]
+      .join(' ')
+      .toLowerCase();
 
-      return {
-        icon,
-        aliases,
-        codepointTerms,
-        searchTerms,
-        searchText,
-      };
-    })
-    .sort((a, b) => a.icon.localeCompare(b.icon));
+    return {
+      icon,
+      aliases,
+      codepointTerms,
+      searchTerms,
+      searchText,
+      variant: !curatedIcons.has(icon) && isCustomEntityIconVariant(icon),
+    };
+  });
 }
 
 async function ensureCustomEntityIconChoicesLoaded() {
@@ -956,7 +983,7 @@ function getFilteredCustomEntityIconChoices(filterValue = '') {
   const rawFilter = String(filterValue || '')
     .trim()
     .toLowerCase();
-  if (!rawFilter) return choices;
+  if (!rawFilter) return choices.filter((choice) => !choice.variant);
 
   const alternativeGroups = buildEmojiSearchAlternativeGroups(rawFilter);
 
@@ -2347,10 +2374,12 @@ function updatePrimaryCardActionButtons() {
   syncSegmentedIndicators(document.getElementById('settings-modal') || document);
 }
 
-const PRIMARY_CARD_PAGE_SIZE = 50;
 let primaryCardPage = 0;
 let primaryCardSearchTimer;
 
+// Rebuilds a paged list the keyboard is working in. The pager buttons and the row controls are
+// replaced by the render, which would send focus to <body>; the control with the same data-*
+// attributes takes it back, and the list keeps its scroll position.
 function preserveListFocus(list, render) {
   const focused = list.contains(document.activeElement) ? document.activeElement : null;
   const attributes = focused
@@ -2359,8 +2388,8 @@ function preserveListFocus(list, render) {
   const scrollTop = list.scrollTop;
   render();
   if (attributes.length) {
-    const replacement = Array.from(list.querySelectorAll('button')).find((button) =>
-      attributes.every(({ name, value }) => button.getAttribute(name) === value)
+    const replacement = Array.from(list.querySelectorAll('button, input')).find((control) =>
+      attributes.every(({ name, value }) => control.getAttribute(name) === value)
     );
     replacement?.focus({ preventScroll: true });
   }
@@ -2388,34 +2417,32 @@ function renderPrimaryCardsEntityRows() {
     return;
   }
 
-  const pageCount = Math.ceil(scoredEntities.length / PRIMARY_CARD_PAGE_SIZE);
-  primaryCardPage = Math.min(primaryCardPage, pageCount - 1);
-  scoredEntities
-    .slice(primaryCardPage * PRIMARY_CARD_PAGE_SIZE, (primaryCardPage + 1) * PRIMARY_CARD_PAGE_SIZE)
-    .forEach(({ entity }) => {
-      const item = document.createElement('div');
-      item.className = 'entity-item';
+  const shown = paginate(scoredEntities, primaryCardPage);
+  primaryCardPage = shown.page;
+  shown.items.forEach(({ entity }) => {
+    const item = document.createElement('div');
+    item.className = 'entity-item';
 
-      const icon = entityIconMarkup(entity);
-      const displayName = utils.escapeHtml(utils.getEntityDisplayName(entity));
-      const entityId = utils.escapeHtml(entity.entity_id);
-      const entityIdAttr = utils.escapeHtmlAttribute(entity.entity_id);
+    const icon = entityIconMarkup(entity);
+    const displayName = utils.escapeHtml(utils.getEntityDisplayName(entity));
+    const entityId = utils.escapeHtml(entity.entity_id);
+    const entityIdAttr = utils.escapeHtmlAttribute(entity.entity_id);
 
-      const isCardOne = selections[0] === entity.entity_id;
-      const isCardTwo = selections[1] === entity.entity_id;
+    const isCardOne = selections[0] === entity.entity_id;
+    const isCardTwo = selections[1] === entity.entity_id;
 
-      const cardOneLabel = utils.escapeHtml(
-        isCardOne ? t('Card {{index}} ✓', { index: 1 }) : t('Set Card {{index}}', { index: 1 })
-      );
-      const cardTwoLabel = utils.escapeHtml(
-        isCardTwo ? t('Card {{index}} ✓', { index: 2 }) : t('Set Card {{index}}', { index: 2 })
-      );
-      const cardOneClass = isCardOne ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
-      const cardTwoClass = isCardTwo ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
-      const cardOneDisabled = isCardOne ? 'aria-disabled="true"' : '';
-      const cardTwoDisabled = isCardTwo ? 'aria-disabled="true"' : '';
+    const cardOneLabel = utils.escapeHtml(
+      isCardOne ? t('Card {{index}} ✓', { index: 1 }) : t('Set Card {{index}}', { index: 1 })
+    );
+    const cardTwoLabel = utils.escapeHtml(
+      isCardTwo ? t('Card {{index}} ✓', { index: 2 }) : t('Set Card {{index}}', { index: 2 })
+    );
+    const cardOneClass = isCardOne ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
+    const cardTwoClass = isCardTwo ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
+    const cardOneDisabled = isCardOne ? 'aria-disabled="true"' : '';
+    const cardTwoDisabled = isCardTwo ? 'aria-disabled="true"' : '';
 
-      item.innerHTML = `
+    item.innerHTML = `
       <div class="entity-item-main">
         <span class="entity-icon">${icon}</span>
         <div class="entity-item-info">
@@ -2429,41 +2456,17 @@ function renderPrimaryCardsEntityRows() {
       </div>
     `;
 
-      list.appendChild(item);
-    });
+    list.appendChild(item);
+  });
 
-  if (pageCount > 1) {
-    const navigation = document.createElement('div');
-    navigation.className = 'primary-cards-list-actions primary-cards-pagination';
-    const status = document.createElement('span');
-    status.setAttribute('role', 'status');
-    status.textContent = t('Page {{page}} / {{count}}', {
-      page: primaryCardPage + 1,
-      count: pageCount,
-    });
-    navigation.appendChild(status);
-    for (const [key, label, delta] of [
-      ['previous', t('Previous'), -1],
-      ['next', t('Next'), 1],
-    ]) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'btn btn-secondary btn-sm';
-      button.textContent = label;
-      button.dataset.primaryPage = key;
-      const unavailable = primaryCardPage + delta < 0 || primaryCardPage + delta >= pageCount;
-      button.setAttribute('aria-disabled', String(unavailable));
-      button.addEventListener('click', () => {
-        if (unavailable) return;
-        primaryCardPage += delta;
-        renderPrimaryCardsEntityList();
-        // A new page starts at its first row; focus stays on this pager button.
-        list.scrollTop = 0;
-      });
-      navigation.appendChild(button);
-    }
-    list.appendChild(navigation);
-  }
+  renderListPager(list, {
+    page: shown.page,
+    pageCount: shown.pageCount,
+    onChange: (page) => {
+      primaryCardPage = page;
+      renderPrimaryCardsEntityList();
+    },
+  });
 
   syncPersonalizationSectionHeight(document.getElementById('primary-cards-section'));
 }
@@ -2523,7 +2526,12 @@ function initPrimaryCardsUI() {
     searchInput.addEventListener('input', () => {
       clearTimeout(primaryCardSearchTimer);
       primaryCardPage = 0;
-      primaryCardSearchTimer = setTimeout(renderPrimaryCardsEntityList, 150);
+      primaryCardSearchTimer = setTimeout(() => {
+        renderPrimaryCardsEntityList();
+        // A new query starts at its first match, not wherever the last list was scrolled to.
+        const list = document.getElementById('primary-cards-list');
+        if (list) list.scrollTop = 0;
+      }, 150);
     });
   }
 
@@ -2539,6 +2547,9 @@ function updateCustomEntityIconSummary() {
   const summaryEl = document.getElementById('custom-entity-icons-summary');
   if (!summaryEl) return;
   const count = Object.keys(pendingCustomEntityIcons).length;
+  // Nothing to reset with no icons set; the button says so instead of claiming it cleared them.
+  const resetAll = document.getElementById('custom-entity-icons-reset-all');
+  if (resetAll) resetAll.disabled = count === 0;
   if (count === 0) {
     summaryEl.textContent = t('No custom icons configured.');
     return;
@@ -2680,10 +2691,26 @@ function handleCustomEntityIconGridKeydown(event) {
   choices[next].focus();
 }
 
+// The row the person is working in: the one whose picker is open, or the one holding the focus.
+function getCustomEntityIconAnchorEntityId(list) {
+  if (activeCustomEntityIconPickerEntityId) return activeCustomEntityIconPickerEntityId;
+  const focused = list.contains(document.activeElement) ? document.activeElement : null;
+  const control = focused?.closest('[data-custom-icon-input], [data-custom-icon-picker-toggle]');
+  return control?.dataset.customIconInput || control?.dataset.customIconPickerToggle || '';
+}
+
+// Every caller (the pager, the search, a row's buttons, closing a picker) rebuilds the whole page,
+// so each one hands the keyboard back to the control it was on instead of dropping it to <body>.
 function renderCustomEntityIconsList() {
+  const list = document.getElementById('custom-entity-icons-list');
+  if (list) preserveListFocus(list, renderCustomEntityIconRows);
+}
+
+function renderCustomEntityIconRows() {
   const list = document.getElementById('custom-entity-icons-list');
   const searchInput = document.getElementById('custom-entity-icons-search');
   if (!list || !searchInput) return;
+  const anchorEntityId = getCustomEntityIconAnchorEntityId(list);
   list.classList.toggle(
     'custom-entity-icons-list-expanded',
     !!activeCustomEntityIconPickerEntityId
@@ -2700,7 +2727,9 @@ function renderCustomEntityIconsList() {
     return;
   }
 
-  scoredEntities.forEach(({ entity }) => {
+  const shown = paginate(scoredEntities, customEntityIconPage);
+  customEntityIconPage = shown.page;
+  shown.items.forEach(({ entity }) => {
     const entityId = entity.entity_id;
     const pendingIcon = getPendingCustomIcon(entityId);
     const pickerQuery = getCustomEntityIconPickerQuery(entityId);
@@ -2765,7 +2794,7 @@ function renderCustomEntityIconsList() {
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'custom-entity-icon-input';
-    input.placeholder = t('Search icons or paste icon');
+    input.placeholder = t('Search emoji or paste one');
     input.maxLength = 64;
     input.value = pickerQuery || pendingIcon || '';
     input.autocomplete = 'off';
@@ -2790,7 +2819,7 @@ function renderCustomEntityIconsList() {
 
     const resetBtn = document.createElement('button');
     resetBtn.type = 'button';
-    resetBtn.className = 'btn btn-secondary btn-sm';
+    resetBtn.className = 'btn btn-secondary btn-reset btn-sm';
     resetBtn.textContent = t('Reset');
     resetBtn.disabled = !hasCustomIcon;
     resetBtn.dataset.customIconReset = entityId;
@@ -2811,8 +2840,26 @@ function renderCustomEntityIconsList() {
     list.appendChild(item);
   });
 
+  renderListPager(list, {
+    page: shown.page,
+    pageCount: shown.pageCount,
+    onChange: (page) => {
+      customEntityIconPage = page;
+      activeCustomEntityIconPickerEntityId = null;
+      renderCustomEntityIconsList();
+    },
+  });
+
   updateCustomEntityIconSummary();
   syncPersonalizationSectionHeight(document.getElementById('custom-entity-icons-section'));
+  // The list is rebuilt, and opening a picker also lets the list grow to its full height, which
+  // used to leave the row the person was in thousands of pixels away. Bring it back into view.
+  if (anchorEntityId) {
+    const anchorRow = [...list.querySelectorAll('[data-custom-icon-input]')]
+      .find((input) => input.dataset.customIconInput === anchorEntityId)
+      ?.closest('.custom-entity-icon-item');
+    requestAnimationFrame(() => anchorRow?.scrollIntoView?.({ block: 'nearest' }));
+  }
 }
 
 function applyCustomEntityIconFromInput(entityId, rawIcon) {
@@ -2821,9 +2868,12 @@ function applyCustomEntityIconFromInput(entityId, rawIcon) {
   const trimmed = typeof rawIcon === 'string' ? rawIcon.trim() : '';
   const normalized = normalizeCustomEntityIcon(rawIcon);
   if (trimmed && !normalized) {
-    showToast(t('Custom icon must be a single emoji or glyph.'), 'error', 3000);
+    showToast(t('Custom icon must be a single emoji.'), 'error', 3000);
     return;
   }
+  // An empty field on a row with no icon has nothing to clear: no message, no unsaved badge, and
+  // the setting is not marked edited.
+  if (!normalized && !getPendingCustomIcon(entityId)) return;
 
   const next = { ...pendingCustomEntityIcons };
   if (normalized) {
@@ -2856,7 +2906,16 @@ function resetCustomEntityIcon(entityId) {
   renderCustomEntityIconsList();
 }
 
-function resetAllCustomEntityIcons() {
+async function resetAllCustomEntityIcons() {
+  if (!Object.keys(pendingCustomEntityIcons).length) return;
+  // Every icon the person set is dropped at once, and Cancel on the Settings window would also drop
+  // every other edit to get them back.
+  const confirmed = await showConfirm(
+    t('Reset all custom icons'),
+    t('Remove every custom icon? Nothing changes for good until you select Save.'),
+    { confirmText: t('Reset'), confirmClass: 'btn-danger' }
+  );
+  if (!confirmed) return;
   pendingCustomEntityIcons = {};
   markSettingsTouched('customEntityIcons');
   customEntityIconPickerQueryByEntityId = {};
@@ -2873,7 +2932,7 @@ function initCustomEntityIconsUI() {
   section.addEventListener('click', (event) => {
     const resetAllBtn = event.target.closest('#custom-entity-icons-reset-all');
     if (resetAllBtn) {
-      resetAllCustomEntityIcons();
+      void resetAllCustomEntityIcons();
       return;
     }
 
@@ -2882,8 +2941,9 @@ function initCustomEntityIconsUI() {
       const entityId = pickerToggleBtn.dataset.customIconPickerToggle;
       const iconInput = section.querySelector(`[data-custom-icon-input="${entityId}"]`);
       syncCustomEntityIconPickerQueryFromInput(entityId, iconInput?.value || '');
-      activeCustomEntityIconPickerEntityId =
-        activeCustomEntityIconPickerEntityId === entityId ? null : entityId;
+      // Search always shows the matches. It used to toggle, so a query that had already opened the
+      // picker was hidden by pressing the button that says Search; Escape and leaving the row close.
+      activeCustomEntityIconPickerEntityId = entityId;
       renderCustomEntityIconsList();
       // The list was rebuilt under the Search button; the keyboard stays on it.
       section.querySelector(`[data-custom-icon-picker-toggle="${entityId}"]`)?.focus();
@@ -2978,14 +3038,37 @@ function initCustomEntityIconsUI() {
     const input = event.target.closest('[data-custom-icon-input]');
     if (!input) return;
     event.preventDefault();
-    applyCustomEntityIconFromInput(input.dataset.customIconInput, input.value || '');
+    // An IME's Enter confirms its composition; it is not a request to apply.
+    if (event.isComposing) return;
+    const entityId = input.dataset.customIconInput;
+    const typed = input.value.trim();
+    if (typed && !normalizeCustomEntityIcon(typed)) {
+      // A keyword is a search, not an icon: show what it found and step into the matches, rather
+      // than reporting that "lamp" is not a single emoji.
+      syncCustomEntityIconPickerQueryFromInput(entityId, input.value);
+      activeCustomEntityIconPickerEntityId = entityId;
+      renderCustomEntityIconsList();
+      refocusCustomEntityIconInput(section, entityId);
+      section
+        .querySelector(`[data-custom-icon-picker="${entityId}"] .custom-entity-icon-choice`)
+        ?.focus();
+      return;
+    }
+    applyCustomEntityIconFromInput(entityId, input.value || '');
   });
 
+  // Rows are rebuilt for every query, so typing waits for a pause, as the top cards' search does.
   const searchInput = document.getElementById('custom-entity-icons-search');
   if (searchInput) {
     searchInput.addEventListener('input', () => {
-      activeCustomEntityIconPickerEntityId = null;
-      renderCustomEntityIconsList();
+      clearTimeout(customEntityIconSearchTimer);
+      customEntityIconSearchTimer = setTimeout(() => {
+        activeCustomEntityIconPickerEntityId = null;
+        customEntityIconPage = 0;
+        renderCustomEntityIconsList();
+        const list = document.getElementById('custom-entity-icons-list');
+        if (list) list.scrollTop = 0;
+      }, 150);
     });
   }
 
@@ -3196,38 +3279,29 @@ function reapplySettingsPreviews() {
 }
 
 /**
- * Validate Home Assistant URL format
+ * Validate the Home Assistant URL with the same rules Test connection, the setup wizard and the
+ * connection itself use, so an address one of them accepts is not refused by another. A bare
+ * "homeassistant.local:8123" or "HTTP://ha.local" is fine, and a pasted dashboard address
+ * ("https://ha.example.com/lovelace/0") is reduced to the server, since the socket path is built
+ * from what is saved and Home Assistant is not served from a sub-path.
  * @param {string} url - The URL to validate
  * @returns {object} - { valid: boolean, error: string|null, url: string }
  */
 function validateHomeAssistantUrl(url) {
-  if (!url || url.trim() === '') {
+  const trimmedUrl = typeof url === 'string' ? url.trim() : '';
+  if (!trimmedUrl) {
     return { valid: false, error: t('Home Assistant URL cannot be empty'), url: null };
   }
+  const normalizedUrl = normalizeBaseUrl(trimmedUrl);
+  if (normalizedUrl) return { valid: true, error: null, url: normalizedUrl };
 
-  const trimmedUrl = url.trim();
-
-  // Check if URL starts with http:// or https://
-  if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
+  if (/^https?:\/*$/i.test(trimmedUrl)) {
+    return { valid: false, error: t('Invalid URL: missing hostname'), url: null };
+  }
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmedUrl) && !/^https?:\/\//i.test(trimmedUrl)) {
     return { valid: false, error: t('URL must start with http:// or https://'), url: null };
   }
-
-  // Try to parse as URL
-  try {
-    const urlObj = new URL(trimmedUrl);
-
-    // Validate it has a hostname
-    if (!urlObj.hostname) {
-      return { valid: false, error: t('Invalid URL: missing hostname'), url: null };
-    }
-
-    // Remove trailing slash for consistency
-    const normalizedUrl = trimmedUrl.replace(/\/$/, '');
-
-    return { valid: true, error: null, url: normalizedUrl };
-  } catch {
-    return { valid: false, error: t('Invalid URL format'), url: null };
-  }
+  return { valid: false, error: t('Invalid URL format'), url: null };
 }
 
 function getDefaultProfileSyncConfig() {
@@ -3746,6 +3820,8 @@ function setProfileSyncFolderField(folder) {
   if (!input) return;
   input.value = folder;
   input.title = folder;
+  // A folder was chosen, so "choose a sync folder" no longer applies.
+  if (folder) clearFieldError(input);
 }
 
 /**
@@ -4042,6 +4118,7 @@ function bindSupportDevelopmentUi() {
 
   const continueBtn = modal.querySelector('#donate-continue-btn');
   openBtn.onclick = () => {
+    resetDonation();
     openDialog(modal, {
       describedBy: 'donate-intro',
       dismiss: closeDonateModal,
@@ -4073,6 +4150,15 @@ function bindSupportDevelopmentUi() {
     chip.classList.toggle('selected', selected);
     chip.setAttribute('aria-pressed', String(selected));
   };
+  // Each visit starts at a one-time $5: the dialog is kept between visits, so without this a
+  // cancelled or failed attempt reopened on Monthly with a rejected amount and no chip chosen.
+  function resetDonation() {
+    const oneTime = modal.querySelector('input[name="donate-frequency"][value="one-time"]');
+    if (oneTime) oneTime.checked = true;
+    if (customInput) customInput.value = '';
+    chips.forEach((chip) => setChipSelected(chip, chip.dataset.amount === '5'));
+    setAmountError('');
+  }
   chips.forEach((chip) => {
     chip.onclick = () => {
       chips.forEach((other) => setChipSelected(other, other === chip));
@@ -4108,7 +4194,9 @@ function bindSupportDevelopmentUi() {
           throw new Error(result.error || 'Failed to open GitHub Sponsors link');
         }
         await closeDonateModal();
-        showToast(t('Thank you for your support!'), 'success', 4000);
+        // Whether anything was donated is for the sponsors page to say, so this only says what
+        // happened here: it reads as neither a payment nor a thank-you for one.
+        showToast(t('Opened GitHub Sponsors in your browser.'), 'info', 3000);
       } catch (error) {
         log.error('Failed to open GitHub Sponsors link:', error);
         showToast(t('Could not open GitHub Sponsors. Please try again.'), 'error', 3500);
@@ -4491,46 +4579,28 @@ function getLanguagePackDisplayName(pack = {}) {
   );
 }
 
-function findLocalePack(locale) {
-  const normalizedLocale = String(locale || '')
-    .trim()
-    .toLowerCase();
-  if (!normalizedLocale) return null;
-  const baseLocale = normalizedLocale.split('-')[0];
-  return (
-    localePackListCache.find((pack) => {
-      const packLocale = String(pack?.locale || '')
-        .trim()
-        .toLowerCase();
-      if (!packLocale) return false;
-      return packLocale === normalizedLocale || packLocale.split('-')[0] === baseLocale;
-    }) || null
-  );
-}
-
+// The card says only what the select does not: how to get more languages while some are still to
+// download, which language Auto means, and when English is standing in for a pack not installed yet.
 function updateLanguageSummaryText() {
-  const currentSummary = document.getElementById('language-current-summary');
+  const downloadHint = document.getElementById('language-select-help');
   const systemSummary = document.getElementById('language-system-summary');
   const fallbackSummary = document.getElementById('language-fallback-summary');
   const languageSelect = document.getElementById('language-select');
   const localeState = getLocaleState();
   const selectedLocale = languageSelect?.value || state.CONFIG?.ui?.language || 'auto';
-  const selectedPack = findLocalePack(selectedLocale);
-  const selectedLabel =
-    selectedLocale === 'auto'
-      ? t('Auto (System Default)')
-      : selectedPack
-        ? getLanguagePackDisplayName(selectedPack)
-        : getLanguageDisplayName(selectedLocale, selectedLocale);
   const detectedLabel = getLanguageDisplayName(
     localeState.detectedLocale,
     localeState.detectedLocale || 'en'
   );
 
-  if (currentSummary) {
-    currentSummary.textContent = t('Selected language: {{language}}', { language: selectedLabel });
-  }
+  // Nothing to say about downloading once every pack is installed, or while there are none to offer.
+  const hasPackToDownload = localePackListCache.some((pack) => !pack.installed);
+  downloadHint?.classList.toggle('hidden', !hasPackToDownload);
+  // The select is described by it only while it is shown: a hidden line is still read out.
+  setDescribedByLine(languageSelect, downloadHint, hasPackToDownload);
   if (systemSummary) {
+    // Only Auto follows the system, so only Auto needs to say what it found.
+    systemSummary.classList.toggle('hidden', selectedLocale !== 'auto');
     systemSummary.textContent = t('System language detected: {{language}}', {
       language: detectedLabel,
     });
@@ -5302,6 +5372,14 @@ async function openSettings(uiHooks) {
       );
     }
 
+    // An error from an earlier Save would otherwise greet the next visit.
+    clearFieldErrors(modal);
+    // The markup is static, so its help lines are tied to their controls once.
+    if (!modal.dataset.helpLinked) {
+      linkSettingsHelpText(modal);
+      modal.dataset.helpLinked = 'true';
+    }
+
     // Populate fields
     const haUrl = document.getElementById('ha-url');
     const haToken = document.getElementById('ha-token');
@@ -5403,14 +5481,11 @@ async function openSettings(uiHooks) {
 
     const weatherEffectsEnabled = document.getElementById('weather-effects-enabled');
     const weatherOverrideSelect = document.getElementById('weather-override-select');
-    const weatherOverrideGroup = document.getElementById('weather-override-group');
 
+    // The saved choice, whether or not Frosted glass is on: with it off the switch shows the choice
+    // held back, and syncWeatherEffectsAvailability below shows or hides the override beneath it.
     if (weatherEffectsEnabled) {
-      weatherEffectsEnabled.checked =
-        !!state.CONFIG.frostedGlass && !!state.CONFIG.ui?.weatherEffectsEnabled;
-      if (weatherOverrideGroup) {
-        weatherOverrideGroup.style.display = weatherEffectsEnabled.checked ? 'block' : 'none';
-      }
+      weatherEffectsEnabled.checked = !!state.CONFIG.ui?.weatherEffectsEnabled;
     }
     if (weatherOverrideSelect) {
       weatherOverrideSelect.value = state.CONFIG.ui?.weatherOverride || 'auto';
@@ -5520,6 +5595,8 @@ async function openSettings(uiHooks) {
     activeCustomEntityIconPickerEntityId = null;
     customEntityIconPickerQueryByEntityId = {};
     lastCustomEntityIconAction = null;
+    customEntityIconPage = 0;
+    clearTimeout(customEntityIconSearchTimer);
     initCustomEntityIconsUI();
     const customIconSearch = document.getElementById('custom-entity-icons-search');
     if (customIconSearch) customIconSearch.value = '';
@@ -5536,10 +5613,27 @@ async function openSettings(uiHooks) {
 
     // Focus starts on the page the user is on, not on the header's Close button, where a stray Enter
     // or Space would discard every unsaved edit. Only Escape and the buttons close Settings: a
-    // click that misses a control must not throw away a form this large.
+    // click that misses a control must not throw away a form this large. The one exception is the
+    // red connection panel's "Open Settings" with a rejected token: the token field is what to fix,
+    // and it is open on screen, so the cursor goes there.
+    const tokenRejected =
+      state.CONFIG.homeAssistant?.authMethod !== 'oauth' &&
+      getLiveConnectionState().status === 'auth-failed';
     openDialog(modal, {
-      initialFocus: () =>
-        modal.querySelector('.tab-link.active') || document.getElementById('settings-search'),
+      initialFocus: () => {
+        const token = document.getElementById('ha-token');
+        if (
+          tokenRejected &&
+          token &&
+          !token.disabled &&
+          !token.closest('.tab-content:not(.active)')
+        ) {
+          return token;
+        }
+        return (
+          modal.querySelector('.tab-link.active') || document.getElementById('settings-search')
+        );
+      },
       dismiss: () => closeSettings(),
       dismissOnBackdrop: false,
     });
@@ -5565,7 +5659,9 @@ async function openSettings(uiHooks) {
  */
 function closeSettings() {
   clearTimeout(primaryCardSearchTimer);
+  clearTimeout(customEntityIconSearchTimer);
   primaryCardPage = 0;
+  customEntityIconPage = 0;
   try {
     // A recording left armed would swallow the next key pressed anywhere in the widget, and register
     // a combination such as Ctrl+K as the global popup hotkey.
@@ -5617,11 +5713,14 @@ function closeSettings() {
   }
 }
 
+// Says what the test found, as far as the main process could tell. A wrong port, a proxy that is
+// down and a certificate Chromium refuses each have a different fix, so they are not all
+// "could not reach".
 function getConnectionTestMessage(resultOrError) {
   if (resultOrError?.success) {
     return {
       type: 'success',
-      text: t('Connection test succeeded. Home Assistant is reachable.'),
+      text: t('Token accepted. Home Assistant is reachable. Select Save to keep it.'),
     };
   }
 
@@ -5629,14 +5728,37 @@ function getConnectionTestMessage(resultOrError) {
   if (code === 'invalid-url') {
     return {
       type: 'error',
-      text: t('Enter a valid Home Assistant URL and token before testing.'),
+      text: t('Enter a valid Home Assistant URL and long-lived access token before testing.'),
     };
   }
   if (code === 'auth-failed') {
     return {
       type: 'error',
-      text: t('Authentication failed. Check your Long-Lived Access Token.'),
+      text: t('Authentication failed. Check your long-lived access token.'),
     };
+  }
+  const status = Number(resultOrError?.status || 0);
+  const detail = String(resultOrError?.error || resultOrError?.message || '');
+  if (status >= 400) {
+    return { type: 'error', text: t('HTTP {{status}}: check the URL and port.', { status }) };
+  }
+  // The main process passes Chromium's own error name along (net::ERR_CERT_AUTHORITY_INVALID).
+  // A certificate Chromium refuses is one problem; an https:// address that reaches a server
+  // speaking plain http (net::ERR_SSL_PROTOCOL_ERROR) is another, with the scheme or port to fix.
+  if (/ERR_CERT_|certificate/i.test(detail)) {
+    return { type: 'error', text: t('The certificate is not trusted.') };
+  }
+  if (/ERR_SSL_|ERR_TLS_|\b(?:ssl|tls)\b/i.test(detail)) {
+    return {
+      type: 'error',
+      text: t(
+        'The secure connection failed. Check whether the URL should start with http:// or https://, and the port.'
+      ),
+    };
+  }
+  // "Request timed out" from the main process, net::ERR_CONNECTION_TIMED_OUT and net::ERR_TIMED_OUT.
+  if (/time(?:d)?[\s_-]*out/i.test(detail)) {
+    return { type: 'error', text: t('Timed out. Check the URL and port.') };
   }
   return {
     type: 'error',
@@ -5651,7 +5773,8 @@ function setSettingsConnectionTestStatus(message = '', type = '') {
 function setSettingsConnectionTestBusy(isBusy) {
   const button = document.getElementById('test-ha-connection-btn');
   if (button) {
-    button.disabled = !!isBusy;
+    // With browser authorization active the token field is unused, and testing it can only fail.
+    button.disabled = !!isBusy || (state.CONFIG?.homeAssistant || {}).authMethod === 'oauth';
     button.setAttribute('aria-busy', isBusy ? 'true' : 'false');
   }
   setConnectionStatusBusy(document.getElementById('test-ha-connection-status'), isBusy);
@@ -5683,11 +5806,14 @@ function setHomeAssistantOAuthBusy(isBusy, { cancellable = false } = {}) {
 let renderedHomeAssistantAuthState = '';
 
 function getHomeAssistantAuthState(homeAssistant) {
+  const connection = getLiveConnectionState();
   return JSON.stringify([
     homeAssistant.authMethod || '',
     homeAssistant.oauthStatus || '',
     homeAssistant.oauthLastError || '',
     homeAssistant.oauthLastErrorCode || '',
+    connection.status || '',
+    connection.reason || '',
   ]);
 }
 
@@ -5717,13 +5843,21 @@ function updateHomeAssistantConnectButton() {
         : t('Reconnect with Home Assistant');
 }
 
+// What the main window knows about the live connection, when it opened Settings: the red panel's
+// "Open Settings" lands here, and the page must not look healthy while that panel is up.
+function getLiveConnectionState() {
+  return settingsUiHooks?.getConnectionState?.() || { status: '', reason: '' };
+}
+
 function updateHomeAssistantAuthUi() {
   const homeAssistant = state.CONFIG?.homeAssistant || {};
   const usesOAuth = homeAssistant.authMethod === 'oauth';
   renderedHomeAssistantAuthState = getHomeAssistantAuthState(homeAssistant);
   const disconnectButton = document.getElementById('disconnect-ha-oauth-btn');
   const tokenInput = document.getElementById('ha-token');
+  const testButton = document.getElementById('test-ha-connection-btn');
   const legacySettings = document.getElementById('legacy-ha-token-settings');
+  const oauthNote = document.getElementById('legacy-ha-token-oauth-note');
 
   updateHomeAssistantConnectButton();
   disconnectButton?.classList.toggle('hidden', !usesOAuth);
@@ -5731,13 +5865,31 @@ function updateHomeAssistantAuthUi() {
     tokenInput.disabled = usesOAuth;
     if (usesOAuth) tokenInput.value = '';
   }
+  // Testing needs a token, and an OAuth setup has none to type: say why instead of leaving a
+  // button that can only fail beside a dead field.
+  if (testButton) testButton.disabled = usesOAuth;
+  oauthNote?.classList.toggle('hidden', !usesOAuth);
   if (legacySettings && usesOAuth) legacySettings.open = false;
 
   if (!usesOAuth) {
-    setHomeAssistantOAuthStatus(
-      t('Browser authorization is recommended. The legacy token option remains available below.'),
-      'pending'
-    );
+    const connection = getLiveConnectionState();
+    if (connection.status === 'auth-failed') {
+      // The saved token was refused: the field to fix it is under "advanced", so open that.
+      setHomeAssistantOAuthStatus(
+        connection.reason ||
+          t('Authentication failed. Check your long-lived access token in Settings.'),
+        'error'
+      );
+      if (legacySettings) legacySettings.open = true;
+    } else if (connection.status === 'disconnected' && connection.reason) {
+      setHomeAssistantOAuthStatus(connection.reason, 'error');
+    } else {
+      // Standing advice, not progress: plain help text, not the accent-coloured pending line.
+      setHomeAssistantOAuthStatus(
+        t('Browser authorization is recommended. The legacy token option remains available below.'),
+        ''
+      );
+    }
   } else if (homeAssistant.oauthStatus === 'connected') {
     setHomeAssistantOAuthStatus(t('Connected with Home Assistant authorization.'), 'success');
   } else if (homeAssistant.oauthStatus === 'restoring') {
@@ -5786,9 +5938,11 @@ async function startHomeAssistantOAuthFromSettings() {
   const haUrl = document.getElementById('ha-url');
   const validation = validateHomeAssistantUrl(haUrl?.value || '');
   if (!validation.valid) {
-    setHomeAssistantOAuthStatus(validation.error, 'error');
+    showFieldError(haUrl, validation.error);
     return;
   }
+  // Show the address that will be used (a bare host gains its scheme, a dashboard path goes).
+  if (haUrl) haUrl.value = validation.url;
   setHomeAssistantOAuthBusy(true, { cancellable: true });
   setHomeAssistantOAuthStatus(t('Opening Home Assistant for authorization...'), 'pending');
   try {
@@ -5829,6 +5983,14 @@ async function cancelHomeAssistantOAuthFromSettings() {
 }
 
 async function disconnectHomeAssistantOAuthFromSettings() {
+  // The widget stops talking to Home Assistant and has to be authorized again, so a stray click
+  // should not do it.
+  const confirmed = await showConfirm(
+    t('Disconnect'),
+    t('Disconnect this widget from Home Assistant? You will need to authorize again.'),
+    { confirmText: t('Disconnect'), confirmClass: 'btn-danger' }
+  );
+  if (!confirmed) return;
   setHomeAssistantOAuthBusy(true);
   try {
     const result = await window.electronAPI.disconnectHomeAssistantOAuth();
@@ -5913,7 +6075,33 @@ function bindConnectionTestUi() {
   button.addEventListener('click', () => {
     void runSettingsConnectionTest();
   });
+  // A result describes the address and token that were tested. Once either is edited it describes
+  // something else, and a green line beside a changed field would be a claim nobody checked.
+  ['ha-url', 'ha-token'].forEach((id) =>
+    document
+      .getElementById(id)
+      ?.addEventListener('input', () => setSettingsConnectionTestStatus('', ''))
+  );
   button.dataset.initialized = 'true';
+}
+
+// A second Save while one is running (a double click, or Enter held down) would write the config
+// twice and raise every restart and sync prompt twice. Only the first call does the work.
+let settingsSaveInFlight = false;
+
+async function saveSettings() {
+  if (settingsSaveInFlight) return;
+  settingsSaveInFlight = true;
+  const saveButton = document.getElementById('save-settings');
+  saveButton?.setAttribute('aria-busy', 'true');
+  const reenableSaveButton = disableControlsKeepingFocus([saveButton]);
+  try {
+    await persistSettings();
+  } finally {
+    settingsSaveInFlight = false;
+    saveButton?.removeAttribute('aria-busy');
+    reenableSaveButton();
+  }
 }
 
 /**
@@ -5925,7 +6113,7 @@ function bindConnectionTestUi() {
  * and reconnects to Home Assistant only if connection settings changed. May prompt the user to restart the app when
  * toggling Always on Top. Errors are logged and reported via toasts where validation fails.
  */
-async function saveSettings() {
+async function persistSettings() {
   let configPersisted = false;
   let syncFileCopiedThisSave = false;
   try {
@@ -5972,16 +6160,32 @@ async function saveSettings() {
     // Connect/Disconnect. Saving unrelated settings must not echo access tokens.
     if (usesOAuth) {
       nextConfig.homeAssistant = { ...currentConfig.homeAssistant };
-    } else if (haUrl && haUrl.value.trim()) {
+      // The address of an authorized setup is changed by authorizing again, not by Save. Saving
+      // would drop the edit and close Settings as if it had been kept.
+      const typedUrl = haUrl ? validateHomeAssistantUrl(haUrl.value) : null;
+      const savedUrl = normalizeBaseUrl(currentConfig.homeAssistant?.url || '');
+      if (typedUrl && savedUrl && !typedUrl.valid) {
+        showFieldError(haUrl, typedUrl.error);
+        return;
+      }
+      if (typedUrl && savedUrl && typedUrl.url !== savedUrl) {
+        showFieldError(
+          haUrl,
+          t(
+            'Saving does not switch servers. Select Reconnect with Home Assistant to use this address, or restore the saved one.'
+          )
+        );
+        return;
+      }
+    } else if (haUrl) {
       const validation = validateHomeAssistantUrl(haUrl.value);
       if (!validation.valid) {
-        showToast(validation.error, 'error', 4000);
-        return; // Don't save if URL is invalid
+        // Settings has many pages, and this is rarely the one Save was pressed from.
+        showFieldError(haUrl, validation.error);
+        return;
       }
       nextConfig.homeAssistant.url = validation.url;
-    } else if (haUrl && !haUrl.value.trim()) {
-      showToast(t('Home Assistant URL cannot be empty'), 'error', 3000);
-      return;
+      haUrl.value = validation.url;
     }
 
     if (haToken && !usesOAuth) {
@@ -6031,11 +6235,11 @@ async function saveSettings() {
     const followOmarchy = document.getElementById('follow-omarchy');
     if (followOmarchy && !followOmarchy.disabled)
       nextConfig.ui.followOmarchy = followOmarchy.checked;
-    const frostedGlassEnabled = !!nextConfig.frostedGlass;
-    // A locked Frosted glass switch means the weather switch is locked with it, not turned off.
+    // A locked Frosted glass switch means the weather switch is locked with it, not turned off. With
+    // the glass merely switched off, the effects are paused and the choice is kept for its return.
     if (!frostedGlass?.disabled) {
       nextConfig.ui.weatherEffectsEnabled = weatherEffectsEnabled
-        ? frostedGlassEnabled && !!weatherEffectsEnabled.checked
+        ? !!weatherEffectsEnabled.checked
         : false;
     }
     nextConfig.ui.weatherOverride = weatherOverrideSelect ? weatherOverrideSelect.value : 'auto';
@@ -6108,8 +6312,10 @@ async function saveSettings() {
       prevProfileSync.enabled !== true &&
       !nextProfileSync.cloudFilePath
     ) {
-      showToast(t('Choose a sync folder before enabling profile sync.'), 'error', 3200);
-      revealProfileSyncField(document.getElementById('profile-sync-choose-folder'));
+      showProfileSyncFieldError(
+        profileSyncFolderPath,
+        t('Choose a sync folder before enabling profile sync.')
+      );
       return;
     }
 
@@ -6122,14 +6328,12 @@ async function saveSettings() {
       typedPassphrase &&
       typedPassphrase.length < PROFILE_SYNC_MIN_PASSPHRASE_LENGTH
     ) {
-      showToast(
+      showProfileSyncFieldError(
+        profileSyncPassphrase,
         t('Passphrase must be at least {{count}} characters long', {
           count: PROFILE_SYNC_MIN_PASSPHRASE_LENGTH,
-        }),
-        'error',
-        3400
+        })
       );
-      revealProfileSyncField(profileSyncPassphrase);
       return;
     }
     const passphraseConfirm = document.getElementById('profile-sync-passphrase-confirm');
@@ -6145,8 +6349,7 @@ async function saveSettings() {
       confirmShown &&
       passphraseConfirm.value.trim() !== typedPassphrase
     ) {
-      showToast(t('The passphrases do not match.'), 'error', 3400);
-      revealProfileSyncField(passphraseConfirm);
+      showProfileSyncFieldError(passphraseConfirm, t('The passphrases do not match.'));
       return;
     }
 
@@ -6267,26 +6470,22 @@ async function saveSettings() {
       !hasSavedPassphrase &&
       profileSyncStatusCache?.remoteEncrypted !== false
     ) {
-      showToast(
-        t('Enter the current remote passphrase before disabling encrypted sync.'),
-        'error',
-        3400
+      showProfileSyncFieldError(
+        profileSyncPassphrase,
+        t('Enter the current remote passphrase before disabling encrypted sync.')
       );
-      revealProfileSyncField(profileSyncPassphrase);
       return;
     }
 
     if (nextProfileSync.enabled && nextProfileSync.encryptionEnabled) {
       const canReuseSavedPassphrase = hasSavedPassphrase && !removingRememberedPassphrase;
       if (!typedPassphrase && !canReuseSavedPassphrase) {
-        showToast(
+        showProfileSyncFieldError(
+          profileSyncPassphrase,
           t(
             'Enter a passphrase or use an existing saved passphrase before enabling encrypted sync.'
-          ),
-          'error',
-          3400
+          )
         );
-        revealProfileSyncField(profileSyncPassphrase);
         return;
       }
 
@@ -6309,6 +6508,9 @@ async function saveSettings() {
     keepNewerSyncedSettings(nextConfig, settingsFormBaseConfig, state.CONFIG, settingsTouchedKeys);
     // Tells main which values are deliberate, so its stale-echo guard keeps them.
     nextConfig.profileSyncTouchedKeys = [...settingsTouchedKeys];
+    // Read before the touched keys are cleared below: the icons toast is about this save's edits,
+    // not about whether any custom icon exists.
+    const customIconsEdited = settingsTouchedKeys.has('customEntityIcons');
     const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
     applyPersistedConfigResponse(updatedConfig);
     configPersisted = true;
@@ -6406,7 +6608,7 @@ async function saveSettings() {
       }
     }
 
-    if (Object.keys(state.CONFIG.customEntityIcons || {}).length > 0) {
+    if (customIconsEdited) {
       showToast(
         t('Custom icons saved. Icons apply to entities already shown in your tabs/tiles.'),
         'success',
@@ -6465,41 +6667,47 @@ async function saveSettings() {
       !state.CONFIG.desktopCapabilities?.alwaysTransparentWindows &&
       ((prevOpacity === 1 && nextOpacity < 1) || (prevOpacity < 1 && nextOpacity === 1));
 
+    // The themed dialog, not the browser's: that one has no title, says OK and Cancel in the system
+    // language (Cancel reads as "do not save", not "later"), and under the Linux layer shell it can
+    // open behind the widget while the page waits on it.
+    const askToRestart = (message) =>
+      showConfirm(t('Restart required'), message, {
+        confirmText: t('Restart now'),
+        cancelText: t('Later'),
+        confirmClass: 'btn-primary',
+      });
+
     if (opacityNeedsRestart) {
-      if (
-        confirm(
-          t(
-            'Changing opacity between 100% and transparent on Linux requires an app restart. Restart now?'
-          )
+      const restartForOpacity = await askToRestart(
+        t(
+          'Changing opacity between 100% and transparent on Linux requires an app restart. Restart now?'
         )
-      ) {
-        await window.electronAPI
-          .focusWindow()
-          .catch((err) => log.error('Failed to refocus window:', err));
-        await window.electronAPI.restartApp();
-        return;
-      }
+      );
       await window.electronAPI
         .focusWindow()
         .catch((err) => log.error('Failed to refocus window:', err));
+      if (restartForOpacity) {
+        await window.electronAPI.restartApp();
+        return;
+      }
     }
 
     if (prevAlwaysOnTop !== state.CONFIG.alwaysOnTop) {
       const res = await window.electronAPI.setAlwaysOnTop(state.CONFIG.alwaysOnTop);
       const windowState = await window.electronAPI.getWindowState();
       if (!res?.applied || windowState?.alwaysOnTop !== state.CONFIG.alwaysOnTop) {
-        if (confirm(t('Changing "Always on top" may require a restart. Restart now?'))) {
-          // Force window to regain focus after confirm dialog (Windows focus bug workaround)
-          await window.electronAPI
-            .focusWindow()
-            .catch((err) => log.error('Failed to refocus window:', err));
-          await window.electronAPI.restartApp();
-          return;
-        }
-        // Force window to regain focus even if user cancelled (Windows focus bug workaround)
+        const restartForAlwaysOnTop = await askToRestart(
+          t('Changing "Always on top" may require a restart. Restart now?')
+        );
+        // Force window to regain focus after the dialog, whatever was chosen (Windows focus bug
+        // workaround)
         await window.electronAPI
           .focusWindow()
           .catch((err) => log.error('Failed to refocus window:', err));
+        if (restartForAlwaysOnTop) {
+          await window.electronAPI.restartApp();
+          return;
+        }
       }
     }
 
@@ -6603,8 +6811,8 @@ function renderAlertsListInline() {
       let alertType = alertConfig.onNumericThreshold
         ? `${alertConfig.comparison === 'below' ? t('Below threshold') : t('Above threshold')} ${formatNumber(Number(alertConfig.threshold))}`
         : alertConfig.onStateChange
-          ? t('State Change')
-          : t('Specific State');
+          ? t('State change')
+          : t('Specific state');
       if (alertConfig.onSpecificState) {
         alertType += ` (${alertConfig.targetState})`;
       }
@@ -6630,7 +6838,7 @@ function renderAlertsListInline() {
     // Add "Add new alert" button
     const addButton = document.createElement('button');
     addButton.className = 'btn btn-secondary btn-block add-alert-btn';
-    addButton.textContent = `+ ${t('Add New Alert')}`;
+    addButton.textContent = `+ ${t('Add new alert')}`;
     addButton.dataset.focusKey = alertFocusKey('add');
     addButton.onclick = () => openAlertEntityPicker();
     addButton.style.marginTop = '10px';
@@ -6746,6 +6954,21 @@ function populateAlertEntityPicker() {
       searchInput.oninput = null;
       searchInput.value = '';
 
+      // A search with no hits says so inside the list, once, and takes it away as the query changes.
+      const showNoMatch = (show) => {
+        const existing = list.querySelector(':scope > .entity-selector-empty');
+        if (!show) {
+          existing?.remove();
+          return;
+        }
+        if (existing) return;
+        const empty = document.createElement('p');
+        empty.className = 'entity-selector-empty';
+        empty.setAttribute('role', 'status');
+        empty.textContent = t('No matching entities found.');
+        list.appendChild(empty);
+      };
+
       searchInput.oninput = (e) => {
         const query = e.target.value.toLowerCase().trim();
         if (!query) {
@@ -6753,10 +6976,12 @@ function populateAlertEntityPicker() {
           list.querySelectorAll('.entity-item').forEach((item) => {
             item.style.display = 'flex';
           });
+          showNoMatch(false);
           return;
         }
 
         // Score each item and show/hide based on score
+        let shown = 0;
         list.querySelectorAll('.entity-item').forEach((item) => {
           const name = item.querySelector('.entity-name')?.textContent || '';
           const id = item.querySelector('.entity-id')?.textContent || '';
@@ -6767,7 +6992,9 @@ function populateAlertEntityPicker() {
           const totalScore = nameScore + idScore;
 
           item.style.display = totalScore > 0 ? 'flex' : 'none';
+          if (totalScore > 0) shown += 1;
         });
+        showNoMatch(shown === 0);
       };
     }
   } catch (error) {
@@ -6878,8 +7105,8 @@ function openAlertConfigModal(entityId) {
         return input;
       };
       addField('alert-condition', 'Condition', 'select', [
-        ['state-change', 'State Change'],
-        ['specific-state', 'Specific State'],
+        ['state-change', 'State change'],
+        ['specific-state', 'Specific state'],
         ['above', 'Above threshold'],
         ['below', 'Below threshold'],
       ]);
@@ -6965,7 +7192,7 @@ function openAlertConfigModal(entityId) {
     quietEnabled.onchange = syncQuietHours;
     const entity = state.STATES[entityId];
     if (title)
-      title.textContent = t('Configure Alert - {{name}}', {
+      title.textContent = t('Configure alert – {{name}}', {
         name: entity ? utils.getEntityDisplayName(entity) : entityId,
       });
 
@@ -7152,6 +7379,13 @@ function populateMediaPlayerSelect(selected = state.CONFIG.primaryMediaPlayer ||
     }
     select.replaceChildren(...options);
     select.value = selected;
+    // With no media player to pick and none chosen or saved, the select has nothing to offer but
+    // "None"; say so instead of leaving a control that looks usable.
+    const nothingToPick = mediaPlayers.length === 0 && !saved && !selected;
+    select.disabled = nothingToPick;
+    const emptyNote = document.getElementById('primary-media-player-empty');
+    emptyNote?.classList.toggle('hidden', !nothingToPick);
+    setDescribedByLine(select, emptyNote, nothingToPick);
 
     // Bound once: the select outlives each opening of Settings.
     if (!select.dataset.bound) {
@@ -7167,36 +7401,38 @@ function populateMediaPlayerSelect(selected = state.CONFIG.primaryMediaPlayer ||
 let isCapturingPopupHotkey = false;
 let popupHotkeyAvailable = null;
 
-// The popup hotkey card's labels depend on the platform's shortcut backend.
+// The popup hotkey card's labels depend on the platform's shortcut backend, and on whether there is
+// one at all: with no way to register a global shortcut the card says so, in place of help about a
+// feature that does nothing here.
 function renderPopupHotkeyModeText() {
   const usesLinuxShortcutBackend = window.electronAPI?.platform === 'linux';
   const modeLabel = document.getElementById('popup-hotkey-mode-label');
   const helpText = document.getElementById('popup-hotkey-help-text');
   const platformNotice = document.getElementById('popup-hotkey-platform-notice');
-  if (usesLinuxShortcutBackend) {
-    if (modeLabel) modeLabel.textContent = t('Popup hotkey');
-    if (helpText) {
-      helpText.textContent = t(
-        'Configure a global hotkey that brings the window to front when pressed.'
-      );
-    }
+  if (modeLabel) modeLabel.textContent = t('Popup hotkey');
+  if (popupHotkeyAvailable === false) {
+    if (helpText) helpText.hidden = true;
     if (platformNotice) {
       platformNotice.hidden = false;
-      platformNotice.textContent = t(
-        'Linux uses the desktop shortcut service for stability. Hold-to-show and hide-on-release are unavailable; press-to-toggle remains supported.'
-      );
+      platformNotice.textContent = t('Popup hotkey feature is not available on this platform.');
     }
-  } else {
-    if (modeLabel) modeLabel.textContent = t('Popup hotkey');
-    if (helpText) {
-      helpText.textContent = t(
-        'Configure a global hotkey that brings the window to front while held down. When released, the window returns to normal z-order.'
-      );
-    }
-    if (platformNotice) {
-      platformNotice.hidden = true;
-      platformNotice.textContent = '';
-    }
+    return;
+  }
+  if (helpText) {
+    helpText.hidden = false;
+    helpText.textContent = usesLinuxShortcutBackend
+      ? t('Configure a global hotkey that brings the window to front when pressed.')
+      : t(
+          'Configure a global hotkey that brings the window to front while held down. When released, the window returns to normal z-order.'
+        );
+  }
+  if (platformNotice) {
+    platformNotice.hidden = !usesLinuxShortcutBackend;
+    platformNotice.textContent = usesLinuxShortcutBackend
+      ? t(
+          'Hold-to-show and hide-on-release are unavailable on Linux; press-to-toggle remains supported.'
+        )
+      : '';
   }
 }
 
@@ -7216,8 +7452,6 @@ function relocalizePopupHotkeyText() {
       input.placeholder = formatHotkey(state.CONFIG?.popupHotkey) || t('Not set');
     }
   }
-  const notice = document.querySelector('#popup-hotkey-container .unavailable-notice');
-  if (notice) notice.textContent = t('Popup hotkey feature is not available on this platform.');
 }
 
 async function initializePopupHotkey() {
@@ -7229,7 +7463,6 @@ async function initializePopupHotkey() {
     const input = document.getElementById('popup-hotkey-input');
     const setBtn = document.getElementById('popup-hotkey-set-btn');
     const clearBtn = document.getElementById('popup-hotkey-clear-btn');
-    const container = document.getElementById('popup-hotkey-container');
     await refreshDesktopIntegration();
 
     if (!input || !setBtn || !clearBtn) return;
@@ -7238,19 +7471,21 @@ async function initializePopupHotkey() {
     if (!isCapturingPopupHotkey) setBtn.textContent = t('Set hotkey');
 
     if (isAvailable) {
-      container?.querySelector('.unavailable-notice')?.remove();
       input.disabled = false;
       input.value = formatHotkey(currentHotkey);
       input.placeholder = formatHotkey(currentHotkey) || t('Not set');
       setBtn.disabled = false;
-      clearBtn.disabled = false;
+      // Clear and the suggestions come back too, as they were switched off when the service was
+      // not there; a recording that is still going keeps them off.
+      setPopupHotkeyControlsRecording(isCapturingPopupHotkey);
       clearBtn.style.display = currentHotkey ? 'inline-block' : 'none';
     }
 
     popupHotkeyAvailable = isAvailable;
     renderPopupHotkeyModeText();
 
-    // If not available, disable the UI and show a message
+    // Without a global shortcut service the card is read-only: the field, the recorder, the
+    // suggestions and both switches go off together, and the card's notice says why.
     if (!isAvailable) {
       input.disabled = true;
       input.value = '';
@@ -7258,16 +7493,13 @@ async function initializePopupHotkey() {
       setBtn.disabled = true;
       clearBtn.disabled = true;
       clearBtn.style.display = 'none';
-
-      // Add a notice message if not already present
-      if (container && !container.querySelector('.unavailable-notice')) {
-        const notice = document.createElement('p');
-        notice.className = 'unavailable-notice';
-        notice.style.color = '#888';
-        notice.style.fontSize = '12px';
-        notice.style.marginTop = '8px';
-        notice.textContent = t('Popup hotkey feature is not available on this platform.');
-        container.appendChild(notice);
+      document.querySelectorAll('.preset-hotkey-btn').forEach((chip) => {
+        chip.disabled = true;
+      });
+      for (const id of ['popup-hotkey-toggle-mode', 'popup-hotkey-hide-on-release']) {
+        const checkbox = document.getElementById(id);
+        if (checkbox) checkbox.disabled = true;
+        document.getElementById(`${id}-label`)?.classList.add('disabled');
       }
       return;
     }
@@ -7643,11 +7875,20 @@ function handleProfileSyncStatusUpdate(status) {
   updateProfileSyncStatusUi(status);
 }
 
-/** Shows the Advanced page and puts the cursor on a sync field that needs fixing. */
-function revealProfileSyncField(field) {
-  document.querySelector('.modal-tabs .tab-link[data-tab="advanced"]')?.click();
-  field?.focus?.();
-  field?.scrollIntoView?.({ block: 'center' });
+/**
+ * Says what is wrong with a sync field, under it, and puts the cursor there: on the field, or on the
+ * Choose Folder button for the read-only path.
+ */
+function showProfileSyncFieldError(field, message) {
+  showFieldError(field, message, {
+    anchor: field?.closest(
+      '.profile-sync-file-row, .profile-sync-passphrase-row, .profile-sync-passphrase-confirm'
+    ),
+    focusTarget:
+      field?.id === 'profile-sync-folder-path'
+        ? document.getElementById('profile-sync-choose-folder')
+        : null,
+  });
 }
 
 /** Brings the person to the part of Advanced that asks something of them. */

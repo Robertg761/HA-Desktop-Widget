@@ -453,6 +453,17 @@ function buildStates(now = new Date()) {
       media_title: 'Morning news',
       supported_features: 16385,
     }),
+    // A title far longer than any tile, and no artist under it.
+    entity('media_player.audiobook', 'playing', {
+      friendly_name: 'Audiobook',
+      media_title:
+        'The Complete and Unabridged Chronicles of a Very Long Winded Journey, Part Twelve: The Return Home',
+      volume_level: 0.5,
+      media_duration: 3600,
+      media_position: 900,
+      media_position_updated_at: stamp,
+      supported_features: 152463,
+    }),
     entity('media_player.hall_chime', 'idle', {
       friendly_name: 'Hall chime',
       supported_features: 16384,

@@ -423,6 +423,110 @@ describe('hotkeys module', () => {
 
       consoleError.mockRestore();
     });
+
+    describe('in a large home', () => {
+      let container;
+      let searchInput;
+      beforeEach(() => {
+        container = document.createElement('div');
+        container.id = 'hotkeys-list';
+        searchInput = document.createElement('input');
+        searchInput.id = 'hotkey-entity-search';
+        document.body.append(container, searchInput);
+        const states = {};
+        for (let i = 0; i < 130; i += 1) {
+          const entityId = `light.lamp_${String(i).padStart(3, '0')}`;
+          states[entityId] = {
+            entity_id: entityId,
+            state: 'off',
+            attributes: { friendly_name: `Lamp ${String(i).padStart(3, '0')}` },
+          };
+        }
+        state.setStates(states);
+      });
+      const rows = () => container.querySelectorAll('.hotkey-item');
+      const pager = (key) => container.querySelector(`[data-primary-page="${key}"]`);
+
+      it('builds one page of rows and a pager, not a row for every entity', () => {
+        hotkeys.renderHotkeysTab();
+
+        expect(rows()).toHaveLength(50);
+        expect(
+          container.querySelector('.primary-cards-pagination [role="status"]').textContent
+        ).toBe('Page 1 / 3');
+        expect(pager('previous').getAttribute('aria-disabled')).toBe('true');
+
+        pager('next').click();
+
+        expect(rows()).toHaveLength(50);
+        expect(rows()[0].querySelector('.hotkey-input').dataset.entityId).toBe('light.lamp_050');
+        expect(container.querySelector('[role="status"]').textContent).toBe('Page 2 / 3');
+      });
+
+      it('starts a new search on its first page', () => {
+        hotkeys.renderHotkeysTab();
+        pager('next').click();
+        pager('next').click();
+        expect(container.querySelector('[role="status"]').textContent).toBe('Page 3 / 3');
+
+        searchInput.value = 'lamp 1';
+        hotkeys.renderHotkeysTab();
+
+        expect(rows()[0].querySelector('.hotkey-input').dataset.entityId).toBe('light.lamp_100');
+      });
+
+      it('lets the keyboard stay on the pager button after a page is turned', () => {
+        hotkeys.renderHotkeysTab();
+        pager('next').focus();
+        pager('next').click();
+
+        expect(document.activeElement).toBe(pager('next'));
+      });
+
+      it('waits for a pause in typing before rebuilding the list', () => {
+        jest.useFakeTimers();
+        try {
+          hotkeys.renderHotkeysTab();
+          const firstRow = rows()[0];
+
+          searchInput.value = 'lamp 1';
+          hotkeys.scheduleHotkeysTabRender();
+          searchInput.value = 'lamp 12';
+          hotkeys.scheduleHotkeysTabRender();
+          expect(rows()[0]).toBe(firstRow);
+
+          jest.advanceTimersByTime(200);
+
+          expect(rows()[0]).not.toBe(firstRow);
+          expect(rows()).toHaveLength(10);
+        } finally {
+          jest.useRealTimers();
+        }
+      });
+
+      it('drops a pending search, and goes back to the first page, when Settings closes', () => {
+        jest.useFakeTimers();
+        try {
+          hotkeys.renderHotkeysTab();
+          pager('next').click();
+          const secondPageRow = rows()[0];
+
+          searchInput.value = 'lamp 1';
+          hotkeys.scheduleHotkeysTabRender();
+          hotkeys.cleanupHotkeyEventListeners();
+          jest.advanceTimersByTime(200);
+
+          // Nothing was rebuilt for a dialog that had gone
+          expect(rows()[0]).toBe(secondPageRow);
+
+          searchInput.value = '';
+          hotkeys.renderHotkeysTab();
+          expect(rows()[0].querySelector('.hotkey-input').dataset.entityId).toBe('light.lamp_000');
+        } finally {
+          jest.useRealTimers();
+        }
+      });
+    });
   });
 
   describe('captureHotkey', () => {
@@ -763,6 +867,223 @@ describe('hotkeys module', () => {
       hotkeys.renderHotkeysTab();
 
       expect(document.querySelector('select[data-entity-id="light.hall"]').value).toBe('toggle');
+    });
+  });
+
+  describe('the hotkey list: pages together with the filter, the empty state and the rest', () => {
+    const entity = (id, name) => ({
+      entity_id: id,
+      state: 'off',
+      attributes: { friendly_name: name },
+    });
+    const pad = (n) => String(n).padStart(3, '0');
+    let container;
+    let searchInput;
+
+    // 130 lamps and 20 plugs, sent to the list in reverse so only its own order puts them right.
+    beforeEach(() => {
+      const config = getMockConfig();
+      config.globalHotkeys = { enabled: true, hotkeys: {} };
+      state.setConfig(config);
+      const states = {};
+      for (let i = 149; i >= 0; i -= 1) {
+        const plug = i >= 130;
+        const id = `${plug ? 'switch' : 'light'}.${plug ? 'plug' : 'lamp'}_${pad(i)}`;
+        states[id] = entity(id, `${plug ? 'Plug' : 'Lamp'} ${pad(i)}`);
+      }
+      state.setStates(states);
+      hotkeys.cleanupHotkeyEventListeners();
+      document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+      container = document.getElementById('hotkeys-list');
+      searchInput = document.getElementById('hotkey-entity-search');
+      hotkeys.renderHotkeysTab();
+    });
+
+    const rows = () => [...container.querySelectorAll('.hotkey-item .entity-name')];
+    const names = () => rows().map((node) => node.textContent);
+    const pager = (key) => container.querySelector(`[data-primary-page="${key}"]`);
+    const pagerText = () => container.querySelector('.primary-cards-pagination [role="status"]');
+    const search = (text) => {
+      searchInput.value = text;
+      hotkeys.renderHotkeysTab();
+    };
+
+    it('pages the whole list in name order, so a page continues where the last one stopped', () => {
+      expect(names()).toHaveLength(50);
+      expect(names()[0]).toBe('Lamp 000');
+      expect(names()[49]).toBe('Lamp 049');
+      pager('next').click();
+      pager('next').click();
+
+      // Plugs sort after lamps; page 3 holds the last 30 lamps, then the 20 plugs.
+      expect(pagerText().textContent).toBe('Page 3 / 3');
+      expect(names()).toHaveLength(50);
+      expect(names()[0]).toBe('Lamp 100');
+      expect(names()[29]).toBe('Lamp 129');
+      expect(names()[30]).toBe('Plug 130');
+      expect(names()[49]).toBe('Plug 149');
+    });
+
+    it('pages only what the filter finds, and drops the pager when that fits one page', () => {
+      search('lamp');
+      expect(pagerText().textContent).toBe('Page 1 / 3');
+
+      pager('next').click();
+      expect(names()[0]).toBe('Lamp 050');
+
+      search('plug');
+      // A new query starts on its first page, and 20 plugs need no pager.
+      expect(names()).toHaveLength(20);
+      expect(names()[0]).toBe('Plug 130');
+      expect(container.querySelector('.primary-cards-pagination')).toBeNull();
+      expect(container.querySelector('.hotkeys-empty')).toBeNull();
+    });
+
+    it('starts a new filter that also has several pages on its first page', () => {
+      pager('next').click();
+      expect(names()[0]).toBe('Lamp 050');
+
+      // Page 2 exists for the new filter too, so only the new query can send it back to page 1.
+      search('lamp');
+
+      expect(pagerText().textContent).toBe('Page 1 / 3');
+      expect(names()[0]).toBe('Lamp 000');
+    });
+
+    it('keeps the page while the same filter is drawn again', () => {
+      search('lamp');
+      pager('next').click();
+
+      hotkeys.renderHotkeysTab();
+
+      expect(pagerText().textContent).toBe('Page 2 / 3');
+      expect(names()[0]).toBe('Lamp 050');
+    });
+
+    it('says nothing matched, with no pager, when a filter leaves nothing from a later page', () => {
+      pager('next').click();
+      pager('next').click();
+      expect(pagerText().textContent).toBe('Page 3 / 3');
+
+      search('zzz');
+
+      const empty = container.querySelector('.hotkeys-empty');
+      expect(empty.textContent).toBe('No matching entities');
+      expect(empty.getAttribute('role')).toBe('status');
+      expect(container.querySelector('.hotkey-item')).toBeNull();
+      expect(container.querySelector('.primary-cards-pagination')).toBeNull();
+      // The record hint belongs to the rows; there are none to describe.
+      expect(container.querySelector('#hotkey-record-hint')).toBeNull();
+
+      // Clearing the filter is a new query too, so the list comes back on its first page.
+      search('');
+      expect(container.querySelector('.hotkeys-empty')).toBeNull();
+      expect(pagerText().textContent).toBe('Page 1 / 3');
+      expect(names()[0]).toBe('Lamp 000');
+    });
+
+    it('says to connect, with no pager, before Home Assistant has sent anything', () => {
+      state.setStates({});
+
+      hotkeys.renderHotkeysTab();
+
+      expect(container.querySelector('.hotkeys-empty').textContent).toBe(
+        'Connect to Home Assistant to assign hotkeys'
+      );
+      expect(container.querySelector('.primary-cards-pagination')).toBeNull();
+    });
+
+    it('shows the empty state after the pause in typing, and not before', () => {
+      jest.useFakeTimers();
+      try {
+        searchInput.value = 'zzz';
+        hotkeys.scheduleHotkeysTabRender();
+        hotkeys.scheduleHotkeysTabRender();
+        expect(names()).toHaveLength(50);
+        expect(container.querySelector('.hotkeys-empty')).toBeNull();
+
+        jest.advanceTimersByTime(149);
+        expect(container.querySelector('.hotkeys-empty')).toBeNull();
+        jest.advanceTimersByTime(1);
+
+        expect(container.querySelector('.hotkeys-empty').textContent).toBe('No matching entities');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('gives every row on a later page the same accessible names as on the first', () => {
+      pager('next').click();
+      const row = container.querySelectorAll('.hotkey-item')[0];
+
+      expect(row.querySelector('.hotkey-input').getAttribute('aria-label')).toBe(
+        'Hotkey for Lamp 050'
+      );
+      expect(row.querySelector('select').getAttribute('aria-label')).toBe(
+        'Hotkey action for Lamp 050'
+      );
+      expect(row.querySelector('.btn-clear-hotkey').getAttribute('aria-label')).toBe(
+        'Clear hotkey for Lamp 050'
+      );
+      // One hint describes every field of the page.
+      expect(container.querySelectorAll('#hotkey-record-hint')).toHaveLength(1);
+      expect(row.querySelector('.hotkey-input').getAttribute('aria-describedby')).toBe(
+        'hotkey-record-hint'
+      );
+    });
+
+    it('keeps the keyboard on the same row control, on the same page, when the list is rebuilt', () => {
+      pager('next').click();
+      const select = container.querySelector('[data-focus-key="hotkey-action:light.lamp_075"]');
+      select.focus();
+
+      hotkeys.renderHotkeysTab();
+
+      const after = container.querySelector('[data-focus-key="hotkey-action:light.lamp_075"]');
+      expect(after).not.toBe(select);
+      expect(document.activeElement).toBe(after);
+      expect(pagerText().textContent).toBe('Page 2 / 3');
+    });
+
+    it('hands the keyboard to the pager button through a page change and a further rebuild', () => {
+      pager('next').focus();
+      pager('next').click();
+      expect(document.activeElement).toBe(pager('next'));
+
+      hotkeys.renderHotkeysTab();
+
+      expect(document.activeElement).toBe(pager('next'));
+      expect(pagerText().textContent).toBe('Page 2 / 3');
+    });
+
+    it('remembers an action chosen on one page while another page is shown', () => {
+      const select = container.querySelector('select[data-entity-id="light.lamp_010"]');
+      select.value = 'turn_off';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+
+      pager('next').click();
+      pager('previous').click();
+
+      expect(container.querySelector('select[data-entity-id="light.lamp_010"]').value).toBe(
+        'turn_off'
+      );
+    });
+
+    it('stays on the page of a row whose hotkey was just recorded, with the keyboard on its field', async () => {
+      pager('next').click();
+      const field = container.querySelector('.hotkey-input[data-entity-id="light.lamp_060"]');
+      field.focus();
+
+      const assignment = hotkeys.assignHotkeyToEntity('light.lamp_060');
+      document.activeElement.dispatchEvent(
+        new KeyboardEvent('keydown', { code: 'KeyD', key: 'd', ctrlKey: true, bubbles: true })
+      );
+      await assignment;
+
+      expect(pagerText().textContent).toBe('Page 2 / 3');
+      const after = container.querySelector('.hotkey-input[data-entity-id="light.lamp_060"]');
+      expect(after.value).toBe('Ctrl+D');
+      expect(document.activeElement).toBe(after);
     });
   });
 

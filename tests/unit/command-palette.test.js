@@ -1382,7 +1382,10 @@ describe('command palette recents', () => {
     const search = document.getElementById('quick-controls-search');
     const hint = document.getElementById(search.getAttribute('aria-describedby'));
     expect(search.nextElementSibling).toBe(hint);
-    expect(hint.textContent.trim()).toBe(hint.dataset.i18n);
+    // The shortcut is a placeholder, so the platform can name its own modifier (Cmd+K on macOS).
+    const { shortcut } = JSON.parse(hint.dataset.i18nVars);
+    expect(shortcut).toBe('Ctrl+K');
+    expect(hint.textContent.trim()).toBe(hint.dataset.i18n.replace('{{shortcut}}', shortcut));
     expect(hint.textContent).toContain('Ctrl+K');
   });
 });

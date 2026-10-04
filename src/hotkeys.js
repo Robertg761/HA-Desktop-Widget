@@ -3,6 +3,7 @@ import { closeDialog, openDialog, renderKeepingFocus, showToast } from './ui-uti
 import { getEntityDisplayName, getSearchScore } from './utils.js';
 import { getLocaleState, t } from './i18n.js';
 import accelerators from './accelerators.cjs';
+import { paginate, renderListPager } from './list-pager.js';
 
 let globalHotkeys = {};
 // The action picked on a row that has no hotkey yet. The list is rebuilt on every search keystroke
@@ -147,6 +148,17 @@ function createActionSelectHTML(options, selectedAction, entityId, name) {
   return `<select class="hotkey-action-select" data-entity-id="${escapeHtmlAttribute(entityId)}" data-focus-key="hotkey-action:${escapeHtmlAttribute(entityId)}" aria-label="${escapeHtmlAttribute(t('Hotkey action for {{name}}', { name }))}">${optionsHTML}</select>`;
 }
 
+// The list is one page of rows, and typing in the search waits for a pause: building a row for
+// every entity that can take a hotkey on each keystroke took about a second in a large home.
+let hotkeyListPage = 0;
+let hotkeyListFilter = '';
+let hotkeySearchTimer;
+
+function scheduleHotkeysTabRender() {
+  clearTimeout(hotkeySearchTimer);
+  hotkeySearchTimer = setTimeout(renderHotkeysTab, 150);
+}
+
 function renderHotkeysTab() {
   try {
     const container = document.getElementById('hotkeys-list');
@@ -154,6 +166,9 @@ function renderHotkeysTab() {
 
     const filter = document.getElementById('hotkey-entity-search').value.toLowerCase();
     const locale = getLocaleState().activeLocale || undefined;
+    // A new query starts at its first page.
+    if (filter !== hotkeyListFilter) hotkeyListPage = 0;
+    hotkeyListFilter = filter;
     const hotkeyEntities = Object.values(state.STATES)
       .filter((e) => HOTKEY_SUPPORTED_DOMAINS.has(e.entity_id.split('.')[0]))
       .map((entity) => {
@@ -169,6 +184,8 @@ function renderHotkeysTab() {
 
     // The list is rebuilt after a failed action change or a cleared hotkey; the keyboard stays on the
     // same row's control (the keys below say which), not on <body> with Tab starting over.
+    const shown = paginate(hotkeyEntities, hotkeyListPage);
+    hotkeyListPage = shown.page;
     renderKeepingFocus(container, () => {
       container.innerHTML = '';
       if (!hotkeyEntities.length) {
@@ -188,7 +205,7 @@ function renderHotkeysTab() {
       recordHint.className = 'sr-only';
       recordHint.textContent = t('Press Enter or Space to record a hotkey');
       container.appendChild(recordHint);
-      hotkeyEntities.forEach(({ entity, name }) => {
+      shown.items.forEach(({ entity, name }) => {
         const hotkeyConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entity.entity_id] || {};
         const hotkey = typeof hotkeyConfig === 'string' ? hotkeyConfig : hotkeyConfig.hotkey;
         const action =
@@ -222,6 +239,14 @@ function renderHotkeysTab() {
                 </div>
             `;
         container.appendChild(item);
+      });
+      renderListPager(container, {
+        page: shown.page,
+        pageCount: shown.pageCount,
+        onChange: (page) => {
+          hotkeyListPage = page;
+          renderHotkeysTab();
+        },
       });
     });
 
@@ -536,8 +561,11 @@ function setupHotkeyEventListenersInternal() {
   }
 }
 
-// Cleanup function to remove event listeners
+// Cleanup function to remove event listeners, and to stop a pending search from rebuilding a list
+// that is no longer on screen. Settings reopens on the first page, as the other lists do.
 function cleanupHotkeyEventListeners() {
+  clearTimeout(hotkeySearchTimer);
+  hotkeyListPage = 0;
   try {
     if (activeContainer && containerChangeHandler) {
       activeContainer.removeEventListener('change', containerChangeHandler);
@@ -561,6 +589,7 @@ function setupHotkeyEventListeners() {
 export {
   initializeHotkeys,
   renderHotkeysTab,
+  scheduleHotkeysTabRender,
   toggleHotkeys,
   captureHotkey,
   assignHotkeyToEntity,

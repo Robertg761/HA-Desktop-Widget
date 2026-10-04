@@ -21,7 +21,7 @@ describe('index.html static Settings text', () => {
       activeLocale: 'de',
       messages: {
         'Show an entity on a card': 'Entität auf einer Karte anzeigen',
-        'Profile sync': 'Profilsynchronisierung',
+        'Sync this profile across computers': 'Profilsynchronisierung',
         'Search entities...': 'Entitäten suchen...',
         'Search entities': 'Entitäten suchen',
         'Card {{index}}': 'Karte {{index}}',
