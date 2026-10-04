@@ -8,7 +8,8 @@ import {
 } from './utils.js';
 import { applyCloseButtonIcons } from './icons.js';
 import { closeDialog, openDialog, releaseFocusTrap, showToast } from './ui-utils.js';
-import { formatDateTime, formatTime, t } from './i18n.js';
+import { formatClockDateTime, formatClockTime } from './format.js';
+import { t } from './i18n.js';
 import { lineIconMarkup } from './entity-icons.js';
 import { getRendererHost } from '@hadw/renderer/host.js';
 
@@ -68,9 +69,7 @@ function getCameraUpdatedLabel(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   const sameDay = date.toDateString() === new Date().toDateString();
-  const time = sameDay
-    ? formatTime(date, { hour: 'numeric', minute: '2-digit' })
-    : formatDateTime(date, { dateStyle: 'medium', timeStyle: 'short' });
+  const time = sameDay ? formatClockTime(date) : formatClockDateTime(date);
   return t('Updated {{time}}', { time });
 }
 
@@ -1318,13 +1317,6 @@ function stopHlsStream(entityId) {
   }
 }
 
-// Camera entities report "streaming" and "recording", which the shared state names don't cover.
-function getCameraStateLabel(value) {
-  if (value === 'streaming') return t('Streaming');
-  if (value === 'recording') return t('Recording');
-  return getLocalizedStateName(value);
-}
-
 async function openCamera(cameraId, options = {}) {
   try {
     if (!state.CONFIG || !state.CONFIG.homeAssistant.url) {
@@ -1370,8 +1362,8 @@ async function openCamera(cameraId, options = {}) {
           </div>
           <div class="camera-toolbar">
             <p class="camera-info">
-              <span class="camera-info-state">${escapeHtml(getCameraStateLabel(camera.state))}</span>
-              <span class="camera-info-updated" title="${escapeHtmlAttribute(t('Last updated: {{time}}', { time: formatDateTime(camera.last_updated) }))}">${escapeHtml(getCameraUpdatedLabel(camera.last_updated))}</span>
+              <span class="camera-info-state">${escapeHtml(getLocalizedStateName(camera.state))}</span>
+              <span class="camera-info-updated" title="${escapeHtmlAttribute(t('Last updated: {{time}}', { time: formatClockDateTime(camera.last_updated, { dateStyle: 'medium', timeStyle: 'medium' }) }))}">${escapeHtml(getCameraUpdatedLabel(camera.last_updated))}</span>
             </p>
             <div class="camera-mode-buttons">
               <button type="button" class="media-mute-toggle camera-mute-toggle active" id="mute-btn" aria-pressed="true" hidden>${escapeHtml(t('Mute'))}</button>

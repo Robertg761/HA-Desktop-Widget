@@ -42,8 +42,8 @@ describe('settings search', () => {
   test('opens collapsed native disclosures before focusing their control', () => {
     const details = document.getElementById('legacy-ha-token-settings');
     expect(details.open).toBe(false);
-    search('Access token')
-      .find((button) => button.firstChild.textContent === 'Access token')
+    search('access token')
+      .find((button) => /access token$/i.test(button.firstChild.textContent))
       .click();
     expect(details.open).toBe(true);
     expect(document.activeElement.id).toBe('ha-token');
@@ -53,8 +53,9 @@ describe('settings search', () => {
     const toggle = section.querySelector('.section-toggle');
     toggle.onclick = jest.fn(() => section.classList.remove('collapsed'));
     const label = section.querySelector('label');
-    search('custom-entity-icons-search')
-      .find((button) => button.firstChild.textContent === label.textContent.trim())
+    // "Search entities" is also on the top cards; the group says which result is this one.
+    search(label.textContent.trim())
+      .find((button) => button.lastChild.textContent.endsWith('Custom Entity Icons'))
       .click();
     expect(toggle.onclick).toHaveBeenCalledTimes(1);
     expect(section.classList.contains('collapsed')).toBe(false);
@@ -106,6 +107,40 @@ describe('settings search', () => {
       expect(input.value).toBe('');
       expect(modal.classList.contains('settings-searching')).toBe(false);
       expect(document.activeElement).toBe(input);
+    });
+
+    test.each([
+      ['isComposing', { isComposing: true }],
+      ['keyCode 229', { keyCode: 229 }],
+    ])('leaves the Enter and arrows of an input method composition (%s) to it', (_label, init) => {
+      const results = search('theme');
+      expect(results.length).toBeGreaterThan(0);
+      input.focus();
+
+      for (const key of ['Enter', 'ArrowDown']) {
+        const event = new KeyboardEvent('keydown', {
+          key,
+          bubbles: true,
+          cancelable: true,
+          ...init,
+        });
+        input.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(false);
+        expect(document.activeElement).toBe(input);
+      }
+      // Escape cancels the composition, not the query.
+      const escape = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+        ...init,
+      });
+      input.dispatchEvent(escape);
+      expect(escape.defaultPrevented).toBe(false);
+      expect(input.value).toBe('theme');
+      // And once the composition is over Enter moves on to the first result again.
+      press(input, 'Enter');
+      expect(document.activeElement).toBe(results[0]);
     });
 
     test('the arrows walk the results, and Up from the first returns to the field', () => {
@@ -188,8 +223,12 @@ describe('settings search', () => {
   });
   test('indexes a nested-label checkbox once, with a clean title', () => {
     const results = search('Christmas');
-    expect(results).toHaveLength(1);
-    expect(results[0].firstChild.textContent).toBe('Christmas');
+    // The one-day preview offers Christmas as a choice, so it is found too, after the setting
+    // that is called Christmas.
+    expect(results.map((button) => button.firstChild.textContent)).toEqual([
+      'Christmas',
+      'Holiday to show',
+    ]);
   });
   test('focuses the matched checkbox in a multi-checkbox group', () => {
     search('Christmas')[0].click();
@@ -252,7 +291,6 @@ describe('settings search', () => {
     for (const [query, id] of [
       ['Sync now', 'profile-sync-now'],
       ['Sync Up', 'profile-sync-push-now'],
-      ['Need Help?', 'profile-sync-help-btn'],
       ['Support this project', 'open-donate-modal-btn'],
     ]) {
       document
@@ -322,9 +360,129 @@ describe('settings search', () => {
       return String(this).replace(/I/g, '\u0131').toLowerCase();
     });
     try {
-      expect(search('CHRISTMAS')).toHaveLength(1);
+      expect(search('CHRISTMAS')[0].firstChild.textContent).toBe('Christmas');
     } finally {
       spy.mockRestore();
     }
+  });
+
+  describe('what is searched, and in what order', () => {
+    const titles = (results) => results.map((button) => button.firstChild.textContent);
+
+    test('does not match on control ids nobody sees', () => {
+      expect(search('weather-effects-enabled')).toHaveLength(0);
+      expect(search('enabled')).toHaveLength(0);
+      expect(
+        settingsSearchEntries(modal).some((entry) => entry.text.includes('language-select'))
+      ).toBe(false);
+    });
+
+    test('finds a setting by the names of its choices', () => {
+      expect(titles(search('dark'))).toEqual(['Mode']);
+      expect(titles(search('24-hour'))).toContain('Time format');
+    });
+
+    test('English words still find a setting in a translated interface', () => {
+      const label = document.getElementById('theme-mode-label');
+      label.textContent = 'Darstellung';
+      expect(titles(search('darstellung'))).toEqual(['Darstellung']);
+      // The label is data-i18n="Mode": the English the docs and the community use.
+      expect(titles(search('mode'))).toContain('Darstellung');
+    });
+
+    test('a page is one result, not a match on every row of it', () => {
+      // The Appearance description names themes, colours and glass; the rows are not all "theme".
+      expect(titles(search('readability')).filter((title) => title === 'Appearance')).toHaveLength(
+        1
+      );
+      const hits = titles(search('readability'));
+      expect(hits).toContain('Layout density');
+      expect(hits).not.toContain('Mode');
+    });
+
+    test('the setting of that name leads, ahead of rows that only mention it', () => {
+      const hits = titles(search('hotkey'));
+      expect(hits[0]).toBe('Hotkeys');
+      expect(hits.indexOf('Popup hotkey')).toBeLessThan(
+        hits.indexOf('Hide to tray when focus is lost')
+      );
+      // Example key combinations are values to press, not settings.
+      expect(hits.some((title) => /^Ctrl\+/.test(title))).toBe(false);
+    });
+
+    test('a caption over the example chips and a help link are not settings', () => {
+      expect(titles(search('suggestions'))).not.toContain('Suggestions');
+      // "Need Help?" opens the docs; the settings it sits among are the results for "sync"
+      expect(titles(search('need help'))).not.toContain('Need Help?');
+      expect(titles(search('sync'))).not.toContain('Need Help?');
+    });
+
+    test('finds a page although the stylesheet shows only the current one', () => {
+      const style = document.createElement('style');
+      style.textContent = '#settings-modal .tab-content:not(.active) { display: none; }';
+      document.head.appendChild(style);
+      try {
+        document.getElementById('general-tab').classList.add('active');
+        const hits = titles(search('hotkeys'));
+        // The Hotkeys page is not the current one, and still leads
+        expect(hits[0]).toBe('Hotkeys');
+      } finally {
+        style.remove();
+      }
+    });
+
+    test('says which group a result is in, beside its page', () => {
+      expect(search('Christmas')[0].lastChild.textContent).toBe('Appearance › Seasonal Themes');
+    });
+
+    test('does not offer a button that cannot be pressed', () => {
+      document.getElementById('check-updates-btn').disabled = true;
+      expect(titles(search('Check for updates'))).not.toContain('Check for updates');
+      document.getElementById('check-updates-btn').disabled = false;
+      expect(titles(search('Check for updates'))).toContain('Check for updates');
+    });
+  });
+
+  describe('the empty and the single result', () => {
+    const status = () => document.getElementById('settings-search-status').textContent;
+
+    test('a query of only separators leaves the page as it was', () => {
+      for (const query of ['-', '_', ' - _ ']) {
+        search(query);
+        expect(modal.classList.contains('settings-searching')).toBe(false);
+        expect(document.getElementById('settings-search-results').hidden).toBe(true);
+        expect(status()).toBe('');
+      }
+    });
+
+    test('says "1 matching setting" for a single result', () => {
+      expect(search('Restore dashboard')).toHaveLength(1);
+      expect(status()).toBe('1 matching setting');
+      search('sync');
+      expect(status()).toMatch(/^\d+ matching settings$/);
+    });
+
+    test('no match draws an empty state naming the query, and keeps the plain status line', () => {
+      search('zzzz');
+      const empty = document.querySelector('#settings-search-results .settings-search-empty');
+      expect(empty).not.toBeNull();
+      expect(empty.querySelector('.settings-search-empty-title').textContent).toBe(
+        'No settings match “zzzz”'
+      );
+      expect(empty.textContent).toContain('clear the search');
+      expect(status()).toBe('No matching settings');
+    });
+
+    test('the plain status line is for assistive technology only while the empty state is shown', () => {
+      const statusLine = document.getElementById('settings-search-status');
+      search('zzzz');
+      expect(statusLine.classList.contains('sr-only')).toBe(true);
+      // Any other search, and clearing it, brings the line back for the eye
+      search('theme');
+      expect(statusLine.classList.contains('sr-only')).toBe(false);
+      search('zzzz');
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+      expect(statusLine.classList.contains('sr-only')).toBe(false);
+    });
   });
 });

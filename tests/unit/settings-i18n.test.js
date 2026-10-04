@@ -21,12 +21,12 @@ describe('index.html static Settings text', () => {
       activeLocale: 'de',
       messages: {
         'Show an entity on a card': 'Entität auf einer Karte anzeigen',
-        'Profile sync': 'Profilsynchronisierung',
+        'Sync this profile across computers': 'Profilsynchronisierung',
         'Search entities...': 'Entitäten suchen...',
         'Search entities': 'Entitäten suchen',
         'Card {{index}}': 'Karte {{index}}',
-        'Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Command, Super (for example <code>Ctrl+Shift+A</code>).':
-          'Schalte oder steuere Entitäten von überall aus. Modifikatortasten: Ctrl, Alt, Shift, Command, Super (zum Beispiel <code>Ctrl+Shift+A</code>).',
+        'Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).':
+          'Schalte oder steuere Entitäten von überall aus. Modifikatortasten: Ctrl, Alt, Shift, Win, Command, Super (zum Beispiel <code>Ctrl+Shift+A</code>).',
         'View logs': 'Protokolle anzeigen',
         'Opens the log file location in your file explorer':
           'Öffnet den Speicherort der Protokolldatei im Dateimanager',
@@ -81,10 +81,23 @@ describe('index.html static Settings text', () => {
     ).toEqual(['Karte 1', 'Karte 2']);
   });
 
+  test('offers one choice per date style and starts the opacity readout at the default', () => {
+    // "System default" wrote exactly what Numeric date does, so only the three styles remain.
+    expect([...document.querySelectorAll('#date-format option')].map((o) => o.value)).toEqual([
+      'weekday-short',
+      'long',
+      'numeric',
+    ]);
+    // The time format still follows the language by default.
+    expect(document.querySelector('#time-format option').value).toBe('system');
+    // The stored default is 95%, not the slider position of 90.
+    expect(document.getElementById('opacity-value').textContent).toBe('95%');
+  });
+
   test('keeps code formatting in translated help text', () => {
     const help = document.querySelector('[data-i18n-html^="Toggle or control entities"]');
     expect(help.textContent).toBe(
-      'Schalte oder steuere Entitäten von überall aus. Modifikatortasten: Ctrl, Alt, Shift, Command, Super (zum Beispiel Ctrl+Shift+A).'
+      'Schalte oder steuere Entitäten von überall aus. Modifikatortasten: Ctrl, Alt, Shift, Win, Command, Super (zum Beispiel Ctrl+Shift+A).'
     );
     expect(help.querySelectorAll('code')).toHaveLength(1);
   });

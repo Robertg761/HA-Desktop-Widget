@@ -1,4 +1,5 @@
-import { t } from './i18n.js';
+import { formatList } from './format.js';
+import { formatNumber, t } from './i18n.js';
 import { showConfirm, showToast } from './ui-utils.js';
 import state from './state.js';
 
@@ -21,13 +22,47 @@ const PREVIEW_PAGE_NAMES = 8;
 const PREVIEW_NAME_LENGTH = 40;
 
 function describePageNames(pageNames) {
-  const shown = pageNames
-    .slice(0, PREVIEW_PAGE_NAMES)
-    .map((name) =>
-      name.length > PREVIEW_NAME_LENGTH ? `${name.slice(0, PREVIEW_NAME_LENGTH - 1)}…` : name
-    );
+  const shown = pageNames.slice(0, PREVIEW_PAGE_NAMES).map((name) => {
+    // Cut on whole characters, so a name ending in an emoji is not left with half of it.
+    const characters = Array.from(name);
+    return characters.length > PREVIEW_NAME_LENGTH
+      ? `${characters.slice(0, PREVIEW_NAME_LENGTH - 1).join('')}…`
+      : name;
+  });
   const more = pageNames.length - shown.length;
-  return `${shown.join(', ')}${more > 0 ? `, … (+${more})` : ''}`;
+  return more > 0 ? `${formatList(shown)} … (+${more})` : formatList(shown);
+}
+
+// What the file holds, as rows to scan, under the sentence that matters: that this replaces the
+// current settings (and what is kept). It used to be five paragraphs of equal weight, with the
+// warning last, and "Referenced entities: 15." wrapping onto a line of its own.
+function buildImportSummary({ fileName, sections, pages, entityCount, unavailable }) {
+  const fragment = document.createDocumentFragment();
+  const warning = document.createElement('p');
+  warning.className = 'confirm-callout';
+  warning.textContent = t(
+    'Import applies immediately and replaces unsaved Settings edits. Your current saved settings are backed up first. Connection details, desktop pins, hotkeys and profile sync stay on this computer. Imported settings follow your existing sync scope.'
+  );
+  const facts = document.createElement('dl');
+  facts.className = 'confirm-facts';
+  const rows = [
+    [t('File'), fileName],
+    [t('Changes'), sections],
+    [t('Page names'), pages],
+    [t('Entities used'), formatNumber(entityCount)],
+    ...(unavailable ? [[t('Missing from this connection'), formatNumber(unavailable)]] : []),
+  ];
+  for (const [label, value] of rows) {
+    const term = document.createElement('dt');
+    term.textContent = label;
+    const detail = document.createElement('dd');
+    detail.textContent = value;
+    // A file name or a page name is the person's own text, in whatever direction it was typed.
+    detail.dir = 'auto';
+    facts.append(term, detail);
+  }
+  fragment.append(warning, facts);
+  return fragment;
 }
 
 function initializeSettingsFiles({ onImported, hasUnsavedChanges = () => false }) {
@@ -83,38 +118,25 @@ function initializeSettingsFiles({ onImported, hasUnsavedChanges = () => false }
         automationAlerts: t('Alerts'),
         connectionMediaPreferences: t('Weather and media'),
       };
-      const sections =
-        preview.changedSections
-          .map((key) => labels[key])
-          .filter(Boolean)
-          .join(', ') || t('No changes');
+      const changedLabels = preview.changedSections.map((key) => labels[key]).filter(Boolean);
+      const sections = changedLabels.length ? formatList(changedLabels) : t('No changes');
       // Before Home Assistant has delivered its entities (first run, or disconnected) every
       // entity looks missing, which says nothing about the file.
       const entitiesLoaded = Object.keys(state.STATES || {}).length > 0;
       const unavailable = entitiesLoaded
         ? preview.entityIds.filter((id) => !state.STATES[id]).length
         : 0;
-      const summary = [
-        t('File: {{name}}', { name: preview.fileName }),
-        t('Changes: {{sections}}', { sections }),
-        t('Pages: {{pages}}. Referenced entities: {{count}}.', {
-          pages: describePageNames(preview.pageNames) || t('None'),
-          count: preview.entityIds.length,
-        }),
-        ...(unavailable
-          ? [
-              t('Unavailable entities on this connection: {{count}}.', {
-                count: unavailable,
-              }),
-            ]
-          : []),
-        t(
-          'Import applies immediately and replaces unsaved Settings edits. Your current saved settings are backed up first. Connection details, desktop pins, shortcuts and profile sync stay on this computer. Imported settings follow your existing sync scope.'
-        ),
-      ].join('\n\n');
+      const summary = buildImportSummary({
+        fileName: preview.fileName,
+        sections,
+        pages: describePageNames(preview.pageNames) || t('None'),
+        entityCount: preview.entityIds.length,
+        unavailable,
+      });
       if (
         !(await showConfirm(t('Import settings'), summary, {
-          confirmText: t('Import settings'),
+          // The verb for what happens to the settings, not the title said twice.
+          confirmText: t('Replace settings'),
           confirmClass: 'btn-primary',
         }))
       )

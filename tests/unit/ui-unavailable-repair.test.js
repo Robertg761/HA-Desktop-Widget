@@ -236,7 +236,10 @@ describe('unavailable Quick Access tile repair affordance', () => {
       const ids = [...rows()].map((row) => row.querySelector('.entity-id').textContent);
       expect(ids.every((id) => id.startsWith('light.'))).toBe(true);
       const names = [...rows()].map((row) => row.querySelector('.entity-name').textContent);
-      expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
+      // Numbers count as numbers ("Thing 9" before "Thing 12"), as everywhere else names are sorted.
+      const natural = new Intl.Collator('en', { numeric: true, sensitivity: 'base' }).compare;
+      expect(names).toEqual([...names].sort(natural));
+      expect(names.slice(0, 3)).toEqual(['Thing 0', 'Thing 3', 'Thing 6']);
     });
 
     it('searches what was typed once typing has paused, not on every key', async () => {
@@ -253,9 +256,29 @@ describe('unavailable Quick Access tile repair affordance', () => {
 
       await new Promise((resolve) => setTimeout(resolve, 200));
 
+      // The id thing_2990 to thing_2999 contain the query, and so does the name "Thing 299".
       const ids = [...rows()].map((row) => row.querySelector('.entity-id').textContent);
-      expect(ids.every((id) => id.includes('thing_299'))).toBe(true);
-      expect(ids.length).toBe(10);
+      expect(ids.length).toBe(11);
+      expect(ids.filter((id) => id.includes('thing_299'))).toHaveLength(10);
+      expect(ids.some((id) => id.endsWith('thing_0299'))).toBe(true);
+    });
+
+    it('finds a name by its letters without the accents', async () => {
+      state.setStates({
+        ...makeStates(30),
+        'light.kueche': {
+          entity_id: 'light.kueche',
+          state: 'on',
+          attributes: { friendly_name: 'Küche Deckenlicht' },
+        },
+      });
+      const { search, rows } = openPicker();
+
+      await typeAndWait(search, 'kuche deckenlicht');
+
+      expect([...rows()].map((row) => row.querySelector('.entity-name').textContent)).toEqual([
+        'Küche Deckenlicht',
+      ]);
     });
 
     it('says nothing about more rows when the search narrows it to a few', async () => {

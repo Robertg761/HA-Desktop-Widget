@@ -348,7 +348,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
 
       expect(mockElectronAPI.refreshHomeAssistantOAuth).not.toHaveBeenCalled();
       expect(panelText()).toContain(
-        'Authentication failed. Please check your Home Assistant token in Settings.'
+        'Authentication failed. Check your long-lived access token in Settings.'
       );
     });
 
@@ -588,6 +588,62 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       expect(document.getElementById('settings-modal').classList).not.toContain('hidden');
       expect(document.getElementById('ha-url').value).toBe('http://ha.local:8123');
       expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('pending duration alerts when the connection is closed on purpose', () => {
+    // websocket.close() never emits "close", so alerts have to be told. Otherwise "front door open
+    // for 10 minutes" keeps counting through an outage and notifies about a door that has closed.
+    it('are suspended when the browser reports the network is offline', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      connectSuccessfully();
+      mockAlerts.suspendEntityAlerts.mockClear();
+
+      window.dispatchEvent(new Event('offline'));
+
+      expect(mockWebsocket.close).toHaveBeenCalledTimes(1);
+      expect(mockAlerts.suspendEntityAlerts).toHaveBeenCalledTimes(1);
+      // Suspended before the socket goes, so no timer can fire between the two.
+      expect(mockAlerts.suspendEntityAlerts.mock.invocationCallOrder[0]).toBeLessThan(
+        mockWebsocket.close.mock.invocationCallOrder[0]
+      );
+    });
+
+    it('are suspended when Home Assistant rejects the token', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      connectSuccessfully();
+      mockAlerts.suspendEntityAlerts.mockClear();
+
+      mockWebsocket.emit('message', { type: 'auth_invalid' });
+
+      expect(mockWebsocket.close).toHaveBeenCalled();
+      expect(mockAlerts.suspendEntityAlerts).toHaveBeenCalled();
+    });
+
+    it('are suspended when the connection is replaced after the server address changes', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      connectSuccessfully();
+      mockAlerts.suspendEntityAlerts.mockClear();
+      mockWebsocket.close.mockClear();
+
+      triggerMockEvent('configUpdated', {
+        ...tokenConfig(),
+        homeAssistant: { url: 'http://other.local:8123', token: 'legacy-token' },
+      });
+      await flushAsync();
+
+      expect(mockWebsocket.close).toHaveBeenCalled();
+      expect(mockAlerts.suspendEntityAlerts).toHaveBeenCalled();
+    });
+
+    it('are suspended when the socket drops by itself, as before', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      connectSuccessfully();
+      mockAlerts.suspendEntityAlerts.mockClear();
+
+      mockWebsocket.emit('close', { intentional: false });
+
+      expect(mockAlerts.suspendEntityAlerts).toHaveBeenCalledTimes(1);
     });
   });
 

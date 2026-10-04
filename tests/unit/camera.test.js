@@ -61,10 +61,9 @@ jest.mock('../../src/utils.js', () => ({
     if (!entity) return 'Unknown Entity';
     return entity.attributes?.friendly_name || entity.entity_id;
   }),
-  getLocalizedStateName: jest.fn((value) => {
-    const text = String(value || '');
-    return text.charAt(0).toUpperCase() + text.slice(1);
-  }),
+  getLocalizedStateName: jest.fn((value) =>
+    jest.requireActual('../../src/format.js').formatStateName(value)
+  ),
 }));
 
 // Mock WebSocket
@@ -1716,6 +1715,21 @@ describe('Camera Module', () => {
       // A readable state label and when the frame was last updated, not the raw "idle".
       expect(cameraInfo.querySelector('.camera-info-state').textContent).toMatch(/^[A-Z]/);
       expect(cameraInfo.querySelector('.camera-info-updated').textContent).toMatch(/^Updated /);
+    });
+
+    it.each([
+      ['12-hour', /\b(?:[1-9]|1[0-2]):\d{2}\s?[AP]M/i],
+      ['24-hour', /\b(?:[01]\d|2[0-3]):\d{2}\b(?!\s?[AP]M)/i],
+    ])('writes when the frame was updated in the %s time format', (timeFormat, pattern) => {
+      const packageState = require('../../packages/widget-renderer/src/state.js');
+      try {
+        packageState.setConfig({ ui: { timeFormat } });
+        camera.openCamera('camera.front_door');
+        const text = document.querySelector('.camera-modal .camera-info-updated').textContent;
+        expect(text).toMatch(pattern);
+      } finally {
+        packageState.setConfig({ ui: {} });
+      }
     });
 
     it('shows a message in the viewer instead of a broken image when a frame fails', async () => {
