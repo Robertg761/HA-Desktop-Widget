@@ -121,7 +121,6 @@ const {
 const { cloneProductionProfile } = require('./src/dev-profile-clone.cjs');
 const {
   DEFAULT_WINDOW_SIZE,
-  MIN_WINDOW_SIZE,
   buildLayerShellSpawnPlan,
   createLayerShellRaiser,
   detectTilingLayerShellCompositor,
@@ -2383,14 +2382,15 @@ function normalizeWindowGeometryConfig(targetConfig) {
   if (!isPlainObject(targetConfig)) return targetConfig;
   const isCoordinate = (value) => typeof value === 'number' && Number.isFinite(value);
   const size = targetConfig.windowSize;
+  // The minimum the window is created with, which grows with "Text and control size". A window
+  // dragged down to a sliver once saved that size, and opened as a window with its buttons out of
+  // reach on every start after; a size saved under a smaller text size is raised the same way.
+  const minimum = getMainWindowMinimumSizeForConfig(targetConfig);
   targetConfig.windowSize =
     isPlainObject(size) && isCoordinate(size.width) && isCoordinate(size.height)
       ? {
-          // The same bounds the layer-shell surface uses for a saved size. A window dragged down
-          // to a sliver once saved that size, and opened as a window with its buttons out of
-          // reach on every start after.
-          width: Math.min(16384, Math.max(MIN_WINDOW_SIZE.width, Math.round(size.width))),
-          height: Math.min(16384, Math.max(MIN_WINDOW_SIZE.height, Math.round(size.height))),
+          width: Math.min(16384, Math.max(minimum.width, Math.round(size.width))),
+          height: Math.min(16384, Math.max(minimum.height, Math.round(size.height))),
         }
       : { ...DEFAULT_WINDOW_SIZE };
   const position = targetConfig.windowPosition;
@@ -6915,11 +6915,19 @@ function mainWindowMatchesSavedBounds(bounds) {
   );
 }
 
-/** A size no smaller than the main window's minimum, for a size about to be saved. */
-function clampToMinimumWindowSize({ width, height }) {
+/**
+ * A size no smaller than the main window's minimum at the current "Text and control size", for a
+ * size about to be saved. Electron's minimum-size hint is all that holds a window to that
+ * minimum, and some window managers ignore it, so this is what stops a too-small window from being
+ * saved and then accepted on the next start. The minimum grows with the setting (480x540 at
+ * 150%), so the unscaled 320x360 would let through a window only 213x240 CSS pixels wide. A
+ * desktop-layer surface keeps the unscaled one, see getMainWindowMinimumSizeForConfig.
+ */
+function clampToMinimumWindowSize({ width, height }, targetConfig = config) {
+  const minimum = getMainWindowMinimumSizeForConfig(targetConfig);
   return {
-    width: Math.max(MIN_WINDOW_SIZE.width, width),
-    height: Math.max(MIN_WINDOW_SIZE.height, height),
+    width: Math.max(minimum.width, width),
+    height: Math.max(minimum.height, height),
   };
 }
 

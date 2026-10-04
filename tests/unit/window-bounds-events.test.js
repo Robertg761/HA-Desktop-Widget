@@ -11,6 +11,7 @@ const {
   clampDesktopPinBounds,
   getDesktopPinWindowBounds,
 } = require('../../src/desktop-pin-bounds.js');
+const { getMainWindowMinimumSize } = require('../../src/layer-shell.cjs');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
@@ -61,7 +62,7 @@ function baseContext(platform) {
     process: { platform },
     usesCompositorOwnedPlacement: false,
     isLayerShellChildProcess: false,
-    MIN_WINDOW_SIZE: { width: 320, height: 360 },
+    getMainWindowMinimumSize,
     onWindowBoundsChanged,
     setTimeout,
     clearTimeout,
@@ -153,6 +154,35 @@ describe('main window bounds on Linux', () => {
     mainWindow.setBounds({ x: 100, y: 100, width: 100, height: 1 });
     jest.advanceTimersByTime(400);
     expect(context.config.windowSize).toEqual({ width: 320, height: 360 });
+  });
+
+  // The minimum grows with "Text and control size", and a window manager that ignores the hint
+  // used to get 320x360 saved at 150% text: a layout only 213x240 CSS pixels wide, accepted again
+  // on the next start.
+  it.each([
+    [1.15, { width: 368, height: 414 }],
+    [1.3, { width: 416, height: 468 }],
+    [1.5, { width: 480, height: 540 }],
+  ])('never saves a size below the minimum for %sx text', (scale, minimum) => {
+    const { context, mainWindow } = loadMainWindowRuntime('linux', {
+      config: {
+        windowPosition: { x: 100, y: 100 },
+        windowSize: { width: 700, height: 700 },
+        ui: { scale },
+      },
+    });
+    mainWindow.setBounds({ x: 100, y: 100, width: 320, height: 360 });
+    jest.advanceTimersByTime(400);
+    expect(context.config.windowSize).toEqual(minimum);
+
+    mainWindow.setBounds({ x: 100, y: 100, width: 100, height: 1 });
+    jest.advanceTimersByTime(400);
+    expect(context.config.windowSize).toEqual(minimum);
+
+    // A size above the minimum is saved as it is.
+    mainWindow.setBounds({ x: 100, y: 100, width: 640, height: 720 });
+    jest.advanceTimersByTime(400);
+    expect(context.config.windowSize).toEqual({ width: 640, height: 720 });
   });
 
   it('leaves layer-shell placement to the layer drag path', () => {
