@@ -392,6 +392,41 @@ async function showToasts(ctx) {
   await ctx.sleep(500);
 }
 
+// Home Assistant's notifications arrive over a subscription the mock does not serve (and a bell in
+// every scene's header is not wanted), so the panel is filled the way createNotificationListItem
+// fills it: English text, as Home Assistant writes it, under whatever language the app is in.
+async function showNotificationsPanel(ctx) {
+  await ctx.ev(`(() => {
+    const notes = [
+      ['Front door left open.', 'The front door has been open for 10 minutes. Check /config/automations.yaml.'],
+      ['Backup finished', 'Next run: tomorrow at 03:00 (home-assistant_2026-10-04.tar).'],
+    ];
+    const list = document.getElementById('persistent-notifications-list');
+    list.replaceChildren(...notes.map(([title, message]) => {
+      const item = document.createElement('div');
+      item.className = 'persistent-notification-item';
+      item.innerHTML =
+        '<div class="persistent-notification-content"><div class="persistent-notification-title"></div>' +
+        '<div class="persistent-notification-message"></div><div class="persistent-notification-time">5m ago</div></div>' +
+        '<button type="button" class="btn btn-secondary btn-sm persistent-notification-dismiss">Dismiss</button>';
+      item.querySelector('.persistent-notification-title').textContent = title;
+      item.querySelector('.persistent-notification-message').textContent = message;
+      return item;
+    }));
+    document.getElementById('persistent-notifications-empty').classList.add('hidden');
+    document.getElementById('persistent-notifications-modal').classList.remove('hidden');
+  })()`);
+}
+
+async function openDiagnostics(ctx) {
+  await openSettingsTab(ctx, 'general');
+  await ctx.click('#connection-diagnostics-btn');
+  await ctx.waitForSelector('.diagnostics-report');
+}
+
+// A saved custom colour in the summary line and the hex field of the editor under it.
+const customColour = { customColors: [{ id: 'custom-ab34cd', name: '', color: '#AB34CD' }] };
+
 // Text and status colour in both themes for accents from the pale to the saturated end. The
 // wizard's scenes come last (see below), because they empty the server address.
 const CONTRAST_ACCENTS = ['original', 'indigo', 'rose', 'aqua'];
@@ -943,6 +978,50 @@ const scenes = [
     setup: (ctx) => openSettingsTab(ctx, 'hotkeys'),
   },
   {
+    name: 'ar-popup-brightness',
+    ui: { language: 'ar' },
+    setup: openBrightness,
+  },
+  {
+    name: 'ar-popup-colour',
+    ui: { language: 'ar' },
+    config: { activeTabId: 'bedroom' },
+    setup: openColourLight,
+  },
+  { name: 'ar-edit-mode', ui: { language: 'ar' }, setup: toggleEditMode },
+  { name: 'ar-media-tile', ui: { language: 'ar' }, config: sixPages('media') },
+  { name: 'ar-edge-tiles', ui: { language: 'ar' }, config: edgePage },
+  {
+    name: 'ar-palette',
+    ui: { language: 'ar' },
+    setup: (ctx) => openPaletteFor(ctx, 'o'),
+  },
+  {
+    name: 'ar-settings-appearance',
+    ui: { language: 'ar', accent: 'custom-ab34cd', ...customColour },
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'personalization');
+      await revealInSettings(ctx, '#theme-current-selection', 'center');
+    },
+  },
+  {
+    name: 'ar-settings-appearance-custom',
+    ui: { language: 'ar' },
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'personalization');
+      await revealInSettings(ctx, '#custom-color-hex', 'center');
+    },
+  },
+  { name: 'ar-dialog-notifications', ui: { language: 'ar' }, setup: showNotificationsPanel },
+  { name: 'ar-dialog-diagnostics', ui: { language: 'ar' }, setup: openDiagnostics },
+  { name: 'hi-main', ui: { language: 'hi' } },
+  {
+    name: 'hi-settings-appearance',
+    ui: { language: 'hi' },
+    setup: (ctx) => openSettingsTab(ctx, 'personalization'),
+  },
+  { name: 'zh-main', ui: { language: 'zh' } },
+  {
     name: 'popup-media-light',
     ui: { theme: 'light' },
     config: dialogsPage,
@@ -1115,6 +1194,7 @@ const scenes = [
   pinScene('pin-es-fan', 'fan.office', { ui: { language: 'es' } }),
   pinScene('pin-ar-light', 'light.desk_lamp', { ui: { language: 'ar' } }),
   pinScene('pin-ar-climate', 'climate.bedroom', { ui: { language: 'ar' } }),
+  pinScene('pin-ar-light-long', 'light.upstairs_hallway_ceiling', { ui: { language: 'ar' } }),
   pinScene('pin-large-light', 'light.desk_lamp', { ui: { scale: 1.5 } }),
   pinScene('pin-large-climate', 'climate.bedroom', { ui: { scale: 1.5 } }),
   pinScene('pin-large-weather', 'weather.home', { ui: { scale: 1.5 } }),
