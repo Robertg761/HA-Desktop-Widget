@@ -322,5 +322,9 @@
   "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": {
     "retiredIn": "4.0.0",
     "reason": "Shortened before release: the first wording wrapped to three lines at 500px and four at 340px, over the bottom tile row"
+  },
+  "Opening Home Assistant for authorization...": {
+    "retiredIn": "4.0.0",
+    "reason": "Authorization now waits for approval in the browser, so the status says that instead"
   }
 }

@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.56",
+  "version": "1.2.57",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1781,6 +1781,10 @@
     "Keep editing": "Continuer la modification",
     "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Affichage des {{shown}} premières icônes sur {{count}}. Saisissez du texte pour les affiner.",
     "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "Mode réorganisation activé. Glissez ou appuyez sur Alt+flèches pour réordonner. Appuyez sur Échap pour terminer.",
-    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "Mode réorganisation activé. Glissez, sélectionnez ou appuyez sur Alt+flèches pour réordonner. Utilisez les boutons d'une vignette pour l'épingler, la renommer ou la supprimer. Appuyez sur Échap pour terminer."
+    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "Mode réorganisation activé. Glissez, sélectionnez ou appuyez sur Alt+flèches pour réordonner. Utilisez les boutons d'une vignette pour l'épingler, la renommer ou la supprimer. Appuyez sur Échap pour terminer.",
+    "Home Assistant did not answer. Check that it is running and that the URL is correct.": "Home Assistant ne répond pas. Vérifiez qu'il est en marche et que l'URL est correcte.",
+    "Retrying...": "Nouvelle tentative...",
+    "Still can't reach Home Assistant (tried {{time}}).": "Home Assistant reste injoignable (essai à {{time}}).",
+    "Waiting for you to approve in your browser...": "En attente de votre approbation dans le navigateur..."
   }
 }

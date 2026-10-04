@@ -1196,8 +1196,9 @@ describe('UI Utilities', () => {
       expect(tooltip.querySelector('.connection-status-tooltip-title').textContent).toBe(
         'Disconnected from Home Assistant'
       );
+      // The title already says "Disconnected from Home Assistant"; the detail adds the rest.
       expect(tooltip.querySelector('.connection-status-tooltip-detail').textContent).toBe(
-        'Disconnected from Home Assistant. Retrying automatically.'
+        'Retrying automatically.'
       );
 
       statusIndicator.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));

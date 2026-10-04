@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.56",
+  "version": "1.2.57",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget, including German date and time formats.",
   "messages": {
@@ -1781,6 +1781,10 @@
     "Keep editing": "Weiter bearbeiten",
     "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Die ersten {{shown}} von {{count}} Symbolen werden angezeigt. Tippe, um sie einzugrenzen.",
     "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "Neu-Anordnen aktiv. Ziehen oder Alt+Pfeiltasten zum Sortieren. Esc zum Beenden.",
-    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "Neu-Anordnen aktiv. Ziehen, Auswählen oder Alt+Pfeiltasten zum Sortieren. Mit den Schaltflächen einer Kachel anheften, umbenennen oder entfernen. Esc zum Beenden."
+    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "Neu-Anordnen aktiv. Ziehen, Auswählen oder Alt+Pfeiltasten zum Sortieren. Mit den Schaltflächen einer Kachel anheften, umbenennen oder entfernen. Esc zum Beenden.",
+    "Home Assistant did not answer. Check that it is running and that the URL is correct.": "Home Assistant antwortet nicht. Prüfe, ob es läuft und ob die URL stimmt.",
+    "Retrying...": "Wird erneut versucht…",
+    "Still can't reach Home Assistant (tried {{time}}).": "Home Assistant ist weiterhin nicht erreichbar (Versuch um {{time}}).",
+    "Waiting for you to approve in your browser...": "Warte darauf, dass du es in deinem Browser genehmigst…"
   }
 }

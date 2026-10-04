@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.56",
+  "version": "1.2.57",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1781,6 +1781,10 @@
     "Keep editing": "Seguir editando",
     "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Mostrando los primeros {{shown}} de {{count}} iconos. Escribe para acotarlos.",
     "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "Modo de reorganización activado. Arrastra o pulsa Alt+flechas para reordenar. Pulsa Esc para finalizar.",
-    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "Modo de reorganización activado. Arrastra, selecciona o pulsa Alt+flechas para reordenar. Usa los botones de una tarjeta para anclarla, renombrarla o eliminarla. Pulsa Esc para finalizar."
+    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "Modo de reorganización activado. Arrastra, selecciona o pulsa Alt+flechas para reordenar. Usa los botones de una tarjeta para anclarla, renombrarla o eliminarla. Pulsa Esc para finalizar.",
+    "Home Assistant did not answer. Check that it is running and that the URL is correct.": "Home Assistant no responde. Comprueba que esté en marcha y que la URL sea correcta.",
+    "Retrying...": "Reintentando...",
+    "Still can't reach Home Assistant (tried {{time}}).": "Sigue sin poder accederse a Home Assistant (intento a las {{time}}).",
+    "Waiting for you to approve in your browser...": "Esperando a que lo apruebes en tu navegador..."
   }
 }

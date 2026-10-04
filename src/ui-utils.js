@@ -1,5 +1,6 @@
 /* global process */
 import { t } from './i18n.js';
+import { stripSummaryPrefix } from './connection-status.js';
 import { setIconContent } from './icons.js';
 import { setLineIconContent } from './entity-icons.js';
 import windowGlass from './window-glass.cjs';
@@ -2145,11 +2146,19 @@ function getConnectionStatusSummary(connected) {
   return connected ? t('Connected to Home Assistant') : t('Disconnected from Home Assistant');
 }
 
+// The detail line under the summary. A detail that opens by repeating the summary ("Disconnected
+// from Home Assistant. Retrying automatically.") is cut to what it adds, so the tooltip and the
+// accessible name do not say it twice.
 function getConnectionStatusDetail(statusElement) {
+  const connected = !!statusElement?.classList?.contains('connected');
+  const summary = getConnectionStatusSummary(connected);
   const explicitDetail = statusElement?.dataset?.statusDetail?.trim();
-  if (explicitDetail) return explicitDetail;
-  if (statusElement?.classList?.contains('connected')) return t('Real-time updates active.');
-  return t('Disconnected from Home Assistant. Retrying automatically.');
+  if (explicitDetail) return stripSummaryPrefix(summary, explicitDetail);
+  if (connected) return t('Real-time updates active.');
+  return stripSummaryPrefix(
+    summary,
+    t('Disconnected from Home Assistant. Retrying automatically.')
+  );
 }
 
 function positionConnectionStatusTooltip(target) {
@@ -2333,10 +2342,12 @@ function setStatus(connected, detailMessage = '') {
       const normalizedDetail = typeof detailMessage === 'string' ? detailMessage.trim() : '';
       status.dataset.statusSummary = summary;
       status.dataset.statusDetail = normalizedDetail;
+      // Read out as "summary. what it adds", so a detail that begins with the summary is cut.
+      const addedDetail = stripSummaryPrefix(summary, normalizedDetail);
 
-      if (normalizedDetail) {
-        status.title = `${summary}: ${normalizedDetail}`;
-        status.setAttribute('aria-label', `${summary}. ${normalizedDetail}`);
+      if (addedDetail) {
+        status.title = `${summary}: ${addedDetail}`;
+        status.setAttribute('aria-label', `${summary}. ${addedDetail}`);
       } else {
         status.title = summary;
         status.setAttribute('aria-label', summary);

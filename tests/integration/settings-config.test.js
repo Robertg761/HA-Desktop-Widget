@@ -923,7 +923,7 @@ describe('Settings + Config Integration', () => {
       expect(document.getElementById('connect-ha-oauth-btn').disabled).toBe(true);
       expect(status.dataset.busy).toBe('true');
       expect(status.querySelectorAll('.connection-progress')).toHaveLength(1);
-      expect(status.textContent).toBe('Opening Home Assistant for authorization...');
+      expect(status.textContent).toBe('Waiting for you to approve in your browser...');
 
       cancelButton.click();
       await Promise.resolve();

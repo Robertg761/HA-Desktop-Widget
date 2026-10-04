@@ -56,7 +56,6 @@
   "Restoring Home Assistant authorization...": "Restoring Home Assistant authorization...",
   "Authorization expired. Connect again to continue.": "Authorization expired. Connect again to continue.",
   "Home Assistant is offline. Authorization will retry automatically.": "Home Assistant is offline. Authorization will retry automatically.",
-  "Opening Home Assistant for authorization...": "Opening Home Assistant for authorization...",
   "Home Assistant authorization connected": "Home Assistant authorization connected",
   "Home Assistant authorization disconnected": "Home Assistant authorization disconnected",
   "Home Assistant authorization failed": "Home Assistant authorization failed",
@@ -1694,5 +1693,9 @@
   "Discard color edits": "Discard color edits",
   "Keep editing": "Keep editing",
   "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Showing the first {{shown}} of {{count}} icons. Type to narrow them.",
-  "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish."
+  "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.",
+  "Home Assistant did not answer. Check that it is running and that the URL is correct.": "Home Assistant did not answer. Check that it is running and that the URL is correct.",
+  "Retrying...": "Retrying...",
+  "Still can't reach Home Assistant (tried {{time}}).": "Still can't reach Home Assistant (tried {{time}}).",
+  "Waiting for you to approve in your browser...": "Waiting for you to approve in your browser..."
 }

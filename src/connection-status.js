@@ -12,6 +12,17 @@ import { t } from './i18n.js';
  * message that explains what is being waited on.
  */
 
+/** The sweeping bar that says something is waiting on the network or on the user. */
+function createProgressTrack() {
+  const track = document.createElement('span');
+  track.className = 'connection-progress';
+  track.setAttribute('aria-hidden', 'true');
+  const bar = document.createElement('span');
+  bar.className = 'connection-progress-bar';
+  track.appendChild(bar);
+  return track;
+}
+
 function syncProgressIndicator(status) {
   const shouldShow =
     status.dataset.busy === 'true' && !status.classList.contains('connection-status-empty');
@@ -21,13 +32,28 @@ function syncProgressIndicator(status) {
     return;
   }
   if (existing) return;
-  const track = document.createElement('span');
-  track.className = 'connection-progress';
-  track.setAttribute('aria-hidden', 'true');
-  const bar = document.createElement('span');
-  bar.className = 'connection-progress-bar';
-  track.appendChild(bar);
-  status.appendChild(track);
+  status.appendChild(createProgressTrack());
+}
+
+// What may stand between a repeated summary and the rest of the sentence: a full stop, colon,
+// comma or semicolon (also the Arabic, Chinese and Hindi forms) and spaces.
+const SUMMARY_SEPARATORS = /^[\s.:,;\u061b\u3002\uff0c\uff1a\uff1b\u0964]+/;
+
+/**
+ * `detail` without a leading repeat of `summary`. "Disconnected from Home Assistant. Retrying
+ * automatically." under the title "Disconnected from Home Assistant" is only "Retrying
+ * automatically." The messages are translated whole, so the check is on the text itself and
+ * needs nothing from the language: if the detail does not begin with the summary it is returned
+ * as it is.
+ */
+function stripSummaryPrefix(summary, detail) {
+  const heading = typeof summary === 'string' ? summary.trim() : '';
+  const text = typeof detail === 'string' ? detail.trim() : '';
+  if (!heading || !text.startsWith(heading)) return text;
+  const rest = text.slice(heading.length);
+  // "Authentication failedness" is not a repeat of "Authentication failed".
+  if (rest && !SUMMARY_SEPARATORS.test(rest)) return text;
+  return rest.replace(SUMMARY_SEPARATORS, '').trim();
 }
 
 /**
@@ -166,6 +192,8 @@ function describeHomeAssistantOAuthReauthReason(homeAssistant = {}) {
 }
 
 export {
+  createProgressTrack,
+  stripSummaryPrefix,
   describeHomeAssistantOAuthError,
   describeHomeAssistantOAuthReauthReason,
   describeHomeAssistantOAuthFailure,

@@ -5707,7 +5707,7 @@ async function startHomeAssistantOAuthFromSettings() {
     return;
   }
   setHomeAssistantOAuthBusy(true, { cancellable: true });
-  setHomeAssistantOAuthStatus(t('Opening Home Assistant for authorization...'), 'pending');
+  setHomeAssistantOAuthStatus(t('Waiting for you to approve in your browser...'), 'pending');
   try {
     const result = await startHomeAssistantPairing(window.electronAPI, validation.url);
     applyPersistedConfigResponse(result.config);

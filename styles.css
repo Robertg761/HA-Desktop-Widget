@@ -9062,6 +9062,15 @@ body.theme-light:not(.high-contrast)
 }
 
 /* The reassurance under the instruction: quieter than it, not louder. */
+/* The address step 3 is about to open, between the lead paragraph and the note. */
+.first-run-url {
+  margin: 0 0 var(--space-2);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .first-run-security-note {
   margin: 0 0 18px;
   color: var(--text-dim);
@@ -9144,6 +9153,22 @@ body.theme-light:not(.high-contrast)
   font-size: var(--font-size-sm);
   line-height: 1.5;
   text-wrap: balance;
+}
+
+/* The server being reached, how the last Retry went, and the waiting bar sit under the copy. */
+.widget-state-host,
+.widget-state-note {
+  margin: var(--space-2) auto 0;
+  max-width: 34ch;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs-plus);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.widget-state-details .connection-progress {
+  max-width: 10rem;
+  margin-inline: auto;
 }
 
 .widget-state-actions {

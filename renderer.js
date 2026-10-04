@@ -20,7 +20,7 @@ import * as commandPalette from './src/command-palette.js';
 import * as settings from './src/settings.js';
 import * as uiUtils from './src/ui-utils.js';
 import * as utils from './src/utils.js';
-import { setLocaleBootstrap, t, translateDocument } from './src/i18n.js';
+import { formatTime, setLocaleBootstrap, t, translateDocument } from './src/i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './src/icons.js';
 import { lineIconMarkup, setLineIconContent } from './src/entity-icons.js';
 import { animateEnter, syncSlidingIndicator } from './src/motion.js';
@@ -63,11 +63,13 @@ import {
   startHomeAssistantPairing,
 } from './src/connection.js';
 import {
+  createProgressTrack,
   describeHomeAssistantOAuthFailure,
   describeHomeAssistantOAuthReauthReason,
   describeHomeAssistantOAuthRefreshError,
   renderConnectionStatus,
   setConnectionStatusBusy,
+  stripSummaryPrefix,
 } from './src/connection-status.js';
 
 // Shared renderer modules reach the desktop surface only through this host.
@@ -227,6 +229,13 @@ let connectionErrorLoggedThisOutage = false;
 let browserReportedOffline = false;
 let lastDisconnectReason = '';
 let mainConnectionState = 'idle';
+// Retry on the connection panel. A refused port fails again within milliseconds, which would
+// rebuild the panel exactly as it was and look like a click that did nothing. So the panel says
+// "Retrying..." for a moment, and then says that the retry did not get through, and when.
+const RETRY_FEEDBACK_MS = 700;
+let retryFeedbackUntil = 0;
+let retryFeedbackTimerId = null;
+let lastManualRetryAt = 0;
 // One refresh per rejected token: if Home Assistant also rejects the refreshed token, asking
 // again would only loop, so the user is asked to reconnect instead.
 let oauthAuthRecoveryAttempted = false;
@@ -235,6 +244,10 @@ let oauthAuthRefreshInFlight = false;
 let oauthReauthorization = { pending: false, error: '' };
 function updateMainConnectionState(nextState) {
   mainConnectionState = nextState;
+  if (nextState === 'connected') {
+    lastManualRetryAt = 0;
+    retryFeedbackUntil = 0;
+  }
   if (!IS_DESKTOP_PIN_MODE) {
     window.electronAPI
       .publishHaConnectionState?.(nextState === 'demo' ? 'connected' : nextState)
@@ -277,9 +290,16 @@ function connectWebSocket() {
     return;
   }
   updateMainConnectionState('connecting');
-  setDisconnectedStatus(t('Waiting for live Home Assistant data...'));
+  setConnectingStatus();
   renderMainWidgetState();
   websocket.connect();
+}
+
+// The indicator's words while a connection is being made. A new attempt forgets why the last one
+// failed, so the panel does not say it under "Connecting" while this one is under way.
+function setConnectingStatus() {
+  lastDisconnectReason = '';
+  uiUtils.setStatus(false, t('Waiting for live Home Assistant data...'));
 }
 
 function setDisconnectedStatus(detailMessage = '') {
@@ -678,6 +698,7 @@ function getActiveQuickAccessCount() {
 // The title of the last problem the panel announced, so a retry that lands on the same problem again
 // stays quiet. Cleared when the panel goes away, which is when the problem has.
 let announcedWidgetStateTitle = '';
+let announcedWidgetStateNote = '';
 
 function removeWidgetStatePanel() {
   const existingPanel = document.getElementById('widget-state-panel');
@@ -689,6 +710,7 @@ function removeWidgetStatePanel() {
   }
   document.body.classList.remove('widget-state-active');
   announcedWidgetStateTitle = '';
+  announcedWidgetStateNote = '';
 }
 
 // Said through one persistent live region instead of by rebuilding a role="alert" panel: a panel
@@ -708,21 +730,47 @@ function createWidgetStateActions(actions) {
   actionRow.className = 'widget-state-actions';
   actions.forEach((action) => {
     const button = createActionButton(action.label, action.className, action.onClick);
-    // The labels name them for the next render, so focus stays on the button it was on.
-    button.dataset.focusKey = `widget-state:${action.label}`;
+    // The labels name them for the next render, so focus stays on the button it was on. A button
+    // whose label changes (Retry, Retrying...) names itself instead.
+    button.dataset.focusKey = `widget-state:${action.key || action.label}`;
+    // Not `disabled`: a disabled button drops the keyboard's place, and this one is back in a moment.
+    if (action.disabled) button.setAttribute('aria-disabled', 'true');
     actionRow.appendChild(button);
   });
   return actionRow;
 }
 
+// Under the copy: the server being reached, a note on how the last Retry went, and the waiting bar.
+function createWidgetStateDetails({ host, note, busy }) {
+  const details = document.createElement('div');
+  details.className = 'widget-state-details';
+  if (host) {
+    const hostElement = createTextElement('p', 'widget-state-host', host);
+    // A host name reads left to right whatever the language around it.
+    hostElement.dir = 'ltr';
+    details.appendChild(hostElement);
+  }
+  if (note) details.appendChild(createTextElement('p', 'widget-state-note', note));
+  if (busy) details.appendChild(createProgressTrack());
+  return details;
+}
+
 // One connect attempt renders the panel several times (connecting, error, close), and Retry is
 // pressed while it does. The panel is therefore kept and updated in place, and a render that would
 // change nothing changes nothing: replacing the node moved keyboard focus from Retry to Open Settings.
-function renderWidgetStatePanel({ tone, title, message, actions = [] }) {
+function renderWidgetStatePanel({
+  tone,
+  title,
+  message,
+  host = '',
+  note = '',
+  busy = false,
+  actions = [],
+}) {
   const widgetContent = document.querySelector('.widget-content');
   if (!widgetContent) return;
   const labels = actions.map((action) => action.label);
-  const signature = JSON.stringify([tone || '', title, message, labels]);
+  const signature = JSON.stringify([tone || '', title, message, host, note, busy, labels]);
   let panel = document.getElementById('widget-state-panel');
   if (panel?.dataset.signature === signature) {
     document.body.classList.add('widget-state-active');
@@ -742,11 +790,15 @@ function renderWidgetStatePanel({ tone, title, message, actions = [] }) {
     panel.id = 'widget-state-panel';
     panel.appendChild(createTextElement('h3', 'widget-state-title', title));
     panel.appendChild(createTextElement('p', 'widget-state-copy', message));
+    panel.appendChild(createWidgetStateDetails({ host, note, busy }));
     if (tiles) widgetContent.insertBefore(panel, tiles);
     else widgetContent.appendChild(panel);
   } else {
     panel.querySelector('.widget-state-title').textContent = title;
     panel.querySelector('.widget-state-copy').textContent = message;
+    panel
+      .querySelector('.widget-state-details')
+      .replaceWith(createWidgetStateDetails({ host, note, busy }));
     // The empty page's panel becoming a problem (or back) changes where it belongs. Moving it takes
     // focus with it, so a button that had focus gets it back.
     const focused = panel.contains(document.activeElement) ? document.activeElement : null;
@@ -755,6 +807,8 @@ function renderWidgetStatePanel({ tone, title, message, actions = [] }) {
     if (focused?.isConnected && document.activeElement !== focused) focused.focus();
   }
   panel.className = `widget-state-panel ${tone ? `widget-state-${tone}` : ''}`.trim();
+  if (busy) panel.setAttribute('aria-busy', 'true');
+  else panel.removeAttribute('aria-busy');
 
   if (isNew || JSON.stringify(labels) !== panel.dataset.actionLabels) {
     uiUtils.renderKeepingFocus(panel, () => {
@@ -769,7 +823,11 @@ function renderWidgetStatePanel({ tone, title, message, actions = [] }) {
   if (tone === 'error' && title !== announcedWidgetStateTitle) {
     announcedWidgetStateTitle = title;
     announceWidgetState(`${title}. ${message}`);
+  } else if (tone === 'error' && note && note !== announcedWidgetStateNote) {
+    // The same problem after a Retry: the title is not said again, but how the retry went is news.
+    announceWidgetState(note);
   }
+  announcedWidgetStateNote = note;
 }
 
 async function retryOAuthRestore() {
@@ -866,8 +924,10 @@ function getOAuthStatePanel() {
     return {
       tone: 'error',
       title: t('Home Assistant authorization expired'),
+      // Pending, the browser has been opened and the widget waits for the answer; the bar says so.
+      busy: pending,
       message: pending
-        ? t('Opening Home Assistant for authorization...')
+        ? t('Waiting for you to approve in your browser...')
         : error ||
           describeHomeAssistantOAuthReauthReason(state.CONFIG.homeAssistant) ||
           t(
@@ -917,9 +977,31 @@ function getOAuthStatePanel() {
 }
 
 function retryConnection() {
+  // A second click while "Retrying..." is showing would only restart the attempt it started.
+  if (Date.now() < retryFeedbackUntil) return;
   // Retrying is a fresh start: a rejected OAuth token gets its refresh attempt again.
   oauthAuthRecoveryAttempted = false;
+  lastManualRetryAt = Date.now();
+  retryFeedbackUntil = lastManualRetryAt + RETRY_FEEDBACK_MS;
+  clearTimeout(retryFeedbackTimerId);
+  // Draws the result of the attempt once "Retrying..." has had its moment on screen.
+  retryFeedbackTimerId = setTimeout(() => {
+    retryFeedbackTimerId = null;
+    renderMainWidgetState();
+  }, RETRY_FEEDBACK_MS);
   connectWebSocket();
+}
+
+// The server the widget is trying to reach, as host and port; the panel names it so a mistyped
+// address is seen for what it is.
+function getConfiguredHostLabel() {
+  const baseUrl = normalizeBaseUrl(state.CONFIG?.homeAssistant?.url);
+  if (!baseUrl) return '';
+  try {
+    return new URL(baseUrl).host;
+  } catch {
+    return '';
+  }
 }
 
 function renderMainWidgetState() {
@@ -946,11 +1028,14 @@ function renderMainWidgetState() {
     return;
   }
 
+  const host = getConfiguredHostLabel();
   if (mainConnectionState === 'auth-failed' && usesOAuth()) {
+    const title = t('Authentication failed');
     renderWidgetStatePanel({
       tone: 'error',
-      title: t('Authentication failed'),
-      message: lastDisconnectReason || getAuthFailureMessage(true),
+      title,
+      message: stripSummaryPrefix(title, lastDisconnectReason) || getAuthFailureMessage(true),
+      host,
       actions: [
         {
           label: t('Reconnect with Home Assistant'),
@@ -964,16 +1049,34 @@ function renderMainWidgetState() {
   }
 
   if (['auth-failed', 'disconnected', 'connecting'].includes(mainConnectionState)) {
+    // A Retry that failed at once still shows "connecting" until its feedback time is up.
+    const retrying = Date.now() < retryFeedbackUntil && mainConnectionState !== 'auth-failed';
+    const connecting = mainConnectionState === 'connecting' || retrying;
+    const title = connecting
+      ? t('Connecting to Home Assistant...')
+      : mainConnectionState === 'auth-failed'
+        ? t('Authentication failed')
+        : t('Home Assistant is disconnected');
     renderWidgetStatePanel({
-      tone: mainConnectionState === 'connecting' ? '' : 'error',
-      title:
-        mainConnectionState === 'connecting'
-          ? t('Waiting for live Home Assistant data...')
-          : mainConnectionState === 'auth-failed'
-            ? t('Authentication failed')
-            : t('Home Assistant is disconnected'),
-      message:
-        lastDisconnectReason || t('Disconnected from Home Assistant. Retrying automatically.'),
+      tone: connecting ? '' : 'error',
+      title,
+      // A reason that opens with the title ("Authentication failed. Check ...") is cut to what it
+      // adds. While connecting, the panel only has a reason when something said one on purpose
+      // ("Refreshing Home Assistant authorization..."); the last failure's is not shown there.
+      message: connecting
+        ? (mainConnectionState === 'connecting' &&
+            stripSummaryPrefix(title, lastDisconnectReason)) ||
+          t('Waiting for live Home Assistant data...')
+        : stripSummaryPrefix(title, lastDisconnectReason) ||
+          t('Disconnected from Home Assistant. Retrying automatically.'),
+      host,
+      note:
+        !connecting && mainConnectionState === 'disconnected' && lastManualRetryAt
+          ? t("Still can't reach Home Assistant (tried {{time}}).", {
+              time: formatTime(new Date(lastManualRetryAt), { hour: 'numeric', minute: '2-digit' }),
+            })
+          : '',
+      busy: connecting,
       actions: [
         {
           label: t('Open Settings'),
@@ -981,9 +1084,11 @@ function renderMainWidgetState() {
           onClick: openSettingsModal,
         },
         {
-          label: t('Retry'),
+          key: 'retry',
+          label: retrying ? t('Retrying...') : t('Retry'),
           className: 'btn btn-secondary',
           onClick: retryConnection,
+          disabled: retrying,
         },
       ],
     });
@@ -1087,6 +1192,17 @@ async function cancelFirstRunAuthorization() {
   } catch (error) {
     log.warn('Failed to cancel Home Assistant authorization:', error);
   }
+}
+
+// What is wrong with an address the wizard cannot use: nothing typed, a scheme that is not web, or
+// something else (spaces, a missing host).
+function describeWizardUrlProblem(rawUrl) {
+  const typed = typeof rawUrl === 'string' ? rawUrl.trim() : '';
+  if (!typed) return t('Home Assistant URL cannot be empty');
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(typed) && !/^https?:\/\//i.test(typed)) {
+    return t('URL must start with http:// or https://');
+  }
+  return t('Enter a valid Home Assistant URL before connecting.');
 }
 
 function getWizardUrl() {
@@ -1265,6 +1381,14 @@ function renderWizardStep() {
         )
       )
     );
+    const authorizeUrl = firstRunWizard.resolvedUrl;
+    if (authorizeUrl) {
+      const urlLine = createTextElement('p', 'first-run-url', '');
+      const urlText = createTextElement('bdi', '', authorizeUrl);
+      urlText.dir = 'ltr';
+      urlLine.appendChild(urlText);
+      content.appendChild(urlLine);
+    }
     content.appendChild(
       createTextElement(
         'p',
@@ -1306,10 +1430,10 @@ async function finishFirstRunWizard() {
     // click until the app was restarted.
     const normalizedUrl = normalizeBaseUrl(getWizardUrl());
     if (!normalizedUrl) {
-      setWizardStatus(t('Enter a valid Home Assistant URL before connecting.'), 'error');
+      setWizardStatus(describeWizardUrlProblem(getWizardUrl()), 'error');
       return;
     }
-    setWizardStatus(t('Opening Home Assistant for authorization...'), 'pending');
+    setWizardStatus(t('Waiting for you to approve in your browser...'), 'pending');
     const result = await startHomeAssistantPairing(window.electronAPI, normalizedUrl);
     if (!result?.config) throw new Error(t('Home Assistant did not return a saved connection.'));
     applyRendererConfig(result.config);
@@ -1337,7 +1461,8 @@ async function finishFirstRunWizard() {
         error
       );
       setWizardStatus(message, 'error');
-      uiUtils.showToast(message, 'error', 6000);
+      // The wizard is up and says the same thing in its status line; a toast would say it twice.
+      if (!firstRunWizard?.visible) uiUtils.showToast(message, 'error', 6000);
     }
   } finally {
     if (firstRunWizard) {
@@ -1427,10 +1552,15 @@ function ensureFirstRunWizard() {
       await finishFirstRunWizard();
       return;
     }
-    if (firstRunWizard.step === 1 && !normalizeBaseUrl(getWizardUrl())) {
-      setWizardStatus(t('Enter a valid Home Assistant URL before connecting.'), 'error');
-      firstRunWizard.urlInput?.focus();
-      return;
+    if (firstRunWizard.step === 1) {
+      const resolvedUrl = normalizeBaseUrl(getWizardUrl());
+      if (!resolvedUrl) {
+        setWizardStatus(describeWizardUrlProblem(getWizardUrl()), 'error');
+        firstRunWizard.urlInput?.focus();
+        return;
+      }
+      // What the next step says it will open: a bare "ha.local" has gained its scheme by now.
+      firstRunWizard.resolvedUrl = resolvedUrl;
     }
     firstRunWizard.step = Math.min(2, firstRunWizard.step + 1);
     renderWizardStep();
@@ -1460,6 +1590,7 @@ function ensureFirstRunWizard() {
     statusMessage: '',
     statusType: '',
     urlInput: null,
+    resolvedUrl: '',
   };
   renderWizardStep();
   return firstRunWizard;
@@ -1804,7 +1935,7 @@ function refreshConnectionStatusLanguage() {
   } else if (usesOAuth() && !isConfigured(state.CONFIG)) {
     setOAuthRestoreStatus();
   } else if (mainConnectionState === 'connecting') {
-    setDisconnectedStatus(t('Waiting for live Home Assistant data...'));
+    setConnectingStatus();
   } else {
     setDisconnectedStatus();
   }
@@ -2448,13 +2579,18 @@ websocket.on('close', (closeInfo = {}) => {
     }
 
     updateMainConnectionState('disconnected');
+    // A host that never answers fails with a close alone, no error, so the reason is in the close.
+    const unanswered = closeInfo?.reason === 'timeout';
+    const closeMessage = unanswered
+      ? t('Home Assistant did not answer. Check that it is running and that the URL is correct.')
+      : t('Disconnected from Home Assistant. Retrying automatically.');
     // A failed attempt is followed by a close. The reason the error gave ("Check your network or
     // Home Assistant URL") says more than "disconnected", and is what the connection panel shows
     // in place of a toast, so the close must not overwrite it.
-    if (!connectionErrorLoggedThisOutage) {
-      setDisconnectedStatus(t('Disconnected from Home Assistant. Retrying automatically.'));
+    if (unanswered || !connectionErrorLoggedThisOutage) {
+      setDisconnectedStatus(closeMessage);
     }
-    setDesktopPinConnectionIssue(t('Disconnected from Home Assistant. Retrying automatically.'));
+    setDesktopPinConnectionIssue(closeMessage);
     uiUtils.showLoading(false);
     if (IS_SPECIAL_PIN_MODE) {
       renderCurrentMode();
@@ -2527,7 +2663,7 @@ websocket.on('showLoading', (show) => {
 websocket.on('connect-attempt', () => {
   clearReconnectTimer();
   updateMainConnectionState('connecting');
-  setDisconnectedStatus(t('Waiting for live Home Assistant data...'));
+  setConnectingStatus();
   renderMainWidgetState();
 });
 
