@@ -130,6 +130,27 @@ describe('website demo weather transitions', () => {
     expect(vm.runInContext('fx.animationFrameId', demo)).not.toBeNull();
   });
 
+  it('stays off once the visitor turns the weather off, instead of restarting the tour', () => {
+    jest.advanceTimersByTime(4000);
+    expect(vm.runInContext('currentFx', demo)).toBe('sunny');
+    document.querySelector('[data-fx=""]').click();
+    expect(vm.runInContext('currentFx', demo)).toBe('');
+    // The tour used to pick up again after the 45 second hold.
+    jest.advanceTimersByTime(120000);
+    expect(vm.runInContext('currentFx', demo)).toBe('');
+    expect(vm.runInContext('fx.activeEffect', demo)).toBeNull();
+  });
+
+  it('tours each effect once and then rests on off', () => {
+    const seen = [];
+    for (let step = 0; step < 12; step += 1) {
+      jest.advanceTimersByTime(7000);
+      seen.push(vm.runInContext('currentFx', demo));
+    }
+    expect(seen.slice(0, 3)).toEqual(['sunny', 'rainy', '']);
+    expect(new Set(seen.slice(2))).toEqual(new Set(['']));
+  });
+
   it('repositions existing pins when the stage resizes and saves their new positions', () => {
     const slot = {
       style: { left: '1000px', top: '550px' },
