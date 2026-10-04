@@ -309,7 +309,7 @@ describe('stylesheet cascade regressions', () => {
       );
 
       expect(resolvedValue(document.getElementById('time-card'), 'box-shadow')).toMatch(
-        /^inset 1px 0 0 /
+        /^inset calc\(1px \* 1\) 0 0 /
       );
     });
 

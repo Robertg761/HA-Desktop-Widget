@@ -1300,6 +1300,11 @@ function mainT(key, vars = {}) {
   return localizationService.translate(config?.ui?.language || 'auto', key, vars);
 }
 
+// The language mainT is answering in, for pages that have to say so (the sign-in result in a browser).
+function mainLocale() {
+  return localizationService.getLocaleBootstrap(config?.ui?.language || 'auto').activeLocale;
+}
+
 /**
  * Words the failures profile sync reports by code for a person. The technical text in
  * the error stays for the log.
@@ -8488,6 +8493,7 @@ function getHomeAssistantOAuthClient() {
       postForm: (url, fields) => requestFormWithElectronNet(net, url, fields),
       // The browser pages shown after Home Assistant redirects back to the app.
       translate: (key) => mainT(key),
+      getLocale: mainLocale,
       probeServer: (baseUrl, signal) => probeHomeAssistantWithElectronNet(net, baseUrl, { signal }),
       isSecureStorageAvailable: isSecureProfileSyncStorageAvailable,
       log,

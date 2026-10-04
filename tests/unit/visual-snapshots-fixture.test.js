@@ -96,6 +96,24 @@ describe('visual snapshot scenes', () => {
     }
   });
 
+  it('installs the repository pack of every language a scene asks for that is not bundled', () => {
+    // A scene in a language whose pack is not in the profile would fall back to English and look
+    // like a translation that does nothing.
+    const runner = fs.readFileSync(
+      path.resolve(__dirname, '../../scripts/visual-snapshots/run.cjs'),
+      'utf8'
+    );
+    const installed = [
+      ...runner.match(/INSTALLED_PACKS = \[([^\]]*)\]/)[1].matchAll(/'(\w+)'/g),
+    ].map((match) => match[1]);
+    const bundled = fs
+      .readdirSync(path.resolve(__dirname, '../../locales'))
+      .map((file) => path.basename(file, '.json'));
+    for (const language of new Set(scenes.map((scene) => scene.ui?.language).filter(Boolean))) {
+      expect(bundled.includes(language) || installed.includes(language)).toBe(true);
+    }
+  });
+
   it('covers the states the audit found broken', () => {
     const names = scenes.map((scene) => scene.name);
     for (const required of [
@@ -113,6 +131,18 @@ describe('visual snapshot scenes', () => {
       'de-edit-mode',
       'ar-main',
       'ar-settings-general',
+      'ar-popup-brightness',
+      'ar-popup-colour',
+      'ar-edit-mode',
+      'ar-palette',
+      'ar-settings-appearance',
+      'ar-settings-appearance-custom',
+      'ar-dialog-notifications',
+      'ar-dialog-diagnostics',
+      'hi-main',
+      'hi-settings-appearance',
+      'zh-main',
+      'pin-ar-light-long',
       'narrow-main',
       'forced-colors-main',
       'forced-colors-popup',

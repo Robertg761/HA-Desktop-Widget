@@ -630,6 +630,8 @@ function buildConfig(haUrl) {
       opaquePanels: false,
       dateFormat: 'system',
       activeTileGlow: true,
+      // Saved custom colours, which the scenes that show one bring and take away again.
+      customColors: [],
       // On by default, taking the theme from an installed Omarchy (so a developer's machine
       // would not show the light theme); omarchyThemeDefaultApplied below makes the app keep it off.
       followOmarchy: false,

@@ -48,6 +48,7 @@ import {
   formatNumber,
   getLanguageDisplayName,
   getLocaleState,
+  isolateLtr,
   t,
 } from './i18n.js';
 import {
@@ -1017,9 +1018,13 @@ function persistCustomColorsImmediately() {
 }
 
 // Built-in theme names are English keys in ui-utils; custom color names are the user's own text.
+// A hex code in one ("Custom #AB34CD", the name a color gets when it is saved) is isolated for
+// display, since in an Arabic sentence its '#' would otherwise land beside the wrong end of it. The
+// name itself is left as typed, because the rename field and the comparison with it use that.
 function getThemeDisplayName(theme) {
   if (!theme) return '';
-  return theme.isCustom ? theme.name || '' : t(theme.name || '');
+  if (!theme.isCustom) return t(theme.name || '');
+  return (theme.name || '').replace(/#[0-9a-f]{6}\b/gi, (hex) => isolateLtr(hex));
 }
 
 function getThemeById(themeId) {
@@ -1986,10 +1991,18 @@ function initThemeModeControl() {
   options.forEach((option, index) => {
     option.onclick = () => previewThemeMode(option.dataset.themeMode);
     option.onkeydown = (event) => {
-      const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
-      if (!step) return;
+      if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+      // The segments run right to left in Arabic, so the arrow that points at a neighbour has to
+      // move there; getNextTabIndex swaps the pair in right-to-left text.
+      const next =
+        options[
+          getNextTabIndex(index, options.length, event.key, {
+            direction: getTextDirection(control),
+            orientation: 'both',
+          })
+        ];
+      if (!next) return;
       event.preventDefault();
-      const next = options[(index + step + options.length) % options.length];
       previewThemeMode(next.dataset.themeMode);
       next.focus();
     };
