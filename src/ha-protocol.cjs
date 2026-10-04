@@ -112,6 +112,34 @@ function resolveMediaArtworkContentType(headers, buffer) {
   return null;
 }
 
+// The 16 bytes of an IPv6 address that net.isIP accepted, or null if it cannot be read. A zone id
+// is dropped, and a dotted IPv4 tail (::ffff:1.2.3.4) is read as its two groups.
+function parseIpv6Bytes(address) {
+  let text = address.toLowerCase().split('%')[0];
+  const dotted = text.match(/^(.*:)(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (dotted) {
+    const [, head, a, b, c, d] = dotted;
+    const octets = [a, b, c, d].map(Number);
+    if (octets.some((octet) => octet > 255)) return null;
+    text = `${head}${((octets[0] << 8) | octets[1]).toString(16)}:${((octets[2] << 8) | octets[3]).toString(16)}`;
+  }
+  const halves = text.split('::');
+  if (halves.length > 2) return null;
+  const groupsOf = (part) => (part ? part.split(':') : []);
+  const front = groupsOf(halves[0]);
+  const back = halves.length === 2 ? groupsOf(halves[1]) : [];
+  const gap = 8 - front.length - back.length;
+  if (halves.length === 2 ? gap < 1 : gap !== 0) return null;
+  const groups = [...front, ...new Array(Math.max(gap, 0)).fill('0'), ...back];
+  const bytes = [];
+  for (const group of groups) {
+    if (!/^[0-9a-f]{1,4}$/.test(group)) return null;
+    const value = Number.parseInt(group, 16);
+    bytes.push(value >> 8, value & 0xff);
+  }
+  return bytes;
+}
+
 function isPrivateOrReservedIp(address) {
   const ipVersion = nodeNet.isIP(address);
   if (ipVersion === 4) {
@@ -145,17 +173,37 @@ function isPrivateOrReservedIp(address) {
   }
 
   if (ipVersion === 6) {
-    const normalized = address.toLowerCase().split('%')[0];
-    const mappedIpv4 = normalized.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1];
-    if (mappedIpv4) return isPrivateOrReservedIp(mappedIpv4);
+    const bytes = parseIpv6Bytes(address);
+    if (!bytes) return true;
+    const isZero = (from, to) => bytes.slice(from, to).every((byte) => byte === 0);
+    const ipv4At = (...positions) => positions.map((position) => bytes[position]).join('.');
+    const startsWith = (...prefix) => prefix.every((byte, index) => bytes[index] === byte);
+    // An IPv4 address carried inside an IPv6 one is as private as the IPv4 address is: a mapped
+    // address (::ffff:a.b.c.d), a NAT64 one (64:ff9b::/96, and the local-use 64:ff9b:1::/48, whose
+    // address skips the "u" octet at byte 8) or a 6to4 one (2002::/16, with it after the prefix).
+    if (isZero(0, 10) && bytes[10] === 0xff && bytes[11] === 0xff) {
+      return isPrivateOrReservedIp(ipv4At(12, 13, 14, 15));
+    }
+    if (startsWith(0x00, 0x64, 0xff, 0x9b) && isZero(4, 12)) {
+      return isPrivateOrReservedIp(ipv4At(12, 13, 14, 15));
+    }
+    if (startsWith(0x00, 0x64, 0xff, 0x9b, 0x00, 0x01)) {
+      return isPrivateOrReservedIp(ipv4At(6, 7, 9, 10));
+    }
+    if (startsWith(0x20, 0x02)) return isPrivateOrReservedIp(ipv4At(2, 3, 4, 5));
     return (
-      normalized === '::' ||
-      normalized === '::1' ||
-      normalized.startsWith('::ffff:') ||
-      /^f[cd]/.test(normalized) ||
-      /^fe[89ab]/.test(normalized) ||
-      normalized.startsWith('ff') ||
-      normalized.startsWith('2001:db8:')
+      // ::, ::1 and the deprecated IPv4-compatible range (::a.b.c.d).
+      isZero(0, 12) ||
+      // Teredo (2001::/32) tunnels carry an address a server and a client picked between them.
+      startsWith(0x20, 0x01, 0x00, 0x00) ||
+      startsWith(0x20, 0x01, 0x0d, 0xb8) ||
+      // The discard-only prefix, 100::/64.
+      (startsWith(0x01, 0x00) && isZero(2, 8)) ||
+      // Unique local (fc00::/7), link-local (fe80::/10), the deprecated site-local (fec0::/10)
+      // and multicast (ff00::/8).
+      (bytes[0] & 0xfe) === 0xfc ||
+      (bytes[0] === 0xfe && (bytes[1] & 0x80) === 0x80) ||
+      bytes[0] === 0xff
     );
   }
 
