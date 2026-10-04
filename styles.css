@@ -3003,9 +3003,13 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   gap: 8px;
   -webkit-app-region: drag;
   flex: 1;
+  /* Without this the nowrap title keeps the area as wide as itself, so in a narrow window it
+     pushes the header buttons out of the window instead of being cut short. */
+  min-width: 0;
 }
 
 .widget-title {
+  min-width: 0;
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
@@ -3147,6 +3151,7 @@ body.theme-light .connection-indicator.connected {
 
 .header-controls {
   display: flex;
+  flex: none;
   gap: 4px;
   -webkit-app-region: no-drag;
 }
@@ -3369,11 +3374,22 @@ body.first-run-active .widget-content > * {
 
 .media-tile-content {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(72px, 110px) auto;
+  /* The seek column is as wide as its two times and a bar between them, so a film or a podcast
+     (h:mm:ss) gets the room it needs and an ordinary track (m:ss) leaves that room to the title.
+     At 72-110px the long times ran into the bar and the previous button. */
+  grid-template-columns: minmax(0, 1fr) fit-content(140px) auto;
   align-items: center;
   gap: 4px 8px;
   min-width: 0;
   flex: 1;
+}
+
+/* A wide window has room to spare for the bar, which at 36px reads as a stub beside a title with
+   hundreds of pixels to itself. */
+@media (min-width: 640px) {
+  .media-tile-content {
+    grid-template-columns: minmax(0, 1fr) minmax(min-content, 200px) auto;
+  }
 }
 
 .media-tile-info {
@@ -3407,23 +3423,25 @@ body.first-run-active .widget-content > * {
   align-items: center;
   gap: 4px;
   width: 100%;
-  max-width: 110px;
   grid-column: 2;
   justify-self: stretch;
 }
 
+/* A time takes the width of its own text, so a long one never runs under the bar. */
 .media-tile-time {
+  flex: none;
   font-size: var(--font-size-xs-plus);
   color: var(--muted-text);
   font-variant-numeric: tabular-nums;
-  min-width: 26px;
+  white-space: nowrap;
   text-align: center;
 }
 
 .media-tile-seek-bar {
   flex: 1;
   height: 3px;
-  background: var(--tile-border-hover);
+  /* The unfilled part of the track had the tile's hairline colour, about 1.5:1 against the tile. */
+  background: color-mix(in srgb, var(--text-primary) 22%, transparent);
   border-radius: var(--radius-full);
   position: relative;
   min-width: 36px;
@@ -4289,11 +4307,15 @@ body.first-run-active .widget-content > * {
   background: var(--surface-2);
 }
 
+/* A row's actions wrap under the name when the name would be left with less than 9rem, as in
+   German, where 'Als Karte 1 festlegen' alone takes most of a 500px window, or at 150% text size.
+   Squeezing the name instead left only its first letter. */
 .entity-item {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px 12px;
   padding: 12px;
   border-bottom: 1px solid var(--border-color);
   transition: background-color var(--transition-base);
@@ -4360,7 +4382,7 @@ body.first-run-active .widget-content > * {
   display: flex;
   align-items: center;
   gap: 12px;
-  flex: 1;
+  flex: 1 1 9rem;
   min-width: 0;
   overflow: hidden;
 }
@@ -4721,15 +4743,18 @@ body.theme-light:not(.high-contrast) .weather-glyph {
 
 .weather-details {
   display: flex;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 2px 10px;
   margin-top: 6px;
 }
 
-/* Humidity and wind as quiet inline readouts, not chips. */
+/* Humidity and wind as quiet inline readouts, not chips. In a narrow card they wrap as a whole, one
+   under the other, and never inside ('12 km/' over 'h'). */
 .weather-detail {
   display: flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
   font-size: var(--font-size-xs-plus);
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
@@ -4752,6 +4777,9 @@ body.theme-light:not(.high-contrast) .weather-glyph {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* The clock is sized to its card (see .time-display), so it shrinks in the half-width card that
+     enlarged text leaves instead of ending in an ellipsis. */
+  container-type: inline-size;
 }
 
 .status-card.time-card .time-content {
@@ -4761,8 +4789,14 @@ body.theme-light:not(.high-contrast) .weather-glyph {
   height: 100%;
   align-items: center;
   justify-content: center;
-  flex: none;
-  min-width: auto;
+  /* It may shrink to the card, so a long date (Spanish 'miércoles, 30 de septiembre de 2026')
+     wraps instead of being cut off at both ends. The card's padding is 16px a side and a date
+     that only just fits used to spill a few pixels into it; those 8px a side stay available, so
+     only a date that really is too long wraps. */
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: calc(100% + 16px);
+  margin-inline: -8px;
 }
 
 .status-card.time-card .time-main {
@@ -4773,7 +4807,7 @@ body.theme-light:not(.high-contrast) .weather-glyph {
 }
 
 .status-card.time-card .time-display {
-  font-size: var(--font-size-3xl);
+  font-size: clamp(var(--font-size-lg), 16cqi, var(--font-size-3xl));
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
   line-height: 1;
@@ -4805,6 +4839,7 @@ body.theme-light:not(.high-contrast) .weather-glyph {
   overflow-wrap: break-word;
   hyphens: auto;
   width: 100%;
+  text-wrap: balance;
 }
 
 /* Primary Entity Card Styles */
@@ -4902,7 +4937,7 @@ body.theme-light:not(.high-contrast)
    its size and colour; this had set bold on top of that, the only bold help line in Settings. */
 .primary-card-value {
   font-weight: var(--font-weight-normal);
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .primary-card-row {
@@ -4929,9 +4964,11 @@ body.theme-light:not(.high-contrast)
 
 .primary-cards-list-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-  flex-shrink: 0;
+  max-width: 100%;
+  margin-inline-start: auto;
 }
 
 .primary-cards-list-actions .btn {
@@ -4987,7 +5024,7 @@ body.theme-light:not(.high-contrast)
 
 .custom-entity-icons-toolbar .form-group {
   flex: 1;
-  min-width: 220px;
+  min-width: min(220px, 100%);
   margin-bottom: 0;
 }
 
@@ -5118,7 +5155,13 @@ body.theme-light:not(.high-contrast)
 @media (width <= 640px) {
   .custom-entity-icon-item {
     flex-direction: column;
+    flex-wrap: nowrap;
     align-items: stretch;
+  }
+
+  /* In a column the 9rem basis of a list row's name would be a height. */
+  .custom-entity-icon-item > .entity-item-main {
+    flex: none;
   }
 
   .custom-entity-icon-controls {
@@ -5157,9 +5200,6 @@ body.theme-light:not(.high-contrast)
   max-width: 360px;
   width: 90vw;
   padding: 0;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
 }
 
 .brightness-modal-content {
@@ -5167,15 +5207,6 @@ body.theme-light:not(.high-contrast)
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  max-height: 90vh;
-}
-
-.brightness-modal .modal-body {
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
 }
 
 .brightness-content {
@@ -5407,6 +5438,8 @@ body.theme-light:not(.high-contrast)
 }
 
 .light-color-picker {
+  /* It keeps its size, so a narrow dialog wraps the swatches instead of squeezing it to a sliver. */
+  flex: 0 0 44px;
   width: 44px;
   height: 36px;
   border: 1px solid var(--border-color);
@@ -5418,9 +5451,10 @@ body.theme-light:not(.high-contrast)
 
 .light-color-swatches {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(28px, 1fr));
   gap: 0.4rem;
   flex: 1;
+  min-width: 0;
 }
 
 .light-color-swatch {
@@ -5471,9 +5505,6 @@ body.theme-light:not(.high-contrast)
   max-width: 400px;
   width: 90vw;
   padding: 0;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
 }
 
 .climate-modal-content {
@@ -5481,14 +5512,6 @@ body.theme-light:not(.high-contrast)
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.climate-modal .modal-body {
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
 }
 
 .climate-content {
@@ -5500,7 +5523,9 @@ body.theme-light:not(.high-contrast)
 
 .climate-temp-display {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, ...) because 1fr alone cannot go below its content: a wide reading pushed its
+     column past the card's edge. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-4);
   padding: var(--space-4);
   background: var(--surface-2);
@@ -5531,6 +5556,31 @@ body.theme-light:not(.high-contrast)
   flex-direction: column;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
+}
+
+/* A heat/cool thermostat shows a range ('19.5–24.5°C'), about twice as wide as one target. The
+   short current reading keeps what it needs and the range takes the rest; where the range would
+   not get 11rem beside it, as in a narrow window or at enlarged text, it drops under the current
+   reading and keeps the width of the card, so the target stays the biggest figure of the dialog. */
+.climate-temp-display.is-range {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.is-range .climate-current-temp {
+  flex: 1 1 auto;
+}
+
+.is-range .climate-target-temp {
+  flex: 3 1 11rem;
+}
+
+/* The target is sized to its column, one figure for a single target and a smaller one for a range,
+   and never wraps. It used to break after the dash as soon as a bound had a decimal or the window
+   was narrow, which grew the card by a line and shifted the dialog while a thumb was dragged. */
+.climate-target-temp {
+  container-type: inline-size;
 }
 
 .climate-temp-label {
@@ -5553,6 +5603,15 @@ body.theme-light:not(.high-contrast)
   font-weight: 700;
   color: var(--accent-text);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.climate-target-temp .climate-temp-value-large {
+  font-size: clamp(var(--font-size-lg), 28cqi, var(--font-size-4xl));
+}
+
+.is-range .climate-target-temp .climate-temp-value-large {
+  font-size: clamp(var(--font-size-md), 15cqi, var(--font-size-4xl));
 }
 
 .climate-slider-wrapper {
@@ -5714,9 +5773,6 @@ body.theme-light:not(.high-contrast)
   max-width: 360px;
   width: 90vw;
   padding: 0;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
 }
 
 .fan-modal-content {
@@ -5724,14 +5780,6 @@ body.theme-light:not(.high-contrast)
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.fan-modal .modal-body {
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
 }
 
 .fan-content {
@@ -5875,9 +5923,6 @@ body.theme-light:not(.high-contrast)
   max-width: 360px;
   width: 90vw;
   padding: 0;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
 }
 
 .cover-modal-content {
@@ -5885,14 +5930,6 @@ body.theme-light:not(.high-contrast)
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.cover-modal .modal-body {
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
 }
 
 .cover-content {
@@ -7160,7 +7197,9 @@ body.theme-light:not(.high-contrast)
   display: flex;
   align-items: center;
   gap: 5px;
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 100%;
   font-size: var(--font-size-xs-plus);
 }
 
@@ -7178,7 +7217,9 @@ body.theme-light:not(.high-contrast)
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 90px;
+  /* A name takes the room its tile has, and gives it back one item at a time as the legend wraps;
+     capped at 90px, 'Living room temperature' and 'Living room humidity' read the same. */
+  min-width: 0;
 }
 
 .comparison-graph-legend-value {
@@ -7253,7 +7294,7 @@ body.theme-light:not(.high-contrast)
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 110px;
+  max-width: 160px;
 }
 
 .comparison-graph-warning {
@@ -7266,11 +7307,8 @@ body.theme-light:not(.high-contrast)
   font-size: var(--font-size-sm);
 }
 
-.comparison-graph-modal-footer {
-  display: flex;
+.modal-footer.comparison-graph-modal-footer {
   justify-content: space-between;
-  gap: var(--space-2);
-  margin-top: 12px;
 }
 
 /* Unit sits beside the Add button, clear of the entity id's ellipsis, so a mismatched scale is
@@ -7447,7 +7485,11 @@ body.theme-light:not(.high-contrast)
   border-radius: var(--radius-xl);
   max-width: 85vw;
   width: 85%;
-  max-height: 85vh;
+  /* The window less a small margin, whatever the dialog holds. The body is the one part that
+     scrolls (see .modal-body), so the header and footer stay in view in a short window. */
+  max-height: calc(100dvh - var(--space-6));
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   backdrop-filter: blur(var(--blur-xl)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
@@ -7632,11 +7674,6 @@ body.theme-light:not(.high-contrast)
   padding: var(--space-4) var(--space-5);
 }
 
-#settings-modal .tab-content {
-  max-width: 100%;
-  margin: 0;
-}
-
 #settings-modal .modal-footer {
   grid-area: footer;
   padding: var(--space-2) var(--space-4);
@@ -7702,9 +7739,21 @@ body.theme-light:not(.high-contrast)
 
 .modal-body {
   padding: var(--space-5);
-  max-height: 60vh;
   overflow-y: auto;
   position: relative;
+}
+
+/* The body takes the height the header and footer leave, and scrolls when the content is taller.
+   A fixed share of the window (60vh) used to cap it, which made every dialog scroll in the default
+   500x600 window while a third of it stayed empty, and let header, body and footer add up to more
+   than a short window. */
+.modal-content > .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.modal-content > :is(.modal-header, .modal-footer) {
+  flex: none;
 }
 
 .modal-body::-webkit-scrollbar {
@@ -7730,10 +7779,6 @@ body.theme-light:not(.high-contrast)
 
 .persistent-notifications-modal-content {
   width: min(420px, 92vw);
-}
-
-.persistent-notifications-body {
-  max-height: min(60vh, 460px);
 }
 
 .persistent-notifications-list {
@@ -8212,14 +8257,17 @@ body.theme-light:not(.high-contrast)
   pointer-events: none;
 }
 
+/* Two cards side by side while each keeps 150px, one above the other when the pane is narrower
+   (a small window, or 130-150% text size), where 'Background' used to spill out of its card. */
 .color-target-control {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
   gap: var(--space-3);
   margin-top: var(--space-3);
 }
 
 .color-target-option {
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -8297,6 +8345,7 @@ body.theme-light:not(.high-contrast)
 .color-target-name {
   font-weight: var(--font-weight-semibold);
   font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
 }
 
 .color-target-note {
@@ -8428,7 +8477,7 @@ body.theme-light:not(.high-contrast)
 .theme-tooltip-flyout::after {
   content: '';
   position: absolute;
-  left: 50%;
+  left: var(--tooltip-arrow-x, 50%);
   bottom: -8px;
   transform: translateX(-50%);
   border-width: 8px 8px 0 8px;
@@ -9092,14 +9141,17 @@ body.theme-light:not(.high-contrast)
 }
 
 .widget-state-panel {
-  /* The tiles above end with the controls section's own bottom margin. */
-  margin-top: 0;
+  margin: 0;
   padding: var(--space-6) var(--space-4);
   border: 1px dashed var(--tile-border-hover);
   border-radius: var(--radius-tile);
   text-align: center;
-  /* Scrolled into view for an error, the panel keeps the content's bottom padding clear. */
-  scroll-margin-bottom: 14px;
+}
+
+/* A connection panel sits above Quick Access and needs its own gap. The empty-page panel ends
+   the page after the controls section's bottom margin, so it takes none. */
+.widget-state-panel:not(:last-child) {
+  margin-bottom: var(--space-4);
 }
 
 .widget-state-error {
@@ -9155,6 +9207,14 @@ body.theme-light:not(.high-contrast)
    failed"). */
 body.widget-state-active #quick-controls .status-message {
   display: none;
+}
+
+/* While Home Assistant cannot be reached the tiles still show what it last said. Dimmed, they no
+   longer pass for live: a lamp that has been switched off since, or a timer that has stopped. The
+   weather and media cards are Home Assistant's too; the clock is the computer's and stays lit. */
+body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
+  opacity: 0.55;
+  filter: saturate(0.6);
 }
 
 .language-packs-list {
@@ -9272,13 +9332,18 @@ body.widget-state-active #quick-controls .status-message {
 }
 
 /* Toast notifications */
+/* The container spans the window and centres its toasts. Centred with left: 50% and no width it
+   could only be as wide as the half of the window to its right, so every toast was capped at 250px
+   in the default window and wrapped to three or four lines over the tiles. */
 .toast-container {
   position: fixed;
-  left: 50%;
+  left: 0;
+  right: 0;
   bottom: var(--space-5);
-  transform: translateX(-50%);
+  padding-inline: var(--space-4);
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: var(--space-3);
   /* Above --z-overlay: a toast raised while the connection overlay is up used
      to be painted underneath it and was simply invisible. */
@@ -9298,8 +9363,8 @@ body.widget-state-active #quick-controls .status-message {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: var(--space-4) var(--space-5);
-  min-width: 200px;
-  max-width: min(420px, 90vw);
+  min-width: min(200px, 100%);
+  max-width: min(420px, 100%);
   text-align: start;
   box-shadow: var(--shadow-2);
   backdrop-filter: blur(var(--bg-blur));
@@ -9591,8 +9656,9 @@ body {
 }
 
 .confirm-modal-content {
-  max-width: 400px;
-  min-width: 320px;
+  /* No minimum width: a window narrower than that would push the buttons off both sides. */
+  width: min(400px, calc(100vw - 24px));
+  max-width: none;
 }
 
 .confirm-modal-content .modal-body {
@@ -9752,25 +9818,11 @@ body {
 }
 
 /* Tile Settings (the only dialog with this class, built in ui.js) takes the shared dialog recipe;
-   what is left here is its width, a scrolling body that keeps the header and footer in view, and
-   a footer that wraps. The panel, fields, switch and buttons all come from the dialogs section. */
+   what is left here is its width and a footer that wraps. The panel, fields, switch and buttons
+   all come from the dialogs section. */
 .rename-modal .modal-content {
   width: min(480px, calc(100vw - 24px));
   max-width: calc(100vw - 24px);
-  max-height: calc(100dvh - 24px);
-  display: flex;
-  flex-direction: column;
-}
-
-.rename-modal .modal-body {
-  min-height: 0;
-  max-height: none;
-  overflow-y: auto;
-}
-
-.rename-modal .modal-header,
-.rename-modal .modal-footer {
-  flex-shrink: 0;
 }
 
 /* Three buttons, one of them a long "Reset to Default", wrap rather than overflow. */
@@ -9790,15 +9842,19 @@ body {
   }
 
   .status-grid {
-    grid-template-columns: 1fr;
     gap: 6px;
     margin-bottom: 6px;
   }
 
+  /* Enlarged text shrinks the 500px window to 333-385 CSS px, where stacked cards took 40% of the
+     window and left room for one row of tiles, so they stay side by side (the 300px rule below
+     still stacks them). */
+  body:not(.large-interface) .status-grid {
+    grid-template-columns: 1fr;
+  }
+
   .media-tile {
     grid-template-columns: 48px minmax(0, 1fr);
-    gap: var(--space-2);
-    padding: var(--space-2);
     margin-bottom: 6px;
   }
 
@@ -9838,6 +9894,7 @@ body {
 
   .media-tile {
     grid-template-columns: 40px minmax(0, 1fr);
+    gap: var(--space-3);
     align-items: start;
   }
 
@@ -9863,7 +9920,7 @@ body {
   }
 
   .media-tile-controls {
-    justify-content: flex-start;
+    justify-content: center;
   }
 
   .media-tile-btn {
@@ -9899,14 +9956,6 @@ body {
   .control-icon {
     font-size: var(--font-size-2xl);
     width: 28px;
-  }
-
-  .control-name {
-    font-size: var(--font-size-xs);
-  }
-
-  .control-state {
-    font-size: var(--font-size-sm);
   }
 
   #quick-controls .control-item.sensor-numeric-entity {
@@ -9953,19 +10002,15 @@ body {
 
   .media-tile {
     grid-template-columns: 44px minmax(0, 1fr);
-    gap: var(--space-2);
+    gap: var(--space-3);
     min-height: 52px;
-    padding: var(--space-2);
+    padding: var(--space-3);
     margin-bottom: 6px;
   }
 
   .media-tile-artwork {
     width: 44px;
     height: 44px;
-  }
-
-  .media-tile-content {
-    grid-template-columns: minmax(0, 1fr) minmax(72px, 96px) auto;
   }
 
   .media-tile-btn {
@@ -10002,6 +10047,20 @@ body {
 @media (max-width: 300px) {
   .status-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* A narrow window that is also short (the 300x360 minimum, or 150% text in the default window)
+   leaves the two hero cards the most room to take, and pushed the Quick Access header below the
+   fold. The short-window rule above only covers windows wider than 420px. */
+@media (max-width: 420px) and (max-height: 460px) {
+  .status-card {
+    padding: 10px;
+  }
+
+  .weather-card,
+  .status-card.time-card {
+    min-height: 0;
   }
 }
 
@@ -10751,7 +10810,12 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
 }
 
 #hotkeys-list {
-  max-height: 40vh;
+  /* The list holds every entity that can take a hotkey, hundreds in a large home, so it keeps its
+     own scroller inside the Settings page, as do the primary cards and custom icons lists; the
+     wheel passes on to the page at either end. The alert rows are a handful the user added and
+     scroll with the page. Rows are two lines tall now; 40vh of the default window showed less
+     than three. */
+  max-height: max(40vh, 20rem);
   overflow-y: auto;
   overflow-x: hidden;
   border: 1px solid var(--border-color);
@@ -10782,27 +10846,35 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   align-items: flex-start;
 }
 
+/* Every row has two tiers: the name on its own line, wrapping to a second one for a long name,
+   and the controls under it. Beside the controls the name had about 90px at the default window
+   and was cut to 'Coffee ma...', and a row that gained a clear button once a hotkey was set no
+   longer fitted and jumped to two lines while the others stayed on one. */
 .hotkey-item .entity-name {
   font-size: var(--font-size-base);
   font-weight: 500;
   color: var(--text-color);
-  flex: 1 1 80px;
-  min-width: 80px;
-  max-width: 100%;
+  flex: 1 1 100%;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
+/* The hotkey takes what the action and the clear button leave, and the action drops under it when
+   the row is too narrow for both (150% text, a small window). The clear button keeps its place
+   when there is nothing to clear, so setting or recording a hotkey moves nothing, and every row
+   wraps alike. */
 .hotkey-input-container {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  flex-wrap: nowrap;
-  flex: 0 1 auto;
+  flex: 1 1 100%;
   min-width: 0;
-  max-width: 100%;
-  margin-inline-start: auto;
 }
 
 .hotkey-input-container:has(.hotkey-action-dropdown.open) {
@@ -10810,14 +10882,11 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
 }
 
 .hotkey-input {
-  /* Sized to the placeholder or hotkey so "No hotkey set" is never clipped when translated. */
-  field-sizing: content;
-  flex-shrink: 1;
   /* Compact, level with the action dropdown beside it. The fill, border and corners come from
      the field recipe; only the value is set in mono. */
   min-height: 32px;
-  min-width: 120px;
-  max-width: 100%;
+  flex: 1 1 8rem;
+  min-width: 0;
   text-align: center;
   cursor: pointer;
   padding: 6px 10px;
@@ -10829,9 +10898,8 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
 /* Hotkey Action Custom Dropdown - Compact version */
 .hotkey-action-dropdown {
   position: relative;
-  width: 120px;
-  flex-shrink: 1;
-  min-width: 100px;
+  flex: 0 1 120px;
+  min-width: min(96px, 100%);
 }
 
 .hotkey-action-dropdown.open {
@@ -10897,9 +10965,10 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   border-color: rgba(239, 83, 80, 0.45);
 }
 
-/* Nothing to clear until a hotkey is set. */
-.hotkey-input:placeholder-shown ~ .btn-clear-hotkey {
-  display: none;
+/* Nothing to clear until a hotkey is set, or while one is being recorded. */
+.hotkey-input:placeholder-shown ~ .btn-clear-hotkey,
+.hotkey-input[data-recording='true'] ~ .btn-clear-hotkey {
+  visibility: hidden;
 }
 
 /* Unlike the other dialogs this one has no header, body or footer to pad it, so the card pads its
@@ -11015,8 +11084,6 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
 
 .inline-alerts-container {
   margin-top: 16px;
-  max-height: 400px;
-  overflow-y: auto;
   padding: 4px;
 }
 
@@ -11417,6 +11484,8 @@ label.disabled {
   color: var(--text-primary);
   font: inherit;
   font-size: var(--font-size-md);
+  /* Chromium draws the placeholder's cut with it too. */
+  text-overflow: ellipsis;
 }
 
 .command-palette-input::placeholder {
@@ -11438,7 +11507,8 @@ label.disabled {
   width: 100%;
   min-height: 44px;
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) auto;
+  /* The name is what is scanned for, so it keeps a floor and the type and state give way. */
+  grid-template-columns: 30px minmax(140px, 1fr) minmax(0, auto);
   align-items: center;
   gap: 12px;
   border: 1px solid transparent;
@@ -11504,11 +11574,13 @@ label.disabled {
   display: flex;
   align-items: center;
   gap: 10px;
+  overflow: hidden;
 }
 
 .command-palette-result-domain {
-  flex: none;
-  max-width: 140px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -11523,7 +11595,8 @@ label.disabled {
 }
 
 .command-palette-result-state {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 140px;
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
@@ -11559,6 +11632,14 @@ label.disabled {
     width: 28px;
     height: 28px;
     font-size: var(--font-size-md);
+  }
+}
+
+/* The row's icon already says what kind of thing it is, so a narrow window gives the name the
+   room the type pill took. */
+@media (width <= 400px) {
+  .command-palette-result-domain {
+    display: none;
   }
 }
 
@@ -11694,17 +11775,18 @@ body.layer-drag-enabled.desktop-pin-edit-mode .control-item {
   -webkit-app-region: no-drag;
 }
 
+/* Each bind is a line of about 100 characters that has to be copied whole, so it scrolls sideways.
+   Wrapped, a line broke inside the entity id and read as two commands. */
 #desktop-bindings {
   width: 100%;
   min-height: 110px;
   resize: vertical;
-  font-family: monospace;
-  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
   line-height: 1.5;
-}
-
-#desktop-integration .btn {
-  margin-bottom: 8px;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
 }
 
 /* Readability preferences deliberately override custom palettes and glass effects. */
@@ -11923,12 +12005,17 @@ body.large-interface .tile-details-button {
   height: 28px;
 }
 
+/* The height cap is the one on .modal-content, the same at every text size. Only the Settings
+   dialog, which fills the window otherwise, keeps a margin at enlarged text. */
 body.large-interface .modal-content,
 body.large-interface #settings-modal .modal-content {
   max-width: calc(100vw - 16px);
-  max-height: calc(100vh - 16px);
   min-width: 0;
   min-height: 0;
+}
+
+body.large-interface #settings-modal .modal-content {
+  max-height: calc(100vh - 16px);
 }
 
 body.large-interface .modal-body {
@@ -12065,15 +12152,30 @@ body.software-glass.frosted-glass .modal-content {
 }
 
 .modal-header {
+  gap: var(--space-3);
   padding: 14px 16px;
   background: transparent;
   border-bottom: 1px solid var(--tile-border);
 }
 
+/* The pop-ups title themselves with the entity's name, which can be one long token (a German
+   compound, an entity id) that would otherwise keep the title at its full width and push the
+   close button out of the dialog. It breaks anywhere, and stops at two lines. */
 .modal-header h2 {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-semibold);
   letter-spacing: -0.01em;
+}
+
+.modal-header .close-btn {
+  flex: none;
 }
 
 .modal-footer {
@@ -12137,6 +12239,12 @@ body.software-glass.frosted-glass .modal-content {
 .btn:active {
   transform: scale(0.97);
   box-shadow: none;
+}
+
+/* A long label (a translation, or text at 150%) goes onto a second line inside a dialog instead of
+   being cut off with an ellipsis. */
+.modal .btn {
+  white-space: normal;
 }
 
 .btn-primary {
@@ -12567,6 +12675,8 @@ body.theme-light:not(.high-contrast)
 .fan-preset-btn {
   flex: 1 1 0;
   min-width: 0;
+  /* The chip's own 12px side padding left 12px for '100%' in a 38px chip. */
+  padding-inline: 4px;
   height: 34px;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
@@ -12795,6 +12905,26 @@ select option {
   color: var(--text-primary);
 }
 
+/* A short window: the header, footer and the dialog's own padding are most of what is on screen,
+   so control pop-ups give some of it back. Their bodies scroll if they still do not fit. */
+@media (max-height: 480px) {
+  .modal-header {
+    padding-block: 10px;
+  }
+
+  .modal-body {
+    padding: var(--space-4);
+  }
+
+  .brightness-content,
+  .climate-content,
+  .fan-content,
+  .cover-content {
+    padding: var(--space-3) var(--space-4);
+    gap: var(--space-3);
+  }
+}
+
 /* ============================================
    SETTINGS LAYOUT
 
@@ -12895,9 +13025,21 @@ body.opaque-panels #settings-modal .modal-header {
   filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.6));
 }
 
-/* The bottom padding keeps the last setting clear of the floating Save/Cancel pill. */
+/* The bottom padding keeps the last setting clear of the floating Save/Cancel pill. The gutter is
+   always reserved, so a page that scrolls (General) and one that does not (Alerts) are the same
+   width and nothing shifts sideways when switching pages or when a search result list grows past
+   the window; the end padding gives it back, so both margins stay 18px. */
 #settings-modal .modal-body {
   padding: 18px 18px 76px;
+  padding-inline-end: 9px;
+  scrollbar-gutter: stable;
+}
+
+/* A column of at most 680px, centred: across a 900px window the labels sat 750px from their
+   switches and help text ran to 125 characters a line. */
+#settings-modal .modal-body > * {
+  max-width: 680px;
+  margin-inline: auto;
 }
 
 /* Save/Cancel float as a small raised pill in the bottom corner instead of a full-width bar.
@@ -13083,21 +13225,25 @@ body.theme-light #settings-modal .modal-footer {
 
 .setting-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 10px 16px;
 }
 
+/* The label keeps room to be read: a control that would leave it less than 9rem (a wide select, a
+   segmented control, a button, or anything at 130-150% text size or in a narrow window) wraps
+   under it instead of squeezing it to a sliver. */
 .setting-text {
-  flex: 1 1 0;
-  min-width: 0;
+  flex: 1 1 9rem;
+  min-width: min(9rem, 100%);
 }
 
 #settings-modal .setting-row > select {
   flex: 0 0 auto;
   width: auto;
-  min-width: 120px;
-  max-width: 62%;
+  min-width: min(120px, 100%);
+  max-width: 100%;
   padding-block: 7px;
   padding-inline-start: 10px;
   font-size: var(--font-size-sm);
@@ -13105,12 +13251,20 @@ body.theme-light #settings-modal .modal-footer {
 
 .setting-row > .btn {
   flex-shrink: 0;
+  max-width: 100%;
 }
 
 .setting-row-stacked {
   flex-direction: column;
+  flex-wrap: nowrap;
   align-items: stretch;
   gap: 10px;
+}
+
+/* A stacked row is a column, where the text's 9rem basis would be a height. */
+.setting-row-stacked > .setting-text {
+  flex: none;
+  min-width: 0;
 }
 
 .setting-row-action {
@@ -13292,6 +13446,8 @@ body.theme-light
 .segmented-control {
   display: inline-flex;
   flex-shrink: 0;
+  flex-wrap: wrap;
+  max-width: 100%;
   gap: 2px;
   padding: 3px;
   border-radius: var(--radius-md);
@@ -13787,6 +13943,7 @@ body.theme-light
   display: flex;
   flex-shrink: 0;
   flex-direction: column;
+  max-width: 100%;
   gap: 6px;
 }
 
@@ -13890,8 +14047,19 @@ body.theme-light:not(.high-contrast) :is(#quick-controls .control-item, .status-
   background: var(--tile-bg);
 }
 
-/* Stacked in narrow windows, the hairline moves to the top edge. */
+/* Stacked in narrow windows, the hairline moves to the top edge. The cards stack where the
+   .status-grid rules above make them one column: under 420px except at enlarged text, where they
+   stay side by side and keep the vertical hairline, and under 300px at any text size. */
 @media (max-width: 420px) {
+  body:not(.large-interface)
+    .status-grid:not(.single-card):not(.primary-cards-hidden)
+    > .status-card
+    + .status-card {
+    box-shadow: inset 0 1px 0 var(--tile-border);
+  }
+}
+
+@media (max-width: 300px) {
   .status-grid:not(.single-card):not(.primary-cards-hidden) > .status-card + .status-card {
     box-shadow: inset 0 1px 0 var(--tile-border);
   }
@@ -14021,6 +14189,36 @@ body.density-compact #quick-controls {
 #quick-controls .control-item:not(.comparison-graph-tile):not(.media-player-entity) {
   height: var(--qa-tile-height);
   min-height: var(--qa-tile-height);
+  /* A tile too full for its height loses its bottom edge, not both ends: with plain centring the
+     icon above and the state below were cut off equally. */
+  justify-content: safe center;
+}
+
+/* A long name gives up its tail, not the icon above it or the state below it: Home Assistant's
+   own names run to 40-90 characters, and three or four wrapped lines pushed both out of the
+   fixed-height tile. The tooltip carries the whole name. Compact tiles have room for one line. */
+#quick-controls .control-item:not(.comparison-graph-tile):not(.media-player-entity) .control-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+body.density-compact
+  #quick-controls
+  .control-item:not(.comparison-graph-tile):not(.media-player-entity)
+  .control-name {
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+}
+
+/* One line for the state or value as well. */
+#quick-controls .control-item:not(.comparison-graph-tile):not(.media-player-entity) .control-state {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 #quick-controls .control-item.sensor-numeric-entity {
@@ -14288,20 +14486,40 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   gap: var(--space-2);
 }
 
-/* Manage Quick Access and the repair picker: one scrolling list under a fixed search box, with
-   Manage's secondary "comparison graph" action moved to the footer. */
-#quick-controls-modal .quick-controls-modal-body,
-#entity-repair-modal .modal-body {
+/* A dialog built around a pick list (Manage Quick Access, the repair, alert and weather pickers,
+   the comparison graph editor): the fields keep their place and the list takes the height that is
+   left, so the list is the only thing that scrolls. Capped at 400px inside a body that scrolled as
+   well, the list showed a second scrollbar, scrolled the search box away and trapped the wheel.
+   Manage's secondary "comparison graph" action sits in the footer. */
+.modal-body:has(> .entity-selector-list, > .form-group > .entity-selector-list) {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  min-height: 0;
-  overflow-y: auto;
 }
 
-#entity-repair-modal .modal-lead,
-#entity-repair-modal .form-group {
+.modal-body:has(> .entity-selector-list, > .form-group > .entity-selector-list) > .modal-lead,
+.modal-body:has(> .entity-selector-list, > .form-group > .entity-selector-list) > .form-group {
   margin: 0;
+}
+
+.modal-body > .form-group:has(> .entity-selector-list) {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.modal-body > .entity-selector-list,
+.modal-body > .form-group > .entity-selector-list {
+  flex: 1 1 auto;
+  max-height: none;
+}
+
+/* A list of three rows or more keeps room for three, however short the window: below that the
+   dialog's body scrolls instead. A shorter list is only as tall as its rows. */
+.modal-body > .entity-selector-list:has(> :nth-child(3)),
+.modal-body > .form-group > .entity-selector-list:has(> :nth-child(3)) {
+  min-height: 120px;
 }
 
 #quick-controls-modal .quick-controls-target-hint {
@@ -14313,14 +14531,6 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
 
 #quick-controls-modal .quick-controls-search-group {
   margin: 0;
-}
-
-#quick-controls-modal .entity-selector-list,
-#entity-repair-modal .entity-selector-list {
-  flex: 1 1 auto;
-  min-height: 120px;
-  max-height: none;
-  overflow-y: auto;
 }
 
 #quick-controls-modal .entity-item.is-added .entity-icon {
@@ -14618,7 +14828,7 @@ body.desktop-pin-mode
    instead of keeping its 200px minimum, and it is dark like the pin whatever the theme. */
 body.desktop-pin-mode .toast-container {
   bottom: var(--space-2);
-  width: calc(100vw - 16px);
+  padding-inline: var(--space-3);
 }
 
 body.desktop-pin-mode .toast {

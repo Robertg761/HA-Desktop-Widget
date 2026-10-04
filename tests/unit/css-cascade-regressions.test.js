@@ -1000,9 +1000,10 @@ describe('stylesheet cascade regressions', () => {
       const toast = document.querySelector('.toast');
       expect(resolvedValue(toast, 'min-width', options)).toBe('0');
       expect(resolvedValue(toast, 'max-width', options)).toBe('100%');
-      expect(resolvedValue(document.querySelector('.toast-container'), 'width', options)).toBe(
-        'calc(100vw - 16px)'
-      );
+      // The container spans the window, so the toast fits whatever the pin's size.
+      const container = document.querySelector('.toast-container');
+      expect(resolvedValue(container, 'left', options)).toBe('0');
+      expect(resolvedValue(container, 'right', options)).toBe('0');
     });
 
     it('keeps the glass rim the same in the light theme', () => {

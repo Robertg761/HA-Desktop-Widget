@@ -694,7 +694,10 @@ describe('hotkeys module', () => {
 describe('entity hotkey row layout', () => {
   const fs = require('fs');
   const path = require('path');
-  const styles = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
+  // Without its comments, which would otherwise count as part of the selector that follows them.
+  const styles = fs
+    .readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
   // Every declaration block whose selector list names `selector` exactly.
   const declarationsFor = (selector) =>
     [...styles.matchAll(/([^{}]+)\{([^}]*)\}/g)]
@@ -702,11 +705,14 @@ describe('entity hotkey row layout', () => {
       .map(([, , body]) => body)
       .join(';');
 
-  it('sizes the hotkey field to its text so translated placeholders are not clipped', () => {
-    // German "Kein Tastenkürzel gesetzt" does not fit a fixed 120px field.
+  it('gives the hotkey field the row so translated placeholders are not clipped', () => {
+    // German "Kein Tastenkürzel gesetzt" does not fit a fixed 120px field: the field takes what
+    // the action and the clear button leave, and the action drops under it when that is too little.
     const input = declarationsFor('.hotkey-input');
-    expect(input).toMatch(/field-sizing:\s*content/);
+    expect(input).toMatch(/flex:\s*1 1 8rem/);
+    expect(input).toMatch(/min-width:\s*0/);
     expect(input).not.toMatch(/(^|[;\s])width:/);
+    expect(declarationsFor('.hotkey-input-container')).toMatch(/flex-wrap:\s*wrap/);
     // The row wraps the controls under the name instead of squeezing the field.
     expect(declarationsFor('.hotkey-item')).toMatch(/flex-wrap:\s*wrap/);
     expect(declarationsFor('.hotkey-item')).not.toMatch(/flex-wrap:\s*nowrap/);

@@ -124,10 +124,18 @@ function startMockHomeAssistant({ port = 0, token, states, services = {}, servic
     sockets.clear();
   };
 
+  // An outage needs the server to stay away, not only to drop the sockets: the app reconnects within
+  // a second and would be back before a screenshot.
+  let refusing = false;
+  server.refuseConnections = (refuse) => {
+    refusing = refuse;
+    if (refuse) server.closeAllConnections();
+  };
+
   server.on('upgrade', (request, socket) => {
     sockets.add(socket);
     socket.on('close', () => sockets.delete(socket));
-    if (request.url !== '/api/websocket') {
+    if (refusing || request.url !== '/api/websocket') {
       socket.destroy();
       return;
     }

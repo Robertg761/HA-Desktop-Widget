@@ -70,6 +70,7 @@ import {
   setActiveQuickAccessView,
 } from './quick-access-tabs.js';
 import {
+  getFittedSensorValueFontSize,
   getNextQuickAccessFocusIndex,
   getNextQuickAccessFocusIndexByLayout,
   getQuickAccessTabOverflow,
@@ -4210,6 +4211,46 @@ function renderSensorTileChart(tile, entity, series = []) {
   info.appendChild(sparkline);
 }
 
+/**
+ * Draws a number that is wider than its tile smaller, down to a floor, so it keeps all its digits
+ * ('123,456.79' cut to '123,456…' reads as a smaller number than it is). The ellipsis stays as the
+ * last resort.
+ *
+ * @param {HTMLElement} readout - The tile's `.control-sensor-readout`.
+ */
+function fitSensorTileValue(readout) {
+  const value = readout?.querySelector('.control-sensor-value');
+  if (!value?.isConnected) return;
+  value.style.removeProperty('font-size');
+  const fitted = getFittedSensorValueFontSize({
+    fontSize: parseFloat(getComputedStyle(value).fontSize),
+    naturalWidth: value.scrollWidth,
+    availableWidth: value.clientWidth,
+  });
+  if (fitted !== null) value.style.fontSize = `${fitted}px`;
+  readout.dataset.fitWidth = String(readout.clientWidth);
+  readout.dataset.fitSize = readout.closest('.control-item')?.dataset.valueSize || '';
+}
+
+// Refits a reading when its tile's width changes (a resize, a different number of columns). The
+// height changes with the font size, so only a change of width counts, or fitting would loop.
+const sensorValueFitObserver =
+  typeof ResizeObserver === 'function'
+    ? new ResizeObserver((entries) => {
+        // Fitting changes layout, which an observer must not do while it is being delivered.
+        requestAnimationFrame(() => {
+          for (const { target } of entries) {
+            if (target.dataset.fitWidth !== String(target.clientWidth)) fitSensorTileValue(target);
+          }
+        });
+      })
+    : null;
+
+function observeSensorTileValueFit(tile) {
+  const readout = tile?.querySelector('.control-sensor-readout');
+  if (readout) sensorValueFitObserver?.observe(readout);
+}
+
 function mountSensorTileChart(tile, entity) {
   const generation = ensureEntityCacheScope();
   if (!tile || !entity?.entity_id || !isFiniteNumericSensorState(entity)) return;
@@ -4954,8 +4995,9 @@ function showComparisonGraphModal(graphId) {
   listGroup.appendChild(list);
   body.appendChild(listGroup);
 
+  // The footer sits outside the scrolling body so Done and Delete stay in view.
   const footer = document.createElement('div');
-  footer.className = 'comparison-graph-modal-footer';
+  footer.className = 'modal-footer comparison-graph-modal-footer';
   const deleteBtn = document.createElement('button');
   deleteBtn.type = 'button';
   deleteBtn.className = 'btn btn-danger';
@@ -4967,7 +5009,7 @@ function showComparisonGraphModal(graphId) {
   doneBtn.className = 'btn btn-primary';
   doneBtn.textContent = t('Done');
   footer.appendChild(doneBtn);
-  body.appendChild(footer);
+  modal.querySelector('.modal-content')?.appendChild(footer);
 
   const modalCloseBtn = modal.querySelector('.close-btn');
   doneBtn.addEventListener('click', () => modalCloseBtn?.click());
@@ -9853,16 +9895,16 @@ function createControlElement(entity, options = {}) {
       div.title = t('Click to toggle {{name}}', { name: utils.getEntityDisplayName(entity) });
     } else if (entity.entity_id.startsWith('light.')) {
       setupLightControls(div, entity);
-      div.title = t('Click to toggle, hold for brightness control');
+      div.title = getControlTileTitle(entity, t('Click to toggle, hold for brightness control'));
     } else if (entity.entity_id.startsWith('climate.')) {
       setupClimateControls(div, entity);
-      div.title = t('Click to toggle, hold for temperature control');
+      div.title = getControlTileTitle(entity, t('Click to toggle, hold for temperature control'));
     } else if (entity.entity_id.startsWith('fan.')) {
       setupFanControls(div, entity);
-      div.title = t('Click to toggle, hold for speed control');
+      div.title = getControlTileTitle(entity, t('Click to toggle, hold for speed control'));
     } else if (entity.entity_id.startsWith('cover.')) {
       setupCoverControls(div, entity);
-      div.title = t('Click to toggle, hold for position control');
+      div.title = getControlTileTitle(entity, t('Click to toggle, hold for position control'));
     } else if (entity.entity_id.startsWith('media_player.')) {
       div.title = t('Click to play/pause, hold for controls');
     } else if (domain === 'todo') {
@@ -10062,6 +10104,7 @@ function createControlElement(entity, options = {}) {
     }
     if (isQuickAccessContext && div.classList.contains('sensor-numeric-entity')) {
       mountSensorTileChart(div, entity);
+      observeSensorTileValueFit(div);
     }
     if (hasCameraPreview) {
       camera.mountCameraPreview(div, entity.entity_id, cameraPreviewRefresh);
@@ -10120,6 +10163,15 @@ function createUnavailableElement(entityId) {
     console.error('Error creating unavailable element:', error);
     return document.createElement('div');
   }
+}
+
+// A tile that opens controls has an instruction for its tooltip. The name leads it, so a name the
+// tile cuts short (it stops at two lines) can still be read in full. The instruction goes through
+// the existing '{{name}}: {{state}}' string as its `state`, on purpose: it is already translated in
+// every language pack, so a new string would leave each pack to catch up. Keep the placeholder
+// names, which the packs spell out.
+function getControlTileTitle(entity, hint) {
+  return t('{{name}}: {{state}}', { name: utils.getEntityDisplayName(entity), state: hint });
 }
 
 function applyQuickAccessTileAccessibility(div, entity) {
@@ -10446,9 +10498,16 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
       div.classList.add('sensor-numeric-entity');
       if (stateEl) stateEl.setAttribute('aria-label', sensorDisplay.text);
       const value = div.querySelector('.control-sensor-value');
-      if (value) value.textContent = sensorDisplay.value;
       const unit = div.querySelector('.control-sensor-unit');
+      const readout = div.querySelector('.control-sensor-readout');
+      // A reading that did not change keeps its fit: measuring it again costs a layout.
+      const needsFit =
+        value?.textContent !== sensorDisplay.value ||
+        (unit && unit.textContent !== sensorDisplay.unit) ||
+        readout?.dataset.fitSize !== (div.dataset.valueSize || '');
+      if (value) value.textContent = sensorDisplay.value;
       if (unit) unit.textContent = sensorDisplay.unit;
+      if (needsFit) fitSensorTileValue(readout);
       appendLiveSensorHistoryValue(displayEntity);
       const cachedHistory = sensorHistoryCache.get(displayEntity.entity_id);
       renderSensorTileChart(div, displayEntity, cachedHistory?.series || []);
@@ -10480,12 +10539,18 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   }
 
   if (displayEntity.entity_id.startsWith('light.')) {
-    div.title = t('Click to toggle, hold for brightness control');
+    div.title = getControlTileTitle(
+      displayEntity,
+      t('Click to toggle, hold for brightness control')
+    );
     return true;
   }
 
   if (displayEntity.entity_id.startsWith('climate.')) {
-    div.title = t('Click to toggle, hold for temperature control');
+    div.title = getControlTileTitle(
+      displayEntity,
+      t('Click to toggle, hold for temperature control')
+    );
     if (stateEl) {
       const temp = getClimateTileTemperature(displayEntity);
       stateEl.textContent =
@@ -10495,12 +10560,12 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   }
 
   if (displayEntity.entity_id.startsWith('fan.')) {
-    div.title = t('Click to toggle, hold for speed control');
+    div.title = getControlTileTitle(displayEntity, t('Click to toggle, hold for speed control'));
     return true;
   }
 
   if (displayEntity.entity_id.startsWith('cover.')) {
-    div.title = t('Click to toggle, hold for position control');
+    div.title = getControlTileTitle(displayEntity, t('Click to toggle, hold for position control'));
     return true;
   }
 
@@ -14069,7 +14134,7 @@ function showClimateControls(climateEntity) {
         </div>
         <div class="modal-body">
           <div class="climate-content">
-            <div class="climate-temp-display">
+            <div class="climate-temp-display${capabilities.canSetRange ? ' is-range' : ''}">
               <div class="climate-current-temp">
                 <div class="climate-temp-label">${utils.escapeHtml(t('Current'))}</div>
                 <div class="climate-temp-value">${currentTemp === null ? '—' : `${formatNumber(currentTemp)}${tempUnit}`}</div>

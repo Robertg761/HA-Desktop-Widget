@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import "Clip.js" as Clip
 import "Countdown.js" as Countdown
 
 // Home Assistant in the Omarchy bar. HA Desktop Widget publishes its connection state and its
@@ -46,10 +47,19 @@ Panel {
   readonly property var panelTiles: running && Array.isArray(status.panel) ? status.panel : []
   readonly property var barTiles: running && Array.isArray(status.bar) ? status.bar : []
   readonly property var lineIcons: running && status.icons ? status.icons : ({})
-  readonly property string barText: barTiles
+  readonly property var barValues: barTiles
     .map(function(tile) { return Countdown.value(tile, root.now) })
     .filter(function(value) { return value !== "" })
-    .join("  ")
+  // The bar slot is as wide as its text, so each value is cut to a short stretch and the whole
+  // readout to a few dozen characters (a media title can run to 96); the tooltip has them in
+  // full. A vertical bar has a slot one glyph wide, so it shows only the glyph.
+  readonly property bool verticalBar: bar ? bar.vertical === true : false
+  readonly property int barValueChars: 16
+  readonly property int barTextChars: 48
+  readonly property string barText: verticalBar ? "" : clipText(
+    barValues.map(function(value) { return clipText(value, barValueChars) }).join("  "),
+    barTextChars
+  )
   readonly property bool hasVisibleCountdown: running && (
     barTiles.some(function(tile) { return Countdown.isRunning(tile, root.now) })
     || (opened && panelTiles.some(function(tile) { return Countdown.isRunning(tile, root.now) }))
@@ -136,6 +146,12 @@ Panel {
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
+
+  // Cut to `limit` characters as a reader counts them (grapheme clusters, see Clip.js), so an emoji
+  // or a letter with its accents is never split at the cut.
+  function clipText(text, limit) {
+    return Clip.clip(text, limit)
+  }
 
   function statusLine() {
     if (!running) return "HA Desktop Widget is not running"
@@ -365,7 +381,9 @@ Panel {
     bar: root.bar
     text: root.barText !== "" ? "󰟐  " + root.barText : "󰟐"
     dimmed: !root.connected
-    tooltipText: root.running ? "Home Assistant: " + root.statusLine() : root.statusLine()
+    tooltipText: root.running
+      ? "Home Assistant: " + root.statusLine() + (root.barValues.length > 0 ? "\n" + root.barValues.join("  ") : "")
+      : root.statusLine()
     onPressed: function(buttonCode) {
       if (buttonCode === Qt.RightButton || buttonCode === Qt.MiddleButton) root.toggleWidget()
       else if (!root.running || root.flatTiles.length === 0) root.toggleWidget()

@@ -296,7 +296,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
 
       expect(panelText()).toContain('Home Assistant authorization expired');
       expect(panelText()).not.toMatch(/token/i);
-      expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+      expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
       expect(mockUiUtils.setStatus).toHaveBeenLastCalledWith(
         false,
         'Home Assistant authorization expired. Reconnect with Home Assistant in Settings.'
@@ -636,6 +636,69 @@ describe('Renderer Home Assistant connection lifecycle', () => {
 
       expect(mockUiUtils.dismissToast).toHaveBeenCalledWith(toast);
       expect(document.getElementById('settings-modal').classList).not.toContain('hidden');
+    });
+
+    // The panel used to be appended below every tile and scrolled into view, which threw the
+    // dashboard to the bottom at each restart of Home Assistant.
+    it('puts the panel above Quick Access and leaves the scroll where it was', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      const content = document.querySelector('.widget-content');
+      content.insertAdjacentHTML('beforeend', '<section class="controls-section"></section>');
+      const scrollIntoView = jest.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+
+      failAttempt();
+
+      const panel = document.getElementById('widget-state-panel');
+      expect(panel.nextElementSibling).toBe(content.querySelector('.controls-section'));
+      expect(scrollIntoView).not.toHaveBeenCalled();
+      delete Element.prototype.scrollIntoView;
+    });
+
+    it('dims the tiles while Home Assistant cannot be reached', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      failAttempt();
+      expect(document.body.classList).toContain('ha-offline');
+
+      connectSuccessfully();
+      await flushAsync();
+      expect(document.body.classList).not.toContain('ha-offline');
+    });
+
+    // Every retry reports a connection attempt, and login is followed by a wait for the state
+    // snapshot; the tiles are as stale then as after the failure, so they must not flash bright.
+    it('keeps the tiles dimmed through each retry and until the states arrive', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      failAttempt();
+      mockWebsocket.emit('connect-attempt');
+      expect(document.body.classList).toContain('ha-offline');
+      failAttempt();
+      expect(document.body.classList).toContain('ha-offline');
+
+      mockWebsocket.emit('connect-attempt');
+      mockWebsocket.emit('message', { type: 'auth_ok' });
+      expect(document.body.classList).toContain('ha-offline');
+
+      connectSuccessfully();
+      await flushAsync();
+      expect(document.body.classList).not.toContain('ha-offline');
+    });
+
+    it('leaves the scroll alone for an empty page too, and ends the page with its panel', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      const content = document.querySelector('.widget-content');
+      content.insertAdjacentHTML('beforeend', '<section class="controls-section"></section>');
+      const scrollIntoView = jest.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+
+      connectSuccessfully();
+      await flushAsync();
+
+      const panel = document.getElementById('widget-state-panel');
+      expect(panel.textContent).toContain('No Quick Access entities yet');
+      expect(content.lastElementChild).toBe(panel);
+      expect(scrollIntoView).not.toHaveBeenCalled();
+      delete Element.prototype.scrollIntoView;
     });
 
     it('shows one connection state instead of a placeholder beside the panel', async () => {
