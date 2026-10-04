@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.56",
+  "version": "1.2.57",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1781,6 +1781,16 @@
     "Keep editing": "Seguir editando",
     "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Mostrando los primeros {{shown}} de {{count}} iconos. Escribe para acotarlos.",
     "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "Modo de reorganización activado. Arrastra o pulsa Alt+flechas para reordenar. Pulsa Esc para finalizar.",
-    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "Modo de reorganización activado. Arrastra, selecciona o pulsa Alt+flechas para reordenar. Usa los botones de una tarjeta para anclarla, renombrarla o eliminarla. Pulsa Esc para finalizar."
+    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "Modo de reorganización activado. Arrastra, selecciona o pulsa Alt+flechas para reordenar. Usa los botones de una tarjeta para anclarla, renombrarla o eliminarla. Pulsa Esc para finalizar.",
+    "The Omarchy palette sets these colors while Follow Omarchy theme is on.": "La paleta de Omarchy define estos colores mientras «Seguir el tema de Omarchy» esté activado.",
+    "Tints the window so it stays readable while transparent. Blur depends on your desktop.": "Tiñe la ventana para que siga siendo legible con transparencia. El desenfoque depende de tu escritorio.",
+    "After setting a hotkey, copy its binding from the Hyprland shortcuts panel above.": "Tras configurar un atajo, copia su asignación del panel «Atajos de Hyprland» de arriba.",
+    "Press once to show the window and again to hide it.": "Pulsa una vez para mostrar la ventana y otra vez para ocultarla.",
+    "Set a popup hotkey or turn on entity hotkeys below, then copy the bindings here.": "Configura un atajo emergente o activa los atajos de entidad más abajo y copia aquí las asignaciones.",
+    "No shortcuts are set yet.": "Aún no hay atajos configurados.",
+    "Bind a key in your window manager to run ha-desktop-widget --toggle, which shows or hides the widget.": "Asigna una tecla en tu gestor de ventanas para ejecutar ha-desktop-widget --toggle, que muestra u oculta el widget.",
+    "Turn off blur for the widget": "Desactivar el desenfoque para el widget",
+    "Blur changes take effect immediately, without Save.": "Los cambios del desenfoque se aplican de inmediato, sin guardar.",
+    "Shortcut status updated.": "Estado de los atajos actualizado."
   }
 }

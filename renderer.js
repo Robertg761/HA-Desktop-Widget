@@ -2640,6 +2640,12 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
       renderMainWidgetState();
     }
     if (!IS_SPECIAL_PIN_MODE) settings.refreshHomeAssistantAuthStatus?.();
+    // The Hyprland bindings shown in Settings follow the hotkeys, whichever control changed them.
+    if (!IS_SPECIAL_PIN_MODE) {
+      void settings.refreshDesktopIntegrationIfHotkeysChanged?.().catch((error) => {
+        log.warn('Failed to refresh the shortcut bindings:', error);
+      });
+    }
   } catch (error) {
     log.error('Failed to apply config-updated event:', error);
   }

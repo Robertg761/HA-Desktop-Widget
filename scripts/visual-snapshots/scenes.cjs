@@ -1169,6 +1169,37 @@ const scenes = [
     setup: (ctx) => openSettingsTab(ctx, 'personalization'),
   },
 
+  // A followed Omarchy palette (Linux only; the run stages a light, warm one for these scenes): the
+  // Mode shows the palette's own, the Colors are out of reach with a note, and the fields keep the
+  // faint hairline of the stock themes instead of the palette's full-strength border.
+  {
+    name: 'omarchy-settings-general',
+    omarchyPalette: true,
+    ui: { followOmarchy: true },
+    setup: (ctx) => openSettingsTab(ctx, 'general'),
+  },
+  {
+    name: 'omarchy-settings-appearance',
+    omarchyPalette: true,
+    ui: { followOmarchy: true },
+    setup: (ctx) => openSettingsTab(ctx, 'personalization'),
+  },
+
+  // The notice on a pin whose desktop decides where it sits (native Wayland), in edit mode.
+  {
+    name: 'pin-edit-wayland',
+    pin: 'light.desk_lamp',
+    config: pinsPage,
+    setup: async (ctx) => {
+      const pin = await ctx.openPin('light.desk_lamp');
+      await pin.evaluate(`(() => {
+        document.body.classList.add('desktop-pin-edit-mode', 'desktop-pin-compositor-placement');
+        document.getElementById('desktop-pin-content')?.setAttribute('data-edit-hint', 'Drag or resize');
+      })()`);
+      return { capture: pin };
+    },
+  },
+
   // Desktop pins are windows of their own, opened at the default 168x148.
   { name: 'pin-light', pin: 'light.desk_lamp', setup: (ctx) => pinEntity(ctx, 'light.desk_lamp') },
   {

@@ -50,6 +50,17 @@ const CTRL = 2;
 // installed in the profile, which is also the version a PR is changing.
 const INSTALLED_PACKS = ['ar', 'es', 'fr', 'hi', 'zh'];
 
+// A light, warm Omarchy palette (colors.toml): nothing like the dark default, so a scene can tell
+// the palette's mode, colours and borders from the app's own.
+const OMARCHY_PALETTE = [
+  'background = "#f4efe4"',
+  'foreground = "#2b2418"',
+  'accent = "#c2410c"',
+  'selection_background = "#e3d2ad"',
+  'light_foreground = "#2b2418"',
+  '',
+].join('\n');
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function waitFor(check, { timeoutMs = 30000, intervalMs = 250, label = 'condition' } = {}) {
@@ -194,6 +205,12 @@ async function main() {
   const electron = require('electron');
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
+  // Where a scene with an Omarchy palette stages one (see prepare). On Linux the app reads the
+  // active theme from its state directory, so this one moves into the throwaway profile instead of
+  // reaching for the real home.
+  const stateHome = path.join(profileDir, 'state');
+  const paletteFile = path.join(stateHome, 'omarchy', 'current', 'theme', 'colors.toml');
+  env.XDG_STATE_HOME = stateHome;
   const app = spawn(
     electron,
     ['.', `--user-data-dir=${profileDir}`, `--remote-debugging-port=${DEBUG_PORT}`],
@@ -227,7 +244,12 @@ async function main() {
       return { ...settings, ...scene.config, ui: { ...baseConfig.ui, ...scene.ui } };
     }
 
-    let applied = { settings: JSON.stringify(sceneSettings({})), media: '[]', size: WINDOW_SIZE };
+    let applied = {
+      settings: JSON.stringify(sceneSettings({})),
+      media: '[]',
+      size: WINDOW_SIZE,
+      palette: false,
+    };
 
     const openPins = [];
     const extraTargets = [];
@@ -359,6 +381,20 @@ async function main() {
     }
 
     async function prepare(scene) {
+      // An Omarchy palette exists only for the scenes that ask for one: it adds the Follow Omarchy
+      // row to Settings, which no other scene should show. The app notices a changed theme file
+      // within a poll (1.5 s).
+      const wantsPalette = scene.omarchyPalette === true && process.platform === 'linux';
+      if (wantsPalette !== applied.palette) {
+        if (wantsPalette) {
+          fs.mkdirSync(path.dirname(paletteFile), { recursive: true });
+          fs.writeFileSync(paletteFile, OMARCHY_PALETTE);
+        } else {
+          fs.rmSync(paletteFile, { force: true });
+        }
+        await sleep(2300);
+        applied.palette = wantsPalette;
+      }
       const settings = sceneSettings(scene);
       const key = JSON.stringify(settings);
       const settingsChanged = key !== applied.settings;

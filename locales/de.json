@@ -1557,7 +1557,6 @@
   "Hyprland blurs the widget. Other windows are not blurred.": "Hyprland zeichnet den Hintergrund des Widgets unscharf. Andere Fenster bleiben unverändert.",
   "Hyprland's blur is off, so the widget is tinted but not frosted.": "Die Unschärfe von Hyprland ist aus, daher ist das Widget getönt, aber nicht mattiert.",
   "Hyprland's blur is off, so the widget is tinted but not frosted. Set decoration:blur:enabled in your Hyprland config to frost it.": "Die Unschärfe von Hyprland ist aus, daher ist das Widget getönt, aber nicht mattiert. Setze decoration:blur:enabled in deiner Hyprland-Konfiguration, um es zu mattieren.",
-  "Turn off widget blur": "Unschärfe für das Widget ausschalten",
   "Turn on blur for the widget": "Unschärfe für das Widget einschalten",
   "Could not change Hyprland's blur.": "Die Unschärfe von Hyprland konnte nicht geändert werden.",
   "This list is read-only.": "Diese Liste ist schreibgeschützt.",
@@ -1694,5 +1693,15 @@
   "Discard color edits": "Farbänderungen verwerfen",
   "Keep editing": "Weiter bearbeiten",
   "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Die ersten {{shown}} von {{count}} Symbolen werden angezeigt. Tippe, um sie einzugrenzen.",
-  "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "Neu-Anordnen aktiv. Ziehen oder Alt+Pfeiltasten zum Sortieren. Esc zum Beenden."
+  "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "Neu-Anordnen aktiv. Ziehen oder Alt+Pfeiltasten zum Sortieren. Esc zum Beenden.",
+  "The Omarchy palette sets these colors while Follow Omarchy theme is on.": "Die Omarchy-Farbpalette bestimmt diese Farben, solange „Omarchy-Theme verwenden“ aktiviert ist.",
+  "Tints the window so it stays readable while transparent. Blur depends on your desktop.": "Tönt das Fenster, damit es trotz Transparenz lesbar bleibt. Ob es unscharf wird, hängt von deinem Desktop ab.",
+  "After setting a hotkey, copy its binding from the Hyprland shortcuts panel above.": "Kopiere die Belegung nach dem Festlegen eines Tastenkürzels aus dem Bereich „Hyprland-Tastenkürzel“ oben.",
+  "Press once to show the window and again to hide it.": "Einmal drücken zum Anzeigen, erneut drücken zum Ausblenden.",
+  "Set a popup hotkey or turn on entity hotkeys below, then copy the bindings here.": "Lege unten ein Popup-Tastenkürzel fest oder aktiviere Entitäts-Tastenkürzel und kopiere die Belegungen dann hier.",
+  "No shortcuts are set yet.": "Noch keine Tastenkürzel festgelegt.",
+  "Bind a key in your window manager to run ha-desktop-widget --toggle, which shows or hides the widget.": "Belege im Fenstermanager eine Taste mit ha-desktop-widget --toggle, das das Widget ein- oder ausblendet.",
+  "Turn off blur for the widget": "Unschärfe für das Widget ausschalten",
+  "Blur changes take effect immediately, without Save.": "Änderungen an der Unschärfe werden sofort wirksam, auch ohne Speichern.",
+  "Shortcut status updated.": "Status der Tastenkürzel aktualisiert."
 }

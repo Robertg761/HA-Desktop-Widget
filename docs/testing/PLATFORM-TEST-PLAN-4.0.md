@@ -930,7 +930,7 @@ Ref: SM3-09, SM3-32, SM3-40, SM1-30, CSSC1-32
 
 1. Run `hyprctl getoption decoration:blur:enabled` and note it.
 2. Settings > Appearance > Window Effects: use the button to turn blur on for the widget (labeled Turn on blur for the widget), then press Cancel in Settings.
-3. Run the `hyprctl` command again. Then turn it off (Turn off widget blur) and Save.
+3. Run the `hyprctl` command again. Then turn it off (Turn off blur for the widget) and Save.
 
 Expected: The page says the blur change takes effect immediately, because it changes the compositor without waiting for Save, and the two buttons are worded as a pair. The button is still reachable when Frosted glass background is off, so a blur you turned on can be turned off again. It is clear that Cancel does not undo the change.
 

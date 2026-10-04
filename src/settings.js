@@ -264,6 +264,14 @@ function syncLayerModeSwitchReasons() {
     const input = document.getElementById(id);
     if (input) input.title = input.disabled ? reason : '';
   }
+  // A disabled switch takes no pointer events, so its title is never shown. Always on top has no
+  // help text of its own, so the reason is written under it while the switch cannot be used.
+  const help = document.getElementById('always-on-top-help');
+  const alwaysOnTop = document.getElementById('always-on-top');
+  if (help && alwaysOnTop) {
+    help.hidden = !alwaysOnTop.disabled;
+    help.textContent = alwaysOnTop.disabled ? reason : '';
+  }
 }
 
 function populateWeatherEntitySelect() {
@@ -1937,9 +1945,14 @@ function isFollowingDesktopPalette() {
 function updateThemeModeControl() {
   const control = document.getElementById('theme-mode-control');
   if (!control) return;
-  const mode = pendingThemeMode || getSavedThemeMode();
-  // A followed desktop palette decides light or dark itself.
+  // A followed desktop palette decides light or dark itself, so the control shows the mode the
+  // palette is in rather than a pick it ignores.
   const locked = isFollowingDesktopPalette();
+  const paletteMode = state.CONFIG?.desktopAppearance?.mode;
+  const mode =
+    locked && THEME_MODES.includes(paletteMode)
+      ? paletteMode
+      : pendingThemeMode || getSavedThemeMode();
   control.classList.toggle('is-disabled', locked);
   control.querySelectorAll('[data-theme-mode]').forEach((option) => {
     const selected = option.dataset.themeMode === mode;
@@ -2010,9 +2023,59 @@ function initThemeModeControl() {
   const followOmarchy = document.getElementById('follow-omarchy');
   if (followOmarchy && !followOmarchy.dataset.themeModeBound) {
     followOmarchy.dataset.themeModeBound = 'true';
-    followOmarchy.addEventListener('change', updateThemeModeControl);
+    followOmarchy.addEventListener('change', previewFollowOmarchy);
   }
   updateThemeModeControl();
+  updateColorsFollowState();
+}
+
+// Set once the Follow Omarchy switch has been used, so closing Settings puts the saved look back.
+let followOmarchyPreviewed = false;
+
+/**
+ * While the Omarchy palette is followed it decides the accent, the background and the mode, and
+ * Save would only have them overwritten again. The colour controls show that instead of looking
+ * live: dimmed, out of the tab order, with a note.
+ */
+function updateColorsFollowState() {
+  const group = document.getElementById('colors-group');
+  if (!group) return;
+  const following = isFollowingDesktopPalette();
+  group.classList.toggle('is-following-palette', following);
+  const body = group.querySelector('.settings-group-body');
+  if (body) body.inert = following;
+  const note = document.getElementById('colors-follow-note');
+  if (note) note.hidden = !following;
+}
+
+/**
+ * Show the Follow Omarchy switch's effect at once, like every other appearance control: the
+ * palette when it is turned on, your own mode, accent and background when it is turned off.
+ * Nothing is saved until Save, and closing Settings puts the saved look back.
+ */
+function previewFollowOmarchy() {
+  updateThemeModeControl();
+  updateColorsFollowState();
+  followOmarchyPreviewed = true;
+  const following = isFollowingDesktopPalette();
+  const config = { ...state.CONFIG, ui: { ...state.CONFIG?.ui, followOmarchy: following } };
+  if (!following) {
+    applyTheme(pendingThemeMode || getSavedThemeMode());
+    applyAccentTheme(pendingAccent || getCurrentAccentTheme());
+    refreshBackgroundTheme();
+  }
+  applyDesktopAppearance(config);
+  applyWindowEffects(getPreviewValuesFromInputs() || config);
+}
+
+function restoreFollowOmarchyPreview() {
+  if (!followOmarchyPreviewed) return;
+  followOmarchyPreviewed = false;
+  applyTheme(getSavedThemeMode());
+  applyAccentTheme(state.CONFIG?.ui?.accent || getCurrentAccentTheme());
+  applyBackgroundTheme(state.CONFIG?.ui?.background || getCurrentBackgroundTheme());
+  applyDesktopAppearance(state.CONFIG || {});
+  applyWindowEffects(state.CONFIG || {});
 }
 
 /**
@@ -3114,6 +3177,9 @@ function reapplySettingsPreviews() {
   if (!previewState) return;
   setCustomThemes(pendingCustomColors);
   applyUiPreferences(getAppearanceFromInputs());
+  // The echo put the saved mode back, while the Mode control still shows the pick. A followed
+  // palette decides the mode itself (and was just applied), so it keeps its say.
+  if (pendingThemeMode && !isFollowingDesktopPalette()) applyTheme(pendingThemeMode);
   applyAccentTheme(pendingAccent || getCurrentAccentTheme());
   // Also re-applies the pending background.
   previewWindowEffectsNow();
@@ -5275,8 +5341,11 @@ async function openSettings(uiHooks) {
       document
         .getElementById('follow-omarchy-group')
         ?.classList.toggle('hidden', followOmarchy.disabled);
+      updateThemeModeControl();
+      updateColorsFollowState();
     }
     if (frostedGlass) frostedGlass.checked = !!state.CONFIG.frostedGlass;
+    renderFrostedGlassHelp();
     syncFrostedGlassAvailability();
     if (allowPrereleaseUpdates) {
       allowPrereleaseUpdates.checked = state.CONFIG.updates?.allowPrerelease === true;
@@ -5511,6 +5580,7 @@ function closeSettings() {
     previewBackground = null;
     pendingBackground = null;
     restoreSavedThemeMode();
+    restoreFollowOmarchyPreview();
     pendingPrimaryCards = null;
     pendingCustomEntityIcons = {};
     activeCustomEntityIconPickerEntityId = null;
@@ -6998,12 +7068,70 @@ function populateMediaPlayerSelect(selected = state.CONFIG.primaryMediaPlayer ||
 let isCapturingPopupHotkey = false;
 let popupHotkeyAvailable = null;
 
+// What the main process last said about this desktop (Hyprland, desktop-layer mode), for the notes
+// that depend on it.
+let desktopIntegrationInfo = null;
+
+// The notes under the popup and entity hotkeys say changes apply at once. On Hyprland a shortcut
+// is only a name that Hyprland has to be told to run, so they point at the bindings panel instead.
+function renderHotkeyImmediateNotes() {
+  const onHyprland = desktopIntegrationInfo?.hyprland === true;
+  const notes = [
+    ['popup-hotkey-immediate-note', 'Popup hotkey changes take effect immediately.'],
+    ['entity-hotkey-immediate-note', 'Entity hotkey changes take effect immediately.'],
+  ];
+  for (const [id, immediate] of notes) {
+    const note = document.getElementById(id);
+    if (note) {
+      note.textContent = onHyprland
+        ? t('After setting a hotkey, copy its binding from the Hyprland shortcuts panel above.')
+        : t(immediate);
+    }
+  }
+}
+
+// A desktop layer sits under every window, so a key to bring it forward matters on any
+// compositor; only Hyprland can list the binds, the others get the command to bind.
+function renderLayerModeGuidance() {
+  const layerMode = desktopIntegrationInfo?.layerMode === true;
+  const onHyprland = desktopIntegrationInfo?.hyprland === true;
+  const layerNote = document.getElementById('desktop-integration-layer-note');
+  if (layerNote) layerNote.hidden = !layerMode;
+  const toggleNote = document.getElementById('layer-toggle-note');
+  if (toggleNote) toggleNote.hidden = !(layerMode && !onHyprland);
+}
+
+// "Frosted glass" blurs the window on Windows and macOS. On Linux Chromium cannot see what is behind
+// a window, so it only tints it, and a compositor that blurs on its own (Hyprland, with the toggle
+// below) does the rest.
+function renderFrostedGlassHelp(blurActive = false) {
+  const help = document.getElementById('frosted-glass-help');
+  if (!help) return;
+  const tintOnly = window.electronAPI?.platform === 'linux' && !blurActive;
+  help.textContent = tintOnly
+    ? t('Tints the window so it stays readable while transparent. Blur depends on your desktop.')
+    : t("Blurs what's behind the widget to keep it readable while transparent.");
+}
+
 // The popup hotkey card's labels depend on the platform's shortcut backend.
 function renderPopupHotkeyModeText() {
   const usesLinuxShortcutBackend = window.electronAPI?.platform === 'linux';
   const modeLabel = document.getElementById('popup-hotkey-mode-label');
   const helpText = document.getElementById('popup-hotkey-help-text');
   const platformNotice = document.getElementById('popup-hotkey-platform-notice');
+  // Hold-to-show and hide-on-release need key-release events, which the desktop shortcut service
+  // does not send. The row is not shown disabled with nothing to say why; the notice above says it.
+  const hideOnReleaseRow = document
+    .getElementById('popup-hotkey-hide-on-release')
+    ?.closest('.form-group');
+  if (hideOnReleaseRow) hideOnReleaseRow.hidden = usesLinuxShortcutBackend;
+  const toggleHelp = document.getElementById('popup-hotkey-toggle-mode-help');
+  if (toggleHelp) {
+    toggleHelp.textContent = usesLinuxShortcutBackend
+      ? t('Press once to show the window and again to hide it.')
+      : t('Press once to show the window and again to hide it, instead of holding.');
+  }
+  renderHotkeyImmediateNotes();
   if (usesLinuxShortcutBackend) {
     if (modeLabel) modeLabel.textContent = t('Popup hotkey');
     if (helpText) {
@@ -7518,6 +7646,7 @@ export {
   saveSettings,
   previewWindowEffects,
   refreshDesktopBlur,
+  refreshDesktopIntegrationIfHotkeysChanged,
   reapplySettingsPreviews,
   syncWeatherEffectsAvailability,
   renderAlertsListInline,
@@ -7550,7 +7679,12 @@ function renderDesktopBlur(status) {
   if (!row || !text || !button) return;
   const frosted = !!document.getElementById('frosted-glass')?.checked;
   const needsRetry = status?.enabled && status.widgetRuleFailed;
-  row.hidden = !frosted || !status?.supported || (status.enabled && !status.managed && !needsRetry);
+  renderFrostedGlassHelp(!!status?.enabled && !needsRetry);
+  // A blur this app turned on can be turned off with Frosted glass off, and only from here.
+  row.hidden =
+    !status?.supported ||
+    (!frosted && !(status.enabled && status.managed)) ||
+    (status.enabled && !status.managed && !needsRetry);
   if (row.hidden) return;
   if (needsRetry) {
     text.textContent = t("Could not change Hyprland's blur.");
@@ -7565,7 +7699,9 @@ function renderDesktopBlur(status) {
   }
   button.classList.toggle('hidden', !status.canManage);
   button.textContent =
-    status.enabled && !needsRetry ? t('Turn off widget blur') : t('Turn on blur for the widget');
+    status.enabled && !needsRetry
+      ? t('Turn off blur for the widget')
+      : t('Turn on blur for the widget');
   button.onclick = async () => {
     const reenable = disableControlsKeepingFocus([button]);
     try {
@@ -7596,15 +7732,53 @@ async function refreshSecureStorageNotice() {
   notice.classList.toggle('hidden', !unavailable);
 }
 
-async function refreshDesktopIntegration() {
+/** The name to show for the shortcut the desktop last delivered, whose id is an internal one. */
+function describeShortcutId(id) {
+  if (typeof id !== 'string' || !id) return '';
+  if (id === 'popup-toggle') return t('Popup hotkey');
+  const entityId = id.startsWith('entity.') ? id.slice('entity.'.length) : id;
+  const entity = state.STATES?.[entityId];
+  return entity ? utils.getEntityDisplayName(entity) : entityId;
+}
+
+// The bindings shown when the last hotkey change was made, to tell when the panel is out of date.
+let desktopIntegrationHotkeys = null;
+
+function getHotkeySignature(config) {
+  return JSON.stringify([
+    config?.popupHotkey || '',
+    !!config?.popupHotkeyToggleMode,
+    !!config?.popupHotkeyHideOnRelease,
+    config?.globalHotkeys || null,
+  ]);
+}
+
+/**
+ * Bring the Hyprland bindings up to date after a hotkey changed somewhere else (a popup hotkey
+ * cleared, an entity hotkey assigned or removed, the entity hotkeys switch). Every one of them
+ * reaches here as a config change, which is why this is looked for in the config rather than at
+ * each place that changes one. Does nothing until the panel has been shown once.
+ */
+async function refreshDesktopIntegrationIfHotkeysChanged(config = state.CONFIG) {
+  const signature = getHotkeySignature(config);
+  if (desktopIntegrationHotkeys === null || signature === desktopIntegrationHotkeys) return;
+  if (!isSettingsModalOpen()) return;
+  await refreshDesktopIntegration();
+}
+
+async function refreshDesktopIntegration({ announce = false } = {}) {
   void refreshDesktopBlur().catch((error) => {
     log.error('Failed to read Hyprland blur status:', error);
   });
   const panel = document.getElementById('desktop-integration');
   if (!panel || !window.electronAPI.getDesktopIntegration) return;
   const output = document.getElementById('desktop-bindings');
+  const copyButton = document.getElementById('desktop-bindings-copy');
   // Keep the controls usable even before Hyprland detection succeeds.
-  document.getElementById('desktop-bindings-copy').onclick = async () => {
+  copyButton.onclick = async () => {
+    // Nothing is set, so there is nothing to copy; copying an empty string would only clear the
+    // clipboard and report success.
+    if (!output.value) return;
     if (await copyTextToClipboard(output.value)) {
       showToast(t('Bindings copied'), 'success');
       return;
@@ -7613,8 +7787,13 @@ async function refreshDesktopIntegration() {
     output.select();
     showToast(t('Select and copy the bindings manually.'), 'info');
   };
-  document.getElementById('desktop-integration-refresh').onclick = refreshDesktopIntegration;
+  document.getElementById('desktop-integration-refresh').onclick = () =>
+    refreshDesktopIntegration({ announce: true });
   const info = await window.electronAPI.getDesktopIntegration();
+  desktopIntegrationInfo = info;
+  desktopIntegrationHotkeys = getHotkeySignature(state.CONFIG);
+  renderHotkeyImmediateNotes();
+  renderLayerModeGuidance();
   panel.hidden = !info?.hyprland;
   if (!info?.hyprland) return;
   const format = document.getElementById('desktop-bindings-format');
@@ -7622,20 +7801,29 @@ async function refreshDesktopIntegration() {
     const field = format?.value === 'hyprlang' ? 'legacyBinding' : 'binding';
     const lines = (info.shortcuts || []).map((shortcut) => shortcut[field]).filter(Boolean);
     output.value = lines.join('\n');
+    output.placeholder = t(
+      'Set a popup hotkey or turn on entity hotkeys below, then copy the bindings here.'
+    );
+    copyButton.disabled = lines.length === 0;
     // Every bind is visible without scrolling, up to ten lines.
     output.rows = Math.min(10, Math.max(4, lines.length));
   };
   renderBindings();
   if (format) format.onchange = renderBindings;
   const activationTime = Date.parse(info.lastActivation?.at || '');
-  document.getElementById('desktop-integration-status').textContent = info.lastActivation
-    ? t('Last shortcut received: {{id}} at {{time}}', {
-        id: info.lastActivation.id,
-        time: Number.isNaN(activationTime)
-          ? info.lastActivation.at
-          : formatDateTime(activationTime),
-      })
-    : t('No shortcut received yet. Press a configured shortcut, then refresh.');
+  const status = document.getElementById('desktop-integration-status');
+  if (!(info.shortcuts || []).length) {
+    status.textContent = t('No shortcuts are set yet.');
+  } else {
+    status.textContent = info.lastActivation
+      ? t('Last shortcut received: {{id}} at {{time}}', {
+          id: describeShortcutId(info.lastActivation.id),
+          time: Number.isNaN(activationTime)
+            ? info.lastActivation.at
+            : formatDateTime(activationTime),
+        })
+      : t('No shortcut received yet. Press a configured shortcut, then refresh.');
+  }
   // A bind still written for a retired app id keeps working, but only the
   // panel and the log say so; the replacement is the binding shown above.
   const legacy = document.getElementById('desktop-integration-legacy');
@@ -7643,4 +7831,6 @@ async function refreshDesktopIntegration() {
     legacy.hidden = !info.legacyActivation;
     legacy.textContent = info.legacyActivation?.notice || '';
   }
+  // The button gives no other sign that it did anything when nothing has changed.
+  if (announce) showToast(t('Shortcut status updated.'), 'info', 2000);
 }

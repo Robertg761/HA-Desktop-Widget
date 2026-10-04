@@ -6470,4 +6470,495 @@ describe('Settings + Config Integration', () => {
       );
     });
   });
+
+  describe('Omarchy and Hyprland controls', () => {
+    const desktopAppearance = require('../../src/desktop-appearance.js');
+    const palette = {
+      mode: 'light',
+      background: '#fafafa',
+      foreground: '#222222',
+      accent: '#ff8800',
+      border: '#222222',
+      selection: '#cccccc',
+    };
+    const checkedMode = () =>
+      document.querySelector('#theme-mode-control [aria-checked="true"]')?.dataset.themeMode;
+    let applyAppearance;
+
+    beforeEach(() => {
+      applyAppearance = jest
+        .spyOn(desktopAppearance, 'applyDesktopAppearance')
+        .mockImplementation(() => {});
+      document.querySelector('#settings-modal .modal-content').insertAdjacentHTML(
+        'afterbegin',
+        `
+        <div id="follow-omarchy-group"><input id="follow-omarchy" type="checkbox" /></div>
+        <section id="colors-group">
+          <p id="colors-follow-note" hidden></p>
+          <div class="settings-group-body"><button type="button" id="swatch">Rose</button></div>
+        </section>`
+      );
+      state.CONFIG.desktopAppearance = palette;
+    });
+
+    afterEach(() => {
+      applyAppearance.mockRestore();
+      delete window.electronAPI.getDesktopIntegration;
+      delete window.electronAPI.getDesktopBlurStatus;
+    });
+
+    describe('a mode previewed before something else is saved', () => {
+      test('is kept when a config echo puts the saved one back', async () => {
+        state.CONFIG.ui = { ...state.CONFIG.ui, theme: 'dark' };
+        await settings.openSettings();
+        document.querySelector('#theme-mode-control [data-theme-mode="light"]').click();
+        mockUiUtils.applyTheme.mockClear();
+
+        // Changing the language or opening a disclosure saves, and the echo re-applies the saved
+        // mode; the preview was lost while the control still said Light.
+        settings.reapplySettingsPreviews();
+
+        expect(mockUiUtils.applyTheme).toHaveBeenCalledWith('light');
+        expect(checkedMode()).toBe('light');
+        settings.closeSettings();
+      });
+
+      test('does not override the palette that is being followed', async () => {
+        state.CONFIG.ui = { ...state.CONFIG.ui, theme: 'dark', followOmarchy: true };
+        await settings.openSettings();
+        mockUiUtils.applyTheme.mockClear();
+
+        settings.reapplySettingsPreviews();
+
+        expect(mockUiUtils.applyTheme).not.toHaveBeenCalledWith('dark');
+        settings.closeSettings();
+      });
+    });
+
+    describe('Follow Omarchy theme', () => {
+      const follow = () => document.getElementById('follow-omarchy');
+      const colorsBody = () => document.querySelector('#colors-group .settings-group-body');
+      const toggle = (checked) => {
+        follow().checked = checked;
+        follow().dispatchEvent(new Event('change', { bubbles: true }));
+      };
+
+      test("shows the palette's mode, and puts the colors out of reach, while it is on", async () => {
+        state.CONFIG.ui = { ...state.CONFIG.ui, theme: 'dark', followOmarchy: true };
+        await settings.openSettings();
+
+        // The saved mode is Dark, but the palette is light and decides.
+        expect(checkedMode()).toBe('light');
+        expect(
+          document.querySelector('#theme-mode-control [data-theme-mode="light"]').disabled
+        ).toBe(true);
+        expect(
+          document.getElementById('colors-group').classList.contains('is-following-palette')
+        ).toBe(true);
+        expect(colorsBody().inert).toBe(true);
+        expect(document.getElementById('colors-follow-note').hidden).toBe(false);
+        settings.closeSettings();
+      });
+
+      test('gives the mode and the colors back when it is off', async () => {
+        state.CONFIG.ui = { ...state.CONFIG.ui, theme: 'dark', followOmarchy: false };
+        await settings.openSettings();
+
+        expect(checkedMode()).toBe('dark');
+        expect(colorsBody().inert).toBe(false);
+        expect(document.getElementById('colors-follow-note').hidden).toBe(true);
+        settings.closeSettings();
+      });
+
+      test('previews the palette the moment it is turned on', async () => {
+        state.CONFIG.ui = { ...state.CONFIG.ui, theme: 'dark', followOmarchy: false };
+        await settings.openSettings();
+        applyAppearance.mockClear();
+
+        toggle(true);
+
+        expect(applyAppearance).toHaveBeenLastCalledWith(
+          expect.objectContaining({ ui: expect.objectContaining({ followOmarchy: true }) })
+        );
+        expect(checkedMode()).toBe('light');
+        expect(colorsBody().inert).toBe(true);
+        settings.closeSettings();
+      });
+
+      test('previews your own mode and colors the moment it is turned off', async () => {
+        state.CONFIG.ui = {
+          ...state.CONFIG.ui,
+          theme: 'dark',
+          accent: 'rose',
+          followOmarchy: true,
+        };
+        await settings.openSettings();
+        applyAppearance.mockClear();
+        mockUiUtils.applyTheme.mockClear();
+        mockUiUtils.applyAccentTheme.mockClear();
+
+        toggle(false);
+
+        expect(mockUiUtils.applyTheme).toHaveBeenCalledWith('dark');
+        expect(mockUiUtils.applyAccentTheme).toHaveBeenCalledWith('rose');
+        expect(applyAppearance).toHaveBeenLastCalledWith(
+          expect.objectContaining({ ui: expect.objectContaining({ followOmarchy: false }) })
+        );
+        expect(checkedMode()).toBe('dark');
+        expect(colorsBody().inert).toBe(false);
+        settings.closeSettings();
+      });
+
+      test('puts the saved look back when Settings is closed without saving', async () => {
+        state.CONFIG.ui = { ...state.CONFIG.ui, theme: 'dark', followOmarchy: false };
+        await settings.openSettings();
+        toggle(true);
+        applyAppearance.mockClear();
+        mockUiUtils.applyTheme.mockClear();
+
+        settings.closeSettings();
+
+        expect(mockUiUtils.applyTheme).toHaveBeenCalledWith('dark');
+        expect(applyAppearance).toHaveBeenLastCalledWith(state.CONFIG);
+      });
+
+      test('leaves everything alone when the switch was never touched', async () => {
+        state.CONFIG.ui = { ...state.CONFIG.ui, theme: 'dark', followOmarchy: false };
+        await settings.openSettings();
+        applyAppearance.mockClear();
+
+        settings.closeSettings();
+
+        expect(applyAppearance).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('Always on top in desktop-layer mode', () => {
+      beforeEach(() => {
+        document
+          .querySelector('#settings-modal .modal-content')
+          .insertAdjacentHTML('afterbegin', '<p id="always-on-top-help" hidden></p>');
+      });
+
+      test('says why it cannot be changed, where a tooltip on a disabled switch cannot', async () => {
+        state.CONFIG.desktopCapabilities = { layerMode: true };
+        await settings.openSettings();
+
+        const help = document.getElementById('always-on-top-help');
+        expect(document.getElementById('always-on-top').disabled).toBe(true);
+        expect(help.hidden).toBe(false);
+        expect(help.textContent).toBe('Desktop layer mode keeps the widget behind normal windows.');
+        settings.closeSettings();
+      });
+
+      test('says nothing while the switch works', async () => {
+        state.CONFIG.desktopCapabilities = { layerMode: false };
+        await settings.openSettings();
+
+        const help = document.getElementById('always-on-top-help');
+        expect(help.hidden).toBe(true);
+        expect(help.textContent).toBe('');
+        settings.closeSettings();
+      });
+    });
+
+    describe('the Hyprland shortcuts panel', () => {
+      const hyprland = (overrides = {}) => ({
+        hyprland: true,
+        layerMode: true,
+        shortcuts: [
+          { id: 'popup-toggle', binding: 'lua binding', legacyBinding: 'legacy binding' },
+        ],
+        lastActivation: null,
+        legacyActivation: null,
+        ...overrides,
+      });
+      const el = (id) => document.getElementById(id);
+      // Settings reads the desktop's shortcut state while it sets up the popup hotkey.
+      const openPanel = async () => {
+        await settings.openSettings();
+        await settings.initializePopupHotkey();
+      };
+
+      beforeEach(() => {
+        document.body.insertAdjacentHTML(
+          'beforeend',
+          `
+          <div id="desktop-integration" hidden>
+            <p id="desktop-integration-layer-note"></p>
+            <select id="desktop-bindings-format"><option value="lua">Lua</option></select>
+            <textarea id="desktop-bindings"></textarea>
+            <button id="desktop-bindings-copy"></button>
+            <button id="desktop-integration-refresh"></button>
+            <p id="desktop-integration-status"></p>
+            <p id="desktop-integration-legacy" hidden></p>
+          </div>
+          <p id="layer-toggle-note" hidden></p>
+          <p id="popup-hotkey-immediate-note">Popup hotkey changes take effect immediately.</p>
+          <p id="entity-hotkey-immediate-note">Entity hotkey changes take effect immediately.</p>`
+        );
+        mockUiUtils.copyTextToClipboard.mockClear();
+      });
+
+      test('shows an empty state instead of a dead code box, and copies nothing', async () => {
+        window.electronAPI.getDesktopIntegration = jest
+          .fn()
+          .mockResolvedValue(hyprland({ shortcuts: [] }));
+        await openPanel();
+
+        expect(el('desktop-bindings').value).toBe('');
+        expect(el('desktop-bindings').placeholder).toBe(
+          'Set a popup hotkey or turn on entity hotkeys below, then copy the bindings here.'
+        );
+        expect(el('desktop-bindings-copy').disabled).toBe(true);
+        expect(el('desktop-integration-status').textContent).toBe('No shortcuts are set yet.');
+        el('desktop-bindings-copy').onclick();
+        expect(mockUiUtils.copyTextToClipboard).not.toHaveBeenCalled();
+        settings.closeSettings();
+      });
+
+      test('offers copying once there is something to copy', async () => {
+        window.electronAPI.getDesktopIntegration = jest.fn().mockResolvedValue(hyprland());
+        await openPanel();
+
+        expect(el('desktop-bindings').value).toBe('lua binding');
+        expect(el('desktop-bindings-copy').disabled).toBe(false);
+        expect(el('desktop-integration-status').textContent).toBe(
+          'No shortcut received yet. Press a configured shortcut, then refresh.'
+        );
+        settings.closeSettings();
+      });
+
+      test('names the shortcut that was last received, not its internal id', async () => {
+        window.electronAPI.getDesktopIntegration = jest
+          .fn()
+          .mockResolvedValue(
+            hyprland({ lastActivation: { id: 'popup-toggle', at: 'not a time' } })
+          );
+        await openPanel();
+        expect(el('desktop-integration-status').textContent).toBe(
+          'Last shortcut received: Popup hotkey at not a time'
+        );
+
+        window.electronAPI.getDesktopIntegration.mockResolvedValue(
+          hyprland({ lastActivation: { id: 'entity.light.living_room', at: '12:00' } })
+        );
+        await el('desktop-integration-refresh').onclick();
+        expect(el('desktop-integration-status').textContent).toContain('Living Room Light');
+        expect(el('desktop-integration-status').textContent).not.toContain('entity.');
+        settings.closeSettings();
+      });
+
+      test('tells you when Refresh has run', async () => {
+        window.electronAPI.getDesktopIntegration = jest.fn().mockResolvedValue(hyprland());
+        await openPanel();
+        mockUiUtils.showToast.mockClear();
+
+        await el('desktop-integration-refresh').onclick();
+
+        expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+          'Shortcut status updated.',
+          'info',
+          2000
+        );
+        settings.closeSettings();
+      });
+
+      test('follows a hotkey that was changed somewhere else', async () => {
+        window.electronAPI.getDesktopIntegration = jest.fn().mockResolvedValue(hyprland());
+        state.CONFIG.popupHotkey = 'Control+Alt+H';
+        await openPanel();
+        const reads = window.electronAPI.getDesktopIntegration.mock.calls.length;
+
+        // Nothing changed: nothing is read.
+        await settings.refreshDesktopIntegrationIfHotkeysChanged(state.CONFIG);
+        expect(window.electronAPI.getDesktopIntegration).toHaveBeenCalledTimes(reads);
+
+        // The popup hotkey was cleared; its bind must leave the box.
+        window.electronAPI.getDesktopIntegration.mockResolvedValue(hyprland({ shortcuts: [] }));
+        state.CONFIG.popupHotkey = '';
+        await settings.refreshDesktopIntegrationIfHotkeysChanged(state.CONFIG);
+        expect(el('desktop-bindings').value).toBe('');
+
+        // An entity hotkey was assigned.
+        window.electronAPI.getDesktopIntegration.mockResolvedValue(
+          hyprland({
+            shortcuts: [{ id: 'entity.light.a', binding: 'entity bind', legacyBinding: '' }],
+          })
+        );
+        state.CONFIG.globalHotkeys = { enabled: true, hotkeys: { 'light.a': 'Control+Alt+L' } };
+        await settings.refreshDesktopIntegrationIfHotkeysChanged(state.CONFIG);
+        expect(el('desktop-bindings').value).toBe('entity bind');
+        settings.closeSettings();
+      });
+
+      test('does not read anything while Settings is closed', async () => {
+        window.electronAPI.getDesktopIntegration = jest.fn().mockResolvedValue(hyprland());
+        await openPanel();
+        settings.closeSettings();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        window.electronAPI.getDesktopIntegration.mockClear();
+
+        state.CONFIG.popupHotkey = 'Control+Alt+K';
+        await settings.refreshDesktopIntegrationIfHotkeysChanged(state.CONFIG);
+
+        expect(window.electronAPI.getDesktopIntegration).not.toHaveBeenCalled();
+      });
+
+      test('points the hotkey notes at the panel on Hyprland, and says "immediately" elsewhere', async () => {
+        window.electronAPI.getDesktopIntegration = jest.fn().mockResolvedValue(hyprland());
+        await openPanel();
+        const panelNote =
+          'After setting a hotkey, copy its binding from the Hyprland shortcuts panel above.';
+        expect(el('popup-hotkey-immediate-note').textContent).toBe(panelNote);
+        expect(el('entity-hotkey-immediate-note').textContent).toBe(panelNote);
+        settings.closeSettings();
+
+        window.electronAPI.getDesktopIntegration = jest
+          .fn()
+          .mockResolvedValue({ hyprland: false, layerMode: false, shortcuts: [] });
+        await openPanel();
+        expect(el('popup-hotkey-immediate-note').textContent).toBe(
+          'Popup hotkey changes take effect immediately.'
+        );
+        expect(el('entity-hotkey-immediate-note').textContent).toBe(
+          'Entity hotkey changes take effect immediately.'
+        );
+        settings.closeSettings();
+      });
+
+      test.each([
+        ['Hyprland as a desktop layer', { hyprland: true, layerMode: true }, false, false],
+        ['Hyprland as a floating window', { hyprland: true, layerMode: false }, true, false],
+        [
+          'Sway, niri or river as a desktop layer',
+          { hyprland: false, layerMode: true },
+          false,
+          true,
+        ],
+        ['an ordinary desktop', { hyprland: false, layerMode: false }, true, false],
+      ])('guides the layer on %s', async (_name, info, layerNoteHidden, toggleNoteShown) => {
+        window.electronAPI.getDesktopIntegration = jest
+          .fn()
+          .mockResolvedValue({ shortcuts: [], ...info });
+        await openPanel();
+
+        // "Sits underneath normal windows" is only true when it is a layer.
+        expect(el('desktop-integration-layer-note').hidden).toBe(layerNoteHidden);
+        // Only Hyprland can list the binds; the others get the command to bind.
+        expect(el('layer-toggle-note').hidden).toBe(!toggleNoteShown);
+        settings.closeSettings();
+      });
+    });
+
+    describe('Frosted glass on Linux', () => {
+      const tint =
+        'Tints the window so it stays readable while transparent. Blur depends on your desktop.';
+      const blur = "Blurs what's behind the widget to keep it readable while transparent.";
+
+      beforeEach(() => {
+        mockElectronAPI.platform = 'linux';
+        document.querySelector('#settings-modal .modal-content').insertAdjacentHTML(
+          'afterbegin',
+          `<p id="frosted-glass-help">${blur}</p>
+             <div id="desktop-blur-row" hidden>
+               <p id="desktop-blur-status"></p>
+               <button type="button" id="desktop-blur-toggle" class="hidden"></button>
+             </div>`
+        );
+      });
+
+      afterEach(() => {
+        mockElectronAPI.platform = 'test';
+      });
+
+      test('does not promise a blur where there is only a tint', async () => {
+        window.electronAPI.getDesktopBlurStatus = jest
+          .fn()
+          .mockResolvedValue({ supported: false, enabled: false });
+        await settings.openSettings();
+        await settings.refreshDesktopBlur();
+        expect(document.getElementById('frosted-glass-help').textContent).toBe(tint);
+        settings.closeSettings();
+      });
+
+      test('promises it where Hyprland blurs the widget', async () => {
+        window.electronAPI.getDesktopBlurStatus = jest.fn().mockResolvedValue({
+          supported: true,
+          enabled: true,
+          managed: true,
+          canManage: true,
+        });
+        await settings.openSettings();
+        await settings.refreshDesktopBlur();
+        expect(document.getElementById('frosted-glass-help').textContent).toBe(blur);
+        settings.closeSettings();
+      });
+
+      test('keeps the blur switch reachable with Frosted glass off while this app turned it on', async () => {
+        window.electronAPI.getDesktopBlurStatus = jest.fn().mockResolvedValue({
+          supported: true,
+          enabled: true,
+          managed: true,
+          canManage: true,
+        });
+        await settings.openSettings();
+        document.getElementById('frosted-glass').checked = false;
+        await settings.refreshDesktopBlur();
+
+        const toggle = document.getElementById('desktop-blur-toggle');
+        expect(document.getElementById('desktop-blur-row').hidden).toBe(false);
+        // The two labels read as a pair.
+        expect(toggle.textContent).toBe('Turn off blur for the widget');
+        settings.closeSettings();
+      });
+
+      test('hides the blur row with Frosted glass off when there is nothing of ours to turn off', async () => {
+        window.electronAPI.getDesktopBlurStatus = jest.fn().mockResolvedValue({
+          supported: true,
+          enabled: false,
+          managed: false,
+          canManage: true,
+        });
+        await settings.openSettings();
+        document.getElementById('frosted-glass').checked = false;
+        await settings.refreshDesktopBlur();
+        expect(document.getElementById('desktop-blur-row').hidden).toBe(true);
+
+        document.getElementById('frosted-glass').checked = true;
+        await settings.refreshDesktopBlur();
+        expect(document.getElementById('desktop-blur-row').hidden).toBe(false);
+        expect(document.getElementById('desktop-blur-toggle').textContent).toBe(
+          'Turn on blur for the widget'
+        );
+        settings.closeSettings();
+      });
+    });
+
+    describe('the popup hotkey card on Linux', () => {
+      beforeEach(() => {
+        mockElectronAPI.platform = 'linux';
+        // The settings page draws each option in a row of its own.
+        document.getElementById('popup-hotkey-hide-on-release-label').classList.add('form-group');
+        document.body.insertAdjacentHTML(
+          'beforeend',
+          '<p id="popup-hotkey-toggle-mode-help">Press once to show the window and again to hide it, instead of holding.</p>'
+        );
+      });
+
+      afterEach(() => {
+        mockElectronAPI.platform = 'test';
+      });
+
+      test('leaves out the hold-to-show row that cannot work, and says the toggle plainly', async () => {
+        await settings.openSettings();
+        await settings.initializePopupHotkey();
+        expect(document.getElementById('popup-hotkey-hide-on-release-label').hidden).toBe(true);
+        expect(document.getElementById('popup-hotkey-toggle-mode-help').textContent).toBe(
+          'Press once to show the window and again to hide it.'
+        );
+        settings.closeSettings();
+      });
+    });
+  });
 });
