@@ -309,17 +309,25 @@ async function assignHotkeyToEntity(entityId, options = {}) {
       }
       // A saved hotkey is only registered while the switch is on, and the switch is off until the
       // user turns it on. Saying "set" then would promise a shortcut that does nothing.
-      if (state.CONFIG.globalHotkeys.enabled) {
-        showToast(
-          t('Hotkey set for {{name}}', { name: getEntityDisplayName(entity) }),
-          'success',
-          2200
-        );
-      } else {
+      if (!state.CONFIG.globalHotkeys.enabled) {
         showToast(
           t('Hotkey saved. Turn on Entity hotkeys in Settings > Hotkeys to use it.'),
           'warning',
           5000
+        );
+      } else if (result.requiresCompositorBinding) {
+        // On Hyprland the shortcut is only a target until its bind is copied into the Hyprland
+        // config, so say that instead of promising the key works (the popup hotkey does the same).
+        showToast(
+          t('Shortcut target registered. Copy its binding from the Hyprland shortcuts panel.'),
+          'success',
+          5000
+        );
+      } else {
+        showToast(
+          t('Hotkey set for {{name}}', { name: getEntityDisplayName(entity) }),
+          'success',
+          2200
         );
       }
       return { success: true, hotkey, action };

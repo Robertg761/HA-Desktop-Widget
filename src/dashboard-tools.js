@@ -295,7 +295,9 @@ function initializeDashboardTools() {
   });
   websocket.on('message', (message) => {
     if (message.type === 'auth_ok') {
-      if (connection.lastConnectedAt) connection.reconnects += 1;
+      // Only a connection that was lost and came back is a reconnect. Reconnecting on purpose
+      // (new settings) closes the socket without opening an outage, and is not counted.
+      if (connection.lastConnectedAt && connection.outage) connection.reconnects += 1;
       connection.lastConnectedAt = new Date().toISOString();
       if (typeof message.ha_version === 'string') {
         connection.homeAssistantVersion = message.ha_version.slice(0, 32);

@@ -116,9 +116,11 @@ describe('Omarchy bar plugin package', () => {
     );
     expect(launchBody.indexOf('configured !== ""')).toBeGreaterThan(-1);
     expect(launchBody.indexOf('configured !== ""')).toBeLessThan(launchBody.indexOf('savedLaunch'));
-    ['updatedAt', 'connection', 'launch', 'panel', 'bar', 'sections', 'icons'].forEach((field) =>
+    ['connection', 'launch', 'panel', 'bar', 'sections', 'icons', 'omitted'].forEach((field) =>
       expect(qml).toContain(`status.${field}`)
     );
+    // The time of the write is read apart from the tiles, which only change with what they show.
+    expect(qml).toContain('parsed.updatedAt');
   });
 
   // The bar slot is as wide as its text, so a long media title must not push the other widgets
@@ -363,8 +365,8 @@ describe('Omarchy panel keyboard support', () => {
     // Both the first press (which only shows the cursor) and every step scroll to it.
     expect(moveBody.match(/ensureCursorVisible\(\)/g)).toHaveLength(2);
     // Each tile registers itself by position, so the scroll can find where it is drawn.
-    expect(qml).toContain('Component.onCompleted: root.tileItems[tileRoot.flatIndex] = tileRoot');
-    expect(qml).toContain('delete root.tileItems[tileRoot.flatIndex]');
+    expect(qml).toContain('root.tileItems[flatIndex] = tileRoot');
+    expect(qml).toContain('delete root.tileItems[registeredIndex]');
     const scrollBody = qml.slice(
       qml.indexOf('function ensureVisible('),
       qml.indexOf('function ensureCursorVisible()')
@@ -411,6 +413,27 @@ describe('Omarchy tile controls from the keyboard', () => {
   const qml = fs.readFileSync(path.join(pluginDir, 'Widget.qml'), 'utf8');
   const view = qml.slice(qml.indexOf('component ControlsView: Column'));
 
+  it('does nothing from the keyboard while the controls are offline', () => {
+    const moveBody = view.slice(
+      view.indexOf('function move('),
+      view.indexOf('function activate()')
+    );
+    const activateBody = view.slice(
+      view.indexOf('function activate()'),
+      view.indexOf('function nudge(direction)')
+    );
+    // The pointer controls are disabled offline; Enter and the slider arrows must be too, or the
+    // optimistic state shows a change that setControl silently drops.
+    expect(activateBody.indexOf('if (!view.live) return')).toBeGreaterThan(-1);
+    expect(activateBody.indexOf('if (!view.live) return')).toBeLessThan(
+      activateBody.indexOf('pressStop()')
+    );
+    expect(moveBody.indexOf('} else if (!view.live) {')).toBeLessThan(
+      moveBody.indexOf('item.nudge(dx)')
+    );
+    expect(moveBody.indexOf('} else if (!view.live) {')).toBeGreaterThan(-1);
+  });
+
   it('sends the arrows to the controls view, which keeps its place as a row and a column', () => {
     const moveBody = qml.slice(
       qml.indexOf('function moveCursor('),
@@ -421,7 +444,7 @@ describe('Omarchy tile controls from the keyboard', () => {
     // A change rebuilds the buttons, so the place is not an item that would be gone a moment later.
     expect(view).toContain('property int stopRow: -1');
     expect(view).toContain('property int stopCol: 0');
-    expect(view).toContain('onCtlChanged: Qt.callLater(revalidateStop)');
+    expect(view).toContain('onCtlChanged: {');
   });
 
   it('keeps Left, Right and Enter acting on the tile until a control has been selected', () => {
@@ -440,8 +463,8 @@ describe('Omarchy tile controls from the keyboard', () => {
     );
     expect(activateBody).toContain('item.pressStop()');
     // No selection, or a slider: Enter still switches the tile (light, fan) or plays and pauses.
-    expect(activateBody).toContain('root.setControl("power", !ctl.on)');
-    expect(activateBody).toContain('root.setControl("play_pause")');
+    expect(activateBody).toContain('setPower(!shown("power", ctl.on === true))');
+    expect(activateBody).toContain('setPlaying()');
   });
 
   it('lets the keyboard reach every button, swatch and slider the pointer can', () => {
@@ -539,6 +562,7 @@ describe('Omarchy bar settings in shell.json', () => {
       bar: ['sensor.temp'],
       sections: [{ name: '', ids: ['switch.fan'] }],
       all: ['sensor.temp', 'switch.fan'],
+      omitted: 0,
     });
   });
 
@@ -1129,5 +1153,218 @@ describe('Omarchy bar secondary text', () => {
   it('dims an unavailable tile by its icon and name instead of fading its text', () => {
     expect(qml).not.toContain('opacity: tileRoot.available ? 1 : 0.55');
     expect(qml).toContain('iconOpacity: tileRoot.active ? 1 : (tileRoot.available ? 0.72 : 0.45)');
+  });
+});
+
+describe('the plugin as a package of files', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(pluginDir, 'manifest.json'), 'utf8'));
+
+  // The widget re-copies the plugin into the user's Omarchy directory only when the manifest's
+  // version differs from the installed one, so an edit to a file without a new version never
+  // reaches anyone who already has it. Changing a plugin file fails this test until both lines
+  // below are updated together.
+  const PUBLISHED = {
+    version: '1.3.0',
+    sha256: '538357ce703006e24571741ed1997fe9a50bdf382bf961191fe21746ca4f0ade',
+  };
+
+  function pluginHash() {
+    const hash = require('crypto').createHash('sha256');
+    for (const file of PLUGIN_FILES.filter((name) => name !== 'manifest.json').sort()) {
+      // A checkout may convert line endings; the published files are LF.
+      hash.update(file + '\n');
+      hash.update(fs.readFileSync(path.join(pluginDir, file), 'utf8').replace(/\r\n/g, '\n'));
+    }
+    return hash.digest('hex');
+  }
+
+  it('lists exactly the files in the plugin directory', () => {
+    expect(fs.readdirSync(pluginDir).sort()).toEqual([...PLUGIN_FILES].sort());
+  });
+
+  it('changes version whenever a file of it changes', () => {
+    expect({ version: manifest.version, sha256: pluginHash() }).toEqual(PUBLISHED);
+  });
+});
+
+describe('the plugin draws what the widget sends as plain text', () => {
+  const qml = fs.readFileSync(path.join(pluginDir, 'Widget.qml'), 'utf8');
+
+  // A tile name or reading can come from anywhere (a calendar invite, a media title). Qt turns
+  // text that looks like markup into rich text, which loses characters and fetches <img src=...>
+  // from the network even with the panel closed.
+  it('has no Text that could be promoted to rich text', () => {
+    expect(qml).toMatch(/component PlainText: Text \{\s*textFormat: Text\.PlainText\s*\}/);
+    expect(qml.match(/^\s*Text \{/gm)).toBeNull();
+    expect(qml).not.toMatch(/component (?!PlainText)\w+: Text \{/);
+    expect(qml).not.toMatch(/textFormat: Text\.(AutoText|RichText|StyledText|MarkdownText)/);
+  });
+});
+
+describe('the plugin follows the widget as it changes and as it stops', () => {
+  const qml = fs.readFileSync(path.join(pluginDir, 'Widget.qml'), 'utf8');
+
+  it('replaces the status only when something it shows has changed', () => {
+    const apply = qml.slice(qml.indexOf('function applyStatus('), qml.indexOf('onOpenedChanged'));
+    expect(apply).toContain('parsed.updatedAt = 0');
+    expect(apply).toContain('if (signature !== root.statusSignature)');
+    expect(apply.indexOf('root.statusUpdatedAt = updatedAt')).toBeLessThan(
+      apply.indexOf('if (signature !== root.statusSignature)')
+    );
+  });
+
+  it('updates tiles in place and builds them only while the panel is open', () => {
+    // The repeaters are given counts, not the arrays of tiles, so a changed reading does not throw
+    // every tile away.
+    expect(qml).toContain(
+      'model: root.tilesLive && !root.showingControls ? root.sections.length : 0'
+    );
+    expect(qml).toContain('model: sectionColumn.section.tiles.length');
+    expect(qml).toContain('tile: sectionColumn.section.tiles[index] || ({})');
+    expect(qml).not.toMatch(/model: sectionColumn\.modelData\.tiles/);
+    expect(qml).not.toMatch(/model: root\.showingControls \? \[\] : root\.sections/);
+    expect(qml).toContain('onFlatIndexChanged: if (registeredIndex >= 0) register()');
+  });
+
+  it('ages a crashed widget out quickly, and one whose socket dropped faster', () => {
+    expect(qml).toContain('readonly property int staleAfterMs: 90000');
+    expect(qml).toContain('readonly property int socketLostGraceMs: 6000');
+    expect(qml).toContain('statusAge > -clockSlackMs');
+    expect(qml).toContain('&& !socketAbandoned');
+    expect(qml).toMatch(
+      /readonly property bool socketAbandoned: socketLostAt > 0\s*&& statusUpdatedAt <= socketLostAt/
+    );
+    expect(qml).toContain('onSocketConnectedChanged:');
+  });
+
+  it('does not paint "Connecting…" as an error', () => {
+    expect(qml).toContain('root.status.connection === "connecting"');
+  });
+
+  it('says why the controls do nothing, and does not let them be pressed', () => {
+    expect(qml).toContain('readonly property bool live: root.connected && root.socketConnected');
+    expect(qml).toContain("Not connected to Home Assistant. Changes can't be sent right now.");
+    expect(qml).toContain("Can't reach the widget. Changes can't be sent right now.");
+    expect(qml.match(/enabled: view\.live/g).length).toBeGreaterThanOrEqual(5);
+    expect(qml).toContain('kid.enabled !== false');
+  });
+
+  it('shows what was just asked until Home Assistant answers', () => {
+    expect(qml).toContain('function ask(key, value)');
+    expect(qml).toContain('function reconcilePending()');
+    expect(qml).toContain('checked: view.shown("power"');
+    expect(qml).toContain('active: view.shown("mode", view.ctl.mode) === modelData');
+    expect(qml).toContain('var asked = shown("target", ctl.target)');
+    // Heat/cool and auto are different modes and read differently.
+    expect(qml).toContain('heat_cool: "Heat/Cool"');
+  });
+
+  it('shows a thermostat in range mode instead of leaving it blank', () => {
+    expect(qml).toContain('visible: view.kind === "climate" && !view.ctl.canSetTemperature');
+    expect(qml).toContain('view.ctl.targetLow');
+  });
+
+  it('says when tiles were left out', () => {
+    expect(qml).toContain('root.omitted > 0');
+  });
+});
+
+describe('what the widget tells the bar before it has described the tiles', () => {
+  const ids = ['light.hall_light', 'sensor.kitchen_speaker_timers'];
+
+  it('names a tile it has not described from its entity id, or from the name the user gave it', () => {
+    const status = buildOmarchyBarStatus({
+      entities: { panel: ids, bar: [], sections: [] },
+      customNames: { 'light.hall_light': 'Hall' },
+    });
+    expect(status.panel.map((tile) => tile.name)).toEqual(['Hall', 'kitchen speaker timers']);
+  });
+
+  it('draws their placeholder icon rather than a blank space', () => {
+    const status = buildOmarchyBarStatus({ entities: { panel: ids, bar: [], sections: [] } });
+    expect(status.panel[0].icon).toEqual({ kind: 'line', name: 'box' });
+    expect(cleanLineIconSvg(status.icons.box)).not.toBe('');
+  });
+
+  it("prefers the widget's own icon once it sends one", () => {
+    const own = '<svg viewBox="0 0 24 24"><path d="M0 0"/></svg>';
+    const status = buildOmarchyBarStatus({
+      entities: { panel: ids, bar: [], sections: [] },
+      icons: new Map([['box', own]]),
+    });
+    expect(status.icons.box).toBe(own);
+  });
+});
+
+describe('the limits on what the panel lists', () => {
+  const entry = { present: true, entities: null, barEntities: null };
+  const many = (count, prefix = 'light.l') =>
+    Array.from({ length: count }, (_, index) => `${prefix}${index}`);
+
+  it('counts the tiles it leaves out, instead of looking complete', () => {
+    const resolved = resolveOmarchyBarEntities(entry, { favoriteEntities: many(60) });
+    expect(resolved.panel).toHaveLength(48);
+    expect(resolved.omitted).toBe(12);
+  });
+
+  it('counts the tiles on pages past the twelfth', () => {
+    const customTabs = Array.from({ length: 14 }, (_, index) => ({
+      name: `Page ${index}`,
+      entityIds: [`light.page_${index}`],
+    }));
+    const resolved = resolveOmarchyBarEntities(entry, { customTabs });
+    expect(resolved.sections).toHaveLength(12);
+    expect(resolved.omitted).toBe(2);
+  });
+
+  it('counts a long list chosen on the shell.json entry too', () => {
+    const text = JSON.stringify({
+      bar: { layout: { right: [{ id: OMARCHY_BAR_PLUGIN_ID, entities: many(55) }] } },
+    });
+    const read = readOmarchyBarEntry(text);
+    expect(read.entities).toHaveLength(48);
+    expect(resolveOmarchyBarEntities(read, {}).omitted).toBe(7);
+  });
+
+  it('counts a tile on several pages once', () => {
+    const resolved = resolveOmarchyBarEntities(entry, {
+      customTabs: [
+        { name: 'A', entityIds: many(30) },
+        { name: 'B', entityIds: many(30) },
+      ],
+    });
+    expect(resolved.omitted).toBe(0);
+  });
+
+  it('tells the panel how many, only when some are missing', () => {
+    const none = buildOmarchyBarStatus({ entities: { panel: [], bar: [], sections: [] } });
+    expect(none.omitted).toBe(0);
+    const some = buildOmarchyBarStatus({
+      entities: { panel: [], bar: [], sections: [], omitted: 12 },
+    });
+    expect(some.omitted).toBe(12);
+  });
+
+  it("carries a range thermostat's two setpoints to the panel", () => {
+    const tile = cleanOmarchyBarTile('climate.hall', {
+      name: 'Hall',
+      available: true,
+      controls: true,
+      controlState: {
+        kind: 'climate',
+        mode: 'heat_cool',
+        current: 21.5,
+        target: null,
+        targetLow: 19,
+        targetHigh: 24,
+        min: 7,
+        max: 35,
+        step: 0.5,
+        canSetTemperature: false,
+        modes: ['heat_cool'],
+      },
+    });
+    expect(tile.controlState).toMatchObject({ targetLow: 19, targetHigh: 24, target: null });
+    expect(tile.controlState.canSetTemperature).toBe(false);
   });
 });

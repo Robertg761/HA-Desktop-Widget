@@ -6,8 +6,9 @@ const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'ut
 const start = mainSource.indexOf('function describeOperatingSystem');
 const describeSource = mainSource.slice(start, mainSource.indexOf('\n}\n', start) + 3);
 
-function describeWith({ platform, release, osRelease }) {
+function describeWith({ platform, release, osRelease, systemVersion }) {
   const context = {
+    process: { getSystemVersion: () => systemVersion },
     os: {
       platform: () => platform,
       release: () => release,
@@ -48,9 +49,31 @@ describe('operating system details for the diagnostics report', () => {
     });
   });
 
-  it('reports other systems by platform and release only', () => {
+  it('names Windows 11 by its build, since it still reports kernel 10.0', () => {
     const { info, context } = describeWith({ platform: 'win32', release: '10.0.26100' });
-    expect(info).toEqual({ platform: 'win32', release: '10.0.26100' });
+    expect(info).toEqual({ platform: 'win32', release: '10.0.26100', distro: 'Windows 11' });
     expect(context.fs.readFileSync).not.toHaveBeenCalled();
+  });
+
+  it('names Windows 10 for builds before 22000', () => {
+    expect(describeWith({ platform: 'win32', release: '10.0.19045' }).info.distro).toBe(
+      'Windows 10'
+    );
+  });
+
+  it('names macOS by its product version, not the Darwin kernel', () => {
+    const { info } = describeWith({
+      platform: 'darwin',
+      release: '25.0.0',
+      systemVersion: '26.0.1',
+    });
+    expect(info).toEqual({ platform: 'darwin', release: '25.0.0', distro: 'macOS 26.0.1' });
+  });
+
+  it('reports other systems by platform and release only', () => {
+    expect(describeWith({ platform: 'freebsd', release: '14.1' }).info).toEqual({
+      platform: 'freebsd',
+      release: '14.1',
+    });
   });
 });

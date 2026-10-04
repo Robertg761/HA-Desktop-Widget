@@ -151,13 +151,13 @@ Ref: MP-17
 
 In desktop-layer mode (Hyprland, Sway, niri, river) skip steps 2 to 4; the Hyprland and Sway sections cover moving there. Sway, niri and river cannot move the widget by dragging, so on them only click the buttons in step 1.
 
-1. Drag the widget by the top edge and the bottom edge of its header (the strip with the title, the connection dot and the buttons) and by the strip to the left of the title. Then click Settings, Minimize and, if it is shown, the notification bell once each.
+1. Drag the widget by the top edge and the bottom edge of its header (the strip with the title, the connection dot and the buttons) and by the strip to the left of the title. Then click Settings, Minimize and, if it is shown, the notification bell once each. Open Settings in a short window so the dialog reaches the top edge, and click everything in its title row.
 2. Double-click the header.
 3. Drag the widget against a screen edge so the system tries to snap or tile it (Windows: drag to the top or a side; GNOME and KDE: drag to an edge, or press Super or Meta + Up). Quit from the tray (this needs a tray icon) and start the app again.
 4. Drag a window corner inward as far as it goes, then far past the header.
 5. Close the widget three ways: the X at the right end of the header; Alt+F4 (Windows, Linux) or Cmd+W (macOS); the Minimize button. After each, bring it back from the tray, the menu bar or the popup hotkey. Each time, note whether the app is still running and what the X's tooltip says.
 
-Expected: The whole header strip moves the window and its buttons still click. Double-clicking or snapping does not turn the widget into a maximized or full-screen slab, and after a restart it has the size you chose. The window stops shrinking at a size where Settings, Minimize and the X are still visible. The X, Alt+F4 and Cmd+W all hide the widget to the tray: the app keeps running and its hotkeys keep working, and the X's tooltip says Hide. Quit in the tray menu ends the app. After the X, Alt+F4 or Minimize there is always a visible way back (on a desktop without a tray, see GNOME-2).
+Expected: The whole header strip moves the window and its buttons still click, and every control of a dialog that reaches the strip clicks too, instead of the click being taken as the start of a window drag. Double-clicking or snapping does not turn the widget into a maximized or full-screen slab, and after a restart it has the size you chose. The window stops shrinking at a size where Settings, Minimize and the X are still visible. The X, Alt+F4 and Cmd+W all hide the widget to the tray: the app keeps running and its hotkeys keep working, and the X's tooltip says Hide. Quit in the tray menu ends the app. After the X, Alt+F4 or Minimize there is always a visible way back (on a desktop without a tray, see GNOME-2).
 
 Capture: A recording of steps 1, 3 and 4, and the widget size before and after restart.
 
@@ -174,7 +174,7 @@ On a desktop layer (Hyprland, Sway, niri, river) Always on Top is greyed out and
 3. Use each entry: Show/Hide, Always on Top, Reset Position, Open Settings, Check for Updates, Report Issue. Leave Quit for last. DevTools and Reload are for developers.
 4. Windows and Linux: left-click the icon once.
 
-Expected: The tooltip names the app. Show/Hide shows or hides the widget. Always on Top toggles and its check mark follows the setting (not on a desktop layer; see the note above). Reset Position puts the widget fully on a connected screen at its normal size. Open Settings brings the widget forward with Settings open. Check for Updates gives an answer you can see (see UPD-1). Quit ends the app and leaves no process running. A left-click toggles the widget (on a desktop layer it raises or lowers it).
+Expected: The tooltip names the app. Show/Hide shows or hides the widget. Always on Top toggles and its check mark follows the setting (not on a desktop layer; see the note above). Reset Position puts the widget fully on a connected screen, 100 px in from the main screen's top-left corner, at the size you gave it (smaller only if the screen cannot hold it). Open Settings brings the widget forward with Settings open. Check for Updates gives an answer you can see (see UPD-1). Quit ends the app and leaves no process running. A left-click toggles the widget (on a desktop layer it raises or lowers it).
 
 Capture: A screenshot of the menu and tooltip, and the position and size after Reset Position.
 
@@ -793,9 +793,9 @@ Ref: MP-37
 Needs: A native Wayland session on Plasma. Start the app with `HA_WIDGET_LINUX_NATIVE_WAYLAND=1`; the raise path is only used there.
 
 1. Set a popup hotkey. Hide the widget behind another window and raise it with the hotkey a few times.
-2. Run `ls -l /tmp/ha-widget-raise-*.js`.
+2. Run `ls -l "$XDG_RUNTIME_DIR"/ha-widget-raise-*.js /tmp/ha-widget-raise-*.js` while the widget is raising, and again afterwards.
 
-Expected: No `ha-widget-raise-*.js` script is left in `/tmp` after the widget raises.
+Expected: No `ha-widget-raise-*.js` script is left in `/tmp` or in the runtime directory after the widget raises. While one exists it is in `$XDG_RUNTIME_DIR` (not `/tmp`), has a random name and is readable by you only (`-rw-------`).
 
 Capture: The listing.
 
@@ -822,9 +822,9 @@ Ubuntu 24.04 and later restrict unprivileged user namespaces, which affects the 
 2. Double-click it, then run it from a terminal.
 3. Run `cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns`.
 
-Expected: The widget window appears. If it cannot start, the failure is explained to the user, not a silent exit.
+Expected: The widget window appears. With the value from step 3 at 1, a double-clicked AppImage cannot start ("No usable sandbox"): that happens before the app's own code runs, so it cannot explain itself. The `.deb` is not affected, and [Running the AppImage on systems that block the Chromium sandbox](../linux-appimage.md) describes the ways around it. After the AppImage has been started once with `--no-sandbox`, the launcher it writes in `~/.local/share/applications` carries the flag, so starting it from the app grid works.
 
-Capture: The terminal output, in particular any "No usable sandbox" message, and the value from step 3.
+Capture: The terminal output, in particular any "No usable sandbox" message, the value from step 3, and the `Exec=` line of `~/.local/share/applications/com.github.robertg761.hadesktopwidget.desktop` if it exists.
 
 Ref: MP-06
 
@@ -930,7 +930,7 @@ Ref: SM3-09, SM3-32, SM3-40, SM1-30, CSSC1-32
 
 1. Run `hyprctl getoption decoration:blur:enabled` and note it.
 2. Settings > Appearance > Window Effects: use the button to turn blur on for the widget (labeled Turn on blur for the widget), then press Cancel in Settings.
-3. Run the `hyprctl` command again. Then turn it off (Turn off widget blur) and Save.
+3. Run the `hyprctl` command again. Then turn it off (Turn off blur for the widget) and Save.
 
 Expected: The page says the blur change takes effect immediately, because it changes the compositor without waiting for Save, and the two buttons are worded as a pair. The button is still reachable when Frosted glass background is off, so a blur you turned on can be turned off again. It is clear that Cancel does not undo the change.
 
@@ -1155,7 +1155,7 @@ Needs: Two monitors with different scale factors (for example 100% and 150%). Ho
 
 Per-monitor pin positions are a Hyprland-only feature on desktop layers. On Sway, niri and river, skip the pin parts of steps 1 and 5 and of the expected result; SWAY-1 covers where pins sit there.
 
-Expected: After step 1 everything is where you left it, at the right size on each scale. After step 2 the widget and the pins move to the remaining monitor and are fully visible. In step 3 the widget appears on the remaining monitor. Reset Position puts it fully on a connected monitor at its normal size. In step 5 the pins appear on monitor 1 while monitor 2 is missing, and go back to monitor 2, where you left them, once it is connected again (not on Sway, niri or river; see the note above). Move to Monitor lists your monitors and restarts the widget on the one you pick.
+Expected: After step 1 everything is where you left it, at the right size on each scale. After step 2 the widget and the pins move to the remaining monitor and are fully visible. In step 3 the widget appears on the remaining monitor. Reset Position puts it fully on a connected monitor, at the size you gave it (smaller only if the monitor cannot hold it). In step 5 the pins appear on monitor 1 while monitor 2 is missing, and go back to monitor 2, where you left them, once it is connected again (not on Sway, niri or river; see the note above). Move to Monitor lists your monitors and restarts the widget on the one you pick.
 
 Capture: Screenshots at each step and your monitor layout.
 

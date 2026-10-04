@@ -8,7 +8,9 @@ name: Visual snapshots
 #
 # windows-latest is Windows Server 2022. windows-11-arm is the only hosted Windows 11 image (free
 # for public repositories; ARM64 rather than x64), and its captures, in
-# visual-snapshots-Windows-11-arm, show the Windows 11 shell: rounded corners, taskbar, fonts.
+# visual-snapshots-Windows-11-arm, show the Windows 11 shell: taskbar, fonts. The widget's own
+# corners are not what they show: the window is a transparent frameless one, and whether Windows
+# rounds or shades it needs a real machine (docs/testing/PLATFORM-TEST-PLAN-4.0.md, WIN11-3).
 # Neither draws acrylic: hosted runners have no GPU, so both show the solid fallback even with
 # transparency effects on. Checking acrylic still needs a real Windows 11 machine.
 

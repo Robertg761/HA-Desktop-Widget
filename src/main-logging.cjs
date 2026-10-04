@@ -48,6 +48,9 @@ function configureMainLogging(log, options = {}) {
 
   if (log?.errorHandler && typeof log.errorHandler.startCatching === 'function') {
     log.errorHandler.startCatching({
+      // The default is a blocking native error box with a stack trace, which freezes the main
+      // process (saves, IPC) until it is dismissed. The error is already logged.
+      showDialog: false,
       onError({ error }) {
         if (isBrokenPipeError(error)) return false;
         return undefined;

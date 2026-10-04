@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.60",
+  "version": "1.2.61",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1870,6 +1870,16 @@
     "Click to configure weather": "Cliquez pour configurer la météo",
     "Activated {{name}}": "{{name}} exécuté",
     "Range {{min}} to {{max}}, step {{step}}": "Plage de {{min}} à {{max}}, pas de {{step}}",
-    "Use the command palette to control {{name}}": "Utilisez la palette de commandes pour contrôler {{name}}"
+    "Use the command palette to control {{name}}": "Utilisez la palette de commandes pour contrôler {{name}}",
+    "The Omarchy palette sets these colors while Follow Omarchy theme is on.": "La palette Omarchy définit ces couleurs tant que « Suivre le thème Omarchy » est activé.",
+    "Tints the window so it stays readable while transparent. Blur depends on your desktop.": "Teinte la fenêtre pour qu'elle reste lisible en mode transparent. Le flou dépend de votre bureau.",
+    "After setting a hotkey, copy its binding from the Hyprland shortcuts panel above.": "Après avoir défini un raccourci, copiez-le depuis le panneau « Raccourcis Hyprland » ci-dessus.",
+    "Press once to show the window and again to hide it.": "Appuyez une fois pour afficher la fenêtre et une seconde fois pour la masquer.",
+    "Set a popup hotkey or turn on entity hotkeys below, then copy the bindings here.": "Définissez un raccourci de la fenêtre contextuelle ou activez les raccourcis d'entité ci-dessous, puis copiez les raccourcis ici.",
+    "No shortcuts are set yet.": "Aucun raccourci défini pour l'instant.",
+    "Bind a key in your window manager to run ha-desktop-widget --toggle, which shows or hides the widget.": "Associez une touche dans votre gestionnaire de fenêtres à ha-desktop-widget --toggle, qui affiche ou masque le widget.",
+    "Turn off blur for the widget": "Désactiver le flou pour le widget",
+    "Blur changes take effect immediately, without Save.": "Les modifications du flou s'appliquent immédiatement, sans enregistrer.",
+    "Shortcut status updated.": "Statut des raccourcis mis à jour."
   }
 }
