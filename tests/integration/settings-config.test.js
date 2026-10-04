@@ -7051,6 +7051,16 @@ describe('Settings + Config Integration', () => {
         expect(preset.disabled).toBe(true);
       });
 
+      test('marks the field while it listens, so the stylesheet sets its instruction as text', async () => {
+        const { input } = await open();
+        expect(input.dataset.recording).toBe('true');
+
+        press(document.body, 'Escape');
+        await tick();
+
+        expect(input.hasAttribute('data-recording')).toBe(false);
+      });
+
       test('Escape ends the recording instead of being offered as the hotkey', async () => {
         const { input, setBtn, preset } = await open();
         mockElectronAPI.registerPopupHotkey.mockClear();

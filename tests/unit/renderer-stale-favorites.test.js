@@ -372,6 +372,85 @@ describe('Renderer stale favorite state handling', () => {
       expect(keptFavorite()).toEqual(reported);
     });
 
+    const reportFavorite = (reported) =>
+      mockWebsocket.emit('message', {
+        type: 'event',
+        event: {
+          event_type: 'state_changed',
+          data: { entity_id: favoriteEntity.entity_id, new_state: reported },
+        },
+      });
+
+    it('gives it a fresh grace at a later reconnect once Home Assistant has reported it', async () => {
+      await loadRenderer();
+      receiveStates([favoriteEntity, otherEntity]);
+      now += 60 * 1000;
+      receiveStates([otherEntity]);
+
+      // The reconnect left it out, and a live event brought it back.
+      const reported = { ...favoriteEntity, state: 'off' };
+      reportFavorite(reported);
+      await jest.advanceTimersByTimeAsync(2 * 60 * 1000);
+
+      // A second reconnect omits it again, long after the first one did. Counting from the first
+      // would put it past the 15 minutes at once and drop a favorite that has been live since.
+      now += STALE_PRESERVE_MS + 1;
+      receiveStates([otherEntity]);
+
+      expect(keptFavorite()).toEqual(reported);
+    });
+
+    it('forgets the first omission as soon as the live event arrives, not at the minute check', async () => {
+      await loadRenderer();
+      receiveStates([favoriteEntity, otherEntity]);
+      now += 60 * 1000;
+      receiveStates([otherEntity]);
+
+      // A connection that keeps dropping reconnects before the minute is up, so the check that
+      // looks at the record never gets to run between two reconnects.
+      const reported = { ...favoriteEntity, state: 'off' };
+      reportFavorite(reported);
+      await jest.advanceTimersByTimeAsync(1000);
+      now += STALE_PRESERVE_MS + 1;
+      receiveStates([otherEntity]);
+
+      expect(keptFavorite()).toEqual(reported);
+    });
+
+    it('stops tracking a favorite whose state was replaced by anything else before the check', async () => {
+      await loadRenderer();
+      receiveStates([favoriteEntity, otherEntity]);
+      now += 60 * 1000;
+      receiveStates([otherEntity]);
+
+      // Not a state_changed event (a seek the widget applied to the player, say), but the check
+      // finds the object is no longer the one it kept and must not hold the old omission against it.
+      const replaced = { ...favoriteEntity, state: 'off' };
+      mockState.setEntityState(replaced);
+      await jest.advanceTimersByTimeAsync(61 * 1000);
+      expect(keptFavorite()).toEqual(replaced);
+
+      now += STALE_PRESERVE_MS + 1;
+      receiveStates([otherEntity]);
+
+      expect(keptFavorite()).toEqual(replaced);
+    });
+
+    it('does not take the state it marks unavailable itself for news from Home Assistant', async () => {
+      await loadRenderer();
+      receiveStates([favoriteEntity, otherEntity]);
+      now += 60 * 1000;
+      receiveStates([otherEntity]);
+      await jest.advanceTimersByTimeAsync(61 * 1000);
+      expect(keptFavorite().state).toBe('unavailable');
+
+      // Still never reported by Home Assistant, so the 15 minutes run from the first omission.
+      now += STALE_PRESERVE_MS + 1;
+      receiveStates([otherEntity]);
+
+      expect(mockState.STATES).toEqual({ [otherEntity.entity_id]: otherEntity });
+    });
+
     it('starts the minute again at the next reconnect', async () => {
       await loadRenderer();
       receiveStates([favoriteEntity, otherEntity]);

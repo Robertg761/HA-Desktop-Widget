@@ -3,6 +3,7 @@ import { t } from './i18n.js';
 import { stripSummaryPrefix } from './connection-status.js';
 import { setIconContent } from './icons.js';
 import { setLineIconContent } from './entity-icons.js';
+import { prefersReducedMotion } from './motion.js';
 import windowGlass from './window-glass.cjs';
 
 const focusTrapHandlers = new WeakMap();
@@ -730,21 +731,6 @@ function isFrostedGlassAvailable(config) {
 
 function isLightThemeActive() {
   return document.body?.classList.contains('theme-light');
-}
-
-/**
- * Report whether the host asked for reduced motion.
- *
- * Exit animations are skipped entirely when this is true so dialogs and toasts disappear at once
- * instead of easing out.
- * @returns {boolean} True when `prefers-reduced-motion: reduce` matches.
- */
-function prefersReducedMotion() {
-  try {
-    return !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-  } catch {
-    return false;
-  }
 }
 
 /**

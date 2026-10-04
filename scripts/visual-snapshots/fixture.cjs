@@ -801,6 +801,23 @@ function buildLandingLights(now = new Date()) {
   });
 }
 
+// A light and a cover Home Assistant cannot reach, which keep only what it reports for an entity
+// that is gone. Only the scenes that open their pop-ups bring them.
+function buildUnavailableDevices(now = new Date()) {
+  const entity = stateBuilder(now);
+  return [
+    entity('light.hall', 'unavailable', {
+      friendly_name: 'Hall light',
+      supported_color_modes: ['brightness'],
+    }),
+    entity('cover.side_gate', 'unavailable', {
+      friendly_name: 'Side gate',
+      device_class: 'gate',
+      supported_features: 15,
+    }),
+  ];
+}
+
 /** The services the fixture's domains offer, as get_services reports them. */
 function buildServices() {
   const domain = (...names) =>
@@ -957,4 +974,5 @@ module.exports = {
   buildServices,
   buildStates,
   buildSubscriptionEvents,
+  buildUnavailableDevices,
 };

@@ -224,6 +224,9 @@ html {
   --warning-text: var(--warning);
   --error-text: #ff8a80;
   --danger-text: var(--error-text);
+  /* The two states of the connection: the dot in the header and the one in the diagnostics dialog. */
+  --connection-ok: #4ade80;
+  --connection-bad: var(--error);
 
   /* Surfaces */
   --surface-1: rgba(20, 24, 32, 0.8);
@@ -395,6 +398,15 @@ html {
   --radius-full: 9999px;
 
   /* ============================================
+     DIALOG WIDTH
+     ============================================ */
+
+  /* A dialog that shows a thing's details or a short form (entity details, the media player, Add
+     page, diagnostics, Support). Most of them were 420 to 460px in the default 500px window,
+     depending on which cap their own rule lost to. */
+  --dialog-width: min(450px, 90vw);
+
+  /* ============================================
      Z-INDEX SCALE
      ============================================ */
 
@@ -501,6 +513,9 @@ body {
   --warning-text: #8a5300;
   --error-text: #b71c1c;
   --danger-text: #b71c1c;
+  /* The pastel dot colours are 1.7:1 and 2.2:1 on the light header; these are past 3:1 there. */
+  --connection-ok: #15803d;
+  --connection-bad: var(--error-text);
   --lit-light: #b36a00;
   --lit-light-rgb: 179, 106, 0;
 
@@ -717,30 +732,6 @@ body.frosted-glass .widget-content {
   background: var(--panel-veil-layer);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-}
-
-body.linux-performance-mode,
-body.linux-performance-mode .widget-header,
-body.linux-performance-mode .widget-content,
-body.linux-performance-mode .desktop-pin-shell,
-body.linux-performance-mode .loading-overlay,
-body.linux-performance-mode .status-card,
-body.linux-performance-mode .media-tile,
-body.linux-performance-mode .control-item,
-body.linux-performance-mode .btn,
-body.linux-performance-mode .close-btn,
-body.linux-performance-mode .form-group input,
-body.linux-performance-mode .form-group select,
-body.linux-performance-mode .form-group textarea,
-body.linux-performance-mode .desktop-pin-panel-button,
-body.linux-performance-mode .desktop-pin-power,
-body.linux-performance-mode .desktop-pin-control,
-body.linux-performance-mode .desktop-pin-action-primary,
-body.linux-performance-mode .desktop-pin-quick-toggle,
-body.linux-performance-mode .remove-btn,
-body.linux-performance-mode .rename-btn {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
 }
 
 body.linux-performance-mode {
@@ -970,10 +961,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content .control-item {
   cursor: move;
 }
 
-body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-actions {
-  display: none;
-}
-
 /* The corner marks that start a resize sit over the first letter of a name, so the header steps in
    while the pin is edited. */
 body.desktop-pin-mode.desktop-pin-edit-mode
@@ -1057,15 +1044,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
     .desktop-pin-placement-notice {
     display: none;
   }
-}
-
-.desktop-pin-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  -webkit-app-region: no-drag;
-  flex-wrap: wrap;
-  justify-content: flex-end;
 }
 
 .desktop-pin-action {
@@ -1621,7 +1599,8 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-preset {
-  min-height: 20px;
+  /* 24px, the least a pointer is asked to hit (the compact layout's presets are the same). */
+  min-height: 24px;
   font-size: var(--font-size-2xs);
   border-radius: var(--radius-md);
 }
@@ -3072,7 +3051,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 /* Status dot leads the title, with a soft halo in its own colour. */
 .connection-indicator {
-  --indicator-color: var(--error);
+  --indicator-color: var(--connection-bad);
   position: relative;
   order: -1;
   width: 8px;
@@ -3102,7 +3081,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .connection-indicator.connected {
-  --indicator-color: #4ade80;
+  --indicator-color: var(--connection-ok);
   animation: pulseIndicator 3s ease-in-out 2;
 }
 
@@ -3113,15 +3092,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
     inset 0 0 0 2px var(--indicator-color),
     0 0 0 3px color-mix(in srgb, var(--indicator-color) 18%, transparent),
     0 0 10px color-mix(in srgb, var(--indicator-color) 50%, transparent);
-}
-
-/* The pastel dot colours are 1.7:1 and 2.2:1 on the light header; these are past 3:1 there. */
-body.theme-light .connection-indicator {
-  --indicator-color: var(--error-text);
-}
-
-body.theme-light .connection-indicator.connected {
-  --indicator-color: #15803d;
 }
 
 /* The dot is 8px, but it is a button (it opens the connection details), so its target reaches 24px. */
@@ -3311,16 +3281,51 @@ body.first-run-active #settings-btn {
   color: var(--error-text);
 }
 
+/* The header and the content share the window, the content taking what the header leaves. It was
+   sized as 100vh less a hard-coded 40px under a header that is 41px, which left the page a pixel
+   taller than the window: focusing the last tile scrolled it by that pixel and clipped the header's
+   top edge, and the constant drifted with the header's own height. Everything else the body holds
+   is fixed or hidden. */
+body:not(.desktop-pin-mode) {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+body:not(.desktop-pin-mode) .widget-header {
+  flex: none;
+}
+
 /* Main content */
 .widget-content {
   padding: 12px 14px 14px;
-  height: calc(100vh - 40px);
+  /* The scrollbar gutter is always reserved, so a page that scrolls and one that does not are the
+     same width, and tiles do not shift sideways when switching between them. The end padding gives
+     the gutter back: both margins stay 14px when there is no scrollbar, and the thumb sits in the
+     margin when there is. That holds on macOS too: the scrollbar styled near the end of this file
+     replaces its overlay scrollbar with a 9px one that takes room in the layout, so the gutter is
+     really reserved there and must be given back like anywhere else. */
+  --content-gutter: 9px;
+  padding-inline-end: max(0px, calc(14px - var(--content-gutter)));
+  scrollbar-gutter: stable;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   background: var(--glass-elevated);
   backdrop-filter: blur(var(--blur-xl)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
   position: relative;
+}
+
+/* Forced colours draws the system's own scrollbar instead of the 9px one above (12px on Linux, wider
+   on Windows), so a gutter reserved for the 9px one would leave the right margin wider than the
+   left. There the gutter is held only while a scrollbar shows, as it was. */
+@media (forced-colors: active) {
+  .widget-content {
+    --content-gutter: 0px;
+    scrollbar-gutter: auto;
+  }
 }
 
 body.first-run-active .widget-content {
@@ -3536,11 +3541,6 @@ body.first-run-active .widget-content > * {
   border-radius: var(--radius-full);
   position: relative;
   min-width: 36px;
-  transition: height var(--transition-base);
-}
-
-.media-tile-seek-bar:hover {
-  height: 5px;
 }
 
 .media-tile-seek-fill {
@@ -3550,27 +3550,6 @@ body.first-run-active .widget-content > * {
   border-radius: var(--radius-full);
   box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.5);
   position: relative;
-}
-
-.media-tile-seek-fill::after {
-  content: '';
-  position: absolute;
-  right: -4px;
-  top: 50%;
-  transform: translateY(-50%) scale(0);
-  width: 8px;
-  height: 8px;
-  background: var(--text-primary);
-  border-radius: 50%;
-  box-shadow:
-    0 0 8px var(--accent),
-    var(--shadow-sm);
-  transition: transform var(--transition-base);
-  pointer-events: none;
-}
-
-.media-tile-seek-bar:hover .media-tile-seek-fill::after {
-  transform: translateY(-50%) scale(1);
 }
 
 .media-tile-controls {
@@ -4840,10 +4819,16 @@ body.theme-light:not(.high-contrast) .weather-glyph {
   font-variant-numeric: tabular-nums;
 }
 
+/* The wind glyph is three strokes 4 units apart in a 24-unit box. At 12px on a 1x display they
+   are 0.9px lines 2px apart and ran together into a blob; 14px with a slightly heavier stroke keeps
+   them apart, and full strength stops the droplet from fading to 3:1. */
 .detail-icon {
   display: flex;
-  font-size: var(--font-size-sm);
-  opacity: 0.85;
+  font-size: var(--font-size-base);
+}
+
+.detail-icon .entity-line-icon {
+  stroke-width: 2;
 }
 
 .detail-value {
@@ -5504,7 +5489,9 @@ body.theme-light:not(.high-contrast)
   font-weight: 600;
 }
 
-.brightness-control-heading span:last-child {
+/* The value beside a heading ('4250K' after 'Color temperature'). The 'Color' heading has a single
+   span, which :last-child matched too, and drew the label itself in the accent. */
+.brightness-control-heading span + span {
   color: var(--accent-text);
   font-variant-numeric: tabular-nums;
 }
@@ -5544,8 +5531,10 @@ body.theme-light:not(.high-contrast)
 }
 
 .light-color-swatch {
-  min-width: 28px;
+  /* A circle: a grid cell stretches the swatch to the column's width, which made it an oval. */
+  width: 28px;
   height: 28px;
+  justify-self: center;
   border: 2px solid var(--border-color);
   border-radius: 50%;
   background: var(--swatch-color);
@@ -5767,16 +5756,19 @@ body.theme-light:not(.high-contrast)
   font-weight: 500;
 }
 
-.climate-mode-buttons {
+/* The HVAC modes and the fan and preset options lay out alike: a grid, where a short last row
+   leaves empty cells. The options were a wrapping flex row, which stretched a lone last chip across
+   the whole width. */
+.climate-mode-buttons,
+.climate-option-buttons {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
   gap: var(--space-2);
 }
 
-.climate-option-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
+/* Four chips make two rows of two, not three and a lone one. */
+:is(.climate-mode-buttons, .climate-option-buttons):has(> :nth-child(4):last-child) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .climate-mode-btn,
@@ -5802,7 +5794,6 @@ body.theme-light:not(.high-contrast)
 .climate-fan-mode-btn,
 .climate-preset-mode-btn {
   min-height: 36px;
-  flex: 1 1 86px;
   font-size: var(--font-size-sm);
   font-weight: 600;
 }
@@ -5839,7 +5830,7 @@ body.theme-light:not(.high-contrast)
 
 .climate-mode-label {
   font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-weight: var(--font-weight-semibold);
 }
 
 .climate-modal {
@@ -6385,16 +6376,23 @@ body.opaque-panels.active-tile-glow
   border-style: dashed;
 }
 
-/* Dimmed by colour rather than opacity, so the name and "Unavailable" stay readable (4.5:1+). */
-#quick-controls .control-item[data-unavailable='true'] > .control-icon {
+/* Dimmed by colour rather than opacity, so the name and "Unavailable" stay readable (4.5:1+). A
+   primary card dims the same way (it has no edge of its own to dash). */
+:is(#quick-controls, .status-card.primary-entity-card)
+  .control-item[data-unavailable='true']
+  > .control-icon {
   opacity: 0.55;
 }
 
-#quick-controls .control-item[data-unavailable='true'] .control-name {
+:is(#quick-controls, .status-card.primary-entity-card)
+  .control-item[data-unavailable='true']
+  .control-name {
   color: var(--text-dim);
 }
 
-#quick-controls .control-item[data-unavailable='true'] .control-state {
+:is(#quick-controls, .status-card.primary-entity-card)
+  .control-item[data-unavailable='true']
+  .control-state {
   color: var(--text-faint);
 }
 
@@ -7523,7 +7521,7 @@ body.theme-light:not(.high-contrast)
   background: var(--surface-2);
   border: 1px solid var(--border-color);
   color: var(--text-secondary);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -8162,12 +8160,14 @@ body.theme-light:not(.high-contrast)
 }
 
 .entity-detail-modal-content {
-  width: min(520px, 92vw);
+  width: var(--dialog-width);
+  max-width: var(--dialog-width);
 }
 
 .entity-detail-empty {
   padding: 16px;
   color: var(--text-secondary);
+  font-size: var(--font-size-base);
   text-align: center;
 }
 
@@ -8302,10 +8302,13 @@ body.theme-light:not(.high-contrast)
   flex-shrink: 0;
 }
 
+/* The window and its dialogs inherit 16px, which is the dialog title's size, so 'Milk' read as big as
+   'Shopping list' and bigger than the 14px Add item field above it. */
 .todo-items-list,
 .calendar-events-list {
   display: grid;
   gap: 8px;
+  font-size: var(--font-size-base);
 }
 
 /* A list being read again keeps its rows on screen, dimmed, until the new ones replace them. This is
@@ -8395,9 +8398,26 @@ body.theme-light:not(.high-contrast)
   white-space: pre-line;
 }
 
+/* The window cannot be selected (a drag would select tiles), but a meeting link, a phone number or
+   an address in an event is meant to be copied. */
+.calendar-event-summary,
+.calendar-event-time,
+.calendar-event-location,
+.calendar-event-description {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
 /* Form elements */
 .form-group {
   margin-bottom: var(--space-5);
+}
+
+/* The last field of a dialog needs no margin of its own: the body's padding already closes the
+   dialog, and the two together left 32px under it against 16px above the first one. */
+.modal-body > .form-group:last-child {
+  margin-bottom: 0;
 }
 
 /* A group of controls with no single field to point a label at is named by a .form-label. */
@@ -8728,7 +8748,10 @@ body.theme-light:not(.high-contrast)
 /* Accent theme picker */
 .accent-theme-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
+  /* The ten presets make two rows of five; as many 52px cells as fit left six and four at the
+     default width (seven and three, or eight and two, at others). Custom colours wrap in fives. */
+  grid-template-columns: repeat(5, minmax(0, 52px));
+  justify-content: space-between;
   gap: var(--space-3);
   margin-top: var(--space-3);
 }
@@ -9098,8 +9121,7 @@ body.theme-light:not(.high-contrast)
 }
 
 /* Explicitly keep key accent actions on the same visual recipe. */
-#save-settings.btn-primary,
-#save-custom-color-btn.btn-primary {
+#save-settings.btn-primary {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   box-shadow: none;
@@ -9397,6 +9419,24 @@ body.theme-light:not(.high-contrast)
   font-weight: var(--font-weight-medium);
 }
 
+/* The URL and Authorize steps can say something under their text (a rejected address, the pairing's
+   progress). The card is centred, so a line that appeared made it taller and moved the buttons by
+   half its height under the pointer. These two steps keep room for one line whether or not there is
+   one to show; a message of one line, which is nearly every one, moves nothing. */
+.first-run-content:has(.first-run-label, .first-run-security-note) + .first-run-status {
+  min-height: 1.4em;
+}
+
+.first-run-content:has(.first-run-label, .first-run-security-note)
+  + .first-run-status.connection-status-empty {
+  position: static;
+  width: auto;
+  height: auto;
+  margin-top: var(--space-3);
+  overflow: visible;
+  clip-path: none;
+}
+
 .first-run-actions {
   display: flex;
   justify-content: flex-end;
@@ -9531,6 +9571,8 @@ body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
 /* An explicit line height: "normal" takes it from the font, and the Arabic, Hindi and Chinese
    names fall back to fonts with different metrics, so the rows were three different heights. */
 .language-pack-name {
+  /* A pack's name sits under the 14px disclosure that lists it; it inherited the dialog's 16px. */
+  font-size: var(--font-size-base);
   font-weight: 600;
   line-height: 1.3;
 }
@@ -9836,8 +9878,9 @@ body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
 
 /* Scrollbar styling. The thumb is the text colour at half strength (a hairline border colour was
    about 1.3:1 against the panel). It still draws 5px, but inside a 9px scrollbar (10px in menus),
-   so there is something to grab. The scrollbar takes layout space on Windows and Linux, so a pane
-   that scrolls is 4px narrower than it was and a few long help paragraphs wrap one line more. */
+   so there is something to grab. Styling the scrollbar turns off macOS's overlay scrollbars as well,
+   so on every platform it takes layout space: a pane that scrolls is 4px narrower than it was and a
+   few long help paragraphs wrap one line more. .widget-content's gutter arithmetic relies on this. */
 body {
   --scrollbar-thumb: color-mix(in srgb, var(--text-primary) 50%, transparent);
   --scrollbar-thumb-hover: color-mix(in srgb, var(--text-primary) 70%, transparent);
@@ -10230,6 +10273,7 @@ body {
 @media (max-width: 420px) {
   .widget-content {
     padding: 10px;
+    padding-inline-end: max(0px, calc(10px - var(--content-gutter)));
   }
 
   .status-grid {
@@ -10281,6 +10325,7 @@ body {
 @media (max-width: 360px) {
   .widget-content {
     padding: 8px;
+    padding-inline-end: max(0px, calc(8px - var(--content-gutter)));
   }
 
   .media-tile {
@@ -10370,6 +10415,7 @@ body {
 @media (max-height: 420px) and (min-width: 421px) {
   .widget-content {
     padding: 8px;
+    padding-inline-end: max(0px, calc(8px - var(--content-gutter)));
   }
 
   .status-grid {
@@ -10497,6 +10543,16 @@ body {
 
 .timer-entity[data-state='paused'] {
   --timer-rgb: 255, 183, 77;
+}
+
+/* Under the Emerald accent every lit tile is green, and under Amber they are amber, so a running or
+   paused timer would only match them. It takes a neighbouring hue and keeps to its own state. */
+body[data-accent='emerald'] .timer-entity:not([data-state='paused']) {
+  --timer-rgb: 77, 208, 225;
+}
+
+body[data-accent='amber'] .timer-entity[data-state='paused'] {
+  --timer-rgb: 176, 190, 197;
 }
 
 .timer-entity[data-state='active'] .control-icon,
@@ -10787,8 +10843,8 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
 
 /* Media Detail Modal */
 .media-modal .modal-content {
-  max-width: 460px;
-  width: 90vw;
+  width: var(--dialog-width);
+  max-width: var(--dialog-width);
 }
 
 .media-detail-info {
@@ -11163,47 +11219,6 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   outline-offset: 2px;
 }
 
-@media (width <= 760px) {
-  #settings-modal .modal-content {
-    width: 100%;
-    max-width: 100vw;
-    height: 100vh;
-    max-height: 100vh;
-    min-height: 100vh;
-    border-radius: 0;
-    border: none;
-    box-shadow: none;
-    grid-template:
-      'header' auto
-      'nav' auto
-      'body' minmax(0, 1fr)
-      'footer' auto
-      / minmax(0, 1fr);
-  }
-
-  #settings-modal .modal-tabs {
-    flex-direction: row;
-    gap: var(--space-1);
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: var(--space-2) var(--space-3);
-    border-inline-end: none;
-    border-bottom: 1px solid var(--border-color);
-  }
-
-  #settings-modal .tab-link {
-    width: auto;
-    min-width: max-content;
-    min-height: 28px;
-    padding: var(--space-1) var(--space-3);
-    justify-content: center;
-  }
-
-  #settings-modal .modal-body {
-    padding: var(--space-3) var(--space-4);
-  }
-}
-
 .tab-content {
   display: none;
 }
@@ -11235,6 +11250,15 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
 #popup-hotkey-input::placeholder {
   font-family: var(--font-sans);
   font-size: var(--font-size-sm);
+  letter-spacing: 0;
+}
+
+/* While a field listens its value is an instruction ('Press keys...', 'Recording...') and not a
+   hotkey, so it is text too. As code it fell to a mismatched fallback face in Arabic, Hindi and
+   Chinese. */
+#popup-hotkey-input[data-recording='true'],
+.hotkey-input[data-recording='true'] {
+  font-family: var(--font-sans);
   letter-spacing: 0;
 }
 
@@ -11417,7 +11441,19 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   background: var(--surface-2);
   color: var(--accent-text);
   font-size: var(--font-size-lg);
-  min-height: 24px;
+  line-height: 1.5;
+  /* One line of text, so the box (and the dialog around it) keeps its height when the first key
+     is pressed and the combination is written into it. */
+  min-height: calc(var(--font-size-lg) * 1.5 + 26px);
+  display: grid;
+  place-items: center;
+}
+
+/* Until a key is pressed the strip holds a quiet ellipsis instead of looking like a missing field.
+   The empty alternative keeps it out of what a screen reader reads from the status box. */
+.hotkey-preview-box:empty::before {
+  content: '\2026' / '';
+  color: var(--text-dim);
 }
 
 .hotkey-capture-modal {
@@ -11528,7 +11564,6 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
 
 .inline-alerts-container {
   margin-top: 16px;
-  padding: 4px;
 }
 
 .alert-badge {
@@ -11571,11 +11606,21 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
 
 .form-help code {
   background: var(--surface-2);
-  padding: 2px 4px;
+  /* No vertical padding, so the chip does not raise the line, and a hair of side padding, so the
+     bracket after it ('Ctrl+Shift+A )') is not pushed away from the text. */
+  padding: 0 3px;
+  margin-inline: 1px;
+  line-height: inherit;
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   color: var(--accent-text);
+}
+
+/* --surface-2 is white at 85% in the light theme, the card the chip sits on, so there it showed as
+   plain text. */
+body.theme-light .form-help code {
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
 /* Hotkey input capture styling */
@@ -11677,6 +11722,27 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
      kept it. Someone who wants less transparency would ask for that, not for less motion. */
 }
 
+/* Waiting indicators keep turning when the OS asks for less motion. Its own block, not part of the
+   one above, so the rules there can change without moving this. */
+@media (prefers-reduced-motion: reduce) {
+  /* An indicator that says something is still happening is not decoration: frozen, the ring, the
+     connecting icon and the waiting bar read as a stalled app (the bar as a finished one). These
+     keep turning, slowly. Both rules are !important, so their classes decide over the * of the block
+     above. */
+  .spinner,
+  [aria-busy='true']::after,
+  #settings-modal .profile-sync-status[data-busy='true']::before,
+  .status-message.is-connecting .status-message-icon svg {
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
+  }
+
+  .connection-progress-bar {
+    animation-duration: 1.8s !important;
+    animation-iteration-count: infinite !important;
+  }
+}
+
 /* The OS asked for more contrast (macOS Increase contrast, GNOME and KDE high-contrast settings).
    "more" is the value the query knows; "high" never matched. A Windows contrast theme reports it
    too, but forced colours already redraw every border there. The borders are declared on the body
@@ -11772,22 +11838,6 @@ textarea:focus-visible,
   box-shadow: var(--glow-focus);
 }
 
-/* Improve touch target sizes for mobile/touch devices */
-@media (pointer: coarse) {
-  .btn,
-  .close-btn,
-  .media-tile-btn,
-  .control-btn,
-  .section-btn {
-    min-height: 44px;
-    min-width: 44px;
-  }
-
-  .control-item {
-    min-height: 72px;
-  }
-}
-
 /* ARIA live region styling */
 [aria-live] {
   position: relative;
@@ -11873,8 +11923,10 @@ label.disabled {
   content: none;
 }
 
-/* Improve error message visibility */
-[role='alert'] {
+/* Improve error message visibility. A toast is a recipe of its own (its error and warning kinds
+   mark the edge); this box has the same specificity and came later, so it won every property and
+   left a translucent red wash that the content under the toast showed through. */
+[role='alert']:not(.toast) {
   color: var(--error-text);
   font-weight: var(--font-weight-medium);
   padding: var(--space-3);
@@ -12073,6 +12125,16 @@ label.disabled {
   font-size: var(--font-size-sm);
 }
 
+/* An entity Home Assistant cannot reach, dimmed as its tile is: the name by colour, so it stays
+   readable, and the icon by opacity. */
+.command-palette-result.is-unavailable .command-palette-result-name {
+  color: var(--text-dim);
+}
+
+.command-palette-result.is-unavailable .command-palette-result-icon {
+  opacity: 0.55;
+}
+
 /* A page row has no state. Its empty item would still take a flex gap and inset the type chip. */
 .command-palette-result-state:empty {
   display: none;
@@ -12135,7 +12197,8 @@ label.disabled {
 .donate-modal-content {
   display: flex;
   flex-direction: column;
-  max-width: 420px;
+  width: var(--dialog-width);
+  max-width: var(--dialog-width);
   min-width: min(320px, 85vw);
 }
 
@@ -12147,6 +12210,12 @@ label.disabled {
 .donate-modal-content .modal-body {
   min-height: 0;
   max-height: none;
+}
+
+/* The intro leads the other groups, which sit 16px apart; its base margin left the frequency control
+   8px under it. */
+.donate-modal-content .modal-body > .help-text:first-child {
+  margin-bottom: var(--space-5);
 }
 
 .donate-modal-content .modal-footer {
@@ -12620,8 +12689,9 @@ body.large-interface .tile-details-button {
   height: 28px;
 }
 
-/* The height cap is the one on .modal-content, the same at every text size. Only the Settings
-   dialog, which fills the window otherwise, keeps a margin at enlarged text. */
+/* The height cap is the one on .modal-content, the same at every text size. Settings fills the
+   window at any text size: with a margin it was framed at 115% and more by a band of scrim and the
+   dashboard's ghost around a panel with square corners. */
 body.large-interface .modal-content,
 body.large-interface #settings-modal .modal-content {
   max-width: calc(100vw - 16px);
@@ -12630,7 +12700,8 @@ body.large-interface #settings-modal .modal-content {
 }
 
 body.large-interface #settings-modal .modal-content {
-  max-height: calc(100vh - 16px);
+  max-width: 100vw;
+  max-height: 100vh;
 }
 
 body.large-interface .modal-body {
@@ -12880,6 +12951,32 @@ body.software-glass.frosted-glass .modal-content {
 .btn-primary:hover {
   background: var(--accent-hover);
   border-color: transparent;
+}
+
+/* Touch targets. The height is !important because a button's own size comes from rules that
+   outweigh a bare `.btn`: .btn.btn-sm (28px), `#settings-modal .modal-footer .btn` (32px), the
+   segmented control's and the confirmation's buttons, and more, wherever in the file this block
+   sits. The width is not, since the dialogs' wider buttons (88px, 100px) must keep theirs; the two
+   icon buttons whose own width rule is more specific than `.close-btn` and `.btn` are named after
+   it, and win by coming later. */
+@media (pointer: coarse) {
+  .btn,
+  .close-btn,
+  .media-tile-btn,
+  .control-btn,
+  .section-btn {
+    min-height: 44px !important;
+    min-width: 44px;
+  }
+
+  #settings-modal .close-btn,
+  .media-detail-controls .btn {
+    min-width: 44px;
+  }
+
+  .control-item {
+    min-height: 72px;
+  }
 }
 
 .btn-secondary {
@@ -13310,6 +13407,15 @@ body.theme-light:not(.high-contrast)
   font-variant-numeric: tabular-nums;
 }
 
+/* The sliders sit in the dialog's own padding, as the brightness slider does, without a second 12px
+   at each side: their text was 12px in from the cards and chips around them. The 12px above and
+   below stay. */
+.climate-slider-wrapper,
+.fan-slider-wrapper,
+.cover-slider-wrapper {
+  padding-inline: 0;
+}
+
 .brightness-preset-btn::before {
   content: none;
 }
@@ -13420,6 +13526,22 @@ body.theme-light:not(.high-contrast)
     background-color var(--transition-fast),
     border-color var(--transition-fast),
     color var(--transition-fast);
+}
+
+/* In the two lists that switch between Add and Remove, the two share one width (Remove's), so the
+   column of actions has a straight left edge, and the unit chips beside them in the graph editor stop
+   shifting 24px from row to row. The one-word 'Use' and 'Edit' buttons elsewhere keep their own. */
+#quick-controls-modal .entity-selector-btn,
+.comparison-graph-modal .entity-selector-btn {
+  min-width: 6em;
+  text-align: center;
+}
+
+/* The graph editor's subtitle says what is plotted and then names the sensor. Cut to an ellipsis
+   it lost the id, the part that tells two sensors apart, so it wraps. */
+.comparison-graph-modal .entity-item .entity-id {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .entity-selector-btn.add,
@@ -13763,15 +13885,6 @@ body.theme-light #settings-modal .modal-footer {
 
 /* --- Page header --- */
 
-.settings-search-box {
-  margin-block-end: 16px;
-}
-
-.settings-search-box label {
-  display: block;
-  margin-block-end: 6px;
-}
-
 #settings-search {
   width: 100%;
 }
@@ -13848,14 +13961,18 @@ body.theme-light #settings-modal .modal-footer {
   flex-direction: column;
   text-align: start;
   white-space: normal;
+  /* The title takes the size of the setting labels it points to (14px), not a button's 12px. */
+  font-size: var(--font-size-base);
 }
 
 .settings-search-result small {
   color: var(--text-secondary);
+  /* A bare <small> computed to 10px, the smallest text in Settings for the "which page" cue. */
+  font-size: var(--font-size-sm);
 }
 
 .settings-page-header {
-  margin: 0 2px 18px;
+  margin: 0 0 18px;
 }
 
 .settings-page-title {
@@ -13878,9 +13995,11 @@ body.theme-light #settings-modal .modal-footer {
   margin-bottom: 22px;
 }
 
+/* The page title, its description and the group captions start where the cards and the search field
+   do; they used to sit 2px and 4px in from them. */
 .settings-group-caption,
 .settings-group-caption-row {
-  margin: 0 4px 7px;
+  margin: 0 0 7px;
 }
 
 .settings-group-caption {
@@ -13900,6 +14019,11 @@ body.theme-light #settings-modal .modal-footer {
 
 .settings-group-caption-row .settings-group-caption {
   margin: 0;
+}
+
+/* The link's text, not its padded box, ends at the card's edge. */
+.settings-group-caption-row > .btn-link {
+  margin-inline-end: -6px;
 }
 
 .settings-group-body {
@@ -13979,6 +14103,27 @@ textarea::selection {
 #settings-modal .form-group > label + select,
 #settings-modal .form-group > label + textarea {
   margin-top: 8px;
+}
+
+/* The search field's label says what its placeholder says, so it is read out and not drawn. The box
+   is a .form-group, whose rules above (no bottom margin, a gap under the label) beat the ones that
+   used to be written for it, and left the page title glued to the field. */
+#settings-modal .settings-search-box {
+  margin-bottom: 16px;
+}
+
+#settings-modal .settings-search-box > label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+#settings-modal .settings-search-box > label + input {
+  margin-top: 0;
 }
 
 .setting-row {
@@ -14113,6 +14258,9 @@ textarea::selection {
 #settings-modal .form-help,
 #settings-modal .help-text {
   margin-top: 3px;
+  /* A .help-text brings 8px under it from its base rule, which left the last line of some rows
+     7px lower than the rest and made the 1px gap between the Language card's paragraphs 8px. */
+  margin-bottom: 0;
   font-size: var(--font-size-sm);
   line-height: 1.4;
   color: var(--text-faint);
@@ -14332,7 +14480,11 @@ body.theme-light
   margin-bottom: 0;
 }
 
+/* The same size and place as the border chevron the <details> rows draw (about 7x13px, 4px in from
+   the edge): the 16px icon drew a chevron of 5x9px two pixels further out. */
 #settings-modal .settings-disclosure-section .section-toggle-icon {
+  font-size: var(--font-size-icon);
+  margin-inline-end: -5px;
   opacity: 0.6;
   transform: rotate(90deg);
 }
@@ -14354,19 +14506,16 @@ body.theme-light
   margin-top: 0;
 }
 
-/* The legacy token disclosure keeps its own style but sits in a row now. */
-#settings-modal #legacy-ha-token-settings > summary {
-  font-size: var(--font-size-sm);
-}
-
 /* --- Specific blocks tidied into the grid --- */
 
-#settings-modal .connection-test-row {
+/* A row of a pane is spaced by the pane's own row padding. One inside a disclosure (Test connection
+   under the token field) is not, and keeps a gap under the field it acts on. */
+#settings-modal .settings-group-body > .connection-test-row {
   margin-top: 0;
 }
 
-#settings-modal .settings-group-body > .connection-test-row {
-  padding-top: 0;
+#settings-modal .settings-details-body > .connection-test-row {
+  margin-top: 10px;
 }
 
 #settings-modal .weather-entity-setting select,
@@ -14548,8 +14697,9 @@ body.theme-light
 }
 
 #settings-modal .btn-link {
-  min-height: 0;
-  padding: 2px 6px;
+  /* 24px tall, the least a pointer is asked to hit (it was 19px). */
+  min-height: 24px;
+  padding: 4px 6px;
   border: none;
   background: transparent;
   color: var(--accent-text);
@@ -14668,7 +14818,7 @@ body.theme-light
 }
 
 #settings-modal .profile-sync-error {
-  color: var(--danger-text);
+  color: var(--error-text);
 }
 
 #settings-modal .profile-sync-error:empty {
@@ -15450,6 +15600,12 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   min-height: 120px;
 }
 
+/* The dialog is centred, so one that shrank to the rows a search left in it moved the search field
+   (by 100px at the least) under the person's typing. It keeps the height a full list gives it. */
+#quick-controls-modal .modal-content {
+  height: min(620px, calc(100dvh - var(--space-6)));
+}
+
 #quick-controls-modal .quick-controls-target-hint {
   margin: 0;
   color: var(--text-dim);
@@ -15475,6 +15631,14 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   color: var(--text-dim);
   font-size: var(--font-size-sm);
   text-align: center;
+}
+
+/* In a list that keeps a minimum height, the message sits in the middle of it and not at the top. */
+.entity-selector-list > .entity-selector-empty:only-child {
+  display: grid;
+  place-items: center;
+  min-height: 100%;
+  box-sizing: border-box;
 }
 
 /* Pop-up for an entity Home Assistant reports as unavailable. */
@@ -15514,22 +15678,20 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   color: var(--text-dim);
 }
 
-.modal.entity-unavailable :is(.brightness-icon, .fan-icon, .cover-icon) {
-  color: var(--text-faint);
-  background: none;
-  box-shadow: none;
-  animation: none;
-}
-
 /* The note already says why; the big value, its caption, capability notes and the power
-   button (which can't do anything) would only repeat it. */
+   button (which can't do anything) would only repeat it. So would the icon in its circle (or the
+   cover's graphic at the last position it reported), which would stand alone over a gap. */
 .modal.entity-unavailable
   :is(
+    .brightness-icon-wrapper,
+    .fan-icon-wrapper,
+    .cover-visual,
     .brightness-value-large,
     .fan-speed-value,
     .cover-position-value,
     .brightness-label,
     .fan-speed-label,
+    .cover-position-label,
     .control-capability-note,
     .modal-footer .btn-primary
   ) {
@@ -16510,7 +16672,10 @@ body[data-season='thanksgiving'] .control-item {
   gap: 12px;
   min-width: 0;
   margin: 0;
-  padding: 0;
+  /* A row of the pane, so it keeps the row padding (the pane's own rule has the same weight and
+     this one came later, which left the legend against the divider and the last holiday against the
+     card's edge). */
+  padding: 12px 0;
   border: 0;
 }
 
@@ -16785,16 +16950,11 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   }
 
   /* Progress is a Highlight fill in an outlined track. */
-  .media-tile-seek-bar,
-  .media-tile-seek-bar:hover {
+  .media-tile-seek-bar {
     box-sizing: border-box;
     height: 6px;
     border: 1px solid ButtonText;
     overflow: hidden;
-  }
-
-  .media-tile-seek-fill::after {
-    display: none;
   }
 
   .connection-progress,

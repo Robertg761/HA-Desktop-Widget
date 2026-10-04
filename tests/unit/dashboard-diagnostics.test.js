@@ -452,3 +452,36 @@ test('Copy report copies through the main process and falls back to manual selec
   delete window.electronAPI;
   currentSocket.removeAllListeners();
 });
+
+test('the report leads with the connection and its recent issues, and is tall enough for all of it', () => {
+  jest.resetModules();
+  const {
+    initializeDashboardTools: initialize,
+    diagnosticsReport: report,
+  } = require('../../src/dashboard-tools.js');
+  const currentSocket = require('../../src/websocket.js').default;
+  document.body.innerHTML = '<button id="connection-diagnostics-btn">Diagnostics</button>';
+  initialize();
+
+  // What explains a lost connection comes before the facts about this install, so it is on screen
+  // when the dialog opens.
+  expect(Object.keys(report())).toEqual([
+    'connection',
+    'recentIssues',
+    'lastConnectedAt',
+    'lastUpdateAt',
+    'reconnects',
+    'appVersion',
+    'platform',
+    'os',
+    'homeAssistantVersion',
+  ]);
+
+  document.getElementById('connection-diagnostics-btn').click();
+  const textarea = document.querySelector('.diagnostics-report');
+  // Eleven lines when nothing has gone wrong: the opening brace, nine keys and the closing one.
+  expect(textarea.value.split('\n')).toHaveLength(11);
+  expect(textarea.rows).toBeGreaterThanOrEqual(11);
+  document.querySelectorAll('.dashboard-tools-modal').forEach((modal) => modal.remove());
+  currentSocket.removeAllListeners();
+});
