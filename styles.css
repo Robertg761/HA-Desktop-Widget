@@ -5631,13 +5631,11 @@ body.theme-light:not(.high-contrast)
   font-size: clamp(var(--font-size-md), 15cqi, var(--font-size-4xl));
 }
 
-/* The climate, fan and cover sliders sit in the dialog's own padding like the brightness slider,
-   without a second 12px of their own (their text was 12px in from the cards and chips around them). */
 .climate-slider-wrapper {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-4) 0;
+  padding: var(--space-4);
 }
 
 .climate-slider {
@@ -5856,7 +5854,7 @@ body.theme-light:not(.high-contrast)
 
 .fan-slider-wrapper {
   width: 100%;
-  padding: var(--space-4) 0;
+  padding: var(--space-4);
 }
 
 .fan-slider {
@@ -6015,7 +6013,7 @@ body.theme-light:not(.high-contrast)
 
 .cover-slider-wrapper {
   width: 100%;
-  padding: var(--space-4) 0;
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -9879,6 +9877,11 @@ body {
   flex-wrap: wrap;
 }
 
+/* The last field needs no margin of its own: the body's padding already closes the dialog. */
+.rename-modal .modal-body > .form-group:last-child {
+  margin-bottom: 0;
+}
+
 /* Responsive adjustments */
 @media (max-width: 420px) {
   .widget-content {
@@ -11216,6 +11219,21 @@ body.theme-light .form-help code {
     scroll-behavior: auto !important;
   }
 
+  /* Disable glassmorphism blur effects for better performance */
+  .modal,
+  .modal-content,
+  .status-card,
+  .media-tile,
+  .control-item,
+  .btn,
+  .close-btn,
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
   /* An indicator that says something is still happening is not decoration: frozen, the ring, the
      connecting icon and the waiting bar read as a stalled app (the bar as a finished one). These
      keep turning, slowly. Both rules are !important, so their classes decide over the * above. */
@@ -11230,21 +11248,6 @@ body.theme-light .form-help code {
   .connection-progress-bar {
     animation-duration: 1.8s !important;
     animation-iteration-count: infinite !important;
-  }
-
-  /* Disable glassmorphism blur effects for better performance */
-  .modal,
-  .modal-content,
-  .status-card,
-  .media-tile,
-  .control-item,
-  .btn,
-  .close-btn,
-  .form-group input,
-  .form-group select,
-  .form-group textarea {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
   }
 }
 
@@ -12863,6 +12866,15 @@ body.theme-light:not(.high-contrast)
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
   font-variant-numeric: tabular-nums;
+}
+
+/* The sliders sit in the dialog's own padding, as the brightness slider does, without a second 12px
+   at each side: their text was 12px in from the cards and chips around them. The 12px above and
+   below stay. */
+.climate-slider-wrapper,
+.fan-slider-wrapper,
+.cover-slider-wrapper {
+  padding-inline: 0;
 }
 
 .brightness-preset-btn::before {

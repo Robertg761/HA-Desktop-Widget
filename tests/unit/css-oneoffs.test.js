@@ -432,9 +432,10 @@ describe('stylesheet one-offs', () => {
       'sets the %s slider in the dialog’s own padding, level with the chips around it',
       (name) => {
         render(`<div class="${name}-slider-wrapper"></div>`);
-        expect(resolvedValue(document.querySelector(`.${name}-slider-wrapper`), 'padding')).toBe(
-          '0.75rem 0'
-        );
+        const wrapper = document.querySelector(`.${name}-slider-wrapper`);
+        expect(resolvedValue(wrapper, 'padding-inline')).toBe('0');
+        // The 12px above and below stay.
+        expect(resolvedValue(wrapper, 'padding')).toBe('0.75rem');
       }
     );
 
