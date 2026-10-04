@@ -550,6 +550,21 @@ describe('stylesheet cascade regressions', () => {
       expect(resolvedValue(form, 'margin')).toBe(`calc(-1 * ${inset}) calc(-1 * ${inset}) 0`);
       expect(resolvedValue(form, 'padding')).toBe(`${inset} ${inset} 14px`);
     });
+
+    // A window under 480px high gives a dialog body 12px of padding instead of 16px. An add field that
+    // still took back 16px reached 4px past each edge of the body, which then scrolled sideways.
+    it('takes back exactly the padding the body has in a short window', () => {
+      const short = { viewport: { width: 500, height: 420 } };
+      render('', '<div class="modal-body"><form class="todo-add-form"></form></div>');
+
+      const body = document.querySelector('.modal-body');
+      const form = document.querySelector('.todo-add-form');
+      expect(resolvedValue(body, 'padding')).toBe('1rem');
+      expect(resolvedValue(body, 'padding', short)).toBe('0.75rem');
+      expect(resolvedValue(form, 'margin')).toBe('calc(-1 * 1rem) calc(-1 * 1rem) 0');
+      expect(resolvedValue(form, 'margin', short)).toBe('calc(-1 * 0.75rem) calc(-1 * 0.75rem) 0');
+      expect(resolvedValue(form, 'top', short)).toBe('calc(-1 * 0.75rem)');
+    });
   });
 
   describe('dialog stacking', () => {

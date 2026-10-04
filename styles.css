@@ -7753,7 +7753,10 @@ body.theme-light:not(.high-contrast)
 }
 
 .modal-body {
-  padding: var(--space-5);
+  /* Named so what sticks to the body's edges (the to-do add field) can take the padding back by the
+     same amount at every window height. */
+  --modal-body-inset: var(--space-5);
+  padding: var(--modal-body-inset);
   overflow-y: auto;
   position: relative;
 }
@@ -7960,10 +7963,10 @@ body.theme-light:not(.high-contrast)
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   position: sticky;
-  top: calc(-1 * var(--space-5));
+  top: calc(-1 * var(--modal-body-inset));
   z-index: 1;
-  margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) 0;
-  padding: var(--space-5) var(--space-5) 14px;
+  margin: calc(-1 * var(--modal-body-inset)) calc(-1 * var(--modal-body-inset)) 0;
+  padding: var(--modal-body-inset) var(--modal-body-inset) 14px;
   container-type: scroll-state;
 }
 
@@ -13070,7 +13073,7 @@ select option {
   }
 
   .modal-body {
-    padding: var(--space-4);
+    --modal-body-inset: var(--space-4);
   }
 
   .brightness-content,
