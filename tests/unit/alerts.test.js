@@ -708,6 +708,104 @@ describe('alerts module', () => {
         expect(global.Notification.lastNotification.options).not.toHaveProperty('icon');
       });
 
+      describe('for a Material Design Icons code point', () => {
+        // Home Assistant's own icons: a private-use character that only the MDI web font draws.
+        const mdiGlyph = '\u{F0335}';
+        const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+        let loaded;
+        let fonts;
+
+        beforeEach(() => {
+          loaded = false;
+          fonts = {
+            check: jest.fn(() => loaded),
+            load: jest.fn(() => {
+              loaded = true;
+              return Promise.resolve([]);
+            }),
+          };
+          Object.defineProperty(document, 'fonts', { configurable: true, value: fonts });
+        });
+        afterEach(() => {
+          delete document.fonts;
+        });
+        const alertWith = (glyph = mdiGlyph) => {
+          require('../../src/utils.js').getEntityIcon.mockReturnValueOnce(glyph);
+          alerts.checkEntityAlerts('light.living_room', 'off');
+        };
+
+        it('waits for the font before drawing, so the first alert is not a fallback box', async () => {
+          alertWith();
+
+          // The canvas has not been touched, and the toast does not wait for the font.
+          expect(global.Notification.lastNotification).toBeNull();
+          expect(context.fillText).not.toHaveBeenCalled();
+          expect(showToast).toHaveBeenCalledWith(expect.any(String), 'info', 4000);
+          expect(fonts.load).toHaveBeenCalledWith('16px "Material Design Icons"', mdiGlyph);
+
+          await flush();
+
+          expect(context.fillText).toHaveBeenCalledWith(
+            mdiGlyph,
+            expect.any(Number),
+            expect.any(Number)
+          );
+          expect(global.Notification.lastNotification.options.icon).toBe(
+            'data:image/png;base64,AAAA'
+          );
+        });
+
+        it('draws at once when the font is already loaded', () => {
+          loaded = true;
+
+          alertWith();
+
+          expect(fonts.load).not.toHaveBeenCalled();
+          expect(global.Notification.lastNotification.options.icon).toBe(
+            'data:image/png;base64,AAAA'
+          );
+        });
+
+        it('keeps the app icon, and still notifies, when the font fails to load', async () => {
+          fonts.load.mockImplementation(() => Promise.reject(new Error('NetworkError')));
+
+          alertWith();
+          await flush();
+
+          expect(context.fillText).not.toHaveBeenCalled();
+          expect(global.Notification.lastNotification).toBeTruthy();
+          expect(global.Notification.lastNotification.options).not.toHaveProperty('icon');
+        });
+
+        it('keeps the app icon when the font still is not usable after loading', async () => {
+          fonts.load.mockImplementation(() => Promise.resolve([]));
+
+          alertWith();
+          await flush();
+
+          expect(context.fillText).not.toHaveBeenCalled();
+          expect(global.Notification.lastNotification.options).not.toHaveProperty('icon');
+        });
+
+        it('keeps the app icon where the page cannot say whether the font is loaded', () => {
+          delete document.fonts;
+
+          alertWith();
+
+          expect(context.fillText).not.toHaveBeenCalled();
+          expect(global.Notification.lastNotification.options).not.toHaveProperty('icon');
+        });
+
+        it('does not ask about the font for an emoji', () => {
+          alertWith('💡');
+
+          expect(fonts.check).not.toHaveBeenCalled();
+          expect(global.Notification.lastNotification.options.icon).toBe(
+            'data:image/png;base64,AAAA'
+          );
+        });
+      });
+
       it('is never anything but a data URL or absent', () => {
         for (const url of [undefined, null, '', 'not a url']) {
           HTMLCanvasElement.prototype.toDataURL.mockReturnValue(url);

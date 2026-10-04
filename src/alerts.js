@@ -64,6 +64,38 @@ const NOTIFICATION_ICON_SIZE = 64;
 // The same stack as the entity icons in the window: MDI glyphs first, then the platform's emoji.
 const NOTIFICATION_ICON_FONT =
   '"Material Design Icons", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+// Home Assistant's own icons are MDI code points, which sit in Unicode's private-use areas: no
+// font but MDI draws them, so they need that font loaded.
+const PRIVATE_USE_GLYPH = /[\uE000-\uF8FF\u{F0000}-\u{FFFFD}\u{100000}-\u{10FFFD}]/u;
+const NOTIFICATION_MDI_FONT = '16px "Material Design Icons"';
+
+/**
+ * Whether `glyph` can be drawn right now. MDI is a web font, and a page loads one only when some
+ * text uses it; a canvas never starts that. Drawn before the window has shown an MDI icon, a code
+ * point comes out in a fallback font, and a fallback's empty box has pixels like any glyph, so the
+ * check for "something was drawn" cannot catch it. Emoji need no web font.
+ */
+function iconFontReady(glyph) {
+  if (!PRIVATE_USE_GLYPH.test(glyph)) return true;
+  try {
+    return document.fonts?.check?.(NOTIFICATION_MDI_FONT, glyph) === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A promise for the icon font when `glyph` needs it and it is not loaded yet, otherwise null. The
+ * font file is local, so this settles at once; a failed load leaves the app icon on the notification.
+ */
+function loadIconFont(glyph) {
+  if (!glyph || iconFontReady(glyph)) return null;
+  try {
+    return document.fonts?.load?.(NOTIFICATION_MDI_FONT, glyph) || null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * A desktop notification's icon is a URL, never a character, so an entity's glyph (an emoji, or a
@@ -73,7 +105,7 @@ const NOTIFICATION_ICON_FONT =
  */
 function renderNotificationIcon(glyph) {
   try {
-    if (!glyph || typeof document === 'undefined') return undefined;
+    if (!glyph || typeof document === 'undefined' || !iconFontReady(glyph)) return undefined;
     const size = NOTIFICATION_ICON_SIZE;
     const glyphCanvas = document.createElement('canvas');
     glyphCanvas.width = size;
@@ -112,23 +144,36 @@ function renderNotificationIcon(glyph) {
   }
 }
 
+function showDesktopNotification(message, entityId, glyph) {
+  try {
+    const icon = renderNotificationIcon(glyph);
+    const notification = new Notification(t('Home Assistant Alert'), {
+      body: message,
+      ...(icon ? { icon } : {}),
+      tag: `ha-alert-${entityId}`,
+      requireInteraction: false,
+    });
+    notification.onclick = () => {
+      window.electronAPI?.showWindow?.().catch((error) => {
+        console.error('Error showing widget from alert:', error);
+      });
+    };
+  } catch (error) {
+    console.error('Error showing entity alert:', error);
+  }
+}
+
 function showEntityAlert(message, entityId) {
   try {
     if (Notification.permission === 'granted') {
-      const entity = state.STATES[entityId];
       // An entity that is gone has no glyph to draw; its notification keeps the app icon.
-      const icon = entity ? renderNotificationIcon(getEntityIcon(entity)) : undefined;
-      const notification = new Notification(t('Home Assistant Alert'), {
-        body: message,
-        ...(icon ? { icon } : {}),
-        tag: `ha-alert-${entityId}`,
-        requireInteraction: false,
-      });
-      notification.onclick = () => {
-        window.electronAPI?.showWindow?.().catch((error) => {
-          console.error('Error showing widget from alert:', error);
-        });
-      };
+      const entity = state.STATES[entityId];
+      const glyph = entity ? getEntityIcon(entity) : '';
+      const show = () => showDesktopNotification(message, entityId, glyph);
+      // Only the notification waits for the icon font, and only the first time; the toast does not.
+      const fontLoad = loadIconFont(glyph);
+      if (fontLoad) fontLoad.then(show, show);
+      else show();
     }
 
     showToast(message, 'info', 4000);
