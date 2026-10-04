@@ -69,6 +69,17 @@ describe('entity line icons', () => {
       getEntityLineIconName(entity('sensor.office', '21', { device_class: 'temperature' }))
     ).toBe('thermometer');
     expect(getEntityLineIconName(entity('sensor.oven_timer', '0:10:00'))).toBe('timer');
+    // A reading with a unit is not a countdown, however it is named or what it carries.
+    expect(
+      getEntityLineIconName(
+        entity('sensor.commute', '23.4', { unit_of_measurement: 'min', duration: 1404 })
+      )
+    ).not.toBe('timer');
+    expect(
+      getEntityLineIconName(
+        entity('sensor.washer_timer_hours', '2.5', { unit_of_measurement: 'h' })
+      )
+    ).not.toBe('timer');
     expect(getEntityLineIconName(entity('made_up.thing'))).toBe('box');
     expect(getEntityLineIconName(null)).toBe('box');
   });
@@ -266,8 +277,16 @@ describe('entity line icons', () => {
     test('does not take a number with a duration attribute for a timer', () => {
       expect(sensorIcon('sensor.commute', { duration: '0:23:00' }, '23')).toBe('activity');
       // A countdown still is one: it says when it ends, or is named for it.
-      expect(sensorIcon('sensor.oven', { finishes_at: '2026-10-04T10:00:00Z' })).toBe('timer');
-      expect(sensorIcon('sensor.kitchen_timer_1')).toBe('timer');
+      expect(sensorIcon('sensor.oven', { finishes_at: '2026-10-04T10:00:00Z' }, 'active')).toBe(
+        'timer'
+      );
+      expect(sensorIcon('sensor.kitchen_timer_1', {}, 'idle')).toBe('timer');
+      // A reading is not a countdown, however it is named or what it carries.
+      expect(sensorIcon('sensor.kitchen_timer_1')).toBe('activity');
+      expect(sensorIcon('sensor.washer_timer_hours', {}, 'idle')).toBe('timer');
+      expect(sensorIcon('sensor.washer_timer_hours', { unit_of_measurement: 'h' }, 'idle')).toBe(
+        'activity'
+      );
     });
 
     test.each([
@@ -345,5 +364,15 @@ describe('entity line icons', () => {
       expect(LINE_ICONS.square).toBeDefined();
       expect(LINE_ICONS['thermometer-sun']).toBeDefined();
     });
+  });
+
+  test('has the line icons the Reorganize chips draw with', () => {
+    for (const name of ['pencil', 'copy', 'x', 'pin']) {
+      const host = document.createElement('div');
+      host.innerHTML = lineIconMarkup(name);
+      const icon = host.querySelector('svg');
+      expect(icon.dataset.icon).toBe(name);
+      expect(icon.children.length).toBe(LINE_ICONS[name].length);
+    }
   });
 });

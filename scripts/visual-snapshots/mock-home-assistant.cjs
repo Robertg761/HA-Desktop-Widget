@@ -6,7 +6,9 @@
  * services that exist), empty lists and objects for registries, null for subscriptions; the few
  * services that return data answer from `serviceResponses`. History is empty unless `histories`
  * returns rows for an entity, and a subscription starts with the events `subscriptionEvents`
- * lists for it (the persistent notifications that exist when the app subscribes).
+ * lists for it (the persistent notifications that exist when the app subscribes). A scene that
+ * needs events later than that, without them showing in every scene, sends them with
+ * `server.pushEvents(subscriptionType, events)` to the subscriptions that are open.
  * The WebSocket framing is done by hand (text frames, ping, close) so the snapshot job needs no
  * dependency beyond Node itself. Test-only; never shipped.
  */
@@ -150,6 +152,16 @@ function startMockHomeAssistant({
     sockets.clear();
   };
 
+  // The subscriptions the app has open, by socket, so events can be sent to them later.
+  const subscriptions = new Map();
+  server.pushEvents = (type, events) => {
+    for (const handlers of subscriptions.values()) {
+      for (const { id, type: subscribed, send } of handlers) {
+        if (subscribed === type) events.forEach((event) => send({ id, type: 'event', event }));
+      }
+    }
+  };
+
   // An outage needs the server to stay away, not only to drop the sockets: the app reconnects within
   // a second and would be back before a screenshot.
   let refusing = false;
@@ -160,7 +172,11 @@ function startMockHomeAssistant({
 
   server.on('upgrade', (request, socket) => {
     sockets.add(socket);
-    socket.on('close', () => sockets.delete(socket));
+    subscriptions.set(socket, []);
+    socket.on('close', () => {
+      sockets.delete(socket);
+      subscriptions.delete(socket);
+    });
     if (refusing || request.url !== '/api/websocket') {
       socket.destroy();
       return;
@@ -222,6 +238,9 @@ function startMockHomeAssistant({
             // What a subscription starts with, sent under the subscription's own id.
             for (const event of subscriptionEvents?.(item) || []) {
               send({ id: item.id, type: 'event', event });
+            }
+            if (/subscribe/.test(item.type)) {
+              subscriptions.get(socket)?.push({ id: item.id, type: item.type, send });
             }
           }
         }

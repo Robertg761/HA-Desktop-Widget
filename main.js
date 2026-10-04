@@ -1154,6 +1154,13 @@ const localizationService = createLocalizationService({
       return 'en';
     }
   },
+  getSystemLocale: () => {
+    try {
+      return app.getSystemLocale() || '';
+    } catch {
+      return '';
+    }
+  },
   manifestUrl: getLocalePackManifestSource(),
   // Locale pack downloads only run from IPC handlers, so the app is always ready by the time
   // net.fetch is invoked here.
@@ -1298,6 +1305,11 @@ function refreshProfileSyncRuntimeTracking({ decodePassphrase = true } = {}) {
 
 function mainT(key, vars = {}) {
   return localizationService.translate(config?.ui?.language || 'auto', key, vars);
+}
+
+// The language mainT is answering in, for pages that have to say so (the sign-in result in a browser).
+function mainLocale() {
+  return localizationService.getLocaleBootstrap(config?.ui?.language || 'auto').activeLocale;
 }
 
 /**
@@ -8488,6 +8500,7 @@ function getHomeAssistantOAuthClient() {
       postForm: (url, fields) => requestFormWithElectronNet(net, url, fields),
       // The browser pages shown after Home Assistant redirects back to the app.
       translate: (key) => mainT(key),
+      getLocale: mainLocale,
       probeServer: (baseUrl, signal) => probeHomeAssistantWithElectronNet(net, baseUrl, { signal }),
       isSecureStorageAvailable: isSecureProfileSyncStorageAvailable,
       log,

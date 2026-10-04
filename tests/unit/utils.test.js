@@ -537,7 +537,7 @@ describe('Utils Module', () => {
         state: '22.5',
         attributes: { unit_of_measurement: '°C' },
       };
-      expect(utils.getEntityDisplayState(entity)).toBe('22.5 °C');
+      expect(utils.getEntityDisplayState(entity)).toBe('22.5°C');
     });
 
     test('should show sensor value without unit', () => {
@@ -600,13 +600,27 @@ describe('Utils Module', () => {
       expect(utils.getTimerDisplay(entity)).toBe('Idle');
     });
 
-    test('should format paused timer', () => {
-      const entity = {
+    test('should format paused timer from the unpadded time Home Assistant sends', () => {
+      const paused = (remaining) => ({
         entity_id: 'timer.kitchen',
         state: 'paused',
-        attributes: { remaining: '05:30:15' },
-      };
-      expect(utils.getTimerDisplay(entity)).toBe('⏸ 05:30');
+        attributes: { remaining },
+      });
+      expect(utils.getTimerDisplay(paused('0:04:12'))).toBe('Paused 4:12');
+      expect(utils.getTimerDisplay(paused('0:00:07'))).toBe('Paused 0:07');
+      expect(utils.getTimerDisplay(paused('1:05:00'))).toBe('Paused 1:05:00');
+      expect(utils.getTimerDisplay(paused('1 day, 0:00:30'))).toBe('Paused 24:00:30');
+      expect(utils.getTimerDisplay(paused('0:00:04.500000'))).toBe('Paused 0:04');
+    });
+
+    test('should format an active timer whose remaining time is not hours:minutes:seconds', () => {
+      const active = (remaining) => ({
+        entity_id: 'timer.kitchen',
+        state: 'active',
+        attributes: { remaining },
+      });
+      expect(utils.getTimerDisplay(active('15:00'))).toBe('15:00');
+      expect(utils.getTimerDisplay(active('soon'))).toBe('soon');
     });
 
     test('should format active timer with hours', () => {

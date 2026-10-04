@@ -423,7 +423,7 @@ describe('dashboard data display', () => {
         temp: '4°C',
         condition: 'Cloudy',
         humidity: '81%',
-        wind: '12 km/h',
+        wind: '12\u00a0km/h',
       });
     });
 
@@ -444,7 +444,7 @@ describe('dashboard data display', () => {
         temp: '0°C',
         condition: 'Sunny',
         humidity: '--',
-        wind: '0 km/h',
+        wind: '0\u00a0km/h',
       });
     });
 
@@ -1166,15 +1166,15 @@ describe('dashboard data display', () => {
       expect(readout.hasAttribute('aria-label')).toBe(false);
       const spoken = modal.querySelector('.sensor-detail-summary [role="status"]');
       await jest.advanceTimersByTimeAsync(0);
-      expect(spoken.textContent).toBe('100 W');
+      expect(spoken.textContent).toBe('100\u00a0W');
       for (let watts = 101; watts <= 110; watts += 1) {
         state.setEntityState({ ...power, state: String(watts) });
         await jest.advanceTimersByTimeAsync(500);
       }
       expect(modal.querySelector('.sensor-detail-value').textContent).toBe('110');
-      expect(spoken.textContent).not.toBe('110 W');
+      expect(spoken.textContent).not.toBe('110\u00a0W');
       await jest.advanceTimersByTimeAsync(9000);
-      expect(spoken.textContent).toBe('110 W');
+      expect(spoken.textContent).toBe('110\u00a0W');
     });
   });
 
@@ -1293,7 +1293,7 @@ describe('dashboard data display', () => {
       );
       const unitReadout = withUnit.querySelector('.helper-controls-readout');
       expect(unitReadout.classList.contains('sr-only')).toBe(false);
-      expect(unitReadout.textContent).toBe('1.5 °C');
+      expect(unitReadout.textContent).toBe('1.5°C');
       document.body.innerHTML = '';
       const vacuum = open(entity('vacuum.robot', 'docked'), { vacuum: { start: {} } });
       expect(vacuum.querySelector('.helper-controls-readout').classList.contains('sr-only')).toBe(

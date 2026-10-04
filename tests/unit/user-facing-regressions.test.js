@@ -263,6 +263,37 @@ describe('User-facing audit regressions', () => {
     expect(document.querySelector('#cover-position-value').textContent).toBe('0%');
   });
 
+  it('writes the optimistic 0% and 100% the way the next state sync does', async () => {
+    const i18n = require('../../src/i18n.js');
+    i18n.setLocaleBootstrap({
+      languageSetting: 'de',
+      requestedLocale: 'de',
+      activeLocale: 'de',
+      messages: {},
+    });
+    try {
+      // German puts a no-break space before the percent sign, so "0%" would flip to "0 %" later.
+      const percent = (value) => `${value}\u00a0%`;
+      ui.openEntityDetailModal(
+        entity('cover.audit', 'open', { current_position: 40, supported_features: 15 })
+      );
+      document.querySelector('[data-action="open_cover"]').click();
+      expect(document.querySelector('#cover-position-value').textContent).toBe(percent(100));
+      document.querySelector('[data-action="close_cover"]').click();
+      expect(document.querySelector('#cover-position-value').textContent).toBe(percent(0));
+      await jest.advanceTimersByTimeAsync(400);
+
+      ui.openEntityDetailModal(
+        entity('light.audit', 'on', { brightness: 128, supported_color_modes: ['brightness'] })
+      );
+      document.querySelector('#turn-off-btn').click();
+      expect(document.querySelector('#brightness-value-large').textContent).toBe(percent(0));
+      await jest.advanceTimersByTimeAsync(400);
+    } finally {
+      i18n.setLocaleBootstrap({ activeLocale: 'en', languageSetting: 'en', messages: {} });
+    }
+  });
+
   it.each([
     ['#brightness-slider', 80],
     ['#light-color-temp-slider', 4000],
@@ -705,9 +736,9 @@ describe('User-facing audit regressions', () => {
   });
 
   it.each([
-    ['2026-09-10', '2026-09-11', '9/10/2026 · All day'],
-    [{ date: '2026-09-10' }, { date: '2026-09-13' }, '9/10/2026 - 9/12/2026 · All day'],
-    ['2026-03-08', '2026-03-10', '3/8/2026 - 3/9/2026 · All day'],
+    ['2026-09-10', '2026-09-11', 'Thu, 9/10/2026 · All day'],
+    [{ date: '2026-09-10' }, { date: '2026-09-13' }, 'Thu, 9/10/2026 – Sat, 9/12/2026 · All day'],
+    ['2026-03-08', '2026-03-10', 'Sun, 3/8/2026 – Mon, 3/9/2026 · All day'],
   ])('preserves all-day calendar dates and the exclusive end', async (start, end, expected) => {
     mockCallServiceWithResponse.mockResolvedValue({
       'calendar.dates': { events: [{ summary: 'All day', start, end }] },
@@ -717,8 +748,12 @@ describe('User-facing audit regressions', () => {
     expect(document.querySelector('.calendar-event-time').textContent).toBe(expected);
   });
   it.each([
-    ['2026-09-24T14:30:45', '2026-09-24T15:15:00', '9/24/2026 2:30 PM - 3:15 PM'],
-    ['2026-09-24T22:00:00', '2026-09-25T01:30:00', '9/24/2026 10:00 PM - 9/25/2026 1:30 AM'],
+    ['2026-09-24T14:30:45', '2026-09-24T15:15:00', 'Thu, 9/24/2026 2:30 PM – 3:15 PM'],
+    [
+      '2026-09-24T22:00:00',
+      '2026-09-25T01:30:00',
+      'Thu, 9/24/2026 10:00 PM – Fri, 9/25/2026 1:30 AM',
+    ],
   ])(
     'shows timed calendar events in minutes, with one date per day',
     async (start, end, expected) => {

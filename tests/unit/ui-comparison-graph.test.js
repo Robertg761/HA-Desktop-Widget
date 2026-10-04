@@ -285,7 +285,7 @@ describe('comparison graph tile', () => {
     const values = [...tile.querySelectorAll('.comparison-graph-legend-value')].map(
       (el) => el.textContent
     );
-    expect(values).toEqual(['21.4 °C', '8.3 °C']);
+    expect(values).toEqual(['21.4°C', '8.3°C']);
   });
 
   it('retries the fetch after the first attempt fails because the socket is not open yet', async () => {
@@ -610,7 +610,7 @@ describe('comparison graph tile', () => {
 
     // Nearest-sample would have answered 22 for Living Room — a reading from the future, taken an
     // hour after the time being hovered, compared against an Outside reading from 2h ago.
-    expect(values).toEqual(['20 °C', '5 °C']);
+    expect(values).toEqual(['20°C', '5°C']);
   });
 
   it('heads the tooltip with the weekday and the minute, and rounds values as the legend does', async () => {
@@ -652,7 +652,7 @@ describe('comparison graph tile', () => {
     const values = [...tile.querySelectorAll('.comparison-graph-tooltip-value')].map(
       (el) => el.textContent
     );
-    expect(values[0]).toBe('21.5 °C');
+    expect(values[0]).toBe('21.5°C');
   });
 
   describe('live repaints', () => {
@@ -704,15 +704,15 @@ describe('comparison graph tile', () => {
       const { a, b } = twoGraphs();
       ui.renderActiveTab();
       await flush();
-      expect(legendOf('graph:a')).toBe('21.4 °C');
+      expect(legendOf('graph:a')).toBe('21.4°C');
       report(a, 25);
       await wait(50);
       report(b, 9);
       await wait(REDRAW_DEBOUNCE_MS + 100);
       // The first graph's repaint was cancelled by the second sensor's update, and it kept the old
       // end point and legend until one of its own sensors reported again.
-      expect(legendOf('graph:a')).toBe('25 °C');
-      expect(legendOf('graph:b')).toBe('9 °C');
+      expect(legendOf('graph:a')).toBe('25°C');
+      expect(legendOf('graph:b')).toBe('9°C');
     });
 
     it('repaints while sensors keep reporting faster than the delay', async () => {
@@ -725,9 +725,9 @@ describe('comparison graph tile', () => {
         report(a, value);
         await wait(80);
       }
-      expect(legendOf('graph:a')).not.toBe('21.4 °C');
+      expect(legendOf('graph:a')).not.toBe('21.4°C');
       await wait(REDRAW_DEBOUNCE_MS + 100);
-      expect(legendOf('graph:a')).toBe('29 °C');
+      expect(legendOf('graph:a')).toBe('29°C');
     });
   });
 

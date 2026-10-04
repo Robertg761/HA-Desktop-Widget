@@ -100,6 +100,41 @@ describe('renderer i18n helpers', () => {
     expect(document.documentElement.dir).toBe('rtl');
   });
 
+  it('reads the direction from the language part of a regional code, in any case', () => {
+    for (const [locale, dir] of [
+      ['ar-EG', 'rtl'],
+      ['AR', 'rtl'],
+      ['he', 'rtl'],
+      ['fa-IR', 'rtl'],
+      ['ur', 'rtl'],
+      ['hi-IN', 'ltr'],
+      ['zh-CN', 'ltr'],
+      ['de', 'ltr'],
+    ]) {
+      i18n.setLocaleBootstrap({ activeLocale: locale, messages: {} });
+      expect({ locale, dir: document.documentElement.dir }).toEqual({ locale, dir });
+    }
+  });
+
+  it('shares its list of right-to-left languages with the main process', () => {
+    const { isRtlLocale } = require('../../packages/widget-renderer/src/rtl-locales.cjs');
+
+    expect(isRtlLocale('ar')).toBe(true);
+    expect(isRtlLocale('ar-SA')).toBe(true);
+    expect(isRtlLocale('en')).toBe(false);
+    expect(isRtlLocale('')).toBe(false);
+    expect(isRtlLocale(undefined)).toBe(false);
+  });
+
+  it('isolates a left-to-right run only while a right-to-left language is active', () => {
+    i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: {} });
+    expect(i18n.isolateLtr('#AB34CD')).toBe('\u2066#AB34CD\u2069');
+    i18n.setLocaleBootstrap({ activeLocale: 'ar-EG', messages: {} });
+    expect(i18n.isolateLtr('#AB34CD')).toBe('\u2066#AB34CD\u2069');
+    i18n.setLocaleBootstrap({ activeLocale: 'hi', messages: {} });
+    expect(i18n.isolateLtr('#AB34CD')).toBe('#AB34CD');
+  });
+
   it('formats dates and times with German regional conventions', () => {
     i18n.setLocaleBootstrap({
       activeLocale: 'de',
@@ -140,19 +175,5 @@ describe('renderer i18n helpers', () => {
     expect(i18n.formatNumber(1234.5)).toBe('1,234.5');
     expect(i18n.formatNumber('not a number')).toBe('not a number');
     expect(i18n.formatNumber(null)).toBe('');
-  });
-
-  it('keeps the decimals Home Assistant sent when formatting numeric states', () => {
-    i18n.setLocaleBootstrap({ activeLocale: 'de', messages: {} });
-    expect(i18n.formatNumericState('15.6')).toBe('15,6');
-    expect(i18n.formatNumericState('15.60')).toBe('15,60');
-    expect(i18n.formatNumericState('-3')).toBe('-3');
-    expect(i18n.formatNumericState('on')).toBe('on');
-    expect(i18n.formatNumericState('2026-09-08')).toBe('2026-09-08');
-    expect(i18n.formatNumericState('007')).toBe('007');
-    expect(i18n.formatNumericState('0.5')).toBe('0,5');
-
-    i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
-    expect(i18n.formatNumericState('15.60')).toBe('15.60');
   });
 });

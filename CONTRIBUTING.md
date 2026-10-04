@@ -69,12 +69,20 @@ Thank you for your interest in contributing to HA Desktop Widget! This document 
 - **Responsive**: Ensure styles work across different screen sizes
 - **Performance**: Avoid expensive CSS properties in animations
 - **Consistency**: Follow the existing design system
+- **Right to left**: Arabic mirrors the whole layout, so write `margin-inline`, `inset-inline-start` and `border-inline-end` rather than left and right. A physical offset that has to follow the reading direction (a switch knob's travel, a hairline's side) multiplies by `var(--inline-sign)`, and a gradient that fills towards where a slider's thumb moves uses `var(--slider-dir)`. Names and values written by Home Assistant go in the `unicode-bidi: plaintext` list at the end of `styles.css`, so an English name in an Arabic row is cut at its end and keeps its punctuation. Tracking and capitals are switched off there for Arabic, Devanagari and CJK, whatever a rule says.
 
 ### Code Organization
 
 - **Separation of Concerns**: Keep UI logic separate from business logic
 - **Modularity**: Break large functions into smaller, focused functions
 - **Error Handling**: Always include proper error handling and user feedback
+
+### Values, Units, Dates and Sorting
+
+- **One formatter**: Show an entity's state with `getEntityDisplayState()` (`packages/widget-renderer/src/utils.js`) and build any other number, unit, percentage, temperature, time, date, duration or relative time with the helpers in `packages/widget-renderer/src/format.js` (`formatMeasurement`, `formatPercent`, `formatClockTime`, `formatRelativeTime`, ...). Do not write `` `${value}${unit}` ``, `` `${n}%` `` or `.toFixed()` for text a person reads: the helpers follow the language and region (`getFormatLocale()`), take Home Assistant's own unit and precision, and never wrap a unit onto its own line.
+- **State words**: Raw states map to translated names through `ha-state-names.cjs`, shared with the tray. A select, text or other free-form state is shown as written.
+- **Search and sort**: Use `normalizeSearchText()` for matching and `compareNames()` for ordering names, not `toLowerCase().includes()` or `localeCompare()` without a locale.
+- **Time settings**: Merge the Time format setting through `formatClockTime()` / `formatClockDateTime()` rather than passing `hour12` yourself.
 
 ### Dialogs, Focus and Toasts
 

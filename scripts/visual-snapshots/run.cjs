@@ -29,6 +29,7 @@ const path = require('path');
 const { startMockHomeAssistant } = require('./mock-home-assistant.cjs');
 const {
   FAILING_ENTITIES,
+  RESET_SETTINGS_VIEW,
   RESETTABLE_SETTINGS,
   TOKEN,
   WINDOW_POSITION,
@@ -51,7 +52,7 @@ const SCREEN_MARGIN = 32;
 const CTRL = 2;
 // Language packs are not bundled (except German); scenes in these languages need the repo's pack
 // installed in the profile, which is also the version a PR is changing.
-const INSTALLED_PACKS = ['ar', 'es', 'fr'];
+const INSTALLED_PACKS = ['ar', 'es', 'fr', 'hi', 'zh'];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -187,7 +188,6 @@ async function main() {
     services: buildServices(),
     serviceResponses: buildServiceResponses(),
     histories: buildHistories(),
-    subscriptionEvents: buildSubscriptionEvents(),
     failingEntities: FAILING_ENTITIES,
   });
   const haUrl = `http://127.0.0.1:${server.address().port}`;
@@ -242,10 +242,21 @@ async function main() {
     const openPins = [];
     const extraTargets = [];
     let offline = false;
+    let notificationsPushed = false;
+    const NOTIFICATIONS = 'persistent_notification/subscribe';
     const ctx = {
       CTRL,
       sleep,
       ev: (expression) => cdp.evaluate(expression),
+      /**
+       * Give the app the persistent notifications the fixture lists, as Home Assistant would send
+       * them to its open subscription. They are not there from the start, because their bell
+       * would sit in the header of every scene; `restore` takes them away again.
+       */
+      showNotifications() {
+        notificationsPushed = true;
+        server.pushEvents(NOTIFICATIONS, buildSubscriptionEvents()({ type: NOTIFICATIONS }));
+      },
       async click(selector) {
         const found = await cdp.evaluate(
           `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (el) el.click(); return !!el; })()`
@@ -345,6 +356,10 @@ async function main() {
     }
 
     async function restore() {
+      if (notificationsPushed) {
+        notificationsPushed = false;
+        server.pushEvents(NOTIFICATIONS, [{ type: 'current', notifications: {} }]);
+      }
       if (offline) {
         // Retry connects at once; waiting for the app's own backoff would run into the next scene.
         offline = false;
@@ -363,6 +378,8 @@ async function main() {
         );
         await sleep(400);
       }
+      // Before the dialogs close: Settings keeps the scroll position it is closed at.
+      await cdp.evaluate(RESET_SETTINGS_VIEW);
       await closeDialogs();
     }
 

@@ -320,8 +320,8 @@ describe('ui.js translations and number formatting', () => {
     );
     expect(labels).toEqual(['Aktuell', 'Ziel']);
     expect(text('.climate-modes-label')).toBe('Modus');
-    expect(text('#climate-target-value')).toBe('21,5°C');
-    expect(text('.climate-current-temp .climate-temp-value')).toBe('22,4°C');
+    expect(text('#climate-target-value')).toBe('21,5\u00a0°C');
+    expect(text('.climate-current-temp .climate-temp-value')).toBe('22,4\u00a0°C');
     // The slider itself keeps the machine value Home Assistant expects.
     expect(document.querySelector('#climate-slider').value).toBe('21.5');
     const modeLabels = [...document.querySelectorAll('.climate-mode-label')].map((node) =>
@@ -398,7 +398,9 @@ describe('ui.js translations and number formatting', () => {
       node.textContent.trim()
     );
     expect(statLabels).toEqual(['Aktuell', 'Ziel']);
-    expect(root.querySelector('.desktop-pin-climate-target-value').textContent).toBe('21,5°C');
+    expect(root.querySelector('.desktop-pin-climate-target-value').textContent).toBe(
+      '21,5\u00a0°C'
+    );
     expect(root.querySelector('.desktop-pin-panel-status').textContent).toBe('Modus Heizen');
     const heatButton = root.querySelector('.desktop-pin-climate-mode[data-action="heat"]');
     expect(heatButton.getAttribute('aria-label')).toBe('Modus auf Heizen setzen');

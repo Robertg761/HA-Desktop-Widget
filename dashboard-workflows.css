@@ -305,12 +305,9 @@
   display: none;
 }
 
-.alert-advanced-options label:has(input:disabled) {
+.alert-advanced-options label:has(input:disabled),
+.alert-advanced-options label:has(select:disabled) {
   opacity: 0.55;
-}
-
-body:not(.theme-light) .alert-advanced-options input[type='time'] {
-  color-scheme: dark;
 }
 
 /* The fields take the shared field recipe from styles.css; a grid or flex cell only has to let

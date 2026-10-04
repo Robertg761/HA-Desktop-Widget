@@ -323,9 +323,53 @@
     "retiredIn": "4.0.0",
     "reason": "Shortened before release: the first wording wrapped to three lines at 500px and four at 340px, over the bottom tile row"
   },
-  "Long-press to configure weather": {
+  "{{count}}m ago": {
     "retiredIn": "4.0.0",
-    "reason": "Reworded as Click to configure weather: the weather card opens its picker on a click now"
+    "reason": "Notification ages now use the language's own relative time format"
+  },
+  "{{count}}h ago": {
+    "retiredIn": "4.0.0",
+    "reason": "Notification ages now use the language's own relative time format"
+  },
+  "{{count}}d ago": {
+    "retiredIn": "4.0.0",
+    "reason": "Notification ages now use the language's own relative time format"
+  },
+  "Showing {{shown}} of {{total}} icons for \"{{query}}\".": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded with curly quotes around the search: Showing {{shown}} of {{total}} icons for “{{query}}”."
+  },
+  "No matching icons found.": {
+    "retiredIn": "4.0.0",
+    "reason": "Replaced by one line that names the search and suggests what to try: No icons match “{{query}}”. Try a simpler word, or paste an emoji."
+  },
+  "This computer and the sync file have different settings for {{sections}}. Keep this computer’s and upload them, or replace them with the file’s. Either way, the replaced settings are backed up.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to say \"this computer’s settings\" and \"the sync file’s\" in full, matching the renamed buttons"
+  },
+  "This computer and the sync file have different settings. Keep this computer’s and upload them, or replace them with the file’s. Either way, the replaced settings are backed up.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to say \"this computer’s settings\" and \"the sync file’s\" in full, matching the renamed buttons"
+  },
+  "The sync file's {{sections}} settings are damaged. Keep this computer's to repair them; the damaged copy is backed up first.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to say \"this computer’s settings\", matching the renamed buttons"
+  },
+  "Keep Local (Upload)": {
+    "retiredIn": "4.0.0",
+    "reason": "Button renamed to This computer (upload)"
+  },
+  "Use Remote (Download)": {
+    "retiredIn": "4.0.0",
+    "reason": "Button renamed to Sync file (download)"
+  },
+  "Unavailable entities on this connection: {{count}}.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to Entities not found on this connection: {{count}}. so they are not confused with entities that are unavailable"
+  },
+  "System default": {
+    "retiredIn": "4.0.0",
+    "reason": "Time format reads Automatic: Electron cannot read the operating system's 12/24-hour switch, so the option follows the language and region"
   },
   "Display Name:": {
     "retiredIn": "4.0.0",
@@ -335,17 +379,17 @@
     "retiredIn": "4.0.0",
     "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Value font size"
   },
-  "Chart:": {
-    "retiredIn": "4.0.0",
-    "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Chart"
-  },
   "Camera Preview:": {
     "retiredIn": "4.0.0",
     "reason": "Reworded: the label lost its trailing colon and Title Case; Tile Settings uses the Camera preview string that already existed"
   },
-  "Gauge range:": {
+  "Long-press to configure weather": {
     "retiredIn": "4.0.0",
-    "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Gauge range"
+    "reason": "Reworded as Click to configure weather: the weather card opens its picker on a click now"
+  },
+  "Add Page": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the Add page dialog's title takes the sentence case of the Add page string that already existed"
   },
   "Page name:": {
     "retiredIn": "4.0.0",
@@ -355,8 +399,12 @@
     "retiredIn": "4.0.0",
     "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Quick picks"
   },
-  "Add Page": {
+  "Chart:": {
     "retiredIn": "4.0.0",
-    "reason": "Reworded: the Add page dialog's title takes the sentence case of the Add page string that already existed"
+    "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Chart"
+  },
+  "Gauge range:": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Gauge range"
   }
 }

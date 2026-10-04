@@ -1,58 +1,29 @@
 import state from './state.js';
-import { t, formatNumber, formatNumericState } from './i18n.js';
+import { t } from './i18n.js';
+import {
+  STATE_NAMES as HA_STATE_NAMES,
+  formatBinarySensorState,
+  formatDateState,
+  formatDuration,
+  formatNumberEntityValue,
+  formatPercent,
+  formatStateName,
+  formatTemperature,
+  formatTimeOfDayState,
+  getClimateTemperature,
+  getSensorReading,
+  getTemperatureUnit,
+  joinUnit,
+  normalizeSearchText,
+  parseNumericState,
+} from './format.js';
 import { normalizeWeatherCondition, WEATHER_LABELS } from './weather-icons.js';
+import timerSensors from './timer-sensors.cjs';
 
-// Display names for raw Home Assistant states. The English names are the same as STATE_NAMES in
-// src/tray-entities.cjs (a unit test keeps the two in step), so both share one set of translation
-// keys. This package cannot import that CommonJS module, hence the copy.
-const HA_STATE_NAMES = Object.freeze({
-  on: 'On',
-  off: 'Off',
-  home: 'Home',
-  not_home: 'Away',
-  open: 'Open',
-  opening: 'Opening',
-  closed: 'Closed',
-  closing: 'Closing',
-  stopped: 'Stopped',
-  locked: 'Locked',
-  unlocked: 'Unlocked',
-  locking: 'Locking',
-  unlocking: 'Unlocking',
-  jammed: 'Jammed',
-  playing: 'Playing',
-  paused: 'Paused',
-  idle: 'Idle',
-  standby: 'Standby',
-  buffering: 'Buffering',
-  active: 'Active',
-  cleaning: 'Cleaning',
-  docked: 'Docked',
-  returning: 'Returning',
-  error: 'Error',
-  heat: 'Heating',
-  cool: 'Cooling',
-  heat_cool: 'Automatic',
-  auto: 'Automatic',
-  dry: 'Drying',
-  fan_only: 'Fan',
-  disarmed: 'Disarmed',
-  armed_home: 'Armed at home',
-  armed_away: 'Armed away',
-  armed_night: 'Armed at night',
-  armed_vacation: 'Armed on vacation',
-  armed_custom_bypass: 'Armed',
-  arming: 'Arming',
-  pending: 'Pending',
-  triggered: 'Alarm',
-  charging: 'Charging',
-  discharging: 'Discharging',
-  not_charging: 'Not charging',
-  full: 'Full',
-  running: 'Running',
-  unavailable: 'Unavailable',
-  unknown: 'Unknown',
-});
+const { isTimerLikeSensor } = timerSensors;
+
+// HA_STATE_NAMES is the table in ha-state-names.cjs, shared with the tray so every surface uses
+// the same words and the same translation keys.
 
 // Names for the entity domains a tile can show. Anything else falls back to the domain id in
 // title case, as before. Their translation keys carry a "Domain: " prefix because bare nouns such
@@ -131,21 +102,16 @@ const TIMER_STATUS_NAMES = Object.freeze({
 
 /**
  * Localized display name for a raw Home Assistant state ("on" -> "On", "not_home" -> "Away").
- * States without a known name keep their text with the first letter capitalized.
+ * A state without a name is made readable, and the text of a select or text entity is kept as
+ * written (see formatStateName).
  * @param {string} value - The raw state.
+ * @param {{domain?: string}} [options]
  * @returns {string} - The label to show.
  */
-function getLocalizedStateName(value) {
-  const raw = typeof value === 'string' ? value.trim() : '';
-  if (!raw) return t('Unknown');
-  const key = raw.toLowerCase();
-  if (Object.prototype.hasOwnProperty.call(HA_STATE_NAMES, key)) return t(HA_STATE_NAMES[key]);
-  return raw.charAt(0).toUpperCase() + raw.slice(1);
+function getLocalizedStateName(value, options) {
+  return formatStateName(value, options);
 }
 
-function isUnavailableOrUnknownState(value) {
-  return value === 'unavailable' || value === 'unknown';
-}
 const graphemeSegmenter =
   typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
     ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
@@ -308,15 +274,7 @@ function getEntityIcon(entity, options = {}) {
         if (attributes.device_class === 'battery') return '🔋';
         if (attributes.device_class === 'power') return '⚡';
         if (attributes.device_class === 'energy') return '⚡';
-        // Check for timer sensors (has timer-related attributes or timer in name)
-        if (
-          attributes.finishes_at ||
-          attributes.end_time ||
-          attributes.finish_time ||
-          attributes.duration ||
-          entity.entity_id.toLowerCase().includes('timer')
-        )
-          return '⏲️';
+        if (isTimerLikeSensor(entity)) return '⏲️';
         if (entity.entity_id.includes('battery')) return '🔋';
         if (entity.entity_id.includes('temperature') || entity.entity_id.includes('temp'))
           return '🌡️';
@@ -379,21 +337,6 @@ function brightnessToPercent(brightness) {
   return Math.min(100, Math.max(1, Math.round((value / 255) * 100)));
 }
 
-function formatDuration(ms) {
-  try {
-    if (ms < 0) ms = 0;
-    const s = Math.floor(ms / 1000);
-    const hh = Math.floor(s / 3600);
-    const mm = Math.floor((s % 3600) / 60);
-    const ss = s % 60;
-    if (hh > 0) return `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
-    return `${mm}:${String(ss).padStart(2, '0')}`;
-  } catch (error) {
-    console.error('Error formatting duration:', error);
-    return '0:00';
-  }
-}
-
 function getTimerEnd(entity) {
   try {
     const fin = entity.attributes?.finishes_at;
@@ -418,19 +361,17 @@ function getTimerEnd(entity) {
 
 function getSearchScore(text, query) {
   try {
-    // Normalize text by removing special characters, apostrophes, underscores, and extra spaces
-    const normalizeText = (str) => {
-      return str
-        .toLowerCase()
-        .replace(/[''`]/g, '') // Remove apostrophes and backticks
-        .replace(/[_-]/g, ' ') // Replace underscores and hyphens with spaces
-        .replace(/[^\w\s]/g, '') // Remove other special characters
-        .replace(/\s+/g, ' ') // Normalize multiple spaces to single space
-        .trim();
-    };
+    const normalizedText = normalizeSearchText(text);
+    const normalizedQuery = normalizeSearchText(query);
 
-    const normalizedText = normalizeText(text);
-    const normalizedQuery = normalizeText(query);
+    // A query made only of punctuation still matches the text that contains it.
+    if (!normalizedQuery) {
+      const raw = typeof query === 'string' ? query.trim().toLowerCase() : '';
+      if (!raw) return 2;
+      const haystack = String(text ?? '').toLowerCase();
+      if (!haystack.includes(raw)) return 0;
+      return haystack.startsWith(raw) ? 2 : 1;
+    }
 
     if (normalizedText.includes(normalizedQuery)) {
       if (normalizedText.startsWith(normalizedQuery)) {
@@ -445,89 +386,112 @@ function getSearchScore(text, query) {
   }
 }
 
+// Entities that run once when pressed and have no lasting state: "Ready" until Home Assistant
+// reports otherwise (a never-pressed button is `unknown`, a pressed one holds a timestamp).
+const ACTION_STATE_DOMAINS = new Set(['scene', 'button', 'input_button']);
+
+// A date or time entity's state as text; anything that is not one stays as sent.
+function formatDateEntityState(entity) {
+  const raw = typeof entity.state === 'string' ? entity.state.trim() : '';
+  if (entity.entity_id.startsWith('time.') || /^\d{1,2}:\d{2}(:\d{2})?$/.test(raw)) {
+    return formatTimeOfDayState(raw);
+  }
+  return formatDateState(raw, {
+    dateOnly: entity.entity_id.startsWith('date.') || entity.attributes?.has_time === false,
+  });
+}
+
+/**
+ * The state of an entity as text, the same on every surface that shows one: tiles, desktop pins,
+ * the command palette, dialogs, alerts and the tray tooltips. Numbers and units follow the user's
+ * locale and Home Assistant's own unit and precision, binary sensors read by device class, dates
+ * read as dates, and the text of select and text entities is never re-cased.
+ * @param {object} entity - A Home Assistant state object.
+ * @returns {string}
+ */
 function getEntityDisplayState(entity) {
   try {
     if (!entity) return t('Unknown');
 
-    // Check if sensor is a timer (has timer-related attributes, timer in name, or timestamp as state)
-    const hasTimerAttributes =
-      entity.attributes &&
-      (entity.attributes.finishes_at ||
-        entity.attributes.end_time ||
-        entity.attributes.finish_time ||
-        entity.attributes.duration);
-    const hasTimerInName = entity.entity_id.toLowerCase().includes('timer');
-
-    // Check if state is a valid future timestamp
-    let stateIsTimestamp = false;
-    if (entity.state && entity.state !== 'unavailable' && entity.state !== 'unknown') {
-      // Only treat as timestamp if it looks like a full ISO 8601 date-time string with time component
-      // Require time component (YYYY-MM-DDTHH:mm or YYYY-MM-DD HH:mm) to avoid matching date-only sensors
-      // This prevents matching calendar/date sensors showing "2025-12-25" and other date-only values
-      const iso8601Pattern = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?/;
-      const looksLikeTimestamp = iso8601Pattern.test(entity.state);
-      if (looksLikeTimestamp) {
-        const stateTime = new Date(entity.state).getTime();
-        if (!isNaN(stateTime) && stateTime > Date.now()) {
-          stateIsTimestamp = true;
-        }
-      }
-    }
-
-    const isTimerSensor =
-      entity.entity_id.startsWith('sensor.') &&
-      (hasTimerAttributes || hasTimerInName || stateIsTimestamp);
+    const domain = entity.entity_id.split('.')[0];
+    const attributes = entity.attributes || {};
+    const rawState = entity.state;
 
     // For timers (both timer.* and sensor.* with timer attributes)
-    if (entity.entity_id.startsWith('timer.') || isTimerSensor) {
+    if (domain === 'timer' || isTimerLikeSensor(entity)) {
       return getTimerDisplay(entity);
     }
 
-    // For sensors, return the actual value with unit
-    if (entity.entity_id.startsWith('sensor.')) {
-      if (isUnavailableOrUnknownState(entity.state)) return getLocalizedStateName(entity.state);
-      const unit = entity.attributes?.unit_of_measurement || '';
-      // Like Home Assistant, only format measurements; a bare "2026" or "01234" stays as sent.
-      const value =
-        unit || entity.attributes?.state_class ? formatNumericState(entity.state) : entity.state;
-      return unit ? `${value} ${unit}` : value;
-    }
-
-    // For binary sensors
-    if (entity.entity_id.startsWith('binary_sensor.')) {
-      if (isUnavailableOrUnknownState(entity.state)) return getLocalizedStateName(entity.state);
-      return entity.state === 'on' ? t('Detected') : t('Clear');
-    }
-
-    // For scenes - just show "Ready" or hide the state
-    if (entity.entity_id.startsWith('scene.')) {
-      return t('Ready');
-    }
-
-    // Weather reports condition ids ("rainy", "clear-night"); show the same labels as the weather card.
-    if (entity.entity_id.startsWith('weather.') && !isUnavailableOrUnknownState(entity.state)) {
-      const condition = normalizeWeatherCondition(entity.state);
-      if (condition !== 'unknown') return t(WEATHER_LABELS[condition]);
-    }
-
-    // For lights with brightness
     if (
-      entity.entity_id.startsWith('light.') &&
-      entity.state === 'on' &&
-      entity.attributes?.brightness
+      rawState === 'unavailable' ||
+      (rawState === 'unknown' && !ACTION_STATE_DOMAINS.has(domain))
     ) {
-      const brightness = brightnessToPercent(entity.attributes.brightness);
-      return `${brightness}%`;
+      return getLocalizedStateName(rawState);
     }
 
-    // For climate
-    if (entity.entity_id.startsWith('climate.')) {
-      const temp = entity.attributes?.current_temperature || entity.attributes?.temperature;
-      if (temp) return `${formatNumber(temp)}°`;
+    switch (domain) {
+      case 'sensor': {
+        const deviceClass = attributes.device_class;
+        if (deviceClass === 'timestamp' || deviceClass === 'date') {
+          return formatDateState(rawState, { dateOnly: deviceClass === 'date' });
+        }
+        const reading = getSensorReading(entity);
+        if (reading) return reading.text;
+        const text = typeof rawState === 'string' ? rawState.trim() : String(rawState ?? '');
+        if (deviceClass === 'enum') return getLocalizedStateName(text);
+        // A full date-time with no device class is still a moment, not machine text.
+        if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(text)) return formatDateState(text);
+        return joinUnit(text, attributes.unit_of_measurement);
+      }
+
+      case 'binary_sensor':
+        return formatBinarySensorState(rawState, attributes.device_class);
+
+      case 'scene':
+      case 'button':
+      case 'input_button':
+        return t('Ready');
+
+      case 'weather': {
+        // Weather reports condition ids ("rainy", "clear-night"); show the same labels as the card.
+        const condition = normalizeWeatherCondition(rawState);
+        if (condition !== 'unknown') return t(WEATHER_LABELS[condition]);
+        break;
+      }
+
+      case 'light':
+        // A light that is on reads as its brightness.
+        if (rawState === 'on' && attributes.brightness) {
+          return formatPercent(brightnessToPercent(attributes.brightness));
+        }
+        break;
+
+      case 'climate': {
+        const temperature = getClimateTemperature(entity);
+        if (temperature !== null) return formatTemperature(temperature, getTemperatureUnit(entity));
+        break;
+      }
+
+      case 'number':
+      case 'input_number':
+      case 'counter': {
+        const number = parseNumericState(rawState);
+        if (number !== null) return formatNumberEntityValue(number, entity);
+        break;
+      }
+
+      case 'date':
+      case 'datetime':
+      case 'time':
+      case 'input_datetime':
+        return formatDateEntityState(entity);
+
+      default:
+        break;
     }
 
-    // Default: the localized state name, or the raw state with its first letter capitalized
-    return getLocalizedStateName(entity.state);
+    // Everything else: the state's name, or the state as written when no name is known.
+    return getLocalizedStateName(rawState, { domain });
   } catch (error) {
     console.error('Error getting entity display state:', error);
     return t('Unknown');
@@ -562,7 +526,8 @@ function resolveTimerFinishesAt(entity) {
 }
 
 /**
- * Parses a Home Assistant duration ("0:15:00", "15:00" or a number of seconds).
+ * Parses a Home Assistant duration ("0:15:00", "15:00", "1 day, 0:00:00", "0:00:04.5" or a number
+ * of seconds).
  * @param {string|number} value - The duration to parse.
  * @returns {number|null} - The duration in seconds, or null when unparseable.
  */
@@ -572,14 +537,22 @@ function parseTimerDurationSeconds(value) {
   }
   if (typeof value !== 'string') return null;
 
-  const trimmed = value.trim();
+  let trimmed = value.trim();
   if (!trimmed) return null;
   if (/^\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
 
+  // Python writes a timer longer than a day as "1 day, 2:00:00".
+  let days = 0;
+  const dayMatch = /^(\d+)\s+days?,\s*(.+)$/i.exec(trimmed);
+  if (dayMatch) {
+    days = Number(dayMatch[1]);
+    trimmed = dayMatch[2];
+  }
+
   const parts = trimmed.split(':').map((part) => Number(part));
   if (parts.some((part) => !Number.isFinite(part) || part < 0)) return null;
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return days * 86400 + parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return days * 86400 + parts[0] * 60 + parts[1];
   return null;
 }
 
@@ -695,15 +668,7 @@ function getTimerDisplay(entity) {
           return t('Finished');
         }
 
-        const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
-        const hours = Math.floor(remaining / 3600);
-        const minutes = Math.floor((remaining % 3600) / 60);
-        const seconds = remaining % 60;
-
-        if (hours > 0) {
-          return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-        }
-        return `${minutes}:${String(seconds).padStart(2, '0')}`;
+        return formatDuration(endTime - now);
       }
 
       // If no end time found, just return the state
@@ -717,23 +682,12 @@ function getTimerDisplay(entity) {
       return t('Idle');
     }
 
-    if (entity.state === 'paused') {
-      const remaining = entity.attributes?.remaining || '00:00:00';
-      return `⏸ ${remaining.substring(0, 5)}`; // Show HH:MM
-    }
-
-    if (entity.state === 'active') {
-      const remaining = entity.attributes?.remaining || '00:00:00';
-      // Parse and format as mm:ss or hh:mm:ss
-      const parts = remaining.split(':').map((p) => parseInt(p, 10));
-      if (parts.length === 3) {
-        const [h, m, s] = parts;
-        if (h > 0) {
-          return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-        }
-        return `${m}:${String(s).padStart(2, '0')}`;
-      }
-      return remaining.substring(0, 5); // Fallback to HH:MM
+    if (entity.state === 'paused' || entity.state === 'active') {
+      // Home Assistant sends "0:04:12" without padding, so parse it rather than cut the text.
+      const remaining = entity.attributes?.remaining ?? '0:00:00';
+      const seconds = parseTimerDurationSeconds(remaining);
+      const text = seconds === null ? String(remaining) : formatDuration(seconds * 1000);
+      return entity.state === 'paused' ? `${t('Paused')} ${text}` : text;
     }
 
     return getLocalizedStateName(entity.state);
@@ -1095,6 +1049,7 @@ export {
   getSearchScore,
   getEntityDisplayState,
   getTimerDisplay,
+  isTimerLikeSensor,
   getTimerStatusLabel,
   getTimerRunState,
   getLocalizedStateName,

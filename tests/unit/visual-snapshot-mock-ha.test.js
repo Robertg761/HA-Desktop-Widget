@@ -2,11 +2,13 @@
  * @jest-environment node
  */
 
+const http = require('http');
 const {
   decodeFrames,
   encodeFrame,
   isRefusedCall,
   resultFor,
+  startMockHomeAssistant,
 } = require('../../scripts/visual-snapshots/mock-home-assistant.cjs');
 const {
   buildHistories,
@@ -139,5 +141,75 @@ describe('visual snapshot mock Home Assistant history and subscriptions', () => 
     expect(messages.some((message) => /\[[^\]]+\]\(\/config\/[a-z]+\)/.test(message))).toBe(true);
     expect(messages.some((message) => message.includes('**'))).toBe(true);
     expect(buildSubscriptionEvents(now)({ type: 'subscribe_events' })).toEqual([]);
+  });
+});
+
+describe('visual snapshot mock Home Assistant pushed events', () => {
+  // A client as small as the mock needs: the upgrade handshake, then masked text frames out and
+  // the server's frames in.
+  function connect(port) {
+    return new Promise((resolve, reject) => {
+      const request = http.request({
+        port,
+        host: '127.0.0.1',
+        path: '/api/websocket',
+        headers: {
+          Connection: 'Upgrade',
+          Upgrade: 'websocket',
+          'Sec-WebSocket-Version': '13',
+          'Sec-WebSocket-Key': Buffer.from('0123456789abcdef').toString('base64'),
+        },
+      });
+      request.on('upgrade', (response, socket) => {
+        const received = [];
+        let pending = Buffer.alloc(0);
+        socket.on('data', (chunk) => {
+          const [frames, rest] = decodeFrames(Buffer.concat([pending, chunk]));
+          pending = rest;
+          frames.forEach(({ payload }) => received.push(JSON.parse(payload.toString('utf8'))));
+        });
+        resolve({
+          received,
+          socket,
+          send: (value) => socket.write(maskedClientFrame(JSON.stringify(value))),
+        });
+      });
+      request.on('error', reject);
+      request.end();
+    });
+  }
+  const until = async (condition) => {
+    for (let attempt = 0; attempt < 100 && !condition(); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  };
+
+  test('sends events to the subscriptions that are open, and only to the type asked for', async () => {
+    const server = await startMockHomeAssistant({ token: 'token', states: [] });
+    const client = await connect(server.address().port);
+    try {
+      client.send({ type: 'auth', access_token: 'token' });
+      client.send({ id: 1, type: 'persistent_notification/subscribe' });
+      client.send({ id: 2, type: 'subscribe_events' });
+      await until(() => client.received.some((message) => message.id === 2));
+      // Nothing is sent when the subscription opens: the bell stays out of every scene.
+      expect(client.received.filter((message) => message.type === 'event')).toEqual([]);
+
+      server.pushEvents('persistent_notification/subscribe', [
+        { type: 'current', notifications: { a: { notification_id: 'a' } } },
+      ]);
+      await until(() => client.received.some((message) => message.type === 'event'));
+      expect(client.received.filter((message) => message.type === 'event')).toEqual([
+        {
+          id: 1,
+          type: 'event',
+          event: { type: 'current', notifications: { a: { notification_id: 'a' } } },
+        },
+      ]);
+    } finally {
+      client.socket.destroy();
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 });
