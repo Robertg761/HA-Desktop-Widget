@@ -16726,8 +16726,10 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   );
 }
 
-/* A value and its unit in separate spans keep their left-to-right order. */
-[dir='rtl'] :is(.control-sensor-readout, .sensor-detail-readout, .media-tile-time) {
+/* A value and its unit in separate spans keep their left-to-right order, and so does the light
+   dialog's colour temperature ("3,200 K"), which would read "K 3,200" in a right-to-left row. */
+[dir='rtl']
+  :is(.control-sensor-readout, .sensor-detail-readout, .media-tile-time, #light-color-temp-value) {
   direction: ltr;
   unicode-bidi: isolate;
 }
