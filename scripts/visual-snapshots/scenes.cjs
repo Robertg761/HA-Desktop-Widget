@@ -231,6 +231,54 @@ const pinScene = (name, entityId, extra = {}) => ({
 
 const pages = (set, activeTabId) => ({ customTabs: PAGE_SETS[set], activeTabId });
 
+// A comparison graph of four temperatures on a page of its own, wide enough for two columns, with a
+// day of history for three of them. Hovering it lists every series at the pointer's time.
+const graphTooltipPage = {
+  ...pages('graph', 'default'),
+  comparisonGraphs: [
+    {
+      id: 'graph:temps',
+      name: 'Temperatures',
+      span: 2,
+      entityIds: [
+        'sensor.office_temp',
+        'sensor.graph_living_temp',
+        'sensor.graph_bedroom_temp',
+        'sensor.graph_kitchen_temp',
+      ],
+    },
+  ],
+};
+
+// Moves the pointer over the graph, `ratio` of the way across it, and checks the tooltip sits beside
+// the pointer and not over the crosshair that marks it.
+async function hoverGraph(ctx, ratio) {
+  await ctx.waitForExpression(
+    `document.querySelectorAll('.comparison-graph-frame polyline').length >= 3`,
+    'the graph drawn from its history'
+  );
+  await ctx.ev(`(() => {
+    const frame = document.querySelector('.comparison-graph-frame');
+    const box = frame.getBoundingClientRect();
+    frame.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      clientX: box.left + box.width * ${ratio},
+      clientY: box.top + box.height / 2,
+    }));
+  })()`);
+  await ctx.expect(
+    `(() => {
+      const tooltip = document.querySelector('.comparison-graph-tooltip');
+      const crosshair = document.querySelector('.comparison-graph-crosshair');
+      if (!tooltip || tooltip.hidden || !crosshair) return false;
+      const box = tooltip.getBoundingClientRect();
+      const line = crosshair.getBoundingClientRect().left;
+      return line < box.left || line > box.right;
+    })()`,
+    'the tooltip does not cover the crosshair'
+  );
+}
+
 // Keyboard focus rings only show after a key press, so press one before focusing from script.
 async function focusWithKeyboard(ctx, selector) {
   await ctx.pressKey('Shift', { code: 'ShiftLeft', keyCode: 16 });
@@ -531,6 +579,29 @@ const scenes = [
     name: 'popup-media',
     config: dialogsPage,
     setup: openDetails('media_player.den_stereo'),
+  },
+  // A title of 86 characters and a player that names its app: the dialog is where it is read whole.
+  {
+    name: 'popup-media-long-title',
+    config: sixPages('media'),
+    setup: openDetails('media_player.bedroom_tv'),
+  },
+  // The devices the dialogs follow: a garage door with no position (its picture follows its state),
+  // an RGB light with no colour temperature, and a thermostat that dropped out.
+  {
+    name: 'popup-cover-no-position',
+    config: pages('security', 'more'),
+    setup: openDetails('cover.garage_simple'),
+  },
+  {
+    name: 'popup-light-rgb',
+    config: pages('security', 'more'),
+    setup: openDetails('light.rgb_strip'),
+  },
+  {
+    name: 'popup-climate-unavailable',
+    config: pages('security', 'more'),
+    setup: openDetails('climate.unavailable'),
   },
   {
     name: 'dialog-tile-settings',
@@ -849,6 +920,47 @@ const scenes = [
       quickAccessTileOptions: { 'camera.driveway': { cameraPreviewRefresh: '30s' } },
     },
     setup: toggleEditMode,
+  },
+
+  // What a dashboard says about security and state: a locked, an unlocked and a jammed lock, an
+  // alarm that is armed, one that went off and one that is disarmed, an open window, a low battery
+  // and a person (a tile that does nothing, so no pointer and no hover).
+  { name: 'tiles-security', config: pages('security', 'default') },
+  { name: 'tiles-security-light', ui: { theme: 'light' }, config: pages('security', 'default') },
+  // With the accent glow off nothing lights up for being on: the lamp and the playing TV stay plain,
+  // and so does a TV Home Assistant calls 'on'. Only what needs attention is coloured.
+  {
+    name: 'tiles-glow-off',
+    ui: { activeTileGlow: false },
+    config: {
+      customTabs: [
+        {
+          id: 'default',
+          name: 'Glow',
+          entityIds: [
+            'light.desk_lamp',
+            'lock.front_door',
+            'person.alex',
+            'media_player.tv_on',
+            'media_player.bedroom_tv',
+            'alarm_control_panel.cabin',
+          ],
+        },
+      ],
+      activeTabId: 'default',
+    },
+  },
+  { name: 'graph-hover-left', config: graphTooltipPage, setup: (ctx) => hoverGraph(ctx, 0.25) },
+  { name: 'graph-hover-right', config: graphTooltipPage, setup: (ctx) => hoverGraph(ctx, 0.75) },
+  {
+    name: 'notifications-markdown',
+    setup: async (ctx) => {
+      await ctx.waitForSelector('#persistent-notifications-btn:not(.hidden)');
+      await ctx.click('#persistent-notifications-btn');
+      await ctx.waitForSelector(
+        '#persistent-notifications-modal:not(.hidden) .persistent-notification-message a'
+      );
+    },
   },
 
   // The light theme.

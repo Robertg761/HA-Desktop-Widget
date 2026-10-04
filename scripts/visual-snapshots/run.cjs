@@ -32,9 +32,11 @@ const {
   WINDOW_POSITION,
   WINDOW_SIZE,
   buildConfig,
+  buildHistories,
   buildServiceResponses,
   buildServices,
   buildStates,
+  buildSubscriptionEvents,
 } = require('./fixture.cjs');
 const { scenes } = require('./scenes.cjs');
 
@@ -182,6 +184,8 @@ async function main() {
     states: buildStates(),
     services: buildServices(),
     serviceResponses: buildServiceResponses(),
+    histories: buildHistories(),
+    subscriptionEvents: buildSubscriptionEvents(),
     failingEntities: FAILING_ENTITIES,
   });
   const haUrl = `http://127.0.0.1:${server.address().port}`;

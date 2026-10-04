@@ -11,6 +11,7 @@ const {
   WINDOW_POSITION,
   WINDOW_SIZE,
   buildConfig,
+  buildHistories,
   buildServices,
   buildStates,
 } = require('../../scripts/visual-snapshots/fixture.cjs');
@@ -154,6 +155,16 @@ describe('visual snapshot scenes', () => {
       'focus-tile-settings',
       'toast-error-over-settings',
       'toast-reorganize-notice',
+      'tiles-security',
+      'tiles-security-light',
+      'tiles-glow-off',
+      'graph-hover-left',
+      'graph-hover-right',
+      'notifications-markdown',
+      'popup-media-long-title',
+      'popup-cover-no-position',
+      'popup-light-rgb',
+      'popup-climate-unavailable',
     ]) {
       expect(names).toContain(required);
     }
@@ -219,5 +230,43 @@ describe('visual snapshot scenes', () => {
     const scene = scenes.find((entry) => entry.name === 'forced-colors-popup-colour');
     const page = PAGE_SETS.default.find((entry) => entry.id === scene.config.activeTabId);
     expect(page.entityIds).toContain('light.colour_strip');
+  });
+
+  it('shows the dashboard-state scenes the tiles and dialogs were fixed for', () => {
+    const states = new Map(buildStates().map((entity) => [entity.entity_id, entity]));
+    const pageOf = (scene) => scene.config?.customTabs || PAGE_SETS.default;
+    // A lock in each state a tile treats differently, an alarm that went off, a TV that is 'on'.
+    expect(states.get('lock.front_door').state).toBe('unlocked');
+    expect(states.get('lock.shed').state).toBe('jammed');
+    expect(states.get('alarm_control_panel.cabin').state).toBe('triggered');
+    expect(states.get('media_player.tv_on').state).toBe('on');
+    expect(states.get('cover.garage_simple').attributes.current_position).toBeUndefined();
+    expect(states.get('light.rgb_strip').attributes.color_mode).toBe('rgb');
+    const glowOff = scenes.find((scene) => scene.name === 'tiles-glow-off');
+    expect(glowOff.ui.activeTileGlow).toBe(false);
+    expect(pageOf(glowOff).flatMap((page) => page.entityIds)).toEqual(
+      expect.arrayContaining(['media_player.tv_on', 'light.desk_lamp'])
+    );
+    for (const name of [
+      'popup-cover-no-position',
+      'popup-light-rgb',
+      'popup-climate-unavailable',
+    ]) {
+      const scene = scenes.find((entry) => entry.name === name);
+      const page = scene.config.customTabs.find((entry) => entry.id === scene.config.activeTabId);
+      expect(page.entityIds.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('plots the graph the tooltip scenes hover over from history the mock holds', () => {
+    const scene = scenes.find((entry) => entry.name === 'graph-hover-left');
+    const [graph] = scene.config.comparisonGraphs;
+    const history = buildHistories();
+    const known = new Set(buildStates().map((entity) => entity.entity_id));
+    const recorded = graph.entityIds.filter((entityId) => history(entityId).length > 0);
+    expect(recorded.length).toBeGreaterThanOrEqual(3);
+    for (const entityId of graph.entityIds) {
+      expect(known.has(entityId)).toBe(true);
+    }
   });
 });

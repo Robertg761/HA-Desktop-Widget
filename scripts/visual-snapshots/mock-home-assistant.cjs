@@ -3,8 +3,10 @@
  *
  * It speaks the WebSocket API's auth handshake and answers every request from a fixture: states
  * for get_states, services for get_services (the command palette only offers commands for
- * services that exist), empty lists and objects for registries and history, null for
- * subscriptions; the few services that return data answer from `serviceResponses`.
+ * services that exist), empty lists and objects for registries, null for subscriptions; the few
+ * services that return data answer from `serviceResponses`. History is empty unless `histories`
+ * returns rows for an entity, and a subscription starts with the events `subscriptionEvents`
+ * lists for it (the persistent notifications that exist when the app subscribes).
  * The WebSocket framing is done by hand (text frames, ping, close) so the snapshot job needs no
  * dependency beyond Node itself. Test-only; never shipped.
  */
@@ -65,8 +67,16 @@ function decodeFrames(buffer) {
   return [frames, buffer.subarray(offset)];
 }
 
-function resultFor(message, { states, services, serviceResponses }) {
+function resultFor(message, { states, services, serviceResponses, histories }) {
   switch (message.type) {
+    case 'history/history_during_period': {
+      // Home Assistant's minimal response: rows of {s: state, lu: last_updated in seconds}, keyed by
+      // entity, and only for entities that recorded something.
+      const rows = (message.entity_ids || [])
+        .map((entityId) => [entityId, histories?.(entityId, message) || []])
+        .filter(([, entityRows]) => entityRows.length);
+      return Object.fromEntries(rows);
+    }
     case 'call_service': {
       // A service that returns data (todo.get_items, calendar.get_events) answers from the
       // fixture; every other call just succeeds.
@@ -122,6 +132,8 @@ function startMockHomeAssistant({
   states,
   services = {},
   serviceResponses = {},
+  histories = null,
+  subscriptionEvents = null,
   failingEntities = [],
 }) {
   const server = http.createServer((request, response) => {
@@ -205,8 +217,12 @@ function startMockHomeAssistant({
               id: item.id,
               type: 'result',
               success: true,
-              result: resultFor(item, { states, services, serviceResponses }),
+              result: resultFor(item, { states, services, serviceResponses, histories }),
             });
+            // What a subscription starts with, sent under the subscription's own id.
+            for (const event of subscriptionEvents?.(item) || []) {
+              send({ id: item.id, type: 'event', event });
+            }
           }
         }
       }

@@ -8,7 +8,11 @@ const {
   isRefusedCall,
   resultFor,
 } = require('../../scripts/visual-snapshots/mock-home-assistant.cjs');
-const { buildServiceResponses } = require('../../scripts/visual-snapshots/fixture.cjs');
+const {
+  buildHistories,
+  buildServiceResponses,
+  buildSubscriptionEvents,
+} = require('../../scripts/visual-snapshots/fixture.cjs');
 
 function maskedClientFrame(text) {
   const payload = Buffer.from(text, 'utf8');
@@ -101,5 +105,39 @@ describe('visual snapshot mock Home Assistant refused calls', () => {
       isRefusedCall({ type: 'call_service', service_data: { entity_id: 'light.unreachable' } }, [])
     ).toBe(false);
     expect(isRefusedCall({ type: 'call_service' }, failing)).toBe(false);
+  });
+});
+
+describe('visual snapshot mock Home Assistant history and subscriptions', () => {
+  const now = new Date('2026-10-04T12:00:00Z');
+  const history = (entityIds, histories = buildHistories(now)) =>
+    resultFor(
+      { type: 'history/history_during_period', entity_ids: entityIds },
+      { states: [], services: {}, serviceResponses: {}, histories }
+    );
+
+  test('answers a history request with rows only for the sensors that recorded something', () => {
+    const result = history(['sensor.graph_living_temp', 'sensor.office_temp']);
+    expect(Object.keys(result)).toEqual(['sensor.graph_living_temp']);
+    const rows = result['sensor.graph_living_temp'];
+    // A reading every half hour for a day, oldest first, in Home Assistant's minimal format.
+    expect(rows).toHaveLength(49);
+    expect(rows[0].lu).toBeLessThan(rows.at(-1).lu);
+    expect(rows.at(-1).lu).toBe(now.getTime() / 1000);
+    expect(Number.isFinite(Number(rows[0].s))).toBe(true);
+  });
+
+  test('leaves history empty when nothing is given, as before', () => {
+    expect(history(['sensor.graph_living_temp'], null)).toEqual({});
+  });
+
+  test('has the persistent notifications a subscription starts with, with Markdown in them', () => {
+    const events = buildSubscriptionEvents(now)({ type: 'persistent_notification/subscribe' });
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('current');
+    const messages = Object.values(events[0].notifications).map((entry) => entry.message);
+    expect(messages.some((message) => /\[[^\]]+\]\(\/config\/[a-z]+\)/.test(message))).toBe(true);
+    expect(messages.some((message) => message.includes('**'))).toBe(true);
+    expect(buildSubscriptionEvents(now)({ type: 'subscribe_events' })).toEqual([]);
   });
 });
