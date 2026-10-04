@@ -7302,12 +7302,20 @@ function updateExistingDesktopPinMediaControl(root, entity) {
   return true;
 }
 
+// Chinese, Japanese and Korean characters (and full-width forms) are set one em wide, where Latin
+// text averages about 0.6em. A name of them has no spaces to break at; the line count breaks a token
+// wider than the line anywhere, which is where such text may break.
+const WIDE_CHARACTER_PATTERN =
+  /[\u1100-\u115f\u2e80-\u303e\u3041-\u33ff\u3400-\u4dbf\u4e00-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe6f\uff00-\uff60\uffe0-\uffe6\u{20000}-\u{3fffd}]/u;
+
 function estimateDesktopPinSceneTokenWidth(token, fontSize) {
   if (!token) return fontSize * 0.35;
   let width = 0;
   for (const char of token) {
     if (char === ' ') {
       width += fontSize * 0.34;
+    } else if (WIDE_CHARACTER_PATTERN.test(char)) {
+      width += fontSize;
     } else if ('ilI1|'.includes(char)) {
       width += fontSize * 0.34;
     } else if ('mwMW@#%&'.includes(char)) {

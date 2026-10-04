@@ -6804,6 +6804,34 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       jest.useRealTimers();
     });
 
+    it('sizes a scene named in Chinese for characters that are a full em wide', async () => {
+      jest.useFakeTimers();
+      setDesktopPinViewport(97, 83);
+      const syncedMinFor = async (id, name) => {
+        mockElectronAPI.syncDesktopPinContentMinBounds.mockClear();
+        state.setStates({
+          [id]: { entity_id: id, state: 'scening', attributes: { friendly_name: name } },
+        });
+        ui.renderDesktopPinnedTile(id, state.STATES[id]);
+        await flushDesktopPinSceneMinSync();
+        return mockElectronAPI.syncDesktopPinContentMinBounds.mock.calls.at(-1)[1];
+      };
+
+      // Forty-five characters each: the Latin one sets at about 0.6em a character, the Chinese at 1em.
+      const latin = await syncedMinFor(
+        'scene.latin',
+        'Movie Night Livingroom Dining Area Hallway Li'
+      );
+      const chinese = await syncedMinFor(
+        'scene.chinese',
+        '客厅电影之夜和晚餐灯光场景再加走廊夜灯客厅电影之夜和晚餐灯光场景再加走廊夜灯客厅电影之夜和'
+      );
+
+      const area = ({ width, height }) => width * height;
+      expect(area(chinese)).toBeGreaterThan(area(latin));
+      jest.useRealTimers();
+    });
+
     it('recalculates the synced scene minimum when the friendly name gets longer', async () => {
       jest.useFakeTimers();
       setDesktopPinViewport(97, 83);
