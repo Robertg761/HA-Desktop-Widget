@@ -292,13 +292,16 @@ export function getSensorReading(entity) {
   return { value, unit, text: joinUnit(value, unit) };
 }
 
-// Decimals a helper's step implies: 0.5 reads "21.5", 1 reads "21", 0.25 reads "0.25".
+// Decimals a helper's step implies, from its fractional part whatever its size: 0.5 reads "21.5",
+// 1 reads "21", 0.25 reads "0.25", and 2.5 reads "7.5" (not "8"). At most three are kept.
 function getStepDecimals(step) {
   const number = Number(step);
-  if (!Number.isFinite(number) || number <= 0 || number >= 1) return 0;
-  const text = String(number);
-  const exponent = /e-(\d+)$/.exec(text);
-  return Math.min(3, exponent ? Number(exponent[1]) : text.split('.')[1]?.length || 0);
+  if (!Number.isFinite(number) || number <= 0) return 0;
+  // Twelve significant digits drop floating-point noise (0.1 + 0.2 is 0.30000000000000004, meant
+  // as 0.3) and spell exponent forms (2.5e-7) the same way as plain ones.
+  const [mantissa, exponent = '0'] = number.toPrecision(12).split('e');
+  const fraction = (mantissa.split('.')[1] || '').replace(/0+$/, '');
+  return Math.max(0, Math.min(3, fraction.length - Number(exponent)));
 }
 
 /**

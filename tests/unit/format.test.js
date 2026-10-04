@@ -593,6 +593,42 @@ describe('number helpers', () => {
     );
   });
 
+  it('takes the decimals from the fractional part of the step, whatever its size', () => {
+    const shown = (value, step) =>
+      format.formatNumberEntityValue(value, entity('number.x', String(value), { step }));
+    // A step above one with a fraction keeps it: 7.5 is not 8.
+    expect(shown(7.5, 2.5)).toBe('7.5');
+    expect(shown(12.5, 2.5)).toBe('12.5');
+    expect(shown(7.25, 1.25)).toBe('7.25');
+    // The decimals are padded to the step's, as they are for 0.5.
+    expect(shown(1005, 10.5)).toBe('1,005.0');
+    expect(shown(1005.5, 10.5)).toBe('1,005.5');
+    // A whole step has none, as before.
+    expect(shown(40, 1)).toBe('40');
+    expect(shown(50, 10)).toBe('50');
+    expect(shown(0.5, 0.5)).toBe('0.5');
+    expect(shown(0.2, 0.01)).toBe('0.20');
+    // Floating-point noise in the step is not a decimal place.
+    expect(shown(0.6, 0.1 + 0.2)).toBe('0.6');
+    expect(shown(2.5, 2.5000000000000004)).toBe('2.5');
+    expect(shown(21.5, 0.1 * 3)).toBe('21.5');
+    // Exponent notation reads the same as the plain number, capped at three places.
+    expect(shown(0.5, 5e-1)).toBe('0.5');
+    expect(shown(0.0015, 1.5e-3)).toBe('0.002');
+    expect(shown(0.5, 1e-7)).toBe('0.500');
+    expect(shown(4, 1e21)).toBe('4');
+    // A step given as text works, one that is not a positive number falls back to up to three.
+    expect(shown(7.5, '2.5')).toBe('7.5');
+    expect(shown(12.3456, 0)).toBe('12.346');
+    expect(shown(12.3456, -2.5)).toBe('12.346');
+    expect(shown(12.3456, 'abc')).toBe('12.346');
+    expect(shown(12.3456, undefined)).toBe('12.346');
+    // A step the caller passes wins over the entity's.
+    expect(
+      format.formatNumberEntityValue(7.5, entity('number.x', '7.5', { step: 1 }), { step: 2.5 })
+    ).toBe('7.5');
+  });
+
   it('shows a thermostat reading of 0 and ignores one that is unknown', () => {
     const word = (value, attributes) =>
       utils.getEntityDisplayState(entity('climate.c', value, attributes));
