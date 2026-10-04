@@ -210,6 +210,8 @@ describe('stylesheet one-offs', () => {
       </div></div>`);
       const row = document.querySelector('.connection-test-row');
       expect(resolvedValue(row, 'padding')).toBe('12px 0');
+      // The old rule zeroed the longhand, which the shorthand above does not show.
+      expect(resolvedValue(row, 'padding-top')).not.toBe('0');
       expect(resolvedValue(row, 'margin-top')).toBe('0');
     });
 
