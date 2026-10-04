@@ -11,9 +11,15 @@ const SESSION_RETRY_DELAYS_MS = Object.freeze([15 * 1000, 60 * 1000, 5 * 60 * 10
 // however long it waits. Once the waits above have run out, such a session is looked at this
 // rarely: it only has to catch an integration installed while the app runs.
 const INTEGRATION_MISSING_RETRY_MS = 30 * 60 * 1000;
-// After Home Assistant refuses a layout, the next try waits this long, doubling, up to the cap.
+// After a layout upload fails, the next try waits this long, doubling, up to the cap.
 const SNAPSHOT_REJECTION_BACKOFF_MS = 2 * 60 * 1000;
 const SNAPSHOT_REJECTION_MAX_BACKOFF_MS = 30 * 60 * 1000;
+// The only answers that say the layout itself is wrong, so that sending it again could not change
+// the result: Home Assistant's schema check ("too large", a field it does not accept). Every other
+// failure (a timeout, a dropped socket, "desktop_unavailable" while the session is still being
+// set up, "integration_not_loaded" during a reload) says nothing about the layout, and the same
+// layout is sent again once the wait is over.
+const SNAPSHOT_INVALID_CODES = new Set(['invalid_format']);
 const MAX_COMMAND_HISTORY = 100;
 const ALLOWED_ACTIONS = new Set(['show', 'hide', 'toggle', 'switch_page', 'apply_profile']);
 const SESSION_ENDED_RESULT = Object.freeze({
@@ -86,8 +92,8 @@ class DesktopCompanionClient {
     // Said once per connection: a session retried every few minutes would repeat it.
     this.integrationMissingLogged = false;
     this.snapshotUnsupported = false;
-    // The layout Home Assistant refused, so it is not uploaded again every heartbeat while it is
-    // unchanged, and how many refusals in a row there were.
+    // The layout Home Assistant declared invalid, so it is not uploaded again every heartbeat while
+    // it is unchanged, and how many failures in a row there were, of any kind.
     this.rejectedConfigSnapshot = null;
     this.snapshotRejections = 0;
     this.snapshotRetryAt = 0;
@@ -325,9 +331,9 @@ class DesktopCompanionClient {
         return false;
       serialized = JSON.stringify(document);
       if (serialized === this.lastConfigSnapshot) return true;
-      // Home Assistant refused exactly this layout (too large, or a schema it does not accept), and
-      // sending it again could not change the answer. A changed layout is tried again, but not
-      // before the wait after the last refusal is over.
+      // Home Assistant declared exactly this layout invalid (too large, or a schema it does not
+      // accept), and sending it again could not change the answer. A changed layout is tried again,
+      // but not before the wait after the last failure is over.
       if (serialized === this.rejectedConfigSnapshot) return false;
       if (this.snapshotRejections > 0 && Date.now() < this.snapshotRetryAt) return false;
       assertSuccessfulResponse(
@@ -359,7 +365,9 @@ class DesktopCompanionClient {
           SNAPSHOT_REJECTION_BACKOFF_MS * 2 ** (this.snapshotRejections - 1),
           SNAPSHOT_REJECTION_MAX_BACKOFF_MS
         );
-      this.rejectedConfigSnapshot = serialized;
+      // A timeout or a session that was not ready yet leaves the same layout worth another try
+      // after the wait; only an answer that blames the layout stops it for good.
+      if (SNAPSHOT_INVALID_CODES.has(error?.code)) this.rejectedConfigSnapshot = serialized;
       this.log.warn('Desktop layout snapshot was not accepted:', error?.message || error);
       return false;
     }

@@ -828,9 +828,100 @@ describe('DesktopCompanionClient rejected layouts', () => {
     return { client, websocket };
   }
 
+  // Every layout upload fails the way `failure` says, until `recover()` is called.
+  function createFailingClient(document, failure) {
+    const websocket = new FakeWebSocket();
+    const answer = websocket.request.bind(websocket);
+    let failing = true;
+    websocket.request = async (message) => {
+      if (message.type === 'ha_desktop_widget/put_config_snapshot' && failing) {
+        websocket.requests.push(message);
+        return failure();
+      }
+      return answer(message);
+    };
+    const { client } = createClient({ websocket });
+    client.getConfigDocument = async () => document.current;
+    return {
+      client,
+      websocket,
+      recover: () => {
+        failing = false;
+      },
+    };
+  }
+
   afterEach(() => {
     jest.clearAllMocks();
     jest.useRealTimers();
+  });
+
+  test.each([
+    [
+      'times out',
+      () => Promise.reject(Object.assign(new Error('request timeout'), { code: 'timeout' })),
+    ],
+    [
+      'finds the desktop session not ready',
+      () => ({
+        success: false,
+        error: { code: 'desktop_unavailable', message: 'Desktop is not registered' },
+      }),
+    ],
+    [
+      'meets a Home Assistant that is reloading the integration',
+      () => ({
+        success: false,
+        error: { code: 'integration_not_loaded', message: 'HA Desktop Widget is not configured' },
+      }),
+    ],
+  ])(
+    'an unchanged layout is uploaded again after the wait when the upload %s',
+    async (_name, failure) => {
+      jest.useFakeTimers();
+      const document = { current: { pages: ['a'] } };
+      const { client, websocket, recover } = createFailingClient(document, failure);
+      client.start();
+      await flush();
+      expect(snapshots(websocket)).toHaveLength(1);
+
+      await jest.advanceTimersByTimeAsync(60_000); // the heartbeat, inside the first wait
+      await flush();
+      expect(snapshots(websocket)).toHaveLength(1);
+
+      recover();
+      await jest.advanceTimersByTimeAsync(60_000);
+      await flush();
+      expect(snapshots(websocket)).toHaveLength(2);
+      expect(client.lastConfigSnapshot).toBe(JSON.stringify(document.current));
+
+      await jest.advanceTimersByTimeAsync(10 * 60_000);
+      await flush();
+      expect(snapshots(websocket)).toHaveLength(2);
+      client.stop();
+    }
+  );
+
+  test('a layout Home Assistant called invalid stays refused after a failure of another kind', async () => {
+    jest.useFakeTimers();
+    const document = { current: { pages: ['a'] } };
+    const answers = [
+      () => ({ success: false, error: { code: 'invalid_format', message: 'Layout too large' } }),
+      () => Promise.reject(Object.assign(new Error('request timeout'), { code: 'timeout' })),
+    ];
+    const { client, websocket } = createFailingClient(document, () => {
+      const answer = answers.length > 1 ? answers.shift() : answers[0];
+      return answer();
+    });
+    client.start();
+    await flush();
+    expect(snapshots(websocket)).toHaveLength(1);
+
+    await jest.advanceTimersByTimeAsync(30 * 60_000);
+    await flush();
+
+    expect(snapshots(websocket)).toHaveLength(1);
+    client.stop();
   });
 
   test('a refused layout is not uploaded again at every heartbeat', async () => {
