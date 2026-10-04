@@ -80,6 +80,35 @@ beforeEach(() => {
   mockState.STATES = {};
   global.Notification.lastNotification = null;
   global.Notification.permission = 'granted';
+  // jsdom has no canvas and reports every getContext call as an error; without one a notification
+  // simply carries the app icon.
+  jest.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+});
+
+afterEach(() => jest.restoreAllMocks());
+
+describe('the Specific State field in the alert dialog', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const html = fs.readFileSync(path.resolve(__dirname, '../../index.html'), 'utf8');
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+
+  it("offers a list of the entity's states, filled in by the dialog", () => {
+    const input = doc.getElementById('target-state-input');
+    expect(input.getAttribute('list')).toBe('target-state-options');
+    expect(doc.getElementById('target-state-options').tagName).toBe('DATALIST');
+  });
+
+  it('says to use the state Home Assistant reports, with an example', () => {
+    const help = (input) => input.closest('.form-group').querySelector('.form-help');
+    const text = help(doc.getElementById('target-state-input')).textContent.replace(/\s+/g, ' ');
+    expect(text.trim()).toBe(
+      'Use the state Home Assistant reports, such as not_home. Pick one from the list or type it.'
+    );
+    expect(help(doc.getElementById('target-state-input')).dataset.i18n).toBe(
+      'Use the state Home Assistant reports, such as not_home. Pick one from the list or type it.'
+    );
+  });
 });
 
 describe('alerts module', () => {
@@ -420,6 +449,70 @@ describe('alerts module', () => {
       });
     });
 
+    describe('onStateChange alerts for an entity that goes unavailable', () => {
+      const { UNAVAILABLE_GRACE_MS } = require('../../src/alert-rules.js');
+      beforeEach(() => jest.useFakeTimers());
+      afterEach(() => {
+        alerts.resetEntityAlerts();
+        jest.useRealTimers();
+      });
+
+      it('tells about it after the grace period when the rule has no setting for it', () => {
+        // A rule saved before the setting existed.
+        mockState.CONFIG.entityAlerts.alerts['light.living_room'] = { onStateChange: true };
+        alerts.initializeEntityAlerts();
+
+        alerts.checkEntityAlerts('light.living_room', 'unavailable');
+        jest.advanceTimersByTime(UNAVAILABLE_GRACE_MS - 1);
+        expect(showToast).not.toHaveBeenCalled();
+        jest.advanceTimersByTime(1);
+
+        expect(showToast).toHaveBeenCalledWith(
+          'Living Room Light changed from On to Unavailable',
+          'info',
+          4000
+        );
+        expect(global.Notification.lastNotification.options.body).toBe(
+          'Living Room Light changed from On to Unavailable'
+        );
+      });
+
+      it('says nothing about it when the rule turns that off, but still about other changes', () => {
+        mockState.CONFIG.entityAlerts.alerts['light.living_room'] = {
+          onStateChange: true,
+          notifyOnUnavailable: false,
+        };
+        alerts.initializeEntityAlerts();
+
+        alerts.checkEntityAlerts('light.living_room', 'unavailable');
+        alerts.checkEntityAlerts('light.living_room', 'unknown');
+        jest.advanceTimersByTime(60 * 60 * 1000);
+        alerts.checkEntityAlerts('light.living_room', 'on');
+        expect(showToast).not.toHaveBeenCalled();
+
+        alerts.checkEntityAlerts('light.living_room', 'off');
+        expect(showToast).toHaveBeenCalledTimes(1);
+        expect(showToast).toHaveBeenCalledWith(
+          expect.stringContaining('from On to Off'),
+          'info',
+          4000
+        );
+      });
+
+      it('does not notify for a blip that comes back within the grace period', () => {
+        mockState.CONFIG.entityAlerts.alerts['light.living_room'] = { onStateChange: true };
+        alerts.initializeEntityAlerts();
+
+        alerts.checkEntityAlerts('light.living_room', 'unavailable');
+        jest.advanceTimersByTime(UNAVAILABLE_GRACE_MS - 1);
+        alerts.checkEntityAlerts('light.living_room', 'on');
+        jest.advanceTimersByTime(60 * 60 * 1000);
+
+        expect(showToast).not.toHaveBeenCalled();
+        expect(global.Notification.lastNotification).toBeNull();
+      });
+    });
+
     describe('alert messages read like the tiles', () => {
       it('rounds a numeric reading to its sensor precision and adds its unit', () => {
         mockState.STATES['sensor.load'] = {
@@ -693,13 +786,184 @@ describe('alerts module', () => {
       expect(mockElectronAPI.showWindow).toHaveBeenCalledTimes(1);
     });
 
-    it('should include entity icon in notification', () => {
-      global.Notification.permission = 'granted';
+    describe("the notification's icon", () => {
+      // A notification icon is a URL, so the entity's glyph has to be drawn to an image; jsdom has
+      // no canvas, so a small one stands in.
+      let context;
+      let getContext;
+      const fakeContext = (drawn = true) => ({
+        font: '',
+        fillStyle: '',
+        textAlign: '',
+        textBaseline: '',
+        fillText: jest.fn(),
+        beginPath: jest.fn(),
+        arc: jest.fn(),
+        fill: jest.fn(),
+        drawImage: jest.fn(),
+        getImageData: jest.fn(() => ({
+          data: new Uint8ClampedArray(drawn ? [255, 255, 255, 255] : [0, 0, 0, 0]),
+        })),
+      });
 
-      // Trigger state change (from 'on' to 'off')
-      alerts.checkEntityAlerts('light.living_room', 'off');
+      beforeEach(() => {
+        global.Notification.permission = 'granted';
+        context = fakeContext();
+        getContext = jest
+          .spyOn(HTMLCanvasElement.prototype, 'getContext')
+          .mockImplementation(() => context);
+        jest
+          .spyOn(HTMLCanvasElement.prototype, 'toDataURL')
+          .mockReturnValue('data:image/png;base64,AAAA');
+      });
 
-      expect(global.Notification.lastNotification.options.icon).toBe('💡');
+      it('is a drawn image, not the glyph itself, which is not a URL and showed nothing', () => {
+        alerts.checkEntityAlerts('light.living_room', 'off');
+
+        const { icon } = global.Notification.lastNotification.options;
+        expect(icon).toBe('data:image/png;base64,AAAA');
+        expect(icon).not.toBe('💡');
+        expect(context.fillText).toHaveBeenCalledWith('💡', expect.any(Number), expect.any(Number));
+        // The MDI font comes first, as it does for the icons in the window.
+        expect(context.font).toContain('"Material Design Icons"');
+        expect(context.font).toContain('Emoji');
+      });
+
+      it('is left out, so the app icon shows, when the glyph drew nothing', () => {
+        context = fakeContext(false);
+
+        alerts.checkEntityAlerts('light.living_room', 'off');
+
+        expect(global.Notification.lastNotification.options).not.toHaveProperty('icon');
+      });
+
+      it('is left out when there is no canvas to draw on', () => {
+        getContext.mockImplementation(() => null);
+
+        alerts.checkEntityAlerts('light.living_room', 'off');
+
+        expect(global.Notification.lastNotification.options).not.toHaveProperty('icon');
+      });
+
+      it('is left out when drawing fails', () => {
+        context.fillText.mockImplementation(() => {
+          throw new Error('font error');
+        });
+
+        alerts.checkEntityAlerts('light.living_room', 'off');
+
+        expect(global.Notification.lastNotification).toBeTruthy();
+        expect(global.Notification.lastNotification.options).not.toHaveProperty('icon');
+      });
+
+      describe('for a Material Design Icons code point', () => {
+        // Home Assistant's own icons: a private-use character that only the MDI web font draws.
+        const mdiGlyph = '\u{F0335}';
+        const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+        let loaded;
+        let fonts;
+
+        beforeEach(() => {
+          loaded = false;
+          fonts = {
+            check: jest.fn(() => loaded),
+            load: jest.fn(() => {
+              loaded = true;
+              return Promise.resolve([]);
+            }),
+          };
+          Object.defineProperty(document, 'fonts', { configurable: true, value: fonts });
+        });
+        afterEach(() => {
+          delete document.fonts;
+        });
+        const alertWith = (glyph = mdiGlyph) => {
+          require('../../src/utils.js').getEntityIcon.mockReturnValueOnce(glyph);
+          alerts.checkEntityAlerts('light.living_room', 'off');
+        };
+
+        it('waits for the font before drawing, so the first alert is not a fallback box', async () => {
+          alertWith();
+
+          // The canvas has not been touched, and the toast does not wait for the font.
+          expect(global.Notification.lastNotification).toBeNull();
+          expect(context.fillText).not.toHaveBeenCalled();
+          expect(showToast).toHaveBeenCalledWith(expect.any(String), 'info', 4000);
+          expect(fonts.load).toHaveBeenCalledWith('16px "Material Design Icons"', mdiGlyph);
+
+          await flush();
+
+          expect(context.fillText).toHaveBeenCalledWith(
+            mdiGlyph,
+            expect.any(Number),
+            expect.any(Number)
+          );
+          expect(global.Notification.lastNotification.options.icon).toBe(
+            'data:image/png;base64,AAAA'
+          );
+        });
+
+        it('draws at once when the font is already loaded', () => {
+          loaded = true;
+
+          alertWith();
+
+          expect(fonts.load).not.toHaveBeenCalled();
+          expect(global.Notification.lastNotification.options.icon).toBe(
+            'data:image/png;base64,AAAA'
+          );
+        });
+
+        it('keeps the app icon, and still notifies, when the font fails to load', async () => {
+          fonts.load.mockImplementation(() => Promise.reject(new Error('NetworkError')));
+
+          alertWith();
+          await flush();
+
+          expect(context.fillText).not.toHaveBeenCalled();
+          expect(global.Notification.lastNotification).toBeTruthy();
+          expect(global.Notification.lastNotification.options).not.toHaveProperty('icon');
+        });
+
+        it('keeps the app icon when the font still is not usable after loading', async () => {
+          fonts.load.mockImplementation(() => Promise.resolve([]));
+
+          alertWith();
+          await flush();
+
+          expect(context.fillText).not.toHaveBeenCalled();
+          expect(global.Notification.lastNotification.options).not.toHaveProperty('icon');
+        });
+
+        it('keeps the app icon where the page cannot say whether the font is loaded', () => {
+          delete document.fonts;
+
+          alertWith();
+
+          expect(context.fillText).not.toHaveBeenCalled();
+          expect(global.Notification.lastNotification.options).not.toHaveProperty('icon');
+        });
+
+        it('does not ask about the font for an emoji', () => {
+          alertWith('💡');
+
+          expect(fonts.check).not.toHaveBeenCalled();
+          expect(global.Notification.lastNotification.options.icon).toBe(
+            'data:image/png;base64,AAAA'
+          );
+        });
+      });
+
+      it('is never anything but a data URL or absent', () => {
+        for (const url of [undefined, null, '', 'not a url']) {
+          HTMLCanvasElement.prototype.toDataURL.mockReturnValue(url);
+          alerts.resetEntityAlerts();
+          alerts.initializeEntityAlerts();
+          alerts.checkEntityAlerts('light.living_room', 'off');
+          const options = global.Notification.lastNotification.options;
+          expect(options.icon === undefined || options.icon.startsWith('data:')).toBe(true);
+        }
+      });
     });
 
     it('should show toast notification regardless of permission', () => {
@@ -711,7 +975,7 @@ describe('alerts module', () => {
       expect(showToast).toHaveBeenCalledWith(expect.any(String), 'info', 4000);
     });
 
-    it('should use unknown icon for missing entity', () => {
+    it('should keep the app icon for an entity that is gone', () => {
       global.Notification.permission = 'granted';
 
       // Don't initialize alerts, so no previous state exists
@@ -723,7 +987,7 @@ describe('alerts module', () => {
       alerts.checkEntityAlerts('light.living_room', 'on');
 
       expect(global.Notification.lastNotification).toBeTruthy();
-      expect(global.Notification.lastNotification.options.icon).toBe('❓');
+      expect(global.Notification.lastNotification.options).not.toHaveProperty('icon');
     });
 
     it('should handle notification errors gracefully', () => {

@@ -3,12 +3,15 @@
  */
 
 const http = require('http');
+const net = require('net');
 const {
+  applyStateChanges,
   decodeFrames,
   encodeFrame,
   isRefusedCall,
   resultFor,
   startMockHomeAssistant,
+  stateChangedMessage,
 } = require('../../scripts/visual-snapshots/mock-home-assistant.cjs');
 const {
   buildHistories,
@@ -211,5 +214,193 @@ describe('visual snapshot mock Home Assistant pushed events', () => {
       server.closeAllConnections();
       await new Promise((resolve) => server.close(resolve));
     }
+  });
+
+  test('keeps the pushed events and the state changes apart on one connection', async () => {
+    const server = await startMockHomeAssistant({
+      token: 'token',
+      states: [{ entity_id: 'light.one', state: 'on', attributes: {} }],
+    });
+    const client = await connect(server.address().port);
+    const events = () => client.received.filter((message) => message.type === 'event');
+    const roundTrip = async (id) => {
+      client.send({ id, type: 'ping' });
+      await until(() => client.received.some((message) => message.id === id));
+    };
+    try {
+      client.send({ type: 'auth', access_token: 'token' });
+      client.send({ id: 1, type: 'persistent_notification/subscribe' });
+      client.send({ id: 2, type: 'subscribe_events', event_type: 'state_changed' });
+      client.send({ id: 3, type: 'subscribe_events', event_type: 'call_service' });
+      await roundTrip(10);
+
+      // Notifications go to the notification subscription and to nothing else.
+      server.pushEvents('persistent_notification/subscribe', [{ type: 'current' }]);
+      // A new entity goes to the state_changed subscription alone, and not to the other
+      // subscribe_events, whose event type is a different one.
+      server.changeStates({ add: [{ entity_id: 'light.two', state: 'on', attributes: {} }] });
+      await roundTrip(11);
+      expect(
+        events().map((message) => [message.id, message.event.type ?? message.event.event_type])
+      ).toEqual([
+        [1, 'current'],
+        [2, 'state_changed'],
+      ]);
+
+      // Once the app unsubscribes, its changes stop arriving.
+      client.send({ id: 4, type: 'unsubscribe_events', subscription: 2 });
+      await roundTrip(12);
+      server.changeStates({ remove: ['light.two'] });
+      await roundTrip(13);
+      expect(events()).toHaveLength(2);
+    } finally {
+      client.socket.destroy();
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+});
+
+describe('visual snapshot mock Home Assistant state changes', () => {
+  const entity = (entityId, state = 'on') => ({ entity_id: entityId, state, attributes: {} });
+
+  test('adds, replaces and removes entities in place and reports each change', () => {
+    const states = [entity('light.one'), entity('light.two')];
+
+    expect(
+      applyStateChanges(states, {
+        add: [entity('light.three'), entity('light.one', 'off')],
+        remove: ['light.two', 'light.missing'],
+      })
+    ).toEqual([
+      { entityId: 'light.two', oldState: entity('light.two'), newState: null },
+      { entityId: 'light.three', oldState: null, newState: entity('light.three') },
+      {
+        entityId: 'light.one',
+        oldState: entity('light.one'),
+        newState: entity('light.one', 'off'),
+      },
+    ]);
+    expect(states.map((item) => `${item.entity_id}:${item.state}`)).toEqual([
+      'light.one:off',
+      'light.three:on',
+    ]);
+  });
+
+  test('words a change as the state_changed event the app listens for', () => {
+    const message = stateChangedMessage(7, {
+      entityId: 'light.new',
+      oldState: null,
+      newState: entity('light.new'),
+    });
+
+    expect(message).toMatchObject({
+      id: 7,
+      type: 'event',
+      event: {
+        event_type: 'state_changed',
+        data: { entity_id: 'light.new', old_state: null, new_state: entity('light.new') },
+      },
+    });
+  });
+
+  describe('over a connection', () => {
+    let server;
+
+    beforeEach(async () => {
+      server = await startMockHomeAssistant({ token: 'secret', states: [entity('light.one')] });
+    });
+
+    afterEach(async () => {
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    });
+
+    // A bare WebSocket client: upgrade, then masked frames out and plain frames in.
+    function connect() {
+      return new Promise((resolve) => {
+        const socket = net.connect(server.address().port, '127.0.0.1');
+        const messages = [];
+        const waiting = [];
+        let buffer = Buffer.alloc(0);
+        let upgraded = false;
+        socket.on('connect', () => {
+          socket.write(
+            'GET /api/websocket HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\n' +
+              'Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n' +
+              'Sec-WebSocket-Version: 13\r\n\r\n'
+          );
+        });
+        socket.on('data', (chunk) => {
+          buffer = Buffer.concat([buffer, chunk]);
+          if (!upgraded) {
+            const end = buffer.indexOf('\r\n\r\n');
+            if (end === -1) return;
+            buffer = buffer.subarray(end + 4);
+            upgraded = true;
+          }
+          const [frames, rest] = decodeFrames(buffer);
+          buffer = rest;
+          for (const frame of frames) {
+            const message = JSON.parse(frame.payload.toString());
+            if (waiting.length) waiting.shift()(message);
+            else messages.push(message);
+          }
+        });
+        const client = {
+          send: (message) => socket.write(maskedClientFrame(JSON.stringify(message))),
+          next: () =>
+            new Promise((done) => {
+              if (messages.length) done(messages.shift());
+              else waiting.push(done);
+            }),
+          close: () => socket.destroy(),
+        };
+        client.next().then(async (greeting) => {
+          expect(greeting.type).toBe('auth_required');
+          client.send({ type: 'auth', access_token: 'secret' });
+          expect((await client.next()).type).toBe('auth_ok');
+          resolve(client);
+        });
+      });
+    }
+
+    test('tells a client that subscribed about an entity that arrives and one that goes', async () => {
+      const client = await connect();
+      client.send({ id: 1, type: 'subscribe_events', event_type: 'state_changed' });
+      expect((await client.next()).type).toBe('result');
+
+      server.changeStates({ add: [entity('light.landing')] });
+      const arrived = await client.next();
+      expect(arrived.id).toBe(1);
+      expect(arrived.event.data).toMatchObject({
+        entity_id: 'light.landing',
+        old_state: null,
+        new_state: { entity_id: 'light.landing' },
+      });
+      client.send({ id: 2, type: 'get_states' });
+      expect((await client.next()).result.map((item) => item.entity_id)).toEqual([
+        'light.one',
+        'light.landing',
+      ]);
+
+      server.changeStates({ remove: ['light.landing'] });
+      expect((await client.next()).event.data).toMatchObject({
+        entity_id: 'light.landing',
+        new_state: null,
+      });
+      client.send({ id: 3, type: 'get_states' });
+      expect((await client.next()).result.map((item) => item.entity_id)).toEqual(['light.one']);
+      client.close();
+    });
+
+    test('says nothing to a client that did not subscribe', async () => {
+      const client = await connect();
+      server.changeStates({ add: [entity('light.landing')] });
+      client.send({ id: 1, type: 'ping' });
+      // The pong is the first thing to arrive: no event was queued ahead of it.
+      expect(await client.next()).toMatchObject({ id: 1, type: 'pong' });
+      client.close();
+    });
   });
 });

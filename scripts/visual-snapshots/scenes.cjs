@@ -10,6 +10,8 @@
  *            entityAlerts)
  *   size     { width, height } to resize the window to
  *   media    CDP media features to emulate, e.g. forced-colors
+ *   extraStates  (now) => entity states the home has only for this scene; the runner adds them
+ *            before the scene and takes them away afterwards (see buildLandingLights)
  *   setup    async (ctx) that drives the UI; may return { capture } to photograph another
  *            window (a desktop pin) instead of the main one
  *   pin      the entity a pin scene pins (only a label for the tests, which check that every
@@ -24,7 +26,7 @@
  * few pixels differ from run to run. Everything else comes from the fixture.
  */
 
-const { PAGE_SETS, WINDOW_SIZE } = require('./fixture.cjs');
+const { PAGE_SETS, WINDOW_SIZE, buildLandingLights } = require('./fixture.cjs');
 
 const NARROW_WINDOW = { width: 340, height: WINDOW_SIZE.height };
 // The size the app opens at (the fixture's window is 60px taller to fit a 768px display), a window
@@ -214,10 +216,11 @@ const alertsConfig = {
   },
 };
 
-async function openAlertConfig(ctx) {
+// The threshold alert by default; the state change one shows the switch for unavailable and unknown.
+async function openAlertConfig(ctx, entityId = 'sensor.office_temp') {
   await openSettingsTab(ctx, 'alerts');
   await ctx.waitForSelector('.edit-alert');
-  await ctx.click('.edit-alert[data-entity="sensor.office_temp"]');
+  await ctx.click(`.edit-alert[data-entity="${entityId}"]`);
   await ctx.waitForExpression(
     `!document.querySelector('#alert-config-modal')?.classList.contains('hidden')`
   );
@@ -435,16 +438,27 @@ const hotkeyPage = {
   },
 };
 
-async function openHotkeysFor(ctx, filter) {
+// The Hotkeys page, with its list drawn from the search box. The box keeps what was typed into it
+// when Settings closes and the list is drawn from it, so a scene that searches leaves the next one
+// with whatever that search found (nothing, for the one that looks for nothing). Every scene that
+// opens the page therefore sets the box itself, empty unless it wants a filter, and waits for the
+// list or for the line that says nothing matched.
+async function openHotkeysPage(ctx, filter = '', { expectNoMatch = false } = {}) {
   await openSettingsTab(ctx, 'hotkeys');
-  await ctx.waitForSelector('#hotkeys-list .hotkey-item');
   await ctx.ev(`(() => {
     const search = document.getElementById('hotkey-entity-search');
     if (!search) return;
     search.value = ${JSON.stringify(filter)};
     search.dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
+  await ctx.waitForSelector(
+    expectNoMatch ? '#hotkeys-list .hotkeys-empty' : '#hotkeys-list .hotkey-item'
+  );
   await ctx.sleep(300);
+}
+
+async function openHotkeysFor(ctx, filter, options) {
+  await openHotkeysPage(ctx, filter, options);
   await revealInSettings(ctx, '#hotkeys-list');
 }
 
@@ -498,6 +512,70 @@ async function openPaletteFor(ctx, query) {
   await ctx.insertText(query);
   await ctx.waitForSelector('.command-palette-result');
 }
+
+// The palette with nothing typed: what was used last, the pages, the page on screen, then the rest.
+async function openPaletteEmpty(ctx) {
+  await ctx.ev(`document.activeElement?.blur?.()`);
+  await ctx.pressKey('k', { code: 'KeyK', keyCode: 75, modifiers: ctx.CTRL });
+  await ctx.waitForExpression(
+    `document.activeElement?.classList.contains('command-palette-input')`
+  );
+  await ctx.waitForSelector('.command-palette-result');
+}
+
+// An entity with nothing to open or run: Enter keeps the palette and says so.
+async function pressEnterOnEntityWithoutAction(ctx) {
+  await ctx.ev(`document.activeElement?.blur?.()`);
+  await ctx.pressKey('k', { code: 'KeyK', keyCode: 75, modifiers: ctx.CTRL });
+  await ctx.waitForExpression(
+    `document.activeElement?.classList.contains('command-palette-input')`
+  );
+  await ctx.insertText('front door');
+  await ctx.waitForExpression(
+    `document.querySelector('.command-palette-result.highlighted')?.textContent.includes('Front door')`,
+    'the Front door row'
+  );
+  await ctx.pressKey('Enter', { code: 'Enter', keyCode: 13, text: '\r' });
+  await ctx.waitForExpression(
+    `!document.querySelector('.command-palette-hint')?.hidden`,
+    'the hint under the results'
+  );
+}
+
+// A search that finds nothing.
+async function searchPaletteForNothing(ctx) {
+  await ctx.ev(`document.activeElement?.blur?.()`);
+  await ctx.pressKey('k', { code: 'KeyK', keyCode: 75, modifiers: ctx.CTRL });
+  await ctx.waitForExpression(
+    `document.activeElement?.classList.contains('command-palette-input')`
+  );
+  await ctx.insertText('zzzzz');
+  await ctx.waitForExpression(
+    `!document.querySelector('.command-palette-empty')?.hidden`,
+    'the empty message'
+  );
+}
+
+// An alert whose entity Home Assistant does not list, beside one it does.
+const alertsWithMissingEntity = {
+  entityAlerts: {
+    enabled: true,
+    alerts: {
+      ...alertsConfig.entityAlerts.alerts,
+      'light.removed_lamp': {
+        onStateChange: false,
+        onSpecificState: true,
+        onNumericThreshold: false,
+        targetState: 'unavailable',
+        comparison: 'above',
+        threshold: null,
+        durationSeconds: 0,
+        cooldownSeconds: 0,
+        quietHours: { enabled: false, start: '22:00', end: '07:00' },
+      },
+    },
+  },
+};
 
 // The edit-mode hint is a long toast; a second one stands in for a pair of warnings.
 async function showToasts(ctx) {
@@ -727,6 +805,11 @@ const scenes = [
     config: alertsConfig,
     setup: openAlertConfig,
   },
+  {
+    name: 'dialog-alert-config-state-change',
+    config: alertsConfig,
+    setup: (ctx) => openAlertConfig(ctx, 'binary_sensor.front_door'),
+  },
 
   // The sensor pop-up with its history period, and the dialogs the Advanced page opens.
   { name: 'popup-sensor', setup: (ctx) => ctx.click(tile('sensor.office_temp')) },
@@ -751,20 +834,52 @@ const scenes = [
 
   // Settings pages the first scenes do not reach, and the custom colour editor.
   { name: 'settings-dashboard', setup: (ctx) => openSettingsTab(ctx, 'dashboard') },
-  { name: 'settings-hotkeys', setup: (ctx) => openSettingsTab(ctx, 'hotkeys') },
+  { name: 'settings-hotkeys', setup: (ctx) => openHotkeysPage(ctx) },
   // The entity list, where each row picks the action its hotkey runs from a select.
   {
     name: 'settings-hotkeys-entities',
     config: hotkeysOn,
+    setup: (ctx) => openHotkeysFor(ctx, ''),
+  },
+  // A home with more lights than one page of the list holds: the last page, with its rows above the
+  // pager (Previous available, Next not).
+  {
+    name: 'settings-hotkeys-page-2',
+    config: hotkeysOn,
+    extraStates: buildLandingLights,
     setup: async (ctx) => {
-      await openSettingsTab(ctx, 'hotkeys');
+      await openHotkeysPage(ctx);
+      await ctx.waitForSelector('#hotkeys-list .primary-cards-pagination');
+      await ctx.click('#hotkeys-list [data-primary-page="next"]');
+      await ctx.waitForExpression(
+        `document.querySelector('#hotkeys-list [data-primary-page="next"]')?.getAttribute('aria-disabled') === 'true'`,
+        'the last page of the Hotkeys list'
+      );
+      // The pager sticks to the bottom of the list, so the list itself is what comes into view.
       await revealInSettings(ctx, '#hotkeys-list');
+      await ctx.expect(
+        `document.querySelector('#hotkeys-list [data-primary-page="previous"]').getAttribute('aria-disabled') === 'false' &&
+          document.querySelectorAll('#hotkeys-list .hotkey-item').length > 0`,
+        'a page of rows after the first, with Previous available'
+      );
     },
   },
   {
     name: 'settings-alerts',
     config: alertsConfig,
     setup: (ctx) => openSettingsTab(ctx, 'alerts'),
+  },
+  // An alert for an entity that is gone keeps its row, under its id.
+  {
+    name: 'settings-alerts-missing-entity',
+    config: alertsWithMissingEntity,
+    setup: (ctx) => openSettingsTab(ctx, 'alerts'),
+  },
+  // A hotkey search that finds nothing says so, instead of leaving an empty line.
+  {
+    name: 'settings-hotkeys-no-match',
+    config: hotkeyPage,
+    setup: (ctx) => openHotkeysFor(ctx, 'zzzzz', { expectNoMatch: true }),
   },
   { name: 'settings-advanced', setup: (ctx) => openSettingsTab(ctx, 'advanced') },
   {
@@ -1013,6 +1128,11 @@ const scenes = [
       await ctx.waitForExpression(`document.querySelector('.command-palette-result.highlighted')`);
     },
   },
+  // The command palette with nothing typed, with an entity that has nothing to run, and with a
+  // search that finds nothing.
+  { name: 'palette-empty', setup: openPaletteEmpty },
+  { name: 'palette-no-action', setup: pressEnterOnEntityWithoutAction },
+  { name: 'palette-no-results', setup: searchPaletteForNothing },
   {
     name: 'focus-tile-settings',
     setup: async (ctx) => {
@@ -1177,16 +1297,13 @@ const scenes = [
   {
     name: 'de-settings-hotkeys',
     ui: { language: 'de' },
-    setup: (ctx) => openSettingsTab(ctx, 'hotkeys'),
+    setup: (ctx) => openHotkeysPage(ctx),
   },
   {
     name: 'de-settings-hotkeys-entities',
     ui: { language: 'de' },
     config: hotkeysOn,
-    setup: async (ctx) => {
-      await openSettingsTab(ctx, 'hotkeys');
-      await revealInSettings(ctx, '#hotkeys-list');
-    },
+    setup: (ctx) => openHotkeysFor(ctx, ''),
   },
   {
     name: 'de-popup-media',
@@ -1218,6 +1335,12 @@ const scenes = [
     setup: openAlertConfig,
   },
   {
+    name: 'de-dialog-alert-config-state-change',
+    ui: { language: 'de' },
+    config: alertsConfig,
+    setup: (ctx) => openAlertConfig(ctx, 'binary_sensor.front_door'),
+  },
+  {
     name: 'de-dialog-manage-quick-access',
     ui: { language: 'de' },
     setup: (ctx) => ctx.click('#manage-quick-controls-btn'),
@@ -1229,6 +1352,12 @@ const scenes = [
     setup: openAlertConfig,
   },
   {
+    name: 'ar-dialog-alert-config-state-change',
+    ui: { language: 'ar' },
+    config: alertsConfig,
+    setup: (ctx) => openAlertConfig(ctx, 'binary_sensor.front_door'),
+  },
+  {
     name: 'ar-dialog-manage-quick-access',
     ui: { language: 'ar' },
     setup: (ctx) => ctx.click('#manage-quick-controls-btn'),
@@ -1236,7 +1365,7 @@ const scenes = [
   {
     name: 'ar-settings-hotkeys',
     ui: { language: 'ar' },
-    setup: (ctx) => openSettingsTab(ctx, 'hotkeys'),
+    setup: (ctx) => openHotkeysPage(ctx),
   },
   // The popup hotkey field reads its own prompt while it records: Arabic text in a field whose
   // recorded shortcut is left to right.
@@ -1324,7 +1453,7 @@ const scenes = [
   {
     name: 'settings-hotkeys-light',
     ui: { theme: 'light' },
-    setup: (ctx) => openSettingsTab(ctx, 'hotkeys'),
+    setup: (ctx) => openHotkeysPage(ctx),
   },
   {
     name: 'popup-input-select-light',
@@ -1528,8 +1657,9 @@ const scenes = [
   ...['dark', 'light'].map((theme) => ({
     name: `contrast-${theme}-hotkey-capture`,
     ui: { theme },
+    config: hotkeysOn,
     setup: async (ctx) => {
-      await openSettingsTab(ctx, 'hotkeys');
+      await openHotkeysPage(ctx);
       await ctx.waitForSelector('#hotkeys-list .hotkey-input');
       await ctx.ev(`document.querySelector('#hotkeys-list .hotkey-input').click()`);
       await ctx.waitForSelector('.hotkey-capture-modal');
@@ -1825,6 +1955,15 @@ const scenes = [
     config: alertsConfig,
     setup: async (ctx) => {
       await openAlertConfig(ctx);
+      await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
+    },
+  },
+  {
+    name: 'layout-dialog-alert-config-state-change',
+    size: DEFAULT_SIZE,
+    config: alertsConfig,
+    setup: async (ctx) => {
+      await openAlertConfig(ctx, 'binary_sensor.front_door');
       await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
     },
   },

@@ -420,6 +420,13 @@ const CONNECTION_SERVICE_ERRORS = new Set([
   'Home Assistant connection lost',
 ]);
 
+// A failure of the connection itself, as opposed to Home Assistant refusing the call.
+function isConnectionServiceError(error) {
+  return (
+    CONNECTION_SERVICE_ERRORS.has(error?.message) || error?.message === 'WebSocket request timeout'
+  );
+}
+
 function describeServiceErrorMessage(error) {
   const message = error?.message || '';
   if (message === 'WebSocket request timeout') return t('Home Assistant did not respond');
@@ -439,9 +446,10 @@ function handleServiceError(error, entityName = null) {
     : t('Service call failed: {{errorMessage}}', { errorMessage });
 
   // A control used during an outage is an expected outcome, not a fault in the widget.
-  const outage =
-    CONNECTION_SERVICE_ERRORS.has(error?.message) || error?.message === 'WebSocket request timeout';
-  console[outage ? 'warn' : 'error']('WebSocket service call failed:', error);
+  console[isConnectionServiceError(error) ? 'warn' : 'error'](
+    'WebSocket service call failed:',
+    error
+  );
   emitUiDebug('service.error', {
     entityName: entityName || null,
     message: error?.message || 'Unknown error',
@@ -1128,6 +1136,8 @@ function beginInlineTabRename(tabId, buttonEl) {
   };
 
   input.addEventListener('keydown', (event) => {
+    // The Enter that commits an input method's candidate is not the end of the rename.
+    if (event.isComposing || event.keyCode === 229) return;
     if (event.key === 'Enter') {
       event.preventDefault();
       event.stopPropagation();
@@ -13242,12 +13252,39 @@ function openEntityControlsDialog(liveEntity) {
   }
 }
 
+/**
+ * Whether the palette's Enter does anything for this entity: its controls open, or its primary
+ * action runs, or (for a device the palette also lists commands for) it says what the entity is
+ * now. Sun, a person, weather, a device tracker, an update, a zone or a binary sensor have none of
+ * these, and locks and alarm panels are never run from a plain row (the palette offers named
+ * commands for them). Built from the same domain sets as a Quick Access tile's click.
+ * @param {Object} entity - Home Assistant entity state object.
+ * @returns {boolean}
+ */
+function hasEntityAction(entity) {
+  const liveEntity = state.STATES?.[entity?.entity_id] || entity;
+  if (!liveEntity?.entity_id) return false;
+  const domain = getEntityDomain(liveEntity.entity_id);
+  if (domain === 'lock' || domain === 'alarm_control_panel') return false;
+  // A dialog opens whatever the state; a toggle, a scene or a button does nothing while unavailable.
+  if (QUICK_ACCESS_DIALOG_DOMAINS.has(domain) || QUICK_ACCESS_CONTROLS_DOMAINS.has(domain)) {
+    return true;
+  }
+  return (
+    (QUICK_ACCESS_TOGGLE_DOMAINS.has(domain) ||
+      QUICK_ACCESS_ACTIVATE_DOMAINS.has(domain) ||
+      domain === 'automation') &&
+    isEntityAvailable(liveEntity)
+  );
+}
+
 // The command palette opens an entity's controls when it has any. A result with none, for an entity
 // the palette lists an explicit command for (turn on, run, lock), says what the entity is now and
 // changes nothing: the command acts, so a stray Enter never switches a machine unseen. Locks and
 // alarm panels get neither, since the palette offers named commands for those. An entity the
 // palette has no command for (a button, a timer) still runs its own action, as it always has: the
-// result is the only way to reach it from there.
+// result is the only way to reach it from there. The palette itself has already kept out of here
+// the rows with nothing to open, run or say (hasEntityAction).
 function openEntityDetailModal(entity, options = {}) {
   try {
     if (openEntityControls(entity)) return;
@@ -16245,6 +16282,9 @@ export {
   getQuickAccessTileControls,
   executeQuickAccessControl,
   openEntityDetailModal,
+  hasEntityAction,
+  describeServiceErrorMessage,
+  isConnectionServiceError,
   getEntityDomain,
   getWeatherEffectForState,
   handleDesktopPinActionRequest,

@@ -478,6 +478,108 @@ describe('User-facing audit regressions', () => {
     expect(mockCallService).toHaveBeenCalled();
   });
 
+  // The palette and the dashboard together: whether Enter on a result closes (hasEntityAction),
+  // what it then does for a device the palette also has commands for (hasCommand), and what it
+  // remembers, with nothing in between mocked. The palette keeps its dialog between opens, and the
+  // body is rebuilt for every test here, so each test loads its own copy of the modules.
+  describe('Enter on an entity result in the command palette', () => {
+    const originalRequestAnimationFrame = global.requestAnimationFrame;
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    let palette;
+    let paletteToast;
+
+    beforeEach(() => {
+      global.requestAnimationFrame = (callback) => callback();
+      HTMLElement.prototype.scrollIntoView = jest.fn();
+      localStorage.clear();
+      jest.isolateModules(() => {
+        palette = require('../../src/command-palette.js');
+        paletteToast = require('../../src/ui-utils.js').showToast;
+        const paletteState = require('../../src/state.js').default;
+        paletteState.setConfig({
+          ...sampleConfig,
+          ui: { theme: 'dark' },
+          favoriteEntities: [],
+          customTabs: [],
+          primaryCards: ['none', 'none'],
+        });
+        paletteState.setServices({ switch: { turn_on: {}, turn_off: {} } });
+        paletteState.setStates({
+          'switch.kettle': entity('switch.kettle', 'off', { friendly_name: 'Kettle' }),
+          'switch.offline': entity('switch.offline', 'unavailable', {
+            friendly_name: 'Offline plug',
+          }),
+          'button.doorbell': entity('button.doorbell', 'unknown', { friendly_name: 'Doorbell' }),
+          'sun.sun': entity('sun.sun', 'above_horizon', { friendly_name: 'Sun' }),
+        });
+      });
+    });
+    afterEach(() => {
+      global.requestAnimationFrame = originalRequestAnimationFrame;
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    });
+
+    const overlay = () => document.querySelector('.command-palette-overlay');
+    const search = (query) => {
+      palette.openCommandPalette();
+      const input = document.querySelector('.command-palette-input');
+      input.value = query;
+      input.dispatchEvent(new Event('input'));
+      return input;
+    };
+    const pressEnter = (input) =>
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+      );
+    const rowNames = () =>
+      [...document.querySelectorAll('.command-palette-result-name')].map(
+        (name) => name.textContent
+      );
+
+    it('says what a device with palette commands is now, and switches nothing', async () => {
+      const input = search('Kettle');
+      // The result for the device ranks above its Turn on row, which is what would act.
+      expect(rowNames()).toEqual(['Kettle', 'Turn on Kettle']);
+      pressEnter(input);
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(mockCallService).not.toHaveBeenCalled();
+      expect(paletteToast).toHaveBeenCalledWith('Kettle: Off', 'info', 3000);
+      expect(overlay().classList).toContain('hidden');
+      // Looked up, so an empty search starts from it next time.
+      palette.openCommandPalette();
+      expect(rowNames()[0]).toBe('Kettle');
+    });
+
+    it('still presses a button, which no palette command reaches', async () => {
+      pressEnter(search('Doorbell'));
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(mockCallService).toHaveBeenCalledWith('button', 'press', {
+        entity_id: 'button.doorbell',
+      });
+      expect(paletteToast).not.toHaveBeenCalledWith(expect.stringContaining(': '), 'info', 3000);
+      expect(overlay().classList).toContain('hidden');
+    });
+
+    it.each([
+      ['Sun', 'with nothing to open or run'],
+      ['Offline plug', 'that is unavailable'],
+    ])('stays open and says so for %s, %s', async (name) => {
+      pressEnter(search(name));
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(mockCallService).not.toHaveBeenCalled();
+      expect(paletteToast).not.toHaveBeenCalled();
+      expect(overlay().classList).not.toContain('hidden');
+      expect(document.querySelector('.command-palette-hint').textContent).toBe(
+        `No command is available for ${name}.`
+      );
+      // Nothing happened, so nothing is remembered as used.
+      expect(Object.values(localStorage)).toEqual([]);
+    });
+  });
+
   it('only advertises and runs Shift+Enter on Quick Access tiles with controls', async () => {
     const ids = ['lock.back_door', 'light.hall'];
     state.setConfig({
