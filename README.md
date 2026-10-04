@@ -210,7 +210,7 @@ Assistant can flag out-of-date desktops.
 
 ### Command search
 
-Press **Ctrl+K** or **Cmd+K** to search entities and actions. Choose an explicit action to turn supported lights, switches, fans, or input booleans on or off, run a scene or script, or switch pages. Entity results still open their controls. Successful commands appear first when opening an empty search during the current session. Unavailable entities do not offer actions, and failed commands show an error.
+Press **Ctrl+K** or **Cmd+K** to search entities and actions. Choose an explicit action to turn supported lights, switches, fans, or input booleans on or off, run a scene or script, or switch pages. An entity result opens its controls when it has any; one without (a switch, a button, a timer) only says what it is now and changes nothing, so a stray Enter never presses or switches it. Successful commands appear first when opening an empty search during the current session. Unavailable entities do not offer actions, and failed commands show an error.
 
 ### Alert conditions
 

@@ -8242,10 +8242,24 @@ body.theme-light:not(.high-contrast)
 }
 
 .calendar-event-time,
+.calendar-event-location,
 .calendar-event-description {
   margin-top: 4px;
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
+}
+
+/* The place, with a pin glyph in front of it, so it does not read as part of the time. */
+.calendar-event-location {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.calendar-event-location > .entity-line-icon {
+  flex-shrink: 0;
 }
 
 /* Keep the paragraphs and line breaks of multi-line descriptions. */

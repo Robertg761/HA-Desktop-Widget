@@ -3804,9 +3804,22 @@ function isQuickAccessTileValueSizeApplicable(entity) {
   return false;
 }
 
+// Whether Tile Settings offers the chart and gauge options. A sensor is a number sensor while its
+// reading is one, and also while it is unknown or unavailable if it says what it measures or has a
+// chart or gauge saved: those settings cannot be seen or changed in the one moment it drops out.
 function isQuickAccessSensorChartApplicable(entity) {
   const displayEntity = getEntityForDisplay(entity) || entity;
-  return !!getQuickAccessSensorDisplayParts(displayEntity);
+  if (getQuickAccessSensorDisplayParts(displayEntity)) return true;
+  if (displayEntity?.state !== 'unavailable' && displayEntity?.state !== 'unknown') return false;
+  const attributes = displayEntity.attributes || {};
+  const saved = getQuickAccessTileOptions(displayEntity.entity_id);
+  return (
+    !!attributes.unit_of_measurement ||
+    ['measurement', 'total', 'total_increasing'].includes(attributes.state_class) ||
+    saved?.chartType !== undefined ||
+    saved?.gaugeMin !== undefined ||
+    saved?.gaugeMax !== undefined
+  );
 }
 
 function isFiniteNumericSensorState(entity) {
@@ -10842,15 +10855,31 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   return true;
 }
 
+// A reading that dropped out for a moment (unknown, unavailable) is still a number sensor: its
+// unit or state class says so, and its history is what the person opening it wants to see.
+function hasSensorHistory(entity) {
+  if (isFiniteNumericSensorState(entity)) return true;
+  if (entity?.state !== 'unavailable' && entity?.state !== 'unknown') return false;
+  const attributes = entity.attributes || {};
+  return (
+    !!attributes.unit_of_measurement ||
+    ['measurement', 'total', 'total_increasing'].includes(attributes.state_class)
+  );
+}
+
 function showSensorDetails(entity) {
   try {
-    if (entity?.entity_id && isFiniteNumericSensorState(entity)) {
+    if (entity?.entity_id && hasSensorHistory(entity)) {
       const display = getQuickAccessSensorDisplayParts(entity);
       let unsubscribe = () => {};
+      let announceTimerToClear = () => {};
       const modal = createEntityDetailModal({
         className: 'sensor-detail-modal',
         title: utils.getEntityDisplayName(entity),
-        onClose: () => unsubscribe(),
+        onClose: () => {
+          unsubscribe();
+          announceTimerToClear();
+        },
       });
       const body = modal.querySelector('.modal-body');
       if (!body) return;
@@ -10864,7 +10893,6 @@ function showSensorDetails(entity) {
 
       const readout = document.createElement('div');
       readout.className = 'sensor-detail-readout';
-      readout.setAttribute('aria-label', display?.text || utils.getEntityDisplayState(entity));
 
       const value = document.createElement('span');
       value.className = 'sensor-detail-value';
@@ -10884,13 +10912,32 @@ function showSensorDetails(entity) {
 
       // Once Home Assistant removes the entity, show it as unavailable, not the opening reading.
       let removed = false;
+      // A sensor that reports every second would have a screen reader reading all day, so what is
+      // spoken is a line apart from the readout, and it changes at most once in a few seconds.
+      const announcer = document.createElement('div');
+      announcer.className = 'sr-only';
+      announcer.setAttribute('role', 'status');
+      summary.appendChild(announcer);
+      let announcedAt = 0;
+      let announceTimer = null;
+      let pendingAnnouncement = '';
+      const announceReading = (text) => {
+        pendingAnnouncement = text;
+        if (announceTimer) return;
+        const wait = Math.max(0, announcedAt + SENSOR_ANNOUNCE_INTERVAL_MS - Date.now());
+        announceTimer = setTimeout(() => {
+          announceTimer = null;
+          announcedAt = Date.now();
+          announcer.textContent = pendingAnnouncement;
+        }, wait);
+      };
       const refreshSummary = () => {
         const current = removed
           ? { ...entity, state: 'unavailable' }
           : state.STATES?.[entity.entity_id] || entity;
         const parts = isEntityAvailable(current) ? getQuickAccessSensorDisplayParts(current) : null;
         const text = parts?.text || utils.getEntityDisplayState(current);
-        readout.setAttribute('aria-label', text);
+        announceReading(text);
         value.textContent = parts?.value ?? text;
         let unit = readout.querySelector('.sensor-detail-unit');
         if (parts?.unit) {
@@ -10903,8 +10950,9 @@ function showSensorDetails(entity) {
         } else unit?.remove();
         renderEntityIcon(icon, current);
         modal.querySelector('h2').textContent = utils.getEntityDisplayName(current);
+        showUnavailableDialogState(modal, current);
       };
-      readout.setAttribute('aria-live', 'polite');
+      announceTimerToClear = () => clearTimeout(announceTimer);
       unsubscribe = state.subscribeEntity(entity.entity_id, (next) => {
         removed = !next;
         refreshSummary();
@@ -11013,7 +11061,9 @@ function showUnavailableDialogState(modal, entity) {
       '.modal-body input, .modal-body button, .modal-body select, .modal-footer .btn-primary'
     )
     .forEach((control) => {
-      if (control.disabled) return;
+      // A sensor's history is what a dropped-out sensor's dialog is for, so its period and refresh
+      // controls stay usable.
+      if (control.disabled || control.closest('[data-unavailable-keep]')) return;
       control.disabled = true;
       control.dataset.unavailableDisabled = 'true';
     });
@@ -11133,28 +11183,38 @@ function showHelperControls(entity) {
   const live = () => state.STATES?.[entity.entity_id];
   const form = document.createElement('form');
   const readout = document.createElement('p');
-  readout.className = 'modal-lead';
+  readout.className = 'modal-lead helper-controls-readout';
   readout.setAttribute('role', 'status');
   body.append(readout, form);
   let input = null;
+  let rangeHint = null;
   if (domain !== 'vacuum') {
     const group = document.createElement('div');
     group.className = 'form-group';
-    const label = document.createElement('label');
-    label.textContent = utils.getEntityDisplayName(entity);
-    label.htmlFor = `helper-controls-${entity.entity_id}`;
     input = document.createElement(
       ['select', 'input_select'].includes(domain) ? 'select' : 'input'
     );
-    input.id = label.htmlFor;
+    input.id = `helper-controls-${entity.entity_id}`;
     input.className = 'form-control';
+    // The dialog's title is the entity's name already, so the field is named without repeating it
+    // above itself.
+    input.setAttribute('aria-label', utils.getEntityDisplayName(entity));
     if (input.tagName === 'INPUT') input.type = 'number';
-    group.append(label, input);
+    group.append(input);
+    if (input.tagName === 'INPUT') {
+      rangeHint = document.createElement('div');
+      rangeHint.className = 'form-help';
+      rangeHint.id = `${input.id}-range`;
+      rangeHint.hidden = true;
+      input.setAttribute('aria-describedby', rangeHint.id);
+      group.append(rangeHint);
+    }
     form.append(group);
   }
+  // The actions sit in a footer, like the other dialogs', which is also where a toast docks.
   const actions = document.createElement('div');
-  actions.className = 'entity-detail-actions';
-  form.append(actions);
+  actions.className = 'modal-footer entity-detail-actions';
+  modal.querySelector('.modal-content')?.append(actions);
   const refresh = () => {
     const current = live();
     const available = isEntityAvailable(current);
@@ -11166,7 +11226,10 @@ function showHelperControls(entity) {
       if (input.tagName === 'SELECT') {
         const options = current?.attributes?.options || [];
         const selected = document.activeElement === input ? input.value : current?.state;
-        input.replaceChildren(...options.map((value) => new Option(value, value)));
+        // The readout names the state in the user's language, so the options do too.
+        input.replaceChildren(
+          ...options.map((value) => new Option(utils.getLocalizedStateName(value), value))
+        );
         input.value = options.includes(selected) ? selected : current?.state || '';
       } else {
         for (const attr of ['min', 'max', 'step']) {
@@ -11177,6 +11240,22 @@ function showHelperControls(entity) {
         if (!input.hasAttribute('step')) input.step = 'any';
         if (document.activeElement !== input)
           input.value = Number.isFinite(Number(current?.state)) ? current.state : '';
+        // What a number may be, so "Invalid value" is never the first the person hears of it.
+        const min = Number(current?.attributes?.min);
+        const max = Number(current?.attributes?.max);
+        const hasRange =
+          current?.attributes?.min != null &&
+          current?.attributes?.max != null &&
+          Number.isFinite(min) &&
+          Number.isFinite(max);
+        rangeHint.hidden = !hasRange;
+        rangeHint.textContent = hasRange
+          ? t('Range {{min}} to {{max}}, step {{step}}', {
+              min: formatNumber(min),
+              max: formatNumber(max),
+              step: formatNumber(Number(current.attributes.step) || 1),
+            })
+          : '';
       }
     }
     const supported = getHelperActions(current || entity, state.SERVICES);
@@ -11211,8 +11290,10 @@ function showHelperControls(entity) {
       return;
     const data = getHelperServiceData(current, input?.value);
     if (!data || (input && !input.checkValidity())) {
-      uiUtils.showToast(t('Invalid value'), 'error');
+      // The field says why (too high, not a step it allows), where a toast could only say no.
       input?.focus();
+      if (input && !input.checkValidity()) input.reportValidity();
+      else uiUtils.showToast(t('Invalid value'), 'error');
       return;
     }
     busy = true;
@@ -11224,9 +11305,9 @@ function showHelperControls(entity) {
     try {
       await websocket.callService(domain, service, data);
       if (!closed) uiUtils.showToast(t('Command sent'), 'success');
-    } catch {
-      if (!closed)
-        uiUtils.showToast(t('Could not run command. Check your connection and retry.'), 'error');
+    } catch (error) {
+      // Names the cause Home Assistant gave, where there is one, and stays up long enough to read.
+      if (!closed) handleServiceError(error, utils.getEntityDisplayName(entity));
     } finally {
       busy = false;
       if (!closed) {
@@ -11543,6 +11624,7 @@ function renderCalendarEventsInto(container, events) {
   container.innerHTML = '';
 
   if (!events.length) {
+    container.removeAttribute('role');
     const empty = document.createElement('div');
     empty.className = 'entity-detail-empty';
     empty.textContent = t('No upcoming events');
@@ -11550,9 +11632,12 @@ function renderCalendarEventsInto(container, events) {
     return;
   }
 
+  // The agenda is a list, so a screen reader can count it and step through it.
+  container.setAttribute('role', 'list');
   events.forEach((event) => {
     const item = document.createElement('div');
     item.className = 'calendar-event-row';
+    item.setAttribute('role', 'listitem');
 
     const summary = document.createElement('div');
     summary.className = 'calendar-event-summary';
@@ -11564,6 +11649,18 @@ function renderCalendarEventsInto(container, events) {
 
     item.appendChild(summary);
     item.appendChild(time);
+
+    // Where it is, which Home Assistant sends and the row used to drop.
+    const locationText = typeof event.location === 'string' ? event.location.trim() : '';
+    if (locationText) {
+      const location = document.createElement('div');
+      location.className = 'calendar-event-location';
+      location.appendChild(createLineIcon('map-pin'));
+      const locationName = document.createElement('span');
+      locationName.textContent = locationText;
+      location.appendChild(locationName);
+      item.appendChild(location);
+    }
 
     const descriptionText = getCalendarDescriptionText(event.description);
     if (descriptionText) {
@@ -11587,9 +11684,13 @@ function showCalendarDetails(entity) {
     const body = modal.querySelector('.modal-body');
     if (!body) return;
 
+    // The list is not a live region, so a refresh does not read the whole agenda out again; this
+    // line says what happened instead.
+    const loadStatus = document.createElement('div');
+    loadStatus.className = 'sr-only';
+    loadStatus.setAttribute('role', 'status');
     const listContainer = document.createElement('div');
     listContainer.className = 'calendar-events-list';
-    listContainer.setAttribute('role', 'status');
     const toolbar = document.createElement('div');
     toolbar.className = 'calendar-toolbar';
     const range = document.createElement('p');
@@ -11600,12 +11701,14 @@ function showCalendarDetails(entity) {
     refresh.className = 'btn btn-secondary btn-sm';
     refresh.textContent = t('Refresh');
     toolbar.append(range, refresh);
-    body.append(toolbar, listContainer);
+    body.append(toolbar, listContainer, loadStatus);
     let loading = false;
     refresh.onclick = async () => {
       if (loading) return;
       loading = true;
       refresh.setAttribute('aria-busy', 'true');
+      loadStatus.textContent = t('Loading...');
+      listContainer.removeAttribute('role');
       showDetailMessage(listContainer, t('Loading...'));
       const start = new Date();
       const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -11616,14 +11719,17 @@ function showCalendarDetails(entity) {
           end_date_time: end.toISOString(),
         });
         if (!modal.isConnected || modal.classList.contains('modal-closing')) return;
-        renderCalendarEventsInto(
-          listContainer,
-          normalizeCalendarEvents(response, entity.entity_id)
-        );
+        const events = normalizeCalendarEvents(response, entity.entity_id);
+        renderCalendarEventsInto(listContainer, events);
+        loadStatus.textContent = events.length
+          ? t('Upcoming events for the next 7 days')
+          : t('No upcoming events');
         refresh.textContent = t('Refresh');
       } catch {
         if (!modal.isConnected || modal.classList.contains('modal-closing')) return;
+        listContainer.removeAttribute('role');
         showDetailMessage(listContainer, t('Unable to load events'));
+        loadStatus.textContent = t('Unable to load events');
         refresh.textContent = t('Retry');
       } finally {
         loading = false;
@@ -13013,6 +13119,44 @@ function openEntityControls(entity) {
     const liveEntity = state.STATES?.[entity?.entity_id] || entity;
     if (!liveEntity?.entity_id) return false;
 
+    // The palette stays reachable over a dialog, so the same entity can be asked for twice. Two
+    // dialogs would share element ids (labels, sliders) and run two timers; bring the open one
+    // forward instead.
+    const alreadyOpen = findOpenEntityDialog(liveEntity.entity_id);
+    if (alreadyOpen) {
+      const heading = alreadyOpen.querySelector(
+        '.modal-header h1, .modal-header h2, .modal-header h3'
+      );
+      if (heading) {
+        heading.tabIndex = -1;
+        heading.focus();
+      }
+      return true;
+    }
+    const openBefore = new Set(document.querySelectorAll('.modal'));
+    const opened = openEntityControlsDialog(liveEntity);
+    if (opened) {
+      const modal = [...document.querySelectorAll('.modal')].find((node) => !openBefore.has(node));
+      if (modal) modal.dataset.dialogEntityId = liveEntity.entity_id;
+    }
+    return opened;
+  } catch (error) {
+    console.error('Error opening entity controls:', error);
+    return false;
+  }
+}
+
+function findOpenEntityDialog(entityId) {
+  return [...document.querySelectorAll('.modal[data-dialog-entity-id]')].find(
+    (modal) =>
+      modal.dataset.dialogEntityId === entityId &&
+      modal.isConnected &&
+      !modal.classList.contains('modal-closing')
+  );
+}
+
+function openEntityControlsDialog(liveEntity) {
+  try {
     const domain = getEntityDomain(liveEntity.entity_id);
     const isTimer = domain === 'timer' || isTimerLikeSensorEntity(liveEntity);
 
@@ -13061,16 +13205,31 @@ function openEntityControls(entity) {
   }
 }
 
-// The command palette opens an entity's controls, or runs its primary action
-// when the domain has no controls modal. Locks and alarm panels are never
-// toggled from a plain search result: the palette offers explicit, named
-// commands for those instead.
+// The command palette opens an entity's controls when it has any. A result with none says what the
+// entity is now and changes nothing: only an explicit command (turn on, run, lock) acts, so a
+// stray Enter never switches a machine or presses a button unseen. Locks and alarm panels get
+// neither, since the palette offers named commands for those.
 function openEntityDetailModal(entity, options = {}) {
   try {
     if (openEntityControls(entity)) return;
     const liveEntity = state.STATES?.[entity?.entity_id] || entity;
     if (['lock', 'alarm_control_panel'].includes(getEntityDomain(liveEntity?.entity_id))) return;
-    if (liveEntity?.entity_id) executeEntityPrimaryAction(liveEntity, options);
+    if (!liveEntity?.entity_id) return;
+    if (options.source === 'command-palette') {
+      // A search result is not a command: Enter on "Coffee maker" must not switch the machine,
+      // press a button or start a timer with no sign it did. The palette offers explicit commands
+      // for what it runs, so this row only says what the entity is now.
+      uiUtils.showToast(
+        t('{{name}}: {{state}}', {
+          name: utils.getEntityDisplayName(liveEntity),
+          state: utils.getEntityDisplayState(liveEntity),
+        }),
+        'info',
+        3000
+      );
+      return;
+    }
+    executeEntityPrimaryAction(liveEntity, options);
   } catch (error) {
     console.error('Error opening entity detail modal:', error);
   }

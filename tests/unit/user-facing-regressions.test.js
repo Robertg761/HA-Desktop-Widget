@@ -166,6 +166,63 @@ describe('User-facing audit regressions', () => {
     jest.restoreAllMocks();
   });
 
+  describe('a pinned lock', () => {
+    const pinLock = (value = 'locked') => {
+      const lock = entity('lock.pin_door', value, { friendly_name: 'Back door' });
+      state.setStates({ [lock.entity_id]: lock });
+      ui.renderDesktopPinnedTile(lock.entity_id, lock);
+      return document.querySelector('.desktop-pin-toggle-action');
+    };
+    const label = (button) => button.querySelector('.desktop-pin-panel-button-label').textContent;
+
+    it('unlocks on the second press, not the first', async () => {
+      const button = pinLock();
+      expect(label(button)).toBe('Unlock');
+      button.click();
+      await jest.advanceTimersByTimeAsync(0);
+      expect(mockCallService).not.toHaveBeenCalled();
+      expect(label(button)).toBe('Confirm');
+      expect(button.getAttribute('aria-label')).toBe('Confirm: Unlock Back door');
+      button.click();
+      await jest.advanceTimersByTimeAsync(0);
+      expect(mockCallService).toHaveBeenCalledWith('lock', 'unlock', {
+        entity_id: 'lock.pin_door',
+      });
+      expect(label(button)).toBe('Unlock');
+    });
+
+    it('goes back to Unlock when the second press does not come', async () => {
+      const button = pinLock();
+      button.click();
+      await jest.advanceTimersByTimeAsync(4100);
+      expect(label(button)).toBe('Unlock');
+      expect(button.getAttribute('aria-label')).toBe('Unlock Back door');
+      button.click();
+      await jest.advanceTimersByTimeAsync(0);
+      // That was a first press again.
+      expect(mockCallService).not.toHaveBeenCalled();
+    });
+
+    it('keeps asking while the lock reports the same state, and stops when it changes', () => {
+      const button = pinLock();
+      button.click();
+      const lock = entity('lock.pin_door', 'locked', { friendly_name: 'Back door' });
+      ui.renderDesktopPinnedTile(lock.entity_id, lock);
+      expect(label(button)).toBe('Confirm');
+      const unlocked = { ...lock, state: 'unlocked' };
+      state.setStates({ [lock.entity_id]: unlocked });
+      ui.renderDesktopPinnedTile(lock.entity_id, unlocked);
+      expect(label(button)).toBe('Lock');
+    });
+
+    it('locks in one press', async () => {
+      const button = pinLock('unlocked');
+      button.click();
+      await jest.advanceTimersByTimeAsync(0);
+      expect(mockCallService).toHaveBeenCalledWith('lock', 'lock', { entity_id: 'lock.pin_door' });
+    });
+  });
+
   it.each(['on', 'off'])('runs the automation Toggle hotkey while %s', (value) => {
     ui.executeHotkeyAction(entity('automation.audit', value), 'toggle');
     expect(mockCallService.mock.calls).toEqual([
@@ -343,10 +400,29 @@ describe('User-facing audit regressions', () => {
     expect(mockCallService).not.toHaveBeenCalled();
   });
 
-  it('still runs the primary action for plain palette results without controls', async () => {
+  it.each([
+    ['switch.outlet', 'off'],
+    ['button.restart', 'unknown'],
+    ['timer.laundry', 'idle'],
+    ['automation.lights', 'on'],
+  ])(
+    'says what %s is now, and changes nothing, for a plain palette result without controls',
+    async (entityId, entityState) => {
+      const target = entity(entityId, entityState);
+      state.setStates({ [entityId]: target });
+      ui.openEntityDetailModal(target, { source: 'command-palette' });
+      await jest.advanceTimersByTimeAsync(0);
+      // Enter on a search result is not a command, so no machine switches and no button is pressed;
+      // the palette's explicit commands are what act.
+      expect(mockCallService).not.toHaveBeenCalled();
+      expect(uiUtils.showToast).toHaveBeenCalledWith(expect.stringContaining(': '), 'info', 3000);
+    }
+  );
+
+  it('still runs the primary action when something other than the palette asks for it', async () => {
     const outlet = entity('switch.outlet', 'off');
     state.setStates({ [outlet.entity_id]: outlet });
-    ui.openEntityDetailModal(outlet, { source: 'command-palette' });
+    ui.openEntityDetailModal(outlet, { source: 'omarchy-bar' });
     await jest.advanceTimersByTimeAsync(0);
     expect(mockCallService).toHaveBeenCalled();
   });

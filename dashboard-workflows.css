@@ -439,3 +439,11 @@ body:not(.theme-light) .alert-advanced-options input[type='time'] {
   justify-content: flex-end;
   gap: var(--space-3);
 }
+
+/* The helper's current value leads the dialog, above its field. */
+.helper-controls-readout {
+  margin-bottom: var(--space-3);
+  color: var(--text-primary);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+}
