@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.62",
+  "version": "1.2.64",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1871,6 +1871,24 @@
     "Activated {{name}}": "{{name}} चलाया गया",
     "Range {{min}} to {{max}}, step {{step}}": "सीमा {{min}} से {{max}}, चरण {{step}}",
     "Use the command palette to control {{name}}": "{{name}} को नियंत्रित करने के लिए कमांड पैलेट का उपयोग करें",
+    "The Omarchy palette sets these colors while Follow Omarchy theme is on.": "जब तक “Omarchy थीम अपनाएँ” चालू है, ये रंग Omarchy की रंग योजना तय करती है।",
+    "Tints the window so it stays readable while transparent. Blur depends on your desktop.": "विंडो को रंग देता है ताकि पारदर्शी होने पर भी वह पढ़ने योग्य रहे। ब्लर आपके डेस्कटॉप पर निर्भर करता है।",
+    "After setting a hotkey, copy its binding from the Hyprland shortcuts panel above.": "हॉटकी सेट करने के बाद, ऊपर के Hyprland शॉर्टकट पैनल से उसकी बाइंडिंग कॉपी करें।",
+    "Press once to show the window and again to hide it.": "विंडो दिखाने के लिए एक बार और छिपाने के लिए फिर से दबाएं।",
+    "Set a popup hotkey or turn on entity hotkeys below, then copy the bindings here.": "नीचे पॉपअप हॉटकी सेट करें या एंटिटी हॉटकी चालू करें, फिर बाइंडिंग यहाँ कॉपी करें।",
+    "No shortcuts are set yet.": "अभी तक कोई शॉर्टकट सेट नहीं है।",
+    "Bind a key in your window manager to run ha-desktop-widget --toggle, which shows or hides the widget.": "अपने विंडो मैनेजर में ha-desktop-widget --toggle चलाने के लिए एक कुंजी बाइंड करें, जो विजेट को दिखाता या छिपाता है।",
+    "Turn off blur for the widget": "विजेट के लिए ब्लर बंद करें",
+    "Blur changes take effect immediately, without Save.": "ब्लर में बदलाव सहेजे बिना तुरंत लागू होते हैं।",
+    "Shortcut status updated.": "शॉर्टकट स्थिति अपडेट हो गई।",
+    "Welcome to HA Desktop Widget": "HA Desktop Widget में आपका स्वागत है",
+    "A new version is available": "एक नया संस्करण उपलब्ध है",
+    "Version {{version}} is available. Open Settings > Advanced to download it.": "संस्करण {{version}} उपलब्ध है। इसे डाउनलोड करने के लिए सेटिंग्स > उन्नत खोलें।",
+    "Showing the first {{shown}} of {{count}} entities. Type to narrow them.": "{{count}} में से पहली {{shown}} एंटिटी दिखाई जा रही हैं। सीमित करने के लिए टाइप करें।",
+    "Up to {{max}} sensors. Selected: {{count}}.": "अधिकतम {{max}} सेंसर। चयनित: {{count}}।",
+    "Maximum reached. Remove a sensor to add another.": "अधिकतम सीमा पूरी हो गई। दूसरा जोड़ने के लिए एक सेंसर हटाएं।",
+    "No sensors match \"{{query}}\"": "\"{{query}}\" से मेल खाता कोई सेंसर नहीं",
+    "What’s new": "नया क्या है",
     "Waiting for you to approve HA Desktop Widget in your browser. If it did not open, choose Cancel, then Connect again.": "आपके ब्राउज़र में HA Desktop Widget को स्वीकृति देने की प्रतीक्षा है। यदि ब्राउज़र नहीं खुला, तो रद्द करें चुनें, फिर दोबारा कनेक्ट करें चुनें।"
   }
 }

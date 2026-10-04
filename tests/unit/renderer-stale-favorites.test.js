@@ -280,9 +280,8 @@ describe('Renderer stale favorite state handling', () => {
     expect(mockState.STATES).toEqual({
       [otherEntity.entity_id]: otherEntity,
     });
-    expect(mockElectronAPI.publishHaSnapshot).toHaveBeenLastCalledWith({
-      [otherEntity.entity_id]: otherEntity,
-    });
+    // Pin windows read only their own entity, so the snapshot is no longer the whole map.
+    expect(mockElectronAPI.publishHaSnapshot).toHaveBeenLastCalledWith({});
   });
 
   it('resets stale tracking when Home Assistant returns the favorite again', async () => {
@@ -411,6 +410,7 @@ describe('Renderer stale favorite state handling', () => {
     mockElectronAPI.publishHaSnapshot.mockClear();
     mockElectronAPI.publishHaEntityUpdate.mockClear();
     mockUi.renderActiveTab.mockClear();
+    mockUi.isEntityVisible.mockImplementation((id) => id === favoriteEntity.entity_id);
 
     mockWebsocket.emit('message', {
       type: 'event',
@@ -429,9 +429,8 @@ describe('Renderer stale favorite state handling', () => {
       [otherEntity.entity_id]: otherEntity,
     });
     expect(mockElectronAPI.publishHaEntityUpdate).not.toHaveBeenCalled();
-    expect(mockElectronAPI.publishHaSnapshot).toHaveBeenCalledWith({
-      [otherEntity.entity_id]: otherEntity,
-    });
+    // The favorite is the pinned entity, so main's cache loses it and holds nothing else.
+    expect(mockElectronAPI.publishHaSnapshot).toHaveBeenCalledWith({});
     expect(mockUi.renderActiveTab).toHaveBeenCalled();
 
     now += 60 * 1000;
@@ -488,7 +487,6 @@ describe('Renderer stale favorite state handling', () => {
 
     expect(mockElectronAPI.publishHaSnapshot).toHaveBeenCalledWith({
       [favoriteEntity.entity_id]: favoriteEntity,
-      [otherEntity.entity_id]: otherEntity,
     });
 
     mockWebsocket.emit('message', {
@@ -496,16 +494,16 @@ describe('Renderer stale favorite state handling', () => {
       event: {
         event_type: 'state_changed',
         data: {
-          entity_id: otherEntity.entity_id,
-          old_state: otherEntity,
-          new_state: { ...otherEntity, state: '73' },
+          entity_id: favoriteEntity.entity_id,
+          old_state: favoriteEntity,
+          new_state: { ...favoriteEntity, state: 'off' },
         },
       },
     });
     await jest.advanceTimersByTimeAsync(20);
 
     expect(mockElectronAPI.publishHaEntityUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ entity_id: otherEntity.entity_id, state: '73' })
+      expect.objectContaining({ entity_id: favoriteEntity.entity_id, state: 'off' })
     );
   });
 
@@ -552,7 +550,6 @@ describe('Renderer stale favorite state handling', () => {
 
     expect(mockElectronAPI.publishHaSnapshot).toHaveBeenCalledWith({
       [favoriteEntity.entity_id]: favoriteEntity,
-      [otherEntity.entity_id]: otherEntity,
     });
   });
 
@@ -585,7 +582,181 @@ describe('Renderer stale favorite state handling', () => {
     expect(mockElectronAPI.publishHaSnapshot).toHaveBeenCalledTimes(2);
     expect(mockElectronAPI.publishHaSnapshot).toHaveBeenLastCalledWith({
       [favoriteEntity.entity_id]: favoriteEntity,
-      [otherEntity.entity_id]: otherEntity,
+    });
+  });
+
+  const stateChanged = (entity, newState) => ({
+    type: 'event',
+    event: {
+      event_type: 'state_changed',
+      data: { entity_id: entity.entity_id, old_state: entity, new_state: newState },
+    },
+  });
+
+  describe('what main is sent for the desktop pins', () => {
+    it('is the pinned entities only, however many entities change', async () => {
+      await loadRenderer();
+      receiveStates([favoriteEntity, otherEntity]);
+      await flushPromises();
+      mockElectronAPI.publishHaEntityUpdate.mockClear();
+
+      mockWebsocket.emit('message', stateChanged(otherEntity, { ...otherEntity, state: '73' }));
+      mockWebsocket.emit(
+        'message',
+        stateChanged(favoriteEntity, { ...favoriteEntity, state: 'off' })
+      );
+      await jest.advanceTimersByTimeAsync(20);
+
+      expect(mockElectronAPI.publishHaEntityUpdate).toHaveBeenCalledTimes(1);
+      expect(mockElectronAPI.publishHaEntityUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ entity_id: favoriteEntity.entity_id, state: 'off' })
+      );
+    });
+
+    it('includes a pin added next to one that was already published', async () => {
+      await loadRenderer();
+      receiveStates([favoriteEntity, otherEntity]);
+      await flushPromises();
+      mockElectronAPI.publishHaSnapshot.mockClear();
+
+      triggerMockEvent(
+        'configUpdated',
+        createConfig({
+          desktopPins: {
+            [favoriteEntity.entity_id]: { x: 24, y: 24, width: 220, height: 140 },
+            [otherEntity.entity_id]: { x: 300, y: 24, width: 220, height: 140 },
+          },
+        })
+      );
+      await flushPromises();
+
+      expect(mockElectronAPI.publishHaSnapshot).toHaveBeenCalledTimes(1);
+      expect(mockElectronAPI.publishHaSnapshot).toHaveBeenCalledWith({
+        [favoriteEntity.entity_id]: favoriteEntity,
+        [otherEntity.entity_id]: otherEntity,
+      });
+    });
+
+    it('is not asked for again when a config echo changes no pin', async () => {
+      await loadRenderer();
+      receiveStates([favoriteEntity, otherEntity]);
+      await flushPromises();
+      mockElectronAPI.publishHaSnapshot.mockClear();
+
+      triggerMockEvent('configUpdated', createConfig());
+      await flushPromises();
+
+      expect(mockElectronAPI.publishHaSnapshot).not.toHaveBeenCalled();
+    });
+
+    it('keeps a removed entity that was not pinned out of main and out of the redraw', async () => {
+      await loadRenderer();
+      receiveStates([favoriteEntity, otherEntity]);
+      await flushPromises();
+      mockElectronAPI.publishHaSnapshot.mockClear();
+      mockUi.renderActiveTab.mockClear();
+
+      mockWebsocket.emit('message', stateChanged(otherEntity, null));
+      await jest.advanceTimersByTimeAsync(20);
+
+      expect(mockState.STATES).toEqual({ [favoriteEntity.entity_id]: favoriteEntity });
+      expect(mockElectronAPI.publishHaSnapshot).not.toHaveBeenCalled();
+      // Nothing on the page showed it, so there is nothing to redraw.
+      expect(mockUi.renderActiveTab).not.toHaveBeenCalled();
+    });
+
+    it('redraws once for a burst of removals that include one on the page', async () => {
+      await loadRenderer();
+      receiveStates([favoriteEntity, otherEntity]);
+      await flushPromises();
+      mockUi.renderActiveTab.mockClear();
+      mockUi.isEntityVisible.mockImplementation((id) => id === otherEntity.entity_id);
+
+      mockWebsocket.emit('message', stateChanged(otherEntity, null));
+      mockWebsocket.emit('message', stateChanged(favoriteEntity, null));
+      await jest.advanceTimersByTimeAsync(20);
+
+      expect(mockUi.renderActiveTab).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('flushing state changes', () => {
+    const hideDocument = () =>
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+
+    afterEach(() => {
+      delete document.hidden;
+    });
+
+    it('still runs when the window hides after the animation frame was requested', async () => {
+      await loadRenderer();
+      receiveStates([favoriteEntity, otherEntity]);
+      await flushPromises();
+      mockElectronAPI.publishHaEntityUpdate.mockClear();
+      // Chromium does not run frames for a hidden window: this one is requested and never fires.
+      window.requestAnimationFrame = jest.fn(() => 42);
+      window.cancelAnimationFrame = jest.fn();
+
+      mockWebsocket.emit(
+        'message',
+        stateChanged(favoriteEntity, { ...favoriteEntity, state: 'off' })
+      );
+      expect(window.requestAnimationFrame).toHaveBeenCalledTimes(1);
+      hideDocument();
+      await jest.advanceTimersByTimeAsync(300);
+
+      expect(mockElectronAPI.publishHaEntityUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ entity_id: favoriteEntity.entity_id, state: 'off' })
+      );
+      expect(mockAlerts.checkEntityAlerts).toHaveBeenLastCalledWith(
+        favoriteEntity.entity_id,
+        'off'
+      );
+      expect(window.cancelAnimationFrame).toHaveBeenCalledWith(42);
+
+      // And the flush is not left pending: the next event gets through too.
+      mockElectronAPI.publishHaEntityUpdate.mockClear();
+      mockWebsocket.emit(
+        'message',
+        stateChanged(favoriteEntity, { ...favoriteEntity, state: 'on' })
+      );
+      await jest.advanceTimersByTimeAsync(100);
+      expect(mockElectronAPI.publishHaEntityUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ entity_id: favoriteEntity.entity_id, state: 'on' })
+      );
+    });
+
+    it('flushes once when the frame and the timer both could run', async () => {
+      await loadRenderer();
+      receiveStates([favoriteEntity, otherEntity]);
+      await flushPromises();
+      mockElectronAPI.publishHaEntityUpdate.mockClear();
+
+      mockWebsocket.emit(
+        'message',
+        stateChanged(favoriteEntity, { ...favoriteEntity, state: 'off' })
+      );
+      await jest.advanceTimersByTimeAsync(1000);
+
+      expect(mockElectronAPI.publishHaEntityUpdate).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not wait for a frame while the window is hidden', async () => {
+      await loadRenderer();
+      receiveStates([favoriteEntity, otherEntity]);
+      await flushPromises();
+      mockElectronAPI.publishHaEntityUpdate.mockClear();
+      window.requestAnimationFrame = jest.fn(() => 7);
+      hideDocument();
+
+      mockWebsocket.emit(
+        'message',
+        stateChanged(favoriteEntity, { ...favoriteEntity, state: 'off' })
+      );
+      expect(window.requestAnimationFrame).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(60);
+
+      expect(mockElectronAPI.publishHaEntityUpdate).toHaveBeenCalledTimes(1);
     });
   });
 

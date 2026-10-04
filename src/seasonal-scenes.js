@@ -1158,7 +1158,14 @@ const rainbowLayer = {
     colors.forEach((color, i) => {
       ctx.strokeStyle = color;
       ctx.beginPath();
-      ctx.arc(width * 0.5, height * 1.1, radius - i * band, Math.PI * 1.08, Math.PI * 1.92);
+      // A window under about 30px made this radius negative, and arc() throws for that.
+      ctx.arc(
+        width * 0.5,
+        height * 1.1,
+        Math.max(0, radius - i * band),
+        Math.PI * 1.08,
+        Math.PI * 1.92
+      );
       ctx.stroke();
     });
     ctx.globalAlpha = 1;

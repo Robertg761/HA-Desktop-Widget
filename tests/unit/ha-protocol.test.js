@@ -611,29 +611,186 @@ describe('Electron net binary fetcher', () => {
     });
   });
 
-  it('validates a redirect before following it', async () => {
-    const { net, request } = createNet({
-      statusCode: 200,
-      headers: { 'content-type': ['image/png'], 'content-length': ['4'] },
-      chunks: [Buffer.from([0x89, 0x50, 0x4e, 0x47])],
+  describe('redirects', () => {
+    // Electron follows a redirect only if followRedirect() is called while the event is being
+    // delivered; a call made later, from a promise callback, fails the request. This net records
+    // when it was called, as Electron would see it.
+    function createRedirectingNet() {
+      const requests = [];
+      const net = {
+        request: jest.fn(({ url }) => {
+          const request = new EventEmitter();
+          request.url = url;
+          request.setHeader = jest.fn();
+          request.abort = jest.fn();
+          request.deliveringRedirect = false;
+          request.followedInTime = null;
+          request.followRedirect = jest.fn(() => {
+            request.followedInTime = request.deliveringRedirect;
+          });
+          request.end = jest.fn(() => {
+            if (request.redirectTo) return;
+            const response = new EventEmitter();
+            Object.assign(response, {
+              statusCode: 200,
+              headers: { 'content-type': ['image/png'], 'content-length': ['4'] },
+            });
+            request.emit('response', response);
+            process.nextTick(() => {
+              response.emit('data', Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+              response.emit('end');
+            });
+          });
+          request.redirect = (target) => {
+            request.deliveringRedirect = true;
+            request.emit('redirect', 302, 'GET', target, {});
+            request.deliveringRedirect = false;
+          };
+          requests.push(request);
+          return request;
+        }),
+      };
+      return { net, requests };
+    }
+
+    it('follows an accepted redirect in the same tick, which is the only time Electron allows', async () => {
+      const { net, requests } = createRedirectingNet();
+      const validateRedirectUrl = jest.fn();
+      const fetchPromise = createElectronNetBinaryFetcher(net)(
+        'https://ha.example.test/start',
+        { Authorization: 'Bearer x' },
+        1000,
+        { validateRedirectUrl }
+      );
+
+      requests[0].redirect('https://ha.example.test/image.png');
+
+      expect(validateRedirectUrl).toHaveBeenCalledWith('https://ha.example.test/image.png');
+      expect(requests[0].followRedirect).toHaveBeenCalledTimes(1);
+      expect(requests[0].followedInTime).toBe(true);
+      requests[0].end();
+      await expect(fetchPromise).resolves.toMatchObject({ status: 200 });
+      expect(net.request).toHaveBeenCalledTimes(1);
     });
-    const validateRedirectUrl = jest.fn(async () => true);
-    const fetchPromise = createElectronNetBinaryFetcher(net)(
-      'https://example.test/start',
-      {},
-      1000,
-      {
-        validateRedirectUrl,
-      }
-    );
 
-    request.emit('redirect', 302, 'GET', 'https://cdn.example.test/image.png', {});
-    await Promise.resolve();
-    await Promise.resolve();
-    await fetchPromise;
+    it('follows a redirect when nothing asks for a check', async () => {
+      const { net, requests } = createRedirectingNet();
+      const fetchPromise = createElectronNetBinaryFetcher(net)('https://example.test/a', {}, 1000);
 
-    expect(validateRedirectUrl).toHaveBeenCalledWith('https://cdn.example.test/image.png');
-    expect(request.followRedirect).toHaveBeenCalledTimes(1);
+      requests[0].redirect('https://cdn.example.test/image.png');
+
+      expect(requests[0].followedInTime).toBe(true);
+      requests[0].end();
+      await fetchPromise;
+    });
+
+    it('rejects, instead of throwing out of the event, when the check refuses the redirect', async () => {
+      const { net, requests } = createRedirectingNet();
+      const refusal = Object.assign(new Error('Authenticated artwork redirect changed origin'), {
+        statusCode: 403,
+        code: 'MEDIA_ARTWORK_BLOCKED_REDIRECT',
+      });
+      const fetchPromise = createElectronNetBinaryFetcher(net)(
+        'https://ha.example.test/start',
+        { Authorization: 'Bearer x' },
+        1000,
+        {
+          validateRedirectUrl: () => {
+            throw refusal;
+          },
+        }
+      );
+
+      // Thrown from the handler, this would be an uncaught exception in the main process.
+      expect(() => requests[0].redirect('https://elsewhere.example.test/image.png')).not.toThrow();
+
+      await expect(fetchPromise).rejects.toBe(refusal);
+      expect(requests[0].followRedirect).not.toHaveBeenCalled();
+      expect(requests[0].abort).toHaveBeenCalled();
+    });
+
+    it('counts redirects and stops at the limit', async () => {
+      const { net, requests } = createRedirectingNet();
+      const fetchPromise = createElectronNetBinaryFetcher(net)('https://example.test/a', {}, 1000, {
+        maxRedirects: 1,
+      });
+
+      requests[0].redirect('https://example.test/b');
+      requests[0].redirect('https://example.test/c');
+
+      await expect(fetchPromise).rejects.toMatchObject({
+        code: 'MEDIA_ARTWORK_TOO_MANY_REDIRECTS',
+      });
+    });
+
+    describe('with a check that has to wait', () => {
+      it('fetches the target with a new request once the check passes', async () => {
+        const { net, requests } = createRedirectingNet();
+        const validateRedirectUrl = jest.fn(async () => undefined);
+        const fetchPromise = createElectronNetBinaryFetcher(net)(
+          'https://example.test/start',
+          {},
+          1000,
+          { validateRedirectUrl, maxRedirects: 3 }
+        );
+
+        requests[0].redirect('https://cdn.example.test/image.png');
+        // Electron cancels a redirect that is not followed in time, which must not fail the fetch.
+        requests[0].emit('error', new Error('Redirect was cancelled'));
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(requests[0].followRedirect).not.toHaveBeenCalled();
+        expect(net.request).toHaveBeenCalledTimes(2);
+        expect(net.request.mock.calls[1][0].url).toBe('https://cdn.example.test/image.png');
+        requests[1].end();
+        await expect(fetchPromise).resolves.toMatchObject({ status: 200 });
+      });
+
+      it('keeps the sign-in header for the same origin and drops it for another', async () => {
+        const sameOrigin = createRedirectingNet();
+        const first = createElectronNetBinaryFetcher(sameOrigin.net)(
+          'https://ha.example.test/start',
+          { Authorization: 'Bearer x' },
+          1000,
+          { validateRedirectUrl: async () => undefined }
+        );
+        sameOrigin.requests[0].redirect('https://ha.example.test/image.png');
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(sameOrigin.requests[1].setHeader).toHaveBeenCalledWith('Authorization', 'Bearer x');
+        sameOrigin.requests[1].end();
+        await first;
+
+        const crossOrigin = createRedirectingNet();
+        const second = createElectronNetBinaryFetcher(crossOrigin.net)(
+          'https://ha.example.test/start',
+          { Authorization: 'Bearer x' },
+          1000,
+          { validateRedirectUrl: async () => undefined }
+        );
+        crossOrigin.requests[0].redirect('https://cdn.example.test/image.png');
+        await new Promise((resolve) => setImmediate(resolve));
+        const sentHeaders = crossOrigin.requests[1].setHeader.mock.calls.map(([name]) => name);
+        expect(sentHeaders).not.toContain('Authorization');
+        crossOrigin.requests[1].end();
+        await second;
+      });
+
+      it('rejects when the check refuses, and does not start another request', async () => {
+        const { net, requests } = createRedirectingNet();
+        const refusal = Object.assign(new Error('blocked'), { statusCode: 403 });
+        const fetchPromise = createElectronNetBinaryFetcher(net)(
+          'https://example.test/start',
+          {},
+          1000,
+          { validateRedirectUrl: async () => Promise.reject(refusal) }
+        );
+
+        requests[0].redirect('http://169.254.169.254/latest');
+
+        await expect(fetchPromise).rejects.toBe(refusal);
+        expect(net.request).toHaveBeenCalledTimes(1);
+      });
+    });
   });
 });
 

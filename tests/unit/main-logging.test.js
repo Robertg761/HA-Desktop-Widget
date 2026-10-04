@@ -54,7 +54,9 @@ describe('main logging setup', () => {
     expect(logger.transports.console.level).toBe(false);
     expect(logger.errorHandler.startCatching).toHaveBeenCalledTimes(1);
 
-    const [{ onError }] = logger.errorHandler.startCatching.mock.calls[0];
+    const [{ onError, showDialog }] = logger.errorHandler.startCatching.mock.calls[0];
+    // electron-log's default error box blocks the main process until it is dismissed.
+    expect(showDialog).toBe(false);
     expect(onError({ error: { code: 'EPIPE' } })).toBe(false);
     expect(onError({ error: new Error('real failure') })).toBeUndefined();
 

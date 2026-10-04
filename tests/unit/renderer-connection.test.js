@@ -187,6 +187,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       saveSettings: jest.fn(),
       renderAlertsListInline: jest.fn(),
       refreshHomeAssistantAuthStatus: jest.fn(),
+      revealUpdateStatus: jest.fn(),
     }));
     mockUiUtils = {
       __esModule: true,
@@ -229,6 +230,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       __esModule: true,
       BASE_RECONNECT_DELAY_MS: 1000,
       MAX_RECONNECT_DELAY_MS: 8000,
+      WS_INITIAL_STATES_TIMEOUT_MS: 90000,
     }));
 
     require('../../renderer.js');
@@ -920,6 +922,135 @@ describe('Renderer Home Assistant connection lifecycle', () => {
         true,
         '[de] Real-time updates active.'
       );
+    });
+  });
+
+  describe('Check for Updates from the tray', () => {
+    const settingsModule = () => require('../../src/settings.js');
+
+    it('opens Settings on the Updates row, which says a check is running', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      connectSuccessfully();
+      const updateStatus = require('../../src/update-status.js');
+
+      triggerMockEvent('autoUpdate', { status: 'checking', reveal: true });
+      await flushAsync();
+
+      expect(settingsModule().openSettings).toHaveBeenCalledTimes(1);
+      expect(settingsModule().revealUpdateStatus).toHaveBeenCalledTimes(1);
+      expect(updateStatus.getUpdateState()).toEqual({ status: 'checking' });
+    });
+
+    it('does not open Settings a second time when it is already open, but still shows the row', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      connectSuccessfully();
+      document.getElementById('settings-modal').classList.remove('hidden');
+
+      triggerMockEvent('autoUpdate', { status: 'none', reveal: true });
+      await flushAsync();
+
+      expect(settingsModule().openSettings).not.toHaveBeenCalled();
+      expect(settingsModule().revealUpdateStatus).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps what a background check found without opening anything', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      connectSuccessfully();
+      const updateStatus = require('../../src/update-status.js');
+
+      // Nothing has opened Settings: the 30-second check after launch found an update.
+      triggerMockEvent('autoUpdate', { status: 'available', info: { version: '4.0.1' } });
+      triggerMockEvent('autoUpdate', { status: 'downloaded', info: { version: '4.0.1' } });
+      await flushAsync();
+
+      expect(settingsModule().openSettings).not.toHaveBeenCalled();
+      expect(updateStatus.getUpdateState()).toEqual({ status: 'downloaded', version: '4.0.1' });
+    });
+  });
+
+  describe('waking from suspend', () => {
+    it('runs the clock tick at once, since the timer armed before the sleep is late', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      connectSuccessfully();
+      mockUi.getTickTargets.mockClear();
+
+      triggerMockEvent('trayEntitiesRefreshNeeded', { reconnect: true });
+
+      expect(mockUi.getTickTargets).toHaveBeenCalled();
+    });
+
+    it('leaves the tick alone for a refresh that is not a wake', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      connectSuccessfully();
+      mockUi.getTickTargets.mockClear();
+
+      triggerMockEvent('trayEntitiesRefreshNeeded', {});
+
+      expect(mockUi.getTickTargets).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the first snapshot of states', () => {
+    it('is given far longer than a usual request, so a large instance is not torn down', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      mockWebsocket.request.mockImplementation(() => {
+        const request = new Promise(() => {});
+        request.id = 10;
+        return request;
+      });
+
+      mockWebsocket.emit('message', { type: 'auth_ok' });
+
+      const call = mockWebsocket.request.mock.calls.find(
+        ([payload]) => payload.type === 'get_states'
+      );
+      expect(call[1]).toEqual({ timeoutMs: 90000 });
+      // Every other request keeps the default.
+      const others = mockWebsocket.request.mock.calls.filter(
+        ([payload]) => payload.type !== 'get_states'
+      );
+      expect(others.length).toBeGreaterThan(0);
+      others.forEach(([, options]) => expect(options).toBeUndefined());
+    });
+  });
+
+  describe('the secure storage push at startup', () => {
+    const pendingConfig = (pending) => ({ ...tokenConfig(), secureStoragePending: pending });
+
+    it('leaves an open connection alone when the push repeats the same sign-in', async () => {
+      await loadRenderer({ config: pendingConfig(true) });
+      connectSuccessfully();
+      expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
+
+      triggerMockEvent('configUpdated', pendingConfig(false));
+      await flushAsync();
+
+      expect(mockWebsocket.close).not.toHaveBeenCalled();
+      expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
+    });
+
+    it('still connects when nothing came up while the storage was pending', async () => {
+      await loadRenderer({ config: pendingConfig(true) });
+      connectSuccessfully();
+      mockWebsocket.connected = false;
+      mockWebsocket.ws = null;
+
+      triggerMockEvent('configUpdated', pendingConfig(false));
+      await flushAsync();
+
+      expect(mockWebsocket.connect).toHaveBeenCalledTimes(2);
+    });
+
+    it('connects once the encrypted token it was waiting for arrives', async () => {
+      const waiting = pendingConfig(true);
+      waiting.homeAssistant.token = '';
+      await loadRenderer({ config: waiting });
+      expect(mockWebsocket.connect).not.toHaveBeenCalled();
+
+      triggerMockEvent('configUpdated', pendingConfig(false));
+      await flushAsync();
+
+      expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
     });
   });
 

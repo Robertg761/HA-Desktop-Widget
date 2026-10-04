@@ -77,6 +77,57 @@ test('removes its palette overrides when theme following is disabled', () => {
   expect(document.body.style.getPropertyValue('--text-primary')).toBe('');
 });
 
+describe('the borders a followed palette draws', () => {
+  // The palette's own border colour is a solid one (its foreground, for most themes), which drew
+  // every field, swatch and divider as a bright outline beside cards with a faint glass edge.
+  test('are hairlines in the palette foreground, as faint as the stock ones', () => {
+    applyDesktopAppearance({ ui: { followOmarchy: true }, desktopAppearance: palette });
+    const body = document.body.style;
+    expect(body.getPropertyValue('--border-color')).toBe(
+      'color-mix(in srgb, #eeeeee 10%, transparent)'
+    );
+    expect(body.getPropertyValue('--border-hover')).toBe(
+      'color-mix(in srgb, #eeeeee 20%, transparent)'
+    );
+    // Not the opaque colour the palette named.
+    expect(body.getPropertyValue('--border-color')).not.toContain(palette.border);
+    expect(body.getPropertyValue('--selection-bg')).toBe(palette.selection);
+  });
+
+  test('follow a light palette in its own foreground', () => {
+    applyDesktopAppearance({
+      ui: { followOmarchy: true },
+      desktopAppearance: {
+        ...palette,
+        mode: 'light',
+        foreground: '#222222',
+        background: '#fafafa',
+      },
+    });
+    expect(document.body.style.getPropertyValue('--border-color')).toBe(
+      'color-mix(in srgb, #222222 10%, transparent)'
+    );
+  });
+
+  test('go back to the stylesheet when the palette is released', () => {
+    applyDesktopAppearance({ ui: { followOmarchy: true }, desktopAppearance: palette });
+    applyDesktopAppearance({ ui: { followOmarchy: false }, desktopAppearance: palette });
+    for (const name of ['--border-color', '--border-hover', '--selection-bg']) {
+      expect(document.body.style.getPropertyValue(name)).toBe('');
+    }
+  });
+});
+
+test('selected text in a field uses the palette selection colour', () => {
+  const css = require('fs').readFileSync(
+    require('path').join(__dirname, '../../styles.css'),
+    'utf8'
+  );
+  expect(css).toMatch(
+    /input::selection,\s*textarea::selection\s*\{\s*background:\s*var\(--selection-bg, rgba\(var\(--accent-rgb\), 0\.35\)\);/
+  );
+});
+
 test('system theme changes preserve the selected accent and background in auto mode', () => {
   applyDesktopAppearance({ ui: { theme: 'auto', accent: 'rose', background: 'slate' } });
   systemThemeChanged();

@@ -5,7 +5,10 @@ const path = require('path');
 const {
   APP_ID,
   getLaunchAction,
+  getHyprlandSocketCandidates,
   hasIsolatedProfile,
+  hasLiveHyprlandInstance,
+  isGnome,
   isHyprland,
   isPortalBindingRegistered,
   hyprlandBinding,
@@ -20,6 +23,7 @@ const {
 } = require('../../src/layer-placement.cjs');
 const { parseOmarchyColors, createOmarchyThemeWatcher } = require('../../src/omarchy-theme.cjs');
 const {
+  appArmorRestrictsUserNamespaces,
   ensureAppImageDesktopEntry,
   repairStaleAppImageLaunchers,
 } = require('../../src/linux-desktop-entry.cjs');
@@ -55,6 +59,54 @@ test('Hyprland targets remain registered without a portal-assigned trigger', () 
   expect(hyprlandBinding('Control+Alt+H', 'popup-toggle')).toBe(
     `hl.bind("CTRL + ALT + H", hl.dsp.global("${APP_ID}:popup-toggle"))`
   );
+});
+test('recognizes a GNOME session, including a prefixed one', () => {
+  expect(isGnome({ XDG_CURRENT_DESKTOP: 'GNOME' })).toBe(true);
+  expect(isGnome({ XDG_CURRENT_DESKTOP: 'ubuntu:GNOME' })).toBe(true);
+  expect(isGnome({ XDG_CURRENT_DESKTOP: 'KDE' })).toBe(false);
+  expect(isGnome({ XDG_CURRENT_DESKTOP: 'X-Cinnamon' })).toBe(false);
+  expect(isGnome({})).toBe(false);
+});
+describe('recognizing a Hyprland session', () => {
+  const env = {
+    XDG_CURRENT_DESKTOP: 'my-custom-session',
+    XDG_RUNTIME_DIR: path.join(path.sep, 'run', 'user', '1000'),
+    HYPRLAND_INSTANCE_SIGNATURE: 'abc123',
+  };
+  const liveSocket = path.join(env.XDG_RUNTIME_DIR, 'hypr', 'abc123', '.socket.sock');
+
+  test('accepts the instance signature when its socket exists, whatever XDG_CURRENT_DESKTOP says', () => {
+    // Layer-shell detection already accepts this; without it the session lost placement, drag,
+    // blur control and the shortcut panel while still running as a desktop layer.
+    expect(isHyprland(env, (candidate) => candidate === liveSocket)).toBe(true);
+  });
+
+  test('does not trust a signature that leaked from another session', () => {
+    expect(isHyprland(env, () => false)).toBe(false);
+    expect(isHyprland({ ...env, HYPRLAND_INSTANCE_SIGNATURE: '' }, () => true)).toBe(false);
+    expect(isHyprland({ XDG_CURRENT_DESKTOP: 'GNOME' }, () => true)).toBe(false);
+  });
+
+  test('looks under the runtime directory first and then /tmp, as older Hyprland did', () => {
+    expect(getHyprlandSocketCandidates(env)).toEqual([
+      liveSocket,
+      path.join('/tmp', 'hypr', 'abc123', '.socket.sock'),
+    ]);
+    expect(getHyprlandSocketCandidates({ ...env, XDG_RUNTIME_DIR: '' })).toEqual([
+      path.join('/tmp', 'hypr', 'abc123', '.socket.sock'),
+    ]);
+    expect(
+      hasLiveHyprlandInstance(env, (candidate) => candidate.startsWith(path.join('/tmp')))
+    ).toBe(true);
+  });
+
+  test('treats a failing probe as no instance', () => {
+    expect(
+      isHyprland(env, () => {
+        throw new Error('EACCES');
+      })
+    ).toBe(false);
+  });
 });
 test.each([
   ['Control+Alt+H', 'CTRL ALT, H'],
@@ -307,6 +359,293 @@ test('AppImage launcher supplies canonical portal identity and repairs only its 
   fs.writeFileSync(file, '[Desktop Entry]\nExec=/custom/widget\n');
   expect(ensureAppImageDesktopEntry({ env, iconPath: icon })).toBe(false);
 });
+describe('an AppImage on a system that blocks the Chromium sandbox', () => {
+  function writeLauncher({ sandboxDisabled, restriction }) {
+    const env = {
+      APPIMAGE: path.join(root, 'widget.AppImage'),
+      XDG_DATA_HOME: path.join(root, 'data'),
+      XDG_DATA_DIRS: path.join(root, 'system'),
+    };
+    const icon = path.join(root, 'icon.png');
+    fs.writeFileSync(icon, 'png');
+    const real = fs;
+    const fsModule = {
+      ...real,
+      existsSync: (file) => real.existsSync(file),
+      readFileSync: (file, ...rest) => {
+        if (String(file).endsWith('apparmor_restrict_unprivileged_userns')) {
+          if (restriction === undefined) throw new Error('ENOENT');
+          return restriction;
+        }
+        return real.readFileSync(file, ...rest);
+      },
+    };
+    expect(ensureAppImageDesktopEntry({ env, iconPath: icon, fsModule, sandboxDisabled })).toBe(
+      true
+    );
+    return real.readFileSync(
+      path.join(env.XDG_DATA_HOME, 'applications', `${APP_ID}.desktop`),
+      'utf8'
+    );
+  }
+
+  test('keeps --no-sandbox in the launcher it writes, since the user needed it to start', () => {
+    expect(writeLauncher({ sandboxDisabled: true, restriction: '1\n' })).toContain(
+      ' --no-sandbox --show'
+    );
+  });
+
+  test('leaves the sandbox on when the app runs with it', () => {
+    expect(writeLauncher({ sandboxDisabled: false, restriction: '1\n' })).not.toContain(
+      '--no-sandbox'
+    );
+  });
+
+  test('does not switch it off for a user who passed the flag on a system that allows the sandbox', () => {
+    expect(writeLauncher({ sandboxDisabled: true, restriction: '0\n' })).not.toContain(
+      '--no-sandbox'
+    );
+    expect(writeLauncher({ sandboxDisabled: true, restriction: undefined })).not.toContain(
+      '--no-sandbox'
+    );
+  });
+
+  describe('with a launcher that is already there', () => {
+    const marker = 'X-HA-Widget-Launcher=true';
+
+    function setUp(exec, extra = '') {
+      const env = {
+        APPIMAGE: path.join(root, 'widget.AppImage'),
+        XDG_DATA_HOME: path.join(root, 'data'),
+        XDG_DATA_DIRS: path.join(root, 'system'),
+      };
+      fs.writeFileSync(env.APPIMAGE, 'app');
+      const icon = path.join(root, 'icon.png');
+      fs.writeFileSync(icon, 'png');
+      const file = path.join(env.XDG_DATA_HOME, 'applications', `${APP_ID}.desktop`);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(
+        file,
+        `[Desktop Entry]\nType=Application\nExec=${exec(env)}\nTryExec=${env.APPIMAGE}\n${marker}\n${extra}`
+      );
+      const ensure = ({ sandboxDisabled = true, restriction = '1\n' } = {}) =>
+        ensureAppImageDesktopEntry({
+          env,
+          iconPath: icon,
+          sandboxDisabled,
+          fsModule: {
+            ...fs,
+            readFileSync: (target, ...rest) => {
+              if (String(target).endsWith('apparmor_restrict_unprivileged_userns')) {
+                if (restriction === null) throw new Error('ENOENT');
+                return restriction;
+              }
+              return fs.readFileSync(target, ...rest);
+            },
+          },
+        });
+      return { env, file, ensure, read: () => fs.readFileSync(file, 'utf8') };
+    }
+
+    test('adds --no-sandbox to a launcher for this AppImage that was written without it', () => {
+      const { env, ensure, read } = setUp(
+        (e) => `${quoteDesktopExecArg(e.APPIMAGE)} --show`,
+        'Name=HA Desktop Widget\n'
+      );
+      expect(ensure()).toBe(true);
+      expect(read()).toContain(`Exec=${quoteDesktopExecArg(env.APPIMAGE)} --no-sandbox --show\n`);
+      expect(read()).toContain('Name=HA Desktop Widget\n');
+      // Once it carries the flag there is nothing left to change.
+      const written = read();
+      expect(ensure()).toBe(false);
+      expect(read()).toBe(written);
+    });
+
+    test('adds the flag to a launcher with no other arguments, and keeps the ones it has', () => {
+      const bare = setUp((e) => quoteDesktopExecArg(e.APPIMAGE));
+      expect(bare.ensure()).toBe(true);
+      expect(bare.read()).toContain(
+        `Exec=${quoteDesktopExecArg(bare.env.APPIMAGE)} --no-sandbox\n`
+      );
+    });
+
+    test('repairs the path and adds the flag in one write when the launcher names a deleted AppImage', () => {
+      const { env, ensure, read } = setUp(
+        () => `${quoteDesktopExecArg(path.join(root, 'old.AppImage'))} --show`
+      );
+      expect(ensure()).toBe(true);
+      expect(read()).toContain(`Exec=${quoteDesktopExecArg(env.APPIMAGE)} --no-sandbox --show\n`);
+      expect(read()).toContain(`TryExec=${env.APPIMAGE}\n`);
+    });
+
+    test('still repairs only the path when the sandbox is not blocked or not switched off', () => {
+      for (const options of [
+        { restriction: '0\n' },
+        { restriction: null },
+        { sandboxDisabled: false },
+      ]) {
+        const { env, ensure, read } = setUp(
+          () => `${quoteDesktopExecArg(path.join(root, 'old.AppImage'))} --show`
+        );
+        expect(ensure(options)).toBe(true);
+        expect(read()).toContain(`Exec=${quoteDesktopExecArg(env.APPIMAGE)} --show\n`);
+        fs.rmSync(path.join(env.XDG_DATA_HOME), { recursive: true, force: true });
+      }
+    });
+
+    test('leaves a working launcher alone when the sandbox is not blocked', () => {
+      for (const options of [
+        { restriction: '0\n' },
+        { restriction: null },
+        { sandboxDisabled: false },
+      ]) {
+        const { env, ensure, read } = setUp((e) => `${quoteDesktopExecArg(e.APPIMAGE)} --show`);
+        const before = read();
+        expect(ensure(options)).toBe(false);
+        expect(read()).toBe(before);
+        fs.rmSync(path.join(env.XDG_DATA_HOME), { recursive: true, force: true });
+      }
+    });
+
+    test('edits the Exec line, not a TryExec line listed ahead of it', () => {
+      const { env, file, ensure, read } = setUp(() => '');
+      // Launchers are Linux files, where a path has no backslashes. On Windows the temporary
+      // folder does, and in an unquoted Exec value a backslash starts an escape; CI's is also
+      // a short name with a ~ (RUNNER~1), which an unquoted command cannot hold. So this test
+      // writes the folder's long name, with forward slashes (which Windows also accepts).
+      const base = fs.realpathSync.native(root);
+      const posix = (target) => target.split(path.sep).join('/');
+      env.APPIMAGE = posix(path.join(base, path.basename(env.APPIMAGE)));
+      const write = (exec) =>
+        fs.writeFileSync(
+          file,
+          `[Desktop Entry]\nType=Application\nTryExec=${exec}\nExec=${exec} --show\n${marker}\n`
+        );
+      // An unquoted path is the case where the text after `Exec=` is the same on both lines.
+      write(env.APPIMAGE);
+      expect(ensure()).toBe(true);
+      expect(read()).toContain(`\nTryExec=${env.APPIMAGE}\n`);
+      expect(read()).toContain(`\nExec=${env.APPIMAGE} --no-sandbox --show\n`);
+
+      const gone = posix(path.join(base, 'old.AppImage'));
+      write(gone);
+      expect(ensure()).toBe(true);
+      expect(read()).toContain(`\nTryExec=${env.APPIMAGE}\n`);
+      expect(read()).toContain(`\nExec=${quoteDesktopExecArg(env.APPIMAGE)} --no-sandbox --show\n`);
+      expect(read()).not.toContain(gone);
+    });
+
+    test('does not edit a launcher that starts another executable, or one the user wrote', () => {
+      const other = path.join(root, 'other.AppImage');
+      fs.writeFileSync(other, 'app');
+      const elsewhere = setUp(() => `${quoteDesktopExecArg(other)} --show`);
+      const before = elsewhere.read();
+      expect(elsewhere.ensure()).toBe(false);
+      expect(elsewhere.read()).toBe(before);
+
+      const own = setUp((e) => `${quoteDesktopExecArg(e.APPIMAGE)} --show`);
+      fs.writeFileSync(
+        own.file,
+        `[Desktop Entry]\nExec=${quoteDesktopExecArg(own.env.APPIMAGE)}\n`
+      );
+      expect(own.ensure()).toBe(false);
+      expect(own.read()).not.toContain('--no-sandbox');
+    });
+  });
+
+  describe('with a menu launcher an integration tool left pointing at a deleted AppImage', () => {
+    // An AppImageLauncher launcher whose update removed the AppImage it named.
+    function setUpIntegration(suffix, name = 'ha_desktop_widget.desktop') {
+      const env = { APPIMAGE: path.join(root, 'widget.AppImage'), XDG_DATA_HOME: root };
+      fs.writeFileSync(env.APPIMAGE, 'app');
+      const dir = path.join(root, 'applications');
+      fs.mkdirSync(dir, { recursive: true });
+      const gone = path.join(root, 'old.AppImage');
+      const file = path.join(dir, name);
+      fs.writeFileSync(
+        file,
+        `[Desktop Entry]\nName=HA Desktop Widget\nTryExec=${gone}\nExec=env DESKTOPINTEGRATION=1 ${quoteDesktopExecArg(gone)}${suffix}\nX-AppImage-Version=3.9.0\n`
+      );
+      const repair = ({ sandboxDisabled = true, restriction = '1\n' } = {}) =>
+        repairStaleAppImageLaunchers({
+          env,
+          sandboxDisabled,
+          fsModule: {
+            ...fs,
+            readFileSync: (target, ...rest) => {
+              if (String(target).endsWith('apparmor_restrict_unprivileged_userns')) {
+                if (restriction === null) throw new Error('ENOENT');
+                return restriction;
+              }
+              return fs.readFileSync(target, ...rest);
+            },
+          },
+        });
+      return { env, file, repair, read: () => fs.readFileSync(file, 'utf8') };
+    }
+
+    test('adds --no-sandbox to the repaired launcher when the sandbox is blocked and switched off', () => {
+      const { env, file, repair, read } = setUpIntegration(' --show %U');
+      expect(repair()).toEqual([file]);
+      expect(read()).toContain(
+        `\nExec=${buildDesktopExecPrefix(env.APPIMAGE)} --no-sandbox --show %U\n`
+      );
+      expect(read()).toContain(`\nTryExec=${env.APPIMAGE}\n`);
+      // Repaired launchers are skipped from then on, so the flag is not added a second time.
+      expect(repair()).toEqual([]);
+    });
+
+    test('adds the flag to a launcher with no arguments, ahead of the ones it has', () => {
+      const bare = setUpIntegration('');
+      expect(bare.repair()).toEqual([bare.file]);
+      expect(bare.read()).toContain(
+        `\nExec=${buildDesktopExecPrefix(bare.env.APPIMAGE)} --no-sandbox\n`
+      );
+    });
+
+    test('does not repeat a flag the launcher already has', () => {
+      const { env, file, repair, read } = setUpIntegration(' --no-sandbox %U');
+      expect(repair()).toEqual([file]);
+      expect(read()).toContain(`\nExec=${buildDesktopExecPrefix(env.APPIMAGE)} --no-sandbox %U\n`);
+      expect(read().match(/--no-sandbox/g)).toHaveLength(1);
+    });
+
+    test('repairs only the path when the sandbox is not blocked or not switched off', () => {
+      for (const options of [
+        { restriction: '0\n' },
+        { restriction: null },
+        { sandboxDisabled: false },
+      ]) {
+        const { env, file, repair, read } = setUpIntegration(' --show %U');
+        expect(repair(options)).toEqual([file]);
+        expect(read()).toContain(`\nExec=${buildDesktopExecPrefix(env.APPIMAGE)} --show %U\n`);
+        fs.rmSync(path.join(root, 'applications'), { recursive: true, force: true });
+      }
+    });
+
+    test('leaves a launcher that still starts a working executable alone', () => {
+      const { file, repair, read } = setUpIntegration(' --show %U');
+      const working = path.join(root, 'working.AppImage');
+      fs.writeFileSync(working, 'app');
+      const content = `[Desktop Entry]\nName=HA Desktop Widget\nExec=${quoteDesktopExecArg(working)} --show %U\nX-AppImage-Version=3.9.0\n`;
+      fs.writeFileSync(file, content);
+      expect(repair()).toEqual([]);
+      expect(read()).toBe(content);
+    });
+  });
+
+  test('reads the AppArmor restriction from /proc', () => {
+    const read = (value) => ({
+      readFileSync: jest.fn(() => {
+        if (value === null) throw new Error('ENOENT');
+        return value;
+      }),
+    });
+    expect(appArmorRestrictsUserNamespaces(read('1\n'))).toBe(true);
+    expect(appArmorRestrictsUserNamespaces(read('0\n'))).toBe(false);
+    expect(appArmorRestrictsUserNamespaces(read(null))).toBe(false);
+  });
+});
 test('an installed package supplies its desktop entry without user overrides', () => {
   const env = {
     APPIMAGE: path.join(root, 'app'),
@@ -388,6 +727,22 @@ test.each(['ha_desktop_widget.desktop', `${APP_ID}.desktop`])(
     expect(fs.readFileSync(file, 'utf8')).toContain(`TryExec=${env.APPIMAGE}`);
   }
 );
+
+test('repairing a generated launcher edits the Exec line when TryExec is listed first', () => {
+  const env = { APPIMAGE: path.join(root, 'current.AppImage'), XDG_DATA_HOME: root };
+  const dir = path.join(root, 'applications');
+  fs.mkdirSync(dir);
+  const file = path.join(dir, 'ha_desktop_widget.desktop');
+  fs.writeFileSync(
+    file,
+    `[Desktop Entry]\nName=HA Desktop Widget\nTryExec=/gone/widget.AppImage\nExec=/gone/widget.AppImage --show %U\nX-AppImage-Version=3.11\n`
+  );
+  expect(repairStaleAppImageLaunchers({ env })).toEqual([file]);
+  const content = fs.readFileSync(file, 'utf8');
+  expect(content).toContain(`\nTryExec=${env.APPIMAGE}\n`);
+  expect(content).toContain(`\nExec=${quoteDesktopExecArg(env.APPIMAGE)} --show %U\n`);
+  expect(content).not.toContain('/gone/');
+});
 
 test('an unwritable launcher does not prevent repairing the remaining launchers', () => {
   const env = { APPIMAGE: '/current.AppImage', XDG_DATA_HOME: root };

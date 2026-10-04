@@ -32,6 +32,7 @@ describe('desktop blur retry control', () => {
       window: { electronAPI: { setDesktopBlur: change } },
       t: (text) => text,
       showToast: jest.fn(),
+      renderFrostedGlassHelp: jest.fn(),
       disableControlsKeepingFocus: (controls) => {
         controls.forEach((control) => {
           control.disabled = true;
@@ -53,7 +54,7 @@ describe('desktop blur retry control', () => {
     expect(button.textContent).toBe('Turn on blur for the widget');
     await button.onclick();
     expect(change).toHaveBeenCalledWith(true);
-    expect(button.textContent).toBe('Turn off widget blur');
+    expect(button.textContent).toBe('Turn off blur for the widget');
     expect(button.disabled).toBe(false);
     expect(document.getElementById('desktop-blur-status').textContent).toBe(
       'Hyprland blurs the widget. Other windows are not blurred.'

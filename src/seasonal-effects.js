@@ -68,6 +68,7 @@ export class SeasonalEffectsManager {
     this.scrollTops = new WeakMap();
     this.pixelRatioQuery = null;
     this.stillFrameTimer = null;
+    this.reportedFrameError = '';
     this.env = { findClearLane: (preferredY, band) => this.findClearLane(preferredY, band) };
 
     this.loop = this.loop.bind(this);
@@ -395,7 +396,11 @@ export class SeasonalEffectsManager {
     ctx.clearRect(0, 0, this.width, this.height);
     ctx.globalAlpha = FROST_ALPHA;
     ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
+    // The copy is already blurred and only upscaled fourfold, so bilinear is indistinguishable from
+    // the bicubic that 'high' asks for (under one level in 255 on a test scene). Without a GPU the
+    // bicubic upscale is drawn on the CPU for every frame, and was most of what a holiday theme cost:
+    // a core's 20% with it and 11% without, for a scene that alone takes 10%.
+    ctx.imageSmoothingQuality = 'low';
     ctx.drawImage(this.frostCanvas, 0, 0, this.width, this.height);
     ctx.restore();
   }
@@ -468,10 +473,28 @@ export class SeasonalEffectsManager {
     }
     const frameScale = Math.min(3, Math.max(0.5, elapsedMs / BASELINE_FRAME_INTERVAL_MS));
     this.lastTime = timestamp;
-    this.layers.forEach((layer, index) => {
-      layer.update?.(this.states[index], this.width, this.height, frameScale, timestamp, this.env);
-    });
-    this.renderFrame(timestamp);
+    try {
+      this.layers.forEach((layer, index) => {
+        layer.update?.(
+          this.states[index],
+          this.width,
+          this.height,
+          frameScale,
+          timestamp,
+          this.env
+        );
+      });
+      this.renderFrame(timestamp);
+    } catch (error) {
+      // A layer that throws on one frame (a window too small for its arcs, a canvas that was lost)
+      // must not end the animation: the next frame is requested below whatever happened, and gets
+      // another try. Said once per kind of failure, not thirty times a second.
+      const reason = String(error?.message || error);
+      if (reason !== this.reportedFrameError) {
+        this.reportedFrameError = reason;
+        console.warn('Seasonal scene frame failed:', error);
+      }
+    }
     this.animationFrameId = requestAnimationFrame(this.loop);
   }
 

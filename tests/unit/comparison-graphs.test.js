@@ -681,3 +681,19 @@ describe('buildTimeSeriesPoints', () => {
     ).toBe('');
   });
 });
+
+describe('computeValueDomain with a very long series', () => {
+  const { computeValueDomain } = require('../../src/comparison-graphs.js');
+
+  it('does not overflow the stack for a day of one-second readings and beyond', () => {
+    const points = Array.from({ length: 300000 }, (_value, index) => ({
+      value: index % 1000,
+      timestamp: index * 1000,
+    }));
+
+    const domain = computeValueDomain([points, points.slice(0, 10)]);
+
+    expect(domain.min).toBeLessThan(0);
+    expect(domain.max).toBeGreaterThan(999);
+  });
+});

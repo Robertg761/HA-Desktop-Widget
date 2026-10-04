@@ -64,13 +64,14 @@ describe('holiday art beside controls', () => {
     expect(
       declared("body[data-season='lunar-new-year'] .modal-content::before", 'inset-inline-end')
     ).toBe('56px');
-    // The Halloween web stays in the corner, and the close button gets a backing over it.
+    // The Halloween web stays in the corner, and the close button gets a backing over it, in
+    // Settings too, whose header is a plain panel now.
     expect(declared("body[data-season='halloween'] .modal-content::before", 'inset-inline')).toBe(
       'auto 0'
     );
     expect(
       declared(
-        "body[data-season='halloween'] .modal:not(#settings-modal) .modal-header .close-btn:not(:hover, :focus-visible)",
+        "body[data-season='halloween'] .modal .modal-header .close-btn:not(:hover, :focus-visible)",
         'background'
       )
     ).toMatch(/^rgba\(var\(--window-bg-rgb\), 0\.\d+\)$/);
@@ -80,10 +81,6 @@ describe('holiday art beside controls', () => {
     const settings = 'body[data-season] #settings-modal .modal-content';
     expect(declared(settings, '--season-size')).toBe('44px');
     expect(declared(`${settings}::before`, 'inset-block-start')).toBe('3px');
-    // The header has no background, so its backdrop blur would only smudge the art behind it.
-    expect(declared('body[data-season] #settings-modal .modal-header', 'backdrop-filter')).toBe(
-      'none'
-    );
     // 6px in and 40px wide leaves the piece inside the 52px rail, clear of the page.
     expect(declared(settings, '--season-sit-size')).toBe('40px');
     expect(declared(`${settings}::after`, 'inset-inline-start')).toBe('6px');

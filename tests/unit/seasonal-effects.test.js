@@ -303,6 +303,119 @@ describe('SeasonalEffectsManager', () => {
     expect(outlines.map((call) => call.slice(1))).toContainEqual([14, 300, 400, 120, 14]);
   });
 
+  test('draws the frost with bilinear smoothing, which costs a fraction of bicubic without a GPU', () => {
+    addTile(100, 80);
+    const frost = createContext();
+    const createElement = document.createElement.bind(document);
+    jest
+      .spyOn(document, 'createElement')
+      .mockImplementation((tag) =>
+        tag === 'canvas'
+          ? { width: 0, height: 0, getContext: () => frost.context }
+          : createElement(tag)
+      );
+
+    manager.apply({ seasonal: picked('christmas') });
+    manager.loop(1000);
+
+    expect(drawing.context.imageSmoothingEnabled).toBe(true);
+    expect(drawing.context.imageSmoothingQuality).toBe('low');
+  });
+
+  describe('a scene that throws', () => {
+    // The scenes' layers are shared objects, so a failing copy replaces the first one in this
+    // manager only.
+    const failFirstLayerWith = (update) => {
+      manager.layers = manager.layers.map((layer, index) =>
+        index === 0 ? { ...layer, update } : layer
+      );
+    };
+
+    test('does not end the animation: the next frame is still asked for', () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      manager.apply({ seasonal: picked('halloween') });
+      expect(manager.animationFrameId).not.toBeNull();
+      window.requestAnimationFrame.mockClear();
+      failFirstLayerWith(() => {
+        throw new RangeError('The radius provided is negative');
+      });
+
+      expect(() => manager.loop(1000)).not.toThrow();
+
+      expect(window.requestAnimationFrame).toHaveBeenCalledTimes(1);
+      expect(manager.animationFrameId).not.toBeNull();
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    test('draws again once the layer recovers', () => {
+      jest.spyOn(console, 'warn').mockImplementation(() => {});
+      manager.apply({ seasonal: picked('halloween') });
+      let failing = true;
+      const update = manager.layers[0].update;
+      failFirstLayerWith((...args) => {
+        if (failing) throw new Error('canvas lost');
+        return update?.(...args);
+      });
+      manager.loop(1000);
+      drawing.calls.length = 0;
+
+      failing = false;
+      manager.loop(1100);
+
+      expect(drawing.calls.length).toBeGreaterThan(0);
+    });
+
+    test('says a repeating failure once, not at every frame', () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      manager.apply({ seasonal: picked('halloween') });
+      failFirstLayerWith(() => {
+        throw new Error('canvas lost');
+      });
+
+      for (let frame = 1; frame <= 10; frame += 1) manager.loop(1000 + frame * 100);
+
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    test('says a different failure as well', () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      manager.apply({ seasonal: picked('halloween') });
+      failFirstLayerWith(() => {
+        throw new Error('canvas lost');
+      });
+      manager.loop(1100);
+      failFirstLayerWith(() => {
+        throw new Error('out of memory');
+      });
+      manager.loop(1200);
+
+      expect(warn).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  test("the St Patrick's rainbow draws in a window of any size, down to nothing", () => {
+    const { SCENES } = require('../../src/seasonal-scenes.js');
+    // The rainbow is the first layer of the March scene.
+    const rainbow = SCENES['st-patricks'][0];
+    const targets = [
+      { width: 1, height: 1 },
+      { width: 0, height: 0 },
+      { width: 20, height: 28 },
+      { width: 500, height: 660 },
+    ];
+    const radii = [];
+    const ctx = new Proxy(
+      { arc: (...args) => radii.push(args[2]) },
+      { get: (object, key) => (key in object ? object[key] : () => {}), set: () => true }
+    );
+
+    targets.forEach(({ width, height }) => {
+      expect(() => rainbow.draw(ctx, {}, { light: false, width, height })).not.toThrow();
+    });
+    expect(radii.length).toBeGreaterThan(0);
+    expect(radii.every((radius) => radius >= 0)).toBe(true);
+  });
+
   test('finds a lane between tiles for fliers, and falls back when there is none', () => {
     addTile(0, 100);
     // Down past the bottom of the window, so the only gap runs from 100 to 140.

@@ -1,5 +1,6 @@
 /* global console, process, setTimeout, clearTimeout */
 
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -57,8 +58,11 @@ function createKWinWindowRaiser(options = {}) {
     log = console,
     env = process.env,
     platform = process.platform,
-    scriptDir = os.tmpdir(),
+    // The runtime directory is private to the user (0700); /tmp is shared, so a file there with a
+    // name another user can predict could be swapped for a script KWin would then run.
+    scriptDir = env.XDG_RUNTIME_DIR || os.tmpdir(),
     writeFile = fs.promises.writeFile,
+    removeFile = fs.promises.unlink,
     callTimeoutMs = KWIN_CALL_TIMEOUT_MS,
     // Injectable for tests; defaults to a real session bus connection. usocket is
     // avoided for the same reason as in portal-global-shortcuts.cjs.
@@ -74,7 +78,8 @@ function createKWinWindowRaiser(options = {}) {
   // Per-process plugin name so two app instances (or a crashed predecessor's leftover
   // registration) can never fight over the same KWin script slot.
   const pluginName = `ha-widget-raise-${process.pid}`;
-  const scriptFilePath = path.join(scriptDir, `${pluginName}.js`);
+  // The script is written afresh for every raise under an unguessable name.
+  let scriptFilePath = path.join(scriptDir, `${pluginName}.js`);
 
   let bus = null;
   let dbusModule = null;
@@ -208,18 +213,35 @@ function createKWinWindowRaiser(options = {}) {
 
   async function performRaise(title) {
     if (!(await isKWinPresent())) return false;
-    await writeFile(scriptFilePath, buildRaiseScript(title), 'utf8');
-    // A plugin left registered by an interrupted earlier raise blocks loadScript.
-    await unloadScript();
-    const loadReply = await scriptingCall('loadScript', 'ss', [scriptFilePath, pluginName]);
-    const scriptId = Number(loadReply?.body?.[0]);
-    if (!Number.isInteger(scriptId) || scriptId < 0) {
-      throw new Error(`KWin loadScript returned ${loadReply?.body?.[0]}`);
-    }
+    scriptFilePath = path.join(
+      scriptDir,
+      `${pluginName}-${crypto.randomBytes(8).toString('hex')}.js`
+    );
+    // Owner-only, and never an existing file or link ('wx'): only this process's script runs.
+    await writeFile(scriptFilePath, buildRaiseScript(title), {
+      encoding: 'utf8',
+      mode: 0o600,
+      flag: 'wx',
+    });
     try {
-      await runLoadedScript(scriptId);
-    } finally {
+      // A plugin left registered by an interrupted earlier raise blocks loadScript.
       await unloadScript();
+      const loadReply = await scriptingCall('loadScript', 'ss', [scriptFilePath, pluginName]);
+      const scriptId = Number(loadReply?.body?.[0]);
+      if (!Number.isInteger(scriptId) || scriptId < 0) {
+        throw new Error(`KWin loadScript returned ${loadReply?.body?.[0]}`);
+      }
+      try {
+        await runLoadedScript(scriptId);
+      } finally {
+        await unloadScript();
+      }
+    } finally {
+      try {
+        await removeFile(scriptFilePath);
+      } catch {
+        // Already gone, or the directory is; nothing else reads it.
+      }
     }
     return true;
   }

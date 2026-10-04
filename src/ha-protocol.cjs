@@ -274,6 +274,8 @@ function createElectronNetBinaryFetcher(net) {
   return function fetchBinaryWithElectronNet(url, headers = {}, timeoutMs = 10000, options = {}) {
     return new Promise((resolve, reject) => {
       let completed = false;
+      // Set when a redirect is taken over by a new request, so the old one ending is not a failure.
+      let reissuing = false;
       const chunks = [];
       let receivedBytes = 0;
       const maxBytes = Number.isFinite(Number(options.maxBytes))
@@ -286,6 +288,7 @@ function createElectronNetBinaryFetcher(net) {
       let redirectsRemaining = Number.isFinite(Number(options.maxRedirects))
         ? Math.max(0, Math.floor(Number(options.maxRedirects)))
         : 5;
+      const startedAt = Date.now();
 
       const request = net.request({
         method: 'GET',
@@ -389,14 +392,62 @@ function createElectronNetBinaryFetcher(net) {
           return;
         }
         redirectsRemaining -= 1;
-        Promise.resolve(validateRedirectUrl ? validateRedirectUrl(redirectUrl) : undefined)
+
+        // Electron only follows a redirect that is accepted while its event is being delivered: a
+        // call from a promise callback finds the redirect already cancelled and fails the request
+        // ("Redirect was cancelled"), and a validator that throws from inside the event is an
+        // uncaught exception, which the error handler turns into a blocking error dialog. So the
+        // check runs here, in this tick, and a refusal rejects the request like any other.
+        let verdict;
+        try {
+          verdict = validateRedirectUrl ? validateRedirectUrl(redirectUrl) : undefined;
+        } catch (error) {
+          rejectRequest(error);
+          return;
+        }
+        if (!verdict || typeof verdict.then !== 'function') {
+          request.followRedirect();
+          return;
+        }
+
+        // A check that has to wait (a DNS lookup) cannot keep this request alive. Once it passes, the
+        // target is fetched by a new request, which keeps what is left of the time and the
+        // redirects. The sign-in header only goes to the origin it was meant for.
+        reissuing = true;
+        verdict
           .then(() => {
-            if (!completed) request.followRedirect();
+            if (completed) return;
+            completed = true;
+            clearTimeout(timeoutId);
+            try {
+              request.abort();
+            } catch {
+              // The request may already have closed.
+            }
+            const sameOrigin = new URL(redirectUrl).origin === new URL(url).origin;
+            const nextHeaders = Object.fromEntries(
+              Object.entries(headers || {}).filter(
+                ([key]) => sameOrigin || key.toLowerCase() !== 'authorization'
+              )
+            );
+            resolve(
+              fetchBinaryWithElectronNet(
+                redirectUrl,
+                nextHeaders,
+                Math.max(1, timeoutMs - (Date.now() - startedAt)),
+                { ...options, maxRedirects: redirectsRemaining }
+              )
+            );
           })
-          .catch(rejectRequest);
+          .catch((error) => {
+            reissuing = false;
+            rejectRequest(error);
+          });
       });
 
-      request.on('error', rejectRequest);
+      request.on('error', (error) => {
+        if (!reissuing) rejectRequest(error);
+      });
       request.end();
     });
   };

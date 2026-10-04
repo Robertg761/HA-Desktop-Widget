@@ -1,8 +1,11 @@
 const path = require('path');
 
 function getAppIconPath(baseDir, platform = process.platform) {
-  const iconFile = platform === 'win32' ? 'icon.ico' : 'icon.png';
-  return path.join(baseDir, 'build', iconFile);
+  if (platform === 'win32') return path.join(baseDir, 'build', 'icon.ico');
+  // The window and launcher icon on Linux is the same rounded artwork the installed packages put in
+  // the icon theme; macOS takes its icon from the app bundle and ignores this one.
+  if (platform === 'linux') return path.join(baseDir, 'build', 'icons', '512x512.png');
+  return path.join(baseDir, 'build', 'icon.png');
 }
 
 function supportsElectronLoginItems(platform = process.platform) {

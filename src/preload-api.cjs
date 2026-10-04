@@ -213,7 +213,7 @@ function createElectronApi(ipcRenderer, platform) {
     removeEntityAlert: (entityId) => invoke('remove-entity-alert', entityId),
     toggleAlerts: (enabled) => invoke('toggle-alerts', enabled),
 
-    checkForUpdates: () => invoke('check-for-updates'),
+    checkForUpdates: (options) => invoke('check-for-updates', options),
     quitAndInstall: () => invoke('quit-and-install'),
 
     getAppVersion: () => invoke('get-app-version'),
