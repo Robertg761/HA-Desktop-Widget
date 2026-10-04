@@ -183,8 +183,9 @@ describe('command palette fuzzy scoring', () => {
       expect(document.activeElement).toBe(launcher);
       expect(openEntityDetailModal).toHaveBeenCalledWith(
         expect.objectContaining({ entity_id: expect.any(String) }),
-        // This session has not loaded any services, so the palette lists no command for either.
-        { source: 'command-palette', hasCommand: false }
+        // This session has not loaded any services, so the palette lists no command for either, yet
+        // both are kinds of device it has commands for: Enter must not switch them.
+        { source: 'command-palette', hasCommand: true }
       );
     } finally {
       global.requestAnimationFrame = originalRequestAnimationFrame;
@@ -199,7 +200,7 @@ describe('command palette results that open an entity', () => {
       (row) => row.querySelector('.command-palette-result-name').textContent === name
     );
 
-  it('tell the dialog whether the palette also lists a command for that entity', () => {
+  it('tell the dialog whether the palette has commands for that kind of device', () => {
     const originalRequestAnimationFrame = global.requestAnimationFrame;
     const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
     global.requestAnimationFrame = (callback) => callback();
@@ -234,6 +235,65 @@ describe('command palette results that open an entity', () => {
       expect(openEntityDetailModal).toHaveBeenLastCalledWith(
         expect.objectContaining({ entity_id: 'button.doorbell' }),
         { source: 'command-palette', hasCommand: false }
+      );
+    } finally {
+      state.setServices({});
+      global.requestAnimationFrame = originalRequestAnimationFrame;
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it('count a switch or scene as a device with commands even when none is listed for it now', () => {
+    const originalRequestAnimationFrame = global.requestAnimationFrame;
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    global.requestAnimationFrame = (callback) => callback();
+    HTMLElement.prototype.scrollIntoView = jest.fn();
+    const entityNamed = (entityId, entityState, name) => ({
+      entity_id: entityId,
+      state: entityState,
+      attributes: { friendly_name: name },
+    });
+    const clickResult = (name) => {
+      openEntityDetailModal.mockClear();
+      openCommandPalette();
+      rowFor(name).click();
+    };
+    const rowNames = () =>
+      [...document.querySelectorAll('.command-palette-result-name')].map((row) => row.textContent);
+    try {
+      state.setStates({
+        'switch.heater': entityNamed('switch.heater', 'unknown', 'Heater'),
+        'input_boolean.guest_mode': entityNamed(
+          'input_boolean.guest_mode',
+          'unknown',
+          'Guest mode'
+        ),
+        'scene.movie': entityNamed('scene.movie', 'scening', 'Movie'),
+      });
+
+      // Before Home Assistant has answered get_services the palette lists no command at all.
+      state.setServices({});
+      [
+        ['Heater', 'switch.heater'],
+        ['Guest mode', 'input_boolean.guest_mode'],
+        ['Movie', 'scene.movie'],
+      ].forEach(([name, entityId]) => {
+        clickResult(name);
+        expect(openEntityDetailModal).toHaveBeenLastCalledWith(
+          expect.objectContaining({ entity_id: entityId }),
+          { source: 'command-palette', hasCommand: true }
+        );
+      });
+
+      // With the services there, a switch whose state is unknown still has no Turn on or Turn off.
+      state.setServices({ switch: { turn_on: {}, turn_off: {} } });
+      openCommandPalette();
+      expect(rowNames()).not.toContain('Turn on Heater');
+      expect(rowNames()).not.toContain('Turn off Heater');
+      clickResult('Heater');
+      expect(openEntityDetailModal).toHaveBeenLastCalledWith(
+        expect.objectContaining({ entity_id: 'switch.heater' }),
+        { source: 'command-palette', hasCommand: true }
       );
     } finally {
       state.setServices({});

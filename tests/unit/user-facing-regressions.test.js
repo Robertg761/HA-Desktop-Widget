@@ -479,13 +479,14 @@ describe('User-facing audit regressions', () => {
   });
 
   // The palette and the dashboard together: whether Enter on a result closes (hasEntityAction),
-  // what it then does for a device the palette also has commands for (hasCommand), and what it
+  // what it then does for a kind of device the palette has commands for (hasCommand), and what it
   // remembers, with nothing in between mocked. The palette keeps its dialog between opens, and the
   // body is rebuilt for every test here, so each test loads its own copy of the modules.
   describe('Enter on an entity result in the command palette', () => {
     const originalRequestAnimationFrame = global.requestAnimationFrame;
     const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
     let palette;
+    let paletteState;
     let paletteToast;
 
     beforeEach(() => {
@@ -495,7 +496,7 @@ describe('User-facing audit regressions', () => {
       jest.isolateModules(() => {
         palette = require('../../src/command-palette.js');
         paletteToast = require('../../src/ui-utils.js').showToast;
-        const paletteState = require('../../src/state.js').default;
+        paletteState = require('../../src/state.js').default;
         paletteState.setConfig({
           ...sampleConfig,
           ui: { theme: 'dark' },
@@ -509,6 +510,7 @@ describe('User-facing audit regressions', () => {
           'switch.offline': entity('switch.offline', 'unavailable', {
             friendly_name: 'Offline plug',
           }),
+          'switch.heater': entity('switch.heater', 'unknown', { friendly_name: 'Heater' }),
           'button.doorbell': entity('button.doorbell', 'unknown', { friendly_name: 'Doorbell' }),
           'sun.sun': entity('sun.sun', 'above_horizon', { friendly_name: 'Sun' }),
         });
@@ -549,6 +551,36 @@ describe('User-facing audit regressions', () => {
       // Looked up, so an empty search starts from it next time.
       palette.openCommandPalette();
       expect(rowNames()[0]).toBe('Kettle');
+    });
+
+    it.each([
+      ['with the services loaded', true],
+      ['before Home Assistant has sent its services', false],
+    ])(
+      'says what a switch whose state is unknown is, and switches nothing, %s',
+      async (_when, servicesLoaded) => {
+        if (!servicesLoaded) paletteState.setServices({});
+        const input = search('Heater');
+        // No Turn on or Turn off is listed for a state the palette cannot tell.
+        expect(rowNames()).toEqual(['Heater']);
+        pressEnter(input);
+        await jest.advanceTimersByTimeAsync(0);
+
+        expect(mockCallService).not.toHaveBeenCalled();
+        expect(paletteToast).toHaveBeenCalledWith('Heater: Unknown', 'info', 3000);
+        expect(overlay().classList).toContain('hidden');
+      }
+    );
+
+    it('says what a switch is, and switches nothing, before Home Assistant has sent its services', async () => {
+      paletteState.setServices({});
+      const input = search('Kettle');
+      expect(rowNames()).toEqual(['Kettle']);
+      pressEnter(input);
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(mockCallService).not.toHaveBeenCalled();
+      expect(paletteToast).toHaveBeenCalledWith('Kettle: Off', 'info', 3000);
     });
 
     it('still presses a button, which no palette command reaches', async () => {

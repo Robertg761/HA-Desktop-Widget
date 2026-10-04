@@ -13253,10 +13253,9 @@ function openEntityControlsDialog(liveEntity) {
 }
 
 /**
- * Whether the palette's Enter does anything for this entity: its controls open, or its primary
- * action runs, or (for a device the palette also lists commands for) it says what the entity is
- * now. Sun, a person, weather, a device tracker, an update, a zone or a binary sensor have none of
- * these, and locks and alarm panels are never run from a plain row (the palette offers named
+ * Whether the palette's Enter has anything to do for this entity: its controls open, or its primary
+ * action runs. Sun, a person, weather, a device tracker, an update, a zone or a binary sensor have
+ * neither, and locks and alarm panels are never run from a plain row (the palette offers named
  * commands for them). Built from the same domain sets as a Quick Access tile's click.
  * @param {Object} entity - Home Assistant entity state object.
  * @returns {boolean}
@@ -13278,13 +13277,16 @@ function hasEntityAction(entity) {
   );
 }
 
-// The command palette opens an entity's controls when it has any. A result with none, for an entity
-// the palette lists an explicit command for (turn on, run, lock), says what the entity is now and
-// changes nothing: the command acts, so a stray Enter never switches a machine unseen. Locks and
-// alarm panels get neither, since the palette offers named commands for those. An entity the
-// palette has no command for (a button, a timer) still runs its own action, as it always has: the
-// result is the only way to reach it from there. The palette itself has already kept out of here
-// the rows with nothing to open, run or say (hasEntityAction).
+// The command palette opens an entity's controls when it has any. A result with none, for a kind of
+// device the palette has explicit commands for (turn on, run, lock), says what the entity is now
+// and changes nothing: the command acts, so a stray Enter never switches a machine unseen. The
+// palette decides that by the kind of device (hasCommand), not by the commands it lists at that
+// moment: it lists none for a switch whose state is unknown, nor before Home Assistant has sent
+// its services, and Enter must not switch those either. Locks and alarm panels get neither, since
+// the palette offers named commands for those. A device the palette has no command for (a button,
+// a timer) still runs its own action, as it always has: the result is the only way to reach it
+// from there. The palette itself has already kept out of here the rows with nothing to open or
+// run (hasEntityAction).
 function openEntityDetailModal(entity, options = {}) {
   try {
     if (openEntityControls(entity)) return;
