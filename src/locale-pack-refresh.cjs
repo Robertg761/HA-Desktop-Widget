@@ -1,3 +1,4 @@
+/* global setTimeout, clearTimeout */
 'use strict';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -34,7 +35,7 @@ function createLocalePackRefresher({
   firstCheckDelayMs = DEFAULT_FIRST_CHECK_DELAY_MS,
   checkIntervalMs = DEFAULT_CHECK_INTERVAL_MS,
   retryDelayMs = DEFAULT_RETRY_DELAY_MS,
-  timers = { setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout },
+  timers = { setTimeout, clearTimeout },
 }) {
   let timer = null;
   let running = false;
