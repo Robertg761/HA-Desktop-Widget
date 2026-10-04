@@ -13540,7 +13540,7 @@ body.theme-light #settings-modal .modal-footer {
 }
 
 .setting-slider-value {
-  min-width: 40px;
+  min-width: 44px;
   text-align: end;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);

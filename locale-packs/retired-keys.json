@@ -334,5 +334,37 @@
   "{{count}}d ago": {
     "retiredIn": "4.0.0",
     "reason": "Notification ages now use the language's own relative time format"
+  },
+  "Showing {{shown}} of {{total}} icons for \"{{query}}\".": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: curly quotes, one line for an empty search, a clearer sync conflict, and one word for entities missing from this connection"
+  },
+  "No matching icons found.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: curly quotes, one line for an empty search, a clearer sync conflict, and one word for entities missing from this connection"
+  },
+  "This computer and the sync file have different settings for {{sections}}. Keep this computer’s and upload them, or replace them with the file’s. Either way, the replaced settings are backed up.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: curly quotes, one line for an empty search, a clearer sync conflict, and one word for entities missing from this connection"
+  },
+  "This computer and the sync file have different settings. Keep this computer’s and upload them, or replace them with the file’s. Either way, the replaced settings are backed up.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: curly quotes, one line for an empty search, a clearer sync conflict, and one word for entities missing from this connection"
+  },
+  "The sync file's {{sections}} settings are damaged. Keep this computer's to repair them; the damaged copy is backed up first.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: curly quotes, one line for an empty search, a clearer sync conflict, and one word for entities missing from this connection"
+  },
+  "Keep Local (Upload)": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: curly quotes, one line for an empty search, a clearer sync conflict, and one word for entities missing from this connection"
+  },
+  "Use Remote (Download)": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: curly quotes, one line for an empty search, a clearer sync conflict, and one word for entities missing from this connection"
+  },
+  "Unavailable entities on this connection: {{count}}.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: curly quotes, one line for an empty search, a clearer sync conflict, and one word for entities missing from this connection"
   }
 }

@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.56",
+  "version": "1.2.57",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1781,6 +1781,14 @@
     "Keep editing": "संपादन जारी रखें",
     "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "{{count}} में से पहले {{shown}} आइकन दिखाए जा रहे हैं। सीमित करने के लिए टाइप करें।",
     "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "पुनर्व्यवस्थित मोड सक्षम। क्रम बदलने के लिए खींचें या Alt+तीर कुंजियाँ दबाएं। पूरा करने के लिए Esc दबाएं।",
-    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "पुनर्व्यवस्थित मोड सक्षम। क्रम बदलने के लिए खींचें, चुनें या Alt+तीर कुंजियाँ दबाएं। पिन करने, नाम बदलने या हटाने के लिए टाइल के बटन उपयोग करें। पूरा करने के लिए Esc दबाएं।"
+    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "पुनर्व्यवस्थित मोड सक्षम। क्रम बदलने के लिए खींचें, चुनें या Alt+तीर कुंजियाँ दबाएं। पिन करने, नाम बदलने या हटाने के लिए टाइल के बटन उपयोग करें। पूरा करने के लिए Esc दबाएं।",
+    "Showing {{shown}} of {{total}} icons for “{{query}}”.": "“{{query}}” के लिए {{total}} में से {{shown}} आइकन दिखाए जा रहे हैं।",
+    "No icons match “{{query}}”. Try a simpler word, or paste an emoji.": "“{{query}}” से मेल खाता कोई आइकन नहीं मिला। कोई सरल शब्द आज़माएं या एक इमोजी चिपकाएं।",
+    "This computer and the sync file have different settings for {{sections}}. Keep this computer’s settings and upload them, or replace them with the sync file’s. Either way, the replaced settings are backed up.": "इस कंप्यूटर और सिंक फ़ाइल में {{sections}} की सेटिंग्स अलग हैं। इस कंप्यूटर की सेटिंग्स रखकर अपलोड करें, या उन्हें फ़ाइल की सेटिंग्स से बदलें। दोनों ही स्थितियों में बदली गई सेटिंग्स का बैकअप लिया जाता है।",
+    "This computer and the sync file have different settings. Keep this computer’s settings and upload them, or replace them with the sync file’s. Either way, the replaced settings are backed up.": "इस कंप्यूटर और सिंक फ़ाइल की सेटिंग्स अलग हैं। इस कंप्यूटर की सेटिंग्स रखकर अपलोड करें, या उन्हें फ़ाइल की सेटिंग्स से बदलें। दोनों ही स्थितियों में बदली गई सेटिंग्स का बैकअप लिया जाता है।",
+    "The sync file's {{sections}} settings are damaged. Keep this computer's settings to repair them; the damaged copy is backed up first.": "सिंक फ़ाइल की {{sections}} सेटिंग्स खराब हैं। इन्हें ठीक करने के लिए इस कंप्यूटर की सेटिंग्स रखें; खराब प्रति का पहले बैकअप लिया जाता है।",
+    "This computer (upload)": "यह कंप्यूटर (अपलोड)",
+    "Sync file (download)": "सिंक फ़ाइल (डाउनलोड)",
+    "Entities not found on this connection: {{count}}.": "इस कनेक्शन पर न मिली एंटिटी: {{count}}।"
   }
 }

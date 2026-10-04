@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.57",
+  "version": "1.2.58",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget.",
   "messages": {
@@ -1781,6 +1781,14 @@
     "Keep editing": "Weiter bearbeiten",
     "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Die ersten {{shown}} von {{count}} Symbolen werden angezeigt. Tippe, um sie einzugrenzen.",
     "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "Neu-Anordnen aktiv. Ziehen oder Alt+Pfeiltasten zum Sortieren. Esc zum Beenden.",
-    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "Neu-Anordnen aktiv. Ziehen, Auswählen oder Alt+Pfeiltasten zum Sortieren. Mit den Schaltflächen einer Kachel anheften, umbenennen oder entfernen. Esc zum Beenden."
+    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "Neu-Anordnen aktiv. Ziehen, Auswählen oder Alt+Pfeiltasten zum Sortieren. Mit den Schaltflächen einer Kachel anheften, umbenennen oder entfernen. Esc zum Beenden.",
+    "Showing {{shown}} of {{total}} icons for “{{query}}”.": "{{shown}} von {{total}} Symbolen für „{{query}}“ werden angezeigt.",
+    "No icons match “{{query}}”. Try a simpler word, or paste an emoji.": "Keine Symbole passen zu „{{query}}“. Versuche ein einfacheres Wort oder füge ein Emoji ein.",
+    "This computer and the sync file have different settings for {{sections}}. Keep this computer’s settings and upload them, or replace them with the sync file’s. Either way, the replaced settings are backed up.": "Dieser Computer und die Sync-Datei haben unterschiedliche Einstellungen für {{sections}}. Behalte die dieses Computers und lade sie hoch, oder ersetze sie durch die der Datei. So oder so werden die ersetzten Einstellungen gesichert.",
+    "This computer and the sync file have different settings. Keep this computer’s settings and upload them, or replace them with the sync file’s. Either way, the replaced settings are backed up.": "Dieser Computer und die Sync-Datei haben unterschiedliche Einstellungen. Behalte die dieses Computers und lade sie hoch, oder ersetze sie durch die der Datei. So oder so werden die ersetzten Einstellungen gesichert.",
+    "The sync file's {{sections}} settings are damaged. Keep this computer's settings to repair them; the damaged copy is backed up first.": "Die Einstellungen für {{sections}} in der Sync-Datei sind beschädigt. Behalte die dieses Computers, um sie zu reparieren; die beschädigte Kopie wird vorher gesichert.",
+    "This computer (upload)": "Dieser Computer (hochladen)",
+    "Sync file (download)": "Sync-Datei (herunterladen)",
+    "Entities not found on this connection: {{count}}.": "Auf dieser Verbindung nicht gefundene Entitäten: {{count}}."
   }
 }
