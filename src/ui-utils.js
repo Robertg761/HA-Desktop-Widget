@@ -1955,7 +1955,9 @@ const ENTER_NATIVE_SELECTOR =
  * @param {KeyboardEvent} event
  */
 function routeDialogKeydown(event) {
-  if (event.defaultPrevented || event.isComposing) return;
+  // An IME's last key can arrive after the composition has ended with isComposing already false;
+  // keyCode 229 still marks it.
+  if (event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
   if (event.key !== 'Escape' && event.key !== 'Enter') return;
   const modal = getTopFocusTrapModal();
   const layer = modal && dialogLayers.get(modal);
