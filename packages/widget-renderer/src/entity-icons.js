@@ -519,7 +519,150 @@ const LINE_ICONS = {
     ['path', { d: 'm21 21-4.34-4.34' }],
     ['circle', { cx: '11', cy: '11', r: '8' }],
   ],
+  // Stop is a square, not the two bars of pause.
+  square: [['rect', { width: '18', height: '18', x: '3', y: '3', rx: '2' }]],
+  // Alarm panel states: off, armed, triggered (and the plain shield for arming and pending).
+  'shield-off': [
+    ['path', { d: 'm2 2 20 20' }],
+    [
+      'path',
+      {
+        d: 'M5 5a1 1 0 0 0-1 1v7c0 5 3.5 7.5 7.67 8.94a1 1 0 0 0 .67.01c2.35-.82 4.48-1.97 5.9-3.71',
+      },
+    ],
+    [
+      'path',
+      {
+        d: 'M9.309 3.652A12.252 12.252 0 0 0 11.24 2.28a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1v7a9.784 9.784 0 0 1-.08 1.264',
+      },
+    ],
+  ],
+  'shield-check': [
+    [
+      'path',
+      {
+        d: 'M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z',
+      },
+    ],
+    ['path', { d: 'm9 12 2 2 4-4' }],
+  ],
+  'shield-alert': [
+    [
+      'path',
+      {
+        d: 'M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z',
+      },
+    ],
+    ['path', { d: 'M12 8v4' }],
+    ['path', { d: 'M12 16h.01' }],
+  ],
+  // A jammed lock: the closed padlock with the alert mark where its keyhole would be.
+  'lock-alert': [
+    ['rect', { width: '18', height: '11', x: '3', y: '11', rx: '2', ry: '2' }],
+    ['path', { d: 'M7 11V7a5 5 0 0 1 10 0v4' }],
+    ['path', { d: 'M12 14.5v2' }],
+    ['path', { d: 'M12 19h.01' }],
+  ],
+  clock: [
+    ['circle', { cx: '12', cy: '12', r: '10' }],
+    ['path', { d: 'M12 6v6l4 2' }],
+  ],
+  ruler: [
+    [
+      'path',
+      {
+        d: 'M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z',
+      },
+    ],
+    ['path', { d: 'm14.5 12.5 2-2' }],
+    ['path', { d: 'm11.5 9.5 2-2' }],
+    ['path', { d: 'm8.5 6.5 2-2' }],
+    ['path', { d: 'm17.5 15.5 2-2' }],
+  ],
+  signal: [
+    ['path', { d: 'M2 20h.01' }],
+    ['path', { d: 'M7 20v-4' }],
+    ['path', { d: 'M12 20v-8' }],
+    ['path', { d: 'M17 20V8' }],
+    ['path', { d: 'M22 4v16' }],
+  ],
+  wifi: [
+    ['path', { d: 'M12 20h.01' }],
+    ['path', { d: 'M2 8.82a15 15 0 0 1 20 0' }],
+    ['path', { d: 'M5 12.859a10 10 0 0 1 14 0' }],
+    ['path', { d: 'M8.5 16.429a5 5 0 0 1 7 0' }],
+  ],
+  'calendar-clock': [
+    ['path', { d: 'M16 14v2.2l1.6 1' }],
+    ['path', { d: 'M16 2v4' }],
+    ['path', { d: 'M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5' }],
+    ['path', { d: 'M3 10h5' }],
+    ['path', { d: 'M8 2v4' }],
+    ['circle', { cx: '16', cy: '16', r: '6' }],
+  ],
+  hash: [
+    ['path', { d: 'M4 9h16' }],
+    ['path', { d: 'M4 15h16' }],
+    ['path', { d: 'M10 3 8 21' }],
+    ['path', { d: 'M16 3 14 21' }],
+  ],
+  // Heat/cool is the sun-and-thermometer, so it no longer shares auto's circular arrows.
+  'thermometer-sun': [
+    ['path', { d: 'M12 9a4 4 0 0 0-2 7.5' }],
+    ['path', { d: 'M12 3v2' }],
+    ['path', { d: 'm6.6 18.4-1.4 1.4' }],
+    ['path', { d: 'M20 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z' }],
+    ['path', { d: 'M4 13H2' }],
+    ['path', { d: 'M6.34 7.34 4.93 5.93' }],
+  ],
+  // A window: a frame on a sill, four panes when it is shut, and with one sash swung open, drawn at
+  // an angle, when it is not. Not the software window the door-open and door-closed pair sits beside.
+  'window-closed': [
+    ['rect', { x: '4', y: '3', width: '16', height: '15', rx: '2' }],
+    ['path', { d: 'M12 3v15' }],
+    ['path', { d: 'M4 10.5h16' }],
+    ['path', { d: 'M2 21h20' }],
+  ],
+  'window-open': [
+    ['rect', { x: '4', y: '3', width: '16', height: '15', rx: '2' }],
+    ['path', { d: 'M12 3v15' }],
+    ['path', { d: 'M12 10.5h8' }],
+    ['path', { d: 'm12 3-6 2v11l6 2' }],
+    ['path', { d: 'M2 21h20' }],
+  ],
+  // The battery body with a bar for each third left.
+  'battery-low': [
+    ['path', { d: 'M 22 14 L 22 10' }],
+    ['path', { d: 'M6 14v-4' }],
+    ['rect', { x: '2', y: '6', width: '16', height: '12', rx: '2' }],
+  ],
+  'battery-medium': [
+    ['path', { d: 'M 22 14 L 22 10' }],
+    ['path', { d: 'M6 14v-4' }],
+    ['path', { d: 'M10 14v-4' }],
+    ['rect', { x: '2', y: '6', width: '16', height: '12', rx: '2' }],
+  ],
+  'battery-full': [
+    ['path', { d: 'M 22 14 L 22 10' }],
+    ['path', { d: 'M6 14v-4' }],
+    ['path', { d: 'M10 14v-4' }],
+    ['path', { d: 'M14 14v-4' }],
+    ['rect', { x: '2', y: '6', width: '16', height: '12', rx: '2' }],
+  ],
 };
+
+// Whole words in an entity id: sensor.office_temp and sensor.temperature_bath, not sensor.template_x
+// or sensor.edf_tempo_rouge, which only contain the letters.
+const TEMPERATURE_ID_PATTERN = /(^|[._])temp(erature)?([_.]|$)/;
+
+// A battery that shows how much is left: low at a fifth, medium to three fifths, then full.
+function getBatteryLineIconName(entity) {
+  const level = Number(entity.state);
+  if (entity.state === '' || entity.state == null || !Number.isFinite(level)) return 'battery';
+  if (level <= 20) return 'battery-low';
+  if (level <= 60) return 'battery-medium';
+  return 'battery-full';
+}
 
 function getSensorLineIconName(entity) {
   const attributes = entity.attributes || {};
@@ -529,27 +672,55 @@ function getSensorLineIconName(entity) {
       return 'thermometer';
     case 'humidity':
     case 'moisture':
+    case 'water':
+    case 'gas':
       return 'droplet';
     case 'pressure':
     case 'atmospheric_pressure':
+    case 'speed':
       return 'gauge';
     case 'illuminance':
+    case 'irradiance':
       return 'sun';
     case 'battery':
-      return 'battery';
+      return getBatteryLineIconName(entity);
     case 'power':
     case 'energy':
     case 'voltage':
     case 'current':
+    case 'apparent_power':
+    case 'reactive_power':
+    case 'power_factor':
+    case 'energy_storage':
       return 'zap';
     case 'wind_speed':
+    case 'aqi':
+    case 'pm1':
+    case 'pm10':
+    case 'pm25':
+    case 'co':
+    case 'co2':
+    case 'nitrogen_dioxide':
+    case 'ozone':
+    case 'sulphur_dioxide':
+    case 'volatile_organic_compounds':
       return 'wind';
+    case 'timestamp':
+    case 'date':
+    case 'duration':
+      return 'clock';
+    case 'distance':
+      return 'ruler';
+    case 'signal_strength':
+      return 'signal';
     default:
       break;
   }
+  // One rule for what a countdown is, shared with the tile, the pin, the palette and the tray (see
+  // isTimerLikeSensor): a travel-time sensor carries a `duration` and is a number to read.
   if (isTimerLikeSensor(entity)) return 'timer';
-  if (entityId.includes('battery')) return 'battery';
-  if (entityId.includes('temperature') || entityId.includes('temp')) return 'thermometer';
+  if (entityId.includes('battery')) return getBatteryLineIconName(entity);
+  if (TEMPERATURE_ID_PATTERN.test(entityId)) return 'thermometer';
   return 'activity';
 }
 
@@ -565,11 +736,13 @@ function getBinarySensorLineIconName(entity) {
     case 'opening':
       return isOn ? 'door-open' : 'door-closed';
     case 'window':
-      return 'app-window';
+      return isOn ? 'window-open' : 'window-closed';
     case 'moisture':
       return 'droplets';
     case 'smoke':
     case 'heat':
+    case 'gas':
+    case 'carbon_monoxide':
       return 'flame';
     case 'lock':
       return isOn ? 'lock-open' : 'lock';
@@ -578,9 +751,42 @@ function getBinarySensorLineIconName(entity) {
     case 'power':
     case 'plug':
       return 'plug';
+    case 'connectivity':
+      return isOn ? 'wifi' : 'wifi-off';
+    case 'problem':
+    case 'safety':
+    case 'tamper':
+      return isOn ? 'shield-alert' : 'shield-check';
+    case 'running':
+      return 'play';
+    case 'update':
+      return 'refresh-cw';
+    case 'vibration':
+      return 'activity';
     default:
       return isOn ? 'circle-dot' : 'circle';
   }
+}
+
+function getLockLineIconName(entityState) {
+  switch (entityState) {
+    case 'unlocked':
+    case 'unlocking':
+    case 'open':
+    case 'opening':
+      return 'lock-open';
+    case 'jammed':
+      return 'lock-alert';
+    default:
+      return 'lock';
+  }
+}
+
+function getAlarmLineIconName(entityState) {
+  if (entityState === 'disarmed') return 'shield-off';
+  if (entityState === 'triggered') return 'shield-alert';
+  if (typeof entityState === 'string' && entityState.startsWith('armed')) return 'shield-check';
+  return 'shield';
 }
 
 /**
@@ -631,13 +837,17 @@ function getEntityLineIconName(entity) {
     case 'camera':
       return 'cctv';
     case 'lock':
-      return entityState === 'locked' ? 'lock' : 'lock-open';
+      return getLockLineIconName(entityState);
     case 'cover':
       if (attributes.device_class === 'garage') return 'warehouse';
       if (attributes.device_class === 'door' || attributes.device_class === 'gate') {
         return entityState === 'open' ? 'door-open' : 'door-closed';
       }
-      if (attributes.device_class === 'window') return 'app-window';
+      if (attributes.device_class === 'window') {
+        return entityState === 'open' || entityState === 'opening'
+          ? 'window-open'
+          : 'window-closed';
+      }
       return 'blinds';
     case 'person':
       return entityState === 'home' ? 'house' : 'user';
@@ -646,7 +856,7 @@ function getEntityLineIconName(entity) {
     case 'zone':
       return 'map-pin';
     case 'alarm_control_panel':
-      return 'shield';
+      return getAlarmLineIconName(entityState);
     case 'siren':
       return 'siren';
     case 'vacuum':
@@ -676,6 +886,18 @@ function getEntityLineIconName(entity) {
       return 'power';
     case 'valve':
       return 'air-vent';
+    case 'input_datetime':
+    case 'datetime':
+    case 'date':
+    case 'time':
+    case 'schedule':
+      return 'calendar-clock';
+    case 'counter':
+      return 'hash';
+    case 'lawn_mower':
+      return 'bot';
+    case 'event':
+      return 'bell';
     default:
       return 'box';
   }

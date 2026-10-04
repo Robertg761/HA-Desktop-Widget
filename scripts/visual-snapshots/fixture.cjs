@@ -186,6 +186,39 @@ PAGE_SETS.edge = [
   { id: 'spare', name: 'Spare', entityIds: ['light.desk_lamp'] },
 ];
 
+// What the security and dashboard-state scenes show: locks and alarm panels in each state they can
+// be in, a window, a low battery, a person (a tile that does nothing), and on a second page the
+// devices the dialogs open with something unusual about them.
+PAGE_SETS.security = [
+  {
+    id: 'default',
+    name: 'Security',
+    entityIds: [
+      'lock.back_door',
+      'lock.front_door',
+      'lock.shed',
+      'alarm_control_panel.home_alarm',
+      'alarm_control_panel.cabin',
+      'alarm_control_panel.upstairs',
+      'binary_sensor.bedroom_window',
+      'sensor.watch_battery',
+      'person.alex',
+    ],
+  },
+  {
+    id: 'more',
+    name: 'More',
+    entityIds: [
+      'light.desk_lamp',
+      'media_player.tv_on',
+      'media_player.bedroom_tv',
+      'cover.garage_simple',
+      'light.rgb_strip',
+      'climate.unavailable',
+    ],
+  },
+];
+
 // Readings and states that each language writes its own way: precision, units and their spacing,
 // device class words, dates and times, a duration, a paused timer and the next calendar events.
 const FORMAT_ENTITIES = [
@@ -232,6 +265,67 @@ PAGE_SETS.twelve = GERMAN_PAGE_NAMES.map((name, index) => ({
   name,
   entityIds: index === 0 ? HOME_ENTITIES : ['light.shelf_leds', 'switch.coffee_maker'],
 }));
+
+// The sensors that have recorded history, and how each one wanders around its base over a day.
+const GRAPH_SENSORS = [
+  { entityId: 'sensor.graph_living_temp', name: 'Living room temperature', base: 21, swing: 1.6 },
+  { entityId: 'sensor.graph_bedroom_temp', name: 'Bedroom temperature', base: 18.5, swing: 2.4 },
+  { entityId: 'sensor.graph_kitchen_temp', name: 'Kitchen temperature', base: 23, swing: 1.1 },
+];
+
+/**
+ * A half-hourly reading for each of GRAPH_SENSORS over the day before `now`, in Home Assistant's
+ * minimal history rows. Entities that record nothing return no rows, so the other tiles' charts
+ * stay as they were.
+ */
+function buildHistories(now = new Date()) {
+  return (entityId) => {
+    const sensor = GRAPH_SENSORS.find((candidate) => candidate.entityId === entityId);
+    if (!sensor) return [];
+    const rows = [];
+    for (let step = 48; step >= 0; step -= 1) {
+      const at = now.getTime() - step * 30 * 60000;
+      const phase = (step / 48) * Math.PI * 2 + sensor.base;
+      rows.push({
+        s: (sensor.base + Math.sin(phase) * sensor.swing).toFixed(1),
+        lu: at / 1000,
+      });
+    }
+    return rows;
+  };
+}
+
+/**
+ * What a subscription starts with: the persistent notifications Home Assistant already holds, as
+ * `persistent_notification/subscribe` sends them, with the Markdown integrations write.
+ */
+function buildSubscriptionEvents(now = new Date()) {
+  const ago = (minutes) => new Date(now.getTime() - minutes * 60000).toISOString();
+  return (message) =>
+    message.type === 'persistent_notification/subscribe'
+      ? [
+          {
+            type: 'current',
+            notifications: {
+              repairs: {
+                notification_id: 'repairs',
+                title: 'Repairs',
+                message:
+                  '**2 issues need attention.** Open [Repairs](/config/repairs) to fix them:\n\n- The `backup` integration has no recent backup\n- Update available for *Zigbee2MQTT*\n\nSee https://www.home-assistant.io/docs for help.',
+                created_at: ago(12),
+              },
+              discovered: {
+                notification_id: 'discovered',
+                title: 'New devices found',
+                message:
+                  'Discovered a **Hue bridge**. Set it up in [Integrations](/config/integrations).',
+                created_at: ago(190),
+              },
+            },
+          },
+        ]
+      : [];
+}
 
 // YYYY-MM-DD in this computer's time zone, the way Home Assistant writes an all-day start.
 function localDate(date) {
@@ -489,6 +583,66 @@ function buildStates(now = new Date()) {
     entity('automation.morning_routine', 'on', { friendly_name: 'Morning routine' }),
     entity('person.alex', 'home', { friendly_name: 'Alex' })
   );
+  // Security states and the devices with something unusual about them (see PAGE_SETS.security):
+  // an unlocked and a jammed lock, an alarm that went off and one that is disarmed, an open
+  // window, a low battery, a TV Home Assistant reports as 'on', a garage door with no position, an
+  // RGB light with no colour temperature, and a thermostat that dropped out.
+  states.push(
+    entity('lock.front_door', 'unlocked', { friendly_name: 'Front door lock' }),
+    entity('lock.shed', 'jammed', { friendly_name: 'Shed lock' }),
+    entity('alarm_control_panel.cabin', 'triggered', {
+      friendly_name: 'Cabin alarm',
+      code_format: 'number',
+      supported_features: 63,
+    }),
+    entity('alarm_control_panel.upstairs', 'disarmed', {
+      friendly_name: 'Upstairs alarm',
+      code_format: 'number',
+      supported_features: 63,
+    }),
+    entity('binary_sensor.bedroom_window', 'on', {
+      friendly_name: 'Bedroom window',
+      device_class: 'window',
+    }),
+    entity('sensor.watch_battery', '12', {
+      friendly_name: 'Watch battery',
+      unit_of_measurement: '%',
+      device_class: 'battery',
+      state_class: 'measurement',
+    }),
+    entity('media_player.tv_on', 'on', {
+      friendly_name: 'Living room TV',
+      device_class: 'tv',
+      supported_features: 152463,
+    }),
+    entity('cover.garage_simple', 'open', {
+      friendly_name: 'Side garage door',
+      device_class: 'garage',
+      supported_features: 11,
+    }),
+    entity('light.rgb_strip', 'on', {
+      friendly_name: 'RGB strip',
+      brightness: 128,
+      supported_color_modes: ['color_temp', 'rgb'],
+      color_mode: 'rgb',
+      rgb_color: [255, 120, 40],
+      min_color_temp_kelvin: 2000,
+      max_color_temp_kelvin: 6500,
+    }),
+    entity('climate.unavailable', 'unavailable', { friendly_name: 'Hall thermostat' })
+  );
+  // Three temperature sensors with a day of history, for the comparison graph's tooltip (the
+  // office sensor has none, as most do not).
+  GRAPH_SENSORS.forEach((sensor) => {
+    states.push(
+      entity(sensor.entityId, String(sensor.base), {
+        friendly_name: sensor.name,
+        unit_of_measurement: '°C',
+        device_class: 'temperature',
+        state_class: 'measurement',
+      })
+    );
+  });
   // The edge-case page: a 95-character light, a seven-figure energy reading, a name that is one
   // unbroken word, a 90-character sensor, a heat/cool thermostat with half-degree bounds, and a
   // cover with an entity-id style name; plus a film that runs past an hour for the media card.
@@ -726,7 +880,13 @@ function buildServiceResponses(now = new Date()) {
     'calendar.get_events': (message) => ({
       [message.service_data?.entity_id || 'calendar.family']: {
         events: [
-          { summary: 'Dentist', start: at(26), end: at(27), description: 'Bring the new forms.' },
+          {
+            summary: 'Dentist',
+            start: at(26),
+            end: at(27),
+            location: 'Riverside Dental, 12 Mill Lane',
+            description: 'Bring the new forms.',
+          },
           { summary: 'Parents evening', start: at(74), end: at(76) },
         ],
       },
@@ -791,8 +951,10 @@ module.exports = {
   WINDOW_POSITION,
   WINDOW_SIZE,
   buildConfig,
+  buildHistories,
   buildLandingLights,
   buildServiceResponses,
   buildServices,
   buildStates,
+  buildSubscriptionEvents,
 };

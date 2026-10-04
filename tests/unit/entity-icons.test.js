@@ -203,6 +203,169 @@ describe('entity line icons', () => {
     expect(setLineIconContent(null, 'plus')).toBeNull();
   });
 
+  describe('locks and alarm panels', () => {
+    test('draws the window as a framed four-pane window on a sill, and the open one with a sash swung out', () => {
+      const parts = (name) =>
+        LINE_ICONS[name].map(([tag, attributes]) => [tag, attributes.d || '']);
+      const closed = parts('window-closed');
+      const open = parts('window-open');
+      // The frame and the sill are shared, so the two read as one window in two states.
+      const sill = ['path', 'M2 21h20'];
+      expect(closed).toContainEqual(sill);
+      expect(open).toContainEqual(sill);
+      expect(closed.filter(([tag]) => tag === 'rect')).toHaveLength(1);
+      // Shut: a mullion and a transom cut the frame into four. Open: the sash is a slanted shape
+      // (it has diagonal edges, which a pane in the frame has not), and only the right pane keeps
+      // its transom.
+      expect(closed).toContainEqual(['path', 'M12 3v15']);
+      expect(closed).toContainEqual(['path', 'M4 10.5h16']);
+      expect(open.some(([, d]) => /^m12 3-6 2v11l6 2$/.test(d))).toBe(true);
+      expect(open).toContainEqual(['path', 'M12 10.5h8']);
+      expect(open).not.toContainEqual(['path', 'M4 10.5h16']);
+    });
+
+    test.each([
+      ['locked', 'lock'],
+      ['locking', 'lock'],
+      ['unlocked', 'lock-open'],
+      ['unlocking', 'lock-open'],
+      ['open', 'lock-open'],
+      ['jammed', 'lock-alert'],
+      ['unavailable', 'lock'],
+    ])('draws a lock that is %s as %s', (value, icon) => {
+      expect(getEntityLineIconName(entity('lock.back', value))).toBe(icon);
+    });
+
+    test.each([
+      ['disarmed', 'shield-off'],
+      ['armed_home', 'shield-check'],
+      ['armed_away', 'shield-check'],
+      ['armed_night', 'shield-check'],
+      ['armed_vacation', 'shield-check'],
+      ['arming', 'shield'],
+      ['pending', 'shield'],
+      ['triggered', 'shield-alert'],
+    ])('draws an alarm panel that is %s as %s', (value, icon) => {
+      expect(getEntityLineIconName(entity('alarm_control_panel.home', value))).toBe(icon);
+    });
+  });
+
+  describe('sensors', () => {
+    const sensorIcon = (id, attributes = {}, value = '1') =>
+      getEntityLineIconName(entity(id, value, attributes));
+
+    test.each([
+      'sensor.template_x',
+      'sensor.edf_tempo_rouge',
+      'sensor.login_attempts',
+      'sensor.contemplate',
+    ])('does not take %s for a thermometer because its id contains "temp"', (id) => {
+      expect(sensorIcon(id)).toBe('activity');
+    });
+
+    test.each([
+      'sensor.temp',
+      'sensor.office_temp',
+      'sensor.temp_outside',
+      'sensor.temperature',
+      'sensor.office_temperature_2',
+      'sensor.bathroom.temp',
+    ])('still takes %s for a thermometer', (id) => {
+      expect(sensorIcon(id)).toBe('thermometer');
+    });
+
+    test('does not take a number with a duration attribute for a timer', () => {
+      expect(sensorIcon('sensor.commute', { duration: '0:23:00' }, '23')).toBe('activity');
+      // A countdown still is one: it says when it ends, or is named for it.
+      expect(sensorIcon('sensor.oven', { finishes_at: '2026-10-04T10:00:00Z' }, 'active')).toBe(
+        'timer'
+      );
+      expect(sensorIcon('sensor.kitchen_timer_1', {}, 'idle')).toBe('timer');
+      // A reading is not a countdown, however it is named or what it carries.
+      expect(sensorIcon('sensor.kitchen_timer_1')).toBe('activity');
+      expect(sensorIcon('sensor.washer_timer_hours', {}, 'idle')).toBe('timer');
+      expect(sensorIcon('sensor.washer_timer_hours', { unit_of_measurement: 'h' }, 'idle')).toBe(
+        'activity'
+      );
+    });
+
+    test.each([
+      ['timestamp', 'clock'],
+      ['date', 'clock'],
+      ['duration', 'clock'],
+      ['aqi', 'wind'],
+      ['pm25', 'wind'],
+      ['co2', 'wind'],
+      ['distance', 'ruler'],
+      ['speed', 'gauge'],
+      ['signal_strength', 'signal'],
+      ['water', 'droplet'],
+      ['gas', 'droplet'],
+      ['apparent_power', 'zap'],
+    ])('draws a %s sensor as %s', (deviceClass, icon) => {
+      expect(sensorIcon('sensor.x', { device_class: deviceClass })).toBe(icon);
+    });
+
+    test.each([
+      ['5', 'battery-low'],
+      ['20', 'battery-low'],
+      ['21', 'battery-medium'],
+      ['60', 'battery-medium'],
+      ['61', 'battery-full'],
+      ['100', 'battery-full'],
+      ['unknown', 'battery'],
+      ['unavailable', 'battery'],
+    ])('draws a battery at %s as %s', (value, icon) => {
+      expect(sensorIcon('sensor.phone', { device_class: 'battery' }, value)).toBe(icon);
+    });
+  });
+
+  describe('binary sensors, covers and other domains', () => {
+    test('draws a window as a window, open or closed, not a software window', () => {
+      expect(
+        getEntityLineIconName(entity('binary_sensor.w', 'on', { device_class: 'window' }))
+      ).toBe('window-open');
+      expect(
+        getEntityLineIconName(entity('binary_sensor.w', 'off', { device_class: 'window' }))
+      ).toBe('window-closed');
+      expect(getEntityLineIconName(entity('cover.w', 'open', { device_class: 'window' }))).toBe(
+        'window-open'
+      );
+      expect(getEntityLineIconName(entity('cover.w', 'closed', { device_class: 'window' }))).toBe(
+        'window-closed'
+      );
+    });
+
+    test.each([
+      ['connectivity', 'on', 'wifi'],
+      ['connectivity', 'off', 'wifi-off'],
+      ['problem', 'on', 'shield-alert'],
+      ['problem', 'off', 'shield-check'],
+      ['safety', 'on', 'shield-alert'],
+      ['running', 'on', 'play'],
+      ['gas', 'on', 'flame'],
+    ])('draws a %s binary sensor that is %s as %s', (deviceClass, value, icon) => {
+      expect(
+        getEntityLineIconName(entity('binary_sensor.x', value, { device_class: deviceClass }))
+      ).toBe(icon);
+    });
+
+    test.each([
+      ['input_datetime.alarm', 'calendar-clock'],
+      ['schedule.heating', 'calendar-clock'],
+      ['counter.visits', 'hash'],
+      ['lawn_mower.robot', 'bot'],
+      ['event.doorbell', 'bell'],
+    ])('draws %s as %s, not the generic box', (id, icon) => {
+      expect(getEntityLineIconName(entity(id))).toBe(icon);
+    });
+
+    test('has the glyphs the dialogs use: a square to stop and a distinct heat/cool', () => {
+      expect(LINE_ICONS.square).toBeDefined();
+      expect(LINE_ICONS['thermometer-sun']).toBeDefined();
+    });
+  });
+
   test('has the line icons the Reorganize chips draw with', () => {
     for (const name of ['pencil', 'copy', 'x', 'pin']) {
       const host = document.createElement('div');

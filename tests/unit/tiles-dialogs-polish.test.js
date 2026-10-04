@@ -558,20 +558,37 @@ describe('tile and device dialog polish', () => {
       expect(document.querySelector('#turn-off-btn').textContent).toBe('Turn Off');
     });
 
-    it('does not overwrite a focused slider or a pending brightness change', async () => {
+    it('does not overwrite a held slider or a pending brightness change', async () => {
       state.setStates({ 'light.desk': light('on', { brightness: 255 }) });
       ui.openEntityDetailModal(light('on', { brightness: 255 }));
       const slider = inputValue('#brightness-slider', 80);
       state.setEntityState(light('on', { brightness: 26 }));
       expect(slider.value).toBe('80');
       await jest.advanceTimersByTimeAsync(200);
-      slider.focus();
+      slider.dispatchEvent(new Event('pointerdown'));
       state.setEntityState(light('on', { brightness: 26 }));
       expect(slider.value).toBe('80');
       expect(document.querySelector('#brightness-value-large').textContent).toBe('80%');
-      slider.blur();
+      slider.dispatchEvent(new Event('pointerup'));
       expect(slider.value).toBe('10');
       expect(document.querySelector('#brightness-value-large').textContent).toBe('10%');
+    });
+
+    it('shows the level the light settled on after a drag, though the slider keeps focus', async () => {
+      state.setStates({ 'light.desk': light('on', { brightness: 255 }) });
+      ui.openEntityDetailModal(light('on', { brightness: 255 }));
+      const slider = document.querySelector('#brightness-slider');
+      slider.focus();
+      slider.dispatchEvent(new Event('pointerdown'));
+      inputValue('#brightness-slider', 63);
+      slider.dispatchEvent(new Event('pointerup'));
+      await jest.advanceTimersByTimeAsync(200);
+      // The light rounds to its own steps. Focus stays on a range input after a drag, which is why
+      // it cannot be what keeps a live update out.
+      state.setEntityState(light('on', { brightness: 171 }));
+      expect(slider.value).toBe('67');
+      expect(document.querySelector('#brightness-value-large').textContent).toBe('67%');
+      expect(slider.getAttribute('aria-valuetext')).toBe('67%');
     });
 
     it('applies a light state Home Assistant pushed while a command was in flight', async () => {

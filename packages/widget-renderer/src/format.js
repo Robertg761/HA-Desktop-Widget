@@ -187,6 +187,11 @@ export function formatPercent(value, options = {}) {
   return formatMeasurement(value, '%', { maximumFractionDigits: 1, ...options });
 }
 
+/** A light's colour temperature in whole kelvin, in the user's digits: "3,200 K". */
+export function formatKelvin(kelvin) {
+  return formatMeasurement(kelvin, 'K', { maximumFractionDigits: 0 });
+}
+
 /** A temperature with its unit, or "--" when there is no reading. */
 export function formatTemperature(value, unit = '') {
   // Two decimals keep a 0.25-degree thermostat step intact and trim float noise ("21.123").
