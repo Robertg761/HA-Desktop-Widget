@@ -191,4 +191,139 @@ describe('entity line icons', () => {
     expect(button.querySelector('svg').dataset.icon).toBe('grip-vertical');
     expect(setLineIconContent(null, 'plus')).toBeNull();
   });
+
+  describe('locks and alarm panels', () => {
+    test.each([
+      ['locked', 'lock'],
+      ['locking', 'lock'],
+      ['unlocked', 'lock-open'],
+      ['unlocking', 'lock-open'],
+      ['open', 'lock-open'],
+      ['jammed', 'lock-alert'],
+      ['unavailable', 'lock'],
+    ])('draws a lock that is %s as %s', (value, icon) => {
+      expect(getEntityLineIconName(entity('lock.back', value))).toBe(icon);
+    });
+
+    test.each([
+      ['disarmed', 'shield-off'],
+      ['armed_home', 'shield-check'],
+      ['armed_away', 'shield-check'],
+      ['armed_night', 'shield-check'],
+      ['armed_vacation', 'shield-check'],
+      ['arming', 'shield'],
+      ['pending', 'shield'],
+      ['triggered', 'shield-alert'],
+    ])('draws an alarm panel that is %s as %s', (value, icon) => {
+      expect(getEntityLineIconName(entity('alarm_control_panel.home', value))).toBe(icon);
+    });
+  });
+
+  describe('sensors', () => {
+    const sensorIcon = (id, attributes = {}, value = '1') =>
+      getEntityLineIconName(entity(id, value, attributes));
+
+    test.each([
+      'sensor.template_x',
+      'sensor.edf_tempo_rouge',
+      'sensor.login_attempts',
+      'sensor.contemplate',
+    ])('does not take %s for a thermometer because its id contains "temp"', (id) => {
+      expect(sensorIcon(id)).toBe('activity');
+    });
+
+    test.each([
+      'sensor.temp',
+      'sensor.office_temp',
+      'sensor.temp_outside',
+      'sensor.temperature',
+      'sensor.office_temperature_2',
+      'sensor.bathroom.temp',
+    ])('still takes %s for a thermometer', (id) => {
+      expect(sensorIcon(id)).toBe('thermometer');
+    });
+
+    test('does not take a number with a duration attribute for a timer', () => {
+      expect(sensorIcon('sensor.commute', { duration: '0:23:00' }, '23')).toBe('activity');
+      // A countdown still is one: it says when it ends, or is named for it.
+      expect(sensorIcon('sensor.oven', { finishes_at: '2026-10-04T10:00:00Z' })).toBe('timer');
+      expect(sensorIcon('sensor.kitchen_timer_1')).toBe('timer');
+    });
+
+    test.each([
+      ['timestamp', 'clock'],
+      ['date', 'clock'],
+      ['duration', 'clock'],
+      ['aqi', 'wind'],
+      ['pm25', 'wind'],
+      ['co2', 'wind'],
+      ['distance', 'ruler'],
+      ['speed', 'gauge'],
+      ['signal_strength', 'signal'],
+      ['water', 'droplet'],
+      ['gas', 'droplet'],
+      ['apparent_power', 'zap'],
+    ])('draws a %s sensor as %s', (deviceClass, icon) => {
+      expect(sensorIcon('sensor.x', { device_class: deviceClass })).toBe(icon);
+    });
+
+    test.each([
+      ['5', 'battery-low'],
+      ['20', 'battery-low'],
+      ['21', 'battery-medium'],
+      ['60', 'battery-medium'],
+      ['61', 'battery-full'],
+      ['100', 'battery-full'],
+      ['unknown', 'battery'],
+      ['unavailable', 'battery'],
+    ])('draws a battery at %s as %s', (value, icon) => {
+      expect(sensorIcon('sensor.phone', { device_class: 'battery' }, value)).toBe(icon);
+    });
+  });
+
+  describe('binary sensors, covers and other domains', () => {
+    test('draws a window as a window, open or closed, not a software window', () => {
+      expect(
+        getEntityLineIconName(entity('binary_sensor.w', 'on', { device_class: 'window' }))
+      ).toBe('window-open');
+      expect(
+        getEntityLineIconName(entity('binary_sensor.w', 'off', { device_class: 'window' }))
+      ).toBe('window-closed');
+      expect(getEntityLineIconName(entity('cover.w', 'open', { device_class: 'window' }))).toBe(
+        'window-open'
+      );
+      expect(getEntityLineIconName(entity('cover.w', 'closed', { device_class: 'window' }))).toBe(
+        'window-closed'
+      );
+    });
+
+    test.each([
+      ['connectivity', 'on', 'wifi'],
+      ['connectivity', 'off', 'wifi-off'],
+      ['problem', 'on', 'shield-alert'],
+      ['problem', 'off', 'shield-check'],
+      ['safety', 'on', 'shield-alert'],
+      ['running', 'on', 'play'],
+      ['gas', 'on', 'flame'],
+    ])('draws a %s binary sensor that is %s as %s', (deviceClass, value, icon) => {
+      expect(
+        getEntityLineIconName(entity('binary_sensor.x', value, { device_class: deviceClass }))
+      ).toBe(icon);
+    });
+
+    test.each([
+      ['input_datetime.alarm', 'calendar-clock'],
+      ['schedule.heating', 'calendar-clock'],
+      ['counter.visits', 'hash'],
+      ['lawn_mower.robot', 'bot'],
+      ['event.doorbell', 'bell'],
+    ])('draws %s as %s, not the generic box', (id, icon) => {
+      expect(getEntityLineIconName(entity(id))).toBe(icon);
+    });
+
+    test('has the glyphs the dialogs use: a square to stop and a distinct heat/cool', () => {
+      expect(LINE_ICONS.square).toBeDefined();
+      expect(LINE_ICONS['thermometer-sun']).toBeDefined();
+    });
+  });
 });

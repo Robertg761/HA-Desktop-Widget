@@ -3041,9 +3041,34 @@ function isQuickAccessTileActive(entity) {
       return entityState === 'open' || entityState === 'opening';
     case 'vacuum':
       return entityState === 'cleaning' || entityState === 'returning';
+    // Security devices are lit when something is not at rest: a lock that is not locked, an alarm
+    // that is anything but disarmed. A closed lock and a disarmed alarm are the quiet tiles.
+    case 'lock':
+      return entityState !== 'locked' && entityState !== 'locking';
+    case 'alarm_control_panel':
+      return entityState !== 'disarmed';
     default:
       return false;
   }
+}
+
+/**
+ * A tile that must catch the eye whether or not the accent glow is on: an alarm that went off, a
+ * lock that is jammed, a door that is unlocked. The look (an orange or red icon and state line)
+ * comes from data-attention in the stylesheet.
+ * @param {Object} entity - Home Assistant entity state object.
+ * @returns {'danger'|'warning'|null}
+ */
+function getQuickAccessTileAttention(entity) {
+  const domain = getEntityDomain(entity?.entity_id);
+  const entityState = typeof entity?.state === 'string' ? entity.state.trim().toLowerCase() : '';
+  if (domain === 'alarm_control_panel') return entityState === 'triggered' ? 'danger' : null;
+  if (domain === 'lock') {
+    return ['unlocked', 'unlocking', 'open', 'opening', 'jammed'].includes(entityState)
+      ? 'warning'
+      : null;
+  }
+  return null;
 }
 
 const QUICK_ACCESS_OPENING_DEVICE_CLASSES = new Set(['door', 'garage_door', 'opening', 'window']);
@@ -3132,6 +3157,27 @@ const QUICK_ACCESS_DIALOG_DOMAINS = new Set([
   'todo',
   ...QUICK_ACCESS_HELPER_DOMAINS,
 ]);
+// An alarm panel is armed and disarmed from the command palette, where the code prompt lives; its
+// tile answers a click with a pointer to it instead of staying silent.
+const QUICK_ACCESS_HINT_DOMAINS = new Set(['alarm_control_panel']);
+
+function isQuickAccessTileReadOnly(domain, div = null) {
+  return (
+    !QUICK_ACCESS_DIALOG_DOMAINS.has(domain) &&
+    !QUICK_ACCESS_TOGGLE_DOMAINS.has(domain) &&
+    !QUICK_ACCESS_ACTIVATE_DOMAINS.has(domain) &&
+    !QUICK_ACCESS_HINT_DOMAINS.has(domain) &&
+    domain !== 'automation' &&
+    !div?.classList.contains('unavailable-entity')
+  );
+}
+
+function getAlarmPanelHint(entity) {
+  return t('Use the command palette to control {{name}}', {
+    name: utils.getEntityDisplayName(entity),
+  });
+}
+
 // Tiles that carry the adjust button (openEntityControls).
 const QUICK_ACCESS_CONTROLS_DOMAINS = new Set(['climate', 'cover', 'fan', 'light', 'media_player']);
 
@@ -3228,6 +3274,8 @@ function describeQuickAccessTile(entityId) {
   let action = 'none';
   if (!unavailable) {
     if (QUICK_ACCESS_DIALOG_DOMAINS.has(domain)) action = 'dialog';
+    // Unlocking asks first, so the click brings the widget up for the question.
+    else if (domain === 'lock' && entity.state === 'locked') action = 'dialog';
     else if (QUICK_ACCESS_TOGGLE_DOMAINS.has(domain)) action = 'toggle';
     else if (QUICK_ACCESS_ACTIVATE_DOMAINS.has(domain)) action = 'activate';
   }
@@ -3465,6 +3513,9 @@ function applyQuickAccessTileActiveState(element, entity) {
   // An entity Home Assistant reports as unavailable keeps its tile, drawn dimmed.
   if (entity?.state === 'unavailable') element.dataset.unavailable = 'true';
   else delete element.dataset.unavailable;
+  const attention = getQuickAccessTileAttention(entity);
+  if (attention) element.dataset.attention = attention;
+  else delete element.dataset.attention;
   if (isQuickAccessTileActive(entity)) {
     element.dataset.active = 'true';
     // Only a tile already on screen that just turned on; new tiles arrive as they are.
@@ -7640,6 +7691,41 @@ function getDesktopPinToggleActionAriaLabel(entity) {
   return entity.state === 'locked' ? t('Unlock {{name}}', { name }) : t('Lock {{name}}', { name });
 }
 
+// A pinned lock sits on the desktop, easy to hit by accident, and a pin window is too small for the
+// confirmation dialog a tile asks. Unlocking from one takes two presses: the first turns its button
+// into "Confirm" for a few seconds, and the second within them unlocks.
+const PIN_UNLOCK_CONFIRM_MS = 4000;
+const pinUnlockConfirmations = new WeakMap();
+
+function cancelPinUnlockConfirmation(button) {
+  const pending = pinUnlockConfirmations.get(button);
+  if (!pending) return;
+  clearTimeout(pending.timer);
+  pinUnlockConfirmations.delete(button);
+  delete button.dataset.confirming;
+  setDesktopPinButtonLabel(button, pending.label);
+  if (pending.ariaLabel) button.setAttribute('aria-label', pending.ariaLabel);
+}
+
+// Whether this press may unlock: only the second one, inside the window the first opened.
+function confirmPinUnlock(button) {
+  if (pinUnlockConfirmations.has(button)) {
+    cancelPinUnlockConfirmation(button);
+    return true;
+  }
+  const label = button.querySelector('.desktop-pin-panel-button-label')?.textContent ?? '';
+  const ariaLabel = button.getAttribute('aria-label') || '';
+  button.dataset.confirming = 'true';
+  setDesktopPinButtonLabel(button, t('Confirm'));
+  if (ariaLabel) button.setAttribute('aria-label', `${t('Confirm')}: ${ariaLabel}`);
+  pinUnlockConfirmations.set(button, {
+    label,
+    ariaLabel,
+    timer: setTimeout(() => cancelPinUnlockConfirmation(button), PIN_UNLOCK_CONFIRM_MS),
+  });
+  return false;
+}
+
 function createDesktopPinToggleEntityControlElement(entity) {
   const domain = getEntityDomain(entity.entity_id);
   const isSceneLike = domain === 'scene' || domain === 'script';
@@ -7683,8 +7769,11 @@ function createDesktopPinToggleEntityControlElement(entity) {
     </div>
   `;
 
-  bindDesktopPinButton(root.querySelector('.desktop-pin-toggle-action'), () => {
-    toggleEntity(state.STATES?.[entity.entity_id] || entity);
+  const action = root.querySelector('.desktop-pin-toggle-action');
+  bindDesktopPinButton(action, () => {
+    const live = state.STATES?.[entity.entity_id] || entity;
+    if (isLock && live.state === 'locked' && !confirmPinUnlock(action)) return;
+    toggleEntity(live);
   });
 
   return root;
@@ -7729,10 +7818,15 @@ function updateExistingDesktopPinToggleEntityControl(root, entity) {
 
   const action = root.querySelector('.desktop-pin-toggle-action');
   if (action) {
-    setDesktopPinButtonLabel(action, actionLabel);
+    // Something changed the lock while its button asked to be confirmed: the question is stale.
+    if (!(isLock && isOn)) cancelPinUnlockConfirmation(action);
+    // A button that is asking keeps asking until it is answered or times out.
+    if (!pinUnlockConfirmations.has(action)) {
+      setDesktopPinButtonLabel(action, actionLabel);
+      const ariaLabel = getDesktopPinToggleActionAriaLabel(entity);
+      if (ariaLabel) action.setAttribute('aria-label', ariaLabel);
+    }
     action.dataset.active = isOn ? 'true' : 'false';
-    const ariaLabel = getDesktopPinToggleActionAriaLabel(entity);
-    if (ariaLabel) action.setAttribute('aria-label', ariaLabel);
   }
 
   return true;
@@ -9943,6 +10037,16 @@ function createControlElement(entity, options = {}) {
         if (!shouldBlockInteraction(div)) openEntityControls(entity);
       };
       div.title = t('Click to view {{name}}', { name: utils.getEntityDisplayName(entity) });
+    } else if (QUICK_ACCESS_HINT_DOMAINS.has(domain)) {
+      div.onclick = () => {
+        if (!shouldBlockInteraction(div))
+          uiUtils.showToast(
+            getAlarmPanelHint(state.STATES?.[entity.entity_id] || entity),
+            'info',
+            4000
+          );
+      };
+      div.title = getAlarmPanelHint(entity);
     } else if (
       QUICK_ACCESS_TOGGLE_DOMAINS.has(domain) ||
       QUICK_ACCESS_ACTIVATE_DOMAINS.has(domain) ||
@@ -10184,12 +10288,11 @@ function applyQuickAccessTileAccessibility(div, entity) {
   if (!div || !entity?.entity_id) return;
   const primary = div.querySelector('.tile-primary-button');
   const domain = getEntityDomain(entity.entity_id);
-  const readOnly =
-    !QUICK_ACCESS_DIALOG_DOMAINS.has(domain) &&
-    !QUICK_ACCESS_TOGGLE_DOMAINS.has(domain) &&
-    !QUICK_ACCESS_ACTIVATE_DOMAINS.has(domain) &&
-    domain !== 'automation' &&
-    !div.classList.contains('unavailable-entity');
+  const readOnly = isQuickAccessTileReadOnly(domain, div);
+  // The stylesheet keeps a tile that does nothing from looking pressable (no pointer, no hover
+  // lift, no press shrink).
+  if (readOnly) div.dataset.readonly = 'true';
+  else delete div.dataset.readonly;
   div.setAttribute('role', primary || readOnly ? 'group' : 'button');
   div.setAttribute('aria-label', utils.getEntityDisplayName(entity));
   if (primary) {
@@ -10621,6 +10724,14 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
       if (!shouldBlockInteraction(div)) openEntityControls(liveEntity());
     };
     div.title = t('Click to view {{name}}', { name: utils.getEntityDisplayName(displayEntity) });
+    return true;
+  }
+  if (QUICK_ACCESS_HINT_DOMAINS.has(domain)) {
+    div.onclick = () => {
+      if (!shouldBlockInteraction(div))
+        uiUtils.showToast(getAlarmPanelHint(liveEntity()), 'info', 4000);
+    };
+    div.title = getAlarmPanelHint(displayEntity);
     return true;
   }
   if (
@@ -12524,7 +12635,22 @@ function queueOnOffToggle(entity) {
   processPendingOnOffToggle(entityId, domain);
 }
 
-function toggleEntity(entity) {
+// Unlocking a door is the one toggle that cannot be taken back by pressing it again, so a click on
+// a tile asks first. Locking stays one click, and a hotkey the user bound to the lock does not ask:
+// it can fire while the widget is hidden, where nobody would see the question.
+async function confirmThenUnlock(entity) {
+  const name = utils.getEntityDisplayName(entity);
+  const confirmed = await uiUtils.showConfirm(t('Unlock {{name}}', { name }), t('Are you sure?'), {
+    confirmText: t('Unlock'),
+    confirmClass: 'btn-primary',
+  });
+  if (confirmed !== true) return;
+  // The lock may have changed while the question was open.
+  const live = state.STATES?.[entity.entity_id];
+  if (live?.state === 'locked') toggleEntity(live);
+}
+
+function toggleEntity(entity, { confirmUnlock = false } = {}) {
   try {
     entity = state.STATES?.[entity?.entity_id] || entity;
     if (!isEntityAvailable(entity)) return;
@@ -12543,6 +12669,10 @@ function toggleEntity(entity) {
         service = 'toggle';
         break;
       case 'lock':
+        if (entity.state === 'locked' && confirmUnlock) {
+          void confirmThenUnlock(entity);
+          return;
+        }
         service = entity.state === 'locked' ? 'unlock' : 'lock';
         break;
       case 'cover': {
@@ -12591,6 +12721,13 @@ function toggleEntity(entity) {
           responseSuccess: response?.success !== false,
           responseId: response?.id || null,
         });
+        // A scene, script or button changes nothing a tile shows, and its pulse is motion that
+        // reduced-motion settings drop, so a screen reader is told it ran.
+        if (response?.success !== false && QUICK_ACCESS_ACTIVATE_DOMAINS.has(domain)) {
+          announceQuickAccessChange(
+            t('Activated {{name}}', { name: utils.getEntityDisplayName(entity) })
+          );
+        }
         return response;
       })
       .catch((error) => handleServiceError(error, utils.getEntityDisplayName(entity)));
@@ -12673,7 +12810,7 @@ function executeEntityPrimaryAction(entity, options = {}) {
       return;
     }
 
-    toggleEntity(liveEntity);
+    toggleEntity(liveEntity, { confirmUnlock: true });
   } catch (error) {
     console.error('Error executing entity primary action:', error);
     uiUtils.showToast(t('Failed to toggle entity'), 'error', 3000);

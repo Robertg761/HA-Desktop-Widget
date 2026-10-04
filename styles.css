@@ -4096,13 +4096,19 @@ body.first-run-active .widget-content > * {
   align-self: center;
 }
 
-.control-item:hover {
+/* A tile that does nothing (data-readonly: a person, a sun, a binary sensor) takes no hover and no
+   press: :where() leaves the weight of these rules as it was. */
+.control-item:where(:not([data-readonly='true'])):hover {
   background: var(--tile-bg-hover);
   border-color: var(--tile-border-hover);
 }
 
-.control-item:active {
+.control-item:where(:not([data-readonly='true'])):active {
   transform: scale(0.96);
+}
+
+#quick-controls:not(.reorganize-mode) .control-item[data-readonly='true'] {
+  cursor: default;
 }
 
 .control-item:focus-visible {
@@ -6222,6 +6228,80 @@ body.active-tile-glow[data-accent-neutral]
    softer halo, since a glow around a dark glyph on a pale tile reads as a smudge. */
 body.theme-light.active-tile-glow #quick-controls .control-item[data-active='true'] .control-icon {
   filter: drop-shadow(0 0 6px rgba(var(--accent-rgb), 0.45));
+}
+
+/* Security states that have to catch the eye, with the accent glow on or off: an alarm that went
+   off (red), a lock that is jammed or a door that is unlocked (amber). The icon and the state line
+   take the status colour and the edge a tint of it; there is no wash, so the tile stays a plain
+   pane. The glow rules above are matched in weight so the status colour wins over the accent. */
+#quick-controls .control-item[data-attention] {
+  --attention-color: var(--warning-text);
+}
+
+#quick-controls .control-item[data-attention='danger'] {
+  --attention-color: var(--error-text);
+}
+
+#quick-controls .control-item[data-attention],
+body.active-tile-glow #quick-controls .control-item[data-attention][data-active='true'] {
+  border-color: color-mix(in srgb, var(--attention-color) 55%, var(--tile-border));
+}
+
+#quick-controls .control-item[data-attention]:hover,
+body.active-tile-glow #quick-controls .control-item[data-attention][data-active='true']:hover {
+  border-color: color-mix(in srgb, var(--attention-color) 75%, var(--tile-border-hover));
+}
+
+#quick-controls .control-item[data-attention] .control-icon,
+body.active-tile-glow
+  #quick-controls
+  .control-item[data-attention][data-active='true']
+  .control-icon {
+  color: var(--attention-color);
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--attention-color) 45%, transparent));
+}
+
+#quick-controls .control-item[data-attention] .control-state,
+body.active-tile-glow
+  #quick-controls
+  .control-item[data-attention][data-active='true']
+  .control-state {
+  color: var(--attention-color);
+}
+
+/* With the glow on, these tiles are lit like any other, but in their own colour: an amber icon on a
+   blue wash read as two things at once. */
+body.active-tile-glow #quick-controls .control-item[data-attention][data-active='true'] {
+  background-color: color-mix(
+    in srgb,
+    var(--attention-color) var(--dash-tile-wash),
+    var(--tile-bg)
+  );
+}
+
+body.active-tile-glow #quick-controls .control-item[data-attention][data-active='true']:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--attention-color) var(--dash-tile-wash-hover),
+    var(--tile-bg-hover)
+  );
+}
+
+/* The solid panels paint the wash as a layer over their own fill (see opaque-panels below). */
+body.opaque-panels.active-tile-glow
+  #quick-controls
+  .control-item[data-attention][data-active='true'] {
+  --active-tile-wash: color-mix(in srgb, var(--attention-color) var(--dash-tile-wash), transparent);
+}
+
+body.opaque-panels.active-tile-glow
+  #quick-controls
+  .control-item[data-attention][data-active='true']:hover {
+  --active-tile-wash: color-mix(
+    in srgb,
+    var(--attention-color) var(--dash-tile-wash-hover),
+    transparent
+  );
 }
 
 #quick-controls .control-item[data-unavailable='true'] {
@@ -11195,6 +11275,18 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
     scroll-behavior: auto !important;
   }
 
+  /* The press pulse of a scene, script or button is the only sign it ran, and the line above cuts
+     it to nothing. The 600 ms the class lasts shows as a still tint and edge instead. */
+  #quick-controls .control-item.activating {
+    animation: none;
+    background-color: rgba(var(--accent-rgb), 0.22) !important;
+    border-color: rgba(var(--accent-rgb), 0.6) !important;
+  }
+
+  #quick-controls .control-item.activating::after {
+    display: none;
+  }
+
   /* Disable glassmorphism blur effects for better performance */
   .modal,
   .modal-content,
@@ -14232,7 +14324,7 @@ body.theme-light:not(.high-contrast) #quick-controls .control-item[data-unavaila
    little. Lit and unavailable tiles keep their own hover. */
 body.theme-light:not(.high-contrast)
   #quick-controls
-  .control-item:not([data-active='true'], [data-unavailable='true']):hover {
+  .control-item:not([data-active='true'], [data-unavailable='true'], [data-readonly='true']):hover {
   background-color: color-mix(in srgb, rgb(var(--accent-rgb)) 6%, var(--tile-bg-hover));
   box-shadow: var(--shadow-sm);
 }
