@@ -93,6 +93,71 @@ describe('stylesheet one-offs', () => {
     });
   });
 
+  describe('the Settings page chrome', () => {
+    const page = (extra = '') => `
+      <div id="settings-modal" class="modal"><div class="modal-body">
+        <div class="form-group settings-search-box">
+          <label for="settings-search">Search settings</label>
+          <input id="settings-search" type="search" />
+          <p id="settings-search-status" class="form-help" role="status"></p>
+        </div>
+        <header class="settings-page-header"><h3>General</h3></header>
+        <section class="settings-group">
+          <div class="settings-group-caption-row">
+            <h4 class="settings-group-caption">Primary Cards</h4>
+            <button class="btn btn-link btn-sm" type="button">Reset</button>
+          </div>
+          <div class="settings-group-body">${extra}</div>
+        </section>
+      </div></div>`;
+
+    it('keeps the 16px under the search box that the form-group rules used to zero', () => {
+      render(page());
+      expect(resolvedValue(document.querySelector('.settings-search-box'), 'margin-bottom')).toBe(
+        '16px'
+      );
+    });
+
+    it('reads the search label out and does not draw it', () => {
+      render(page());
+      const label = document.querySelector('.settings-search-box > label');
+      expect(resolvedValue(label, 'position')).toBe('absolute');
+      expect(resolvedValue(label, 'width')).toBe('1px');
+      expect(resolvedValue(label, 'overflow')).toBe('hidden');
+      // The field starts where the label would have, without the gap that sat under it.
+      expect(resolvedValue(document.querySelector('#settings-search'), 'margin-top')).toBe('0');
+    });
+
+    it('starts the page title, the captions and the Reset link at the cards edge', () => {
+      render(page());
+      expect(resolvedValue(document.querySelector('.settings-page-header'), 'margin')).toBe(
+        '0 0 18px'
+      );
+      expect(resolvedValue(document.querySelector('.settings-group-caption-row'), 'margin')).toBe(
+        '0 0 7px'
+      );
+      // Its padded box overhangs the edge by its own padding, so its text ends there.
+      expect(
+        resolvedValue(
+          document.querySelector('.settings-group-caption-row .btn-link'),
+          'margin-inline-end'
+        )
+      ).toBe('-6px');
+    });
+
+    it('sizes a search result like the labels it points to', () => {
+      render(
+        '<div id="settings-modal"><button class="btn btn-secondary settings-search-result"><span>Title</span><small>General</small></button></div>'
+      );
+      expect(resolvedValue(document.querySelector('.settings-search-result'), 'font-size')).toBe(
+        '0.875rem'
+      );
+      expect(
+        resolvedValue(document.querySelector('.settings-search-result small'), 'font-size')
+      ).toBe('0.75rem');
+    });
+  });
+
   describe('reduced motion keeps the waiting indicators moving', () => {
     // The blanket "no animation" rule gives every animation 0.01ms and one iteration. A spinner or a
     // progress bar frozen that way reads as a stalled app, and the bar as a finished one.

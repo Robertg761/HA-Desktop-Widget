@@ -13261,15 +13261,6 @@ body.theme-light #settings-modal .modal-footer {
 
 /* --- Page header --- */
 
-.settings-search-box {
-  margin-block-end: 16px;
-}
-
-.settings-search-box label {
-  display: block;
-  margin-block-end: 6px;
-}
-
 #settings-search {
   width: 100%;
 }
@@ -13337,7 +13328,7 @@ body.theme-light #settings-modal .modal-footer {
 }
 
 .settings-page-header {
-  margin: 0 2px 18px;
+  margin: 0 0 18px;
 }
 
 .settings-page-title {
@@ -13362,7 +13353,7 @@ body.theme-light #settings-modal .modal-footer {
 
 .settings-group-caption,
 .settings-group-caption-row {
-  margin: 0 4px 7px;
+  margin: 0 0 7px;
 }
 
 .settings-group-caption {
@@ -13377,10 +13368,14 @@ body.theme-light #settings-modal .modal-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* The title takes the size of the setting labels it points to (14px), not a button's 12px. */
+  font-size: var(--font-size-base);
   gap: 12px;
 }
 
 .settings-group-caption-row .settings-group-caption {
+  /* A bare <small> computed to 10px, the smallest text in Settings for the "which page" cue. */
+  font-size: var(--font-size-sm);
   margin: 0;
 }
 
@@ -13407,6 +13402,8 @@ body.theme-light #settings-modal .modal-footer {
   display: none;
 }
 
+/* The page title, its description and the group captions start where the cards and the search field
+   do; they used to sit 2px and 4px in from them. */
 #settings-modal
   .settings-group-body
   > :not(.hidden, [hidden], :empty, [style*='display: none'])
@@ -13431,6 +13428,11 @@ body.theme-light #settings-modal .modal-footer {
   letter-spacing: -0.005em;
   color: var(--text-primary);
 }
+/* The link's text, not its padded box, ends at the card's edge. */
+.settings-group-caption-row > .btn-link {
+  margin-inline-end: -6px;
+}
+
 
 /* A label above a full-width field (URL, search, the media picker) keeps a gap. */
 #settings-modal .form-group > label + input,
@@ -13486,6 +13488,27 @@ body.theme-light #settings-modal .modal-footer {
 .setting-row-action {
   justify-content: flex-start;
   flex-wrap: wrap;
+/* The search field's label says what its placeholder says, so it is read out and not drawn. The box
+   is a .form-group, whose rules above (no bottom margin, a gap under the label) beat the ones that
+   used to be written for it, and left the page title glued to the field. */
+#settings-modal .settings-search-box {
+  margin-bottom: 16px;
+}
+
+#settings-modal .settings-search-box > label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+#settings-modal .settings-search-box > label + input {
+  margin-top: 0;
+}
+
   gap: 8px;
 }
 
