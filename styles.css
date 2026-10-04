@@ -15240,7 +15240,7 @@ body[data-season] .status-card {
 }
 
 body[data-season] .weather-card {
-  --season-sit: var(--season-weather-sit);
+  --season-sit: var(--season-weather-sit, var(--season-time-sit));
 }
 
 /* Only Settings has the room: in a short dialog, such as a confirmation, the piece would sit
@@ -15308,19 +15308,19 @@ body[data-season] .drag-area {
 body[data-season] .drag-area::before {
   content: '';
   position: absolute;
-  top: -12px;
+  top: -9px;
   inset-inline-start: 17px;
-  width: 22px;
-  height: 18px;
+  width: 18px;
+  height: 14px;
   background: var(--season-hat, none) no-repeat center bottom / contain;
-  transform: scaleX(var(--season-dir)) rotate(var(--season-hat-tilt, -16deg));
+  transform: scaleX(var(--season-dir)) rotate(var(--season-hat-tilt, -10deg));
   transform-origin: bottom center;
   transition: transform var(--duration-base) var(--ease-back);
   pointer-events: none;
 }
 
 body[data-season] .widget-header:hover .drag-area::before {
-  transform: scaleX(var(--season-dir)) rotate(calc(var(--season-hat-tilt, -16deg) + 10deg))
+  transform: scaleX(var(--season-dir)) rotate(calc(var(--season-hat-tilt, -10deg) + 10deg))
     translateY(-1px);
 }
 
@@ -15415,7 +15415,7 @@ body[data-season='halloween'] .weather-card:not(.primary-light-card)::after {
 
 body[data-season='halloween'] .status-card:not(.weather-card, .primary-light-card)::after {
   inset-block: 0 auto;
-  inset-inline: auto 40px;
+  inset-inline: auto 20px;
   width: 18px;
   height: 46px;
   background: var(--season-spider) no-repeat top center / contain;
@@ -15594,7 +15594,7 @@ body[data-season='easter'] .status-card {
 
 /* The bunny peeks up over the bottom edge. */
 body[data-season='easter'] .status-card:not(.weather-card, .primary-light-card)::after {
-  inset-block: auto -10px;
+  inset-block: auto -5px;
   inset-inline: auto 14px;
   width: 44px;
   height: 44px;
@@ -15713,7 +15713,7 @@ body[data-season='thanksgiving'] .control-item {
   }
 
   45% {
-    transform: rotate(3deg) scaleY(1.25);
+    transform: rotate(3deg) scaleY(1.1);
   }
 }
 
