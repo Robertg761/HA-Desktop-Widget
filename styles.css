@@ -13831,7 +13831,9 @@ body.theme-light
 
 /* --- Specific blocks tidied into the grid --- */
 
-#settings-modal .connection-test-row {
+/* A row of a pane is spaced by the pane's own row padding. One inside a disclosure (Test connection
+   under the token field) is not, and keeps a gap under the field it acts on. */
+#settings-modal .settings-group-body > .connection-test-row {
   margin-top: 0;
 }
 
@@ -14014,8 +14016,9 @@ body.theme-light
 }
 
 #settings-modal .btn-link {
-  min-height: 0;
-  padding: 2px 6px;
+  /* 24px tall, the least a pointer is asked to hit (it was 19px). */
+  min-height: 24px;
+  padding: 4px 6px;
   border: none;
   background: transparent;
   color: var(--accent-text);

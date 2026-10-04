@@ -158,6 +158,35 @@ describe('stylesheet one-offs', () => {
     });
   });
 
+  describe('Settings rows', () => {
+    it('gives the Connect row its 12px of padding, away from the divider above it', () => {
+      render(`<div id="settings-modal"><div class="settings-group-body">
+        <div class="form-group"><input /></div>
+        <div class="connection-test-row"><button class="btn btn-primary">Connect</button></div>
+      </div></div>`);
+      const row = document.querySelector('.connection-test-row');
+      expect(resolvedValue(row, 'padding')).toBe('12px 0');
+      expect(resolvedValue(row, 'margin-top')).toBe('0');
+    });
+
+    it('keeps the Test connection button off the token field above it', () => {
+      render(`<div id="settings-modal"><div class="settings-group-body"><details open class="settings-details settings-disclosure">
+        <summary>Legacy access token</summary>
+        <div class="settings-details-body">
+          <div class="form-group"><input /></div>
+          <div class="connection-test-row"><button class="btn">Test</button></div>
+        </div></details></div></div>`);
+      expect(resolvedValue(document.querySelector('.connection-test-row'), 'margin-top')).toBe(
+        '10px'
+      );
+    });
+
+    it('makes the Reset link at least 24px tall', () => {
+      render('<div id="settings-modal"><button class="btn btn-link btn-sm">Reset</button></div>');
+      expect(resolvedValue(document.querySelector('.btn-link'), 'min-height')).toBe('24px');
+    });
+  });
+
   describe('reduced motion keeps the waiting indicators moving', () => {
     // The blanket "no animation" rule gives every animation 0.01ms and one iteration. A spinner or a
     // progress bar frozen that way reads as a stalled app, and the bar as a finished one.
