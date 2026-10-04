@@ -149,11 +149,26 @@ function showDashboardHistory() {
     const pages = document.createElement('span');
     pages.className = 'dashboard-restore-pages';
     pages.textContent = entry.layout.customTabs.map((tab) => tab.name).join(', ');
+    // Near-identical rows are told apart by how much each holds, not only by when it was saved.
+    const count = document.createElement('span');
+    count.className = 'dashboard-restore-count';
+    count.textContent = t('Pages: {{pages}} · Tiles: {{tiles}}', {
+      pages: entry.layout.customTabs.length,
+      tiles: entry.layout.customTabs.reduce(
+        (total, tab) => total + (tab.entityIds?.length || 0),
+        0
+      ),
+    });
     const arrow = document.createElement('span');
     arrow.className = 'dashboard-restore-arrow';
     setIconContent(arrow, 'undo', { size: 20 });
     arrow.setAttribute('aria-hidden', 'true');
-    button.append(date, pages, arrow);
+    button.append(date, pages, count, arrow);
+    // The row's text is a date and some page names; the name says what pressing it does.
+    button.setAttribute(
+      'aria-label',
+      t('Restore layout from {{date}}', { date: date.textContent })
+    );
     button.onclick = async () => {
       const reenable = disableControlsKeepingFocus(modal.querySelectorAll('button'));
       try {

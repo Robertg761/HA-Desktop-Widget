@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.69",
+  "version": "1.2.70",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1829,6 +1829,8 @@
     "Delete \"{{name}}\" and its tiles?": "حذف «{{name}}» مع بطاقاتها؟",
     "Remove \"{{name}}\" from \"{{page}}\"?": "هل تريد إزالة «{{name}}» من «{{page}}»؟",
     "Removed from \"{{page}}\"": "تمت الإزالة من «{{page}}»",
-    "Show all entities": "عرض كل الكيانات"
+    "Show all entities": "عرض كل الكيانات",
+    "Restore layout from {{date}}": "استعادة التخطيط من {{date}}",
+    "Pages: {{pages}} · Tiles: {{tiles}}": "الصفحات: {{pages}} · البطاقات: {{tiles}}"
   }
 }

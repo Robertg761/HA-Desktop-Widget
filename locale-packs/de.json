@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.68",
+  "version": "1.2.69",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget, including German date and time formats.",
   "messages": {
@@ -1829,6 +1829,8 @@
     "Delete \"{{name}}\" and its tiles?": "„{{name}}“ und ihre Kacheln löschen?",
     "Remove \"{{name}}\" from \"{{page}}\"?": "„{{name}}“ von „{{page}}“ entfernen?",
     "Removed from \"{{page}}\"": "Von „{{page}}“ entfernt",
-    "Show all entities": "Alle Entitäten anzeigen"
+    "Show all entities": "Alle Entitäten anzeigen",
+    "Restore layout from {{date}}": "Layout vom {{date}} wiederherstellen",
+    "Pages: {{pages}} · Tiles: {{tiles}}": "Seiten: {{pages}} · Kacheln: {{tiles}}"
   }
 }

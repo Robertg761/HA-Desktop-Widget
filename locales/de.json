@@ -1726,5 +1726,7 @@
   "Delete \"{{name}}\" and its tiles?": "„{{name}}“ und ihre Kacheln löschen?",
   "Remove \"{{name}}\" from \"{{page}}\"?": "„{{name}}“ von „{{page}}“ entfernen?",
   "Removed from \"{{page}}\"": "Von „{{page}}“ entfernt",
-  "Show all entities": "Alle Entitäten anzeigen"
+  "Show all entities": "Alle Entitäten anzeigen",
+  "Restore layout from {{date}}": "Layout vom {{date}} wiederherstellen",
+  "Pages: {{pages}} · Tiles: {{tiles}}": "Seiten: {{pages}} · Kacheln: {{tiles}}"
 }

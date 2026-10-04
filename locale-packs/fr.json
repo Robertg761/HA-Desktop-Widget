@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.68",
+  "version": "1.2.69",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1829,6 +1829,8 @@
     "Delete \"{{name}}\" and its tiles?": "Supprimer « {{name}} » et ses vignettes ?",
     "Remove \"{{name}}\" from \"{{page}}\"?": "Retirer « {{name}} » de « {{page}} » ?",
     "Removed from \"{{page}}\"": "Retiré de « {{page}} »",
-    "Show all entities": "Afficher toutes les entités"
+    "Show all entities": "Afficher toutes les entités",
+    "Restore layout from {{date}}": "Restaurer la mise en page du {{date}}",
+    "Pages: {{pages}} · Tiles: {{tiles}}": "Pages : {{pages}} · Vignettes : {{tiles}}"
   }
 }

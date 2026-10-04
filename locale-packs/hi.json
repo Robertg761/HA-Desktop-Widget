@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.69",
+  "version": "1.2.70",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1829,6 +1829,8 @@
     "Delete \"{{name}}\" and its tiles?": "\"{{name}}\" और उसके टाइल हटाएं?",
     "Remove \"{{name}}\" from \"{{page}}\"?": "\"{{name}}\" को \"{{page}}\" से हटाएं?",
     "Removed from \"{{page}}\"": "\"{{page}}\" से हटाया गया",
-    "Show all entities": "सभी एंटिटी दिखाएं"
+    "Show all entities": "सभी एंटिटी दिखाएं",
+    "Restore layout from {{date}}": "{{date}} का लेआउट बहाल करें",
+    "Pages: {{pages}} · Tiles: {{tiles}}": "पेज: {{pages}} · टाइल: {{tiles}}"
   }
 }

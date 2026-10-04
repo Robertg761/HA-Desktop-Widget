@@ -1726,5 +1726,7 @@
   "Delete \"{{name}}\" and its tiles?": "Delete \"{{name}}\" and its tiles?",
   "Remove \"{{name}}\" from \"{{page}}\"?": "Remove \"{{name}}\" from \"{{page}}\"?",
   "Removed from \"{{page}}\"": "Removed from \"{{page}}\"",
-  "Show all entities": "Show all entities"
+  "Show all entities": "Show all entities",
+  "Restore layout from {{date}}": "Restore layout from {{date}}",
+  "Pages: {{pages}} · Tiles: {{tiles}}": "Pages: {{pages}} · Tiles: {{tiles}}"
 }

@@ -2,7 +2,7 @@
   "locale": "zh",
   "displayName": "简体中文",
   "englishName": "Chinese (Simplified)",
-  "version": "1.2.68",
+  "version": "1.2.69",
   "minAppVersion": "3.4.1",
   "notes": "Simplified Chinese language pack for HA Desktop Widget.",
   "messages": {
@@ -1829,6 +1829,8 @@
     "Delete \"{{name}}\" and its tiles?": "要删除“{{name}}”及其磁贴吗？",
     "Remove \"{{name}}\" from \"{{page}}\"?": "要从“{{page}}”中移除“{{name}}”吗？",
     "Removed from \"{{page}}\"": "已从“{{page}}”中移除",
-    "Show all entities": "显示所有实体"
+    "Show all entities": "显示所有实体",
+    "Restore layout from {{date}}": "恢复 {{date}} 的布局",
+    "Pages: {{pages}} · Tiles: {{tiles}}": "页面：{{pages}} · 磁贴：{{tiles}}"
   }
 }
