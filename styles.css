@@ -10003,6 +10003,22 @@ body {
   flex-wrap: wrap;
 }
 
+/* Reset drops the tile's saved settings, so it is not another Cancel: it keeps to the start of the
+   footer, apart from Cancel and Save, in the error text with no fill until it is pointed at. */
+.rename-modal .modal-footer #reset-rename-btn {
+  margin-inline-end: auto;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--error-text);
+}
+
+.rename-modal .modal-footer #reset-rename-btn:hover {
+  background: rgba(239, 83, 80, 0.14);
+  border-color: rgba(239, 83, 80, 0.45);
+  color: var(--error-text);
+}
+
 /* The last field needs no margin of its own: the body's padding already closes the dialog. */
 .rename-modal .modal-body > .form-group:last-child {
   margin-bottom: 0;

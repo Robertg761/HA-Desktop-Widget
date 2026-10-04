@@ -1215,7 +1215,7 @@ function showAddPageModal({ starter = false } = {}) {
   const activePage = starter ? getActiveQuickAccessTab(state.CONFIG) : null;
   const fillsNamedPage =
     !!activePage && !activePage.entityIds.length && (state.CONFIG.customTabs?.length ?? 0) > 1;
-  const dialogTitle = fillsNamedPage ? t('Fill this page') : t('Add Page');
+  const dialogTitle = fillsNamedPage ? t('Fill this page') : t('Add page');
 
   const chipsMarkup = QUICK_ACCESS_PAGE_PRESETS.map(
     (preset) => `
@@ -1234,12 +1234,12 @@ function showAddPageModal({ starter = false } = {}) {
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label for="add-page-name">${utils.escapeHtml(t('Page name:'))}</label>
+          <label for="add-page-name">${utils.escapeHtml(t('Page name'))}</label>
           <input type="text" id="add-page-name" class="form-control" maxlength="40" value="${escapeHtmlAttribute(fillsNamedPage ? activePage.name : '')}" placeholder="${escapeHtmlAttribute(t('Enter page name'))}">
           <p id="add-page-name-error" class="form-help add-page-name-error" role="alert" hidden>${utils.escapeHtml(t('Enter page name'))}</p>
         </div>
         <div class="form-group">
-          <span id="add-page-chips-label" class="form-label">${utils.escapeHtml(t('Quick picks:'))}</span>
+          <span id="add-page-chips-label" class="form-label">${utils.escapeHtml(t('Quick picks'))}</span>
           <div class="qa-add-chips" role="group" aria-labelledby="add-page-chips-label">${chipsMarkup}</div>
         </div>
       </div>
@@ -2334,7 +2334,7 @@ function showRenameModal(entityId) {
     const valueSizeControlMarkup = hasValueSizeControl
       ? `
           <div class="form-group">
-            <label for="tile-value-size-select">${utils.escapeHtml(t('Value Font Size:'))}</label>
+            <label for="tile-value-size-select">${utils.escapeHtml(t('Value font size'))}</label>
             <select id="tile-value-size-select" class="form-control">
               ${valueSizeOptionsMarkup}
             </select>
@@ -2350,14 +2350,14 @@ function showRenameModal(entityId) {
     const chartControlMarkup = hasChartControl
       ? `
           <div class="form-group">
-            <label for="tile-chart-type-select">${utils.escapeHtml(t('Chart:'))}</label>
+            <label for="tile-chart-type-select">${utils.escapeHtml(t('Chart'))}</label>
             <select id="tile-chart-type-select" class="form-control">
               ${chartOptionsMarkup}
             </select>
             <div class="form-help">${utils.escapeHtml(t('Choose how this sensor tile visualizes its value.'))}</div>
           </div>
           <div class="form-group tile-gauge-range-setting" id="tile-gauge-range-group"${currentChartType === 'gauge' ? '' : ' hidden'}>
-            <label for="tile-gauge-min-input">${utils.escapeHtml(t('Gauge range:'))}</label>
+            <label for="tile-gauge-min-input">${utils.escapeHtml(t('Gauge range'))}</label>
             <div class="tile-gauge-range-inputs">
               <input type="number" step="any" id="tile-gauge-min-input" class="form-control" value="${formatGaugeBoundInput(currentGaugeRange.min)}" placeholder="${escapeHtmlAttribute(t('Auto'))}" aria-label="${escapeHtmlAttribute(t('Min'))}">
               <span class="tile-gauge-range-separator" aria-hidden="true">–</span>
@@ -2413,7 +2413,7 @@ function showRenameModal(entityId) {
     const cameraPreviewControlMarkup = hasCameraPreviewControl
       ? `
           <div class="form-group camera-preview-setting">
-            <label for="camera-preview-refresh-select">${utils.escapeHtml(t('Camera Preview:'))}</label>
+            <label for="camera-preview-refresh-select">${utils.escapeHtml(t('Camera preview'))}</label>
             <select id="camera-preview-refresh-select" class="form-control">
               ${cameraPreviewOptionsMarkup}
             </select>
@@ -2432,7 +2432,7 @@ function showRenameModal(entityId) {
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label for="rename-input">${utils.escapeHtml(t('Display Name:'))}</label>
+            <label for="rename-input">${utils.escapeHtml(t('Display name'))}</label>
             <input type="text" id="rename-input" class="form-control" maxlength="64" value="${escapeHtmlAttribute(currentName)}" placeholder="${escapeHtmlAttribute(t('Enter custom name'))}">
           </div>
           ${valueSizeControlMarkup}
@@ -2441,8 +2441,8 @@ function showRenameModal(entityId) {
           ${trayControlMarkup}
         </div>
         <div class="modal-footer">
-          <button id="cancel-rename-btn" class="btn btn-secondary">${utils.escapeHtml(t('Cancel'))}</button>
           <button id="reset-rename-btn" class="btn btn-secondary">${utils.escapeHtml(t('Reset to Default'))}</button>
+          <button id="cancel-rename-btn" class="btn btn-secondary">${utils.escapeHtml(t('Cancel'))}</button>
           <button id="save-rename-btn" class="btn btn-primary">${utils.escapeHtml(t('Save'))}</button>
         </div>
       </div>
@@ -2685,8 +2685,8 @@ function showRenameModal(entityId) {
     }
 
     if (resetBtn) {
-      resetBtn.onclick = async () => {
-        if (tileSettingsMutationInFlight) return;
+      // What a reset would clear, against the config as it is now.
+      const buildTileSettingsReset = () => {
         const nextConfig = cloneConfigSnapshot(state.CONFIG);
         let changed = false;
 
@@ -2728,12 +2728,31 @@ function showRenameModal(entityId) {
           nextConfig.trayEntities[entityId] = {};
           changed = true;
         }
+        return { nextConfig, changed, resetTrayOptions };
+      };
 
-        if (!changed) {
+      resetBtn.onclick = async () => {
+        if (tileSettingsMutationInFlight) return;
+        if (!buildTileSettingsReset().changed) {
           closeTileSettingsModal();
           return;
         }
 
+        // The reset drops every saved setting of the tile at once, and discards what was typed
+        // here and not yet saved, so it asks first.
+        const confirmed = await uiUtils.showConfirm(
+          t('Reset tile settings to defaults'),
+          t('Are you sure?'),
+          { confirmText: t('Reset'), confirmClass: 'btn-danger' }
+        );
+        if (confirmed !== true || !modal.isConnected || tileSettingsModalClosing) return;
+
+        // The config may have moved while the question was open.
+        const { nextConfig, changed, resetTrayOptions } = buildTileSettingsReset();
+        if (!changed) {
+          closeTileSettingsModal();
+          return;
+        }
         setTileSettingsMutationInFlight(true);
         try {
           await persistAuthoritativeConfig({

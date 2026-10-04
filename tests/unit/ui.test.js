@@ -751,7 +751,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.showAddPageModal();
       const modal = document.getElementById('add-page-modal');
       expect(modal.getAttribute('aria-labelledby')).toBe('add-page-title');
-      expect(document.getElementById('add-page-title').textContent).toBe('Add Page');
+      expect(document.getElementById('add-page-title').textContent).toBe('Add page');
       expect(
         [...modal.querySelectorAll('.modal-footer button')].map((button) => button.id)
       ).toEqual(['add-page-cancel-btn', 'add-page-save-btn']);
@@ -824,7 +824,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const chips = document.querySelector('.qa-add-chips');
       expect(chips.getAttribute('role')).toBe('group');
       const label = document.getElementById(chips.getAttribute('aria-labelledby'));
-      expect(label.textContent).toBe('Quick picks:');
+      expect(label.textContent).toBe('Quick picks');
       expect(label.tagName).toBe('SPAN');
     });
 
@@ -879,7 +879,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         registryResponses();
         ui.showAddPageModal({ starter: true });
         await flush();
-        expect(document.getElementById('add-page-title').textContent).toBe('Add Page');
+        expect(document.getElementById('add-page-title').textContent).toBe('Add page');
         expect(document.querySelector('#add-page-name').value).toBe('Kitchen');
       });
     });
@@ -3405,6 +3405,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
 
     it('resets an enabled camera snapshot preview to the static icon', async () => {
+      // Resetting asks first, so the page's own config writes land before it. They answer with what
+      // the page holds, as Home Assistant's would.
+      mockElectronAPI.updateConfig.mockImplementation(async (patch) => ({
+        ...state.CONFIG,
+        ...patch,
+      }));
       const config = state.CONFIG;
       config.favoriteEntities = ['camera.front_door'];
       config.quickAccessTileOptions = {
@@ -3423,10 +3429,10 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       const modal = document.querySelector('.rename-modal');
       expect(modal.querySelector('#camera-preview-refresh-select').value).toBe('5s');
+      uiUtils.showConfirm.mockResolvedValueOnce(true);
       modal.querySelector('#reset-rename-btn').click();
 
-      await Promise.resolve();
-      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(state.CONFIG.quickAccessTileOptions['camera.front_door']).toBeUndefined();
       expect(
@@ -3595,6 +3601,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
 
     it('hides value font size controls for quick access tiles without displayed values', async () => {
+      // Resetting asks first, so the page's own config writes land before it. They answer with what
+      // the page holds, as Home Assistant's would.
+      mockElectronAPI.updateConfig.mockImplementation(async (patch) => ({
+        ...state.CONFIG,
+        ...patch,
+      }));
       const config = state.CONFIG;
       config.favoriteEntities = ['input_button.tv_rewind'];
       config.quickAccessTileOptions = {
@@ -3621,9 +3633,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(modal).toBeTruthy();
       expect(modal.querySelector('#tile-value-size-select')).toBeNull();
 
+      uiUtils.showConfirm.mockResolvedValueOnce(true);
       modal.querySelector('#reset-rename-btn').click();
-      await Promise.resolve();
-      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(state.CONFIG.quickAccessTileOptions['input_button.tv_rewind']).toBeUndefined();
       expect(mockElectronAPI.updateConfig).toHaveBeenCalledWith(
@@ -3866,7 +3878,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       expect(
         [...modal.querySelectorAll('.modal-footer button')].map((button) => button.id)
-      ).toEqual(['cancel-rename-btn', 'reset-rename-btn', 'save-rename-btn']);
+      ).toEqual(['reset-rename-btn', 'cancel-rename-btn', 'save-rename-btn']);
     });
 
     it('switches a sensor tile to a gauge with a custom range from the settings modal', async () => {
@@ -4001,9 +4013,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         const reopened = document.querySelector('.rename-modal');
         expect(reopened.querySelector('#tile-tray-label').value).toBe('Office');
         expect(reopened.querySelector('#tile-tray-color').value).toBe('purple');
+        uiUtils.showConfirm.mockResolvedValueOnce(true);
         reopened.querySelector('#reset-rename-btn').click();
-        await Promise.resolve();
-        await Promise.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
         expect(state.CONFIG.trayEntities['sensor.office_temperature']).toEqual({});
       } finally {
         setRendererHost(previousHost);
@@ -4148,6 +4160,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
 
     it('resets quick access tile name and value font size from the pencil settings modal', async () => {
+      // Resetting asks first, so the page's own config writes land before it. They answer with what
+      // the page holds, as Home Assistant's would.
+      mockElectronAPI.updateConfig.mockImplementation(async (patch) => ({
+        ...state.CONFIG,
+        ...patch,
+      }));
       const config = state.CONFIG;
       config.favoriteEntities = ['sensor.office_temperature'];
       config.customEntityNames = {
@@ -4179,10 +4197,10 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const modal = document.querySelector('.rename-modal');
       expect(modal.querySelector('#rename-input').value).toBe('Desk "Temp"');
       expect(modal.querySelector('#tile-value-size-select').value).toBe('large');
+      uiUtils.showConfirm.mockResolvedValueOnce(true);
       modal.querySelector('#reset-rename-btn').click();
 
-      await Promise.resolve();
-      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(state.CONFIG.customEntityNames['sensor.office_temperature']).toBeUndefined();
       expect(state.CONFIG.quickAccessTileOptions['sensor.office_temperature']).toBeUndefined();
@@ -7679,7 +7697,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const modal = document.getElementById('add-page-modal');
       expect(modal).not.toBeNull();
       expect(modal.classList.contains('modal')).toBe(true);
-      expect(modal.querySelector('.modal-header h2').textContent).toContain('Add Page');
+      expect(modal.querySelector('.modal-header h2').textContent).toContain('Add page');
 
       const chipLabels = Array.from(modal.querySelectorAll('.qa-add-chip')).map(
         (c) => c.textContent
