@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.66",
+  "version": "1.2.67",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1825,6 +1825,9 @@
     "Home Assistant has no weather entities. Add a weather integration, then reopen this list.": "Home Assistant n'a aucune entité météo. Ajoutez une intégration météo, puis rouvrez cette liste.",
     "Not downloaded": "Non téléchargé",
     "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\", for example: {{binding}}": "Hyprland a envoyé « {{shortcut}} » sous l'ancien nom d'application « {{legacyAppId}} ». Cela fonctionne encore pour l'instant ; remplacez la liaison par « {{target}} », par exemple : {{binding}}",
-    "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\".": "Hyprland a envoyé « {{shortcut}} » sous l'ancien nom d'application « {{legacyAppId}} ». Cela fonctionne encore pour l'instant ; remplacez la liaison par « {{target}} »."
+    "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\".": "Hyprland a envoyé « {{shortcut}} » sous l'ancien nom d'application « {{legacyAppId}} ». Cela fonctionne encore pour l'instant ; remplacez la liaison par « {{target}} ».",
+    "Delete \"{{name}}\" and its tiles?": "Supprimer « {{name}} » et ses vignettes ?",
+    "Remove \"{{name}}\" from \"{{page}}\"?": "Retirer « {{name}} » de « {{page}} » ?",
+    "Removed from \"{{page}}\"": "Retiré de « {{page}} »"
   }
 }

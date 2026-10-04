@@ -1149,7 +1149,9 @@ async function deleteQuickAccessPage(tabId) {
 
   const confirmed = await uiUtils.showConfirm(
     t('Delete Page'),
-    t('Delete "{{name}}"? Its entities will be removed from this page.', { name: tab.name }),
+    // The page itself goes, with its tiles; the entities are still in Home Assistant, and on any other
+    // page that shows them.
+    t('Delete "{{name}}" and its tiles?', { name: tab.name }),
     { confirmText: t('Delete'), confirmClass: 'btn-danger' }
   );
   if (!confirmed) return;
@@ -2276,7 +2278,11 @@ function addButtonsToElement(item) {
 
           const confirmed = await uiUtils.showConfirm(
             t('Remove from Quick Access'),
-            t('Remove "{{name}}" from Quick Access?', { name: entityName }),
+            // Removing a tile takes it off the page it is on; the same entity on another page stays.
+            t('Remove "{{name}}" from "{{page}}"?', {
+              name: entityName,
+              page: getActiveQuickAccessTab(state.CONFIG)?.name || '',
+            }),
             { confirmText: t('Remove'), confirmClass: 'btn-danger' }
           );
 
@@ -2791,6 +2797,7 @@ function showRenameModal(entityId) {
 
 async function removeFromQuickAccess(entityId) {
   try {
+    const pageName = getActiveQuickAccessTab(state.CONFIG)?.name || '';
     // Removing a graph tile deletes the graph itself — leaving it behind would strand config that
     // has no way back into the UI.
     const nextConfig = isComparisonGraphId(entityId)
@@ -2811,7 +2818,7 @@ async function removeFromQuickAccess(entityId) {
       addRemoveButtons();
     }
 
-    uiUtils.showToast(t('Entity removed from Quick Access'), 'success', 2000);
+    uiUtils.showToast(t('Removed from "{{page}}"', { page: pageName }), 'success', 2000);
     return result;
   } catch (error) {
     console.error('Error removing from quick access:', error);

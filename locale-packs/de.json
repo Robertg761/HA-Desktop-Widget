@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.66",
+  "version": "1.2.67",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget, including German date and time formats.",
   "messages": {
@@ -1825,6 +1825,9 @@
     "Home Assistant has no weather entities. Add a weather integration, then reopen this list.": "Home Assistant hat keine Wetterentitäten. Füge eine Wetter-Integration hinzu und öffne diese Liste dann erneut.",
     "Not downloaded": "Nicht heruntergeladen",
     "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\", for example: {{binding}}": "Hyprland hat „{{shortcut}}“ über den alten App-Namen „{{legacyAppId}}“ gesendet. Das funktioniert vorerst weiter; ändere die Bindung in „{{target}}“, zum Beispiel: {{binding}}",
-    "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\".": "Hyprland hat „{{shortcut}}“ über den alten App-Namen „{{legacyAppId}}“ gesendet. Das funktioniert vorerst weiter; ändere die Bindung in „{{target}}“."
+    "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\".": "Hyprland hat „{{shortcut}}“ über den alten App-Namen „{{legacyAppId}}“ gesendet. Das funktioniert vorerst weiter; ändere die Bindung in „{{target}}“.",
+    "Delete \"{{name}}\" and its tiles?": "„{{name}}“ und ihre Kacheln löschen?",
+    "Remove \"{{name}}\" from \"{{page}}\"?": "„{{name}}“ von „{{page}}“ entfernen?",
+    "Removed from \"{{page}}\"": "Von „{{page}}“ entfernt"
   }
 }

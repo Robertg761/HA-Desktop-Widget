@@ -7620,6 +7620,64 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
     });
 
+    it('asks to delete the page and its tiles, not just "its entities"', async () => {
+      window.electronAPI.updateConfig.mockImplementation(async (patch) => ({
+        homeAssistant: {},
+        ...state.CONFIG,
+        ...patch,
+      }));
+      setPages(
+        [
+          { id: 'default', name: 'All', entityIds: [] },
+          { id: 'bedroom', name: 'Bedroom', entityIds: [] },
+        ],
+        'bedroom'
+      );
+      ui.toggleReorganizeMode();
+      uiUtils.showConfirm.mockResolvedValueOnce(false);
+
+      tabBar.querySelector('.qa-tab-delete').click();
+      await Promise.resolve();
+
+      expect(uiUtils.showConfirm).toHaveBeenLastCalledWith(
+        'Delete Page',
+        'Delete "Bedroom" and its tiles?',
+        expect.objectContaining({ confirmText: 'Delete' })
+      );
+    });
+
+    it('says a removed tile leaves its page, in the confirmation and the toast', async () => {
+      window.electronAPI.updateConfig.mockImplementation(async (patch) => ({
+        homeAssistant: {},
+        ...state.CONFIG,
+        ...patch,
+      }));
+      state.setStates({ 'light.bedroom': sampleStates['light.bedroom'] });
+      state.setConfig({
+        ...state.CONFIG,
+        customTabs: [
+          { id: 'home', name: 'Home', entityIds: ['light.bedroom'] },
+          { id: 'night', name: 'Night', entityIds: ['light.bedroom'] },
+        ],
+        activeTabId: 'night',
+        favoriteEntities: ['light.bedroom'],
+      });
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+      uiUtils.showConfirm.mockResolvedValueOnce(true);
+      uiUtils.showToast.mockClear();
+
+      document
+        .querySelector('#quick-controls [data-entity-id="light.bedroom"] .remove-btn')
+        .click();
+      for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const [, message] = uiUtils.showConfirm.mock.calls.at(-1);
+      expect(message).toMatch(/^Remove ".+" from "Night"\?$/);
+      expect(uiUtils.showToast).toHaveBeenCalledWith('Removed from "Night"', 'success', 2000);
+    });
+
     it('moves focus to the page now shown after deleting a page', async () => {
       setPages(
         [

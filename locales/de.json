@@ -258,7 +258,6 @@
   "Delete": "Löschen",
   "Delete current view": "Aktuelle Ansicht löschen",
   "Delete Quick Access View": "Schnellzugriff-Ansicht löschen",
-  "Delete \"{{name}}\"? Its entities will be removed from this view.": "„{{name}}“ löschen? Die Entitäten werden aus dieser Ansicht entfernt.",
   "At least one Quick Access view is required": "Mindestens eine Schnellzugriff-Ansicht ist erforderlich",
   "Quick Access view added": "Schnellzugriff-Ansicht hinzugefügt",
   "Quick Access view renamed": "Schnellzugriff-Ansicht umbenannt",
@@ -384,7 +383,6 @@
   "Page renamed": "Seite umbenannt",
   "Page deleted": "Seite gelöscht",
   "Page updated": "Seite aktualisiert",
-  "Delete \"{{name}}\"? Its entities will be removed from this page.": "„{{name}}“ löschen? Die Entitäten werden von dieser Seite entfernt.",
   "Adding to: {{name}}": "Hinzufügen zu: {{name}}",
   "Living Room": "Wohnzimmer",
   "Bedroom": "Schlafzimmer",
@@ -942,8 +940,6 @@
   "Current time": "Aktuelle Uhrzeit",
   "Save & Exit Reorganize Mode (ESC)": "Speichern & Neu-Anordnen beenden (ESC)",
   "Remove from Quick Access": "Aus Schnellzugriff entfernen",
-  "Remove \"{{name}}\" from Quick Access?": "„{{name}}“ aus dem Schnellzugriff entfernen?",
-  "Entity removed from Quick Access": "Entität aus Schnellzugriff entfernt",
   "Mode": "Modus",
   "Playing now": "Wird wiedergegeben",
   "{{percent}}% brightness": "{{percent}} % Helligkeit",
@@ -1727,5 +1723,8 @@
   "Home Assistant has no weather entities. Add a weather integration, then reopen this list.": "Home Assistant hat keine Wetterentitäten. Füge eine Wetter-Integration hinzu und öffne diese Liste dann erneut.",
   "Not downloaded": "Nicht heruntergeladen",
   "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\", for example: {{binding}}": "Hyprland hat „{{shortcut}}“ über den alten App-Namen „{{legacyAppId}}“ gesendet. Das funktioniert vorerst weiter; ändere die Bindung in „{{target}}“, zum Beispiel: {{binding}}",
-  "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\".": "Hyprland hat „{{shortcut}}“ über den alten App-Namen „{{legacyAppId}}“ gesendet. Das funktioniert vorerst weiter; ändere die Bindung in „{{target}}“."
+  "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\".": "Hyprland hat „{{shortcut}}“ über den alten App-Namen „{{legacyAppId}}“ gesendet. Das funktioniert vorerst weiter; ändere die Bindung in „{{target}}“.",
+  "Delete \"{{name}}\" and its tiles?": "„{{name}}“ und ihre Kacheln löschen?",
+  "Remove \"{{name}}\" from \"{{page}}\"?": "„{{name}}“ von „{{page}}“ entfernen?",
+  "Removed from \"{{page}}\"": "Von „{{page}}“ entfernt"
 }

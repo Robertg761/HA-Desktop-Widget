@@ -366,5 +366,21 @@
   "Available": {
     "retiredIn": "4.0.0",
     "reason": "The language selector and the pack list now both say Not downloaded"
+  },
+  "Delete \"{{name}}\"? Its entities will be removed from this page.": {
+    "retiredIn": "4.0.0",
+    "reason": "Says what is lost: the page and its tiles, and that a tile leaves the page it is on"
+  },
+  "Delete \"{{name}}\"? Its entities will be removed from this view.": {
+    "retiredIn": "4.0.0",
+    "reason": "Says what is lost: the page and its tiles, and that a tile leaves the page it is on"
+  },
+  "Remove \"{{name}}\" from Quick Access?": {
+    "retiredIn": "4.0.0",
+    "reason": "Says what is lost: the page and its tiles, and that a tile leaves the page it is on"
+  },
+  "Entity removed from Quick Access": {
+    "retiredIn": "4.0.0",
+    "reason": "Says what is lost: the page and its tiles, and that a tile leaves the page it is on"
   }
 }

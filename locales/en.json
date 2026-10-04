@@ -258,7 +258,6 @@
   "Delete": "Delete",
   "Delete current view": "Delete current view",
   "Delete Quick Access View": "Delete Quick Access View",
-  "Delete \"{{name}}\"? Its entities will be removed from this view.": "Delete \"{{name}}\"? Its entities will be removed from this view.",
   "At least one Quick Access view is required": "At least one Quick Access view is required",
   "Quick Access view added": "Quick Access view added",
   "Quick Access view renamed": "Quick Access view renamed",
@@ -384,7 +383,6 @@
   "Page renamed": "Page renamed",
   "Page deleted": "Page deleted",
   "Page updated": "Page updated",
-  "Delete \"{{name}}\"? Its entities will be removed from this page.": "Delete \"{{name}}\"? Its entities will be removed from this page.",
   "Adding to: {{name}}": "Adding to: {{name}}",
   "Living Room": "Living Room",
   "Bedroom": "Bedroom",
@@ -942,8 +940,6 @@
   "Current time": "Current time",
   "Save & Exit Reorganize Mode (ESC)": "Save & Exit Reorganize Mode (ESC)",
   "Remove from Quick Access": "Remove from Quick Access",
-  "Remove \"{{name}}\" from Quick Access?": "Remove \"{{name}}\" from Quick Access?",
-  "Entity removed from Quick Access": "Entity removed from Quick Access",
   "Mode": "Mode",
   "Playing now": "Playing now",
   "{{percent}}% brightness": "{{percent}}% brightness",
@@ -1727,5 +1723,8 @@
   "Home Assistant has no weather entities. Add a weather integration, then reopen this list.": "Home Assistant has no weather entities. Add a weather integration, then reopen this list.",
   "Not downloaded": "Not downloaded",
   "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\", for example: {{binding}}": "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\", for example: {{binding}}",
-  "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\".": "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\"."
+  "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\".": "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\".",
+  "Delete \"{{name}}\" and its tiles?": "Delete \"{{name}}\" and its tiles?",
+  "Remove \"{{name}}\" from \"{{page}}\"?": "Remove \"{{name}}\" from \"{{page}}\"?",
+  "Removed from \"{{page}}\"": "Removed from \"{{page}}\""
 }

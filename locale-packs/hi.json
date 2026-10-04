@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.67",
+  "version": "1.2.68",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1825,6 +1825,9 @@
     "Home Assistant has no weather entities. Add a weather integration, then reopen this list.": "Home Assistant में कोई मौसम एंटिटी नहीं है। मौसम इंटीग्रेशन जोड़ें, फिर यह सूची दोबारा खोलें।",
     "Not downloaded": "डाउनलोड नहीं किया गया",
     "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\", for example: {{binding}}": "Hyprland ने “{{shortcut}}” को पुराने ऐप नाम “{{legacyAppId}}” से भेजा। यह फिलहाल चलता है; बाइंड को “{{target}}” में बदलें, उदाहरण: {{binding}}",
-    "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\".": "Hyprland ने “{{shortcut}}” को पुराने ऐप नाम “{{legacyAppId}}” से भेजा। यह फिलहाल चलता है; बाइंड को “{{target}}” में बदलें।"
+    "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\".": "Hyprland ने “{{shortcut}}” को पुराने ऐप नाम “{{legacyAppId}}” से भेजा। यह फिलहाल चलता है; बाइंड को “{{target}}” में बदलें।",
+    "Delete \"{{name}}\" and its tiles?": "\"{{name}}\" और उसके टाइल हटाएं?",
+    "Remove \"{{name}}\" from \"{{page}}\"?": "\"{{name}}\" को \"{{page}}\" से हटाएं?",
+    "Removed from \"{{page}}\"": "\"{{page}}\" से हटाया गया"
   }
 }
