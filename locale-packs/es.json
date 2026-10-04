@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.56",
+  "version": "1.2.57",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1781,6 +1781,14 @@
     "Keep editing": "Seguir editando",
     "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Mostrando los primeros {{shown}} de {{count}} iconos. Escribe para acotarlos.",
     "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "Modo de reorganización activado. Arrastra o pulsa Alt+flechas para reordenar. Pulsa Esc para finalizar.",
-    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "Modo de reorganización activado. Arrastra, selecciona o pulsa Alt+flechas para reordenar. Usa los botones de una tarjeta para anclarla, renombrarla o eliminarla. Pulsa Esc para finalizar."
+    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "Modo de reorganización activado. Arrastra, selecciona o pulsa Alt+flechas para reordenar. Usa los botones de una tarjeta para anclarla, renombrarla o eliminarla. Pulsa Esc para finalizar.",
+    "Welcome to HA Desktop Widget": "Te damos la bienvenida a HA Desktop Widget",
+    "A new version is available": "Hay una nueva versión disponible",
+    "Version {{version}} is available. Open Settings > Advanced to download it.": "La versión {{version}} está disponible. Abre Configuración > Avanzado para descargarla.",
+    "Showing the first {{shown}} of {{count}} entities. Type to narrow them.": "Mostrando las primeras {{shown}} de {{count}} entidades. Escribe para acotarlas.",
+    "Up to {{max}} sensors. Selected: {{count}}.": "Hasta {{max}} sensores. Seleccionados: {{count}}.",
+    "Maximum reached. Remove a sensor to add another.": "Se alcanzó el máximo. Elimina un sensor para añadir otro.",
+    "No sensors match \"{{query}}\"": "Ningún sensor coincide con \"{{query}}\"",
+    "What’s new": "Novedades"
   }
 }

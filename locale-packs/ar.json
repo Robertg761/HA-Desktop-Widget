@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.57",
+  "version": "1.2.58",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1781,6 +1781,14 @@
     "Keep editing": "متابعة التعديل",
     "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "عرض أول {{shown}} من {{count}} أيقونة. اكتب لتضييق النتائج.",
     "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "وضع إعادة الترتيب مفعّل. اسحب أو اضغط Alt مع مفاتيح الأسهم لإعادة الترتيب. اضغط Esc للإنهاء.",
-    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "وضع إعادة الترتيب مفعّل. اسحب أو حدّد أو اضغط Alt مع مفاتيح الأسهم لإعادة الترتيب. استخدم الأزرار على البطاقة للتثبيت أو إعادة التسمية أو الإزالة. اضغط Esc للإنهاء."
+    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "وضع إعادة الترتيب مفعّل. اسحب أو حدّد أو اضغط Alt مع مفاتيح الأسهم لإعادة الترتيب. استخدم الأزرار على البطاقة للتثبيت أو إعادة التسمية أو الإزالة. اضغط Esc للإنهاء.",
+    "Welcome to HA Desktop Widget": "مرحبًا بك في HA Desktop Widget",
+    "A new version is available": "يتوفر إصدار جديد",
+    "Version {{version}} is available. Open Settings > Advanced to download it.": "الإصدار {{version}} متاح. افتح الإعدادات > متقدم لتنزيله.",
+    "Showing the first {{shown}} of {{count}} entities. Type to narrow them.": "عرض أول {{shown}} من {{count}} كيان. اكتب لتضييق النتائج.",
+    "Up to {{max}} sensors. Selected: {{count}}.": "حتى {{max}} مستشعرات. المحدد: {{count}}.",
+    "Maximum reached. Remove a sensor to add another.": "تم بلوغ الحد الأقصى. أزل مستشعرًا لإضافة آخر.",
+    "No sensors match \"{{query}}\"": "لا توجد مستشعرات تطابق \"{{query}}\"",
+    "What’s new": "الجديد"
   }
 }

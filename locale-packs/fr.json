@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.56",
+  "version": "1.2.57",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1781,6 +1781,14 @@
     "Keep editing": "Continuer la modification",
     "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Affichage des {{shown}} premières icônes sur {{count}}. Saisissez du texte pour les affiner.",
     "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "Mode réorganisation activé. Glissez ou appuyez sur Alt+flèches pour réordonner. Appuyez sur Échap pour terminer.",
-    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "Mode réorganisation activé. Glissez, sélectionnez ou appuyez sur Alt+flèches pour réordonner. Utilisez les boutons d'une vignette pour l'épingler, la renommer ou la supprimer. Appuyez sur Échap pour terminer."
+    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "Mode réorganisation activé. Glissez, sélectionnez ou appuyez sur Alt+flèches pour réordonner. Utilisez les boutons d'une vignette pour l'épingler, la renommer ou la supprimer. Appuyez sur Échap pour terminer.",
+    "Welcome to HA Desktop Widget": "Bienvenue dans HA Desktop Widget",
+    "A new version is available": "Une nouvelle version est disponible",
+    "Version {{version}} is available. Open Settings > Advanced to download it.": "La version {{version}} est disponible. Ouvrez Paramètres > Avancé pour la télécharger.",
+    "Showing the first {{shown}} of {{count}} entities. Type to narrow them.": "Affichage des {{shown}} premières entités sur {{count}}. Saisissez du texte pour les affiner.",
+    "Up to {{max}} sensors. Selected: {{count}}.": "Jusqu'à {{max}} capteurs. Sélectionnés : {{count}}.",
+    "Maximum reached. Remove a sensor to add another.": "Maximum atteint. Supprimez un capteur pour en ajouter un autre.",
+    "No sensors match \"{{query}}\"": "Aucun capteur ne correspond à « {{query}} »",
+    "What’s new": "Nouveautés"
   }
 }

@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.57",
+  "version": "1.2.58",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1781,6 +1781,14 @@
     "Keep editing": "संपादन जारी रखें",
     "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "{{count}} में से पहले {{shown}} आइकन दिखाए जा रहे हैं। सीमित करने के लिए टाइप करें।",
     "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "पुनर्व्यवस्थित मोड सक्षम। क्रम बदलने के लिए खींचें या Alt+तीर कुंजियाँ दबाएं। पूरा करने के लिए Esc दबाएं।",
-    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "पुनर्व्यवस्थित मोड सक्षम। क्रम बदलने के लिए खींचें, चुनें या Alt+तीर कुंजियाँ दबाएं। पिन करने, नाम बदलने या हटाने के लिए टाइल के बटन उपयोग करें। पूरा करने के लिए Esc दबाएं।"
+    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "पुनर्व्यवस्थित मोड सक्षम। क्रम बदलने के लिए खींचें, चुनें या Alt+तीर कुंजियाँ दबाएं। पिन करने, नाम बदलने या हटाने के लिए टाइल के बटन उपयोग करें। पूरा करने के लिए Esc दबाएं।",
+    "Welcome to HA Desktop Widget": "HA Desktop Widget में आपका स्वागत है",
+    "A new version is available": "एक नया संस्करण उपलब्ध है",
+    "Version {{version}} is available. Open Settings > Advanced to download it.": "संस्करण {{version}} उपलब्ध है। इसे डाउनलोड करने के लिए सेटिंग्स > उन्नत खोलें।",
+    "Showing the first {{shown}} of {{count}} entities. Type to narrow them.": "{{count}} में से पहली {{shown}} एंटिटी दिखाई जा रही हैं। सीमित करने के लिए टाइप करें।",
+    "Up to {{max}} sensors. Selected: {{count}}.": "अधिकतम {{max}} सेंसर। चयनित: {{count}}।",
+    "Maximum reached. Remove a sensor to add another.": "अधिकतम सीमा पूरी हो गई। दूसरा जोड़ने के लिए एक सेंसर हटाएं।",
+    "No sensors match \"{{query}}\"": "\"{{query}}\" से मेल खाता कोई सेंसर नहीं",
+    "What’s new": "नया क्या है"
   }
 }

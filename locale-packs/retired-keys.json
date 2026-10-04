@@ -322,5 +322,21 @@
   "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": {
     "retiredIn": "4.0.0",
     "reason": "Shortened before release: the first wording wrapped to three lines at 500px and four at 340px, over the bottom tile row"
+  },
+  "Welcome to Home Assistant Widget": {
+    "retiredIn": "4.0.0",
+    "reason": "The product is called HA Desktop Widget everywhere, as the window title and installer already did"
+  },
+  "Home Assistant Widget": {
+    "retiredIn": "4.0.0",
+    "reason": "The product is called HA Desktop Widget everywhere, as the window title and installer already did"
+  },
+  "Install Update": {
+    "retiredIn": "4.0.0",
+    "reason": "The update buttons use sentence case, as the rest of Settings does; the install button now says what it will do"
+  },
+  "{{count}} of {{max}} sensors.": {
+    "retiredIn": "4.0.0",
+    "reason": "The count line says what is selected and what the limit is, instead of reading as a total"
   }
 }
