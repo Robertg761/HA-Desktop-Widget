@@ -99,12 +99,26 @@
 
 /* styles.css turns every checkbox inside a .form-group into a toggle switch. A pick list of
    entities reads better as plain checkboxes, so these selectors outrank that rule. */
-.room-dashboard .room-entity-list label:has(input[type='checkbox']) {
+.room-dashboard .room-entity-list label:has(input[type='checkbox']),
+.room-dashboard .room-show-all {
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-normal);
 }
 
-.room-dashboard .room-entity-list input[type='checkbox'] {
+/* The switch that shows every entity, not just the controllable ones, above the list. */
+.room-dashboard .room-show-all {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.room-dashboard .room-show-all[hidden] {
+  display: none;
+}
+
+.room-dashboard .room-entity-list input[type='checkbox'],
+.room-dashboard .room-show-all input[type='checkbox'] {
   appearance: auto;
   -webkit-appearance: auto;
   width: 16px;
@@ -119,7 +133,8 @@
   accent-color: var(--accent);
 }
 
-.room-dashboard .room-entity-list input[type='checkbox']::after {
+.room-dashboard .room-entity-list input[type='checkbox']::after,
+.room-dashboard .room-show-all input[type='checkbox']::after {
   content: none;
 }
 

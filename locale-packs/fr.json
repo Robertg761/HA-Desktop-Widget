@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.67",
+  "version": "1.2.68",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1828,6 +1828,7 @@
     "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\".": "Hyprland a envoyé « {{shortcut}} » sous l'ancien nom d'application « {{legacyAppId}} ». Cela fonctionne encore pour l'instant ; remplacez la liaison par « {{target}} ».",
     "Delete \"{{name}}\" and its tiles?": "Supprimer « {{name}} » et ses vignettes ?",
     "Remove \"{{name}}\" from \"{{page}}\"?": "Retirer « {{name}} » de « {{page}} » ?",
-    "Removed from \"{{page}}\"": "Retiré de « {{page}} »"
+    "Removed from \"{{page}}\"": "Retiré de « {{page}} »",
+    "Show all entities": "Afficher toutes les entités"
   }
 }

@@ -292,6 +292,65 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.querySelector('.room-device-search').hidden).toBe(false);
     });
 
+    it('opens the unscoped starter list on the controllable entities, and keeps ticks when the rest is shown', async () => {
+      mockRequest.mockImplementation(({ type }) =>
+        Promise.resolve(
+          type === 'get_states'
+            ? {
+                success: true,
+                result: [
+                  ...entities,
+                  { entity_id: 'person.me', state: 'home', attributes: {} },
+                  { entity_id: 'update.core', state: 'off', attributes: {} },
+                ],
+              }
+            : { success: false, error: { code: 'unauthorized' } }
+        )
+      );
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      const values = () =>
+        [...document.querySelectorAll('.room-entity-list input')].map((input) => input.value);
+
+      // Persons, updates and sensors are not what a first page is made of.
+      expect(values()).toEqual(['light.desk', 'switch.offline']);
+
+      document.querySelector('input[value="switch.offline"]').click();
+      document.querySelector('.room-show-all input').click();
+      expect(values()).toEqual([
+        'light.desk',
+        'person.me',
+        'sensor.temperature',
+        'switch.offline',
+        'update.core',
+      ]);
+      expect(
+        [...document.querySelectorAll('.room-entity-list input:checked')].map(
+          (input) => input.value
+        )
+      ).toEqual(['light.desk', 'switch.offline']);
+
+      document.querySelector('.room-show-all input').click();
+      expect(values()).toEqual(['light.desk', 'switch.offline']);
+    });
+
+    it('does not offer the switch when every entity is already shown', async () => {
+      mockRequest.mockImplementation(({ type }) =>
+        Promise.resolve(
+          type === 'get_states'
+            ? {
+                success: true,
+                result: entities.filter((entity) => entity.entity_id.startsWith('light')),
+              }
+            : { success: false, error: { code: 'unauthorized' } }
+        )
+      );
+      ui.showAddPageModal({ starter: true });
+      await flush();
+
+      expect(document.querySelector('.room-show-all').hidden).toBe(true);
+    });
+
     it('falls back to devices for non-admins, previews selection, and saves additively', async () => {
       state.setConfig({
         ...state.CONFIG,
@@ -308,6 +367,13 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.showAddPageModal({ starter: true });
       await flush();
       expect(document.querySelector('#add-page-name').value).toBe('My devices');
+      // It opens on what a first page is made of; the sensor and the button wait behind a switch.
+      expect(
+        [...document.querySelectorAll('.room-entity-list input')].map((input) => input.value)
+      ).toEqual(['light.desk', 'switch.offline']);
+      const showAll = document.querySelector('.room-show-all input');
+      expect(showAll.closest('label').hidden).toBe(false);
+      showAll.click();
       expect(document.querySelectorAll('.room-entity-list input')).toHaveLength(3);
       expect(document.querySelectorAll('.room-entity-list input:checked')).toHaveLength(1);
       expect(document.querySelector('.room-dashboard-preview').textContent).toContain(
@@ -556,6 +622,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
       ui.showAddPageModal({ starter: true });
       await flush();
+      document.querySelector('.room-show-all input').click();
       expect(document.querySelectorAll('.room-entity-list input')).toHaveLength(3);
       expect(document.querySelector('input[value="light.hidden"]')).toBeNull();
       expect(document.querySelector('input[value="light.disabled"]')).toBeNull();
@@ -579,7 +646,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       connection.mockReturnValue(true);
       await jest.advanceTimersByTimeAsync(100);
       await flush();
-      expect(document.querySelectorAll('.room-entity-list input')).toHaveLength(3);
+      expect(document.querySelectorAll('.room-entity-list input')).toHaveLength(2);
       expect(document.querySelector('#add-page-save-btn').disabled).toBe(false);
       document.querySelector('#add-page-cancel-btn').click();
       connection.mockReturnValue(false);

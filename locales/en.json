@@ -1726,5 +1726,6 @@
   "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\".": "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\".",
   "Delete \"{{name}}\" and its tiles?": "Delete \"{{name}}\" and its tiles?",
   "Remove \"{{name}}\" from \"{{page}}\"?": "Remove \"{{name}}\" from \"{{page}}\"?",
-  "Removed from \"{{page}}\"": "Removed from \"{{page}}\""
+  "Removed from \"{{page}}\"": "Removed from \"{{page}}\"",
+  "Show all entities": "Show all entities"
 }

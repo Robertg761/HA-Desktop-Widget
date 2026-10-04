@@ -155,6 +155,9 @@ const LIGHT_COLOR_PRESETS = [
   { hex: '#7C83FF', name: 'Indigo' },
   { hex: '#FF6B9D', name: 'Pink' },
 ];
+// The kinds of entity a first page is made of; the starter dialog lists these first and suggests up
+// to eight of them.
+const CONTROLLABLE_ENTITY_PATTERN = /^(light|switch|climate|fan|cover|media_player)\./;
 const DESKTOP_PIN_SCENE_BASE_MIN_BOUNDS = { width: 97, height: 83 };
 const DESKTOP_PIN_SCENE_DEFAULT_BOUNDS = { width: 168, height: 148 };
 const QUICK_ACCESS_TILE_VALUE_SIZE_OPTIONS = new Set([
@@ -1306,6 +1309,16 @@ function showAddPageModal({ starter = false } = {}) {
   deviceSearch.addEventListener('input', filterDevices);
   deviceSearch.hidden = true;
   roomGroup.insertBefore(deviceSearch, roomEntities);
+  // With no room chosen the starter lists every entity Home Assistant has: persons, automations,
+  // updates and zones among them. It opens on the ones a first page is made of, and this shows the
+  // rest.
+  const showAllLabel = document.createElement('label');
+  showAllLabel.className = 'room-show-all';
+  const showAll = document.createElement('input');
+  showAll.type = 'checkbox';
+  showAllLabel.append(showAll, document.createTextNode(t('Show all entities')));
+  showAllLabel.hidden = true;
+  roomGroup.insertBefore(showAllLabel, deviceSearch);
   modal.querySelector('.modal-body').appendChild(roomGroup);
   let registry = null;
   let availableStates = state.STATES;
@@ -1340,6 +1353,20 @@ function showAddPageModal({ starter = false } = {}) {
     }
   };
   roomEntities.addEventListener('change', updatePreview);
+  // Showing more or fewer entities rebuilds the list; what was ticked stays ticked.
+  showAll.addEventListener('change', () => {
+    const ticked = new Set(
+      [...roomEntities.querySelectorAll('input:checked')].map((box) => box.value)
+    );
+    // The status line (rooms unavailable, say) is about the rooms, not about this list.
+    const status = roomStatus.textContent;
+    roomSelect.onchange();
+    roomStatus.textContent = status;
+    roomEntities.querySelectorAll('input').forEach((box) => {
+      if (ticked.has(box.value)) box.checked = true;
+    });
+    updatePreview();
+  });
   // Remember the name we filled in from a room so a name the user typed is never overwritten.
   let autoFilledName = '';
   loadRooms.onclick = async () => {
@@ -1430,10 +1457,14 @@ function showAddPageModal({ starter = false } = {}) {
       setPageName(area?.name || (starter ? t('My devices') : ''));
       autoFilledName = input.value;
     }
-    const ids =
-      !roomSelect.value && starter
-        ? selectableEntityIds(availableStates, registry.entities)
-        : entitiesForArea(roomSelect.value, registry.entities, registry.devices, availableStates);
+    const unscoped = !roomSelect.value && starter;
+    let ids = unscoped
+      ? selectableEntityIds(availableStates, registry.entities)
+      : entitiesForArea(roomSelect.value, registry.entities, registry.devices, availableStates);
+    // Only the controllable kinds, unless asked for more or there is nothing else to show.
+    const controllableIds = ids.filter((id) => CONTROLLABLE_ENTITY_PATTERN.test(id));
+    showAllLabel.hidden = !unscoped || controllableIds.length === ids.length;
+    if (unscoped && !showAll.checked && controllableIds.length) ids = controllableIds;
     roomStatus.textContent = ids.length
       ? t('Choose the entities to include.')
       : t('No available entities in this room.');
@@ -1447,7 +1478,7 @@ function showAddPageModal({ starter = false } = {}) {
       ids
         .filter(
           (id) =>
-            /^(light|switch|climate|fan|cover|media_player)\./.test(id) &&
+            CONTROLLABLE_ENTITY_PATTERN.test(id) &&
             !['unknown', 'unavailable'].includes(availableStates[id].state)
         )
         .slice(0, 8)
