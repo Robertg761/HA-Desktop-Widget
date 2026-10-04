@@ -69,12 +69,27 @@ Thank you for your interest in contributing to HA Desktop Widget! This document 
 - **Responsive**: Ensure styles work across different screen sizes
 - **Performance**: Avoid expensive CSS properties in animations
 - **Consistency**: Follow the existing design system
+- **Right to left**: Arabic mirrors the whole layout, so write `margin-inline`, `inset-inline-start` and `border-inline-end` rather than left and right. A physical offset that has to follow the reading direction (a switch knob's travel, a hairline's side) multiplies by `var(--inline-sign)`, and a gradient that fills towards where a slider's thumb moves uses `var(--slider-dir)`. Names and values written by Home Assistant go in the `unicode-bidi: plaintext` list at the end of `styles.css`, so an English name in an Arabic row is cut at its end and keeps its punctuation. Tracking and capitals are switched off there for Arabic, Devanagari and CJK, whatever a rule says.
 
 ### Code Organization
 
 - **Separation of Concerns**: Keep UI logic separate from business logic
 - **Modularity**: Break large functions into smaller, focused functions
 - **Error Handling**: Always include proper error handling and user feedback
+
+### Values, Units, Dates and Sorting
+
+- **One formatter**: Show an entity's state with `getEntityDisplayState()` (`packages/widget-renderer/src/utils.js`) and build any other number, unit, percentage, temperature, time, date, duration or relative time with the helpers in `packages/widget-renderer/src/format.js` (`formatMeasurement`, `formatPercent`, `formatClockTime`, `formatRelativeTime`, ...). Do not write `` `${value}${unit}` ``, `` `${n}%` `` or `.toFixed()` for text a person reads: the helpers follow the language and region (`getFormatLocale()`), take Home Assistant's own unit and precision, and never wrap a unit onto its own line.
+- **State words**: Raw states map to translated names through `ha-state-names.cjs`, shared with the tray. A select, text or other free-form state is shown as written.
+- **Search and sort**: Use `normalizeSearchText()` for matching and `compareNames()` for ordering names, not `toLowerCase().includes()` or `localeCompare()` without a locale.
+- **Time settings**: Merge the Time format setting through `formatClockTime()` / `formatClockDateTime()` rather than passing `hour12` yourself.
+
+### Dialogs, Focus and Toasts
+
+- **Dialogs**: Open every dialog with `openDialog()` and close it with `closeDialog()` from `src/ui-utils.js`. They give you the role, focus trap, Escape and Enter handling, backdrop dismissal, stacking over other dialogs and focus return to whatever opened it. Do not add your own keydown or backdrop listener to a dialog.
+- **Initial focus**: A dialog starts on its first control, not on the header's Close button. Use `initialFocus` (or `data-initial-focus`) for a different start, and `focusFallback` when the opener may be gone by the time the dialog closes.
+- **Rebuilding the UI**: Wrap a re-render in `renderKeepingFocus()` and give controls a `data-focus-key` so focus survives it. Use `disableControlsKeepingFocus()` instead of setting `disabled` on a control that has focus.
+- **Toasts**: Use `showToast()`. Errors stay until dismissed, repeats are folded into one toast, and a toast raised by a surface can be cleared with its `source` option and `dismissToasts()`.
 
 ### Language Packs
 
@@ -86,7 +101,17 @@ node scripts/locale-packs.cjs bump               # patch-bump every pack that ch
 node scripts/locale-packs.cjs check              # keys, {{placeholders}}, no blank text, versions and hashes agree
 ```
 
-`remove <key>...` deletes keys everywhere, `manifest` only refreshes the manifest (after a hand edit, say), and `check --against origin/main` also fails on a pack that changed without a version bump. Packs are downloaded from `main`, so a translation only reaches users once it is merged and the manifest is current. Reuse the words a pack already uses for the same term and keep `{{placeholders}}` identical. A pack value that is still the English text fails the untranslated-string guard unless that language really writes the word that way.
+`manifest` only refreshes the manifest (after a hand edit, say), and `check --against origin/main` also fails on a pack that changed without a version bump. Removing a string is different, see "Retiring strings" below. Packs are downloaded from `main`, so a translation only reaches users once it is merged and the manifest is current. Reuse the words a pack already uses for the same term and keep `{{placeholders}}` identical. A pack value that is still the English text fails the untranslated-string guard unless that language really writes the word that way.
+
+**Retiring strings.** Every installed app downloads the packs from `main`, from the `minAppVersion` in the manifest up (3.4.1 today), merges them over its own bundled English and looks strings up by their English text. So a pack serves every release that can still install it, not just the one you are working on: delete a string from the packs and every older app silently shows English for it. Never delete a key from a pack by hand and do not raise `minAppVersion` to make a removal safe, which stops older apps installing any pack until they upgrade. Retire the key instead:
+
+```bash
+node scripts/locale-packs.cjs remove --in 4.0.0 --reason "Replaced by the new filter bar" "Old text"
+```
+
+`--in` is the release that ships the removal, the first one that no longer asks for the key. The key leaves `locales/en.json` and the bundled `locales/de.json`, so the app never shows it, and goes into `locale-packs/retired-keys.json` as `{retiredIn, reason}` (plus `en` when the English text was not the key itself, like the tray state names). The packs keep their translations, so they hold the current keys plus the retired ones, and a retirement alone changes no pack and needs no version bump. Retire a key whenever a release has shipped it and the code stops using it: that includes rewording a string, because the reworded text is a new key and the old one is retired. `check` accepts a pack key that is current or retired, and fails on any other extra key, on a retired key that is also current and on a retired key missing from a pack. If the text comes back, `add` it again with every language: that takes it off the retired list.
+
+A retired key may be purged with `remove --purge <key>...` once `minAppVersion` of every pack, in the manifest and in the pack file, has been raised to the `retiredIn` release or later, because nothing that can install a pack uses the key any more. The tool refuses sooner, and a purge also deletes the translations. `--purge` on a current key skips all that, for text that was never released. `tests/fixtures/locale-pack-released-keys.json` lists the keys of each stable release the packs still serve, and a test fails when any pack lacks one of them. Add the new release to it when you cut a stable release (`git show vX.Y.Z:locales/en.json`), and drop a release only after raising `minAppVersion` past it.
 
 **Merge conflicts in the packs.** Two branches that add strings both append to the end of every catalog, so they always conflict. Do not resolve those files by hand. Keep both sides' keys and let the tool redo the bookkeeping:
 
@@ -102,7 +127,7 @@ git add locales locale-packs
 
 `export` lists only the texts your branch changed: every language of a key you added, and just the languages you edited for a key that already existed. A language only main touched keeps main's newer text. If both branches reworded the same language of the same key, yours replaces main's, so look at `git diff MERGE_HEAD -- locale-packs` before you commit.
 
-`export` cannot say "deleted", so a key you deleted comes back with main's catalogs. If your branch removed any, run `node scripts/locale-packs.cjs remove <key>...` after the `add` step and before `bump`. In the other direction, if main deleted a key your branch edited, `add` stops with `missing` for that key and writes nothing. To keep the key, give its entry `en` and every language; to accept main's deletion, delete its entry from the exported file. Then run `add` again.
+`export` cannot say "deleted", so a key you retired comes back with main's catalogs. If your branch retired any, run `node scripts/locale-packs.cjs remove --in <version> --reason "<why>" <key>...` again after the `add` step and before `bump`, which puts it back on the retired list with its translations. If main retired the key as well, skip it: `remove` stops with "Already retired". In the other direction, if main retired a key your branch edited, `add` stops with `missing` for that key and writes nothing. To keep the key, give its entry `en` and every language, which also takes it off the retired list; to accept main's retirement, delete its entry from the exported file. Then run `add` again.
 
 ## 🧪 Testing
 

@@ -1,4 +1,5 @@
 const { getClimateControlCapabilities } = require('./climate-controls.cjs');
+const { isTimerLikeSensor } = require('../packages/widget-renderer/src/timer-sensors.cjs');
 
 const DESKTOP_PIN_SUPPORTED_FAMILIES = new Set([
   'light',
@@ -36,6 +37,15 @@ const DESKTOP_PIN_FEATURES = Object.freeze({
     previousTrack: 16,
     nextTrack: 32,
     play: 16384,
+  }),
+  // Home Assistant's VacuumEntityFeature flags.
+  vacuum: Object.freeze({
+    turnOn: 1,
+    turnOff: 2,
+    pause: 4,
+    stop: 8,
+    returnHome: 16,
+    start: 8192,
   }),
 });
 
@@ -135,6 +145,36 @@ function getDesktopPinCapabilities(entity = null) {
   }
 }
 
+/**
+ * The services a vacuum offers, read from its supported_features. A pin window never asks Home
+ * Assistant for its service list, so this is what tells it that Start, Pause or Return exist. A
+ * vacuum that publishes no feature flags is assumed to take the usual commands.
+ */
+function getDesktopPinVacuumServices(entity = null) {
+  const supportedFeatures = Number(entity?.attributes?.supported_features);
+  if (!Number.isFinite(supportedFeatures) || supportedFeatures <= 0) {
+    return {
+      start: true,
+      turn_on: false,
+      pause: true,
+      return_to_base: true,
+      stop: false,
+      turn_off: false,
+    };
+  }
+  const features = DESKTOP_PIN_FEATURES.vacuum;
+  const has = (feature) => (supportedFeatures & feature) === feature;
+  return {
+    start: has(features.start),
+    // Vacuums written before START existed are switched on and off instead.
+    turn_on: has(features.turnOn),
+    pause: has(features.pause),
+    return_to_base: has(features.returnHome),
+    stop: has(features.stop),
+    turn_off: has(features.turnOff),
+  };
+}
+
 function normalizeEntityId(entityId) {
   if (typeof entityId !== 'string') return '';
   return entityId.trim();
@@ -151,33 +191,9 @@ function getDesktopPinDomain(entityOrEntityId = '') {
   return domain;
 }
 
-function isIsoFutureTimestamp(value) {
-  const stateValue = typeof value === 'string' ? value.trim() : '';
-  if (!stateValue || stateValue === 'unavailable' || stateValue === 'unknown') {
-    return false;
-  }
-
-  const iso8601Pattern = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?/;
-  if (!iso8601Pattern.test(stateValue)) {
-    return false;
-  }
-
-  const stateTime = new Date(stateValue).getTime();
-  return !Number.isNaN(stateTime) && stateTime > Date.now();
-}
-
+// One rule for every surface; see isTimerLikeSensor.
 function isTimerSensorEntity(entity) {
-  if (!entity?.entity_id?.startsWith('sensor.')) return false;
-
-  const attrs = entity.attributes || {};
-  return !!(
-    attrs.finishes_at ||
-    attrs.end_time ||
-    attrs.finish_time ||
-    attrs.duration ||
-    entity.entity_id.toLowerCase().includes('timer') ||
-    isIsoFutureTimestamp(entity.state)
-  );
+  return isTimerLikeSensor(entity);
 }
 
 function isTimerLikeEntity(entity) {
@@ -235,7 +251,10 @@ function resolveDesktopPinProfile(entityOrEntityId = null) {
     };
   }
 
-  if (isTimerLikeEntity(entity)) {
+  // A timer entity is recognised by its ID alone, so a pin works before the first Home Assistant
+  // snapshot has loaded the entity (and for one that has since been deleted). Timer-like sensors
+  // need the entity's attributes.
+  if (domain === 'timer' || isTimerLikeEntity(entity)) {
     return {
       ...baseProfile,
       family: 'timer',
@@ -351,6 +370,7 @@ module.exports = {
   DESKTOP_PIN_FEATURES,
   DESKTOP_PIN_SUPPORTED_FAMILIES,
   getDesktopPinCapabilities,
+  getDesktopPinVacuumServices,
   normalizeEntityId,
   getDesktopPinDomain,
   isTimerSensorEntity,

@@ -48,36 +48,12 @@ jest.mock('../../src/camera.js', () => ({
 }));
 
 jest.mock('../../src/ui-utils.js', () => {
-  const releaseFocusTrap = jest.fn();
   return {
     showToast: jest.fn(),
     showConfirm: jest.fn().mockResolvedValue(false),
     showLoading: jest.fn(),
     setStatus: jest.fn(),
-    trapFocus: jest.fn(),
-    releaseFocusTrap,
-    // Mirrors the real shared modal helper, which settles synchronously under NODE_ENV=test.
-    closeModal: jest.fn((modal, { remove = false, releaseFocus = false, onClosed } = {}) => {
-      if (modal) {
-        modal.classList.remove('modal-closing');
-        if (remove) {
-          modal.remove();
-        } else {
-          modal.classList.add('hidden');
-          if (modal.style.display) modal.style.display = 'none';
-        }
-        if (releaseFocus) releaseFocusTrap(modal);
-        onClosed?.();
-      }
-      return Promise.resolve();
-    }),
-    openModal: jest.fn((modal, { display = 'flex' } = {}) => {
-      if (!modal) return;
-      modal.classList.remove('modal-closing');
-      modal.classList.remove('hidden');
-      if (display) modal.style.display = display;
-      else modal.style.removeProperty('display');
-    }),
+    ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
     applyTheme: jest.fn(),
     applyUiPreferences: jest.fn(),
     isFrostedGlassAvailable: jest.fn(() => true),
@@ -660,6 +636,252 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       await flush();
       expect(document.querySelector('.room-dashboard button').textContent).toBe('Retry');
       expect(document.querySelector('.room-dashboard button').disabled).toBe(false);
+    });
+
+    it('leaves the starter able to save a named page after the rooms fail to load', async () => {
+      state.setConfig({
+        ...state.CONFIG,
+        customTabs: [{ id: 'default', name: 'All', entityIds: [] }],
+        activeTabId: 'default',
+      });
+      mockRequest.mockRejectedValue(new Error('Home Assistant is slow'));
+      ui.showAddPageModal({ starter: true });
+      await flush();
+
+      expect(document.querySelector('.room-dashboard [role="status"]').textContent).toContain(
+        'Could not load rooms'
+      );
+      const save = document.querySelector('#add-page-save-btn');
+      expect(save.disabled).toBe(false);
+
+      document.querySelector('#add-page-name').value = 'Attic';
+      save.click();
+      await flush();
+      expect(state.CONFIG.customTabs).toEqual([{ id: 'default', name: 'Attic', entityIds: [] }]);
+    });
+
+    it('says an empty page name is missing instead of doing nothing', async () => {
+      ui.showAddPageModal();
+      const input = document.querySelector('#add-page-name');
+      const error = document.querySelector('#add-page-name-error');
+      expect(error.hidden).toBe(true);
+      expect(input.hasAttribute('aria-describedby')).toBe(false);
+      const pages = state.CONFIG.customTabs;
+
+      document.querySelector('#add-page-save-btn').click();
+      expect(error.hidden).toBe(false);
+      expect(error.textContent).toBe('Enter page name');
+      expect(input.getAttribute('aria-invalid')).toBe('true');
+      expect(input.getAttribute('aria-describedby')).toBe('add-page-name-error');
+      expect(document.activeElement).toBe(input);
+      expect(state.CONFIG.customTabs).toBe(pages);
+
+      input.value = 'A';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      expect(error.hidden).toBe(true);
+      expect(input.hasAttribute('aria-invalid')).toBe(false);
+      expect(input.hasAttribute('aria-describedby')).toBe(false);
+    });
+
+    describe('when the page name is filled in for the person', () => {
+      const submitEmptyName = () => {
+        const input = document.querySelector('#add-page-name');
+        input.value = '';
+        document.querySelector('#add-page-save-btn').click();
+        expect(document.querySelector('#add-page-name-error').hidden).toBe(false);
+        expect(input.getAttribute('aria-invalid')).toBe('true');
+        return input;
+      };
+      const expectNameValid = (input) => {
+        expect(document.querySelector('#add-page-name-error').hidden).toBe(true);
+        expect(input.hasAttribute('aria-invalid')).toBe(false);
+        expect(input.hasAttribute('aria-describedby')).toBe(false);
+      };
+
+      it('stops calling the name missing once a quick pick supplies it', () => {
+        ui.showAddPageModal();
+        const input = submitEmptyName();
+
+        document.querySelector('.qa-add-chip[data-name="Office"]').click();
+        expect(input.value).toBe('Office');
+        expectNameValid(input);
+      });
+
+      it('stops calling the name missing once a quick pick supplies it along with its room', async () => {
+        registryResponses();
+        ui.showAddPageModal();
+        await flush();
+        const input = submitEmptyName();
+
+        document.querySelector('.qa-add-chip[data-name="Kitchen"]').click();
+        expect(document.querySelector('#add-page-room').value).toBe('kitchen');
+        expect(input.value).toBe('Kitchen');
+        expectNameValid(input);
+      });
+
+      it('stops calling the name missing once choosing a room supplies it', async () => {
+        registryResponses();
+        ui.showAddPageModal();
+        await flush();
+        const input = submitEmptyName();
+
+        const room = document.querySelector('#add-page-room');
+        room.value = 'office';
+        room.onchange();
+        expect(input.value).toBe('Office');
+        expectNameValid(input);
+      });
+
+      it('keeps saying the name is missing while a room leaves it empty', async () => {
+        registryResponses();
+        ui.showAddPageModal();
+        await flush();
+        const input = submitEmptyName();
+
+        const room = document.querySelector('#add-page-room');
+        room.value = '';
+        room.onchange();
+        expect(input.value).toBe('');
+        expect(document.querySelector('#add-page-name-error').hidden).toBe(false);
+        expect(input.getAttribute('aria-invalid')).toBe('true');
+      });
+    });
+
+    it('is named by its heading, with Cancel before Add Page in both order and look', () => {
+      ui.showAddPageModal();
+      const modal = document.getElementById('add-page-modal');
+      expect(modal.getAttribute('aria-labelledby')).toBe('add-page-title');
+      expect(document.getElementById('add-page-title').textContent).toBe('Add page');
+      expect(
+        [...modal.querySelectorAll('.modal-footer button')].map((button) => button.id)
+      ).toEqual(['add-page-cancel-btn', 'add-page-save-btn']);
+    });
+
+    describe('keyboard', () => {
+      const press = (target, key) => {
+        const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+        target.dispatchEvent(event);
+        return event;
+      };
+      const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+      it('starts on the page name, where typing begins', async () => {
+        ui.showAddPageModal();
+        await settle();
+
+        expect(document.activeElement).toBe(document.getElementById('add-page-name'));
+        expect(document.getElementById('add-page-modal').getAttribute('role')).toBe('dialog');
+      });
+
+      it('closes on Escape and on the backdrop, and the Escape goes no further', async () => {
+        ui.showAddPageModal();
+        await settle();
+        const pageEscape = jest.fn();
+        document.addEventListener('keydown', pageEscape);
+
+        expect(press(document.activeElement, 'Escape').defaultPrevented).toBe(true);
+        await settle();
+        expect(document.getElementById('add-page-modal')).toBeNull();
+        expect(pageEscape).not.toHaveBeenCalled();
+        document.removeEventListener('keydown', pageEscape);
+
+        ui.showAddPageModal();
+        document.getElementById('add-page-modal').click();
+        await settle();
+        expect(document.getElementById('add-page-modal')).toBeNull();
+      });
+
+      it('adds the page on Enter in the name field, and says what is missing when it is empty', async () => {
+        ui.showAddPageModal();
+        await settle();
+        const input = document.getElementById('add-page-name');
+
+        input.value = '';
+        press(input, 'Enter');
+        expect(document.getElementById('add-page-name-error').hidden).toBe(false);
+        expect(document.activeElement).toBe(input);
+        expect(document.getElementById('add-page-modal')).not.toBeNull();
+      });
+
+      it('keeps Tab inside, and leaves Enter on a button to that button', async () => {
+        ui.showAddPageModal();
+        await settle();
+        const modal = document.getElementById('add-page-modal');
+        const cancel = document.getElementById('add-page-cancel-btn');
+        const save = document.getElementById('add-page-save-btn');
+        const first = modal.querySelector('.close-btn');
+
+        expect(press(cancel, 'Enter').defaultPrevented).toBe(false);
+        save.focus();
+        const forward = press(save, 'Tab');
+        expect(forward.defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(first);
+      });
+    });
+
+    it('names the group of quick picks', () => {
+      ui.showAddPageModal();
+      const chips = document.querySelector('.qa-add-chips');
+      expect(chips.getAttribute('role')).toBe('group');
+      const label = document.getElementById(chips.getAttribute('aria-labelledby'));
+      expect(label.textContent).toBe('Quick picks');
+      expect(label.tagName).toBe('SPAN');
+    });
+
+    describe('filling an empty page beside other pages', () => {
+      const pagesWithEmpty = () => ({
+        ...state.CONFIG,
+        customTabs: [
+          { id: 'garage', name: 'Garage', entityIds: [] },
+          { id: 'home', name: 'Home', entityIds: ['light.desk'] },
+        ],
+        activeTabId: 'garage',
+      });
+
+      it('says it fills the page and keeps the page its name', async () => {
+        state.setConfig(pagesWithEmpty());
+        registryResponses();
+        ui.showAddPageModal({ starter: true });
+        await flush();
+
+        expect(document.getElementById('add-page-title').textContent).toBe('Fill this page');
+        expect(document.querySelector('#add-page-save-btn').textContent).toBe('Fill this page');
+        // Choosing a room (the dialog picked one) does not rename the page.
+        expect(document.querySelector('#add-page-room').value).toBe('kitchen');
+        expect(document.querySelector('#add-page-name').value).toBe('Garage');
+
+        document.querySelector('#add-page-save-btn').click();
+        await flush();
+        expect(state.CONFIG.customTabs).toEqual([
+          { id: 'garage', name: 'Garage', entityIds: ['light.stove'] },
+          { id: 'home', name: 'Home', entityIds: ['light.desk'] },
+        ]);
+      });
+
+      it('still lets the person type another name', async () => {
+        state.setConfig(pagesWithEmpty());
+        registryResponses();
+        ui.showAddPageModal({ starter: true });
+        await flush();
+        document.querySelector('#add-page-name').value = 'Workshop';
+        document.querySelector('#add-page-save-btn').click();
+        await flush();
+        expect(state.CONFIG.customTabs[0].name).toBe('Workshop');
+        expect(state.CONFIG.customTabs).toHaveLength(2);
+      });
+
+      it('keeps the first-run wording and room name for the only page', async () => {
+        state.setConfig({
+          ...state.CONFIG,
+          customTabs: [{ id: 'default', name: 'All', entityIds: [] }],
+          activeTabId: 'default',
+        });
+        registryResponses();
+        ui.showAddPageModal({ starter: true });
+        await flush();
+        expect(document.getElementById('add-page-title').textContent).toBe('Add page');
+        expect(document.querySelector('#add-page-name').value).toBe('Kitchen');
+      });
     });
   });
 
@@ -1435,6 +1657,50 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
     });
 
+    it('follows the tiles where they are drawn when a wide tile parts the screen from the DOM order', () => {
+      const ids = ['light.bedroom', 'switch.bedroom', 'light.living_room', 'light.office'];
+      const config = state.CONFIG;
+      config.favoriteEntities = ids;
+      config.customTabs = [{ id: 'main', name: 'Main', entityIds: ids }];
+      config.activeTabId = 'main';
+      state.setConfig(config);
+      state.setStates(
+        Object.fromEntries(
+          ids.map((id) => [id, sampleStates[id] || { entity_id: id, state: 'off', attributes: {} }])
+        )
+      );
+      ui.renderActiveTab();
+      const tiles = Array.from(document.querySelectorAll('#quick-controls .control-item'));
+      // A wide first tile and a narrow one beside it, then two narrow tiles in the row below. A
+      // step along the DOM from the first tile would land on the narrow one beside it, but down
+      // on the screen is the third.
+      const boxes = [
+        { left: 0, right: 208, top: 0, bottom: 80 },
+        { left: 216, right: 316, top: 0, bottom: 80 },
+        { left: 0, right: 100, top: 88, bottom: 168 },
+        { left: 108, right: 208, top: 88, bottom: 168 },
+      ];
+      tiles.forEach((tile, index) => {
+        tile.getBoundingClientRect = () => boxes[index];
+      });
+      const press = (tile, key) =>
+        tile.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+      const focusedTile = () => document.activeElement?.closest('.control-item');
+
+      press(tiles[0], 'ArrowDown');
+      expect(focusedTile()).toBe(tiles[2]);
+      press(tiles[2], 'ArrowRight');
+      expect(focusedTile()).toBe(tiles[3]);
+      press(tiles[3], 'ArrowUp');
+      expect(focusedTile()).toBe(tiles[0]);
+      press(tiles[0], 'ArrowRight');
+      expect(focusedTile()).toBe(tiles[1]);
+      press(tiles[1], 'ArrowDown');
+      expect(focusedTile()).toBe(tiles[3]);
+      // Leave the roving tab stop where tests expect to find it.
+      press(tiles[3], 'Home');
+    });
+
     it('lets non-admin users repair an unavailable entity with an explicit replacement', async () => {
       const replacement = {
         ...sampleStates['light.bedroom'],
@@ -1709,8 +1975,11 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       },
     ])('gives the $label dialog a focus lifecycle', ({ entity, modalSelector, closeSelector }) => {
       jest.useFakeTimers();
+      const opener = document.createElement('button');
+      document.body.appendChild(opener);
       try {
         state.setStates({ [entity.entity_id]: entity });
+        opener.focus();
         ui.openEntityDetailModal(entity);
         jest.advanceTimersByTime(0);
 
@@ -1720,14 +1989,17 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         expect(modal?.getAttribute('aria-modal')).toBe('true');
         expect(labelledBy).toBeTruthy();
         expect(modal?.querySelector('h2')?.id).toBe(labelledBy);
-        expect(uiUtils.trapFocus).toHaveBeenCalledWith(modal);
+        // These controls act on a device with one keypress, so focus starts on the heading: not
+        // on Close, and not on a control a stray key could move.
+        expect(document.activeElement).toBe(modal.querySelector('h2'));
 
         modal.querySelector(closeSelector).click();
         jest.advanceTimersByTime(250);
 
-        expect(uiUtils.releaseFocusTrap).toHaveBeenCalledWith(modal);
         expect(modal.isConnected).toBe(false);
+        expect(document.activeElement).toBe(opener);
       } finally {
+        opener.remove();
         jest.clearAllTimers();
         jest.useRealTimers();
       }
@@ -1835,6 +2107,82 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   // GROUP 2: Config Management (2 tests)
   // Note: toggleQuickAccess, saveQuickAccessOrder, removeFromQuickAccess not exported
   // ==============================================================================
+
+  describe('weather picker keyboard', () => {
+    const key = (target, name, init = {}) => {
+      const event = new KeyboardEvent('keydown', {
+        key: name,
+        bubbles: true,
+        cancelable: true,
+        ...init,
+      });
+      target.dispatchEvent(event);
+      return event;
+    };
+
+    beforeEach(() => {
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        '<span id="current-weather-name"></span><div id="weather-entities-list"></div>'
+      );
+      state.setStates(
+        Object.fromEntries(
+          ['alpha', 'bravo', 'charlie'].map((id) => [
+            `weather.${id}`,
+            { entity_id: `weather.${id}`, state: 'sunny', attributes: { friendly_name: id } },
+          ])
+        )
+      );
+      state.CONFIG.selectedWeatherEntity = 'weather.bravo';
+      ui.populateWeatherEntitiesList();
+    });
+
+    const options = () => [...document.querySelectorAll('#weather-entities-list [role="option"]')];
+
+    it('is one Tab stop, on the selected option', () => {
+      expect(options().map((option) => option.tabIndex)).toEqual([-1, 0, -1]);
+    });
+
+    it('falls back to the first option when none is selected', () => {
+      state.CONFIG.selectedWeatherEntity = null;
+      ui.populateWeatherEntitiesList();
+      expect(options().map((option) => option.tabIndex)).toEqual([0, -1, -1]);
+    });
+
+    it('moves between options with the arrows, Home and End, and carries the Tab stop along', () => {
+      options()[1].focus();
+      expect(key(options()[1], 'ArrowDown').defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(options()[2]);
+      expect(options().map((option) => option.tabIndex)).toEqual([-1, -1, 0]);
+
+      key(options()[2], 'ArrowDown');
+      expect(document.activeElement).toBe(options()[0]);
+      key(options()[0], 'End');
+      expect(document.activeElement).toBe(options()[2]);
+      key(options()[2], 'Home');
+      expect(document.activeElement).toBe(options()[0]);
+      key(options()[0], 'ArrowUp');
+      expect(document.activeElement).toBe(options()[2]);
+    });
+
+    it('leaves modified arrows, Tab and letters to the browser', () => {
+      options()[1].focus();
+      expect(key(options()[1], 'ArrowDown', { altKey: true }).defaultPrevented).toBe(false);
+      expect(key(options()[1], 'Tab').defaultPrevented).toBe(false);
+      expect(key(options()[1], 'a').defaultPrevented).toBe(false);
+      expect(document.activeElement).toBe(options()[1]);
+    });
+
+    it('keeps focus on the same option when picking it rebuilds the list', async () => {
+      options()[2].focus();
+      key(options()[2], 'Enter');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(options()).toHaveLength(3);
+      expect(document.activeElement).toBe(options()[2]);
+      expect(options()[2].tabIndex).toBe(0);
+    });
+  });
 
   describe('selectWeatherEntity', () => {
     it('sends a narrow patch and applies the authoritative config response', async () => {
@@ -2115,7 +2463,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       ui.updateWeatherFromHA();
 
-      expect(document.getElementById('weather-wind').textContent).toBe('20 km/h');
+      expect(document.getElementById('weather-wind').textContent).toBe('20\u00a0km/h');
     });
 
     it('should set sunny icon for clear/sunny conditions', () => {
@@ -2308,12 +2656,26 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.updateTimeDisplay();
 
       expect(document.getElementById('current-time').textContent).toBe(
+        // A 12-hour clock has no leading zero ("8:05 PM"), like every other time label.
         new Date('2025-01-15T20:05:00').toLocaleTimeString('en', {
-          hour: '2-digit',
+          hour: 'numeric',
           minute: '2-digit',
           hour12: true,
         })
       );
+      jest.useRealTimers();
+    });
+
+    it('keeps the leading zero on a 24-hour clock', () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2025-01-15T07:05:00'));
+      const config = state.CONFIG;
+      config.ui = { ...(config.ui || {}), timeFormat: '24-hour' };
+      state.setConfig(config);
+
+      ui.updateTimeDisplay();
+
+      expect(document.getElementById('current-time').textContent).toBe('07:05');
       jest.useRealTimers();
     });
 
@@ -2433,7 +2795,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
 
     /**
-     * Ensures missing timeline values always fall back to 0:00 and 0% seek width.
+     * Ensures missing timeline values fall back to a 0:00 position, no total and 0% seek width.
      */
     it.each([
       ['null', null, null],
@@ -2460,7 +2822,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         const seekFill = document.getElementById('media-tile-seek-fill');
 
         expect(currentTime.textContent).toBe('0:00');
-        expect(totalTime.textContent).toBe('0:00');
+        expect(totalTime.textContent).toBe('--:--');
         expect(seekFill.style.width).toBe('0%');
       }
     );
@@ -2483,7 +2845,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const totalTime = document.getElementById('media-tile-time-total');
       const seekFill = document.getElementById('media-tile-seek-fill');
       expect(currentTime.textContent).toBe('0:00');
-      expect(totalTime.textContent).toBe('0:00');
+      expect(totalTime.textContent).toBe('--:--');
       expect(seekFill.style.width).toBe('0%');
     });
 
@@ -2498,7 +2860,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const totalTime = document.getElementById('media-tile-time-total');
       const seekFill = document.getElementById('media-tile-seek-fill');
       expect(currentTime.textContent).toBe('0:00');
-      expect(totalTime.textContent).toBe('0:00');
+      expect(totalTime.textContent).toBe('--:--');
       expect(seekFill.style.width).toBe('0%');
     });
 
@@ -2530,7 +2892,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         const seekFill = document.getElementById('media-tile-seek-fill');
 
         expect(currentTime.textContent).toBe('1:05:30');
-        expect(totalTime.textContent).toBe('0:00');
+        expect(totalTime.textContent).toBe('--:--');
         expect(seekFill.style.width).toBe('0%');
       }
     );
@@ -2553,7 +2915,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         const totalTime = document.getElementById('media-tile-time-total');
         const seekFill = document.getElementById('media-tile-seek-fill');
         expect(currentTime.textContent).toBe('1:10');
-        expect(totalTime.textContent).toBe('0:00');
+        expect(totalTime.textContent).toBe('--:--');
         expect(seekFill.style.width).toBe('0%');
       } finally {
         nowSpy.mockRestore();
@@ -3057,6 +3419,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
 
     it('resets an enabled camera snapshot preview to the static icon', async () => {
+      // Resetting asks first, so the page's own config writes land before it. They answer with what
+      // the page holds, as Home Assistant's would.
+      mockElectronAPI.updateConfig.mockImplementation(async (patch) => ({
+        ...state.CONFIG,
+        ...patch,
+      }));
       const config = state.CONFIG;
       config.favoriteEntities = ['camera.front_door'];
       config.quickAccessTileOptions = {
@@ -3075,10 +3443,10 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       const modal = document.querySelector('.rename-modal');
       expect(modal.querySelector('#camera-preview-refresh-select').value).toBe('5s');
+      uiUtils.showConfirm.mockResolvedValueOnce(true);
       modal.querySelector('#reset-rename-btn').click();
 
-      await Promise.resolve();
-      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(state.CONFIG.quickAccessTileOptions['camera.front_door']).toBeUndefined();
       expect(
@@ -3247,6 +3615,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
 
     it('hides value font size controls for quick access tiles without displayed values', async () => {
+      // Resetting asks first, so the page's own config writes land before it. They answer with what
+      // the page holds, as Home Assistant's would.
+      mockElectronAPI.updateConfig.mockImplementation(async (patch) => ({
+        ...state.CONFIG,
+        ...patch,
+      }));
       const config = state.CONFIG;
       config.favoriteEntities = ['input_button.tv_rewind'];
       config.quickAccessTileOptions = {
@@ -3273,9 +3647,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(modal).toBeTruthy();
       expect(modal.querySelector('#tile-value-size-select')).toBeNull();
 
+      uiUtils.showConfirm.mockResolvedValueOnce(true);
       modal.querySelector('#reset-rename-btn').click();
-      await Promise.resolve();
-      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(state.CONFIG.quickAccessTileOptions['input_button.tv_rewind']).toBeUndefined();
       expect(mockElectronAPI.updateConfig).toHaveBeenCalledWith(
@@ -3310,7 +3684,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(sensorTile.dataset.valueSize).toBe('auto');
       expect(sensorTile.querySelector('.control-sensor-value').textContent).toBe('29.3');
       expect(sensorTile.querySelector('.control-sensor-unit').textContent).toBe('°C');
-      expect(sensorTile.title).toBe('Office Temperature: 29.3 °C');
+      expect(sensorTile.title).toBe('Office Temperature: 29.3°C');
     });
 
     it('saves quick access tile value font size from the pencil settings modal', async () => {
@@ -3390,6 +3764,164 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       return document.querySelector('.rename-modal');
     }
 
+    describe('keyboard', () => {
+      const press = (target, key, init = {}) => {
+        const event = new KeyboardEvent('keydown', {
+          key,
+          bubbles: true,
+          cancelable: true,
+          ...init,
+        });
+        target.dispatchEvent(event);
+        return event;
+      };
+      const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+      const editMode = () => document.getElementById('quick-controls').classList;
+
+      it('is a named dialog that opens with the name selected, not on Close', async () => {
+        const modal = seedOfficeTemperatureTile();
+        await settle();
+        const input = modal.querySelector('#rename-input');
+
+        expect(modal.getAttribute('role')).toBe('dialog');
+        expect(modal.getAttribute('aria-modal')).toBe('true');
+        expect(document.getElementById(modal.getAttribute('aria-labelledby')).textContent).toBe(
+          'Tile Settings'
+        );
+        // Typing replaces the name instead of landing in front of it.
+        expect(document.activeElement).toBe(input);
+        expect([input.selectionStart, input.selectionEnd]).toEqual([0, input.value.length]);
+      });
+
+      it('closes on Escape without ending Reorganize mode behind it', async () => {
+        const modal = seedOfficeTemperatureTile();
+        await settle();
+        expect(editMode()).toContain('reorganize-mode');
+
+        const event = press(document.activeElement, 'Escape');
+        await settle();
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(document.querySelector('.rename-modal')).toBeNull();
+        expect(modal.isConnected).toBe(false);
+        expect(editMode()).toContain('reorganize-mode');
+      });
+
+      it('ends Reorganize mode on the next Escape, once nothing is open over it', async () => {
+        seedOfficeTemperatureTile();
+        await settle();
+        press(document.activeElement, 'Escape');
+        await settle();
+
+        press(document.body, 'Escape');
+
+        expect(editMode()).not.toContain('reorganize-mode');
+      });
+
+      it('ends Reorganize mode on the first Escape when a toast was already up before it began', () => {
+        const actualUiUtils = jest.requireActual('../../src/ui-utils.js');
+        document.body.insertAdjacentHTML('beforeend', '<div id="toast-container"></div>');
+        // Any toast installs the toast manager's Escape handler, which then runs before the one
+        // Reorganize mode adds. The mode's own notice is a toast too, and so was this.
+        actualUiUtils.showToast('Layout saved', 'success', 60000);
+        uiUtils.showToast.mockImplementationOnce(actualUiUtils.showToast);
+        state.CONFIG.favoriteEntities = ['sensor.office_temperature'];
+        ui.renderActiveTab();
+
+        try {
+          ui.toggleReorganizeMode();
+          expect(document.querySelectorAll('#toast-container .toast')).toHaveLength(2);
+          const event = press(document.body, 'Escape');
+
+          expect(event.defaultPrevented).toBe(true);
+          expect(editMode()).not.toContain('reorganize-mode');
+          // The key went to the mode, not to either toast.
+          expect(document.querySelectorAll('#toast-container .toast-closing')).toHaveLength(0);
+        } finally {
+          // Their clocks are real timers, which must not outlive the test.
+          document
+            .querySelectorAll('#toast-container .toast')
+            .forEach((toast) => actualUiUtils.dismissToast(toast));
+        }
+      });
+
+      it('saves on Enter in the name field', async () => {
+        const modal = seedOfficeTemperatureTile();
+        await settle();
+        const input = modal.querySelector('#rename-input');
+        input.value = 'Desk temperature';
+
+        const event = press(input, 'Enter');
+        await settle();
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(state.CONFIG.customEntityNames['sensor.office_temperature']).toBe(
+          'Desk temperature'
+        );
+        expect(document.querySelector('.rename-modal')).toBeNull();
+      });
+
+      it('leaves Enter on a button to that button', async () => {
+        const modal = seedOfficeTemperatureTile();
+        await settle();
+        const cancel = modal.querySelector('#cancel-rename-btn');
+
+        expect(press(cancel, 'Enter').defaultPrevented).toBe(false);
+        expect(document.querySelector('.rename-modal')).toBe(modal);
+      });
+
+      it('keeps Tab inside the dialog and wraps at its ends', async () => {
+        const modal = seedOfficeTemperatureTile();
+        await settle();
+        const first = modal.querySelector('.close-btn');
+        const last = modal.querySelector('#save-rename-btn');
+
+        last.focus();
+        expect(press(last, 'Tab').defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(first);
+        expect(press(first, 'Tab', { shiftKey: true }).defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(last);
+      });
+
+      it('closes on a click on the backdrop, and not on a click inside the dialog', async () => {
+        const modal = seedOfficeTemperatureTile();
+        await settle();
+
+        modal.querySelector('.modal-body').click();
+        expect(document.querySelector('.rename-modal')).toBe(modal);
+        modal.click();
+        await settle();
+
+        expect(document.querySelector('.rename-modal')).toBeNull();
+      });
+
+      it('gives keyboard focus back to the control it had when a failed save puts the form back', async () => {
+        const modal = seedOfficeTemperatureTile();
+        await settle();
+        const save = modal.querySelector('#save-rename-btn');
+        modal.querySelector('#rename-input').value = 'Desk temperature';
+        mockElectronAPI.updateConfig.mockRejectedValueOnce(new Error('disk full'));
+        save.focus();
+
+        save.click();
+        // Disabling the focused button drops the browser's focus to <body>.
+        save.blur();
+        await settle();
+        await settle();
+
+        expect(save.disabled).toBe(false);
+        expect(document.activeElement).toBe(save);
+      });
+    });
+
+    it('lists the Tile Settings buttons in the order they are read and tabbed through', () => {
+      const modal = seedOfficeTemperatureTile();
+
+      expect(
+        [...modal.querySelectorAll('.modal-footer button')].map((button) => button.id)
+      ).toEqual(['reset-rename-btn', 'cancel-rename-btn', 'save-rename-btn']);
+    });
+
     it('switches a sensor tile to a gauge with a custom range from the settings modal', async () => {
       const modal = seedOfficeTemperatureTile();
       const chartSelect = modal.querySelector('#tile-chart-type-select');
@@ -3429,6 +3961,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
       expect(bounds).toEqual(['10', '40']);
       expect(gaugeSvg.querySelector('.control-sensor-gauge-value')).not.toBeNull();
+      // The bound labels are anchored by the writing direction, so the gauge always reads left to
+      // right, in a right-to-left language too.
+      expect(gaugeSvg.style.direction).toBe('ltr');
     });
 
     it('rejects a gauge range whose minimum is not below its maximum', async () => {
@@ -3522,9 +4057,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         const reopened = document.querySelector('.rename-modal');
         expect(reopened.querySelector('#tile-tray-label').value).toBe('Office');
         expect(reopened.querySelector('#tile-tray-color').value).toBe('purple');
+        uiUtils.showConfirm.mockResolvedValueOnce(true);
         reopened.querySelector('#reset-rename-btn').click();
-        await Promise.resolve();
-        await Promise.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
         expect(state.CONFIG.trayEntities['sensor.office_temperature']).toEqual({});
       } finally {
         setRendererHost(previousHost);
@@ -3669,6 +4204,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
 
     it('resets quick access tile name and value font size from the pencil settings modal', async () => {
+      // Resetting asks first, so the page's own config writes land before it. They answer with what
+      // the page holds, as Home Assistant's would.
+      mockElectronAPI.updateConfig.mockImplementation(async (patch) => ({
+        ...state.CONFIG,
+        ...patch,
+      }));
       const config = state.CONFIG;
       config.favoriteEntities = ['sensor.office_temperature'];
       config.customEntityNames = {
@@ -3700,10 +4241,10 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const modal = document.querySelector('.rename-modal');
       expect(modal.querySelector('#rename-input').value).toBe('Desk "Temp"');
       expect(modal.querySelector('#tile-value-size-select').value).toBe('large');
+      uiUtils.showConfirm.mockResolvedValueOnce(true);
       modal.querySelector('#reset-rename-btn').click();
 
-      await Promise.resolve();
-      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(state.CONFIG.customEntityNames['sensor.office_temperature']).toBeUndefined();
       expect(state.CONFIG.quickAccessTileOptions['sensor.office_temperature']).toBeUndefined();
@@ -3719,6 +4260,69 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
       expect(sensorTile.dataset.valueSize).toBe('auto');
       expect(sensorTile.querySelector('.control-name').textContent).toBe('Office Temperature');
+    });
+
+    it.each([
+      ['an empty field', ''],
+      ['the Home Assistant name typed back', 'Office Temperature'],
+    ])('gives the tile its own name back when the Display Name is %s', async (_label, typed) => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.office_temperature'];
+      config.customEntityNames = { 'sensor.office_temperature': 'Desk' };
+      state.setConfig(config);
+      state.setStates({
+        'sensor.office_temperature': {
+          entity_id: 'sensor.office_temperature',
+          state: '21',
+          attributes: { friendly_name: 'Office Temperature', unit_of_measurement: '°C' },
+        },
+      });
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+      document
+        .querySelector('.control-item[data-entity-id="sensor.office_temperature"] .rename-btn')
+        .click();
+
+      const modal = document.querySelector('.rename-modal');
+      expect(modal.querySelector('#rename-input').value).toBe('Desk');
+      modal.querySelector('#rename-input').value = typed;
+      modal.querySelector('#save-rename-btn').click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(state.CONFIG.customEntityNames['sensor.office_temperature']).toBeUndefined();
+      expect(
+        document.querySelector(
+          '.control-item[data-entity-id="sensor.office_temperature"] .control-name'
+        ).textContent
+      ).toBe('Office Temperature');
+    });
+
+    it('draws the Reorganize chips with line icons and names them', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.office_temperature'];
+      state.setConfig(config);
+      state.setStates({
+        'sensor.office_temperature': {
+          entity_id: 'sensor.office_temperature',
+          state: '21',
+          attributes: { friendly_name: 'Office Temperature' },
+        },
+      });
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+
+      const tile = document.querySelector(
+        '.control-item[data-entity-id="sensor.office_temperature"]'
+      );
+      expect(tile.querySelector('.rename-btn svg').dataset.icon).toBe('pencil');
+      expect(tile.querySelector('.remove-btn svg').dataset.icon).toBe('x');
+      // The icons are hidden from screen readers; the buttons keep their own names.
+      expect(tile.querySelector('.rename-btn').getAttribute('aria-label')).toContain(
+        'Office Temperature'
+      );
+      expect(tile.querySelector('.remove-btn').getAttribute('aria-label')).toContain(
+        'Office Temperature'
+      );
     });
 
     it('limits a tile display name to what a settings file can carry', () => {
@@ -3767,6 +4371,51 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(sensorTile).toBeTruthy();
       expect(sensorTile.querySelector('.control-sensor-value').textContent).toBe('37');
       expect(sensorTile.querySelector('.control-sensor-unit').textContent).toBe('%');
+    });
+
+    it.each([
+      ['02134', 'a code with a leading zero'],
+      ['1e3', 'an exponent'],
+      ['0x10', 'a hex number'],
+    ])('shows %s (%s) as text, with no readout or chart', (reading) => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.zip'];
+      state.setConfig(config);
+      state.setStates({
+        'sensor.zip': {
+          entity_id: 'sensor.zip',
+          state: reading,
+          attributes: { friendly_name: 'Zip code' },
+        },
+      });
+
+      ui.renderActiveTab();
+
+      const tile = document.querySelector('.control-item[data-entity-id="sensor.zip"]');
+      expect(tile.classList.contains('sensor-numeric-entity')).toBe(false);
+      expect(tile.querySelector('.control-state').textContent).toBe(reading);
+    });
+
+    it('keeps a value just below zero from reading "-0"', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.cold_room'];
+      state.setConfig(config);
+      state.setStates({
+        'sensor.cold_room': {
+          entity_id: 'sensor.cold_room',
+          state: '-0.04',
+          attributes: {
+            friendly_name: 'Cold room',
+            unit_of_measurement: '°C',
+            device_class: 'temperature',
+          },
+        },
+      });
+
+      ui.renderActiveTab();
+
+      const tile = document.querySelector('.control-item[data-entity-id="sensor.cold_room"]');
+      expect(tile.querySelector('.control-sensor-value').textContent).toBe('-0.04');
     });
 
     it('caps other quick access numeric sensor readouts at two decimals', () => {
@@ -3942,9 +4591,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(primarySensorTile).toBeTruthy();
       expect(primarySensorTile.classList.contains('sensor-numeric-entity')).toBe(false);
       expect(primarySensorTile.querySelector('.control-sensor-value')).toBeNull();
-      expect(primarySensorTile.querySelector('.control-state').textContent).toBe(
-        '29.2999988132053 °C'
-      );
+      // The text is rounded like the tile's readout, not printed with every digit Home Assistant sends.
+      expect(primarySensorTile.querySelector('.control-state').textContent).toBe('29.3°C');
     });
 
     it('re-renders climate tiles when temperature attributes change', () => {
@@ -4042,6 +4690,30 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         temperature: 23,
       });
       jest.useRealTimers();
+    });
+
+    it('tells assistive technology which climate mode and fan mode is on', () => {
+      ui.executeEntityPrimaryAction(sampleStates['climate.bedroom_air_conditioner']);
+
+      const modal = document.querySelector('.climate-modal');
+      const pressed = (selector) =>
+        [...modal.querySelectorAll(selector)].map((button) => [
+          button.classList.contains('active'),
+          button.getAttribute('aria-pressed'),
+        ]);
+      for (const selector of ['.climate-mode-btn', '.climate-fan-mode-btn']) {
+        const buttons = pressed(selector);
+        expect(buttons.filter(([active]) => active)).toHaveLength(1);
+        for (const [active, ariaPressed] of buttons) expect(ariaPressed).toBe(String(active));
+      }
+
+      // Choosing another one moves the state with the highlight.
+      const other = [...modal.querySelectorAll('.climate-mode-btn')].find(
+        (button) => !button.classList.contains('active')
+      );
+      other.click();
+      expect(other.getAttribute('aria-pressed')).toBe('true');
+      expect(modal.querySelectorAll('.climate-mode-btn[aria-pressed="true"]')).toHaveLength(1);
     });
 
     it('rolls back an optimistic climate temperature when the service rejects', async () => {
@@ -4172,7 +4844,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         '.control-item[data-entity-id="light.bedroom"] .desktop-pin-quick-toggle'
       );
       expect(pinButton).toBeTruthy();
-      expect(pinButton.getAttribute('aria-label')).toBe('Pin');
+      // The name is the same whatever the state; aria-pressed carries whether it is pinned.
+      expect(pinButton.getAttribute('aria-label')).toBe('Pin Bedroom Light to desktop');
+      expect(pinButton.getAttribute('aria-pressed')).toBe('false');
 
       pinButton.click();
       await Promise.resolve();
@@ -4230,7 +4904,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         '.control-item[data-entity-id="light.bedroom"] .desktop-pin-quick-toggle'
       );
       expect(pinButton).toBeTruthy();
-      expect(pinButton.getAttribute('aria-label')).toBe('Pinned');
+      expect(pinButton.getAttribute('aria-label')).toBe('Pin Bedroom Light to desktop');
+      expect(pinButton.getAttribute('aria-pressed')).toBe('true');
 
       pinButton.click();
       await Promise.resolve();
@@ -4243,10 +4918,45 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(mockElectronAPI.setDesktopPinEditMode).toHaveBeenLastCalledWith(false);
     });
 
+    it('leaves Reorganize mode when main ends the pins edit mode, and does nothing when it is off', () => {
+      state.setConfig({
+        ...state.CONFIG,
+        favoriteEntities: ['light.bedroom'],
+        customTabs: [{ id: 'default', name: 'All', entityIds: ['light.bedroom'] }],
+        activeTabId: 'default',
+      });
+      state.setStates({
+        'light.bedroom': {
+          entity_id: 'light.bedroom',
+          state: 'on',
+          attributes: { friendly_name: 'Bedroom Light' },
+        },
+      });
+      ui.renderActiveTab();
+      const quickControls = document.getElementById('quick-controls');
+
+      // Not reorganizing: no toggle, so a hide from the tray does not switch it on.
+      ui.exitReorganizeMode();
+      expect(quickControls.classList.contains('reorganize-mode')).toBe(false);
+      expect(mockElectronAPI.setDesktopPinEditMode).not.toHaveBeenCalled();
+
+      ui.toggleReorganizeMode();
+      expect(quickControls.classList.contains('reorganize-mode')).toBe(true);
+
+      // Main hid the window and ended the pins' edit mode: the dashboard follows it out, so the
+      // Reorganize button is back to starting the mode instead of needing two presses.
+      ui.exitReorganizeMode();
+      expect(quickControls.classList.contains('reorganize-mode')).toBe(false);
+      expect(mockElectronAPI.setDesktopPinEditMode).toHaveBeenLastCalledWith(false);
+      ui.toggleReorganizeMode();
+      expect(quickControls.classList.contains('reorganize-mode')).toBe(true);
+      ui.toggleReorganizeMode();
+    });
+
     it.each([
-      [{}, 'Pinned'],
-      [{ 'light.bedroom': { x: 10, y: 20, width: 168, height: 148 } }, 'Pin'],
-    ])('keeps keyboard focus on the Pin button after the tiles rebuild', async (pins, label) => {
+      [{}, 'true'],
+      [{ 'light.bedroom': { x: 10, y: 20, width: 168, height: 148 } }, 'false'],
+    ])('keeps keyboard focus on the Pin button after the tiles rebuild', async (pins, pressed) => {
       state.setConfig({
         ...state.CONFIG,
         favoriteEntities: ['light.bedroom'],
@@ -4274,8 +4984,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       expect(pinButton.isConnected).toBe(false);
       expect(document.activeElement.dataset.desktopPinQuickToggle).toBe('light.bedroom');
-      // The button shows a pin icon; its state is carried by the accessible name.
-      expect(document.activeElement.getAttribute('aria-label')).toBe(label);
+      // The button shows a pin icon; whether it is pinned is carried by aria-pressed.
+      expect(document.activeElement.getAttribute('aria-pressed')).toBe(pressed);
 
       ui.toggleReorganizeMode();
     });
@@ -4303,7 +5013,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         '.control-item[data-entity-id="calendar.family"] .desktop-pin-quick-toggle'
       );
       expect(pinButton).toBeTruthy();
-      expect(pinButton.getAttribute('aria-label')).toBe('Unsupported');
+      expect(pinButton.getAttribute('aria-label')).toBe('Pin Family Calendar to desktop');
       expect(pinButton.disabled).toBe(true);
       expect(pinButton.title).toContain('does not have a desktop-pin profile yet');
     });
@@ -5065,11 +5775,302 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(updatedPowerButton).toBe(originalPowerButton);
       expect(document.activeElement).toBe(updatedPowerButton);
       expect(updatedControl?.dataset.state).toBe('off');
-      expect(updatedPowerButton?.textContent).toBe('Off');
-      expect(updatedPowerButton?.getAttribute('aria-pressed')).toBe('false');
+      // An icon button: its label and tooltip name the state, and it is not also "pressed".
+      expect(updatedPowerButton?.getAttribute('aria-label')).toBe('Off');
+      expect(updatedPowerButton?.title).toBe('Off');
+      expect(updatedPowerButton?.hasAttribute('aria-pressed')).toBe(false);
       expect(mockCallService).toHaveBeenCalledWith('light', 'turn_off', {
         entity_id: 'light.office',
       });
+    });
+
+    it('draws the light power button as an icon that names the state, with percent presets', () => {
+      state.setStates({
+        'light.desk': {
+          entity_id: 'light.desk',
+          state: 'on',
+          attributes: { friendly_name: 'Desk lamp', brightness: 204 },
+        },
+      });
+      ui.renderDesktopPinnedTile('light.desk', state.STATES['light.desk']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-light-control');
+      const power = control.querySelector('.desktop-pin-light-power');
+      // The word stays as the button's name and tooltip, so it takes no room from the entity name.
+      expect(power.textContent.trim()).toBe('');
+      expect(power.querySelector('svg[data-icon="power"]')).toBeTruthy();
+      expect(power.getAttribute('aria-label')).toBe('On');
+      expect(power.title).toBe('On');
+      expect(power.dataset.active).toBe('true');
+
+      const presets = [...control.querySelectorAll('.desktop-pin-light-preset')];
+      expect(presets.map((preset) => preset.textContent)).toEqual(['25%', '50%', '75%', '100%']);
+      expect(presets.map((preset) => preset.getAttribute('aria-label'))).toEqual([
+        '25% brightness',
+        '50% brightness',
+        '75% brightness',
+        '100% brightness',
+      ]);
+      expect(control.querySelector('.desktop-pin-light-meter-value').textContent).toBe('80%');
+    });
+
+    it('shows an unlit lamp as 0% instead of repeating Off', () => {
+      state.setStates({
+        'light.desk': {
+          entity_id: 'light.desk',
+          state: 'off',
+          attributes: {
+            friendly_name: 'Desk lamp',
+            brightness: null,
+            supported_color_modes: ['brightness'],
+          },
+        },
+      });
+      ui.renderDesktopPinnedTile('light.desk', state.STATES['light.desk']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-light-control');
+      expect(control.querySelector('.desktop-pin-light-meter-value').textContent).toBe('0%');
+      expect(control.querySelector('.desktop-pin-light-power').getAttribute('aria-label')).toBe(
+        'Off'
+      );
+      expect(control.dataset.state).toBe('off');
+    });
+
+    it('does not switch a light off when the click lands beside the brightness track', () => {
+      state.setStates({
+        'light.desk': {
+          entity_id: 'light.desk',
+          state: 'on',
+          attributes: { friendly_name: 'Desk lamp', brightness: 204 },
+        },
+      });
+      ui.renderDesktopPinnedTile('light.desk', state.STATES['light.desk']);
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-light-control');
+
+      control.querySelector('.desktop-pin-light-brightness').click();
+      control.querySelector('.desktop-pin-light-brightness-label').click();
+      control.querySelector('.desktop-pin-light-presets').click();
+      expect(mockCallService).not.toHaveBeenCalled();
+
+      control.querySelector('.desktop-pin-light-glyph').click();
+      expect(mockCallService).toHaveBeenCalledWith('light', 'turn_off', {
+        entity_id: 'light.desk',
+      });
+    });
+
+    it('titles a pin with the entity name and keeps the title current', () => {
+      state.setStates({
+        'light.desk': {
+          entity_id: 'light.desk',
+          state: 'on',
+          attributes: { friendly_name: 'Upstairs hallway ceiling light', brightness: 100 },
+        },
+        'sensor.office': {
+          entity_id: 'sensor.office',
+          state: '21.4',
+          attributes: { friendly_name: 'Office temperature', unit_of_measurement: '°C' },
+        },
+      });
+
+      ui.renderDesktopPinnedTile('light.desk', state.STATES['light.desk']);
+      expect(document.querySelector('.desktop-pin-light-control').title).toBe(
+        'Upstairs hallway ceiling light'
+      );
+      ui.renderDesktopPinnedTile('light.desk', {
+        ...state.STATES['light.desk'],
+        attributes: { friendly_name: 'Landing light', brightness: 100 },
+      });
+      expect(document.querySelector('.desktop-pin-light-control').title).toBe('Landing light');
+
+      ui.renderDesktopPinnedTile('sensor.office', state.STATES['sensor.office']);
+      expect(document.querySelector('.desktop-pin-sensor-control').title).toBe(
+        'Office temperature'
+      );
+    });
+
+    it('rounds a long sensor reading like its Quick Access tile', () => {
+      const sensor = {
+        entity_id: 'sensor.grid',
+        state: '0.7160215353965759',
+        attributes: {
+          friendly_name: 'Grid power',
+          unit_of_measurement: 'W',
+          state_class: 'measurement',
+        },
+      };
+      state.setStates({ [sensor.entity_id]: sensor });
+      ui.renderDesktopPinnedTile(sensor.entity_id, sensor);
+
+      const value = document.querySelector('.desktop-pin-sensor-control .desktop-pin-panel-value');
+      expect(value.textContent).toBe('0.72\u00a0W');
+      expect(value.title).toBe('0.72\u00a0W');
+
+      ui.renderDesktopPinnedTile(sensor.entity_id, { ...sensor, state: '1234.5678901' });
+      expect(
+        document.querySelector('.desktop-pin-sensor-control .desktop-pin-panel-value').textContent
+      ).not.toContain('5678901');
+    });
+
+    it('captions a sensor pin with what it measures instead of the word Sensor', () => {
+      const sensor = {
+        entity_id: 'sensor.office',
+        state: '21.4',
+        attributes: {
+          friendly_name: 'Office',
+          unit_of_measurement: '°C',
+          device_class: 'temperature',
+        },
+      };
+      state.setStates({ [sensor.entity_id]: sensor });
+      ui.renderDesktopPinnedTile(sensor.entity_id, sensor);
+      const status = () =>
+        document.querySelector('.desktop-pin-sensor-control .desktop-pin-panel-status');
+      expect(status().textContent).toBe('Temperature');
+
+      // A class without a caption keeps the domain name.
+      ui.renderDesktopPinnedTile(sensor.entity_id, {
+        ...sensor,
+        attributes: { ...sensor.attributes, device_class: 'timestamp' },
+      });
+      expect(status().textContent).toBe('Sensor');
+    });
+
+    it('offers a docked vacuum Start when the pin window has no service list', () => {
+      state.setServices({});
+      state.setStates({ 'vacuum.roomba': sampleStates['vacuum.roomba'] });
+      ui.renderDesktopPinnedTile('vacuum.roomba', state.STATES['vacuum.roomba']);
+
+      const buttons = () => [
+        ...document.querySelectorAll('.desktop-pin-vacuum-control .desktop-pin-vacuum-action'),
+      ];
+      expect(buttons().map((button) => button.textContent.trim())).toEqual(['Start']);
+      buttons()[0].click();
+      expect(mockCallService).toHaveBeenCalledWith('vacuum', 'start', {
+        entity_id: 'vacuum.roomba',
+      });
+
+      state.setStates({
+        'vacuum.roomba': { ...sampleStates['vacuum.roomba'], state: 'cleaning' },
+      });
+      ui.renderDesktopPinnedTile('vacuum.roomba', state.STATES['vacuum.roomba']);
+      expect(buttons().map((button) => button.textContent.trim())).toEqual(['Pause', 'Return']);
+    });
+
+    it('asks the main window to open the camera viewer instead of drawing it in the pin', () => {
+      const camera = require('../../src/camera.js');
+      camera.openCamera.mockClear();
+      state.setStates({ 'camera.front_door': sampleStates['camera.front_door'] });
+      ui.renderDesktopPinnedTile('camera.front_door', state.STATES['camera.front_door']);
+
+      document.querySelector('.desktop-pin-camera-open').click();
+
+      expect(mockElectronAPI.requestDesktopPinAction).toHaveBeenCalledWith(
+        'camera.front_door',
+        'open-details'
+      );
+      expect(camera.openCamera).not.toHaveBeenCalled();
+    });
+
+    it('says what an idle media player is instead of calling it paused', () => {
+      const player = {
+        entity_id: 'media_player.hall',
+        state: 'idle',
+        attributes: { friendly_name: 'Hall speaker', supported_features: 16384 },
+      };
+      state.setStates({ [player.entity_id]: player });
+      ui.renderDesktopPinnedTile(player.entity_id, player);
+
+      const control = document.querySelector('.desktop-pin-media-control');
+      expect(control.querySelector('.desktop-pin-panel-status').textContent).toBe('Idle');
+      expect(control.querySelector('.desktop-pin-media-title').textContent).toBe('Nothing playing');
+
+      ui.renderDesktopPinnedTile(player.entity_id, {
+        ...player,
+        state: 'paused',
+        attributes: { ...player.attributes, media_title: 'Weightless' },
+      });
+      const paused = document.querySelector('.desktop-pin-media-control');
+      expect(paused.querySelector('.desktop-pin-panel-status').textContent).toBe('Paused');
+      expect(paused.querySelector('.desktop-pin-media-title').textContent).toBe('Weightless');
+    });
+
+    it('runs a scene pin from the keyboard', () => {
+      state.setStates({
+        'scene.movie': sampleStates['scene.movie'] || {
+          entity_id: 'scene.movie',
+          state: 'scening',
+          attributes: { friendly_name: 'Movie time' },
+        },
+      });
+      ui.renderDesktopPinnedTile('scene.movie', state.STATES['scene.movie']);
+
+      const control = document.querySelector('.desktop-pin-scene-control');
+      expect(control.getAttribute('role')).toBe('button');
+      expect(control.tabIndex).toBe(0);
+      expect(control.getAttribute('aria-label')).toBe(
+        state.STATES['scene.movie'].attributes.friendly_name
+      );
+
+      control.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      expect(mockCallService).toHaveBeenCalledWith('scene', 'turn_on', {
+        entity_id: 'scene.movie',
+      });
+    });
+
+    it('does not run a scene pin from the keyboard while the pin is being arranged', () => {
+      state.setStates({
+        'scene.movie': sampleStates['scene.movie'] || {
+          entity_id: 'scene.movie',
+          state: 'scening',
+          attributes: { friendly_name: 'Movie time' },
+        },
+      });
+      ui.renderDesktopPinnedTile('scene.movie', state.STATES['scene.movie']);
+      const control = document.querySelector('.desktop-pin-scene-control');
+
+      document.body.classList.add('desktop-pin-edit-mode');
+      try {
+        for (const key of ['Enter', ' ']) {
+          control.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+        }
+        expect(mockCallService).not.toHaveBeenCalled();
+      } finally {
+        document.body.classList.remove('desktop-pin-edit-mode');
+      }
+    });
+
+    it('keeps momentary pin buttons out of aria-pressed', () => {
+      state.setStates({
+        'climate.thermostat': {
+          ...sampleStates['climate.thermostat'],
+          attributes: {
+            ...sampleStates['climate.thermostat'].attributes,
+            hvac_modes: ['off', 'heat'],
+          },
+        },
+        'weather.home': sampleStates['weather.home'],
+        'input_number.target': sampleStates['input_number.target'] || {
+          entity_id: 'input_number.target',
+          state: '5',
+          attributes: { friendly_name: 'Target' },
+        },
+      });
+
+      ui.renderDesktopPinnedTile('climate.thermostat', state.STATES['climate.thermostat']);
+      for (const mode of document.querySelectorAll('.desktop-pin-climate-mode')) {
+        // A mode is one of several states of the same switch.
+        expect(['true', 'false']).toContain(mode.getAttribute('aria-pressed'));
+      }
+
+      ui.renderDesktopPinnedTile('weather.home', state.STATES['weather.home']);
+      expect(
+        document.querySelector('.desktop-pin-weather-focus').hasAttribute('aria-pressed')
+      ).toBe(false);
+
+      ui.renderDesktopPinnedTile('input_number.target', state.STATES['input_number.target']);
+      for (const step of document.querySelectorAll('.desktop-pin-numeric-step')) {
+        expect(step.hasAttribute('aria-pressed')).toBe(false);
+      }
     });
 
     it('renders compact climate controls and sends hvac mode changes', () => {
@@ -5227,6 +6228,41 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(control?.dataset.denseVariant).toBe('tight');
       expect(control?.querySelector('.desktop-pin-cover-visual')).toBeNull();
       expect(control?.querySelector('.desktop-pin-cover-slider')).toBeTruthy();
+      // The position is the meter's value, so the header does not repeat it.
+      expect(
+        control?.querySelector('.desktop-pin-panel-meter .desktop-pin-cover-position')?.textContent
+      ).toBe('55%');
+      expect(control?.querySelectorAll('.desktop-pin-cover-position')).toHaveLength(1);
+      expect(
+        control?.querySelector('.desktop-pin-panel-topline .desktop-pin-cover-position')
+      ).toBeNull();
+
+      state.setStates({
+        'cover.blinds': { ...state.STATES['cover.blinds'], attributes: { current_position: 20 } },
+      });
+      ui.renderDesktopPinnedTile('cover.blinds', state.STATES['cover.blinds']);
+      expect(document.querySelector('.desktop-pin-cover-position')?.textContent).toBe('20%');
+    });
+
+    it('keeps the cover position in the header of a pin big enough for the blind', () => {
+      setDesktopPinViewport(320, 260);
+      state.setStates({
+        'cover.blinds': {
+          entity_id: 'cover.blinds',
+          state: 'open',
+          attributes: { friendly_name: 'Living Room Blinds', current_position: 55 },
+        },
+      });
+
+      ui.renderDesktopPinnedTile('cover.blinds', state.STATES['cover.blinds']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-cover-control');
+      expect(control?.querySelector('.desktop-pin-cover-visual')).toBeTruthy();
+      expect(control?.querySelector('.desktop-pin-panel-meter')).toBeNull();
+      expect(
+        control?.querySelector('.desktop-pin-panel-topline .desktop-pin-cover-position')
+          ?.textContent
+      ).toBe('55%');
     });
 
     it('renders compact media controls and routes play pause actions', () => {
@@ -5628,6 +6664,80 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
     });
 
+    it('starts, stops and resumes a vacuum that only advertises the legacy on/off features', () => {
+      // TURN_ON (1) + TURN_OFF (2) + RETURN_HOME (16): no START, STOP or PAUSE.
+      const legacy = (vacuumState) => ({
+        ...sampleStates['vacuum.roomba'],
+        state: vacuumState,
+        attributes: { ...sampleStates['vacuum.roomba'].attributes, supported_features: 1 + 2 + 16 },
+      });
+      const actions = () => [
+        ...document.querySelectorAll('#desktop-pin-content .desktop-pin-vacuum-action'),
+      ];
+      const render = (vacuumState) => {
+        state.setServices({});
+        state.setStates({ 'vacuum.roomba': legacy(vacuumState) });
+        ui.renderDesktopPinnedTile('vacuum.roomba', state.STATES['vacuum.roomba'], {
+          hasSnapshot: true,
+        });
+      };
+
+      // Off, or docked: Start is vacuum.turn_on rather than "Open widget".
+      for (const vacuumState of ['off', 'docked']) {
+        mockCallService.mockClear();
+        render(vacuumState);
+        expect(actions().map((button) => button.textContent.trim())).toEqual(['Start']);
+        actions()[0].click();
+        expect(mockCallService).toHaveBeenCalledWith('vacuum', 'turn_on', {
+          entity_id: 'vacuum.roomba',
+        });
+      }
+
+      // On, while it works: Stop is vacuum.turn_off, with Return beside it.
+      mockCallService.mockClear();
+      render('on');
+      expect(actions().map((button) => button.textContent.trim())).toEqual(['Stop', 'Return']);
+      actions()[0].click();
+      expect(mockCallService).toHaveBeenCalledWith('vacuum', 'turn_off', {
+        entity_id: 'vacuum.roomba',
+      });
+
+      mockCallService.mockClear();
+      render('paused');
+      expect(actions().map((button) => button.textContent.trim())).toEqual(['Resume', 'Return']);
+      actions()[0].click();
+      expect(mockCallService).toHaveBeenCalledWith('vacuum', 'turn_on', {
+        entity_id: 'vacuum.roomba',
+      });
+    });
+
+    it('offers Stop while a vacuum without Pause is cleaning', () => {
+      // START (8192) + STOP (8) + RETURN_HOME (16)
+      state.setServices({});
+      state.setStates({
+        'vacuum.roomba': {
+          ...sampleStates['vacuum.roomba'],
+          state: 'cleaning',
+          attributes: {
+            ...sampleStates['vacuum.roomba'].attributes,
+            supported_features: 8192 + 8 + 16,
+          },
+        },
+      });
+      mockCallService.mockClear();
+      ui.renderDesktopPinnedTile('vacuum.roomba', state.STATES['vacuum.roomba'], {
+        hasSnapshot: true,
+      });
+      const actions = [
+        ...document.querySelectorAll('#desktop-pin-content .desktop-pin-vacuum-action'),
+      ];
+      expect(actions.map((button) => button.textContent.trim())).toEqual(['Stop', 'Return']);
+      actions[0].click();
+      expect(mockCallService).toHaveBeenCalledWith('vacuum', 'stop', {
+        entity_id: 'vacuum.roomba',
+      });
+    });
+
     it('keeps scenes and scripts on micro layout at the minimum floor without using nano', async () => {
       jest.useFakeTimers();
       setDesktopPinViewport(97, 83);
@@ -5792,8 +6902,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           expect(control?.querySelector('.desktop-pin-panel-status')?.textContent).toBe('Off');
           expect(control?.querySelector('.desktop-pin-toggle-action')?.textContent).toBe('Off');
           expect(
-            control?.querySelector('.desktop-pin-toggle-action')?.getAttribute('aria-pressed')
-          ).toBe('false');
+            control?.querySelector('.desktop-pin-toggle-action')?.hasAttribute('aria-pressed')
+          ).toBe(false);
         },
       },
       {
@@ -5826,7 +6936,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         },
         selector: '.desktop-pin-sensor-control',
         assertUpdated: (control) => {
-          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('23.1 °C');
+          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('23.1°C');
         },
       },
       {
@@ -5842,11 +6952,11 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         selector: '.desktop-pin-sensor-control',
         assertUpdated: (control) => {
           expect(control?.dataset.state).toBe('on');
-          // The value reads "Detected"; the raw "on" no longer repeats it in the header.
+          // The value reads the motion sensor's own word; the raw "on" no longer repeats it.
           expect(
             control?.querySelector('.desktop-pin-panel-topline .desktop-pin-panel-kpi')
           ).toBeNull();
-          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('Detected');
+          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('Motion');
         },
       },
       {
@@ -5912,7 +7022,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         },
         selector: '.desktop-pin-numeric-control',
         assertUpdated: (control) => {
-          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('50 °C');
+          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('50°C');
         },
       },
       {
@@ -6170,9 +7280,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.getElementById('desktop-pin-content')?.classList.contains('hidden')).toBe(
         false
       );
-      expect(recoveredControl?.querySelector('.desktop-pin-panel-value')?.textContent).toBe(
-        '24.0 °C'
-      );
+      // Rounded like the Quick Access tile, not printed with every digit Home Assistant sends.
+      expect(recoveredControl?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('24°C');
     });
   });
 
@@ -6399,13 +7508,16 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
 
       const mappings = [
-        { haState: 'clear-night', expected: 'sunny' },
+        // The sun scene is a day sky: a clear night, an offline entity and a state nobody knows get
+        // no effect, not a warm glow.
+        { haState: 'clear-night', expected: null },
         { haState: 'sunny', expected: 'sunny' },
         { haState: 'stable', expected: 'sunny' },
         { haState: 'pouring', expected: 'rainy' },
         { haState: 'rainy', expected: 'rainy' },
         { haState: 'drizzle', expected: 'rainy' },
         { haState: 'snowy', expected: 'snowy' },
+        { haState: 'snowy-rainy', expected: 'snowy' },
         { haState: 'hail', expected: 'snowy' },
         { haState: 'sleet', expected: 'snowy' },
         { haState: 'cloudy', expected: 'cloudy' },
@@ -6418,7 +7530,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         { haState: 'exceptional', expected: 'cloudy' },
         { haState: 'lightning', expected: 'stormy' },
         { haState: 'lightning-rainy', expected: 'stormy' },
-        { haState: 'unknown-weird-state', expected: 'sunny' },
+        { haState: 'unavailable', expected: null },
+        { haState: 'unknown', expected: null },
+        { haState: 'unknown-weird-state', expected: null },
       ];
 
       for (const { haState, expected } of mappings) {
@@ -6491,10 +7605,14 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     let tabBar;
 
     beforeEach(() => {
+      // As in the page: the bar sits in the section header, where Add page is placed beside it.
+      const header = document.createElement('div');
+      header.className = 'section-header quick-access-header';
       tabBar = document.createElement('div');
       tabBar.id = 'quick-access-tabs';
       tabBar.className = 'quick-access-tabs hidden';
-      document.body.appendChild(tabBar);
+      header.appendChild(tabBar);
+      document.body.appendChild(header);
     });
 
     const setPages = (pages, activeTabId) => {
@@ -6529,7 +7647,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(activeLinks).toHaveLength(1);
       expect(activeLinks[0].dataset.tab).toBe('default');
       // No page-management affordances outside reorganize mode.
-      expect(tabBar.querySelector('.qa-tab-add')).toBeNull();
+      expect(document.querySelector('.qa-tab-add')).toBeNull();
       expect(tabBar.querySelector('.qa-tab-rename')).toBeNull();
     });
 
@@ -6540,7 +7658,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       expect(tabBar.classList.contains('hidden')).toBe(false);
       expect(tabBar.classList.contains('reorganize')).toBe(true);
-      expect(tabBar.querySelector('.qa-tab-add')).not.toBeNull();
+      expect(document.querySelector('.qa-tab-add')).not.toBeNull();
 
       // Active page exposes rename; delete is hidden while only one page exists.
       const activeTab = tabBar.querySelector('.quick-access-tab.active');
@@ -6723,12 +7841,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       setPages([{ id: 'default', name: 'All', entityIds: [] }]);
       ui.toggleReorganizeMode();
 
-      tabBar.querySelector('.qa-tab-add').click();
+      document.querySelector('.qa-tab-add').click();
 
       const modal = document.getElementById('add-page-modal');
       expect(modal).not.toBeNull();
       expect(modal.classList.contains('modal')).toBe(true);
-      expect(modal.querySelector('.modal-header h2').textContent).toContain('Add Page');
+      expect(modal.querySelector('.modal-header h2').textContent).toContain('Add page');
 
       const chipLabels = Array.from(modal.querySelectorAll('.qa-add-chip')).map(
         (c) => c.textContent
@@ -6770,7 +7888,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         })
       );
 
-      tabBar.querySelector('.qa-tab-add').click();
+      document.querySelector('.qa-tab-add').click();
       const modal = document.getElementById('add-page-modal');
       modal.querySelector('#add-page-name').value = 'Bedroom';
       modal.querySelector('#add-page-save-btn').click();
@@ -6812,7 +7930,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
 
       try {
-        tabBar.querySelector('.qa-tab-add').click();
+        document.querySelector('.qa-tab-add').click();
         const modal = document.getElementById('add-page-modal');
         modal.querySelector('#add-page-name').value = 'Bedroom';
         modal.querySelector('#add-page-save-btn').click();
@@ -7004,6 +8122,42 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
     });
 
+    it('lifts a showing error toast above the Done and Delete footer the editor adds after it opens', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      state.setConfig({ ...state.CONFIG, comparisonGraphs: [] });
+      ui.renderActiveTab();
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        '<div id="toast-container"><div class="toast error">Could not save</div></div>'
+      );
+      const container = document.getElementById('toast-container');
+      // jsdom has no layout: put the footer where the editor puts it, along the window's bottom edge.
+      const isFooter = (element) => element.classList.contains('modal-footer');
+      const clientRects = jest
+        .spyOn(Element.prototype, 'getClientRects')
+        .mockImplementation(function () {
+          return isFooter(this) ? [{}] : [];
+        });
+      const boundingRect = jest
+        .spyOn(Element.prototype, 'getBoundingClientRect')
+        .mockImplementation(function () {
+          const top = isFooter(this) ? window.innerHeight - 60 : 0;
+          return { top, bottom: top + 40, left: 0, right: 100, width: 100, height: 40 };
+        });
+
+      try {
+        await ui.addComparisonGraphTile();
+        expect(document.querySelector('.comparison-graph-modal-footer')).not.toBeNull();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        // The editor was open and empty when it was first docked against; the footer came after.
+        expect(container.style.bottom).toBe('68px');
+      } finally {
+        clientRects.mockRestore();
+        boundingRect.mockRestore();
+      }
+    });
+
     it('unregisters a comparison graph editor that closes after its graph is deleted', async () => {
       setPages([{ id: 'default', name: 'All', entityIds: [] }]);
       state.setConfig({
@@ -7021,9 +8175,10 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.querySelector('.comparison-graph-modal')).toBeNull();
 
       // A connection change closes open detail dialogs; the deleted editor must not be among them.
-      uiUtils.closeModal.mockClear();
+      const closeDialog = jest.spyOn(uiUtils, 'closeDialog');
       ui.ensureEntityCacheScope({ force: true });
-      expect(uiUtils.closeModal).not.toHaveBeenCalledWith(modal, expect.anything());
+      expect(closeDialog).not.toHaveBeenCalledWith(modal, expect.anything());
+      closeDialog.mockRestore();
     });
 
     it('limits a comparison graph name like a page name', async () => {
@@ -7037,6 +8192,58 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       const nameInput = document.querySelector('.comparison-graph-modal input.form-control');
       expect(nameInput.maxLength).toBe(40);
+    });
+
+    it('names the comparison graph editor fields, the sensor buttons and the graph tile', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      state.setConfig({ ...state.CONFIG, comparisonGraphs: [] });
+      state.setStates({
+        'sensor.hall_temp': {
+          entity_id: 'sensor.hall_temp',
+          state: '19',
+          attributes: { friendly_name: 'Hall temp', unit_of_measurement: '°C' },
+        },
+      });
+      ui.renderActiveTab();
+      await ui.addComparisonGraphTile();
+
+      const modal = document.querySelector('.comparison-graph-modal');
+      const [nameLabel, widthLabel] = modal.querySelectorAll('label');
+      const nameInput = modal.querySelector('input.form-control');
+      const widthSelect = modal.querySelector('select.form-control');
+      expect(nameLabel.htmlFor).toBe(nameInput.id);
+      expect(widthLabel.htmlFor).toBe(widthSelect.id);
+      expect(nameInput.id).not.toBe('');
+
+      const search = [...modal.querySelectorAll('input')].find((input) => input !== nameInput);
+      expect(search.getAttribute('aria-label')).toBe('Search sensors…');
+      expect(search.spellcheck).toBe(false);
+
+      const row = modal.querySelector('.entity-item');
+      const described = document.getElementById(
+        row.querySelector('button').getAttribute('aria-describedby')
+      );
+      expect(described.textContent).toBe('Hall temp');
+
+      const tile = document.querySelector('.comparison-graph-tile');
+      expect(tile.getAttribute('role')).toBe('group');
+      expect(tile.getAttribute('aria-label')).toBe(nameInput.value);
+    });
+
+    it('shows the kept name again when the graph name is cleared', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      state.setConfig({ ...state.CONFIG, comparisonGraphs: [] });
+      ui.renderActiveTab();
+      await ui.addComparisonGraphTile();
+
+      const nameInput = document.querySelector('.comparison-graph-modal input.form-control');
+      const kept = nameInput.value;
+      expect(kept).not.toBe('');
+      nameInput.value = '';
+      nameInput.dispatchEvent(new Event('change'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(nameInput.value).toBe(kept);
     });
 
     it('serializes comparison graph editor mutations while persistence is pending', async () => {
@@ -7076,15 +8283,20 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       nameInput.value = 'Rooms';
       nameInput.dispatchEvent(new Event('change', { bubbles: true }));
 
-      expect(nameInput.disabled).toBe(true);
-      expect(widthSelect.disabled).toBe(true);
-      expect(modal.querySelector('.comparison-graph-modal-footer button').disabled).toBe(true);
-      expect(modal.querySelector('.close-btn').disabled).toBe(true);
+      // Nothing is disabled while the save runs: disabling the focused control drops the keyboard
+      // to <body>, and Done or Close would swallow the click that follows the field's change.
+      expect(nameInput.disabled).toBe(false);
+      expect(widthSelect.disabled).toBe(false);
+      expect(modal.querySelector('.comparison-graph-modal-footer button').disabled).toBe(false);
+      expect(modal.querySelector('.close-btn').disabled).toBe(false);
+
+      // Closing while it saves waits for the save instead of dropping the click or the Escape.
       modal.querySelector('.close-btn').click();
       modal.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       modal.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       expect(document.querySelector('.comparison-graph-modal')).toBe(modal);
 
+      // A second change while one is saving is ignored, not queued behind it.
       widthSelect.value = '2';
       widthSelect.dispatchEvent(new Event('change', { bubbles: true }));
       expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(1);
@@ -7095,19 +8307,837 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(nameInput.disabled).toBe(false);
-      expect(widthSelect.disabled).toBe(false);
       expect(state.CONFIG.comparisonGraphs[0].name).toBe('Rooms');
+      expect(document.querySelector('.comparison-graph-modal')).toBeNull();
+    });
+
+    it('closes the graph editor on the first click of Done after renaming, even while the rename saves', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      state.setConfig({ ...state.CONFIG, comparisonGraphs: [] });
+      ui.renderActiveTab();
+      await ui.addComparisonGraphTile();
+      const modal = document.querySelector('.comparison-graph-modal');
+      const beforeEdit = JSON.parse(JSON.stringify(state.CONFIG));
+      let resolveEdit;
+      let editPatch;
+      mockElectronAPI.updateConfig.mockImplementationOnce(
+        (patch) =>
+          new Promise((resolve) => {
+            editPatch = patch;
+            resolveEdit = resolve;
+          })
+      );
+
+      const nameInput = modal.querySelector('input.form-control');
+      nameInput.focus();
+      nameInput.value = 'Garage';
+      // Pressing Done blurs the field, which saves, and then clicks.
+      nameInput.dispatchEvent(new Event('change', { bubbles: true }));
+      modal.querySelector('.comparison-graph-modal-footer .btn-primary').click();
+      expect(document.querySelector('.comparison-graph-modal')).toBe(modal);
+
+      resolveEdit({ ...beforeEdit, ...editPatch });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(document.querySelector('.comparison-graph-modal')).toBeNull();
+      expect(state.CONFIG.comparisonGraphs[0].name).toBe('Garage');
+    });
+
+    it('keeps the keyboard on a sensor row while it is added and removed, and the list where it was', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      state.setConfig({ ...state.CONFIG, comparisonGraphs: [] });
+      state.setStates({
+        'sensor.hall_temp': {
+          entity_id: 'sensor.hall_temp',
+          state: '19',
+          attributes: { friendly_name: 'Hall temp', unit_of_measurement: '°C' },
+        },
+        'sensor.attic_temp': {
+          entity_id: 'sensor.attic_temp',
+          state: '21',
+          attributes: { friendly_name: 'Attic temp', unit_of_measurement: '°C' },
+        },
+      });
+      ui.renderActiveTab();
+      await ui.addComparisonGraphTile();
+      const modal = document.querySelector('.comparison-graph-modal');
+      const rowButton = (entityId) =>
+        modal.querySelector(`[data-focus-key="graph-sensor:${entityId}"]`);
+      const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+      // The editor takes its own focus (the name field) as it opens; then the user tabs to a row.
+      await settle();
+      expect(document.activeElement).toBe(modal.querySelector('input.form-control'));
+
+      const addAttic = rowButton('sensor.attic_temp');
+      addAttic.focus();
+      addAttic.click();
+      await settle();
+      // The row moved to the top as a selected sensor; focus moved with it, not to <body>.
+      expect(rowButton('sensor.attic_temp').textContent).toBe('Remove');
+      expect(document.activeElement).toBe(rowButton('sensor.attic_temp'));
+
+      rowButton('sensor.attic_temp').click();
+      await settle();
+      expect(rowButton('sensor.attic_temp').textContent).toBe('Add');
+      expect(document.activeElement).toBe(rowButton('sensor.attic_temp'));
+    });
+
+    it('closes the graph editor on Escape without ending Reorganize mode behind it', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      state.setConfig({ ...state.CONFIG, comparisonGraphs: [] });
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+      await ui.addComparisonGraphTile();
+      const modal = document.querySelector('.comparison-graph-modal');
+      expect(modal).not.toBeNull();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const event = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      });
+      document.activeElement.dispatchEvent(event);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.querySelector('.comparison-graph-modal')).toBeNull();
+      expect(document.getElementById('quick-controls').classList).toContain('reorganize-mode');
     });
 
     it('closes the add-page modal when leaving reorganize mode', () => {
       setPages([{ id: 'default', name: 'All', entityIds: [] }]);
       ui.toggleReorganizeMode();
-      tabBar.querySelector('.qa-tab-add').click();
+      document.querySelector('.qa-tab-add').click();
       expect(document.getElementById('add-page-modal')).not.toBeNull();
 
       ui.toggleReorganizeMode();
       expect(document.getElementById('add-page-modal')).toBeNull();
+    });
+
+    describe('page tab strip', () => {
+      const pagesNamed = (count) =>
+        Array.from({ length: count }, (_, index) => ({
+          id: `p${index + 1}`,
+          name: `Page ${index + 1}`,
+          entityIds: [],
+        }));
+      const strip = () => tabBar.querySelector('.quick-access-tab-scroll');
+      const links = () => [...tabBar.querySelectorAll('.quick-access-tab-link')];
+      const press = (target, key, init = {}) => {
+        const event = new KeyboardEvent('keydown', {
+          key,
+          bubbles: true,
+          cancelable: true,
+          ...init,
+        });
+        target.dispatchEvent(event);
+        return event;
+      };
+      const settle = async () => {
+        for (let tick = 0; tick < 6; tick += 1) await Promise.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      };
+
+      it('is a tab list whose one Tab stop is the active page', () => {
+        setPages(pagesNamed(4), 'p3');
+        ui.renderActiveTab();
+
+        expect(strip().getAttribute('role')).toBe('tablist');
+        expect(strip().getAttribute('aria-label')).toBe('Quick Access views');
+        expect(tabBar.getAttribute('role')).toBeNull();
+        expect(links().map((link) => link.getAttribute('role'))).toEqual(Array(4).fill('tab'));
+        expect(links().map((link) => link.tabIndex)).toEqual([-1, -1, 0, -1]);
+        expect(links().map((link) => link.getAttribute('aria-selected'))).toEqual([
+          'false',
+          'false',
+          'true',
+          'false',
+        ]);
+      });
+
+      it('names the grid as the panel of the active tab, and drops that when there are no tabs', () => {
+        const grid = document.getElementById('quick-controls');
+        setPages(pagesNamed(3), 'p2');
+        ui.renderActiveTab();
+        const activeTab = links()[1];
+        expect(
+          links().every((link) => link.getAttribute('aria-controls') === 'quick-controls')
+        ).toBe(true);
+        expect(grid.getAttribute('role')).toBe('tabpanel');
+        expect(grid.getAttribute('aria-labelledby')).toBe(activeTab.id);
+        expect(activeTab.id).toBeTruthy();
+
+        ui.toggleReorganizeMode();
+        expect(grid.getAttribute('role')).toBeNull();
+        expect(grid.getAttribute('aria-labelledby')).toBeNull();
+        ui.toggleReorganizeMode();
+        expect(grid.getAttribute('role')).toBe('tabpanel');
+
+        setPages(pagesNamed(1));
+        ui.renderActiveTab();
+        expect(grid.getAttribute('role')).toBeNull();
+      });
+
+      it('moves to the next, previous, first and last page with the arrows, Home and End', async () => {
+        setPages(pagesNamed(4), 'p2');
+        ui.renderActiveTab();
+        links()[1].focus();
+
+        const right = press(links()[1], 'ArrowRight');
+        await settle();
+        expect(right.defaultPrevented).toBe(true);
+        expect(state.CONFIG.activeTabId).toBe('p3');
+        // The bar was rebuilt by the switch; focus is on the new active page's button.
+        expect(document.activeElement).toBe(links()[2]);
+        expect(document.activeElement.classList.contains('active')).toBe(true);
+
+        press(document.activeElement, 'End');
+        await settle();
+        expect(state.CONFIG.activeTabId).toBe('p4');
+        press(document.activeElement, 'ArrowRight');
+        await settle();
+        expect(state.CONFIG.activeTabId).toBe('p1');
+        press(document.activeElement, 'ArrowLeft');
+        await settle();
+        expect(state.CONFIG.activeTabId).toBe('p4');
+        press(document.activeElement, 'Home');
+        await settle();
+        expect(state.CONFIG.activeTabId).toBe('p1');
+        expect(document.activeElement.dataset.tab).toBe('p1');
+        expect(links().map((link) => link.tabIndex)).toEqual([0, -1, -1, -1]);
+      });
+
+      it('swaps the arrows when the text runs right to left', async () => {
+        setPages(pagesNamed(3), 'p2');
+        ui.renderActiveTab();
+        strip().style.direction = 'rtl';
+        links()[1].focus();
+
+        press(links()[1], 'ArrowLeft');
+        await settle();
+        expect(state.CONFIG.activeTabId).toBe('p3');
+        press(document.activeElement, 'ArrowRight');
+        await settle();
+        expect(state.CONFIG.activeTabId).toBe('p2');
+      });
+
+      it('does not hijack keys with modifiers or arrows aimed at the page buttons', () => {
+        setPages(pagesNamed(3), 'p1');
+        ui.toggleReorganizeMode();
+        const rename = tabBar.querySelector('.qa-tab-rename');
+        rename.focus();
+        expect(press(rename, 'ArrowRight').defaultPrevented).toBe(false);
+        expect(press(links()[0], 'ArrowRight', { shiftKey: true }).defaultPrevented).toBe(false);
+        expect(state.CONFIG.activeTabId).toBe('p1');
+      });
+
+      it('leaves the arrows alone while the pages are being edited', () => {
+        setPages(pagesNamed(3), 'p1');
+        ui.toggleReorganizeMode();
+        links()[0].focus();
+
+        // The pages are buttons in a group then, each one a Tab stop, so no arrow key is promised.
+        expect(press(links()[0], 'ArrowRight').defaultPrevented).toBe(false);
+        expect(press(links()[0], 'End').defaultPrevented).toBe(false);
+        expect(state.CONFIG.activeTabId).toBe('p1');
+      });
+
+      it('keeps keyboard focus on a page button through rebuilds of the bar', () => {
+        setPages(pagesNamed(3), 'p2');
+        ui.renderActiveTab();
+        links()[2].focus();
+        const before = links()[2];
+
+        ui.renderActiveTab();
+        ui.renderActiveTab();
+
+        expect(before.isConnected).toBe(false);
+        expect(document.activeElement).toBe(links()[2]);
+        expect(document.activeElement.dataset.tab).toBe('p3');
+      });
+
+      it('does not steal focus the bar never had', () => {
+        setPages(pagesNamed(3), 'p2');
+        ui.renderActiveTab();
+        const outside = document.createElement('button');
+        document.body.appendChild(outside);
+        outside.focus();
+
+        ui.renderActiveTab();
+
+        expect(document.activeElement).toBe(outside);
+      });
+
+      it('saves nothing and tells nobody when the page already shown is chosen', async () => {
+        setPages(pagesNamed(3), 'p2');
+        ui.renderActiveTab();
+        const changed = jest.fn();
+        window.addEventListener('desktop-companion-page-changed', changed);
+        mockElectronAPI.updateConfig.mockClear();
+        try {
+          links()[1].click();
+          await settle();
+          expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+          expect(changed).not.toHaveBeenCalled();
+          expect(await ui.switchQuickAccessPage('p2')).toEqual(
+            expect.objectContaining({ success: true })
+          );
+
+          links()[2].click();
+          await settle();
+          expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(1);
+          expect(changed).toHaveBeenCalledTimes(1);
+        } finally {
+          window.removeEventListener('desktop-companion-page-changed', changed);
+        }
+      });
+
+      it('gives a long page name an ellipsis box, its own text direction and a tooltip', () => {
+        const longName = 'Donaudampfschifffahrtsgesellschaft Kapitänspatent';
+        setPages([
+          { id: 'a', name: 'Home', entityIds: [] },
+          { id: 'b', name: longName, entityIds: [] },
+        ]);
+        ui.renderActiveTab();
+
+        const [home, long] = links();
+        expect(long.title).toBe(longName);
+        expect(home.title).toBe('Home');
+        expect(long.textContent).toBe(longName);
+        const label = long.querySelector('.quick-access-tab-label');
+        expect(label.dir).toBe('auto');
+        expect(label.textContent).toBe(longName);
+
+        ui.toggleReorganizeMode();
+        expect(links()[1].title).toBe(`${longName}\nDouble-click to rename`);
+      });
+
+      describe('with a strip that overflows', () => {
+        let scrollTo;
+        let scrollLeft;
+        const restore = [];
+
+        // jsdom has no layout, so the strip is given one: 300px wide, 1200px of 90px tabs placed
+        // 100px apart, scrolled by `scrollLeft`.
+        const mockLayout = () => {
+          scrollLeft = 0;
+          // As a browser keeps the offset between the start and the end of the content.
+          const clamp = (value) => Math.max(0, Math.min(value, 900));
+          scrollTo = jest.fn(({ left }) => {
+            scrollLeft = clamp(left);
+          });
+          const isStrip = (element) => element.classList?.contains('quick-access-tab-scroll');
+          const patch = (name, descriptor) => {
+            const original = Object.getOwnPropertyDescriptor(Element.prototype, name);
+            Object.defineProperty(Element.prototype, name, { configurable: true, ...descriptor });
+            restore.push(() => {
+              if (original) Object.defineProperty(Element.prototype, name, original);
+              else delete Element.prototype[name];
+            });
+          };
+          const fallback = (name) => Object.getOwnPropertyDescriptor(Element.prototype, name)?.get;
+          const clientWidth = fallback('clientWidth');
+          const scrollWidth = fallback('scrollWidth');
+          const scrollLeftGetter = fallback('scrollLeft');
+          patch('clientWidth', {
+            get: function get() {
+              return isStrip(this) ? 300 : clientWidth?.call(this);
+            },
+          });
+          patch('scrollWidth', {
+            get: function get() {
+              return isStrip(this) ? 1200 : scrollWidth?.call(this);
+            },
+          });
+          patch('scrollLeft', {
+            get: function get() {
+              return isStrip(this) ? scrollLeft : scrollLeftGetter?.call(this);
+            },
+            set: function set(value) {
+              if (isStrip(this)) scrollLeft = clamp(value);
+            },
+          });
+          patch('scrollTo', {
+            value: function scroll(options) {
+              if (isStrip(this)) scrollTo(options);
+            },
+          });
+          const getBoundingClientRect = Element.prototype.getBoundingClientRect;
+          patch('getBoundingClientRect', {
+            value: function boundingRect() {
+              const rect = (left, right) => ({
+                left,
+                right,
+                top: 0,
+                bottom: 24,
+                width: right - left,
+              });
+              if (isStrip(this)) return rect(0, 300);
+              if (this.classList?.contains('quick-access-tab')) {
+                const index = [...this.parentElement.querySelectorAll('.quick-access-tab')].indexOf(
+                  this
+                );
+                return rect(index * 100 - scrollLeft, index * 100 + 90 - scrollLeft);
+              }
+              return getBoundingClientRect.call(this);
+            },
+          });
+        };
+
+        beforeEach(() => {
+          mockLayout();
+          setPages(pagesNamed(12), 'p1');
+          ui.renderActiveTab();
+          scrollTo.mockClear();
+        });
+
+        afterEach(() => {
+          restore
+            .splice(0)
+            .reverse()
+            .forEach((undo) => undo());
+        });
+
+        it('glides the active page into view after a switch, clear of the faded edge', async () => {
+          await ui.switchQuickAccessPage('p10');
+          // Tab 10 is at 900..990 in a 300px strip: its right edge goes 20px inside the strip's.
+          expect(scrollTo).toHaveBeenCalledWith({ left: 710, behavior: 'smooth' });
+        });
+
+        it('glides to an earlier page the same way, unless motion is reduced', async () => {
+          await ui.switchQuickAccessPage('p10');
+          scrollTo.mockClear();
+          await ui.switchQuickAccessPage('p2');
+          // Tab 2 is at 100..190, and the strip is scrolled to 710.
+          expect(scrollTo).toHaveBeenLastCalledWith({ left: 80, behavior: 'smooth' });
+
+          window.matchMedia = jest.fn(() => ({ matches: true }));
+          try {
+            scrollTo.mockClear();
+            await ui.switchQuickAccessPage('p11');
+            expect(scrollTo).toHaveBeenLastCalledWith(
+              expect.objectContaining({ behavior: 'auto' })
+            );
+          } finally {
+            delete window.matchMedia;
+          }
+        });
+
+        it('leaves the strip alone when the active page is already in view', async () => {
+          scrollTo.mockClear();
+          await ui.switchQuickAccessPage('p2');
+          expect(scrollTo).not.toHaveBeenCalled();
+        });
+
+        it('scrolls to the page that is active when the bar is first drawn', () => {
+          // A restart: the saved page is the last, and nothing has been scrolled yet.
+          strip().remove();
+          scrollLeft = 0;
+          setPages(pagesNamed(12), 'p12');
+          ui.renderActiveTab();
+
+          // Tab 12 is at 1100..1190; the browser stops at the end, 10px short of the margin.
+          expect(scrollTo).toHaveBeenCalledWith({ left: 910, behavior: 'auto' });
+        });
+
+        it('keeps where the person scrolled across a rebuild when the active page is in view', async () => {
+          await ui.switchQuickAccessPage('p2');
+          scrollLeft = 40;
+          ui.renderActiveTab();
+          expect(scrollLeft).toBe(40);
+        });
+
+        it('fades the edges that have pages beyond them', () => {
+          const fade = () => strip().dataset.overflow || '';
+          ui.renderActiveTab();
+          expect(fade()).toBe('right');
+
+          scrollLeft = 400;
+          strip().dispatchEvent(new Event('scroll'));
+          expect(fade()).toBe('both');
+
+          scrollLeft = 900;
+          strip().dispatchEvent(new Event('scroll'));
+          expect(fade()).toBe('left');
+        });
+
+        it('scrolls sideways with a plain wheel, and lets go at the ends', () => {
+          const wheel = (init) => {
+            const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, ...init });
+            strip().dispatchEvent(event);
+            return event;
+          };
+
+          const down = wheel({ deltaY: 120 });
+          expect(down.defaultPrevented).toBe(true);
+          expect(scrollLeft).toBe(120);
+
+          const up = wheel({ deltaY: -50 });
+          expect(up.defaultPrevented).toBe(true);
+          expect(scrollLeft).toBe(70);
+
+          // Already at the start: the wheel goes on to scroll the panel.
+          scrollLeft = 0;
+          expect(wheel({ deltaY: -50 }).defaultPrevented).toBe(false);
+          // At the end the same.
+          scrollLeft = 900;
+          expect(wheel({ deltaY: 50 }).defaultPrevented).toBe(false);
+          expect(scrollLeft).toBe(900);
+          // Sideways wheels and swipes are the browser's.
+          scrollLeft = 100;
+          expect(wheel({ deltaX: 80, deltaY: 10 }).defaultPrevented).toBe(false);
+          expect(scrollLeft).toBe(100);
+        });
+      });
+
+      describe('while reorganizing', () => {
+        it('holds buttons, not tabs, and marks the current page', () => {
+          setPages(pagesNamed(3), 'p2');
+          ui.toggleReorganizeMode();
+
+          expect(strip().getAttribute('role')).toBe('group');
+          expect(strip().querySelectorAll('[role="tab"]')).toHaveLength(0);
+          expect(links().map((link) => link.getAttribute('aria-current'))).toEqual([
+            null,
+            'page',
+            null,
+          ]);
+          expect(links().map((link) => link.getAttribute('aria-selected'))).toEqual([
+            null,
+            null,
+            null,
+          ]);
+          // Without a tab list's arrow keys, Tab has to reach every page, then the active page's
+          // own buttons.
+          expect(links().map((link) => link.tabIndex)).toEqual([0, 0, 0]);
+          expect(
+            [...tabBar.querySelectorAll('button')].every((button) => button.tabIndex === 0)
+          ).toBe(true);
+        });
+
+        it('keeps Add page beside the strip, and the same button between renders', () => {
+          setPages(pagesNamed(12), 'p12');
+          ui.toggleReorganizeMode();
+
+          const add = document.querySelector('.qa-tab-add');
+          expect(add).not.toBeNull();
+          expect(strip().contains(add)).toBe(false);
+          expect(add.parentElement).toBe(tabBar.parentElement);
+          expect(tabBar.nextElementSibling).toBe(add);
+
+          add.focus();
+          ui.renderActiveTab();
+          expect(document.querySelector('.qa-tab-add')).toBe(add);
+          expect(document.activeElement).toBe(add);
+
+          ui.toggleReorganizeMode();
+          expect(document.querySelector('.qa-tab-add')).toBeNull();
+        });
+
+        it('keeps focus on a page button such as Duplicate through a rebuild', () => {
+          setPages(pagesNamed(3), 'p2');
+          ui.toggleReorganizeMode();
+          const duplicate = tabBar.querySelector('.qa-tab-duplicate');
+          duplicate.focus();
+
+          ui.renderActiveTab();
+
+          expect(document.activeElement.classList.contains('qa-tab-duplicate')).toBe(true);
+          expect(document.activeElement.isConnected).toBe(true);
+        });
+      });
+
+      describe('renaming a page', () => {
+        const startRename = () => {
+          tabBar.querySelector('.qa-tab-rename').click();
+          const input = tabBar.querySelector('.qa-tab-rename-input');
+          expect(document.activeElement).toBe(input);
+          return input;
+        };
+
+        it('puts focus back on the page after Enter', async () => {
+          setPages(pagesNamed(2), 'p1');
+          ui.toggleReorganizeMode();
+          const input = startRename();
+          expect(input.dir).toBe('auto');
+          input.value = 'Hall';
+          press(input, 'Enter');
+          await settle();
+
+          expect(state.CONFIG.customTabs[0].name).toBe('Hall');
+          expect(document.activeElement).toBe(links()[0]);
+          expect(document.activeElement.textContent).toBe('Hall');
+        });
+
+        it('puts focus back on the page after Escape, without leaving reorganize mode', async () => {
+          setPages(pagesNamed(2), 'p1');
+          ui.toggleReorganizeMode();
+          const input = startRename();
+          input.value = 'Hall';
+          press(input, 'Escape');
+          await settle();
+
+          expect(state.CONFIG.customTabs[0].name).toBe('Page 1');
+          expect(document.activeElement).toBe(links()[0]);
+          expect(tabBar.classList.contains('reorganize')).toBe(true);
+        });
+
+        it('keeps renaming through the Enter that commits an input method candidate', async () => {
+          setPages(pagesNamed(2), 'p1');
+          ui.toggleReorganizeMode();
+          const input = startRename();
+          input.value = '客厅';
+
+          for (const init of [{ isComposing: true }, { keyCode: 229 }]) {
+            const event = new KeyboardEvent('keydown', {
+              key: 'Enter',
+              bubbles: true,
+              cancelable: true,
+              ...init,
+            });
+            input.dispatchEvent(event);
+            expect(event.defaultPrevented).toBe(false);
+          }
+          await settle();
+
+          expect(state.CONFIG.customTabs[0].name).toBe('Page 1');
+          expect(tabBar.querySelector('.qa-tab-rename-input')).toBe(input);
+          press(input, 'Enter');
+          await settle();
+          expect(state.CONFIG.customTabs[0].name).toBe('客厅');
+        });
+
+        it('keeps focus where the person went when the field loses it', async () => {
+          setPages(pagesNamed(2), 'p1');
+          ui.toggleReorganizeMode();
+          const input = startRename();
+          const elsewhere = document.createElement('button');
+          document.body.appendChild(elsewhere);
+          input.value = 'Hall';
+          elsewhere.focus();
+          await settle();
+
+          expect(state.CONFIG.customTabs[0].name).toBe('Hall');
+          expect(document.activeElement).toBe(elsewhere);
+        });
+      });
+    });
+
+    describe('reorganize mode tiles', () => {
+      const lamp = (id, name) => ({
+        entity_id: id,
+        state: 'off',
+        attributes: { friendly_name: name },
+      });
+      const tileIds = () =>
+        [...document.querySelectorAll('#quick-controls .control-item')].map(
+          (tile) => tile.dataset.entityId
+        );
+      const tile = (id) => document.querySelector(`#quick-controls [data-entity-id="${id}"]`);
+      const announcement = () => document.getElementById('quick-access-announcer')?.textContent;
+      const press = (target, key, init = {}) => {
+        const event = new KeyboardEvent('keydown', {
+          key,
+          bubbles: true,
+          cancelable: true,
+          ...init,
+        });
+        target.dispatchEvent(event);
+        return event;
+      };
+
+      beforeEach(() => {
+        state.setStates({
+          'light.a': lamp('light.a', 'Lamp A'),
+          'light.b': lamp('light.b', 'Lamp B'),
+          'light.c': lamp('light.c', 'Lamp C'),
+        });
+        setPages([{ id: 'home', name: 'Home', entityIds: ['light.a', 'light.b', 'light.c'] }]);
+        ui.renderActiveTab();
+        ui.toggleReorganizeMode();
+      });
+
+      it('names the buttons of a tile for the tile, and keeps the names after a rename', () => {
+        const edit = tile('light.b').querySelector('.rename-btn');
+        const remove = tile('light.b').querySelector('.remove-btn');
+        expect(edit.getAttribute('aria-label')).toBe('Edit settings for Lamp B');
+        expect(remove.getAttribute('aria-label')).toBe('Remove Lamp B from Quick Access');
+        expect(
+          tile('light.b').querySelector('.desktop-pin-quick-toggle').getAttribute('aria-label')
+        ).toBe('Pin Lamp B to desktop');
+
+        // Renaming the tile names its buttons again.
+        state.setConfig({
+          ...state.CONFIG,
+          customEntityNames: { 'light.b': 'Reading lamp' },
+        });
+        ui.renderActiveTab();
+        expect(tile('light.b').querySelector('.rename-btn').getAttribute('aria-label')).toBe(
+          'Edit settings for Reading lamp'
+        );
+      });
+
+      it('tabs through a tile in the order of the screen: pin, edit, remove', () => {
+        const order = [...tile('light.a').querySelectorAll('button')].map((button) =>
+          ['desktop-pin-quick-toggle', 'rename-btn', 'remove-btn'].find((name) =>
+            button.classList.contains(name)
+          )
+        );
+        expect(order.filter(Boolean)).toEqual([
+          'desktop-pin-quick-toggle',
+          'rename-btn',
+          'remove-btn',
+        ]);
+
+        // Also when the buttons are made again after being removed.
+        ui.toggleReorganizeMode();
+        ui.toggleReorganizeMode();
+        const again = [...tile('light.a').querySelectorAll('button')].map(
+          (button) => button.className
+        );
+        expect(again.findIndex((name) => name.includes('desktop-pin'))).toBeLessThan(
+          again.findIndex((name) => name.includes('rename-btn'))
+        );
+        expect(again.findIndex((name) => name.includes('rename-btn'))).toBeLessThan(
+          again.findIndex((name) => name.includes('remove-btn'))
+        );
+      });
+
+      it('offers only Remove on a placeholder for an entity Home Assistant has not reported', () => {
+        setPages([{ id: 'home', name: 'Home', entityIds: ['light.a', 'light.gone'] }]);
+        ui.renderActiveTab();
+        ui.toggleReorganizeMode();
+        ui.toggleReorganizeMode();
+
+        const placeholder = tile('light.gone');
+        expect(placeholder.classList.contains('unavailable-entity')).toBe(true);
+        expect(placeholder.querySelector('.remove-btn')).not.toBeNull();
+        expect(placeholder.querySelector('.rename-btn')).toBeNull();
+        expect(placeholder.querySelector('.desktop-pin-quick-toggle')).toBeNull();
+        expect(tile('light.a').querySelector('.rename-btn')).not.toBeNull();
+      });
+
+      describe('with the keyboard', () => {
+        it('moves the focused tile along the order with Alt and the arrow keys, and saves it', () => {
+          const edit = tile('light.a').querySelector('.rename-btn');
+          edit.focus();
+
+          const event = press(edit, 'ArrowRight', { altKey: true });
+          expect(event.defaultPrevented).toBe(true);
+          expect(tileIds()).toEqual(['light.b', 'light.a', 'light.c']);
+          expect(state.CONFIG.customTabs[0].entityIds).toEqual(['light.b', 'light.a', 'light.c']);
+          // The tile was moved in the page, and focus is back on the same button.
+          expect(document.activeElement).toBe(edit);
+          expect(announcement()).toBe('Moved to position 2 of 3');
+
+          press(edit, 'ArrowDown', { altKey: true });
+          expect(tileIds()).toEqual(['light.b', 'light.c', 'light.a']);
+          press(edit, 'ArrowLeft', { altKey: true });
+          press(edit, 'ArrowUp', { altKey: true });
+          expect(tileIds()).toEqual(['light.a', 'light.b', 'light.c']);
+          expect(announcement()).toBe('Moved to position 1 of 3');
+        });
+
+        it('stops at the ends of the page', () => {
+          const edit = tile('light.a').querySelector('.rename-btn');
+          expect(press(edit, 'ArrowLeft', { altKey: true }).defaultPrevented).toBe(true);
+          expect(tileIds()).toEqual(['light.a', 'light.b', 'light.c']);
+        });
+
+        it('moves the other way in right-to-left text', () => {
+          const edit = tile('light.a').querySelector('.rename-btn');
+          document.getElementById('quick-controls').style.direction = 'rtl';
+          press(edit, 'ArrowLeft', { altKey: true });
+          expect(tileIds()).toEqual(['light.b', 'light.a', 'light.c']);
+        });
+
+        it('needs Alt, so the arrows alone and other combinations are left alone', () => {
+          const edit = tile('light.a').querySelector('.rename-btn');
+          expect(press(edit, 'ArrowRight').defaultPrevented).toBe(false);
+          expect(press(edit, 'ArrowRight', { altKey: true, ctrlKey: true }).defaultPrevented).toBe(
+            false
+          );
+          expect(tileIds()).toEqual(['light.a', 'light.b', 'light.c']);
+        });
+      });
+
+      describe('without dragging', () => {
+        const click = (target) =>
+          target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        const picked = () =>
+          [...document.querySelectorAll('.reorder-picked')].map((item) => item.dataset.entityId);
+
+        it('selects a tile, then moves it to where the next selected tile is', () => {
+          click(tile('light.a'));
+          expect(picked()).toEqual(['light.a']);
+          expect(announcement()).toContain('Picked up Lamp A');
+
+          click(tile('light.c'));
+          expect(picked()).toEqual([]);
+          expect(tileIds()).toEqual(['light.b', 'light.c', 'light.a']);
+          expect(state.CONFIG.customTabs[0].entityIds).toEqual(['light.b', 'light.c', 'light.a']);
+          expect(announcement()).toBe('Moved to position 3 of 3');
+        });
+
+        it('moves a tile earlier the same way', () => {
+          click(tile('light.c'));
+          click(tile('light.a'));
+          expect(tileIds()).toEqual(['light.c', 'light.a', 'light.b']);
+        });
+
+        it('lets go of a tile selected again, and does not count its own buttons', () => {
+          click(tile('light.a'));
+          click(tile('light.a').querySelector('.rename-btn'));
+          expect(picked()).toEqual(['light.a']);
+          click(tile('light.a'));
+          expect(picked()).toEqual([]);
+          expect(tileIds()).toEqual(['light.a', 'light.b', 'light.c']);
+        });
+
+        it('lets Escape cancel a selection before it leaves reorganize mode', () => {
+          click(tile('light.b'));
+          const escape = () =>
+            document.dispatchEvent(
+              new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+            );
+
+          escape();
+          expect(picked()).toEqual([]);
+          expect(
+            document.getElementById('quick-controls').classList.contains('reorganize-mode')
+          ).toBe(true);
+          escape();
+          expect(
+            document.getElementById('quick-controls').classList.contains('reorganize-mode')
+          ).toBe(false);
+        });
+
+        it('leaves reorganize mode on the first Escape once the picked tile is gone', () => {
+          click(tile('light.b'));
+          tile('light.b').remove();
+          document.dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+          );
+          expect(
+            document.getElementById('quick-controls').classList.contains('reorganize-mode')
+          ).toBe(false);
+        });
+
+        it('drops a selection when reorganize mode ends', () => {
+          click(tile('light.b'));
+          ui.toggleReorganizeMode();
+          expect(picked()).toEqual([]);
+          ui.toggleReorganizeMode();
+          click(tile('light.c'));
+          expect(picked()).toEqual(['light.c']);
+        });
+
+        it('does nothing when the tiles are not being reorganized', () => {
+          ui.toggleReorganizeMode();
+          click(tile('light.a'));
+          expect(picked()).toEqual([]);
+        });
+      });
     });
 
     it('renders the active page hint in the manage modal without a per-entity view select', () => {
@@ -7229,9 +9259,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(points[0][1]).toBe(points[1][1]);
       expect(points[1][0]).toBe(420);
       expect(points[0][0]).toBeLessThan(420);
-      const dot = document.querySelector('.sensor-detail-modal circle');
-      expect(Number(dot.getAttribute('cx'))).toBe(points[0][0]);
-      expect(Number(dot.getAttribute('cy'))).toBe(points[0][1]);
+      // The marker is a round-capped zero-length line, so a stretched viewBox cannot turn it into
+      // an ellipse the way a <circle> would be.
+      const dot = document.querySelector('.sensor-detail-modal .sensor-detail-sparkline-dot');
+      expect(document.querySelector('.sensor-detail-modal circle')).toBeNull();
+      expect(dot.getAttribute('d')).toBe(`M${points[0][0]} ${points[0][1]}h0`);
+      expect(dot.getAttribute('stroke-linecap')).toBe('round');
       document.querySelector('.sensor-detail-modal')?.remove();
     });
 
@@ -7291,6 +9324,123 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
   });
 
+  describe('hasEntityAction, for what the command palette can do with a row', () => {
+    const entity = (id, entityState = 'on') => ({
+      entity_id: id,
+      state: entityState,
+      attributes: { friendly_name: id },
+    });
+
+    it.each([
+      'sun.sun',
+      'person.sam',
+      'weather.home',
+      'device_tracker.phone',
+      'update.core',
+      'zone.home',
+      'binary_sensor.door',
+    ])('is false for %s, which has no controls and nothing to run', (id) => {
+      expect(ui.hasEntityAction(entity(id))).toBe(false);
+    });
+
+    it.each([
+      'light.desk',
+      'switch.plug',
+      'fan.attic',
+      'cover.garage',
+      'climate.hall',
+      'media_player.tv',
+      'camera.porch',
+      'sensor.temperature',
+      'timer.kitchen',
+      'todo.shopping',
+      'calendar.family',
+      'number.volume',
+      'input_number.level',
+      'select.mode',
+      'input_select.mode',
+      'vacuum.robot',
+      'scene.movie',
+      'script.goodnight',
+      'button.restart',
+      'input_button.ring',
+      'input_boolean.guest',
+      'automation.sunset',
+    ])('is true for %s', (id) => {
+      expect(ui.hasEntityAction(entity(id))).toBe(true);
+    });
+
+    it('is false for locks and alarm panels, which the palette runs only by named command', () => {
+      expect(ui.hasEntityAction(entity('lock.front', 'locked'))).toBe(false);
+      expect(ui.hasEntityAction(entity('alarm_control_panel.home', 'disarmed'))).toBe(false);
+    });
+
+    it('is false for what only toggles or runs while it is unavailable, and true for what opens a dialog', () => {
+      for (const id of ['switch.plug', 'scene.movie', 'button.restart', 'automation.sunset']) {
+        expect(ui.hasEntityAction(entity(id, 'unavailable'))).toBe(false);
+      }
+      for (const id of ['light.desk', 'sensor.temperature', 'climate.hall']) {
+        expect(ui.hasEntityAction(entity(id, 'unavailable'))).toBe(true);
+      }
+    });
+
+    it('reads the live entity, not the one the row was built from', () => {
+      state.setStates({ 'switch.plug': entity('switch.plug', 'unavailable') });
+      expect(ui.hasEntityAction(entity('switch.plug', 'on'))).toBe(false);
+      state.setStates({ 'switch.plug': entity('switch.plug', 'on') });
+      expect(ui.hasEntityAction(entity('switch.plug', 'unavailable'))).toBe(true);
+    });
+
+    it('is false for nothing at all', () => {
+      expect(ui.hasEntityAction(undefined)).toBe(false);
+      expect(ui.hasEntityAction({})).toBe(false);
+    });
+
+    it('agrees with what Enter really does for the domains it says have an action', () => {
+      // Whatever it says is runnable must reach Home Assistant or open a dialog, never nothing.
+      state.setStates({ 'switch.plug': entity('switch.plug', 'off') });
+      mockCallService.mockClear();
+      ui.executeEntityPrimaryAction(entity('scene.movie', 'scening'));
+      expect(mockCallService).toHaveBeenCalledWith('scene', 'turn_on', expect.any(Object));
+      // And the ones it says have none do nothing.
+      mockCallService.mockClear();
+      for (const id of ['sun.sun', 'person.sam', 'binary_sensor.door', 'update.core']) {
+        ui.executeEntityPrimaryAction(entity(id));
+      }
+      expect(mockCallService).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('service errors', () => {
+    it('tells a failed connection from Home Assistant refusing the call', () => {
+      for (const message of [
+        'WebSocket not connected',
+        'WebSocket not authenticated',
+        'WebSocket connection closed',
+        'WebSocket connection replaced',
+        'Home Assistant connection lost',
+        'WebSocket request timeout',
+      ]) {
+        expect(ui.isConnectionServiceError(new Error(message))).toBe(true);
+      }
+      expect(ui.isConnectionServiceError(new Error('Invalid alarm code provided'))).toBe(false);
+      expect(ui.isConnectionServiceError(undefined)).toBe(false);
+    });
+
+    it('says what Home Assistant said, and a plain line for an outage', () => {
+      expect(ui.describeServiceErrorMessage(new Error('Invalid alarm code provided'))).toBe(
+        'Invalid alarm code provided'
+      );
+      expect(ui.describeServiceErrorMessage(new Error('WebSocket not connected'))).toBe(
+        'Not connected to Home Assistant'
+      );
+      expect(ui.describeServiceErrorMessage(new Error('WebSocket request timeout'))).toBe(
+        'Home Assistant did not respond'
+      );
+      expect(ui.describeServiceErrorMessage(new Error(''))).toBe('Unknown error');
+    });
+  });
+
   describe('describeQuickAccessTile', () => {
     it('publishes deadlines for native timers and timer sensors, clearing them on pause or stop', () => {
       jest.useFakeTimers();
@@ -7339,6 +9489,66 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       } finally {
         jest.useRealTimers();
       }
+    });
+
+    it.each([
+      ['scene.movie', 'scene'],
+      ['button.restart', 'button'],
+      ['input_button.go', 'input_button'],
+      ['script.goodnight', 'script'],
+    ])('does not report a never-used %s as unknown or unavailable', (entityId) => {
+      state.setStates({ [entityId]: { entity_id: entityId, state: 'unknown', attributes: {} } });
+      const tile = ui.describeQuickAccessTile(entityId);
+      // Home Assistant says `unknown` until the first press; the bar must not dim it.
+      expect(tile.available).toBe(true);
+      expect(tile.value).not.toBe('Unknown');
+      state.setStates({
+        [entityId]: { entity_id: entityId, state: 'unavailable', attributes: {} },
+      });
+      expect(ui.describeQuickAccessTile(entityId).available).toBe(false);
+      expect(ui.describeQuickAccessTile(entityId).value).toBe('Unavailable');
+    });
+
+    it('still reports an unknown sensor as unknown and unavailable-looking', () => {
+      state.setStates({
+        'sensor.flaky': { entity_id: 'sensor.flaky', state: 'unknown', attributes: {} },
+      });
+      const tile = ui.describeQuickAccessTile('sensor.flaky');
+      expect(tile.available).toBe(false);
+      expect(tile.value).toBe('Unknown');
+    });
+
+    it('words a tile the way the palette and the pin do', () => {
+      state.setStates({
+        'binary_sensor.router': {
+          entity_id: 'binary_sensor.router',
+          state: 'off',
+          attributes: { device_class: 'connectivity' },
+        },
+        'binary_sensor.door': {
+          entity_id: 'binary_sensor.door',
+          state: 'off',
+          attributes: { device_class: 'door' },
+        },
+        'sun.sun': { entity_id: 'sun.sun', state: 'below_horizon', attributes: {} },
+        'input_number.offset': {
+          entity_id: 'input_number.offset',
+          state: '1.5',
+          attributes: { unit_of_measurement: '°C', step: 0.5 },
+        },
+        'sensor.travel': {
+          entity_id: 'sensor.travel',
+          state: '23.4',
+          attributes: { unit_of_measurement: 'min', duration: 1404 },
+        },
+      });
+      const value = (id) => ui.describeQuickAccessTile(id).value;
+      expect(value('binary_sensor.router')).toBe('Disconnected');
+      expect(value('binary_sensor.door')).toBe('Closed');
+      expect(value('sun.sun')).toBe('Below horizon');
+      expect(value('input_number.offset')).toBe('1.5°C');
+      // A travel time is a reading with a unit, not a countdown.
+      expect(value('sensor.travel')).toBe('23.4\u00a0min');
     });
 
     it('anchors remaining-only timers to their state update across republication', () => {

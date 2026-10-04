@@ -21,12 +21,12 @@ describe('index.html static Settings text', () => {
       activeLocale: 'de',
       messages: {
         'Show an entity on a card': 'Entität auf einer Karte anzeigen',
-        'Profile sync': 'Profilsynchronisierung',
+        'Sync this profile across computers': 'Profilsynchronisierung',
         'Search entities...': 'Entitäten suchen...',
-        'Theme colors': 'Themenfarben',
+        'Search entities': 'Entitäten suchen',
         'Card {{index}}': 'Karte {{index}}',
-        'Click the button and press your desired key combination. Press <code>ESC</code> to clear.':
-          'Klicke auf die Schaltfläche und drücke die Tastenkombination. <code>ESC</code> löscht sie.',
+        'Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).':
+          'Schalte oder steuere Entitäten von überall aus. Modifikatortasten: Ctrl, Alt, Shift, Win, Command, Super (zum Beispiel <code>Ctrl+Shift+A</code>).',
         'View logs': 'Protokolle anzeigen',
         'Opens the log file location in your file explorer':
           'Öffnet den Speicherort der Protokolldatei im Dateimanager',
@@ -63,9 +63,14 @@ describe('index.html static Settings text', () => {
     expect(document.getElementById('alert-entity-picker-search').placeholder).toBe(
       'Entitäten suchen...'
     );
-    expect(document.getElementById('theme-options').getAttribute('aria-label')).toBe(
-      'Themenfarben'
+    expect(document.getElementById('hotkey-entity-search').getAttribute('aria-label')).toBe(
+      'Entitäten suchen'
     );
+    // The colour swatches take their name from the caption above them, whatever its language.
+    expect(document.getElementById('theme-options').getAttribute('aria-labelledby')).toBe(
+      'theme-options-label'
+    );
+    expect(document.getElementById('theme-options-label')).not.toBeNull();
     const viewLogs = document.getElementById('view-logs-btn');
     expect(viewLogs.title).toBe('Öffnet den Speicherort der Protokolldatei im Dateimanager');
     expect(viewLogs.textContent).toContain('Protokolle anzeigen');
@@ -76,10 +81,23 @@ describe('index.html static Settings text', () => {
     ).toEqual(['Karte 1', 'Karte 2']);
   });
 
+  test('offers one choice per date style and starts the opacity readout at the default', () => {
+    // "System default" wrote exactly what Numeric date does, so only the three styles remain.
+    expect([...document.querySelectorAll('#date-format option')].map((o) => o.value)).toEqual([
+      'weekday-short',
+      'long',
+      'numeric',
+    ]);
+    // The time format still follows the language by default.
+    expect(document.querySelector('#time-format option').value).toBe('system');
+    // The stored default is 95%, not the slider position of 90.
+    expect(document.getElementById('opacity-value').textContent).toBe('95%');
+  });
+
   test('keeps code formatting in translated help text', () => {
-    const help = document.querySelector('[data-i18n-html^="Click the button and press"]');
+    const help = document.querySelector('[data-i18n-html^="Toggle or control entities"]');
     expect(help.textContent).toBe(
-      'Klicke auf die Schaltfläche und drücke die Tastenkombination. ESC löscht sie.'
+      'Schalte oder steuere Entitäten von überall aus. Modifikatortasten: Ctrl, Alt, Shift, Win, Command, Super (zum Beispiel Ctrl+Shift+A).'
     );
     expect(help.querySelectorAll('code')).toHaveLength(1);
   });

@@ -32,6 +32,16 @@ describe('desktop blur retry control', () => {
       window: { electronAPI: { setDesktopBlur: change } },
       t: (text) => text,
       showToast: jest.fn(),
+      disableControlsKeepingFocus: (controls) => {
+        controls.forEach((control) => {
+          control.disabled = true;
+        });
+        return () => {
+          controls.forEach((control) => {
+            control.disabled = false;
+          });
+        };
+      },
       status: { ...ready, widgetRuleFailed: true },
     });
     vm.runInContext(`${render}\nrenderDesktopBlur(status);`, context);

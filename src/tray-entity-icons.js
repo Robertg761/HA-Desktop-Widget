@@ -9,7 +9,7 @@ import log from './logger.js';
 import state from './state.js';
 import * as utils from './utils.js';
 import trayEntities from './tray-entities.cjs';
-import { t, getLocaleState } from './i18n.js';
+import { t, getFormatLocale } from './i18n.js';
 
 const TRAY_ICON_UPDATE_DEBOUNCE_MS = 250;
 const TRAY_ICON_RETRY_MS = 2000;
@@ -215,8 +215,10 @@ function describeTrayEntity(entityId) {
       displayName,
       timerRemainingSeconds: remaining,
       temperatureUnit: state.UNIT_SYSTEM?.temperature,
+      // The same words, units and precision as the tiles and the palette.
+      displayState: connectionIsLive && entity ? utils.getEntityDisplayState(entity) : '',
       translate: t,
-      locale: getLocaleState().activeLocale,
+      locale: getFormatLocale(),
     }
   );
   if (!connectionIsLive) {

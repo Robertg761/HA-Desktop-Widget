@@ -1,5 +1,8 @@
 import { applyDesktopAppearance } from './src/desktop-appearance.js';
+import { installClippedTextTooltips } from './src/clipped-text-tooltips.js';
 import { installLayerDrag } from './src/layer-drag.js';
+import { installRangeProgress } from './src/range-progress.js';
+import desktopPinResize from './src/desktop-pin-resize.cjs';
 // Load all required modules (ES Modules)
 import log from './src/logger.js';
 import {
@@ -21,8 +24,15 @@ import { setLocaleBootstrap, t, translateDocument } from './src/i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './src/icons.js';
 import { lineIconMarkup, setLineIconContent } from './src/entity-icons.js';
 import { animateEnter, syncSlidingIndicator } from './src/motion.js';
+import {
+  bindTabListKeyboard,
+  bindTabListOrientation,
+  bindTabTooltips,
+  syncRovingTabIndex,
+} from './src/tab-navigation.js';
 import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
 import { WeatherEffectsManager } from './src/weather-effects.js';
+import { bindWeatherCardPicker } from './src/weather-card.js';
 import { SeasonalEffectsManager } from './src/seasonal-effects.js';
 import { normalizeQuickAccessConfig } from './src/quick-access-tabs.js';
 import { normalizeComparisonGraphsConfig } from './src/comparison-graphs.js';
@@ -72,6 +82,8 @@ const STATE_CHANGED_HIDDEN_FLUSH_DELAY_MS = 50;
 const WINDOW_QUERY = new URLSearchParams(window.location.search);
 const WINDOW_MODE = WINDOW_QUERY.get('mode') || '';
 const IS_DESKTOP_PIN_MODE = WINDOW_MODE === 'desktop-pin';
+const { getDesktopPinResizeKeyDelta, getDesktopPinResizeRequest, getPointerScreenFactor } =
+  desktopPinResize;
 const IS_SPECIAL_PIN_MODE = IS_DESKTOP_PIN_MODE;
 const DESKTOP_PIN_ENTITY_ID = WINDOW_QUERY.get('entityId') || '';
 // Only the main window renders tray entity icons; pin windows share this script but not the job.
@@ -212,7 +224,6 @@ let uiTickNudgeTimerId = null;
 let offlineConnectionToastShown = false;
 // Kinds of connection failure already reported in this outage, and the toasts showing them.
 const shownConnectionToastKeys = new Set();
-const connectionToasts = new Set();
 let connectionErrorLoggedThisOutage = false;
 let browserReportedOffline = false;
 let lastDisconnectReason = '';
@@ -255,6 +266,15 @@ function clearReconnectTimer() {
   reconnectTimerId = null;
 }
 
+// websocket.close() is an intentional close, which never emits "close", so the pending duration
+// alerts are only suspended when it is told here. Left running they would fire on an outage the
+// widget already knows about, after the condition may have ended ("front door open for 10 minutes"
+// notifying about a door closed while the Wi-Fi was down).
+function closeWebSocket() {
+  alerts.suspendEntityAlerts?.();
+  websocket.close();
+}
+
 function connectWebSocket() {
   if (IS_DESKTOP_PIN_MODE) return;
   clearReconnectTimer();
@@ -276,6 +296,7 @@ function setDisconnectedStatus(detailMessage = '') {
   const normalizedDetail = typeof detailMessage === 'string' ? detailMessage.trim() : '';
   if (normalizedDetail) {
     lastDisconnectReason = normalizedDetail;
+    settings.refreshHomeAssistantAuthStatus?.();
   }
   uiUtils.setStatus(
     false,
@@ -333,7 +354,7 @@ function getAuthFailureMessage(oauth = usesOAuth()) {
     ? t(
         'Home Assistant rejected the authorization for this app. Reconnect with Home Assistant to continue.'
       )
-    : t('Authentication failed. Please check your Home Assistant token in Settings.');
+    : t('Authentication failed. Check your long-lived access token in Settings.');
 }
 
 function getOAuthReauthRequiredStatus() {
@@ -602,6 +623,8 @@ function getSettingsUiHooks() {
     updateMediaTile: ui.updateMediaTile,
     renderPrimaryCards: ui.renderPrimaryCards,
     updateWeatherEffects: ui.updateWeatherEffects,
+    // What the red connection panel is saying, so Settings does not look healthy beside it.
+    getConnectionState: () => ({ status: mainConnectionState, reason: lastDisconnectReason }),
     refreshLocale: async () => {
       await refreshLocaleBootstrap();
       renderCurrentMode();
@@ -616,7 +639,7 @@ function getSettingsUiHooks() {
 }
 
 function openSettingsModal() {
-  dismissConnectionToasts();
+  dismissConnectionToasts({ includeStartupWarnings: true });
   settings.openSettings(getSettingsUiHooks());
 }
 
@@ -624,8 +647,8 @@ function openQuickAccessModal() {
   ui.populateQuickControlsList();
   const modal = document.getElementById('quick-controls-modal');
   if (!modal) return;
-  uiUtils.openModal(modal);
-  uiUtils.trapFocus(modal);
+  // The search is where a visit here starts; without it focus would land on the Close button.
+  uiUtils.openDialog(modal, { initialFocus: '#quick-controls-search' });
 }
 
 function createTextElement(tagName, className, text) {
@@ -650,51 +673,116 @@ function hasDashboardEntities() {
   );
 }
 
-function getActiveQuickAccessCount() {
+function getActiveQuickAccessPage() {
   const normalized = normalizeQuickAccessConfig(state.CONFIG || {});
-  const activeTab =
-    normalized.customTabs.find((tab) => tab.id === normalized.activeTabId) ||
-    normalized.customTabs[0];
-  return Array.isArray(activeTab?.entityIds) ? activeTab.entityIds.length : 0;
+  return {
+    page:
+      normalized.customTabs.find((tab) => tab.id === normalized.activeTabId) ||
+      normalized.customTabs[0],
+    pageCount: normalized.customTabs.length,
+  };
 }
+
+function getActiveQuickAccessCount() {
+  const { page } = getActiveQuickAccessPage();
+  return Array.isArray(page?.entityIds) ? page.entityIds.length : 0;
+}
+
+// The title of the last problem the panel announced, so a retry that lands on the same problem again
+// stays quiet. Cleared when the panel goes away, which is when the problem has.
+let announcedWidgetStateTitle = '';
 
 function removeWidgetStatePanel() {
   const existingPanel = document.getElementById('widget-state-panel');
-  if (existingPanel) existingPanel.remove();
+  if (existingPanel) {
+    // The button that had focus (Retry) goes with the panel; keep the keyboard in the widget.
+    const hadFocus = existingPanel.contains(document.activeElement);
+    existingPanel.remove();
+    if (hadFocus) document.getElementById('settings-btn')?.focus();
+  }
   document.body.classList.remove('widget-state-active');
+  announcedWidgetStateTitle = '';
 }
 
-function renderWidgetStatePanel({ tone, title, message, actions }) {
+// Said through one persistent live region instead of by rebuilding a role="alert" panel: a panel
+// that is replaced on every retry is announced again on every retry, for as long as an outage lasts.
+function announceWidgetState(text) {
+  const live = document.getElementById('widget-state-live');
+  if (!live) return;
+  live.textContent = '';
+  // A tick later, so assistive technology sees a change rather than a region that never emptied.
+  setTimeout(() => {
+    live.textContent = text;
+  }, 50);
+}
+
+function createWidgetStateActions(actions) {
+  const actionRow = document.createElement('div');
+  actionRow.className = 'widget-state-actions';
+  actions.forEach((action) => {
+    const button = createActionButton(action.label, action.className, action.onClick);
+    // The labels name them for the next render, so focus stays on the button it was on.
+    button.dataset.focusKey = `widget-state:${action.label}`;
+    actionRow.appendChild(button);
+  });
+  return actionRow;
+}
+
+// One connect attempt renders the panel several times (connecting, error, close), and Retry is
+// pressed while it does. The panel is therefore kept and updated in place, and a render that would
+// change nothing changes nothing: replacing the node moved keyboard focus from Retry to Open Settings.
+function renderWidgetStatePanel({ tone, title, message, actions = [] }) {
   const widgetContent = document.querySelector('.widget-content');
   if (!widgetContent) return;
-  const previousPanel = document.getElementById('widget-state-panel');
-  // Pressing a panel button re-renders the panel; keep keyboard focus inside it.
-  const hadFocus = !!previousPanel?.contains(document.activeElement);
-  const previousTitle = previousPanel?.querySelector('.widget-state-title')?.textContent;
-  removeWidgetStatePanel();
-
-  const panel = document.createElement('div');
-  panel.id = 'widget-state-panel';
-  panel.className = `widget-state-panel ${tone ? `widget-state-${tone}` : ''}`.trim();
-  panel.setAttribute('role', tone === 'error' ? 'alert' : 'status');
-
-  panel.appendChild(createTextElement('h3', 'widget-state-title', title));
-  panel.appendChild(createTextElement('p', 'widget-state-copy', message));
-
-  if (actions?.length) {
-    const actionRow = document.createElement('div');
-    actionRow.className = 'widget-state-actions';
-    actions.forEach((action) => {
-      actionRow.appendChild(createActionButton(action.label, action.className, action.onClick));
-    });
-    panel.appendChild(actionRow);
+  const labels = actions.map((action) => action.label);
+  const signature = JSON.stringify([tone || '', title, message, labels]);
+  let panel = document.getElementById('widget-state-panel');
+  if (panel?.dataset.signature === signature) {
+    document.body.classList.add('widget-state-active');
+    return;
   }
 
-  widgetContent.appendChild(panel);
+  // A connection problem sits above Quick Access, where it is seen without scrolling and the
+  // tiles stay in place; at the end of the page it was below the fold on a full page, and
+  // scrolling it into view threw the dashboard to the bottom at every restart of Home Assistant. An
+  // empty page has no tiles to push down, so its panel stays where the tiles would be. Neither
+  // scrolls the page: the user's place in it is not the panel's to take.
+  const tiles = tone === 'empty' ? null : widgetContent.querySelector('.controls-section');
+
+  const isNew = !panel;
+  if (isNew) {
+    panel = document.createElement('div');
+    panel.id = 'widget-state-panel';
+    panel.appendChild(createTextElement('h3', 'widget-state-title', title));
+    panel.appendChild(createTextElement('p', 'widget-state-copy', message));
+    if (tiles) widgetContent.insertBefore(panel, tiles);
+    else widgetContent.appendChild(panel);
+  } else {
+    panel.querySelector('.widget-state-title').textContent = title;
+    panel.querySelector('.widget-state-copy').textContent = message;
+    // The empty page's panel becoming a problem (or back) changes where it belongs. Moving it takes
+    // focus with it, so a button that had focus gets it back.
+    const focused = panel.contains(document.activeElement) ? document.activeElement : null;
+    if (tiles && panel.nextElementSibling !== tiles) widgetContent.insertBefore(panel, tiles);
+    else if (!tiles && panel.nextElementSibling) widgetContent.appendChild(panel);
+    if (focused?.isConnected && document.activeElement !== focused) focused.focus();
+  }
+  panel.className = `widget-state-panel ${tone ? `widget-state-${tone}` : ''}`.trim();
+
+  if (isNew || JSON.stringify(labels) !== panel.dataset.actionLabels) {
+    uiUtils.renderKeepingFocus(panel, () => {
+      panel.querySelector('.widget-state-actions')?.remove();
+      if (labels.length) panel.appendChild(createWidgetStateActions(actions));
+    });
+  }
+  panel.dataset.signature = signature;
+  panel.dataset.actionLabels = JSON.stringify(labels);
   document.body.classList.add('widget-state-active');
-  if (hadFocus) panel.querySelector('button')?.focus();
-  // The panel follows the tiles, so on a full page a new problem could appear below the fold.
-  if (tone === 'error' && title !== previousTitle) panel.scrollIntoView?.({ block: 'nearest' });
+
+  if (tone === 'error' && title !== announcedWidgetStateTitle) {
+    announcedWidgetStateTitle = title;
+    announceWidgetState(`${title}. ${message}`);
+  }
 }
 
 async function retryOAuthRestore() {
@@ -848,6 +936,17 @@ function retryConnection() {
 }
 
 function renderMainWidgetState() {
+  // An open Settings page shows the same connection problem as the panel, so it follows it.
+  settings.refreshHomeAssistantAuthStatus?.();
+  // Tiles keep showing what Home Assistant last said while it cannot be reached; the page dims
+  // them so a lamp that has since been switched off, or a timer that stopped, does not look live.
+  // Connecting counts: every retry and the wait for the first state snapshot after login still
+  // show the old values, and the tiles would otherwise flash back to full brightness at each try.
+  document.body.classList.toggle(
+    'ha-offline',
+    !IS_DESKTOP_PIN_MODE &&
+      ['disconnected', 'auth-failed', 'connecting'].includes(mainConnectionState)
+  );
   if (IS_DESKTOP_PIN_MODE || firstRunWizard?.visible) {
     removeWidgetStatePanel();
     return;
@@ -907,10 +1006,15 @@ function renderMainWidgetState() {
   }
 
   if (mainConnectionState === 'connected' && getActiveQuickAccessCount() === 0) {
+    // Beside other pages it is this page that is empty, not Quick Access as a whole.
+    const { page, pageCount } = getActiveQuickAccessPage();
+    const onePageOfMany = pageCount > 1;
     renderWidgetStatePanel({
       tone: 'empty',
-      title: t('No Quick Access entities yet'),
-      message: t('Add your favorite Home Assistant entities for one-click control.'),
+      title: onePageOfMany ? t('This page is empty') : t('No Quick Access entities yet'),
+      message: onePageOfMany
+        ? t('Add entities to {{page}} for one-click control.', { page: page.name })
+        : t('Add your favorite Home Assistant entities for one-click control.'),
       actions: [
         {
           label: t('Choose rooms and devices'),
@@ -934,13 +1038,29 @@ function setFirstRunWizardVisible(visible) {
   if (!firstRunWizard?.overlay) return;
   const wasVisible = firstRunWizard.visible;
   firstRunWizard.visible = !!visible;
-  firstRunWizard.overlay.classList.toggle('hidden', !visible);
   document.body.classList.toggle('first-run-active', !!visible);
-  // The wizard is modal: keep Tab inside it instead of on the header buttons behind it.
+  // The wizard is modal: keep Tab inside it instead of on the header buttons behind it. It starts
+  // below the header, which keeps the window's own buttons and drag area working, so the overlay
+  // is told where that ends. It asks for an answer, so Escape and the backdrop do nothing.
   if (visible && !wasVisible) {
-    uiUtils.trapFocus(firstRunWizard.overlay, { initialFocus: false });
+    const header = document.querySelector('.widget-header');
+    if (header) {
+      document.documentElement.style.setProperty(
+        '--header-height',
+        `${Math.ceil(header.getBoundingClientRect().bottom)}px`
+      );
+    }
+    uiUtils.openDialog(firstRunWizard.overlay, {
+      display: null,
+      labelledBy: 'first-run-title',
+      describedBy: 'first-run-copy',
+      initialFocus: false,
+      dismiss: null,
+    });
   } else if (!visible && wasVisible) {
-    uiUtils.releaseFocusTrap(firstRunWizard.overlay);
+    void uiUtils.closeDialog(firstRunWizard.overlay, { animate: false });
+  } else {
+    firstRunWizard.overlay.classList.toggle('hidden', !visible);
   }
   if (visible) focusWizardStep();
   renderMainWidgetState();
@@ -1048,6 +1168,14 @@ async function renderFirstRunDesktopHelp(content) {
   }
 }
 
+// The wizard's heading and lead paragraph name and describe its dialog. They are rebuilt for every
+// step, so only one carries each id at a time.
+function createWizardText(tagName, className, id, text) {
+  const element = createTextElement(tagName, className, text);
+  element.id = id;
+  return element;
+}
+
 function renderWizardStep() {
   if (!firstRunWizard?.content) return;
   const stepIndex = firstRunWizard.step;
@@ -1070,11 +1198,17 @@ function renderWizardStep() {
 
   if (stepIndex === 0) {
     content.appendChild(
-      createTextElement('h2', 'first-run-title', t('Welcome to Home Assistant Widget'))
+      createWizardText(
+        'h2',
+        'first-run-title',
+        'first-run-title',
+        t('Welcome to Home Assistant Widget')
+      )
     );
     content.appendChild(
-      createTextElement(
+      createWizardText(
         'p',
+        'first-run-copy',
         'first-run-copy',
         t(
           'Connect your Home Assistant server to start building a compact control panel for your desktop.'
@@ -1084,11 +1218,17 @@ function renderWizardStep() {
     void renderFirstRunDesktopHelp(content);
   } else if (stepIndex === 1) {
     content.appendChild(
-      createTextElement('h2', 'first-run-title', t('Enter your Home Assistant URL'))
+      createWizardText(
+        'h2',
+        'first-run-title',
+        'first-run-title',
+        t('Enter your Home Assistant URL')
+      )
     );
     content.appendChild(
-      createTextElement(
+      createWizardText(
         'p',
+        'first-run-copy',
         'first-run-copy',
         t('Use the address you normally open in your browser.')
       )
@@ -1099,6 +1239,10 @@ function renderWizardStep() {
     input.id = 'first-run-ha-url';
     input.type = 'text';
     input.placeholder = t('http://homeassistant.local');
+    input.setAttribute('spellcheck', 'false');
+    input.setAttribute('autocapitalize', 'off');
+    input.setAttribute('autocomplete', 'off');
+    input.setAttribute('inputmode', 'url');
     input.value =
       firstRunWizard.urlInput?.value || normalizeBaseUrl(state.CONFIG?.homeAssistant?.url) || '';
     input.addEventListener('input', () => {
@@ -1113,10 +1257,13 @@ function renderWizardStep() {
     content.appendChild(label);
     content.appendChild(input);
   } else if (stepIndex === 3) {
-    content.appendChild(createTextElement('h2', 'first-run-title', t('Choose rooms and devices')));
     content.appendChild(
-      createTextElement(
+      createWizardText('h2', 'first-run-title', 'first-run-title', t('Choose rooms and devices'))
+    );
+    content.appendChild(
+      createWizardText(
         'p',
+        'first-run-copy',
         'first-run-copy',
         t(
           'Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.'
@@ -1125,11 +1272,12 @@ function renderWizardStep() {
     );
   } else {
     content.appendChild(
-      createTextElement('h2', 'first-run-title', t('Authorize in Home Assistant'))
+      createWizardText('h2', 'first-run-title', 'first-run-title', t('Authorize in Home Assistant'))
     );
     content.appendChild(
-      createTextElement(
+      createWizardText(
         'p',
+        'first-run-copy',
         'first-run-copy',
         t(
           'Continue to open Home Assistant in your browser. Sign in and approve HA Desktop Widget, then return here.'
@@ -1264,19 +1412,16 @@ function ensureFirstRunWizard() {
   overlay.className = 'first-run-onboarding hidden';
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
-  overlay.setAttribute('aria-labelledby', 'first-run-title');
 
   const panel = document.createElement('div');
   panel.className = 'first-run-panel';
 
   const content = document.createElement('div');
   content.className = 'first-run-content';
-  content.id = 'first-run-title';
 
   const status = document.createElement('div');
-  status.className = 'first-run-status hidden';
+  status.className = 'first-run-status connection-status-empty';
   status.setAttribute('role', 'status');
-  status.setAttribute('aria-live', 'polite');
 
   const actions = document.createElement('div');
   actions.className = 'first-run-actions';
@@ -1500,7 +1645,8 @@ function showConfigPersistenceWarnings(persistenceWarnings = []) {
           'Your Home Assistant token needs to be re-entered. Token encryption is not available on this system.'
         ),
     'warning',
-    20000
+    10000,
+    { source: STARTUP_WARNING_TOAST_SOURCE }
   );
 }
 
@@ -1602,8 +1748,9 @@ function applyRendererConfig(nextConfig) {
     uiUtils.applyAccentTheme(state.CONFIG.ui?.accent || 'original');
     uiUtils.applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
     uiUtils.applyUiPreferences(state.CONFIG.ui || {});
-    uiUtils.applyWindowEffects(state.CONFIG || {});
+    // The palette can change the theme, which the window effects' alphas follow, so it goes first.
     applyDesktopAppearance(state.CONFIG);
+    uiUtils.applyWindowEffects(state.CONFIG || {});
 
     if (ui.updateWeatherEffects) {
       ui.updateWeatherEffects();
@@ -1650,6 +1797,15 @@ function showConfigRecoveryNotice(recovery) {
   uiUtils.showToast(message, 'error', 20000);
 }
 
+// The palette opens with the platform's own modifier: Cmd+K on macOS, Ctrl+K elsewhere (it takes
+// either, but the tip should name the one a person there would reach for).
+function applyPaletteShortcutHint() {
+  const hint = document.getElementById('command-palette-hint');
+  if (!hint) return;
+  const shortcut = window.electronAPI?.platform === 'darwin' ? 'Cmd+K' : 'Ctrl+K';
+  hint.setAttribute('data-i18n-vars', JSON.stringify({ shortcut }));
+}
+
 // The language the window was last drawn in; null until the first locale is applied.
 let appliedLocale = null;
 async function refreshLocaleBootstrap() {
@@ -1657,6 +1813,7 @@ async function refreshLocaleBootstrap() {
   const bootstrap = await window.electronAPI.getLocaleBootstrap();
   setLocaleBootstrap(bootstrap || {});
   if (!IS_DESKTOP_PIN_MODE) refreshTrayEntityIcons({ force: true });
+  applyPaletteShortcutHint();
   translateDocument(document);
   const locale = bootstrap?.activeLocale || '';
   if (appliedLocale !== null && locale !== appliedLocale) refreshConnectionStatusLanguage();
@@ -1686,13 +1843,20 @@ function renderCurrentMode() {
   if (IS_DESKTOP_PIN_MODE) {
     const entity = state.STATES?.[DESKTOP_PIN_ENTITY_ID] || null;
     document.body.classList.toggle('desktop-pin-edit-mode', desktopPinEditMode);
+    // pointer-events: none keeps the mouse off a tile that is being arranged, but not Tab, Enter
+    // or Space, so the tile is also taken out of the focus order while it is edited.
+    for (const id of ['desktop-pin-content', 'desktop-pin-empty']) {
+      document.getElementById(id)?.toggleAttribute('inert', desktopPinEditMode);
+    }
     // The edit-mode hint is drawn by CSS from this attribute so it follows the language.
     document
       .getElementById('desktop-pin-content')
       ?.setAttribute('data-edit-hint', t('Drag or resize'));
+    // The notice that the desktop decides where the tile sits is for sessions where nothing in the
+    // app can move it. A layer surface on Hyprland is dragged by the app itself.
     document.body.classList.toggle(
       'desktop-pin-compositor-placement',
-      !desktopPinSupportsWindowPositioning
+      !desktopPinSupportsWindowPositioning && state.CONFIG?.desktopCapabilities?.canDrag !== true
     );
     ui.renderDesktopPinnedTile(DESKTOP_PIN_ENTITY_ID, entity, {
       hasSnapshot: desktopPinHasSnapshot,
@@ -1771,7 +1935,7 @@ function classifyConnectionError(error) {
     return {
       key: OFFLINE_CONNECTION_ERROR_KEY,
       message: t(
-        'No network connection detected. Reconnect to Wi-Fi and the widget will retry automatically.'
+        'No network connection detected. Check your network connection and the widget will retry automatically.'
       ),
       persistUntilOnline: true,
     };
@@ -1821,16 +1985,25 @@ function resetConnectionToastTracking() {
   connectionErrorLoggedThisOutage = false;
 }
 
+// Toasts that say why the connection failed are tagged, so the renderer can take them down again
+// without keeping hold of the elements: when Settings opens, and when the connection is back.
+const CONNECTION_TOAST_SOURCE = 'connection';
+// Notices about the saved token (a missing keyring); they outlast a reconnect but point at Settings too.
+const STARTUP_WARNING_TOAST_SOURCE = 'startup-warning';
+
 function showConnectionToast(message, timeout) {
-  const toast = uiUtils.showToast(message, 'error', timeout);
-  if (toast) connectionToasts.add(toast);
+  // While the connection panel is up it already says the widget is offline and keeps retrying,
+  // with Retry and Open Settings right under it. A toast on the same spot would cover those
+  // buttons, and the first click on them would dismiss the toast instead.
+  if (document.body.classList.contains('widget-state-active')) return;
+  uiUtils.showToast(message, 'error', timeout, { source: CONNECTION_TOAST_SOURCE });
 }
 
 // Connection toasts point the user at Settings. Once Settings is open they have done their job,
 // and left up they cover its footer, Save button included.
-function dismissConnectionToasts() {
-  connectionToasts.forEach((toast) => uiUtils.dismissToast?.(toast));
-  connectionToasts.clear();
+function dismissConnectionToasts({ includeStartupWarnings = false } = {}) {
+  uiUtils.dismissToasts?.(CONNECTION_TOAST_SOURCE);
+  if (includeStartupWarnings) uiUtils.dismissToasts?.(STARTUP_WARNING_TOAST_SOURCE);
 }
 
 function showClassifiedConnectionToast(error) {
@@ -1997,7 +2170,8 @@ window.addEventListener('online', () => {
   const shouldForceReconnect = browserReportedOffline;
   browserReportedOffline = false;
   if (shouldForceReconnect || !websocket.ws || websocket.ws.readyState !== WebSocket.OPEN) {
-    setDisconnectedStatus(t('Network restored. Reconnecting to Home Assistant...'));
+    // connectWebSocket() says it is connecting; a "network restored" message set first would be
+    // replaced in the same tick, before it could be painted.
     connectWebSocket();
   }
 });
@@ -2007,7 +2181,7 @@ window.addEventListener('offline', () => {
   clearReconnectTimer();
   updateMainConnectionState('disconnected');
   const disconnectedMessage = t(
-    'No network connection detected. Reconnect to Wi-Fi and the widget will retry automatically.'
+    'No network connection detected. Check your network connection and the widget will retry automatically.'
   );
   setDisconnectedStatus(disconnectedMessage);
   setDesktopPinConnectionIssue(disconnectedMessage);
@@ -2023,7 +2197,7 @@ window.addEventListener('offline', () => {
   // Use the manager lifecycle so authentication and message subscription state are
   // cleared before the browser delivers the socket's asynchronous close event.
   try {
-    websocket.close();
+    closeWebSocket();
   } catch (error) {
     log.warn('Error closing WebSocket after offline event:', error);
   }
@@ -2109,7 +2283,7 @@ websocket.on('message', (msg) => {
         log.warn('[WS] Home Assistant rejected the access token; refreshing authorization');
         oauthAuthRecoveryAttempted = true;
         updateMainConnectionState('connecting');
-        websocket.close();
+        closeWebSocket();
         setDisconnectedStatus(t('Refreshing Home Assistant authorization...'));
         uiUtils.showLoading(false);
         renderCurrentMode();
@@ -2118,13 +2292,21 @@ websocket.on('message', (msg) => {
       }
       log.error('[WS] Invalid authentication token');
       updateMainConnectionState('auth-failed');
-      websocket.close();
+      closeWebSocket();
       const authFailureMessage = getAuthFailureMessage();
       setDisconnectedStatus(authFailureMessage);
       setDesktopPinConnectionIssue(authFailureMessage);
       uiUtils.showLoading(false);
-      // Show clear error message to user
-      showConnectionToast(authFailureMessage, 15000);
+      // Said once per outage: startup churn and every Retry would otherwise stack the same toast.
+      if (
+        shouldShowConnectionToast({
+          key: 'auth-invalid',
+          message: authFailureMessage,
+          persistUntilOnline: false,
+        })
+      ) {
+        showConnectionToast(authFailureMessage, 15000);
+      }
       // Render the UI so user can access settings
       renderCurrentMode();
     } else if (msg.type === 'event' && msg.event?.event_type === 'entity_registry_updated') {
@@ -2181,6 +2363,9 @@ websocket.on('message', (msg) => {
             publishOmarchyBarTiles({ force: true });
             updateMainConnectionState('connected');
             setConnectedStatus();
+            // Whatever the failure toasts said is over: a red "unable to reach Home Assistant"
+            // must not outlive the recovery.
+            dismissConnectionToasts();
             if (!IS_DESKTOP_PIN_MODE) {
               setTrayEntityConnectionState(true, Object.keys(newStates));
               refreshTrayEntityIcons({ force: true });
@@ -2292,7 +2477,12 @@ websocket.on('close', (closeInfo = {}) => {
     }
 
     updateMainConnectionState('disconnected');
-    setDisconnectedStatus(t('Disconnected from Home Assistant. Retrying automatically.'));
+    // A failed attempt is followed by a close. The reason the error gave ("Check your network or
+    // Home Assistant URL") says more than "disconnected", and is what the connection panel shows
+    // in place of a toast, so the close must not overwrite it.
+    if (!connectionErrorLoggedThisOutage) {
+      setDisconnectedStatus(t('Disconnected from Home Assistant. Retrying automatically.'));
+    }
     setDesktopPinConnectionIssue(t('Disconnected from Home Assistant. Retrying automatically.'));
     uiUtils.showLoading(false);
     if (IS_SPECIAL_PIN_MODE) {
@@ -2457,7 +2647,7 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
         wasSecureStoragePending ||
         previousConnection !== nextConnection
       ) {
-        websocket.close();
+        closeWebSocket();
         connectWebSocket();
       } else if (previousToken !== (state.CONFIG?.homeAssistant?.token || '') && !websocket.ws) {
         // A refreshed OAuth access token is only needed for the next handshake: an open socket
@@ -2467,7 +2657,7 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
         connectWebSocket();
       }
     } else if (!nowConfigured && configuredRuntimeStarted && wasConfigured) {
-      websocket.close();
+      closeWebSocket();
     }
     if (!nowConfigured && usesOAuth() && !IS_DESKTOP_PIN_MODE) {
       setOAuthRestoreStatus();
@@ -2486,6 +2676,12 @@ window.electronAPI.onConfigPersistenceWarning((warnings) => {
 window.electronAPI.onDesktopPinActionRequested((payload) => {
   if (IS_DESKTOP_PIN_MODE) return;
   ui.handleDesktopPinActionRequest(payload);
+});
+
+// Main ended the pins' edit mode because it hid this window; Reorganize mode goes with it.
+window.electronAPI.onDesktopPinEditModeEnded?.(() => {
+  if (IS_DESKTOP_PIN_MODE) return;
+  ui.exitReorganizeMode();
 });
 
 window.electronAPI.onEntityTileHotkeyRequested(({ entityId } = {}) => {
@@ -2519,7 +2715,7 @@ window.electronAPI.onTrayEntitiesRefreshNeeded?.(({ reconnect = false, entityId 
   if (IS_DESKTOP_PIN_MODE) return;
   if (reconnect) {
     setTrayEntityConnectionState(false);
-    websocket.close();
+    closeWebSocket();
     connectWebSocket();
     return;
   }
@@ -2696,6 +2892,9 @@ async function init() {
     // Runtime recovery metadata is intentionally not part of renderer state so
     // later update-config calls cannot echo it back into persisted settings.
     delete config.configRecovery;
+    // A token the keyring could not decrypt is reported below with its own remedy. The persistence
+    // warning that arrives with the same config would name that cause a second time, with other advice.
+    if (config.tokenResetReason === 'encryption_unavailable') tokenPersistenceWarningShown = true;
     applyRendererConfig(config);
     wireUI();
     replaceEmojiIcons();
@@ -2760,9 +2959,7 @@ async function init() {
       log.info('[Init]', detailMessage);
 
       // Show prominent warning message with extended duration
-      uiUtils.showToast(message, 'warning', 20000);
-      // The same cause as the warning a save reports, which would only repeat it.
-      if (reason === 'encryption_unavailable') tokenPersistenceWarningShown = true;
+      uiUtils.showToast(message, 'warning', 10000, { source: STARTUP_WARNING_TOAST_SOURCE });
     }
 
     if (!isConfigured(state.CONFIG)) {
@@ -2830,24 +3027,6 @@ function wireUI() {
     const cancelSettingsBtn = document.getElementById('cancel-settings');
     if (cancelSettingsBtn) cancelSettingsBtn.onclick = settings.closeSettings;
 
-    // Escape works like Cancel, unless it is closing a dropdown open inside Settings. That is
-    // checked on the way down, because the dropdown closes itself before the event bubbles back.
-    const settingsModal = document.getElementById('settings-modal');
-    let settingsEscapeClosesDropdown = false;
-    settingsModal?.addEventListener(
-      'keydown',
-      (event) => {
-        if (event.key !== 'Escape') return;
-        settingsEscapeClosesDropdown = !!event.target?.closest?.('.custom-dropdown.open');
-      },
-      true
-    );
-    settingsModal?.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape' || event.defaultPrevented || settingsEscapeClosesDropdown) return;
-      event.preventDefault();
-      settings.closeSettings();
-    });
-
     const saveSettingsBtn = document.getElementById('save-settings');
     if (saveSettingsBtn) saveSettingsBtn.onclick = settings.saveSettings;
 
@@ -2878,13 +3057,10 @@ function wireUI() {
     // Opacity slider handler with real-time preview
     // Scale: 1-100 where 1 = 50% opacity, 100 = 100% opacity
     const opacitySlider = document.getElementById('opacity-slider');
-    const opacityValue = document.getElementById('opacity-value');
-    if (opacitySlider && opacityValue) {
-      opacitySlider.addEventListener('input', (e) => {
-        const sliderValue = parseInt(e.target.value) || 90;
-        // Convert slider value (1-100) to opacity (0.5-1.0)
-        // Formula: opacity = 0.5 + (sliderValue - 1) * 0.5 / 99
-        opacityValue.textContent = `${sliderValue}`;
+    if (opacitySlider && document.getElementById('opacity-value')) {
+      opacitySlider.addEventListener('input', () => {
+        // The readout shows the opacity the position stands for (0.5-1.0), as a percentage.
+        settings.updateOpacityReadout?.();
         // Apply preview without persisting
         if (settings.previewWindowEffects) {
           settings.previewWindowEffects();
@@ -2915,7 +3091,7 @@ function wireUI() {
           : true;
         if (weatherOverrideGroup) {
           weatherOverrideGroup.style.display =
-            canEnableWeatherEffects && weatherEffectsToggle.checked ? 'block' : 'none';
+            canEnableWeatherEffects && weatherEffectsToggle.checked ? '' : 'none';
         }
         if (settings.previewWindowEffects) {
           settings.previewWindowEffects();
@@ -2956,18 +3132,12 @@ function wireUI() {
     const closeQuickControlsModal = () => {
       const modal = document.getElementById('quick-controls-modal');
       if (!modal) return Promise.resolve();
-      // Release focus trap and restore previous focus once the exit animation finishes.
-      return uiUtils.closeModal(modal, { releaseFocus: true });
+      // Releases the focus trap and restores previous focus once the exit animation finishes.
+      return uiUtils.closeDialog(modal);
     };
     if (closeQuickControlsBtn) {
       closeQuickControlsBtn.onclick = closeQuickControlsModal;
     }
-    document.getElementById('quick-controls-modal')?.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      event.stopPropagation(); // close the dialog without also exiting reorganize mode
-      void closeQuickControlsModal();
-    });
 
     const addComparisonGraphBtn = document.getElementById('add-comparison-graph-btn');
     if (addComparisonGraphBtn) {
@@ -2994,32 +3164,14 @@ function wireUI() {
       const modal = document.getElementById('weather-config-modal');
       if (!modal) return;
       ui.populateWeatherEntitiesList();
-      uiUtils.openModal(modal);
-      uiUtils.trapFocus(modal);
+      uiUtils.openDialog(modal);
     };
     statusCards.forEach((card) => {
       if (!card) return;
-      let pressTimer = null;
-      const isWeatherCard = () =>
-        card.dataset.primaryType === 'weather' || card.classList.contains('weather-card');
-      const startPress = () => {
-        if (!isWeatherCard()) return;
-        pressTimer = setTimeout(openWeatherPicker, 500);
-      };
-      const cancelPress = () => {
-        clearTimeout(pressTimer);
-      };
-      card.addEventListener('mousedown', startPress);
-      card.addEventListener('mouseup', cancelPress);
-      card.addEventListener('mouseleave', cancelPress);
-      card.addEventListener('keydown', (event) => {
-        if (event.target !== card || !isWeatherCard()) return;
-        const opensPicker =
-          ['Enter', ' ', 'ContextMenu'].includes(event.key) ||
-          (event.key === 'F10' && event.shiftKey);
-        if (!opensPicker || event.ctrlKey || event.metaKey || event.altKey) return;
-        event.preventDefault();
-        openWeatherPicker();
+      bindWeatherCardPicker(card, {
+        isWeatherCard: () =>
+          card.dataset.primaryType === 'weather' || card.classList.contains('weather-card'),
+        openPicker: openWeatherPicker,
       });
     });
 
@@ -3057,6 +3209,15 @@ function wireUI() {
       };
     }
 
+    // The track opens the player's volume, mute and seek, which the card has no controls for.
+    const mediaTileInfo = document.getElementById('media-tile-info');
+    if (mediaTileInfo) {
+      mediaTileInfo.onclick = () => {
+        const entity = state.STATES?.[state.CONFIG.primaryMediaPlayer];
+        if (entity) ui.openEntityControls(entity);
+      };
+    }
+
     const mediaTilePrev = document.getElementById('media-tile-prev');
     if (mediaTilePrev) {
       mediaTilePrev.onclick = () => ui.callMediaTileService('previous');
@@ -3070,19 +3231,13 @@ function wireUI() {
     const closeWeatherConfig = () => {
       const modal = document.getElementById('weather-config-modal');
       if (modal) {
-        void uiUtils.closeModal(modal, { releaseFocus: true });
+        void uiUtils.closeDialog(modal);
       }
     };
     const closeWeatherConfigBtn = document.getElementById('close-weather-config');
     if (closeWeatherConfigBtn) {
       closeWeatherConfigBtn.onclick = closeWeatherConfig;
     }
-    document.getElementById('weather-config-modal')?.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      event.stopPropagation(); // close the dialog without also exiting reorganize mode
-      closeWeatherConfig();
-    });
 
     const clearWeatherBtn = document.getElementById('clear-weather');
     if (clearWeatherBtn) {
@@ -3163,6 +3318,7 @@ function wireUI() {
         });
         button.classList.add('active');
         button.setAttribute('aria-selected', 'true');
+        syncRovingTabIndex(button.closest('.modal-tabs').querySelectorAll('.tab-link'), button);
         document
           .querySelectorAll('.modal-body .tab-content')
           .forEach((content) => content.classList.remove('active'));
@@ -3185,9 +3341,17 @@ function wireUI() {
       });
     });
 
+    // The rail is a column, and a row in a narrow window: either pair of arrows moves along it,
+    // and it says which it is.
+    document.querySelectorAll('.modal-tabs').forEach((tabList) => {
+      bindTabListKeyboard(tabList, '.tab-link', { orientation: 'both' });
+      bindTabListOrientation(tabList);
+      bindTabTooltips(tabList, '.tab-link');
+    });
+
     const hotkeySearch = document.getElementById('hotkey-entity-search');
     if (hotkeySearch) {
-      hotkeySearch.addEventListener('input', hotkeys.renderHotkeysTab);
+      hotkeySearch.addEventListener('input', hotkeys.scheduleHotkeysTabRender);
     }
 
     // Add click handler to widget content to bring window to focus
@@ -3214,54 +3378,12 @@ function wireUI() {
       hotkeysList.addEventListener('click', async (e) => {
         const target = e.target;
         if (target.classList.contains('hotkey-input')) {
-          if (target.dataset.recording === 'true') return;
-          const entityId = target.dataset.entityId;
-          target.dataset.recording = 'true';
-          target.setAttribute('aria-busy', 'true');
-          target.value = t('Recording...');
-          try {
-            const hotkey = await hotkeys.captureHotkey();
-            if (hotkey) {
-              // Get selected action from custom dropdown
-              const dropdown = target.parentElement.querySelector('.hotkey-action-dropdown');
-              const selectedOption = dropdown?.querySelector('.custom-dropdown-option.selected');
-              const action = selectedOption?.dataset?.value || 'toggle';
-              const result = await window.electronAPI.registerHotkey(entityId, hotkey, action);
-              if (result?.success) {
-                target.value = hotkey;
-                state.CONFIG.globalHotkeys ||= { hotkeys: {} };
-                state.CONFIG.globalHotkeys.hotkeys ||= {};
-                state.CONFIG.globalHotkeys.hotkeys[entityId] = { hotkey, action };
-                uiUtils.showToast(
-                  t('Hotkey set for {{name}}', {
-                    name: utils.getEntityDisplayName(
-                      state.STATES[entityId] || { entity_id: entityId, attributes: {} }
-                    ),
-                  }),
-                  'success',
-                  2200
-                );
-              } else {
-                uiUtils.showToast(result?.error || t('Failed to set hotkey'), 'error');
-                const currentConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
-                target.value =
-                  typeof currentConfig === 'string' ? currentConfig : currentConfig?.hotkey || '';
-              }
-            } else {
-              const currentConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
-              target.value =
-                typeof currentConfig === 'string' ? currentConfig : currentConfig?.hotkey || '';
-            }
-          } catch (error) {
-            uiUtils.showToast(error?.message || t('Error toggling hotkeys'), 'error');
-          } finally {
-            target.dataset.recording = 'false';
-            target.removeAttribute('aria-busy');
-            const currentConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
-            target.value =
-              typeof currentConfig === 'string' ? currentConfig : currentConfig?.hotkey || '';
-            if (target.isConnected) target.focus();
-          }
+          // The same recorder as the tile menu's Add Hotkey, so both say the same things about a
+          // clash, a hotkey saved while the switch is off, and the action picked in this row.
+          const actionSelect = target.parentElement.querySelector('.hotkey-action-select');
+          await hotkeys.assignHotkeyToEntity(target.dataset.entityId, {
+            action: actionSelect?.value,
+          });
         } else if (target.classList.contains('btn-clear-hotkey')) {
           const container = target.parentElement;
           const input = container.querySelector('.hotkey-input');
@@ -3274,6 +3396,11 @@ function wireUI() {
             input.value = '';
             delete state.CONFIG.globalHotkeys.hotkeys[entityId];
             hotkeys.renderHotkeysTab();
+            // The list was rebuilt under the Clear button, which is hidden now there is nothing to
+            // clear; the row's own field is where the keyboard goes on.
+            hotkeysList
+              .querySelector(`.hotkey-input[data-focus-key="hotkey-input:${entityId}"]`)
+              ?.focus();
             if (result.warning) {
               uiUtils.showToast(result.warning, 'warning', 4000);
             }
@@ -3304,9 +3431,47 @@ function wireDesktopPinUI() {
       };
     }
 
+    // Main works out the position from the corner and the size asked for: the edge opposite the
+    // handle stays put whatever the interface scale, and the work area the drag began on limits it.
+    const sendResize = async (corner, size, final) => {
+      const result = await window.electronAPI.updateDesktopPinBounds(DESKTOP_PIN_ENTITY_ID, {
+        width: size.width,
+        height: size.height,
+        resize: { corner, final },
+      });
+      if (result?.success && result.pinBounds) {
+        desktopPinBounds = result.pinBounds;
+      }
+      return result;
+    };
+    const getInterfaceScale = () => {
+      const scale = Number(state.CONFIG?.ui?.scale);
+      return scale > 1 ? scale : 1;
+    };
+    // The arrow keys' resizes in progress, shared by the handles: the size the latest press asked
+    // for, the request waiting to be sent, and the loop sending them.
+    const keyboardResize = { asked: null, queued: null, running: null };
+    const sendQueuedKeyboardResizes = async () => {
+      try {
+        while (keyboardResize.queued) {
+          const { corner, size } = keyboardResize.queued;
+          keyboardResize.queued = null;
+          try {
+            await sendResize(corner, size, true);
+          } catch (error) {
+            log.error('Failed to resize desktop tile from the keyboard:', error);
+          }
+        }
+      } finally {
+        keyboardResize.asked = null;
+        keyboardResize.running = null;
+      }
+    };
+
     document.querySelectorAll('.desktop-pin-resize-handle').forEach((resizeHandle) => {
       if (resizeHandle.dataset.bound) return;
       resizeHandle.dataset.bound = 'true';
+
       resizeHandle.addEventListener(
         'pointerdown',
         (event) => {
@@ -3324,9 +3489,16 @@ function wireDesktopPinUI() {
             height: window.outerHeight || window.innerHeight,
           };
           const corner = resizeHandle.dataset.corner || 'bottom-right';
+          const scale = getInterfaceScale();
+          const pointerFactor = getPointerScreenFactor({
+            scale,
+            windowWidth: Math.ceil(startBounds.width * scale),
+            outerWidth: window.outerWidth,
+          });
 
-          let pendingBounds = null;
-          let resizeInFlight = false;
+          let pendingSize = null;
+          let lastSize = null;
+          let resizeInFlight = null;
           let frameScheduled = false;
           const pointerId = event.pointerId;
 
@@ -3338,32 +3510,26 @@ function wireDesktopPinUI() {
 
           const flushResize = async () => {
             frameScheduled = false;
-            if (resizeInFlight || !pendingBounds) return;
-            resizeInFlight = true;
-            const nextBounds = pendingBounds;
-            pendingBounds = null;
-
-            try {
-              const result = await window.electronAPI.updateDesktopPinBounds(
-                DESKTOP_PIN_ENTITY_ID,
-                nextBounds
-              );
-              if (result?.success && result.pinBounds) {
-                desktopPinBounds = result.pinBounds;
-              }
-            } catch (error) {
-              log.error('Failed to resize desktop tile:', error);
-            } finally {
-              resizeInFlight = false;
-              if (pendingBounds) {
-                requestAnimationFrame(flushResize);
-                frameScheduled = true;
-              }
-            }
+            if (resizeInFlight || !pendingSize) return;
+            const nextSize = pendingSize;
+            pendingSize = null;
+            resizeInFlight = sendResize(corner, nextSize, false)
+              .catch((error) => {
+                log.error('Failed to resize desktop tile:', error);
+              })
+              .finally(() => {
+                resizeInFlight = null;
+                if (pendingSize && !frameScheduled) {
+                  requestAnimationFrame(flushResize);
+                  frameScheduled = true;
+                }
+              });
+            await resizeInFlight;
           };
 
-          const scheduleResize = (nextBounds) => {
-            pendingBounds = nextBounds;
+          const scheduleResize = (nextSize) => {
+            pendingSize = nextSize;
+            lastSize = nextSize;
             if (!frameScheduled) {
               requestAnimationFrame(flushResize);
               frameScheduled = true;
@@ -3371,43 +3537,17 @@ function wireDesktopPinUI() {
           };
 
           const handlePointerMove = (moveEvent) => {
-            const deltaX = moveEvent.screenX - startX;
-            const deltaY = moveEvent.screenY - startY;
-            const nextBounds = {
-              x: startBounds.x,
-              y: startBounds.y,
-              width: startBounds.width,
-              height: startBounds.height,
-            };
-
-            switch (corner) {
-              case 'top-left':
-                nextBounds.x = Math.round(startBounds.x + deltaX);
-                nextBounds.y = Math.round(startBounds.y + deltaY);
-                nextBounds.width = Math.round(startBounds.width - deltaX);
-                nextBounds.height = Math.round(startBounds.height - deltaY);
-                break;
-              case 'top-right':
-                nextBounds.y = Math.round(startBounds.y + deltaY);
-                nextBounds.width = Math.round(startBounds.width + deltaX);
-                nextBounds.height = Math.round(startBounds.height - deltaY);
-                break;
-              case 'bottom-left':
-                nextBounds.x = Math.round(startBounds.x + deltaX);
-                nextBounds.width = Math.round(startBounds.width - deltaX);
-                nextBounds.height = Math.round(startBounds.height + deltaY);
-                break;
-              case 'bottom-right':
-              default:
-                nextBounds.width = Math.round(startBounds.width + deltaX);
-                nextBounds.height = Math.round(startBounds.height + deltaY);
-                break;
-            }
-
-            scheduleResize(nextBounds);
+            scheduleResize(
+              getDesktopPinResizeRequest(
+                startBounds,
+                corner,
+                { x: moveEvent.screenX - startX, y: moveEvent.screenY - startY },
+                { scale, pointerFactor }
+              )
+            );
           };
 
-          const finishResize = () => {
+          const finishResize = async () => {
             window.removeEventListener('pointermove', handlePointerMove, true);
             window.removeEventListener('pointerup', finishResize, true);
             window.removeEventListener('pointercancel', finishResize, true);
@@ -3415,6 +3555,14 @@ function wireDesktopPinUI() {
               resizeHandle.releasePointerCapture(pointerId);
             } catch {
               // no-op
+            }
+            // The drag only changed the window; saving the size is what ends it.
+            if (!lastSize) return;
+            try {
+              await resizeInFlight;
+              await sendResize(corner, lastSize, true);
+            } catch (error) {
+              log.error('Failed to finish resizing desktop tile:', error);
             }
           };
 
@@ -3424,6 +3572,32 @@ function wireDesktopPinUI() {
         },
         true
       );
+
+      // The handles are focusable buttons, so the arrow keys resize too: a step per press, a larger
+      // one with Shift. A held key repeats faster than a resize round trip (every step is saved),
+      // and the bounds only update when a reply arrives, so each step builds on the size the
+      // previous one asked for, and the steps that arrive while a request is out go in the next one
+      // together. Once nothing is waiting the bounds Main confirmed (which it may have limited) are
+      // the starting point again.
+      resizeHandle.addEventListener('keydown', (event) => {
+        if (!desktopPinEditMode || !desktopPinBounds) return;
+        const delta = getDesktopPinResizeKeyDelta(event.key, { shiftKey: event.shiftKey });
+        if (!delta) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const corner = resizeHandle.dataset.corner || 'bottom-right';
+        const size = getDesktopPinResizeRequest(
+          keyboardResize.asked || desktopPinBounds,
+          corner,
+          delta,
+          {
+            scale: getInterfaceScale(),
+          }
+        );
+        keyboardResize.asked = size;
+        keyboardResize.queued = { corner, size };
+        keyboardResize.running ||= sendQueuedKeyboardResizes();
+      });
     });
   } catch (error) {
     log.error('Error wiring desktop pin UI:', error);
@@ -3452,3 +3626,5 @@ window.addEventListener(
 );
 
 installLayerDrag();
+installRangeProgress();
+installClippedTextTooltips();

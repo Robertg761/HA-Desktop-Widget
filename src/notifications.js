@@ -1,13 +1,22 @@
 import websocket from './websocket.js';
+import state from './state.js';
+import { formatRelativeTime as formatAge } from './format.js';
 import { t } from './i18n.js';
-import { closeModal, openModal, trapFocus } from './ui-utils.js';
+import {
+  notificationMarkdownToPlainText,
+  renderNotificationMarkdown,
+} from './notification-markdown.js';
+import { closeDialog, openDialog, renderKeepingFocus, showToast } from './ui-utils.js';
 
 const DEFAULT_NOTIFICATION_TITLE = 'Home Assistant';
 const MAX_BELL_COUNT = 99;
+// How long an open panel goes before it says "5 min. ago" where it said "4 min. ago".
+const RELATIVE_TIME_REFRESH_MS = 60000;
 
 let activeNotifications = new Map();
 let unsubscribePersistentNotifications = null;
 let notificationUiInitialized = false;
+let relativeTimeTimer = null;
 
 function toSafeString(value) {
   return typeof value === 'string' ? value : '';
@@ -59,20 +68,13 @@ function applyPersistentNotificationEvent(currentNotifications, event = {}) {
   };
 }
 
+// How long ago a notification arrived, in the language's own relative time ("5 min. ago",
+// "hace 5 min", "قبل 5 دقائق"), and "just now" for the first minute.
 function formatRelativeTime(createdAt, now = Date.now()) {
   const timestamp = Date.parse(createdAt);
   if (!Number.isFinite(timestamp)) return '';
-
-  const elapsedMs = Math.max(0, now - timestamp);
-  const elapsedMinutes = Math.floor(elapsedMs / 60000);
-  if (elapsedMinutes < 1) return t('just now');
-  if (elapsedMinutes < 60) return t('{{count}}m ago', { count: elapsedMinutes });
-
-  const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24) return t('{{count}}h ago', { count: elapsedHours });
-
-  const elapsedDays = Math.floor(elapsedHours / 24);
-  return t('{{count}}d ago', { count: elapsedDays });
+  // One stamped ahead of this computer's clock is just now, not "in 2 minutes".
+  return formatAge(Math.min(timestamp, now), { now });
 }
 
 function getSortedNotifications() {
@@ -90,7 +92,8 @@ function showPersistentDesktopNotification(notification) {
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
     const title = notification.title || DEFAULT_NOTIFICATION_TITLE;
     const desktopNotification = new Notification(title, {
-      body: notification.message,
+      // The system toast draws plain text, so the Markdown syntax goes and its words stay.
+      body: notificationMarkdownToPlainText(notification.message),
       tag: `ha-persistent-notification-${notification.notification_id}`,
       requireInteraction: false,
     });
@@ -117,7 +120,18 @@ function closePersistentNotificationsPanel() {
   if (!modal) return Promise.resolve();
   const wasOpen = !modal.classList.contains('hidden');
   if (!wasOpen) return Promise.resolve();
-  return closeModal(modal, { releaseFocus: true });
+  clearInterval(relativeTimeTimer);
+  relativeTimeTimer = null;
+  return closeDialog(modal);
+}
+
+// The ages are worked out when a row is built, and a panel left open would go on saying "just now".
+function refreshRelativeTimes() {
+  document
+    .querySelectorAll('#persistent-notifications-list .persistent-notification-time')
+    .forEach((element) => {
+      element.textContent = formatRelativeTime(element.dataset.createdAt);
+    });
 }
 
 function openPersistentNotificationsPanel() {
@@ -126,8 +140,14 @@ function openPersistentNotificationsPanel() {
   if (!modal) return;
   // Visibility is class-driven; an inline display would fight both `.hidden` and the exit
   // animation the shared close helper runs.
-  openModal(modal, { display: null });
-  trapFocus(modal);
+  openDialog(modal, {
+    display: null,
+    // The bell goes away with the last notification, so focus needs somewhere else to land.
+    focusFallback: '#settings-btn',
+    dismiss: closePersistentNotificationsPanel,
+  });
+  clearInterval(relativeTimeTimer);
+  relativeTimeTimer = setInterval(refreshRelativeTimes, RELATIVE_TIME_REFRESH_MS);
 }
 
 function dismissPersistentNotification(notificationId, button) {
@@ -141,6 +161,8 @@ function dismissPersistentNotification(notificationId, button) {
     .catch((error) => {
       if (button) button.disabled = false;
       console.error('Error dismissing persistent notification:', error);
+      // The button just came back with nothing said, which looks like a click that did nothing.
+      showToast(t('Could not dismiss notification'), 'error');
     });
 }
 
@@ -157,10 +179,18 @@ function createNotificationListItem(notification) {
 
   const message = document.createElement('div');
   message.className = 'persistent-notification-message';
-  message.textContent = notification.message;
+  renderNotificationMarkdown(message, notification.message, {
+    baseUrl: state.CONFIG?.homeAssistant?.url,
+    openLink: (url) => {
+      window.electronAPI?.openExternal?.(url)?.catch?.((error) => {
+        console.error('Error opening notification link:', error);
+      });
+    },
+  });
 
   const time = document.createElement('div');
   time.className = 'persistent-notification-time';
+  time.dataset.createdAt = notification.created_at;
   time.textContent = formatRelativeTime(notification.created_at);
 
   content.appendChild(title);
@@ -171,6 +201,7 @@ function createNotificationListItem(notification) {
   dismissButton.type = 'button';
   dismissButton.className = 'btn btn-secondary btn-sm persistent-notification-dismiss';
   dismissButton.textContent = t('Dismiss');
+  dismissButton.dataset.focusKey = `notification:${notification.notification_id}`;
   dismissButton.addEventListener('click', () => {
     dismissPersistentNotification(notification.notification_id, dismissButton);
   });
@@ -198,10 +229,17 @@ function renderPersistentNotifications() {
   const empty = document.getElementById('persistent-notifications-empty');
   if (!list || !empty) return;
 
-  list.replaceChildren();
-  empty.classList.toggle('hidden', count !== 0);
-  notifications.forEach((notification) => {
-    list.appendChild(createNotificationListItem(notification));
+  // Dismissing one rebuilds the list under the focused Dismiss button; focus moves to the next
+  // notification's button rather than to the page behind the panel.
+  renderKeepingFocus(list, () => {
+    list.replaceChildren();
+    empty.classList.toggle('hidden', count !== 0);
+    notifications.forEach((notification) => {
+      list.appendChild(createNotificationListItem(notification));
+    });
+    // A message can hold links, and one comes before its Dismiss button in the order of the page.
+    // The panel still opens on the first Dismiss, where it opened when messages were plain text.
+    list.querySelector('.persistent-notification-dismiss')?.setAttribute('data-initial-focus', '');
   });
 
   if (count === 0) {
@@ -228,16 +266,6 @@ function wirePersistentNotificationsUI() {
   const closeButton = document.getElementById('close-persistent-notifications');
   if (closeButton) {
     closeButton.addEventListener('click', closePersistentNotificationsPanel);
-  }
-
-  const modal = document.getElementById('persistent-notifications-modal');
-  if (modal) {
-    modal.addEventListener('click', (event) => {
-      if (event.target === modal) closePersistentNotificationsPanel();
-    });
-    modal.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') closePersistentNotificationsPanel();
-    });
   }
 }
 

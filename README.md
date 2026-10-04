@@ -21,7 +21,7 @@ Settings are organized into six pages on the left: **General** (Home Assistant c
 
 Use **Search settings** at the top of Settings to find an option by its name or help text. Choose a result to open its page and any collapsed section. Press Escape in the search field to clear the search.
 
-In **Appearance → Readability**, choose **Text and control size** (100%, 115%, 130%, or 150%) to enlarge the interface, dialogs, and desktop pins. Enable **High contrast with opaque panels** for a dark, solid background and brighter text and borders. These preferences save immediately. Small pins can scroll when their enlarged controls need more space.
+In **Appearance → Readability**, choose **Text and control size** (100%, 115%, 130%, or 150%) to enlarge the interface, dialogs, and desktop pins. Enable **High contrast with opaque panels** for a dark, solid background and brighter text and borders. These preferences save immediately. Desktop pins grow with it, so a pin keeps showing all of its controls.
 
 Light, climate, fan, cover, and media tiles include a **Controls** button (the sliders icon in the tile corner) to open their detailed controls. Keyboard users can also focus a tile and press **Shift+Enter**.
 
@@ -92,7 +92,7 @@ See the [Omarchy guide](docs/omarchy.md) for native desktop layers, independent 
 
 ## Export and import settings
 
-Open **Settings → Advanced → Settings files** to export your saved pages, appearance, alerts, weather and media choices to a JSON file. Connection details and credentials, desktop pins, shortcuts, tray preferences, text size, Omarchy theme following, startup, updates, and profile sync settings stay on each computer.
+Open **Settings → Advanced → Settings files** to export your saved pages, appearance, alerts, weather and media choices to a JSON file. Connection details and credentials, desktop pins, hotkeys, tray preferences, text size, Omarchy theme following, startup, updates, and profile sync settings stay on each computer.
 
 Import shows the sections that will change, page names, and how many referenced devices are missing from the current Home Assistant connection. Confirming applies the file immediately and replaces unsaved Settings edits. Imported entity IDs still refer to the original Home Assistant devices; importing does not create devices or automations.
 
@@ -187,11 +187,11 @@ Assistant can flag out-of-date desktops.
 
 ### Quick Access Management
 
-- **Start with a useful dashboard**: After browser authorization, choose **Choose rooms and devices** or **Skip for now**. The same action is available from an empty Quick Access dashboard. A populated room is suggested with up to eight available everyday controls selected; review the preview, search and adjust the devices, name the page, and choose **Add Page**. This adds a page without replacing existing pages. If room registry access is unavailable, choose directly from your device states. The picker waits for the connection to finish starting; use **Retry** if it cannot connect.
+- **Start with a useful dashboard**: After browser authorization, choose **Choose rooms and devices** or **Skip for now**. The same action is available from an empty Quick Access dashboard. A populated room is suggested with up to eight available everyday controls selected; review the preview, search and adjust the devices, name the page, and choose **Add Page**. Beside other pages, an empty page offers **Fill this page** instead and keeps its name. Either way, pages that already hold entities are never replaced. If room registry access is unavailable, choose directly from your device states. The picker waits for the connection to finish starting; use **Retry** if it cannot connect.
 - **Build a page from a room**: Enter reorganize mode and choose **Add page**. Rooms load automatically when connected; use **Load rooms** or **Retry** if needed. Select a Home Assistant area, choose its entities, review the preview, and save. Entity area overrides take precedence over device areas; hidden and disabled registry entries are omitted. Registry access requires permission from Home Assistant.
 - **Undo and restore**: The undo arrow reverses the latest dashboard edit. **Settings > Advanced > Restore dashboard** lists up to 20 local restore points, retained across restarts and separated by Home Assistant server. Restoring a saved layout first backs up the current layout. These backups contain dashboard data, including names, icons, tile options, and comparison graphs, but exclude authorization, desktop pins, hotkeys, and connection settings. They depend on local browser storage being available.
 - **Add Entities**: Click the "+" button to search and add entities to your dashboard
-- **Reorder**: Click the Reorganize button to enter reorganize mode, then drag and drop to reorder
+- **Reorder**: Click the Reorganize button to enter reorganize mode, then drag and drop to reorder. Without dragging, select a tile and then the tile whose place it should take, or press Alt and an arrow key on a tile's buttons to move it
 - **Rename**: In reorganize mode, click the edit icon to set custom display names
 - **Camera Previews**: Edit a camera tile to choose an HLS live feed or a 30-second, 10-second, or 5-second snapshot cadence; previews pause while the app or tile is hidden, clicking expands the current feed without restarting it, and the expanded live view includes a Reconnect action for stale sessions
 - **Remove**: In reorganize mode, click the remove button to remove entities
@@ -210,11 +210,13 @@ Assistant can flag out-of-date desktops.
 
 ### Command search
 
-Press **Ctrl+K** or **Cmd+K** to search entities and actions. Choose an explicit action to turn supported lights, switches, fans, or input booleans on or off, run a scene or script, or switch pages. Entity results still open their controls. Successful commands appear first when opening an empty search during the current session. Unavailable entities do not offer actions, and failed commands show an error.
+Press **Ctrl+K** or **Cmd+K** to search entities and actions. Choose an explicit action to turn supported lights, switches, fans, or input booleans on or off, run a scene or script, or switch pages. An entity result opens its controls when it has any. A result with none, for an entity that has an action of its own in the list (a switch, an input boolean, a scene), only says what it is now and changes nothing, so a stray Enter never switches it; a button, an automation or a timer, which has no action there, still runs its own. Successful commands appear first when opening an empty search during the current session. Unavailable entities do not offer actions, and failed commands show an error.
 
 ### Alert conditions
 
-In **Settings > Alerts**, configure a state change, exact state, or numeric threshold. Optional duration and cooldown fields use seconds. A duration requires the condition to remain true continuously while the app observes it; disconnecting cancels pending alerts. Quiet hours use the computer's local time and can cross midnight. Matching updates do not repeat an alert until the condition clears and is reached again. Alerts suppressed by quiet hours or cooldown are not queued for later delivery. The app must be running and connected.
+In **Settings > Alerts**, configure a state change, exact state, or numeric threshold. Optional duration and cooldown fields use seconds. A duration requires the condition to remain true continuously while the app observes it; disconnecting cancels pending alerts, except the wait before an unavailable notification, which starts over when the app reconnects and the entity is still offline. Quiet hours use the computer's local time and can cross midnight. Matching updates do not repeat an alert until the condition clears and is reached again. Alerts suppressed by quiet hours or cooldown are not queued for later delivery. The app must be running and connected.
+
+A state change alert also tells you when the entity goes unavailable or unknown, but only if it stays that way for 30 seconds, and at most once every 15 minutes per entity, so a flapping device does not flood you. An outage that begins inside those 15 minutes is not reported later, even if it lasts. Saving the rule starts a pending wait over, but does not reset the 15 minutes. The rule's own duration, cooldown and quiet hours apply as well. Coming back is not announced unless the entity returns as something other than it was before the outage. Turn off **Notify when unavailable or unknown** on the rule to skip these. To be told about every outage, use an exact-state alert for `unavailable` or `unknown`, which follows only its own duration and cooldown.
 
 ### Sensor history
 
@@ -238,6 +240,8 @@ Open **Settings > General > Connection diagnostics** to inspect connection attem
 
 Use Tab to focus a primary card or the Quick Access grid. Arrow keys move between Quick Access
 tiles; Enter or Space activates the focused device. Shift+Enter opens its available detail controls.
+With several pages, Tab reaches the page tabs once: Left and Right (or Home and End) move along them
+and switch page. The tabs scroll to keep the active page in view, and the mouse wheel scrolls them.
 Heat/cool thermostats provide separate heating and cooling targets, and on/off-only lights show
 power controls without a brightness slider.
 
@@ -259,6 +263,9 @@ power controls without a brightness slider.
 - **Custom Entity Icons**: Search or paste emoji/glyph overrides for entity icons
 - **Media Tile**: Select the primary media player or hide the tile
 - **Hotkeys**: Configure global entity hotkeys, action-specific shortcuts, and a popup hotkey (hold/toggle on macOS and Windows; press/toggle on Linux)
+
+  On macOS the popup hotkey needs **System Settings > Privacy & Security > Accessibility** access. The widget asks when you set the hotkey and says so if it is still missing. macOS may ask again after an update; if the popup hotkey stops working, switch the widget on in that list and set the hotkey once more.
+
 - **Alerts**: Enable desktop notifications for entity state changes or target states
 - **Advanced**: Updates, [profile sync](#profile-sync), logs, and interaction diagnostics for troubleshooting
 

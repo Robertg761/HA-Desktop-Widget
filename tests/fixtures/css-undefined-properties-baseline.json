@@ -8,18 +8,5 @@
     "a fallback, or use the token that exists. When you fix reads the test fails until you lower the count",
     "here, or delete the line once it reaches zero."
   ],
-  "entries": {
-    "src/settings.js|--text-muted": 1,
-    "src/ui.js|--primary-color": 1,
-    "styles.css|--accent-primary": 1,
-    "styles.css|--bg-panel": 1,
-    "styles.css|--button-secondary-bg": 1,
-    "styles.css|--button-secondary-bg-hover": 1,
-    "styles.css|--button-secondary-text": 1,
-    "styles.css|--danger-bg": 1,
-    "styles.css|--primary-alpha": 2,
-    "styles.css|--primary-color": 2,
-    "styles.css|--surface": 1,
-    "styles.css|--text-muted": 4
-  }
+  "entries": {}
 }

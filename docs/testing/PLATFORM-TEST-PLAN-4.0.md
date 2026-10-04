@@ -190,10 +190,11 @@ Pins cannot be dragged on Sway, niri and river. On them, skip the dragging in st
 2. Unpin the second pin, then pin another tile.
 3. With Reorganize off, click the top-left corner of a pin (the bulb on a light pin). Then try to move a pin with the system's window-move gesture: hold Alt or Super and drag on Linux, or drag its title area.
 4. Open Reorganize Quick Access. Drag a pin (not on Sway, niri or river), then resize it from each corner. Look for a lighter square at the pin's corners. If you have a dashboard with 30 or more tiles, note any stutter when you turn Reorganize on and off. Exit Reorganize.
-5. Zoom into a pin's rounded corner at 100% display scale. Watch a new pin appear for a flash of a different background.
-6. Quit the app and start it again.
+5. In Settings, set Text and control size to 115%, then to 150%. At each size, open Reorganize Quick Access and drag the corner of one pin outwards and inwards, from the bottom-right corner and from the top-left one. Exit Reorganize.
+6. Zoom into a pin's rounded corner at 100% display scale. Watch a new pin appear for a flash of a different background.
+7. Quit the app and start it again.
 
-Expected: Every new pin appears in its own free spot, not on top of another pin or on the widget. A click in the top-left corner of a pin works like a click anywhere on its control. Outside Reorganize, a pin cannot be moved: it does not stay where a window-move gesture or a drag put it. Where pins can be dragged (everywhere except Sway, niri and river), a pin dropped across a screen edge in Reorganize snaps to a fully visible position right away, and the same position is there after restart. Pin corners are smooth, with no stair steps, and no square or lighter patch at the corners. A pin opens without a flash. Size is kept after the restart, and so is position wherever pins can be dragged.
+Expected: Every new pin appears in its own free spot, not on top of another pin or on the widget. A click in the top-left corner of a pin works like a click anywhere on its control. Outside Reorganize, a pin cannot be moved: it does not stay where a window-move gesture or a drag put it. Where pins can be dragged (everywhere except Sway, niri and river), a pin dropped across a screen edge in Reorganize snaps to a fully visible position right away, and the same position is there after restart. Pin corners are smooth, with no stair steps, and no square or lighter patch at the corners. A pin opens without a flash. At 115% and 150% the corner you hold stays under the pointer while you resize, and the opposite corner does not move. Size is kept after the restart, and so is position wherever pins can be dragged.
 
 Capture: A screenshot of the pins, a zoomed crop of one corner, and for any pin that moves, a recording.
 

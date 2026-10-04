@@ -261,6 +261,65 @@ describe('portable settings files', () => {
     );
     expect(exported.entityAlerts.alerts['sensor.temp']).toEqual({ onStateChange: true });
   });
+  describe('the alert setting for unavailable and unknown', () => {
+    const alertsFile = (alerts) => {
+      const file = buildSettingsFile(config);
+      file.settings.entityAlerts = { enabled: true, alerts };
+      return JSON.stringify(file);
+    };
+    const alerts = {
+      'binary_sensor.door': { onStateChange: true, notifyOnUnavailable: false },
+      'light.desk': { onStateChange: true, notifyOnUnavailable: true },
+      // Saved before the setting existed.
+      'switch.fan': { onStateChange: true, cooldownSeconds: 30 },
+    };
+
+    test('survives an export and an import, off and on, and is left out where it never was', () => {
+      const exported = serializeSettingsFile({
+        ...config,
+        entityAlerts: { enabled: true, alerts },
+      });
+      expect(parseSettingsFile(exported).entityAlerts.alerts).toEqual(alerts);
+      expect(parseSettingsFile(exported).entityAlerts.alerts['switch.fan']).not.toHaveProperty(
+        'notifyOnUnavailable'
+      );
+    });
+
+    test('is read from a file that has it, and a file written before it still loads', () => {
+      const settings = parseSettingsFile(alertsFile(alerts));
+      expect(settings.entityAlerts.alerts['binary_sensor.door'].notifyOnUnavailable).toBe(false);
+      expect(
+        parseSettingsFile(alertsFile({ 'switch.fan': alerts['switch.fan'] })).entityAlerts.alerts
+      ).toEqual({ 'switch.fan': alerts['switch.fan'] });
+    });
+
+    test('must be a boolean', () => {
+      for (const bad of ['no', 0, null]) {
+        expect(() =>
+          parseSettingsFile(
+            alertsFile({ 'switch.fan': { onStateChange: true, notifyOnUnavailable: bad } })
+          )
+        ).toThrow();
+      }
+    });
+
+    test('counts as a change in the import preview, and syncs as part of the alerts section', () => {
+      const current = { ...config, entityAlerts: { enabled: true, alerts } };
+      const same = parseSettingsFile(serializeSettingsFile(current));
+      expect(summarizeSettingsImport(same, current).changedSections).toEqual([]);
+
+      const turnedOn = {
+        entityAlerts: {
+          enabled: true,
+          alerts: { ...alerts, 'binary_sensor.door': { onStateChange: true } },
+        },
+      };
+      expect(summarizeSettingsImport(turnedOn, current).changedSections).toEqual([
+        'automationAlerts',
+      ]);
+      expect(settingsFileSections(same).automationAlerts.entityAlerts.alerts).toEqual(alerts);
+    });
+  });
   test('exports despite an out-of-range span saved locally, leaving that span out', () => {
     const settings = parseSettingsFile(
       serializeSettingsFile({ ...config, tileSpans: { 'light.desk': 2, 'sensor.temp': 9 } })

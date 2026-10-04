@@ -37,36 +37,12 @@ jest.mock('../../src/camera.js', () => ({
 }));
 
 jest.mock('../../src/ui-utils.js', () => {
-  const releaseFocusTrap = jest.fn();
   return {
     showToast: jest.fn(),
     showConfirm: jest.fn().mockResolvedValue(false),
     showLoading: jest.fn(),
     setStatus: jest.fn(),
-    trapFocus: jest.fn(),
-    releaseFocusTrap,
-    // Mirrors the real shared modal helper, which settles synchronously under NODE_ENV=test.
-    closeModal: jest.fn((modal, { remove = false, releaseFocus = false, onClosed } = {}) => {
-      if (modal) {
-        modal.classList.remove('modal-closing');
-        if (remove) {
-          modal.remove();
-        } else {
-          modal.classList.add('hidden');
-          if (modal.style.display) modal.style.display = 'none';
-        }
-        if (releaseFocus) releaseFocusTrap(modal);
-        onClosed?.();
-      }
-      return Promise.resolve();
-    }),
-    openModal: jest.fn((modal, { display = 'flex' } = {}) => {
-      if (!modal) return;
-      modal.classList.remove('modal-closing');
-      modal.classList.remove('hidden');
-      if (display) modal.style.display = display;
-      else modal.style.removeProperty('display');
-    }),
+    ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
     applyTheme: jest.fn(),
     applyUiPreferences: jest.fn(),
     hexToRgb: jest.fn((hex) => {
@@ -139,7 +115,6 @@ const ui = require('../../src/ui.js');
 const state = require('../../src/state.js').default;
 const { sampleConfig } = require('../fixtures/ha-data.js');
 const i18n = require('../../src/i18n.js');
-const uiUtils = require('../../src/ui-utils.js');
 const entity = (entity_id, value, attributes = {}) => ({ entity_id, state: value, attributes });
 const renderTiles = (states) => {
   const ids = states.map((item) => item.entity_id);
@@ -248,20 +223,81 @@ describe('device control and live data regressions', () => {
       expect([...input.options].map((option) => option.value)).toEqual(['Auto']);
     }
   );
+  describe('where focus starts in the helper, to-do and calendar dialogs', () => {
+    // Keyboard users used to land on the header's Close button and had to Tab past it before they
+    // could type or pick a value.
+    const settle = async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      jest.advanceTimersByTime(1);
+    };
+
+    test('a number helper starts on its value field', async () => {
+      const helper = entity('input_number.audit', '3', { min: 0, max: 10, step: 1 });
+      state.setServices({ input_number: { set_value: {} } });
+      state.setEntityState(helper);
+      ui.openEntityControls(helper);
+      await settle();
+
+      expect(document.activeElement).toBe(document.querySelector('.helper-controls-modal input'));
+    });
+
+    test('a select helper starts on its list', async () => {
+      const helper = entity('input_select.audit', 'Auto', { options: ['Auto', 'Quiet'] });
+      state.setServices({ input_select: { select_option: {} } });
+      state.setEntityState(helper);
+      ui.openEntityControls(helper);
+      await settle();
+
+      expect(document.activeElement).toBe(document.querySelector('.helper-controls-modal select'));
+    });
+
+    test('a vacuum starts on its first action', async () => {
+      const robot = entity('vacuum.audit', 'docked', { supported_features: 8192 });
+      state.setServices({ vacuum: { start: {}, pause: {}, return_to_base: {} } });
+      state.setEntityState(robot);
+      ui.openEntityControls(robot);
+      await settle();
+
+      expect(document.activeElement).toBe(
+        document.querySelector('.helper-controls-modal .entity-detail-actions button')
+      );
+    });
+
+    test('a writable to-do list starts on the add field', async () => {
+      const list = entity('todo.audit', '1', { supported_features: 5 });
+      mockCallServiceWithResponse.mockResolvedValue({ 'todo.audit': { items: [] } });
+      ui.openEntityControls(list);
+      await settle();
+
+      expect(document.activeElement).toBe(document.querySelector('.todo-add-form input'));
+    });
+
+    test('a calendar starts on Refresh', async () => {
+      const calendar = entity('calendar.audit', 'off');
+      mockCallServiceWithResponse.mockResolvedValue({ 'calendar.audit': { events: [] } });
+      ui.openEntityControls(calendar);
+      await settle();
+
+      expect(document.activeElement.textContent).toBe('Refresh');
+      expect(document.activeElement.closest('.calendar-modal')).not.toBeNull();
+    });
+  });
   test('vacuum exposes only entity-supported services and stops accepting actions while unavailable', () => {
     const robot = entity('vacuum.audit', 'docked', { supported_features: 8192 });
     state.setServices({ vacuum: { start: {}, pause: {}, return_to_base: {} } });
     renderTiles([robot]);
     tile(robot.entity_id).click();
-    const body = document.querySelector('.helper-controls-modal .modal-body');
-    expect([...body.querySelectorAll('button')].map((button) => button.textContent)).toEqual([
+    // The actions sit in the dialog's footer, which is where a toast docks.
+    const actions = document.querySelector('.helper-controls-modal .modal-footer');
+    expect([...actions.querySelectorAll('button')].map((button) => button.textContent)).toEqual([
       'Start',
     ]);
-    const oldButton = body.querySelector('button');
+    const oldButton = actions.querySelector('button');
     liveUpdate({ ...robot, state: 'unavailable' });
     oldButton.click();
     expect(mockCallService).not.toHaveBeenCalled();
-    expect(body.querySelector('button').disabled).toBe(true);
+    expect(actions.querySelector('button').disabled).toBe(true);
   });
   test('unsupported tiles keep a read-only role and truthful tooltip after a live update', () => {
     const item = entity('binary_sensor.audit', 'off');
@@ -274,6 +310,27 @@ describe('device control and live data regressions', () => {
     expect(tile(item.entity_id).title).not.toMatch(/toggle/);
     expect(mockCallService).not.toHaveBeenCalled();
   });
+  // A tile stops a long name at two lines, so the tooltip is where the whole name can be read.
+  test.each([
+    ['light.audit_long', 'brightness'],
+    ['climate.audit_long', 'temperature'],
+    ['fan.audit_long', 'speed'],
+    ['cover.audit_long', 'position'],
+  ])(
+    'the %s tile names itself in front of its instruction, and keeps it after an update',
+    (id, control) => {
+      const longName =
+        'Upstairs hallway ceiling light above the stairs next to the master bedroom door';
+      const item = {
+        ...entity(id, id.startsWith('climate') ? 'heat' : 'on'),
+        attributes: { friendly_name: longName },
+      };
+      renderTiles([item]);
+      expect(tile(id).title).toBe(`${longName}: Click to toggle, hold for ${control} control`);
+      liveUpdate({ ...item, attributes: { ...item.attributes, friendly_name: `${longName} 2` } });
+      expect(tile(id).title).toContain(`${longName} 2: Click to toggle`);
+    }
+  );
   test('tile state is included in its accessible description and stays current', () => {
     const light = entity('light.audit', 'off');
     renderTiles([light]);
@@ -321,6 +378,23 @@ describe('device control and live data regressions', () => {
     });
     expect(new Set(readoutIds).size).toBe(2);
     expect(document.querySelectorAll(`[id="${readoutIds[0]}"]`)).toHaveLength(1);
+  });
+  test('a primary light card carries the light state its warm icon and glow key on', () => {
+    const light = entity('light.audit', 'on', { brightness: 200 });
+    document.body.innerHTML +=
+      '<div class="status-grid"><div id="weather-card"></div><div id="time-card"></div></div>';
+    state.setStates({ [light.entity_id]: light });
+    state.setConfig({ ...state.CONFIG, primaryCards: [light.entity_id, 'none'] });
+    ui.renderPrimaryCards();
+
+    const card = document.querySelector('.primary-light-card');
+    expect(card.dataset.state).toBe('on');
+
+    // The card outlives the control inside it, so a live change has to move the attribute too.
+    liveUpdate({ ...light, state: 'off', attributes: {} });
+    expect(card.dataset.state).toBe('off');
+    liveUpdate({ ...light, state: 'on' });
+    expect(card.dataset.state).toBe('on');
   });
   test('calendar explains the date window and retries after an error', async () => {
     const calendar = entity('calendar.audit', 'off');
@@ -371,9 +445,7 @@ describe('device control and live data regressions', () => {
     void ui.requestAlarmCode(entity('alarm_control_panel.audit', 'armed_home', {}));
     const modal = document.querySelector('.alarm-code-modal');
     jest.advanceTimersByTime(1);
-    expect(uiUtils.trapFocus).toHaveBeenCalledWith(modal, {
-      initialFocus: modal.querySelector('input'),
-    });
+    expect(document.activeElement).toBe(modal.querySelector('input'));
     modal.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   });
   test('alarm prompt cancels on Escape and clears its secret field', async () => {
@@ -417,6 +489,46 @@ describe('device control and live data regressions', () => {
     modal.querySelector('.media-detail-play-btn').click();
     expect(mockCallService).toHaveBeenCalledTimes(1);
   });
+  test('media detail keeps the keyboard where it was, and its way back to the opener, when it gains controls', () => {
+    document.body.insertAdjacentHTML('beforeend', '<button id="tile-opener">Player</button>');
+    const opener = document.getElementById('tile-opener');
+    const player = entity('media_player.audit', 'paused', {
+      supported_features: 16445,
+      volume_level: 0.5,
+    });
+    state.setServices({ media_player: { media_seek: {} } });
+    state.setEntityState(player);
+    opener.focus();
+    ui.openEntityControls(player);
+    jest.advanceTimersByTime(20);
+    const first = document.querySelector('.media-modal');
+    document.querySelector('#media-volume-slider').focus();
+    expect(document.activeElement.id).toBe('media-volume-slider');
+
+    // The player gains seeking, so the dialog is rebuilt with its seek buttons.
+    state.setEntityState(
+      entity('media_player.audit', 'paused', {
+        supported_features: 16445 | 2,
+        volume_level: 0.5,
+        media_position: 5,
+        media_duration: 200,
+      })
+    );
+    jest.advanceTimersByTime(0);
+
+    const modals = document.querySelectorAll('.media-modal');
+    expect(modals).toHaveLength(1);
+    expect(modals[0]).not.toBe(first);
+    expect(modals[0].classList.contains('modal-rebuilt')).toBe(true);
+    expect(document.activeElement.id).toBe('media-volume-slider');
+
+    document.activeElement.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    );
+    jest.advanceTimersByTime(400);
+    expect(document.querySelector('.media-modal')).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
   test('unknown state blocks stale climate readings but not a never-pressed button', () => {
     const { getClimateTileTemperature } = require('../../src/entity-control-policy.js');
     const thermostat = entity('climate.audit', 'heat', { current_temperature: 21 });
@@ -458,12 +570,14 @@ describe('device control and live data regressions', () => {
     const sensor = entity('sensor.deleted', '21.5', { unit_of_measurement: '°C' });
     state.setEntityState(sensor);
     ui.openEntityControls(sensor);
-    const modal = document.querySelector('.sensor-detail-modal, .modal');
-    const readout = modal.querySelector('[aria-live="polite"]');
-    expect(readout.getAttribute('aria-label')).toContain('21.5');
+    const modal = document.querySelector('.sensor-detail-modal');
+    const value = modal.querySelector('.sensor-detail-value');
+    expect(value.textContent).toContain('21.5');
+    expect(modal.classList.contains('entity-unavailable')).toBe(false);
     state.deleteEntityState(sensor.entity_id);
-    expect(readout.getAttribute('aria-label')).not.toContain('21.5');
-    expect(readout.getAttribute('aria-label')).toMatch(/unavailable/i);
+    expect(value.textContent).not.toContain('21.5');
+    expect(value.textContent).toMatch(/unavailable/i);
+    expect(modal.classList.contains('entity-unavailable')).toBe(true);
   });
   test('todo dialog stops writing once Home Assistant deletes the entity', async () => {
     const list = entity('todo.deleted', '1', { supported_features: 5 });
@@ -577,7 +691,7 @@ describe('device control and live data regressions', () => {
       temperature: 22,
     });
     state.setEntityState(climate);
-    expect(ui.describeQuickAccessTile(climate.entity_id).value).toBe('0°');
+    expect(ui.describeQuickAccessTile(climate.entity_id).value).toBe('0°C');
   });
   test('unavailable fan tile refuses its primary toggle', () => {
     const fan = entity('fan.auditunavailable', 'unavailable', {
@@ -765,9 +879,9 @@ describe('device control and live data regressions', () => {
   });
 
   test.each([
-    [0, 22, '0°'],
-    [-5, 22, '-5°'],
-    [null, 0, '0°'],
+    [0, 22, '0°C'],
+    [-5, 22, '-5°C'],
+    [null, 0, '0°C'],
     [null, null, 'Heating'],
   ])('climate current %s and target %s display %s', (current, target, expected) => {
     const climate = entity('climate.reading', 'heat', {
@@ -776,5 +890,142 @@ describe('device control and live data regressions', () => {
     });
     state.setEntityState(climate);
     expect(ui.describeQuickAccessTile(climate.entity_id).value).toBe(expected);
+  });
+  describe('dialogs built from the shared control classes', () => {
+    const classesOf = (element) => [...element.classList];
+
+    test('the helper dialog names its field, says what it accepts, and gives it the form-group, button and lead classes', () => {
+      const helper = entity('input_number.audit', '3', {
+        friendly_name: 'Thermostat offset',
+        min: 0,
+        max: 10,
+        step: 1,
+      });
+      state.setServices({ input_number: { set_value: {} } });
+      renderTiles([helper]);
+      tile(helper.entity_id).click();
+
+      const modal = document.querySelector('.helper-controls-modal');
+      const input = modal.querySelector('input');
+      expect(input.closest('.form-group')).not.toBeNull();
+      // The title is the entity's name already, so the field is named without a second label.
+      expect(modal.querySelector('label')).toBeNull();
+      expect(input.getAttribute('aria-label')).toBe('Thermostat offset');
+      const hint = document.getElementById(input.getAttribute('aria-describedby'));
+      expect(hint.classList.contains('form-help')).toBe(true);
+      expect(hint.textContent).toBe('Range 0 to 10, step 1');
+      const readout = modal.querySelector('.modal-lead');
+      expect(readout.getAttribute('role')).toBe('status');
+      expect(readout.classList.contains('helper-controls-readout')).toBe(true);
+      const apply = modal.querySelector('.modal-footer.entity-detail-actions button');
+      expect(classesOf(apply)).toEqual(['btn', 'btn-primary']);
+    });
+
+    test('a vacuum has one main action and quieter ones beside it', () => {
+      const robot = entity('vacuum.audit', 'docked', { supported_features: 8192 | 4 | 8 });
+      state.setServices({ vacuum: { start: {}, pause: {}, stop: {} } });
+      renderTiles([robot]);
+      tile(robot.entity_id).click();
+
+      const buttons = [...document.querySelectorAll('.helper-controls-modal button')].filter(
+        (button) => !button.classList.contains('close-btn')
+      );
+      expect(buttons.map((button) => classesOf(button).join(' '))).toEqual([
+        'btn btn-primary',
+        'btn btn-secondary',
+        'btn btn-secondary',
+      ]);
+    });
+
+    test('the alarm prompt labels its field and submits with a real button', () => {
+      void ui.requestAlarmCode(entity('alarm_control_panel.audit', 'armed_home', {}));
+      const modal = document.querySelector('.alarm-code-modal');
+      const input = modal.querySelector('input');
+
+      expect(modal.querySelector('label').htmlFor).toBe(input.id);
+      expect(input.closest('.form-group')).not.toBeNull();
+      const submit = modal.querySelector('button[type="submit"]');
+      expect(classesOf(submit)).toEqual(['btn', 'btn-primary']);
+      modal.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+
+    test('the calendar keeps its refresh in a toolbar with the date window', async () => {
+      const calendar = entity('calendar.audit', 'off');
+      state.setEntityState(calendar);
+      mockCallServiceWithResponse.mockResolvedValue({ 'calendar.audit': { events: [] } });
+      ui.openEntityControls(calendar);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const toolbar = document.querySelector('.calendar-modal .calendar-toolbar');
+      expect(toolbar.querySelector('.modal-lead').textContent).toContain('next 7 days');
+      expect(classesOf(toolbar.querySelector('button'))).toEqual([
+        'btn',
+        'btn-secondary',
+        'btn-sm',
+      ]);
+    });
+
+    test('the Manage Quick Access pager is made of compact secondary buttons', () => {
+      document.body.innerHTML += `<div id="quick-controls-modal"><div id="quick-controls-target-hint"></div>
+        <input id="quick-controls-search"><div id="quick-controls-list"></div></div>`;
+      state.setStates(
+        Object.fromEntries(
+          Array.from({ length: 60 }, (_, index) => {
+            const id = `sensor.pager_${index}`;
+            return [id, entity(id, String(index))];
+          })
+        )
+      );
+      ui.populateQuickControlsList();
+
+      const pager = document.getElementById('quick-controls-pagination');
+      const [previous, next] = pager.querySelectorAll('button');
+      expect(classesOf(previous)).toEqual(['btn', 'btn-secondary', 'btn-sm']);
+      expect(classesOf(next)).toEqual(['btn', 'btn-secondary', 'btn-sm']);
+      expect(pager.querySelector('.entity-selector-pagination-status').textContent).toBe(
+        'Page 1 of 2 · 60 entities'
+      );
+    });
+
+    test('the Manage Quick Access pager says "1 entity" for a single match, not "1 entities"', () => {
+      document.body.innerHTML += `<div id="quick-controls-modal"><div id="quick-controls-target-hint"></div>
+        <input id="quick-controls-search"><div id="quick-controls-list"></div></div>`;
+      state.setStates({ 'sensor.only_one': entity('sensor.only_one', '1') });
+      ui.populateQuickControlsList();
+
+      expect(
+        document
+          .getElementById('quick-controls-pagination')
+          .querySelector('.entity-selector-pagination-status').textContent
+      ).toBe('Page 1 of 1 · 1 entity');
+    });
+
+    test('the media dialog keeps one Mute label, flips aria-pressed, and says how far a seek jumps', () => {
+      state.setServices({
+        media_player: { media_seek: {}, volume_mute: {}, media_play_pause: {} },
+      });
+      const player = entity('media_player.audit', 'playing', {
+        supported_features: 2 | 4 | 8 | 16384,
+        volume_level: 0.5,
+        is_volume_muted: false,
+        media_duration: 300,
+        media_position: 30,
+      });
+      state.setEntityState(player);
+      ui.openEntityControls(player);
+      jest.advanceTimersByTime(20);
+
+      const mute = document.querySelector('.media-modal #media-mute-toggle');
+      expect(mute.textContent).toBe('Mute');
+      expect(mute.getAttribute('aria-pressed')).toBe('false');
+      mute.click();
+      expect(mute.textContent).toBe('Mute');
+      expect(mute.getAttribute('aria-pressed')).toBe('true');
+      expect(mute.classList.contains('active')).toBe(true);
+
+      const seek = [...document.querySelectorAll('.media-modal .media-detail-seek-btn')];
+      expect(seek.map((button) => button.textContent)).toEqual(['\u221210s', '+10s']);
+    });
   });
 });

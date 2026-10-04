@@ -5,7 +5,7 @@ export function installLayerDrag() {
   document.addEventListener('pointerdown', async (event) => {
     if (event.button !== 0 || !document.body.classList.contains('layer-drag-enabled')) return;
     const handle = event.target.closest(
-      '.drag-area, .drag-region, .desktop-pin-drag-region, .header, body.desktop-pin-edit-mode .desktop-pin-shell'
+      '.drag-area, .drag-region, .header, body.desktop-pin-edit-mode .desktop-pin-shell'
     );
     if (!handle || event.target.closest('button, input, select, a, textarea')) return;
     event.preventDefault();

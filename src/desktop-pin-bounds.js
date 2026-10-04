@@ -193,6 +193,122 @@ function clampDesktopPinBounds(
 }
 
 /**
+ * Where a new pin opens: the first spot, walking left along each row from the top-right corner of
+ * the work area, that no other pin and not the main widget covers. Null when the screen is full,
+ * so the caller can fall back to cascading from the corner.
+ *
+ * @param {{size: {width: number, height: number}, workArea: Object, occupied?: Object[], gap?: number}} options
+ *   `size` and `occupied` are window sizes and rectangles on screen.
+ */
+function findFreeDesktopPinOrigin({ size, workArea, occupied = [], gap = 16 } = {}) {
+  const width = roundFinite(size?.width, NaN);
+  const height = roundFinite(size?.height, NaN);
+  const area = {
+    x: roundFinite(workArea?.x, 0),
+    y: roundFinite(workArea?.y, 0),
+    width: roundFinite(workArea?.width, NaN),
+    height: roundFinite(workArea?.height, NaN),
+  };
+  if (![width, height, area.width, area.height].every(Number.isFinite)) return null;
+
+  const margin = 24;
+  const taken = occupied.filter(
+    (rect) =>
+      ['x', 'y', 'width', 'height'].every((key) => Number.isFinite(Number(rect?.[key]))) &&
+      Number(rect.width) > 0 &&
+      Number(rect.height) > 0
+  );
+  const overlaps = (x, y) =>
+    taken.some(
+      (rect) =>
+        x < rect.x + rect.width &&
+        x + width > rect.x &&
+        y < rect.y + rect.height &&
+        y + height > rect.y
+    );
+
+  for (let y = area.y + margin; y + height <= area.y + area.height - margin; y += height + gap) {
+    for (let x = area.x + area.width - margin - width; x >= area.x + margin; x -= width + gap) {
+      if (!overlaps(x, y)) return { x, y };
+    }
+  }
+  return null;
+}
+
+/**
+ * Saved bounds after a corner handle asks for a new size.
+ *
+ * The edge opposite the handle stays where it is on screen, whatever the interface scale or the
+ * minimum size, and the dragged edge stops at the work area's edge instead of pushing the pin
+ * back inside it (which slid the far edge across the screen). `workArea` is the one the drag began
+ * on, so a pin that grows across a monitor boundary keeps following the pointer.
+ *
+ * The step starts from the window as it is drawn, not from the saved position: a scaled pin that
+ * was nudged back inside the work area is resized from where it appears, so it never jumps back to
+ * its saved origin once it shrinks enough to fit there. The returned position is that on-screen one.
+ *
+ * @param {{x: number, y: number, width: number, height: number}} startBounds - Saved bounds before
+ *   this step; sizes are at 100%, the position is the saved one, before any nudge back on screen.
+ * @param {{width: number, height: number, corner?: string}} request - The size asked for.
+ * @returns {{x: number, y: number, width: number, height: number}}
+ */
+function resizeDesktopPinBounds(
+  startBounds = {},
+  request = {},
+  {
+    entityId = '',
+    contentMinBounds = null,
+    workArea = { x: 0, y: 0, width: 1280, height: 720 },
+    scale = 1,
+  } = {}
+) {
+  const minBounds = resolveDesktopPinMinBounds(entityId, contentMinBounds);
+  const baseBounds = getDesktopPinBaseBounds(entityId);
+  const factor = normalizeDesktopPinScale(scale);
+  const safeWorkArea = {
+    x: roundFinite(workArea?.x, 0),
+    y: roundFinite(workArea?.y, 0),
+    width: Math.max(1, roundFinite(workArea?.width, 1280)),
+    height: Math.max(1, roundFinite(workArea?.height, 720)),
+  };
+  const startWidth = roundFinite(startBounds.width, baseBounds.width);
+  const startHeight = roundFinite(startBounds.height, baseBounds.height);
+  const startWindow = getDesktopPinWindowBounds(startBounds, {
+    entityId,
+    contentMinBounds,
+    fallbackOrigin: safeWorkArea,
+    workArea: safeWorkArea,
+    scale: factor,
+  });
+  const { x: startX, y: startY } = startWindow;
+  const right = startX + startWindow.width;
+  const bottom = startY + startWindow.height;
+  const corner = typeof request.corner === 'string' ? request.corner : 'bottom-right';
+  const growsLeft = corner.endsWith('left');
+  const growsUp = corner.startsWith('top');
+
+  const room = {
+    width: growsLeft ? right - safeWorkArea.x : safeWorkArea.x + safeWorkArea.width - startX,
+    height: growsUp ? bottom - safeWorkArea.y : safeWorkArea.y + safeWorkArea.height - startY,
+  };
+  const fit = (requested, fallback, minimum, available) =>
+    Math.max(
+      minimum,
+      Math.min(roundFinite(requested, fallback), Math.floor((available + 1e-6) / factor))
+    );
+  const width = fit(request.width, startWidth, minBounds.width, room.width);
+  const height = fit(request.height, startHeight, minBounds.height, room.height);
+  const windowSize = scaleDesktopPinSize({ width, height }, factor);
+
+  return {
+    x: growsLeft ? right - windowSize.width : startX,
+    y: growsUp ? bottom - windowSize.height : startY,
+    width,
+    height,
+  };
+}
+
+/**
  * Native window bounds for saved pin bounds at a given interface scale.
  *
  * Saved bounds keep the pin's size at 100% and its screen position, so changing the scale never
@@ -230,5 +346,7 @@ module.exports = {
   normalizeDesktopPinContentMinBounds,
   resolveDesktopPinMinBounds,
   clampDesktopPinBounds,
+  resizeDesktopPinBounds,
+  findFreeDesktopPinOrigin,
   getDesktopPinWindowBounds,
 };

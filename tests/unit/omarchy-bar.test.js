@@ -68,6 +68,16 @@ describe('Omarchy bar plugin package', () => {
     expect(PLUGIN_FILES).toEqual(expect.arrayContaining(['manifest.json', 'Widget.qml']));
   });
 
+  // A file missing from the list is never copied to the user's plugin directory, and the widget
+  // then fails to load there while working from the source tree.
+  it('installs every file of the plugin, and the widget imports each script', () => {
+    expect([...PLUGIN_FILES].sort()).toEqual(fs.readdirSync(pluginDir).sort());
+    const qml = fs.readFileSync(path.join(pluginDir, 'Widget.qml'), 'utf8');
+    for (const script of PLUGIN_FILES.filter((file) => file.endsWith('.js'))) {
+      expect(qml).toContain(`import "${script}" as `);
+    }
+  });
+
   it('uses the app id for the plugin, its module name, and its status file', () => {
     expect(manifest.id).toBe(appId);
     expect(OMARCHY_BAR_PLUGIN_ID).toBe(appId);
@@ -108,6 +118,353 @@ describe('Omarchy bar plugin package', () => {
     expect(launchBody.indexOf('configured !== ""')).toBeLessThan(launchBody.indexOf('savedLaunch'));
     ['updatedAt', 'connection', 'launch', 'panel', 'bar', 'sections', 'icons'].forEach((field) =>
       expect(qml).toContain(`status.${field}`)
+    );
+  });
+
+  // The bar slot is as wide as its text, so a long media title must not push the other widgets
+  // off the bar, and a vertical bar's slot is one glyph wide.
+  describe('the bar readout', () => {
+    const qml = fs.readFileSync(path.join(pluginDir, 'Widget.qml'), 'utf8');
+    const { clip, graphemes, UNICODE_VERSION } = vm.runInNewContext(
+      fs.readFileSync(path.join(pluginDir, 'Clip.js'), 'utf8') +
+        '\n({ clip, graphemes, UNICODE_VERSION })'
+    );
+
+    it('cuts each value and the whole readout short, with the full text in the tooltip', () => {
+      expect(qml).toContain('readonly property int barValueChars: 16');
+      expect(qml).toContain('readonly property int barTextChars: 48');
+      expect(qml).toContain(
+        'barValues.map(function(value) { return clipText(value, barValueChars) }).join("  "),'
+      );
+      // The tooltip lists every value in full on its own line.
+      expect(qml).toContain('"\\n" + root.barValues.join("  ")');
+    });
+
+    it('shows only the glyph on a vertical bar', () => {
+      expect(qml).toContain(
+        'readonly property bool verticalBar: bar ? bar.vertical === true : false'
+      );
+      expect(qml).toContain('readonly property string barText: verticalBar ? "" : clipText(');
+      expect(qml).toContain('text: root.barText !== "" ? "󰟐  " + root.barText : "󰟐"');
+    });
+
+    it('clips with the grapheme-aware script rather than String.slice()', () => {
+      expect(qml).toContain('import "Clip.js" as Clip');
+      expect(qml).toContain('return Clip.clip(text, limit)');
+      expect(qml.match(/function clipText\(text, limit\) \{[^}]*\}/)[0]).not.toContain('slice(');
+    });
+
+    it('ends a clipped text with an ellipsis inside its limit', () => {
+      expect(clip('short', 16)).toBe('short');
+      expect(clip('x'.repeat(16), 16)).toBe('x'.repeat(16));
+      expect(clip('A very long media title indeed', 16)).toBe('A very long med…');
+      expect(clip('A very long media title indeed', 16)).toHaveLength(16);
+      expect(clip('', 16)).toBe('');
+    });
+
+    // A cut that falls inside a character left a replacement glyph (half a surrogate pair) or a
+    // letter without its accent. Each case is one visible character at the 16th place.
+    describe('never cuts inside a character', () => {
+      const lead = 'x'.repeat(14);
+      const characters = {
+        'an emoji': '😀',
+        'an emoji with a skin tone': '👍🏽',
+        'a family of joined emoji': '👨‍👩‍👧‍👦',
+        'a joined emoji with a variation selector': '🏳️‍🌈',
+        'a flag': '🇩🇪',
+        'a keycap': '1️⃣',
+        'a letter with a combining accent': 'e\u0301',
+        'a letter with two combining marks': 'a\u0308\u0301',
+        'a Hangul syllable written as jamo': '\u1112\u1161\u11ab',
+        'a Thai letter with its vowel and tone marks': 'ก\u0e49\u0e33',
+        'a CRLF': '\r\n',
+      };
+
+      it.each(Object.entries(characters))('keeps %s whole at the cut', (_name, character) => {
+        // 14 letters, the character in 15th place, and more text after it.
+        const text = `${lead}${character}${character}yy`;
+        const cut = clip(text, 16);
+        expect(cut).toBe(`${lead}${character}…`);
+        expect(graphemes(cut)).toHaveLength(16);
+      });
+
+      it.each(Object.entries(characters))('lets %s fill the last place', (_name, character) => {
+        // 15 letters and the character make exactly 16, which fits as it is.
+        const text = `${'x'.repeat(15)}${character}`;
+        expect(clip(text, 16)).toBe(text);
+      });
+
+      it.each(Object.entries(characters))('counts %s as one place', (_name, character) => {
+        // As UTF-16 these are over 16 long, but they are 16 characters to a reader.
+        const text = character.repeat(16);
+        expect(clip(text, 16)).toBe(text);
+        expect(clip(`${text}${character}`, 16)).toBe(`${character.repeat(15)}…`);
+      });
+
+      it('never leaves half a surrogate pair or a lone combining mark', () => {
+        const loneSurrogate =
+          /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+        const text = Object.values(characters).join('');
+        for (let limit = 1; limit <= graphemes(text).length + 1; limit += 1) {
+          const cut = clip(text, limit);
+          expect(cut).not.toMatch(loneSurrogate);
+          expect(graphemes(cut).length).toBeLessThanOrEqual(limit);
+          if (cut !== text) expect(cut.endsWith('…')).toBe(true);
+        }
+      });
+
+      it('keeps the flags of a row paired', () => {
+        // Two flags are four regional indicators; a cut after the second one would split a flag.
+        expect(clip(`${lead}🇩🇪🇫🇷🇪🇸`, 16)).toBe(`${lead}🇩🇪…`);
+        expect(clip(`${lead}🇩🇪🇫🇷`, 16)).toBe(`${lead}🇩🇪🇫🇷`);
+      });
+
+      it('clips the joined readout the same way', () => {
+        // The values are cut to 16 first and then joined and cut to 48, as Widget.qml does.
+        const values = ['😀'.repeat(20), 'e\u0301'.repeat(20), 'plain text that is long'];
+        const readout = clip(values.map((value) => clip(value, 16)).join('  '), 48);
+        expect(readout).toBe(`${'😀'.repeat(15)}…  ${'e\u0301'.repeat(15)}…  plain text …`);
+        expect(graphemes(readout)).toHaveLength(48);
+      });
+
+      it('keeps a conjunct consonant of Hindi whole', () => {
+        // क्ष is three code points and one character.
+        const ksha = '\u0915\u094d\u0937';
+        expect(clip(`${lead}${ksha}${ksha}yy`, 16)).toBe(`${lead}${ksha}…`);
+        expect(clip(`${'x'.repeat(15)}${ksha}`, 16)).toBe(`${'x'.repeat(15)}${ksha}`);
+      });
+    });
+
+    // QML's engine has no Intl.Segmenter, so Clip.js carries the rules and the character tables
+    // itself. They are checked against this Node's own segmenter, which node scripts/
+    // grapheme-tables.cjs also uses to write them: after a Node upgrade a failure here means the
+    // tables need printing again.
+    describe('splits text where Intl.Segmenter does', () => {
+      const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' });
+      const expected = (text) => Array.from(segmenter.segment(text), (part) => part.segment);
+
+      // Unicode changes the class of code points it already assigned: 17.0 narrowed
+      // Extended_Pictographic by some 670 symbols such as U+2605 and moved U+11A3A, so a Node with
+      // older data (CI's Node 20 can have 15.0 or 16.0, depending on its minor version) splits
+      // those differently from tables printed on 17.0, and not because Clip.js is wrong. The
+      // exhaustive comparison therefore runs only on a Node whose data is at least as new as the
+      // tables'; the cases around it hold on every version.
+      const atLeast = (have, want) => {
+        const [haveMajor, haveMinor] = have.split('.').map(Number);
+        const [wantMajor, wantMinor] = want.split('.').map(Number);
+        return haveMajor !== wantMajor ? haveMajor > wantMajor : haveMinor >= wantMinor;
+      };
+      const itWithCurrentUnicode = atLeast(process.versions.unicode, UNICODE_VERSION)
+        ? it
+        : it.skip;
+
+      it('declares the Unicode version its tables were printed for', () => {
+        expect(UNICODE_VERSION).toMatch(/^\d+\.\d+$/);
+        expect(atLeast('17.0', '16.0')).toBe(true);
+        expect(atLeast('16.0', '17.0')).toBe(false);
+        expect(atLeast('15.1', '15.0')).toBe(true);
+        expect(atLeast('15.0', '15.1')).toBe(false);
+      });
+
+      // Unicode 15.1 added the Indic conjunct rule. A Node with older Unicode data splits क्ष, so
+      // the checks that need the rule are skipped there.
+      const hasConjunctRule = expected('\u0915\u094d\u0937').length === 1;
+      const eachWithConjuncts = hasConjunctRule ? it.each : it.skip.each;
+
+      it.each([
+        ['Latin text', 'Midnight City - M83'],
+        ['accents', 'Cafe\u0301 ou\u0308 a\u0300 la cre\u0300me'],
+        ['emoji', '😀🎵🏠 Wohnzimmer 💡'],
+        ['skin tones and joined emoji', '👍🏽👩🏽‍🚀👨‍👩‍👧‍👦🏳️‍🌈🧑‍🤝‍🧑'],
+        ['a pictograph that is not joined to a plain letter', 'a\u200d😀'],
+        ['flags in a row', '🇩🇪🇫🇷🇪🇸🇬🇧🇺'],
+        ['keycaps and variation selectors', '1️⃣#️⃣❤️✔︎'],
+        ['Hangul as syllables and as jamo', '한국어 \u1112\u1161\u11ab\u1100\u1173\u11af'],
+        ['Thai', 'สวัสดีครับ ก\u0e49\u0e33'],
+        ['Arabic with marks', 'مَرْحَبًا \u0600\u0661\u0662'],
+        ['Hebrew with points', 'שָׁלוֹם'],
+        ['a virama with no consonant before it', '\u094dक a\u094dक'],
+        ['Chinese and Japanese', '你好，世界 こんにちは'],
+        ['control characters and line breaks', 'a\r\nb\nc\rd\u0001\u0301e\u2028f\u200bg\u00ad'],
+        ['a combining mark at the start', '\u0301abc'],
+        ['an empty string', ''],
+      ])('for %s', (_name, text) => {
+        expect(graphemes(text)).toEqual(expected(text));
+        expect(graphemes(text).join('')).toBe(text);
+      });
+
+      eachWithConjuncts([
+        ['Devanagari with vowel signs and conjuncts', 'नमस्ते हिंदी क्षत्रिय श्री'],
+        ['conjuncts of Bengali, Gujarati, Oriya, Telugu and Malayalam', 'ক্ষ ક્ષ କ୍ଷ క్ష ക്ഷ'],
+        [
+          'a conjunct chain, and one broken by a joiner or a non-joiner',
+          'क्त्य क्\u200dष क्\u200cष',
+        ],
+      ])('for %s', (_name, text) => {
+        expect(graphemes(text)).toEqual(expected(text));
+      });
+
+      // Every assigned code point in the planes with text in them, next to a letter, a combining
+      // mark, a pictograph and (in the Indic blocks) a consonant and its virama. A code point this
+      // Node does not know yet is skipped; it would be an ordinary character to it.
+      itWithCurrentUnicode(
+        'for every assigned code point, next to a letter, a mark, a pictograph and a consonant',
+        () => {
+          const mismatches = [];
+          const check = (probe, label) => {
+            if (JSON.stringify(graphemes(probe)) !== JSON.stringify(expected(probe))) {
+              mismatches.push(label);
+            }
+          };
+          const pictographRanges = (cp) =>
+            (cp >= 0xa9 && cp <= 0x3299) || (cp >= 0x1f000 && cp <= 0x1ffff);
+          for (let cp = 0; cp <= 0xe0fff; cp += 1) {
+            if (cp >= 0xd800 && cp <= 0xdfff) continue;
+            if (cp > 0x3ffff && cp < 0xe0000) continue;
+            const char = String.fromCodePoint(cp);
+            if (/\p{Cn}/u.test(char)) continue;
+            const hex = cp.toString(16);
+            check(`a${char}a`, `U+${hex} between letters`);
+            check(`${char}\u0301`, `U+${hex} before a mark`);
+            if (pictographRanges(cp)) check(`👨\u200d${char}`, `U+${hex} after a joiner`);
+            if (hasConjunctRule && cp >= 0x900 && cp <= 0xdff) {
+              check(`\u0915\u094d${char}`, `U+${hex} after a consonant and its virama`);
+              check(`\u0915${char}\u0915`, `U+${hex} between consonants`);
+            }
+          }
+          expect(mismatches).toEqual([]);
+        },
+        60000
+      );
+
+      it('for the ranges of Hangul jamo and syllables', () => {
+        const jamo = [
+          0x1100, 0x115f, 0x1160, 0x11a7, 0x11a8, 0x11ff, 0xa960, 0xd7b0, 0xd7cb, 0xac00,
+        ];
+        const syllables = [0xac00, 0xac01, 0xac1b, 0xac1c, 0xd788, 0xd7a3];
+        const text = [...jamo, ...syllables]
+          .flatMap((first) => [...jamo, ...syllables].map((second) => [first, second]))
+          .map((pair) => String.fromCodePoint(...pair))
+          .join('|');
+        expect(graphemes(text)).toEqual(expected(text));
+      });
+    });
+  });
+});
+
+describe('Omarchy panel keyboard support', () => {
+  const qml = fs.readFileSync(path.join(pluginDir, 'Widget.qml'), 'utf8');
+
+  it('brings the highlighted tile into view as the cursor moves, so Enter never acts on one that is off screen', () => {
+    const moveBody = qml.slice(
+      qml.indexOf('function moveCursor('),
+      qml.indexOf('function adjustCursorTile')
+    );
+    // Both the first press (which only shows the cursor) and every step scroll to it.
+    expect(moveBody.match(/ensureCursorVisible\(\)/g)).toHaveLength(2);
+    // Each tile registers itself by position, so the scroll can find where it is drawn.
+    expect(qml).toContain('Component.onCompleted: root.tileItems[tileRoot.flatIndex] = tileRoot');
+    expect(qml).toContain('delete root.tileItems[tileRoot.flatIndex]');
+    const scrollBody = qml.slice(
+      qml.indexOf('function ensureVisible('),
+      qml.indexOf('function ensureCursorVisible()')
+    );
+    expect(scrollBody).toContain('item.mapToItem(flick.contentItem, 0, 0).y');
+    expect(scrollBody).toContain('flick.contentY =');
+    const cursorScroll = qml.slice(
+      qml.indexOf('function ensureCursorVisible()'),
+      qml.indexOf('function moveCursor(')
+    );
+    // The controls view has no tiles to scroll to.
+    expect(cursorScroll).toContain('if (showingControls) return');
+    expect(cursorScroll).toContain('ensureVisible(tileItems[cursorIndex])');
+  });
+
+  it('shows a scrollbar while there are tiles below the fold, and none when everything fits', () => {
+    expect(qml).toContain('import QtQuick.Controls as Controls');
+    expect(qml).toContain(
+      'policy: flick.contentHeight > flick.height ? Controls.ScrollBar.AlwaysOn : Controls.ScrollBar.AlwaysOff'
+    );
+  });
+
+  it('opens the highlighted tile controls from the keyboard, where the adjustment itself is possible', () => {
+    // Connected rather than bound with onTextKey, which fails the whole panel's load on a shell whose
+    // key catcher has no such signal; Connections ignores a signal it does not find.
+    expect(qml).not.toMatch(/^\s*onTextKey:/m);
+    expect(qml).toMatch(
+      /Connections \{\s*target: keyCatcher\s*ignoreUnknownSignals: true\s*function onTextKey\(text\) \{\s*if \(text === "a" \|\| text === "A"\) root\.adjustCursorTile\(\)/
+    );
+    const adjustBody = qml.slice(
+      qml.indexOf('function adjustCursorTile()'),
+      qml.indexOf('// Icon SVGs from the widget draw')
+    );
+    expect(adjustBody).toContain('if (showingControls || !cursorActive) return');
+    expect(adjustBody).toContain('canAdjust(tile)');
+    expect(adjustBody).toContain('adjustTile(tile)');
+    expect(fs.readFileSync(path.resolve(__dirname, '../../docs/omarchy.md'), 'utf8')).toContain(
+      'and A opens its controls'
+    );
+  });
+});
+
+describe('Omarchy tile controls from the keyboard', () => {
+  const qml = fs.readFileSync(path.join(pluginDir, 'Widget.qml'), 'utf8');
+  const view = qml.slice(qml.indexOf('component ControlsView: Column'));
+
+  it('sends the arrows to the controls view, which keeps its place as a row and a column', () => {
+    const moveBody = qml.slice(
+      qml.indexOf('function moveCursor('),
+      qml.indexOf('function adjustCursorTile')
+    );
+    // Both axes go there now: Up and Down used to be dropped while a tile's controls were open.
+    expect(moveBody).toContain('controlsView.move(dx, dy)');
+    // A change rebuilds the buttons, so the place is not an item that would be gone a moment later.
+    expect(view).toContain('property int stopRow: -1');
+    expect(view).toContain('property int stopCol: 0');
+    expect(view).toContain('onCtlChanged: Qt.callLater(revalidateStop)');
+  });
+
+  it('keeps Left, Right and Enter acting on the tile until a control has been selected', () => {
+    const moveBody = view.slice(
+      view.indexOf('function move('),
+      view.indexOf('function activate()')
+    );
+    // Down from nothing selects the first row; Up from the first row gives the tile back.
+    expect(moveBody).toContain('stopRow < 0 ? (dy > 0 ? 0 : -1) : stopRow + dy');
+    expect(moveBody).toContain('if (row < 0) clearStop()');
+    // With no selection, Left and Right still move the main slider.
+    expect(moveBody).toContain('nudge(dx)');
+    const activateBody = view.slice(
+      view.indexOf('function activate()'),
+      view.indexOf('function nudge(')
+    );
+    expect(activateBody).toContain('item.pressStop()');
+    // No selection, or a slider: Enter still switches the tile (light, fan) or plays and pauses.
+    expect(activateBody).toContain('root.setControl("power", !ctl.on)');
+    expect(activateBody).toContain('root.setControl("play_pause")');
+  });
+
+  it('lets the keyboard reach every button, swatch and slider the pointer can', () => {
+    expect(view).toContain('if (kid.keyStop === true && kid.enabled !== false) out.push(kid)');
+    // Preset, cover, media and climate-mode buttons, the climate step buttons and mute, Open in
+    // widget, the colour swatches, and every slider.
+    expect(qml).toContain('component KeyButton: Button');
+    expect(qml).toContain('component KeyActionButton: PanelActionButton');
+    expect(qml.match(/delegate: KeyButton \{/g)).toHaveLength(2);
+    expect(qml.match(/\bKeyActionButton \{/g)).toHaveLength(3);
+    expect(qml).toMatch(/\/\/ Everything else the widget's own dialog has\.\s*KeyButton \{/);
+    expect(qml).toContain('function pressStop() { root.setControl("color", modelData) }');
+    expect(qml).toContain('readonly property bool isSlider: true');
+    // No control the keyboard cannot see: the plain buttons are gone from the controls view.
+    expect(view).not.toMatch(/delegate: Button \{/);
+  });
+
+  it('outlines the control inside its own bounds, so a full-width one keeps its sides', () => {
+    expect(qml).toContain('x: controlsView.ringRect.x\n');
+    expect(qml).toContain('width: controlsView.ringRect.width\n');
+    expect(qml).toContain('root.ensureVisible(currentStop(rows))');
+    expect(fs.readFileSync(path.resolve(__dirname, '../../docs/omarchy.md'), 'utf8')).toContain(
+      'Up and Down move between its controls'
     );
   });
 });
@@ -296,6 +653,29 @@ describe('Omarchy bar status', () => {
       cleanOmarchyBarTile('sensor.x', { icon: { kind: 'line', name: '../../x' } }).icon
     ).toEqual({ kind: 'line', name: 'box' });
     expect(cleanOmarchyBarTile('sensor.x', null)).toBeNull();
+  });
+
+  it('cuts a name and an icon on whole characters, never through an emoji', () => {
+    const tile = (overrides) => cleanOmarchyBarTile('sensor.x', overrides);
+    const family = '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}\u200D\u{1F466}';
+    // An emoji (two UTF-16 units) that starts at the 80th character used to leave half of itself.
+    const name = tile({ name: `${'a'.repeat(79)}\u{1F600}tail` }).name;
+    expect(name).toBe(`${'a'.repeat(79)}\u{1F600}`);
+    expect(name).toMatch(/^(?:[^\ud800-\udfff]|[\ud800-\udbff][\udc00-\udfff])*$/);
+    // A joined family is one character and is kept or dropped as one.
+    expect(tile({ name: `${'a'.repeat(79)}${family}z` }).name).toBe(`${'a'.repeat(79)}${family}`);
+    expect(tile({ name: `${'a'.repeat(80)}${family}` }).name).toBe('a'.repeat(80));
+    // An icon of seven code points is not cut into a different picture.
+    expect(tile({ icon: { kind: 'custom', glyph: family } }).icon).toEqual({
+      kind: 'glyph',
+      glyph: family,
+    });
+    const flag = '\u{1F1E9}\u{1F1EA}';
+    expect(tile({ icon: { kind: 'custom', glyph: `${flag}${flag}${flag}` } }).icon.glyph).toBe(
+      `${flag}${flag}${flag}`
+    );
+    // Text written as letters and a combining accent keeps the accent.
+    expect(tile({ name: `${'a'.repeat(79)}e\u0301x` }).name).toBe(`${'a'.repeat(79)}e\u0301`);
   });
 
   it('accepts only plain line-icon SVGs', () => {
@@ -691,5 +1071,63 @@ describe('bar requests and installation', () => {
     expect(JSON.parse(fs.readFileSync(manifestPath, 'utf8')).version).toBe('0.0.1');
     expect(fs.readdirSync(target).filter((file) => file.startsWith('.'))).toEqual([]);
     expect(updateInstalledOmarchyBarPlugin({ sourceDir: pluginDir, pluginDir: target })).toBe(true);
+  });
+});
+
+describe('Omarchy bar secondary text', () => {
+  // The colour helpers are plain JavaScript inside the QML; run them against Qt's rgba().
+  const qml = fs.readFileSync(path.join(pluginDir, 'Widget.qml'), 'utf8');
+  const start = qml.indexOf('function colorChannel');
+  const end = qml.indexOf('// Keyboard cursor');
+  const rgba = (r, g, b, a = 1) => ({ r, g, b, a });
+  const { quietTone, contrastRatio } = new vm.Script(
+    `(function () { ${qml.slice(start, end)}; return { quietTone, contrastRatio }; })()`
+  ).runInNewContext({ Qt: { rgba }, Math });
+  const color = (hex) => {
+    const [r, g, b] = [1, 3, 5].map((index) => parseInt(hex.slice(index, index + 2), 16) / 255);
+    return rgba(r, g, b);
+  };
+
+  // Foreground and background of bundled Omarchy themes, the dark ones that fell under 4.5:1 and
+  // the light ones whose dim text came out darker than their primary text.
+  const themes = {
+    'tokyo-night': ['#a9b1d6', '#1a1b26'],
+    everforest: ['#d3c6aa', '#2d353b'],
+    gruvbox: ['#d4be98', '#282828'],
+    nord: ['#d8dee9', '#2e3440'],
+    miasma: ['#c2c2b0', '#222222'],
+    'catppuccin-latte': ['#4c4f69', '#eff1f5'],
+    'rose-pine-dawn': ['#575279', '#faf4ed'],
+    lupine: ['#212121', '#fafafa'],
+    white: ['#000000', '#ffffff'],
+    vantablack: ['#ffffff', '#000000'],
+  };
+
+  it('uses the shipped blend, not Qt.darker, for the dim tone', () => {
+    expect(qml).toContain('readonly property color dimColor: quietTone(foreground');
+    expect(qml).not.toContain('Qt.darker(foreground');
+  });
+
+  it.each(Object.entries(themes))(
+    'reads at 4.5:1 and stays below the foreground (%s)',
+    (_, [fg, bg]) => {
+      const tone = quietTone(color(fg), color(bg));
+      expect(contrastRatio(tone, color(bg))).toBeGreaterThanOrEqual(4.5);
+      // Never stronger than the primary text, whichever way the theme runs.
+      expect(contrastRatio(tone, color(bg))).toBeLessThanOrEqual(
+        contrastRatio(color(fg), color(bg)) + 0.01
+      );
+    }
+  );
+
+  it('returns a foreground that cannot reach 4.5:1 unchanged', () => {
+    const fg = color('#8a8a8a');
+    const bg = color('#999999');
+    expect(quietTone(fg, bg)).toEqual(fg);
+  });
+
+  it('dims an unavailable tile by its icon and name instead of fading its text', () => {
+    expect(qml).not.toContain('opacity: tileRoot.available ? 1 : 0.55');
+    expect(qml).toContain('iconOpacity: tileRoot.active ? 1 : (tileRoot.available ? 0.72 : 0.45)');
   });
 });

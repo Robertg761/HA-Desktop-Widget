@@ -16,6 +16,7 @@ const {
   session,
   nativeTheme,
   clipboard,
+  systemPreferences,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -126,6 +127,7 @@ const {
   detectTilingLayerShellCompositor,
   watchHyprlandConfigReloads,
   getLayerShellControlSocketPath,
+  getMainWindowMinimumSize,
   isLayerShellChild,
   materializeLayerShellHelper,
   readInitialLayerShellOutputName,
@@ -345,6 +347,8 @@ const {
   getDesktopPinDomain,
   normalizeDesktopPinContentMinBounds,
   clampDesktopPinBounds: clampDesktopPinBoundsWithWorkArea,
+  resizeDesktopPinBounds: resizeDesktopPinBoundsInWorkArea,
+  findFreeDesktopPinOrigin,
   getDesktopPinWindowBounds: getDesktopPinWindowBoundsInWorkArea,
 } = require('./src/desktop-pin-bounds.js');
 const {
@@ -409,6 +413,12 @@ const {
   createLinuxPopupHotkeyController,
   isLinuxPopupHotkeyPlatform,
 } = require('./src/linux-popup-hotkey.cjs');
+const {
+  acceleratorToUiohookParts,
+  acceleratorsConflict,
+  validateAccelerator,
+} = require('./src/accelerators.cjs');
+const { isAccessibilityGranted } = require('./src/macos-accessibility.cjs');
 const { createPopupWindowPresenter } = require('./src/popup-window-presenter.cjs');
 const {
   createLayerPointerRelease,
@@ -914,21 +924,58 @@ function refreshLayerPlacement() {
     return;
   }
   placeLayerWindow(mainWindow);
-  desktopPinWindows.forEach(placeLayerWindow);
+  desktopPinWindows.forEach((pinWindow) => placeLayerWindow(pinWindow));
 }
-function placeLayerWindow(targetWindow) {
-  if (!layerShellRaiser || !isHyprland() || !targetWindow || targetWindow.isDestroyed()) return;
+// The monitor surfaces are placed on, from Electron's own display layout, where there is no
+// Hyprland to ask: Sway, niri and river. The surface lands on the compositor's chosen output, which
+// this cannot know, so the primary display stands in for it.
+function getElectronLayerMonitor() {
+  try {
+    const display = electronScreen.getPrimaryDisplay();
+    const { bounds, workArea } = display;
+    return {
+      name: String(display.label || display.id),
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      workArea: {
+        x: workArea.x - bounds.x,
+        y: workArea.y - bounds.y,
+        width: workArea.width,
+        height: workArea.height,
+      },
+    };
+  } catch (error) {
+    log.warn('Could not read the display layout for layer placement:', error.message);
+    return null;
+  }
+}
+
+// The monitor layer surfaces are placed on.
+function getLayerPlacementMonitor() {
+  return isHyprland() ? layerActualMonitor : getElectronLayerMonitor();
+}
+
+// `windowSize` is the size the surface is being given, which getBounds may not report yet.
+// `fixedOrigin` is where to put a surface that has no saved position when it has to stay where it
+// was drawn, instead of being placed from the pin's saved x and y and the search for a free spot.
+function placeLayerWindow(targetWindow, windowSize = null, fixedOrigin = null) {
+  if (!layerShellRaiser || !targetWindow || targetWindow.isDestroyed()) return;
   const id = targetWindow.__desktopPinEntityId || 'main';
-  const saved = config.layerPositions?.[id]?.[layerActualMonitor?.name];
+  // Hyprland reports its monitors and cursor, which placing the main widget and dragging need. On
+  // the other compositors only the pins are placed, so they stop piling up in one corner.
+  if (!isHyprland() && id === 'main') return;
+  const monitor = getLayerPlacementMonitor();
+  const saved = config.layerPositions?.[id]?.[monitor?.name];
   const pin = config.desktopPins?.[id];
   const initial =
     saved ||
-    (pin
-      ? { x: pin.x - (layerActualMonitor?.x || 0), y: pin.y - (layerActualMonitor?.y || 0) }
-      : null);
-  let position = clampLayerPosition(initial, targetWindow.getBounds(), layerActualMonitor);
-  if (pin && !saved && layerActualMonitor) {
-    const size = targetWindow.getBounds();
+    fixedOrigin ||
+    (pin ? { x: pin.x - (monitor?.x || 0), y: pin.y - (monitor?.y || 0) } : null);
+  const size = windowSize || targetWindow.getBounds();
+  let position = clampLayerPosition(initial, size, monitor);
+  if (pin && !saved && !fixedOrigin && monitor) {
     const occupied = [...desktopPinWindows.entries()]
       .filter(([entityId]) => entityId !== id)
       .map(([entityId, win]) => ({ ...win.getBounds(), ...layerPositions.get(entityId) }));
@@ -941,7 +988,7 @@ function placeLayerWindow(targetWindow) {
           p.y + size.height + 8 > other.y
       );
     if (overlaps(position)) {
-      const area = layerActualMonitor.workArea;
+      const area = monitor.workArea;
       search: for (
         let y = area.y + 24;
         y + size.height <= area.y + area.height;
@@ -1002,7 +1049,10 @@ let appliedHideOnBlur = false;
 const windowAutoHide = createWindowAutoHideController({
   getWindow: () => mainWindow,
   isEnabled: () => appliedHideOnBlur && !isLayerShellChildProcess && !isQuitting,
-  isSuppressed: () => popupHotkeyPressed,
+  // Reorganize mode puts the pins in edit mode, and the pin windows are other windows: pressing one
+  // blurs the main window, which would hide it and strand every pin in an edit state whose exit
+  // controls (the Reorganize button, Escape) are in the window that just went away.
+  isSuppressed: () => popupHotkeyPressed || desktopPinEditMode,
   hideWindow: () => hideMainWindowToTray(),
   getCursorPosition: () => electronScreen.getCursorScreenPoint(),
 });
@@ -1071,6 +1121,16 @@ const linuxPopupHotkeyController = createLinuxPopupHotkeyController({
   translate: (key, vars) => mainT(key, vars),
 });
 const desktopPinWindows = new Map();
+// A pin being resized from a corner handle: the work area the drag began on, and the timer that
+// writes the final size if the renderer never reports the drag as finished.
+const desktopPinResizeSessions = new Map();
+const DESKTOP_PIN_RESIZE_IDLE_SAVE_MS = 1500;
+const DESKTOP_PIN_RESIZE_CORNERS = new Set([
+  'top-left',
+  'top-right',
+  'bottom-left',
+  'bottom-right',
+]);
 const desktopPinContentMinBounds = new Map();
 const pendingDesktopPinActionRequests = new Map();
 let nextDesktopPinActionRequestId = 1;
@@ -1100,6 +1160,13 @@ const localizationService = createLocalizationService({
       return app.getLocale() || app.getSystemLocale() || 'en';
     } catch {
       return 'en';
+    }
+  },
+  getSystemLocale: () => {
+    try {
+      return app.getSystemLocale() || '';
+    } catch {
+      return '';
     }
   },
   manifestUrl: getLocalePackManifestSource(),
@@ -1150,8 +1217,18 @@ function resolveFrostedGlassConfig(currentConfig = config, overrideFrostedGlass)
     : !!currentConfig?.frostedGlass;
 }
 
+// On native Wayland (and as a layer surface) an opaque window is given a larger surface and no
+// shape, which leaves a square plate behind the rounded pins and shifts the widget; the windows
+// are transparent there whatever the opacity, and CSS draws it.
+function windowsAreAlwaysTransparent() {
+  return (
+    shouldUseTransparentWindow(process.platform, process.env) ||
+    (process.platform === 'linux' && (usesCompositorOwnedPlacement || isLayerShellChildProcess))
+  );
+}
+
 function getWindowTransparencyOptions(currentConfig = config) {
-  let transparent = shouldUseTransparentWindow(process.platform, process.env);
+  let transparent = windowsAreAlwaysTransparent();
 
   // Windows keeps a transparent window in both glass and non-glass modes so
   // opacity can be applied to background surfaces without fading tiles/controls.
@@ -1236,6 +1313,11 @@ function refreshProfileSyncRuntimeTracking({ decodePassphrase = true } = {}) {
 
 function mainT(key, vars = {}) {
   return localizationService.translate(config?.ui?.language || 'auto', key, vars);
+}
+
+// The language mainT is answering in, for pages that have to say so (the sign-in result in a browser).
+function mainLocale() {
+  return localizationService.getLocaleBootstrap(config?.ui?.language || 'auto').activeLocale;
 }
 
 /**
@@ -1958,6 +2040,7 @@ function sanitizeConfigForRenderer(inputConfig) {
     layerMode: isLayerShellChildProcess,
     canDrag: isLayerShellChildProcess && isHyprland(),
     hyprland: isHyprland(),
+    alwaysTransparentWindows: windowsAreAlwaysTransparent(),
     isolatedProfile: IS_ISOLATED_PROFILE,
     nativeGlassSupported: NATIVE_GLASS_SUPPORTED,
   };
@@ -2177,13 +2260,13 @@ function getDesktopPinWorkArea(bounds) {
  * Native window bounds for a pin's saved bounds. Saved sizes are at 100% "Text and control
  * size"; the window is scaled by the current setting so the zoomed content still fits.
  */
-function getDesktopPinWindowBounds(entityId, pinBounds) {
+function getDesktopPinWindowBounds(entityId, pinBounds, workArea = null) {
   const scale = config?.ui?.scale;
   const windowBounds = getDesktopPinWindowBoundsInWorkArea(pinBounds, {
     entityId,
     contentMinBounds: desktopPinContentMinBounds.get(entityId) || null,
     fallbackOrigin: getDesktopPinCascadeOrigin(0),
-    workArea: getDesktopPinWorkArea(pinBounds),
+    workArea: workArea || getDesktopPinWorkArea(pinBounds),
     scale,
   });
   if (usesCompositorOwnedPlacement) {
@@ -2199,18 +2282,33 @@ function getDesktopPinBoundsFromWindow(entityId, pinWindow) {
   return getDesktopPinBounds(entityId, { ...config?.desktopPins?.[entityId], x, y });
 }
 
-function applyDesktopPinBoundsToWindow(targetWindow, nextBounds) {
+function applyDesktopPinBoundsToWindow(
+  targetWindow,
+  nextBounds,
+  workArea = null,
+  layerOrigin = null
+) {
   if (!targetWindow || targetWindow.isDestroyed() || !nextBounds) return;
   try {
     targetWindow.__desktopPinApplyingBounds = true;
-    const windowBounds = getDesktopPinWindowBounds(targetWindow.__desktopPinEntityId, nextBounds);
+    const windowBounds = getDesktopPinWindowBounds(
+      targetWindow.__desktopPinEntityId,
+      nextBounds,
+      workArea
+    );
     if (usesCompositorOwnedPlacement) {
       targetWindow.setSize(windowBounds.width, windowBounds.height);
     } else {
       targetWindow.setBounds(windowBounds);
     }
     applyDesktopPinWindowShape(targetWindow, windowBounds);
-    if (isLayerShellChildProcess) placeLayerWindow(targetWindow);
+    if (isLayerShellChildProcess) {
+      placeLayerWindow(
+        targetWindow,
+        { width: windowBounds.width, height: windowBounds.height },
+        layerOrigin
+      );
+    }
     targetWindow.__desktopPinApplyingBounds = false;
   } catch (error) {
     targetWindow.__desktopPinApplyingBounds = false;
@@ -2322,12 +2420,15 @@ function normalizeWindowGeometryConfig(targetConfig) {
   if (!isPlainObject(targetConfig)) return targetConfig;
   const isCoordinate = (value) => typeof value === 'number' && Number.isFinite(value);
   const size = targetConfig.windowSize;
+  // The minimum the window is created with, which grows with "Text and control size". A window
+  // dragged down to a sliver once saved that size, and opened as a window with its buttons out of
+  // reach on every start after; a size saved under a smaller text size is raised the same way.
+  const minimum = getMainWindowMinimumSizeForConfig(targetConfig);
   targetConfig.windowSize =
     isPlainObject(size) && isCoordinate(size.width) && isCoordinate(size.height)
       ? {
-          // The same bounds the layer-shell surface uses for a saved size.
-          width: Math.min(16384, Math.max(100, Math.round(size.width))),
-          height: Math.min(16384, Math.max(100, Math.round(size.height))),
+          width: Math.min(16384, Math.max(minimum.width, Math.round(size.width))),
+          height: Math.min(16384, Math.max(minimum.height, Math.round(size.height))),
         }
       : { ...DEFAULT_WINDOW_SIZE };
   const position = targetConfig.windowPosition;
@@ -2360,6 +2461,51 @@ function resolveDesktopPinSupportDecision(entityId, supportInfo = null) {
   };
 }
 
+// Where a newly pinned tile opens: on the monitor the widget is on, in the first free spot from the
+// top-right corner, clear of the other pins and the widget. Null leaves it to the cascade.
+function getDesktopPinOpenOrigin(entityId) {
+  try {
+    // Under Wayland a window does not know where it is, so only a normal window's position says
+    // where the widget sits; a layer widget keeps its own record.
+    const mainBounds = isLayerShellChildProcess
+      ? getMainLayerRect()
+      : !usesCompositorOwnedPlacement &&
+          mainWindow &&
+          !mainWindow.isDestroyed() &&
+          mainWindow.isVisible()
+        ? mainWindow.getBounds()
+        : null;
+    const layerMonitor = isLayerShellChildProcess
+      ? isHyprland()
+        ? layerActualMonitor
+        : getElectronLayerMonitor()
+      : null;
+    const workArea = layerMonitor
+      ? {
+          x: layerMonitor.x + layerMonitor.workArea.x,
+          y: layerMonitor.y + layerMonitor.workArea.y,
+          width: layerMonitor.workArea.width,
+          height: layerMonitor.workArea.height,
+        }
+      : (mainBounds
+          ? electronScreen.getDisplayMatching(mainBounds)
+          : electronScreen.getDisplayNearestPoint(electronScreen.getCursorScreenPoint())
+        )?.workArea;
+    const occupied = Object.entries(config.desktopPins || {})
+      .filter(([otherId, bounds]) => otherId !== entityId && isPlainObject(bounds))
+      .map(([otherId, bounds]) => getDesktopPinWindowBounds(otherId, bounds));
+    if (mainBounds) occupied.push(mainBounds);
+    return findFreeDesktopPinOrigin({
+      size: getDesktopPinBaseBounds(entityId, config?.ui?.scale),
+      workArea,
+      occupied,
+    });
+  } catch (error) {
+    log.warn('Could not find a free spot for the desktop pin:', error.message);
+    return null;
+  }
+}
+
 async function pinEntityToDesktopInternal(entityId, supportInfo = null) {
   const normalizedEntityId = normalizeEntityId(entityId);
   if (!normalizedEntityId) {
@@ -2389,7 +2535,7 @@ async function pinEntityToDesktopInternal(entityId, supportInfo = null) {
   config.desktopPins = config.desktopPins || {};
   config.desktopPins[normalizedEntityId] = getDesktopPinBounds(
     normalizedEntityId,
-    config.desktopPins[normalizedEntityId]
+    config.desktopPins[normalizedEntityId] || getDesktopPinOpenOrigin(normalizedEntityId)
   );
   normalizeDesktopPinsConfig(config);
   normalizeTrayEntitiesConfigInPlace(config);
@@ -2780,12 +2926,160 @@ function applyDesktopPinEditModeToWindow(targetWindow) {
 
 function setDesktopPinEditMode(enabled) {
   desktopPinEditMode = !!enabled;
+  if (!desktopPinEditMode && desktopPinResizeSessions.size > 0) {
+    // A drag the renderer never finished: keep the size it reached.
+    desktopPinResizeSessions.forEach((_session, entityId) => settleDesktopPinResize(entityId));
+  }
   desktopPinWindows.forEach((window, entityId) => {
     applyDesktopPinEditModeToWindow(window);
     sendDesktopPinUpdate(entityId, { type: 'edit-mode' });
   });
 
   return { success: true, enabled: desktopPinEditMode };
+}
+
+/**
+ * Ends pin edit mode from the main process, because the window that holds its exit controls (the
+ * Reorganize button, Escape) is going away. Pin edit mode follows the main renderer's Reorganize
+ * mode, so the renderer is told too: left alone it would come back on show still reorganizing, with
+ * pins that are no longer editable, and the first press of the button would seem to do nothing.
+ */
+function endDesktopPinEditModeFromMainProcess() {
+  if (!desktopPinEditMode) return;
+  setDesktopPinEditMode(false);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('desktop-pin-edit-mode-ended');
+  }
+}
+
+// A corner drag reports itself in the bounds it sends: { width, height, resize: { corner, final } }.
+function normalizeDesktopPinResizeRequest(resize) {
+  if (!isPlainObject(resize) || !DESKTOP_PIN_RESIZE_CORNERS.has(resize.corner)) return null;
+  return { corner: resize.corner, final: resize.final === true };
+}
+
+function endDesktopPinResizeSession(entityId) {
+  const session = desktopPinResizeSessions.get(entityId);
+  if (!session) return;
+  clearTimeout(session.idleTimer);
+  desktopPinResizeSessions.delete(entityId);
+}
+
+// Where a layer surface sits. It is placed from layerPositions, in its monitor's own coordinates,
+// not from the x and y the pin saved. Null wherever the app does not place the surface itself.
+function getDesktopPinLayerPlacement(entityId) {
+  if (!isLayerShellChildProcess) return null;
+  const monitor = getLayerPlacementMonitor();
+  const origin = layerPositions.get(entityId);
+  if (!monitor?.name || !origin) return null;
+  const { workArea } = monitor;
+  return {
+    monitor,
+    origin,
+    workArea: {
+      x: monitor.x + workArea.x,
+      y: monitor.y + workArea.y,
+      width: workArea.width,
+      height: workArea.height,
+    },
+  };
+}
+
+// Sets or, with a null position, removes the saved spot of a layer surface on one monitor. The
+// config is replaced rather than edited so an earlier reference to it stays what it was.
+function setDesktopPinLayerPosition(entityId, monitorName, position) {
+  const next = { ...config.layerPositions };
+  const outputs = { ...next[entityId] };
+  if (position) outputs[monitorName] = position;
+  else delete outputs[monitorName];
+  if (Object.keys(outputs).length > 0) next[entityId] = outputs;
+  else delete next[entityId];
+  config.layerPositions = next;
+}
+
+// The work area a drag began on. Re-picking the display for every step would hand a pin that
+// straddles two monitors to whichever holds more of it, and it would jump between them.
+//
+// The session also keeps what config.json held when the drag began. Every step of a drag changes
+// the config and the window in memory and the file is written once at the end, so a final save
+// that fails has to go back to this, not to the step before it. That is the file as it was when
+// the drag began: an unrelated save that runs mid-drag (a Settings change, another pin's move)
+// writes the size in memory out with the rest of the config, and a failed final save then puts
+// the pin back to a size the file no longer holds. The in-memory design cannot avoid that.
+//
+// `drawn` is where the surface was drawn, which a pin that has no saved layer position goes back
+// to, since placing it afresh could pick another spot.
+function getDesktopPinResizeSession(entityId, startBounds, layerPlacement = null) {
+  let session = desktopPinResizeSessions.get(entityId);
+  if (!session) {
+    const monitorName = layerPlacement?.monitor.name;
+    session = {
+      workArea:
+        layerPlacement?.workArea ||
+        getDesktopPinWorkArea(getDesktopPinWindowBounds(entityId, startBounds)),
+      persisted: {
+        bounds: startBounds,
+        layer: layerPlacement
+          ? {
+              monitorName,
+              position: config.layerPositions?.[entityId]?.[monitorName] || null,
+              drawn: { ...layerPlacement.origin },
+            }
+          : null,
+      },
+      idleTimer: null,
+      revision: 0,
+    };
+    desktopPinResizeSessions.set(entityId, session);
+  }
+  clearTimeout(session.idleTimer);
+  session.revision += 1;
+  session.idleTimer = setTimeout(
+    () => settleDesktopPinResize(entityId),
+    DESKTOP_PIN_RESIZE_IDLE_SAVE_MS
+  );
+  return session;
+}
+
+// Ends a drag the renderer went quiet on (or never finished) by writing the size it reached. The
+// write is durable and the session is kept until it has finished: if it fails the pin goes back to
+// what config.json holds, so a drag that resumes does not take an unsaved size for its starting
+// point, and a later failed save does not "restore" one. Runs in the config queue, behind any
+// step already waiting there; a step that got in first has carried the drag on, and the new idle
+// timer owns the session.
+function settleDesktopPinResize(entityId) {
+  const session = desktopPinResizeSessions.get(entityId);
+  if (!session) return;
+  clearTimeout(session.idleTimer);
+  const { revision } = session;
+  runBackgroundConfigMutation(async () => {
+    if (desktopPinResizeSessions.get(entityId) !== session || session.revision !== revision) return;
+    const persistence = await saveConfigDurably();
+    endDesktopPinResizeSession(entityId);
+    if (!persistence.success) {
+      log.warn('Failed to save the desktop pin size:', persistence.error);
+      restoreDesktopPinPersistedBounds(entityId, session.persisted, session.workArea);
+      return;
+    }
+    pushConfigToRenderer();
+  }, 'desktop pin resize save');
+}
+
+// Puts a pin back to what config.json holds after a drag whose save failed: the saved bounds and
+// layer position, in the config and on screen. A surface with no saved position goes back to where
+// it was drawn. A pin unpinned while its save was running stays gone: unpinning does not end a
+// resize session, and restoring would put the removed pin back for the next save to write out.
+function restoreDesktopPinPersistedBounds(entityId, persisted, workArea) {
+  if (!config.desktopPins?.[entityId]) return;
+  config.desktopPins[entityId] = persisted.bounds;
+  if (persisted.layer) {
+    setDesktopPinLayerPosition(entityId, persisted.layer.monitorName, persisted.layer.position);
+  }
+  const window = desktopPinWindows.get(entityId);
+  if (window && !window.isDestroyed()) {
+    applyDesktopPinBoundsToWindow(window, persisted.bounds, workArea, persisted.layer?.drawn);
+  }
+  sendDesktopPinUpdate(entityId, { type: 'bounds' });
 }
 
 async function updateDesktopPinBounds(entityId, nextBounds = {}) {
@@ -2802,29 +3096,85 @@ async function updateDesktopPinBounds(entityId, nextBounds = {}) {
     return { success: false, error: 'Desktop pin does not exist' };
   }
 
-  const clampedBounds = clampDesktopPinBounds(
-    {
-      ...config.desktopPins[normalizedEntityId],
-      ...(isPlainObject(nextBounds) ? nextBounds : {}),
-    },
-    normalizedEntityId,
-    0,
-    config.desktopPins[normalizedEntityId]
-  );
+  const { resize, ...requestedBounds } = isPlainObject(nextBounds) ? nextBounds : {};
+  const resizeRequest = normalizeDesktopPinResizeRequest(resize);
+  const previousBounds = config.desktopPins[normalizedEntityId];
+  const layerPlacement = resizeRequest ? getDesktopPinLayerPlacement(normalizedEntityId) : null;
+  const resizeSession = resizeRequest
+    ? getDesktopPinResizeSession(normalizedEntityId, previousBounds, layerPlacement)
+    : null;
+  // What a failed save goes back to; a drag still open when a plain update arrives keeps its own.
+  const persisted = (resizeSession || desktopPinResizeSessions.get(normalizedEntityId))
+    ?.persisted || { bounds: previousBounds, layer: null };
+
+  const clampedBounds = resizeRequest
+    ? resizeDesktopPinBoundsInWorkArea(
+        layerPlacement
+          ? {
+              ...previousBounds,
+              x: layerPlacement.monitor.x + layerPlacement.origin.x,
+              y: layerPlacement.monitor.y + layerPlacement.origin.y,
+            }
+          : previousBounds,
+        { ...requestedBounds, corner: resizeRequest.corner },
+        {
+          entityId: normalizedEntityId,
+          contentMinBounds: desktopPinContentMinBounds.get(normalizedEntityId) || null,
+          workArea: resizeSession.workArea,
+          scale: config?.ui?.scale,
+        }
+      )
+    : clampDesktopPinBounds(
+        {
+          ...previousBounds,
+          ...requestedBounds,
+        },
+        normalizedEntityId,
+        0,
+        previousBounds
+      );
+  // A handle on the top or left edge moves the window's origin so the opposite edge stays put.
+  // Where the app places windows that is the saved x and y. A layer surface is placed from its
+  // layer position, so that carries the move; on any other native Wayland session the compositor
+  // keeps the origin, the window grows from it, and the saved x and y stay as they were.
+  //
+  // The layer position is written on every step, even for a handle that leaves the origin where
+  // it was. A pin the app placed itself (to clear its neighbours) has no saved position, and
+  // without one its surface would be placed afresh from the pin's saved x and y as soon as its
+  // size changed, which can be another spot. Resizing a pin pins it where it is drawn.
+  if (layerPlacement) {
+    setDesktopPinLayerPosition(normalizedEntityId, layerPlacement.monitor.name, {
+      x: clampedBounds.x - layerPlacement.monitor.x,
+      y: clampedBounds.y - layerPlacement.monitor.y,
+    });
+  }
   if (usesCompositorOwnedPlacement) {
-    clampedBounds.x = config.desktopPins[normalizedEntityId].x;
-    clampedBounds.y = config.desktopPins[normalizedEntityId].y;
+    clampedBounds.x = previousBounds.x;
+    clampedBounds.y = previousBounds.y;
   }
 
-  const previousBounds = config.desktopPins[normalizedEntityId];
   config.desktopPins[normalizedEntityId] = clampedBounds;
+
+  // A drag reports a new size every frame. Apply it to the window now and write the file when the
+  // drag ends, instead of rewriting config.json and redrawing every window a hundred times.
+  if (resizeRequest && !resizeRequest.final) {
+    const window = desktopPinWindows.get(normalizedEntityId);
+    if (window && !window.isDestroyed()) {
+      applyDesktopPinBoundsToWindow(window, clampedBounds, resizeSession.workArea);
+    }
+    sendDesktopPinUpdate(normalizedEntityId, { type: 'bounds' });
+    return { success: true, pinBounds: clampedBounds };
+  }
+
+  const workArea = resizeSession?.workArea || null;
+  endDesktopPinResizeSession(normalizedEntityId);
   const persistence = await saveConfigDurably();
   if (!persistence.success) {
-    config.desktopPins[normalizedEntityId] = previousBounds;
+    restoreDesktopPinPersistedBounds(normalizedEntityId, persisted, workArea);
     return {
       success: false,
       error: mainT('Failed to save desktop pin position: {{error}}', { error: persistence.error }),
-      pinBounds: previousBounds,
+      pinBounds: persisted.bounds,
     };
   }
 
@@ -2832,7 +3182,7 @@ async function updateDesktopPinBounds(entityId, nextBounds = {}) {
   await runPostSaveSideEffect(runtimeWarnings, 'desktop pin bounds', () => {
     const window = desktopPinWindows.get(normalizedEntityId);
     if (window && !window.isDestroyed()) {
-      applyDesktopPinBoundsToWindow(window, clampedBounds);
+      applyDesktopPinBoundsToWindow(window, clampedBounds, workArea);
     }
   });
   await runPostSaveSideEffect(runtimeWarnings, 'desktop pin bounds update', () =>
@@ -3108,6 +3458,15 @@ function applyMainWindowSettingSideEffects(previousConfig, nextConfig) {
 
     if (previousConfig?.frostedGlass !== nextConfig?.frostedGlass) {
       applyFrostedGlass();
+    }
+
+    if (previousConfig?.ui?.scale !== nextConfig?.ui?.scale) {
+      try {
+        const minimumSize = getMainWindowMinimumSizeForConfig(nextConfig);
+        mainWindow.setMinimumSize(minimumSize.width, minimumSize.height);
+      } catch (error) {
+        log.warn('Failed to update the main window minimum size:', error.message);
+      }
     }
 
     try {
@@ -6646,6 +7005,22 @@ function mainWindowMatchesSavedBounds(bounds) {
   );
 }
 
+/**
+ * A size no smaller than the main window's minimum at the current "Text and control size", for a
+ * size about to be saved. Electron's minimum-size hint is all that holds a window to that
+ * minimum, and some window managers ignore it, so this is what stops a too-small window from being
+ * saved and then accepted on the next start. The minimum grows with the setting (480x540 at
+ * 150%), so the unscaled 320x360 would let through a window only 213x240 CSS pixels wide. A
+ * desktop-layer surface keeps the unscaled one, see getMainWindowMinimumSizeForConfig.
+ */
+function clampToMinimumWindowSize({ width, height }, targetConfig = config) {
+  const minimum = getMainWindowMinimumSizeForConfig(targetConfig);
+  return {
+    width: Math.max(minimum.width, width),
+    height: Math.max(minimum.height, height),
+  };
+}
+
 /** Save the main window's position and size after the user moves or resizes it. */
 function watchMainWindowBounds(targetWindow) {
   const changeWin = () => {
@@ -6675,10 +7050,7 @@ function watchMainWindowBounds(targetWindow) {
         if (!usesCompositorOwnedPlacement) {
           config.windowPosition = { x: boundsToPersist.x, y: boundsToPersist.y };
         }
-        config.windowSize = {
-          width: boundsToPersist.width,
-          height: boundsToPersist.height,
-        };
+        config.windowSize = clampToMinimumWindowSize(boundsToPersist);
         saveConfig();
       }, 'window bounds save');
     }, 400);
@@ -6692,6 +7064,16 @@ function watchMainWindowBounds(targetWindow) {
     onMove: changeWin,
     onResize: changeWin,
   });
+}
+
+/**
+ * The main window's minimum size for the current "Text and control size". A desktop-layer surface
+ * is sized by the helper from the saved size, which is already held to the unscaled minimum, so it
+ * keeps that one. At 150% such a surface can be as narrow as 213 CSS pixels, under the 320 the
+ * layout is designed for: the header and Settings are cramped there but still reachable.
+ */
+function getMainWindowMinimumSizeForConfig(targetConfig) {
+  return getMainWindowMinimumSize(isLayerShellChildProcess ? 1 : targetConfig?.ui?.scale);
 }
 
 function createWindow() {
@@ -6738,10 +7120,13 @@ function createWindow() {
     positionOptions.y = config.windowPosition.y;
   }
 
+  const minimumSize = getMainWindowMinimumSizeForConfig(config);
   const windowOptions = {
     ...positionOptions,
     width: config.windowSize.width,
     height: config.windowSize.height,
+    minWidth: minimumSize.width,
+    minHeight: minimumSize.height,
     ...visualOptions,
     frame: false,
     // A frameless window still reports a title to the window manager, and a stable one is what
@@ -6840,6 +7225,8 @@ function createWindow() {
   // Any hide (tray toggle, close to tray, minimize) ends a popup raise, so a later show
   // from the tray or menu does not inherit the above-full-screen z-order.
   mainWindow.on('hide', () => {
+    // Whatever hid the window, the pins cannot stay in edit mode: nothing is left to end it.
+    endDesktopPinEditModeFromMainProcess();
     windowAutoHide.handleHidden();
     popupWindowPresenter.handleWindowHidden(mainWindow);
     notifyDesktopCompanionStateChanged();
@@ -8124,6 +8511,7 @@ function getHomeAssistantOAuthClient() {
       postForm: (url, fields) => requestFormWithElectronNet(net, url, fields),
       // The browser pages shown after Home Assistant redirects back to the app.
       translate: (key) => mainT(key),
+      getLocale: mainLocale,
       probeServer: (baseUrl, signal) => probeHomeAssistantWithElectronNet(net, baseUrl, { signal }),
       isSecureStorageAvailable: isSecureProfileSyncStorageAvailable,
       log,
@@ -8262,6 +8650,9 @@ async function restoreHomeAssistantOAuthSession() {
 ipcMain.handle('start-home-assistant-oauth', async (event, rawUrl) => {
   const sender = authorizeIpcSender(event, 'start-home-assistant-oauth');
   if (!sender) return rejectUnauthorizedIpc('start-home-assistant-oauth');
+  // The authorization happens in the browser, which takes focus from the widget. With "hide when focus
+  // is lost" on, the widget would be gone by the time the person comes back to it.
+  const resumeAutoHide = windowAutoHide.suspend();
   try {
     const session = await getHomeAssistantOAuthClient().pair(rawUrl);
     return await runSerializedConfigMutation(async () => ({
@@ -8274,6 +8665,18 @@ ipcMain.handle('start-home-assistant-oauth', async (event, rawUrl) => {
       code: describeLinuxKeyringOAuthError(error?.code || 'OAUTH_PAIRING_FAILED'),
       error: error?.message || 'Home Assistant authorization failed',
     };
+  } finally {
+    // Bring it back in front whatever the outcome: the connection it was waiting for is made, or
+    // the reason it was declined, timed out or failed is waiting in the form. Raising comes first
+    // because the browser still has focus, and resuming auto-hide rechecks that blur and would
+    // hide the widget about 200 ms later with the message in it.
+    try {
+      showMainWindowFromTray();
+    } catch (error) {
+      log.warn('Failed to raise the widget after Home Assistant authorization:', error.message);
+    } finally {
+      resumeAutoHide();
+    }
   }
 });
 
@@ -9060,11 +9463,17 @@ ipcMain.handle('choose-profile-sync-folder', async (event, provider, currentFold
   const resumeAutoHide = windowAutoHide.suspend();
   let result;
   try {
-    result = await dialog.showOpenDialog({
+    const dialogOptions = {
       title: mainT('Choose Profile Sync Folder'),
       defaultPath,
       properties: ['openDirectory', 'createDirectory'],
-    });
+    };
+    // Parented to the Settings window, like the export and import pickers: a free-floating dialog
+    // can open behind an always-on-top widget on Windows, and is a panel rather than a sheet on macOS.
+    const parent = sender.window && !sender.window.isDestroyed?.() ? sender.window : null;
+    result = await (parent
+      ? dialog.showOpenDialog(parent, dialogOptions)
+      : dialog.showOpenDialog(dialogOptions));
   } finally {
     resumeAutoHide();
   }
@@ -10402,10 +10811,7 @@ ipcMain.handle(
       };
     }
 
-    if (
-      typeof config.popupHotkey === 'string' &&
-      config.popupHotkey.toLowerCase() === hotkey.toLowerCase()
-    ) {
+    if (acceleratorsConflict(config.popupHotkey, hotkey, process.platform)) {
       return { success: false, error: mainT('Hotkey already assigned to the popup trigger') };
     }
 
@@ -10414,12 +10820,7 @@ ipcMain.handle(
     const existingEntity = findConfiguredEntityHotkey(hotkey, normalizedEntityId);
 
     if (existingEntity) {
-      return {
-        success: false,
-        error: existingEntity[0]
-          ? mainT('Hotkey already assigned to {{entity}}', { entity: existingEntity[0] })
-          : mainT('Hotkey already assigned to another action'),
-      };
+      return hotkeyConflictResult(existingEntity[0]);
     }
 
     if (config.globalHotkeys.enabled && usesPortalGlobalShortcuts) {
@@ -10785,10 +11186,13 @@ ipcMain.handle(
 
     const conflictingEntity = findConfiguredEntityHotkey(hotkey);
     if (conflictingEntity) {
-      return {
-        success: false,
-        error: mainT('Hotkey already assigned to {{entity}}', { entity: conflictingEntity[0] }),
-      };
+      return hotkeyConflictResult(conflictingEntity[0]);
+    }
+
+    // Setting a hotkey is the one moment macOS may show its Accessibility prompt; registering at
+    // launch only checks, so a denied app is not asked again every time it starts.
+    if (!usesLinuxPopupHotkeyBackend) {
+      isAccessibilityGranted({ systemPreferences, prompt: true });
     }
 
     const previousHotkey = config.popupHotkey || '';
@@ -11466,63 +11870,31 @@ function unregisterGlobalHotkeys() {
   registeredEntityHotkeyAccelerators.clear();
 }
 
+// Whether an accelerator may become a global hotkey on this platform; src/accelerators.cjs holds
+// the rules (one key plus Ctrl, Alt or Meta, not a system shortcut) so the recorders agree.
 function validateHotkey(hotkey) {
-  if (!hotkey || typeof hotkey !== 'string') return false;
-
-  // A valid hotkey must have at least one non-modifier key.
-  // Support multiple modifier name variants: Ctrl/Control, Alt/Option, Shift, Meta/Cmd/Command/Super
-  const modifiers = [
-    'ctrl',
-    'control',
-    'alt',
-    'option',
-    'shift',
-    'meta',
-    'cmd',
-    'command',
-    'super',
-    'commandorcontrol',
-    'cmdorctrl',
-  ];
-  const keys = hotkey.split('+').map((key) => key.trim());
-  const hasModifier = keys.some((key) => modifiers.includes(key.toLowerCase()));
-  const nonModifiers = keys.filter((key) => !modifiers.includes(key.toLowerCase()));
-  if (!hasModifier || nonModifiers.length !== 1 || !nonModifiers[0].trim()) {
-    return false;
-  }
-
-  // Check for conflicts with system shortcuts
-  const systemShortcuts = [
-    'ctrl+alt+del',
-    'alt+f4',
-    'ctrl+c',
-    'ctrl+v',
-    'ctrl+x',
-    'ctrl+z',
-    'ctrl+a',
-    'ctrl+s',
-    'ctrl+o',
-    'ctrl+n',
-    'ctrl+w',
-    'ctrl+r',
-    'alt+tab',
-    'ctrl+tab',
-    'ctrl+shift+tab',
-    'alt+shift+tab',
-    'win+l',
-    'win+r',
-    'win+e',
-    'win+d',
-    'win+m',
-    'win+tab',
-  ];
-
-  return !systemShortcuts.includes(hotkey.toLowerCase());
+  return validateAccelerator(hotkey, process.platform).valid;
 }
 
+// The failure for a hotkey another entity already holds. Main only knows the entity id (the names
+// live in the renderer), so the text names the custom name when there is one and the result carries
+// the id, which lets the renderer say the friendly name and point at the row.
+function hotkeyConflictResult(entityId) {
+  return {
+    success: false,
+    error: entityId
+      ? mainT('Hotkey already assigned to {{entity}}', {
+          entity: config?.customEntityNames?.[entityId] || entityId,
+        })
+      : mainT('Hotkey already assigned to another action'),
+    conflictEntityId: entityId || '',
+  };
+}
+
+// Command+K, Super+K and Win+K are one chord, so the comparison goes through the shared model
+// instead of lower-casing the text.
 function findConfiguredEntityHotkey(hotkey, excludedEntityId = '') {
   if (!hotkey || typeof hotkey !== 'string') return null;
-  const normalizedHotkey = hotkey.toLowerCase();
 
   return (
     Object.entries(config?.globalHotkeys?.hotkeys || {}).find(([entityId, hotkeyConfig]) => {
@@ -11531,9 +11903,7 @@ function findConfiguredEntityHotkey(hotkey, excludedEntityId = '') {
         typeof hotkeyConfig === 'object' && hotkeyConfig?.hotkey
           ? hotkeyConfig.hotkey
           : hotkeyConfig;
-      return (
-        typeof configuredHotkey === 'string' && configuredHotkey.toLowerCase() === normalizedHotkey
-      );
+      return acceleratorsConflict(configuredHotkey, hotkey, process.platform);
     }) || null
   );
 }
@@ -11541,121 +11911,19 @@ function findConfiguredEntityHotkey(hotkey, excludedEntityId = '') {
 // Popup Hotkey Management
 function acceleratorToUIOhookKey(accelerator) {
   if (!uiohookAvailable) return null;
-  if (!accelerator || typeof accelerator !== 'string') return null;
+  const parts = acceleratorToUiohookParts(accelerator, process.platform);
+  if (!parts) return null;
 
-  const parts = accelerator.split('+').map((p) => p.trim().toLowerCase());
-
-  // Extract modifiers - support all variants
-  const config = {
-    ctrl:
-      parts.includes('ctrl') ||
-      parts.includes('control') ||
-      parts.includes('commandorcontrol') ||
-      parts.includes('cmdorctrl'),
-    alt: parts.includes('alt') || parts.includes('option'),
-    shift: parts.includes('shift'),
-    meta:
-      parts.includes('meta') ||
-      parts.includes('cmd') ||
-      parts.includes('command') ||
-      parts.includes('super'),
-  };
-
-  // Get the main key (non-modifier) - include all possible modifier name variants
-  const modifiers = [
-    'ctrl',
-    'control',
-    'commandorcontrol',
-    'cmdorctrl',
-    'alt',
-    'option',
-    'shift',
-    'meta',
-    'cmd',
-    'command',
-    'super',
-  ];
-  const mainKey = parts.find((p) => !modifiers.includes(p));
-
-  if (!mainKey) return null;
-
-  // Map common keys to UiohookKey codes
-  const keyMap = {
-    space: UiohookKey.Space,
-    enter: UiohookKey.Enter,
-    return: UiohookKey.Return,
-    tab: UiohookKey.Tab,
-    backspace: UiohookKey.Backspace,
-    delete: UiohookKey.Delete,
-    escape: UiohookKey.Escape,
-    esc: UiohookKey.Escape,
-    home: UiohookKey.Home,
-    end: UiohookKey.End,
-    pageup: UiohookKey.PageUp,
-    pagedown: UiohookKey.PageDown,
-    up: UiohookKey.Up,
-    down: UiohookKey.Down,
-    left: UiohookKey.Left,
-    right: UiohookKey.Right,
-    f1: UiohookKey.F1,
-    f2: UiohookKey.F2,
-    f3: UiohookKey.F3,
-    f4: UiohookKey.F4,
-    f5: UiohookKey.F5,
-    f6: UiohookKey.F6,
-    f7: UiohookKey.F7,
-    f8: UiohookKey.F8,
-    f9: UiohookKey.F9,
-    f10: UiohookKey.F10,
-    f11: UiohookKey.F11,
-    f12: UiohookKey.F12,
-    // uiohook-napi names the number-row digit keys '0'..'9' (there is no DigitN alias),
-    // so UiohookKey.DigitN is undefined and silently fails to parse digit hotkeys.
-    0: UiohookKey['0'],
-    1: UiohookKey['1'],
-    2: UiohookKey['2'],
-    3: UiohookKey['3'],
-    4: UiohookKey['4'],
-    5: UiohookKey['5'],
-    6: UiohookKey['6'],
-    7: UiohookKey['7'],
-    8: UiohookKey['8'],
-    9: UiohookKey['9'],
-    a: UiohookKey.A,
-    b: UiohookKey.B,
-    c: UiohookKey.C,
-    d: UiohookKey.D,
-    e: UiohookKey.E,
-    f: UiohookKey.F,
-    g: UiohookKey.G,
-    h: UiohookKey.H,
-    i: UiohookKey.I,
-    j: UiohookKey.J,
-    k: UiohookKey.K,
-    l: UiohookKey.L,
-    m: UiohookKey.M,
-    n: UiohookKey.N,
-    o: UiohookKey.O,
-    p: UiohookKey.P,
-    q: UiohookKey.Q,
-    r: UiohookKey.R,
-    s: UiohookKey.S,
-    t: UiohookKey.T,
-    u: UiohookKey.U,
-    v: UiohookKey.V,
-    w: UiohookKey.W,
-    x: UiohookKey.X,
-    y: UiohookKey.Y,
-    z: UiohookKey.Z,
-  };
-
-  const keycode = keyMap[mainKey];
+  // uiohook names the number-row digits '0'..'9' and the arrows ArrowUp..ArrowRight, so a name the
+  // library does not have is looked up rather than assumed.
+  const keycode = UiohookKey[parts.keyName];
   if (!keycode) {
-    log.warn(`Unknown key in accelerator: ${mainKey}`);
+    log.warn(`Unknown key in accelerator: ${accelerator}`);
     return null;
   }
 
-  return { keycode, ...config };
+  const { ctrl, alt, shift, meta } = parts;
+  return { keycode, ctrl, alt, shift, meta };
 }
 
 /**
@@ -11742,6 +12010,17 @@ function registerPopupHotkey() {
       success: false,
       backend: 'uiohook',
       error: mainT('Popup hotkey feature is not available on this platform'),
+    };
+  }
+
+  if (!isAccessibilityGranted({ systemPreferences })) {
+    log.warn('The popup hotkey needs the macOS Accessibility permission, which is not granted');
+    return {
+      success: false,
+      backend: 'uiohook',
+      error: mainT(
+        'Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again'
+      ),
     };
   }
 
@@ -12027,9 +12306,10 @@ async function checkManualReleaseUpdate() {
     }
     return {
       status: 'manual',
-      message: `${mainT(
-        'This package does not support in-app updates. Open Releases to download the latest build.'
-      )} v${latestVersion}`,
+      message: mainT(
+        'This package does not support in-app updates. Open Releases to download the latest build, v{{version}}.',
+        { version: latestVersion }
+      ),
       version: latestVersion,
       downloadUrl,
     };
@@ -12208,10 +12488,7 @@ function capturePendingWindowBoundsForShutdown() {
         y: pendingWindowBounds.y,
       };
     }
-    config.windowSize = {
-      width: pendingWindowBounds.width,
-      height: pendingWindowBounds.height,
-    };
+    config.windowSize = clampToMinimumWindowSize(pendingWindowBounds);
     pendingWindowBounds = null;
     changed = true;
   }
@@ -12527,7 +12804,7 @@ app
       }
     }
 
-    installApplicationMenu(Menu);
+    installApplicationMenu(Menu, process.platform, { isDev: IS_DEV_MODE });
     protectAutoHideDuringMenu(Menu.getApplicationMenu());
     installSessionPermissionPolicy(session.defaultSession, {
       rendererEntryPath: path.join(__dirname, 'index.html'),

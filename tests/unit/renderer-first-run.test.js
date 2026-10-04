@@ -178,6 +178,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       executeHotkeyAction: jest.fn(),
       handleDesktopPinActionRequest: jest.fn(),
       callMediaTileService: jest.fn(),
+      openEntityControls: jest.fn(),
       getTickTargets: jest.fn(() => ({ hasVisibleTimers: false })),
       switchQuickAccessPage: jest.fn(),
       showAddPageModal: jest.fn(),
@@ -209,14 +210,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       applyUiPreferences: jest.fn(),
       suspendSeasonalColors: jest.fn(),
       applyWindowEffects: jest.fn(),
-      closeModal: (...args) => jest.requireActual('../../src/ui-utils.js').closeModal(...args),
-      openModal: (...args) => jest.requireActual('../../src/ui-utils.js').openModal(...args),
-      trapFocus: jest.fn((...args) =>
-        jest.requireActual('../../src/ui-utils.js').trapFocus(...args)
-      ),
-      releaseFocusTrap: jest.fn((...args) =>
-        jest.requireActual('../../src/ui-utils.js').releaseFocusTrap(...args)
-      ),
+      ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
     };
     jest.doMock('../../src/ui-utils.js', () => mockUiUtils);
     jest.doMock('../../src/utils.js', () => ({
@@ -330,43 +324,39 @@ describe('Renderer first-run Home Assistant authorization', () => {
     }
   );
 
-  it('closes Settings with Escape like Cancel, but lets an open dropdown take Escape first', async () => {
-    await loadRenderer({
-      bodyHtml: settingsNavigationHtml().replace(
-        '<div id="settings-modal" class="modal hidden">',
-        `<div id="settings-modal" class="modal hidden">
-          <div class="custom-dropdown open"><button class="custom-dropdown-trigger">Player</button></div>`
-      ),
-    });
-    await clickButton('Full Settings');
-    const modal = document.getElementById('settings-modal');
-    const trigger = modal.querySelector('.custom-dropdown-trigger');
-    trigger.addEventListener('keydown', () => trigger.parentElement.classList.remove('open'));
-    const escape = (target) =>
-      target.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
-      );
-
-    escape(trigger);
-    expect(mockSettings.closeSettings).not.toHaveBeenCalled();
-    escape(document.getElementById('cancel-settings'));
-    expect(mockSettings.closeSettings).toHaveBeenCalledTimes(1);
-    await flushAsync();
-    expect(modal.classList.contains('hidden')).toBe(true);
-  });
-
-  it.each(['quick-controls-modal', 'weather-config-modal'])(
+  it.each([
+    [
+      'quick-controls-modal',
+      '#manage-quick-controls-btn',
+      '<button id="manage-quick-controls-btn"></button>',
+    ],
+    [
+      'weather-config-modal',
+      '#weather-card',
+      '<div id="weather-card" class="status-card weather-card" data-primary-type="weather" tabindex="0" role="button"></div><div id="time-card" class="status-card"></div>',
+    ],
+  ])(
     'closes %s with Escape without also leaving reorganize mode',
-    async (id) => {
+    async (id, opener, openerHtml) => {
       const page = new DOMParser().parseFromString(
         fs.readFileSync(path.join(__dirname, '../../index.html'), 'utf8'),
         'text/html'
       );
       await loadRenderer({
-        bodyHtml: `<main class="widget-content"></main>${page.getElementById(id).outerHTML}`,
+        bodyHtml: `<main class="widget-content"><div class="status-grid">${openerHtml}</div></main>${page.getElementById(id).outerHTML}`,
       });
       const modal = document.getElementById(id);
-      modal.classList.remove('hidden');
+      const trigger = document.querySelector(opener);
+      trigger.focus();
+      if (id === 'weather-config-modal') {
+        trigger.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+        );
+      } else {
+        trigger.click();
+      }
+      await flushAsync();
+      expect(modal.classList.contains('hidden')).toBe(false);
       const pageEscape = jest.fn();
       document.addEventListener('keydown', pageEscape);
       modal
@@ -380,6 +370,53 @@ describe('Renderer first-run Home Assistant authorization', () => {
       document.removeEventListener('keydown', pageEscape);
     }
   );
+
+  it('opens Manage Quick Access on its search field, and returns to the button that opened it', async () => {
+    const page = new DOMParser().parseFromString(
+      fs.readFileSync(path.join(__dirname, '../../index.html'), 'utf8'),
+      'text/html'
+    );
+    await loadRenderer({
+      bodyHtml: `<main class="widget-content"><button id="manage-quick-controls-btn"></button></main>${page.getElementById('quick-controls-modal').outerHTML}`,
+    });
+    const opener = document.getElementById('manage-quick-controls-btn');
+    const modal = document.getElementById('quick-controls-modal');
+    opener.focus();
+    opener.click();
+    await flushAsync();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // The search is what a visit starts with; Close first meant typing did nothing, and a stray
+    // Enter or Space dismissed the dialog.
+    expect(document.activeElement.id).toBe('quick-controls-search');
+    expect(modal.getAttribute('role')).toBe('dialog');
+
+    document.activeElement.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    );
+    await flushAsync();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(modal.classList.contains('hidden')).toBe(true);
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('keeps Escape and the backdrop from dismissing the first-run wizard, and leaves the header usable', async () => {
+    await loadRenderer({
+      bodyHtml: `<header class="widget-header"><button id="close-btn">x</button></header>${settingsNavigationHtml()}`,
+    });
+    const wizard = document.getElementById('first-run-onboarding');
+    expect(wizard.classList.contains('hidden')).toBe(false);
+
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    document.activeElement.dispatchEvent(escape);
+    wizard.click();
+
+    // It asks for an answer: nothing but its own buttons closes it.
+    expect(wizard.classList.contains('hidden')).toBe(false);
+    // The overlay starts under the header, whose height it was told, so the window's own buttons and
+    // drag area keep working. Layout is not computed here, so the measured height is zero.
+    expect(document.documentElement.style.getPropertyValue('--header-height')).toBe('0px');
+  });
 
   it.each(['Enter', ' ', 'ContextMenu'])(
     'opens the weather picker from the keyboard (%p) and returns focus to the card',
@@ -419,13 +456,21 @@ describe('Renderer first-run Home Assistant authorization', () => {
     await loadRenderer({ bodyHtml: settingsNavigationHtml() });
     const wizard = document.getElementById('first-run-onboarding');
     expect(document.activeElement).toBe(wizard.querySelector('.first-run-title'));
-    expect(mockUiUtils.trapFocus).toHaveBeenCalledWith(wizard, { initialFocus: false });
+    // It is named by the step's heading, not by the whole step, and described by its lead text.
+    const accessibleName = () =>
+      document.getElementById(wizard.getAttribute('aria-labelledby')).textContent;
+    expect(wizard.getAttribute('role')).toBe('dialog');
+    expect(wizard.getAttribute('aria-modal')).toBe('true');
+    expect(accessibleName()).toBe('Welcome to Home Assistant Widget');
+    expect(document.getElementById(wizard.getAttribute('aria-describedby')).tagName).toBe('P');
 
     await clickButton('Next');
     expect(document.activeElement).toBe(document.getElementById('first-run-ha-url'));
+    expect(accessibleName()).toBe('Enter your Home Assistant URL');
     enterInput('#first-run-ha-url', 'http://ha.local:8123');
     await clickButton('Next');
     expect(document.activeElement.textContent).toBe('Authorize in Home Assistant');
+    expect(accessibleName()).toBe('Authorize in Home Assistant');
 
     const buttons = Array.from(wizard.querySelectorAll('button:not(:disabled)'));
     const last = buttons[buttons.length - 1];
@@ -536,6 +581,93 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 3 of 4');
   });
 
+  describe('visual snapshot first-run scenes', () => {
+    const { scenes } = require('../../scripts/visual-snapshots/scenes.cjs');
+    const firstRunScenes = scenes.filter((scene) => scene.name.startsWith('first-run'));
+
+    // The runner's side of a scene: the page expressions and clicks its setup asks for.
+    const snapshotContext = () => {
+      const waitFor = async (check, label) => {
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          if (check()) return;
+          await flushAsync();
+        }
+        throw new Error(`Timed out waiting for ${label}`);
+      };
+      return {
+        ev: (expression) => window.eval(expression),
+        click: async (selector) => {
+          const element = document.querySelector(selector);
+          if (!element) throw new Error(`Nothing matches ${selector}`);
+          element.click();
+          await flushAsync();
+        },
+        waitForSelector: (selector) => waitFor(() => document.querySelector(selector), selector),
+        waitForExpression: (expression, label = expression) =>
+          waitFor(() => window.eval(`!!(${expression})`), label),
+      };
+    };
+
+    // A scene changes the settings the runner lists for it, which reaches the page as a config
+    // broadcast, and then drives the page.
+    const playScene = async (scene) => {
+      triggerMockEvent('configUpdated', {
+        ...unconfiguredConfig(),
+        ui: { ...unconfiguredConfig().ui, ...scene.ui },
+      });
+      await flushAsync();
+      await scene.setup(snapshotContext());
+      return document.querySelector('.first-run-step-label').textContent;
+    };
+
+    const orderings = (names) =>
+      names.length < 2
+        ? [names]
+        : names.flatMap((name, index) =>
+            orderings([...names.slice(0, index), ...names.slice(index + 1)]).map((rest) => [
+              name,
+              ...rest,
+            ])
+          );
+
+    it('has the three first-run scenes this test is about', () => {
+      expect(firstRunScenes.map((scene) => scene.name)).toEqual([
+        'first-run',
+        'first-run-url',
+        'first-run-light',
+      ]);
+    });
+
+    it('captures each scene on the same wizard step whichever scenes ran before it', async () => {
+      const alone = {};
+      for (const scene of firstRunScenes) {
+        await loadRenderer();
+        alone[scene.name] = await playScene(scene);
+      }
+      expect(alone).toEqual({
+        'first-run': 'Step 1 of 4',
+        'first-run-url': 'Step 2 of 4',
+        'first-run-light': 'Step 1 of 4',
+      });
+
+      // The full run plays them in the order of the list; a filtered run plays some of them, and
+      // a scene may be played again, so every sequence has to agree with the single runs.
+      const names = firstRunScenes.map((scene) => scene.name);
+      const sequences = [...orderings(names), ['first-run-url', 'first-run-url']];
+      for (const sequence of sequences) {
+        await loadRenderer();
+        for (const name of sequence) {
+          const step = await playScene(firstRunScenes.find((scene) => scene.name === name));
+          expect({ sequence: sequence.join(' > '), name, step }).toEqual({
+            sequence: sequence.join(' > '),
+            name,
+            step: alone[name],
+          });
+        }
+      }
+    });
+  });
+
   it('distinguishes the title bar Hide from the Settings Close action', async () => {
     await loadRenderer({ bodyHtml: settingsNavigationHtml() });
     expect(document.querySelector('button[aria-label="Close"]').id).toBe('close-settings');
@@ -579,6 +711,58 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockSettings.closeSettings).not.toHaveBeenCalled();
   });
 
+  describe('the main window outside the wizard', () => {
+    it("opens the primary media player's controls from the track, which has no volume of its own", async () => {
+      const player = {
+        entity_id: 'media_player.living_room',
+        state: 'playing',
+        attributes: { friendly_name: 'Living room' },
+      };
+      await loadRenderer({
+        config: { ...unconfiguredConfig(), primaryMediaPlayer: 'media_player.living_room' },
+        bodyHtml:
+          '<main class="widget-content"><button id="media-tile-info" type="button"></button></main>',
+      });
+      mockState.STATES = { [player.entity_id]: player };
+      mockState.CONFIG = { ...mockState.CONFIG, primaryMediaPlayer: player.entity_id };
+
+      document.getElementById('media-tile-info').click();
+
+      expect(require('../../src/ui.js').openEntityControls).toHaveBeenCalledWith(player);
+    });
+
+    it('does nothing from the track while the player is not in Home Assistant', async () => {
+      await loadRenderer({
+        config: { ...unconfiguredConfig(), primaryMediaPlayer: 'media_player.gone' },
+        bodyHtml:
+          '<main class="widget-content"><button id="media-tile-info" type="button"></button></main>',
+      });
+      mockState.STATES = {};
+
+      document.getElementById('media-tile-info').click();
+
+      expect(require('../../src/ui.js').openEntityControls).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['darwin', 'Cmd+K'],
+      ['win32', 'Ctrl+K'],
+      ['linux', 'Ctrl+K'],
+    ])('tells %s to press %s for the command palette', async (platform, shortcut) => {
+      await loadRenderer({
+        configureApi(api) {
+          api.platform = platform;
+        },
+        bodyHtml:
+          '<main class="widget-content"></main><div id="command-palette-hint" data-i18n-vars=\'{"shortcut":"Ctrl+K"}\'></div>',
+      });
+
+      expect(
+        JSON.parse(document.getElementById('command-palette-hint').getAttribute('data-i18n-vars'))
+      ).toEqual({ shortcut });
+    });
+  });
+
   it('starts fresh installs with an empty URL and the Home Assistant 2026.8 address hint', async () => {
     await loadRenderer();
 
@@ -587,6 +771,11 @@ describe('Renderer first-run Home Assistant authorization', () => {
 
     expect(input.value).toBe('');
     expect(input.placeholder).toBe('http://homeassistant.local');
+    // An address is not prose: no spelling underline, no capital, no autofill, a URL keyboard
+    expect(input.getAttribute('spellcheck')).toBe('false');
+    expect(input.getAttribute('autocapitalize')).toBe('off');
+    expect(input.getAttribute('autocomplete')).toBe('off');
+    expect(input.getAttribute('inputmode')).toBe('url');
   });
 
   it('authorizes a fresh Home Assistant 2026.8 install without adding the legacy port', async () => {
@@ -661,6 +850,52 @@ describe('Renderer first-run Home Assistant authorization', () => {
     await flushAsync();
     await clickButton('Choose rooms and devices');
     expect(require('../../src/ui.js').showAddPageModal).toHaveBeenCalledWith({ starter: true });
+  });
+
+  describe('the empty page card', () => {
+    const connectWithEmptyPage = async (customTabs, activeTabId) => {
+      await loadRenderer({ config: { ...oauthConfig(), customTabs, activeTabId } });
+      let nextRequestId = 123;
+      mockWebsocket.request.mockImplementation(({ type }) => {
+        const id = nextRequestId++;
+        const result =
+          type === 'get_states' || type === 'config/area_registry/list'
+            ? []
+            : type === 'get_services' || type === 'get_config'
+              ? {}
+              : null;
+        return Object.assign(Promise.resolve({ type: 'result', id, success: true, result }), {
+          id,
+        });
+      });
+      mockWebsocket.emit('message', { type: 'auth_ok' });
+      mockWebsocket.emit('message', { type: 'result', id: 123, success: true, result: [] });
+      await flushAsync();
+      return document.getElementById('widget-state-panel');
+    };
+
+    it('says it is this page that is empty beside other pages, and names it', async () => {
+      const panel = await connectWithEmptyPage(
+        [
+          { id: 'home', name: 'Home', entityIds: ['light.desk'] },
+          { id: 'garage', name: 'Garage', entityIds: [] },
+        ],
+        'garage'
+      );
+      expect(panel.textContent).toContain('This page is empty');
+      expect(panel.textContent).toContain('Add entities to Garage for one-click control.');
+      expect(panel.textContent).not.toContain('No Quick Access entities yet');
+      expect(panel.textContent).toContain('Choose rooms and devices');
+    });
+
+    it('keeps the first-run wording when the empty page is the only one', async () => {
+      const panel = await connectWithEmptyPage(
+        [{ id: 'default', name: 'Home', entityIds: [] }],
+        'default'
+      );
+      expect(panel.textContent).toContain('No Quick Access entities yet');
+      expect(panel.textContent).not.toContain('This page is empty');
+    });
   });
 
   it('coalesces duplicate Connect clicks while browser authorization is pending', async () => {
@@ -781,6 +1016,9 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(wizard.classList).not.toContain('hidden');
     expect(status.dataset.status).toBe('error');
     expect(status.textContent).toContain('authorization denied');
+    // An error interrupts: the role and the explicit politeness have to agree, or it is read politely.
+    expect(status.getAttribute('role')).toBe('alert');
+    expect(status.getAttribute('aria-live')).toBe('assertive');
     expect(mockUiUtils.showToast).toHaveBeenCalledWith(
       expect.stringContaining('authorization denied'),
       'error',
@@ -942,7 +1180,8 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockUiUtils.showToast).toHaveBeenCalledWith(
       expect.stringContaining('Token encryption is not available'),
       'warning',
-      20000
+      10000,
+      { source: 'startup-warning' }
     );
     expect(mockState.CONFIG).not.toHaveProperty('persistenceWarnings');
   });
@@ -1022,7 +1261,8 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockUiUtils.showToast).toHaveBeenCalledWith(
       expect.stringContaining('No unlocked system keyring (Secret Service) was found'),
       'warning',
-      20000
+      10000,
+      { source: 'startup-warning' }
     );
   });
 
@@ -1036,7 +1276,8 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockUiUtils.showToast).toHaveBeenCalledWith(
       expect.stringContaining('Your system keyring is locked or not running'),
       'warning',
-      20000
+      10000,
+      { source: 'startup-warning' }
     );
     mockUiUtils.showToast.mockClear();
 
@@ -1044,6 +1285,24 @@ describe('Renderer first-run Home Assistant authorization', () => {
     await flushAsync();
 
     expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+  });
+
+  it('says a missing keyring once when the config carries both the reset notice and the persistence warning', async () => {
+    await loadRenderer({
+      config: {
+        ...unconfiguredConfig(),
+        tokenResetReason: 'encryption_unavailable',
+        persistenceWarnings: [{ code: 'home_assistant_token_not_persisted' }],
+      },
+      configureApi(api) {
+        api.platform = 'linux';
+      },
+    });
+
+    // Two toasts for one cause, with two different remedies, used to arrive together at startup.
+    const warnings = mockUiUtils.showToast.mock.calls.filter(([, type]) => type === 'warning');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0][0]).toContain('Your system keyring is locked or not running');
   });
 
   it('continues startup but reports when token recovery acknowledgement is not persisted', async () => {
@@ -1065,7 +1324,8 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockUiUtils.showToast).toHaveBeenCalledWith(
       expect.stringContaining('needs to be re-entered'),
       'warning',
-      20000
+      10000,
+      { source: 'startup-warning' }
     );
     expect(mockElectronAPI.signalRendererReady).toHaveBeenCalledTimes(1);
   });
@@ -1182,67 +1442,72 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockHotkeys.renderHotkeysTab).not.toHaveBeenCalled();
     expect(mockUiUtils.showToast).toHaveBeenCalledWith('Portal removal failed', 'error', 3000);
   });
-  it.each(['Enter', ' '])(
-    'starts hotkey recording with %s and restores focus after cancellation',
-    async (key) => {
-      const config = unconfiguredConfig();
-      config.globalHotkeys.hotkeys['light.office'] = { hotkey: 'Ctrl+L', action: 'toggle' };
-      await loadRenderer({
-        config,
-        bodyHtml:
-          '<main class="widget-content"></main><div id="hotkeys-list"><div><input readonly class="hotkey-input" data-entity-id="light.office" value="Ctrl+L"></div></div>',
-      });
-      mockHotkeys.captureHotkey.mockResolvedValueOnce(null);
-      const input = document.querySelector('.hotkey-input');
-      input.focus();
-      input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-      await flushAsync();
-      expect(mockHotkeys.captureHotkey).toHaveBeenCalledTimes(1);
-      expect(input.value).toBe('Ctrl+L');
-      expect(document.activeElement).toBe(input);
-      expect(input.hasAttribute('aria-busy')).toBe(false);
-    }
-  );
-  it('restores the configured hotkey and focus after a registration conflict', async () => {
+  it('moves focus to the cleared row field, since the list is rebuilt and the Clear button is gone', async () => {
     const config = unconfiguredConfig();
-    config.globalHotkeys.hotkeys['light.office'] = 'Ctrl+L';
+    config.globalHotkeys.hotkeys['light.office'] = { hotkey: 'Ctrl+Shift+L', action: 'toggle' };
     await loadRenderer({
       config,
-      bodyHtml:
-        '<main class="widget-content"></main><div id="hotkeys-list"><div><input readonly class="hotkey-input" data-entity-id="light.office" value="Ctrl+L"></div></div>',
+      bodyHtml: `
+        <main class="widget-content"></main>
+        <div id="hotkeys-list">
+          <div>
+            <input class="hotkey-input" data-entity-id="light.office" data-focus-key="hotkey-input:light.office" value="Ctrl+Shift+L">
+            <button class="btn-clear-hotkey">Clear</button>
+          </div>
+        </div>
+      `,
       configureApi(api) {
-        api.registerHotkey.mockResolvedValueOnce({ success: false, error: 'Already registered' });
+        api.unregisterHotkey.mockResolvedValueOnce({ success: true });
       },
     });
-    mockHotkeys.captureHotkey.mockResolvedValueOnce('Ctrl+K');
-    const input = document.querySelector('.hotkey-input');
-    input.click();
+    // What renderHotkeysTab does: rebuild the rows, which destroys the Clear button that had focus.
+    mockHotkeys.renderHotkeysTab.mockImplementation(() => {
+      document.getElementById('hotkeys-list').innerHTML =
+        '<div><input class="hotkey-input" data-entity-id="light.office" data-focus-key="hotkey-input:light.office" value=""></div>';
+    });
+    const clear = document.querySelector('.btn-clear-hotkey');
+    clear.focus();
+
+    clear.click();
     await flushAsync();
-    expect(mockElectronAPI.registerHotkey).toHaveBeenCalledWith('light.office', 'Ctrl+K', 'toggle');
-    expect(input.value).toBe('Ctrl+L');
-    expect(document.activeElement).toBe(input);
-    expect(mockUiUtils.showToast).toHaveBeenCalledWith('Already registered', 'error');
+
+    expect(mockHotkeys.renderHotkeysTab).toHaveBeenCalled();
+    expect(document.activeElement).toBe(document.querySelector('.hotkey-input'));
   });
-  it('announces a successful keyboard hotkey assignment', async () => {
+  // Recording itself (the dialog, the clash message, focus afterwards, the saved-while-off warning)
+  // is the shared recorder's, tested in hotkeys.test.js; the list only has to start it for its row.
+  it.each(['Enter', ' '])('starts the shared recorder for a row with %s', async (key) => {
     await loadRenderer({
       config: unconfiguredConfig(),
       bodyHtml:
-        '<main class="widget-content"></main><div id="hotkeys-list"><div><input readonly class="hotkey-input" data-entity-id="light.office"></div></div>',
+        '<main class="widget-content"></main><div id="hotkeys-list"><div><input readonly class="hotkey-input" data-entity-id="light.office" value="Ctrl+L"></div></div>',
     });
-    mockHotkeys.captureHotkey.mockResolvedValueOnce('Ctrl+K');
-    mockElectronAPI.registerHotkey.mockResolvedValueOnce({ success: true });
     const input = document.querySelector('.hotkey-input');
-    input.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
-    );
+    input.focus();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
     await flushAsync();
-    expect(input.value).toBe('Ctrl+K');
-    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-      expect.stringContaining('Hotkey set for'),
-      'success',
-      2200
-    );
-    expect(document.activeElement).toBe(input);
+    expect(mockHotkeys.assignHotkeyToEntity).toHaveBeenCalledTimes(1);
+    expect(mockHotkeys.assignHotkeyToEntity).toHaveBeenCalledWith('light.office', {
+      action: undefined,
+    });
+  });
+
+  it('records a row with the action picked in the same row', async () => {
+    await loadRenderer({
+      config: unconfiguredConfig(),
+      bodyHtml: `<main class="widget-content"></main><div id="hotkeys-list"><div>
+        <input readonly class="hotkey-input" data-entity-id="light.office">
+        <select class="hotkey-action-select" data-entity-id="light.office">
+          <option value="toggle">Toggle</option><option value="turn_on" selected>Turn On</option>
+        </select></div></div>`,
+    });
+
+    document.querySelector('.hotkey-input').click();
+    await flushAsync();
+
+    expect(mockHotkeys.assignHotkeyToEntity).toHaveBeenCalledWith('light.office', {
+      action: 'turn_on',
+    });
   });
 
   it('publishes stale status until a fresh snapshot arrives, and preserves actionable auth failure', async () => {

@@ -37,36 +37,12 @@ jest.mock('../../src/camera.js', () => ({
 }));
 
 jest.mock('../../src/ui-utils.js', () => {
-  const releaseFocusTrap = jest.fn();
   return {
     showToast: jest.fn(),
     showConfirm: jest.fn().mockResolvedValue(false),
     showLoading: jest.fn(),
     setStatus: jest.fn(),
-    trapFocus: jest.fn(),
-    releaseFocusTrap,
-    // Mirrors the real shared modal helper, which settles synchronously under NODE_ENV=test.
-    closeModal: jest.fn((modal, { remove = false, releaseFocus = false, onClosed } = {}) => {
-      if (modal) {
-        modal.classList.remove('modal-closing');
-        if (remove) {
-          modal.remove();
-        } else {
-          modal.classList.add('hidden');
-          if (modal.style.display) modal.style.display = 'none';
-        }
-        if (releaseFocus) releaseFocusTrap(modal);
-        onClosed?.();
-      }
-      return Promise.resolve();
-    }),
-    openModal: jest.fn((modal, { display = 'flex' } = {}) => {
-      if (!modal) return;
-      modal.classList.remove('modal-closing');
-      modal.classList.remove('hidden');
-      if (display) modal.style.display = display;
-      else modal.style.removeProperty('display');
-    }),
+    ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
     applyTheme: jest.fn(),
     applyUiPreferences: jest.fn(),
     hexToRgb: jest.fn((hex) => {
@@ -259,16 +235,16 @@ describe('ui.js translations and number formatting', () => {
     expect(lightEnds()).toEqual(['Warm', 'Cool']);
   });
 
-  it('names the translated entity type in toggle desktop pin titles', () => {
+  it('titles a toggle desktop pin with the entity name, not a translated layout name', () => {
     useGerman({
       'Compact {{domain}} controls': 'Kompakte {{domain}}-Steuerung',
       'Domain: Switch': 'Schalter',
     });
-    const plug = entity('switch.plug', 'on');
+    const plug = entity('switch.plug', 'on', { friendly_name: 'Küchenstecker' });
     state.setStates({ [plug.entity_id]: plug });
     ui.renderDesktopPinnedTile(plug.entity_id, plug);
     expect(document.querySelector('#desktop-pin-content .desktop-pin-toggle-control').title).toBe(
-      'Kompakte Schalter-Steuerung'
+      'Küchenstecker'
     );
   });
 
@@ -344,8 +320,8 @@ describe('ui.js translations and number formatting', () => {
     );
     expect(labels).toEqual(['Aktuell', 'Ziel']);
     expect(text('.climate-modes-label')).toBe('Modus');
-    expect(text('#climate-target-value')).toBe('21,5°C');
-    expect(text('.climate-current-temp .climate-temp-value')).toBe('22,4°C');
+    expect(text('#climate-target-value')).toBe('21,5\u00a0°C');
+    expect(text('.climate-current-temp .climate-temp-value')).toBe('22,4\u00a0°C');
     // The slider itself keeps the machine value Home Assistant expects.
     expect(document.querySelector('#climate-slider').value).toBe('21.5');
     const modeLabels = [...document.querySelectorAll('.climate-mode-label')].map((node) =>
@@ -384,12 +360,16 @@ describe('ui.js translations and number formatting', () => {
   });
 
   it('translates the light tile Off state and the Quick Access pin toggle', () => {
-    useGerman({ Off: 'Aus', Pin: 'Anheften', 'Pin to desktop': 'Auf dem Desktop anheften' });
+    useGerman({
+      Off: 'Aus',
+      'Pin {{name}} to desktop': '{{name}} an den Desktop anheften',
+      'Pin to desktop': 'Auf dem Desktop anheften',
+    });
     renderTiles([entity('light.desk', 'off', { supported_color_modes: ['brightness'] })]);
     expect(tile('light.desk').querySelector('.control-state').textContent).toBe('Aus');
     ui.toggleReorganizeMode();
     const toggle = tile('light.desk').querySelector('.desktop-pin-quick-toggle');
-    expect(toggle.getAttribute('aria-label')).toBe('Anheften');
+    expect(toggle.getAttribute('aria-label')).toBe('light.desk an den Desktop anheften');
     expect(toggle.title).toBe('Auf dem Desktop anheften');
     ui.toggleReorganizeMode();
   });
@@ -418,7 +398,9 @@ describe('ui.js translations and number formatting', () => {
       node.textContent.trim()
     );
     expect(statLabels).toEqual(['Aktuell', 'Ziel']);
-    expect(root.querySelector('.desktop-pin-climate-target-value').textContent).toBe('21,5°C');
+    expect(root.querySelector('.desktop-pin-climate-target-value').textContent).toBe(
+      '21,5\u00a0°C'
+    );
     expect(root.querySelector('.desktop-pin-panel-status').textContent).toBe('Modus Heizen');
     const heatButton = root.querySelector('.desktop-pin-climate-mode[data-action="heat"]');
     expect(heatButton.getAttribute('aria-label')).toBe('Modus auf Heizen setzen');

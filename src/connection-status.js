@@ -13,7 +13,8 @@ import { t } from './i18n.js';
  */
 
 function syncProgressIndicator(status) {
-  const shouldShow = status.dataset.busy === 'true' && !status.classList.contains('hidden');
+  const shouldShow =
+    status.dataset.busy === 'true' && !status.classList.contains('connection-status-empty');
   const existing = status.querySelector('.connection-progress');
   if (!shouldShow) {
     existing?.remove();
@@ -44,9 +45,20 @@ function renderConnectionStatus(status, message = '', type = '') {
     text.className = 'connection-status-text';
     status.appendChild(text);
   }
-  text.textContent = message;
+  // An error interrupts; progress and results wait their turn. The role and the politeness are set
+  // as a pair, before the text: an explicit aria-live outranks the one a role implies, so a
+  // role="alert" left on aria-live="polite" would still be announced politely. The markup gives
+  // these lines only role="status", so nothing pins the politeness before the first message.
+  const interrupting = type === 'error';
+  status.setAttribute('role', interrupting ? 'alert' : 'status');
+  status.setAttribute('aria-live', interrupting ? 'assertive' : 'polite');
   status.dataset.status = type || '';
-  status.classList.toggle('hidden', !message);
+  // Empty is visually hidden but not display:none. A live region that is taken out of the page and put
+  // back in the same breath as its text gets no announcement from some screen readers, so it stays
+  // rendered, and the words are written into a region that is already there.
+  status.classList.remove('hidden');
+  status.classList.toggle('connection-status-empty', !message);
+  text.textContent = message;
   syncProgressIndicator(status);
 }
 

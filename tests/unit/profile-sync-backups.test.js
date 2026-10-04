@@ -171,6 +171,15 @@ describe('moving the sync to a folder that already holds a sync file', () => {
 describe('where the folder chooser opens', () => {
   const openedAt = (device) => device.dialogCalls.at(-1).defaultPath;
 
+  test('opens as a sheet of the Settings window, not as a free-floating dialog', async () => {
+    const desktop = createDevice('desktop', { syncing: false });
+
+    await desktop.invoke('choose-profile-sync-folder', 'dropbox');
+
+    // A dialog with no parent can open behind an always-on-top widget on Windows.
+    expect(desktop.dialogParents.at(-1)).toEqual({});
+  });
+
   test('offers the sync app’s usual folder when no folder was chosen yet', async () => {
     const desktop = createDevice('desktop', { syncing: false });
     // A device that never chose a folder holds the default file in its app data folder.

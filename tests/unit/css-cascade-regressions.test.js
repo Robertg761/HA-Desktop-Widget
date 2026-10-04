@@ -63,22 +63,537 @@ describe('stylesheet cascade regressions', () => {
     );
   });
 
-  describe('confirmation dialog stacking', () => {
-    // The confirmation is a static element; dialogs built later are appended after it and share the
-    // backdrop tier, so only a higher tier keeps "Delete graph" from opening behind its own editor.
-    it('paints above dialogs that are appended to the page after it', () => {
-      render(
-        '',
-        `<div id="confirm-modal" class="modal"></div>
-        <div id="comparison-graph-editor" class="modal"></div>`
-      );
+  describe('Quick Access page tab strip', () => {
+    const strip = (barClass = '', otherPage = '') => `
+      <div class="section-header quick-access-header">
+        <div id="quick-access-tabs" class="quick-access-tabs ${barClass}">
+          <div class="quick-access-tab-scroll">
+            <div class="quick-access-tab active">
+              <button class="tab-link quick-access-tab-link active" tabindex="0" data-focus-visible>
+                <span class="quick-access-tab-label">Home</span>
+              </button>
+              <button class="qa-tab-btn qa-tab-rename" data-focus-visible></button>
+              <button class="qa-tab-btn qa-tab-delete"></button>
+            </div>${otherPage}
+          </div>
+        </div>
+        <button class="qa-tab-add" data-focus-visible><span>Add page</span></button>
+        <div class="section-buttons"></div>
+      </div>`;
 
-      const confirmModal = document.getElementById('confirm-modal');
-      const editor = document.getElementById('comparison-graph-editor');
-      expect(Number(resolvedValue(confirmModal, 'z-index'))).toBeGreaterThan(
-        Number(resolvedValue(editor, 'z-index'))
+    // The pages scroll inside the bar; the bar is the pill, so it keeps its shape.
+    it('scrolls the pages in the strip, without a scrollbar, and not the bar itself', () => {
+      render('', strip());
+      const scroller = document.querySelector('.quick-access-tab-scroll');
+      const bar = document.getElementById('quick-access-tabs');
+
+      expect(resolvedValue(scroller, 'overflow-x')).toBe('auto');
+      expect(resolvedValue(scroller, 'scrollbar-width')).toBe('none');
+      expect(resolvedValue(bar, 'overflow-x')).toBeNull();
+      expect(resolvedValue(bar, 'overflow-y')).toBeNull();
+    });
+
+    it('does not squeeze a page to make room, since the strip scrolls', () => {
+      render('', strip());
+      expect(resolvedValue(document.querySelector('.quick-access-tab'), 'flex')).toBe('0 0 auto');
+    });
+
+    // The strip clips whatever is outside a page, and the global focus rule would put it there.
+    it.each(THEME_CASES)(
+      'draws the focus ring inside the pages and their buttons (%s)',
+      (_, theme) => {
+        render(theme, strip());
+
+        for (const control of document.querySelectorAll(
+          '.quick-access-tab-scroll [data-focus-visible]'
+        )) {
+          expect(resolvedValue(control, 'outline-offset')).toBe('-2px');
+          // The readable preset draws a thicker ring of its own, in the same place.
+          expect(resolvedValue(control, 'outline')).toMatch(/^[23]px solid /);
+          expect(resolvedValue(control, 'box-shadow')).toBe('none');
+        }
+      }
+    );
+
+    it('fades the edge that clips pages', () => {
+      render('', strip());
+      const scroller = document.querySelector('.quick-access-tab-scroll');
+      expect(resolvedValue(scroller, 'mask-image')).toBeNull();
+      scroller.dataset.overflow = 'right';
+      expect(resolvedValue(scroller, 'mask-image')).toMatch(/linear-gradient\(to right/);
+      scroller.dataset.overflow = 'both';
+      expect(resolvedValue(scroller, 'mask-image')).toMatch(/transparent/);
+    });
+
+    it('lets the rename field stand alone, without the page buttons or highlight behind it', () => {
+      render('reorganize', strip('reorganize'));
+      const page = document.querySelector('.quick-access-tab');
+      const button = page.querySelector('.qa-tab-rename');
+      expect(resolvedValue(button, 'display')).not.toBe('none');
+      expect(resolvedValue(page, 'box-shadow')).not.toBe('none');
+
+      page.insertAdjacentHTML('afterbegin', '<input class="qa-tab-rename-input" type="text">');
+      expect(resolvedValue(button, 'display')).toBe('none');
+      expect(resolvedValue(page, 'box-shadow')).toBe('none');
+      expect(resolvedValue(page, 'background')).toBe('none');
+    });
+
+    it('is as tall editing as it is as the pill, so the grid does not move', () => {
+      render('reorganize', strip('reorganize'));
+      expect(resolvedValue(document.getElementById('quick-access-tabs'), 'min-height')).toBe(
+        '32px'
+      );
+      expect(resolvedValue(document.querySelector('.quick-access-tab'), 'min-height')).toBe('28px');
+      expect(resolvedValue(document.querySelector('.qa-tab-add'), 'min-height')).toBe('28px');
+    });
+
+    it('lines up with the cards and tiles, and keeps Add page in the header beside the strip', () => {
+      render('reorganize', strip('reorganize'));
+      const header = document.querySelector('.quick-access-header');
+      expect(resolvedValue(header, 'padding-inline')).toBe('0');
+      expect(resolvedValue(document.getElementById('quick-access-tabs'), 'flex')).toBe('0 1 auto');
+      expect(resolvedValue(document.querySelector('.qa-tab-add'), 'flex')).toBe('0 0 auto');
+    });
+
+    it('gives the page buttons targets of at least 24px, and the delete button some room', () => {
+      render('reorganize', strip('reorganize'));
+      const rename = document.querySelector('.qa-tab-rename');
+      expect(resolvedValue(rename, 'width')).toBe('24px');
+      expect(resolvedValue(rename, 'height')).toBe('24px');
+      expect(resolvedValue(document.querySelector('.qa-tab-delete'), 'margin-inline-start')).toBe(
+        '0.25rem'
       );
     });
+
+    it('cuts a long page name short rather than letting it fill the strip', () => {
+      render('', strip());
+      const link = document.querySelector('.quick-access-tab-link');
+      const label = document.querySelector('.quick-access-tab-label');
+      expect(resolvedValue(link, 'max-width')).toBe('34ch');
+      expect(resolvedValue(label, 'text-overflow')).toBe('ellipsis');
+      expect(resolvedValue(label, 'overflow')).toBe('hidden');
+      render('reorganize', strip('reorganize'));
+      expect(resolvedValue(document.querySelector('.quick-access-tab-link'), 'max-width')).toBe(
+        '28ch'
+      );
+    });
+
+    it('keeps a page and its buttons inside the strip, clear of the fades', () => {
+      const other = `<div class="quick-access-tab"><button class="tab-link"></button></div>`;
+      render('reorganize', strip('reorganize', other));
+      const tab = document.querySelector('.quick-access-tab');
+      // A page wider than the strip would have its last button under the fade or out of reach, so
+      // the name gives way: the page is capped, its link may shrink, its buttons may not.
+      expect(resolvedValue(tab, 'max-width')).toMatch(/^calc\(100% - 2 \* \d+px\)$/);
+      const link = document.querySelector('.quick-access-tab-link');
+      expect(resolvedValue(link, 'min-width')).toBe('0');
+      expect(resolvedValue(link, 'flex-shrink')).toBe('1');
+      expect(resolvedValue(document.querySelector('.qa-tab-rename'), 'flex')).toBe('none');
+    });
+
+    // The strip is as wide as its pages, so a lone page that gave up the width of the fades would
+    // be trimmed for nothing: its name would shrink to nothing in the default one-page dashboard.
+    it('lets a lone page use the whole strip, since there is nothing to scroll to', () => {
+      render('reorganize', strip('reorganize'));
+      expect(resolvedValue(document.querySelector('.quick-access-tab'), 'max-width')).toBe('100%');
+    });
+
+    it('gives up the words of Add page in a narrow window, and keeps them otherwise', () => {
+      render('reorganize', strip('reorganize'));
+      const label = document.querySelector('.qa-tab-add span');
+      expect(resolvedValue(label, 'display')).toBeNull();
+      expect(resolvedValue(label, 'display', { viewport: { width: 360, height: 600 } })).toBe(
+        'none'
+      );
+    });
+  });
+
+  describe('edit mode on the Quick Access grid', () => {
+    const tiles = () => `
+      <div id="quick-controls" class="controls-grid reorganize-mode">
+        <div class="control-item" data-entity-id="light.a"></div>
+        <div class="control-item comparison-graph-tile" data-entity-id="graph:g"></div>
+      </div>`;
+
+    it('does not pack the grid densely, which would part the picture from the saved order', () => {
+      render('', tiles());
+      expect(resolvedValue(document.getElementById('quick-controls'), 'grid-auto-flow')).toBeNull();
+    });
+
+    it('makes room for the buttons above the content of a compact tile', () => {
+      render('density-compact', tiles());
+      const tile = document.querySelector('[data-entity-id="light.a"]');
+      const grid = document.getElementById('quick-controls');
+      expect(resolvedValue(grid, '--qa-tile-height')).toBe('96px');
+      expect(resolvedValue(tile, 'padding-top')).toBe('32px');
+
+      render('density-compact', tiles().replace(' reorganize-mode', ''));
+      expect(resolvedValue(document.getElementById('quick-controls'), '--qa-tile-height')).toBe(
+        '78px'
+      );
+    });
+
+    it('hides the corner labels the buttons would cover', () => {
+      render(
+        '',
+        `<div class="reorganize-mode"><div class="control-item">
+          <span class="camera-tile-preview-badge"></span><span class="comparison-graph-range"></span>
+        </div></div>`
+      );
+      for (const label of document.querySelectorAll('.control-item span')) {
+        expect(resolvedValue(label, 'visibility')).toBe('hidden');
+      }
+    });
+
+    it('shrinks the buttons to fit the 82px tiles of a narrow window', () => {
+      const markup = `<div class="reorganize-mode"><div class="control-item">
+        <button class="rename-btn"></button><button class="remove-btn"></button>
+        <button class="desktop-pin-quick-toggle"></button>
+      </div></div>`;
+      render('', markup);
+      const rename = document.querySelector('.rename-btn');
+      expect(resolvedValue(rename, 'width')).toBe('24px');
+      const narrow = { viewport: { width: 340, height: 600 } };
+      for (const button of document.querySelectorAll('.control-item button')) {
+        expect(resolvedValue(button, 'width', narrow)).toBe('20px');
+      }
+      // Centre to centre they stay 24px apart: 6px in, 20px wide, then 30px from the far edge.
+      expect(resolvedValue(rename, 'inset-inline-end', narrow)).toBe('30px');
+      expect(resolvedValue(document.querySelector('.remove-btn'), 'inset-inline-end', narrow)).toBe(
+        '6px'
+      );
+    });
+
+    it('lets a touch or pen drag follow the pointer, and tilts the native drag image', () => {
+      render(
+        '',
+        `<div class="reorganize-mode">
+          <div class="control-item sortable-drag sortable-fallback"></div>
+          <div class="control-item sortable-drag"></div>
+        </div>`
+      );
+      const [clone, native] = document.querySelectorAll('.control-item');
+      // The settle that eases tiles into place would make the clone trail behind the pointer.
+      expect(resolvedValue(clone, 'transition')).toBe('none');
+      // The clone is positioned with an inline transform, which a transform rule would replace.
+      expect(resolvedValue(clone, 'transform')).toBeNull();
+      // The individual properties apply outside that transform, so a lift or tilt on the clone
+      // would scale and turn the finger's offset: the clone would drift away from the finger.
+      expect(resolvedValue(clone, 'scale')).toBe('none');
+      expect(resolvedValue(clone, 'rotate')).toBe('none');
+      expect(resolvedValue(native, 'scale')).toBe('1.05');
+      expect(resolvedValue(native, 'rotate')).toBe('2deg');
+    });
+  });
+
+  describe('keyboard focus rings the global rule drew wrongly', () => {
+    // The global ring sits 2px outside the control with a glow. Wherever the control is clipped by a
+    // scrolling or overflow-hidden parent, or another rule removes the outline, that left a focused
+    // control looking like an unfocused one (or like a rendering glitch).
+    it('draws the weather card ring inside the card, where the hero pane cannot clip it', () => {
+      render(
+        '',
+        `<div class="status-grid"><div id="weather-card" class="status-card weather-card" tabindex="0" data-focus-visible></div><div id="time-card" class="status-card"></div></div>`
+      );
+      const card = document.getElementById('weather-card');
+
+      expect(resolvedValue(card, 'outline-offset')).toBe('-4px');
+      expect(resolvedValue(card, 'outline')).toMatch(/^[23]px solid /);
+      expect(resolvedValue(card, 'box-shadow')).toBe('none');
+    });
+
+    it('keeps the divider between the two cards when the second one has the ring', () => {
+      render(
+        '',
+        `<div class="status-grid"><div class="status-card"></div><div id="time-card" class="status-card" tabindex="0" data-focus-visible></div></div>`
+      );
+
+      expect(resolvedValue(document.getElementById('time-card'), 'box-shadow')).toMatch(
+        /^inset calc\(1px \* 1\) 0 0 /
+      );
+    });
+
+    it('still draws it outside in the single-card layout, where nothing clips it', () => {
+      render(
+        '',
+        `<div class="status-grid single-card"><div id="weather-card" class="status-card" tabindex="0" data-focus-visible></div></div>`
+      );
+
+      expect(resolvedValue(document.getElementById('weather-card'), 'outline-offset')).toBe('2px');
+    });
+
+    it('draws a picker option inside the scrolling list, on the hover tint', () => {
+      render(
+        '',
+        `<div class="entity-selector-list"><div id="option" class="entity-item" role="option" tabindex="0" data-focus-visible></div></div>`
+      );
+      const option = document.getElementById('option');
+
+      expect(resolvedValue(option, 'outline-offset')).toBe('-2px');
+      expect(resolvedValue(option, 'box-shadow')).toBe('none');
+      // The hover fill, rather than the plain row's transparent one.
+      expect(resolvedValue(option, 'background')).toBe('rgba(255, 255, 255, 0.075)');
+    });
+
+    it('draws the Settings window opacity slider ring, which the field rules had removed', () => {
+      render(
+        '',
+        `<div id="settings-modal"><div class="form-group setting-slider"><input id="opacity-slider" type="range" data-focus-visible></div></div>`
+      );
+      const slider = document.getElementById('opacity-slider');
+
+      expect(resolvedValue(slider, 'outline')).toMatch(/^2px solid /);
+      expect(resolvedValue(slider, 'outline-offset')).toBe('4px');
+    });
+
+    it('rounds the ring of a Settings disclosure summary and keeps it inside the pane', () => {
+      render(
+        '',
+        `<div id="settings-modal"><details class="settings-details settings-disclosure"><summary data-focus-visible>More</summary></details></div>`
+      );
+      const summary = document.querySelector('summary');
+
+      expect(resolvedValue(summary, 'border-radius')).not.toBe('0');
+      expect(resolvedValue(summary, 'outline-offset')).toBe('-2px');
+    });
+
+    it('lets Tab scroll a Settings control clear of the floating Save and Cancel pill', () => {
+      render('', '<div id="settings-modal"><div class="modal-body"></div></div>');
+
+      expect(resolvedValue(document.querySelector('.modal-body'), 'scroll-padding-block-end')).toBe(
+        '80px'
+      );
+    });
+
+    it('does not draw the global field ring around the command palette search, whose row has it', () => {
+      render(
+        '',
+        `<div class="command-palette-search"><input class="command-palette-input" data-focus-visible></div>`
+      );
+      const input = document.querySelector('input');
+
+      expect(resolvedValue(input, 'outline')).toBe('0');
+      expect(resolvedValue(input, 'box-shadow')).toBe('none');
+    });
+
+    it('tints a palette row under a resting pointer more lightly than the highlighted one', () => {
+      render(
+        '',
+        `<div class="command-palette-result" id="hover" data-hover></div>
+        <div class="command-palette-result highlighted" id="highlighted"></div>`
+      );
+      const hover = resolvedValue(document.getElementById('hover'), 'background');
+      const highlighted = resolvedValue(document.getElementById('highlighted'), 'background');
+
+      expect(hover).toContain('0.07');
+      expect(highlighted).toContain('0.14');
+      // The strong tint's accent border is not applied to a hover.
+      expect(resolvedValue(document.getElementById('hover'), 'border-color')).not.toBe(
+        resolvedValue(document.getElementById('highlighted'), 'border-color')
+      );
+    });
+  });
+
+  describe('collapsed Settings disclosures', () => {
+    it('are hidden to focus once collapsed, and visible while open', () => {
+      render(
+        '',
+        `<div id="settings-modal"><section class="personalization-section settings-disclosure-section collapsed"><div id="closed" class="section-body"></div></section>
+        <section class="personalization-section settings-disclosure-section"><div id="open" class="section-body"></div></section></div>`
+      );
+
+      expect(resolvedValue(document.getElementById('closed'), 'visibility')).toBe('hidden');
+      expect(resolvedValue(document.getElementById('open'), 'visibility')).toBeNull();
+    });
+
+    it('leave room beside an open body for the focus glow of a full-width field', () => {
+      render(
+        '',
+        `<div id="settings-modal"><section class="personalization-section settings-disclosure-section"><div id="open" class="section-body"></div></section></div>`
+      );
+      const body = document.getElementById('open');
+
+      expect(resolvedValue(body, 'padding-inline')).toBe('4px');
+      expect(resolvedValue(body, 'margin-inline')).toBe('-4px');
+      expect(resolvedValue(body, 'will-change')).toBeNull();
+    });
+  });
+
+  describe('the first-run wizard', () => {
+    it('starts below the header, so the window buttons and drag area keep working', () => {
+      render('first-run-active', '<div class="first-run-onboarding"></div>');
+      const overlay = document.querySelector('.first-run-onboarding');
+
+      // 40px until the renderer measures the header and says otherwise.
+      expect(resolvedValue(overlay, 'inset')).toBe('40px 0 0');
+    });
+
+    it('hides the gear while it is up, since Settings would open out of sight underneath', () => {
+      render('first-run-active', '<button id="settings-btn"></button>');
+
+      expect(resolvedValue(document.getElementById('settings-btn'), 'visibility')).toBe('hidden');
+    });
+  });
+
+  describe('a dialog heading that takes focus on open', () => {
+    // It is where a screen reader starts, not a control: the default ring would box its glyphs.
+    it('draws no ring, while a control in the same header still does', () => {
+      render(
+        '',
+        `<div class="modal"><div class="modal-header">
+          <h2 id="heading" tabindex="-1" data-focus-visible>Living room</h2>
+          <button id="close" class="close-btn" data-focus-visible>x</button>
+        </div></div>`
+      );
+
+      expect(resolvedValue(document.getElementById('heading'), 'outline')).toBe('none');
+      expect(resolvedValue(document.getElementById('close'), 'outline')).not.toBe('none');
+    });
+  });
+
+  describe('a dialog rebuilt in place', () => {
+    it('does not replay the entrance, but still leaves with the exit animation', () => {
+      render(
+        '',
+        `<div id="rebuilt" class="modal climate-modal modal-rebuilt"><div class="modal-content"></div></div>
+        <div id="leaving" class="modal modal-rebuilt modal-closing"><div class="modal-content"></div></div>`
+      );
+
+      expect(resolvedValue(document.getElementById('rebuilt'), 'animation')).toBe('none');
+      expect(resolvedValue(document.getElementById('leaving'), 'animation')).toContain(
+        'modalFadeOut'
+      );
+    });
+  });
+
+  describe('toasts', () => {
+    // Anchored at left: 50% the stack could only grow into the right half of the window, so at the
+    // default size every toast wrapped at half its width.
+    it('spans the window and centres its toasts, instead of shrinking to half of it', () => {
+      render('', '<div class="toast-container"><div class="toast info"></div></div>');
+      const stack = document.querySelector('.toast-container');
+
+      expect(resolvedValue(stack, 'left')).toBe('0');
+      expect(resolvedValue(stack, 'right')).toBe('0');
+      expect(resolvedValue(stack, 'padding-inline')).toBe('0.75rem');
+      expect(resolvedValue(stack, 'transform')).toBeNull();
+      expect(resolvedValue(stack, 'align-items')).toBe('center');
+      expect(resolvedValue(document.querySelector('.toast'), 'max-width')).toBe('min(420px, 100%)');
+    });
+
+    it('puts the icon against the first line of a toast that wraps', () => {
+      render('', '<div class="toast-container"><div class="toast error"></div></div>');
+
+      expect(resolvedValue(document.querySelector('.toast'), 'align-items')).toBe('flex-start');
+    });
+
+    it.each(['rose', 'amber', 'emerald'])(
+      'draws an information toast in its own blue, whatever the %s accent',
+      (accent) => {
+        render(
+          `accent-${accent}`,
+          '<div class="toast info"><span class="toast-icon"></span></div>'
+        );
+        document.body.style.setProperty('--accent-rgb', '244, 63, 94');
+
+        const toast = document.querySelector('.toast');
+        expect(resolvedValue(toast, 'border-color')).toBe('rgba(100, 181, 246, 0.5)');
+        expect(resolvedValue(toast.querySelector('.toast-icon'), 'color')).toBe('#64b5f6');
+      }
+    );
+
+    it('keeps a notice that asks nothing out of the way of a drag', () => {
+      render('', '<div class="toast toast-passive"></div>');
+
+      expect(resolvedValue(document.querySelector('.toast'), 'pointer-events')).toBe('none');
+    });
+  });
+
+  describe('the confirmation dialog buttons', () => {
+    // Save, Discard and Keep editing do not fit in a row in a 400px dialog, a 340px window or a
+    // wordy language; the shared button clips its label to one line, so the row has to wrap.
+    it('wraps three buttons onto a second row instead of cutting their labels', () => {
+      render(
+        '',
+        `<div class="confirm-modal-content">
+          <div class="modal-footer">
+            <button class="btn btn-secondary" id="confirm-cancel-btn">Keep editing</button>
+            <button class="btn btn-secondary" id="confirm-alternate-btn">Discard color edits</button>
+            <button class="btn btn-primary" id="confirm-ok-btn">Save and Continue</button>
+          </div>
+        </div>`
+      );
+
+      const footer = document.querySelector('.modal-footer');
+      expect(resolvedValue(footer, 'flex-wrap')).toBe('wrap');
+      expect(resolvedValue(footer, 'justify-content')).toBe('flex-end');
+      for (const button of document.querySelectorAll('.btn')) {
+        // A label longer than the dialog wraps inside its button rather than being clipped.
+        expect(resolvedValue(button, 'white-space')).toBe('normal');
+        expect(resolvedValue(button, 'max-width')).toBe('100%');
+      }
+    });
+  });
+
+  describe('a button the markup hides', () => {
+    // The shared button sets display, which beats the hidden attribute, so the confirmation
+    // dialog showed an empty third button between Cancel and the action whenever it asked two.
+    it('stays out of the row', () => {
+      render('', '<div class="modal-footer"><button class="btn" id="alt" hidden></button></div>');
+
+      expect(resolvedValue(document.getElementById('alt'), 'display')).toBe('none');
+    });
+  });
+
+  describe('the to-do add field', () => {
+    // The field scrolled away with the first rows of a long list. A sticky box is held at the
+    // scroll container's content edge, so it needs the container's padding as a negative top.
+    it('stays at the top of the scrolling body, reaching its edges', () => {
+      render('', '<div class="modal-body"><form class="todo-add-form"></form></div>');
+
+      const form = document.querySelector('.todo-add-form');
+      const inset = resolvedValue(document.querySelector('.modal-body'), 'padding');
+      expect(resolvedValue(form, 'position')).toBe('sticky');
+      // Held at the content edge, so the body's own padding is taken back: negative top and margins,
+      // and the same amount as padding on the field itself, which leaves the layout at rest as it was.
+      expect(resolvedValue(form, 'top')).toBe(`calc(-1 * ${inset})`);
+      expect(resolvedValue(form, 'margin')).toBe(`calc(-1 * ${inset}) calc(-1 * ${inset}) 0`);
+      expect(resolvedValue(form, 'padding')).toBe(`${inset} ${inset} 14px`);
+    });
+
+    // A window under 480px high gives a dialog body 12px of padding instead of 16px. An add field that
+    // still took back 16px reached 4px past each edge of the body, which then scrolled sideways.
+    it('takes back exactly the padding the body has in a short window', () => {
+      const short = { viewport: { width: 500, height: 420 } };
+      render('', '<div class="modal-body"><form class="todo-add-form"></form></div>');
+
+      const body = document.querySelector('.modal-body');
+      const form = document.querySelector('.todo-add-form');
+      expect(resolvedValue(body, 'padding')).toBe('1rem');
+      expect(resolvedValue(body, 'padding', short)).toBe('0.75rem');
+      expect(resolvedValue(form, 'margin')).toBe('calc(-1 * 1rem) calc(-1 * 1rem) 0');
+      expect(resolvedValue(form, 'margin', short)).toBe('calc(-1 * 0.75rem) calc(-1 * 0.75rem) 0');
+      expect(resolvedValue(form, 'top', short)).toBe('calc(-1 * 0.75rem)');
+    });
+  });
+
+  describe('dialog stacking', () => {
+    // Dialogs are stacked by the order they were opened, not by where their elements happen to sit
+    // in the document: openDialog() gives each one a --dialog-depth, and the tier is lifted by it, so
+    // the confirmation over the graph editor, or either over Settings, is always the one on top.
+    it.each(['modal', 'camera-expanded-preview'])(
+      'lifts a .%s by its dialog depth',
+      (className) => {
+        render(
+          '',
+          `<div id="under" class="${className}"></div>
+        <div id="over" class="${className}" style="--dialog-depth: 2"></div>`
+        );
+
+        expect(resolvedValue(document.getElementById('under'), 'z-index')).toBe('calc(1300 + 0)');
+        expect(resolvedValue(document.getElementById('over'), 'z-index')).toBe('calc(1300 + 2)');
+      }
+    );
   });
 
   describe('custom colour hex field', () => {
@@ -123,6 +638,51 @@ describe('stylesheet cascade regressions', () => {
         expect(resolvedValue(line, 'overflow')).toBe('hidden');
         expect(resolvedValue(line, 'text-overflow')).toBe('ellipsis');
       }
+    });
+
+    // The track is a button now, so the card opens the player's controls from the keyboard. The
+    // grid placement written for a div has to keep working on it at every window width.
+    describe('the track button', () => {
+      const markup = `<div class="media-tile">
+        <div class="media-tile-content">
+          <button type="button" class="media-tile-info">
+            <span class="media-tile-title">A very long title</span>
+            <span class="media-tile-artist">An artist</span>
+          </button>
+          <div class="media-tile-seek"></div>
+          <div class="media-tile-controls"></div>
+        </div>
+      </div>`;
+
+      it.each([
+        [500, '1', 'auto'],
+        [420, '1 / -1', 'auto'],
+        [360, '1', 'auto'],
+        [340, '1', 'auto'],
+      ])('takes its place in the grid at %ipx', (width, column, row) => {
+        render('', markup);
+        const info = document.querySelector('.media-tile-info');
+        const options = { viewport: { width, height: 600 } };
+
+        expect(resolvedValue(info, 'grid-column', options)).toBe(column);
+        // Only the narrowest layout stacks the rows, so the other widths leave the row to the grid
+        expect(resolvedValue(info, 'grid-row', options)).toBe(width <= 360 ? row : null);
+      });
+
+      it('is drawn as text, with the title and the artist cut off by an ellipsis', () => {
+        render('', markup);
+        const info = document.querySelector('.media-tile-info');
+
+        expect(resolvedValue(info, 'border-top-width')).toBeNull();
+        expect(resolvedValue(info, 'border')).toBe('0');
+        expect(resolvedValue(info, 'background')).toBe('transparent');
+        expect(resolvedValue(info, 'text-align')).toBe('start');
+        for (const line of info.children) {
+          expect(resolvedValue(line, 'white-space')).toBe('nowrap');
+          expect(resolvedValue(line, 'overflow')).toBe('hidden');
+          expect(resolvedValue(line, 'text-overflow')).toBe('ellipsis');
+        }
+      });
     });
 
     it('has no marquee animation left in the stylesheets', () => {
@@ -569,6 +1129,246 @@ describe('stylesheet cascade regressions', () => {
     });
   });
 
+  describe('desktop pin baseline (168x148)', () => {
+    const viewport = { width: 168, height: 148 };
+    const options = { viewport };
+    const toPx = (length) => parseFloat(length) * (String(length).endsWith('rem') ? 16 : 1);
+    const panel = (family, extra = '') =>
+      `<div class="desktop-pin-shell"><div class="desktop-pin-content">
+        <div class="control-item desktop-pin-control desktop-pin-panel-control desktop-pin-${family}-control"
+          data-layout="compact" ${extra}>
+          <div class="desktop-pin-panel-shell">
+            <div class="desktop-pin-panel-topline"><div class="desktop-pin-panel-meta">
+              <div class="desktop-pin-panel-name">Name</div>
+              <div class="desktop-pin-panel-status">State</div>
+            </div></div>
+            <div class="desktop-pin-panel-body">
+              <div class="desktop-pin-panel-meter"><div class="desktop-pin-panel-glyph"></div>
+                <div class="desktop-pin-panel-value">1</div></div>
+              <div class="desktop-pin-panel-actions">
+                <button class="desktop-pin-panel-button" data-active="true">
+                  <span class="desktop-pin-panel-button-label">Go</span></button>
+                <button class="desktop-pin-power desktop-pin-fan-power"></button>
+              </div>
+            </div>
+          </div>
+        </div></div></div>`;
+
+    it.each(['weather', 'enum', 'sensor', 'climate'])(
+      'draws a %s pin with the tight spacing, not the roomy one the tile rules left it',
+      (family) => {
+        render('desktop-pin-mode', panel(family));
+        const control = document.querySelector('.desktop-pin-panel-control');
+        expect(resolvedValue(control, '--desktop-pin-panel-pad', options)).toBe('8px');
+        expect(resolvedValue(control, '--desktop-pin-panel-gap', options)).toBe('6px');
+        expect(resolvedValue(control, 'padding', options)).toBe('8px');
+        expect(
+          resolvedValue(document.querySelector('.desktop-pin-panel-meter'), 'min-height', options)
+        ).toBe('34px');
+      }
+    );
+
+    it('insets a light pin like the others instead of keeping the narrow-window padding', () => {
+      render(
+        'desktop-pin-mode',
+        `<div class="desktop-pin-shell"><div class="desktop-pin-content">
+          <div class="control-item desktop-pin-control desktop-pin-light-control" data-layout="compact">
+            <div class="desktop-pin-light-shell"></div>
+          </div></div></div>`
+      );
+      const light = document.querySelector('.desktop-pin-light-control');
+      expect(resolvedValue(light, 'padding', options)).toBe('0');
+      expect(resolvedValue(light, '--desktop-pin-panel-pad', options)).toBe('8px');
+      expect(
+        resolvedValue(document.querySelector('.desktop-pin-light-shell'), 'padding', options)
+      ).toBe('8px');
+    });
+
+    it('never sets pin text below 9px, apart from the micro layout', () => {
+      render(
+        'desktop-pin-mode',
+        `<div class="desktop-pin-shell">
+          <div class="control-item desktop-pin-control desktop-pin-panel-control" data-layout="compact">
+            <div class="desktop-pin-panel-status"></div><div class="desktop-pin-panel-stat-label"></div>
+            <div class="desktop-pin-panel-slider-label"></div><div class="desktop-pin-panel-caption"></div>
+            <div class="desktop-pin-light-brightness-label"></div><div class="desktop-pin-light-status"></div>
+          </div>
+        </div>`
+      );
+      for (const name of [
+        'desktop-pin-panel-status',
+        'desktop-pin-panel-stat-label',
+        'desktop-pin-panel-slider-label',
+        'desktop-pin-panel-caption',
+        'desktop-pin-light-brightness-label',
+        'desktop-pin-light-status',
+      ]) {
+        const size = resolvedValue(document.querySelector(`.${name}`), 'font-size', options);
+        expect({ name, px: toPx(size) }).toEqual({ name, px: 9 });
+      }
+    });
+
+    it('lets only the light and scene pins show a hand over their whole surface', () => {
+      render(
+        'desktop-pin-mode',
+        `<div class="control-item desktop-pin-control desktop-pin-sensor-control"></div>
+        <div class="control-item desktop-pin-control desktop-pin-light-control"></div>
+        <div class="control-item desktop-pin-control desktop-pin-scene-control"></div>`
+      );
+      const cursor = (name) =>
+        resolvedValue(document.querySelector(`.desktop-pin-${name}-control`), 'cursor', options);
+      expect(cursor('sensor')).toBe('default');
+      expect(cursor('light')).toBe('pointer');
+      expect(cursor('scene')).toBe('pointer');
+    });
+
+    it('draws the power button as a round icon button, 24px in a default pin', () => {
+      render('desktop-pin-mode', panel('fan'));
+      const power = document.querySelector('.desktop-pin-power');
+      expect(resolvedValue(power, 'width', options)).toBe('24px');
+      expect(resolvedValue(power, 'height', options)).toBe('24px');
+      expect(resolvedValue(power, 'border-radius', options)).toBe('9999px');
+      expect(resolvedValue(power, 'padding', options)).toBe('0');
+    });
+
+    it('draws a power button that is on with a heavier ring, a cue that survives forced colours', () => {
+      render(
+        'desktop-pin-mode',
+        `<button class="desktop-pin-power" data-active="true"></button>
+        <button class="desktop-pin-power" data-active="false"></button>`
+      );
+      const [on, off] = document.querySelectorAll('.desktop-pin-power');
+      expect(resolvedValue(on, 'border-width', options)).toBe('2px');
+      expect(resolvedValue(off, 'border', options)).toMatch(/^1px solid /);
+    });
+
+    it.each(['weather', 'numeric', 'enum', 'vacuum', 'presence'])(
+      'leaves the %s pin header to the name, because the meter prints the value',
+      (family) => {
+        const kpi = '<div class="desktop-pin-panel-kpi">1</div>';
+        const pin = (layout) =>
+          `<div class="control-item desktop-pin-control desktop-pin-panel-control desktop-pin-${family}-control"
+            data-layout="${layout}"><div class="desktop-pin-panel-topline">${kpi}</div></div>`;
+        render('desktop-pin-mode', pin('compact'));
+        expect(resolvedValue(document.querySelector('.desktop-pin-panel-kpi'), 'display')).toBe(
+          'none'
+        );
+        render('desktop-pin-mode', pin('roomy'));
+        expect(resolvedValue(document.querySelector('.desktop-pin-panel-kpi'), 'display')).not.toBe(
+          'none'
+        );
+      }
+    );
+
+    it('sets a word tightly only as much as a number, and keeps digit tracking for numbers', () => {
+      render(
+        'desktop-pin-mode',
+        `<div class="control-item desktop-pin-control desktop-pin-vacuum-control">
+          <div class="desktop-pin-panel-value">Docked</div></div>
+        <div class="control-item desktop-pin-control desktop-pin-numeric-control">
+          <div class="desktop-pin-panel-value">1.5 °C</div></div>`
+      );
+      const [word, number] = [...document.querySelectorAll('.desktop-pin-panel-value')];
+      expect(resolvedValue(word, 'letter-spacing', options)).toBe('-0.01em');
+      expect(resolvedValue(number, 'letter-spacing', options)).toBe('-0.04em');
+    });
+
+    it('puts a header value on the name baseline', () => {
+      render(
+        'desktop-pin-mode',
+        `<div class="desktop-pin-panel-topline"><div class="desktop-pin-panel-meta"></div>
+          <div class="desktop-pin-panel-kpi">40%</div></div>`
+      );
+      expect(resolvedValue(document.querySelector('.desktop-pin-panel-meta'), 'align-self')).toBe(
+        'baseline'
+      );
+      expect(resolvedValue(document.querySelector('.desktop-pin-panel-kpi'), 'align-self')).toBe(
+        'baseline'
+      );
+    });
+
+    it('steps the header in while a pin is edited, clear of the corner marks', () => {
+      const header = `<div class="desktop-pin-panel-topline"></div><div class="desktop-pin-light-topline"></div>`;
+      render('desktop-pin-mode', header);
+      for (const node of document.querySelectorAll('[class$="topline"]')) {
+        expect(resolvedValue(node, 'padding-inline-start', options)).not.toBe('6px');
+      }
+      render('desktop-pin-mode desktop-pin-edit-mode', header);
+      for (const node of document.querySelectorAll('[class$="topline"]')) {
+        expect(resolvedValue(node, 'padding-inline-start', options)).toBe('6px');
+      }
+    });
+
+    it('takes a lamp that is off out of amber', () => {
+      render(
+        'desktop-pin-mode',
+        `<div class="control-item desktop-pin-control desktop-pin-light-control" data-state="off"></div>
+        <div class="control-item desktop-pin-control desktop-pin-light-control" data-state="on"></div>`
+      );
+      const [off, on] = document.querySelectorAll('.desktop-pin-light-control');
+      expect(resolvedValue(off, '--desktop-pin-tint-rgb', options)).toBe('130, 150, 176');
+      expect(resolvedValue(on, '--desktop-pin-tint-rgb', options)).toBe('255, 203, 104');
+    });
+
+    it('stacks the panel body as a column and keeps one row of equal buttons', () => {
+      render('desktop-pin-mode', panel('enum'));
+      expect(
+        resolvedValue(document.querySelector('.desktop-pin-panel-body'), 'display', options)
+      ).toBe('flex');
+      const actions = document.querySelector('.desktop-pin-panel-actions');
+      expect(resolvedValue(actions, 'grid-auto-flow', options)).toBe('column');
+      expect(resolvedValue(actions, 'grid-auto-columns', options)).toBe('minmax(0, 1fr)');
+    });
+
+    it('marks the active button with a stronger edge and label, not only a tint', () => {
+      render('desktop-pin-mode', panel('climate'));
+      const button = document.querySelector('.desktop-pin-panel-button');
+      expect(resolvedValue(button, 'border-color', options)).toMatch(/, 0\.6\)$/);
+      expect(
+        contrastRatio(resolvedValue(button, 'color', options), 'rgb(18, 22, 30)')
+      ).toBeGreaterThan(12);
+    });
+
+    it('shrinks a toast to the window and draws it dark', () => {
+      render(
+        'desktop-pin-mode',
+        `<div class="toast-container"><div class="toast error"></div></div>`
+      );
+      const toast = document.querySelector('.toast');
+      expect(resolvedValue(toast, 'min-width', options)).toBe('0');
+      expect(resolvedValue(toast, 'max-width', options)).toBe('100%');
+      // The container spans the window, so the toast fits whatever the pin's size.
+      const container = document.querySelector('.toast-container');
+      expect(resolvedValue(container, 'left', options)).toBe('0');
+      expect(resolvedValue(container, 'right', options)).toBe('0');
+      expect(resolvedValue(container, 'width', options)).toBeNull();
+    });
+
+    it('keeps the glass rim the same in the light theme', () => {
+      const rim = (theme) => {
+        render(`desktop-pin-mode ${theme}`, `<div class="desktop-pin-shell"></div>`);
+        const shell = document.querySelector('.desktop-pin-shell');
+        return [
+          resolvedValue(shell, '--desktop-pin-shell-highlight', options),
+          resolvedValue(shell, '--desktop-pin-shell-edge', options),
+          resolvedValue(shell, 'box-shadow', options),
+        ];
+      };
+      expect(rim('theme-light')).toEqual(rim(''));
+      expect(rim('')[2]).toContain('inset 0 0 0 1px rgba(255, 255, 255, 0.06)');
+    });
+
+    it('does not force a 140x122 minimum on a pin at an enlarged interface', () => {
+      render(
+        'desktop-pin-mode large-interface',
+        `<div class="desktop-pin-shell"><div class="desktop-pin-content"></div></div>`
+      );
+      const content = document.querySelector('.desktop-pin-content');
+      expect(resolvedValue(content, 'min-width', options)).not.toBe('140px');
+      expect(resolvedValue(content, 'min-height', options)).not.toBe('122px');
+    });
+  });
+
   describe('desktop pin text', () => {
     const TEXT_CLASSES = [
       'desktop-pin-panel-name',
@@ -645,8 +1445,16 @@ describe('stylesheet cascade regressions', () => {
       );
       const panel = resolvedValue(document.body, '--bg-primary');
 
+      // The track is the accent up to the thumb and grey beyond it (see src/range-progress.js).
       for (const slider of document.querySelectorAll('input:not(.light-color-temp-slider)')) {
-        expect(contrastRatio(resolvedValue(slider, 'background'), panel)).toBeGreaterThanOrEqual(3);
+        slider.style.setProperty('--range-progress', '40%');
+        const track = resolvedValue(slider, 'background')
+          .replace(/\s+/g, ' ')
+          .match(/^linear-gradient\( ?to right, (#\w+) 40%, (#\w+) 40% ?\)$/);
+        expect(track).not.toBeNull();
+        expect(contrastRatio(track[1], panel)).toBeGreaterThanOrEqual(3);
+        expect(contrastRatio(track[2], panel)).toBeGreaterThanOrEqual(3);
+        expect(track[1]).not.toBe(track[2]);
       }
       // The colour temperature scale keeps its warm-to-cool gradient.
       expect(
@@ -654,15 +1462,26 @@ describe('stylesheet cascade regressions', () => {
       ).toMatch(/^linear-gradient\(to right, #ffb45f/);
     });
 
-    it('leaves transparent tile and transport buttons alone', () => {
+    it('leaves transparent tile buttons alone', () => {
       render(
         THEMES['readable light'],
-        `<div class="control-item"><button class="tile-primary-button"></button></div>
-        <div class="media-detail-controls"><button class="btn"></button></div>`
+        `<div class="control-item"><button class="tile-primary-button"></button></div>`
+      );
+
+      expect(resolvedValue(document.querySelector('button'), 'background')).toBe('transparent');
+    });
+
+    // The transport buttons are round chips now, so they take the readable fill like every other
+    // button instead of staying bare glyphs.
+    it.each(readableThemes)('draws the media transport as readable buttons (%s)', (theme) => {
+      render(
+        theme,
+        `<div class="media-detail-controls"><button class="btn"></button>
+        <button class="btn play-pause-btn"></button></div>`
       );
 
       for (const button of document.querySelectorAll('button')) {
-        expect(resolvedValue(button, 'background')).toBe('transparent');
+        expect(isOpaque(resolvedValue(button, 'background'))).toBe(true);
       }
     });
   });
@@ -696,24 +1515,48 @@ describe('stylesheet cascade regressions', () => {
     });
   });
 
-  describe('longer translations fit their controls', () => {
-    it('sizes the smallest cover pin buttons to their labels, in sentence case', () => {
+  describe('media dialog seek chips', () => {
+    it('grow into pills for a unit longer than a letter, as in "−10 Sek."', () => {
       render(
         '',
-        `<div class="desktop-pin-panel-control desktop-pin-cover-control" data-dense-variant="tight">
-          <div class="desktop-pin-panel-actions">
-            <button class="desktop-pin-panel-button desktop-pin-cover-action">Schließen</button>
-          </div>
+        `<div class="media-detail-controls">
+          <button class="btn media-detail-seek-btn">\u221210 Sek.</button>
+          <button class="btn media-detail-prev-btn"></button>
         </div>`
       );
-      expect(resolvedValue(document.querySelector('.desktop-pin-panel-actions'), 'display')).toBe(
-        'flex'
-      );
-      const button = document.querySelector('.desktop-pin-cover-action');
-      expect(resolvedValue(button, 'flex')).toBe('1 1 auto');
-      expect(resolvedValue(button, 'text-transform')).toBe('none');
-      expect(resolvedValue(button, 'text-overflow')).toBe('ellipsis');
+      const [seek, previous] = document.querySelectorAll('button');
+
+      expect(resolvedValue(seek, 'width')).toBe('auto');
+      expect(resolvedValue(seek, 'min-width')).toBe('44px');
+      expect(resolvedValue(previous, 'width')).toBe('44px');
     });
+  });
+
+  describe('longer translations fit their controls', () => {
+    it.each(['cover', 'climate', 'fan'])(
+      'sizes the smallest %s pin buttons to their labels, in sentence case',
+      (family) => {
+        render(
+          '',
+          `<div class="desktop-pin-panel-control desktop-pin-${family}-control" data-dense-variant="tight" data-layout="compact">
+          <div class="desktop-pin-panel-actions">
+            <button class="desktop-pin-panel-button"><span class="desktop-pin-panel-button-label">Schließen</span></button>
+          </div>
+        </div>`
+        );
+        expect(resolvedValue(document.querySelector('.desktop-pin-panel-actions'), 'display')).toBe(
+          'flex'
+        );
+        const button = document.querySelector('.desktop-pin-panel-button');
+        expect(resolvedValue(button, 'flex')).toBe('1 1 auto');
+        expect(resolvedValue(button, 'min-width')).toBe('0');
+        expect(resolvedValue(button, 'text-transform')).toBe('none');
+        // The label span cuts what the button cannot hold.
+        expect(
+          resolvedValue(document.querySelector('.desktop-pin-panel-button-label'), 'text-overflow')
+        ).toBe('ellipsis');
+      }
+    );
 
     it('keeps reorganize-mode pin badges clear of the rename and remove buttons', () => {
       render(
@@ -759,6 +1602,7 @@ describe('stylesheet cascade regressions', () => {
         <div class="control-name">Outlet 1</div><div class="control-state">مفتوح 50%</div>
         <div class="climate-temp-value-large">21–24°C</div>
         <div class="desktop-pin-panel-kpi">21–24°C</div>
+        <span class="desktop-pin-panel-slider-label">5.0 °C</span>
         <div class="control-state control-sensor-readout"><span>15,6</span><span>°C</span></div>`
       );
       for (const selector of [
@@ -768,6 +1612,8 @@ describe('stylesheet cascade regressions', () => {
         '.control-state',
         '.climate-temp-value-large',
         '.desktop-pin-panel-kpi',
+        // A range end ("5.0 °C") ends in a Latin letter: without its own direction it printed "C° 5.0".
+        '.desktop-pin-panel-slider-label',
       ]) {
         expect(resolvedValue(document.querySelector(selector), 'unicode-bidi')).toBe('plaintext');
       }

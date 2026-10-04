@@ -32,6 +32,8 @@ describe('Renderer desktop pin waiting escape hatch', () => {
           <button id="desktop-pin-focus-btn" type="button">Focus Main</button>
         </div>
       </div>
+      <div class="desktop-pin-resize-handle" data-corner="top-left" tabindex="0"></div>
+      <div class="desktop-pin-resize-handle" data-corner="bottom-right" tabindex="0"></div>
     `;
   };
 
@@ -714,5 +716,197 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     await flushAsync();
 
     expect(content.getAttribute('data-edit-hint')).toBe('Ziehen oder Größe ändern');
+  });
+
+  describe('the notice that the desktop decides where a tile sits', () => {
+    const bootstrap = (supportsWindowPositioning, canDrag) => ({
+      editMode: true,
+      supportsWindowPositioning,
+      config: {
+        homeAssistant: { url: 'http://homeassistant.local:8123' },
+        ui: {},
+        desktopCapabilities: { layerMode: !supportsWindowPositioning, canDrag },
+      },
+    });
+
+    it.each([
+      ['shows it on native Wayland or a layer surface the app cannot drag', false, false, true],
+      ['hides it on a layer surface on Hyprland, which the app drags itself', false, true, false],
+      ['hides it where the app places windows', true, false, false],
+    ])('%s', async (_, supportsWindowPositioning, canDrag, shown) => {
+      await loadRenderer({ bootstrapOverrides: bootstrap(supportsWindowPositioning, canDrag) });
+      expect(document.body.classList.contains('desktop-pin-compositor-placement')).toBe(shown);
+    });
+  });
+
+  it('takes the tile out of the focus order while it is being arranged', async () => {
+    await loadRenderer({ bootstrapOverrides: { editMode: true } });
+    const content = document.getElementById('desktop-pin-content');
+    const empty = document.getElementById('desktop-pin-empty');
+    // pointer-events: none stops the mouse; inert is what stops Tab, Enter and Space.
+    expect(content.hasAttribute('inert')).toBe(true);
+    expect(empty.hasAttribute('inert')).toBe(true);
+
+    triggerMockEvent('desktopPinUpdate', { entityId: 'light.bedroom', editMode: false });
+    await flushAsync();
+
+    expect(content.hasAttribute('inert')).toBe(false);
+    expect(empty.hasAttribute('inert')).toBe(false);
+  });
+
+  describe('resizing from a corner handle', () => {
+    const bounds = { x: 100, y: 100, width: 168, height: 148 };
+    const pointer = (type, screenX, screenY) =>
+      new MouseEvent(type, { screenX, screenY, bubbles: true, cancelable: true });
+    const nextFrame = () => new Promise((resolve) => setTimeout(resolve, 40));
+
+    it('sends the size the drag asks for while it moves, then once more to finish it', async () => {
+      await loadRenderer({ bootstrapOverrides: { editMode: true, pinBounds: bounds } });
+      const handle = document.querySelector('[data-corner="bottom-right"]');
+
+      handle.dispatchEvent(pointer('pointerdown', 500, 400));
+      window.dispatchEvent(pointer('pointermove', 540, 420));
+      await nextFrame();
+      expect(mockElectronAPI.updateDesktopPinBounds).toHaveBeenLastCalledWith('light.bedroom', {
+        width: 208,
+        height: 168,
+        resize: { corner: 'bottom-right', final: false },
+      });
+
+      window.dispatchEvent(pointer('pointerup', 540, 420));
+      await flushAsync();
+      expect(mockElectronAPI.updateDesktopPinBounds).toHaveBeenLastCalledWith('light.bedroom', {
+        width: 208,
+        height: 168,
+        resize: { corner: 'bottom-right', final: true },
+      });
+    });
+
+    it('measures a left-handle drag as shrinking and does not send a position', async () => {
+      await loadRenderer({ bootstrapOverrides: { editMode: true, pinBounds: bounds } });
+      const handle = document.querySelector('[data-corner="top-left"]');
+
+      handle.dispatchEvent(pointer('pointerdown', 500, 400));
+      window.dispatchEvent(pointer('pointermove', 530, 410));
+      await nextFrame();
+      window.dispatchEvent(pointer('pointerup', 530, 410));
+      await flushAsync();
+
+      const [, sent] = mockElectronAPI.updateDesktopPinBounds.mock.calls[0];
+      expect(sent).toEqual({
+        width: 138,
+        height: 138,
+        resize: { corner: 'top-left', final: false },
+      });
+    });
+
+    it('finishes nothing when the handle was only pressed', async () => {
+      await loadRenderer({ bootstrapOverrides: { editMode: true, pinBounds: bounds } });
+      const handle = document.querySelector('[data-corner="bottom-right"]');
+      handle.dispatchEvent(pointer('pointerdown', 500, 400));
+      window.dispatchEvent(pointer('pointerup', 500, 400));
+      await flushAsync();
+      expect(mockElectronAPI.updateDesktopPinBounds).not.toHaveBeenCalled();
+    });
+
+    it('resizes a step per arrow key and a larger one with Shift', async () => {
+      await loadRenderer({ bootstrapOverrides: { editMode: true, pinBounds: bounds } });
+      const handle = document.querySelector('[data-corner="bottom-right"]');
+
+      handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      await flushAsync();
+      expect(mockElectronAPI.updateDesktopPinBounds).toHaveBeenLastCalledWith('light.bedroom', {
+        width: 176,
+        height: 148,
+        resize: { corner: 'bottom-right', final: true },
+      });
+
+      mockElectronAPI.updateDesktopPinBounds.mockClear();
+      handle.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowDown', shiftKey: true, bubbles: true })
+      );
+      await flushAsync();
+      expect(mockElectronAPI.updateDesktopPinBounds).toHaveBeenLastCalledWith('light.bedroom', {
+        width: 176,
+        height: 180,
+        resize: { corner: 'bottom-right', final: true },
+      });
+    });
+
+    it('builds each arrow press on the size the one before asked for, however fast they repeat', async () => {
+      await loadRenderer({ bootstrapOverrides: { editMode: true, pinBounds: bounds } });
+      const handle = document.querySelector('[data-corner="bottom-right"]');
+      // Main answers slowly: every key repeat arrives before the first reply.
+      const replies = [];
+      mockElectronAPI.updateDesktopPinBounds.mockImplementation(
+        (_entityId, sent) =>
+          new Promise((resolve) => {
+            replies.push(() => resolve({ success: true, pinBounds: { ...bounds, ...sent } }));
+          })
+      );
+
+      const press = (key) =>
+        handle.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+      press('ArrowRight');
+      press('ArrowRight');
+      press('ArrowRight');
+      await flushAsync();
+      // One request is out; the other two steps wait for it and go together.
+      expect(mockElectronAPI.updateDesktopPinBounds).toHaveBeenCalledTimes(1);
+      expect(mockElectronAPI.updateDesktopPinBounds.mock.calls[0][1].width).toBe(176);
+
+      replies.shift()();
+      await flushAsync();
+      expect(mockElectronAPI.updateDesktopPinBounds).toHaveBeenCalledTimes(2);
+      expect(mockElectronAPI.updateDesktopPinBounds).toHaveBeenLastCalledWith('light.bedroom', {
+        width: 192,
+        height: 148,
+        resize: { corner: 'bottom-right', final: true },
+      });
+
+      // Nothing waits any more, so the next press starts from the size Main confirmed.
+      replies.shift()();
+      await flushAsync();
+      press('ArrowDown');
+      await flushAsync();
+      expect(mockElectronAPI.updateDesktopPinBounds).toHaveBeenLastCalledWith('light.bedroom', {
+        width: 192,
+        height: 156,
+        resize: { corner: 'bottom-right', final: true },
+      });
+      replies.shift()();
+      await flushAsync();
+    });
+
+    it('starts again from the confirmed size after a step Main could not apply', async () => {
+      await loadRenderer({ bootstrapOverrides: { editMode: true, pinBounds: bounds } });
+      const handle = document.querySelector('[data-corner="bottom-right"]');
+      mockElectronAPI.updateDesktopPinBounds.mockImplementationOnce(() =>
+        Promise.reject(new Error('save failed'))
+      );
+      const press = (key) =>
+        handle.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+
+      press('ArrowRight');
+      await flushAsync();
+      // The failed request left the bounds as they were.
+      press('ArrowRight');
+      await flushAsync();
+      expect(mockElectronAPI.updateDesktopPinBounds).toHaveBeenLastCalledWith('light.bedroom', {
+        width: 176,
+        height: 148,
+        resize: { corner: 'bottom-right', final: true },
+      });
+    });
+
+    it('ignores the handles outside edit mode', async () => {
+      await loadRenderer({ bootstrapOverrides: { editMode: false, pinBounds: bounds } });
+      const handle = document.querySelector('[data-corner="bottom-right"]');
+      handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      handle.dispatchEvent(pointer('pointerdown', 500, 400));
+      window.dispatchEvent(pointer('pointermove', 540, 420));
+      await nextFrame();
+      expect(mockElectronAPI.updateDesktopPinBounds).not.toHaveBeenCalled();
+    });
   });
 });

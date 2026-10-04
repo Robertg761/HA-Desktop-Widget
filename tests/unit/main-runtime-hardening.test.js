@@ -20,7 +20,7 @@ describe('main-process wiring safeguards', () => {
       const repair = jest.fn(() => ({}));
       const repairLaunchers = jest.fn(() => []);
       const start = mainSource.indexOf('// An AppImage update writes a new versioned filename');
-      const end = mainSource.indexOf('installApplicationMenu(Menu);', start);
+      const end = mainSource.indexOf('installApplicationMenu(Menu, process.platform', start);
       expect(start).toBeGreaterThan(-1);
       expect(end).toBeGreaterThan(start);
       require('vm').runInNewContext(mainSource.slice(start, end), {
@@ -267,8 +267,9 @@ describe('main-process wiring safeguards', () => {
     const registerSource = mainSource.slice(registerStart, registerEnd);
     expect(registerEnd).toBeGreaterThan(registerStart);
     expect(registerSource).toContain('if (!hasLegacyGlobalShortcutFallback) {');
-    // Digit hotkeys (Alt+1) must map to the real uiohook key names, not the absent DigitN.
-    expect(mainSource).toContain("1: UiohookKey['1']");
+    // Popup hotkeys are parsed by the shared accelerator model, whose key names are checked
+    // against uiohook's own list in accelerators.test.js (Alt+1 is its '1', not an absent DigitN).
+    expect(mainSource).toContain("require('./src/accelerators.cjs')");
     expect(mainSource).not.toMatch(/UiohookKey\.Digit\d/);
 
     const activationStart = mainSource.indexOf('function handlePortalShortcutActivated');
@@ -278,6 +279,45 @@ describe('main-process wiring safeguards', () => {
     expect(
       activationSource.indexOf("if (!String(config?.popupHotkey || '').trim()) return;")
     ).toBeLessThan(activationSource.indexOf('linuxPopupHotkeyController.handleShortcut()'));
+  });
+
+  it('checks the macOS Accessibility permission quietly at launch and prompts only when a hotkey is set', () => {
+    // uiohook asks for the permission itself on every start, so a denied app met the system prompt
+    // at each launch and showed uiohook's raw English error as the reason.
+    const registerStart = mainSource.indexOf('function registerPopupHotkey()');
+    const registerEnd = mainSource.indexOf('function unregisterPopupHotkey()', registerStart);
+    const registerSource = mainSource.slice(registerStart, registerEnd);
+    expect(registerSource).toContain('isAccessibilityGranted({ systemPreferences })');
+    expect(registerSource).not.toContain('prompt: true');
+    expect(registerSource.indexOf('isAccessibilityGranted')).toBeLessThan(
+      registerSource.indexOf('uIOhook.start()')
+    );
+    expect(registerSource).toContain(
+      'Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again'
+    );
+
+    const handlerStart = mainSource.indexOf("'register-popup-hotkey'");
+    const handlerEnd = mainSource.indexOf("'unregister-popup-hotkey'", handlerStart);
+    const handlerSource = mainSource.slice(handlerStart, handlerEnd);
+    expect(handlerSource).toContain('isAccessibilityGranted({ systemPreferences, prompt: true })');
+    expect(handlerSource.indexOf('prompt: true')).toBeLessThan(
+      handlerSource.indexOf('registerPopupHotkey()')
+    );
+  });
+
+  it('reports a hotkey clash with the id of the entity that holds it', () => {
+    expect(mainSource).toContain('function hotkeyConflictResult(entityId)');
+    expect(mainSource).toContain('conflictEntityId: entityId');
+    const registerStart = mainSource.indexOf("'register-hotkey',");
+    const registerEnd = mainSource.indexOf("'unregister-hotkey'", registerStart);
+    expect(mainSource.slice(registerStart, registerEnd)).toContain(
+      'return hotkeyConflictResult(existingEntity[0])'
+    );
+    const popupStart = mainSource.indexOf("'register-popup-hotkey'");
+    const popupEnd = mainSource.indexOf("'unregister-popup-hotkey'", popupStart);
+    expect(mainSource.slice(popupStart, popupEnd)).toContain(
+      'return hotkeyConflictResult(conflictingEntity[0])'
+    );
   });
 
   it('persists a replacement popup hotkey only after successful registration', () => {
@@ -404,15 +444,20 @@ describe('main-process wiring safeguards', () => {
     expect(entityUpdateSource).toContain('if (!hasConfiguredDesktopPins())');
   });
 
-  it('requires a modifier for user-configured global accelerators', () => {
+  it('validates and compares user-configured global accelerators with the shared model', () => {
+    // The rules (a real modifier, one key, not a system shortcut, one spelling per chord) live in
+    // src/accelerators.cjs and are tested there; main must not keep a second copy.
     const validationStart = mainSource.indexOf('function validateHotkey');
-    const validationEnd = mainSource.indexOf(
-      'function findConfiguredEntityHotkey',
-      validationStart
-    );
+    const validationEnd = mainSource.indexOf('function acceleratorToUIOhookKey', validationStart);
     const validationSource = mainSource.slice(validationStart, validationEnd);
-    expect(validationSource).toContain('const hasModifier =');
-    expect(validationSource).toContain('if (!hasModifier || nonModifiers.length !== 1');
+    expect(validationSource).toContain('validateAccelerator(hotkey, process.platform)');
+    expect(validationSource).toContain('acceleratorsConflict(');
+    expect(validationSource).not.toContain('toLowerCase()');
+    const handlerStart = mainSource.indexOf("'register-hotkey',");
+    const handlerEnd = mainSource.indexOf("'unregister-hotkey'", handlerStart);
+    expect(mainSource.slice(handlerStart, handlerEnd)).toContain(
+      'acceleratorsConflict(config.popupHotkey, hotkey, process.platform)'
+    );
   });
 
   it('preserves persisted desktop pins during config normalization even when favorites are stale', () => {

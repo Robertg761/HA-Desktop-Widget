@@ -1,10 +1,16 @@
 const { platform: runtimePlatform } = require('node:process');
 
-function createApplicationMenuTemplate(platform = runtimePlatform) {
+// The menu bar is never drawn on the frameless widget, but its accelerators work: Ctrl+0 and Ctrl+/-
+// zoom the page (undoing the Text size setting), Ctrl+R reloads it, F11 takes it full screen and
+// Ctrl+Shift+I opens the DevTools, with no way in the interface to understand or undo any of them.
+// So a packaged build keeps the Edit menu (copy and paste have to work), the Window menu (its
+// Ctrl+W and Cmd+W close the window, which hides the widget like the title-bar X and Alt+F4) and,
+// on macOS, the app menu the system expects; the View menu is for development builds.
+function createApplicationMenuTemplate(platform = runtimePlatform, { isDev = false } = {}) {
   return [
     ...(platform === 'darwin' ? [{ role: 'appMenu' }] : []),
     { role: 'editMenu' },
-    { role: 'viewMenu' },
+    ...(isDev ? [{ role: 'viewMenu' }] : []),
     { role: 'windowMenu' },
   ];
 }
@@ -25,14 +31,40 @@ function createEditableContextMenuTemplate(editFlags = {}, t = (text) => text) {
   ];
 }
 
+// What a right-click on a misspelled word adds above the edit actions: the dictionary's
+// suggestions, then a way to teach it the word. Fields that hold addresses, ids and paths turn
+// spell checking off, so this shows up where prose is written.
+function createSpellingContextMenuItems(params = {}, webContents, t = (text) => text) {
+  const word = params.misspelledWord;
+  if (!word) return [];
+  const suggestions = (params.dictionarySuggestions || []).map((suggestion) => ({
+    label: suggestion,
+    click: () => webContents.replaceMisspelling(suggestion),
+  }));
+  return [
+    ...suggestions,
+    {
+      label: t('Add to dictionary'),
+      click: () => webContents.session?.addWordToSpellCheckerDictionary?.(word),
+    },
+    { type: 'separator' },
+  ];
+}
+
+// Selected text that is not in a field (an error message, an entity id, the version) can still be
+// copied.
+function createSelectionContextMenuTemplate(editFlags = {}, t = (text) => text) {
+  return [{ role: 'copy', label: t('Copy'), enabled: editFlags.canCopy !== false }];
+}
+
 function isPasteAcceleratorInput(input = {}, platform = runtimePlatform) {
   if (input.type !== 'keyDown' || String(input.key || '').toLowerCase() !== 'v') return false;
   if (input.alt || input.shift) return false;
   return platform === 'darwin' ? !!input.meta && !input.control : !!input.control && !input.meta;
 }
 
-function installApplicationMenu(Menu, platform = runtimePlatform) {
-  const menu = Menu.buildFromTemplate(createApplicationMenuTemplate(platform));
+function installApplicationMenu(Menu, platform = runtimePlatform, options = {}) {
+  const menu = Menu.buildFromTemplate(createApplicationMenuTemplate(platform, options));
   Menu.setApplicationMenu(menu);
   return menu;
 }
@@ -48,11 +80,16 @@ function attachEditHandlers(targetWindow, Menu, platform = runtimePlatform, opti
   });
 
   webContents.on('context-menu', (event, params = {}) => {
-    if (!params.isEditable) return;
+    const hasSelection = !!String(params.selectionText || '').trim();
+    if (!params.isEditable && !hasSelection) return;
     event?.preventDefault?.();
-    const menu = Menu.buildFromTemplate(
-      createEditableContextMenuTemplate(params.editFlags, options.translate)
-    );
+    const template = params.isEditable
+      ? [
+          ...createSpellingContextMenuItems(params, webContents, options.translate),
+          ...createEditableContextMenuTemplate(params.editFlags, options.translate),
+        ]
+      : createSelectionContextMenuTemplate(params.editFlags, options.translate);
+    const menu = Menu.buildFromTemplate(template);
     const resumeAutoHide = options.suspendAutoHide?.();
     try {
       menu.popup({
@@ -70,6 +107,8 @@ module.exports = {
   attachEditHandlers,
   createApplicationMenuTemplate,
   createEditableContextMenuTemplate,
+  createSelectionContextMenuTemplate,
+  createSpellingContextMenuItems,
   installApplicationMenu,
   isPasteAcceleratorInput,
 };

@@ -11,6 +11,34 @@
 
 const TOKEN = 'visual-snapshot-token';
 
+// The settings a scene may change and the runner puts back afterwards (see run.cjs). A scene that
+// changes any other setting leaves it changed for every scene after it.
+const RESETTABLE_SETTINGS = [
+  'frostedGlass',
+  'customTabs',
+  'activeTabId',
+  'entityAlerts',
+  'primaryCards',
+  'primaryMediaPlayer',
+  'globalHotkeys',
+  'comparisonGraphs',
+  'quickAccessTileOptions',
+];
+
+// Settings reopens on the page and scroll position it was closed on, so a scene that opens it
+// without choosing a page would photograph whichever page the scene before it ended on. The runner
+// evaluates this after every scene to put it back on its first page at the top. It has to run while
+// Settings is still open, because a closed dialog has no layout and ignores a scroll position set
+// on it. It goes through the tab button, which is what the app itself listens to, but only when
+// another page is showing: the click replays the page's entrance animation, and most scenes never
+// open Settings at all. The scroll is set either way, as the click is skipped on General.
+const RESET_SETTINGS_VIEW = `(() => {
+  const general = document.querySelector('#settings-modal .tab-link[data-tab="general"]');
+  if (general && !general.classList.contains('active')) general.click();
+  const body = document.querySelector('#settings-modal .modal-body');
+  if (body) body.scrollTop = 0;
+})()`;
+
 // Where the main window opens. The default (100, 100) puts a 660px window under the taskbar on a
 // 768px display; y=20 keeps all of it on screen. Pins are placed by the app, off to the side.
 const WINDOW_SIZE = { width: 500, height: 660 };
@@ -28,7 +56,42 @@ const HOME_ENTITIES = [
   'fan.bedroom',
   'climate.living_room',
 ];
+// The entities the pin scenes pin. Only Quick Access entities can be pinned, so they sit on a page
+// of their own; scenes that pin one of them bring this page set.
+const PIN_ENTITIES = [
+  'light.desk_lamp',
+  'light.shelf_leds',
+  'light.upstairs_hallway_ceiling',
+  'climate.living_room',
+  'climate.bedroom',
+  'fan.office',
+  'cover.garage_door',
+  'media_player.kitchen_speaker',
+  'media_player.bathroom_radio',
+  'media_player.hall_chime',
+  'sensor.office_temp',
+  'sensor.grid_power',
+  'binary_sensor.front_door',
+  'input_number.thermostat_offset',
+  'input_select.house_mode',
+  'weather.home',
+  'camera.driveway',
+  'scene.movie_time',
+  'script.goodnight',
+  'lock.back_door',
+  'switch.coffee_maker',
+  'timer.laundry',
+  'vacuum.robot',
+  'automation.morning_routine',
+  'person.alex',
+];
 const PAGE_SETS = {
+  // Every desktop pin family, for the scenes that pin one. A second page keeps the tab strip, which
+  // the runner waits for after it changes the pages.
+  pins: [
+    { id: 'pins', name: 'Pins', entityIds: PIN_ENTITIES },
+    { id: 'default', name: 'Home', entityIds: HOME_ENTITIES },
+  ],
   // What the app opens with.
   default: [
     { id: 'default', name: 'Home', entityIds: HOME_ENTITIES },
@@ -41,8 +104,25 @@ const PAGE_SETS = {
         'binary_sensor.front_door',
         'lock.back_door',
         'switch.coffee_maker',
+        'light.colour_strip',
       ],
     },
+  ],
+  // A comparison graph and a camera with a picture, the tiles that carry a label in the corner
+  // the edit buttons use. The graph and the camera's preview are set in the scene's config.
+  graph: [
+    {
+      id: 'default',
+      name: 'Home',
+      entityIds: ['graph:temps', 'camera.driveway', 'light.desk_lamp', 'sensor.office_temp'],
+    },
+    { id: 'bedroom', name: 'Bedroom', entityIds: ['light.shelf_leds', 'fan.bedroom'] },
+  ],
+  // Three pages: the point where the strip first has no room to spare beside the edit buttons.
+  three: [
+    { id: 'default', name: 'Home', entityIds: HOME_ENTITIES },
+    { id: 'bedroom', name: 'Bedroom', entityIds: ['light.shelf_leds', 'fan.bedroom'] },
+    { id: 'kitchen', name: 'Kitchen', entityIds: ['switch.coffee_maker', 'timer.laundry'] },
   ],
   // Enough pages that the tab strip overflows a 500px window. The last one holds the helpers.
   six: [
@@ -66,11 +146,197 @@ const PAGE_SETS = {
       ],
     },
   ],
+  // One tile for each dialog the other pages do not open: the helpers, a vacuum, a to-do list and a
+  // calendar, plus a favourite Home Assistant no longer has, which opens the repair picker.
+  dialogs: [
+    {
+      id: 'default',
+      name: 'Home',
+      entityIds: [
+        'input_select.house_mode',
+        'vacuum.robot',
+        'todo.shopping',
+        'calendar.family',
+        'light.old_kitchen',
+        'media_player.living_room',
+        'light.color_strip',
+        'fan.office',
+        'cover.garage',
+        'media_player.den_stereo',
+      ],
+    },
+    // The tab strip only exists with two pages, and the runner waits for it.
+    { id: 'spare', name: 'Spare', entityIds: ['light.desk_lamp'] },
+  ],
 };
 
-function buildStates(now = new Date()) {
+// Names and readings that strain a tile, a dialog title or a row: what Home Assistant's own
+// generated names, an unbroken German compound and a long-running film do to the layout. The edge
+// scenes show this page; the entities are listed here so the fixture test can see them.
+const EDGE_ENTITIES = [
+  'light.hallway_ceiling_long',
+  'sensor.energy_total',
+  'switch.compound_name',
+  'sensor.long_named_temperature',
+  'climate.heat_pump',
+  'cover.patio_awning_long',
+];
+PAGE_SETS.edge = [
+  { id: 'default', name: 'Home', entityIds: EDGE_ENTITIES },
+  { id: 'spare', name: 'Spare', entityIds: ['light.desk_lamp'] },
+];
+
+// What the security and dashboard-state scenes show: locks and alarm panels in each state they can
+// be in, a window, a low battery, a person (a tile that does nothing), and on a second page the
+// devices the dialogs open with something unusual about them.
+PAGE_SETS.security = [
+  {
+    id: 'default',
+    name: 'Security',
+    entityIds: [
+      'lock.back_door',
+      'lock.front_door',
+      'lock.shed',
+      'alarm_control_panel.home_alarm',
+      'alarm_control_panel.cabin',
+      'alarm_control_panel.upstairs',
+      'binary_sensor.bedroom_window',
+      'sensor.watch_battery',
+      'person.alex',
+    ],
+  },
+  {
+    id: 'more',
+    name: 'More',
+    entityIds: [
+      'light.desk_lamp',
+      'media_player.tv_on',
+      'media_player.bedroom_tv',
+      'cover.garage_simple',
+      'light.rgb_strip',
+      'climate.unavailable',
+    ],
+  },
+];
+
+// Readings and states that each language writes its own way: precision, units and their spacing,
+// device class words, dates and times, a duration, a paused timer and the next calendar events.
+const FORMAT_ENTITIES = [
+  'sensor.pool_temp',
+  'sensor.hall_humidity',
+  'sensor.energy_price',
+  'sensor.cold_room',
+  'sensor.energy_total',
+  'sensor.last_boot',
+  'sensor.next_dawn',
+  'sensor.uptime',
+  'binary_sensor.router',
+  'binary_sensor.hall_battery',
+  'binary_sensor.front_door',
+  'input_number.thermostat_offset',
+  'climate.guest_room',
+  'select.heating_mode',
+  'timer.tea',
+  'calendar.family',
+  'calendar.bins',
+];
+PAGE_SETS.formats = [
+  { id: 'default', name: 'Home', entityIds: FORMAT_ENTITIES },
+  { id: 'spare', name: 'Spare', entityIds: ['light.desk_lamp'] },
+];
+
+// Twelve pages with German names, two of them long enough to be cut short on the strip.
+const GERMAN_PAGE_NAMES = [
+  'Wohnzimmer',
+  'Schlafzimmer',
+  'Küche',
+  'Arbeitszimmer',
+  'Badezimmer',
+  'Kinderzimmer Obergeschoss',
+  'Gästezimmer',
+  'Heizungskeller',
+  'Terrasse',
+  'Waschküche',
+  'Garage',
+  'Donaudampfschifffahrtsgesellschaft',
+];
+PAGE_SETS.twelve = GERMAN_PAGE_NAMES.map((name, index) => ({
+  id: index === 0 ? 'default' : `page-${index + 1}`,
+  name,
+  entityIds: index === 0 ? HOME_ENTITIES : ['light.shelf_leds', 'switch.coffee_maker'],
+}));
+
+// The sensors that have recorded history, and how each one wanders around its base over a day.
+const GRAPH_SENSORS = [
+  { entityId: 'sensor.graph_living_temp', name: 'Living room temperature', base: 21, swing: 1.6 },
+  { entityId: 'sensor.graph_bedroom_temp', name: 'Bedroom temperature', base: 18.5, swing: 2.4 },
+  { entityId: 'sensor.graph_kitchen_temp', name: 'Kitchen temperature', base: 23, swing: 1.1 },
+];
+
+/**
+ * A half-hourly reading for each of GRAPH_SENSORS over the day before `now`, in Home Assistant's
+ * minimal history rows. Entities that record nothing return no rows, so the other tiles' charts
+ * stay as they were.
+ */
+function buildHistories(now = new Date()) {
+  return (entityId) => {
+    const sensor = GRAPH_SENSORS.find((candidate) => candidate.entityId === entityId);
+    if (!sensor) return [];
+    const rows = [];
+    for (let step = 48; step >= 0; step -= 1) {
+      const at = now.getTime() - step * 30 * 60000;
+      const phase = (step / 48) * Math.PI * 2 + sensor.base;
+      rows.push({
+        s: (sensor.base + Math.sin(phase) * sensor.swing).toFixed(1),
+        lu: at / 1000,
+      });
+    }
+    return rows;
+  };
+}
+
+/**
+ * What a subscription starts with: the persistent notifications Home Assistant already holds, as
+ * `persistent_notification/subscribe` sends them, with the Markdown integrations write.
+ */
+function buildSubscriptionEvents(now = new Date()) {
+  const ago = (minutes) => new Date(now.getTime() - minutes * 60000).toISOString();
+  return (message) =>
+    message.type === 'persistent_notification/subscribe'
+      ? [
+          {
+            type: 'current',
+            notifications: {
+              repairs: {
+                notification_id: 'repairs',
+                title: 'Repairs',
+                message:
+                  '**2 issues need attention.** Open [Repairs](/config/repairs) to fix them:\n\n- The `backup` integration has no recent backup\n- Update available for *Zigbee2MQTT*\n\nSee https://www.home-assistant.io/docs for help.',
+                created_at: ago(12),
+              },
+              discovered: {
+                notification_id: 'discovered',
+                title: 'New devices found',
+                message:
+                  'Discovered a **Hue bridge**. Set it up in [Integrations](/config/integrations).',
+                created_at: ago(190),
+              },
+            },
+          },
+        ]
+      : [];
+}
+
+// YYYY-MM-DD in this computer's time zone, the way Home Assistant writes an all-day start.
+function localDate(date) {
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+// Builds the state objects Home Assistant sends, all stamped with the moment given.
+function stateBuilder(now) {
   const stamp = now.toISOString();
-  const entity = (entityId, state, attributes = {}) => ({
+  return (entityId, state, attributes = {}) => ({
     entity_id: entityId,
     state,
     attributes,
@@ -78,6 +344,11 @@ function buildStates(now = new Date()) {
     last_updated: stamp,
     context: { id: entityId, parent_id: null, user_id: null },
   });
+}
+
+function buildStates(now = new Date()) {
+  const stamp = now.toISOString();
+  const entity = stateBuilder(now);
   const states = [
     entity('weather.home', 'cloudy', {
       friendly_name: 'Home',
@@ -97,7 +368,20 @@ function buildStates(now = new Date()) {
       friendly_name: 'Shelf LEDs',
       supported_color_modes: ['brightness'],
     }),
+    // The one light with colour controls: a colour temperature slider and colour swatches.
+    entity('light.colour_strip', 'on', {
+      friendly_name: 'Colour strip',
+      brightness: 153,
+      supported_color_modes: ['color_temp', 'hs'],
+      color_mode: 'color_temp',
+      color_temp_kelvin: 3200,
+      min_color_temp_kelvin: 2000,
+      max_color_temp_kelvin: 6500,
+    }),
     entity('switch.coffee_maker', 'off', { friendly_name: 'Coffee maker' }),
+    // On no page. The mock server refuses every service call for it, so a scene that runs its
+    // command from the command palette gets the "could not run command" error toast.
+    entity('light.unreachable', 'on', { friendly_name: 'Unreachable lamp' }),
     entity('sensor.office_temp', '21.4', {
       friendly_name: 'Office temp',
       unit_of_measurement: '°C',
@@ -170,6 +454,63 @@ function buildStates(now = new Date()) {
       mode: 'slider',
       unit_of_measurement: '°C',
     }),
+    // An RGB light that also dims its white, a fan with speeds and presets, and a garage door
+    // with a position: the pop-ups with a slider and a row of chips.
+    entity('light.color_strip', 'on', {
+      friendly_name: 'Colour strip',
+      brightness: 180,
+      supported_color_modes: ['color_temp', 'rgb'],
+      color_mode: 'color_temp',
+      color_temp_kelvin: 3200,
+      min_color_temp_kelvin: 2000,
+      max_color_temp_kelvin: 6500,
+      rgb_color: [255, 180, 100],
+    }),
+    entity('fan.office', 'on', {
+      friendly_name: 'Office fan',
+      percentage: 66,
+      percentage_step: 33.3,
+      preset_modes: ['auto', 'sleep'],
+      preset_mode: null,
+      supported_features: 9,
+    }),
+    // A player that can seek, skip tracks and mute: every button of the media pop-up.
+    entity('media_player.den_stereo', 'playing', {
+      friendly_name: 'Den stereo',
+      media_title: 'Kind of Blue',
+      media_artist: 'Miles Davis',
+      volume_level: 0.4,
+      is_volume_muted: false,
+      media_duration: 540,
+      media_position: 120,
+      media_position_updated_at: stamp,
+      supported_features: 152511,
+    }),
+    entity('cover.garage', 'open', {
+      friendly_name: 'Garage door',
+      current_position: 70,
+      device_class: 'garage',
+      supported_features: 15,
+    }),
+    entity('input_select.house_mode', 'Home', {
+      friendly_name: 'House mode',
+      options: ['Home', 'Away', 'Night', 'Guests'],
+    }),
+    // Start, pause, stop and return to base (HA's VacuumEntityFeature bits 8192, 4, 8 and 16).
+    entity('vacuum.robot', 'docked', {
+      friendly_name: 'Robot vacuum',
+      supported_features: 8220,
+    }),
+    // Create and update items (TodoListEntityFeature bits 1 and 4).
+    entity('todo.shopping', '3', { friendly_name: 'Shopping list', supported_features: 5 }),
+    // On no page: a list long enough to scroll in a dialog, for the scene that holds the add field.
+    entity('todo.errands', '10', { friendly_name: 'Errands', supported_features: 5 }),
+    entity('calendar.family', 'off', {
+      friendly_name: 'Family calendar',
+      message: 'Dentist',
+      start_time: new Date(now.getTime() + 26 * 3600000).toISOString(),
+      all_day: false,
+    }),
     entity('alarm_control_panel.home_alarm', 'armed_home', {
       friendly_name: 'Home alarm',
       code_format: 'number',
@@ -178,6 +519,256 @@ function buildStates(now = new Date()) {
       supported_features: 63,
     }),
   ];
+  // One of each desktop pin family the Home page does not already have, plus the long names and
+  // labels that strain a 168x148 pin. They are not on any page; the pin scenes pin them directly.
+  states.push(
+    entity('light.upstairs_hallway_ceiling', 'on', {
+      friendly_name: 'Upstairs hallway ceiling light',
+      brightness: 153,
+      supported_color_modes: ['brightness'],
+      color_mode: 'brightness',
+    }),
+    entity('climate.bedroom', 'cool', {
+      friendly_name: 'Bedroom',
+      current_temperature: 23.5,
+      temperature: 21,
+      hvac_modes: ['off', 'heat', 'cool', 'auto'],
+      min_temp: 7,
+      max_temp: 30,
+      supported_features: 1,
+    }),
+    entity('fan.office', 'on', {
+      friendly_name: 'Office fan',
+      percentage: 66,
+      supported_features: 1,
+    }),
+    entity('cover.garage_door', 'open', {
+      friendly_name: 'Garage door',
+      current_position: 40,
+      supported_features: 15,
+    }),
+    // Play and pause only (no previous or next), and a player that only plays.
+    entity('media_player.bathroom_radio', 'paused', {
+      friendly_name: 'Bathroom radio',
+      media_title: 'Morning news',
+      supported_features: 16385,
+    }),
+    // A title far longer than any tile, and no artist under it.
+    entity('media_player.audiobook', 'playing', {
+      friendly_name: 'Audiobook',
+      media_title:
+        'The Complete and Unabridged Chronicles of a Very Long Winded Journey, Part Twelve: The Return Home',
+      volume_level: 0.5,
+      media_duration: 3600,
+      media_position: 900,
+      media_position_updated_at: stamp,
+      supported_features: 152463,
+    }),
+    entity('media_player.hall_chime', 'idle', {
+      friendly_name: 'Hall chime',
+      supported_features: 16384,
+    }),
+    entity('sensor.grid_power', '1234.5678901', {
+      friendly_name: 'Grid power',
+      unit_of_measurement: 'W',
+      device_class: 'power',
+      state_class: 'measurement',
+    }),
+    entity('input_select.house_mode', 'Away', {
+      friendly_name: 'House mode',
+      options: ['Home', 'Away', 'Guests', 'Vacation'],
+    }),
+    entity('vacuum.robot', 'docked', { friendly_name: 'Robot vacuum', supported_features: 12316 }),
+    entity('script.goodnight', 'off', { friendly_name: 'Goodnight' }),
+    entity('automation.morning_routine', 'on', { friendly_name: 'Morning routine' }),
+    entity('person.alex', 'home', { friendly_name: 'Alex' })
+  );
+  // Security states and the devices with something unusual about them (see PAGE_SETS.security):
+  // an unlocked and a jammed lock, an alarm that went off and one that is disarmed, an open
+  // window, a low battery, a TV Home Assistant reports as 'on', a garage door with no position, an
+  // RGB light with no colour temperature, and a thermostat that dropped out.
+  states.push(
+    entity('lock.front_door', 'unlocked', { friendly_name: 'Front door lock' }),
+    entity('lock.shed', 'jammed', { friendly_name: 'Shed lock' }),
+    entity('alarm_control_panel.cabin', 'triggered', {
+      friendly_name: 'Cabin alarm',
+      code_format: 'number',
+      supported_features: 63,
+    }),
+    entity('alarm_control_panel.upstairs', 'disarmed', {
+      friendly_name: 'Upstairs alarm',
+      code_format: 'number',
+      supported_features: 63,
+    }),
+    entity('binary_sensor.bedroom_window', 'on', {
+      friendly_name: 'Bedroom window',
+      device_class: 'window',
+    }),
+    entity('sensor.watch_battery', '12', {
+      friendly_name: 'Watch battery',
+      unit_of_measurement: '%',
+      device_class: 'battery',
+      state_class: 'measurement',
+    }),
+    entity('media_player.tv_on', 'on', {
+      friendly_name: 'Living room TV',
+      device_class: 'tv',
+      supported_features: 152463,
+    }),
+    entity('cover.garage_simple', 'open', {
+      friendly_name: 'Side garage door',
+      device_class: 'garage',
+      supported_features: 11,
+    }),
+    entity('light.rgb_strip', 'on', {
+      friendly_name: 'RGB strip',
+      brightness: 128,
+      supported_color_modes: ['color_temp', 'rgb'],
+      color_mode: 'rgb',
+      rgb_color: [255, 120, 40],
+      min_color_temp_kelvin: 2000,
+      max_color_temp_kelvin: 6500,
+    }),
+    entity('climate.unavailable', 'unavailable', { friendly_name: 'Hall thermostat' })
+  );
+  // Three temperature sensors with a day of history, for the comparison graph's tooltip (the
+  // office sensor has none, as most do not).
+  GRAPH_SENSORS.forEach((sensor) => {
+    states.push(
+      entity(sensor.entityId, String(sensor.base), {
+        friendly_name: sensor.name,
+        unit_of_measurement: '°C',
+        device_class: 'temperature',
+        state_class: 'measurement',
+      })
+    );
+  });
+  // The edge-case page: a 95-character light, a seven-figure energy reading, a name that is one
+  // unbroken word, a 90-character sensor, a heat/cool thermostat with half-degree bounds, and a
+  // cover with an entity-id style name; plus a film that runs past an hour for the media card.
+  states.push(
+    entity('light.hallway_ceiling_long', 'on', {
+      friendly_name:
+        'Upstairs hallway ceiling light above the stairs next to the master bedroom door (dimmable, warm)',
+      brightness: 153,
+      supported_color_modes: ['brightness'],
+      color_mode: 'brightness',
+    }),
+    // The readings of the formats page: a Fahrenheit sensor, a humidity with two decimals, a price,
+    // a value just below zero, two timestamps, a duration, and the device class words.
+    entity('sensor.pool_temp', '71.456', {
+      friendly_name: 'Pool temp',
+      unit_of_measurement: '°F',
+      device_class: 'temperature',
+      state_class: 'measurement',
+    }),
+    entity('sensor.hall_humidity', '55.55', {
+      friendly_name: 'Hall humidity',
+      unit_of_measurement: '%',
+      device_class: 'humidity',
+      state_class: 'measurement',
+    }),
+    entity('sensor.energy_price', '0.0873', {
+      friendly_name: 'Energy price',
+      unit_of_measurement: 'EUR/kWh',
+      device_class: 'monetary',
+    }),
+    entity('sensor.cold_room', '-0.04', {
+      friendly_name: 'Cold room',
+      unit_of_measurement: '°C',
+      device_class: 'temperature',
+      state_class: 'measurement',
+    }),
+    entity('sensor.last_boot', new Date(now.getTime() - 3 * 3600000).toISOString(), {
+      friendly_name: 'Last boot',
+      device_class: 'timestamp',
+    }),
+    entity('sensor.next_dawn', new Date(now.getTime() + 5 * 3600000).toISOString(), {
+      friendly_name: 'Next dawn',
+      device_class: 'timestamp',
+    }),
+    entity('sensor.uptime', '4500', {
+      friendly_name: 'Uptime',
+      unit_of_measurement: 's',
+      device_class: 'duration',
+      state_class: 'total_increasing',
+    }),
+    entity('binary_sensor.router', 'off', {
+      friendly_name: 'Router',
+      device_class: 'connectivity',
+    }),
+    entity('binary_sensor.hall_battery', 'on', {
+      friendly_name: 'Hall battery',
+      device_class: 'battery',
+    }),
+    entity('climate.guest_room', 'heat', {
+      friendly_name: 'Guest room',
+      current_temperature: 70.5,
+      temperature: 72,
+      temperature_unit: '°F',
+      hvac_modes: ['off', 'heat'],
+      min_temp: 45,
+      max_temp: 90,
+      supported_features: 1,
+    }),
+    entity('select.heating_mode', 'heat', {
+      friendly_name: 'Heating mode',
+      options: ['heat', 'cool', 'auto'],
+    }),
+    entity('timer.tea', 'paused', {
+      friendly_name: 'Tea',
+      duration: '0:05:00',
+      remaining: '0:04:12',
+    }),
+    entity('calendar.bins', 'off', {
+      friendly_name: 'Bins',
+      message: 'Bins',
+      start_time: `${localDate(new Date(now.getTime() + 24 * 3600000))} 00:00:00`,
+      all_day: true,
+    }),
+    entity('sensor.energy_total', '1234567890.12', {
+      friendly_name: 'Energy total',
+      unit_of_measurement: 'Wh',
+      device_class: 'energy',
+      state_class: 'total_increasing',
+    }),
+    entity('switch.compound_name', 'off', {
+      friendly_name: 'Wohnzimmerdeckenbeleuchtungsschalterhinterdemgroßenfensterlinks',
+    }),
+    entity('sensor.long_named_temperature', '123456.79', {
+      friendly_name:
+        'Living room north wall temperature sensor behind the bookshelf next to the window frame',
+      unit_of_measurement: 'W',
+      device_class: 'power',
+      state_class: 'measurement',
+    }),
+    entity('climate.heat_pump', 'heat_cool', {
+      friendly_name: 'Heat pump',
+      current_temperature: 21.5,
+      target_temp_low: 19.5,
+      target_temp_high: 24.5,
+      target_temp_step: 0.5,
+      hvac_modes: ['off', 'heat', 'cool', 'heat_cool', 'fan_only'],
+      min_temp: 7,
+      max_temp: 30,
+      supported_features: 2,
+    }),
+    entity('cover.patio_awning_long', 'open', {
+      friendly_name: 'sensor_living_room_north_wall_temperature_sensor_behind_bookshelf',
+      current_position: 70,
+      supported_features: 15,
+    }),
+    entity('media_player.theater', 'playing', {
+      friendly_name: 'Theater',
+      media_title: 'The Long Goodbye',
+      media_artist: "Director's cut",
+      volume_level: 0.5,
+      media_duration: 6750,
+      media_position: 4350,
+      media_position_updated_at: stamp,
+      supported_features: 152463,
+    })
+  );
   // Enough other entities that the Manage Quick Access list runs past its 50-row page.
   for (let index = 1; index <= 40; index += 1) {
     const number = String(index).padStart(2, '0');
@@ -193,6 +784,23 @@ function buildStates(now = new Date()) {
   return states;
 }
 
+// A home with more lights than the Hotkeys list shows on one page. Not in the fixture itself:
+// the other lists that name every entity (the alert picker, the palette) would fill up with them
+// in every scene, so the one scene that pages the Hotkeys list brings them and the runner takes
+// them away again.
+const LANDING_LIGHT_COUNT = 60;
+function buildLandingLights(now = new Date()) {
+  const entity = stateBuilder(now);
+  return Array.from({ length: LANDING_LIGHT_COUNT }, (_, index) => {
+    const number = String(index + 1).padStart(2, '0');
+    return entity(`light.landing_${number}`, index % 2 ? 'off' : 'on', {
+      friendly_name: `Landing light ${number}`,
+      supported_color_modes: ['onoff'],
+      color_mode: index % 2 ? null : 'onoff',
+    });
+  });
+}
+
 /** The services the fixture's domains offer, as get_services reports them. */
 function buildServices() {
   const domain = (...names) =>
@@ -200,10 +808,19 @@ function buildServices() {
   return {
     light: domain('turn_on', 'turn_off', 'toggle'),
     switch: domain('turn_on', 'turn_off', 'toggle'),
-    fan: domain('turn_on', 'turn_off', 'toggle', 'set_percentage'),
+    fan: domain('turn_on', 'turn_off', 'toggle', 'set_percentage', 'set_preset_mode'),
     lock: domain('lock', 'unlock', 'open'),
     climate: domain('set_temperature', 'set_hvac_mode', 'turn_on', 'turn_off'),
-    media_player: domain('media_play', 'media_pause', 'media_play_pause', 'volume_set'),
+    media_player: domain(
+      'media_play',
+      'media_pause',
+      'media_play_pause',
+      'media_previous_track',
+      'media_next_track',
+      'media_seek',
+      'volume_set',
+      'volume_mute'
+    ),
     alarm_control_panel: domain(
       'alarm_disarm',
       'alarm_arm_home',
@@ -213,8 +830,67 @@ function buildServices() {
       'alarm_arm_vacation'
     ),
     input_number: domain('set_value', 'increment', 'decrement'),
+    cover: domain('open_cover', 'close_cover', 'stop_cover', 'set_cover_position'),
+    input_select: domain('select_option'),
+    vacuum: domain('start', 'pause', 'stop', 'return_to_base'),
+    todo: domain('add_item', 'update_item', 'get_items'),
+    calendar: domain('get_events'),
     scene: domain('turn_on'),
     timer: domain('start', 'pause', 'cancel', 'finish'),
+  };
+}
+
+/**
+ * What the services that return data answer, keyed `domain.service`: the shopping list's items
+ * and the family calendar's events for the next week.
+ */
+function buildServiceResponses(now = new Date()) {
+  const at = (hours) => new Date(now.getTime() + hours * 3600000).toISOString();
+  const shopping = [
+    { uid: 'milk', summary: 'Oat milk', status: 'needs_action' },
+    { uid: 'bread', summary: 'Sourdough bread', status: 'needs_action' },
+    { uid: 'coffee', summary: 'Coffee beans', status: 'needs_action' },
+    { uid: 'soap', summary: 'Dish soap', status: 'completed' },
+  ];
+  const errands = [
+    'Post the parcel',
+    'Collect the dry cleaning',
+    'Book the car in for a service',
+    'Return the library books',
+    'Pick up the prescription',
+    'Renew the parking permit',
+    'Buy a birthday card',
+    'Drop the bottles at the recycling point',
+    'Order the replacement filter',
+    'Water the plants next door',
+  ].map((summary, index) => ({
+    uid: `errand-${index}`,
+    summary,
+    status: index === 3 ? 'completed' : 'needs_action',
+  }));
+  return {
+    'todo.get_items': (message) => {
+      const entityId = message.service_data?.entity_id || 'todo.shopping';
+      return {
+        [entityId]: {
+          items: entityId === 'todo.errands' ? errands : shopping,
+        },
+      };
+    },
+    'calendar.get_events': (message) => ({
+      [message.service_data?.entity_id || 'calendar.family']: {
+        events: [
+          {
+            summary: 'Dentist',
+            start: at(26),
+            end: at(27),
+            location: 'Riverside Dental, 12 Mill Lane',
+            description: 'Bring the new forms.',
+          },
+          { summary: 'Parents evening', start: at(74), end: at(76) },
+        ],
+      },
+    }),
   };
 }
 
@@ -231,6 +907,8 @@ function buildConfig(haUrl) {
     selectedWeatherEntity: 'weather.home',
     customTabs: PAGE_SETS.default,
     activeTabId: 'default',
+    comparisonGraphs: [],
+    quickAccessTileOptions: {},
     omarchyThemeDefaultApplied: true,
     globalHotkeys: { enabled: false, hotkeys: {} },
     entityAlerts: { enabled: false, alerts: {} },
@@ -241,7 +919,17 @@ function buildConfig(haUrl) {
       background: 'original',
       language: 'en',
       density: 'comfortable',
+      // Reset by every scene: the runner merges a scene's settings over the app's, so a scene that
+      // enlarges the interface would otherwise leave it enlarged for the ones after it.
+      scale: 1,
+      // The Readable preset is the same: its scenes come before the pins, the layout scenes and
+      // the first-run wizard, which all rendered in it until each scene put these back.
+      highContrast: false,
+      opaquePanels: false,
+      dateFormat: 'system',
       activeTileGlow: true,
+      // Saved custom colours, which the scenes that show one bring and take away again.
+      customColors: [],
       // On by default, taking the theme from an installed Omarchy (so a developer's machine
       // would not show the light theme); omarchyThemeDefaultApplied below makes the app keep it off.
       followOmarchy: false,
@@ -251,12 +939,22 @@ function buildConfig(haUrl) {
   };
 }
 
+// Entities whose service calls the mock Home Assistant answers with an error.
+const FAILING_ENTITIES = ['light.unreachable'];
+
 module.exports = {
+  FAILING_ENTITIES,
   PAGE_SETS,
+  RESET_SETTINGS_VIEW,
+  RESETTABLE_SETTINGS,
   TOKEN,
   WINDOW_POSITION,
   WINDOW_SIZE,
   buildConfig,
+  buildHistories,
+  buildLandingLights,
+  buildServiceResponses,
   buildServices,
   buildStates,
+  buildSubscriptionEvents,
 };

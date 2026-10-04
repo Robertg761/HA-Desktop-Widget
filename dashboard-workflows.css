@@ -2,7 +2,6 @@
 .dashboard-tools-modal .modal-content,
 .add-page-modal .modal-content {
   width: min(480px, calc(100vw - 24px));
-  max-height: calc(100dvh - 24px);
 }
 
 .dashboard-tools-modal .modal-body,
@@ -164,7 +163,7 @@
   grid-row: 1 / 3;
   align-self: center;
   display: flex;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .diagnostics-status {
@@ -257,6 +256,11 @@
   line-height: 1.5;
 }
 
+/* Two fields side by side line up at the bottom when one label wraps to a second line. */
+.alert-advanced-options > label {
+  grid-template-rows: 1fr auto;
+}
+
 .alert-advanced-options label:has(#alert-condition),
 .alert-advanced-options label:has(#alert-threshold),
 .alert-advanced-options > .form-group,
@@ -276,6 +280,38 @@
 /* The toggle switch from styles.css carries a trailing margin meant for leading checkboxes. */
 .alert-advanced-options .workflow-checkbox input[type='checkbox'] {
   margin: 0;
+}
+
+/* A switch with a line of help under its label (Notify when unavailable or unknown). It sits in a
+   row like the quiet hours switch and shares its divider. */
+.alert-advanced-options .alert-switch-row {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.alert-advanced-options .alert-switch-row[hidden] {
+  display: none;
+}
+
+.alert-advanced-options .alert-switch-text {
+  min-width: 0;
+}
+
+.alert-advanced-options .alert-switch-text > label {
+  display: block;
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+}
+
+.alert-advanced-options .alert-switch-text > .form-help {
+  margin-top: 2px;
+  line-height: 1.4;
 }
 
 /* The target state field comes from the older alert markup; match the fields around it. */
@@ -301,30 +337,21 @@
   display: none;
 }
 
-.alert-advanced-options label:has(input:disabled) {
+.alert-advanced-options label:has(input:disabled),
+.alert-advanced-options label:has(select:disabled) {
   opacity: 0.55;
 }
 
-body:not(.theme-light) .alert-advanced-options input[type='time'] {
-  color-scheme: dark;
-}
-
+/* The fields take the shared field recipe from styles.css; a grid or flex cell only has to let
+   them shrink. */
 .sensor-history-controls select,
 .alert-advanced-options .form-control {
-  box-sizing: border-box;
-  width: 100%;
   min-width: 0;
-  min-height: 40px;
-  padding: 9px 12px;
-  color: var(--text-primary);
-  background: var(--glass-surface);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  font: inherit;
 }
 
+/* Level with the 36px fields beside it. */
 .sensor-history-controls .btn {
-  min-height: 40px;
+  min-height: 36px;
 }
 
 .dashboard-tools-modal :focus-visible,
@@ -355,10 +382,14 @@ body:not(.theme-light) .alert-advanced-options input[type='time'] {
   min-height: 32px;
 }
 
-/* Primary action on the right, matching the other dialogs, without reordering the markup. */
-.add-page-modal .modal-footer {
-  flex-direction: row-reverse;
-  justify-content: flex-start;
+/* A page name left empty is said so, in red, under the field. */
+.add-page-modal .add-page-name-error {
+  margin: var(--space-2) 0 0;
+  color: var(--error-text);
+}
+
+.add-page-modal .form-control[aria-invalid='true'] {
+  border-color: var(--error);
 }
 
 .room-dashboard-preview {
@@ -395,23 +426,6 @@ body:not(.theme-light) .alert-advanced-options input[type='time'] {
   display: none;
 }
 
-/* Keep actions reachable even in short windows with large device collections. */
-.add-page-modal .modal-content {
-  display: flex;
-  flex-direction: column;
-}
-
-.add-page-modal .modal-body {
-  flex: 1 1 auto;
-  max-height: none;
-  overflow-y: auto;
-}
-
-.add-page-modal .modal-header,
-.add-page-modal .modal-footer {
-  flex: 0 0 auto;
-}
-
 .entity-selector-pagination {
   display: flex;
   align-items: center;
@@ -429,16 +443,36 @@ body:not(.theme-light) .alert-advanced-options input[type='time'] {
   cursor: default;
 }
 
-.helper-controls-modal form,
-.alarm-code-modal form,
-.helper-controls-modal label,
-.alarm-code-modal label {
-  display: grid;
-  gap: 12px;
+.entity-selector-pagination-status {
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+  text-align: center;
 }
 
-.helper-controls-modal form > div {
+/* The helper and alarm-code dialogs: the field, then the actions, the main one at the end as in
+   the other dialogs' footers. */
+.helper-controls-modal form,
+.alarm-code-modal form {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.helper-controls-modal .form-group,
+.alarm-code-modal .form-group {
+  margin: 0;
+}
+
+.entity-detail-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+/* The helper's current value leads the dialog, above its field. */
+.helper-controls-readout {
+  margin-bottom: var(--space-3);
+  color: var(--text-primary);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
 }

@@ -272,6 +272,37 @@ describe('SeasonalEffectsManager', () => {
     expect(methods.lastIndexOf('clip')).toBeLessThan(methods.lastIndexOf('drawImage'));
   });
 
+  test('frosts the scene under the state panel too, where error copy is read', () => {
+    const panel = document.createElement('div');
+    panel.className = 'widget-state-panel';
+    panel.style.borderTopLeftRadius = '14px';
+    panel.getBoundingClientRect = () => ({
+      left: 14,
+      top: 300,
+      width: 400,
+      height: 120,
+      right: 414,
+      bottom: 420,
+    });
+    document.body.appendChild(panel);
+    const frost = createContext();
+    const createElement = document.createElement.bind(document);
+    jest
+      .spyOn(document, 'createElement')
+      .mockImplementation((tag) =>
+        tag === 'canvas'
+          ? { width: 0, height: 0, getContext: () => frost.context }
+          : createElement(tag)
+      );
+
+    manager.apply({ seasonal: picked('halloween') });
+    drawing.calls.length = 0;
+    manager.loop(1000);
+
+    const outlines = drawing.calls.filter(([method]) => method === 'roundRect');
+    expect(outlines.map((call) => call.slice(1))).toContainEqual([14, 300, 400, 120, 14]);
+  });
+
   test('finds a lane between tiles for fliers, and falls back when there is none', () => {
     addTile(0, 100);
     // Down past the bottom of the window, so the only gap runs from 100 to 140.

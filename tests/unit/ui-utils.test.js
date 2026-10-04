@@ -27,6 +27,7 @@ Object.defineProperty(window, 'matchMedia', {
 
 // Now load the module
 const uiUtils = require('../../src/ui-utils.js');
+const { SEASONAL_HOLIDAYS } = require('../../src/seasonal-calendar.js');
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -103,7 +104,10 @@ describe('UI Utilities', () => {
       document.body.appendChild(modal);
       const footer = modal.querySelector('.modal-footer');
       footer.getClientRects = () => [{}];
-      footer.getBoundingClientRect = () => ({ top: window.innerHeight - 60 });
+      footer.getBoundingClientRect = () => ({
+        top: window.innerHeight - 60,
+        bottom: window.innerHeight - 16,
+      });
 
       uiUtils.showToast('Failed to control Bed Light', 'error', 2000);
       expect(toastContainer.style.bottom).toBe('68px');
@@ -195,14 +199,14 @@ describe('UI Utilities', () => {
       expect(icon.classList.contains('toast-icon')).toBe(true);
       expect(icon.getAttribute('aria-hidden')).toBe('true');
       expect(icon.querySelector('svg')).toBeTruthy();
-      expect(icon.querySelector('svg').getAttribute('aria-label')).toBe('Success');
+      expect(icon.querySelector('svg').dataset.icon).toBe('circle-check');
     });
 
     it('should use the error icon for error toasts', () => {
       uiUtils.showToast('Broken', 'error', 2000);
 
       const icon = toastContainer.querySelector('.toast .toast-icon svg');
-      expect(icon.getAttribute('aria-label')).toBe('Error');
+      expect(icon.dataset.icon).toBe('circle-x');
     });
 
     it('should dismiss a toast when it is clicked', () => {
@@ -424,6 +428,108 @@ describe('UI Utilities', () => {
       uiUtils.applyUiPreferences({ highContrast: false });
 
       expect(document.body.classList.contains('high-contrast')).toBe(false);
+    });
+
+    describe('with the Readable preset', () => {
+      const themeClasses = () => [
+        document.body.classList.contains('theme-light'),
+        document.body.classList.contains('theme-dark'),
+      ];
+
+      afterEach(() => {
+        uiUtils.applyUiPreferences({});
+      });
+
+      it('paints the dark theme over a light one and gives the light theme back', () => {
+        uiUtils.applyTheme('light');
+        expect(themeClasses()).toEqual([true, false]);
+
+        uiUtils.applyUiPreferences({ highContrast: true });
+        expect(themeClasses()).toEqual([false, true]);
+
+        uiUtils.applyUiPreferences({ highContrast: false });
+        expect(themeClasses()).toEqual([true, false]);
+      });
+
+      it('keeps the preset dark when a theme is applied while it is on', () => {
+        uiUtils.applyUiPreferences({ highContrast: true });
+        uiUtils.applyTheme('light');
+        expect(themeClasses()).toEqual([false, true]);
+
+        uiUtils.applyUiPreferences({});
+        expect(themeClasses()).toEqual([true, false]);
+      });
+
+      it('leaves a dark theme alone', () => {
+        uiUtils.applyTheme('dark');
+        uiUtils.applyUiPreferences({ highContrast: true });
+        expect(themeClasses()).toEqual([false, true]);
+        uiUtils.applyUiPreferences({});
+        expect(themeClasses()).toEqual([false, true]);
+      });
+
+      it('works the accent tints out for the theme the preset paints', () => {
+        const accentBg = () => document.documentElement.style.getPropertyValue('--accent-bg');
+        uiUtils.applyTheme('light');
+        uiUtils.applyAccentTheme('original');
+        const lightTint = accentBg();
+        expect(lightTint).not.toBe('');
+
+        uiUtils.applyUiPreferences({ highContrast: true });
+        expect(accentBg()).not.toBe(lightTint);
+        uiUtils.applyUiPreferences({});
+        expect(accentBg()).toBe(lightTint);
+      });
+    });
+
+    describe('with a colour that came in raw', () => {
+      const rootVar = (name) => document.documentElement.style.getPropertyValue(name);
+
+      afterEach(() => {
+        uiUtils.applyUiPreferences({});
+        uiUtils.applyAccentTheme('original');
+        uiUtils.applyBackgroundTheme('original');
+      });
+
+      // A followed Omarchy palette or a Settings draft is applied as a bare colour, with no theme
+      // key to repaint from, so the light theme's tints were left as the preset's dark ones.
+      it.each([
+        ['accent', '--accent-bg', (hex) => uiUtils.applyAccentThemeFromColor(hex), '#3366cc'],
+        [
+          'background',
+          '--bg-primary',
+          (hex) => uiUtils.applyBackgroundThemeFromColor(hex),
+          '#e8eef7',
+        ],
+      ])(
+        'works the %s tints out again when the Readable preset gives the light theme back',
+        (_, property, applyRaw, color) => {
+          uiUtils.applyUiPreferences({ highContrast: true });
+          uiUtils.applyTheme('light');
+          applyRaw(color);
+          const underPreset = rootVar(property);
+
+          uiUtils.applyUiPreferences({});
+          expect(document.body.classList.contains('theme-light')).toBe(true);
+          const afterPreset = rootVar(property);
+          expect(afterPreset).not.toBe(underPreset);
+
+          // The same colour applied directly under the light theme.
+          applyRaw(color);
+          expect(afterPreset).toBe(rootVar(property));
+        }
+      );
+
+      it('repaints a saved theme by its key rather than by an older raw colour', () => {
+        uiUtils.applyTheme('light');
+        uiUtils.applyAccentThemeFromColor('#3366cc');
+        uiUtils.applyAccentTheme('original');
+        const saved = rootVar('--accent-bg');
+
+        uiUtils.applyUiPreferences({ highContrast: true });
+        uiUtils.applyUiPreferences({});
+        expect(rootVar('--accent-bg')).toBe(saved);
+      });
     });
 
     it('should apply opaque panels mode', () => {
@@ -1098,6 +1204,32 @@ describe('UI Utilities', () => {
       expect(tooltip.classList.contains('visible')).toBe(false);
     });
 
+    it('points the arrow at the dot, even when the tooltip is held inside the window', () => {
+      const rect = (left, top, width, height) => ({
+        left,
+        top,
+        width,
+        height,
+        right: left + width,
+        bottom: top + height,
+      });
+      uiUtils.initializeConnectionStatusTooltip();
+      const tooltip = document.getElementById('connection-status-tooltip');
+      tooltip.getBoundingClientRect = () => rect(0, 0, 180, 60);
+      // The dot sits at the far left of the window, where a 180px tooltip cannot centre on it.
+      statusIndicator.getBoundingClientRect = () => rect(15, 12, 8, 8);
+      statusIndicator.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+      // The tooltip is held at the 12px padding; its centre would be at 90, but the dot is at 19.
+      expect(tooltip.style.left).toBe('12px');
+      expect(tooltip.style.getPropertyValue('--arrow-x')).toBe('14px');
+
+      // Away from the edge the tooltip centres on the dot and the arrow is in the middle.
+      statusIndicator.getBoundingClientRect = () => rect(300, 12, 8, 8);
+      statusIndicator.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+      expect(tooltip.style.left).toBe('214px');
+      expect(tooltip.style.getPropertyValue('--arrow-x')).toBe('90px');
+    });
+
     it('should show tooltip on focus and hide on blur', () => {
       uiUtils.initializeConnectionStatusTooltip();
       statusIndicator.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
@@ -1234,14 +1366,33 @@ describe('UI Utilities', () => {
       expect(result).toBe(false);
     });
 
-    it('should return true when Enter key pressed', async () => {
-      const promise = uiUtils.showConfirm('Confirm', 'Continue?');
+    it('should return true when Enter is pressed outside a button, if the safe answer is yes', async () => {
+      const promise = uiUtils.showConfirm('Save', 'Save it?', { confirmFirst: true });
 
       const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
       document.dispatchEvent(enterEvent);
 
       const result = await promise;
       expect(result).toBe(true);
+    });
+
+    it('should not let a stray Enter confirm a question that starts on Cancel', async () => {
+      const promise = uiUtils.showConfirm('Delete', 'Delete this?');
+      let settled = false;
+      promise.then(() => {
+        settled = true;
+      });
+
+      // Focus has left the buttons (a click on the message text), and Enter lands on the body.
+      document.activeElement?.blur?.();
+      const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
+      document.body.dispatchEvent(enterEvent);
+      await Promise.resolve();
+
+      expect(settled).toBe(false);
+      expect(enterEvent.defaultPrevented).toBe(false);
+      cancelBtn.click();
+      expect(await promise).toBe(false);
     });
 
     it('should leave Enter on the focused Cancel button to that button so it cancels', async () => {
@@ -1358,6 +1509,83 @@ describe('UI Utilities', () => {
 
       expect(modal.classList.contains('hidden')).toBe(true);
       expect(modal.style.display).toBe('none');
+    });
+
+    it('is an alert dialog named by its title and described by its message', async () => {
+      const promise = uiUtils.showConfirm('Delete page', 'This removes the page.');
+
+      expect(modal.getAttribute('role')).toBe('alertdialog');
+      expect(modal.getAttribute('aria-modal')).toBe('true');
+      expect(modal.getAttribute('aria-describedby')).toBe('confirm-message');
+      expect(document.getElementById(modal.getAttribute('aria-labelledby'))).toBe(titleEl);
+
+      cancelBtn.click();
+      await promise;
+    });
+
+    it('starts on Cancel, so a stray Enter or Space declines, unless the safe answer is yes', async () => {
+      jest.useFakeTimers();
+      try {
+        const declining = uiUtils.showConfirm('Delete', 'Delete this?');
+        jest.advanceTimersByTime(0);
+        expect(document.activeElement).toBe(cancelBtn);
+        cancelBtn.click();
+        await declining;
+
+        const saving = uiUtils.showConfirm('Save', 'Save it?', { confirmFirst: true });
+        jest.advanceTimersByTime(0);
+        expect(document.activeElement).toBe(okBtn);
+        okBtn.click();
+        await saving;
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('offers a third choice for a question with two ways forward and a way back', async () => {
+      const alternateBtn = document.createElement('button');
+      alternateBtn.id = 'confirm-alternate-btn';
+      alternateBtn.hidden = true;
+      modal.querySelector('.modal-content').insertBefore(alternateBtn, okBtn);
+
+      const plain = uiUtils.showConfirm('Delete', 'Delete this?');
+      expect(alternateBtn.hidden).toBe(true);
+      cancelBtn.click();
+      await plain;
+
+      const promise = uiUtils.showConfirm('Unsaved', 'Save the colour first?', {
+        confirmText: 'Save and continue',
+        alternateText: 'Discard edits',
+        cancelText: 'Keep editing',
+      });
+      expect(alternateBtn.hidden).toBe(false);
+      expect(alternateBtn.textContent).toBe('Discard edits');
+      alternateBtn.click();
+      expect(await promise).toBe('alternate');
+
+      // Escape and a click outside go back, the way Cancel does: never to "discard".
+      const escaped = uiUtils.showConfirm('Unsaved', 'Save the colour first?', {
+        alternateText: 'Discard edits',
+      });
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      expect(await escaped).toBe(false);
+    });
+
+    it('closes over a dialog below it and leaves that dialog open', async () => {
+      const settings = document.createElement('div');
+      settings.className = 'modal';
+      settings.innerHTML = '<div class="modal-content"><button id="in-settings">x</button></div>';
+      document.body.appendChild(settings);
+      const dismissSettings = jest.fn();
+      uiUtils.openDialog(settings, { dismiss: dismissSettings });
+
+      const promise = uiUtils.showConfirm('Discard', 'Discard everything?');
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+      expect(await promise).toBe(false);
+      expect(dismissSettings).not.toHaveBeenCalled();
+      expect(settings.classList.contains('hidden')).toBe(false);
+      uiUtils.releaseFocusTrap(settings, { restoreFocus: false });
     });
 
     it('should handle missing modal elements gracefully', async () => {
@@ -1517,6 +1745,22 @@ describe('UI Utilities', () => {
 
       expect(document.body.style.getPropertyValue('--window-bg-alpha')).toBe('1.000');
       expect(document.body.style.opacity).toBe('');
+    });
+
+    it('names the platform on the body, since linux-performance-mode is not Linux alone', () => {
+      mockElectronAPI.platform = 'win32';
+      uiUtils.applyWindowEffects({ opacity: 0.75, frostedGlass: false });
+      // Windows without Frosted glass draws the Linux class but must not read as Linux.
+      expect(document.body.classList.contains('linux-performance-mode')).toBe(true);
+      expect(document.body.dataset.platform).toBe('win32');
+
+      mockElectronAPI.platform = 'linux';
+      uiUtils.applyWindowEffects({ opacity: 0.75, frostedGlass: true });
+      expect(document.body.dataset.platform).toBe('linux');
+
+      mockElectronAPI.platform = undefined;
+      uiUtils.applyWindowEffects({ opacity: 0.75, frostedGlass: false });
+      expect('platform' in document.body.dataset).toBe(false);
     });
 
     it('keeps backdrop filters on Windows when frosted glass is enabled', () => {
@@ -1890,6 +2134,153 @@ describe('UI Utilities', () => {
       });
       // An accent that already reads well is left alone.
       expect(uiUtils.getAccentTextOnLight({ r: 30, g: 41, b: 120 })).toBe('rgb(30, 41, 120)');
+    });
+
+    const channels = (rgbString) => {
+      const [r, g, b] = rgbString.match(/\d+/g).map(Number);
+      return { r, g, b };
+    };
+    const contrast = (first, second) => {
+      const [lighter, darker] = [
+        luminance(first.r, first.g, first.b),
+        luminance(second.r, second.g, second.b),
+      ].sort((a, b) => b - a);
+      return (lighter + 0.05) / (darker + 0.05);
+    };
+    const mixed = (base, other, amount) => ({
+      r: base.r + (other.r - base.r) * amount,
+      g: base.g + (other.g - base.g) * amount,
+      b: base.b + (other.b - base.b) * amount,
+    });
+    const presets = () => uiUtils.getAccentThemes().map((theme) => uiUtils.hexToRgb(theme.color));
+    const seasonal = () =>
+      SEASONAL_HOLIDAYS.map((holiday) => uiUtils.hexToRgb(holiday.colors.accent));
+    // Colours a user can pick: dark, saturated, and the extremes.
+    const custom = () =>
+      ['#ab1234', '#1a237e', '#000000', '#ffffff', '#ffff00'].map(uiUtils.hexToRgb);
+
+    // The lightest dark surface accent text sits on is a main view tile; the darkest light one is
+    // the veiled panel. The accent's own tint (secondary buttons, the active tab, a lit tile) lies
+    // on top of it.
+    const DARK_TILE = { r: 44, g: 47, b: 54 };
+    const LIGHT_PANEL = { r: 228, g: 228, b: 228 };
+
+    it('lightens any accent enough to read as text on the dark theme tiles', () => {
+      for (const accent of [...presets(), ...seasonal(), ...custom()]) {
+        const text = channels(uiUtils.getAccentTextOnDark(accent));
+        expect(contrast(text, DARK_TILE)).toBeGreaterThanOrEqual(4.5);
+        expect(contrast(text, mixed(DARK_TILE, accent, 0.18))).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    it('leaves an accent that already reads on the dark tiles as it is', () => {
+      expect(uiUtils.getAccentTextOnDark({ r: 34, g: 211, b: 238 })).toBe('rgb(34, 211, 238)');
+      // The raw indigo is 2.9:1 there, and the solved text is a lighter indigo, not white.
+      const indigo = channels(uiUtils.getAccentTextOnDark(uiUtils.hexToRgb('#5f62ef')));
+      expect(indigo.b).toBeGreaterThan(indigo.r);
+      expect(indigo.r).toBeGreaterThan(95);
+    });
+
+    it('darkens any accent enough to read on the veiled light panel, tint included', () => {
+      for (const accent of [...presets(), ...seasonal(), ...custom()]) {
+        const text = channels(uiUtils.getAccentTextOnLight(accent));
+        expect(contrast(text, LIGHT_PANEL)).toBeGreaterThanOrEqual(4.5);
+        expect(contrast(text, mixed(LIGHT_PANEL, accent, 0.14))).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    it('keeps the white label of every preset at 4.5:1 or better', () => {
+      for (const accent of presets()) {
+        const label = uiUtils.hexToRgb(uiUtils.getReadableTextColor(accent));
+        expect(contrast(label, accent)).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    it('steps a hover fill the way that keeps its label readable', () => {
+      const light = { r: 100, g: 181, b: 246 };
+      const indigo = uiUtils.hexToRgb('#5f62ef');
+      const violet = uiUtils.hexToRgb('#8b5cf6');
+      const WHITE = '#ffffff';
+      const BLACK = '#0a0c10';
+
+      // A dark label on a light fill: lighter on dark, and darker on light only as far as it holds.
+      expect(uiUtils.getAccentHoverColor(light, BLACK, false).r).toBeGreaterThan(light.r);
+      expect(uiUtils.getAccentHoverColor(light, BLACK, true).r).toBeLessThan(light.r);
+      // A white label on indigo would lose contrast on a lighter fill, so dark hovers darken it too.
+      expect(uiUtils.getAccentHoverColor(indigo, WHITE, false).b).toBeLessThan(indigo.b);
+
+      for (const [accent, label, isLight] of [
+        [light, BLACK, true],
+        [light, BLACK, false],
+        [indigo, WHITE, true],
+        [indigo, WHITE, false],
+        [violet, BLACK, true],
+        [violet, BLACK, false],
+        ...presets().map((rgb) => [rgb, uiUtils.getReadableTextColor(rgb), true]),
+        ...presets().map((rgb) => [rgb, uiUtils.getReadableTextColor(rgb), false]),
+      ]) {
+        const hover = uiUtils.getAccentHoverColor(accent, label, isLight);
+        const labelRgb = uiUtils.hexToRgb(label);
+        expect(contrast(labelRgb, hover)).toBeGreaterThanOrEqual(
+          Math.min(4.5, contrast(labelRgb, accent)) - 0.001
+        );
+      }
+    });
+
+    it('mixes a Background colour into the base of the theme that is showing', () => {
+      document.body.classList.remove('theme-light');
+      expect(uiUtils.getBackgroundWindowColor()).toBe('#12161e');
+      // 12% of violet over the dark base.
+      expect(uiUtils.getBackgroundWindowColor('#8b5cf6')).toBe('#211e38');
+      expect(uiUtils.getBackgroundWindowColor('not a colour')).toBeNull();
+
+      document.body.classList.add('theme-light');
+      expect(uiUtils.getBackgroundWindowColor()).toBe('#fafafa');
+      // 8% of violet over the light base, the amount applyBackgroundColor mixes.
+      expect(uiUtils.getBackgroundWindowColor('#8b5cf6')).toBe('#f1edfa');
+      uiUtils.applyTheme('light');
+      uiUtils.applyBackgroundTheme('violet');
+      const applied = document.documentElement.style.getPropertyValue('--window-bg-rgb');
+      expect(applied).toBe('241, 237, 250');
+      document.body.classList.remove('theme-light');
+    });
+
+    it('keeps the picked Background colour for the Settings chip, and drops it for the base', () => {
+      uiUtils.applyBackgroundTheme('rose');
+      expect(document.documentElement.style.getPropertyValue('--background-pick')).toBe('#F43F5E');
+      uiUtils.applyBackgroundTheme('original');
+      expect(document.documentElement.style.getPropertyValue('--background-pick')).toBe('');
+    });
+
+    it('flags a grey accent, which has no hue for a lit tile to show', () => {
+      uiUtils.applyAccentTheme('slate');
+      expect(document.body.dataset.accentNeutral).toBe('true');
+      uiUtils.applyAccentTheme('original');
+      expect(document.body.dataset.accentNeutral).toBeUndefined();
+      uiUtils.applyAccentThemeFromColor('#808080');
+      expect(document.body.dataset.accentNeutral).toBe('true');
+      for (const theme of uiUtils.getAccentThemes().filter((entry) => entry.id !== 'slate')) {
+        uiUtils.applyAccentTheme(theme.id);
+        expect(document.body.dataset.accentNeutral).toBeUndefined();
+      }
+    });
+
+    it('sets a text colour for both themes, and a ring colour, on the root', () => {
+      uiUtils.applyAccentTheme('indigo');
+      const style = document.documentElement.style;
+      for (const name of [
+        '--accent-text-light',
+        '--accent-text-light-hover',
+        '--accent-text-dark',
+        '--accent-text-dark-hover',
+        '--accent-ring-dark',
+      ]) {
+        expect(style.getPropertyValue(name)).toMatch(/^rgb\(\d+, \d+, \d+\)$/);
+      }
+      // The ring only needs 3:1, so it stays closer to the accent than the text colour does.
+      const ring = channels(style.getPropertyValue('--accent-ring-dark'));
+      const text = channels(style.getPropertyValue('--accent-text-dark'));
+      expect(ring.r).toBeLessThanOrEqual(text.r);
     });
   });
 

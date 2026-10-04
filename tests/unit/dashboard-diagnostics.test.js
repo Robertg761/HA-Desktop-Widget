@@ -135,6 +135,94 @@ test('repeated clicks focus the open tool dialog instead of stacking another', (
   currentSocket.removeAllListeners();
 });
 
+describe('tool dialogs and the keyboard', () => {
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+  let currentSocket;
+  let tools;
+
+  beforeEach(() => {
+    jest.resetModules();
+    tools = require('../../src/dashboard-tools.js');
+    currentSocket = require('../../src/websocket.js').default;
+    require('../../src/state.js').default.setConfig({ homeAssistant: { url: 'http://server' } });
+    localStorage.clear();
+    document.body.innerHTML =
+      '<button id="connection-diagnostics-btn">Diagnostics</button><div id="toast-container"></div>';
+    tools.initializeDashboardTools();
+  });
+
+  afterEach(() => {
+    document.querySelectorAll('.dashboard-tools-modal').forEach((modal) => modal.remove());
+    currentSocket.removeAllListeners();
+  });
+
+  test('Escape closes the diagnostics dialog, stops its live updates and returns focus to the button', async () => {
+    const opener = document.getElementById('connection-diagnostics-btn');
+    opener.focus();
+    opener.click();
+    await tick();
+    const modal = document.querySelector('.dashboard-tools-modal');
+    expect(modal.getAttribute('role')).toBe('dialog');
+    expect(modal.getAttribute('aria-modal')).toBe('true');
+    // Focus starts inside the dialog, past the header's Close button.
+    expect(modal.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement).not.toBe(modal.querySelector('.close-btn'));
+    expect(currentSocket.listenerCount('message')).toBeGreaterThan(0);
+    const listeners = currentSocket.listenerCount('message');
+
+    document.activeElement.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    );
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    expect(document.querySelector('.dashboard-tools-modal')).toBeNull();
+    expect(currentSocket.listenerCount('message')).toBeLessThan(listeners);
+    expect(document.activeElement).toBe(opener);
+  });
+
+  test('a backdrop press closes the restore dialog, but a press that began inside it does not', async () => {
+    tools.showDashboardHistory();
+    await tick();
+    const modal = document.querySelector('.dashboard-tools-modal');
+    const inside = modal.querySelector('.modal-content');
+
+    inside.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    modal.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(document.querySelector('.dashboard-tools-modal')).not.toBeNull();
+
+    modal.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    modal.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(document.querySelector('.dashboard-tools-modal')).toBeNull();
+  });
+
+  test('a failed restore keeps focus on the restore point that was pressed', async () => {
+    const { rememberDashboard } = require('../../src/dashboard-history.js');
+    const { restoreDashboard } = require('../../src/ui.js');
+    const layout = (name) => ({
+      homeAssistant: { url: 'http://server' },
+      customTabs: [{ id: name, name, entityIds: [] }],
+    });
+    rememberDashboard(layout('One'), layout('Two'));
+    rememberDashboard(layout('Two'), layout('Three'));
+    restoreDashboard.mockRejectedValueOnce(new Error('offline'));
+
+    tools.showDashboardHistory();
+    await tick();
+    const rows = [...document.querySelectorAll('.dashboard-restore-entry')];
+    expect(rows.length).toBeGreaterThan(1);
+    rows[1].focus();
+    rows[1].click();
+    await tick();
+
+    // Disabling the buttons while the restore runs must not drop focus to the page behind.
+    expect(document.querySelector('.dashboard-tools-modal')).not.toBeNull();
+    expect(rows.every((row) => !row.disabled)).toBe(true);
+    expect(document.activeElement).toBe(rows[1]);
+    expect(document.querySelector('#toast-container .toast.error')).not.toBeNull();
+  });
+});
+
 test('Undo follows server history and remains disabled while restoring', async () => {
   jest.resetModules();
   const currentState = require('../../src/state.js').default;

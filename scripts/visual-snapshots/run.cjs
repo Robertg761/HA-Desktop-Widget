@@ -18,6 +18,8 @@
  *   SNAPSHOT_DEBUG_PORT   the app's remote debugging port (default 9333); give parallel runs on
  *                         one machine different ports
  *   SNAPSHOT_SCENES       only run scenes whose name matches this regular expression
+ *   SNAPSHOT_REDUCED_MOTION  set to 1 to run with the OS's reduced-motion setting on, as the
+ *                         Windows and macOS runners do
  */
 
 const { spawn, execFileSync } = require('child_process');
@@ -26,12 +28,18 @@ const os = require('os');
 const path = require('path');
 const { startMockHomeAssistant } = require('./mock-home-assistant.cjs');
 const {
+  FAILING_ENTITIES,
+  RESET_SETTINGS_VIEW,
+  RESETTABLE_SETTINGS,
   TOKEN,
   WINDOW_POSITION,
   WINDOW_SIZE,
   buildConfig,
+  buildHistories,
+  buildServiceResponses,
   buildServices,
   buildStates,
+  buildSubscriptionEvents,
 } = require('./fixture.cjs');
 const { scenes } = require('./scenes.cjs');
 
@@ -44,7 +52,7 @@ const SCREEN_MARGIN = 32;
 const CTRL = 2;
 // Language packs are not bundled (except German); scenes in these languages need the repo's pack
 // installed in the profile, which is also the version a PR is changing.
-const INSTALLED_PACKS = ['ar'];
+const INSTALLED_PACKS = ['ar', 'es', 'fr', 'hi', 'zh'];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -178,6 +186,9 @@ async function main() {
     token: TOKEN,
     states: buildStates(),
     services: buildServices(),
+    serviceResponses: buildServiceResponses(),
+    histories: buildHistories(),
+    failingEntities: FAILING_ENTITIES,
   });
   const haUrl = `http://127.0.0.1:${server.address().port}`;
   const baseConfig = buildConfig(haUrl);
@@ -190,7 +201,12 @@ async function main() {
   delete env.ELECTRON_RUN_AS_NODE;
   const app = spawn(
     electron,
-    ['.', `--user-data-dir=${profileDir}`, `--remote-debugging-port=${DEBUG_PORT}`],
+    [
+      '.',
+      `--user-data-dir=${profileDir}`,
+      `--remote-debugging-port=${DEBUG_PORT}`,
+      ...(process.env.SNAPSHOT_REDUCED_MOTION === '1' ? ['--force-prefers-reduced-motion'] : []),
+    ],
     { cwd: ROOT, env, stdio: 'inherit' }
   );
 
@@ -215,7 +231,7 @@ async function main() {
     await sleep(1500);
 
     // What each scene is measured against: the fixture's own settings and window.
-    const settingsToReset = ['frostedGlass', 'customTabs', 'activeTabId'];
+    const settingsToReset = RESETTABLE_SETTINGS;
     function sceneSettings(scene) {
       const settings = Object.fromEntries(settingsToReset.map((key) => [key, baseConfig[key]]));
       return { ...settings, ...scene.config, ui: { ...baseConfig.ui, ...scene.ui } };
@@ -225,10 +241,22 @@ async function main() {
 
     const openPins = [];
     const extraTargets = [];
+    let offline = false;
+    let notificationsPushed = false;
+    const NOTIFICATIONS = 'persistent_notification/subscribe';
     const ctx = {
       CTRL,
       sleep,
       ev: (expression) => cdp.evaluate(expression),
+      /**
+       * Give the app the persistent notifications the fixture lists, as Home Assistant would send
+       * them to its open subscription. They are not there from the start, because their bell
+       * would sit in the header of every scene; `restore` takes them away again.
+       */
+      showNotifications() {
+        notificationsPushed = true;
+        server.pushEvents(NOTIFICATIONS, buildSubscriptionEvents()({ type: NOTIFICATIONS }));
+      },
       async click(selector) {
         const found = await cdp.evaluate(
           `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (el) el.click(); return !!el; })()`
@@ -240,6 +268,21 @@ async function main() {
           label: selector,
           timeoutMs: 10000,
         }),
+      /** Fail the scene unless a page expression is truthy right now (a layout check). */
+      async expect(expression, label) {
+        if (!(await cdp.evaluate(`!!(${expression})`)))
+          throw new Error(`Layout check failed: ${label}`);
+      },
+      /** Take Home Assistant away, as an outage does; the runner brings it back after the scene. */
+      async goOffline() {
+        offline = true;
+        server.refuseConnections(true);
+        await waitFor(() => cdp.evaluate(`document.body.classList.contains('ha-offline')`), {
+          label: 'the app to notice the outage',
+          timeoutMs: 15000,
+        });
+        await sleep(500);
+      },
       /** Wait until a page expression is truthy. */
       waitForExpression: (expression, label = expression) =>
         waitFor(() => cdp.evaluate(`!!(${expression})`), { label, timeoutMs: 10000 }),
@@ -286,6 +329,9 @@ async function main() {
         })()`);
         const pin = await connectCdp(pinTarget.webSocketDebuggerUrl);
         extraTargets.push(pin);
+        // Emulation belongs to one page, so a pin window needs the scene's media features too.
+        const features = JSON.parse(applied.media);
+        if (features.length) await pin.send('Emulation.setEmulatedMedia', { features });
         await waitFor(() => pin.evaluate(`!!document.querySelector('.desktop-pin-shell')`), {
           label: `the ${entityId} pin content`,
         });
@@ -310,6 +356,21 @@ async function main() {
     }
 
     async function restore() {
+      if (notificationsPushed) {
+        notificationsPushed = false;
+        server.pushEvents(NOTIFICATIONS, [{ type: 'current', notifications: {} }]);
+      }
+      if (offline) {
+        // Retry connects at once; waiting for the app's own backoff would run into the next scene.
+        offline = false;
+        server.refuseConnections(false);
+        await cdp.evaluate(`document.querySelector('#widget-state-panel .btn-secondary')?.click()`);
+        await waitFor(() => cdp.evaluate(`!document.body.classList.contains('ha-offline')`), {
+          label: 'the app to reconnect',
+          timeoutMs: 20000,
+        });
+        await sleep(600);
+      }
       for (const pin of extraTargets.splice(0)) pin.close();
       for (const entityId of openPins.splice(0)) {
         await cdp.evaluate(
@@ -317,6 +378,8 @@ async function main() {
         );
         await sleep(400);
       }
+      // Before the dialogs close: Settings keeps the scroll position it is closed at.
+      await cdp.evaluate(RESET_SETTINGS_VIEW);
       await closeDialogs();
     }
 
@@ -330,13 +393,12 @@ async function main() {
           const cfg = await window.electronAPI.getConfig();
           await window.electronAPI.updateConfig({ ...patch, ui: { ...cfg.ui, ...patch.ui } });
         })()`);
-        await waitFor(
-          () =>
-            cdp.evaluate(
-              `document.querySelector('#quick-access-tabs .quick-access-tab-link.active')?.dataset.tab === ${JSON.stringify(settings.activeTabId)}`
-            ),
-          { label: 'the page tabs', timeoutMs: 10000 }
-        );
+        // The tab bar stays hidden while there is a single page.
+        const tabsShown =
+          settings.customTabs.length > 1
+            ? `document.querySelector('#quick-access-tabs .quick-access-tab-link.active')?.dataset.tab === ${JSON.stringify(settings.activeTabId)}`
+            : `document.getElementById('quick-access-tabs')?.classList.contains('hidden')`;
+        await waitFor(() => cdp.evaluate(tabsShown), { label: 'the page tabs', timeoutMs: 10000 });
         // A new language takes longer to repaint than a theme.
         await sleep(settings.ui.language === baseConfig.ui.language ? 700 : 1100);
         applied.settings = key;
@@ -344,11 +406,42 @@ async function main() {
 
       const size = scene.size || WINDOW_SIZE;
       if (size.width !== applied.size.width || size.height !== applied.size.height) {
+        const pageSize = () => cdp.evaluate('[innerWidth, innerHeight]');
+        const before = await pageSize();
         await cdp.evaluate(`window.resizeTo(${size.width}, ${size.height})`);
+        // The window is sized in screen pixels, but an enlarged interface zooms the page, so the
+        // page sees fewer CSS pixels than the window has.
+        const zoom = settings.ui.scale || 1;
+        const cssWidth = Math.round(size.width / zoom);
+        const cssHeight = Math.round(size.height / zoom);
+        // A window cannot be bigger than the screen holds, and a hosted runner's display is small:
+        // macOS keeps a 900x700 window to 900x674 there. A size that has moved, stayed inside what
+        // was asked for and stopped changing is the screen's limit, not a slow resize, so the scene
+        // goes on at that size instead of waiting out the clock.
+        let seen = before;
+        let steadySince = Date.now();
+        let reached = null;
         await waitFor(
-          () => cdp.evaluate(`innerWidth === ${size.width} && innerHeight === ${size.height}`),
+          async () => {
+            const [width, height] = (reached = await pageSize());
+            if (Math.abs(width - cssWidth) <= 1 && Math.abs(height - cssHeight) <= 1) return true;
+            if (width !== seen[0] || height !== seen[1]) {
+              seen = [width, height];
+              steadySince = Date.now();
+            }
+            const moved = width !== before[0] || height !== before[1];
+            const inside = width <= cssWidth + 1 && height <= cssHeight + 1;
+            return moved && inside && Date.now() - steadySince >= 750;
+          },
           { label: `a ${size.width}x${size.height} window`, timeoutMs: 5000 }
-        ).catch((error) => console.warn(`${scene.name}: ${error.message}`));
+        )
+          .then(() => {
+            if (Math.abs(reached[0] - cssWidth) > 1 || Math.abs(reached[1] - cssHeight) > 1)
+              console.log(
+                `${scene.name}: the screen holds a ${reached[0]}x${reached[1]} window, not ${cssWidth}x${cssHeight}`
+              );
+          })
+          .catch((error) => console.warn(`${scene.name}: ${error.message}`));
         applied.size = size;
         await sleep(500);
       }
@@ -368,8 +461,8 @@ async function main() {
       }
     }
 
-    async function capture(name, source) {
-      await source.evaluate(REMOVE_TOASTS);
+    async function capture(name, source, { keepToasts = false } = {}) {
+      if (!keepToasts) await source.evaluate(REMOVE_TOASTS);
       const { data } = await source.send('Page.captureScreenshot', { format: 'png' });
       const base = path.join(OUT_DIR, `${platformTag}-${name}`);
       fs.writeFileSync(`${base}-page.png`, Buffer.from(data, 'base64'));
@@ -381,11 +474,15 @@ async function main() {
     }
 
     for (const scene of selected) {
+      // Entities only this scene needs arrive the way Home Assistant's own changes do and go again
+      // once it is captured, so no other scene's lists carry them.
+      const sceneStates = scene.extraStates ? scene.extraStates(new Date()) : [];
       try {
+        if (sceneStates.length) server.changeStates({ add: sceneStates });
         await prepare(scene);
         const result = scene.setup ? await scene.setup(ctx) : null;
         await sleep(scene.settle ?? 900);
-        await capture(scene.name, result?.capture || cdp);
+        await capture(scene.name, result?.capture || cdp, { keepToasts: scene.keepToasts });
         console.log(`Captured ${scene.name}`);
       } catch (error) {
         failures.push(scene.name);
@@ -394,6 +491,11 @@ async function main() {
         await capture(`${scene.name}-failed`, cdp).catch(() => {});
       }
       try {
+        // A scene that keeps its toast for the picture must not leave it for the next scene.
+        await cdp.evaluate(REMOVE_TOASTS);
+        if (sceneStates.length) {
+          server.changeStates({ remove: sceneStates.map((entity) => entity.entity_id) });
+        }
         await restore();
       } catch (error) {
         // A dialog or pin left behind would leak into every later scene, so the run must not pass.

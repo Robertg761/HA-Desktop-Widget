@@ -34,21 +34,8 @@ jest.mock('hls.js', () => mockHls, { virtual: true });
 
 // Mock dependencies
 jest.mock('../../src/ui-utils.js', () => ({
+  ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
   showToast: jest.fn(),
-  trapFocus: jest.fn((...args) => jest.requireActual('../../src/ui-utils.js').trapFocus(...args)),
-  releaseFocusTrap: jest.fn((...args) =>
-    jest.requireActual('../../src/ui-utils.js').releaseFocusTrap(...args)
-  ),
-  // Mirrors the real shared modal helper, which settles synchronously under NODE_ENV=test.
-  closeModal: jest.fn((modal, { remove = false, onClosed } = {}) => {
-    if (modal) {
-      modal.classList.remove('modal-closing');
-      if (remove) modal.remove();
-      else modal.classList.add('hidden');
-      onClosed?.();
-    }
-    return Promise.resolve();
-  }),
 }));
 
 jest.mock('../../src/utils.js', () => ({
@@ -74,10 +61,9 @@ jest.mock('../../src/utils.js', () => ({
     if (!entity) return 'Unknown Entity';
     return entity.attributes?.friendly_name || entity.entity_id;
   }),
-  getLocalizedStateName: jest.fn((value) => {
-    const text = String(value || '');
-    return text.charAt(0).toUpperCase() + text.slice(1);
-  }),
+  getLocalizedStateName: jest.fn((value) =>
+    jest.requireActual('../../src/format.js').formatStateName(value)
+  ),
 }));
 
 // Mock WebSocket
@@ -617,8 +603,25 @@ describe('Camera Module', () => {
       // nothing left to display into.
       expect(warmup.onload).toBeNull();
       expect(warmup.hasAttribute('src')).toBe(false);
-      expect(tile.dataset.cameraPreviewHasFrame).toBe('false');
       expect(tile.dataset.cameraPreviewState).toBe('ready');
+    });
+
+    it('counts the playing stream as the tile frame, and drops it when the stream ends', async () => {
+      const tile = createPreviewTile();
+      const video = tile.querySelector('.camera-tile-preview-video');
+
+      camera.mountCameraPreview(tile, 'camera.front_door', 'live');
+      await flushLivePreviewStart();
+      expect(tile.dataset.cameraPreviewHasFrame).toBe('false');
+
+      video.onloadeddata();
+      // The scrim and the white caption are styled for a tile that has a picture; the video is one.
+      expect(tile.dataset.cameraPreviewSource).toBe('video');
+      expect(tile.dataset.cameraPreviewHasFrame).toBe('true');
+
+      mockHlsEventHandlers.hlsError(null, { fatal: true });
+      expect(tile.dataset.cameraPreviewSource).not.toBe('video');
+      expect(tile.dataset.cameraPreviewHasFrame).toBe('false');
     });
 
     it('reuses the warmup still instead of refetching when the stream fails', async () => {
@@ -1521,12 +1524,37 @@ describe('Camera Module', () => {
       const modal = document.querySelector('.camera-modal');
       expect(modal.getAttribute('role')).toBe('dialog');
       expect(modal.getAttribute('aria-modal')).toBe('true');
-      expect(document.activeElement).toBe(modal.querySelector('.close-btn'));
+      // Focus starts on Live, the action people open the viewer for, and not on Close.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(document.activeElement).toBe(modal.querySelector('#live-btn'));
 
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
       expect(document.querySelector('.camera-modal')).toBeNull();
       expect(document.activeElement).toBe(opener);
+    });
+
+    it('keeps Tab inside the viewer, wrapping from Live to Close and back', async () => {
+      await camera.openCamera('camera.front_door');
+      const modal = document.querySelector('.camera-modal');
+      const close = modal.querySelector('.close-btn');
+      const live = modal.querySelector('#live-btn');
+      const tab = (target, shiftKey = false) => {
+        const event = new KeyboardEvent('keydown', {
+          key: 'Tab',
+          shiftKey,
+          bubbles: true,
+          cancelable: true,
+        });
+        target.dispatchEvent(event);
+        return event;
+      };
+
+      live.focus();
+      expect(tab(live).defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(close);
+      expect(tab(close, true).defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(live);
     });
 
     it('reports a failed snapshot instead of leaving a broken image', async () => {
@@ -1654,6 +1682,21 @@ describe('Camera Module', () => {
       // A readable state label and when the frame was last updated, not the raw "idle".
       expect(cameraInfo.querySelector('.camera-info-state').textContent).toMatch(/^[A-Z]/);
       expect(cameraInfo.querySelector('.camera-info-updated').textContent).toMatch(/^Updated /);
+    });
+
+    it.each([
+      ['12-hour', /\b(?:[1-9]|1[0-2]):\d{2}\s?[AP]M/i],
+      ['24-hour', /\b(?:[01]\d|2[0-3]):\d{2}\b(?!\s?[AP]M)/i],
+    ])('writes when the frame was updated in the %s time format', (timeFormat, pattern) => {
+      const packageState = require('../../packages/widget-renderer/src/state.js');
+      try {
+        packageState.setConfig({ ui: { timeFormat } });
+        camera.openCamera('camera.front_door');
+        const text = document.querySelector('.camera-modal .camera-info-updated').textContent;
+        expect(text).toMatch(pattern);
+      } finally {
+        packageState.setConfig({ ui: {} });
+      }
     });
 
     it('shows a message in the viewer instead of a broken image when a frame fails', async () => {

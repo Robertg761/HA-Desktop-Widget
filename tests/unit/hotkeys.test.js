@@ -11,19 +11,8 @@ const { sampleStates } = require('../fixtures/ha-data.js');
 
 // Mock dependencies
 jest.mock('../../src/ui-utils.js', () => ({
+  ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
   showToast: jest.fn(),
-  // Mirrors the real shared modal helper, which settles synchronously under NODE_ENV=test.
-  closeModal: jest.fn((modal, { remove = false, releaseFocus = false, onClosed } = {}) => {
-    if (modal) {
-      modal.classList.remove('modal-closing');
-      if (remove) modal.remove();
-      else modal.classList.add('hidden');
-      if (releaseFocus) jest.requireActual('../../src/ui-utils.js').releaseFocusTrap(modal);
-      onClosed?.();
-    }
-    return Promise.resolve();
-  }),
-  trapFocus: jest.fn((...args) => jest.requireActual('../../src/ui-utils.js').trapFocus(...args)),
 }));
 
 jest.mock('../../src/utils.js', () => ({
@@ -144,6 +133,14 @@ describe('hotkeys module', () => {
       expect(mockElectronAPI.toggleHotkeys).toHaveBeenCalledWith(false);
     });
 
+    it('confirms with the name on the switch, not "Global hotkeys"', async () => {
+      // The switch is labelled "Entity hotkeys"; the popup hotkey is global too and is not on it.
+      await hotkeys.toggleHotkeys(true);
+      expect(showToast).toHaveBeenLastCalledWith('Entity hotkeys enabled', 'success', 2000);
+      await hotkeys.toggleHotkeys(false);
+      expect(showToast).toHaveBeenLastCalledWith('Entity hotkeys disabled', 'success', 2000);
+    });
+
     it('should handle IPC failure', async () => {
       mockElectronAPI.toggleHotkeys.mockResolvedValue({
         success: false,
@@ -171,6 +168,15 @@ describe('hotkeys module', () => {
   });
 
   describe('renderHotkeysTab', () => {
+    // Picks an action in an entity's select the way the user does.
+    const chooseAction = (container, entityId, action) => {
+      const select = container.querySelector(
+        `select.hotkey-action-select[data-entity-id="${entityId}"]`
+      );
+      select.value = action;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+
     beforeEach(() => {
       hotkeys.cleanupHotkeyEventListeners();
       const config = getMockConfig();
@@ -206,7 +212,7 @@ describe('hotkeys module', () => {
       document.body.removeChild(searchInput);
     });
 
-    it('supports arrow-key navigation and selection in the action listbox', async () => {
+    it('offers the action as a native select that names itself and shows the saved action', () => {
       const container = document.createElement('div');
       const searchInput = document.createElement('input');
       container.id = 'hotkeys-list';
@@ -214,28 +220,43 @@ describe('hotkeys module', () => {
       searchInput.value = 'living';
       document.body.appendChild(container);
       document.body.appendChild(searchInput);
+      state.CONFIG.globalHotkeys.hotkeys['light.living_room'] = {
+        hotkey: 'Ctrl+Alt+L',
+        action: 'turn_off',
+      };
 
       hotkeys.renderHotkeysTab();
 
-      const trigger = container.querySelector(
-        '[data-entity-id="light.living_room"] .custom-dropdown-trigger'
-      );
-      trigger.focus();
-      trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      const select = container.querySelector('select.hotkey-action-select');
+      expect(select.dataset.entityId).toBe('light.living_room');
+      expect(select.getAttribute('aria-label')).toBe('Hotkey action for Living Room Light');
+      expect(select.value).toBe('turn_off');
+      expect([...select.options].map((option) => option.value)).toEqual([
+        'toggle',
+        'turn_on',
+        'turn_off',
+        'brightness_up',
+        'brightness_down',
+      ]);
+      expect(container.querySelector('[role="listbox"], .custom-dropdown')).toBeNull();
+    });
 
-      const focusedOption = document.activeElement;
-      expect(focusedOption?.getAttribute('role')).toBe('option');
-      expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    it('shows the first action when the saved one is not on offer for the entity', () => {
+      const container = document.createElement('div');
+      const searchInput = document.createElement('input');
+      container.id = 'hotkeys-list';
+      searchInput.id = 'hotkey-entity-search';
+      searchInput.value = 'living';
+      document.body.appendChild(container);
+      document.body.appendChild(searchInput);
+      state.CONFIG.globalHotkeys.hotkeys['light.living_room'] = {
+        hotkey: 'Ctrl+Alt+L',
+        action: 'increase_speed',
+      };
 
-      focusedOption.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-      await Promise.resolve();
-      await Promise.resolve();
+      hotkeys.renderHotkeysTab();
 
-      expect(trigger.getAttribute('aria-expanded')).toBe('false');
-      expect(document.activeElement).toBe(trigger);
-      expect(
-        container.querySelector('.custom-dropdown-option.selected')?.getAttribute('aria-selected')
-      ).toBe('true');
+      expect(container.querySelector('select.hotkey-action-select').value).toBe('toggle');
     });
 
     it('restores the persisted action when runtime hotkey registration fails', async () => {
@@ -256,11 +277,7 @@ describe('hotkeys module', () => {
         .mockResolvedValueOnce({ success: true });
 
       hotkeys.renderHotkeysTab();
-      container
-        .querySelector(
-          '[data-entity-id="light.living_room"] .custom-dropdown-option[data-value="turn_on"]'
-        )
-        .click();
+      chooseAction(container, 'light.living_room', 'turn_on');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(2);
@@ -300,11 +317,7 @@ describe('hotkeys module', () => {
       });
 
       hotkeys.renderHotkeysTab();
-      container
-        .querySelector(
-          '[data-entity-id="light.living_room"] .custom-dropdown-option[data-value="turn_on"]'
-        )
-        .click();
+      chooseAction(container, 'light.living_room', 'turn_on');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(2);
@@ -319,34 +332,30 @@ describe('hotkeys module', () => {
         messages: {
           Toggle: 'Umschalten',
           'Turn On': 'Einschalten',
-          Remove: 'Entfernen',
           'Action updated to: {{action}}': 'Aktion geändert: {{action}}',
         },
       });
       try {
         const container = document.createElement('div');
         const searchInput = document.createElement('input');
-        const existing = document.createElement('div');
         container.id = 'hotkeys-list';
         searchInput.id = 'hotkey-entity-search';
         searchInput.value = 'living';
-        existing.id = 'existing-hotkeys-list';
-        document.body.append(container, searchInput, existing);
+        document.body.append(container, searchInput);
         mockElectronAPI.updateConfig.mockImplementationOnce((nextConfig) =>
           Promise.resolve(nextConfig)
         );
         mockElectronAPI.registerHotkeys.mockResolvedValueOnce({ success: true });
 
         hotkeys.renderHotkeysTab();
-        const row = container.querySelector('.custom-dropdown[data-entity-id="light.living_room"]');
-        expect(row.querySelector('.custom-dropdown-value').textContent).toBe('Umschalten');
-        row.querySelector('.custom-dropdown-option[data-value="turn_on"]').click();
+        const select = container.querySelector(
+          'select.hotkey-action-select[data-entity-id="light.living_room"]'
+        );
+        expect(select.selectedOptions[0].textContent).toBe('Umschalten');
+        chooseAction(container, 'light.living_room', 'turn_on');
         await new Promise((resolve) => setTimeout(resolve, 0));
 
         expect(showToast).toHaveBeenCalledWith('Aktion geändert: Einschalten', 'success', 2000);
-
-        hotkeys.renderExistingHotkeys();
-        expect(existing.querySelector('.btn-remove-hotkey').textContent).toBe('Entfernen');
       } finally {
         i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
       }
@@ -376,14 +385,11 @@ describe('hotkeys module', () => {
       expect(container.querySelector('[data-entity-id="script.tv_fast_forward"]')).toBeTruthy();
       expect(container.querySelector('[data-entity-id="button.refresh_router"]')).toBeTruthy();
       expect(container.querySelector('[data-entity-id="input_button.tv_rewind"]')).toBeTruthy();
-      expect(
-        container.querySelector('[data-entity-id="input_button.tv_rewind"] .custom-dropdown-value')
-          ?.textContent
-      ).toBe('Press');
-      expect(
-        container.querySelector('[data-entity-id="script.tv_fast_forward"] .custom-dropdown-value')
-          ?.textContent
-      ).toBe('Run');
+      const shownAction = (entityId) =>
+        container.querySelector(`select[data-entity-id="${entityId}"]`)?.selectedOptions[0]
+          ?.textContent;
+      expect(shownAction('input_button.tv_rewind')).toBe('Press');
+      expect(shownAction('script.tv_fast_forward')).toBe('Run');
 
       document.body.removeChild(container);
       document.body.removeChild(searchInput);
@@ -417,74 +423,109 @@ describe('hotkeys module', () => {
 
       consoleError.mockRestore();
     });
-  });
 
-  describe('renderExistingHotkeys', () => {
-    beforeEach(() => {
-      const config = getMockConfig();
-      config.globalHotkeys = {
-        enabled: true,
-        hotkeys: {
-          'light.living_room': { hotkey: 'Ctrl+Shift+L', action: 'toggle' },
-          'switch.bedroom': 'Ctrl+Shift+B',
-        },
-      };
-      state.setConfig(config);
-      state.setStates(sampleStates);
-    });
+    describe('in a large home', () => {
+      let container;
+      let searchInput;
+      beforeEach(() => {
+        container = document.createElement('div');
+        container.id = 'hotkeys-list';
+        searchInput = document.createElement('input');
+        searchInput.id = 'hotkey-entity-search';
+        document.body.append(container, searchInput);
+        const states = {};
+        for (let i = 0; i < 130; i += 1) {
+          const entityId = `light.lamp_${String(i).padStart(3, '0')}`;
+          states[entityId] = {
+            entity_id: entityId,
+            state: 'off',
+            attributes: { friendly_name: `Lamp ${String(i).padStart(3, '0')}` },
+          };
+        }
+        state.setStates(states);
+      });
+      const rows = () => container.querySelectorAll('.hotkey-item');
+      const pager = (key) => container.querySelector(`[data-primary-page="${key}"]`);
 
-    it('should handle missing container gracefully', () => {
-      document.getElementById = jest.fn(() => null);
+      it('builds one page of rows and a pager, not a row for every entity', () => {
+        hotkeys.renderHotkeysTab();
 
-      expect(() => hotkeys.renderExistingHotkeys()).not.toThrow();
-    });
+        expect(rows()).toHaveLength(50);
+        expect(
+          container.querySelector('.primary-cards-pagination [role="status"]').textContent
+        ).toBe('Page 1 / 3');
+        expect(pager('previous').getAttribute('aria-disabled')).toBe('true');
 
-    it('should render existing hotkeys', () => {
-      // Create real DOM element
-      const container = document.createElement('div');
-      container.id = 'existing-hotkeys-list';
-      document.body.appendChild(container);
+        pager('next').click();
 
-      expect(() => hotkeys.renderExistingHotkeys()).not.toThrow();
-
-      document.body.removeChild(container);
-    });
-
-    it('should skip entities that do not exist in STATES', () => {
-      const config = getMockConfig();
-      config.globalHotkeys = {
-        enabled: true,
-        hotkeys: {
-          'light.living_room': { hotkey: 'Ctrl+Shift+L', action: 'toggle' },
-          'light.nonexistent': 'Ctrl+Shift+N',
-        },
-      };
-      state.setConfig(config);
-
-      // Create real DOM element
-      const container = document.createElement('div');
-      container.id = 'existing-hotkeys-list';
-      document.body.appendChild(container);
-
-      expect(() => hotkeys.renderExistingHotkeys()).not.toThrow();
-
-      document.body.removeChild(container);
-    });
-
-    it('should handle rendering errors gracefully', () => {
-      const consoleError = jest.spyOn(console, 'error').mockImplementation();
-
-      document.getElementById = jest.fn(() => {
-        throw new Error('DOM error');
+        expect(rows()).toHaveLength(50);
+        expect(rows()[0].querySelector('.hotkey-input').dataset.entityId).toBe('light.lamp_050');
+        expect(container.querySelector('[role="status"]').textContent).toBe('Page 2 / 3');
       });
 
-      expect(() => hotkeys.renderExistingHotkeys()).not.toThrow();
-      expect(consoleError).toHaveBeenCalledWith(
-        'Error rendering existing hotkeys:',
-        expect.any(Error)
-      );
+      it('starts a new search on its first page', () => {
+        hotkeys.renderHotkeysTab();
+        pager('next').click();
+        pager('next').click();
+        expect(container.querySelector('[role="status"]').textContent).toBe('Page 3 / 3');
 
-      consoleError.mockRestore();
+        searchInput.value = 'lamp 1';
+        hotkeys.renderHotkeysTab();
+
+        expect(rows()[0].querySelector('.hotkey-input').dataset.entityId).toBe('light.lamp_100');
+      });
+
+      it('lets the keyboard stay on the pager button after a page is turned', () => {
+        hotkeys.renderHotkeysTab();
+        pager('next').focus();
+        pager('next').click();
+
+        expect(document.activeElement).toBe(pager('next'));
+      });
+
+      it('waits for a pause in typing before rebuilding the list', () => {
+        jest.useFakeTimers();
+        try {
+          hotkeys.renderHotkeysTab();
+          const firstRow = rows()[0];
+
+          searchInput.value = 'lamp 1';
+          hotkeys.scheduleHotkeysTabRender();
+          searchInput.value = 'lamp 12';
+          hotkeys.scheduleHotkeysTabRender();
+          expect(rows()[0]).toBe(firstRow);
+
+          jest.advanceTimersByTime(200);
+
+          expect(rows()[0]).not.toBe(firstRow);
+          expect(rows()).toHaveLength(10);
+        } finally {
+          jest.useRealTimers();
+        }
+      });
+
+      it('drops a pending search, and goes back to the first page, when Settings closes', () => {
+        jest.useFakeTimers();
+        try {
+          hotkeys.renderHotkeysTab();
+          pager('next').click();
+          const secondPageRow = rows()[0];
+
+          searchInput.value = 'lamp 1';
+          hotkeys.scheduleHotkeysTabRender();
+          hotkeys.cleanupHotkeyEventListeners();
+          jest.advanceTimersByTime(200);
+
+          // Nothing was rebuilt for a dialog that had gone
+          expect(rows()[0]).toBe(secondPageRow);
+
+          searchInput.value = '';
+          hotkeys.renderHotkeysTab();
+          expect(rows()[0].querySelector('.hotkey-input').dataset.entityId).toBe('light.lamp_000');
+        } finally {
+          jest.useRealTimers();
+        }
+      });
     });
   });
 
@@ -502,10 +543,7 @@ describe('hotkeys module', () => {
       settings.innerHTML = '<div class="modal-content"><button>Save</button></div>';
       document.body.appendChild(settings);
       const settingsEscape = jest.fn();
-      settings.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') settingsEscape();
-      });
-      uiUtils.trapFocus(settings, { initialFocus: false });
+      uiUtils.openDialog(settings, { initialFocus: false, dismiss: settingsEscape });
 
       const capture = hotkeys.captureHotkey();
       // A click on the overlay's text leaves focus on <body>.
@@ -525,6 +563,760 @@ describe('hotkeys module', () => {
       expect(settingsEscape).toHaveBeenCalledTimes(1);
       uiUtils.releaseFocusTrap(settings);
       settings.remove();
+    });
+
+    it('can be cancelled with the mouse or a tap, which used to need the keyboard', async () => {
+      const capture = hotkeys.captureHotkey();
+      const cancel = document.querySelector('.hotkey-capture-cancel');
+
+      expect(cancel.textContent).toBe('Cancel');
+      // Pressing a key could not reach it anyway: every key is the recording's.
+      expect(cancel.tabIndex).toBe(-1);
+      cancel.click();
+
+      await expect(capture).resolves.toBeNull();
+      expect(document.querySelector('.hotkey-capture-modal')).toBeNull();
+    });
+
+    it('is cancelled by a click on the backdrop, and not by a click on its prompt', async () => {
+      const capture = hotkeys.captureHotkey();
+      const overlay = document.querySelector('.hotkey-capture-modal');
+
+      overlay.querySelector('.modal-content').click();
+      expect(document.querySelector('.hotkey-capture-modal')).toBe(overlay);
+      overlay.click();
+
+      await expect(capture).resolves.toBeNull();
+      expect(document.querySelector('.hotkey-capture-modal')).toBeNull();
+    });
+
+    it('is a named dialog', () => {
+      void hotkeys.captureHotkey();
+      const overlay = document.querySelector('.hotkey-capture-modal');
+
+      expect(overlay.getAttribute('role')).toBe('dialog');
+      expect(overlay.getAttribute('aria-modal')).toBe('true');
+      expect(overlay.getAttribute('aria-label')).toBe('Press the desired key combination...');
+      overlay
+        .querySelector('.hotkey-capture-cancel')
+        .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+  });
+
+  describe('the hotkey list in Settings', () => {
+    const entity = (id) => ({
+      entity_id: id,
+      state: 'off',
+      attributes: { friendly_name: id.split('.')[1] },
+    });
+    const press = (target, key) => {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      target.dispatchEvent(event);
+      return event;
+    };
+
+    beforeEach(() => {
+      const config = getMockConfig();
+      config.globalHotkeys = {
+        enabled: true,
+        hotkeys: { 'light.kitchen': { hotkey: 'Ctrl+K', action: 'toggle' } },
+      };
+      state.setConfig(config);
+      state.setStates({
+        'light.kitchen': entity('light.kitchen'),
+        'light.hall': entity('light.hall'),
+      });
+      // The list wires itself once; a test builds a new one each time.
+      hotkeys.cleanupHotkeyEventListeners();
+      document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+      hotkeys.renderHotkeysTab();
+    });
+
+    it('keeps the keyboard on the same control when the list is rebuilt', () => {
+      const select = document.querySelector('[data-focus-key="hotkey-action:light.hall"]');
+      expect(select.matches('select.hotkey-action-select')).toBe(true);
+      select.focus();
+
+      hotkeys.renderHotkeysTab();
+
+      const after = document.querySelector('[data-focus-key="hotkey-action:light.hall"]');
+      expect(after).not.toBe(select);
+      expect(document.activeElement).toBe(after);
+    });
+
+    it('leaves Escape on an action select to the browser and the dialog', () => {
+      // An open native list closes itself on Escape before the page sees the key; on a closed
+      // select Escape is the dialog's, so the list must not claim it.
+      const select = document.querySelector('select.hotkey-action-select');
+
+      expect(press(select, 'Escape').defaultPrevented).toBe(false);
+    });
+  });
+
+  describe('the hotkey list: order, empty states and accessible names', () => {
+    const entity = (id, name) => ({
+      entity_id: id,
+      state: 'off',
+      attributes: { friendly_name: name },
+    });
+    const mount = (states = {}, hotkeysConfig = {}, enabled = true) => {
+      const config = getMockConfig();
+      config.globalHotkeys = { enabled, hotkeys: hotkeysConfig };
+      state.setConfig(config);
+      state.setStates(states);
+      hotkeys.cleanupHotkeyEventListeners();
+      document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+      hotkeys.renderHotkeysTab();
+      return document.getElementById('hotkeys-list');
+    };
+    const names = (list) =>
+      [...list.querySelectorAll('.hotkey-item .entity-name')].map((node) => node.textContent);
+
+    it('lists entities by name, not in the order Home Assistant sent them', () => {
+      const list = mount({
+        'light.zeta': entity('light.zeta', 'Zeta lamp'),
+        'switch.alpha': entity('switch.alpha', 'alpha plug'),
+        'scene.movie': entity('scene.movie', 'Movie night'),
+        'light.beta': entity('light.beta', 'Beta lamp'),
+      });
+
+      expect(names(list)).toEqual(['alpha plug', 'Beta lamp', 'Movie night', 'Zeta lamp']);
+    });
+
+    it('keeps the better search match first and orders ties by name', () => {
+      const list = mount({
+        'light.b': entity('light.b', 'Desk b'),
+        'light.a': entity('light.a', 'Desk a'),
+        'light.c': entity('light.c', 'Back desk'),
+      });
+      document.getElementById('hotkey-entity-search').value = 'desk';
+
+      hotkeys.renderHotkeysTab();
+
+      // The prefix matches (2 per field in the stub scorer) come before the substring match.
+      expect(names(list)).toEqual(['Desk a', 'Desk b', 'Back desk']);
+    });
+
+    it('says nothing matched when the search finds no entity', () => {
+      const list = mount({ 'light.kitchen': entity('light.kitchen', 'Kitchen') });
+      document.getElementById('hotkey-entity-search').value = 'zzz';
+
+      hotkeys.renderHotkeysTab();
+
+      const empty = list.querySelector('.hotkeys-empty');
+      expect(empty.textContent).toBe('No matching entities');
+      expect(empty.getAttribute('role')).toBe('status');
+      expect(list.querySelector('.hotkey-item')).toBeNull();
+    });
+
+    it('says to connect, not that nothing matched, while Home Assistant has sent nothing', () => {
+      const list = mount({});
+
+      expect(list.querySelector('.hotkeys-empty').textContent).toBe(
+        'Connect to Home Assistant to assign hotkeys'
+      );
+    });
+
+    it('gives every row an action select and a clear button that name their entity', () => {
+      const list = mount({
+        'light.kitchen': entity('light.kitchen', 'Kitchen'),
+        'light.hall': entity('light.hall', 'Hall'),
+      });
+
+      const labels = (selector) =>
+        [...list.querySelectorAll(selector)].map((node) => node.getAttribute('aria-label'));
+      expect(labels('select.hotkey-action-select')).toEqual([
+        'Hotkey action for Hall',
+        'Hotkey action for Kitchen',
+      ]);
+      expect(labels('.btn-clear-hotkey')).toEqual([
+        'Clear hotkey for Hall',
+        'Clear hotkey for Kitchen',
+      ]);
+      expect(labels('.hotkey-input')).toEqual(['Hotkey for Hall', 'Hotkey for Kitchen']);
+    });
+
+    it('keeps the hotkey field a read-only textbox that reads out its hotkey and how to record', () => {
+      const list = mount(
+        { 'light.kitchen': entity('light.kitchen', 'Kitchen') },
+        { 'light.kitchen': { hotkey: 'Ctrl+Alt+1', action: 'toggle' } }
+      );
+      const field = list.querySelector('.hotkey-input');
+
+      // role=button is not allowed on an input, and hid the value from assistive technology.
+      expect(field.hasAttribute('role')).toBe(false);
+      expect(field.readOnly).toBe(true);
+      expect(field.value).toBe('Ctrl+Alt+1');
+      const hint = document.getElementById(field.getAttribute('aria-describedby'));
+      expect(hint.textContent).toBe('Press Enter or Space to record a hotkey');
+      expect(list.querySelectorAll(`#${hint.id}`)).toHaveLength(1);
+    });
+
+    it('shows each hotkey as the keys are printed on this keyboard, and stores it unchanged', () => {
+      const original = window.electronAPI.platform;
+      try {
+        window.electronAPI.platform = 'darwin';
+        const list = mount(
+          { 'light.kitchen': entity('light.kitchen', 'Kitchen') },
+          { 'light.kitchen': { hotkey: 'Ctrl+Alt+Super+K', action: 'toggle' } }
+        );
+
+        expect(list.querySelector('.hotkey-input').value).toBe('Control+Option+Cmd+K');
+        expect(state.CONFIG.globalHotkeys.hotkeys['light.kitchen'].hotkey).toBe('Ctrl+Alt+Super+K');
+      } finally {
+        window.electronAPI.platform = original;
+      }
+    });
+  });
+
+  describe('an action chosen before the hotkey is recorded', () => {
+    const entity = (id, name) => ({
+      entity_id: id,
+      state: 'on',
+      attributes: { friendly_name: name },
+    });
+    const nextTick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const choose = (entityId, action) => {
+      const select = document.querySelector(`select[data-entity-id="${entityId}"]`);
+      select.value = action;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    const record = (code, init = {}) =>
+      document.activeElement.dispatchEvent(
+        new KeyboardEvent('keydown', { code, key: code, ctrlKey: true, bubbles: true, ...init })
+      );
+
+    beforeEach(() => {
+      const config = getMockConfig();
+      config.globalHotkeys = { enabled: true, hotkeys: {} };
+      state.setConfig(config);
+      state.setStates({
+        'light.desk': entity('light.desk', 'Desk lamp'),
+        'light.hall': entity('light.hall', 'Hall light'),
+      });
+      hotkeys.cleanupHotkeyEventListeners();
+      document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+      hotkeys.renderHotkeysTab();
+    });
+
+    it('survives the list being rebuilt by a search, and is the action that gets recorded', async () => {
+      choose('light.desk', 'turn_off');
+      const search = document.getElementById('hotkey-entity-search');
+      search.value = 'hall';
+      hotkeys.renderHotkeysTab();
+      search.value = '';
+      hotkeys.renderHotkeysTab();
+
+      const select = document.querySelector('select[data-entity-id="light.desk"]');
+      expect(select.value).toBe('turn_off');
+      // Nothing was saved: the row has no hotkey to attach the action to yet.
+      expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+
+      const field = document.querySelector('.hotkey-input[data-entity-id="light.desk"]');
+      field.focus();
+      const assignment = hotkeys.assignHotkeyToEntity('light.desk', { action: select.value });
+      record('KeyD', { key: 'd' });
+      await assignment;
+
+      expect(mockElectronAPI.registerHotkey).toHaveBeenCalledWith(
+        'light.desk',
+        'Ctrl+D',
+        'turn_off'
+      );
+    });
+
+    it('says it waits for a hotkey, where a saved row says it was updated', async () => {
+      const showToast = require('../../src/ui-utils.js').showToast;
+      showToast.mockClear();
+
+      choose('light.desk', 'turn_off');
+
+      expect(showToast).toHaveBeenCalledTimes(1);
+      expect(showToast).toHaveBeenCalledWith(
+        expect.stringMatching(/^Action chosen: .+\. It applies once you record a hotkey\.$/),
+        'info',
+        expect.any(Number)
+      );
+    });
+
+    it('is used when the recorder is opened without naming an action, as the tile menu does', async () => {
+      choose('light.desk', 'turn_on');
+
+      const assignment = hotkeys.assignHotkeyToEntity('light.desk');
+      record('KeyD', { key: 'd' });
+      await assignment;
+
+      expect(mockElectronAPI.registerHotkey).toHaveBeenCalledWith(
+        'light.desk',
+        'Ctrl+D',
+        'turn_on'
+      );
+    });
+
+    it('is forgotten once the hotkey is saved, and when Settings closes', async () => {
+      choose('light.desk', 'turn_on');
+      choose('light.hall', 'turn_off');
+      const assignment = hotkeys.assignHotkeyToEntity('light.desk');
+      record('KeyD', { key: 'd' });
+      await assignment;
+      await nextTick();
+      expect(state.CONFIG.globalHotkeys.hotkeys['light.desk'].action).toBe('turn_on');
+
+      hotkeys.cleanupHotkeyEventListeners();
+      document.getElementById('hotkeys-list').innerHTML = '';
+      hotkeys.renderHotkeysTab();
+
+      expect(document.querySelector('select[data-entity-id="light.hall"]').value).toBe('toggle');
+    });
+  });
+
+  describe('the hotkey list: pages together with the filter, the empty state and the rest', () => {
+    const entity = (id, name) => ({
+      entity_id: id,
+      state: 'off',
+      attributes: { friendly_name: name },
+    });
+    const pad = (n) => String(n).padStart(3, '0');
+    let container;
+    let searchInput;
+
+    // 130 lamps and 20 plugs, sent to the list in reverse so only its own order puts them right.
+    beforeEach(() => {
+      const config = getMockConfig();
+      config.globalHotkeys = { enabled: true, hotkeys: {} };
+      state.setConfig(config);
+      const states = {};
+      for (let i = 149; i >= 0; i -= 1) {
+        const plug = i >= 130;
+        const id = `${plug ? 'switch' : 'light'}.${plug ? 'plug' : 'lamp'}_${pad(i)}`;
+        states[id] = entity(id, `${plug ? 'Plug' : 'Lamp'} ${pad(i)}`);
+      }
+      state.setStates(states);
+      hotkeys.cleanupHotkeyEventListeners();
+      document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+      container = document.getElementById('hotkeys-list');
+      searchInput = document.getElementById('hotkey-entity-search');
+      hotkeys.renderHotkeysTab();
+    });
+
+    const rows = () => [...container.querySelectorAll('.hotkey-item .entity-name')];
+    const names = () => rows().map((node) => node.textContent);
+    const pager = (key) => container.querySelector(`[data-primary-page="${key}"]`);
+    const pagerText = () => container.querySelector('.primary-cards-pagination [role="status"]');
+    const search = (text) => {
+      searchInput.value = text;
+      hotkeys.renderHotkeysTab();
+    };
+
+    it('pages the whole list in name order, so a page continues where the last one stopped', () => {
+      expect(names()).toHaveLength(50);
+      expect(names()[0]).toBe('Lamp 000');
+      expect(names()[49]).toBe('Lamp 049');
+      pager('next').click();
+      pager('next').click();
+
+      // Plugs sort after lamps; page 3 holds the last 30 lamps, then the 20 plugs.
+      expect(pagerText().textContent).toBe('Page 3 / 3');
+      expect(names()).toHaveLength(50);
+      expect(names()[0]).toBe('Lamp 100');
+      expect(names()[29]).toBe('Lamp 129');
+      expect(names()[30]).toBe('Plug 130');
+      expect(names()[49]).toBe('Plug 149');
+    });
+
+    it('pages only what the filter finds, and drops the pager when that fits one page', () => {
+      search('lamp');
+      expect(pagerText().textContent).toBe('Page 1 / 3');
+
+      pager('next').click();
+      expect(names()[0]).toBe('Lamp 050');
+
+      search('plug');
+      // A new query starts on its first page, and 20 plugs need no pager.
+      expect(names()).toHaveLength(20);
+      expect(names()[0]).toBe('Plug 130');
+      expect(container.querySelector('.primary-cards-pagination')).toBeNull();
+      expect(container.querySelector('.hotkeys-empty')).toBeNull();
+    });
+
+    it('starts a new filter that also has several pages on its first page', () => {
+      pager('next').click();
+      expect(names()[0]).toBe('Lamp 050');
+
+      // Page 2 exists for the new filter too, so only the new query can send it back to page 1.
+      search('lamp');
+
+      expect(pagerText().textContent).toBe('Page 1 / 3');
+      expect(names()[0]).toBe('Lamp 000');
+    });
+
+    it('keeps the page while the same filter is drawn again', () => {
+      search('lamp');
+      pager('next').click();
+
+      hotkeys.renderHotkeysTab();
+
+      expect(pagerText().textContent).toBe('Page 2 / 3');
+      expect(names()[0]).toBe('Lamp 050');
+    });
+
+    it('says nothing matched, with no pager, when a filter leaves nothing from a later page', () => {
+      pager('next').click();
+      pager('next').click();
+      expect(pagerText().textContent).toBe('Page 3 / 3');
+
+      search('zzz');
+
+      const empty = container.querySelector('.hotkeys-empty');
+      expect(empty.textContent).toBe('No matching entities');
+      expect(empty.getAttribute('role')).toBe('status');
+      expect(container.querySelector('.hotkey-item')).toBeNull();
+      expect(container.querySelector('.primary-cards-pagination')).toBeNull();
+      // The record hint belongs to the rows; there are none to describe.
+      expect(container.querySelector('#hotkey-record-hint')).toBeNull();
+
+      // Clearing the filter is a new query too, so the list comes back on its first page.
+      search('');
+      expect(container.querySelector('.hotkeys-empty')).toBeNull();
+      expect(pagerText().textContent).toBe('Page 1 / 3');
+      expect(names()[0]).toBe('Lamp 000');
+    });
+
+    it('says to connect, with no pager, before Home Assistant has sent anything', () => {
+      state.setStates({});
+
+      hotkeys.renderHotkeysTab();
+
+      expect(container.querySelector('.hotkeys-empty').textContent).toBe(
+        'Connect to Home Assistant to assign hotkeys'
+      );
+      expect(container.querySelector('.primary-cards-pagination')).toBeNull();
+    });
+
+    it('shows the empty state after the pause in typing, and not before', () => {
+      jest.useFakeTimers();
+      try {
+        searchInput.value = 'zzz';
+        hotkeys.scheduleHotkeysTabRender();
+        hotkeys.scheduleHotkeysTabRender();
+        expect(names()).toHaveLength(50);
+        expect(container.querySelector('.hotkeys-empty')).toBeNull();
+
+        jest.advanceTimersByTime(149);
+        expect(container.querySelector('.hotkeys-empty')).toBeNull();
+        jest.advanceTimersByTime(1);
+
+        expect(container.querySelector('.hotkeys-empty').textContent).toBe('No matching entities');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('gives every row on a later page the same accessible names as on the first', () => {
+      pager('next').click();
+      const row = container.querySelectorAll('.hotkey-item')[0];
+
+      expect(row.querySelector('.hotkey-input').getAttribute('aria-label')).toBe(
+        'Hotkey for Lamp 050'
+      );
+      expect(row.querySelector('select').getAttribute('aria-label')).toBe(
+        'Hotkey action for Lamp 050'
+      );
+      expect(row.querySelector('.btn-clear-hotkey').getAttribute('aria-label')).toBe(
+        'Clear hotkey for Lamp 050'
+      );
+      // One hint describes every field of the page.
+      expect(container.querySelectorAll('#hotkey-record-hint')).toHaveLength(1);
+      expect(row.querySelector('.hotkey-input').getAttribute('aria-describedby')).toBe(
+        'hotkey-record-hint'
+      );
+    });
+
+    it('keeps the keyboard on the same row control, on the same page, when the list is rebuilt', () => {
+      pager('next').click();
+      const select = container.querySelector('[data-focus-key="hotkey-action:light.lamp_075"]');
+      select.focus();
+
+      hotkeys.renderHotkeysTab();
+
+      const after = container.querySelector('[data-focus-key="hotkey-action:light.lamp_075"]');
+      expect(after).not.toBe(select);
+      expect(document.activeElement).toBe(after);
+      expect(pagerText().textContent).toBe('Page 2 / 3');
+    });
+
+    it('hands the keyboard to the pager button through a page change and a further rebuild', () => {
+      pager('next').focus();
+      pager('next').click();
+      expect(document.activeElement).toBe(pager('next'));
+
+      hotkeys.renderHotkeysTab();
+
+      expect(document.activeElement).toBe(pager('next'));
+      expect(pagerText().textContent).toBe('Page 2 / 3');
+    });
+
+    it('remembers an action chosen on one page while another page is shown', () => {
+      const select = container.querySelector('select[data-entity-id="light.lamp_010"]');
+      select.value = 'turn_off';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+
+      pager('next').click();
+      pager('previous').click();
+
+      expect(container.querySelector('select[data-entity-id="light.lamp_010"]').value).toBe(
+        'turn_off'
+      );
+    });
+
+    it('stays on the page of a row whose hotkey was just recorded, with the keyboard on its field', async () => {
+      pager('next').click();
+      const field = container.querySelector('.hotkey-input[data-entity-id="light.lamp_060"]');
+      field.focus();
+
+      const assignment = hotkeys.assignHotkeyToEntity('light.lamp_060');
+      document.activeElement.dispatchEvent(
+        new KeyboardEvent('keydown', { code: 'KeyD', key: 'd', ctrlKey: true, bubbles: true })
+      );
+      await assignment;
+
+      expect(pagerText().textContent).toBe('Page 2 / 3');
+      const after = container.querySelector('.hotkey-input[data-entity-id="light.lamp_060"]');
+      expect(after.value).toBe('Ctrl+D');
+      expect(document.activeElement).toBe(after);
+    });
+  });
+
+  describe('the recorder', () => {
+    const entity = { entity_id: 'light.desk', state: 'on', attributes: { friendly_name: 'Desk' } };
+    const nextTick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const press = (init) =>
+      document.activeElement.dispatchEvent(
+        new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init })
+      );
+    const preview = () => document.querySelector('#hotkey-preview').textContent;
+    let originalPlatform;
+
+    beforeEach(() => {
+      originalPlatform = window.electronAPI.platform;
+      const config = getMockConfig();
+      config.globalHotkeys = { enabled: true, hotkeys: {} };
+      state.setConfig(config);
+      state.setStates({ 'light.desk': entity });
+      document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+    });
+    afterEach(() => {
+      window.electronAPI.platform = originalPlatform;
+    });
+
+    it('records Ctrl+Shift+Space, which the old recorder could not', async () => {
+      const capture = hotkeys.captureHotkey();
+
+      press({ key: ' ', code: 'Space', ctrlKey: true, shiftKey: true });
+
+      await expect(capture).resolves.toBe('Ctrl+Shift+Space');
+    });
+
+    it('records Ctrl+Up as the name an accelerator uses', async () => {
+      const capture = hotkeys.captureHotkey();
+
+      press({ key: 'ArrowUp', code: 'ArrowUp', ctrlKey: true });
+
+      await expect(capture).resolves.toBe('Ctrl+Up');
+    });
+
+    it('shows the keys held while it waits for the rest', async () => {
+      const capture = hotkeys.captureHotkey();
+
+      press({ key: 'Control', code: 'ControlLeft', ctrlKey: true });
+      expect(preview()).toBe('Ctrl');
+      press({ key: 'Shift', code: 'ShiftLeft', ctrlKey: true, shiftKey: true });
+      expect(preview()).toBe('Ctrl+Shift');
+
+      press({ key: 'Escape', code: 'Escape' });
+      await capture;
+    });
+
+    it('does not take a key with only Shift, and says what to add', async () => {
+      window.electronAPI.platform = 'win32';
+      const capture = hotkeys.captureHotkey();
+
+      press({ key: 'A', code: 'KeyA', shiftKey: true });
+      expect(preview()).toBe('Shift+A (add Ctrl/Alt/Win)');
+      press({ key: 'a', code: 'KeyA' });
+      expect(preview()).toBe('A (add Ctrl/Alt/Win)');
+      expect(document.querySelector('.hotkey-capture-modal')).not.toBeNull();
+
+      press({ key: 'a', code: 'KeyA', altKey: true });
+      await expect(capture).resolves.toBe('Alt+A');
+    });
+
+    it.each([
+      ['darwin', 'Shift+A (add Control/Option/Cmd)'],
+      ['linux', 'Shift+A (add Ctrl/Alt/Super)'],
+    ])('names the keys to add the way a %s keyboard prints them', async (platform, expected) => {
+      window.electronAPI.platform = platform;
+      const capture = hotkeys.captureHotkey();
+
+      press({ key: 'A', code: 'KeyA', shiftKey: true });
+
+      expect(preview()).toBe(expected);
+      press({ key: 'Escape', code: 'Escape' });
+      await capture;
+    });
+
+    it('records the Meta key as Command on a Mac and Super elsewhere', async () => {
+      window.electronAPI.platform = 'darwin';
+      let capture = hotkeys.captureHotkey();
+      press({ key: 'k', code: 'KeyK', metaKey: true, altKey: true });
+      await expect(capture).resolves.toBe('Alt+Command+K');
+      expect(document.querySelector('.hotkey-capture-modal')).toBeNull();
+
+      window.electronAPI.platform = 'win32';
+      capture = hotkeys.captureHotkey();
+      press({ key: 'k', code: 'KeyK', metaKey: true, altKey: true });
+      await expect(capture).resolves.toBe('Alt+Super+K');
+    });
+
+    it('says "Recording..." in the row field behind the dialog and puts the hotkey back after', async () => {
+      hotkeys.renderHotkeysTab();
+      const field = document.querySelector('.hotkey-input');
+      field.focus();
+
+      const assignment = hotkeys.assignHotkeyToEntity('light.desk');
+      expect(field.value).toBe('Recording...');
+      expect(field.dataset.recording).toBe('true');
+      expect(field.getAttribute('aria-busy')).toBe('true');
+      press({ key: 'Escape', code: 'Escape' });
+      await assignment;
+
+      expect(field.value).toBe('');
+      expect(field.dataset.recording).toBeUndefined();
+      expect(field.hasAttribute('aria-busy')).toBe(false);
+    });
+
+    it('opens one recorder at a time', async () => {
+      const first = hotkeys.assignHotkeyToEntity('light.desk');
+      const second = await hotkeys.assignHotkeyToEntity('light.desk');
+
+      expect(second).toEqual({ success: false, canceled: true });
+      expect(document.querySelectorAll('.hotkey-capture-modal')).toHaveLength(1);
+      press({ key: 'Escape', code: 'Escape' });
+      await first;
+      await nextTick();
+    });
+  });
+
+  describe('assigning a hotkey while Entity hotkeys is off', () => {
+    const nextTick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const assign = async (enabled) => {
+      const config = getMockConfig();
+      config.globalHotkeys = { enabled, hotkeys: {} };
+      state.setConfig(config);
+      state.setStates({
+        'light.desk': {
+          entity_id: 'light.desk',
+          state: 'on',
+          attributes: { friendly_name: 'Desk' },
+        },
+      });
+      document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+      const assignment = hotkeys.assignHotkeyToEntity('light.desk');
+      document.activeElement.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'd', code: 'KeyD', ctrlKey: true, bubbles: true })
+      );
+      const result = await assignment;
+      await nextTick();
+      return result;
+    };
+
+    it('saves the hotkey but warns it does nothing until the switch is on, instead of a green toast', async () => {
+      const result = await assign(false);
+
+      expect(result.success).toBe(true);
+      expect(state.CONFIG.globalHotkeys.hotkeys['light.desk'].hotkey).toBe('Ctrl+D');
+      expect(showToast).toHaveBeenCalledTimes(1);
+      expect(showToast).toHaveBeenCalledWith(
+        'Hotkey saved. Turn on Entity hotkeys in Settings > Hotkeys to use it.',
+        'warning',
+        5000
+      );
+    });
+
+    it('keeps the plain confirmation when the switch is on', async () => {
+      await assign(true);
+
+      expect(showToast).toHaveBeenCalledWith('Hotkey set for Desk', 'success', 2200);
+      expect(showToast).not.toHaveBeenCalledWith(
+        expect.stringContaining('Turn on Entity hotkeys'),
+        expect.anything(),
+        expect.anything()
+      );
+    });
+  });
+
+  describe('a hotkey another entity already holds', () => {
+    const nextTick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const states = {
+      'light.desk': { entity_id: 'light.desk', state: 'on', attributes: { friendly_name: 'Desk' } },
+      'light.lamp': {
+        entity_id: 'light.lamp',
+        state: 'on',
+        attributes: { friendly_name: 'Desk lamp' },
+      },
+    };
+
+    beforeEach(() => {
+      const config = getMockConfig();
+      config.globalHotkeys = {
+        enabled: true,
+        hotkeys: { 'light.lamp': { hotkey: 'Ctrl+D', action: 'toggle' } },
+      };
+      state.setConfig(config);
+      state.setStates(states);
+      hotkeys.cleanupHotkeyEventListeners();
+      document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+      hotkeys.renderHotkeysTab();
+    });
+
+    it('is named by the friendly name the row shows, and the row is marked', async () => {
+      mockElectronAPI.registerHotkey.mockResolvedValueOnce({
+        success: false,
+        error: 'Hotkey already assigned to light.lamp',
+        conflictEntityId: 'light.lamp',
+      });
+      document.querySelector('.hotkey-input[data-entity-id="light.desk"]').focus();
+
+      const assignment = hotkeys.assignHotkeyToEntity('light.desk');
+      document.activeElement.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'd', code: 'KeyD', ctrlKey: true, bubbles: true })
+      );
+      const result = await assignment;
+      await nextTick();
+
+      expect(result.error).toBe('Hotkey already assigned to Desk lamp');
+      expect(showToast).toHaveBeenCalledWith('Hotkey already assigned to Desk lamp', 'error', 3000);
+      const row = document
+        .querySelector('.hotkey-input[data-entity-id="light.lamp"]')
+        .closest('.hotkey-item');
+      expect(row.classList.contains('settings-search-target')).toBe(true);
+    });
+
+    it('falls back to the id when the entity is not loaded, and to main text otherwise', () => {
+      expect(
+        hotkeys.describeHotkeyFailure({ conflictEntityId: 'light.gone', error: 'x' }, 'fallback')
+      ).toBe('Hotkey already assigned to light.gone');
+      expect(hotkeys.describeHotkeyFailure({ error: 'Portal said no' }, 'fallback')).toBe(
+        'Portal said no'
+      );
+      expect(hotkeys.describeHotkeyFailure({}, 'fallback')).toBe('fallback');
+    });
+
+    it('leaves a row that is not in the list alone', () => {
+      document.getElementById('hotkey-entity-search').value = 'zzz';
+      hotkeys.renderHotkeysTab();
+
+      expect(() => hotkeys.flashHotkeyRow('light.lamp')).not.toThrow();
     });
   });
 
@@ -759,7 +1551,6 @@ describe('hotkeys module', () => {
       expect(typeof hotkeys.renderHotkeysTab).toBe('function');
       expect(typeof hotkeys.toggleHotkeys).toBe('function');
       expect(typeof hotkeys.captureHotkey).toBe('function');
-      expect(typeof hotkeys.renderExistingHotkeys).toBe('function');
       expect(typeof hotkeys.assignHotkeyToEntity).toBe('function');
       expect(typeof hotkeys.setupHotkeyEventListeners).toBe('function');
       expect(typeof hotkeys.cleanupHotkeyEventListeners).toBe('function');
@@ -770,7 +1561,10 @@ describe('hotkeys module', () => {
 describe('entity hotkey row layout', () => {
   const fs = require('fs');
   const path = require('path');
-  const styles = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
+  // Without its comments, which would otherwise count as part of the selector that follows them.
+  const styles = fs
+    .readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
   // Every declaration block whose selector list names `selector` exactly.
   const declarationsFor = (selector) =>
     [...styles.matchAll(/([^{}]+)\{([^}]*)\}/g)]
@@ -778,11 +1572,14 @@ describe('entity hotkey row layout', () => {
       .map(([, , body]) => body)
       .join(';');
 
-  it('sizes the hotkey field to its text so translated placeholders are not clipped', () => {
-    // German "Kein Tastenkürzel gesetzt" does not fit a fixed 120px field.
+  it('gives the hotkey field the row so translated placeholders are not clipped', () => {
+    // German "Kein Tastenkürzel gesetzt" does not fit a fixed 120px field: the field takes what
+    // the action and the clear button leave, and the action drops under it when that is too little.
     const input = declarationsFor('.hotkey-input');
-    expect(input).toMatch(/field-sizing:\s*content/);
+    expect(input).toMatch(/flex:\s*1 1 8rem/);
+    expect(input).toMatch(/min-width:\s*0/);
     expect(input).not.toMatch(/(^|[;\s])width:/);
+    expect(declarationsFor('.hotkey-input-container')).toMatch(/flex-wrap:\s*wrap/);
     // The row wraps the controls under the name instead of squeezing the field.
     expect(declarationsFor('.hotkey-item')).toMatch(/flex-wrap:\s*wrap/);
     expect(declarationsFor('.hotkey-item')).not.toMatch(/flex-wrap:\s*nowrap/);

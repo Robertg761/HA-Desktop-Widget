@@ -171,6 +171,8 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
     const handlers = {};
     const dialogResults = [];
     const dialogCalls = [];
+    // The window each dialog was parented to, in the same order; null when it had none.
+    const dialogParents = [];
     const context = {
       Date: DeviceDate,
       Buffer,
@@ -207,8 +209,9 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
       rejectUnauthorizedIpc: () => ({ success: false, error: 'Unauthorized' }),
       windowAutoHide: { suspend: () => () => {} },
       dialog: {
-        showOpenDialog: async (options) => {
-          dialogCalls.push(options);
+        showOpenDialog: async (...args) => {
+          dialogCalls.push(args.at(-1));
+          dialogParents.push(args.length > 1 ? args[0] : null);
           return dialogResults.shift() || { canceled: true, filePaths: [] };
         },
         showSaveDialog: async (...args) => {
@@ -258,6 +261,7 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
      var omarchyThemeWatcher = null;
      function getOmarchyBarEntities() { return { all: [] }; }
      function isHyprland() { return false; }
+     function windowsAreAlwaysTransparent() { return false; }
      function hasDeferredSecureConfigWork() { return false; }
      function getDefaultProfileSyncFilePath() { return path.join(app.getPath('userData'), PROFILE_SYNC_DEFAULT_FILE_NAME); }
      var config = null;
@@ -328,6 +332,7 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
       },
       /** The options each native dialog was opened with. */
       dialogCalls,
+      dialogParents,
       /** Queues what the next native dialog returns. */
       queueDialogResult(result) {
         dialogResults.push(result);

@@ -255,7 +255,9 @@ describe('tray connection lifecycle wiring', () => {
       vm.runInNewContext(rendererSource.slice(start, end), context);
       onOnline();
       expect(context.connectWebSocket).toHaveBeenCalledTimes(wasOffline ? 1 : 0);
-      expect(context.setDisconnectedStatus).toHaveBeenCalledTimes(wasOffline ? 1 : 0);
+      // connectWebSocket() says it is connecting; a "network restored" status set first would be
+      // replaced in the same tick, before it could be painted.
+      expect(context.setDisconnectedStatus).not.toHaveBeenCalled();
     }
   );
 });
