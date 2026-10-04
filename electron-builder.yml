@@ -26,6 +26,9 @@ files:
   - dashboard-workflows.css
   - build/icon.ico
   - build/icon.png
+  - build/icons/512x512.png
+  - build/trayTemplate.png
+  - build/trayTemplate@2x.png
   - package.json
   - '!node_modules/usocket/**/*'
 asar: true
@@ -38,6 +41,14 @@ publish:
 
 mac:
   minimumSystemVersion: '12.0'
+  # The system no longer masks a third-party icon, so this is the artwork already in build/icon.png,
+  # set on Apple's icon grid by scripts/derive-icons.py (which also writes the other sizes).
+  icon: build/icon-mac.png
+  category: public.app-category.utilities
+  extendInfo:
+    # The widget lives in the menu bar and has no Dock icon. app.dock.hide() does the same at
+    # runtime, after the Dock has already drawn (and bounced) the icon at every launch.
+    LSUIElement: true
   x64ArchFiles: '**/uiohook-napi/prebuilds/darwin-*/uiohook-napi.node'
   # dbus-next and its exclusive transitive dependency subtree (per package-lock.json:
   # event-stream and its stream helpers, xml2js/xmlbuilder, long, jsbi, hexy,
@@ -89,9 +100,13 @@ nsis:
 portable:
   artifactName: '${productName}-${version}-win-${arch}-Portable.${ext}'
 linux:
-  icon: build/icon.png
+  # A directory of standard sizes (16x16.png ... 512x512.png), installed under
+  # usr/share/icons/hicolor/<size>/apps/. A single 847 px file landed in an 847x847 directory that
+  # no icon theme lists, so launchers and docks fell back to the generic icon.
+  icon: build/icons
   category: Utility
-  maintainer: Robertg761
+  synopsis: Home Assistant controls on your desktop
+  maintainer: Robertg761 <robertgordon761@gmail.com>
   # Layer-shell helper for tiling Wayland compositors (issue #79). Built from
   # vendor/windowtolayer (GPL-3.0-or-later, spawned as a separate process; the
   # COPYING file ships next to the binary). `npm run dist:linux` builds it.

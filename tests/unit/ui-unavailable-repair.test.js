@@ -338,4 +338,22 @@ describe('unavailable Quick Access tile repair affordance', () => {
     document.getElementById('entity-repair-modal').click();
     expect(document.getElementById('entity-repair-modal')).toBeNull();
   });
+
+  describe('from outside the tile (the Omarchy bar)', () => {
+    it('opens the repair dialog once Home Assistant has delivered its entities', () => {
+      state.setStates({ [replacement.entity_id]: replacement });
+
+      ui.openUnavailableEntityRepair(STALE_ID);
+
+      const modal = document.getElementById('entity-repair-modal');
+      expect(modal).not.toBeNull();
+      expect(modal.querySelector(`[data-entity-id="${replacement.entity_id}"]`)).not.toBeNull();
+    });
+
+    it('opens nothing while there is nothing to repair against', () => {
+      state.setStates({});
+      ui.openUnavailableEntityRepair(STALE_ID);
+      expect(document.getElementById('entity-repair-modal')).toBeNull();
+    });
+  });
 });

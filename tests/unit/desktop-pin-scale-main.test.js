@@ -6,6 +6,7 @@ const {
   clampDesktopPinBounds,
   getDesktopPinWindowBounds,
 } = require('../../src/desktop-pin-bounds.js');
+const { boundsVisibleOnAnyWorkArea } = require('../../src/window-placement.cjs');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
@@ -38,7 +39,9 @@ function loadPinRuntime({ scale, pinBounds }) {
     electronScreen: {
       getPrimaryDisplay: () => ({ workArea }),
       getDisplayMatching: () => ({ workArea }),
+      getAllDisplays: () => [{ workArea }],
     },
+    boundsVisibleOnAnyWorkArea,
     usesCompositorOwnedPlacement: false,
     isLayerShellChildProcess: false,
     desktopPinContentMinBounds: new Map(),

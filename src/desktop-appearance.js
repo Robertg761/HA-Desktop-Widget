@@ -27,10 +27,17 @@ const QUIET_TEXT_SHARES = {
   '--palette-text-faint': 0.62,
 };
 const MIN_TEXT_CONTRAST = 4.5;
+// Borders in the stylesheet are hairlines: the text colour at 10% (20% on hover), white on dark and
+// black on light. A palette's own border colour is a full-strength colour for terminal-style
+// borders, which drew every field, swatch and divider as a bright outline beside cards that keep
+// their faint glass edge. The same shares of the palette's foreground keep the weight.
+const BORDER_SHARE = 10;
+const BORDER_HOVER_SHARE = 20;
 const paletteProperties = [
   ...FOREGROUND_PROPERTIES,
   ...Object.keys(QUIET_TEXT_SHARES),
   '--border-color',
+  '--border-hover',
   '--selection-bg',
 ];
 
@@ -98,7 +105,14 @@ export function applyDesktopAppearance(config) {
   for (const [name, tone] of Object.entries(solveQuietText(palette))) {
     body.style.setProperty(name, tone);
   }
-  body.style.setProperty('--border-color', palette.border);
+  body.style.setProperty(
+    '--border-color',
+    `color-mix(in srgb, ${palette.foreground} ${BORDER_SHARE}%, transparent)`
+  );
+  body.style.setProperty(
+    '--border-hover',
+    `color-mix(in srgb, ${palette.foreground} ${BORDER_HOVER_SHARE}%, transparent)`
+  );
   body.style.setProperty('--selection-bg', palette.selection);
 }
 

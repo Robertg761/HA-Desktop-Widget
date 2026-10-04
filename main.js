@@ -39,6 +39,7 @@ const {
 const {
   getLaunchAction,
   hasIsolatedProfile,
+  isGnome,
   isHyprland,
   isPortalBindingRegistered,
   hyprlandBinding,
@@ -81,6 +82,10 @@ const {
 } = require('./src/linux-desktop-entry.cjs');
 let omarchyThemeWatcher = null;
 let trayHostWatch = null;
+// No StatusNotifier host is running (stock GNOME), so the tray icon is not shown anywhere.
+let trayHostMissing = false;
+// The window was minimized into the window manager instead of hidden; see minimizeMainWindow().
+let minimizedWithoutTrayHost = false;
 // When the tray or bar click (or `--toggle`) meant to lower a raised desktop-layer widget takes
 // focus first, the widget's blur has already lowered it by the time the toggle arrives. The
 // toggle consumes that recent release instead of raising the widget straight back up.
@@ -152,6 +157,9 @@ log.info('App starting...');
 
 const IS_DEV_MODE = process.argv.includes('--dev');
 const IS_SMOKE_TEST_MODE = process.argv.includes('--smoke-test');
+// `npm run dev` and the demos run beside the installed widget on a profile of their own. What they
+// must not share with it is anything outside the profile, like the Omarchy bar's socket and status file.
+const IS_SOURCE_DEV_RUN = IS_DEV_MODE && !app.isPackaged;
 const IS_CLIMATE_DEMO_MODE =
   IS_DEV_MODE && !app.isPackaged && process.argv.includes('--demo-climate');
 const IS_CLIMATE_DEMO_OVERLAY_MODE =
@@ -347,6 +355,7 @@ const {
   getDesktopPinBaseBounds,
   getDesktopPinDomain,
   normalizeDesktopPinContentMinBounds,
+  normalizeDesktopPinScale,
   clampDesktopPinBounds: clampDesktopPinBoundsWithWorkArea,
   resizeDesktopPinBounds: resizeDesktopPinBoundsInWorkArea,
   findFreeDesktopPinOrigin,
@@ -357,10 +366,12 @@ const {
   sanitizeDesktopPinSupportInfo,
 } = require('./src/desktop-pin-support.cjs');
 const {
+  getTrayIconSizeForPlatform,
   normalizeEntityId: normalizeTrayEntityId,
   normalizeTrayEntitiesConfig,
   sanitizeTrayEntityIconPayload,
 } = require('./src/tray-entities.cjs');
+const { loadTrayIcon } = require('./src/tray-icon.cjs');
 const {
   createDesktopPinConnectionState,
   createDesktopPinRendererConfig,
@@ -407,7 +418,10 @@ const {
   supportsAutoUpdater,
 } = require('./src/platform.cjs');
 const { supportsNativeGlass } = require('./src/window-glass.cjs');
-const { clampPositionToWorkAreas } = require('./src/window-placement.cjs');
+const {
+  boundsVisibleOnAnyWorkArea,
+  clampPositionToWorkAreas,
+} = require('./src/window-placement.cjs');
 const { onWindowBoundsChanged } = require('./src/window-bounds-events.cjs');
 const { attachEditHandlers, installApplicationMenu } = require('./src/application-menu.cjs');
 const {
@@ -427,8 +441,10 @@ const {
   readHyprlandCursorFromSocket,
 } = require('./src/layer-pointer-release.cjs');
 const { createWindowAutoHideController } = require('./src/window-auto-hide.cjs');
+const { createMainWindowReveal } = require('./src/main-window-reveal.cjs');
 const { installSystemShutdownHandlers } = require('./src/system-shutdown.cjs');
 const { createKWinWindowRaiser } = require('./src/kwin-window-raise.cjs');
+const { createPortalColorSchemeWatcher } = require('./src/portal-color-scheme.cjs');
 const { installSessionPermissionPolicy } = require('./src/session-permissions.cjs');
 const {
   createSerializedTaskRunner,
@@ -1088,6 +1104,29 @@ const popupWindowPresenter = createPopupWindowPresenter({
   requestCompositorRestore: layerShellRaiser ? () => layerShellRaiser.restore() : null,
   log,
 });
+// The main window opens hidden and is shown once the page has applied the saved config (see
+// src/main-window-reveal.cjs). Nothing here runs for a desktop-layer widget, which maps itself.
+const mainWindowReveal = createMainWindowReveal({
+  reveal: (reason) => {
+    if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isVisible()) return;
+    if (reason === 'fallback') log.warn('The page did not signal it was ready; showing the window');
+    // Signed in at login, macOS starts the app behind whatever the user is already doing. Showing
+    // the widget without taking focus keeps their typing where it was.
+    if (openedAtLogin()) mainWindow.showInactive();
+    else mainWindow.show();
+  },
+  log,
+});
+
+function openedAtLogin() {
+  if (process.platform !== 'darwin') return false;
+  try {
+    return app.getLoginItemSettings().wasOpenedAtLogin === true;
+  } catch {
+    return false;
+  }
+}
+
 // Where the main widget is on screen, in Hyprland's global coordinates, while it is a layer.
 function getMainLayerRect() {
   const position = layerPositions.get('main');
@@ -2052,6 +2091,7 @@ function sanitizeConfigForRenderer(inputConfig) {
     alwaysTransparentWindows: windowsAreAlwaysTransparent(),
     isolatedProfile: IS_ISOLATED_PROFILE,
     nativeGlassSupported: NATIVE_GLASS_SUPPORTED,
+    systemColorScheme: getSystemColorScheme(),
   };
   cloned.configRevision = configSnapshotVersion;
   cloned.secureStoragePending = hasDeferredSecureConfigWork();
@@ -2216,11 +2256,21 @@ function getDesktopPinCascadeOrigin(index = 0) {
   };
 }
 
+/**
+ * A pin's saved bounds, held to its minimum and maximum size and to a work area.
+ *
+ * The position is held to the screen only when the caller says `clampPosition` (a pin the user just
+ * moved). Any other caller is reading what is saved, and a saved position on a monitor that is not
+ * connected right now must survive that: the monitor may only be late to enumerate at login, or
+ * unplugged for a trip, and the pin should come back to it. The window itself is always placed on
+ * screen (see getDesktopPinWindowBounds), so the pin stays reachable meanwhile.
+ */
 function clampDesktopPinBounds(
   bounds = {},
   entityId = '',
   fallbackIndex = 0,
-  previousBounds = null
+  previousBounds = null,
+  { clampPosition = false } = {}
 ) {
   // A default parameter does not cover null, and a pin saved as null or text would throw below.
   if (!isPlainObject(bounds)) bounds = {};
@@ -2243,10 +2293,17 @@ function clampDesktopPinBounds(
     workArea: getDesktopPinWorkArea({ x, y, width, height }),
     previousBounds,
   });
-  if (usesCompositorOwnedPlacement) {
+  const savedPositionIsOffScreen =
+    !clampPosition &&
+    !boundsVisibleOnAnyWorkArea(
+      { x, y, width: clampedBounds.width, height: clampedBounds.height },
+      electronScreen.getAllDisplays().map((display) => display.workArea)
+    );
+  if (usesCompositorOwnedPlacement || savedPositionIsOffScreen) {
     // Native Wayland owns placement. Keep valid coordinates as opaque
     // persisted metadata so an unrelated save cannot replace an X11 or
     // multi-monitor position that Electron cannot apply in this session.
+    // A position on no connected monitor is kept the same way (see above).
     if (Number.isFinite(Number(bounds.x))) {
       clampedBounds.x = Math.round(Number(bounds.x));
     }
@@ -2288,7 +2345,11 @@ function getDesktopPinWindowBounds(entityId, pinBounds, workArea = null) {
 // Moving a pin only changes its position; its saved size stays the 100% size.
 function getDesktopPinBoundsFromWindow(entityId, pinWindow) {
   const { x, y } = pinWindow.getBounds();
-  return getDesktopPinBounds(entityId, { ...config?.desktopPins?.[entityId], x, y });
+  return getDesktopPinBounds(
+    entityId,
+    { ...config?.desktopPins?.[entityId], x, y },
+    { clampPosition: true }
+  );
 }
 
 function applyDesktopPinBoundsToWindow(
@@ -2323,6 +2384,24 @@ function applyDesktopPinBoundsToWindow(
     targetWindow.__desktopPinApplyingBounds = false;
     log.warn('Failed to apply desktop pin bounds update:', error.message);
   }
+}
+
+/** Does the pin's window sit where its saved bounds put it? */
+function desktopPinWindowIsPlaced(window, entityId, bounds) {
+  const current = window.getBounds();
+  const placed = getDesktopPinWindowBounds(entityId, bounds);
+  return (
+    current.x === placed.x &&
+    current.y === placed.y &&
+    current.width === placed.width &&
+    current.height === placed.height
+  );
+}
+
+function applyDesktopPinBoundsToWindowIfMoved(window, entityId, bounds) {
+  if (desktopPinWindowIsPlaced(window, entityId, bounds)) return false;
+  applyDesktopPinBoundsToWindow(window, bounds);
+  return true;
 }
 
 async function syncDesktopPinContentMinBounds(entityId, minBounds = {}) {
@@ -2671,13 +2750,19 @@ function wireWindowEffectsRefresh(targetWindow, currentConfigProvider, overrideF
   const refreshEffects = () => {
     const currentConfig =
       typeof currentConfigProvider === 'function' ? currentConfigProvider() : currentConfigProvider;
-    applyWindowEffectsToWindow(targetWindow, currentConfig, overrideFrostedGlass);
+    // A function reads the override at refresh time: a Settings preview of the frosted glass
+    // switch is not saved, and the saved value must not replace it on the next focus change.
+    const override =
+      typeof overrideFrostedGlass === 'function' ? overrideFrostedGlass() : overrideFrostedGlass;
+    applyWindowEffectsToWindow(targetWindow, currentConfig, override);
   };
 
+  let followUpTimers = [];
   const scheduleRefresh = () => {
+    // Focus, blur, show and restore arrive together; one burst needs one set of follow-ups.
+    followUpTimers.forEach(clearTimeout);
     refreshEffects();
-    setTimeout(refreshEffects, 50);
-    setTimeout(refreshEffects, 250);
+    followUpTimers = [setTimeout(refreshEffects, 50), setTimeout(refreshEffects, 250)];
   };
 
   ['focus', 'blur', 'show', 'restore', 'enter-full-screen', 'leave-full-screen'].forEach(
@@ -2693,9 +2778,9 @@ function applyDesktopPinWindowEffects(targetWindow, currentConfig) {
   applyWindowEffectsToWindow(targetWindow, currentConfig, false);
 }
 
-function getDesktopPinBounds(entityId, existingBounds = null) {
+function getDesktopPinBounds(entityId, existingBounds = null, options = {}) {
   const fallbackIndex = Object.keys(config?.desktopPins || {}).length;
-  return clampDesktopPinBounds(existingBounds || {}, entityId, fallbackIndex);
+  return clampDesktopPinBounds(existingBounds || {}, entityId, fallbackIndex, null, options);
 }
 
 function applyDesktopPinDesktopBehavior(targetWindow) {
@@ -2752,12 +2837,17 @@ function buildRoundedRectShape(width, height, radius = DESKTOP_PIN_WINDOW_CORNER
 function applyDesktopPinWindowShape(targetWindow, bounds = null) {
   if (!targetWindow || targetWindow.isDestroyed() || typeof targetWindow.setShape !== 'function')
     return;
+  // A transparent window is rounded by the page's own clip-path, which is antialiased. This region
+  // has hard 1 px steps, so on top of that it only adds a jagged edge. An opaque window (the Linux
+  // default at full opacity) has nothing else to round its corners.
+  if (targetWindow.__desktopPinTransparent) return;
 
   const nextBounds = bounds || targetWindow.getBounds();
+  // The page zooms with "Text and control size", and so does its corner radius.
   const shape = buildRoundedRectShape(
     nextBounds.width,
     nextBounds.height,
-    DESKTOP_PIN_WINDOW_CORNER_RADIUS
+    Math.round(DESKTOP_PIN_WINDOW_CORNER_RADIUS * normalizeDesktopPinScale(config?.ui?.scale))
   );
 
   try {
@@ -2800,6 +2890,22 @@ function sendDesktopPinUpdate(entityId, extra = {}) {
 function broadcastDesktopPinConfigUpdate() {
   desktopPinWindows.forEach((_window, entityId) => {
     sendDesktopPinUpdate(entityId, { type: 'config' });
+  });
+}
+
+/**
+ * Keep a window out of the taskbar and the Alt-Tab list on X11 (and XWayland). Electron makes the
+ * request when the window is created, before it is mapped, and window managers only act on the
+ * request for a mapped window, so KWin and GNOME listed the widget and every pin anyway. Asking
+ * again once the window is shown is what takes effect. Native Wayland has no such request.
+ */
+function keepOutOfTaskbarWhenShown(targetWindow) {
+  if (process.platform !== 'linux' || usesCompositorOwnedPlacement) return;
+  targetWindow.on('show', () => {
+    if (targetWindow.isDestroyed()) return;
+    // A widget minimized because no tray could hold it must stay reachable from the switcher.
+    if (targetWindow === mainWindow && minimizedWithoutTrayHost) return;
+    targetWindow.setSkipTaskbar(true);
   });
 }
 
@@ -2879,6 +2985,8 @@ function toggleRaisedLayerWidget(now = Date.now()) {
 /** Hide the widget to the tray, ending any raise still in flight. */
 function hideMainWindowToTray() {
   if (!mainWindow || mainWindow.isDestroyed()) return false;
+  // A hide that arrives before the first frame (a second `--hide` launch) is the user's answer.
+  mainWindowReveal.cancel();
   return popupWindowPresenter.hidePopup(mainWindow);
 }
 
@@ -2893,6 +3001,7 @@ function applyAlwaysOnTopPreference() {
   if (!mainWindow || mainWindow.isDestroyed()) return false;
   if (popupWindowPresenter.isElevated()) return false;
   mainWindow.setAlwaysOnTop(!!config.alwaysOnTop);
+  popupWindowPresenter.syncWorkspaceVisibility(mainWindow);
   return true;
 }
 
@@ -3140,7 +3249,8 @@ async function updateDesktopPinBounds(entityId, nextBounds = {}) {
         },
         normalizedEntityId,
         0,
-        previousBounds
+        previousBounds,
+        { clampPosition: true }
       );
   // A handle on the top or left edge moves the window's origin so the opposite edge stays put.
   // Where the app places windows that is the saved x and y. A layer surface is placed from its
@@ -3265,18 +3375,13 @@ function createDesktopPinWindow(entityId, options = {}) {
     windowOptions.roundedCorners = false;
   }
 
-  // Desktop pin windows render their own rounded glass surface in CSS.
-  // Keeping native acrylic enabled here leaves a rectangular backdrop behind
-  // the rounded widget, which creates mismatched corners.
-  if (config.frostedGlass && options.useNativeFrostedGlass !== false) {
-    if (process.platform === 'win32') {
-      if (NATIVE_GLASS_SUPPORTED) windowOptions.backgroundMaterial = 'acrylic';
-    } else if (process.platform === 'darwin') {
-      windowOptions.vibrancy = 'sidebar';
-    }
-  }
+  // Desktop pin windows render their own rounded glass surface in CSS, so they never get native
+  // acrylic or vibrancy: it would leave a rectangular backdrop behind the rounded widget.
+  // applyDesktopPinWindowEffects turns both off for the same reason.
 
   const pinWindow = new BrowserWindow(windowOptions);
+  keepOutOfTaskbarWhenShown(pinWindow);
+  pinWindow.__desktopPinTransparent = transparencyOptions.transparent;
   hardenRendererNavigation(pinWindow);
   pinWindow.setMenuBarVisibility(false);
   pinWindow.__desktopPinEntityId = normalizedEntityId;
@@ -3306,9 +3411,15 @@ function createDesktopPinWindow(entityId, options = {}) {
     if (
       usesCompositorOwnedPlacement ||
       isLayerShellChildProcess ||
-      !desktopPinEditMode ||
       pinWindow.__desktopPinApplyingBounds
     ) {
+      return;
+    }
+    if (!desktopPinEditMode) {
+      // A window manager gesture (Meta+drag on KWin) can still move a pin that is not movable
+      // here. Moves outside Reorganize are not saved, so put the pin back where it is saved once
+      // the gesture settles, instead of leaving it somewhere the next config push will undo.
+      scheduleDesktopPinSnapBack(pinWindow);
       return;
     }
     if (pinWindow.__desktopPinSaveTimer) {
@@ -3347,6 +3458,9 @@ function createDesktopPinWindow(entityId, options = {}) {
         config.desktopPins = config.desktopPins || {};
         config.desktopPins[normalizedEntityId] = nextBounds;
         saveConfig();
+        // The saved bounds are held to one work area; a pin dropped across a monitor edge or past
+        // the screen snaps to them now, not at the next unrelated config push.
+        applyDesktopPinBoundsToWindow(pinWindow, nextBounds);
         pushConfigToRenderer();
         sendDesktopPinUpdate(normalizedEntityId, { type: 'bounds' });
       }, 'desktop pin bounds save');
@@ -3364,6 +3478,7 @@ function createDesktopPinWindow(entityId, options = {}) {
 
   pinWindow.on('closed', () => {
     desktopPinWindows.delete(normalizedEntityId);
+    clearTimeout(pinWindow.__desktopPinSnapBackTimer);
     if (pinWindow.__desktopPinSaveTimer) {
       clearTimeout(pinWindow.__desktopPinSaveTimer);
       pinWindow.__desktopPinSaveTimer = null;
@@ -3389,6 +3504,33 @@ function createDesktopPinWindow(entityId, options = {}) {
   });
 
   return pinWindow;
+}
+
+const DESKTOP_PIN_SNAP_BACK_DELAY_MS = 250;
+// A window manager that will not leave a pin on its saved spot (it adds a frame, or tiles it) would
+// otherwise be fought forever: every correction is itself a move.
+const DESKTOP_PIN_SNAP_BACK_LIMIT = 3;
+
+/**
+ * Put a pin back on its saved bounds after something other than the app moved it. Debounced, so a
+ * window manager's drag has ended before the pin jumps back.
+ */
+function scheduleDesktopPinSnapBack(pinWindow) {
+  clearTimeout(pinWindow.__desktopPinSnapBackTimer);
+  pinWindow.__desktopPinSnapBackTimer = setTimeout(() => {
+    pinWindow.__desktopPinSnapBackTimer = null;
+    if (!pinWindow || pinWindow.isDestroyed() || desktopPinEditMode) return;
+    const entityId = pinWindow.__desktopPinEntityId;
+    const saved = config?.desktopPins?.[entityId];
+    if (!saved) return;
+    if (desktopPinWindowIsPlaced(pinWindow, entityId, saved)) {
+      pinWindow.__desktopPinSnapBacks = 0;
+      return;
+    }
+    pinWindow.__desktopPinSnapBacks = (pinWindow.__desktopPinSnapBacks || 0) + 1;
+    if (pinWindow.__desktopPinSnapBacks > DESKTOP_PIN_SNAP_BACK_LIMIT) return;
+    applyDesktopPinBoundsToWindow(pinWindow, saved);
+  }, DESKTOP_PIN_SNAP_BACK_DELAY_MS);
 }
 
 function syncDesktopPinWindowsWithConfig(options = {}) {
@@ -3423,17 +3565,7 @@ function syncDesktopPinWindowsWithConfig(options = {}) {
 
     // A "Text and control size" change arrives here too: the saved bounds stay the same and the
     // window is resized to the new scale.
-    const currentBounds = window.getBounds();
-    const windowBounds = getDesktopPinWindowBounds(entityId, bounds);
-    const boundsChanged =
-      currentBounds.x !== windowBounds.x ||
-      currentBounds.y !== windowBounds.y ||
-      currentBounds.width !== windowBounds.width ||
-      currentBounds.height !== windowBounds.height;
-
-    if (boundsChanged) {
-      applyDesktopPinBoundsToWindow(window, bounds);
-    }
+    applyDesktopPinBoundsToWindowIfMoved(window, entityId, bounds);
 
     try {
       applyWindowOpacity(window, config.opacity, config);
@@ -3460,6 +3592,7 @@ function applyMainWindowSettingSideEffects(previousConfig, nextConfig) {
     try {
       if (previousConfig?.alwaysOnTop !== nextConfig?.alwaysOnTop) {
         applyAlwaysOnTopPreference();
+        refreshTrayMenu();
       }
     } catch (error) {
       log.warn('Failed to apply always-on-top update from sync:', error.message);
@@ -5094,18 +5227,15 @@ function updateLocalProfileSyncTracking({ allowDebouncedPush = true } = {}) {
 }
 
 /**
- * Selects and returns an appropriate tray icon image for the current platform.
+ * Selects and returns an appropriate tray icon image for the current platform (see
+ * src/tray-icon.cjs for what that is on each).
  *
- * Searches common resource locations (including packaged resources when available) for platform-preferred icon files,
- * resizes the found image to the platform's tray size (16px on Windows, 24px otherwise), and returns a fallback generated
- * placeholder image if no icon is found.
- * @returns {Electron.NativeImage} The resolved and appropriately sized tray icon image.
+ * Searches common resource locations (including packaged resources when available) for the icon
+ * artwork, and returns a generated placeholder image if none is found.
+ * @returns {Electron.NativeImage} The resolved tray icon image.
  */
 function resolveTrayIcon() {
   log.debug('Resolving tray icon');
-  const preferIco = process.platform === 'win32';
-  const traySize = preferIco ? 16 : 24;
-  const names = preferIco ? ['icon.ico', 'icon.png'] : ['icon.png', 'icon.ico'];
   const searchRoots = [path.join(__dirname, 'build'), __dirname];
 
   if (app && app.isPackaged) {
@@ -5117,57 +5247,22 @@ function resolveTrayIcon() {
     }
   }
 
-  const ensureTraySize = (image) => {
-    if (!image || image.isEmpty()) return image;
-    const { width, height } = image.getSize();
-    if (width === traySize && height === traySize) return image;
-    return image.resize({ width: traySize, height: traySize });
-  };
-
-  // Only a Windows executable carries an embedded icon. On Linux and macOS this reads the whole
-  // Electron binary (over 200 MB) as an image, stalls the main thread for about 100 ms and still
-  // comes back empty.
-  if (preferIco) {
-    try {
-      const exePath = app?.getPath ? app.getPath('exe') : process.execPath;
-      if (exePath && fs.existsSync(exePath)) {
-        const exeImage = nativeImage.createFromPath(exePath);
-        if (exeImage && !exeImage.isEmpty()) {
-          return ensureTraySize(exeImage);
-        }
-      }
-    } catch (error) {
-      log.warn('Unable to load tray icon from executable:', error.message);
-    }
+  let scaleFactor = 1;
+  try {
+    scaleFactor = electronScreen.getPrimaryDisplay()?.scaleFactor || 1;
+  } catch (error) {
+    log.debug('Could not read the display scale for the tray icon:', error.message);
   }
-
-  const candidates = [];
-  names.forEach((name) => {
-    searchRoots.forEach((root) => {
-      if (!root) return;
-      candidates.push(path.join(root, name));
-      candidates.push(path.join(root, 'icons', name));
-    });
-  });
-
-  for (const candidate of candidates) {
-    try {
-      if (!candidate || !fs.existsSync(candidate)) continue;
-      const image = nativeImage.createFromPath(candidate);
-      if (image && !image.isEmpty()) {
-        return ensureTraySize(image);
-      }
-    } catch (error) {
-      log.warn('Failed to load tray icon', candidate, error.message);
-    }
-  }
+  const icon = loadTrayIcon({ searchRoots, nativeImage, scaleFactor, log });
+  if (icon) return icon;
 
   log.info('Tray icon not found. Using generated fallback icon.');
+  const fallbackSize = getTrayIconSizeForPlatform(process.platform);
   return nativeImage
     .createFromDataURL(
       'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAPCAYAAADJViUEAAAAGElEQVQ4T2NkwAT/Gf4zjIGBoRAjGAgjGAgADt4C24gldLoAAAAASUVORK5CYII='
     )
-    .resize({ width: traySize, height: traySize });
+    .resize({ width: fallbackSize, height: fallbackSize });
 }
 
 /**
@@ -6981,8 +7076,54 @@ function applyHyprlandWidgetBlur(override) {
  * Point nativeTheme at the app's theme so the surfaces the renderer cannot style (context menus,
  * macOS select popups and vibrancy) match it. See resolveNativeThemeSource.
  */
+// The OS's own light or dark setting, which the tray (a part of the OS shell) follows. Once the app
+// pins nativeTheme.themeSource to Dark or Light, nativeTheme.shouldUseDarkColors and the renderer's
+// prefers-color-scheme report the app's choice, not the OS's. Windows keeps the two apart and
+// answers directly. Linux answers from nativeTheme while the source is still 'system', and from the
+// desktop's settings portal (src/portal-color-scheme.cjs), which the pin does not override, once
+// it is not. Without a portal the last answer from before the pin is all there is.
+let lastSystemColorScheme = null;
+let portalColorSchemeWatcher = null;
+
+function getSystemColorScheme() {
+  try {
+    if (process.platform === 'win32') {
+      return nativeTheme.shouldUseDarkColorsForSystemIntegratedUI ? 'dark' : 'light';
+    }
+    if (nativeTheme.themeSource === 'system') {
+      lastSystemColorScheme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+    } else {
+      lastSystemColorScheme = portalColorSchemeWatcher?.get() || lastSystemColorScheme;
+    }
+  } catch (error) {
+    log.debug('Could not read the system color scheme:', error.message);
+  }
+  return lastSystemColorScheme;
+}
+
+/** Tell the renderer when the OS changes its scheme, so the tray's value icons are redrawn. */
+function watchSystemColorScheme() {
+  let announced = getSystemColorScheme();
+  const announceIfChanged = () => {
+    const current = getSystemColorScheme();
+    if (current === announced) return;
+    announced = current;
+    pushConfigToRenderer();
+  };
+  nativeTheme?.on?.('updated', announceIfChanged);
+  if (process.platform === 'linux') {
+    portalColorSchemeWatcher = createPortalColorSchemeWatcher({
+      log,
+      onChange: announceIfChanged,
+    });
+    void portalColorSchemeWatcher.start();
+  }
+}
+
 function applyNativeThemeSource() {
   const next = resolveNativeThemeSource(config, omarchyThemeWatcher?.get() || null);
+  // Read before the source is pinned, while it still answers for the OS.
+  getSystemColorScheme();
   try {
     if (nativeTheme && nativeTheme.themeSource !== next) nativeTheme.themeSource = next;
   } catch (error) {
@@ -7032,6 +7173,8 @@ function clampToMinimumWindowSize({ width, height }, targetConfig = config) {
 /** Save the main window's position and size after the user moves or resizes it. */
 function watchMainWindowBounds(targetWindow) {
   const changeWin = () => {
+    // A maximized or full-screen size is the window manager's, not a size the user chose.
+    if (targetWindow.isMaximized?.() || targetWindow.isFullScreen?.()) return;
     const bounds = targetWindow.getBounds();
     // Linux reports programmatic moves too (restoring the saved position after a show,
     // resetting it, restoring the saved size). Landing on the saved bounds leaves nothing to
@@ -7074,6 +7217,95 @@ function watchMainWindowBounds(targetWindow) {
   });
 }
 
+const DISPLAY_CHANGE_RECOVERY_DELAY_MS = 500;
+let displayChangeTimer = null;
+
+/**
+ * The work area of the monitor the user would expect the widget on: the primary one, since the
+ * widget has nowhere better to go when its own monitor is not there.
+ */
+function getPrimaryWorkArea() {
+  return electronScreen.getPrimaryDisplay()?.workArea || { x: 0, y: 0, width: 1280, height: 720 };
+}
+
+/**
+ * Where the widget goes when its monitor is gone (or the user resets it): 100 px in from the
+ * primary monitor's corner, kept on that monitor. The size is only shrunk when it no longer fits.
+ */
+function getDefaultMainWindowBounds() {
+  const workArea = getPrimaryWorkArea();
+  const minimum = getMainWindowMinimumSizeForConfig(config);
+  const width = Math.max(minimum.width, Math.min(config.windowSize.width, workArea.width));
+  const height = Math.max(minimum.height, Math.min(config.windowSize.height, workArea.height));
+  // Held fully inside, not just partly: a reset that leaves part of the widget off the screen
+  // (a window larger than a small laptop display) has not reset anything.
+  return {
+    x: Math.max(workArea.x, Math.min(workArea.x + 100, workArea.x + workArea.width - width)),
+    y: Math.max(workArea.y, Math.min(workArea.y + 100, workArea.y + workArea.height - height)),
+    width,
+    height,
+  };
+}
+
+/**
+ * Bring the windows back onto a connected monitor after the set of monitors changed. Windows and
+ * macOS move a visible window off a monitor that disappears, but not necessarily a hidden one,
+ * and X11 leaves both where they were: a widget hidden on the external monitor would then show up
+ * on no screen when the hotkey brings it back. Pins keep their saved position (the monitor may
+ * return) and are only placed on screen, so a returning monitor gets them back.
+ */
+function recoverWindowsAfterDisplayChange() {
+  if (usesCompositorOwnedPlacement || isQuitting) return;
+  if (
+    mainWindow &&
+    !mainWindow.isDestroyed() &&
+    !mainWindow.isMaximized() &&
+    !mainWindow.isFullScreen()
+  ) {
+    const bounds = mainWindow.getBounds();
+    const position = clampPositionToWorkAreas(
+      bounds,
+      electronScreen.getAllDisplays().map((display) => display.workArea)
+    );
+    if (position.x !== bounds.x || position.y !== bounds.y) {
+      log.info(
+        `The widget at ${bounds.x},${bounds.y} is on no connected display; moving it to ${position.x},${position.y}`
+      );
+      mainWindow.setPosition(position.x, position.y);
+      // A programmatic move is not always reported as one (Windows only reports a user's), so
+      // save it here rather than counting on the bounds watcher.
+      runBackgroundConfigMutation(() => {
+        config.windowPosition = { x: position.x, y: position.y };
+        saveConfig();
+      }, 'window position recovery');
+    }
+  }
+  desktopPinWindows.forEach((window, entityId) => {
+    const saved = config?.desktopPins?.[entityId];
+    if (window && !window.isDestroyed() && saved) {
+      applyDesktopPinBoundsToWindowIfMoved(window, entityId, saved);
+    }
+  });
+}
+
+function watchDisplayChanges() {
+  ['display-added', 'display-removed', 'display-metrics-changed'].forEach((eventName) => {
+    electronScreen.on(eventName, () => {
+      // Plugging in a dock reports several changes in a burst while the layout settles.
+      clearTimeout(displayChangeTimer);
+      displayChangeTimer = setTimeout(() => {
+        displayChangeTimer = null;
+        try {
+          recoverWindowsAfterDisplayChange();
+        } catch (error) {
+          log.warn('Failed to recover windows after a display change:', error.message);
+        }
+        refreshTrayIconForDisplayScale();
+      }, DISPLAY_CHANGE_RECOVERY_DELAY_MS);
+    });
+  });
+}
+
 /**
  * The main window's minimum size for the current "Text and control size". A desktop-layer surface
  * is sized by the helper from the saved size, which is already held to the unscaled minimum, so it
@@ -7095,8 +7327,11 @@ function createWindow() {
   const iconPath = getAppIconPath(__dirname);
   const transparencyOptions = getWindowTransparencyOptions(config);
 
-  // Create the browser window. Linux defaults to an opaque native window because
-  // transparent Electron windows are a major compositor performance cost there.
+  // Create the browser window. On Linux it is transparent only when it has to be: a window opacity
+  // below 100% (the default is 95%) or HA_WIDGET_LINUX_TRANSPARENT_WINDOW, since a transparent
+  // Electron window costs the compositor a lot there. That needs a compositing manager; on a bare
+  // X11 window manager the translucent surfaces blend against black, and the workaround is 100%
+  // opacity or the opaque panels setting.
   const visualOptions = getMainWindowVisualOptions({
     platform: process.platform,
     frostedGlass: !!config.frostedGlass,
@@ -7144,8 +7379,16 @@ function createWindow() {
     alwaysOnTop: config.alwaysOnTop,
     skipTaskbar: true,
     resizable: true,
+    // The header acts as a title bar, so a double-click there or a drag to a screen edge would
+    // otherwise maximize the widget into a screen-sized slab and save that size as the user's.
+    maximizable: false,
+    fullscreenable: false,
     movable: true,
     icon: iconPath,
+    // Held back until the page has painted the saved theme; see src/main-window-reveal.cjs. A
+    // desktop-layer surface is mapped by its helper and raised by its own startup path, so it
+    // keeps the immediate show.
+    show: isLayerShellChildProcess,
     webPreferences: {
       preload: PRELOAD_SCRIPT_PATH,
       nodeIntegration: false, // Security: disabled, renderer uses bundled code
@@ -7155,6 +7398,10 @@ function createWindow() {
   };
 
   mainWindow = new BrowserWindow(windowOptions);
+  keepOutOfTaskbarWhenShown(mainWindow);
+  popupWindowPresenter.syncWorkspaceVisibility(mainWindow);
+  // A launch that was asked to stay hidden never shows; every other launch shows at ready-to-go.
+  if (!isLayerShellChildProcess && initialLaunchAction !== 'hide') mainWindowReveal.hold();
   windowAutoHide.watchDevTools();
   hardenRendererNavigation(mainWindow);
   forwardRendererConsole(mainWindow.webContents, 'renderer');
@@ -7168,7 +7415,7 @@ function createWindow() {
   const safeOpacity = applyWindowOpacity(mainWindow, config.opacity, config);
   config.opacity = safeOpacity; // Update config to safe value
   applyFrostedGlass();
-  wireWindowEffectsRefresh(mainWindow, () => config);
+  wireWindowEffectsRefresh(mainWindow, () => config, getPreviewFrostedGlassOverride);
 
   // index.html carries no <title>, so Chromium would name the window after the file and
   // window rules would have nothing stable to match. Desktop pins load the same file but
@@ -7226,8 +7473,20 @@ function createWindow() {
 
   // Hide to tray when minimizing
   mainWindow.on('minimize', (event) => {
+    if (minimizedWithoutTrayHost) return;
     event.preventDefault();
     mainWindow.hide();
+  });
+  mainWindow.on('restore', () => {
+    if (!minimizedWithoutTrayHost) return;
+    minimizedWithoutTrayHost = false;
+    mainWindow.setSkipTaskbar(true);
+  });
+
+  // Not reachable from the header any more, but a window manager shortcut (Meta+Up on KWin, a
+  // tiling toggle) can still ask. The widget has no maximized layout, so undo it.
+  mainWindow.on('maximize', () => {
+    if (!mainWindow.isDestroyed()) mainWindow.unmaximize();
   });
 
   // Any hide (tray toggle, close to tray, minimize) ends a popup raise, so a later show
@@ -7296,6 +7555,7 @@ function createWindow() {
 
   // Handle window closed (when quitting)
   mainWindow.on('closed', () => {
+    mainWindowReveal.cancel();
     windowAutoHide.handleClosed();
     mainWindow = null;
   });
@@ -7333,7 +7593,21 @@ function getTrayEntityDisplayName(entityId) {
   return typeof customName === 'string' && customName.trim() ? customName.trim() : entityId;
 }
 
+// Windows reports a double-click on a tray icon as click, double-click, click, so a toggle on every
+// click would show the widget and hide it again a moment later. Windows' own double-click time is
+// 500 ms unless the user changed it.
+const TRAY_DOUBLE_CLICK_GUARD_MS = 500;
+let lastTrayToggleAt = Number.NEGATIVE_INFINITY;
+
+function isTrayDoubleClickEcho(now = Date.now()) {
+  if (process.platform !== 'win32') return false;
+  const echo = now - lastTrayToggleAt < TRAY_DOUBLE_CLICK_GUARD_MS;
+  if (!echo) lastTrayToggleAt = now;
+  return echo;
+}
+
 function toggleMainWindowFromTrayEntity({ fromTrayClick = false, trayBounds } = {}) {
+  if (fromTrayClick && isTrayDoubleClickEcho()) return;
   // A tray click may arrive after its focus transfer has already hidden us.
   // Explicit menu commands always act on the current visibility.
   const recentlyHidden = windowAutoHide.consumeTrayDismissal(
@@ -7553,7 +7827,9 @@ function buildTrayContextMenu() {
       enabled: !isLayerShellChildProcess,
       checked: !isLayerShellChildProcess && config.alwaysOnTop,
       click: (menuItem) => {
-        const requestedValue = !!menuItem.checked;
+        // The menu is built once, so the check mark can be stale (Settings changed the option since)
+        // and the click would then ask for what is already set. A click flips the current setting.
+        const requestedValue = !config.alwaysOnTop;
         void runSerializedConfigMutation(async () => {
           const previousValue = !!config.alwaysOnTop;
           config.alwaysOnTop = requestedValue;
@@ -7605,14 +7881,21 @@ function buildTrayContextMenu() {
         if (usesCompositorOwnedPlacement) return;
         void runSerializedConfigMutation(async () => {
           const previousPosition = config.windowPosition;
-          config.windowPosition = { x: 100, y: 100 };
+          const previousSize = config.windowSize;
+          const defaultBounds = getDefaultMainWindowBounds();
+          const position = { x: defaultBounds.x, y: defaultBounds.y };
+          config.windowPosition = position;
+          config.windowSize = clampToMinimumWindowSize(defaultBounds);
           const persistence = await saveConfigDurably();
           if (!persistence.success) {
             config.windowPosition = previousPosition;
+            config.windowSize = previousSize;
             log.warn(`Failed to save reset window position: ${persistence.error}`);
             return;
           }
-          mainWindow.setPosition(100, 100);
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.setBounds({ ...position, ...config.windowSize });
+          }
         }).catch((error) => {
           log.warn('Failed to reset window position:', error.message);
         });
@@ -7646,19 +7929,27 @@ function buildTrayContextMenu() {
       ? [{ label: mainT('Add to Omarchy Bar'), click: () => void addOmarchyBarPlugin() }]
       : []),
     { type: 'separator' },
-    {
-      label: mainT('DevTools'),
-      click: () => {
-        mainWindow.webContents.openDevTools({ mode: 'detach' });
-      },
-    },
-    {
-      label: mainT('Reload'),
-      click: () => {
-        mainWindow.reload();
-      },
-    },
-    { type: 'separator' },
+    // Debugging commands for people running from source; a release menu has no use for them, and
+    // Reload would leave the widget disconnected until the next start.
+    ...(!app.isPackaged || IS_DEV_MODE
+      ? [
+          {
+            label: mainT('DevTools'),
+            click: () => {
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.openDevTools({ mode: 'detach' });
+              }
+            },
+          },
+          {
+            label: mainT('Reload'),
+            click: () => {
+              if (mainWindow && !mainWindow.isDestroyed()) mainWindow.reload();
+            },
+          },
+          { type: 'separator' },
+        ]
+      : []),
     {
       label: mainT('Open Settings'),
       click: () => {
@@ -7734,10 +8025,17 @@ function refreshOmarchyBarEntry() {
 
 /**
  * Publish status for the Omarchy 4 bar plugin while the Omarchy shell is installed. An isolated
- * profile stays out of it: it would overwrite the status of the user's real widget.
+ * profile or a run from source stays out of it: it would take over the bar's socket and overwrite
+ * the status of the user's real widget, and delete both when it exits.
  */
 function startOmarchyBarIntegration() {
-  if (process.platform !== 'linux' || IS_SMOKE_TEST_MODE || IS_ISOLATED_PROFILE) return;
+  if (
+    process.platform !== 'linux' ||
+    IS_SMOKE_TEST_MODE ||
+    IS_ISOLATED_PROFILE ||
+    IS_SOURCE_DEV_RUN
+  )
+    return;
   if (!isOmarchyShellInstalled()) return;
   const paths = getOmarchyBarPaths();
   try {
@@ -7775,6 +8073,7 @@ function startOmarchyBarIntegration() {
         entities: getOmarchyBarEntities(),
         launch: getOmarchyBarLaunchArgv(),
         issue: getOmarchyBarIssue(),
+        customNames: config?.customEntityNames,
       }),
   });
   if (!omarchyBarPublisher) {
@@ -7881,12 +8180,13 @@ async function addOmarchyBarPlugin() {
  */
 function startTrayHostWatch() {
   trayHostWatch?.stop();
-  trayHostWatch = watchForStatusNotifierWatcher({
+  const watch = watchForStatusNotifierWatcher({
     log,
     getExpectedItemCount: () =>
       1 + Array.from(trayEntityIcons.values()).filter((icon) => !icon.isDestroyed?.()).length,
     onAppeared: () => {
       trayHostWatch = null;
+      trayHostMissing = false;
       // The bar claims the watcher name before its host registers; give it a moment.
       setTimeout(() => {
         if (isQuitting || !tray) return;
@@ -7899,6 +8199,29 @@ function startTrayHostWatch() {
       }, 1000);
     },
   });
+  trayHostWatch = watch;
+  // `ready` resolves true when no host owns the watcher name yet; onAppeared clears that again.
+  watch.ready.then((watcherMissing) => {
+    if (watcherMissing) trayHostMissing = true;
+  });
+}
+
+/**
+ * The notification-area icon is drawn at exactly the size Windows shows it for the display's
+ * scaling, so it is drawn again when that scaling changes (a new monitor, a DPI setting).
+ */
+function refreshTrayIconForDisplayScale() {
+  if (process.platform !== 'win32' || isQuitting || !tray || tray.isDestroyed?.()) return;
+  try {
+    tray.setImage(resolveTrayIcon());
+  } catch (error) {
+    log.debug('Could not refresh the tray icon after a display change:', error.message);
+  }
+}
+
+/** Rebuild the tray menu so its check marks and labels follow the current settings. */
+function refreshTrayMenu() {
+  if (tray && !tray.isDestroyed?.() && !isQuitting) createTray();
 }
 
 function createTray() {
@@ -7950,7 +8273,9 @@ function schedulePostWindowStartupTasks() {
       log.warn('Tray startup initialization failed:', error.message);
       finishSmokeTest(false, `Tray startup initialization failed: ${error.message}`);
     }
-    if (process.platform === 'linux' && waylandSession && !IS_SMOKE_TEST_MODE) {
+    // A Wayland bar can start after the widget, and GNOME on Xorg has no tray without a
+    // StatusNotifier host, so both want to know when one shows up (or that none will).
+    if (process.platform === 'linux' && (waylandSession || isGnome()) && !IS_SMOKE_TEST_MODE) {
       startTrayHostWatch();
     }
 
@@ -7995,6 +8320,8 @@ ipcMain.handle('renderer-ready', (event) => {
     smokeTestRendererReady = true;
     maybeFinishSmokeTest();
   }
+  // The saved theme, accent and glass are applied by now, so the first frame the user sees is final.
+  mainWindowReveal.release();
   return { success: true };
 });
 
@@ -9250,12 +9577,25 @@ ipcMain.handle(
   })
 );
 
+// The frosted glass value Settings is previewing, while it differs from the saved one. Settings
+// puts the saved value back through the same IPC when it is cancelled or closed, and a save makes
+// the preview the saved value, so a match means there is no preview left to protect.
+let previewFrostedGlassOverride;
+
+function getPreviewFrostedGlassOverride() {
+  if (previewFrostedGlassOverride === !!config?.frostedGlass) {
+    previewFrostedGlassOverride = undefined;
+  }
+  return previewFrostedGlassOverride;
+}
+
 ipcMain.handle('preview-window-effects', (event, effects = {}) => {
   const sender = authorizeIpcSender(event, 'preview-window-effects');
   if (!sender) return rejectUnauthorizedIpc('preview-window-effects');
   if (!mainWindow) return;
   if (typeof effects.frostedGlass === 'boolean') {
-    applyFrostedGlass(effects.frostedGlass);
+    previewFrostedGlassOverride = effects.frostedGlass;
+    applyFrostedGlass(getPreviewFrostedGlassOverride());
   }
   if (typeof effects.opacity === 'number') {
     try {
@@ -9304,6 +9644,7 @@ ipcMain.handle(
       } catch (error) {
         log.warn('Failed to restore always on top:', error.message);
       }
+      refreshTrayMenu();
       return {
         success: false,
         error: mainT('Failed to save always-on-top setting: {{error}}', {
@@ -9312,6 +9653,7 @@ ipcMain.handle(
         applied: false,
       };
     }
+    refreshTrayMenu();
     return { success: true, applied };
   })
 );
@@ -10488,7 +10830,10 @@ ipcMain.handle('set-login-item-settings', (event, openAtLogin) => {
 
 async function restartApplication() {
   log.info('Restarting application');
-  process.env.HA_WIDGET_LAUNCH_VISIBILITY = mainWindow?.isVisible() ? 'show' : 'hide';
+  // A window still waiting for its first frame is one the user has not been shown yet, not one
+  // they hid.
+  process.env.HA_WIDGET_LAUNCH_VISIBILITY =
+    mainWindow?.isVisible() || mainWindowReveal.isPending() ? 'show' : 'hide';
   await flushConfigForBoundedExit('restarting');
   shutDownRuntimeAfterConfigFlush();
   quitFinalized = true;
@@ -10528,16 +10873,34 @@ ipcMain.handle('restart-app', async (event) => {
   }
 });
 
+/**
+ * The title bar's minimize button. The widget normally hides to the tray instead, but a desktop
+ * with no tray host (stock GNOME without the AppIndicator extension) would then leave no visible
+ * way back, so there it minimizes into the window manager's own switcher.
+ */
+function minimizeMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (process.platform === 'linux' && trayHostMissing) {
+    minimizedWithoutTrayHost = true;
+    // The window opts out of the taskbar and switcher, which would hide a minimized window too.
+    mainWindow.setSkipTaskbar(false);
+    mainWindow.minimize();
+    return;
+  }
+  minimizedWithoutTrayHost = false;
+  // macOS does not let a 'minimize' listener cancel the miniaturize, so it would leave a Dock tile
+  // behind a hidden window. Native Wayland cannot minimize a toplevel reliably.
+  if (usesCompositorOwnedPlacement || process.platform === 'darwin') {
+    hideMainWindowToTray();
+  } else {
+    mainWindow.minimize();
+  }
+}
+
 ipcMain.handle('minimize-window', (event) => {
   const sender = authorizeIpcSender(event, 'minimize-window');
   if (!sender) return rejectUnauthorizedIpc('minimize-window');
-  if (mainWindow) {
-    if (usesCompositorOwnedPlacement) {
-      hideMainWindowToTray();
-    } else {
-      mainWindow.minimize();
-    }
-  }
+  minimizeMainWindow();
 });
 
 // The title bar's X. It closes the window exactly as Alt+F4 and Cmd+W do, so the window's own close
@@ -10709,7 +11072,17 @@ ipcMain.handle('get-app-version', (event) => {
 // For the diagnostics report: the system and its version, never the computer or user name.
 function describeOperatingSystem() {
   const info = { platform: os.platform(), release: os.release() };
-  if (info.platform === 'linux') {
+  // The kernel release alone ("darwin 25.0.0", "win32 10.0.26100") does not say which product
+  // version a person is running, which is what a support report needs.
+  if (info.platform === 'darwin') {
+    const version =
+      typeof process.getSystemVersion === 'function' ? process.getSystemVersion() : '';
+    if (version) info.distro = `macOS ${version}`.slice(0, 128);
+  } else if (info.platform === 'win32') {
+    // Windows 11 still reports 10.0; its builds start at 22000.
+    const build = Number(String(info.release).split('.')[2]);
+    if (Number.isFinite(build)) info.distro = build >= 22000 ? 'Windows 11' : 'Windows 10';
+  } else if (info.platform === 'linux') {
     try {
       const prettyName = /^PRETTY_NAME=(.*)$/m
         .exec(fs.readFileSync('/etc/os-release', 'utf8'))?.[1]
@@ -10880,6 +11253,9 @@ ipcMain.handle(
 
     const previousHotkey = config.globalHotkeys.hotkeys[normalizedEntityId];
     config.globalHotkeys.hotkeys[normalizedEntityId] = { hotkey, action };
+    // On Hyprland the portal only registers a shortcut target; the key itself is a bind the user
+    // copies into their Hyprland config, so the renderer must not say the hotkey is set.
+    let requiresCompositorBinding = false;
 
     // Only register if hotkeys are enabled
     if (config.globalHotkeys.enabled) {
@@ -10889,6 +11265,7 @@ ipcMain.handle(
       const portalBinding = registrationResult?.bound?.find(
         (entry) => entry.id === PORTAL_ENTITY_SHORTCUT_PREFIX + normalizedEntityId
       );
+      requiresCompositorBinding = portalBinding?.requiresCompositorBinding === true;
       let registered = portalShortcutsActive
         ? registrationResult.success && isPortalBindingRegistered(portalBinding)
         : hasLegacyGlobalShortcutFallback && globalShortcut.isRegistered(hotkey);
@@ -10962,6 +11339,7 @@ ipcMain.handle(
     return {
       success: true,
       backend: portalShortcutsActive ? PORTAL_SHORTCUTS_BACKEND : 'globalShortcut',
+      requiresCompositorBinding,
     };
   })
 );
@@ -12694,6 +13072,7 @@ function shutDownRuntimeAfterConfigFlush() {
   trayHostWatch = null;
   stopOmarchyBarIntegration();
   kwinWindowRaiser?.close();
+  portalColorSchemeWatcher?.close();
 }
 
 // A logout or shutdown cannot wait out the bounded save a user's quit waits on, and must never
@@ -12832,7 +13211,7 @@ app
       !IS_ISOLATED_PROFILE
     ) {
       try {
-        ensureAppImageDesktopEntry({ iconPath: path.join(__dirname, 'build/icon.png') });
+        ensureAppImageDesktopEntry({ iconPath: getAppIconPath(__dirname) });
       } catch (error) {
         log.warn('Could not create the AppImage launcher:', error?.message || error);
       }
@@ -12917,6 +13296,7 @@ app
       });
     }
     applyNativeThemeSource();
+    watchSystemColorScheme();
     startOmarchyBarIntegration();
     enableDevelopmentClimateDemo();
     startDevLiveReloadWatchers();
@@ -12943,6 +13323,7 @@ app
     }
 
     createWindow();
+    watchDisplayChanges();
     setupAutoUpdates();
     schedulePostWindowStartupTasks();
   })
@@ -13027,8 +13408,13 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  if (mainWindow === null) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
     createWindow();
+  } else if (!mainWindow.isVisible() && !mainWindowReveal.isPending()) {
+    // Opening the app again from Finder, Launchpad or Spotlight while it runs sends this event, not
+    // 'second-instance'. A widget hidden to the tray (Cmd+W, minimize, hide on blur) is still
+    // hidden, and the Dock icon is gone, so this is the only thing that can bring it back.
+    showMainWindowFromTray();
   }
   syncDesktopPinWindowsWithConfig();
   syncTrayEntitiesWithConfig();

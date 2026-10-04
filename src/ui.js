@@ -3428,6 +3428,8 @@ function getQuickAccessTileControls(entity) {
         mode: entity.state,
         current: climate.currentTemp,
         target: climate.targetTemp,
+        targetLow: climate.targetLow,
+        targetHigh: climate.targetHigh,
         min: climate.minTemp,
         max: climate.maxTemp,
         step: climate.temperatureStep,
@@ -10528,6 +10530,16 @@ function applyUnavailableRepairAffordance(div, entityId, displayName) {
       );
 }
 
+/**
+ * Offer to repair an entity that is gone from Home Assistant, from somewhere other than its tile
+ * (the Omarchy bar's panel). Nothing to repair against until Home Assistant has delivered its
+ * entities, the same condition the tile itself waits for.
+ */
+function openUnavailableEntityRepair(entityId) {
+  if (!canRepairUnavailableEntities()) return;
+  openEntityRepairModal(entityId);
+}
+
 // Rows the repair picker draws, and how long it waits after typing before it searches. The same
 // numbers as Manage Quick Access, which pages 50 at a time and waits 150 ms.
 const REPAIR_PICKER_MAX_ROWS = 50;
@@ -16273,6 +16285,7 @@ export {
   executeHotkeyAction,
   executeEntityPrimaryAction,
   openEntityControls,
+  openUnavailableEntityRepair,
   describeQuickAccessTile,
   getCalendarDescriptionText,
   getQuickAccessTileControls,

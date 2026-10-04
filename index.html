@@ -766,8 +766,9 @@
                     <label for="always-on-top"
                       ><span data-i18n="Always on top">Always on top</span></label
                     >
+                    <p class="form-help" id="always-on-top-help" hidden></p>
                   </div>
-                  <input type="checkbox" id="always-on-top" />
+                  <input type="checkbox" id="always-on-top" aria-describedby="always-on-top-help" />
                 </div>
                 <div class="form-group setting-row">
                   <div class="setting-text">
@@ -917,8 +918,16 @@
                 </div>
               </div>
             </section>
-            <section class="settings-group" data-readable-overrides>
+            <section class="settings-group" id="colors-group" data-readable-overrides>
               <h4 class="settings-group-caption" data-i18n="Colors">Colors</h4>
+              <p
+                class="form-help settings-group-note"
+                id="colors-follow-note"
+                data-i18n="The Omarchy palette sets these colors while Follow Omarchy theme is on."
+                hidden
+              >
+                The Omarchy palette sets these colors while Follow Omarchy theme is on.
+              </p>
               <div class="settings-group-body">
                 <div class="form-group">
                   <label id="color-target-label" data-i18n="Edit colors for">Edit colors for</label>
@@ -1185,6 +1194,12 @@
                   hidden
                 >
                   <p id="desktop-blur-status" class="form-help" role="status"></p>
+                  <p
+                    class="help-text"
+                    data-i18n="Blur changes take effect immediately, without Save."
+                  >
+                    Blur changes take effect immediately, without Save.
+                  </p>
                   <div class="setting-row-action">
                     <button
                       type="button"
@@ -1851,6 +1866,7 @@
                 <div class="form-group">
                   <p
                     class="form-help"
+                    id="desktop-integration-layer-note"
                     data-i18n="On Hyprland, the widget sits underneath normal windows. Use the popup shortcut to bring it forward, or open it from the tray."
                   >
                     On Hyprland, the widget sits underneath normal windows. Use the popup shortcut
@@ -1921,7 +1937,20 @@
                     released, the window returns to normal z-order.
                   </p>
                   <p id="popup-hotkey-platform-notice" class="form-help" hidden></p>
-                  <p class="help-text" data-i18n="Popup hotkey changes take effect immediately.">
+                  <p
+                    id="layer-toggle-note"
+                    class="form-help"
+                    data-i18n="Bind a key in your window manager to run ha-desktop-widget --toggle, which shows or hides the widget."
+                    hidden
+                  >
+                    Bind a key in your window manager to run ha-desktop-widget --toggle, which shows
+                    or hides the widget.
+                  </p>
+                  <p
+                    id="popup-hotkey-immediate-note"
+                    class="help-text"
+                    data-i18n="Popup hotkey changes take effect immediately."
+                  >
                     Popup hotkey changes take effect immediately.
                   </p>
                   <div class="popup-hotkey-config">
@@ -1990,6 +2019,7 @@
                     >
                     <p
                       class="form-help"
+                      id="popup-hotkey-toggle-mode-help"
                       data-i18n="Press once to show the window and again to hide it, instead of holding."
                     >
                       Press once to show the window and again to hide it, instead of holding.
@@ -2032,7 +2062,11 @@
                       Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win,
                       Command, Super (for example <code>Ctrl+Shift+A</code>).
                     </p>
-                    <p class="help-text" data-i18n="Entity hotkey changes take effect immediately.">
+                    <p
+                      id="entity-hotkey-immediate-note"
+                      class="help-text"
+                      data-i18n="Entity hotkey changes take effect immediately."
+                    >
                       Entity hotkey changes take effect immediately.
                     </p>
                   </div>

@@ -1694,6 +1694,49 @@ const scenes = [
     setup: (ctx) => openSettingsTab(ctx, 'personalization'),
   },
 
+  // A followed Omarchy palette (Linux only; the run stages a light, warm one for these scenes): the
+  // Mode shows the palette's own, the Colors are out of reach with a note, and the fields keep the
+  // faint hairline of the stock themes instead of the palette's full-strength border.
+  {
+    name: 'omarchy-settings-general',
+    omarchyPalette: true,
+    ui: { followOmarchy: true },
+    setup: (ctx) => openSettingsTab(ctx, 'general'),
+  },
+  {
+    name: 'omarchy-settings-appearance',
+    omarchyPalette: true,
+    ui: { followOmarchy: true },
+    setup: (ctx) => openSettingsTab(ctx, 'personalization'),
+  },
+
+  // The notice on a pin whose desktop decides where it sits (native Wayland), in edit mode: left
+  // out of the default pin, where it would cover the controls, and shown in a wider one.
+  ...[
+    ['pin-edit-wayland', null],
+    ['pin-edit-wayland-328x156', { width: 328, height: 156 }],
+  ].map(([name, size]) => ({
+    name,
+    pin: 'light.desk_lamp',
+    config: pinsPage,
+    setup: async (ctx) => {
+      const pin = await ctx.openPin('light.desk_lamp');
+      if (size) {
+        await ctx.ev(`(async () => {
+          await window.electronAPI.setDesktopPinEditMode(true);
+          await window.electronAPI.updateDesktopPinBounds('light.desk_lamp', ${JSON.stringify(size)});
+          await window.electronAPI.setDesktopPinEditMode(false);
+        })()`);
+        await ctx.sleep(900);
+      }
+      await pin.evaluate(`(() => {
+        document.body.classList.add('desktop-pin-edit-mode', 'desktop-pin-compositor-placement');
+        document.getElementById('desktop-pin-content')?.setAttribute('data-edit-hint', 'Drag or resize');
+      })()`);
+      return { capture: pin };
+    },
+  })),
+
   // Desktop pins are windows of their own, opened at the default 168x148.
   { name: 'pin-light', pin: 'light.desk_lamp', setup: (ctx) => pinEntity(ctx, 'light.desk_lamp') },
   {

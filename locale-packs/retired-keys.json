@@ -551,17 +551,21 @@
     "retiredIn": "4.0.0",
     "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Gauge range"
   },
-  "Welcome to Home Assistant Widget": {
+  "Turn off widget blur": {
     "retiredIn": "4.0.0",
-    "reason": "The product is called HA Desktop Widget everywhere, as the window title and installer already did"
+    "reason": "Reworded to read as a pair with 'Turn on blur for the widget'"
+  },
+  "Install Update": {
+    "retiredIn": "4.0.0",
+    "reason": "The update buttons use sentence case, as the rest of Settings does; the install button now says what it will do"
   },
   "Home Assistant Widget": {
     "retiredIn": "4.0.0",
     "reason": "The product is called HA Desktop Widget everywhere, as the window title and installer already did"
   },
-  "Install Update": {
+  "Welcome to Home Assistant Widget": {
     "retiredIn": "4.0.0",
-    "reason": "The update buttons use sentence case, as the rest of Settings does; the install button now says what it will do"
+    "reason": "The product is called HA Desktop Widget everywhere, as the window title and installer already did"
   },
   "{{count}} of {{max}} sensors.": {
     "retiredIn": "4.0.0",
