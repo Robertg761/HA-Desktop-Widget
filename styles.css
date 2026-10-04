@@ -12842,15 +12842,24 @@ body.software-glass.frosted-glass .modal-content {
   border-color: transparent;
 }
 
-/* Touch targets. This sits after the dialog recipe's .btn (34px) and .close-btn (28px), which have
-   the same weight and came later in the file, so a touch screen was getting those instead. */
+/* Touch targets. The height is !important because a button's own size comes from rules that
+   outweigh a bare `.btn`: .btn.btn-sm (28px), `#settings-modal .modal-footer .btn` (32px), the
+   segmented control's and the confirmation's buttons, and more, wherever in the file this block
+   sits. The width is not, since the dialogs' wider buttons (88px, 100px) must keep theirs; the two
+   icon buttons whose own width rule is more specific than `.close-btn` and `.btn` are named after
+   it, and win by coming later. */
 @media (pointer: coarse) {
   .btn,
   .close-btn,
   .media-tile-btn,
   .control-btn,
   .section-btn {
-    min-height: 44px;
+    min-height: 44px !important;
+    min-width: 44px;
+  }
+
+  #settings-modal .close-btn,
+  .media-detail-controls .btn {
     min-width: 44px;
   }
 

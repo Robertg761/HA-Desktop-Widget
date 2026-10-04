@@ -114,8 +114,8 @@ describe('stylesheet one-offs', () => {
   });
 
   describe('touch targets on a coarse pointer', () => {
-    // The 44px minimum comes first in the file, and the dialog recipe's 34px button and 28px close
-    // button have the same weight, so they used to win on a touch screen.
+    // The dialog recipe's 34px button and 28px close button have the same weight as the 44px
+    // minimum and came later in the file, so they used to win on a touch screen.
     it.each([
       ['.btn', 'min-height'],
       ['.close-btn', 'min-height'],
@@ -125,6 +125,74 @@ describe('stylesheet one-offs', () => {
       const element = document.querySelector(selector);
       expect(resolvedValue(element, property, { pointer: 'coarse' })).toBe('44px');
       expect(resolvedValue(element, property, { pointer: 'fine' })).not.toBe('44px');
+    });
+
+    // Each of these has a rule of its own for its size, and each of those rules outweighs a bare
+    // `.btn` or `.close-btn`, wherever in the file the touch block sits.
+    const CONTEXTS = [
+      [
+        'a compact pager button',
+        '<div class="primary-cards-list-actions primary-cards-pagination"><button class="btn btn-secondary btn-sm">x</button></div>',
+      ],
+      [
+        'a compact button in the primary card chooser',
+        '<div class="primary-card-actions segmented-control"><button class="btn btn-secondary btn-sm">x</button></div>',
+      ],
+      [
+        'a compact button for a custom icon',
+        '<div class="custom-entity-icon-actions"><button class="btn btn-secondary btn-sm">x</button></div>',
+      ],
+      [
+        'the Save and Cancel buttons of Settings',
+        '<div id="settings-modal" class="modal"><div class="modal-footer"><button class="btn btn-primary">x</button></div></div>',
+      ],
+      [
+        'a link button in Settings',
+        '<div id="settings-modal" class="modal"><button class="btn btn-link btn-sm">x</button></div>',
+      ],
+      [
+        'a hotkey preset in Settings',
+        '<div id="settings-modal" class="modal"><button class="btn btn-secondary btn-sm preset-hotkey-btn">x</button></div>',
+      ],
+      [
+        'the Cancel button of a confirmation',
+        '<div class="modal-content confirm-modal-content"><div class="modal-footer"><button class="btn btn-secondary">x</button></div></div>',
+      ],
+      [
+        'a transport button of the media player',
+        '<div class="media-detail-controls"><button class="btn media-detail-seek-btn">x</button></div>',
+      ],
+      [
+        'the close button of Settings',
+        '<div id="settings-modal" class="modal"><div class="modal-header"><button class="close-btn">x</button></div></div>',
+      ],
+    ];
+    const px = (value) => Number.parseFloat(value);
+
+    it.each(CONTEXTS)('keeps %s at least 44px tall and wide', (_name, html) => {
+      render(html);
+      const button = document.querySelector('button');
+      for (const property of ['min-height', 'min-width']) {
+        const touch = resolvedValue(button, property, { pointer: 'coarse' });
+        expect(px(touch)).toBeGreaterThanOrEqual(44);
+      }
+    });
+
+    it('leaves a mouse the compact sizes', () => {
+      render(CONTEXTS[0][1]);
+      const button = document.querySelector('button');
+      expect(resolvedValue(button, 'min-height', { pointer: 'fine' })).toBe('28px');
+    });
+
+    it.each([
+      ['.update-actions', 'min-width', '100px'],
+      ['.confirm-modal-content', 'min-width', '88px'],
+    ])('does not shrink the wider buttons of %s', (container, property, wanted) => {
+      // The touch minimum is a floor. A rule that forced 44px onto min-width would take these
+      // dialog buttons down from the width their labels were given.
+      render(`<div class="${container.slice(1)}"><button class="btn">x</button></div>`);
+      const button = document.querySelector('button');
+      expect(resolvedValue(button, property, { pointer: 'coarse' })).toBe(wanted);
     });
 
     it('gives the micro pin’s presets the 24px every other preset has', () => {
