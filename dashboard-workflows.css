@@ -367,13 +367,17 @@ body:not(.theme-light) .alert-advanced-options input[type='time'] {
   gap: 8px;
 }
 
+/* The preview inherited the dialog's 16px, louder than the form it previews. */
 .room-dashboard-preview > p {
   grid-column: 1 / -1;
   margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
 }
 
 .room-preview-tile {
   padding: 12px;
+  font-size: var(--font-size-sm);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   overflow-wrap: anywhere;
@@ -384,17 +388,13 @@ body:not(.theme-light) .alert-advanced-options input[type='time'] {
   grid-column: 1 / -1;
 }
 
-/* The preview inherited the dialog's 16px, louder than the form it previews. */
 .room-device-search[hidden] {
   display: none;
 }
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
 
 /* Search hides rows with the hidden attribute. `.form-group label:has(input[type='checkbox'])` in
    styles.css sets display: flex at higher specificity, so this rule has to outrank it. */
 .room-dashboard .room-entity-list > label[hidden] {
-  font-size: var(--font-size-sm);
   display: none;
 }
 

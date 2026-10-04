@@ -395,9 +395,6 @@ html {
   --radius-full: 9999px;
 
   /* ============================================
-     Z-INDEX SCALE
-     ============================================ */
-  /* ============================================
      DIALOG WIDTH
      ============================================ */
 
@@ -406,6 +403,9 @@ html {
      depending on which cap their own rule lost to. */
   --dialog-width: min(450px, 90vw);
 
+  /* ============================================
+     Z-INDEX SCALE
+     ============================================ */
 
   /* Anything painted at window scale stacks here. Values below 100 are left as
      raw integers on purpose: those are local stacking order inside a single
@@ -7903,11 +7903,11 @@ body.theme-light:not(.high-contrast)
 .entity-detail-empty {
   padding: 16px;
   color: var(--text-secondary);
+  font-size: var(--font-size-base);
   text-align: center;
 }
 
 /* The line that introduces a dialog's content: the repair explanation, the calendar's date window,
-  font-size: var(--font-size-base);
    a helper's current value. */
 .modal-lead {
   margin: 0 0 var(--space-4);
@@ -8025,17 +8025,17 @@ body.theme-light:not(.high-contrast)
   flex-shrink: 0;
 }
 
+/* The window and its dialogs inherit 16px, which is the dialog title's size, so 'Milk' read as big as
+   'Shopping list' and bigger than the 14px Add item field above it. */
 .todo-items-list,
 .calendar-events-list {
   display: grid;
   gap: 8px;
+  font-size: var(--font-size-base);
 }
-/* The window and its dialogs inherit 16px, which is the dialog title's size, so 'Milk' read as big as
-   'Shopping list' and bigger than the 14px Add item field above it. */
 
 .todo-item-row,
 .calendar-event-row {
-  font-size: var(--font-size-base);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.045);
@@ -8092,10 +8092,6 @@ body.theme-light:not(.high-contrast)
 .calendar-event-description {
   margin-top: 4px;
   color: var(--text-secondary);
-/* The window cannot be selected (a drag would select tiles), but a meeting link, a phone number or
-   an address in an event is meant to be copied. */
-.calendar-event-summary,
-.calendar-event-time,
   font-size: var(--font-size-sm);
 }
 
@@ -8104,6 +8100,10 @@ body.theme-light:not(.high-contrast)
   white-space: pre-line;
 }
 
+/* The window cannot be selected (a drag would select tiles), but a meeting link, a phone number or
+   an address in an event is meant to be copied. */
+.calendar-event-summary,
+.calendar-event-time,
 .calendar-event-location,
 .calendar-event-description {
   user-select: text;
@@ -8116,18 +8116,18 @@ body.theme-light:not(.high-contrast)
   margin-bottom: var(--space-5);
 }
 
-/* A group of controls with no single field to point a label at is named by a .form-label. */
-.form-group label,
-.form-group .form-label {
-  display: block;
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
 /* The last field of a dialog needs no margin of its own: the body's padding already closes the
    dialog, and the two together left 32px under it against 16px above the first one. */
 .modal-body > .form-group:last-child {
   margin-bottom: 0;
 }
 
+/* A group of controls with no single field to point a label at is named by a .form-label. */
+.form-group label,
+.form-group .form-label {
+  display: block;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
   color: var(--text-primary);
   margin-bottom: var(--space-2);
   letter-spacing: 0.01em;
@@ -9211,6 +9211,8 @@ body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
 }
 
 .language-pack-name {
+  /* A pack's name sits under the 14px disclosure that lists it; it inherited the dialog's 16px. */
+  font-size: var(--font-size-base);
   font-weight: 600;
 }
 
@@ -9253,8 +9255,6 @@ body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
   width: 100%;
   height: 6px;
   background: var(--surface-2);
-  /* A pack's name sits under the 14px disclosure that lists it; it inherited the dialog's 16px. */
-  font-size: var(--font-size-base);
   border-radius: var(--radius-sm);
   overflow: hidden;
   border: 1px solid var(--border-color);
@@ -11124,6 +11124,12 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   color: var(--accent-text);
 }
 
+/* --surface-2 is white at 85% in the light theme, the card the chip sits on, so there it showed as
+   plain text. */
+body.theme-light .form-help code {
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+
 /* Hotkey input capture styling */
 #hotkey-input:focus {
   border-color: var(--focus-ring);
@@ -11143,12 +11149,6 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   display: flex;
   flex-direction: column;
   gap: 12px;
-/* --surface-2 is white at 85% in the light theme, the card the chip sits on, so there it showed as
-   plain text. */
-body.theme-light .form-help code {
-  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
-}
-
 }
 
 .radio-option {
@@ -11212,6 +11212,22 @@ body.theme-light .form-help code {
     scroll-behavior: auto !important;
   }
 
+  /* An indicator that says something is still happening is not decoration: frozen, the ring, the
+     connecting icon and the waiting bar read as a stalled app (the bar as a finished one). These
+     keep turning, slowly. Both rules are !important, so their classes decide over the * above. */
+  .spinner,
+  [aria-busy='true']::after,
+  #settings-modal .profile-sync-status[data-busy='true']::before,
+  .status-message.is-connecting .status-message-icon svg {
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
+  }
+
+  .connection-progress-bar {
+    animation-duration: 1.8s !important;
+    animation-iteration-count: infinite !important;
+  }
+
   /* Disable glassmorphism blur effects for better performance */
   .modal,
   .modal-content,
@@ -11229,22 +11245,6 @@ body.theme-light .form-help code {
 }
 
 /* The OS asked for more contrast (macOS Increase contrast, GNOME and KDE high-contrast settings).
-  /* An indicator that says something is still happening is not decoration: frozen, the ring, the
-     connecting icon and the waiting bar read as a stalled app (the bar as a finished one). These
-     keep turning, slowly. Both rules are !important, so their classes decide over the * above. */
-  .spinner,
-  [aria-busy='true']::after,
-  #settings-modal .profile-sync-status[data-busy='true']::before,
-  .status-message.is-connecting .status-message-icon svg {
-    animation-duration: 1.6s !important;
-    animation-iteration-count: infinite !important;
-  }
-
-  .connection-progress-bar {
-    animation-duration: 1.8s !important;
-    animation-iteration-count: infinite !important;
-  }
-
    "more" is the value the query knows; "high" never matched. A Windows contrast theme reports it
    too, but forced colours already redraw every border there. The borders are declared on the body
    and on the light theme, which declares its own, since :root loses to both. */
@@ -11681,6 +11681,12 @@ label.disabled {
   max-height: none;
 }
 
+/* The intro leads the other groups, which sit 16px apart; its base margin left the frequency control
+   8px under it. */
+.donate-modal-content .modal-body > .help-text:first-child {
+  margin-bottom: var(--space-5);
+}
+
 .donate-modal-content .modal-footer {
   display: flex;
   gap: var(--space-3);
@@ -11709,12 +11715,6 @@ label.disabled {
   background: var(--surface-2);
   color: var(--text-primary);
   cursor: pointer;
-/* The intro leads the other groups, which sit 16px apart; its base margin left the frequency control
-   8px under it. */
-.donate-modal-content .modal-body > .help-text:first-child {
-  margin-bottom: var(--space-5);
-}
-
   transition:
     background-color var(--transition-base),
     border-color var(--transition-base);
@@ -13358,10 +13358,14 @@ body.theme-light #settings-modal .modal-footer {
   flex-direction: column;
   text-align: start;
   white-space: normal;
+  /* The title takes the size of the setting labels it points to (14px), not a button's 12px. */
+  font-size: var(--font-size-base);
 }
 
 .settings-search-result small {
   color: var(--text-secondary);
+  /* A bare <small> computed to 10px, the smallest text in Settings for the "which page" cue. */
+  font-size: var(--font-size-sm);
 }
 
 .settings-page-header {
@@ -13388,6 +13392,8 @@ body.theme-light #settings-modal .modal-footer {
   margin-bottom: 22px;
 }
 
+/* The page title, its description and the group captions start where the cards and the search field
+   do; they used to sit 2px and 4px in from them. */
 .settings-group-caption,
 .settings-group-caption-row {
   margin: 0 0 7px;
@@ -13405,15 +13411,16 @@ body.theme-light #settings-modal .modal-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  /* The title takes the size of the setting labels it points to (14px), not a button's 12px. */
-  font-size: var(--font-size-base);
   gap: 12px;
 }
 
 .settings-group-caption-row .settings-group-caption {
-  /* A bare <small> computed to 10px, the smallest text in Settings for the "which page" cue. */
-  font-size: var(--font-size-sm);
   margin: 0;
+}
+
+/* The link's text, not its padded box, ends at the card's edge. */
+.settings-group-caption-row > .btn-link {
+  margin-inline-end: -6px;
 }
 
 .settings-group-body {
@@ -13439,8 +13446,6 @@ body.theme-light #settings-modal .modal-footer {
   display: none;
 }
 
-/* The page title, its description and the group captions start where the cards and the search field
-   do; they used to sit 2px and 4px in from them. */
 #settings-modal
   .settings-group-body
   > :not(.hidden, [hidden], :empty, [style*='display: none'])
@@ -13465,17 +13470,33 @@ body.theme-light #settings-modal .modal-footer {
   letter-spacing: -0.005em;
   color: var(--text-primary);
 }
-/* The link's text, not its padded box, ends at the card's edge. */
-.settings-group-caption-row > .btn-link {
-  margin-inline-end: -6px;
-}
-
 
 /* A label above a full-width field (URL, search, the media picker) keeps a gap. */
 #settings-modal .form-group > label + input,
 #settings-modal .form-group > label + select,
 #settings-modal .form-group > label + textarea {
   margin-top: 8px;
+}
+
+/* The search field's label says what its placeholder says, so it is read out and not drawn. The box
+   is a .form-group, whose rules above (no bottom margin, a gap under the label) beat the ones that
+   used to be written for it, and left the page title glued to the field. */
+#settings-modal .settings-search-box {
+  margin-bottom: 16px;
+}
+
+#settings-modal .settings-search-box > label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+#settings-modal .settings-search-box > label + input {
+  margin-top: 0;
 }
 
 .setting-row {
@@ -13525,27 +13546,6 @@ body.theme-light #settings-modal .modal-footer {
 .setting-row-action {
   justify-content: flex-start;
   flex-wrap: wrap;
-/* The search field's label says what its placeholder says, so it is read out and not drawn. The box
-   is a .form-group, whose rules above (no bottom margin, a gap under the label) beat the ones that
-   used to be written for it, and left the page title glued to the field. */
-#settings-modal .settings-search-box {
-  margin-bottom: 16px;
-}
-
-#settings-modal .settings-search-box > label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-#settings-modal .settings-search-box > label + input {
-  margin-top: 0;
-}
-
   gap: 8px;
 }
 
@@ -13627,6 +13627,9 @@ body.theme-light #settings-modal .modal-footer {
 #settings-modal .form-help,
 #settings-modal .help-text {
   margin-top: 3px;
+  /* A .help-text brings 8px under it from its base rule, which left the last line of some rows
+     7px lower than the rest and made the 1px gap between the Language card's paragraphs 8px. */
+  margin-bottom: 0;
   font-size: var(--font-size-sm);
   line-height: 1.4;
   color: var(--text-faint);
@@ -13678,9 +13681,6 @@ body.theme-light
   margin-inline-end: 10px;
 }
 
-  /* A .help-text brings 8px under it from its base rule, which left the last line of some rows
-     7px lower than the rest and made the 1px gap between the Language card's paragraphs 8px. */
-  margin-bottom: 0;
 :is(#settings-modal, #alert-config-modal, .rename-modal) .form-group input[type='checkbox']::after {
   top: 3px;
   inset-inline-start: 3px;
@@ -13842,7 +13842,11 @@ body.theme-light
   margin-bottom: 0;
 }
 
+/* The same size and place as the border chevron the <details> rows draw (about 7x13px, 4px in from
+   the edge): the 16px icon drew a chevron of 5x9px two pixels further out. */
 #settings-modal .settings-disclosure-section .section-toggle-icon {
+  font-size: var(--font-size-icon);
+  margin-inline-end: -5px;
   opacity: 0.6;
   transform: rotate(90deg);
 }
@@ -13864,8 +13868,6 @@ body.theme-light
   margin-top: 0;
 }
 
-  font-size: var(--font-size-icon);
-  margin-inline-end: -5px;
 /* --- Specific blocks tidied into the grid --- */
 
 /* A row of a pane is spaced by the pane's own row padding. One inside a disclosure (Test connection
@@ -13874,12 +13876,8 @@ body.theme-light
   margin-top: 0;
 }
 
-/* The same size and place as the border chevron the <details> rows draw (about 7x13px, 4px in from
-   the edge): the 16px icon drew a chevron of 5x9px two pixels further out. */
-#settings-modal .settings-group-body > .connection-test-row {
-  font-size: var(--font-size-icon);
-  margin-inline-end: -5px;
-  padding-top: 0;
+#settings-modal .settings-details-body > .connection-test-row {
+  margin-top: 10px;
 }
 
 #settings-modal .weather-entity-setting select,
@@ -15852,7 +15850,10 @@ body[data-season='thanksgiving'] .control-item {
   gap: 12px;
   min-width: 0;
   margin: 0;
-  padding: 0;
+  /* A row of the pane, so it keeps the row padding (the pane's own rule has the same weight and
+     this one came later, which left the legend against the divider and the last holiday against the
+     card's edge). */
+  padding: 12px 0;
   border: 0;
 }
 
@@ -15860,10 +15861,7 @@ body[data-season='thanksgiving'] .control-item {
   float: inline-start;
   width: 100%;
   margin-bottom: 4px;
-  /* A row of the pane, so it keeps the row padding (the pane's own rule has the same weight and
-     this one came later, which left the legend against the divider and the last holiday against the
-     card's edge). */
-  padding: 12px 0;
+  padding: 0;
 }
 
 #settings-modal .seasonal-holiday-option {
