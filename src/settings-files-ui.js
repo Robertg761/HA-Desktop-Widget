@@ -1,3 +1,4 @@
+import { formatList } from './format.js';
 import { formatNumber, t } from './i18n.js';
 import { showConfirm, showToast } from './ui-utils.js';
 import state from './state.js';
@@ -21,13 +22,15 @@ const PREVIEW_PAGE_NAMES = 8;
 const PREVIEW_NAME_LENGTH = 40;
 
 function describePageNames(pageNames) {
-  const shown = pageNames
-    .slice(0, PREVIEW_PAGE_NAMES)
-    .map((name) =>
-      name.length > PREVIEW_NAME_LENGTH ? `${name.slice(0, PREVIEW_NAME_LENGTH - 1)}…` : name
-    );
+  const shown = pageNames.slice(0, PREVIEW_PAGE_NAMES).map((name) => {
+    // Cut on whole characters, so a name ending in an emoji is not left with half of it.
+    const characters = Array.from(name);
+    return characters.length > PREVIEW_NAME_LENGTH
+      ? `${characters.slice(0, PREVIEW_NAME_LENGTH - 1).join('')}…`
+      : name;
+  });
   const more = pageNames.length - shown.length;
-  return `${shown.join(', ')}${more > 0 ? `, … (+${more})` : ''}`;
+  return more > 0 ? `${formatList(shown)} … (+${more})` : formatList(shown);
 }
 
 // What the file holds, as rows to scan, under the sentence that matters: that this replaces the
@@ -115,11 +118,8 @@ function initializeSettingsFiles({ onImported, hasUnsavedChanges = () => false }
         automationAlerts: t('Alerts'),
         connectionMediaPreferences: t('Weather and media'),
       };
-      const sections =
-        preview.changedSections
-          .map((key) => labels[key])
-          .filter(Boolean)
-          .join(', ') || t('No changes');
+      const changedLabels = preview.changedSections.map((key) => labels[key]).filter(Boolean);
+      const sections = changedLabels.length ? formatList(changedLabels) : t('No changes');
       // Before Home Assistant has delivered its entities (first run, or disconnected) every
       // entity looks missing, which says nothing about the file.
       const entitiesLoaded = Object.keys(state.STATES || {}).length > 0;

@@ -323,124 +323,172 @@
     "retiredIn": "4.0.0",
     "reason": "Shortened before release: the first wording wrapped to three lines at 500px and four at 340px, over the bottom tile row"
   },
-  "Access token": {
+  "{{count}}m ago": {
     "retiredIn": "4.0.0",
-    "reason": "Reworded to call the credential a long-lived access token everywhere"
+    "reason": "Notification ages now use the language's own relative time format"
   },
-  "Test legacy token": {
+  "{{count}}h ago": {
     "retiredIn": "4.0.0",
-    "reason": "Reworded to call the credential a long-lived access token everywhere"
+    "reason": "Notification ages now use the language's own relative time format"
   },
-  "Authentication failed. Check your Long-Lived Access Token.": {
+  "{{count}}d ago": {
     "retiredIn": "4.0.0",
-    "reason": "Reworded to call the credential a long-lived access token everywhere"
+    "reason": "Notification ages now use the language's own relative time format"
   },
-  "Enter a valid Home Assistant URL and token before testing.": {
+  "Showing {{shown}} of {{total}} icons for \"{{query}}\".": {
     "retiredIn": "4.0.0",
-    "reason": "Reworded to call the credential a long-lived access token everywhere"
+    "reason": "Reworded with curly quotes around the search: Showing {{shown}} of {{total}} icons for “{{query}}”."
   },
-  "Authentication failed. Please check your Home Assistant token in Settings.": {
+  "No matching icons found.": {
     "retiredIn": "4.0.0",
-    "reason": "Reworded to call the credential a long-lived access token everywhere"
+    "reason": "Replaced by one line that names the search and suggests what to try: No icons match “{{query}}”. Try a simpler word, or paste an emoji."
   },
-  "Connection test succeeded. Home Assistant is reachable.": {
+  "This computer and the sync file have different settings for {{sections}}. Keep this computer’s and upload them, or replace them with the file’s. Either way, the replaced settings are backed up.": {
     "retiredIn": "4.0.0",
-    "reason": "Replaced by a message that says the token was accepted and that Save is still needed"
+    "reason": "Reworded to say \"this computer’s settings\" and \"the sync file’s\" in full, matching the renamed buttons"
   },
-  "Clicking another window or switching apps hides the widget. Reopen it from the tray or with your popup hotkey. Desktop pins and Linux desktop-layer mode stay visible.": {
+  "This computer and the sync file have different settings. Keep this computer’s and upload them, or replace them with the file’s. Either way, the replaced settings are backed up.": {
     "retiredIn": "4.0.0",
-    "reason": "Shortened: the Linux layer-mode clause is explained by the disabled switch's tooltip"
+    "reason": "Reworded to say \"this computer’s settings\" and \"the sync file’s\" in full, matching the renamed buttons"
   },
-  "Linux uses the desktop shortcut service for stability. Hold-to-show and hide-on-release are unavailable; press-to-toggle remains supported.": {
+  "The sync file's {{sections}} settings are damaged. Keep this computer's to repair them; the damaged copy is backed up first.": {
     "retiredIn": "4.0.0",
-    "reason": "Reworded: X11 registers the shortcut itself, so the text no longer names a shortcut service"
+    "reason": "Reworded to say \"this computer’s settings\", matching the renamed buttons"
   },
-  "Tip: press Ctrl+K anywhere to search entities, run commands, and switch pages.": {
+  "Keep Local (Upload)": {
     "retiredIn": "4.0.0",
-    "reason": "The tip names the platform's own shortcut through a placeholder"
+    "reason": "Button renamed to This computer (upload)"
   },
-  "State Change": {
+  "Use Remote (Download)": {
     "retiredIn": "4.0.0",
-    "reason": "Sentence case for the alert condition and dialog title"
-  },
-  "Specific State": {
-    "retiredIn": "4.0.0",
-    "reason": "Sentence case for the alert condition and dialog title"
-  },
-  "Add New Alert": {
-    "retiredIn": "4.0.0",
-    "reason": "Sentence case for the alert condition and dialog title"
-  },
-  "Configure Alert - {{name}}": {
-    "retiredIn": "4.0.0",
-    "reason": "Sentence case for the alert condition and dialog title"
-  },
-  "Manually override the weather effect for testing": {
-    "retiredIn": "4.0.0",
-    "reason": "The weather override is a real setting, not a test switch"
-  },
-  "Shown in the media bar under the top cards.": {
-    "retiredIn": "4.0.0",
-    "reason": "One name for the media tile"
-  },
-  "Thank you for your support!": {
-    "retiredIn": "4.0.0",
-    "reason": "A neutral toast: opening the sponsors page is not a donation"
-  },
-  "Selected language: {{language}}": {
-    "retiredIn": "4.0.0",
-    "reason": "The select already shows the chosen language"
-  },
-  "Profile sync": {
-    "retiredIn": "4.0.0",
-    "reason": "The row is an action phrase, so it no longer repeats the Profile Syncing caption"
-  },
-  "Search icons or paste icon": {
-    "retiredIn": "4.0.0",
-    "reason": "One term (emoji) for custom icons"
-  },
-  "Custom icon must be a single emoji or glyph.": {
-    "retiredIn": "4.0.0",
-    "reason": "One term (emoji) for custom icons"
-  },
-  "Type keywords in each row to search the full emoji picker, or paste one emoji/glyph and click Apply.": {
-    "retiredIn": "4.0.0",
-    "reason": "One term (emoji) for custom icons"
-  },
-  "Opt in to GitHub prerelease builds for testing. Stable users will not receive these builds.": {
-    "retiredIn": "4.0.0",
-    "reason": "Reworded beta-builds and hotkey-release help"
-  },
-  "Hide the window when you let go of the hotkey, instead of only sending it back.": {
-    "retiredIn": "4.0.0",
-    "reason": "Reworded beta-builds and hotkey-release help"
-  },
-  "This package does not support in-app updates. Open Releases to download the latest build.": {
-    "retiredIn": "4.0.0",
-    "reason": "The version is a placeholder now"
-  },
-  "File: {{name}}": {
-    "retiredIn": "4.0.0",
-    "reason": "The settings import confirmation is label and value rows"
-  },
-  "Changes: {{sections}}": {
-    "retiredIn": "4.0.0",
-    "reason": "The settings import confirmation is label and value rows"
-  },
-  "Pages: {{pages}}. Referenced entities: {{count}}.": {
-    "retiredIn": "4.0.0",
-    "reason": "The settings import confirmation is label and value rows"
+    "reason": "Button renamed to Sync file (download)"
   },
   "Unavailable entities on this connection: {{count}}.": {
     "retiredIn": "4.0.0",
-    "reason": "The settings import confirmation is label and value rows"
+    "reason": "Reworded to Entities not found on this connection: {{count}}. so they are not confused with entities that are unavailable"
+  },
+  "System default": {
+    "retiredIn": "4.0.0",
+    "reason": "Time format reads Automatic: Electron cannot read the operating system's 12/24-hour switch, so the option follows the language and region"
+  },
+  "Clicking another window or switching apps hides the widget. Reopen it from the tray or with your popup hotkey. Desktop pins and Linux desktop-layer mode stay visible.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Thank you for your support!": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Test legacy token": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Selected language: {{language}}": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Opt in to GitHub prerelease builds for testing. Stable users will not receive these builds.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Authentication failed. Please check your Home Assistant token in Settings.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Authentication failed. Check your Long-Lived Access Token.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Connection test succeeded. Home Assistant is reachable.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Enter a valid Home Assistant URL and token before testing.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "This package does not support in-app updates. Open Releases to download the latest build.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "State Change": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Specific State": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Search icons or paste icon": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Custom icon must be a single emoji or glyph.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Add New Alert": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Configure Alert - {{name}}": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Linux uses the desktop shortcut service for stability. Hold-to-show and hide-on-release are unavailable; press-to-toggle remains supported.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Manually override the weather effect for testing": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Type keywords in each row to search the full emoji picker, or paste one emoji/glyph and click Apply.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Tip: press Ctrl+K anywhere to search entities, run commands, and switch pages.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Access token": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Profile sync": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Shown in the media bar under the top cards.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Hide the window when you let go of the hotkey, instead of only sending it back.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
   },
   "Save your pages, appearance, alerts, weather and media choices in a file. Connection details, desktop pins, shortcuts and profile sync stay on this computer.": {
     "retiredIn": "4.0.0",
-    "reason": "Reworded to call them hotkeys, as the rest of the app does"
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "File: {{name}}": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Changes: {{sections}}": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
   },
   "Import applies immediately and replaces unsaved Settings edits. Your current saved settings are backed up first. Connection details, desktop pins, shortcuts and profile sync stay on this computer. Imported settings follow your existing sync scope.": {
     "retiredIn": "4.0.0",
-    "reason": "Reworded to call them hotkeys, as the rest of the app does"
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Pages: {{pages}}. Referenced entities: {{count}}.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Entities not found on this connection: {{count}}.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
   }
 }

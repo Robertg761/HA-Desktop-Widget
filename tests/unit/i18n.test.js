@@ -176,18 +176,4 @@ describe('renderer i18n helpers', () => {
     expect(i18n.formatNumber('not a number')).toBe('not a number');
     expect(i18n.formatNumber(null)).toBe('');
   });
-
-  it('keeps the decimals Home Assistant sent when formatting numeric states', () => {
-    i18n.setLocaleBootstrap({ activeLocale: 'de', messages: {} });
-    expect(i18n.formatNumericState('15.6')).toBe('15,6');
-    expect(i18n.formatNumericState('15.60')).toBe('15,60');
-    expect(i18n.formatNumericState('-3')).toBe('-3');
-    expect(i18n.formatNumericState('on')).toBe('on');
-    expect(i18n.formatNumericState('2026-09-08')).toBe('2026-09-08');
-    expect(i18n.formatNumericState('007')).toBe('007');
-    expect(i18n.formatNumericState('0.5')).toBe('0,5');
-
-    i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
-    expect(i18n.formatNumericState('15.60')).toBe('15.60');
-  });
 });

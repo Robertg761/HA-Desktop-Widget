@@ -108,7 +108,7 @@ describe('tray-entity-icons', () => {
   it('sends no bitmaps on macOS where the label is drawn as a tray title', () => {
     setup({ platform: 'darwin' });
     const payload = buildTrayEntityIconPayload('sensor.battery', { scheme: 'dark' });
-    expect(payload.label).toBe('43 %');
+    expect(payload.label).toBe('43%');
     expect(payload.representations).toEqual([]);
   });
 
@@ -334,7 +334,7 @@ describe('tray-entity-icons', () => {
       messages: require('../../locales/de.json'),
     });
     const payload = buildTrayEntityIconPayload('sensor.room');
-    expect(payload.label).toBe('Büro: 21,4 °C');
+    expect(payload.label).toBe('Büro: 21,4\u00a0°C');
     expect(payload.tooltip).toContain('Büro · Office');
     expect(payload.representations).toEqual([]);
   });
@@ -359,6 +359,53 @@ describe('tray-entity-icons', () => {
       label: 'Geschlossen',
       tooltip: 'Tür: Geschlossen',
     });
+  });
+
+  it('keeps the words of a text state in the tooltip instead of lowercasing them', () => {
+    setup({
+      platform: 'darwin',
+      trayEntities: { 'sensor.dishwasher': {}, 'weather.home': {} },
+      states: {
+        'sensor.dishwasher': {
+          entity_id: 'sensor.dishwasher',
+          state: 'Cycle finished',
+          attributes: { friendly_name: 'Dishwasher' },
+        },
+        'weather.home': {
+          entity_id: 'weather.home',
+          state: 'partlycloudy',
+          attributes: { friendly_name: 'Home' },
+        },
+      },
+    });
+    expect(buildTrayEntityIconPayload('sensor.dishwasher').tooltip).toBe(
+      'Dishwasher: Cycle finished'
+    );
+    // A condition id reads as the weather card's label, not as the raw id.
+    expect(buildTrayEntityIconPayload('weather.home').tooltip).toBe('Home: Partly cloudy');
+  });
+
+  it('words a tooltip like the tile for the same entity', () => {
+    setup({
+      platform: 'darwin',
+      trayEntities: { 'sensor.load': {}, 'binary_sensor.router': {}, 'sun.sun': {} },
+      states: {
+        'sensor.load': {
+          entity_id: 'sensor.load',
+          state: '0.7160215353965759',
+          attributes: { friendly_name: 'Load', unit_of_measurement: 'kW' },
+        },
+        'binary_sensor.router': {
+          entity_id: 'binary_sensor.router',
+          state: 'off',
+          attributes: { friendly_name: 'Router', device_class: 'connectivity' },
+        },
+        'sun.sun': { entity_id: 'sun.sun', state: 'below_horizon', attributes: {} },
+      },
+    });
+    expect(buildTrayEntityIconPayload('sensor.load').tooltip).toBe('Load: 0.72\u00a0kW');
+    expect(buildTrayEntityIconPayload('binary_sensor.router').tooltip).toBe('Router: Disconnected');
+    expect(buildTrayEntityIconPayload('sun.sun').tooltip).toBe('sun.sun: Below horizon');
   });
 
   it('republishes a color-only settings change without an entity event', async () => {

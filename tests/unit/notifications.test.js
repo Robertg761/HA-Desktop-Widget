@@ -92,10 +92,14 @@ describe('persistent notification helpers', () => {
     const now = Date.parse('2026-07-06T12:00:00Z');
 
     expect(formatRelativeTime('2026-07-06T12:00:00Z', now)).toBe('just now');
-    expect(formatRelativeTime('2026-07-06T11:45:00Z', now)).toBe('15m ago');
-    expect(formatRelativeTime('2026-07-06T09:00:00Z', now)).toBe('3h ago');
-    expect(formatRelativeTime('2026-07-04T12:00:00Z', now)).toBe('2d ago');
+    // The language's own relative time, whatever wording this Node's Intl data has for it.
+    const ago = new Intl.RelativeTimeFormat('en', { numeric: 'auto', style: 'short' });
+    expect(formatRelativeTime('2026-07-06T11:45:00Z', now)).toBe(ago.format(-15, 'minute'));
+    expect(formatRelativeTime('2026-07-06T09:00:00Z', now)).toBe(ago.format(-3, 'hour'));
+    expect(formatRelativeTime('2026-07-04T12:00:00Z', now)).toBe(ago.format(-2, 'day'));
     expect(formatRelativeTime('', now)).toBe('');
+    // A notification stamped ahead of this computer's clock is just now.
+    expect(formatRelativeTime('2026-07-06T12:10:00Z', now)).toBe('just now');
   });
 
   describe('notifications panel', () => {
@@ -256,12 +260,16 @@ describe('persistent notification helpers', () => {
 
         jest.setSystemTime(Date.parse('2026-07-06T10:04:30Z'));
         jest.advanceTimersByTime(60000);
-        expect(time()).toBe('5m ago');
+        const fiveMinutes = new Intl.RelativeTimeFormat('en', {
+          numeric: 'auto',
+          style: 'short',
+        }).format(-5, 'minute');
+        expect(time()).toBe(fiveMinutes);
 
         document.getElementById('close-persistent-notifications').click();
         jest.setSystemTime(Date.parse('2026-07-06T10:20:30Z'));
         jest.advanceTimersByTime(120000);
-        expect(time()).toBe('5m ago');
+        expect(time()).toBe(fiveMinutes);
       } finally {
         jest.useRealTimers();
       }

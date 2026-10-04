@@ -186,6 +186,32 @@ PAGE_SETS.edge = [
   { id: 'spare', name: 'Spare', entityIds: ['light.desk_lamp'] },
 ];
 
+// Readings and states that each language writes its own way: precision, units and their spacing,
+// device class words, dates and times, a duration, a paused timer and the next calendar events.
+const FORMAT_ENTITIES = [
+  'sensor.pool_temp',
+  'sensor.hall_humidity',
+  'sensor.energy_price',
+  'sensor.cold_room',
+  'sensor.energy_total',
+  'sensor.last_boot',
+  'sensor.next_dawn',
+  'sensor.uptime',
+  'binary_sensor.router',
+  'binary_sensor.hall_battery',
+  'binary_sensor.front_door',
+  'input_number.thermostat_offset',
+  'climate.guest_room',
+  'select.heating_mode',
+  'timer.tea',
+  'calendar.family',
+  'calendar.bins',
+];
+PAGE_SETS.formats = [
+  { id: 'default', name: 'Home', entityIds: FORMAT_ENTITIES },
+  { id: 'spare', name: 'Spare', entityIds: ['light.desk_lamp'] },
+];
+
 // Twelve pages with German names, two of them long enough to be cut short on the strip.
 const GERMAN_PAGE_NAMES = [
   'Wohnzimmer',
@@ -206,6 +232,12 @@ PAGE_SETS.twelve = GERMAN_PAGE_NAMES.map((name, index) => ({
   name,
   entityIds: index === 0 ? HOME_ENTITIES : ['light.shelf_leds', 'switch.coffee_maker'],
 }));
+
+// YYYY-MM-DD in this computer's time zone, the way Home Assistant writes an all-day start.
+function localDate(date) {
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
 
 function buildStates(now = new Date()) {
   const stamp = now.toISOString();
@@ -461,6 +493,78 @@ function buildStates(now = new Date()) {
       brightness: 153,
       supported_color_modes: ['brightness'],
       color_mode: 'brightness',
+    }),
+    // The readings of the formats page: a Fahrenheit sensor, a humidity with two decimals, a price,
+    // a value just below zero, two timestamps, a duration, and the device class words.
+    entity('sensor.pool_temp', '71.456', {
+      friendly_name: 'Pool temp',
+      unit_of_measurement: '°F',
+      device_class: 'temperature',
+      state_class: 'measurement',
+    }),
+    entity('sensor.hall_humidity', '55.55', {
+      friendly_name: 'Hall humidity',
+      unit_of_measurement: '%',
+      device_class: 'humidity',
+      state_class: 'measurement',
+    }),
+    entity('sensor.energy_price', '0.0873', {
+      friendly_name: 'Energy price',
+      unit_of_measurement: 'EUR/kWh',
+      device_class: 'monetary',
+    }),
+    entity('sensor.cold_room', '-0.04', {
+      friendly_name: 'Cold room',
+      unit_of_measurement: '°C',
+      device_class: 'temperature',
+      state_class: 'measurement',
+    }),
+    entity('sensor.last_boot', new Date(now.getTime() - 3 * 3600000).toISOString(), {
+      friendly_name: 'Last boot',
+      device_class: 'timestamp',
+    }),
+    entity('sensor.next_dawn', new Date(now.getTime() + 5 * 3600000).toISOString(), {
+      friendly_name: 'Next dawn',
+      device_class: 'timestamp',
+    }),
+    entity('sensor.uptime', '4500', {
+      friendly_name: 'Uptime',
+      unit_of_measurement: 's',
+      device_class: 'duration',
+      state_class: 'total_increasing',
+    }),
+    entity('binary_sensor.router', 'off', {
+      friendly_name: 'Router',
+      device_class: 'connectivity',
+    }),
+    entity('binary_sensor.hall_battery', 'on', {
+      friendly_name: 'Hall battery',
+      device_class: 'battery',
+    }),
+    entity('climate.guest_room', 'heat', {
+      friendly_name: 'Guest room',
+      current_temperature: 70.5,
+      temperature: 72,
+      temperature_unit: '°F',
+      hvac_modes: ['off', 'heat'],
+      min_temp: 45,
+      max_temp: 90,
+      supported_features: 1,
+    }),
+    entity('select.heating_mode', 'heat', {
+      friendly_name: 'Heating mode',
+      options: ['heat', 'cool', 'auto'],
+    }),
+    entity('timer.tea', 'paused', {
+      friendly_name: 'Tea',
+      duration: '0:05:00',
+      remaining: '0:04:12',
+    }),
+    entity('calendar.bins', 'off', {
+      friendly_name: 'Bins',
+      message: 'Bins',
+      start_time: `${localDate(new Date(now.getTime() + 24 * 3600000))} 00:00:00`,
+      all_day: true,
     }),
     entity('sensor.energy_total', '1234567890.12', {
       friendly_name: 'Energy total',

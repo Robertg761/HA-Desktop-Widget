@@ -81,6 +81,19 @@ describe('index.html static Settings text', () => {
     ).toEqual(['Karte 1', 'Karte 2']);
   });
 
+  test('offers one choice per date style and starts the opacity readout at the default', () => {
+    // "System default" wrote exactly what Numeric date does, so only the three styles remain.
+    expect([...document.querySelectorAll('#date-format option')].map((o) => o.value)).toEqual([
+      'weekday-short',
+      'long',
+      'numeric',
+    ]);
+    // The time format still follows the language by default.
+    expect(document.querySelector('#time-format option').value).toBe('system');
+    // The stored default is 95%, not the slider position of 90.
+    expect(document.getElementById('opacity-value').textContent).toBe('95%');
+  });
+
   test('keeps code formatting in translated help text', () => {
     const help = document.querySelector('[data-i18n-html^="Toggle or control entities"]');
     expect(help.textContent).toBe(

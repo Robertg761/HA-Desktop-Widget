@@ -154,7 +154,7 @@ describe('settings file controls', () => {
     await flush();
     const { 'Page names': pages } = facts();
     expect(pages).toContain(`${'x'.repeat(39)}…, Page 2`);
-    expect(pages).toContain('Page 8, … (+5)');
+    expect(pages).toContain('Page 8 … (+5)');
     expect(pages).not.toContain('x'.repeat(41));
     expect(pages).not.toContain('Page 9');
   });

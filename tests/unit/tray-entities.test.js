@@ -84,6 +84,22 @@ describe('buildTrayEntityPresentation', () => {
     expect(presentation.tooltip).toBe('Custom: 43 %');
   });
 
+  it('keeps a text state as written when it has no name, and prefers the supplied text', () => {
+    const translate = (key) => key;
+    const presentation = buildTrayEntityPresentation(
+      entity('sensor.dishwasher', 'Cycle finished', { friendly_name: 'Dishwasher' }),
+      { translate }
+    );
+    expect(presentation.tooltip).toBe('Dishwasher: Cycle finished');
+    expect(presentation.valueText).toBe('Cycle finished');
+    expect(
+      buildTrayEntityPresentation(entity('sensor.cpu', '43.24'), {
+        translate,
+        displayState: '43.2 %',
+      })
+    ).toMatchObject({ tooltip: 'sensor.cpu: 43.2 %', valueText: '43.2 %' });
+  });
+
   it('marks unavailable and unknown entities', () => {
     expect(buildTrayEntityPresentation(entity('sensor.cpu', 'unavailable'))).toMatchObject({
       candidates: ['N/A'],
