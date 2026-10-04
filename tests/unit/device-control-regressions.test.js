@@ -288,15 +288,16 @@ describe('device control and live data regressions', () => {
     state.setServices({ vacuum: { start: {}, pause: {}, return_to_base: {} } });
     renderTiles([robot]);
     tile(robot.entity_id).click();
-    const body = document.querySelector('.helper-controls-modal .modal-body');
-    expect([...body.querySelectorAll('button')].map((button) => button.textContent)).toEqual([
+    // The actions sit in the dialog's footer, which is where a toast docks.
+    const actions = document.querySelector('.helper-controls-modal .modal-footer');
+    expect([...actions.querySelectorAll('button')].map((button) => button.textContent)).toEqual([
       'Start',
     ]);
-    const oldButton = body.querySelector('button');
+    const oldButton = actions.querySelector('button');
     liveUpdate({ ...robot, state: 'unavailable' });
     oldButton.click();
     expect(mockCallService).not.toHaveBeenCalled();
-    expect(body.querySelector('button').disabled).toBe(true);
+    expect(actions.querySelector('button').disabled).toBe(true);
   });
   test('unsupported tiles keep a read-only role and truthful tooltip after a live update', () => {
     const item = entity('binary_sensor.audit', 'off');
@@ -569,12 +570,14 @@ describe('device control and live data regressions', () => {
     const sensor = entity('sensor.deleted', '21.5', { unit_of_measurement: '°C' });
     state.setEntityState(sensor);
     ui.openEntityControls(sensor);
-    const modal = document.querySelector('.sensor-detail-modal, .modal');
-    const readout = modal.querySelector('[aria-live="polite"]');
-    expect(readout.getAttribute('aria-label')).toContain('21.5');
+    const modal = document.querySelector('.sensor-detail-modal');
+    const value = modal.querySelector('.sensor-detail-value');
+    expect(value.textContent).toContain('21.5');
+    expect(modal.classList.contains('entity-unavailable')).toBe(false);
     state.deleteEntityState(sensor.entity_id);
-    expect(readout.getAttribute('aria-label')).not.toContain('21.5');
-    expect(readout.getAttribute('aria-label')).toMatch(/unavailable/i);
+    expect(value.textContent).not.toContain('21.5');
+    expect(value.textContent).toMatch(/unavailable/i);
+    expect(modal.classList.contains('entity-unavailable')).toBe(true);
   });
   test('todo dialog stops writing once Home Assistant deletes the entity', async () => {
     const list = entity('todo.deleted', '1', { supported_features: 5 });
@@ -688,7 +691,7 @@ describe('device control and live data regressions', () => {
       temperature: 22,
     });
     state.setEntityState(climate);
-    expect(ui.describeQuickAccessTile(climate.entity_id).value).toBe('0°');
+    expect(ui.describeQuickAccessTile(climate.entity_id).value).toBe('0°C');
   });
   test('unavailable fan tile refuses its primary toggle', () => {
     const fan = entity('fan.auditunavailable', 'unavailable', {
@@ -876,9 +879,9 @@ describe('device control and live data regressions', () => {
   });
 
   test.each([
-    [0, 22, '0°'],
-    [-5, 22, '-5°'],
-    [null, 0, '0°'],
+    [0, 22, '0°C'],
+    [-5, 22, '-5°C'],
+    [null, 0, '0°C'],
     [null, null, 'Heating'],
   ])('climate current %s and target %s display %s', (current, target, expected) => {
     const climate = entity('climate.reading', 'heat', {
@@ -891,19 +894,30 @@ describe('device control and live data regressions', () => {
   describe('dialogs built from the shared control classes', () => {
     const classesOf = (element) => [...element.classList];
 
-    test('the helper dialog labels its field and gives it the form-group, button and lead classes', () => {
-      const helper = entity('input_number.audit', '3', { min: 0, max: 10, step: 1 });
+    test('the helper dialog names its field, says what it accepts, and gives it the form-group, button and lead classes', () => {
+      const helper = entity('input_number.audit', '3', {
+        friendly_name: 'Thermostat offset',
+        min: 0,
+        max: 10,
+        step: 1,
+      });
       state.setServices({ input_number: { set_value: {} } });
       renderTiles([helper]);
       tile(helper.entity_id).click();
 
       const modal = document.querySelector('.helper-controls-modal');
       const input = modal.querySelector('input');
-      const label = modal.querySelector('label');
       expect(input.closest('.form-group')).not.toBeNull();
-      expect(label.htmlFor).toBe(input.id);
-      expect(modal.querySelector('.modal-lead').getAttribute('role')).toBe('status');
-      const apply = modal.querySelector('.entity-detail-actions button');
+      // The title is the entity's name already, so the field is named without a second label.
+      expect(modal.querySelector('label')).toBeNull();
+      expect(input.getAttribute('aria-label')).toBe('Thermostat offset');
+      const hint = document.getElementById(input.getAttribute('aria-describedby'));
+      expect(hint.classList.contains('form-help')).toBe(true);
+      expect(hint.textContent).toBe('Range 0 to 10, step 1');
+      const readout = modal.querySelector('.modal-lead');
+      expect(readout.getAttribute('role')).toBe('status');
+      expect(readout.classList.contains('helper-controls-readout')).toBe(true);
+      const apply = modal.querySelector('.modal-footer.entity-detail-actions button');
       expect(classesOf(apply)).toEqual(['btn', 'btn-primary']);
     });
 
@@ -972,6 +986,19 @@ describe('device control and live data regressions', () => {
       expect(pager.querySelector('.entity-selector-pagination-status').textContent).toBe(
         'Page 1 of 2 · 60 entities'
       );
+    });
+
+    test('the Manage Quick Access pager says "1 entity" for a single match, not "1 entities"', () => {
+      document.body.innerHTML += `<div id="quick-controls-modal"><div id="quick-controls-target-hint"></div>
+        <input id="quick-controls-search"><div id="quick-controls-list"></div></div>`;
+      state.setStates({ 'sensor.only_one': entity('sensor.only_one', '1') });
+      ui.populateQuickControlsList();
+
+      expect(
+        document
+          .getElementById('quick-controls-pagination')
+          .querySelector('.entity-selector-pagination-status').textContent
+      ).toBe('Page 1 of 1 · 1 entity');
     });
 
     test('the media dialog keeps one Mute label, flips aria-pressed, and says how far a seek jumps', () => {

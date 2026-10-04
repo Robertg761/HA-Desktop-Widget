@@ -168,8 +168,41 @@ function resolveOmarchyBarEntities(entry, config = {}) {
   return { panel, bar, sections, all: [...new Set([...bar, ...panel])], omitted };
 }
 
+const graphemeSegmenter =
+  typeof Intl.Segmenter === 'function'
+    ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+    : null;
+
+// The first `limit` characters as a reader counts them: an emoji, a flag, a joined family or a
+// letter with its accent is one. String.slice() counts UTF-16 units, so it left half of a
+// surrogate pair (a replacement glyph on the bar) or turned a family into two people.
+function clipGraphemes(text, limit) {
+  const clusters = graphemeSegmenter
+    ? Array.from(graphemeSegmenter.segment(text), (part) => part.segment)
+    : Array.from(text);
+  return clusters.length > limit ? clusters.slice(0, limit).join('') : text;
+}
+
 function cleanText(value, limit) {
-  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, limit) : '';
+  return typeof value === 'string' ? clipGraphemes(value.replace(/\s+/g, ' ').trim(), limit) : '';
+}
+
+// A tile's icon is one emoji or glyph. Joined emoji run to seven code points or more, so the
+// limit is generous and counts whole characters, never a piece of one.
+const MAX_ICON_CODE_POINTS = 16;
+
+function clipIconGlyph(glyph) {
+  const clusters = graphemeSegmenter
+    ? Array.from(graphemeSegmenter.segment(glyph), (part) => part.segment)
+    : Array.from(glyph);
+  let codePoints = 0;
+  let clipped = '';
+  for (const cluster of clusters) {
+    codePoints += Array.from(cluster).length;
+    if (codePoints > MAX_ICON_CODE_POINTS) break;
+    clipped += cluster;
+  }
+  return clipped;
 }
 
 function cleanTileIcon(icon) {
@@ -177,7 +210,7 @@ function cleanTileIcon(icon) {
     return { kind: 'line', name: icon.name };
   }
   if ((icon?.kind === 'mdi' || icon?.kind === 'custom') && typeof icon.glyph === 'string') {
-    const glyph = Array.from(icon.glyph).slice(0, 4).join('');
+    const glyph = clipIconGlyph(icon.glyph);
     if (glyph.trim()) return { kind: 'glyph', glyph };
   }
   return { kind: 'line', name: 'box' };

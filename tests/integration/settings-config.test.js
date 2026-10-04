@@ -100,7 +100,9 @@ const mockUiUtils = {
   copyTextToClipboard: jest.fn().mockResolvedValue(true),
 };
 
+// The recorder helpers are the real ones (both recorders share them); only the cleanup is observed.
 const mockHotkeys = {
+  ...jest.requireActual('../../src/hotkeys.js'),
   cleanupHotkeyEventListeners: jest.fn(),
 };
 
@@ -116,6 +118,11 @@ jest.mock('../../src/websocket.js', () => mockWebsocket);
 jest.mock('../../src/ui-utils.js', () => mockUiUtils);
 jest.mock('../../src/hotkeys.js', () => mockHotkeys);
 jest.mock('../../src/ui.js', () => mockUI, { virtual: true });
+// The check measures text on a canvas, which jsdom does not have. This one says the nazar amulet
+// is the one emoji the computer's fonts cannot draw.
+jest.mock('../../src/emoji-support.js', () => ({
+  createEmojiSupportCheck: () => (icon) => icon !== '\u{1F9FF}',
+}));
 
 // Setup mock electronAPI
 let mockElectronAPI;
@@ -123,13 +130,13 @@ let mockElectronAPI;
 beforeAll(() => {
   mockElectronAPI = createMockElectronAPI();
   window.electronAPI = mockElectronAPI;
-
-  // Mock window.confirm for jsdom
-  window.confirm = jest.fn().mockReturnValue(false); // Default to false (don't restart)
 });
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // Every dialog but the restart prompt agrees by default; "Later" is the answer that leaves the
+  // run going, so a save that changes Always on top does not restart the test.
+  mockUiUtils.showConfirm.mockImplementation(async (title) => title !== 'Restart required');
   resetMockElectronAPI();
   mockElectronAPI.platform = 'test';
   mockCustomThemes = [];
@@ -188,6 +195,19 @@ afterEach(() => {
 });
 
 /**
+ * What a person sees under a field Save refused: the message beside it, the field marked invalid and
+ * pointing at the message.
+ */
+function fieldError(id) {
+  const field = document.getElementById(id);
+  const node = document.querySelector(`[data-field-error-for="${id}"]`);
+  if (!node) return null;
+  expect(field.getAttribute('aria-invalid')).toBe('true');
+  expect(field.getAttribute('aria-describedby').split(' ')).toContain(node.id);
+  return node.textContent;
+}
+
+/**
  * Helper function to create the settings modal DOM structure
  */
 function createSettingsModalDOM() {
@@ -211,6 +231,7 @@ function createSettingsModalDOM() {
       <details id="legacy-ha-token-settings">
       <label for="ha-token">Access Token</label>
       <input type="password" id="ha-token" />
+      <p id="legacy-ha-token-oauth-note" class="hidden">Browser authorization is active.</p>
       <button type="button" id="test-ha-connection-btn">Test legacy token</button>
       <div id="test-ha-connection-status" class="hidden"></div>
       </details>
@@ -277,6 +298,8 @@ function createSettingsModalDOM() {
           </select>
         </div>
         <fieldset class="seasonal-option">
+          <input type="checkbox" data-holiday="new-year" />
+          <span data-holiday-dates="new-year"></span>
           <input type="checkbox" data-holiday="halloween" />
           <span data-holiday-dates="halloween"></span>
           <input type="checkbox" data-holiday="christmas" />
@@ -437,7 +460,6 @@ function createSettingsModalDOM() {
                 <option value="24-hour">24-hour</option>
               </select>
               <select id="date-format">
-                <option value="system">System default</option>
                 <option value="weekday-short">Weekday, short date</option>
                 <option value="long">Long date</option>
                 <option value="numeric">Numeric date</option>
@@ -462,6 +484,7 @@ function createSettingsModalDOM() {
 
       <label for="primary-media-player">Primary Media Player</label>
       <select id="primary-media-player"></select>
+      <p id="primary-media-player-empty" class="hidden">No media players found in Home Assistant.</p>
 
       <div id="popup-hotkey-container">
         <label id="popup-hotkey-mode-label">Popup hotkey</label>
@@ -1180,8 +1203,9 @@ describe('Settings + Config Integration', () => {
 
       expect(document.getElementById('popup-hotkey-mode-label').textContent).toBe('Popup hotkey');
       expect(document.getElementById('popup-hotkey-platform-notice').hidden).toBe(false);
-      expect(document.getElementById('popup-hotkey-platform-notice').textContent).toContain(
-        'Linux uses the desktop shortcut service'
+      // Not "the desktop shortcut service": X11 registers the key itself, and only Wayland uses one
+      expect(document.getElementById('popup-hotkey-platform-notice').textContent).toBe(
+        'Hold-to-show and hide-on-release are unavailable on Linux; press-to-toggle remains supported.'
       );
       expect(document.getElementById('popup-hotkey-hide-on-release').disabled).toBe(true);
       expect(document.getElementById('popup-hotkey-toggle-mode').disabled).toBe(false);
@@ -1192,6 +1216,48 @@ describe('Settings + Config Integration', () => {
 
       expect(mockElectronAPI.registerPopupHotkey).toHaveBeenCalledWith('Ctrl+Shift+F12');
       expect(document.getElementById('popup-hotkey-input').value).toBe('Ctrl+Shift+F12');
+    });
+
+    test('a platform without a global shortcut service shows a read-only card that says so', async () => {
+      mockElectronAPI.isPopupHotkeyAvailable.mockResolvedValue(false);
+
+      await settings.openSettings();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const notice = document.getElementById('popup-hotkey-platform-notice');
+      expect(notice.hidden).toBe(false);
+      expect(notice.textContent).toBe('Popup hotkey feature is not available on this platform.');
+      // Help about holding the key down would describe a feature that does nothing here
+      expect(document.getElementById('popup-hotkey-help-text').hidden).toBe(true);
+      expect(document.getElementById('popup-hotkey-input').disabled).toBe(true);
+      expect(document.getElementById('popup-hotkey-set-btn').disabled).toBe(true);
+      expect(document.querySelector('.preset-hotkey-btn').disabled).toBe(true);
+      for (const id of ['popup-hotkey-toggle-mode', 'popup-hotkey-hide-on-release']) {
+        expect(document.getElementById(id).disabled).toBe(true);
+        expect(document.getElementById(`${id}-label`).classList.contains('disabled')).toBe(true);
+      }
+      mockElectronAPI.isPopupHotkeyAvailable.mockResolvedValue(true);
+    });
+
+    test('the card comes back to life when the shortcut service turns up later', async () => {
+      mockElectronAPI.isPopupHotkeyAvailable.mockResolvedValue(false);
+      await settings.openSettings();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(document.querySelector('.preset-hotkey-btn').disabled).toBe(true);
+
+      mockElectronAPI.isPopupHotkeyAvailable.mockResolvedValue(true);
+      await settings.initializePopupHotkey();
+
+      expect(document.getElementById('popup-hotkey-input').disabled).toBe(false);
+      for (const chip of document.querySelectorAll('.preset-hotkey-btn')) {
+        expect(chip.disabled).toBe(false);
+      }
+      for (const id of ['popup-hotkey-toggle-mode', 'popup-hotkey-hide-on-release']) {
+        expect(document.getElementById(id).disabled).toBe(false);
+        expect(document.getElementById(`${id}-label`).classList.contains('disabled')).toBe(false);
+      }
     });
 
     test('closing settings cleans up modal and focus trap', () => {
@@ -1419,8 +1485,22 @@ describe('Settings + Config Integration', () => {
         list.querySelector('[data-primary-page="previous"]').click();
         expect(list.querySelector('[role="status"]').textContent).toBe('Page 1 / 3');
         expect(list.scrollTop).toBe(0);
+
+        // A new query starts at its first match, as a new page does.
+        jest.useFakeTimers();
+        list.scrollTop = 900;
+        const search = document.getElementById('primary-cards-search');
+        search.value = 'sensor.test_01';
+        search.dispatchEvent(new Event('input'));
+        jest.advanceTimersByTime(150);
+        expect(list.querySelector('[data-primary-assign]').dataset.entityId).toBe(
+          'sensor.test_010'
+        );
+        expect(list.scrollTop).toBe(0);
       } finally {
         settings.closeSettings();
+        jest.clearAllTimers();
+        jest.useRealTimers();
       }
     });
 
@@ -1666,6 +1746,11 @@ describe('Settings + Config Integration', () => {
       slider.value = '100';
       settings.updateOpacityReadout();
       expect(readout.textContent).toBe('100%');
+      // A screen reader announces the percentage, not the slider's position of 100.
+      expect(slider.getAttribute('aria-valuetext')).toBe('100%');
+      slider.value = '1';
+      settings.updateOpacityReadout();
+      expect(slider.getAttribute('aria-valuetext')).toBe('50%');
       settings.closeSettings();
     });
 
@@ -1769,6 +1854,17 @@ describe('Settings + Config Integration', () => {
           }),
         })
       );
+    });
+
+    test('reads a date format saved as "System default", which was Numeric date, as Numeric date', async () => {
+      state.CONFIG.ui.dateFormat = 'system';
+      await settings.openSettings();
+
+      expect(document.getElementById('date-format').value).toBe('numeric');
+      const offered = [...document.querySelectorAll('#date-format option')].map(
+        (option) => option.value
+      );
+      expect(offered).not.toContain('system');
     });
 
     test('leaves a profile that never chose 24-hour on the locale default', async () => {
@@ -1932,6 +2028,28 @@ describe('Settings + Config Integration', () => {
       expect(document.getElementById('language-packs-list').textContent).toContain('Installed');
       expect(document.querySelector('#language-select option[value="fr"]').disabled).toBe(false);
       expect(document.querySelector('[data-locale-action="remove"]').dataset.locale).toBe('fr');
+    });
+
+    test('shows when a language pack was installed to the minute, in the Time format', async () => {
+      window.electronAPI.getLocalePacks.mockResolvedValueOnce([
+        {
+          locale: 'fr',
+          displayName: 'Français',
+          version: '1.0.0',
+          latestVersion: '1.0.0',
+          installed: true,
+          downloadedAt: '2026-10-01T12:24:14.000Z',
+        },
+      ]);
+      state.CONFIG.ui = { ...state.CONFIG.ui, timeFormat: '24-hour' };
+      await settings.openSettings();
+      await waitForLanguagePackRefresh();
+      const meta = document.querySelector('.language-pack-meta').textContent;
+      // A date and a time of day, like the sync timestamps, without the seconds.
+      expect(meta).toMatch(/Oct [12], 2026/);
+      expect(meta).toMatch(/\b\d{2}:\d{2}\b(?!:)/);
+      expect(meta).not.toMatch(/\d{2}:\d{2}:\d{2}/);
+      expect(meta).not.toMatch(/[AP]M/);
     });
 
     test('names the language on every language pack button', async () => {
@@ -2247,17 +2365,15 @@ describe('Settings + Config Integration', () => {
     test('URL validation prevents invalid save', async () => {
       await settings.openSettings();
 
-      // Set invalid URL (no protocol)
-      document.getElementById('ha-url').value = 'homeassistant.local:8123';
+      // A scheme this app does not speak
+      document.getElementById('ha-url').value = 'ftp://homeassistant.local:8123';
 
       await settings.saveSettings();
 
-      // Verify error toast shown
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-        expect.stringContaining('http://'),
-        'error',
-        expect.any(Number)
-      );
+      // The message is under the field, not in a toast that is gone in seconds
+      expect(fieldError('ha-url')).toBe('URL must start with http:// or https://');
+      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(document.getElementById('ha-url'));
 
       // Verify config NOT updated
       expect(state.CONFIG.homeAssistant.url).toBe('http://homeassistant.local:8123'); // Original value
@@ -2268,6 +2384,46 @@ describe('Settings + Config Integration', () => {
       expect(modal.classList.contains('hidden')).toBe(false);
     });
 
+    test('an address Test connection accepts is accepted by Save, as the server alone', async () => {
+      // A bare host and port, an upper-case scheme and a pasted dashboard address all reach the
+      // same server; Test and the setup wizard take them, so Save must too.
+      for (const [typed, saved] of [
+        ['homeassistant.local:8123', 'http://homeassistant.local:8123'],
+        ['HTTP://ha.local:8123/', 'http://ha.local:8123'],
+        ['https://ha.example.com/lovelace/0', 'https://ha.example.com'],
+      ]) {
+        window.electronAPI.updateConfig.mockClear();
+        await settings.openSettings();
+        document.getElementById('ha-url').value = typed;
+
+        await settings.saveSettings();
+
+        expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+          expect.objectContaining({
+            homeAssistant: expect.objectContaining({ url: saved }),
+          })
+        );
+        expect(state.CONFIG.homeAssistant.url).toBe(saved);
+      }
+    });
+
+    test('a URL with no host names the problem under the field and clears it on typing', async () => {
+      await settings.openSettings();
+      const haUrl = document.getElementById('ha-url');
+      haUrl.value = 'http://';
+
+      await settings.saveSettings();
+
+      expect(fieldError('ha-url')).toBe('Invalid URL: missing hostname');
+
+      haUrl.value = 'http://ha.local';
+      haUrl.dispatchEvent(new Event('input'));
+
+      expect(document.querySelector('[data-field-error-for="ha-url"]')).toBeNull();
+      expect(haUrl.hasAttribute('aria-invalid')).toBe(false);
+      expect(haUrl.hasAttribute('aria-describedby')).toBe(false);
+    });
+
     test('empty URL validation', async () => {
       await openSettingsWithCustomIconsExpanded();
 
@@ -2276,12 +2432,7 @@ describe('Settings + Config Integration', () => {
 
       await settings.saveSettings();
 
-      // Verify error toast
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-        expect.stringContaining('empty'),
-        'error',
-        expect.any(Number)
-      );
+      expect(fieldError('ha-url')).toBe('Home Assistant URL cannot be empty');
 
       // Verify config NOT updated
       expect(window.electronAPI.updateConfig).not.toHaveBeenCalled();
@@ -2304,10 +2455,8 @@ describe('Settings + Config Integration', () => {
       expect(window.electronAPI.updateConfig).not.toHaveBeenCalled();
       expect(window.electronAPI.setLoginItemSettings).not.toHaveBeenCalled();
       expect(window.electronAPI.setOpacity).not.toHaveBeenCalled();
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-        'Choose a sync folder before enabling profile sync.',
-        'error',
-        3200
+      expect(fieldError('profile-sync-folder-path')).toBe(
+        'Choose a sync folder before enabling profile sync.'
       );
     });
 
@@ -2358,7 +2507,7 @@ describe('Settings + Config Integration', () => {
       }
     });
 
-    test('disables weather effects control and warning when frosted glass is off', async () => {
+    test('locks the weather effects control when frosted glass is off, and says they are paused', async () => {
       state.CONFIG.frostedGlass = false;
       state.CONFIG.ui.weatherEffectsEnabled = true;
 
@@ -2366,13 +2515,57 @@ describe('Settings + Config Integration', () => {
 
       const weatherEffects = document.getElementById('weather-effects-enabled');
       const warning = document.getElementById('weather-effects-warning');
-      expect(weatherEffects.checked).toBe(false);
+      // The choice is held back, not turned off
+      expect(weatherEffects.checked).toBe(true);
       expect(weatherEffects.disabled).toBe(true);
       expect(warning.classList.contains('hidden')).toBe(false);
-      expect(warning.textContent).toContain('Frosted glass');
+      expect(warning.textContent).toBe(
+        'Subtle weather effects need Frosted glass, so they are paused.'
+      );
     });
 
-    test('does not save weather effects enabled unless frosted glass is enabled', async () => {
+    test('asks for glass first when the effects were never on', async () => {
+      state.CONFIG.frostedGlass = false;
+      state.CONFIG.ui.weatherEffectsEnabled = false;
+
+      await settings.openSettings();
+
+      expect(document.getElementById('weather-effects-warning').textContent).toBe(
+        'Turn on Frosted glass background before enabling subtle weather effects.'
+      );
+    });
+
+    test('turning frosted glass off and on again keeps the weather effects choice', async () => {
+      state.CONFIG.frostedGlass = true;
+      state.CONFIG.ui.weatherEffectsEnabled = true;
+      await settings.openSettings();
+      const glass = document.getElementById('frosted-glass');
+      const weatherEffects = document.getElementById('weather-effects-enabled');
+      expect(weatherEffects.checked).toBe(true);
+
+      glass.checked = false;
+      settings.syncWeatherEffectsAvailability({ showWarning: true });
+
+      expect(weatherEffects.checked).toBe(true);
+      expect(weatherEffects.disabled).toBe(true);
+      // The toast says the effects are paused, not to turn on the glass that was just turned off
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        'Subtle weather effects need Frosted glass, so they are paused.',
+        'warning',
+        expect.any(Number)
+      );
+      // The override beneath it goes with the effects
+      expect(document.getElementById('weather-override-group').style.display).toBe('none');
+
+      glass.checked = true;
+      settings.syncWeatherEffectsAvailability({ showWarning: true });
+
+      expect(weatherEffects.checked).toBe(true);
+      expect(weatherEffects.disabled).toBe(false);
+      expect(document.getElementById('weather-override-group').style.display).toBe('');
+    });
+
+    test('saves the weather effects choice while frosted glass is off, so it returns with the glass', async () => {
       await settings.openSettings();
 
       document.getElementById('frosted-glass').checked = false;
@@ -2381,7 +2574,7 @@ describe('Settings + Config Integration', () => {
       await settings.saveSettings();
 
       expect(state.CONFIG.frostedGlass).toBe(false);
-      expect(state.CONFIG.ui.weatherEffectsEnabled).toBe(false);
+      expect(state.CONFIG.ui.weatherEffectsEnabled).toBe(true);
     });
 
     test('allows weather effects when frosted glass is enabled', async () => {
@@ -2523,8 +2716,9 @@ describe('Settings + Config Integration', () => {
       const allChoices = picker.querySelectorAll('.custom-entity-icon-choice');
       expect(allChoices).toHaveLength(120);
       const summary = picker.querySelector('.custom-entity-icon-picker-meta');
+      // Skin tones, joined people and flags stay out of the list that opens, but not out of search
       expect(summary.textContent).toMatch(
-        /^Showing the first 120 of 3\d{3} icons\. Type to narrow them\.$/
+        /^Showing the first 120 of 1,\d{3} icons\. Type to narrow them\.$/
       );
       // The count is announced as it narrows.
       expect(summary.getAttribute('aria-live')).toBe('polite');
@@ -2569,6 +2763,34 @@ describe('Settings + Config Integration', () => {
 
       // Assert
       expect(document.querySelector('[data-custom-icon-picker="light.living_room"]')).toBeNull();
+    });
+
+    test('should not apply the icon on the Enter that commits an input method candidate', async () => {
+      await openSettingsWithCustomIconsExpanded();
+      const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
+      iconInput.focus();
+      iconInput.value = '星';
+
+      for (const init of [{ isComposing: true }, { keyCode: 229 }]) {
+        const enter = new KeyboardEvent('keydown', {
+          key: 'Enter',
+          bubbles: true,
+          cancelable: true,
+          ...init,
+        });
+        iconInput.dispatchEvent(enter);
+        expect(enter.defaultPrevented).toBe(false);
+      }
+
+      // Still being typed: nothing was applied or reset.
+      expect(iconInput.value).toBe('星');
+      const applied = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        bubbles: true,
+        cancelable: true,
+      });
+      iconInput.dispatchEvent(applied);
+      expect(applied.defaultPrevented).toBe(true);
     });
 
     test('should open the picker when a query is typed, and close it with Escape without leaving Settings', async () => {
@@ -2654,6 +2876,93 @@ describe('Settings + Config Integration', () => {
       expect(state.CONFIG.customEntityIcons).toEqual({});
     });
 
+    describe('searching by word', () => {
+      // The catalog is imported on first use, so wait for the picker to stop saying it is loading.
+      const type = async (query) => {
+        const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
+        iconInput.value = query;
+        iconInput.dispatchEvent(new Event('input', { bubbles: true }));
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          const picker = document.querySelector('[data-custom-icon-picker="light.living_room"]');
+          if (picker && !picker.textContent.includes('Loading icon catalog')) return picker;
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        throw new Error('The icon catalog did not load.');
+      };
+      const search = async (query) => {
+        await openSettingsWithCustomIconsExpanded();
+        return type(query);
+      };
+
+      test('says so in one line, with something to try, and lists no icons', async () => {
+        const picker = await search('zzzzqq');
+        expect(picker.querySelectorAll('.custom-entity-icon-choice')).toHaveLength(0);
+        // The count is not repeated above a second "nothing found" line.
+        expect(picker.querySelector('.custom-entity-icon-picker-meta')).toBeNull();
+        expect(picker.querySelector('.custom-entity-icon-picker-empty').textContent).toBe(
+          'No icons match “zzzzqq”. Try a simpler word, or paste an emoji.'
+        );
+      });
+
+      test('does not list every icon for a word it has no letters to search by', async () => {
+        // The old ASCII-only filter dropped all of a Chinese or Arabic query and showed everything.
+        await openSettingsWithCustomIconsExpanded();
+        for (const query of ['客厅', 'غرفة', 'Küche']) {
+          const picker = await type(query);
+          expect(picker.querySelectorAll('.custom-entity-icon-choice')).toHaveLength(0);
+          expect(picker.querySelector('.custom-entity-icon-picker-empty')).toBeTruthy();
+        }
+      });
+
+      test('finds a pasted emoji by the emoji itself', async () => {
+        const picker = await search('🌲');
+        const found = [...picker.querySelectorAll('.custom-entity-icon-choice')].map(
+          (button) => button.dataset.customIconChoice
+        );
+        expect(found).toContain('🌲');
+        expect(found.length).toBeLessThan(10);
+      });
+
+      test('does not match a word to an icon whose keyword is merely inside it', async () => {
+        // "offline" found the cross mark and "synchronize" the check mark, through a keyword that was
+        // a piece of the query. A query with no keyword of its own finds nothing.
+        await openSettingsWithCustomIconsExpanded();
+        for (const query of ['offline', 'synchronize']) {
+          const picker = await type(query);
+          expect(picker.querySelectorAll('.custom-entity-icon-choice')).toHaveLength(0);
+        }
+      });
+
+      test.each([
+        ['tv', '📺'],
+        ['television', '📺'],
+        ['car', '🚗'],
+        ['garage', '🚗'],
+        ['garage', '🏠'],
+        ['dog', '🐶'],
+        ['dogs', '🐶'],
+        ['cat', '🐱'],
+        ['thermostat', '🌡️'],
+        ['washer', '🧺'],
+        ['washing machine', '🧺'],
+        ['fridge', '🧊'],
+        ['router', '🛜'],
+        ['doorbell', '🔔'],
+        ['speaker', '🔊'],
+        // Accents fold away, composed or not, like in every other search.
+        ['ca\u0301r', '🚗'],
+      ])('finds an icon for the device word "%s"', async (query, icon) => {
+        const picker = await search(query);
+        const found = [...picker.querySelectorAll('.custom-entity-icon-choice')].map(
+          (button) => button.dataset.customIconChoice
+        );
+        expect(found).toContain(icon);
+        // A word narrows the catalog to a handful of icons, not a scrollable page of them.
+        expect(found.length).toBeLessThan(40);
+        expect(picker.querySelector('.custom-entity-icon-picker-empty')).toBeNull();
+      });
+    });
+
     test('should match natural language keywords like tree', async () => {
       // Arrange
       await openSettingsWithCustomIconsExpanded();
@@ -2690,10 +2999,10 @@ describe('Settings + Config Integration', () => {
         '[data-custom-icon-picker="light.living_room"] .custom-entity-icon-picker-meta'
       );
       expect(ratSummary).toBeTruthy();
-      expect(ratSummary.textContent).toMatch(/Showing \d+ of \d+ icons for "rat"\./);
+      expect(ratSummary.textContent).toMatch(/Showing \d+ of [\d,]+ icons for “rat”\./);
       const [, ratShown, ratTotal] =
-        ratSummary.textContent.match(/Showing (\d+) of (\d+) icons for "rat"\./) || [];
-      expect(Number(ratShown)).toBeLessThan(Number(ratTotal));
+        ratSummary.textContent.match(/Showing ([\d,]+) of ([\d,]+) icons for “rat”\./) || [];
+      expect(Number(ratShown.replace(/,/g, ''))).toBeLessThan(Number(ratTotal.replace(/,/g, '')));
 
       // Act
       iconInput.value = 'mouse';
@@ -2770,7 +3079,7 @@ describe('Settings + Config Integration', () => {
 
       // Assert
       expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-        expect.stringContaining('single emoji or glyph'),
+        expect.stringContaining('a single emoji'),
         'error',
         expect.any(Number)
       );
@@ -2864,10 +3173,429 @@ describe('Settings + Config Integration', () => {
 
       // Act
       resetAllBtn.click();
+      await flushMicrotasks();
 
       // Assert
+      expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
+        'Reset all custom icons',
+        expect.stringContaining('Remove every custom icon'),
+        expect.objectContaining({ confirmText: 'Reset', confirmClass: 'btn-danger' })
+      );
       const summaryAfterResetAll = document.getElementById('custom-entity-icons-summary');
       expect(summaryAfterResetAll.textContent).toContain('No custom icons configured');
+    });
+
+    describe('in a large home', () => {
+      const manyEntities = (count = 121) =>
+        Object.fromEntries(
+          Array.from({ length: count }, (_, index) => {
+            const entity_id = `sensor.test_${String(index).padStart(3, '0')}`;
+            return [
+              entity_id,
+              {
+                entity_id,
+                state: '1',
+                attributes: { friendly_name: `Test ${String(index).padStart(3, '0')}` },
+              },
+            ];
+          })
+        );
+      const iconList = () => document.getElementById('custom-entity-icons-list');
+      const pagerButton = (key) => iconList().querySelector(`[data-primary-page="${key}"]`);
+      const firstRowEntity = () =>
+        iconList().querySelector('[data-custom-icon-input]').dataset.customIconInput;
+
+      test('keeps the keyboard on the pager button when a page of icons is turned', async () => {
+        state.setStates(manyEntities());
+        await openSettingsWithCustomIconsExpanded();
+        expect(iconList().querySelectorAll('.custom-entity-icon-item')).toHaveLength(50);
+        expect(iconList().querySelector('[role="status"]').textContent).toBe('Page 1 / 3');
+
+        // jsdom does not lay out, so give the list a scroll position it keeps.
+        let scrollTop = 0;
+        Object.defineProperty(iconList(), 'scrollTop', {
+          configurable: true,
+          get: () => scrollTop,
+          set: (value) => {
+            scrollTop = value;
+          },
+        });
+
+        try {
+          const next = pagerButton('next');
+          next.focus();
+          scrollTop = 700;
+          next.click();
+
+          // The page was rebuilt, so the button that was pressed is gone; its replacement has focus.
+          expect(next.isConnected).toBe(false);
+          expect(document.activeElement).toBe(pagerButton('next'));
+          expect(iconList().contains(document.activeElement)).toBe(true);
+          expect(iconList().querySelector('[role="status"]').textContent).toBe('Page 2 / 3');
+          expect(firstRowEntity()).toBe('sensor.test_050');
+          // A new page starts at its first row.
+          expect(iconList().scrollTop).toBe(0);
+
+          pagerButton('previous').focus();
+          pagerButton('previous').click();
+          expect(document.activeElement).toBe(pagerButton('previous'));
+          expect(iconList().querySelector('[role="status"]').textContent).toBe('Page 1 / 3');
+          expect(firstRowEntity()).toBe('sensor.test_000');
+
+          // Next, Next, then Next again on the last page: the button that cannot go on still has focus.
+          pagerButton('next').focus();
+          pagerButton('next').click();
+          pagerButton('next').click();
+          expect(iconList().querySelector('[role="status"]').textContent).toBe('Page 3 / 3');
+          expect(pagerButton('next').getAttribute('aria-disabled')).toBe('true');
+          expect(document.activeElement).toBe(pagerButton('next'));
+          pagerButton('next').click();
+          expect(iconList().querySelector('[role="status"]').textContent).toBe('Page 3 / 3');
+          expect(document.activeElement).toBe(pagerButton('next'));
+        } finally {
+          settings.closeSettings();
+        }
+      });
+
+      test('does not take the keyboard when the page is turned from outside the list', async () => {
+        state.setStates(manyEntities());
+        await openSettingsWithCustomIconsExpanded();
+        const search = document.getElementById('custom-entity-icons-search');
+        search.focus();
+
+        pagerButton('next').click();
+
+        expect(iconList().querySelector('[role="status"]').textContent).toBe('Page 2 / 3');
+        expect(document.activeElement).toBe(search);
+        settings.closeSettings();
+      });
+
+      test('starts a new icon search at the top of the list', async () => {
+        state.setStates(manyEntities());
+        await openSettingsWithCustomIconsExpanded();
+        let scrollTop = 0;
+        Object.defineProperty(iconList(), 'scrollTop', {
+          configurable: true,
+          get: () => scrollTop,
+          set: (value) => {
+            scrollTop = value;
+          },
+        });
+        jest.useFakeTimers();
+        try {
+          scrollTop = 900;
+          const search = document.getElementById('custom-entity-icons-search');
+          search.value = 'Test 0';
+          search.dispatchEvent(new Event('input'));
+          jest.advanceTimersByTime(150);
+
+          expect(iconList().querySelectorAll('.custom-entity-icon-item')).toHaveLength(50);
+          expect(iconList().scrollTop).toBe(0);
+        } finally {
+          settings.closeSettings();
+          jest.clearAllTimers();
+          jest.useRealTimers();
+        }
+      });
+    });
+
+    describe('when the open picker closes because focus moved on', () => {
+      // Opening the picker rebuilds the list, so the control to move to is found after that.
+      const openPickerThenMoveFocusTo = (selector) => {
+        rowInput('light.living_room').focus();
+        document.querySelector('[data-custom-icon-picker-toggle="light.living_room"]').click();
+        expect(
+          document.querySelector('[data-custom-icon-picker="light.living_room"]')
+        ).toBeTruthy();
+        const target = document.querySelector(selector);
+        jest.useFakeTimers();
+        try {
+          target.focus();
+          expect(document.activeElement).toBe(target);
+          rowInput('light.living_room').dispatchEvent(new Event('focusout', { bubbles: true }));
+          jest.runOnlyPendingTimers();
+        } finally {
+          jest.useRealTimers();
+        }
+        expect(document.querySelector('[data-custom-icon-picker="light.living_room"]')).toBeFalsy();
+        return target;
+      };
+
+      test('hands the keyboard to the same button in the rebuilt list', async () => {
+        state.CONFIG.customEntityIcons = { 'switch.bedroom': '⚡' };
+        await openSettingsWithCustomIconsExpanded();
+
+        const reset = openPickerThenMoveFocusTo('[data-custom-icon-reset="switch.bedroom"]');
+
+        expect(reset.isConnected).toBe(false);
+        expect(document.activeElement).toBe(
+          document.querySelector('[data-custom-icon-reset="switch.bedroom"]')
+        );
+      });
+
+      test('hands the keyboard to the same field in the rebuilt list', async () => {
+        await openSettingsWithCustomIconsExpanded();
+
+        const field = openPickerThenMoveFocusTo('[data-custom-icon-input="switch.bedroom"]');
+
+        expect(field.isConnected).toBe(false);
+        expect(document.activeElement).toBe(rowInput('switch.bedroom'));
+      });
+    });
+
+    const flushMicrotasks = async () => {
+      for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    };
+    // The emoji catalogue is a dynamic import, so the first picker may open on "Loading".
+    const catalogLoaded = async () => {
+      for (let i = 0; i < 200; i += 1) {
+        document.querySelector('[data-custom-icon-picker-toggle="light.living_room"]')?.click();
+        if (document.querySelector('.custom-entity-icon-choice')) return;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    };
+    const typeInto = (input, value) => {
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const press = (target, key, init = {}) => {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init });
+      target.dispatchEvent(event);
+      return event;
+    };
+    const rowInput = (entityId = 'light.living_room') =>
+      document.querySelector(`[data-custom-icon-input="${entityId}"]`);
+
+    test('opens on the curated icons for the home, not on the sorted Unicode list', async () => {
+      await openSettingsWithCustomIconsExpanded();
+      await catalogLoaded();
+
+      const shown = [...document.querySelectorAll('.custom-entity-icon-choice')].map(
+        (choice) => choice.dataset.customIconChoice
+      );
+
+      // The first icons are the ones written for lights, switches and sensors...
+      expect(shown[0]).toBe('💡');
+      // ...and neither punctuation nor a keycap digit is among them
+      expect(shown.some((icon) => /^[#*0-9\u00a9\u00ae]/u.test(icon))).toBe(false);
+    });
+
+    test('keeps skin tones, flags and joined emoji out of the list that opens, but findable', async () => {
+      await openSettingsWithCustomIconsExpanded();
+      await catalogLoaded();
+      const input = rowInput();
+      const opened = [...document.querySelectorAll('.custom-entity-icon-choice')].map(
+        (choice) => choice.dataset.customIconChoice
+      );
+      expect(opened.some((icon) => /[\u{1F3FB}-\u{1F3FF}\u200D]/u.test(icon))).toBe(false);
+
+      // A flag is a regional-indicator pair; its code points are a search term
+      typeInto(input, '1f1e8');
+      expect(document.querySelector('[data-custom-icon-choice="🇨🇦"]')).toBeTruthy();
+    });
+
+    test('leaves out an emoji the computer cannot draw, which would be an empty box', async () => {
+      await openSettingsWithCustomIconsExpanded();
+      await catalogLoaded();
+      const input = rowInput();
+
+      // Its neighbour in Unicode is offered, and it is not
+      typeInto(input, '1f9fe');
+      expect(document.querySelector('[data-custom-icon-choice="\u{1F9FE}"]')).toBeTruthy();
+      typeInto(input, '1f9ff');
+      expect(document.querySelector('[data-custom-icon-choice="\u{1F9FF}"]')).toBeNull();
+    });
+
+    test('Search keeps the picker open after typing already opened it', async () => {
+      await openSettingsWithCustomIconsExpanded();
+      const input = rowInput();
+      typeInto(input, 'lamp');
+      expect(document.querySelector('[data-custom-icon-picker="light.living_room"]')).toBeTruthy();
+
+      const search = document.querySelector('[data-custom-icon-picker-toggle="light.living_room"]');
+      search.click();
+
+      expect(document.querySelector('[data-custom-icon-picker="light.living_room"]')).toBeTruthy();
+      expect(
+        document
+          .querySelector('[data-custom-icon-picker-toggle="light.living_room"]')
+          .getAttribute('aria-expanded')
+      ).toBe('true');
+      // The query is kept, so the same matches are shown
+      expect(rowInput().value).toBe('lamp');
+    });
+
+    test('Enter on a keyword searches instead of reporting it is not an icon', async () => {
+      await openSettingsWithCustomIconsExpanded();
+      const input = rowInput();
+      input.focus();
+      input.value = 'timer';
+      mockUiUtils.showToast.mockClear();
+
+      const event = press(input, 'Enter');
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(document.querySelector('[data-custom-icon-picker="light.living_room"]')).toBeTruthy();
+      // Straight into the matches, so the arrow keys and Enter choose one
+      expect(document.activeElement.classList.contains('custom-entity-icon-choice')).toBe(true);
+      expect(state.CONFIG.customEntityIcons).toEqual({});
+    });
+
+    test('Enter composing text in an input method does not apply anything', async () => {
+      await openSettingsWithCustomIconsExpanded();
+      const input = rowInput();
+      input.value = '🔥';
+      mockUiUtils.showToast.mockClear();
+
+      press(input, 'Enter', { isComposing: true });
+
+      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(document.querySelector('.custom-entity-icon-action-badge')).toBeNull();
+    });
+
+    test('Enter or Apply on a row with no icon says nothing and marks nothing edited', async () => {
+      await openSettingsWithCustomIconsExpanded();
+      mockUiUtils.showToast.mockClear();
+
+      press(rowInput(), 'Enter');
+      document.querySelector('[data-custom-icon-apply="light.living_room"]').click();
+
+      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(document.querySelector('.custom-entity-icon-action-badge')).toBeNull();
+      // Saving now does not count the icons as edited either
+      await settings.saveSettings();
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          profileSyncTouchedKeys: expect.not.arrayContaining(['customEntityIcons']),
+        })
+      );
+    });
+
+    test('emptying the field of a row that has an icon and applying clears it', async () => {
+      state.CONFIG.customEntityIcons = { 'light.living_room': '🔥' };
+      await openSettingsWithCustomIconsExpanded();
+
+      typeInto(rowInput(), '');
+      document.querySelector('[data-custom-icon-apply="light.living_room"]').click();
+
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        expect.stringContaining('Custom icon cleared'),
+        'info',
+        expect.any(Number)
+      );
+      expect(document.getElementById('custom-entity-icons-summary').textContent).toContain(
+        'No custom icons'
+      );
+    });
+
+    test('Reset all custom icons is off while there is nothing to reset', async () => {
+      await openSettingsWithCustomIconsExpanded();
+      const resetAll = document.getElementById('custom-entity-icons-reset-all');
+      expect(resetAll.disabled).toBe(true);
+
+      resetAll.click();
+      await flushMicrotasks();
+      expect(mockUiUtils.showConfirm).not.toHaveBeenCalled();
+      expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+        expect.stringContaining('All custom icons cleared'),
+        expect.anything(),
+        expect.anything()
+      );
+
+      rowInput().value = '🔥';
+      document.querySelector('[data-custom-icon-apply="light.living_room"]').click();
+      expect(document.getElementById('custom-entity-icons-reset-all').disabled).toBe(false);
+    });
+
+    test('Reset all asks first, and declining keeps every icon', async () => {
+      state.CONFIG.customEntityIcons = { 'light.living_room': '🔥', 'switch.bedroom': '⚡' };
+      await openSettingsWithCustomIconsExpanded();
+      mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+
+      document.getElementById('custom-entity-icons-reset-all').click();
+      await flushMicrotasks();
+
+      expect(mockUiUtils.showConfirm).toHaveBeenCalledTimes(1);
+      expect(document.getElementById('custom-entity-icons-summary').textContent).toContain(
+        '2 custom icons'
+      );
+    });
+
+    describe('in a large home', () => {
+      const manyLights = (count) => {
+        const states = {};
+        for (let i = 0; i < count; i += 1) {
+          const entityId = `light.lamp_${String(i).padStart(3, '0')}`;
+          states[entityId] = {
+            entity_id: entityId,
+            state: 'off',
+            attributes: { friendly_name: `Lamp ${String(i).padStart(3, '0')}` },
+          };
+        }
+        state.setStates(states);
+      };
+      const rows = () =>
+        document.querySelectorAll('#custom-entity-icons-list .custom-entity-icon-item');
+
+      test('shows one page of rows and a pager, not every entity', async () => {
+        manyLights(130);
+        await openSettingsWithCustomIconsExpanded();
+
+        expect(rows()).toHaveLength(50);
+        const status = document.querySelector('#custom-entity-icons-list [role="status"]');
+        expect(status.textContent).toBe('Page 1 / 3');
+
+        document.querySelector('#custom-entity-icons-list [data-primary-page="next"]').click();
+        expect(rows()).toHaveLength(50);
+        expect(rowInput('light.lamp_049')).toBeNull();
+        expect(rowInput('light.lamp_050')).toBeTruthy();
+        expect(
+          document.querySelector('#custom-entity-icons-list [role="status"]').textContent
+        ).toBe('Page 2 / 3');
+      });
+
+      test('the search waits for a pause in typing before rebuilding the rows', async () => {
+        manyLights(130);
+        await openSettingsWithCustomIconsExpanded();
+        const search = document.getElementById('custom-entity-icons-search');
+        const firstRow = rows()[0];
+
+        jest.useFakeTimers();
+        try {
+          typeInto(search, 'lamp 1');
+          typeInto(search, 'lamp 12');
+          expect(rows()[0]).toBe(firstRow);
+          jest.advanceTimersByTime(200);
+        } finally {
+          jest.useRealTimers();
+        }
+
+        expect(rows()[0]).not.toBe(firstRow);
+        expect(rows().length).toBeLessThan(50);
+        expect(rowInput('light.lamp_120')).toBeTruthy();
+      });
+
+      test('opening a picker brings its row back into view', async () => {
+        manyLights(60);
+        await openSettingsWithCustomIconsExpanded();
+        const scrolled = [];
+        const original = window.HTMLElement.prototype.scrollIntoView;
+        window.HTMLElement.prototype.scrollIntoView = function scrollIntoView(options) {
+          scrolled.push({ element: this, options });
+        };
+        try {
+          document.querySelector('[data-custom-icon-picker-toggle="light.lamp_040"]').click();
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+        } finally {
+          window.HTMLElement.prototype.scrollIntoView = original;
+        }
+
+        const lampRow = rowInput('light.lamp_040').closest('.custom-entity-icon-item');
+        const forLamp = scrolled.filter(({ element }) => element === lampRow);
+        expect(forLamp).toHaveLength(1);
+        expect(forLamp[0].options).toEqual({ block: 'nearest' });
+      });
     });
   });
 
@@ -3614,6 +4342,58 @@ describe('Settings + Config Integration', () => {
       await settings.saveSettings();
 
       expect(state.CONFIG.ui.seasonal).toEqual({ colors: true, holidays: {}, show: 'auto' });
+    });
+
+    test('writes the New Year range without years, like every other holiday', async () => {
+      const i18n = require('../../src/i18n.js');
+      try {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+        await settings.openSettings();
+        const text = () => document.querySelector('[data-holiday-dates="new-year"]').textContent;
+        // Across the turn of the year a date range would add both years ("Dec 27, 2026 – Jan 2, 2027").
+        expect(text()).toMatch(/^Dec \d{1,2}\s*–\s*Jan \d{1,2}$/);
+        expect(document.querySelector('[data-holiday-dates="halloween"]').textContent).toMatch(
+          /^Oct 1\s*–\s*31$/
+        );
+
+        i18n.setLocaleBootstrap({ activeLocale: 'de', messages: {} });
+        await Promise.resolve();
+        expect(text()).not.toMatch(/\d{4}/);
+        expect(text()).toMatch(/Dez/);
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
+    });
+
+    test('writes the holiday dates and the status line in the new language while Settings is open', async () => {
+      const i18n = require('../../src/i18n.js');
+      try {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+        await settings.openSettings();
+        const show = document.getElementById('seasonal-show');
+        show.value = 'halloween';
+        change(show);
+        const dates = document.querySelector('[data-holiday-dates="halloween"]');
+        const status = document.getElementById('seasonal-status');
+        expect(dates.textContent).toMatch(/Oct/);
+        expect(status.textContent).toMatch(/^Showing Halloween until /);
+
+        i18n.setLocaleBootstrap({
+          activeLocale: 'de',
+          messages: {
+            'Showing {{holiday}} until {{time}}.': 'Zeige {{holiday}} bis {{time}}.',
+            Halloween: 'Halloween',
+          },
+        });
+        // The locale observer runs as a microtask after <html lang> changes.
+        await Promise.resolve();
+
+        expect(dates.textContent).toMatch(/Okt/);
+        expect(dates.textContent).not.toMatch(/Oct/);
+        expect(status.textContent).toMatch(/^Zeige Halloween bis /);
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
     });
 
     test('previews choices live and saves them, including holidays switched off', async () => {
@@ -4876,11 +5656,11 @@ describe('Settings + Config Integration', () => {
       document.getElementById('profile-sync-enabled').checked = true;
       await settings.saveSettings();
 
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-        'Choose a sync folder before enabling profile sync.',
-        'error',
-        expect.any(Number)
+      expect(fieldError('profile-sync-folder-path')).toBe(
+        'Choose a sync folder before enabling profile sync.'
       );
+      // The path field is read-only, so the person is taken to the button that fills it.
+      expect(document.activeElement).toBe(document.getElementById('profile-sync-choose-folder'));
       expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
     });
 
@@ -4894,10 +5674,8 @@ describe('Settings + Config Integration', () => {
       document.getElementById('profile-sync-passphrase').value = 'short';
       await settings.saveSettings();
 
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-        'Passphrase must be at least 8 characters long',
-        'error',
-        expect.any(Number)
+      expect(fieldError('profile-sync-passphrase')).toBe(
+        'Passphrase must be at least 8 characters long'
       );
       expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
       expect(mockElectronAPI.setProfileSyncPassphrase).not.toHaveBeenCalled();
@@ -5362,7 +6140,7 @@ describe('Settings + Config Integration', () => {
         mockElectronAPI.updateConfig.mockClear();
         await settings.saveSettings();
 
-        expect(lastToast()).toEqual(['The passphrases do not match.', 'error', expect.any(Number)]);
+        expect(fieldError('profile-sync-passphrase-confirm')).toBe('The passphrases do not match.');
         expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
         expect(document.activeElement).toBe(
           document.getElementById('profile-sync-passphrase-confirm')
@@ -5400,7 +6178,7 @@ describe('Settings + Config Integration', () => {
         mockElectronAPI.updateConfig.mockClear();
         await settings.saveSettings();
 
-        expect(lastToast()).toEqual(['The passphrases do not match.', 'error', expect.any(Number)]);
+        expect(fieldError('profile-sync-passphrase-confirm')).toBe('The passphrases do not match.');
         expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
       });
 
@@ -5423,7 +6201,7 @@ describe('Settings + Config Integration', () => {
         mockElectronAPI.updateConfig.mockClear();
         await settings.saveSettings();
 
-        expect(lastToast()).toEqual(['The passphrases do not match.', 'error', expect.any(Number)]);
+        expect(fieldError('profile-sync-passphrase-confirm')).toBe('The passphrases do not match.');
         expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
 
         input.value = '';
@@ -5472,7 +6250,7 @@ describe('Settings + Config Integration', () => {
 
         await settings.saveSettings();
 
-        expect(lastToast()[0]).toBe(
+        expect(fieldError('profile-sync-passphrase')).toBe(
           'Enter the current remote passphrase before disabling encrypted sync.'
         );
         expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
@@ -5751,6 +6529,43 @@ describe('Settings + Config Integration', () => {
       expect(end.disabled).toBe(false);
     });
 
+    test('quiet hour times are listed in the Time format setting, not the browser locale', () => {
+      const labels = (select) => [...select.options].map((option) => option.textContent);
+      state.CONFIG.ui = { ...state.CONFIG.ui, timeFormat: '24-hour' };
+      settings.openAlertConfigModal('sensor.office_temperature');
+      const start = document.getElementById('alert-quiet-start');
+      const end = document.getElementById('alert-quiet-end');
+      expect(start.tagName).toBe('SELECT');
+      // Every quarter hour, stored as HH:MM whatever the label looks like.
+      expect(start.options).toHaveLength(96);
+      expect(start.options[0].value).toBe('00:00');
+      expect(start.options[91].value).toBe('22:45');
+      expect(start.value).toBe('22:00');
+      expect(end.value).toBe('07:00');
+      expect(labels(start)[88]).toBe('22:00');
+
+      state.CONFIG.ui = { ...state.CONFIG.ui, timeFormat: '12-hour' };
+      settings.openAlertConfigModal('sensor.office_temperature');
+      expect(labels(start)[88]).toMatch(/^10:00\s?PM$/i);
+      expect(start.value).toBe('22:00');
+    });
+
+    test('keeps a quiet hour time that is off the quarter-hour list instead of rounding it', () => {
+      state.CONFIG.entityAlerts = {
+        enabled: true,
+        alerts: {
+          'sensor.office_temperature': {
+            quietHours: { enabled: true, start: '22:07', end: '06:45' },
+          },
+        },
+      };
+      settings.openAlertConfigModal('sensor.office_temperature');
+      const start = document.getElementById('alert-quiet-start');
+      expect(start.value).toBe('22:07');
+      expect(start.options).toHaveLength(97);
+      expect(document.getElementById('alert-quiet-end').value).toBe('06:45');
+    });
+
     test('saves on Enter in a single-line field, but not on a switch', async () => {
       settings.openAlertConfigModal('sensor.office_temperature');
       const modal = document.getElementById('alert-config-modal');
@@ -5993,6 +6808,113 @@ describe('Settings + Config Integration', () => {
         expect(input.value).toBe(state.CONFIG.popupHotkey || '');
       });
 
+      describe('building the accelerator', () => {
+        // The recorder reads the physical key (event.code), as the entity recorder does.
+        const record = async (init) => {
+          const parts = await open();
+          mockElectronAPI.registerPopupHotkey.mockClear();
+          mockUiUtils.showToast.mockClear();
+          press(document.body, init.key, init);
+          await tick();
+          await tick();
+          return parts;
+        };
+
+        test('Ctrl+Shift+Space records, which turned into "Ctrl+Shift+ " before', async () => {
+          await record({ key: ' ', code: 'Space', ctrlKey: true, shiftKey: true });
+
+          expect(mockElectronAPI.registerPopupHotkey).toHaveBeenCalledWith('Ctrl+Shift+Space');
+        });
+
+        test('arrows and Shift+digit record by position', async () => {
+          await record({ key: 'ArrowUp', code: 'ArrowUp', ctrlKey: true });
+          expect(mockElectronAPI.registerPopupHotkey).toHaveBeenLastCalledWith('Ctrl+Up');
+
+          const { setBtn } = recorder();
+          setBtn.click();
+          press(document.body, '!', { code: 'Digit1', ctrlKey: true, shiftKey: true });
+          await tick();
+          expect(mockElectronAPI.registerPopupHotkey).toHaveBeenLastCalledWith('Ctrl+Shift+1');
+        });
+
+        test('names the Meta key Super here, and the field shows it as this keyboard prints it', async () => {
+          window.electronAPI.platform = 'win32';
+          try {
+            const { input } = await record({ key: 'k', code: 'KeyK', metaKey: true, altKey: true });
+
+            expect(mockElectronAPI.registerPopupHotkey).toHaveBeenCalledWith('Alt+Super+K');
+            expect(input.value).toBe('Alt+Win+K');
+            expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+              'Popup hotkey set to Alt+Win+K',
+              'success'
+            );
+          } finally {
+            window.electronAPI.platform = 'test';
+          }
+        });
+
+        test('names it Command on a Mac', async () => {
+          window.electronAPI.platform = 'darwin';
+          try {
+            await record({ key: 'k', code: 'KeyK', metaKey: true, altKey: true });
+
+            expect(mockElectronAPI.registerPopupHotkey).toHaveBeenCalledWith('Alt+Command+K');
+          } finally {
+            window.electronAPI.platform = 'test';
+          }
+        });
+
+        test('does not register a key with only Shift, and says what to add', async () => {
+          const { input, setBtn } = await record({ key: 'A', code: 'KeyA', shiftKey: true });
+
+          expect(mockElectronAPI.registerPopupHotkey).not.toHaveBeenCalled();
+          expect(input.value).toBe('Shift+A (add Ctrl/Alt/Super)');
+          // Still recording: the next key can complete it.
+          expect(setBtn.textContent).toBe('Stop recording');
+        });
+
+        test('waits through a modifier on its own', async () => {
+          const { setBtn } = await record({
+            key: 'Control',
+            code: 'ControlLeft',
+            ctrlKey: true,
+          });
+
+          expect(mockElectronAPI.registerPopupHotkey).not.toHaveBeenCalled();
+          expect(setBtn.textContent).toBe('Stop recording');
+        });
+
+        test('names the entity that holds the hotkey, and marks its row', async () => {
+          state.setStates({
+            'light.lamp': {
+              entity_id: 'light.lamp',
+              state: 'on',
+              attributes: { friendly_name: 'Desk lamp' },
+            },
+          });
+          document.body.insertAdjacentHTML(
+            'beforeend',
+            '<div id="hotkeys-list"><div class="hotkey-item"><input class="hotkey-input" data-entity-id="light.lamp" /></div></div>'
+          );
+          mockElectronAPI.registerPopupHotkey.mockResolvedValueOnce({
+            success: false,
+            error: 'Hotkey already assigned to light.lamp',
+            conflictEntityId: 'light.lamp',
+          });
+          const { input } = await record({ key: 'd', code: 'KeyD', ctrlKey: true });
+
+          expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+            'Hotkey already assigned to Desk lamp',
+            'error'
+          );
+          expect(
+            document.querySelector('.hotkey-item').classList.contains('settings-search-target')
+          ).toBe(true);
+          expect(input.value).toBe(state.CONFIG.popupHotkey || '');
+          document.getElementById('hotkeys-list').remove();
+        });
+      });
+
       test('a suggestion chip or Clear ends a recording that is somehow still on', async () => {
         const parts = await open();
         parts.preset.disabled = false;
@@ -6053,7 +6975,8 @@ describe('Settings + Config Integration', () => {
                   <input type="radio" name="alert-type" value="specific-state" />
                 </div></div>
                 <div class="form-group" id="specific-state-group" style="display: none">
-                  <input type="text" id="target-state-input" />
+                  <input type="text" id="target-state-input" list="target-state-options" />
+                  <datalist id="target-state-options"></datalist>
                 </div>
               </div>
             </div>
@@ -6129,6 +7052,280 @@ describe('Settings + Config Integration', () => {
         const rebuilt = document.querySelector('.edit-alert[data-entity="light.living_room"]');
         expect(rebuilt).not.toBe(edit);
         expect(document.activeElement).toBe(rebuilt);
+      });
+
+      describe('with an entity Home Assistant does not list', () => {
+        beforeEach(() => {
+          state.CONFIG.entityAlerts.alerts['light.gone'] = {
+            onSpecificState: true,
+            targetState: 'on',
+          };
+          settings.renderAlertsListInline();
+        });
+        const row = (id) =>
+          document.querySelector(`.edit-alert[data-entity="${id}"]`)?.closest('.alert-item') ??
+          null;
+
+        test('keeps its row, under its id, with Edit and Remove', () => {
+          state.setStates({});
+          settings.renderAlertsListInline();
+
+          const orphan = row('light.gone');
+          expect(orphan).not.toBeNull();
+          expect(orphan.querySelector('.alert-name').textContent).toBe('light.gone');
+          expect(orphan.querySelector('.alert-type').textContent).toBe('Specific state (on)');
+          expect(orphan.querySelector('.alert-missing').textContent).toBe('Unavailable');
+          expect(orphan.querySelector('.alert-icon svg')).not.toBeNull();
+          expect(orphan.querySelector('.edit-alert').disabled).toBe(false);
+          expect(orphan.querySelector('.remove-alert').disabled).toBe(false);
+          // Every alert is listed while the states have not loaded, and none claims to be missing
+          // once its entity is known.
+          expect(document.querySelectorAll('.alert-item')).toHaveLength(3);
+          expect(document.querySelector('.no-alerts-message')).toBeNull();
+        });
+
+        test('does not mark an entity that is listed', () => {
+          expect(row('switch.kitchen').querySelector('.alert-missing')).toBeNull();
+          expect(row('switch.kitchen').querySelector('.alert-name').textContent).toBe('Kitchen');
+          expect(row('light.gone').querySelector('.alert-missing')).not.toBeNull();
+        });
+
+        test('can be removed, which an orphan could not be before', async () => {
+          mockUiUtils.showConfirm.mockResolvedValueOnce(true);
+          mockElectronAPI.updateConfig.mockImplementationOnce(async (next) => next);
+
+          row('light.gone').querySelector('.remove-alert').click();
+          await tick();
+          await tick();
+
+          expect(mockUiUtils.showConfirm.mock.calls.at(-1)[1]).toContain('light.gone');
+          expect(
+            mockElectronAPI.updateConfig.mock.calls.at(-1)[0].entityAlerts.alerts
+          ).not.toHaveProperty('light.gone');
+          expect(row('light.gone')).toBeNull();
+        });
+
+        test('can be edited under its id', async () => {
+          row('light.gone').querySelector('.edit-alert').click();
+          await tick();
+
+          expect(document.getElementById('alert-config-title').textContent).toBe(
+            'Configure alert – light.gone'
+          );
+          expect(document.getElementById('target-state-input').value).toBe('on');
+        });
+
+        test('says there are no alerts only when there are none', () => {
+          state.CONFIG.entityAlerts.alerts = {};
+          settings.renderAlertsListInline();
+
+          expect(document.querySelector('.no-alerts-message')).not.toBeNull();
+          expect(document.querySelector('.alert-item')).toBeNull();
+        });
+      });
+
+      describe('the Specific State field', () => {
+        const openFor = async (entityId) => {
+          document.querySelector(`.edit-alert[data-entity="${entityId}"]`).click();
+          await tick();
+          const condition = document.getElementById('alert-condition');
+          condition.value = 'specific-state';
+          condition.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+        const options = () =>
+          [...document.querySelectorAll('#target-state-options option')].map(
+            (option) => option.value
+          );
+
+        test('suggests the states a lock really has, so the label on its tile is not guessed', async () => {
+          state.CONFIG.entityAlerts.alerts['lock.front'] = { onStateChange: true };
+          state.setStates({
+            ...state.STATES,
+            'lock.front': {
+              entity_id: 'lock.front',
+              state: 'locked',
+              attributes: { friendly_name: 'Front door' },
+            },
+          });
+          settings.renderAlertsListInline();
+
+          await openFor('lock.front');
+
+          expect(options().slice(0, 3)).toEqual(['locked', 'unlocked', 'locking']);
+          expect(options()).toEqual(expect.arrayContaining(['jammed', 'unavailable', 'unknown']));
+        });
+
+        test("suggests a thermostat's own modes", async () => {
+          state.CONFIG.entityAlerts.alerts['climate.hall'] = { onStateChange: true };
+          state.setStates({
+            ...state.STATES,
+            'climate.hall': {
+              entity_id: 'climate.hall',
+              state: 'heat',
+              attributes: { friendly_name: 'Hall', hvac_modes: ['off', 'heat', 'eco'] },
+            },
+          });
+          settings.renderAlertsListInline();
+
+          await openFor('climate.hall');
+
+          expect(options()).toEqual(expect.arrayContaining(['heat', 'off', 'eco']));
+        });
+
+        test('is refilled for the next entity, not appended to', async () => {
+          await openFor('switch.kitchen');
+          const first = options();
+          settings.closeAlertConfigModal();
+          await tick();
+          await openFor('light.living_room');
+
+          expect(first).toEqual(['off', 'on', 'unavailable', 'unknown']);
+          expect(options()).toEqual(expect.arrayContaining(['on', 'off']));
+          expect(new Set(options()).size).toBe(options().length);
+        });
+
+        test('saves what was typed the way Home Assistant spells it', async () => {
+          await openFor('switch.kitchen');
+          document.getElementById('target-state-input').value = 'Not Home';
+          mockElectronAPI.updateConfig.mockImplementationOnce(async (next) => next);
+
+          await settings.saveAlert();
+
+          const saved =
+            mockElectronAPI.updateConfig.mock.calls.at(-1)[0].entityAlerts.alerts['switch.kitchen'];
+          expect(saved.onSpecificState).toBe(true);
+          expect(saved.targetState).toBe('not_home');
+        });
+
+        test('still asks for a state when none was typed', async () => {
+          await openFor('switch.kitchen');
+          document.getElementById('target-state-input').value = '   ';
+          mockUiUtils.showToast.mockClear();
+          mockElectronAPI.updateConfig.mockClear();
+
+          await settings.saveAlert();
+
+          expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+          expect(mockUiUtils.showToast).toHaveBeenCalledWith('Enter a target state.', 'error');
+        });
+      });
+
+      describe('the switch for unavailable and unknown', () => {
+        const row = () => document.querySelector('#alert-config-modal .alert-switch-row');
+        const toggle = () => document.getElementById('alert-notify-unavailable');
+        const open = async (entityId) => {
+          document.querySelector(`.edit-alert[data-entity="${entityId}"]`).click();
+          await tick();
+        };
+        const chooseCondition = (value) => {
+          const condition = document.getElementById('alert-condition');
+          condition.value = value;
+          condition.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+        const savedRule = (entityId) =>
+          mockElectronAPI.updateConfig.mock.calls.at(-1)[0].entityAlerts.alerts[entityId];
+
+        // The mock API is made once for the whole file, so what this block swaps in has to be put
+        // back: a reset would leave every test after it with an updateConfig that returns nothing.
+        let defaultUpdateConfig;
+        beforeEach(() => {
+          state.CONFIG.entityAlerts.alerts['switch.kitchen'] = {
+            onStateChange: true,
+            notifyOnUnavailable: false,
+          };
+          settings.renderAlertsListInline();
+          defaultUpdateConfig = mockElectronAPI.updateConfig.getMockImplementation();
+          mockElectronAPI.updateConfig.mockClear();
+          mockElectronAPI.updateConfig.mockImplementation(async (next) => next);
+        });
+        afterEach(() => mockElectronAPI.updateConfig.mockImplementation(defaultUpdateConfig));
+
+        test('is on for a rule saved before it existed, with a label and a line of help', async () => {
+          await open('light.living_room');
+
+          expect(row().hidden).toBe(false);
+          expect(toggle().checked).toBe(true);
+          expect(row().querySelector('label').getAttribute('for')).toBe('alert-notify-unavailable');
+          expect(row().querySelector('label').textContent).toBe(
+            'Notify when unavailable or unknown'
+          );
+          const help = document.getElementById(toggle().getAttribute('aria-describedby'));
+          expect(help.className).toBe('form-help');
+          expect(help.textContent).toBe(
+            'Waits 30 seconds first, and tells you at most once every 15 minutes per device.'
+          );
+        });
+
+        test('says the wait and the limit the alerts really apply', async () => {
+          const {
+            UNAVAILABLE_GRACE_MS,
+            UNAVAILABLE_NOTIFY_INTERVAL_MS,
+          } = require('../../src/alert-rules.js');
+          await open('light.living_room');
+
+          expect(
+            document.getElementById(toggle().getAttribute('aria-describedby')).textContent
+          ).toBe(
+            `Waits ${UNAVAILABLE_GRACE_MS / 1000} seconds first, and tells you at most once every ${
+              UNAVAILABLE_NOTIFY_INTERVAL_MS / 60000
+            } minutes per device.`
+          );
+        });
+
+        test('shows a rule that has it off as off', async () => {
+          await open('switch.kitchen');
+          expect(toggle().checked).toBe(false);
+        });
+
+        test('is saved with the rule: off, and on when left alone', async () => {
+          await open('switch.kitchen');
+          toggle().checked = true;
+          await settings.saveAlert();
+          expect(savedRule('switch.kitchen').notifyOnUnavailable).toBe(true);
+
+          settings.closeAlertConfigModal();
+          await tick();
+          await open('light.living_room');
+          await settings.saveAlert();
+          expect(savedRule('light.living_room').notifyOnUnavailable).toBe(true);
+
+          settings.closeAlertConfigModal();
+          await tick();
+          await open('light.living_room');
+          toggle().checked = false;
+          await settings.saveAlert();
+          expect(savedRule('light.living_room').notifyOnUnavailable).toBe(false);
+          expect(savedRule('light.living_room').onStateChange).toBe(true);
+        });
+
+        test('is offered only for a State Change rule, and not saved for another', async () => {
+          await open('light.living_room');
+          toggle().checked = false;
+          for (const condition of ['specific-state', 'above', 'below']) {
+            chooseCondition(condition);
+            expect(row().hidden).toBe(true);
+          }
+          chooseCondition('state-change');
+          expect(row().hidden).toBe(false);
+
+          chooseCondition('above');
+          document.getElementById('alert-threshold').value = '20';
+          await settings.saveAlert();
+          expect(savedRule('light.living_room').onNumericThreshold).toBe(true);
+          expect(savedRule('light.living_room')).not.toHaveProperty('notifyOnUnavailable');
+        });
+
+        test('is not toggled by Enter, which saves the fields', async () => {
+          await open('light.living_room');
+          const event = new KeyboardEvent('keydown', {
+            key: 'Enter',
+            bubbles: true,
+            cancelable: true,
+          });
+          toggle().dispatchEvent(event);
+          expect(event.defaultPrevented).toBe(false);
+          expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+        });
       });
 
       test('puts focus on the Add button when the alert it was removing is gone', async () => {
@@ -6228,6 +7425,536 @@ describe('Settings + Config Integration', () => {
       expect(mockElectronAPI.openExternal).toHaveBeenCalledWith(
         expect.stringContaining('amount=25')
       );
+    });
+  });
+
+  describe('Saving and the connection card', () => {
+    const flushAsync = async () => {
+      for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    };
+    const oauthConnected = (url = 'https://ha.example.test') => {
+      state.CONFIG.homeAssistant = {
+        url,
+        token: 'short-lived-access-token',
+        authMethod: 'oauth',
+        oauthStatus: 'connected',
+      };
+    };
+
+    describe('the Save button', () => {
+      test('a second press while a save is running does nothing, and the button says it is busy', async () => {
+        await settings.openSettings();
+        let finish;
+        window.electronAPI.updateConfig.mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finish = () => resolve(JSON.parse(JSON.stringify(state.CONFIG)));
+            })
+        );
+        const save = document.getElementById('save-settings');
+
+        const first = settings.saveSettings();
+        await flushAsync();
+        const second = settings.saveSettings();
+        await second;
+
+        expect(window.electronAPI.updateConfig).toHaveBeenCalledTimes(1);
+        expect(save.getAttribute('aria-busy')).toBe('true');
+        expect(save.disabled).toBe(true);
+
+        finish();
+        await first;
+
+        expect(save.hasAttribute('aria-busy')).toBe(false);
+        expect(save.disabled).toBe(false);
+        // The next save is its own
+        await settings.openSettings();
+        await settings.saveSettings();
+        expect(window.electronAPI.updateConfig).toHaveBeenCalledTimes(2);
+      });
+
+      test('a save that is refused leaves the button usable again', async () => {
+        await settings.openSettings();
+        document.getElementById('ha-url').value = 'ftp://nope';
+
+        await settings.saveSettings();
+
+        const save = document.getElementById('save-settings');
+        expect(save.disabled).toBe(false);
+        expect(save.hasAttribute('aria-busy')).toBe(false);
+      });
+    });
+
+    describe('the custom icons toast', () => {
+      test('is not shown on a save that left the icons alone', async () => {
+        state.CONFIG.customEntityIcons = { 'light.living_room': '💡' };
+        await settings.openSettings();
+        document.getElementById('density-select').value = 'compact';
+        document
+          .getElementById('density-select')
+          .dispatchEvent(new Event('change', { bubbles: true }));
+
+        await settings.saveSettings();
+
+        expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+          expect.stringContaining('Custom icons saved'),
+          expect.anything(),
+          expect.anything()
+        );
+      });
+
+      test('is shown once the icons were edited', async () => {
+        await openSettingsWithCustomIconsExpanded();
+        const input = document.querySelector('[data-custom-icon-input="light.living_room"]');
+        input.value = '🔥';
+        document.querySelector('[data-custom-icon-apply="light.living_room"]').click();
+
+        await settings.saveSettings();
+
+        expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+          expect.stringContaining('Custom icons saved'),
+          'success',
+          expect.any(Number)
+        );
+      });
+    });
+
+    describe('the restart prompts', () => {
+      const askedToRestart = () =>
+        mockUiUtils.showConfirm.mock.calls.filter(([title]) => title === 'Restart required');
+
+      test('Always on top asks in the themed dialog, and Restart now restarts', async () => {
+        await settings.openSettings();
+        document.getElementById('always-on-top').checked = false;
+        mockUiUtils.showConfirm.mockImplementation(async () => true);
+
+        await settings.saveSettings();
+
+        expect(askedToRestart()).toEqual([
+          [
+            'Restart required',
+            'Changing "Always on top" may require a restart. Restart now?',
+            expect.objectContaining({
+              confirmText: 'Restart now',
+              cancelText: 'Later',
+              confirmClass: 'btn-primary',
+            }),
+          ],
+        ]);
+        expect(window.electronAPI.restartApp).toHaveBeenCalledTimes(1);
+        expect(window.electronAPI.focusWindow).toHaveBeenCalled();
+      });
+
+      test('Later keeps the app running and still hands the focus back', async () => {
+        await settings.openSettings();
+        document.getElementById('always-on-top').checked = false;
+
+        await settings.saveSettings();
+
+        expect(askedToRestart()).toHaveLength(1);
+        expect(window.electronAPI.restartApp).not.toHaveBeenCalled();
+        expect(window.electronAPI.focusWindow).toHaveBeenCalled();
+        // Settings closed and the save went through
+        expect(state.CONFIG.alwaysOnTop).toBe(false);
+        expect(document.getElementById('settings-modal').classList.contains('hidden')).toBe(true);
+      });
+
+      test('leaving or reaching 100% opacity on Linux asks in the themed dialog too', async () => {
+        mockElectronAPI.platform = 'linux';
+        state.CONFIG.opacity = 1;
+        state.CONFIG.desktopCapabilities = { alwaysTransparentWindows: false };
+        await settings.openSettings();
+        document.getElementById('opacity-slider').value = '60';
+        mockUiUtils.showConfirm.mockImplementation(async () => true);
+
+        await settings.saveSettings();
+
+        const [call] = askedToRestart();
+        expect(call[1]).toBe(
+          'Changing opacity between 100% and transparent on Linux requires an app restart. Restart now?'
+        );
+        expect(window.electronAPI.restartApp).toHaveBeenCalledTimes(1);
+      });
+
+      test('never uses the browser confirm, which has no title and says OK in the system language', async () => {
+        window.confirm = jest.fn(() => true);
+        await settings.openSettings();
+        document.getElementById('always-on-top').checked = false;
+
+        await settings.saveSettings();
+
+        expect(window.confirm).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('Home Assistant URL', () => {
+      test('is written back as the address that will be used', async () => {
+        await settings.openSettings();
+        const haUrl = document.getElementById('ha-url');
+        haUrl.value = 'HTTP://Ha.Local:8123/lovelace/0';
+
+        await settings.saveSettings();
+
+        expect(haUrl.value).toBe('http://ha.local:8123');
+      });
+
+      test('Connect with a bad address says so under the field, not in the status line', async () => {
+        await settings.openSettings();
+        document.getElementById('ha-url').value = 'http://';
+
+        document.getElementById('connect-ha-oauth-btn').click();
+        await flushAsync();
+
+        expect(fieldError('ha-url')).toBe('Invalid URL: missing hostname');
+        expect(window.electronAPI.startHomeAssistantOAuth).not.toHaveBeenCalled();
+        expect(document.getElementById('ha-oauth-status').dataset.status).not.toBe('error');
+      });
+
+      test('Connect shows the address it uses', async () => {
+        await settings.openSettings();
+        const haUrl = document.getElementById('ha-url');
+        haUrl.value = 'ha.local:8123';
+        mockElectronAPI.startHomeAssistantOAuth.mockResolvedValueOnce({
+          success: true,
+          config: {
+            ...state.CONFIG,
+            homeAssistant: {
+              url: 'http://ha.local:8123',
+              token: 'x',
+              authMethod: 'oauth',
+              oauthStatus: 'connected',
+            },
+          },
+        });
+
+        document.getElementById('connect-ha-oauth-btn').click();
+        await flushAsync();
+
+        expect(mockElectronAPI.startHomeAssistantOAuth).toHaveBeenCalledWith(
+          'http://ha.local:8123'
+        );
+      });
+
+      test('a status line that said the test passed is cleared when the address or token is edited', async () => {
+        await settings.openSettings();
+        document.getElementById('ha-url').value = 'http://ha.local:8123';
+        document.getElementById('ha-token').value = 'a-token';
+        document.getElementById('test-ha-connection-btn').click();
+        await flushAsync();
+        const status = document.getElementById('test-ha-connection-status');
+        expect(status.dataset.status).toBe('success');
+        expect(status.textContent).toBe(
+          'Token accepted. Home Assistant is reachable. Select Save to keep it.'
+        );
+
+        document.getElementById('ha-token').dispatchEvent(new Event('input', { bubbles: true }));
+
+        expect(status.textContent).toBe('');
+        expect(status.dataset.status).toBe('');
+      });
+    });
+
+    describe('what a failed connection test says', () => {
+      const testAndRead = async (result) => {
+        mockElectronAPI.testHaConnection.mockResolvedValueOnce(result);
+        await settings.openSettings();
+        document.getElementById('ha-url').value = 'https://ha.example.com';
+        document.getElementById('ha-token').value = 'a-token';
+        document.getElementById('test-ha-connection-btn').click();
+        await flushAsync();
+        return document.getElementById('test-ha-connection-status').textContent;
+      };
+
+      test.each([
+        [{ success: false, code: 'unreachable', status: 404 }, 'HTTP 404: check the URL and port.'],
+        [{ success: false, code: 'unreachable', status: 502 }, 'HTTP 502: check the URL and port.'],
+        [
+          { success: false, code: 'unreachable', error: 'net::ERR_CERT_AUTHORITY_INVALID' },
+          'The certificate is not trusted.',
+        ],
+        [
+          { success: false, code: 'unreachable', error: 'net::ERR_CERT_COMMON_NAME_INVALID' },
+          'The certificate is not trusted.',
+        ],
+        [
+          { success: false, code: 'unreachable', error: 'net::ERR_SSL_PROTOCOL_ERROR' },
+          'The secure connection failed. Check whether the URL should start with http:// or https://, and the port.',
+        ],
+        [
+          { success: false, code: 'unreachable', error: 'Request timed out' },
+          'Timed out. Check the URL and port.',
+        ],
+        [
+          { success: false, code: 'unreachable', error: 'net::ERR_CONNECTION_TIMED_OUT' },
+          'Timed out. Check the URL and port.',
+        ],
+        [
+          { success: false, code: 'unreachable', error: 'net::ERR_TIMED_OUT' },
+          'Timed out. Check the URL and port.',
+        ],
+        [
+          { success: false, code: 'unreachable', error: 'net::ERR_CONNECTION_REFUSED' },
+          'Could not reach Home Assistant at that URL.',
+        ],
+        [
+          { success: false, code: 'auth-failed', status: 401 },
+          'Authentication failed. Check your long-lived access token.',
+        ],
+      ])('%j reads as "%s"', async (result, message) => {
+        expect(await testAndRead(result)).toBe(message);
+      });
+    });
+
+    describe('with browser authorization', () => {
+      test('the token test is off and says why, and stays off after a busy spell', async () => {
+        oauthConnected();
+        await settings.openSettings();
+        const test = document.getElementById('test-ha-connection-btn');
+
+        expect(test.disabled).toBe(true);
+        expect(
+          document.getElementById('legacy-ha-token-oauth-note').classList.contains('hidden')
+        ).toBe(false);
+
+        // Nothing to test, so a click does not run the test
+        test.click();
+        expect(mockElectronAPI.testHaConnection).not.toHaveBeenCalled();
+      });
+
+      test('with no authorization the token test is on and the note is hidden', async () => {
+        await settings.openSettings();
+
+        expect(document.getElementById('test-ha-connection-btn').disabled).toBe(false);
+        expect(
+          document.getElementById('legacy-ha-token-oauth-note').classList.contains('hidden')
+        ).toBe(true);
+      });
+
+      test('an edited address is not silently dropped by Save: it says to reconnect', async () => {
+        oauthConnected();
+        await settings.openSettings();
+        document.getElementById('ha-url').value = 'https://other.example.test';
+
+        await settings.saveSettings();
+
+        expect(fieldError('ha-url')).toMatch(/^Saving does not switch servers\. Select Reconnect/);
+        expect(window.electronAPI.updateConfig).not.toHaveBeenCalled();
+        expect(document.getElementById('settings-modal').classList.contains('hidden')).toBe(false);
+      });
+
+      test('the same address written another way saves as before', async () => {
+        oauthConnected('https://ha.example.test');
+        await settings.openSettings();
+        document.getElementById('ha-url').value = 'HTTPS://ha.example.test/';
+        document.getElementById('always-on-top').checked = false;
+
+        await settings.saveSettings();
+
+        expect(window.electronAPI.updateConfig).toHaveBeenCalled();
+        expect(document.querySelector('[data-field-error-for]')).toBeNull();
+      });
+
+      test('Disconnect asks first, and declining leaves the authorization alone', async () => {
+        oauthConnected();
+        await settings.openSettings();
+        mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+
+        document.getElementById('disconnect-ha-oauth-btn').click();
+        await flushAsync();
+
+        expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
+          'Disconnect',
+          'Disconnect this widget from Home Assistant? You will need to authorize again.',
+          expect.objectContaining({ confirmText: 'Disconnect', confirmClass: 'btn-danger' })
+        );
+        expect(mockElectronAPI.disconnectHomeAssistantOAuth).not.toHaveBeenCalled();
+      });
+
+      test('Disconnect goes ahead once confirmed', async () => {
+        oauthConnected();
+        await settings.openSettings();
+
+        document.getElementById('disconnect-ha-oauth-btn').click();
+        await flushAsync();
+
+        expect(mockElectronAPI.disconnectHomeAssistantOAuth).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('with a legacy token and a connection that is down', () => {
+      const hooks = (status, reason = '') => ({
+        initUpdateUI: jest.fn(),
+        getConnectionState: () => ({ status, reason }),
+      });
+
+      test('opens the token section with the error when the token was rejected', async () => {
+        await settings.openSettings(
+          hooks(
+            'auth-failed',
+            'Authentication failed. Check your long-lived access token in Settings.'
+          )
+        );
+
+        const status = document.getElementById('ha-oauth-status');
+        expect(status.dataset.status).toBe('error');
+        expect(status.textContent).toBe(
+          'Authentication failed. Check your long-lived access token in Settings.'
+        );
+        expect(document.getElementById('legacy-ha-token-settings').open).toBe(true);
+      });
+
+      test('puts the cursor in the token field when the token was rejected', async () => {
+        await settings.openSettings(hooks('auth-failed', 'Home Assistant refused the token.'));
+        // The dialog takes its own focus first, a moment after it opens
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(document.activeElement).toBe(document.getElementById('ha-token'));
+      });
+
+      test('leaves the cursor on the page tab when nothing is wrong with the token', async () => {
+        await settings.openSettings(hooks('connected'));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(document.activeElement).not.toBe(document.getElementById('ha-token'));
+      });
+
+      test('shows the last reason a healthy-looking page would hide while disconnected', async () => {
+        await settings.openSettings(hooks('disconnected', 'Could not reach 192.168.1.5'));
+
+        const status = document.getElementById('ha-oauth-status');
+        expect(status.dataset.status).toBe('error');
+        expect(status.textContent).toBe('Could not reach 192.168.1.5');
+        expect(document.getElementById('legacy-ha-token-settings').open).toBe(false);
+      });
+
+      test('says it as plain advice, not progress, when all is well', async () => {
+        await settings.openSettings(hooks('connected'));
+
+        const status = document.getElementById('ha-oauth-status');
+        expect(status.dataset.status).toBe('');
+        expect(status.textContent).toBe(
+          'Browser authorization is recommended. The legacy token option remains available below.'
+        );
+      });
+
+      test('follows the connection while Settings is open', async () => {
+        let current = { status: 'connected', reason: '' };
+        await settings.openSettings({ initUpdateUI: jest.fn(), getConnectionState: () => current });
+        const status = document.getElementById('ha-oauth-status');
+        expect(status.dataset.status).toBe('');
+
+        current = { status: 'auth-failed', reason: 'Home Assistant refused the token.' };
+        settings.refreshHomeAssistantAuthStatus();
+
+        expect(status.dataset.status).toBe('error');
+        expect(status.textContent).toBe('Home Assistant refused the token.');
+      });
+    });
+
+    describe('the media player select with nothing to pick', () => {
+      test('is off and says why when Home Assistant has no media players', async () => {
+        state.setStates({ 'light.desk': { entity_id: 'light.desk', state: 'on', attributes: {} } });
+        await settings.openSettings();
+
+        const select = document.getElementById('primary-media-player');
+        const note = document.getElementById('primary-media-player-empty');
+        expect(select.disabled).toBe(true);
+        expect(note.classList.contains('hidden')).toBe(false);
+        expect(select.getAttribute('aria-describedby')).toContain('primary-media-player-empty');
+      });
+
+      test('is usable with a media player, and the note goes with it', async () => {
+        await settings.openSettings();
+
+        const select = document.getElementById('primary-media-player');
+        expect(select.disabled).toBe(false);
+        expect(
+          document.getElementById('primary-media-player-empty').classList.contains('hidden')
+        ).toBe(true);
+        expect(select.hasAttribute('aria-describedby')).toBe(false);
+      });
+
+      test('stays usable when a saved player is missing, so it can be changed to None', async () => {
+        state.setStates({});
+        state.CONFIG.primaryMediaPlayer = 'media_player.gone';
+        await settings.openSettings();
+
+        expect(document.getElementById('primary-media-player').disabled).toBe(false);
+      });
+    });
+
+    describe('the donate dialog', () => {
+      const donateMarkup = `<button id="open-donate-modal-btn" type="button"></button>
+        <div id="donate-modal" class="modal hidden">
+          <div class="modal-content">
+            <div class="modal-header"><h2>Support</h2></div>
+            <div class="modal-body">
+              <p id="donate-intro">Thank you</p>
+              <input name="donate-frequency" type="radio" value="one-time" checked />
+              <input name="donate-frequency" type="radio" value="recurring" />
+              <button type="button" class="donate-amount-chip" data-amount="3" aria-pressed="false">$3</button>
+              <button type="button" class="donate-amount-chip selected" data-amount="5" aria-pressed="true">$5</button>
+              <input id="donate-custom-amount" type="number" min="1" max="12000" step="1" />
+              <p id="donate-amount-error" role="alert" hidden></p>
+            </div>
+            <div class="modal-footer"><button id="donate-continue-btn" type="button">Continue</button></div>
+          </div>
+        </div>`;
+      afterEach(() => {
+        document.getElementById('donate-modal')?.remove();
+        document.getElementById('open-donate-modal-btn')?.remove();
+      });
+
+      test('starts every visit at one-time and $5, whatever the last one left', async () => {
+        document.body.insertAdjacentHTML('beforeend', donateMarkup);
+        await settings.openSettings();
+        const open = document.getElementById('open-donate-modal-btn');
+        const modal = document.getElementById('donate-modal');
+        const [oneTime, monthly] = modal.querySelectorAll('input[name="donate-frequency"]');
+        const amount = document.getElementById('donate-custom-amount');
+        const chips = [...modal.querySelectorAll('.donate-amount-chip')];
+
+        // A visit that ends badly: Monthly, a rejected amount, no chip
+        open.click();
+        monthly.checked = true;
+        chips.forEach((chip) => chip.classList.remove('selected'));
+        amount.value = '0';
+        document.getElementById('donate-continue-btn').click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(amount.getAttribute('aria-invalid')).toBe('true');
+        modal.classList.add('hidden');
+
+        open.click();
+
+        expect(oneTime.checked).toBe(true);
+        expect(monthly.checked).toBe(false);
+        expect(amount.value).toBe('');
+        expect(amount.hasAttribute('aria-invalid')).toBe(false);
+        expect(chips.map((chip) => chip.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
+        expect(chips[1].classList.contains('selected')).toBe(true);
+      });
+
+      test('says only that the page was opened, not that anything was donated', async () => {
+        document.body.insertAdjacentHTML('beforeend', donateMarkup);
+        mockElectronAPI.openExternal = jest.fn().mockResolvedValue({ success: true });
+        await settings.openSettings();
+        document.getElementById('open-donate-modal-btn').click();
+        mockUiUtils.showToast.mockClear();
+
+        document.getElementById('donate-continue-btn').click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+          'Opened GitHub Sponsors in your browser.',
+          'info',
+          expect.any(Number)
+        );
+        expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+          'Thank you for your support!',
+          expect.anything(),
+          expect.anything()
+        );
+      });
     });
   });
 
@@ -6434,8 +8161,10 @@ describe('Settings + Config Integration', () => {
     });
 
     test('passes translated text to toasts and confirmations', async () => {
+      state.CONFIG.customEntityIcons = { 'light.living_room': '💡' };
       await openSettingsWithCustomIconsExpanded();
       document.getElementById('custom-entity-icons-reset-all').click();
+      for (let i = 0; i < 5; i += 1) await Promise.resolve();
       expect(mockUiUtils.showToast).toHaveBeenCalledWith(
         'Alle eigenen Symbole entfernt. Zum Übernehmen Speichern klicken.',
         'info',

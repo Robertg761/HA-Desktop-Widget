@@ -1,10 +1,16 @@
 import websocket from './websocket.js';
+import state from './state.js';
+import { formatRelativeTime as formatAge } from './format.js';
 import { t } from './i18n.js';
+import {
+  notificationMarkdownToPlainText,
+  renderNotificationMarkdown,
+} from './notification-markdown.js';
 import { closeDialog, openDialog, renderKeepingFocus, showToast } from './ui-utils.js';
 
 const DEFAULT_NOTIFICATION_TITLE = 'Home Assistant';
 const MAX_BELL_COUNT = 99;
-// How long an open panel goes before it says "5m ago" where it said "4m ago".
+// How long an open panel goes before it says "5 min. ago" where it said "4 min. ago".
 const RELATIVE_TIME_REFRESH_MS = 60000;
 
 let activeNotifications = new Map();
@@ -62,20 +68,13 @@ function applyPersistentNotificationEvent(currentNotifications, event = {}) {
   };
 }
 
+// How long ago a notification arrived, in the language's own relative time ("5 min. ago",
+// "hace 5 min", "قبل 5 دقائق"), and "just now" for the first minute.
 function formatRelativeTime(createdAt, now = Date.now()) {
   const timestamp = Date.parse(createdAt);
   if (!Number.isFinite(timestamp)) return '';
-
-  const elapsedMs = Math.max(0, now - timestamp);
-  const elapsedMinutes = Math.floor(elapsedMs / 60000);
-  if (elapsedMinutes < 1) return t('just now');
-  if (elapsedMinutes < 60) return t('{{count}}m ago', { count: elapsedMinutes });
-
-  const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24) return t('{{count}}h ago', { count: elapsedHours });
-
-  const elapsedDays = Math.floor(elapsedHours / 24);
-  return t('{{count}}d ago', { count: elapsedDays });
+  // One stamped ahead of this computer's clock is just now, not "in 2 minutes".
+  return formatAge(Math.min(timestamp, now), { now });
 }
 
 function getSortedNotifications() {
@@ -93,7 +92,8 @@ function showPersistentDesktopNotification(notification) {
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
     const title = notification.title || DEFAULT_NOTIFICATION_TITLE;
     const desktopNotification = new Notification(title, {
-      body: notification.message,
+      // The system toast draws plain text, so the Markdown syntax goes and its words stay.
+      body: notificationMarkdownToPlainText(notification.message),
       tag: `ha-persistent-notification-${notification.notification_id}`,
       requireInteraction: false,
     });
@@ -179,7 +179,14 @@ function createNotificationListItem(notification) {
 
   const message = document.createElement('div');
   message.className = 'persistent-notification-message';
-  message.textContent = notification.message;
+  renderNotificationMarkdown(message, notification.message, {
+    baseUrl: state.CONFIG?.homeAssistant?.url,
+    openLink: (url) => {
+      window.electronAPI?.openExternal?.(url)?.catch?.((error) => {
+        console.error('Error opening notification link:', error);
+      });
+    },
+  });
 
   const time = document.createElement('div');
   time.className = 'persistent-notification-time';
@@ -230,6 +237,9 @@ function renderPersistentNotifications() {
     notifications.forEach((notification) => {
       list.appendChild(createNotificationListItem(notification));
     });
+    // A message can hold links, and one comes before its Dismiss button in the order of the page.
+    // The panel still opens on the first Dismiss, where it opened when messages were plain text.
+    list.querySelector('.persistent-notification-dismiss')?.setAttribute('data-initial-focus', '');
   });
 
   if (count === 0) {

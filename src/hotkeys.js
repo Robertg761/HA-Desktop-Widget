@@ -1,9 +1,18 @@
 import state from './state.js';
 import { closeDialog, openDialog, renderKeepingFocus, showToast } from './ui-utils.js';
 import { getEntityDisplayName, getSearchScore } from './utils.js';
-import { t } from './i18n.js';
+import { getLocaleState, t } from './i18n.js';
+import accelerators from './accelerators.cjs';
+import { paginate, renderListPager } from './list-pager.js';
 
 let globalHotkeys = {};
+// The action picked on a row that has no hotkey yet. The list is rebuilt on every search keystroke
+// and tab switch, and recording reads the action from the row, so without this the choice would
+// be forgotten before the hotkey is recorded.
+const pendingActions = new Map();
+// Set while a recorder is open for the Settings list, so a second click on the field does not
+// open another one.
+let recordingEntityId = null;
 const HOTKEY_SUPPORTED_DOMAINS = new Set([
   'light',
   'switch',
@@ -27,6 +36,52 @@ function escapeHtmlAttribute(text) {
   return String(escapeHtml(String(text ?? '')))
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+const getPlatform = () => window.electronAPI?.platform;
+
+// Both recorders (this dialog and the popup hotkey field in Settings) build their accelerators
+// here, from the physical key, and show them as the keys are printed on this platform's keyboard.
+function recordKeyEvent(event) {
+  return accelerators.acceleratorFromKeyEvent(event, getPlatform());
+}
+
+function formatHotkey(accelerator) {
+  return accelerators.formatAccelerator(accelerator, getPlatform());
+}
+
+// What a recorder says while the chord is not complete yet: the keys held so far, and for a key with
+// nothing but Shift behind it what to add.
+function describeRecording(recorded) {
+  const held = formatHotkey(recorded.accelerator);
+  if (!recorded.needsModifier) return held;
+  return t('{{hotkey}} (add {{modifiers}})', {
+    hotkey: held,
+    modifiers: accelerators.formatRequiredModifiers(getPlatform()),
+  });
+}
+
+// The text for a refused hotkey. Main names a clash by entity id, which means little; the renderer
+// knows the name the row shows.
+function describeHotkeyFailure(result, fallback) {
+  const conflictId = result?.conflictEntityId;
+  if (!conflictId) return result?.error || fallback;
+  const entity = state.STATES?.[conflictId] || { entity_id: conflictId, attributes: {} };
+  return t('Hotkey already assigned to {{entity}}', { entity: getEntityDisplayName(entity) });
+}
+
+// Brings the row that already holds a hotkey into view and marks it for a moment, the way a search
+// result marks its setting, since the toast naming it is gone before anyone has found it in a list
+// of hundreds.
+function flashHotkeyRow(entityId) {
+  const field = Array.from(document.querySelectorAll('#hotkeys-list .hotkey-input')).find(
+    (input) => input.dataset.entityId === entityId
+  );
+  const row = field?.closest('.hotkey-item');
+  if (!row) return;
+  row.scrollIntoView?.({ block: 'nearest' });
+  row.classList.add('settings-search-target');
+  setTimeout(() => row.classList.remove('settings-search-target'), 1800);
 }
 
 function initializeHotkeys() {
@@ -83,14 +138,25 @@ function getActionOptionsForDomain(domain) {
 
 // The action is a native select, like every other choice in Settings: it brings the keyboard model
 // and the screen reader roles, and its list opens over the page instead of pushing the rows below.
-function createActionSelectHTML(options, selectedAction, entityId) {
+function createActionSelectHTML(options, selectedAction, entityId, name) {
   const optionsHTML = options
     .map(
       (opt) =>
         `<option value="${escapeHtmlAttribute(opt.value)}"${opt.value === selectedAction ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`
     )
     .join('');
-  return `<select class="hotkey-action-select" data-entity-id="${escapeHtmlAttribute(entityId)}" data-focus-key="hotkey-action:${escapeHtmlAttribute(entityId)}" aria-label="${escapeHtmlAttribute(t('Hotkey action'))}">${optionsHTML}</select>`;
+  return `<select class="hotkey-action-select" data-entity-id="${escapeHtmlAttribute(entityId)}" data-focus-key="hotkey-action:${escapeHtmlAttribute(entityId)}" aria-label="${escapeHtmlAttribute(t('Hotkey action for {{name}}', { name }))}">${optionsHTML}</select>`;
+}
+
+// The list is one page of rows, and typing in the search waits for a pause: building a row for
+// every entity that can take a hotkey on each keystroke took about a second in a large home.
+let hotkeyListPage = 0;
+let hotkeyListFilter = '';
+let hotkeySearchTimer;
+
+function scheduleHotkeysTabRender() {
+  clearTimeout(hotkeySearchTimer);
+  hotkeySearchTimer = setTimeout(renderHotkeysTab, 150);
 }
 
 function renderHotkeysTab() {
@@ -99,6 +165,10 @@ function renderHotkeysTab() {
     if (!container) return;
 
     const filter = document.getElementById('hotkey-entity-search').value.toLowerCase();
+    const locale = getLocaleState().activeLocale || undefined;
+    // A new query starts at its first page.
+    if (filter !== hotkeyListFilter) hotkeyListPage = 0;
+    hotkeyListFilter = filter;
     const hotkeyEntities = Object.values(state.STATES)
       .filter((e) => HOTKEY_SUPPORTED_DOMAINS.has(e.entity_id.split('.')[0]))
       .map((entity) => {
@@ -106,40 +176,77 @@ function renderHotkeysTab() {
           ? getSearchScore(getEntityDisplayName(entity), filter) +
             getSearchScore(entity.entity_id, filter)
           : 1;
-        return { entity, score };
+        return { entity, score, name: getEntityDisplayName(entity) };
       })
       .filter((item) => item.score > 0)
-      .sort((a, b) => b.score - a.score);
+      // Home Assistant's own order is arbitrary; name order is how the other pickers list entities.
+      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, locale));
 
     // The list is rebuilt after a failed action change or a cleared hotkey; the keyboard stays on the
     // same row's control (the keys below say which), not on <body> with Tab starting over.
+    const shown = paginate(hotkeyEntities, hotkeyListPage);
+    hotkeyListPage = shown.page;
     renderKeepingFocus(container, () => {
       container.innerHTML = '';
-      hotkeyEntities.forEach(({ entity }) => {
+      if (!hotkeyEntities.length) {
+        // An empty box reads as a broken list: say whether nothing matched or nothing has loaded.
+        const empty = document.createElement('div');
+        empty.className = 'hotkeys-empty';
+        empty.setAttribute('role', 'status');
+        empty.textContent = Object.keys(state.STATES).length
+          ? t('No matching entities')
+          : t('Connect to Home Assistant to assign hotkeys');
+        container.appendChild(empty);
+        return;
+      }
+      // One description for every field, so each says how to start recording without repeating it.
+      const recordHint = document.createElement('span');
+      recordHint.id = 'hotkey-record-hint';
+      recordHint.className = 'sr-only';
+      recordHint.textContent = t('Press Enter or Space to record a hotkey');
+      container.appendChild(recordHint);
+      shown.items.forEach(({ entity, name }) => {
         const hotkeyConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entity.entity_id] || {};
         const hotkey = typeof hotkeyConfig === 'string' ? hotkeyConfig : hotkeyConfig.hotkey;
         const action =
-          typeof hotkeyConfig === 'object' && hotkeyConfig.action ? hotkeyConfig.action : 'toggle';
+          typeof hotkeyConfig === 'object' && hotkeyConfig.action
+            ? hotkeyConfig.action
+            : pendingActions.get(entity.entity_id) || 'toggle';
         const domain = entity.entity_id.split('.')[0];
 
         // Get action options based on entity type
         const actionOptions = getActionOptionsForDomain(domain);
-        const actionSelectHTML = createActionSelectHTML(actionOptions, action, entity.entity_id);
+        const actionSelectHTML = createActionSelectHTML(
+          actionOptions,
+          action,
+          entity.entity_id,
+          name
+        );
 
         const item = document.createElement('div');
         item.className = 'hotkey-item';
-        const displayName = escapeHtml(getEntityDisplayName(entity));
-        const escapedHotkey = escapeHtmlAttribute(hotkey || '');
+        const displayName = escapeHtml(name);
+        const escapedHotkey = escapeHtmlAttribute(hotkey ? formatHotkey(hotkey) : '');
         const escapedEntityId = escapeHtmlAttribute(entity.entity_id);
+        // A read-only field, not a button: as a textbox it reads out the hotkey it holds, and the
+        // hint says Enter and Space start a recording.
         item.innerHTML = `
                 <span class="entity-name">${displayName}</span>
                 <div class="hotkey-input-container">
-                    <input type="text" readonly role="button" aria-label="${escapeHtmlAttribute(t('Hotkey for {{name}}', { name: getEntityDisplayName(entity) }))}" aria-keyshortcuts="Enter Space" class="hotkey-input" value="${escapedHotkey}" placeholder="${escapeHtmlAttribute(t('None'))}" data-entity-id="${escapedEntityId}" data-focus-key="hotkey-input:${escapedEntityId}">
+                    <input type="text" readonly aria-label="${escapeHtmlAttribute(t('Hotkey for {{name}}', { name }))}" aria-describedby="hotkey-record-hint" aria-keyshortcuts="Enter Space" class="hotkey-input" value="${escapedHotkey}" placeholder="${escapeHtmlAttribute(t('None'))}" data-entity-id="${escapedEntityId}" data-focus-key="hotkey-input:${escapedEntityId}">
                     ${actionSelectHTML}
-                    <button type="button" class="btn-clear-hotkey" title="${escapeHtmlAttribute(t('Clear hotkey'))}" aria-label="${escapeHtmlAttribute(t('Clear hotkey'))}" data-focus-key="hotkey-clear:${escapedEntityId}">&times;</button>
+                    <button type="button" class="btn-clear-hotkey" title="${escapeHtmlAttribute(t('Clear hotkey'))}" aria-label="${escapeHtmlAttribute(t('Clear hotkey for {{name}}', { name }))}" data-focus-key="hotkey-clear:${escapedEntityId}">&times;</button>
                 </div>
             `;
         container.appendChild(item);
+      });
+      renderListPager(container, {
+        page: shown.page,
+        pageCount: shown.pageCount,
+        onChange: (page) => {
+          hotkeyListPage = page;
+          renderHotkeysTab();
+        },
       });
     });
 
@@ -157,6 +264,7 @@ function getDefaultActionForEntity(entity) {
 }
 
 async function assignHotkeyToEntity(entityId, options = {}) {
+  if (recordingEntityId) return { success: false, canceled: true };
   try {
     const entity = state.STATES?.[entityId];
     if (!entity) {
@@ -174,10 +282,14 @@ async function assignHotkeyToEntity(entityId, options = {}) {
     const currentConfig = state.CONFIG.globalHotkeys.hotkeys[entityId];
     const currentAction =
       typeof currentConfig === 'object' && currentConfig?.action ? currentConfig.action : null;
-    const action = options.action || currentAction || getDefaultActionForEntity(entity);
+    const action =
+      options.action ||
+      pendingActions.get(entityId) ||
+      currentAction ||
+      getDefaultActionForEntity(entity);
     const origin = document.activeElement;
     const openedFromField = !!origin?.classList?.contains('hotkey-input');
-    const hotkey = await captureHotkey();
+    const hotkey = await recordWithField(entityId, openedFromField ? origin : null);
 
     if (!hotkey) {
       return { success: false, canceled: true };
@@ -186,6 +298,7 @@ async function assignHotkeyToEntity(entityId, options = {}) {
     const result = await window.electronAPI.registerHotkey(entityId, hotkey, action);
     if (result?.success) {
       state.CONFIG.globalHotkeys.hotkeys[entityId] = { hotkey, action };
+      pendingActions.delete(entityId);
       renderHotkeysTab();
       // The re-render replaces the field that opened the recorder, so refocus its replacement.
       if (openedFromField && !origin.isConnected) {
@@ -194,9 +307,17 @@ async function assignHotkeyToEntity(entityId, options = {}) {
           .find((input) => input.dataset.entityId === entityId)
           ?.focus();
       }
-      // On Hyprland the shortcut is only a target until its bind is copied into the Hyprland
-      // config, so say that instead of promising the key works (the popup hotkey does the same).
-      if (result.requiresCompositorBinding) {
+      // A saved hotkey is only registered while the switch is on, and the switch is off until the
+      // user turns it on. Saying "set" then would promise a shortcut that does nothing.
+      if (!state.CONFIG.globalHotkeys.enabled) {
+        showToast(
+          t('Hotkey saved. Turn on Entity hotkeys in Settings > Hotkeys to use it.'),
+          'warning',
+          5000
+        );
+      } else if (result.requiresCompositorBinding) {
+        // On Hyprland the shortcut is only a target until its bind is copied into the Hyprland
+        // config, so say that instead of promising the key works (the popup hotkey does the same).
         showToast(
           t('Shortcut target registered. Copy its binding from the Hyprland shortcuts panel.'),
           'success',
@@ -212,13 +333,38 @@ async function assignHotkeyToEntity(entityId, options = {}) {
       return { success: true, hotkey, action };
     }
 
-    const error = result?.error || t('Failed to set hotkey');
+    const error = describeHotkeyFailure(result, t('Failed to set hotkey'));
     showToast(error, 'error', 3000);
+    if (result?.conflictEntityId) flashHotkeyRow(result.conflictEntityId);
     return { success: false, error };
   } catch (error) {
     console.error('Error assigning hotkey to entity:', error);
     showToast(t('Failed to set hotkey'), 'error', 3000);
     return { success: false, error };
+  }
+}
+
+// Runs the recorder for an entity. When it was opened from a Settings row, that row's field says
+// "Recording..." behind the dialog, and the Clear button beside it steps aside, until the recorder
+// is done.
+async function recordWithField(entityId, field) {
+  recordingEntityId = entityId;
+  if (field) {
+    field.dataset.recording = 'true';
+    field.setAttribute('aria-busy', 'true');
+    field.value = t('Recording...');
+  }
+  try {
+    return await captureHotkey();
+  } finally {
+    recordingEntityId = null;
+    if (field) {
+      delete field.dataset.recording;
+      field.removeAttribute('aria-busy');
+      const configured = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
+      const hotkey = typeof configured === 'string' ? configured : configured?.hotkey;
+      field.value = hotkey ? formatHotkey(hotkey) : '';
+    }
   }
 }
 
@@ -230,8 +376,9 @@ async function toggleHotkeys(enabled) {
         state.CONFIG.globalHotkeys.enabled = enabled;
       }
       globalHotkeys.enabled = enabled;
+      // The switch is labelled "Entity hotkeys", and the popup hotkey is not part of it.
       showToast(
-        enabled ? t('Global hotkeys enabled') : t('Global hotkeys disabled'),
+        enabled ? t('Entity hotkeys enabled') : t('Entity hotkeys disabled'),
         'success',
         2000
       );
@@ -246,61 +393,6 @@ async function toggleHotkeys(enabled) {
     showToast(t('Error toggling hotkeys'), 'error', 2000);
   }
   return false;
-}
-
-function getAcceleratorString(e) {
-  const parts = [];
-  if (e.ctrlKey) parts.push('Ctrl');
-  if (e.altKey) parts.push('Alt');
-  if (e.shiftKey) parts.push('Shift');
-  if (e.metaKey) parts.push('Super');
-
-  const keyMap = {
-    ArrowUp: 'Up',
-    ArrowDown: 'Down',
-    ArrowLeft: 'Left',
-    ArrowRight: 'Right',
-    Space: 'Space',
-    Enter: 'Enter',
-    Escape: 'Esc',
-    Tab: 'Tab',
-    Home: 'Home',
-    End: 'End',
-    PageUp: 'PageUp',
-    PageDown: 'PageDown',
-    Delete: 'Delete',
-    Insert: 'Insert',
-  };
-
-  const code = e.code;
-  let key = '';
-
-  if (keyMap[code]) {
-    key = keyMap[code];
-  } else if (code.startsWith('Key')) {
-    key = code.substring(3);
-  } else if (code.startsWith('Digit')) {
-    key = code.substring(5);
-  } else if (code.startsWith('Numpad')) {
-    key = 'num' + code.substring(6);
-  } else if (code.startsWith('F') && !isNaN(parseInt(code.substring(1)))) {
-    key = code;
-  } else {
-    const keyIdentifier = e.key.toUpperCase();
-    if (
-      keyIdentifier.length === 1 &&
-      !['CONTROL', 'ALT', 'SHIFT', 'META'].includes(keyIdentifier)
-    ) {
-      key = keyIdentifier;
-    }
-  }
-
-  const isModifier = ['Control', 'Shift', 'Alt', 'Meta'].includes(e.key);
-  if (!isModifier && key) {
-    parts.push(key);
-  }
-
-  return parts.join('+');
 }
 
 function captureHotkey() {
@@ -352,22 +444,11 @@ function captureHotkey() {
           return;
         }
 
-        const accelerator = getAcceleratorString(e);
-        const isModifier = ['Control', 'Shift', 'Alt', 'Meta'].includes(e.key);
-
-        if (!isModifier) {
-          // Check if at least one modifier is held
-          if (accelerator.includes('+')) {
-            previewBox.textContent = accelerator;
-            cleanup();
-            resolve(accelerator);
-          } else {
-            // Show feedback that a modifier is required
-            previewBox.textContent = t('{{hotkey}} (add Ctrl/Alt/Shift)', { hotkey: accelerator });
-          }
-        } else {
-          // Just show the modifiers being pressed
-          previewBox.textContent = accelerator;
+        const recorded = recordKeyEvent(e);
+        previewBox.textContent = describeRecording(recorded);
+        if (recorded.complete) {
+          cleanup();
+          resolve(recorded.accelerator);
         }
       };
 
@@ -413,7 +494,7 @@ function setupHotkeyEventListenersInternal() {
       const actionLabel = select.selectedOptions[0]?.textContent || action;
 
       // Save to config
-      const hotkeyConfig = state.CONFIG.globalHotkeys.hotkeys[entityId];
+      const hotkeyConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
       if (hotkeyConfig) {
         const previousConfig = JSON.parse(JSON.stringify(state.CONFIG));
         // The rollback below may be sent after a profile sync pull has landed, so
@@ -467,6 +548,17 @@ function setupHotkeyEventListenersInternal() {
           renderHotkeysTab();
           showToast(failureMessage, 'error', 4000);
         }
+      } else {
+        // Nothing to save yet: the action waits for the hotkey and is recorded with it. Say so,
+        // or the choice looks like it did nothing.
+        pendingActions.set(entityId, action);
+        showToast(
+          t('Action chosen: {{action}}. It applies once you record a hotkey.', {
+            action: actionLabel,
+          }),
+          'info',
+          3500
+        );
       }
     };
     container.addEventListener('change', containerChangeHandler);
@@ -477,8 +569,11 @@ function setupHotkeyEventListenersInternal() {
   }
 }
 
-// Cleanup function to remove event listeners
+// Cleanup function to remove event listeners, and to stop a pending search from rebuilding a list
+// that is no longer on screen. Settings reopens on the first page, as the other lists do.
 function cleanupHotkeyEventListeners() {
+  clearTimeout(hotkeySearchTimer);
+  hotkeyListPage = 0;
   try {
     if (activeContainer && containerChangeHandler) {
       activeContainer.removeEventListener('change', containerChangeHandler);
@@ -486,6 +581,8 @@ function cleanupHotkeyEventListeners() {
     containerChangeHandler = null;
     activeContainer = null;
     listenersSetUp = false;
+    // An action chosen but never recorded does not outlive the Settings window.
+    pendingActions.clear();
   } catch (error) {
     console.error('Error cleaning up hotkey event listeners:', error);
   }
@@ -500,9 +597,15 @@ function setupHotkeyEventListeners() {
 export {
   initializeHotkeys,
   renderHotkeysTab,
+  scheduleHotkeysTabRender,
   toggleHotkeys,
   captureHotkey,
   assignHotkeyToEntity,
+  describeHotkeyFailure,
+  describeRecording,
+  flashHotkeyRow,
+  formatHotkey,
+  recordKeyEvent,
   setupHotkeyEventListeners,
   cleanupHotkeyEventListeners,
 };

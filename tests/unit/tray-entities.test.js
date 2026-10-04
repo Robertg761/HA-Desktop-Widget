@@ -1,4 +1,5 @@
 const trayEntities = require('../../src/tray-entities.cjs');
+const utils = require('../../src/utils.js');
 
 const {
   buildNumericLabelCandidates,
@@ -82,6 +83,34 @@ describe('buildTrayEntityPresentation', () => {
       displayState: '43 %',
     });
     expect(presentation.tooltip).toBe('Custom: 43 %');
+  });
+
+  it('keeps a text state as written when it has no name, and prefers the supplied text', () => {
+    const translate = (key) => key;
+    const presentation = buildTrayEntityPresentation(
+      entity('sensor.dishwasher', 'Cycle finished', { friendly_name: 'Dishwasher' }),
+      { translate }
+    );
+    expect(presentation.tooltip).toBe('Dishwasher: Cycle finished');
+    expect(presentation.valueText).toBe('Cycle finished');
+    expect(
+      buildTrayEntityPresentation(entity('sensor.cpu', '43.24'), {
+        translate,
+        displayState: '43.2 %',
+      })
+    ).toMatchObject({ tooltip: 'sensor.cpu: 43.2 %', valueText: '43.2 %' });
+  });
+
+  it('reads the dimmest light as 1%, as the tile, pin, dialog and palette do', () => {
+    const percentOf = (brightness) =>
+      buildTrayEntityPresentation(entity('light.desk', 'on', { brightness })).candidates[0];
+    expect(percentOf(1)).toBe('1%');
+    expect(percentOf(2)).toBe('1%');
+    expect(percentOf(255)).toBe('100%');
+    // The tray is CommonJS and cannot import utils.brightnessToPercent, so every level has to agree.
+    for (let brightness = 0; brightness <= 255; brightness += 1) {
+      expect(percentOf(brightness)).toBe(`${utils.brightnessToPercent(brightness)}%`);
+    }
   });
 
   it('marks unavailable and unknown entities', () => {

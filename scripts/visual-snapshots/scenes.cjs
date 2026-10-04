@@ -10,6 +10,8 @@
  *            entityAlerts)
  *   size     { width, height } to resize the window to
  *   media    CDP media features to emulate, e.g. forced-colors
+ *   extraStates  (now) => entity states the home has only for this scene; the runner adds them
+ *            before the scene and takes them away afterwards (see buildLandingLights)
  *   setup    async (ctx) that drives the UI; may return { capture } to photograph another
  *            window (a desktop pin) instead of the main one
  *   pin      the entity a pin scene pins (only a label for the tests, which check that every
@@ -24,7 +26,7 @@
  * few pixels differ from run to run. Everything else comes from the fixture.
  */
 
-const { PAGE_SETS, WINDOW_SIZE } = require('./fixture.cjs');
+const { PAGE_SETS, WINDOW_SIZE, buildLandingLights } = require('./fixture.cjs');
 
 const NARROW_WINDOW = { width: 340, height: WINDOW_SIZE.height };
 // The size the app opens at (the fixture's window is 60px taller to fit a 768px display), a window
@@ -37,6 +39,21 @@ const FORCED_COLORS = [{ name: 'forced-colors', value: 'active' }];
 // A light contrast theme (Windows High Contrast White): Chromium picks the light palette from the
 // colour scheme.
 const FORCED_COLORS_LIGHT = [...FORCED_COLORS, { name: 'prefers-color-scheme', value: 'light' }];
+
+// The media tile's track is a button. Its title has to run out of room (so the ellipsis is doing
+// its job), the ellipsis has to be set, and neither the track nor the tile may leave the window.
+const MEDIA_TRACK_CUT_OFF = `(() => {
+  const tile = document.getElementById('media-tile');
+  const info = document.getElementById('media-tile-info');
+  const title = document.getElementById('media-tile-title');
+  if (!tile || !info || !title || info.tagName !== 'BUTTON') return false;
+  const tileBox = tile.getBoundingClientRect();
+  const infoBox = info.getBoundingClientRect();
+  return title.scrollWidth > title.clientWidth &&
+    getComputedStyle(title).textOverflow === 'ellipsis' &&
+    infoBox.left >= tileBox.left - 1 && infoBox.right <= tileBox.right + 1 &&
+    tileBox.left >= 0 && tileBox.right <= window.innerWidth;
+})()`;
 
 const tileDetails = (entityId) =>
   `#quick-controls [data-entity-id="${entityId}"] .tile-details-button`;
@@ -110,6 +127,16 @@ async function openSettingsTab(ctx, tab) {
   await ctx.ev(
     `(() => { const body = document.querySelector('#settings-modal .modal-body'); if (body) body.scrollTop = 0; })()`
   );
+}
+
+// Types into a field the way a person does, so the input handlers run.
+async function typeInto(ctx, selector, text) {
+  await ctx.ev(`(() => {
+    const field = document.querySelector(${JSON.stringify(selector)});
+    field.focus();
+    field.value = ${JSON.stringify(text)};
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
 }
 
 // The alarm tile has no click action; its commands live in the command palette. "Disarm" asks
@@ -189,10 +216,11 @@ const alertsConfig = {
   },
 };
 
-async function openAlertConfig(ctx) {
+// The threshold alert by default; the state change one shows the switch for unavailable and unknown.
+async function openAlertConfig(ctx, entityId = 'sensor.office_temp') {
   await openSettingsTab(ctx, 'alerts');
   await ctx.waitForSelector('.edit-alert');
-  await ctx.click('.edit-alert[data-entity="sensor.office_temp"]');
+  await ctx.click(`.edit-alert[data-entity="${entityId}"]`);
   await ctx.waitForExpression(
     `!document.querySelector('#alert-config-modal')?.classList.contains('hidden')`
   );
@@ -230,6 +258,54 @@ const pinScene = (name, entityId, extra = {}) => ({
 });
 
 const pages = (set, activeTabId) => ({ customTabs: PAGE_SETS[set], activeTabId });
+
+// A comparison graph of four temperatures on a page of its own, wide enough for two columns, with a
+// day of history for three of them. Hovering it lists every series at the pointer's time.
+const graphTooltipPage = {
+  ...pages('graph', 'default'),
+  comparisonGraphs: [
+    {
+      id: 'graph:temps',
+      name: 'Temperatures',
+      span: 2,
+      entityIds: [
+        'sensor.office_temp',
+        'sensor.graph_living_temp',
+        'sensor.graph_bedroom_temp',
+        'sensor.graph_kitchen_temp',
+      ],
+    },
+  ],
+};
+
+// Moves the pointer over the graph, `ratio` of the way across it, and checks the tooltip sits beside
+// the pointer and not over the crosshair that marks it.
+async function hoverGraph(ctx, ratio) {
+  await ctx.waitForExpression(
+    `document.querySelectorAll('.comparison-graph-frame polyline').length >= 3`,
+    'the graph drawn from its history'
+  );
+  await ctx.ev(`(() => {
+    const frame = document.querySelector('.comparison-graph-frame');
+    const box = frame.getBoundingClientRect();
+    frame.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      clientX: box.left + box.width * ${ratio},
+      clientY: box.top + box.height / 2,
+    }));
+  })()`);
+  await ctx.expect(
+    `(() => {
+      const tooltip = document.querySelector('.comparison-graph-tooltip');
+      const crosshair = document.querySelector('.comparison-graph-crosshair');
+      if (!tooltip || tooltip.hidden || !crosshair) return false;
+      const box = tooltip.getBoundingClientRect();
+      const line = crosshair.getBoundingClientRect().left;
+      return line < box.left || line > box.right;
+    })()`,
+    'the tooltip does not cover the crosshair'
+  );
+}
 
 // Keyboard focus rings only show after a key press, so press one before focusing from script.
 async function focusWithKeyboard(ctx, selector) {
@@ -272,6 +348,35 @@ const TILES_HOLD_THEIR_CONTENT = `[...document.querySelectorAll('#quick-controls
         rect.left >= box.left - 1 && rect.right <= box.right + 1;
     });
 })`;
+// A number sensor's line lies along the foot of its tile, below the name and the reading: a name on
+// two lines or a large value makes the tile taller instead of putting the line through the digits.
+const SENSOR_SPARKLINES_CLEAR_OF_TEXT = `(() => {
+  const lines = [...document.querySelectorAll('#quick-controls .control-sensor-sparkline')];
+  return lines.length > 0 && lines.every((line) => {
+    const band = line.getBoundingClientRect();
+    const tile = line.closest('.control-item').getBoundingClientRect();
+    return band.bottom <= tile.bottom + 1 &&
+      [...line.closest('.control-info').querySelectorAll('.control-name, .control-sensor-readout')]
+        .every((text) => text.getBoundingClientRect().bottom <= band.top + 0.5);
+  });
+})()`;
+// Tiles in one row hang their names from the same line: a scene, a switch, a sensor and a timer
+// differ in what sits below the name, not above it. A compact sensor drops its icon, so it is left
+// out, and so are the tiles that lay themselves out.
+const TILE_NAMES_ALIGNED = `(() => {
+  const rows = new Map();
+  for (const tile of document.querySelectorAll('#quick-controls .control-item')) {
+    const name = tile.querySelector('.control-name');
+    const icon = tile.querySelector('.control-icon');
+    if (!name || !icon || !icon.getClientRects().length) continue;
+    if (tile.matches('.media-player-entity, .comparison-graph-tile, .camera-preview-tile, [data-chart-type="gauge"]')) continue;
+    const box = tile.getBoundingClientRect();
+    const row = Math.round(box.top);
+    rows.set(row, [...(rows.get(row) || []), name.getBoundingClientRect().top - box.top]);
+  }
+  // Within half a pixel: enlarged text lands on fractions.
+  return rows.size > 0 && [...rows.values()].every((tops) => Math.max(...tops) - Math.min(...tops) <= 0.5);
+})()`;
 const NO_SIDEWAYS_SCROLL = `document.documentElement.scrollWidth <= innerWidth + 1`;
 // A lost connection: the panel sits above Quick Access with its buttons in view, the page has not
 // scrolled, and the tiles are dimmed.
@@ -293,16 +398,39 @@ const showOffline = async (ctx) => {
 const SETTING_LABELS_READABLE = `[...document.querySelectorAll('#settings-modal .tab-content.active .setting-text')]
   .filter((text) => text.getClientRects().length > 0).every((text) => text.getBoundingClientRect().width >= 100)`;
 
+// How a page of tiles is laid out, whatever its names and readings: names on one line across a row,
+// and the sensors' lines clear of their text.
+async function expectTilesLaidOut(ctx) {
+  // A line is drawn when its sensor's history arrives, a round trip after the tile.
+  await ctx.waitForExpression(
+    `!!document.querySelector('#quick-controls .control-sensor-sparkline')`,
+    "a number sensor's line"
+  );
+  await ctx.expect(TILE_NAMES_ALIGNED, 'the names in a row start at the same height');
+  await ctx.expect(SENSOR_SPARKLINES_CLEAR_OF_TEXT, 'no sparkline runs through a name or reading');
+}
+
+// The same, and every part of every tile inside it.
+async function expectTilesInOrder(ctx) {
+  await ctx.expect(TILES_HOLD_THEIR_CONTENT, 'every tile holds its content');
+  await expectTilesLaidOut(ctx);
+}
+
 const withPage = (set, activeTabId = 'default') => ({
   customTabs: PAGE_SETS[set],
   activeTabId,
 });
 const edgePage = withPage('edge');
+const formatsPage = withPage('formats');
+const FORMAT_SIZE = { width: 520, height: 1040 };
+// The list of entities is shown only while the Entity hotkeys switch is on, so every scene that
+// photographs it turns the switch on.
+const hotkeysOn = { globalHotkeys: { enabled: true, hotkeys: {} } };
 // Hotkeys for two rows, so the Hotkeys scenes show a row with a hotkey beside one without.
 const hotkeyPage = {
   ...edgePage,
   globalHotkeys: {
-    enabled: false,
+    enabled: true,
     hotkeys: {
       'light.hallway_ceiling_long': { hotkey: 'Ctrl+Shift+Space', action: 'toggle' },
       'light.desk_lamp': { hotkey: 'Ctrl+Alt+L', action: 'toggle' },
@@ -310,16 +438,27 @@ const hotkeyPage = {
   },
 };
 
-async function openHotkeysFor(ctx, filter) {
+// The Hotkeys page, with its list drawn from the search box. The box keeps what was typed into it
+// when Settings closes and the list is drawn from it, so a scene that searches leaves the next one
+// with whatever that search found (nothing, for the one that looks for nothing). Every scene that
+// opens the page therefore sets the box itself, empty unless it wants a filter, and waits for the
+// list or for the line that says nothing matched.
+async function openHotkeysPage(ctx, filter = '', { expectNoMatch = false } = {}) {
   await openSettingsTab(ctx, 'hotkeys');
-  await ctx.waitForSelector('#hotkeys-list .hotkey-item');
   await ctx.ev(`(() => {
     const search = document.getElementById('hotkey-entity-search');
     if (!search) return;
     search.value = ${JSON.stringify(filter)};
     search.dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
+  await ctx.waitForSelector(
+    expectNoMatch ? '#hotkeys-list .hotkeys-empty' : '#hotkeys-list .hotkey-item'
+  );
   await ctx.sleep(300);
+}
+
+async function openHotkeysFor(ctx, filter, options) {
+  await openHotkeysPage(ctx, filter, options);
   await revealInSettings(ctx, '#hotkeys-list');
 }
 
@@ -374,6 +513,70 @@ async function openPaletteFor(ctx, query) {
   await ctx.waitForSelector('.command-palette-result');
 }
 
+// The palette with nothing typed: what was used last, the pages, the page on screen, then the rest.
+async function openPaletteEmpty(ctx) {
+  await ctx.ev(`document.activeElement?.blur?.()`);
+  await ctx.pressKey('k', { code: 'KeyK', keyCode: 75, modifiers: ctx.CTRL });
+  await ctx.waitForExpression(
+    `document.activeElement?.classList.contains('command-palette-input')`
+  );
+  await ctx.waitForSelector('.command-palette-result');
+}
+
+// An entity with nothing to open or run: Enter keeps the palette and says so.
+async function pressEnterOnEntityWithoutAction(ctx) {
+  await ctx.ev(`document.activeElement?.blur?.()`);
+  await ctx.pressKey('k', { code: 'KeyK', keyCode: 75, modifiers: ctx.CTRL });
+  await ctx.waitForExpression(
+    `document.activeElement?.classList.contains('command-palette-input')`
+  );
+  await ctx.insertText('front door');
+  await ctx.waitForExpression(
+    `document.querySelector('.command-palette-result.highlighted')?.textContent.includes('Front door')`,
+    'the Front door row'
+  );
+  await ctx.pressKey('Enter', { code: 'Enter', keyCode: 13, text: '\r' });
+  await ctx.waitForExpression(
+    `!document.querySelector('.command-palette-hint')?.hidden`,
+    'the hint under the results'
+  );
+}
+
+// A search that finds nothing.
+async function searchPaletteForNothing(ctx) {
+  await ctx.ev(`document.activeElement?.blur?.()`);
+  await ctx.pressKey('k', { code: 'KeyK', keyCode: 75, modifiers: ctx.CTRL });
+  await ctx.waitForExpression(
+    `document.activeElement?.classList.contains('command-palette-input')`
+  );
+  await ctx.insertText('zzzzz');
+  await ctx.waitForExpression(
+    `!document.querySelector('.command-palette-empty')?.hidden`,
+    'the empty message'
+  );
+}
+
+// An alert whose entity Home Assistant does not list, beside one it does.
+const alertsWithMissingEntity = {
+  entityAlerts: {
+    enabled: true,
+    alerts: {
+      ...alertsConfig.entityAlerts.alerts,
+      'light.removed_lamp': {
+        onStateChange: false,
+        onSpecificState: true,
+        onNumericThreshold: false,
+        targetState: 'unavailable',
+        comparison: 'above',
+        threshold: null,
+        durationSeconds: 0,
+        cooldownSeconds: 0,
+        quietHours: { enabled: false, start: '22:00', end: '07:00' },
+      },
+    },
+  },
+};
+
 // The edit-mode hint is a long toast; a second one stands in for a pair of warnings.
 async function showToasts(ctx) {
   await ctx.ev(
@@ -392,9 +595,11 @@ async function showToasts(ctx) {
   await ctx.sleep(500);
 }
 
-// Home Assistant's notifications arrive over a subscription the mock does not serve (and a bell in
-// every scene's header is not wanted), so the panel is filled the way createNotificationListItem
-// fills it: English text, as Home Assistant writes it, under whatever language the app is in.
+// The ar-* scenes fill the notifications panel by hand, the way createNotificationListItem fills
+// it: English text, as Home Assistant writes it, under whatever language the app is in. A bell in
+// every scene's header is not wanted, so they do not subscribe. The notifications-markdown scene
+// uses ctx.showNotifications() instead, which sends the mock's notifications over the real
+// subscription.
 async function showNotificationsPanel(ctx) {
   await ctx.ev(`(() => {
     const notes = [
@@ -475,7 +680,7 @@ async function showSyncError(ctx) {
 
 const scenes = [
   // The main view and the dialogs opened from it, dark and in English.
-  { name: 'main-dark' },
+  { name: 'main-dark', setup: expectTilesLaidOut },
   { name: 'popup-brightness', setup: openBrightness },
   { name: 'popup-climate', setup: openClimate },
   { name: 'edit-mode', setup: toggleEditMode },
@@ -567,6 +772,29 @@ const scenes = [
     config: dialogsPage,
     setup: openDetails('media_player.den_stereo'),
   },
+  // A title of 86 characters and a player that names its app: the dialog is where it is read whole.
+  {
+    name: 'popup-media-long-title',
+    config: sixPages('media'),
+    setup: openDetails('media_player.bedroom_tv'),
+  },
+  // The devices the dialogs follow: a garage door with no position (its picture follows its state),
+  // an RGB light with no colour temperature, and a thermostat that dropped out.
+  {
+    name: 'popup-cover-no-position',
+    config: pages('security', 'more'),
+    setup: openDetails('cover.garage_simple'),
+  },
+  {
+    name: 'popup-light-rgb',
+    config: pages('security', 'more'),
+    setup: openDetails('light.rgb_strip'),
+  },
+  {
+    name: 'popup-climate-unavailable',
+    config: pages('security', 'more'),
+    setup: openDetails('climate.unavailable'),
+  },
   {
     name: 'dialog-tile-settings',
     setup: (ctx) => openTileSettings(ctx),
@@ -576,6 +804,11 @@ const scenes = [
     name: 'dialog-alert-config',
     config: alertsConfig,
     setup: openAlertConfig,
+  },
+  {
+    name: 'dialog-alert-config-state-change',
+    config: alertsConfig,
+    setup: (ctx) => openAlertConfig(ctx, 'binary_sensor.front_door'),
   },
 
   // The sensor pop-up with its history period, and the dialogs the Advanced page opens.
@@ -601,19 +834,52 @@ const scenes = [
 
   // Settings pages the first scenes do not reach, and the custom colour editor.
   { name: 'settings-dashboard', setup: (ctx) => openSettingsTab(ctx, 'dashboard') },
-  { name: 'settings-hotkeys', setup: (ctx) => openSettingsTab(ctx, 'hotkeys') },
+  { name: 'settings-hotkeys', setup: (ctx) => openHotkeysPage(ctx) },
   // The entity list, where each row picks the action its hotkey runs from a select.
   {
     name: 'settings-hotkeys-entities',
+    config: hotkeysOn,
+    setup: (ctx) => openHotkeysFor(ctx, ''),
+  },
+  // A home with more lights than one page of the list holds: the last page, with its rows above the
+  // pager (Previous available, Next not).
+  {
+    name: 'settings-hotkeys-page-2',
+    config: hotkeysOn,
+    extraStates: buildLandingLights,
     setup: async (ctx) => {
-      await openSettingsTab(ctx, 'hotkeys');
+      await openHotkeysPage(ctx);
+      await ctx.waitForSelector('#hotkeys-list .primary-cards-pagination');
+      await ctx.click('#hotkeys-list [data-primary-page="next"]');
+      await ctx.waitForExpression(
+        `document.querySelector('#hotkeys-list [data-primary-page="next"]')?.getAttribute('aria-disabled') === 'true'`,
+        'the last page of the Hotkeys list'
+      );
+      // The pager sticks to the bottom of the list, so the list itself is what comes into view.
       await revealInSettings(ctx, '#hotkeys-list');
+      await ctx.expect(
+        `document.querySelector('#hotkeys-list [data-primary-page="previous"]').getAttribute('aria-disabled') === 'false' &&
+          document.querySelectorAll('#hotkeys-list .hotkey-item').length > 0`,
+        'a page of rows after the first, with Previous available'
+      );
     },
   },
   {
     name: 'settings-alerts',
     config: alertsConfig,
     setup: (ctx) => openSettingsTab(ctx, 'alerts'),
+  },
+  // An alert for an entity that is gone keeps its row, under its id.
+  {
+    name: 'settings-alerts-missing-entity',
+    config: alertsWithMissingEntity,
+    setup: (ctx) => openSettingsTab(ctx, 'alerts'),
+  },
+  // A hotkey search that finds nothing says so, instead of leaving an empty line.
+  {
+    name: 'settings-hotkeys-no-match',
+    config: hotkeyPage,
+    setup: (ctx) => openHotkeysFor(ctx, 'zzzzz', { expectNoMatch: true }),
   },
   { name: 'settings-advanced', setup: (ctx) => openSettingsTab(ctx, 'advanced') },
   {
@@ -623,6 +889,71 @@ const scenes = [
       await revealInSettings(ctx, '#custom-color-picker');
     },
   },
+
+  // The settings search: ranked results (the setting of that name first, with its group beside its
+  // page), and a query that finds nothing, which fills the page with its own empty state.
+  ...[
+    ['settings-search-results', 'hotkey'],
+    ['settings-search-empty', 'zzzz'],
+  ].map(([name, query]) => ({
+    name,
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'general');
+      await typeInto(ctx, '#settings-search', query);
+    },
+  })),
+  // Save from another page with a bad address: General opens with the field marked and the
+  // reason under it, instead of a toast about a field that is not on screen.
+  {
+    name: 'settings-url-error',
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'personalization');
+      await ctx.ev(`document.getElementById('ha-url').value = 'http://'`);
+      await ctx.click('#save-settings');
+      await ctx.waitForExpression(
+        `!!document.getElementById('ha-url-error') && document.activeElement?.id === 'ha-url'`,
+        'the inline URL error, with the field focused'
+      );
+    },
+  },
+  // The icon editor with a picker open: the home's own icons first, in a list that is paged.
+  {
+    name: 'settings-icons-picker',
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'dashboard');
+      await ctx.click('#custom-entity-icons-toggle');
+      await ctx.waitForSelector('#custom-entity-icons-list .custom-entity-icon-item');
+      await ctx.click('[data-custom-icon-picker-toggle]');
+      await ctx.waitForSelector('.custom-entity-icon-choice');
+      await revealInSettings(ctx, '#custom-entity-icons-list', 'start');
+    },
+  },
+  // The alert picker keeps its search field where it is while the list narrows to a few rows and to
+  // none: the dialog used to shrink and re-centre under the person's typing.
+  ...[
+    ['dialog-alert-picker-filtered', 'lamp'],
+    ['dialog-alert-picker-no-match', 'zzzz'],
+  ].map(([name, query]) => ({
+    name,
+    size: DEFAULT_SIZE,
+    config: alertsConfig,
+    setup: async (ctx) => {
+      await openAlertPicker(ctx);
+      // Measure once the dialog has stopped sliding in. A runner that animates it (macOS) would
+      // otherwise record a top that is still moving.
+      await ctx.waitForExpression(
+        `!document.getElementById('alert-entity-picker-modal').getAnimations({ subtree: true }).length`,
+        'the alert picker to finish opening'
+      );
+      const search = `document.getElementById('alert-entity-picker-search').getBoundingClientRect().top`;
+      await ctx.ev(`window.__pickerSearchTop = ${search}`);
+      await typeInto(ctx, '#alert-entity-picker-search', query);
+      await ctx.expect(
+        `Math.abs(${search} - window.__pickerSearchTop) < 1`,
+        'the search field keeps its place while the list narrows'
+      );
+    },
+  })),
 
   // A light as a primary card: the lit lamp warms its icon and glow.
   { name: 'primary-light-card', config: { primaryCards: ['light.desk_lamp', 'time'] } },
@@ -797,6 +1128,11 @@ const scenes = [
       await ctx.waitForExpression(`document.querySelector('.command-palette-result.highlighted')`);
     },
   },
+  // The command palette with nothing typed, with an entity that has nothing to run, and with a
+  // search that finds nothing.
+  { name: 'palette-empty', setup: openPaletteEmpty },
+  { name: 'palette-no-action', setup: pressEnterOnEntityWithoutAction },
+  { name: 'palette-no-results', setup: searchPaletteForNothing },
   {
     name: 'focus-tile-settings',
     setup: async (ctx) => {
@@ -886,6 +1222,50 @@ const scenes = [
     setup: toggleEditMode,
   },
 
+  // What a dashboard says about security and state: a locked, an unlocked and a jammed lock, an
+  // alarm that is armed, one that went off and one that is disarmed, an open window, a low battery
+  // and a person (a tile that does nothing, so no pointer and no hover).
+  { name: 'tiles-security', config: pages('security', 'default') },
+  { name: 'tiles-security-light', ui: { theme: 'light' }, config: pages('security', 'default') },
+  // With the accent glow off nothing lights up for being on: the lamp and the playing TV stay plain,
+  // and so does a TV Home Assistant calls 'on'. Only what needs attention is coloured.
+  {
+    name: 'tiles-glow-off',
+    ui: { activeTileGlow: false },
+    config: {
+      customTabs: [
+        {
+          id: 'default',
+          name: 'Glow',
+          entityIds: [
+            'light.desk_lamp',
+            'lock.front_door',
+            'person.alex',
+            'media_player.tv_on',
+            'media_player.bedroom_tv',
+            'alarm_control_panel.cabin',
+          ],
+        },
+      ],
+      activeTabId: 'default',
+    },
+  },
+  { name: 'graph-hover-left', config: graphTooltipPage, setup: (ctx) => hoverGraph(ctx, 0.25) },
+  { name: 'graph-hover-right', config: graphTooltipPage, setup: (ctx) => hoverGraph(ctx, 0.75) },
+  {
+    name: 'notifications-markdown',
+    setup: async (ctx) => {
+      // The notifications Home Assistant holds arrive over the app's subscription: the bell
+      // shows them and the panel draws their Markdown.
+      ctx.showNotifications();
+      await ctx.waitForSelector('#persistent-notifications-btn:not(.hidden)');
+      await ctx.click('#persistent-notifications-btn');
+      await ctx.waitForSelector(
+        '#persistent-notifications-modal:not(.hidden) .persistent-notification-message a'
+      );
+    },
+  },
+
   // The light theme.
   { name: 'main-light', ui: { theme: 'light' } },
   { name: 'main-light-solid', ui: { theme: 'light' }, config: { frostedGlass: false } },
@@ -917,15 +1297,13 @@ const scenes = [
   {
     name: 'de-settings-hotkeys',
     ui: { language: 'de' },
-    setup: (ctx) => openSettingsTab(ctx, 'hotkeys'),
+    setup: (ctx) => openHotkeysPage(ctx),
   },
   {
     name: 'de-settings-hotkeys-entities',
     ui: { language: 'de' },
-    setup: async (ctx) => {
-      await openSettingsTab(ctx, 'hotkeys');
-      await revealInSettings(ctx, '#hotkeys-list');
-    },
+    config: hotkeysOn,
+    setup: (ctx) => openHotkeysFor(ctx, ''),
   },
   {
     name: 'de-popup-media',
@@ -957,6 +1335,12 @@ const scenes = [
     setup: openAlertConfig,
   },
   {
+    name: 'de-dialog-alert-config-state-change',
+    ui: { language: 'de' },
+    config: alertsConfig,
+    setup: (ctx) => openAlertConfig(ctx, 'binary_sensor.front_door'),
+  },
+  {
     name: 'de-dialog-manage-quick-access',
     ui: { language: 'de' },
     setup: (ctx) => ctx.click('#manage-quick-controls-btn'),
@@ -968,6 +1352,12 @@ const scenes = [
     setup: openAlertConfig,
   },
   {
+    name: 'ar-dialog-alert-config-state-change',
+    ui: { language: 'ar' },
+    config: alertsConfig,
+    setup: (ctx) => openAlertConfig(ctx, 'binary_sensor.front_door'),
+  },
+  {
     name: 'ar-dialog-manage-quick-access',
     ui: { language: 'ar' },
     setup: (ctx) => ctx.click('#manage-quick-controls-btn'),
@@ -975,7 +1365,7 @@ const scenes = [
   {
     name: 'ar-settings-hotkeys',
     ui: { language: 'ar' },
-    setup: (ctx) => openSettingsTab(ctx, 'hotkeys'),
+    setup: (ctx) => openHotkeysPage(ctx),
   },
   // The popup hotkey field reads its own prompt while it records: Arabic text in a field whose
   // recorded shortcut is left to right.
@@ -1063,7 +1453,7 @@ const scenes = [
   {
     name: 'settings-hotkeys-light',
     ui: { theme: 'light' },
-    setup: (ctx) => openSettingsTab(ctx, 'hotkeys'),
+    setup: (ctx) => openHotkeysPage(ctx),
   },
   {
     name: 'popup-input-select-light',
@@ -1310,8 +1700,9 @@ const scenes = [
   ...['dark', 'light'].map((theme) => ({
     name: `contrast-${theme}-hotkey-capture`,
     ui: { theme },
+    config: hotkeysOn,
     setup: async (ctx) => {
-      await openSettingsTab(ctx, 'hotkeys');
+      await openHotkeysPage(ctx);
       await ctx.waitForSelector('#hotkeys-list .hotkey-input');
       await ctx.ev(`document.querySelector('#hotkeys-list .hotkey-input').click()`);
       await ctx.waitForSelector('.hotkey-capture-modal');
@@ -1332,14 +1723,28 @@ const scenes = [
     name: 'layout-edge-main',
     size: DEFAULT_SIZE,
     config: edgePage,
-    setup: async (ctx) => ctx.expect(TILES_HOLD_THEIR_CONTENT, 'every tile holds its content'),
+    setup: expectTilesInOrder,
   },
   {
     name: 'layout-edge-compact',
     size: DEFAULT_SIZE,
     ui: { density: 'compact' },
     config: edgePage,
-    setup: async (ctx) => ctx.expect(TILES_HOLD_THEIR_CONTENT, 'every tile holds its content'),
+    setup: expectTilesInOrder,
+  },
+  // The two number sensors with their value at the largest size, one of them under a name on two
+  // lines: the tile grows, the line stays below the reading.
+  {
+    name: 'layout-edge-sensor-sizes',
+    size: DEFAULT_SIZE,
+    config: {
+      ...edgePage,
+      quickAccessTileOptions: {
+        'sensor.energy_total': { valueSize: 'extra-large' },
+        'sensor.long_named_temperature': { valueSize: 'extra-large' },
+      },
+    },
+    setup: expectTilesInOrder,
   },
   {
     name: 'layout-edge-narrow',
@@ -1347,15 +1752,32 @@ const scenes = [
     config: edgePage,
     setup: async (ctx) => ctx.expect(NO_SIDEWAYS_SCROLL, 'no sideways scroll'),
   },
-  { name: 'layout-edge-s130', size: DEFAULT_SIZE, ui: { scale: 1.3 }, config: edgePage },
-  { name: 'layout-edge-s150', size: DEFAULT_SIZE, ui: { scale: 1.5 }, config: edgePage },
+  {
+    name: 'layout-edge-s130',
+    size: DEFAULT_SIZE,
+    ui: { scale: 1.3 },
+    config: edgePage,
+    setup: expectTilesLaidOut,
+  },
+  {
+    name: 'layout-edge-s150',
+    size: DEFAULT_SIZE,
+    ui: { scale: 1.5 },
+    config: edgePage,
+    setup: expectTilesLaidOut,
+  },
   {
     name: 'layout-main-minimum',
     size: MINIMUM_SIZE,
     setup: async (ctx) => ctx.expect(NO_SIDEWAYS_SCROLL, 'no sideways scroll'),
   },
-  { name: 'layout-main-s150', size: DEFAULT_SIZE, ui: { scale: 1.5 } },
-  { name: 'layout-main-wide', size: WIDE_SIZE },
+  {
+    name: 'layout-main-s150',
+    size: DEFAULT_SIZE,
+    ui: { scale: 1.5 },
+    setup: expectTilesLaidOut,
+  },
+  { name: 'layout-main-wide', size: WIDE_SIZE, setup: expectTilesLaidOut },
   // A film runs past an hour: the times need an h:mm:ss, and the bar sits between them.
   {
     name: 'layout-media-long',
@@ -1367,6 +1789,29 @@ const scenes = [
     size: NARROW_SIZE,
     config: { primaryMediaPlayer: 'media_player.theater' },
   },
+  // The track is a button that opens the player, and a title too long for the tile is still cut
+  // off by an ellipsis inside it, with an artist under it or without, at the default width and at
+  // 340px, where the grid stacks the rows, in the light theme and right to left.
+  ...[
+    ['layout-media-title-long', 'media_player.bedroom_tv', DEFAULT_SIZE, {}],
+    ['layout-media-title-long-narrow', 'media_player.bedroom_tv', NARROW_SIZE, {}],
+    [
+      'layout-media-no-artist-narrow-light',
+      'media_player.audiobook',
+      NARROW_SIZE,
+      { theme: 'light' },
+    ],
+    ['layout-media-no-artist-ar', 'media_player.audiobook', DEFAULT_SIZE, { language: 'ar' }],
+  ].map(([name, player, size, ui]) => ({
+    name,
+    size,
+    ui,
+    config: { primaryMediaPlayer: player },
+    setup: async (ctx) => {
+      await ctx.waitForExpression(`document.getElementById('media-tile-title')?.textContent`);
+      await ctx.expect(MEDIA_TRACK_CUT_OFF, 'a long title is cut off inside the media tile');
+    },
+  })),
   { name: 'layout-time-long-date-es', ui: { language: 'es', dateFormat: 'long' } },
   {
     name: 'layout-time-long-date-es-narrow',
@@ -1557,6 +2002,15 @@ const scenes = [
     },
   },
   {
+    name: 'layout-dialog-alert-config-state-change',
+    size: DEFAULT_SIZE,
+    config: alertsConfig,
+    setup: async (ctx) => {
+      await openAlertConfig(ctx, 'binary_sensor.front_door');
+      await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
+    },
+  },
+  {
     name: 'layout-dialog-confirm-minimum',
     size: MINIMUM_SIZE,
     setup: async (ctx) => {
@@ -1673,6 +2127,20 @@ const scenes = [
     size: DEFAULT_SIZE,
     ui: { language: 'de' },
     setup: (ctx) => openPaletteFor(ctx, 'a'),
+  },
+  // Readings and states written in each language: precision and unit spacing, device class words,
+  // timestamps, a duration, a paused timer and the next calendar events. A taller window shows them all.
+  ...[undefined, 'de', 'ar'].map((language) => ({
+    name: language ? `format-main-${language}` : 'format-main',
+    size: FORMAT_SIZE,
+    ui: language ? { language } : {},
+    config: formatsPage,
+  })),
+  {
+    name: 'format-palette-fr',
+    size: FORMAT_SIZE,
+    ui: { language: 'fr' },
+    setup: (ctx) => openPaletteFor(ctx, 'temp'),
   },
   // Home Assistant goes away with a full page of tiles: the panel is above them without a scroll,
   // and they are dimmed.

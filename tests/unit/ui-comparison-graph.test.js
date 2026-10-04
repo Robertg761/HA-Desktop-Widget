@@ -48,7 +48,7 @@ const state = require('../../src/state.js').default;
 const NOW = Date.now();
 const HOUR = 60 * 60 * 1000;
 
-// Mirrors COMPARISON_GRAPH_REDRAW_DEBOUNCE_MS in ui.js: live updates coalesce into one repaint.
+// Mirrors COMPARISON_GRAPH_REDRAW_INTERVAL_MS in ui.js: live updates coalesce into one repaint.
 const REDRAW_DEBOUNCE_MS = 250;
 
 // The sensor history cache is module state keyed by entity id and throttled for 5 minutes, so each
@@ -285,7 +285,7 @@ describe('comparison graph tile', () => {
     const values = [...tile.querySelectorAll('.comparison-graph-legend-value')].map(
       (el) => el.textContent
     );
-    expect(values).toEqual(['21.4 °C', '8.3 °C']);
+    expect(values).toEqual(['21.4°C', '8.3°C']);
   });
 
   it('retries the fetch after the first attempt fails because the socket is not open yet', async () => {
@@ -610,7 +610,7 @@ describe('comparison graph tile', () => {
 
     // Nearest-sample would have answered 22 for Living Room — a reading from the future, taken an
     // hour after the time being hovered, compared against an Outside reading from 2h ago.
-    expect(values).toEqual(['20 °C', '5 °C']);
+    expect(values).toEqual(['20°C', '5°C']);
   });
 
   it('heads the tooltip with the weekday and the minute, and rounds values as the legend does', async () => {
@@ -652,6 +652,229 @@ describe('comparison graph tile', () => {
     const values = [...tile.querySelectorAll('.comparison-graph-tooltip-value')].map(
       (el) => el.textContent
     );
-    expect(values[0]).toBe('21.5 °C');
+    expect(values[0]).toBe('21.5°C');
+  });
+
+  describe('live repaints', () => {
+    // Two graphs, each with a sensor of its own.
+    const twoGraphs = () => {
+      const a = makeScenario();
+      const first = { ...state.STATES };
+      const b = makeScenario();
+      // makeScenario replaces every state, so the first pair is put back beside the second.
+      state.setStates({ ...first, ...state.STATES });
+      state.setConfig({
+        homeAssistant: { url: 'http://ha.local', token: 'x' },
+        comparisonGraphs: [
+          { id: 'graph:a', name: 'A', span: 2, entityIds: [a.warmId] },
+          { id: 'graph:b', name: 'B', span: 2, entityIds: [b.warmId] },
+        ],
+        customTabs: [{ id: 'default', name: 'All', entityIds: ['graph:a', 'graph:b'] }],
+        activeTabId: 'default',
+        favoriteEntities: ['graph:a', 'graph:b'],
+        primaryCards: ['none', 'none'],
+        ui: {},
+      });
+      mockRequest.mockResolvedValue(
+        historyResponse({
+          [a.warmId]: [
+            [20, NOW - 3 * HOUR],
+            [21, NOW - 1 * HOUR],
+          ],
+          [b.warmId]: [
+            [10, NOW - 3 * HOUR],
+            [11, NOW - 1 * HOUR],
+          ],
+        })
+      );
+      return { a: a.warmId, b: b.warmId };
+    };
+    const legendOf = (graphId) =>
+      document
+        .querySelector(`.comparison-graph-tile[data-entity-id="${graphId}"]`)
+        .querySelector('.comparison-graph-legend-value').textContent;
+    const report = (entityId, value) => {
+      const next = { ...state.STATES[entityId], state: String(value) };
+      state.setEntityState(next);
+      ui.updateEntityInUI(next);
+    };
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    it('repaints every graph that changed in one burst, not only the last one', async () => {
+      const { a, b } = twoGraphs();
+      ui.renderActiveTab();
+      await flush();
+      expect(legendOf('graph:a')).toBe('21.4°C');
+      report(a, 25);
+      await wait(50);
+      report(b, 9);
+      await wait(REDRAW_DEBOUNCE_MS + 100);
+      // The first graph's repaint was cancelled by the second sensor's update, and it kept the old
+      // end point and legend until one of its own sensors reported again.
+      expect(legendOf('graph:a')).toBe('25°C');
+      expect(legendOf('graph:b')).toBe('9°C');
+    });
+
+    it('repaints while sensors keep reporting faster than the delay', async () => {
+      const { a } = twoGraphs();
+      ui.renderActiveTab();
+      await flush();
+      // A reading every 80 ms never leaves a quiet moment; a repaint that waits for one waits
+      // for the readings to stop.
+      for (let value = 22; value < 30; value += 1) {
+        report(a, value);
+        await wait(80);
+      }
+      expect(legendOf('graph:a')).not.toBe('21.4°C');
+      await wait(REDRAW_DEBOUNCE_MS + 100);
+      expect(legendOf('graph:a')).toBe('29°C');
+    });
+  });
+
+  describe('the hover readout', () => {
+    // jsdom lays nothing out, so the frame, the plot and the tooltip are given the sizes they have
+    // in a two-column graph: a 260px plot and a tooltip about 140px wide and 100px high.
+    const hover = async (clientX, { tooltipHeight = 100, tooltipWidth = 140 } = {}) => {
+      const { warmId, coldId } = makeScenario();
+      mockRequest.mockResolvedValue(
+        historyResponse({
+          [warmId]: [
+            [20, NOW - 3 * HOUR],
+            [22, NOW - 1 * HOUR],
+          ],
+          [coldId]: [[5, NOW - 2 * HOUR]],
+        })
+      );
+      setupConfig([warmId, coldId]);
+      ui.renderActiveTab();
+      await flush();
+      const tile = document.querySelector('.comparison-graph-tile');
+      const frame = tile.querySelector('.comparison-graph-frame');
+      const tooltip = tile.querySelector('.comparison-graph-tooltip');
+      const box = { left: 0, top: 0, width: 260, height: 90 };
+      tile.querySelector('.comparison-graph-svg').getBoundingClientRect = () => box;
+      frame.getBoundingClientRect = () => box;
+      Object.defineProperty(frame, 'clientWidth', { value: 260 });
+      Object.defineProperty(frame, 'clientHeight', { value: 90 });
+      // 'content': the width follows the names (see the test that fits them), as a laid-out one would.
+      if (tooltipWidth !== 'content')
+        Object.defineProperty(tooltip, 'offsetWidth', { value: tooltipWidth });
+      Object.defineProperty(tooltip, 'offsetHeight', { value: tooltipHeight });
+      frame.dispatchEvent(new MouseEvent('pointermove', { clientX, bubbles: true }));
+      return {
+        tooltip,
+        crosshair: tile.querySelector('.comparison-graph-crosshair'),
+      };
+    };
+
+    it('sits to the right of the pointer when there is room, and to its left when there is not', async () => {
+      const left = await hover(65);
+      expect(left.tooltip.style.left).toBe('79px');
+      const right = await hover(195);
+      // 195 - 14 - 140: the tooltip ends before the crosshair.
+      expect(right.tooltip.style.left).toBe('41px');
+    });
+
+    it('keeps the crosshair clear of it wherever the pointer is', async () => {
+      for (const clientX of [10, 65, 130, 150, 195, 250]) {
+        const { tooltip, crosshair } = await hover(clientX);
+        const line = Number(crosshair.getAttribute('x1')) + 4;
+        const start = parseFloat(tooltip.style.left);
+        const covers = line >= start && line <= start + 140;
+        // Room for it beside the pointer except in the last few pixels either side of the middle,
+        // where a 140px tooltip fits on neither side of a 260px plot.
+        if (clientX !== 130 && clientX !== 150)
+          expect({ clientX, covers }).toEqual({ clientX, covers: false });
+      }
+    });
+
+    it('rises over the header, not down over the legend, when it is taller than the plot', async () => {
+      const { tooltip } = await hover(65, { tooltipHeight: 112 });
+      expect(tooltip.style.top).toBe('-22px');
+      const short = await hover(65, { tooltipHeight: 60 });
+      expect(short.tooltip.style.top).toBe('0px');
+    });
+
+    describe('with long series names', () => {
+      // A long name is 160px wide, the cap the stylesheet gives it, until the script narrows it; the
+      // rest of the tooltip (swatch, value, padding) is `rest`. jsdom lays nothing out, so widths
+      // follow those two numbers. The pointer is at 250 of 260, where the series have readings.
+      let rest;
+      let original;
+      beforeEach(() => {
+        rest = 60;
+        original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+        const nameWidth = (element) => Math.min(300, parseFloat(element.style.maxWidth) || 160);
+        Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+          configurable: true,
+          get() {
+            if (this.classList.contains('comparison-graph-tooltip-name')) return nameWidth(this);
+            if (this.classList.contains('comparison-graph-tooltip')) {
+              const names = [...this.querySelectorAll('.comparison-graph-tooltip-name')];
+              return rest + Math.max(0, ...names.map(nameWidth));
+            }
+            return 0;
+          },
+        });
+      });
+      afterEach(() => {
+        if (original) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', original);
+        else delete HTMLElement.prototype.offsetWidth;
+      });
+      const capOf = (tooltip) =>
+        [...tooltip.querySelectorAll('.comparison-graph-tooltip-name')].map(
+          (name) => name.style.maxWidth
+        );
+
+      it('shows each name whole while the tooltip fits beside the pointer', async () => {
+        // 236px of room to the pointer's left, against 60 + 160 = 220 wanted.
+        const { tooltip } = await hover(250, { tooltipWidth: 'content' });
+        expect(capOf(tooltip)).toEqual(['', '']);
+        expect(tooltip.style.left).toBe('16px');
+      });
+
+      it('shortens them only as far as it takes to fit beside the pointer', async () => {
+        // 236px of room against 120 + 160 = 280 wanted: the names give up the 44px between them,
+        // not the 80 a fixed cap would take whatever the room.
+        rest = 120;
+        const { tooltip, crosshair } = await hover(250, { tooltipWidth: 'content' });
+        expect(capOf(tooltip)).toEqual(['116px', '116px']);
+        const start = parseFloat(tooltip.style.left);
+        expect(start).toBe(0);
+        expect(start + tooltip.offsetWidth).toBeLessThanOrEqual(236);
+        expect(Number(crosshair.getAttribute('x1')) + 4).toBeGreaterThan(
+          start + tooltip.offsetWidth
+        );
+      });
+
+      it('never takes a name below a few letters, however little room there is', async () => {
+        rest = 300;
+        const { tooltip } = await hover(250, { tooltipWidth: 'content' });
+        expect(capOf(tooltip)).toEqual(['48px', '48px']);
+      });
+    });
+
+    it('is placed without a transition, which reduced motion would stretch to 0.01ms and so still start', () => {
+      // The stylesheet gives every transition 0.01ms under reduced motion rather than none, so a
+      // tooltip that sets left and reads it back in the same frame saw the old place, and one
+      // shown for the first time sat at the left edge for a frame.
+      const styles = require('fs').readFileSync(
+        require('path').resolve(__dirname, '../../styles.css'),
+        'utf8'
+      );
+      const rule = (selector) => styles.split('}').find((part) => part.includes(`\n${selector} {`));
+      expect(rule('.comparison-graph-tooltip')).toContain('transition: none;');
+      expect(rule('.comparison-graph-tooltip-name')).toContain('transition: none;');
+    });
+
+    it('puts the crosshair under the pointer, allowing for the margin round the plot', async () => {
+      // The plot is a 252-unit stretch inside a 260-unit box with a 4-unit margin: the pointer at
+      // the left edge is the plot's start, in the middle it is the plot's middle, at the right edge
+      // its end.
+      expect((await hover(0)).crosshair.getAttribute('x1')).toBe('0');
+      expect((await hover(130)).crosshair.getAttribute('x1')).toBe('126');
+      expect((await hover(260)).crosshair.getAttribute('x1')).toBe('252');
+      expect((await hover(65)).crosshair.getAttribute('x1')).toBe('61');
+    });
   });
 });

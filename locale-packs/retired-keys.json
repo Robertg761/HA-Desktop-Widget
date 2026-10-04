@@ -323,6 +323,234 @@
     "retiredIn": "4.0.0",
     "reason": "Shortened before release: the first wording wrapped to three lines at 500px and four at 340px, over the bottom tile row"
   },
+  "{{count}}m ago": {
+    "retiredIn": "4.0.0",
+    "reason": "Notification ages now use the language's own relative time format"
+  },
+  "{{count}}h ago": {
+    "retiredIn": "4.0.0",
+    "reason": "Notification ages now use the language's own relative time format"
+  },
+  "{{count}}d ago": {
+    "retiredIn": "4.0.0",
+    "reason": "Notification ages now use the language's own relative time format"
+  },
+  "Showing {{shown}} of {{total}} icons for \"{{query}}\".": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded with curly quotes around the search: Showing {{shown}} of {{total}} icons for “{{query}}”."
+  },
+  "No matching icons found.": {
+    "retiredIn": "4.0.0",
+    "reason": "Replaced by one line that names the search and suggests what to try: No icons match “{{query}}”. Try a simpler word, or paste an emoji."
+  },
+  "This computer and the sync file have different settings for {{sections}}. Keep this computer’s and upload them, or replace them with the file’s. Either way, the replaced settings are backed up.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to say \"this computer’s settings\" and \"the sync file’s\" in full, matching the renamed buttons"
+  },
+  "This computer and the sync file have different settings. Keep this computer’s and upload them, or replace them with the file’s. Either way, the replaced settings are backed up.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to say \"this computer’s settings\" and \"the sync file’s\" in full, matching the renamed buttons"
+  },
+  "The sync file's {{sections}} settings are damaged. Keep this computer's to repair them; the damaged copy is backed up first.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to say \"this computer’s settings\", matching the renamed buttons"
+  },
+  "Keep Local (Upload)": {
+    "retiredIn": "4.0.0",
+    "reason": "Button renamed to This computer (upload)"
+  },
+  "Use Remote (Download)": {
+    "retiredIn": "4.0.0",
+    "reason": "Button renamed to Sync file (download)"
+  },
+  "Unavailable entities on this connection: {{count}}.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to Entities not found on this connection: {{count}}. so they are not confused with entities that are unavailable"
+  },
+  "System default": {
+    "retiredIn": "4.0.0",
+    "reason": "Time format reads Automatic: Electron cannot read the operating system's 12/24-hour switch, so the option follows the language and region"
+  },
+  "Clicking another window or switching apps hides the widget. Reopen it from the tray or with your popup hotkey. Desktop pins and Linux desktop-layer mode stay visible.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Thank you for your support!": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Test legacy token": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Selected language: {{language}}": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Opt in to GitHub prerelease builds for testing. Stable users will not receive these builds.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Authentication failed. Please check your Home Assistant token in Settings.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Authentication failed. Check your Long-Lived Access Token.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Connection test succeeded. Home Assistant is reachable.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Enter a valid Home Assistant URL and token before testing.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "This package does not support in-app updates. Open Releases to download the latest build.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "State Change": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Specific State": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Search icons or paste icon": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Custom icon must be a single emoji or glyph.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Add New Alert": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Configure Alert - {{name}}": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Linux uses the desktop shortcut service for stability. Hold-to-show and hide-on-release are unavailable; press-to-toggle remains supported.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Manually override the weather effect for testing": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Type keywords in each row to search the full emoji picker, or paste one emoji/glyph and click Apply.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Tip: press Ctrl+K anywhere to search entities, run commands, and switch pages.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Access token": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Profile sync": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Shown in the media bar under the top cards.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Hide the window when you let go of the hotkey, instead of only sending it back.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Save your pages, appearance, alerts, weather and media choices in a file. Connection details, desktop pins, shortcuts and profile sync stay on this computer.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "File: {{name}}": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Changes: {{sections}}": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Import applies immediately and replaces unsaved Settings edits. Your current saved settings are backed up first. Connection details, desktop pins, shortcuts and profile sync stay on this computer. Imported settings follow your existing sync scope.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Pages: {{pages}}. Referenced entities: {{count}}.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Entities not found on this connection: {{count}}.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Global hotkeys enabled": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the switch is labelled Entity hotkeys, and the popup hotkey is not part of it"
+  },
+  "Global hotkeys disabled": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the switch is labelled Entity hotkeys, and the popup hotkey is not part of it"
+  },
+  "{{hotkey}} (add Ctrl/Alt/Shift)": {
+    "retiredIn": "4.0.0",
+    "reason": "Replaced by a prompt naming the platform's modifier keys"
+  },
+  "Hotkey action": {
+    "retiredIn": "4.0.0",
+    "reason": "Replaced by a label that names the entity"
+  },
+  "Enter the state you want to be notified about": {
+    "retiredIn": "4.0.0",
+    "reason": "Replaced by help that says to use the Home Assistant state and offers the entity's own"
+  },
+  "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Command, Super (for example <code>Ctrl+Shift+A</code>).": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the modifier list now includes Win, the key the Windows recorder names"
+  },
+  "Display Name:": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Display name"
+  },
+  "Value Font Size:": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Value font size"
+  },
+  "Camera Preview:": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the label lost its trailing colon and Title Case; Tile Settings uses the Camera preview string that already existed"
+  },
+  "Long-press to configure weather": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded as Click to configure weather: the weather card opens its picker on a click now"
+  },
+  "Add Page": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the Add page dialog's title takes the sentence case of the Add page string that already existed"
+  },
+  "Page name:": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Page name"
+  },
+  "Quick picks:": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Quick picks"
+  },
+  "Chart:": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Chart"
+  },
+  "Gauge range:": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Gauge range"
+  },
   "Turn off widget blur": {
     "retiredIn": "4.0.0",
     "reason": "Reworded to read as a pair with 'Turn on blur for the widget'"

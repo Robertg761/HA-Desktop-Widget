@@ -658,6 +658,29 @@ describe('Omarchy bar status', () => {
     expect(cleanOmarchyBarTile('sensor.x', null)).toBeNull();
   });
 
+  it('cuts a name and an icon on whole characters, never through an emoji', () => {
+    const tile = (overrides) => cleanOmarchyBarTile('sensor.x', overrides);
+    const family = '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}\u200D\u{1F466}';
+    // An emoji (two UTF-16 units) that starts at the 80th character used to leave half of itself.
+    const name = tile({ name: `${'a'.repeat(79)}\u{1F600}tail` }).name;
+    expect(name).toBe(`${'a'.repeat(79)}\u{1F600}`);
+    expect(name).toMatch(/^(?:[^\ud800-\udfff]|[\ud800-\udbff][\udc00-\udfff])*$/);
+    // A joined family is one character and is kept or dropped as one.
+    expect(tile({ name: `${'a'.repeat(79)}${family}z` }).name).toBe(`${'a'.repeat(79)}${family}`);
+    expect(tile({ name: `${'a'.repeat(80)}${family}` }).name).toBe('a'.repeat(80));
+    // An icon of seven code points is not cut into a different picture.
+    expect(tile({ icon: { kind: 'custom', glyph: family } }).icon).toEqual({
+      kind: 'glyph',
+      glyph: family,
+    });
+    const flag = '\u{1F1E9}\u{1F1EA}';
+    expect(tile({ icon: { kind: 'custom', glyph: `${flag}${flag}${flag}` } }).icon.glyph).toBe(
+      `${flag}${flag}${flag}`
+    );
+    // Text written as letters and a combining accent keeps the accent.
+    expect(tile({ name: `${'a'.repeat(79)}e\u0301x` }).name).toBe(`${'a'.repeat(79)}e\u0301`);
+  });
+
   it('accepts only plain line-icon SVGs', () => {
     const svg =
       '<svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor"><path d="M9 18h6"></path></svg>';

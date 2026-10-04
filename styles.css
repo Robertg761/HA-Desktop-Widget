@@ -3057,6 +3057,10 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 .widget-title {
   min-width: 0;
+  /* An h1 for the window's landmark outline, drawn as the small title it was. */
+  margin: 0;
+  font-family: inherit;
+  line-height: inherit;
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
@@ -3418,6 +3422,18 @@ body.first-run-active .widget-content > * {
   transform: scale(1.08);
 }
 
+/* The artwork and the title open the player's controls dialog. */
+.media-tile-artwork,
+.media-tile-info {
+  cursor: pointer;
+}
+
+.media-tile-info:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
 .media-tile-artwork-placeholder {
   display: flex;
   font-size: var(--font-size-icon);
@@ -3451,9 +3467,25 @@ body.first-run-active .widget-content > * {
   gap: 2px;
   min-width: 0;
   grid-column: 1;
+  /* A button, so the track opens the player's controls from the keyboard too; drawn as text. */
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.media-tile-info:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .media-tile-title {
+  display: block;
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-semibold);
   letter-spacing: -0.01em;
@@ -3464,6 +3496,7 @@ body.first-run-active .widget-content > * {
 }
 
 .media-tile-artist {
+  display: block;
   font-size: var(--font-size-sm);
   color: var(--text-dim);
   white-space: nowrap;
@@ -3478,6 +3511,11 @@ body.first-run-active .widget-content > * {
   width: 100%;
   grid-column: 2;
   justify-self: stretch;
+}
+
+/* No length to show (radio, an idle player): hidden rather than removed, so the controls stay put. */
+.media-tile-seek[data-empty='true'] {
+  visibility: hidden;
 }
 
 /* A time takes the width of its own text, so a long one never runs under the bar. */
@@ -3702,6 +3740,10 @@ body.first-run-active .widget-content > * {
 
 /* Section labels: small, tracked capitals, well below the content in weight. */
 .section-label {
+  /* The Quick Access label is an h2, for heading navigation; it keeps the look of a caption. */
+  margin: 0;
+  font-family: inherit;
+  line-height: inherit;
   font-size: var(--font-size-xs-plus);
   font-weight: var(--font-weight-semibold);
   letter-spacing: 0.1em;
@@ -4113,13 +4155,19 @@ body.first-run-active .widget-content > * {
   align-self: center;
 }
 
-.control-item:hover {
+/* A tile that does nothing (data-readonly: a person, a sun, a binary sensor) takes no hover and no
+   press: :where() leaves the weight of these rules as it was. */
+.control-item:where(:not([data-readonly='true'])):hover {
   background: var(--tile-bg-hover);
   border-color: var(--tile-border-hover);
 }
 
-.control-item:active {
+.control-item:where(:not([data-readonly='true'])):active {
   transform: scale(0.96);
+}
+
+#quick-controls:not(.reorganize-mode) .control-item[data-readonly='true'] {
+  cursor: default;
 }
 
 .control-item:focus-visible {
@@ -4128,35 +4176,13 @@ body.first-run-active .widget-content > * {
   box-shadow: var(--glow-focus);
 }
 
-.control-item.active {
-  background: linear-gradient(
-    135deg,
-    rgba(var(--accent-rgb), 0.22) 0%,
-    rgba(var(--accent-rgb), 0.08) 100%
-  );
-  color: var(--text-primary);
-  border-color: rgba(var(--accent-rgb), 0.6);
-  box-shadow:
-    0 0 15px rgba(var(--accent-rgb), 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
-}
-
-.control-item.active:hover {
-  border-color: rgba(var(--accent-rgb), 0.8);
-  box-shadow:
-    0 0 20px rgba(var(--accent-rgb), 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.15);
-}
-
-.control-item.active::before {
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
-}
-
-/* Data-state based active styling for consistency */
-.control-item[data-state='on'],
-.control-item[data-state='open'],
-.control-item[data-state='unlocked'],
-.control-item[data-state='home'] {
+/* A pin's tile colours follow its own data-state. Quick Access tiles do not: their lit state is
+   body.active-tile-glow [data-active='true'], so the glow opt-out covers every tile, and a media
+   player that Home Assistant reports as 'on' no longer glows on its own. */
+.desktop-pin-control[data-state='on'],
+.desktop-pin-control[data-state='open'],
+.desktop-pin-control[data-state='unlocked'],
+.desktop-pin-control[data-state='home'] {
   background: linear-gradient(
     135deg,
     rgba(var(--accent-rgb), 0.16) 0%,
@@ -4168,10 +4194,10 @@ body.first-run-active .widget-content > * {
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.control-item[data-state='on']:hover,
-.control-item[data-state='open']:hover,
-.control-item[data-state='unlocked']:hover,
-.control-item[data-state='home']:hover {
+.desktop-pin-control[data-state='on']:hover,
+.desktop-pin-control[data-state='open']:hover,
+.desktop-pin-control[data-state='unlocked']:hover,
+.desktop-pin-control[data-state='home']:hover {
   border-color: rgba(var(--accent-rgb), 0.7);
   box-shadow:
     0 0 20px rgba(var(--accent-rgb), 0.4),
@@ -4179,7 +4205,7 @@ body.first-run-active .widget-content > * {
 }
 
 /* Locked state styling */
-.control-item[data-state='locked'] {
+.desktop-pin-control[data-state='locked'] {
   background: linear-gradient(135deg, rgba(255, 152, 0, 0.16) 0%, rgba(255, 152, 0, 0.05) 100%);
   border-color: rgba(255, 152, 0, 0.45);
   box-shadow:
@@ -4187,7 +4213,7 @@ body.first-run-active .widget-content > * {
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.control-item[data-state='locked']:hover {
+.desktop-pin-control[data-state='locked']:hover {
   border-color: rgba(255, 152, 0, 0.7);
   box-shadow:
     0 0 20px rgba(255, 152, 0, 0.4),
@@ -4195,10 +4221,10 @@ body.first-run-active .widget-content > * {
 }
 
 /* Climate active state */
-.control-item[data-state='heat'],
-.control-item[data-state='cool'],
-.control-item[data-state='heat_cool'],
-.control-item[data-state='auto'] {
+.desktop-pin-control[data-state='heat'],
+.desktop-pin-control[data-state='cool'],
+.desktop-pin-control[data-state='heat_cool'],
+.desktop-pin-control[data-state='auto'] {
   background: linear-gradient(
     135deg,
     rgba(var(--accent-rgb), 0.16) 0%,
@@ -4210,15 +4236,15 @@ body.first-run-active .widget-content > * {
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.control-item[data-state='heat_cool']:hover,
-.control-item[data-state='auto']:hover {
+.desktop-pin-control[data-state='heat_cool']:hover,
+.desktop-pin-control[data-state='auto']:hover {
   border-color: rgba(var(--accent-rgb), 0.7);
   box-shadow:
     0 0 20px rgba(var(--accent-rgb), 0.4),
     inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
-.control-item[data-state='heat'] {
+.desktop-pin-control[data-state='heat'] {
   background: linear-gradient(135deg, rgba(255, 110, 64, 0.16) 0%, rgba(255, 110, 64, 0.05) 100%);
   border-color: rgba(255, 110, 64, 0.45);
   box-shadow:
@@ -4226,14 +4252,14 @@ body.first-run-active .widget-content > * {
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.control-item[data-state='heat']:hover {
+.desktop-pin-control[data-state='heat']:hover {
   border-color: rgba(255, 110, 64, 0.7);
   box-shadow:
     0 0 20px rgba(255, 110, 64, 0.4),
     inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
-.control-item[data-state='cool'] {
+.desktop-pin-control[data-state='cool'] {
   background: linear-gradient(135deg, rgba(3, 169, 244, 0.16) 0%, rgba(3, 169, 244, 0.05) 100%);
   border-color: rgba(3, 169, 244, 0.45);
   box-shadow:
@@ -4241,7 +4267,7 @@ body.first-run-active .widget-content > * {
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.control-item[data-state='cool']:hover {
+.desktop-pin-control[data-state='cool']:hover {
   border-color: rgba(3, 169, 244, 0.7);
   box-shadow:
     0 0 20px rgba(3, 169, 244, 0.4),
@@ -4309,32 +4335,31 @@ body.first-run-active .widget-content > * {
   flex-shrink: 0;
 }
 
-.control-item.active .control-icon,
-.control-item[data-state='on'] .control-icon,
-.control-item[data-state='open'] .control-icon,
-.control-item[data-state='unlocked'] .control-icon,
-.control-item[data-state='home'] .control-icon {
+.desktop-pin-control[data-state='on'] .control-icon,
+.desktop-pin-control[data-state='open'] .control-icon,
+.desktop-pin-control[data-state='unlocked'] .control-icon,
+.desktop-pin-control[data-state='home'] .control-icon {
   filter: drop-shadow(0 0 4px rgba(var(--accent-rgb), 0.75));
   color: var(--accent-text);
 }
 
-.control-item[data-state='locked'] .control-icon {
+.desktop-pin-control[data-state='locked'] .control-icon {
   filter: drop-shadow(0 0 4px rgba(255, 152, 0, 0.6));
   color: #ff9800;
 }
 
-.control-item[data-state='heat'] .control-icon {
+.desktop-pin-control[data-state='heat'] .control-icon {
   filter: drop-shadow(0 0 5px rgba(255, 110, 64, 0.8));
   color: #ff6e40;
 }
 
-.control-item[data-state='cool'] .control-icon {
+.desktop-pin-control[data-state='cool'] .control-icon {
   filter: drop-shadow(0 0 5px rgba(3, 169, 244, 0.8));
   color: #03a9f4;
 }
 
-.control-item[data-state='heat_cool'] .control-icon,
-.control-item[data-state='auto'] .control-icon {
+.desktop-pin-control[data-state='heat_cool'] .control-icon,
+.desktop-pin-control[data-state='auto'] .control-icon {
   filter: drop-shadow(0 0 5px rgba(0, 150, 136, 0.8));
   color: #009688;
 }
@@ -4585,6 +4610,8 @@ body.first-run-active .widget-content > * {
 
 .status-card.weather-card {
   justify-content: center;
+  /* A click opens the weather picker (a long press still does). */
+  cursor: pointer;
 }
 
 .status-card.weather-card .weather-content {
@@ -5060,7 +5087,9 @@ body.theme-light:not(.high-contrast)
 
 /* Keyboard focus scrolls rows clear of the sticky pager (about 38px tall) and its focus ring,
    instead of just to the list edge. */
-#primary-cards-list:has(> .primary-cards-pagination) {
+:is(#primary-cards-list, #custom-entity-icons-list, #hotkeys-list):has(
+  > .primary-cards-pagination
+) {
   scroll-padding-bottom: 48px;
 }
 
@@ -6267,6 +6296,80 @@ body.theme-light.active-tile-glow #quick-controls .control-item[data-active='tru
   filter: drop-shadow(0 0 6px rgba(var(--accent-rgb), 0.45));
 }
 
+/* Security states that have to catch the eye, with the accent glow on or off: an alarm that went
+   off (red), a lock that is jammed or a door that is unlocked (amber). The icon and the state line
+   take the status colour and the edge a tint of it; there is no wash, so the tile stays a plain
+   pane. The glow rules above are matched in weight so the status colour wins over the accent. */
+#quick-controls .control-item[data-attention] {
+  --attention-color: var(--warning-text);
+}
+
+#quick-controls .control-item[data-attention='danger'] {
+  --attention-color: var(--error-text);
+}
+
+#quick-controls .control-item[data-attention],
+body.active-tile-glow #quick-controls .control-item[data-attention][data-active='true'] {
+  border-color: color-mix(in srgb, var(--attention-color) 55%, var(--tile-border));
+}
+
+#quick-controls .control-item[data-attention]:hover,
+body.active-tile-glow #quick-controls .control-item[data-attention][data-active='true']:hover {
+  border-color: color-mix(in srgb, var(--attention-color) 75%, var(--tile-border-hover));
+}
+
+#quick-controls .control-item[data-attention] .control-icon,
+body.active-tile-glow
+  #quick-controls
+  .control-item[data-attention][data-active='true']
+  .control-icon {
+  color: var(--attention-color);
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--attention-color) 45%, transparent));
+}
+
+#quick-controls .control-item[data-attention] .control-state,
+body.active-tile-glow
+  #quick-controls
+  .control-item[data-attention][data-active='true']
+  .control-state {
+  color: var(--attention-color);
+}
+
+/* With the glow on, these tiles are lit like any other, but in their own colour: an amber icon on a
+   blue wash read as two things at once. */
+body.active-tile-glow #quick-controls .control-item[data-attention][data-active='true'] {
+  background-color: color-mix(
+    in srgb,
+    var(--attention-color) var(--dash-tile-wash),
+    var(--tile-bg)
+  );
+}
+
+body.active-tile-glow #quick-controls .control-item[data-attention][data-active='true']:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--attention-color) var(--dash-tile-wash-hover),
+    var(--tile-bg-hover)
+  );
+}
+
+/* The solid panels paint the wash as a layer over their own fill (see opaque-panels below). */
+body.opaque-panels.active-tile-glow
+  #quick-controls
+  .control-item[data-attention][data-active='true'] {
+  --active-tile-wash: color-mix(in srgb, var(--attention-color) var(--dash-tile-wash), transparent);
+}
+
+body.opaque-panels.active-tile-glow
+  #quick-controls
+  .control-item[data-attention][data-active='true']:hover {
+  --active-tile-wash: color-mix(
+    in srgb,
+    var(--attention-color) var(--dash-tile-wash-hover),
+    transparent
+  );
+}
+
 #quick-controls .control-item[data-unavailable='true'] {
   background: transparent;
   border-style: dashed;
@@ -6983,17 +7086,12 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 #quick-controls .control-item.sensor-numeric-entity {
   min-height: 74px;
-  gap: 6px;
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-info {
   position: relative;
   z-index: 1;
   padding-bottom: 18px;
-}
-
-#quick-controls .control-item.sensor-numeric-entity .control-icon {
-  margin-bottom: 0;
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-name {
@@ -7054,6 +7152,13 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   height: 100%;
   overflow: visible;
   filter: drop-shadow(0 1px 3px rgba(var(--accent-rgb), 0.2));
+}
+
+/* The 96x24 viewBox is stretched to a band about 14px high and as wide as the tile, so a scaled
+   stroke came out about 1px on flat runs and 3px on steep ones. Keep it one width. */
+#quick-controls .control-item.sensor-numeric-entity .control-sensor-sparkline-svg polyline {
+  vector-effect: non-scaling-stroke;
+  stroke-width: 1.5px;
 }
 
 /* The dark tile's faint accent line is about 1.3:1 on the near-white one, so the light theme draws
@@ -7229,11 +7334,21 @@ body.theme-light:not(.high-contrast)
   opacity: 0.55;
 }
 
+/* The end dot is a zero-length round-capped line (see createSvgDot), so it stays round when the
+   plot is stretched. A ring in the surface colour under it keeps overlapping series legible where
+   they cross: 6px of series colour in 8px of surface. */
+.comparison-graph-end-ring,
 .comparison-graph-end-dot {
-  /* Ringed in the surface colour so overlapping series stay legible where they cross. */
-  stroke: var(--card-bg, var(--surface-2));
-  stroke-width: 2;
   vector-effect: non-scaling-stroke;
+}
+
+.comparison-graph-end-ring {
+  stroke: var(--card-bg, var(--surface-2));
+  stroke-width: 8px;
+}
+
+.comparison-graph-end-dot {
+  stroke-width: 6px;
 }
 
 .comparison-graph-crosshair {
@@ -7293,6 +7408,8 @@ body.theme-light:not(.high-contrast)
   color: var(--text-tertiary);
 }
 
+/* The script sets left and top beside the pointer, in physical pixels: the plot is not mirrored in
+   right-to-left layouts, so neither is the tooltip. */
 .comparison-graph-tooltip {
   position: absolute;
   top: 0;
@@ -7312,11 +7429,11 @@ body.theme-light:not(.high-contrast)
   /* The tile centres its text; the rows are start-aligned, so the heading is too. */
   text-align: start;
   white-space: nowrap;
-}
-
-.comparison-graph-tooltip.align-right {
-  left: auto;
-  right: 0;
+  /* The script sets left and top (and the names' widths) and reads the result at once. Under
+     reduced motion the stylesheet gives every transition 0.01ms instead of none, which still starts
+     one: the box stays where it was for a frame, a tooltip first shown sat at the left edge, and a
+     measurement taken in the same frame read the old place. It is placed, not animated. */
+  transition: none;
 }
 
 .comparison-graph-tooltip-time {
@@ -7350,7 +7467,9 @@ body.theme-light:not(.high-contrast)
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
+  /* The script narrows this when the tooltip would not fit beside the pointer. */
   max-width: 160px;
+  transition: none;
 }
 
 .comparison-graph-warning {
@@ -7476,9 +7595,35 @@ body.theme-light:not(.high-contrast)
 }
 
 #quick-controls .control-item.calendar-entity .calendar-next-event {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   font-size: var(--font-size-xs-plus);
   line-height: 1.2;
   color: var(--text-secondary);
+}
+
+/* A narrow tile cuts the event's title short, and moves the day and time to a second line before it
+   would cut them. */
+#quick-controls .control-item.calendar-entity .calendar-next-event-lead {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+}
+
+#quick-controls .control-item.calendar-entity .calendar-next-event-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#quick-controls .control-item.calendar-entity .calendar-next-event-sep {
+  flex: none;
+  white-space: pre;
+}
+
+#quick-controls .control-item.calendar-entity .calendar-next-event-when {
+  flex: none;
 }
 
 .entity-name {
@@ -7885,8 +8030,56 @@ body.theme-light:not(.high-contrast)
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
   line-height: var(--line-height-normal);
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* The message is Markdown (see notification-markdown.js): paragraphs, lists, links and code take
+   the spacing the plain pre-wrapped text gave line breaks. */
+.persistent-notification-message > * {
+  margin: 0 0 var(--space-2);
+}
+
+.persistent-notification-message > :last-child {
+  margin-bottom: 0;
+}
+
+.persistent-notification-message :is(ul, ol) {
+  padding-inline-start: 1.25em;
+}
+
+.persistent-notification-message .persistent-notification-heading {
+  color: var(--text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.persistent-notification-message a {
+  color: var(--accent-text);
+  text-decoration: underline;
+}
+
+.persistent-notification-message code {
+  padding: 0 4px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.95em;
+}
+
+.persistent-notification-message pre {
+  overflow-x: auto;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.persistent-notification-message pre code {
+  padding: 0;
+  background: none;
+}
+
+.persistent-notification-message blockquote {
+  padding-inline-start: var(--space-3);
+  border-inline-start: 2px solid var(--border-color);
 }
 
 .persistent-notification-time {
@@ -8004,6 +8197,19 @@ body.theme-light:not(.high-contrast)
   filter: drop-shadow(0 2px 8px rgba(var(--accent-rgb), 0.22));
 }
 
+/* The viewBox is stretched to the frame, so the line keeps its width in screen pixels instead of
+   going thin where it runs flat and thick where it climbs. */
+.sensor-detail-sparkline-svg polyline {
+  vector-effect: non-scaling-stroke;
+  stroke-width: 1.5px;
+}
+
+.sensor-detail-sparkline-dot {
+  stroke: currentcolor;
+  stroke-width: 6px;
+  vector-effect: non-scaling-stroke;
+}
+
 /* In a long list the add field used to scroll away with the first rows, and adding is what this
    dialog is for. It stays at the top of the scrolling body. The negative margin and the padding that
    gives the space back let its backing reach the body's edges, and the negative top is the body's
@@ -8117,10 +8323,24 @@ body.theme-light:not(.high-contrast)
 }
 
 .calendar-event-time,
+.calendar-event-location,
 .calendar-event-description {
   margin-top: 4px;
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
+}
+
+/* The place, with a pin glyph in front of it, so it does not read as part of the time. */
+.calendar-event-location {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.calendar-event-location > .entity-line-icon {
+  flex-shrink: 0;
 }
 
 /* Keep the paragraphs and line breaks of multi-line descriptions. */
@@ -8686,8 +8906,10 @@ body.theme-light:not(.high-contrast)
 }
 
 /* Scoped to beat the settings modal's own :focus-visible border, so a rejected value stays red
-   while the field has focus too. */
-#settings-modal #custom-color-hex[aria-invalid='true'] {
+   while the field has focus too. The attribute is written twice on purpose: that raises the
+   selector's specificity to match `input[type='text']:focus-visible` (an :is() counts only as its
+   strongest argument), and this rule comes later. */
+#settings-modal :is(input, select, textarea)[aria-invalid='true'][aria-invalid='true'] {
   border-color: var(--error);
 }
 
@@ -8750,6 +8972,11 @@ body.theme-light:not(.high-contrast)
   gap: var(--space-2);
 }
 
+/* display above would otherwise win over the hidden attribute, and an empty button would show. */
+.btn[hidden] {
+  display: none;
+}
+
 .btn:hover {
   border-color: var(--border-hover);
   background: var(--glass-elevated);
@@ -8809,13 +9036,13 @@ body.theme-light:not(.high-contrast)
   box-shadow: none;
 }
 
-.btn-secondary:not([id*='cancel']):not([id*='close']):not([id*='reset']) {
+.btn-secondary:not([id*='cancel']):not([id*='close']):not(.btn-reset) {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   transition: all var(--transition-base);
 }
 
-.btn-secondary:not([id*='cancel']):not([id*='close']):not([id*='reset']):active {
+.btn-secondary:not([id*='cancel']):not([id*='close']):not(.btn-reset):active {
   transform: scale(0.98);
 }
 
@@ -8831,7 +9058,7 @@ body.theme-light:not(.high-contrast)
 /* Neutral actions keep lower emphasis even with accent-forward button styling */
 .btn-secondary[id*='cancel'],
 .btn-secondary[id*='close'],
-.btn-secondary[id*='reset'] {
+.btn-secondary.btn-reset {
   background: transparent;
   color: var(--text-secondary);
   border-color: var(--border-color);
@@ -8840,7 +9067,7 @@ body.theme-light:not(.high-contrast)
 
 .btn-secondary[id*='cancel']:hover,
 .btn-secondary[id*='close']:hover,
-.btn-secondary[id*='reset']:hover {
+.btn-secondary.btn-reset:hover {
   background: var(--glass-surface);
   color: var(--text-primary);
   border-color: var(--border-hover);
@@ -9695,6 +9922,39 @@ body {
   overflow-wrap: anywhere;
 }
 
+/* A confirmation with facts to scan (the settings import): the one thing to heed first, then label and
+   value rows. Plain-text confirmations above are unaffected. */
+.confirm-callout {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3);
+  border-inline-start: 3px solid var(--warning-text);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--warning-text) 12%, transparent);
+  color: var(--text-primary);
+  font-weight: var(--font-weight-medium);
+  white-space: normal;
+}
+
+.confirm-facts {
+  display: grid;
+  /* The labels share the width with the values and wrap, rather than one long label ("Missing from
+     this connection") taking the room a file name needs. */
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  white-space: normal;
+}
+
+.confirm-facts dt {
+  color: var(--text-dim);
+}
+
+.confirm-facts dd {
+  margin: 0;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
 .confirm-modal-content .modal-footer {
   display: flex;
   /* Three buttons (Save, Discard, Keep editing) do not fit in a 400px dialog, let alone a 340px
@@ -9862,6 +10122,22 @@ body {
 /* Three buttons, one of them a long "Reset to Default", wrap rather than overflow. */
 .rename-modal .modal-footer {
   flex-wrap: wrap;
+}
+
+/* Reset drops the tile's saved settings, so it is not another Cancel: it keeps to the start of the
+   footer, apart from Cancel and Save, in the error text with no fill until it is pointed at. */
+.rename-modal .modal-footer #reset-rename-btn {
+  margin-inline-end: auto;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--error-text);
+}
+
+.rename-modal .modal-footer #reset-rename-btn:hover {
+  background: rgba(239, 83, 80, 0.14);
+  border-color: rgba(239, 83, 80, 0.45);
+  color: var(--error-text);
 }
 
 /* The last field needs no margin of its own: the body's padding already closes the dialog. */
@@ -10351,8 +10627,9 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   filter: drop-shadow(0 4px 12px rgba(var(--accent-rgb), 0.6));
 }
 
-/* Media Player State Indicators */
-.media-player-entity[data-state='playing'] {
+/* Media Player State Indicators. Only with the accent glow on: that setting is the one opt-out for
+   a lit tile, and a player Home Assistant calls 'on' no longer glows on its own either. */
+body.active-tile-glow .media-player-entity[data-state='playing'] {
   background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.1), rgba(var(--accent-rgb), 0.05));
   border-color: rgba(var(--accent-rgb), 0.3);
 }
@@ -10416,6 +10693,11 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   }
 }
 
+/* A light in colour mode reports no colour temperature: the slider is dimmed until it is moved. */
+.light-color-temp-slider.is-unset {
+  opacity: 0.55;
+}
+
 /* Camera Modal */
 
 .camera-content {
@@ -10429,24 +10711,79 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
 }
 
 .media-detail-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 12px;
 }
 
+.media-detail-artwork {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+}
+
+.media-detail-artwork[hidden] {
+  display: none;
+}
+
+.media-detail-artwork img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.media-detail-text {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The dialog is where the whole title is read, so it wraps (the tooltip carries it all) instead of
+   stopping at the first line the way the tile does. A track named "Artist - Song (Remastered
+   2011) [Official Video]" took more than the 45 characters a line held. */
 .media-detail-title {
   font-size: var(--font-size-md);
   font-weight: 600;
   color: var(--text-color);
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
 }
 
 .media-detail-artist {
   font-size: var(--font-size-base);
   color: var(--muted-text);
-  white-space: nowrap;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.media-detail-artist[hidden] {
+  display: none;
+}
+
+.media-detail-caption {
+  margin-top: 2px;
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.media-detail-caption:empty {
+  display: none;
 }
 
 .media-progress {
@@ -10856,6 +11193,14 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   border-radius: var(--radius-md);
 }
 
+/* Nothing to list: no entity matches the search, or Home Assistant has not sent its entities yet. */
+.hotkeys-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: var(--font-size-base);
+}
+
 .hotkey-item {
   display: flex;
   /* Controls drop below the name when a longer translation needs the room. */
@@ -11056,13 +11401,31 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   margin-bottom: 2px;
 }
 
-.alert-type {
-  color: var(--accent-text);
-  font-weight: 500;
-  background: var(--accent-bg);
+/* The chips beside an alert's name are one shape. An inline-block keeps a chip whole when the row
+   wraps ("Above threshold 25" no longer breaks across two lines); a very long target state still
+   breaks inside the chip rather than pushing the buttons out. */
+.alert-type,
+.alert-missing {
+  display: inline-block;
+  max-width: 100%;
   padding: 2px 6px;
   border-radius: var(--radius-sm);
   font-size: var(--font-size-sm);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.alert-type {
+  color: var(--accent-text);
+  background: var(--accent-bg);
+}
+
+/* An alert whose entity Home Assistant does not list: the row keeps the entity id so it can still
+   be edited or removed, and says why it has no name or icon. A muted chip of the same shape as the
+   type chip, so the two read as a pair. */
+.alert-missing {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text-primary) 14%, transparent);
 }
 
 .alert-actions {
@@ -11214,6 +11577,19 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+
+  /* The press pulse of a scene, script or button is the only sign it ran, and the line above cuts
+     it to nothing. The 600 ms the class lasts shows as a still tint and edge instead. */
+  #quick-controls .control-item.activating {
+    animation: none;
+    background-color: rgba(var(--accent-rgb), 0.22) !important;
+    border-color: rgba(var(--accent-rgb), 0.6) !important;
+  }
+
+  #quick-controls .control-item.activating::after {
+    display: none;
+  }
+
   /* A backdrop blur is not motion, so it stays: stripping it here flattened dialogs and scrims for
      everyone who asked for less movement (Windows and macOS), while Linux, which has its own rule,
      kept it. Someone who wants less transparency would ask for that, not for less motion. */
@@ -11613,6 +11989,23 @@ label.disabled {
   color: var(--text-secondary);
   text-align: center;
   font-size: var(--font-size-base);
+}
+
+/* What to try when nothing matched, under the plain "No matching results". */
+.command-palette-empty-hint {
+  margin-top: 6px;
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+}
+
+/* Said when the list is cut at its limit, so a short list is not mistaken for the whole of it. */
+.command-palette-footer {
+  flex: none;
+  padding: 8px 16px;
+  border-top: 1px solid var(--tile-border);
+  color: var(--text-secondary);
+  text-align: center;
+  font-size: var(--font-size-sm);
 }
 
 @media (width <= 520px) {
@@ -12409,7 +12802,7 @@ body.software-glass.frosted-glass .modal-content {
 
 .btn-secondary[id*='cancel'],
 .btn-secondary[id*='close'],
-.btn-secondary[id*='reset'] {
+.btn-secondary.btn-reset {
   background: transparent;
   border-color: var(--tile-border-hover);
   color: var(--text-secondary);
@@ -12418,7 +12811,7 @@ body.software-glass.frosted-glass .modal-content {
 
 .btn-secondary[id*='cancel']:hover,
 .btn-secondary[id*='close']:hover,
-.btn-secondary[id*='reset']:hover {
+.btn-secondary.btn-reset:hover {
   background: var(--tile-bg-hover);
   color: var(--text-primary);
   box-shadow: none;
@@ -13219,6 +13612,10 @@ body.opaque-panels #settings-modal .modal-header {
      Without this, Tab scrolled a control that was already inside the box under the pill, and its
      ring and state were hidden. */
   scroll-padding-block-end: 80px;
+  /* The Save/Cancel pill floats over the bottom corner, where the switches and selects of the last
+     visible row sit. Rows fade out before they reach it, so none is left half under the pill, and
+     the end padding above keeps the last row fully clear at the end of the page. */
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 80px), transparent calc(100% - 52px));
 }
 
 /* A column of at most 680px, centred: across a 900px window the labels sat 750px from their
@@ -13332,6 +13729,22 @@ body.theme-light #settings-modal .modal-footer {
   .settings-search-target {
     animation: none;
   }
+}
+
+/* No result: the page is the empty state, not one faint caption over a blank panel. */
+#settings-modal .settings-search-empty {
+  margin-block-start: var(--space-6);
+  padding-block: var(--space-8);
+}
+
+#settings-modal .settings-search-empty-icon {
+  color: var(--text-secondary);
+}
+
+#settings-modal .settings-search-empty-title {
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
 }
 
 #settings-modal .settings-search-result {
@@ -13489,11 +13902,15 @@ textarea::selection {
   min-width: min(9rem, 100%);
 }
 
+/* Every row select is one width, so their left edges line up down a page (Time format, Date
+   format, Sync app, scope and interval) instead of each starting where its own text ends. The
+   width fits the longest English option; a longer value ends in an ellipsis rather than running
+   under the chevron, and a narrow row wraps the select under its label as before. */
 #settings-modal .setting-row > select {
   flex: 0 0 auto;
-  width: auto;
-  min-width: min(120px, 100%);
+  width: 13.5rem;
   max-width: 100%;
+  text-overflow: ellipsis;
   padding-block: 7px;
   padding-inline-start: 10px;
   font-size: var(--font-size-sm);
@@ -13590,7 +14007,7 @@ textarea::selection {
 }
 
 .setting-slider-value {
-  min-width: 40px;
+  min-width: 44px;
   text-align: end;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
@@ -13993,9 +14410,13 @@ body.theme-light
   margin-top: 10px;
 }
 
-#settings-modal #primary-cards-body > .form-help,
 #settings-modal #custom-entity-icons-body > .form-help {
   margin-top: 8px;
+}
+
+/* The top cards' help leads the disclosure, above the search and list it describes. */
+#settings-modal #primary-cards-body > .form-help {
+  margin: 0 0 10px;
 }
 
 #settings-modal .preset-hotkey-row {
@@ -14045,6 +14466,15 @@ body.theme-light
   background: rgba(var(--accent-rgb), 0.12);
 }
 
+/* A link to a page in the browser: the arrow says so, and it sits flush under the text it follows. */
+#settings-modal .btn-link.link-external {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-block-start: 2px;
+  margin-inline-start: -6px;
+}
+
 /* Profile sync reveals its options as rows of their own, under the switch that
    turns it on. */
 #settings-modal .settings-group-body > .profile-sync-settings {
@@ -14067,6 +14497,12 @@ body.theme-light
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+/* A row of actions whose buttons are all hidden (the passphrase block's Clear and Cancel change)
+   would still cost a gap in the column it sits in. */
+.profile-sync-actions:not(:has(> :not(.hidden))) {
+  display: none;
 }
 
 /* The passphrase gets the line; its Show button sits beside it and wraps under it when narrow. */
@@ -14284,7 +14720,7 @@ body.theme-light:not(.high-contrast) #quick-controls .control-item[data-unavaila
    little. Lit and unavailable tiles keep their own hover. */
 body.theme-light:not(.high-contrast)
   #quick-controls
-  .control-item:not([data-active='true'], [data-unavailable='true']):hover {
+  .control-item:not([data-active='true'], [data-unavailable='true'], [data-readonly='true']):hover {
   background-color: color-mix(in srgb, rgb(var(--accent-rgb)) 6%, var(--tile-bg-hover));
   box-shadow: var(--shadow-sm);
 }
@@ -14477,18 +14913,59 @@ body.theme-light:not(.high-contrast) :is(#quick-controls .control-item, .status-
 
 #quick-controls {
   --qa-tile-height: 104px;
+  /* How far the name sits below the icon. Every tile starts its name here, so a row of scenes,
+     sensors and switches shares one baseline instead of centring each tile's own stack. */
+  --qa-tile-info-offset: 4px;
 }
 
 body.density-compact #quick-controls {
   --qa-tile-height: 78px;
 }
 
+/* The height is a floor, not a fixed size: the name and state lines are clamped, so a tile only
+   grows to match a taller media tile in its row, which the grid stretches it to. */
 #quick-controls .control-item:not(.comparison-graph-tile):not(.media-player-entity) {
-  height: var(--qa-tile-height);
+  height: auto;
   min-height: var(--qa-tile-height);
   /* A tile too full for its height loses its bottom edge, not both ends: with plain centring the
      icon above and the state below were cut off equally. */
   justify-content: safe center;
+}
+
+/* While editing, the buttons take the top of every tile and the content sits below them, which
+   leaves no slack for a floor: the tiles keep the fixed row height they always had, and the name
+   sits where it did, a few pixels closer to the icon. */
+#quick-controls.reorganize-mode {
+  --qa-tile-info-offset: 0px;
+}
+
+#quick-controls.reorganize-mode
+  .control-item:not(.comparison-graph-tile):not(.media-player-entity) {
+  height: var(--qa-tile-height);
+}
+
+/* Icon, name and state hang from the top. Centring the name block in what is left under the icon
+   put it 6 to 14px apart across a row: a scene has no state line, a timer's is taller, a sensor
+   makes room for its sparkline, and a two-line name moved both ends. Cameras with a preview, graphs,
+   media players and the gauge (whose arc stands in for the icon) lay themselves out. */
+#quick-controls
+  .control-item:not(.comparison-graph-tile):not(.media-player-entity):not(.camera-preview-tile):not(
+    [data-chart-type='gauge']
+  )
+  > .control-info {
+  justify-content: flex-start;
+  padding-top: var(--qa-tile-info-offset);
+}
+
+/* With everything hanging from the top the foot only needs room to breathe, and a name on two lines
+   above a state line fills the 104px floor to the pixel when it keeps the 12px the centred layout
+   gave it. A number sensor keeps its own padding (none on the tile, the sparkline's band on its
+   info block). */
+#quick-controls
+  .control-item:not(.comparison-graph-tile):not(.media-player-entity):not(.camera-preview-tile):not(
+    .sensor-numeric-entity
+  ) {
+  padding-bottom: 8px;
 }
 
 /* A long name gives up its tail, not the icon above it or the state below it: Home Assistant's
@@ -14518,13 +14995,18 @@ body.density-compact
   white-space: nowrap;
 }
 
+/* Only the foot is the sensor's own (the sparkline's band, below). The top and the gap are the
+   standard tile's at every width, so the icon and the name sit where every other tile's do: a fixed
+   12px top stayed put when a narrow window, or enlarged text, tightened the others to 4px, and put
+   the name 6px lower than its neighbours' across the row. */
 #quick-controls .control-item.sensor-numeric-entity {
-  gap: 6px;
-  padding: 10px 8px 0;
+  padding-bottom: 0;
 }
 
-#quick-controls .control-item.sensor-numeric-entity .control-icon {
-  margin-bottom: 0;
+/* While editing, the buttons cover the icon, which is hidden, so the sensor keeps its name close to
+   the top instead of clear of the buttons like a tile with an icon. */
+#quick-controls.reorganize-mode .control-item.sensor-numeric-entity {
+  padding-top: 12px;
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-name {
@@ -14536,17 +15018,26 @@ body.density-compact
   gap: 2px;
 }
 
+/* The sparkline lies in a band along the foot of the tile, and the text is kept out of it: the info
+   block reserves the band as padding. The tile's height is a floor, so a name that wraps to a second
+   line, a larger value or larger text makes the tile taller (and the row with it) instead of running
+   the line through the digits. A one-line name and the default value fit the floor as they are. */
+#quick-controls .control-item.sensor-numeric-entity {
+  --sparkline-band: 14px;
+  --sparkline-inset: 4px;
+}
+
 #quick-controls .control-item.sensor-numeric-entity .control-info {
-  padding-bottom: 20px;
+  padding-bottom: calc(var(--sparkline-band) + var(--sparkline-inset));
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-sensor-sparkline {
-  bottom: 4px;
-  height: 14px;
+  bottom: var(--sparkline-inset);
+  height: var(--sparkline-band);
 }
 
 #quick-controls .control-item.sensor-numeric-entity[data-chart-type='none'] .control-info {
-  padding-bottom: 10px;
+  padding-bottom: 0;
 }
 
 /* Gauge: the arc is the tile's picture, so it stands in for the icon, and the
@@ -14616,6 +15107,13 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   font-size: var(--font-size-sm);
   line-height: 1.5;
   text-align: center;
+}
+
+/* The weather card ships with an empty icon slot, filled once a weather entity reports. Until then
+   (disconnected, loading, no weather source) the 40px slot would push the "--" readings off the
+   card's centre, where the time card sits. */
+.weather-card .weather-icon:empty {
+  display: none;
 }
 
 /* Quick Access before the first connection, or while it is still connecting. */
@@ -14810,6 +15308,14 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
 .modal-body > .form-group > .entity-selector-list {
   flex: 1 1 auto;
   max-height: none;
+}
+
+/* The alert picker's list keeps one height whatever a query leaves in it. The dialog is centred, so
+   a list that shrank to two rows, or to none, moved the search field down the window under the
+   person's typing. */
+#alert-entity-picker-list {
+  flex: none;
+  height: min(400px, 45vh);
 }
 
 /* A list of three rows or more keeps room for three, however short the window: below that the
@@ -15835,6 +16341,14 @@ body[data-season='thanksgiving'] .control-item {
   width: 100%;
   margin-bottom: 4px;
   padding: 0;
+  /* The list's own heading, set apart from the holiday names under it, which share its class. */
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+#settings-modal .seasonal-holiday-list > .form-help {
+  margin: 0;
 }
 
 #settings-modal .seasonal-holiday-option {
@@ -16241,6 +16755,8 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
     .calendar-event-summary,
     .calendar-event-description,
     .calendar-next-event,
+    .calendar-next-event-title,
+    .calendar-next-event-when,
     .command-palette-result-name,
     .command-palette-result-state
   ) {
@@ -16298,8 +16814,10 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   );
 }
 
-/* A value and its unit in separate spans keep their left-to-right order. */
-[dir='rtl'] :is(.control-sensor-readout, .sensor-detail-readout, .media-tile-time) {
+/* A value and its unit in separate spans keep their left-to-right order, and so does the light
+   dialog's colour temperature ("3,200 K"), which would read "K 3,200" in a right-to-left row. */
+[dir='rtl']
+  :is(.control-sensor-readout, .sensor-detail-readout, .media-tile-time, #light-color-temp-value) {
   direction: ltr;
   unicode-bidi: isolate;
 }

@@ -166,6 +166,63 @@ describe('User-facing audit regressions', () => {
     jest.restoreAllMocks();
   });
 
+  describe('a pinned lock', () => {
+    const pinLock = (value = 'locked') => {
+      const lock = entity('lock.pin_door', value, { friendly_name: 'Back door' });
+      state.setStates({ [lock.entity_id]: lock });
+      ui.renderDesktopPinnedTile(lock.entity_id, lock);
+      return document.querySelector('.desktop-pin-toggle-action');
+    };
+    const label = (button) => button.querySelector('.desktop-pin-panel-button-label').textContent;
+
+    it('unlocks on the second press, not the first', async () => {
+      const button = pinLock();
+      expect(label(button)).toBe('Unlock');
+      button.click();
+      await jest.advanceTimersByTimeAsync(0);
+      expect(mockCallService).not.toHaveBeenCalled();
+      expect(label(button)).toBe('Confirm');
+      expect(button.getAttribute('aria-label')).toBe('Confirm: Unlock Back door');
+      button.click();
+      await jest.advanceTimersByTimeAsync(0);
+      expect(mockCallService).toHaveBeenCalledWith('lock', 'unlock', {
+        entity_id: 'lock.pin_door',
+      });
+      expect(label(button)).toBe('Unlock');
+    });
+
+    it('goes back to Unlock when the second press does not come', async () => {
+      const button = pinLock();
+      button.click();
+      await jest.advanceTimersByTimeAsync(4100);
+      expect(label(button)).toBe('Unlock');
+      expect(button.getAttribute('aria-label')).toBe('Unlock Back door');
+      button.click();
+      await jest.advanceTimersByTimeAsync(0);
+      // That was a first press again.
+      expect(mockCallService).not.toHaveBeenCalled();
+    });
+
+    it('keeps asking while the lock reports the same state, and stops when it changes', () => {
+      const button = pinLock();
+      button.click();
+      const lock = entity('lock.pin_door', 'locked', { friendly_name: 'Back door' });
+      ui.renderDesktopPinnedTile(lock.entity_id, lock);
+      expect(label(button)).toBe('Confirm');
+      const unlocked = { ...lock, state: 'unlocked' };
+      state.setStates({ [lock.entity_id]: unlocked });
+      ui.renderDesktopPinnedTile(lock.entity_id, unlocked);
+      expect(label(button)).toBe('Lock');
+    });
+
+    it('locks in one press', async () => {
+      const button = pinLock('unlocked');
+      button.click();
+      await jest.advanceTimersByTimeAsync(0);
+      expect(mockCallService).toHaveBeenCalledWith('lock', 'lock', { entity_id: 'lock.pin_door' });
+    });
+  });
+
   it.each(['on', 'off'])('runs the automation Toggle hotkey while %s', (value) => {
     ui.executeHotkeyAction(entity('automation.audit', value), 'toggle');
     expect(mockCallService.mock.calls).toEqual([
@@ -204,6 +261,37 @@ describe('User-facing audit regressions', () => {
     rejectEarlier(new Error('Earlier movement failed'));
     await jest.advanceTimersByTimeAsync(0);
     expect(document.querySelector('#cover-position-value').textContent).toBe('0%');
+  });
+
+  it('writes the optimistic 0% and 100% the way the next state sync does', async () => {
+    const i18n = require('../../src/i18n.js');
+    i18n.setLocaleBootstrap({
+      languageSetting: 'de',
+      requestedLocale: 'de',
+      activeLocale: 'de',
+      messages: {},
+    });
+    try {
+      // German puts a no-break space before the percent sign, so "0%" would flip to "0 %" later.
+      const percent = (value) => `${value}\u00a0%`;
+      ui.openEntityDetailModal(
+        entity('cover.audit', 'open', { current_position: 40, supported_features: 15 })
+      );
+      document.querySelector('[data-action="open_cover"]').click();
+      expect(document.querySelector('#cover-position-value').textContent).toBe(percent(100));
+      document.querySelector('[data-action="close_cover"]').click();
+      expect(document.querySelector('#cover-position-value').textContent).toBe(percent(0));
+      await jest.advanceTimersByTimeAsync(400);
+
+      ui.openEntityDetailModal(
+        entity('light.audit', 'on', { brightness: 128, supported_color_modes: ['brightness'] })
+      );
+      document.querySelector('#turn-off-btn').click();
+      expect(document.querySelector('#brightness-value-large').textContent).toBe(percent(0));
+      await jest.advanceTimersByTimeAsync(400);
+    } finally {
+      i18n.setLocaleBootstrap({ activeLocale: 'en', languageSetting: 'en', messages: {} });
+    }
   });
 
   it.each([
@@ -343,12 +431,185 @@ describe('User-facing audit regressions', () => {
     expect(mockCallService).not.toHaveBeenCalled();
   });
 
-  it('still runs the primary action for plain palette results without controls', async () => {
+  it.each([
+    ['switch.outlet', 'off'],
+    ['input_boolean.guest_mode', 'on'],
+  ])(
+    'says what %s is now, and changes nothing, when the palette lists a command for it',
+    async (entityId, entityState) => {
+      const target = entity(entityId, entityState);
+      state.setStates({ [entityId]: target });
+      ui.openEntityDetailModal(target, { source: 'command-palette', hasCommand: true });
+      await jest.advanceTimersByTimeAsync(0);
+      // Enter on a search result is not a command, so no machine switches; the row beside it
+      // ("Turn on ...") is what acts.
+      expect(mockCallService).not.toHaveBeenCalled();
+      expect(uiUtils.showToast).toHaveBeenCalledWith(expect.stringContaining(': '), 'info', 3000);
+    }
+  );
+
+  it.each([
+    ['button.restart', 'unknown', ['button', 'press']],
+    ['input_button.doorbell', 'unknown', ['input_button', 'press']],
+    ['timer.laundry', 'idle', ['timer', 'start']],
+    ['automation.lights', 'on', ['automation', 'toggle']],
+  ])(
+    'still runs the action of %s, which the palette lists no command for',
+    async (entityId, entityState, [domain, service]) => {
+      const target = entity(entityId, entityState);
+      state.setStates({ [entityId]: target });
+      ui.openEntityDetailModal(target, { source: 'command-palette', hasCommand: false });
+      await jest.advanceTimersByTimeAsync(0);
+      // Nothing else in the palette reaches these, so the result is their command.
+      expect(mockCallService).toHaveBeenCalledWith(domain, service, { entity_id: entityId });
+      expect(uiUtils.showToast).not.toHaveBeenCalledWith(
+        expect.stringContaining(': '),
+        'info',
+        3000
+      );
+    }
+  );
+
+  it('still runs the primary action when something other than the palette asks for it', async () => {
     const outlet = entity('switch.outlet', 'off');
     state.setStates({ [outlet.entity_id]: outlet });
-    ui.openEntityDetailModal(outlet, { source: 'command-palette' });
+    ui.openEntityDetailModal(outlet, { source: 'omarchy-bar' });
     await jest.advanceTimersByTimeAsync(0);
     expect(mockCallService).toHaveBeenCalled();
+  });
+
+  // The palette and the dashboard together: whether Enter on a result closes (hasEntityAction),
+  // what it then does for a kind of device the palette has commands for (hasCommand), and what it
+  // remembers, with nothing in between mocked. The palette keeps its dialog between opens, and the
+  // body is rebuilt for every test here, so each test loads its own copy of the modules.
+  describe('Enter on an entity result in the command palette', () => {
+    const originalRequestAnimationFrame = global.requestAnimationFrame;
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    let palette;
+    let paletteState;
+    let paletteToast;
+
+    beforeEach(() => {
+      global.requestAnimationFrame = (callback) => callback();
+      HTMLElement.prototype.scrollIntoView = jest.fn();
+      localStorage.clear();
+      jest.isolateModules(() => {
+        palette = require('../../src/command-palette.js');
+        paletteToast = require('../../src/ui-utils.js').showToast;
+        paletteState = require('../../src/state.js').default;
+        paletteState.setConfig({
+          ...sampleConfig,
+          ui: { theme: 'dark' },
+          favoriteEntities: [],
+          customTabs: [],
+          primaryCards: ['none', 'none'],
+        });
+        paletteState.setServices({ switch: { turn_on: {}, turn_off: {} } });
+        paletteState.setStates({
+          'switch.kettle': entity('switch.kettle', 'off', { friendly_name: 'Kettle' }),
+          'switch.offline': entity('switch.offline', 'unavailable', {
+            friendly_name: 'Offline plug',
+          }),
+          'switch.heater': entity('switch.heater', 'unknown', { friendly_name: 'Heater' }),
+          'button.doorbell': entity('button.doorbell', 'unknown', { friendly_name: 'Doorbell' }),
+          'sun.sun': entity('sun.sun', 'above_horizon', { friendly_name: 'Sun' }),
+        });
+      });
+    });
+    afterEach(() => {
+      global.requestAnimationFrame = originalRequestAnimationFrame;
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    });
+
+    const overlay = () => document.querySelector('.command-palette-overlay');
+    const search = (query) => {
+      palette.openCommandPalette();
+      const input = document.querySelector('.command-palette-input');
+      input.value = query;
+      input.dispatchEvent(new Event('input'));
+      return input;
+    };
+    const pressEnter = (input) =>
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+      );
+    const rowNames = () =>
+      [...document.querySelectorAll('.command-palette-result-name')].map(
+        (name) => name.textContent
+      );
+
+    it('says what a device with palette commands is now, and switches nothing', async () => {
+      const input = search('Kettle');
+      // The result for the device ranks above its Turn on row, which is what would act.
+      expect(rowNames()).toEqual(['Kettle', 'Turn on Kettle']);
+      pressEnter(input);
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(mockCallService).not.toHaveBeenCalled();
+      expect(paletteToast).toHaveBeenCalledWith('Kettle: Off', 'info', 3000);
+      expect(overlay().classList).toContain('hidden');
+      // Looked up, so an empty search starts from it next time.
+      palette.openCommandPalette();
+      expect(rowNames()[0]).toBe('Kettle');
+    });
+
+    it.each([
+      ['with the services loaded', true],
+      ['before Home Assistant has sent its services', false],
+    ])(
+      'says what a switch whose state is unknown is, and switches nothing, %s',
+      async (_when, servicesLoaded) => {
+        if (!servicesLoaded) paletteState.setServices({});
+        const input = search('Heater');
+        // No Turn on or Turn off is listed for a state the palette cannot tell.
+        expect(rowNames()).toEqual(['Heater']);
+        pressEnter(input);
+        await jest.advanceTimersByTimeAsync(0);
+
+        expect(mockCallService).not.toHaveBeenCalled();
+        expect(paletteToast).toHaveBeenCalledWith('Heater: Unknown', 'info', 3000);
+        expect(overlay().classList).toContain('hidden');
+      }
+    );
+
+    it('says what a switch is, and switches nothing, before Home Assistant has sent its services', async () => {
+      paletteState.setServices({});
+      const input = search('Kettle');
+      expect(rowNames()).toEqual(['Kettle']);
+      pressEnter(input);
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(mockCallService).not.toHaveBeenCalled();
+      expect(paletteToast).toHaveBeenCalledWith('Kettle: Off', 'info', 3000);
+    });
+
+    it('still presses a button, which no palette command reaches', async () => {
+      pressEnter(search('Doorbell'));
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(mockCallService).toHaveBeenCalledWith('button', 'press', {
+        entity_id: 'button.doorbell',
+      });
+      expect(paletteToast).not.toHaveBeenCalledWith(expect.stringContaining(': '), 'info', 3000);
+      expect(overlay().classList).toContain('hidden');
+    });
+
+    it.each([
+      ['Sun', 'with nothing to open or run'],
+      ['Offline plug', 'that is unavailable'],
+    ])('stays open and says so for %s, %s', async (name) => {
+      pressEnter(search(name));
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(mockCallService).not.toHaveBeenCalled();
+      expect(paletteToast).not.toHaveBeenCalled();
+      expect(overlay().classList).not.toContain('hidden');
+      expect(document.querySelector('.command-palette-hint').textContent).toBe(
+        `No command is available for ${name}.`
+      );
+      // Nothing happened, so nothing is remembered as used.
+      expect(Object.values(localStorage)).toEqual([]);
+    });
   });
 
   it('only advertises and runs Shift+Enter on Quick Access tiles with controls', async () => {
@@ -609,9 +870,9 @@ describe('User-facing audit regressions', () => {
   });
 
   it.each([
-    ['2026-09-10', '2026-09-11', '9/10/2026 · All day'],
-    [{ date: '2026-09-10' }, { date: '2026-09-13' }, '9/10/2026 - 9/12/2026 · All day'],
-    ['2026-03-08', '2026-03-10', '3/8/2026 - 3/9/2026 · All day'],
+    ['2026-09-10', '2026-09-11', 'Thu, 9/10/2026 · All day'],
+    [{ date: '2026-09-10' }, { date: '2026-09-13' }, 'Thu, 9/10/2026 – Sat, 9/12/2026 · All day'],
+    ['2026-03-08', '2026-03-10', 'Sun, 3/8/2026 – Mon, 3/9/2026 · All day'],
   ])('preserves all-day calendar dates and the exclusive end', async (start, end, expected) => {
     mockCallServiceWithResponse.mockResolvedValue({
       'calendar.dates': { events: [{ summary: 'All day', start, end }] },
@@ -621,8 +882,12 @@ describe('User-facing audit regressions', () => {
     expect(document.querySelector('.calendar-event-time').textContent).toBe(expected);
   });
   it.each([
-    ['2026-09-24T14:30:45', '2026-09-24T15:15:00', '9/24/2026 2:30 PM - 3:15 PM'],
-    ['2026-09-24T22:00:00', '2026-09-25T01:30:00', '9/24/2026 10:00 PM - 9/25/2026 1:30 AM'],
+    ['2026-09-24T14:30:45', '2026-09-24T15:15:00', 'Thu, 9/24/2026 2:30 PM – 3:15 PM'],
+    [
+      '2026-09-24T22:00:00',
+      '2026-09-25T01:30:00',
+      'Thu, 9/24/2026 10:00 PM – Fri, 9/25/2026 1:30 AM',
+    ],
   ])(
     'shows timed calendar events in minutes, with one date per day',
     async (start, end, expected) => {

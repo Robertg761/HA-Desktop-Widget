@@ -410,6 +410,35 @@ describe('profile sync engine', () => {
     expect(desktop.config.entityAlerts).toEqual({ enabled: false, alerts: {} });
   });
 
+  test('an alert’s setting for unavailable and unknown reaches the other computer, and so does its absence', async () => {
+    const { desktop, laptop } = await createSyncedPair();
+    const alerts = {
+      'binary_sensor.door': { onStateChange: true, notifyOnUnavailable: false },
+      'light.desk': { onStateChange: true, notifyOnUnavailable: true },
+      // Saved before the setting existed.
+      'switch.fan': { onStateChange: true },
+    };
+    laptop.edit((config) => {
+      config.entityAlerts = { enabled: true, alerts };
+    });
+    await laptop.sync();
+    const pulled = await desktop.sync();
+    expect(pulled.action).toBe('pull');
+    expect(desktop.config.entityAlerts).toEqual({ enabled: true, alerts });
+    expect(desktop.config.entityAlerts.alerts['switch.fan']).not.toHaveProperty(
+      'notifyOnUnavailable'
+    );
+    expect((await profileSyncCore.decodeEnvelopeSections(readSyncFile())).malformed).toEqual({});
+
+    // Turning it back on is a change like any other.
+    laptop.edit((config) => {
+      config.entityAlerts.alerts['binary_sensor.door'].notifyOnUnavailable = true;
+    });
+    await laptop.sync();
+    await desktop.sync();
+    expect(desktop.config.entityAlerts.alerts['binary_sensor.door'].notifyOnUnavailable).toBe(true);
+  });
+
   test('a section with malformed pages is damage, not a layout to apply', async () => {
     const { desktop, laptop } = await createSyncedPair({
       desktop: {
