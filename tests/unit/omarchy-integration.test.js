@@ -507,6 +507,27 @@ describe('an AppImage on a system that blocks the Chromium sandbox', () => {
       }
     });
 
+    test('edits the Exec line, not a TryExec line listed ahead of it', () => {
+      const { env, file, ensure, read } = setUp(() => '');
+      const write = (exec) =>
+        fs.writeFileSync(
+          file,
+          `[Desktop Entry]\nType=Application\nTryExec=${exec}\nExec=${exec} --show\n${marker}\n`
+        );
+      // An unquoted path is the case where the text after `Exec=` is the same on both lines.
+      write(env.APPIMAGE);
+      expect(ensure()).toBe(true);
+      expect(read()).toContain(`\nTryExec=${env.APPIMAGE}\n`);
+      expect(read()).toContain(`\nExec=${env.APPIMAGE} --no-sandbox --show\n`);
+
+      const gone = path.join(root, 'old.AppImage');
+      write(gone);
+      expect(ensure()).toBe(true);
+      expect(read()).toContain(`\nTryExec=${env.APPIMAGE}\n`);
+      expect(read()).toContain(`\nExec=${quoteDesktopExecArg(env.APPIMAGE)} --no-sandbox --show\n`);
+      expect(read()).not.toContain(gone);
+    });
+
     test('does not edit a launcher that starts another executable, or one the user wrote', () => {
       const other = path.join(root, 'other.AppImage');
       fs.writeFileSync(other, 'app');
@@ -618,6 +639,22 @@ test.each(['ha_desktop_widget.desktop', `${APP_ID}.desktop`])(
     expect(fs.readFileSync(file, 'utf8')).toContain(`TryExec=${env.APPIMAGE}`);
   }
 );
+
+test('repairing a generated launcher edits the Exec line when TryExec is listed first', () => {
+  const env = { APPIMAGE: path.join(root, 'current.AppImage'), XDG_DATA_HOME: root };
+  const dir = path.join(root, 'applications');
+  fs.mkdirSync(dir);
+  const file = path.join(dir, 'ha_desktop_widget.desktop');
+  fs.writeFileSync(
+    file,
+    `[Desktop Entry]\nName=HA Desktop Widget\nTryExec=/gone/widget.AppImage\nExec=/gone/widget.AppImage --show %U\nX-AppImage-Version=3.11\n`
+  );
+  expect(repairStaleAppImageLaunchers({ env })).toEqual([file]);
+  const content = fs.readFileSync(file, 'utf8');
+  expect(content).toContain(`\nTryExec=${env.APPIMAGE}\n`);
+  expect(content).toContain(`\nExec=${quoteDesktopExecArg(env.APPIMAGE)} --show %U\n`);
+  expect(content).not.toContain('/gone/');
+});
 
 test('an unwritable launcher does not prevent repairing the remaining launchers', () => {
   const env = { APPIMAGE: '/current.AppImage', XDG_DATA_HOME: root };

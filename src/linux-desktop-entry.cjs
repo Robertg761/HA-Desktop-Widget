@@ -19,6 +19,14 @@ function appArmorRestrictsUserNamespaces(fsModule = fs) {
   }
 }
 
+// Swap the command of the launcher's Exec line, keeping the arguments it already has. The line is
+// found by its start, the way parseDesktopExecCommand finds it: searching for the old command's
+// text would also match inside a TryExec line that happens to be listed first, and leave the
+// real Exec line unchanged.
+function replaceExecCommand(content, command, token) {
+  return content.replace(/^Exec=.*$/m, () => `Exec=${token}${command.suffix}`);
+}
+
 // AppImages need a desktop identity for the host portal registry. Package-owned
 // entries and user launchers take precedence over this fallback.
 function ensureAppImageDesktopEntry({
@@ -57,15 +65,13 @@ function ensureAppImageDesktopEntry({
       !/(?:^|\s)--no-sandbox(?:\s|$)/.test(command.suffix);
     if (!stale && !needsSandboxFlag) return false;
     const token = stale ? buildDesktopExecPrefix(env.APPIMAGE) : command.rawToken;
-    let updated = previous;
-    if (stale) {
-      updated = updated
-        .replace(`Exec=${command.rawToken}`, () => `Exec=${token}`)
-        .replace(/^TryExec=.*$/m, () => `TryExec=${env.APPIMAGE}`);
-    }
-    if (needsSandboxFlag) {
-      updated = updated.replace(`Exec=${token}`, () => `Exec=${token}${sandboxFlag}`);
-    }
+    // The flag goes right after the command, ahead of the arguments the launcher already has.
+    let updated = replaceExecCommand(
+      previous,
+      command,
+      `${token}${needsSandboxFlag ? sandboxFlag : ''}`
+    );
+    if (stale) updated = updated.replace(/^TryExec=.*$/m, () => `TryExec=${env.APPIMAGE}`);
     fsModule.writeFileSync(destination, updated, { mode: 0o644 });
     return true;
   }
@@ -127,9 +133,11 @@ function repairStaleAppImageLaunchers({
     const command = parseDesktopExecCommand(content);
     if (!command || !path.isAbsolute(command.executable)) continue;
     if (fsModule.existsSync(command.executable)) continue;
-    const updated = content
-      .replace(`Exec=${command.rawToken}`, () => `Exec=${buildDesktopExecPrefix(executable)}`)
-      .replace(/^TryExec=.*$/m, () => `TryExec=${executable}`);
+    const updated = replaceExecCommand(
+      content,
+      command,
+      buildDesktopExecPrefix(executable)
+    ).replace(/^TryExec=.*$/m, () => `TryExec=${executable}`);
     try {
       fsModule.writeFileSync(file, updated, { mode: 0o644 });
       repaired.push(file);
