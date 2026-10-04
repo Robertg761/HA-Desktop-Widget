@@ -1627,6 +1627,95 @@ describe('dashboard data display', () => {
       expect(box.hidden).toBe(true);
     });
 
+    describe('setting the volume', () => {
+      const player = (attributes = {}) =>
+        entity('media_player.den', 'playing', {
+          friendly_name: 'Den',
+          media_title: title,
+          supported_features: 152463,
+          volume_level: 0.5,
+          ...attributes,
+        });
+      // The arrow keys change a range input without ever pressing it, so no pointer event is sent.
+      const keyboardStep = (slider, value) => {
+        slider.value = String(value);
+        slider.dispatchEvent(new Event('input', { bubbles: true }));
+      };
+
+      it('keeps a volume set with the arrow keys while the player has not answered yet', async () => {
+        let answer;
+        mockCallService.mockImplementation(
+          () =>
+            new Promise((resolve) => {
+              answer = resolve;
+            })
+        );
+        const modal = open({ volume_level: 0.5 });
+        const slider = modal.querySelector('#media-volume-slider');
+        const readout = modal.querySelector('#media-volume-value');
+        keyboardStep(slider, 60);
+
+        // A position update inside the 150 ms debounce still carries the old volume.
+        state.setEntityState(player({ media_position: 12 }));
+        expect(slider.value).toBe('60');
+        expect(readout.textContent).toBe('60%');
+
+        await jest.advanceTimersByTimeAsync(150);
+        expect(mockCallService).toHaveBeenCalledWith('media_player', 'volume_set', {
+          entity_id: 'media_player.den',
+          volume_level: 0.6,
+        });
+        // And so does one while the command is on its way.
+        state.setEntityState(player({ media_position: 13 }));
+        expect(slider.value).toBe('60');
+
+        // The player settles on the new volume; the reply then changes nothing.
+        state.setEntityState(player({ volume_level: 0.6 }));
+        answer({ success: true });
+        await jest.advanceTimersByTimeAsync(0);
+        expect(slider.value).toBe('60');
+
+        // After that the dialog follows the player again, from any other client too.
+        state.setEntityState(player({ volume_level: 0.3 }));
+        expect(slider.value).toBe('30');
+        expect(readout.textContent).toBe('30%');
+      });
+
+      it('shows what the player reported meanwhile once the command is answered', async () => {
+        let answer;
+        mockCallService.mockImplementation(
+          () =>
+            new Promise((resolve) => {
+              answer = resolve;
+            })
+        );
+        const modal = open({ volume_level: 0.5 });
+        const slider = modal.querySelector('#media-volume-slider');
+        keyboardStep(slider, 60);
+        await jest.advanceTimersByTimeAsync(150);
+
+        // Someone else turned it down while this command was pending.
+        state.setEntityState(player({ volume_level: 0.2 }));
+        expect(slider.value).toBe('60');
+        answer({ success: true });
+        await jest.advanceTimersByTimeAsync(0);
+
+        expect(slider.value).toBe('20');
+      });
+
+      it('goes back to the volume the player has when the command fails', async () => {
+        mockCallService.mockRejectedValue(new Error('refused'));
+        const modal = open({ volume_level: 0.5 });
+        const slider = modal.querySelector('#media-volume-slider');
+        keyboardStep(slider, 60);
+        await jest.advanceTimersByTimeAsync(150);
+        await jest.advanceTimersByTimeAsync(0);
+
+        expect(slider.value).toBe('50');
+        expect(modal.querySelector('#media-volume-value').textContent).toBe('50%');
+      });
+    });
+
     it('draws no picture from a track id', () => {
       const modal = open({ media_content_id: 'spotify:track:abc' });
       expect(modal.querySelector('.media-detail-artwork').hidden).toBe(true);

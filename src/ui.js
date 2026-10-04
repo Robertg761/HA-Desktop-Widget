@@ -12699,10 +12699,19 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
     // Focus stays on a slider after a drag, so it cannot be the test for "being adjusted": the
     // volume the player settled on would never show.
     const isVolumeHeld = trackSliderGrip(volumeSlider, () => updateVolumeControls());
+    // A volume edit is under way from the first input until the player has answered the command it
+    // sent: the arrow keys never hold the slider, and a drag lets go 150 ms before the command goes
+    // out. A live update in that time would put the old volume back under the user's hand.
+    let volumeDebounceTimer = null;
+    let volumeCommandsInFlight = 0;
+    let missedVolumeUpdate = false;
+    const isVolumeBeingSet = () =>
+      isVolumeHeld() || volumeDebounceTimer !== null || volumeCommandsInFlight > 0;
     const updateVolumeControls = () => {
       const currentEntity = liveMedia();
       const attrs = currentEntity.attributes || {};
-      if (volumeSlider && volumeValue && !isVolumeHeld()) {
+      missedVolumeUpdate = isVolumeBeingSet();
+      if (volumeSlider && volumeValue && !missedVolumeUpdate) {
         // An off player reports no volume; show that instead of a made-up 0%.
         if (attrs.volume_level == null || !Number.isFinite(Number(attrs.volume_level))) {
           volumeValue.textContent = '—';
@@ -12785,7 +12794,6 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
       }
     });
 
-    let volumeDebounceTimer;
     if (volumeSlider) {
       volumeSlider.addEventListener('input', (e) => {
         if (!canPerformMediaAction(liveMedia(), 'volume_set')) return;
@@ -12795,8 +12803,19 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
         volumeSlider.setAttribute('aria-valuetext', volumeText);
         clearTimeout(volumeDebounceTimer);
         volumeDebounceTimer = setTimeout(() => {
-          callMediaPlayerService(entity.entity_id, 'volume_set', {
-            volumeLevel: value / 100,
+          volumeDebounceTimer = null;
+          volumeCommandsInFlight += 1;
+          Promise.resolve(
+            callMediaPlayerService(entity.entity_id, 'volume_set', {
+              volumeLevel: value / 100,
+            })
+          ).then((response) => {
+            volumeCommandsInFlight -= 1;
+            // What the player reported meanwhile is shown now; a command that failed leaves the
+            // slider where it was, so it goes back to the volume the player still has.
+            if (modal.isConnected && (missedVolumeUpdate || response === null)) {
+              updateVolumeControls();
+            }
           });
         }, 150);
       });
