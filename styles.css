@@ -6763,7 +6763,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .camera-expanded-preview[data-camera-preview-state='error'] .camera-expanded-preview-dot,
 .camera-expanded-preview[data-camera-preview-state='fallback'] .camera-expanded-preview-dot,
-.camera-expanded-preview[data-camera-preview-state='stale'] .camera-expanded-preview-dot {
+.camera-expanded-preview[data-camera-preview-state='stale'] .camera-expanded-preview-dot,
+.camera-expanded-preview[data-camera-preview-state='unavailable'] .camera-expanded-preview-dot {
   background: var(--warning);
   box-shadow: 0 0 0 2px rgba(255, 152, 0, 0.16);
 }
@@ -6822,9 +6823,19 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .camera-expanded-preview[data-camera-preview-state='refreshing'] .camera-tile-fallback,
 .camera-expanded-preview[data-camera-preview-state='fallback'] .camera-tile-fallback,
 .camera-expanded-preview[data-camera-preview-state='stale'] .camera-tile-fallback,
+.camera-expanded-preview[data-camera-preview-state='unavailable'][data-camera-preview-has-frame='true']
+  .camera-tile-fallback,
 .camera-expanded-preview[data-camera-preview-state='loading'][data-camera-preview-has-frame='true']
   .camera-tile-fallback {
   opacity: 0;
+}
+
+/* The tile desaturates the last frame of a camera that went offline so it does not pass for a
+   current picture; the viewer opened over it does the same. */
+.camera-expanded-preview[data-camera-preview-state='unavailable']
+  .camera-expanded-preview-stage
+  .camera-tile-preview-image {
+  filter: saturate(0.25) brightness(0.7);
 }
 
 .camera-expanded-preview-stage .camera-tile-scrim {
@@ -6885,7 +6896,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .camera-expanded-preview[data-camera-preview-state='error'] .camera-expanded-preview-status,
 .camera-expanded-preview[data-camera-preview-state='fallback'] .camera-expanded-preview-status,
-.camera-expanded-preview[data-camera-preview-state='stale'] .camera-expanded-preview-status {
+.camera-expanded-preview[data-camera-preview-state='stale'] .camera-expanded-preview-status,
+.camera-expanded-preview[data-camera-preview-state='unavailable'] .camera-expanded-preview-status {
   color: rgba(255, 209, 151, 0.86);
 }
 
@@ -7347,6 +7359,11 @@ body.theme-light:not(.high-contrast)
   font-size: var(--font-size-sm);
 }
 
+/* The count under the width field is a form-help line, which hugged the search box below it. */
+.comparison-graph-hint {
+  margin: 0 0 var(--space-2);
+}
+
 .modal-footer.comparison-graph-modal-footer {
   justify-content: space-between;
 }
@@ -7677,11 +7694,11 @@ body.theme-light:not(.high-contrast)
     rgba(var(--settings-modal-bg-rgb), var(--settings-modal-bg-alpha));
 }
 
+/* The header and the rail sit inside the dialog's own blurred pane, so a blur of their own only
+   smeared the holiday art behind them and cut it in half at the line. They are plain panels. */
 #settings-modal .modal-header {
   grid-area: header;
   background: rgba(var(--settings-modal-panel-rgb), var(--settings-modal-panel-alpha));
-  backdrop-filter: blur(28px) saturate(160%) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(160%) !important;
   padding: var(--space-3) var(--space-4);
 }
 
@@ -7711,8 +7728,6 @@ body.theme-light:not(.high-contrast)
   border-inline-end: 1px solid var(--border-color);
   border-bottom: none;
   background: rgba(var(--settings-modal-panel-rgb), var(--settings-modal-panel-alpha));
-  backdrop-filter: blur(28px) saturate(160%) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(160%) !important;
 }
 
 #settings-modal .modal-body {
@@ -8044,6 +8059,13 @@ body.theme-light:not(.high-contrast)
 .calendar-events-list {
   display: grid;
   gap: 8px;
+}
+
+/* A list being read again keeps its rows on screen, dimmed, until the new ones replace them. This is
+   not aria-busy: that attribute draws a spinner in the middle of the dialog and blocks the pointer. */
+.todo-detail-list-container[data-refreshing='true'] {
+  opacity: 0.6;
+  transition: opacity var(--duration-fast) var(--ease-in-out);
 }
 
 .todo-item-row,
@@ -8552,7 +8574,11 @@ body.theme-light:not(.high-contrast)
   -webkit-backdrop-filter: blur(var(--blur-sm)) saturate(160%);
   opacity: 0;
   pointer-events: none;
-  transition: var(--transition-fast);
+  /* Only the fade and the lift animate. The tooltip is placed with top and left, and a transition
+     on those made its first show fly in from the window's corner. */
+  transition:
+    opacity var(--duration-fast) var(--ease-in-out),
+    transform var(--duration-fast) var(--ease-in-out);
   z-index: var(--z-tooltip);
   min-width: 160px;
   max-width: 240px;
@@ -9620,7 +9646,8 @@ body {
   color: var(--on-accent);
 }
 
-/* Remove button in reorganize mode - with glassmorphism */
+/* Remove button in reorganize mode. Near-opaque, so it carries no blur of its own: one more
+   compositing layer on every tile hid at most 8% of what is behind it. */
 .reorganize-mode .control-item .remove-btn {
   position: absolute;
   top: 8px;
@@ -9628,8 +9655,6 @@ body {
   width: 24px;
   height: 24px;
   background: rgba(211, 47, 47, 0.95);
-  backdrop-filter: blur(var(--blur-sm));
-  -webkit-backdrop-filter: blur(var(--blur-sm));
   color: white;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 50%;
@@ -9720,8 +9745,6 @@ body {
   width: 24px;
   height: 24px;
   background: rgba(25, 118, 210, 0.95);
-  backdrop-filter: blur(var(--blur-sm));
-  -webkit-backdrop-filter: blur(var(--blur-sm));
   color: white;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 50%;
@@ -9772,8 +9795,6 @@ body {
   font-size: var(--font-size-sm);
   cursor: pointer;
   transition: all var(--transition-base);
-  backdrop-filter: blur(18px) saturate(170%);
-  -webkit-backdrop-filter: blur(18px) saturate(170%);
   box-shadow:
     0 6px 14px rgba(0, 0, 0, 0.34),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
@@ -10992,6 +11013,7 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
      loading overlay stays *below* toasts on purpose (see the :root scale). */
   z-index: calc(var(--z-notification) + 1);
   font-size: var(--font-size-lg);
+  animation: modalFadeIn var(--duration-base) var(--ease-emphasized);
 }
 
 /* Global Hotkeys and Alerts Styles */
@@ -11260,20 +11282,28 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   }
 }
 
+/* A dialog keeps ONE blur in Linux performance mode: its backdrop, at the radius the dialog recipe
+   gives it everywhere else. The panel inside it sits within that backdrop's root and can only blur
+   the flat scrim, so its own blur (and the one on every chip in it) was a full-size pass for no
+   visible change. The hotkey recorder's scrim is a dialog backdrop too, although it is not a .modal. */
 body.linux-performance-mode,
-body.linux-performance-mode *:not(.modal):not(.modal-content):not(.modal *) {
+body.linux-performance-mode *:not(.modal):not(.hotkey-capture-modal) {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
 
-/* Keep backdrop blur for modals even in Linux performance mode */
-body.linux-performance-mode .modal {
-  backdrop-filter: blur(var(--blur-lg)) saturate(120%) !important;
-  -webkit-backdrop-filter: blur(var(--blur-lg)) saturate(120%) !important;
+/* The glow that pulses on the playing button repaints a filter every frame; without a GPU that is
+   software work for one small button. It keeps the glow, still. */
+body.linux-performance-mode .play-pause-btn.playing,
+body.linux-performance-mode .media-player-entity[data-media-playing='true'] .play-pause-btn {
+  animation: none;
 }
-body.linux-performance-mode .modal-content {
-  backdrop-filter: blur(var(--blur-xl)) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%) !important;
+
+body.linux-performance-mode .play-pause-btn.playing:not(:hover),
+body.linux-performance-mode
+  .media-player-entity[data-media-playing='true']
+  .play-pause-btn:not(:hover) {
+  filter: drop-shadow(0 3px 12px rgba(var(--accent-rgb), 0.6));
 }
 
 /* Ensure all interactive elements have visible focus */
@@ -14168,6 +14198,23 @@ body.theme-light
   background: transparent;
 }
 
+/* What the check found is told in colour as well as words: a failure is not the idle line, and an
+   update waiting is not the same grey as "ready to check". */
+.update-status[data-state='error'] {
+  color: var(--error-text);
+}
+
+.update-status[data-state='up-to-date'],
+.update-status[data-state='downloaded'] {
+  color: var(--success-text);
+}
+
+.update-status[data-state='available'],
+.update-status[data-state='downloading'],
+.update-status[data-state='manual'] {
+  color: var(--accent-text);
+}
+
 #settings-modal .update-actions {
   display: flex;
   flex-shrink: 0;
@@ -14736,7 +14783,12 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
 .camera-mode-buttons {
   display: flex;
   flex: none;
+  align-items: center;
   gap: var(--space-2);
+}
+
+.camera-mode-buttons .camera-mute-toggle[hidden] {
+  display: none;
 }
 
 /* A dialog built around a pick list (Manage Quick Access, the repair, alert and weather pickers,
