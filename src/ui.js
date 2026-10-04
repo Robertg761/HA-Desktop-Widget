@@ -3263,8 +3263,7 @@ function describeQuickAccessTile(entityId) {
   if (!entity) {
     return {
       id: entityId,
-      name:
-        state.CONFIG?.customEntityNames?.[entityId] || entityId.split('.').pop().replace(/_/g, ' '),
+      name: state.CONFIG?.customEntityNames?.[entityId] || utils.humanizeEntityId(entityId),
       state: '',
       value: t('Unavailable'),
       icon: { kind: 'line', name: 'triangle-alert' },

@@ -33,10 +33,23 @@ describe('Utils Module', () => {
       expect(utils.getEntityDisplayName(entity)).toBe('Bedroom Light');
     });
 
-    test('should return entity_id when no friendly_name', () => {
+    test('should return the entity id in words when there is no friendly_name', () => {
       state.CONFIG = sampleConfig;
-      const entity = { entity_id: 'light.test', attributes: {} };
-      expect(utils.getEntityDisplayName(entity)).toBe('light.test');
+      expect(utils.getEntityDisplayName({ entity_id: 'light.test', attributes: {} })).toBe('test');
+      // The same words the placeholder of a missing entity uses, not the dotted id.
+      expect(utils.getEntityDisplayName({ entity_id: 'switch.no_name', attributes: {} })).toBe(
+        'no name'
+      );
+      expect(
+        utils.getEntityDisplayName({ entity_id: 'sensor.garage_door_battery', attributes: {} })
+      ).toBe('garage door battery');
+    });
+
+    test('should not reduce an id that has no object part to nothing', () => {
+      state.CONFIG = sampleConfig;
+      expect(utils.humanizeEntityId('light.')).toBe('light.');
+      expect(utils.humanizeEntityId('plain_id')).toBe('plain id');
+      expect(utils.humanizeEntityId(undefined)).toBe('');
     });
 
     test('should return "Unknown" for null entity', () => {

@@ -317,12 +317,13 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       document.querySelector('input[value="switch.offline"]').click();
       document.querySelector('.room-show-all input').click();
+      // In the order of the names the rows show ("core", "Desk lamp", "me", "offline", "Temperature").
       expect(values()).toEqual([
+        'update.core',
         'light.desk',
         'person.me',
-        'sensor.temperature',
         'switch.offline',
-        'update.core',
+        'sensor.temperature',
       ]);
       expect(
         [...document.querySelectorAll('.room-entity-list input:checked')].map(
@@ -504,7 +505,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.querySelector('#add-page-name').value).toBe('Office');
       expect(
         [...document.querySelectorAll('.room-entity-list input')].map((input) => input.value)
-      ).toEqual(['button.restart', 'light.desk', 'sensor.temperature']);
+      ).toEqual(['light.desk', 'button.restart', 'sensor.temperature']);
     });
 
     it('matches a translated quick pick to a room named in English or the interface language', async () => {

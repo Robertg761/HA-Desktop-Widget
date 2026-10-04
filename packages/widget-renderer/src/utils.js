@@ -242,6 +242,14 @@ function normalizeEntityIconGlyph(icon) {
   return countGraphemes(trimmed) === 1 ? trimmed : null;
 }
 
+// "switch.no_name" as words, "no name": what a tile or dialog calls an entity that has no
+// friendly name, the way the placeholder for a missing entity already does.
+function humanizeEntityId(entityId) {
+  const id = String(entityId ?? '');
+  const objectId = id.includes('.') ? id.slice(id.indexOf('.') + 1) : id;
+  return objectId.replace(/_/g, ' ') || id;
+}
+
 function getEntityDisplayName(entity) {
   try {
     if (!entity) return t('Unknown');
@@ -250,8 +258,8 @@ function getEntityDisplayName(entity) {
     const customName = state.CONFIG?.customEntityNames?.[entity.entity_id];
     if (customName) return customName;
 
-    // Fall back to friendly_name or entity_id
-    return entity.attributes?.friendly_name || entity.entity_id;
+    // Fall back to friendly_name, or to the entity id in words
+    return entity.attributes?.friendly_name || humanizeEntityId(entity.entity_id);
   } catch (error) {
     console.error('Error getting entity display name:', error);
     return t('Unknown');
@@ -1073,6 +1081,7 @@ function reconcileConfigEntityIds(config, states = state.STATES, explicitMapping
 }
 
 export {
+  humanizeEntityId,
   getEntityDisplayName,
   getEntityTypeDescription,
   getEntityIcon,
