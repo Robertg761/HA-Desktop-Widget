@@ -5509,6 +5509,14 @@ body.theme-light:not(.high-contrast)
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
 }
 
+/* The colour that is on now: a ring in the accent, which the hover and focus rings add to. */
+.light-color-swatch.active {
+  border-color: var(--accent);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.45),
+    0 0 0 2px rgba(var(--accent-rgb), 0.35);
+}
+
 .light-color-swatch:hover,
 .light-color-swatch:focus-visible {
   border-color: var(--focus-ring);
@@ -5658,7 +5666,8 @@ body.theme-light:not(.high-contrast)
 .climate-slider-wrapper {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  /* The 24px thumb hangs 8px below its 8px track; the end labels have to start below that. */
+  gap: var(--space-4);
   padding: var(--space-4);
 }
 
@@ -6038,7 +6047,8 @@ body.theme-light:not(.high-contrast)
   padding: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  /* The thumb hangs 8px below the track, and "Closed" and "Open" sit under its two ends. */
+  gap: var(--space-4);
 }
 
 .cover-slider {

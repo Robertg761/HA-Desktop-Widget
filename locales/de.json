@@ -1717,5 +1717,9 @@
   "Only notify if the condition lasts this long. 0 = immediately.": "Nur benachrichtigen, wenn die Bedingung so lange anhält. 0 = sofort.",
   "Wait at least this long between notifications. 0 = no limit.": "Mindestens so lange zwischen Benachrichtigungen warten. 0 = keine Begrenzung.",
   "Currently {{value}}": "Aktuell {{value}}",
-  "In {{unit}}": "Einheit: {{unit}}"
+  "In {{unit}}": "Einheit: {{unit}}",
+  "{{label}} {{name}}": "{{label}} {{name}}",
+  "Yellow": "Gelb",
+  "White": "Weiß",
+  "Sky blue": "Himmelblau"
 }

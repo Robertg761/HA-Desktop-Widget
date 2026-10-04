@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.60",
+  "version": "1.2.61",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1811,6 +1811,10 @@
     "Only notify if the condition lasts this long. 0 = immediately.": "Ne notifier que si la condition dure aussi longtemps. 0 = immédiatement.",
     "Wait at least this long between notifications. 0 = no limit.": "Attendre au moins ce délai entre deux notifications. 0 = aucune limite.",
     "Currently {{value}}": "Actuellement {{value}}",
-    "In {{unit}}": "En {{unit}}"
+    "In {{unit}}": "En {{unit}}",
+    "{{label}} {{name}}": "{{label}} {{name}}",
+    "Yellow": "Jaune",
+    "White": "Blanc",
+    "Sky blue": "Bleu ciel"
   }
 }

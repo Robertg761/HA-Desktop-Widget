@@ -1717,5 +1717,9 @@
   "Only notify if the condition lasts this long. 0 = immediately.": "Only notify if the condition lasts this long. 0 = immediately.",
   "Wait at least this long between notifications. 0 = no limit.": "Wait at least this long between notifications. 0 = no limit.",
   "Currently {{value}}": "Currently {{value}}",
-  "In {{unit}}": "In {{unit}}"
+  "In {{unit}}": "In {{unit}}",
+  "{{label}} {{name}}": "{{label}} {{name}}",
+  "Yellow": "Yellow",
+  "White": "White",
+  "Sky blue": "Sky blue"
 }

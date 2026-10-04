@@ -145,7 +145,16 @@ const MEDIA_PLAYER_SUPPORT_SEEK = 2;
 const MEDIA_PLAYER_SUPPORT_VOLUME_SET = 4;
 const MEDIA_PLAYER_SUPPORT_VOLUME_MUTE = 8;
 const LIGHT_COLOR_MODES = new Set(['rgb', 'rgbw', 'rgbww', 'hs', 'xy']);
-const LIGHT_COLOR_PRESETS = ['#FFB347', '#FFD966', '#FFFFFF', '#9FD8FF', '#7C83FF', '#FF6B9D'];
+// The colours the light dialog offers, each with the name a screen reader and a tooltip use; a hex
+// code is not something anyone can hear. The names are translated where they are read.
+const LIGHT_COLOR_PRESETS = [
+  { hex: '#FFB347', name: 'Amber' },
+  { hex: '#FFD966', name: 'Yellow' },
+  { hex: '#FFFFFF', name: 'White' },
+  { hex: '#9FD8FF', name: 'Sky blue' },
+  { hex: '#7C83FF', name: 'Indigo' },
+  { hex: '#FF6B9D', name: 'Pink' },
+];
 const DESKTOP_PIN_SCENE_BASE_MIN_BOUNDS = { width: 97, height: 83 };
 const DESKTOP_PIN_SCENE_DEFAULT_BOUNDS = { width: 168, height: 148 };
 const QUICK_ACCESS_TILE_VALUE_SIZE_OPTIONS = new Set([
@@ -3281,7 +3290,7 @@ function getQuickAccessTileControls(entity) {
         brightness: on && brightness > 0 ? Math.max(1, Math.round((brightness / 255) * 100)) : 0,
         canSetBrightness: !!capabilities.canSetBrightness,
         colorTemp,
-        colors: supportsLightColor(attributes) ? [...LIGHT_COLOR_PRESETS] : [],
+        colors: supportsLightColor(attributes) ? LIGHT_COLOR_PRESETS.map(({ hex }) => hex) : [],
       };
     }
     case 'fan':
@@ -7001,7 +7010,7 @@ function createDesktopPinCoverControlElement(entity) {
           ${availableActions
             .map(
               ({ action, label }) =>
-                `<button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-cover-action" type="button" data-action="${action}" title="${escapeHtmlAttribute(label)}">${desktopPinButtonLabelMarkup(label)}</button>`
+                `<button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-cover-action" type="button" data-action="${action}" title="${escapeHtmlAttribute(label)}" aria-label="${escapeHtmlAttribute(t('{{label}} {{name}}', { label, name: utils.getEntityDisplayName(entity) }))}">${desktopPinButtonLabelMarkup(label)}</button>`
             )
             .join('')}
         </div>`
@@ -13585,13 +13594,15 @@ function showBrightnessSlider(light) {
                 />
                 <div class="light-color-swatches">
                   ${LIGHT_COLOR_PRESETS.map(
-                    (color) => `
+                    ({ hex, name }) => `
                     <button
                       class="light-color-swatch"
                       type="button"
-                      data-color="${escapeHtmlAttribute(color)}"
-                      style="--swatch-color: ${escapeHtmlAttribute(color)}"
-                      aria-label="${escapeHtmlAttribute(t('Set light color {{color}}', { color }))}"
+                      data-color="${escapeHtmlAttribute(hex)}"
+                      style="--swatch-color: ${escapeHtmlAttribute(hex)}"
+                      title="${escapeHtmlAttribute(t(name))}"
+                      aria-label="${escapeHtmlAttribute(t('Set light color {{color}}', { color: t(name) }))}"
+                      aria-pressed="${hex.toLowerCase() === currentColorHex.toLowerCase() ? 'true' : 'false'}"
                     ></button>
                   `
                   ).join('')}
@@ -13854,6 +13865,7 @@ function showBrightnessSlider(light) {
           () => {
             lightIsOn = confirmedLightIsOn;
             if (colorPicker) colorPicker.value = confirmedColorHex;
+            markSwatches(confirmedColorHex);
             updateTurnButton();
           }
         ).then(({ ok }) => {
@@ -13867,12 +13879,24 @@ function showBrightnessSlider(light) {
     if (colorPicker) {
       colorPicker.addEventListener('input', (e) => {
         applyColor(e.target.value);
+        markSwatches(e.target.value);
       });
     }
+
+    // The swatch that matches the colour now chosen is marked, so a row of colours shows where it is.
+    const markSwatches = (hexColor) => {
+      colorSwatches.forEach((btn) => {
+        const selected = btn.dataset.color.toLowerCase() === String(hexColor).toLowerCase();
+        btn.classList.toggle('active', selected);
+        btn.setAttribute('aria-pressed', selected ? 'true' : 'false');
+      });
+    };
+    markSwatches(currentColorHex);
 
     colorSwatches.forEach((btn) => {
       btn.addEventListener('click', () => {
         applyColor(btn.getAttribute('data-color'));
+        markSwatches(btn.dataset.color);
       });
     });
 
@@ -14818,7 +14842,7 @@ function showCoverControls(coverEntity) {
               ${availableActions
                 .map(
                   ({ action, icon, label }) => `
-                <button class="cover-action-btn" type="button" data-action="${action}">
+                <button class="cover-action-btn" type="button" data-action="${action}" aria-label="${escapeHtmlAttribute(t('{{label}} {{name}}', { label, name: utils.getEntityDisplayName(coverEntity) }))}">
                   <span class="cover-action-icon">${icon}</span>
                   <span class="cover-action-label">${utils.escapeHtml(label)}</span>
                 </button>`

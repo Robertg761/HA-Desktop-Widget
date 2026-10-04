@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.61",
+  "version": "1.2.62",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1811,6 +1811,10 @@
     "Only notify if the condition lasts this long. 0 = immediately.": "أرسل إشعارًا فقط إذا استمر الشرط بهذه المدة. 0 = فورًا.",
     "Wait at least this long between notifications. 0 = no limit.": "انتظر هذه المدة على الأقل بين الإشعارات. 0 = بلا حد.",
     "Currently {{value}}": "القيمة الحالية {{value}}",
-    "In {{unit}}": "بوحدة {{unit}}"
+    "In {{unit}}": "بوحدة {{unit}}",
+    "{{label}} {{name}}": "{{label}} {{name}}",
+    "Yellow": "أصفر",
+    "White": "أبيض",
+    "Sky blue": "أزرق سماوي"
   }
 }

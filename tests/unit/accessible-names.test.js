@@ -118,4 +118,117 @@ describe('entity-specific accessible names on row buttons', () => {
     expect(use(kitchen).getAttribute('aria-label')).toBe('Use Kitchen');
     expect(use(hallway).getAttribute('aria-label')).toBe('Use Hallway');
   });
+
+  it('tells the blinds Close action from the dialog Close by the cover it closes', () => {
+    jest.useFakeTimers();
+    try {
+      const blinds = {
+        entity_id: 'cover.blinds',
+        state: 'open',
+        attributes: {
+          friendly_name: 'Living Room Blinds',
+          current_position: 60,
+          supported_features: 15,
+        },
+      };
+      state.setStates({ [blinds.entity_id]: blinds });
+
+      ui.openEntityDetailModal(blinds);
+      jest.advanceTimersByTime(0);
+
+      const modal = document.querySelector('.cover-modal');
+      const names = [...modal.querySelectorAll('button')].map(
+        (button) => button.getAttribute('aria-label') || button.textContent.trim()
+      );
+      // Three buttons said "Close": the header X, the close-cover action and the footer button.
+      expect(names.filter((name) => name === 'Close')).toHaveLength(2);
+      expect(
+        modal
+          .querySelector('.cover-action-btn[data-action="close_cover"]')
+          .getAttribute('aria-label')
+      ).toBe('Close Living Room Blinds');
+      expect(
+        modal
+          .querySelector('.cover-action-btn[data-action="open_cover"]')
+          .getAttribute('aria-label')
+      ).toBe('Open Living Room Blinds');
+      expect(
+        modal
+          .querySelector('.cover-action-btn[data-action="stop_cover"]')
+          .getAttribute('aria-label')
+      ).toBe('Stop Living Room Blinds');
+    } finally {
+      document.querySelector('.cover-modal')?.remove();
+      jest.useRealTimers();
+    }
+  });
+
+  describe('the light dialog colour swatches', () => {
+    const colorLight = (rgb) => ({
+      entity_id: 'light.desk',
+      state: 'on',
+      attributes: {
+        friendly_name: 'Desk lamp',
+        brightness: 200,
+        supported_color_modes: ['rgb'],
+        color_mode: 'rgb',
+        rgb_color: rgb,
+      },
+    });
+    const open = (light) => {
+      jest.useFakeTimers();
+      state.setStates({ [light.entity_id]: light });
+      ui.openEntityDetailModal(light);
+      jest.advanceTimersByTime(0);
+      return document.querySelector('.brightness-modal');
+    };
+    afterEach(() => {
+      document.querySelector('.brightness-modal')?.remove();
+      jest.useRealTimers();
+    });
+
+    it('are named for their colour, not their hex code', () => {
+      const modal = open(colorLight([255, 179, 71]));
+
+      const names = [...modal.querySelectorAll('.light-color-swatch')].map((swatch) =>
+        swatch.getAttribute('aria-label')
+      );
+      expect(names).toEqual([
+        'Set light color Amber',
+        'Set light color Yellow',
+        'Set light color White',
+        'Set light color Sky blue',
+        'Set light color Indigo',
+        'Set light color Pink',
+      ]);
+      expect(names.join(' ')).not.toMatch(/#/);
+      const titles = [...modal.querySelectorAll('.light-color-swatch')].map(
+        (swatch) => swatch.title
+      );
+      expect(titles).toEqual(['Amber', 'Yellow', 'White', 'Sky blue', 'Indigo', 'Pink']);
+    });
+
+    it('mark the colour the light has now, and follow a pick', () => {
+      const modal = open(colorLight([255, 179, 71]));
+      const swatch = (hex) => modal.querySelector(`.light-color-swatch[data-color="${hex}"]`);
+
+      expect(swatch('#FFB347').getAttribute('aria-pressed')).toBe('true');
+      expect(swatch('#FFB347').classList).toContain('active');
+      expect(swatch('#FFD966').getAttribute('aria-pressed')).toBe('false');
+
+      swatch('#9FD8FF').click();
+
+      expect(swatch('#9FD8FF').getAttribute('aria-pressed')).toBe('true');
+      expect(swatch('#9FD8FF').classList).toContain('active');
+      expect(swatch('#FFB347').getAttribute('aria-pressed')).toBe('false');
+      expect(modal.querySelectorAll('.light-color-swatch.active')).toHaveLength(1);
+    });
+
+    it('mark nothing for a colour that is none of them', () => {
+      const modal = open(colorLight([10, 20, 30]));
+
+      expect(modal.querySelectorAll('.light-color-swatch.active')).toHaveLength(0);
+      expect(modal.querySelectorAll('.light-color-swatch[aria-pressed="true"]')).toHaveLength(0);
+    });
+  });
 });

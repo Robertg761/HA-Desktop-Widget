@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.61",
+  "version": "1.2.62",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1811,6 +1811,10 @@
     "Only notify if the condition lasts this long. 0 = immediately.": "तभी सूचना दें जब शर्त इतनी देर तक बनी रहे। 0 = तुरंत।",
     "Wait at least this long between notifications. 0 = no limit.": "सूचनाओं के बीच कम से कम इतना इंतज़ार करें। 0 = कोई सीमा नहीं।",
     "Currently {{value}}": "अभी {{value}}",
-    "In {{unit}}": "{{unit}} में"
+    "In {{unit}}": "{{unit}} में",
+    "{{label}} {{name}}": "{{label}} {{name}}",
+    "Yellow": "पीला",
+    "White": "सफ़ेद",
+    "Sky blue": "आसमानी"
   }
 }
