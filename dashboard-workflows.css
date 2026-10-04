@@ -181,18 +181,27 @@
   background: var(--glass-surface);
 }
 
+/* The dot says what the header's dot says, in the same colours: the accent is whatever the person
+   picked (a Connected in rose), and a grey Disconnected never flagged the outage. */
 .diagnostics-status::before {
   content: '';
   width: 8px;
   height: 8px;
   flex-shrink: 0;
   border-radius: 50%;
-  background: var(--text-secondary);
+  background: var(--connection-bad);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--connection-bad) 20%, transparent);
 }
 
 .diagnostics-status[data-connected='true']::before {
-  background: var(--accent);
-  box-shadow: 0 0 0 4px var(--accent-bg);
+  background: var(--connection-ok);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--connection-ok) 20%, transparent);
+}
+
+/* Chromium's default grip is a bright diagonal on the rounded corner; the border already says the
+   box can be resized. */
+.diagnostics-report::-webkit-resizer {
+  background: transparent;
 }
 
 .diagnostics-report {

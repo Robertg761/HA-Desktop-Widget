@@ -560,6 +560,49 @@ describe('stylesheet one-offs', () => {
     });
   });
 
+  describe('the connection colours', () => {
+    it('gives the header dot and the diagnostics dot the same two colours, in both themes', () => {
+      for (const bodyClass of ['', 'theme-light']) {
+        render(
+          '<div class="connection-indicator connected" id="up"></div><div class="connection-indicator" id="down"></div>',
+          {
+            bodyClass,
+          }
+        );
+        for (const [id, token] of [
+          ['up', '--connection-ok'],
+          ['down', '--connection-bad'],
+        ]) {
+          const dot = document.getElementById(id);
+          expect(resolvedValue(dot, '--indicator-color')).toBe(resolvedValue(dot, token));
+        }
+      }
+    });
+
+    it('picks darker colours on the light header, where the pastel ones are 1.7:1', () => {
+      render('<div class="connection-indicator connected"></div>', { bodyClass: 'theme-light' });
+      expect(
+        resolvedValue(document.querySelector('.connection-indicator'), '--connection-ok')
+      ).toBe('#15803d');
+    });
+
+    it('draws the diagnostics dot from the same tokens, not from the accent', () => {
+      const css = fs.readFileSync(path.resolve(__dirname, '../../dashboard-workflows.css'), 'utf8');
+      const dot = css.match(/\.diagnostics-status::before\s*\{[^}]*\}/s)[0];
+      const connected = css.match(
+        /\.diagnostics-status\[data-connected='true'\]::before\s*\{[^}]*\}/s
+      )[0];
+      expect(dot).toContain('var(--connection-bad)');
+      expect(connected).toContain('var(--connection-ok)');
+      expect(dot + connected).not.toContain('--accent');
+    });
+
+    it('hides the report’s bright resize grip', () => {
+      const css = fs.readFileSync(path.resolve(__dirname, '../../dashboard-workflows.css'), 'utf8');
+      expect(css).toMatch(/\.diagnostics-report::-webkit-resizer\s*\{\s*background: transparent;/);
+    });
+  });
+
   describe('reduced motion keeps the waiting indicators moving', () => {
     // The blanket "no animation" rule gives every animation 0.01ms and one iteration. A spinner or a
     // progress bar frozen that way reads as a stalled app, and the bar as a finished one.

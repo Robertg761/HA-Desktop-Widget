@@ -224,6 +224,9 @@ html {
   --warning-text: var(--warning);
   --error-text: #ff8a80;
   --danger-text: var(--error-text);
+  /* The two states of the connection: the dot in the header and the one in the diagnostics dialog. */
+  --connection-ok: #4ade80;
+  --connection-bad: var(--error);
 
   /* Surfaces */
   --surface-1: rgba(20, 24, 32, 0.8);
@@ -510,6 +513,9 @@ body {
   --warning-text: #8a5300;
   --error-text: #b71c1c;
   --danger-text: #b71c1c;
+  /* The pastel dot colours are 1.7:1 and 2.2:1 on the light header; these are past 3:1 there. */
+  --connection-ok: #15803d;
+  --connection-bad: var(--error-text);
   --lit-light: #b36a00;
   --lit-light-rgb: 179, 106, 0;
 
@@ -3061,7 +3067,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 /* Status dot leads the title, with a soft halo in its own colour. */
 .connection-indicator {
-  --indicator-color: var(--error);
+  --indicator-color: var(--connection-bad);
   position: relative;
   order: -1;
   width: 8px;
@@ -3091,7 +3097,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .connection-indicator.connected {
-  --indicator-color: #4ade80;
+  --indicator-color: var(--connection-ok);
   animation: pulseIndicator 3s ease-in-out 2;
 }
 
@@ -3102,15 +3108,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
     inset 0 0 0 2px var(--indicator-color),
     0 0 0 3px color-mix(in srgb, var(--indicator-color) 18%, transparent),
     0 0 10px color-mix(in srgb, var(--indicator-color) 50%, transparent);
-}
-
-/* The pastel dot colours are 1.7:1 and 2.2:1 on the light header; these are past 3:1 there. */
-body.theme-light .connection-indicator {
-  --indicator-color: var(--error-text);
-}
-
-body.theme-light .connection-indicator.connected {
-  --indicator-color: #15803d;
 }
 
 /* The dot is 8px, but it is a button (it opens the connection details), so its target reaches 24px. */

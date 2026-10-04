@@ -47,16 +47,18 @@ function describeOperatingSystem(info) {
 function diagnosticsReport() {
   // Deliberately allowlist fields. Server messages, URLs, states and config may contain secrets,
   // so issues are recorded as fixed reason codes and times only.
+  // What explains a lost connection comes first, so it is on screen when the dialog opens; the
+  // fixed facts about this install follow.
   return {
     connection: websocket.isConnected() ? 'connected' : 'disconnected',
+    recentIssues: connection.recentIssues.map((issue) => ({ ...issue })),
+    lastConnectedAt: connection.lastConnectedAt,
+    lastUpdateAt: connection.lastUpdateAt,
+    reconnects: connection.reconnects,
     appVersion: connection.appVersion,
     platform: window.electronAPI?.platform || null,
     os: operatingSystem(),
     homeAssistantVersion: connection.homeAssistantVersion,
-    lastConnectedAt: connection.lastConnectedAt,
-    lastUpdateAt: connection.lastUpdateAt,
-    reconnects: connection.reconnects,
-    recentIssues: connection.recentIssues.map((issue) => ({ ...issue })),
   };
 }
 
@@ -198,7 +200,8 @@ function showConnectionDiagnostics() {
   const report = document.createElement('textarea');
   report.className = 'form-control diagnostics-report';
   report.readOnly = true;
-  report.rows = 10;
+  // The report is eleven lines when nothing has gone wrong, and the last one is the closing brace.
+  report.rows = 12;
   report.setAttribute('aria-label', t('Diagnostic report'));
   const refresh = document.createElement('button');
   refresh.className = 'btn btn-secondary';
