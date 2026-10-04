@@ -354,11 +354,23 @@ describe('main-process wiring safeguards', () => {
     );
   });
 
+  it('tells the renderer when a Hyprland shortcut still needs its bind', () => {
+    const handlerStart = mainSource.indexOf("'register-hotkey'");
+    const handlerEnd = mainSource.indexOf("'unregister-hotkey'", handlerStart);
+    const handlerSource = mainSource.slice(handlerStart, handlerEnd);
+
+    expect(handlerSource).toContain(
+      'requiresCompositorBinding = portalBinding?.requiresCompositorBinding === true'
+    );
+    expect(handlerSource).toMatch(/success: true,\s+backend: [^\n]+,\s+requiresCompositorBinding,/);
+  });
+
   it('keeps native Wayland minimize and compositor-owned positions recoverable', () => {
-    const minimizeStart = mainSource.indexOf("ipcMain.handle('minimize-window'");
+    const minimizeStart = mainSource.indexOf('function minimizeMainWindow');
     const minimizeEnd = mainSource.indexOf("ipcMain.handle('focus-window'", minimizeStart);
     const minimizeSource = mainSource.slice(minimizeStart, minimizeEnd);
-    expect(minimizeSource).toContain('if (usesCompositorOwnedPlacement)');
+    expect(mainSource).toContain("ipcMain.handle('minimize-window'");
+    expect(minimizeSource).toContain('usesCompositorOwnedPlacement');
     expect(minimizeSource).toContain('hideMainWindowToTray()');
     expect(minimizeSource).toContain('mainWindow.minimize()');
 
@@ -854,11 +866,14 @@ describe('main-process wiring safeguards', () => {
     expect(refreshSource).toContain("'enter-full-screen'");
     expect(refreshSource).toContain("'leave-full-screen'");
     expect(refreshSource).toContain(
-      'applyWindowEffectsToWindow(targetWindow, currentConfig, overrideFrostedGlass)'
+      'applyWindowEffectsToWindow(targetWindow, currentConfig, override)'
     );
     expect(refreshSource).toContain('setTimeout(refreshEffects, 50)');
     expect(refreshSource).toContain('setTimeout(refreshEffects, 250)');
-    expect(mainSource).toContain('wireWindowEffectsRefresh(mainWindow, () => config)');
+    // The main window honours an unsaved Settings preview of the glass switch; pins never use it.
+    expect(mainSource).toContain(
+      'wireWindowEffectsRefresh(mainWindow, () => config, getPreviewFrostedGlassOverride)'
+    );
     expect(mainSource).toContain('wireWindowEffectsRefresh(pinWindow, () => config, false)');
   });
 

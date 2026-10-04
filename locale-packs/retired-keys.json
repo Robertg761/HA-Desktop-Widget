@@ -550,5 +550,9 @@
   "Gauge range:": {
     "retiredIn": "4.0.0",
     "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Gauge range"
+  },
+  "Turn off widget blur": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to read as a pair with 'Turn on blur for the widget'"
   }
 }

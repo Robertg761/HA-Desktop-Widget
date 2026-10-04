@@ -262,6 +262,7 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
      function getOmarchyBarEntities() { return { all: [] }; }
      function isHyprland() { return false; }
      function windowsAreAlwaysTransparent() { return false; }
+     function getSystemColorScheme() { return null; }
      function hasDeferredSecureConfigWork() { return false; }
      function getDefaultProfileSyncFilePath() { return path.join(app.getPath('userData'), PROFILE_SYNC_DEFAULT_FILE_NAME); }
      var config = null;

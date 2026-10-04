@@ -33,6 +33,7 @@ function runtime({ platform, nativeGlassSupported }) {
     resolveFrostedGlassConfig: (currentConfig, override) =>
       typeof override === 'boolean' ? override : !!currentConfig?.frostedGlass,
     setTimeout: jest.fn(),
+    clearTimeout: jest.fn(),
   };
   vm.createContext(context);
   vm.runInContext(
@@ -122,8 +123,100 @@ describe('Windows acrylic on the main process', () => {
       source.indexOf('function createDesktopPinWindow('),
       source.indexOf('const pinWindow = new BrowserWindow(')
     );
-    expect(pinCreation).toContain(
-      "if (NATIVE_GLASS_SUPPORTED) windowOptions.backgroundMaterial = 'acrylic';"
+    // A pin draws its own rounded glass in CSS, so it never asks for the native material (it used
+    // to, and turned it off again before the window was shown).
+    expect(pinCreation).not.toContain('windowOptions.backgroundMaterial');
+    expect(pinCreation).not.toContain('windowOptions.vibrancy');
+  });
+});
+
+describe('previewing the frosted glass switch in Settings on Windows', () => {
+  function previewRuntime({ saved }) {
+    const base = runtime({ platform: 'win32', nativeGlassSupported: true });
+    const { context } = base;
+    context.config.frostedGlass = saved;
+    context.mainWindow = base.targetWindow;
+    context.applyFrostedGlass = (override) =>
+      context.applyWindowEffectsToWindow(base.targetWindow, context.config, override);
+    context.applyWindowOpacityToAll = jest.fn();
+    const handlers = {};
+    context.ipcMain = { handle: (name, handler) => (handlers[name] = handler) };
+    context.authorizeIpcSender = () => ({ type: 'main' });
+    context.rejectUnauthorizedIpc = () => ({ success: false });
+    // Run timers when they are due rather than at the call.
+    context.setTimeout = (callback) => {
+      context.__timers.push(callback);
+      return context.__timers.length;
+    };
+    context.clearTimeout = jest.fn();
+    context.__timers = [];
+    vm.runInContext(
+      source.slice(
+        source.indexOf('let previewFrostedGlassOverride;'),
+        source.indexOf("ipcMain.handle(\n  'set-always-on-top'")
+      ),
+      context
     );
+    context.wireWindowEffectsRefresh(
+      base.targetWindow,
+      () => context.config,
+      context.getPreviewFrostedGlassOverride
+    );
+    return {
+      ...base,
+      handlers,
+      preview: (frostedGlass) => handlers['preview-window-effects']({}, { frostedGlass }),
+    };
+  }
+
+  it('keeps the previewed material when the window gains or loses focus before saving', () => {
+    const { context, targetWindow, listeners, preview } = previewRuntime({ saved: false });
+    preview(true);
+    expect(targetWindow.setBackgroundMaterial).toHaveBeenLastCalledWith('acrylic');
+
+    // Alt-tabbing away and back used to put the saved "none" back under the previewed CSS.
+    targetWindow.setBackgroundMaterial.mockClear();
+    listeners.blur();
+    listeners.focus();
+    context.__timers.splice(0).forEach((timer) => timer());
+    expect(targetWindow.setBackgroundMaterial.mock.calls.length).toBeGreaterThan(0);
+    for (const [material] of targetWindow.setBackgroundMaterial.mock.calls) {
+      expect(material).toBe('acrylic');
+    }
+  });
+
+  it('goes back to the saved material when Settings restores the saved value', () => {
+    const { context, targetWindow, listeners, preview } = previewRuntime({ saved: false });
+    preview(true);
+    preview(false);
+    targetWindow.setBackgroundMaterial.mockClear();
+
+    listeners.focus();
+    expect(targetWindow.setBackgroundMaterial).toHaveBeenLastCalledWith('none');
+    expect(context.getPreviewFrostedGlassOverride()).toBeUndefined();
+  });
+
+  it('follows the saved value once the previewed one is saved', () => {
+    const { context, targetWindow, listeners, preview } = previewRuntime({ saved: false });
+    preview(true);
+    context.config.frostedGlass = true;
+
+    expect(context.getPreviewFrostedGlassOverride()).toBeUndefined();
+    listeners.focus();
+    expect(targetWindow.setBackgroundMaterial).toHaveBeenLastCalledWith('acrylic');
+    context.config.frostedGlass = false;
+    listeners.focus();
+    expect(targetWindow.setBackgroundMaterial).toHaveBeenLastCalledWith('none');
+  });
+
+  it('runs one set of follow-up refreshes for a burst of focus events', () => {
+    const { context, listeners } = previewRuntime({ saved: true });
+    listeners.focus();
+    listeners.show();
+    listeners.restore();
+
+    // Each event refreshes at once, and only the last event's two follow-ups are left to run.
+    expect(context.clearTimeout).toHaveBeenCalled();
+    expect(context.clearTimeout.mock.calls.length).toBe(2 + 2);
   });
 });

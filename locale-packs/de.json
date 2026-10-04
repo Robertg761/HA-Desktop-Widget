@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.61",
+  "version": "1.2.62",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget.",
   "messages": {
@@ -1871,6 +1871,16 @@
     "Activated {{name}}": "{{name}} ausgeführt",
     "Range {{min}} to {{max}}, step {{step}}": "Bereich {{min}} bis {{max}}, Schritt {{step}}",
     "Use the command palette to control {{name}}": "Nutze die Befehlspalette, um {{name}} zu steuern",
+    "The Omarchy palette sets these colors while Follow Omarchy theme is on.": "Die Omarchy-Farbpalette bestimmt diese Farben, solange „Omarchy-Theme verwenden“ aktiviert ist.",
+    "Tints the window so it stays readable while transparent. Blur depends on your desktop.": "Tönt das Fenster, damit es trotz Transparenz lesbar bleibt. Ob es unscharf wird, hängt von deinem Desktop ab.",
+    "After setting a hotkey, copy its binding from the Hyprland shortcuts panel above.": "Kopiere die Belegung nach dem Festlegen eines Tastenkürzels aus dem Bereich „Hyprland-Tastenkürzel“ oben.",
+    "Press once to show the window and again to hide it.": "Einmal drücken zum Anzeigen, erneut drücken zum Ausblenden.",
+    "Set a popup hotkey or turn on entity hotkeys below, then copy the bindings here.": "Lege unten ein Popup-Tastenkürzel fest oder aktiviere Entitäts-Tastenkürzel und kopiere die Belegungen dann hier.",
+    "No shortcuts are set yet.": "Noch keine Tastenkürzel festgelegt.",
+    "Bind a key in your window manager to run ha-desktop-widget --toggle, which shows or hides the widget.": "Belege im Fenstermanager eine Taste mit ha-desktop-widget --toggle, das das Widget ein- oder ausblendet.",
+    "Turn off blur for the widget": "Unschärfe für das Widget ausschalten",
+    "Blur changes take effect immediately, without Save.": "Änderungen an der Unschärfe werden sofort wirksam, auch ohne Speichern.",
+    "Shortcut status updated.": "Status der Tastenkürzel aktualisiert.",
     "Count this install": "Diese Installation mitzählen",
     "Once a day, send a random install ID, the app version, and your operating system so the developer can see how many people use the app. Nothing about your Home Assistant, entities, or settings is sent.": "Einmal täglich eine zufällige Installations-ID, die App-Version und dein Betriebssystem senden, damit der Entwickler sehen kann, wie viele Menschen die App nutzen. Nichts über dein Home Assistant, deine Entitäten oder Einstellungen wird gesendet."
   }

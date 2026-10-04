@@ -6,6 +6,7 @@ const {
   isEnabledEnvFlag,
 } = require('./platform.cjs');
 const { CONFIG_FILE_NAME } = require('./config-write-guard.cjs');
+const { getHyprlandSocketCandidates } = require('./linux-desktop.cjs');
 // The "Text and control size" steps live with the pin bounds, which zoom by the same factor.
 const { normalizeDesktopPinScale } = require('./desktop-pin-bounds.js');
 
@@ -84,16 +85,7 @@ function detectTilingLayerShellCompositor(env = process.env, { exists } = {}) {
   // Require the socket each variable names to actually exist. A real session
   // whose socket moved is still caught by the XDG_CURRENT_DESKTOP fallback,
   // which login sessions set afresh.
-  const runtimeDir = String(env?.XDG_RUNTIME_DIR || '').trim();
-  const hyprlandSignature = String(env?.HYPRLAND_INSTANCE_SIGNATURE || '').trim();
-  if (hyprlandSignature) {
-    const socketCandidates = [path.join('/tmp', 'hypr', hyprlandSignature, '.socket.sock')];
-    if (runtimeDir) {
-      // Hyprland >= 0.40 puts its sockets under XDG_RUNTIME_DIR; before that, /tmp.
-      socketCandidates.unshift(path.join(runtimeDir, 'hypr', hyprlandSignature, '.socket.sock'));
-    }
-    if (socketCandidates.some(probe)) return 'hyprland';
-  }
+  if (getHyprlandSocketCandidates(env).some(probe)) return 'hyprland';
   const swaySocket = String(env?.SWAYSOCK || '').trim();
   if (swaySocket && probe(swaySocket)) return 'sway';
   const niriSocket = String(env?.NIRI_SOCKET || '').trim();

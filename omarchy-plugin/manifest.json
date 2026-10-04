@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "com.github.robertg761.hadesktopwidget",
   "name": "Home Assistant",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "author": "Robertg761",
   "license": "MIT",
   "description": "Home Assistant status, values, and quick toggles from HA Desktop Widget in the Omarchy bar.",

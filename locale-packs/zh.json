@@ -2,7 +2,7 @@
   "locale": "zh",
   "displayName": "简体中文",
   "englishName": "Chinese (Simplified)",
-  "version": "1.2.61",
+  "version": "1.2.62",
   "minAppVersion": "3.4.1",
   "notes": "Simplified Chinese language pack for HA Desktop Widget.",
   "messages": {
@@ -1871,6 +1871,16 @@
     "Activated {{name}}": "已运行 {{name}}",
     "Range {{min}} to {{max}}, step {{step}}": "范围 {{min}} 至 {{max}}，步长 {{step}}",
     "Use the command palette to control {{name}}": "使用命令面板控制 {{name}}",
+    "The Omarchy palette sets these colors while Follow Omarchy theme is on.": "开启“跟随 Omarchy 主题”时，这些颜色由 Omarchy 配色决定。",
+    "Tints the window so it stays readable while transparent. Blur depends on your desktop.": "为窗口着色，使其在透明时依然清晰可读。模糊效果取决于你的桌面环境。",
+    "After setting a hotkey, copy its binding from the Hyprland shortcuts panel above.": "设置快捷键后，请从上方的 Hyprland 快捷键面板复制其配置。",
+    "Press once to show the window and again to hide it.": "按一次显示窗口，再按一次隐藏。",
+    "Set a popup hotkey or turn on entity hotkeys below, then copy the bindings here.": "请在下方设置弹出快捷键或开启实体快捷键，然后在此复制快捷键配置。",
+    "No shortcuts are set yet.": "尚未设置快捷键。",
+    "Bind a key in your window manager to run ha-desktop-widget --toggle, which shows or hides the widget.": "在窗口管理器中绑定一个按键来运行 ha-desktop-widget --toggle，它会显示或隐藏小组件。",
+    "Turn off blur for the widget": "为小部件关闭模糊",
+    "Blur changes take effect immediately, without Save.": "模糊设置的更改会立即生效，无需保存。",
+    "Shortcut status updated.": "快捷键状态已更新。",
     "Count this install": "统计此安装",
     "Once a day, send a random install ID, the app version, and your operating system so the developer can see how many people use the app. Nothing about your Home Assistant, entities, or settings is sent.": "每天一次发送随机安装 ID、应用版本和操作系统，让开发者了解有多少人在使用此应用。不会发送任何有关您的 Home Assistant、实体或设置的信息。"
   }

@@ -1352,6 +1352,40 @@ describe('hotkeys module', () => {
       expect(document.activeElement).toBe(origin);
     });
 
+    it('says the shortcut is only a target when the compositor has to bind the key', async () => {
+      const config = getMockConfig();
+      config.globalHotkeys = { enabled: true, hotkeys: {} };
+      state.setConfig(config);
+      state.setStates({
+        'light.living_room': {
+          entity_id: 'light.living_room',
+          state: 'off',
+          attributes: { friendly_name: 'Living Room' },
+        },
+      });
+      mockElectronAPI.registerHotkey.mockResolvedValueOnce({
+        success: true,
+        requiresCompositorBinding: true,
+      });
+
+      const assignment = hotkeys.assignHotkeyToEntity('light.living_room');
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'A', code: 'KeyA', ctrlKey: true, bubbles: true })
+      );
+      await expect(assignment).resolves.toEqual(expect.objectContaining({ success: true }));
+
+      expect(showToast).toHaveBeenCalledWith(
+        'Shortcut target registered. Copy its binding from the Hyprland shortcuts panel.',
+        'success',
+        5000
+      );
+      expect(showToast).not.toHaveBeenCalledWith(
+        'Hotkey set for Living Room',
+        expect.anything(),
+        expect.anything()
+      );
+    });
+
     it('refocuses the field that replaces the originating one after a successful assignment', async () => {
       const config = getMockConfig();
       config.globalHotkeys = { enabled: true, hotkeys: {} };

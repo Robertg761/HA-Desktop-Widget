@@ -114,6 +114,51 @@ describe('native tray integration', () => {
     expect(runtime.hideMainWindowToTray).toHaveBeenCalledTimes(1);
   });
 
+  describe('double-clicking a tray icon', () => {
+    // Windows reports it as click, double-click, click.
+    function click(runtime, icon, now) {
+      runtime.Date = { now: () => now };
+      icon.on.mock.calls.find(([event]) => event === 'click')[1]({}, undefined);
+    }
+
+    it('toggles the widget once on Windows, not twice', () => {
+      const runtime = loadTrayRuntime('win32');
+      const icon = runtime.createTrayEntityIcon('sensor.office');
+
+      click(runtime, icon, 10_000);
+      click(runtime, icon, 10_120);
+      expect(runtime.hideMainWindowToTray).toHaveBeenCalledTimes(1);
+    });
+
+    it('toggles again for a click that comes after the double-click time', () => {
+      const runtime = loadTrayRuntime('win32');
+      const icon = runtime.createTrayEntityIcon('sensor.office');
+
+      click(runtime, icon, 10_000);
+      click(runtime, icon, 10_600);
+      expect(runtime.hideMainWindowToTray).toHaveBeenCalledTimes(2);
+    });
+
+    it('is not delayed on Linux, where one click is one event', () => {
+      const runtime = loadTrayRuntime('linux');
+      const icon = runtime.createTrayEntityIcon('sensor.office');
+
+      click(runtime, icon, 10_000);
+      click(runtime, icon, 10_050);
+      expect(runtime.hideMainWindowToTray).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not hold back the Show/Hide menu item', () => {
+      const runtime = loadTrayRuntime('win32');
+      const icon = runtime.createTrayEntityIcon('sensor.office');
+      click(runtime, icon, 10_000);
+
+      const menu = runtime.buildTrayEntityContextMenu('sensor.office');
+      menu.find((item) => item.label === 'Show/Hide').click();
+      expect(runtime.hideMainWindowToTray).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it('keeps saved beta preferences dormant in stable builds', () => {
     const runtime = loadTrayRuntime('linux');
     runtime.LIVE_TRAY_VALUES_ENABLED = false;

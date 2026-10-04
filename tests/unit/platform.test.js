@@ -19,7 +19,9 @@ const {
 describe('platform helpers', () => {
   test('uses ico on Windows and png elsewhere for app window icons', () => {
     expect(getAppIconPath('/app', 'win32')).toBe(path.join('/app', 'build', 'icon.ico'));
-    expect(getAppIconPath('/app', 'linux')).toBe(path.join('/app', 'build', 'icon.png'));
+    expect(getAppIconPath('/app', 'linux')).toBe(
+      path.join('/app', 'build', 'icons', '512x512.png')
+    );
     expect(getAppIconPath('/app', 'darwin')).toBe(path.join('/app', 'build', 'icon.png'));
   });
 
