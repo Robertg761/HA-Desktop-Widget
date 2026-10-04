@@ -322,5 +322,41 @@
   "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": {
     "retiredIn": "4.0.0",
     "reason": "Shortened before release: the first wording wrapped to three lines at 500px and four at 340px, over the bottom tile row"
+  },
+  "Long-press to configure weather": {
+    "retiredIn": "4.0.0",
+    "reason": "Tile Settings and Add page labels lost their colons and Title Case, and the weather card says to click, not to long-press (dashboard data audit)."
+  },
+  "Display Name:": {
+    "retiredIn": "4.0.0",
+    "reason": "Tile Settings and Add page labels lost their colons and Title Case, and the weather card says to click, not to long-press (dashboard data audit)."
+  },
+  "Value Font Size:": {
+    "retiredIn": "4.0.0",
+    "reason": "Tile Settings and Add page labels lost their colons and Title Case, and the weather card says to click, not to long-press (dashboard data audit)."
+  },
+  "Chart:": {
+    "retiredIn": "4.0.0",
+    "reason": "Tile Settings and Add page labels lost their colons and Title Case, and the weather card says to click, not to long-press (dashboard data audit)."
+  },
+  "Camera Preview:": {
+    "retiredIn": "4.0.0",
+    "reason": "Tile Settings and Add page labels lost their colons and Title Case, and the weather card says to click, not to long-press (dashboard data audit)."
+  },
+  "Gauge range:": {
+    "retiredIn": "4.0.0",
+    "reason": "Tile Settings and Add page labels lost their colons and Title Case, and the weather card says to click, not to long-press (dashboard data audit)."
+  },
+  "Page name:": {
+    "retiredIn": "4.0.0",
+    "reason": "Tile Settings and Add page labels lost their colons and Title Case, and the weather card says to click, not to long-press (dashboard data audit)."
+  },
+  "Quick picks:": {
+    "retiredIn": "4.0.0",
+    "reason": "Tile Settings and Add page labels lost their colons and Title Case, and the weather card says to click, not to long-press (dashboard data audit)."
+  },
+  "Add Page": {
+    "retiredIn": "4.0.0",
+    "reason": "Tile Settings and Add page labels lost their colons and Title Case, and the weather card says to click, not to long-press (dashboard data audit)."
   }
 }

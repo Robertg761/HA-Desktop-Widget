@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.56",
+  "version": "1.2.57",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1781,6 +1781,16 @@
     "Keep editing": "संपादन जारी रखें",
     "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "{{count}} में से पहले {{shown}} आइकन दिखाए जा रहे हैं। सीमित करने के लिए टाइप करें।",
     "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "पुनर्व्यवस्थित मोड सक्षम। क्रम बदलने के लिए खींचें या Alt+तीर कुंजियाँ दबाएं। पूरा करने के लिए Esc दबाएं।",
-    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "पुनर्व्यवस्थित मोड सक्षम। क्रम बदलने के लिए खींचें, चुनें या Alt+तीर कुंजियाँ दबाएं। पिन करने, नाम बदलने या हटाने के लिए टाइल के बटन उपयोग करें। पूरा करने के लिए Esc दबाएं।"
+    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "पुनर्व्यवस्थित मोड सक्षम। क्रम बदलने के लिए खींचें, चुनें या Alt+तीर कुंजियाँ दबाएं। पिन करने, नाम बदलने या हटाने के लिए टाइल के बटन उपयोग करें। पूरा करने के लिए Esc दबाएं।",
+    "Display name": "प्रदर्शित नाम",
+    "Value font size": "मान का फ़ॉन्ट आकार",
+    "Chart": "चार्ट",
+    "Gauge range": "गेज सीमा",
+    "Page name": "पेज का नाम",
+    "Quick picks": "त्वरित सुझाव",
+    "Click to configure weather": "मौसम कॉन्फ़िगर करने के लिए क्लिक करें",
+    "Activated {{name}}": "{{name}} चलाया गया",
+    "Range {{min}} to {{max}}, step {{step}}": "सीमा {{min}} से {{max}}, चरण {{step}}",
+    "Use the command palette to control {{name}}": "{{name}} को नियंत्रित करने के लिए कमांड पैलेट का उपयोग करें"
   }
 }
