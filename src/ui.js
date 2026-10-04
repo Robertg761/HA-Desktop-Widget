@@ -15270,8 +15270,13 @@ function renderUpdateStatus() {
 
   const statusEl = document.getElementById('update-status');
   if (statusEl) statusEl.dataset.state = description.tone;
+  // Written only when it changed: the line is a live region, and a download reports its progress
+  // several times a second, so rewriting the same words would have a screen reader read them out
+  // again each time.
   const statusText = document.getElementById('update-status-text');
-  if (statusText) statusText.textContent = description.text;
+  if (statusText && statusText.textContent !== description.text) {
+    statusText.textContent = description.text;
+  }
 
   // The button's label lives in a span that the update state sets, so a language change and a
   // different kind of update both reach it.

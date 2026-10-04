@@ -2505,6 +2505,22 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect($('check-updates-btn').disabled).toBe(true);
     });
 
+    it('does not rewrite the status words while a download reports its progress', () => {
+      ui.initUpdateUI();
+      updateStatus.applyUpdateEvent({ status: 'available', info: { version: '4.0.1' } });
+      const textNode = $('update-status-text').firstChild;
+
+      updateStatus.applyUpdateEvent({ status: 'downloading', progress: { percent: 10 } });
+      const downloadingNode = $('update-status-text').firstChild;
+      updateStatus.applyUpdateEvent({ status: 'downloading', progress: { percent: 20 } });
+      updateStatus.applyUpdateEvent({ status: 'downloading', progress: { percent: 30 } });
+
+      // The words changed once, from "available" to "downloading"; the next two ticks left them.
+      expect($('update-status-text').firstChild).toBe(downloadingNode);
+      expect(textNode).not.toBe(downloadingNode);
+      expect($('progress-text').textContent).toBe('30%');
+    });
+
     it('takes the outcome itself from a build that does not update itself', async () => {
       mockElectronAPI.checkForUpdates.mockResolvedValue({
         status: 'manual',
