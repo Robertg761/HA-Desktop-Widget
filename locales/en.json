@@ -1724,5 +1724,7 @@
   "Update available": "Update available",
   "Update ready to install": "Update ready to install",
   "Arm": "Arm",
-  "Disarm": "Disarm"
+  "Disarm": "Disarm",
+  "None selected": "None selected",
+  "Home Assistant has no weather entities. Add a weather integration, then reopen this list.": "Home Assistant has no weather entities. Add a weather integration, then reopen this list."
 }

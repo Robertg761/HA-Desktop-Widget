@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.63",
+  "version": "1.2.64",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget, including German date and time formats.",
   "messages": {
@@ -1820,6 +1820,8 @@
     "Update available": "Update verfügbar",
     "Update ready to install": "Update bereit zur Installation",
     "Arm": "Scharfstellen",
-    "Disarm": "Unscharf stellen"
+    "Disarm": "Unscharf stellen",
+    "None selected": "Keine ausgewählt",
+    "Home Assistant has no weather entities. Add a weather integration, then reopen this list.": "Home Assistant hat keine Wetterentitäten. Füge eine Wetter-Integration hinzu und öffne diese Liste dann erneut."
   }
 }

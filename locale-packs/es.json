@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.63",
+  "version": "1.2.64",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1820,6 +1820,8 @@
     "Update available": "Actualización disponible",
     "Update ready to install": "Actualización lista para instalar",
     "Arm": "Armar",
-    "Disarm": "Desarmar"
+    "Disarm": "Desarmar",
+    "None selected": "Ninguna seleccionada",
+    "Home Assistant has no weather entities. Add a weather integration, then reopen this list.": "Home Assistant no tiene entidades meteorológicas. Añade una integración meteorológica y vuelve a abrir esta lista."
   }
 }

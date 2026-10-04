@@ -72,3 +72,44 @@ describe('Show log file', () => {
     ]);
   });
 });
+
+describe('Clear in the weather picker', () => {
+  const harness = createRendererHarness();
+
+  afterEach(() => harness.cleanup());
+
+  const load = async (disabled) => {
+    await harness.load({
+      config: harness.tokenConfig(),
+      bodyHtml: `<button id="clear-weather" type="button" aria-disabled="${disabled}">Clear</button>`,
+      configureApi(api) {
+        api.updateConfig = jest.fn(async (patch) => ({ ...harness.tokenConfig(), ...patch }));
+      },
+    });
+    harness.electronAPI.updateConfig.mockClear();
+    document.getElementById('clear-weather').click();
+    await harness.flushAsync();
+  };
+
+  it('does nothing, and says nothing, when no entity was chosen', async () => {
+    await load('true');
+
+    expect(harness.electronAPI.updateConfig).not.toHaveBeenCalled();
+    expect(harness.uiUtils.showToast).not.toHaveBeenCalledWith(
+      expect.stringContaining('cleared'),
+      expect.anything(),
+      expect.anything()
+    );
+  });
+
+  it('clears the choice and says so when one was made', async () => {
+    await load('false');
+
+    expect(harness.electronAPI.updateConfig).toHaveBeenCalledWith({ selectedWeatherEntity: null });
+    expect(harness.uiUtils.showToast).toHaveBeenCalledWith(
+      'Weather entity cleared (using first available)',
+      'success',
+      2000
+    );
+  });
+});

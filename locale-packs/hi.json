@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.64",
+  "version": "1.2.65",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1820,6 +1820,8 @@
     "Update available": "अपडेट उपलब्ध",
     "Update ready to install": "अपडेट इंस्टॉल के लिए तैयार",
     "Arm": "सशस्त्र करें",
-    "Disarm": "निरस्त्र करें"
+    "Disarm": "निरस्त्र करें",
+    "None selected": "कोई चयनित नहीं",
+    "Home Assistant has no weather entities. Add a weather integration, then reopen this list.": "Home Assistant में कोई मौसम एंटिटी नहीं है। मौसम इंटीग्रेशन जोड़ें, फिर यह सूची दोबारा खोलें।"
   }
 }

@@ -3382,6 +3382,8 @@ function wireUI() {
     const clearWeatherBtn = document.getElementById('clear-weather');
     if (clearWeatherBtn) {
       clearWeatherBtn.onclick = async () => {
+        // Nothing is chosen, so there is nothing to clear (and nothing to say was cleared).
+        if (clearWeatherBtn.getAttribute('aria-disabled') === 'true') return;
         try {
           // Clear the selected weather entity (revert to default). null, as Settings saves it:
           // an undefined survives the IPC and sits in main's config until the next restart.

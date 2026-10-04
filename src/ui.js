@@ -13037,10 +13037,26 @@ function populateWeatherEntitiesList() {
       : null;
     list.innerHTML = '';
 
+    // Nothing to clear when no entity was chosen. aria-disabled keeps the button in the tab order, so
+    // pressing Clear does not drop the keyboard out of the dialog.
+    document
+      .getElementById('clear-weather')
+      ?.setAttribute('aria-disabled', state.CONFIG.selectedWeatherEntity ? 'false' : 'true');
+
     if (weatherEntities.length === 0) {
+      // Connected, an empty list is Home Assistant's: it has no weather integration. Only before
+      // that is the connection what to check.
       list.innerHTML = `<div class="no-entities-message">${utils.escapeHtml(
-        t("No weather entities available. Make sure you're connected to Home Assistant.")
+        websocket.isConnected()
+          ? t(
+              'Home Assistant has no weather entities. Add a weather integration, then reopen this list.'
+            )
+          : t("No weather entities available. Make sure you're connected to Home Assistant.")
       )}</div>`;
+      if (currentNameEl) {
+        currentNameEl.textContent = t('None available');
+        currentNameEl.dataset.state = 'none';
+      }
       return;
     }
 
