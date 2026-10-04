@@ -241,7 +241,24 @@ describe('Renderer Home Assistant connection lifecycle', () => {
     await flushAsync();
   };
 
+  // A renderer a test has finished with stays on the window: a timer it left running (Retry's
+  // "Retrying..." moment, say) would fire into the next test's page and draw its own, older, state
+  // there. So every timer a test starts is cleared when the test ends.
+  let timerSpy;
+  const startedTimers = new Set();
+  beforeEach(() => {
+    const startTimer = window.setTimeout;
+    timerSpy = jest.spyOn(window, 'setTimeout').mockImplementation((...args) => {
+      const id = startTimer.apply(window, args);
+      startedTimers.add(id);
+      return id;
+    });
+  });
+
   afterEach(() => {
+    startedTimers.forEach((id) => window.clearTimeout(id));
+    startedTimers.clear();
+    timerSpy.mockRestore();
     jest.useRealTimers();
     jest.resetModules();
     delete window.electronAPI;
