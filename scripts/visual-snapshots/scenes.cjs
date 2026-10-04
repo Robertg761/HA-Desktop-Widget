@@ -38,6 +38,21 @@ const FORCED_COLORS = [{ name: 'forced-colors', value: 'active' }];
 // colour scheme.
 const FORCED_COLORS_LIGHT = [...FORCED_COLORS, { name: 'prefers-color-scheme', value: 'light' }];
 
+// The media tile's track is a button. Its title has to run out of room (so the ellipsis is doing
+// its job), the ellipsis has to be set, and neither the track nor the tile may leave the window.
+const MEDIA_TRACK_CUT_OFF = `(() => {
+  const tile = document.getElementById('media-tile');
+  const info = document.getElementById('media-tile-info');
+  const title = document.getElementById('media-tile-title');
+  if (!tile || !info || !title || info.tagName !== 'BUTTON') return false;
+  const tileBox = tile.getBoundingClientRect();
+  const infoBox = info.getBoundingClientRect();
+  return title.scrollWidth > title.clientWidth &&
+    getComputedStyle(title).textOverflow === 'ellipsis' &&
+    infoBox.left >= tileBox.left - 1 && infoBox.right <= tileBox.right + 1 &&
+    tileBox.left >= 0 && tileBox.right <= window.innerWidth;
+})()`;
+
 const tileDetails = (entityId) =>
   `#quick-controls [data-entity-id="${entityId}"] .tile-details-button`;
 const tile = (entityId) => `#quick-controls [data-entity-id="${entityId}"]`;
@@ -1307,6 +1322,29 @@ const scenes = [
     size: NARROW_SIZE,
     config: { primaryMediaPlayer: 'media_player.theater' },
   },
+  // The track is a button that opens the player, and a title too long for the tile is still cut
+  // off by an ellipsis inside it, with an artist under it or without, at the default width and at
+  // 340px, where the grid stacks the rows, in the light theme and right to left.
+  ...[
+    ['layout-media-title-long', 'media_player.bedroom_tv', DEFAULT_SIZE, {}],
+    ['layout-media-title-long-narrow', 'media_player.bedroom_tv', NARROW_SIZE, {}],
+    [
+      'layout-media-no-artist-narrow-light',
+      'media_player.audiobook',
+      NARROW_SIZE,
+      { theme: 'light' },
+    ],
+    ['layout-media-no-artist-ar', 'media_player.audiobook', DEFAULT_SIZE, { language: 'ar' }],
+  ].map(([name, player, size, ui]) => ({
+    name,
+    size,
+    ui,
+    config: { primaryMediaPlayer: player },
+    setup: async (ctx) => {
+      await ctx.waitForExpression(`document.getElementById('media-tile-title')?.textContent`);
+      await ctx.expect(MEDIA_TRACK_CUT_OFF, 'a long title is cut off inside the media tile');
+    },
+  })),
   { name: 'layout-time-long-date-es', ui: { language: 'es', dateFormat: 'long' } },
   {
     name: 'layout-time-long-date-es-narrow',

@@ -640,6 +640,51 @@ describe('stylesheet cascade regressions', () => {
       }
     });
 
+    // The track is a button now, so the card opens the player's controls from the keyboard. The
+    // grid placement written for a div has to keep working on it at every window width.
+    describe('the track button', () => {
+      const markup = `<div class="media-tile">
+        <div class="media-tile-content">
+          <button type="button" class="media-tile-info">
+            <span class="media-tile-title">A very long title</span>
+            <span class="media-tile-artist">An artist</span>
+          </button>
+          <div class="media-tile-seek"></div>
+          <div class="media-tile-controls"></div>
+        </div>
+      </div>`;
+
+      it.each([
+        [500, '1', 'auto'],
+        [420, '1 / -1', 'auto'],
+        [360, '1', 'auto'],
+        [340, '1', 'auto'],
+      ])('takes its place in the grid at %ipx', (width, column, row) => {
+        render('', markup);
+        const info = document.querySelector('.media-tile-info');
+        const options = { viewport: { width, height: 600 } };
+
+        expect(resolvedValue(info, 'grid-column', options)).toBe(column);
+        // Only the narrowest layout stacks the rows, so the other widths leave the row to the grid
+        expect(resolvedValue(info, 'grid-row', options)).toBe(width <= 360 ? row : null);
+      });
+
+      it('is drawn as text, with the title and the artist cut off by an ellipsis', () => {
+        render('', markup);
+        const info = document.querySelector('.media-tile-info');
+
+        expect(resolvedValue(info, 'border-top-width')).toBeNull();
+        expect(resolvedValue(info, 'border')).toBe('0');
+        expect(resolvedValue(info, 'background')).toBe('transparent');
+        expect(resolvedValue(info, 'text-align')).toBe('start');
+        for (const line of info.children) {
+          expect(resolvedValue(line, 'white-space')).toBe('nowrap');
+          expect(resolvedValue(line, 'overflow')).toBe('hidden');
+          expect(resolvedValue(line, 'text-overflow')).toBe('ellipsis');
+        }
+      });
+    });
+
     it('has no marquee animation left in the stylesheets', () => {
       const css = require('fs').readFileSync(
         require('path').resolve(__dirname, '../../styles.css'),
