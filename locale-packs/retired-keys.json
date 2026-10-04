@@ -630,5 +630,609 @@
   "No rooms are set up in Home Assistant yet. Choose from your devices instead.": {
     "retiredIn": "4.0.0",
     "reason": "The starter page list says entities, as the rest of the dialog does"
+  },
+  "Home Assistant Connection": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Home Assistant URL:": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Access Token:": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Authorization expired. Connect again to continue.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Start with Windows": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Time Format": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Date Format": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Language Mode": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Offline Language Packs": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Current Version:": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Create a Long-Lived Access Token": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "In Home Assistant, open your profile security page, create a Long-Lived Access Token, then return here.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Open token page": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Paste your access token": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "The token is stored by the app and used only to connect to your Home Assistant server.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Long-Lived Access Token": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Test your connection": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Make sure the URL and token work before finishing setup.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Ready to connect": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Finish setup to save these settings and start live updates.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "State: {{state}}": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "No hotkey set": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Last Updated:": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "View name": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "No View": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Delete current view": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Delete Quick Access View": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "At least one Quick Access view is required": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Quick Access view added": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Quick Access view renamed": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Quick Access view deleted": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Failed to save layout density": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Every 30 seconds (Efficient)": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Every 10 seconds": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Every 5 seconds (Frequent)": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Loads authenticated snapshots only while this tile and the app are visible. Clicking the tile expands that same preview without reconnecting.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Refreshing preview…": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Preview active": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Could not load camera snapshot": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Move desktop tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Focus Main": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Failed to save tile glow setting": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Could not save settings. {{error}}": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Add these bindings to your Hyprland bindings.lua after checking for existing key assignments. Keep the widget running, then press your shortcut to test it.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Failed to save readability settings": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "And {{count}} more devices": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Page preview: {{count}} devices": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Choose how to resolve initial profile sync conflict.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "{{name}} Camera preview": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "{{name}} Preview": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Edit Alert": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Popup Hotkey (Press to Bring Window to Front)": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Popup Hotkey (Hold to Bring Window to Front)": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Set Hotkey": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Not set (click Set Hotkey)": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Toggle fan": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "{{percent}}% open": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "No position or movement controls advertised": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Latest Home Assistant data reports this entity as unavailable right now.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "This media player does not advertise transport controls.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Setup Required": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Your Home Assistant connection needs to be configured.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Click the settings button (⚙️) in the top right to:": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Set your Home Assistant URL": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Add your Long-Lived Access Token": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Configuration incomplete": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Attempting to connect to: {{url}}": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "If this persists, check your Home Assistant URL and token in settings.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Target Temperature": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "This fan does not advertise percentage control.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Cover Position": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "This cover does not advertise movement controls.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Sync Provider": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Sync Scope": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Background Sync Interval": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Sync Passphrase": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Color Themes": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Accent Color": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Background Color": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Choose whether the palette updates highlights or the window base.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Pick a theme color for the selected target.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Theme colors": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Selections preview instantly and save when you click Save.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Red channel": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Green channel": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Blue channel": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "RGB values use a 0-255 range for each channel.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Hex format uses <code>#RRGGBB</code> (example: <code>#34A1FF</code>).": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Edit color freely, preview live, then save it to your reusable palette.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Selected Custom Color": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Window Opacity:": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Renders ambient background animations based on the current weather": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Weather Effect Override:": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Reset to defaults": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Search Entities": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Available Entities": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Entity Icon Overrides": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Primary Media Player:": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Select which media player to display in the main media tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Enable interaction diagnostics logs": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Writes detailed UI interaction debug events to logs. Keep off for normal use.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "View Logs": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Recommended presets (click to use):": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Press to toggle (tap to show/hide)": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "When enabled, press the hotkey once to show the window and again to hide it. This disables hold-to-show behavior.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Hide window when hotkey is released": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "When enabled, the window will hide when you release the popup hotkey instead of just returning to normal z-order.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Enable Entity Hotkeys": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Supported modifiers: Ctrl, Alt, Shift, Command, Super.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Example:": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Enable Entity Alerts": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Configure which entities should trigger desktop notifications.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Available Entities for Quick Access:": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Select Weather Entity:": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Current Weather Entity:": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Configure Hotkeys:": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Existing Hotkeys:": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Hotkey Format:": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Configure Alerts:": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Existing Alerts:": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Alert Types:": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Hotkey Combination:": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Alert Type:": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Select Entity to Configure Alert:": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Passphrase is required to decrypt profile payload": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Failed to decrypt synced profile payload": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Profile payload must be an object": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Sync provider": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Use combinations like: <code>Ctrl+Alt+L</code>, <code>Ctrl+Shift+1</code>, <code>Alt+F1</code>": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Available modifiers: <code>Ctrl</code>, <code>Alt</code>, <code>Shift</code>, <code>Win</code>": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "+ Add New Alert": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Add entities to Quick Access to pin them to the desktop.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Card 1 ✓": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Card 2 ✓": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Clear passphrase": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Could not focus the pinned tile.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Pin any Quick Access tile to create a small desktop mini-widget.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Set Card 2": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Status: {{status}} | Last sync: {{time}}": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "needs resolution": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "{{count}} custom icon configured.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "{{count}} pinned tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "{{count}} pinned tiles": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "{{count}} tile will be persisted when you save settings.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "{{count}} tiles will be persisted when you save settings.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "{{message}} Click the gear icon to open Settings.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Fan only": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Heat/Cool": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Compact controls": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "The {{domain}} domain does not have a desktop-pin profile yet.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Settings a sync replaced, newest first. Restoring one applies it on this computer, and it then syncs to your other computers.": {
+    "retiredIn": "4.0.0",
+    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
   }
 }

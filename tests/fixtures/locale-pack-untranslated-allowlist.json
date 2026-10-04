@@ -139,6 +139,6 @@
     "Volume",
     "{{count}} notifications"
   ],
-  "hi": ["DevTools", "Home Assistant URL", "Home Assistant URL:"],
+  "hi": ["DevTools", "Home Assistant URL"],
   "zh": []
 }
