@@ -335,6 +335,81 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(values()).toEqual(['light.desk', 'switch.offline']);
     });
 
+    it('keeps the ticks on entities the list stops showing, for when it shows them again', async () => {
+      mockRequest.mockImplementation(({ type }) =>
+        Promise.resolve(
+          type === 'get_states'
+            ? { success: true, result: entities }
+            : { success: false, error: { code: 'unauthorized' } }
+        )
+      );
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      const showAll = document.querySelector('.room-show-all input');
+      const ticked = () =>
+        [...document.querySelectorAll('.room-entity-list input:checked')].map(
+          (input) => input.value
+        );
+
+      showAll.click();
+      document.querySelector('input[value="sensor.temperature"]').click();
+      expect(ticked()).toEqual(['light.desk', 'sensor.temperature']);
+
+      // Hiding the sensors takes its row away, and it is not part of the page while hidden.
+      showAll.click();
+      expect(document.querySelector('input[value="sensor.temperature"]')).toBeNull();
+      expect(ticked()).toEqual(['light.desk']);
+
+      // Showing them again is not a new list: the tick is still there.
+      showAll.click();
+      expect(ticked()).toEqual(['light.desk', 'sensor.temperature']);
+    });
+
+    it('keeps a default that was unticked unticked, and forgets hidden ticks when the room changes', async () => {
+      mockRequest.mockImplementation(({ type }) =>
+        Promise.resolve(
+          type === 'get_states'
+            ? { success: true, result: entities }
+            : {
+                success: true,
+                result: {
+                  'config/area_registry/list': [{ area_id: 'office', name: 'Office' }],
+                  'config/entity_registry/list': [
+                    { entity_id: 'light.desk', area_id: 'office' },
+                    { entity_id: 'sensor.temperature', area_id: 'office' },
+                  ],
+                  'config/device_registry/list': [],
+                }[type],
+              }
+        )
+      );
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      const room = document.querySelector('#add-page-room');
+      room.value = '';
+      room.onchange();
+      const showAll = document.querySelector('.room-show-all input');
+      const ticked = () =>
+        [...document.querySelectorAll('.room-entity-list input:checked')].map(
+          (input) => input.value
+        );
+
+      // Turning something off is a choice too, and showing more entities does not undo it.
+      document.querySelector('input[value="light.desk"]').click();
+      showAll.click();
+      expect(ticked()).toEqual([]);
+
+      document.querySelector('input[value="sensor.temperature"]').click();
+      showAll.click();
+      // A different room is a different list, which starts again from its own suggestions.
+      room.value = 'office';
+      room.onchange();
+      room.value = '';
+      room.onchange();
+      showAll.click();
+      expect(ticked()).toEqual(['light.desk']);
+    });
+
     it('does not offer the switch when every entity is already shown', async () => {
       mockRequest.mockImplementation(({ type }) =>
         Promise.resolve(

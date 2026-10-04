@@ -1399,18 +1399,24 @@ function showAddPageModal({ starter = false } = {}) {
     }
   };
   roomEntities.addEventListener('change', updatePreview);
-  // Showing more or fewer entities rebuilds the list; what was ticked stays ticked.
+  // Showing more or fewer entities rebuilds the list. A tick belongs to its entity, not to the
+  // list: what was ticked stays ticked and what was cleared stays cleared, and an entity the list
+  // stops showing keeps its tick (out of the page and the preview while hidden) for when it is
+  // shown again.
+  let hiddenTicks = new Set();
   showAll.addEventListener('change', () => {
-    const ticked = new Set(
-      [...roomEntities.querySelectorAll('input:checked')].map((box) => box.value)
-    );
+    const ticked = new Set(hiddenTicks);
+    roomEntities.querySelectorAll('input:checked').forEach((box) => ticked.add(box.value));
     // The status line (rooms unavailable, say) is about the rooms, not about this list.
     const status = roomStatus.textContent;
     roomSelect.onchange();
     roomStatus.textContent = status;
+    const shown = new Set();
     roomEntities.querySelectorAll('input').forEach((box) => {
-      if (ticked.has(box.value)) box.checked = true;
+      shown.add(box.value);
+      box.checked = ticked.has(box.value);
     });
+    hiddenTicks = new Set([...ticked].filter((id) => !shown.has(id)));
     updatePreview();
   });
   // Remember the name we filled in from a room so a name the user typed is never overwritten.
@@ -1493,6 +1499,8 @@ function showAddPageModal({ starter = false } = {}) {
     roomEntities.replaceChildren();
     preview.replaceChildren();
     statusBeforeNoMatches = null;
+    // A different room is a different list; ticks kept from the last one do not follow it.
+    hiddenTicks.clear();
     if ((!roomSelect.value && !starter) || !registry) {
       roomStatus.textContent = '';
       deviceSearch.hidden = true;
