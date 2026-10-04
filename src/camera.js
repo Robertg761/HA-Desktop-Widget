@@ -1269,7 +1269,7 @@ async function openCamera(cameraId, options = {}) {
             <img alt="${escapeHtmlAttribute(getEntityDisplayName(camera))}" class="camera-stream camera-img">
             <div class="camera-loading" id="camera-loading">
               <div class="spinner"></div>
-              ${escapeHtml(t('Loading live stream...'))}
+              <span id="camera-loading-text">${escapeHtml(t('Loading snapshot…'))}</span>
             </div>
             <div class="camera-viewer-message" id="camera-viewer-message" hidden>
               <span class="camera-viewer-message-icon" aria-hidden="true">${lineIconMarkup('cctv')}</span>
@@ -1311,8 +1311,12 @@ async function openCamera(cameraId, options = {}) {
 
     // `.camera-loading` is hidden by default and revealed by `.show`, so no inline display is
     // written here; the stylesheet stays the single source of truth for the overlay's layout.
-    const showLoading = (show) => {
+    // The overlay says what is being loaded, since the viewer opens on a snapshot and a person who
+    // never presses Live is not waiting for a stream.
+    const loadingTextEl = modal.querySelector('#camera-loading-text');
+    const showLoading = (show, label) => {
       if (closed) return;
+      if (label && loadingTextEl) loadingTextEl.textContent = label;
       loadingEl?.classList.toggle('show', show);
     };
 
@@ -1358,7 +1362,7 @@ async function openCamera(cameraId, options = {}) {
       if (!img) return;
       const generation = streamGeneration;
       // A snapshot that fails used to leave a broken image icon and no explanation.
-      showLoading(true);
+      showLoading(true, t('Loading snapshot…'));
       img.onload = () => {
         if (closed || generation !== streamGeneration) return;
         showLoading(false);
@@ -1384,7 +1388,7 @@ async function openCamera(cameraId, options = {}) {
         liveBtn.textContent = t('Stop');
         liveBtn.setAttribute('aria-busy', 'true');
       }
-      showLoading(true);
+      showLoading(true, t('Starting live stream…'));
 
       // Load the optional player and request the stream in parallel. Either may
       // outlive the modal, so every continuation is generation guarded.

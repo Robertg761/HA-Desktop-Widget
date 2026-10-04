@@ -382,5 +382,9 @@
   "Entity removed from Quick Access": {
     "retiredIn": "4.0.0",
     "reason": "Says what is lost: the page and its tiles, and that a tile leaves the page it is on"
+  },
+  "Loading live stream...": {
+    "retiredIn": "4.0.0",
+    "reason": "The viewer opens on a snapshot, so its loading overlay names what it is loading"
   }
 }

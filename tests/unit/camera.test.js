@@ -1570,6 +1570,27 @@ describe('Camera Module', () => {
       expect(document.getElementById('camera-loading').classList.contains('show')).toBe(false);
     });
 
+    it('says what is loading: the snapshot the viewer opens on, then the stream Live starts', async () => {
+      await camera.openCamera('camera.front_door');
+      const loading = document.getElementById('camera-loading');
+      const label = () => document.getElementById('camera-loading-text').textContent;
+
+      // The viewer opens on a snapshot; nobody has asked for a stream yet.
+      expect(loading.classList.contains('show')).toBe(true);
+      expect(label()).toBe('Loading snapshot…');
+      document.querySelector('.camera-modal .camera-stream').onload();
+      expect(loading.classList.contains('show')).toBe(false);
+
+      document.getElementById('live-btn').click();
+      expect(loading.classList.contains('show')).toBe(true);
+      expect(label()).toBe('Starting live stream…');
+      expect(loading.textContent).not.toContain('Loading live stream');
+
+      // Snapshot again: the label follows the mode, it does not stay on the last one.
+      document.getElementById('snapshot-btn').click();
+      expect(label()).toBe('Loading snapshot…');
+    });
+
     it('should close modal when close button clicked', () => {
       camera.openCamera('camera.front_door');
 
