@@ -2814,11 +2814,11 @@ window.electronAPI.onDesktopPinSnapshotNeeded?.(() => {
 // for a full re-render whenever a new tray icon appears.
 window.electronAPI.onTrayEntitiesRefreshNeeded?.(({ reconnect = false, entityId = null } = {}) => {
   if (IS_DESKTOP_PIN_MODE) return;
-  // A reconnect request is how main reports waking from suspend. Timers do not count the time the
-  // machine slept, so the tick armed before it could fire up to a minute late and leave the clock
-  // behind.
-  if (reconnect) runUiTick();
   if (reconnect) {
+    // A reconnect request is how main reports waking from suspend. Timers do not count the time
+    // the machine slept, so the tick armed before it could fire up to a minute late and leave the
+    // clock behind.
+    runUiTick();
     setTrayEntityConnectionState(false);
     closeWebSocket();
     connectWebSocket();

@@ -15227,14 +15227,16 @@ function toggleQuickAccess(entityId) {
   }
 }
 
-// Settings shows the update state that src/update-status.js keeps; this draws it. Disabling the
-// check button while a check runs drops keyboard focus to <body>, and enabling it again does not
-// bring it back; disableControlsKeepingFocus does, as the entity switches in Settings do.
 // The release notes of a version are on its GitHub release, tagged with a "v" before the version.
 const RELEASE_PAGE_URL = 'https://github.com/Robertg761/HA-Desktop-Widget/releases/tag';
+
+// Disabling the check button while a check runs drops keyboard focus to <body>, and enabling it
+// again does not bring it back; disableControlsKeepingFocus does, as the entity switches in
+// Settings do.
 let checkUpdatesFocusGuard = null;
 let unsubscribeUpdateState = null;
 
+// Settings shows the update state that src/update-status.js keeps; this draws it.
 function renderUpdateStatus() {
   const description = describeUpdateState(getUpdateState());
 
