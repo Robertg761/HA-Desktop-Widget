@@ -294,6 +294,17 @@ function keyFromKeyName(key) {
   return code ? NAMED_CODES[code] : /^F\d{1,2}$/.test(key) ? key : '';
 }
 
+// The key a layout names for a physical key that has no name of its own above: the extra ISO key
+// beside the left Shift (IntlBackslash), the Japanese ro key and the numpad Enter. Electron
+// registers an accelerator by the character or name the layout gives, so the recorder does the
+// same for these. Only a name Electron can parse counts: a printable ASCII character, or a named
+// key like Enter. The yen sign and other letters outside ASCII stay unrecorded rather than become
+// a hotkey that cannot be registered.
+function keyFromLayout(key) {
+  if (typeof key === 'string' && key.length === 1 && !/^[\x20-\x7e]$/.test(key)) return '';
+  return keyFromKeyName(key);
+}
+
 /**
  * The accelerator a keydown makes, by physical key: KeyboardEvent.code rather than .key, so Space,
  * the arrows and Shift+digit record as such, a Mac's Option+letter does not turn into a composed
@@ -316,7 +327,7 @@ function acceleratorFromKeyEvent(event, platform) {
   if (event?.shiftKey) parts.push('Shift');
   if (event?.metaKey) parts.push(resolvePlatform(platform) === 'darwin' ? 'Command' : 'Super');
   const code = typeof event?.code === 'string' ? event.code : '';
-  const key = code ? keyFromCode(code) : keyFromKeyName(event?.key);
+  const key = (code && keyFromCode(code)) || keyFromLayout(event?.key);
   if (key) parts.push(key);
   const hasModifier = !!(event?.ctrlKey || event?.altKey || event?.metaKey);
   return {
