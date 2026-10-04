@@ -11,6 +11,7 @@ const {
   setTrayEntityConnectionState,
   tickTrayEntityIcon,
   refreshTrayEntityIcons,
+  getTrayColorScheme,
   syncTrayEntityIconsWithConfig,
 } = require('../../src/tray-entity-icons.js');
 
@@ -482,5 +483,54 @@ describe('tray-entity-icons', () => {
       if (previous) Object.defineProperty(document, 'hidden', previous);
       else delete document.hidden;
     }
+  });
+
+  describe('the color scheme of the value icons', () => {
+    const setSystemScheme = (systemColorScheme) =>
+      state.setConfig({ ...state.CONFIG, desktopCapabilities: { systemColorScheme } });
+
+    afterEach(() => {
+      delete window.matchMedia;
+      state.setConfig({ ...state.CONFIG, desktopCapabilities: undefined });
+    });
+
+    it('follows the OS scheme the main process reports, not the app theme the page sees', () => {
+      // The app is set to Dark, which is what prefers-color-scheme now says, on a light panel.
+      window.matchMedia = jest.fn(() => ({ matches: true, addEventListener: jest.fn() }));
+      setup();
+      setSystemScheme('light');
+      expect(getTrayColorScheme()).toBe('light');
+
+      setSystemScheme('dark');
+      expect(getTrayColorScheme()).toBe('dark');
+    });
+
+    it('falls back to the page when the main process cannot say', () => {
+      window.matchMedia = jest.fn(() => ({ matches: false, addEventListener: jest.fn() }));
+      setup();
+      setSystemScheme(null);
+      expect(getTrayColorScheme()).toBe('light');
+      setSystemScheme('unknown');
+      expect(getTrayColorScheme()).toBe('light');
+    });
+
+    it('redraws the icons when the OS scheme changes', async () => {
+      const { api } = setup();
+      setSystemScheme('dark');
+      syncTrayEntityIconsWithConfig();
+      await flush();
+      expect(api.updateTrayEntityIcon).toHaveBeenCalledTimes(1);
+
+      // The next config echo carries the new scheme; the icon is drawn again for it.
+      setSystemScheme('light');
+      syncTrayEntityIconsWithConfig();
+      await flush();
+      expect(api.updateTrayEntityIcon).toHaveBeenCalledTimes(2);
+
+      // An echo that changes nothing about the icon sends nothing.
+      syncTrayEntityIconsWithConfig();
+      await flush();
+      expect(api.updateTrayEntityIcon).toHaveBeenCalledTimes(2);
+    });
   });
 });

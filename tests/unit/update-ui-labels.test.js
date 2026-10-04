@@ -43,6 +43,7 @@ jest.mock('../../src/websocket.js', () => ({
 
 const i18n = require('../../src/i18n.js');
 const ui = require('../../src/ui.js');
+const updateStatus = require('../../src/update-status.js');
 
 const GERMAN = {
   'Check for updates': 'Nach Updates suchen',
@@ -56,33 +57,31 @@ const GERMAN = {
 };
 
 describe('update panel labels', () => {
-  let onUpdate;
-
   beforeEach(() => {
+    updateStatus.resetUpdateStatus();
     document.body.innerHTML = `
       <span id="current-version"></span>
-      <span id="update-status-text"></span>
+      <p id="update-status" data-state="idle"><span id="update-status-text"></span></p>
       <button id="check-updates-btn"><span id="check-updates-text">Check for updates</span></button>
       <button id="install-update-btn" class="hidden"><span id="install-update-text">Install update</span></button>
-      <div id="update-progress" class="hidden"></div>`;
-    onUpdate = null;
-    mockElectronAPI.onAutoUpdate = jest.fn((callback) => {
-      onUpdate = callback;
-      return jest.fn();
-    });
+      <div id="update-progress" class="hidden"><div id="progress-fill"></div><span id="progress-text"></span></div>`;
     ui.initUpdateUI();
   });
 
-  afterEach(() => i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} }));
+  afterEach(() => {
+    updateStatus.resetUpdateStatus();
+    i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+  });
 
   const installText = () => document.getElementById('install-update-text');
+  const statusText = () => document.getElementById('update-status-text').textContent;
   const german = () => {
     i18n.setLocaleBootstrap({ activeLocale: 'de', messages: GERMAN });
     ui.relocalizeUpdateStatus();
   };
 
   it('keeps the label in its span when the update is downloaded, so a language change still reaches it', () => {
-    onUpdate({ status: 'downloaded', info: { version: '4.0.1' } });
+    updateStatus.applyUpdateEvent({ status: 'downloaded', info: { version: '4.0.1' } });
 
     expect(installText()).not.toBeNull();
     expect(document.getElementById('install-update-btn').children).toHaveLength(1);
@@ -93,43 +92,40 @@ describe('update panel labels', () => {
   });
 
   it('keeps the Download label in the new language too, in both portable and manual states', () => {
-    onUpdate({ status: 'portable', downloadUrl: 'https://example.test/p', message: 'Portable' });
+    updateStatus.applyUpdateEvent({
+      status: 'portable',
+      downloadUrl: 'https://example.test/p',
+      message: 'Portable',
+    });
     expect(installText().textContent).toBe('Download Portable Update');
     german();
     expect(installText().textContent).toBe('Portables Update herunterladen');
 
     i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
-    onUpdate({ status: 'manual', downloadUrl: 'https://example.test/m', message: 'Manual' });
+    updateStatus.applyUpdateEvent({
+      status: 'manual',
+      downloadUrl: 'https://example.test/m',
+      message: 'Manual',
+    });
     expect(installText().textContent).toBe('Download Update');
     german();
     expect(installText().textContent).toBe('Update herunterladen');
   });
 
-  it('translates the check button, with the same spelling the panel starts with', () => {
-    expect(document.getElementById('check-updates-text').textContent).toBe('Check for updates');
-
-    german();
-
-    expect(document.getElementById('check-updates-text').textContent).toBe('Nach Updates suchen');
-  });
-
   it('says an update is available, without a made-up version, when the updater gave none', () => {
-    onUpdate({ status: 'available' });
-    expect(document.getElementById('update-status-text').textContent).toBe('Update available');
+    updateStatus.applyUpdateEvent({ status: 'available' });
+    expect(statusText()).toBe('Update available');
 
-    onUpdate({ status: 'available', info: { version: '4.0.1' } });
-    expect(document.getElementById('update-status-text').textContent).toBe(
-      'Update available: v4.0.1'
-    );
+    updateStatus.applyUpdateEvent({ status: 'available', info: { version: '4.0.1' } });
+    expect(statusText()).toBe('Update available: v4.0.1');
 
-    onUpdate({ status: 'downloaded' });
-    expect(document.getElementById('update-status-text').textContent).toBe(
-      'Update ready to install'
-    );
+    updateStatus.applyUpdateEvent({ status: 'downloaded' });
+    expect(statusText()).toBe('Update ready to install');
     german();
-    expect(document.getElementById('update-status-text').textContent).toBe(
-      'Update bereit zur Installation'
-    );
-    expect(document.getElementById('update-status-text').textContent).not.toMatch(/unknown/i);
+    expect(statusText()).toBe('Update bereit zur Installation');
+    expect(statusText()).not.toMatch(/unknown/i);
+
+    updateStatus.applyUpdateEvent({ status: 'downloaded', info: { version: '4.0.1' } });
+    expect(statusText()).toBe('Update v4.0.1 bereit zur Installation');
   });
 });

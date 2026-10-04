@@ -146,7 +146,12 @@ describe('preload Electron API', () => {
       ['removeEntityAlert', ['sensor.temp'], 'remove-entity-alert', ['sensor.temp']],
       ['toggleAlerts', [true], 'toggle-alerts', [true]],
       ['setPersistentNotificationToasts', [false], 'set-persistent-notification-toasts', [false]],
-      ['checkForUpdates', [], 'check-for-updates', []],
+      [
+        'checkForUpdates',
+        [{ allowPrerelease: true }],
+        'check-for-updates',
+        [{ allowPrerelease: true }],
+      ],
       ['quitAndInstall', [], 'quit-and-install', []],
       ['getAppVersion', [], 'get-app-version', []],
       ['getOsInfo', [], 'get-os-info', []],

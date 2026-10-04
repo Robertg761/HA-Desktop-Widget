@@ -461,7 +461,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       document.getElementById(wizard.getAttribute('aria-labelledby')).textContent;
     expect(wizard.getAttribute('role')).toBe('dialog');
     expect(wizard.getAttribute('aria-modal')).toBe('true');
-    expect(accessibleName()).toBe('Welcome to Home Assistant Widget');
+    expect(accessibleName()).toBe('Welcome to HA Desktop Widget');
     expect(document.getElementById(wizard.getAttribute('aria-describedby')).tagName).toBe('P');
 
     await clickButton('Next');

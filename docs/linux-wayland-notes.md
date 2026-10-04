@@ -153,6 +153,16 @@ XWayland is unavailable:
 - Never call `minimize()` on the main window without a plan for bringing it back; the app
   cannot unminimize itself.
 
+## Keeping the widget and its pins out of the task switcher
+
+The main window and every pin ask to be skipped by the taskbar and Alt-Tab. On X11 and XWayland
+the window manager only acts on that request for a window that is already mapped, so the widget
+repeats it every time a window is shown (`keepOutOfTaskbarWhenShown`). Native Wayland has no such
+request in xdg-shell, so KWin and Mutter list the windows regardless. On KDE a window rule fixes
+that, the same way the position rule above does: match the title `HA Desktop Widget` (exact), and
+a second rule on the title `HA Pin:` (substring) for the pins, and add "Skip taskbar", "Skip
+switcher" and "Skip pager" -> Force -> Yes. Stock GNOME has no equivalent without an extension.
+
 ## Tiling compositors (Hyprland, Sway, niri): the layer-shell mode
 
 Measured on Arch Linux, Hyprland 0.56.2, native Wayland backend (issue #79). Hyprland — like

@@ -8,6 +8,10 @@ node_modules/
 /build/*
 !/build/icon.png
 !/build/icon.ico
+!/build/icon-mac.png
+!/build/icons/
+!/build/trayTemplate.png
+!/build/trayTemplate@2x.png
 !/build/installer.nsh
 /*.log
 npm-debug.log*

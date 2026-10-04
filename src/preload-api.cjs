@@ -215,7 +215,7 @@ function createElectronApi(ipcRenderer, platform) {
     setPersistentNotificationToasts: (enabled) =>
       invoke('set-persistent-notification-toasts', enabled),
 
-    checkForUpdates: () => invoke('check-for-updates'),
+    checkForUpdates: (options) => invoke('check-for-updates', options),
     quitAndInstall: () => invoke('quit-and-install'),
 
     getAppVersion: () => invoke('get-app-version'),

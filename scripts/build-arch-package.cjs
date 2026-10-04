@@ -11,7 +11,7 @@ const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'ha-arch-'));
 try {
   for (const [source, target] of [
     ['LICENSE', 'LICENSE'],
-    ['build/icon.png', 'icon.png'],
+    ['build/icons/512x512.png', 'icon.png'],
     ['docs/omarchy.md', 'omarchy.md'],
     [
       'packaging/arch/com.github.robertg761.hadesktopwidget.desktop',

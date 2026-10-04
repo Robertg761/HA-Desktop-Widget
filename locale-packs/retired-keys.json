@@ -551,85 +551,25 @@
     "retiredIn": "4.0.0",
     "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Gauge range"
   },
-  "Opening Home Assistant for authorization...": {
+  "Turn off widget blur": {
     "retiredIn": "4.0.0",
-    "reason": "Authorization now waits for approval in the browser, so the status says that instead"
-  },
-  "View logs": {
-    "retiredIn": "4.0.0",
-    "reason": "The button shows the log file in the file manager, and says so, instead of opening it in a file explorer"
-  },
-  "Opens the log file location in your file explorer": {
-    "retiredIn": "4.0.0",
-    "reason": "The button shows the log file in the file manager, and says so, instead of opening it in a file explorer"
-  },
-  "Connection, window behaviour and language.": {
-    "retiredIn": "4.0.0",
-    "reason": "Spelled the American way like the rest of the interface"
-  },
-  "Theme, colours, glass and readability.": {
-    "retiredIn": "4.0.0",
-    "reason": "Spelled the American way like the rest of the interface"
-  },
-  "Tints Quick Access tiles with your accent colour while their light, switch, fan or player is running. Sensors and cameras are unaffected.": {
-    "retiredIn": "4.0.0",
-    "reason": "Spelled the American way like the rest of the interface"
-  },
-  "Entity Shortcuts": {
-    "retiredIn": "4.0.0",
-    "reason": "The group's caption translated like its only row, Entity hotkeys, in most languages; it is now just Entities"
+    "reason": "Reworded to read as a pair with 'Turn on blur for the widget'"
   },
   "Install Update": {
     "retiredIn": "4.0.0",
-    "reason": "The Settings button reads Install update, like the update panel that sets it"
+    "reason": "The update buttons use sentence case, as the rest of Settings does; the install button now says what it will do"
   },
-  "Download first": {
+  "Home Assistant Widget": {
     "retiredIn": "4.0.0",
-    "reason": "The language selector and the pack list now both say Not downloaded"
+    "reason": "The product is called HA Desktop Widget everywhere, as the window title and installer already did"
   },
-  "Available": {
+  "Welcome to Home Assistant Widget": {
     "retiredIn": "4.0.0",
-    "reason": "The language selector and the pack list now both say Not downloaded"
+    "reason": "The product is called HA Desktop Widget everywhere, as the window title and installer already did"
   },
-  "Delete \"{{name}}\"? Its entities will be removed from this page.": {
+  "{{count}} of {{max}} sensors.": {
     "retiredIn": "4.0.0",
-    "reason": "Says what is lost: the page and its tiles, and that a tile leaves the page it is on"
-  },
-  "Delete \"{{name}}\"? Its entities will be removed from this view.": {
-    "retiredIn": "4.0.0",
-    "reason": "Says what is lost: the page and its tiles, and that a tile leaves the page it is on"
-  },
-  "Remove \"{{name}}\" from Quick Access?": {
-    "retiredIn": "4.0.0",
-    "reason": "Says what is lost: the page and its tiles, and that a tile leaves the page it is on"
-  },
-  "Entity removed from Quick Access": {
-    "retiredIn": "4.0.0",
-    "reason": "Says what is lost: the page and its tiles, and that a tile leaves the page it is on"
-  },
-  "Loading live stream...": {
-    "retiredIn": "4.0.0",
-    "reason": "The viewer opens on a snapshot, so its loading overlay names what it is loading"
-  },
-  "This package does not support in-app updates. Open Releases to download the latest build, v{{version}}.": {
-    "retiredIn": "4.0.0",
-    "reason": "The manual-update status names an update and the button that gets it, with the version inside the sentence"
-  },
-  "All devices": {
-    "retiredIn": "4.0.0",
-    "reason": "The starter page list says entities, as the rest of the dialog does"
-  },
-  "Search devices": {
-    "retiredIn": "4.0.0",
-    "reason": "The starter page list says entities, as the rest of the dialog does"
-  },
-  "Rooms are unavailable. Choose from your devices instead.": {
-    "retiredIn": "4.0.0",
-    "reason": "The starter page list says entities, as the rest of the dialog does"
-  },
-  "No rooms are set up in Home Assistant yet. Choose from your devices instead.": {
-    "retiredIn": "4.0.0",
-    "reason": "The starter page list says entities, as the rest of the dialog does"
+    "reason": "The count line says what is selected and what the limit is, instead of reading as a total"
   },
   "Home Assistant Connection": {
     "retiredIn": "4.0.0",
@@ -1219,10 +1159,6 @@
     "retiredIn": "4.0.0",
     "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
   },
-  "Heat/Cool": {
-    "retiredIn": "4.0.0",
-    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
-  },
   "Compact controls": {
     "retiredIn": "4.0.0",
     "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
@@ -1234,6 +1170,30 @@
   "Settings a sync replaced, newest first. Restoring one applies it on this computer, and it then syncs to your other computers.": {
     "retiredIn": "4.0.0",
     "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Entity Shortcuts": {
+    "retiredIn": "4.0.0",
+    "reason": "The group's caption translated like its only row, Entity hotkeys, in most languages; it is now just Entities"
+  },
+  "This package does not support in-app updates. Open Releases to download the latest build, v{{version}}.": {
+    "retiredIn": "4.0.0",
+    "reason": "The manual-update status names an update and the button that gets it, with the version inside the sentence"
+  },
+  "Opening Home Assistant for authorization...": {
+    "retiredIn": "4.0.0",
+    "reason": "Authorization now waits for approval in the browser, so the status says that instead"
+  },
+  "Download first": {
+    "retiredIn": "4.0.0",
+    "reason": "The language selector and the pack list now both say Not downloaded"
+  },
+  "Available": {
+    "retiredIn": "4.0.0",
+    "reason": "The language selector and the pack list now both say Not downloaded"
+  },
+  "Choose Profile Sync Folder": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
   },
   "Live mode uses the authenticated camera stream only while the tile and app are visible. Snapshot modes show the camera integration’s latest image, which may be cached.": {
     "retiredIn": "4.0.0",
@@ -1275,6 +1235,14 @@
     "retiredIn": "4.0.0",
     "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
   },
+  "The remote profile still needs its encryption update. Use Sync Up to retry.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "A protected sync-key recovery is pending. Use Sync Up to resume it; sync remains paused if the remote changed.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
   "Shows this entity’s current value as its own icon in the system tray.": {
     "retiredIn": "4.0.0",
     "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
@@ -1291,11 +1259,47 @@
     "retiredIn": "4.0.0",
     "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
   },
+  "Sync Folder Changed": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Sync File Already Exists": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Sync Folder": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Choose Folder...": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Need Help?": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Sync Down": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Sync Up": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Sync now keeps changes from both sides. Sync Up replaces the sync file with this computer's settings, and Sync Down replaces this computer's settings with the file's. Whatever is replaced is backed up first.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
   "Replace the sync file with this computer’s settings? Your other computers receive them on their next sync. The file’s current settings are backed up on this computer.": {
     "retiredIn": "4.0.0",
     "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
   },
   "Replace this computer’s settings with the sync file’s? This computer’s current settings are backed up first.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "The sync file's {{sections}} settings are damaged. Use Sync Up to replace them with this computer's; the damaged copy is backed up first.": {
     "retiredIn": "4.0.0",
     "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
   },
@@ -1335,52 +1339,60 @@
     "retiredIn": "4.0.0",
     "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
   },
-  "Choose Folder...": {
+  "Loading live stream...": {
     "retiredIn": "4.0.0",
-    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+    "reason": "The viewer opens on a snapshot, so its loading overlay names what it is loading"
   },
-  "Need Help?": {
+  "Delete \"{{name}}\"? Its entities will be removed from this view.": {
     "retiredIn": "4.0.0",
-    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+    "reason": "Says what is lost: the page and its tiles, and that a tile leaves the page it is on"
   },
-  "Sync Down": {
+  "Delete \"{{name}}\"? Its entities will be removed from this page.": {
     "retiredIn": "4.0.0",
-    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+    "reason": "Says what is lost: the page and its tiles, and that a tile leaves the page it is on"
   },
-  "Sync Up": {
+  "Remove \"{{name}}\" from Quick Access?": {
     "retiredIn": "4.0.0",
-    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+    "reason": "Says what is lost: the page and its tiles, and that a tile leaves the page it is on"
   },
-  "Choose Profile Sync Folder": {
+  "Entity removed from Quick Access": {
     "retiredIn": "4.0.0",
-    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+    "reason": "Says what is lost: the page and its tiles, and that a tile leaves the page it is on"
   },
-  "Sync Folder Changed": {
+  "Tints Quick Access tiles with your accent colour while their light, switch, fan or player is running. Sensors and cameras are unaffected.": {
     "retiredIn": "4.0.0",
-    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+    "reason": "Spelled the American way like the rest of the interface"
   },
-  "Sync File Already Exists": {
+  "Connection, window behaviour and language.": {
     "retiredIn": "4.0.0",
-    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+    "reason": "Spelled the American way like the rest of the interface"
   },
-  "Sync Folder": {
+  "Theme, colours, glass and readability.": {
     "retiredIn": "4.0.0",
-    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+    "reason": "Spelled the American way like the rest of the interface"
   },
-  "The remote profile still needs its encryption update. Use Sync Up to retry.": {
+  "All devices": {
     "retiredIn": "4.0.0",
-    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+    "reason": "The starter page list says entities, as the rest of the dialog does"
   },
-  "A protected sync-key recovery is pending. Use Sync Up to resume it; sync remains paused if the remote changed.": {
+  "Rooms are unavailable. Choose from your devices instead.": {
     "retiredIn": "4.0.0",
-    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+    "reason": "The starter page list says entities, as the rest of the dialog does"
   },
-  "Sync now keeps changes from both sides. Sync Up replaces the sync file with this computer's settings, and Sync Down replaces this computer's settings with the file's. Whatever is replaced is backed up first.": {
+  "Search devices": {
     "retiredIn": "4.0.0",
-    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+    "reason": "The starter page list says entities, as the rest of the dialog does"
   },
-  "The sync file's {{sections}} settings are damaged. Use Sync Up to replace them with this computer's; the damaged copy is backed up first.": {
+  "No rooms are set up in Home Assistant yet. Choose from your devices instead.": {
     "retiredIn": "4.0.0",
-    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+    "reason": "The starter page list says entities, as the rest of the dialog does"
+  },
+  "Opens the log file location in your file explorer": {
+    "retiredIn": "4.0.0",
+    "reason": "The button shows the log file in the file manager, and says so, instead of opening it in a file explorer"
+  },
+  "View logs": {
+    "retiredIn": "4.0.0",
+    "reason": "The button shows the log file in the file manager, and says so, instead of opening it in a file explorer"
   }
 }

@@ -36,18 +36,39 @@ Panel {
     var stateHome = Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")
     return stateHome + "/ha-desktop-widget/omarchy-bar-launch.json"
   }
-  // The widget rewrites the file every minute; older than this means it is not running.
-  readonly property int staleAfterMs: 150000
+  // The widget rewrites the file every minute and deletes it when it quits, so one older than a beat
+  // and a half belongs to a widget that crashed or was killed.
+  readonly property int staleAfterMs: 90000
+  // A file stamped further ahead than this was written before the clock was set back.
+  readonly property int clockSlackMs: 5000
+  // A widget whose socket dropped and which has not written since this long ago is gone, whatever
+  // the age of its last write says.
+  readonly property int socketLostGraceMs: 6000
 
   property var status: null
+  // The time of the last write, kept apart from the tiles: it changes every minute even when nothing
+  // else does, and the tiles are only rebuilt when something they show has.
+  property double statusUpdatedAt: 0
+  property string statusSignature: ""
+  property double socketLostAt: 0
+  property bool socketWasConnected: false
   property var savedLaunch: null
   property double now: Date.now()
 
-  readonly property bool running: status !== null && now - status.updatedAt < staleAfterMs
+  readonly property double statusAge: now - statusUpdatedAt
+  readonly property bool socketAbandoned: socketLostAt > 0
+    && statusUpdatedAt <= socketLostAt
+    && now - socketLostAt > socketLostGraceMs
+  readonly property bool running: status !== null
+    && statusAge > -clockSlackMs
+    && statusAge < staleAfterMs
+    && !socketAbandoned
   readonly property bool connected: running && status.connection === "connected"
   readonly property var panelTiles: running && Array.isArray(status.panel) ? status.panel : []
   readonly property var barTiles: running && Array.isArray(status.bar) ? status.bar : []
   readonly property var lineIcons: running && status.icons ? status.icons : ({})
+  // How many tiles the widget left out of the panel to keep the status small.
+  readonly property int omitted: running && typeof status.omitted === "number" ? status.omitted : 0
   readonly property var barValues: barTiles
     .map(function(tile) { return Countdown.value(tile, root.now) })
     .filter(function(value) { return value !== "" })
@@ -208,6 +229,20 @@ Panel {
 
   onRunningChanged: ensureSocket()
 
+  // A socket that was connected and then dropped: the widget restarted, or it died. A restart
+  // writes its status again at once; a crash does not, and the file would keep saying "connected"
+  // for as long as it takes to go stale.
+  onSocketConnectedChanged: {
+    if (socketConnected) {
+      socketWasConnected = true
+      socketLostAt = 0
+    } else if (socketWasConnected) {
+      socketWasConnected = false
+      socketLostAt = Date.now()
+      lostTimer.restart()
+    }
+  }
+
   function applySavedLaunch(text) {
     try {
       var parsed = JSON.parse(text)
@@ -337,7 +372,7 @@ Panel {
 
   function modeLabel(mode) {
     var labels = {
-      heat_cool: word("modeAuto", "Auto"),
+      heat_cool: word("modeHeatCool", "Heat/Cool"),
       fan_only: word("modeFan", "Fan"),
       dry: word("modeDry", "Dry"),
       off: word("off", "Off")
@@ -346,19 +381,56 @@ Panel {
     return mode.charAt(0).toUpperCase() + mode.slice(1).replace(/_/g, " ")
   }
 
+  function clearStatus() {
+    root.status = null
+    root.statusSignature = ""
+    root.statusUpdatedAt = 0
+    root.now = Date.now()
+  }
+
   function applyStatus(text) {
+    var parsed = null
     try {
-      var parsed = JSON.parse(text)
-      root.status = parsed && parsed.version === 1 ? parsed : null
+      parsed = JSON.parse(text)
     } catch (error) {
-      root.status = null
+      parsed = null
+    }
+    if (!parsed || parsed.version !== 1) {
+      clearStatus()
+      return
+    }
+    // Every write carries a new updatedAt, the heartbeat's included. Only a change to something the
+    // panel shows replaces the status, so a quiet minute does not rebuild every tile.
+    var updatedAt = typeof parsed.updatedAt === "number" ? parsed.updatedAt : 0
+    parsed.updatedAt = 0
+    var signature = JSON.stringify(parsed)
+    root.statusUpdatedAt = updatedAt
+    if (signature !== root.statusSignature) {
+      root.statusSignature = signature
+      root.status = parsed
     }
     root.now = Date.now()
     if (root.cursorIndex >= root.flatTiles.length) root.cursorIndex = Math.max(0, root.flatTiles.length - 1)
   }
 
+  // The tiles exist only while the panel is open, and for its fade-out. Dozens of items with a mouse
+  // area and an image each are a lot for the shell to keep alive for a panel that is closed most of
+  // the day, and they were rebuilt on every status write.
+  property bool tilesLive: false
+
+  Timer {
+    id: tilesLiveTimer
+    interval: 400
+    onTriggered: root.tilesLive = false
+  }
+
   onOpenedChanged: {
-    if (!opened) return
+    if (!opened) {
+      tilesLiveTimer.restart()
+      return
+    }
+    tilesLiveTimer.stop()
+    tilesLive = true
     cursorActive = false
     cursorIndex = 0
     controlsId = ""
@@ -373,7 +445,7 @@ Panel {
     printErrors: false
     onFileChanged: reload()
     onLoaded: root.applyStatus(text())
-    onLoadFailed: root.status = null
+    onLoadFailed: root.clearStatus()
   }
 
   FileView {
@@ -401,6 +473,13 @@ Panel {
     running: root.running && !root.socketConnected
     triggeredOnStart: true
     onTriggered: root.ensureSocket()
+  }
+
+  // Looks again once the grace for a dropped socket has passed.
+  Timer {
+    id: lostTimer
+    interval: root.socketLostGraceMs + 200
+    onTriggered: root.now = Date.now()
   }
 
   // Catches a widget that starts after the shell, and ages out one that stopped.
@@ -526,7 +605,7 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               spacing: Style.space(2)
 
-              Text {
+              PlainText {
                 width: parent.width
                 text: "Home Assistant"
                 color: root.foreground
@@ -536,10 +615,11 @@ Panel {
                 elide: Text.ElideRight
               }
 
-              Text {
+              PlainText {
                 width: parent.width
                 text: root.statusLine()
-                color: root.connected ? root.dimColor : Color.urgent
+                color: root.connected || (root.running && root.status.connection === "connecting")
+                  ? root.dimColor : Color.urgent
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
                 wrapMode: Text.WordWrap
@@ -558,7 +638,7 @@ Panel {
             }
           }
 
-          Text {
+          PlainText {
             visible: !root.showingControls && root.running && root.flatTiles.length === 0
             width: parent.width
             text: root.word("emptyState", "Add entities to Quick Access in the widget to see them here.")
@@ -568,18 +648,22 @@ Panel {
             wrapMode: Text.WordWrap
           }
 
+          // The repeaters count sections and tiles rather than being handed them, so a status that
+          // changes one tile's reading updates that tile in place. Handed the arrays, they threw
+          // every tile away and built it again, which cancelled a press-and-hold in progress.
           Repeater {
-            model: root.showingControls ? [] : root.sections
+            model: root.tilesLive && !root.showingControls ? root.sections.length : 0
 
             delegate: Column {
               id: sectionColumn
-              required property var modelData
+              required property int index
+              readonly property var section: root.sections[index] || ({ name: "", tiles: [], offset: 0 })
               width: content.width
               spacing: Style.space(6)
 
               PanelSectionHeader {
-                visible: sectionColumn.modelData.name !== ""
-                text: sectionColumn.modelData.name
+                visible: sectionColumn.section.name !== ""
+                text: sectionColumn.section.name
                 foreground: root.foreground
                 fontFamily: root.fontFamily
               }
@@ -592,18 +676,29 @@ Panel {
                   (sectionColumn.width - (root.columns - 1) * root.tileGap) / root.columns
 
                 Repeater {
-                  model: sectionColumn.modelData.tiles
+                  model: sectionColumn.section.tiles.length
 
                   delegate: HaTile {
-                    required property var modelData
                     required property int index
-                    tile: modelData
-                    flatIndex: sectionColumn.modelData.offset + index
+                    tile: sectionColumn.section.tiles[index] || ({})
+                    flatIndex: sectionColumn.section.offset + index
                     width: grid.tileWidth
                   }
                 }
               }
             }
+          }
+
+          PlainText {
+            visible: !root.showingControls && root.running && root.omitted > 0
+            width: parent.width
+            text: root.omitted === 1
+              ? root.word("omittedOne", "1 more tile is not shown here. Open the widget to see it.")
+              : root.word("omittedMany", "{{count}} more tiles are not shown here. Open the widget to see them.").replace("{{count}}", root.omitted)
+            color: root.dimColor
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            wrapMode: Text.WordWrap
           }
 
           ControlsView {
@@ -615,6 +710,15 @@ Panel {
         }
       }
     }
+  }
+
+  // Every Text here shows something Home Assistant or the person who named an entity supplied: a tile
+  // name, a reading, a calendar event's title, a track. The default format promotes anything that
+  // looks like markup to rich text, which drops the markup's own characters ("Humidity <b>zone</b>
+  // <Main>" lost its <Main>) and fetches a picture from any <img src="http://...">, even while the
+  // panel is closed. Plain text shows exactly what was sent.
+  component PlainText: Text {
+    textFormat: Text.PlainText
   }
 
   // A tile's icon: the widget's own line icon, or an MDI or emoji glyph.
@@ -634,7 +738,7 @@ Panel {
       opacity: iconRoot.iconOpacity
     }
 
-    Text {
+    PlainText {
       anchors.centerIn: parent
       visible: iconRoot.icon !== null && iconRoot.icon.kind === "glyph"
       text: visible ? iconRoot.icon.glyph : ""
@@ -658,9 +762,17 @@ Panel {
     readonly property bool actionable: root.canActivate(tile)
     readonly property color iconColor: active ? Color.accent : root.foreground
 
-    Component.onCompleted: root.tileItems[tileRoot.flatIndex] = tileRoot
+    // The tile registers itself under its position, and moves when a page gains or loses a tile above it.
+    property int registeredIndex: -1
+    function register() {
+      if (registeredIndex >= 0 && root.tileItems[registeredIndex] === tileRoot) delete root.tileItems[registeredIndex]
+      registeredIndex = flatIndex
+      root.tileItems[flatIndex] = tileRoot
+    }
+    Component.onCompleted: register()
+    onFlatIndexChanged: if (registeredIndex >= 0) register()
     Component.onDestruction: {
-      if (root.tileItems[tileRoot.flatIndex] === tileRoot) delete root.tileItems[tileRoot.flatIndex]
+      if (root.tileItems[registeredIndex] === tileRoot) delete root.tileItems[registeredIndex]
     }
 
     height: Style.space(92)
@@ -697,7 +809,7 @@ Panel {
         iconOpacity: tileRoot.active ? 1 : (tileRoot.available ? 0.72 : 0.45)
       }
 
-      Text {
+      PlainText {
         width: parent.width
         text: tileRoot.tile.name || tileRoot.tile.id || ""
         color: tileRoot.available ? root.foreground : root.dimColor
@@ -710,7 +822,7 @@ Panel {
         elide: Text.ElideRight
       }
 
-      Text {
+      PlainText {
         width: parent.width
         visible: text !== ""
         text: Countdown.value(tileRoot.tile, root.now)
@@ -805,7 +917,7 @@ Panel {
       width: parent.width
       height: sliderLabel.implicitHeight
 
-      Text {
+      PlainText {
         id: sliderLabel
         text: sliderRoot.label
         color: root.dimColor
@@ -814,7 +926,7 @@ Panel {
         font.bold: true
       }
 
-      Text {
+      PlainText {
         anchors.right: parent.right
         text: sliderRoot.format(slider.dragging ? sliderRoot.snap(slider.liveValue) : sliderRoot.shownValue)
         color: root.foreground
@@ -881,7 +993,7 @@ Panel {
     }
   }
 
-  component SectionLabel: Text {
+  component SectionLabel: PlainText {
     color: root.dimColor
     font.family: root.fontFamily
     font.pixelSize: Style.font.caption
@@ -909,8 +1021,88 @@ Panel {
     property Item ringHost: null
     property rect ringRect: Qt.rect(0, 0, 0, 0)
 
-    onTileChanged: clearStop()
-    onCtlChanged: Qt.callLater(revalidateStop)
+    // Changes can only be made while the widget is connected to Home Assistant and the bar is
+    // connected to the widget. Otherwise the controls say so instead of moving without effect.
+    readonly property bool live: root.connected && root.socketConnected
+
+    // What was just asked of Home Assistant, shown until it reports back (or a few seconds pass), so
+    // a press is not taken for a dead button, and a second press of a stepper builds on the first
+    // instead of repeating it.
+    property var pending: ({})
+
+    function shown(key, reported) {
+      return pending[key] !== undefined ? pending[key] : reported
+    }
+
+    function ask(key, value) {
+      var next = ({})
+      Object.keys(pending).forEach(function(existing) { next[existing] = pending[existing] })
+      next[key] = value
+      pending = next
+      pendingTimer.restart()
+    }
+
+    function reportedValue(key) {
+      if (!ctl) return undefined
+      if (key === "power") return ctl.on
+      if (key === "mode") return ctl.mode
+      if (key === "target") return ctl.target
+      if (key === "playing") return ctl.playing
+      if (key === "muted") return ctl.muted
+      return undefined
+    }
+
+    // Drop what Home Assistant has now confirmed.
+    function reconcilePending() {
+      var keys = Object.keys(pending)
+      if (keys.length === 0) return
+      var next = ({})
+      keys.forEach(function(key) {
+        var asked = pending[key]
+        var reported = reportedValue(key)
+        var confirmed = typeof asked === "number" && typeof reported === "number"
+          ? Math.abs(asked - reported) < 0.001
+          : asked === reported
+        if (!confirmed) next[key] = asked
+      })
+      pending = next
+    }
+
+    Timer {
+      id: pendingTimer
+      interval: 2500
+      onTriggered: view.pending = ({})
+    }
+
+    function setPower(on) {
+      ask("power", on)
+      root.setControl("power", on)
+    }
+
+    function setMode(mode) {
+      ask("mode", mode)
+      root.setControl("mode", mode)
+    }
+
+    function setPlaying() {
+      ask("playing", !shown("playing", ctl.playing))
+      root.setControl("play_pause")
+    }
+
+    function setMuted() {
+      var muted = !shown("muted", ctl.muted)
+      ask("muted", muted)
+      root.setControl("mute", muted)
+    }
+
+    onTileChanged: {
+      clearStop()
+      pending = ({})
+    }
+    onCtlChanged: {
+      reconcilePending()
+      Qt.callLater(revalidateStop)
+    }
     onHeightChanged: Qt.callLater(syncRing)
 
     function collectStops(item, out) {
@@ -1006,6 +1198,10 @@ Panel {
       if (item && item.isSlider !== true) {
         var col = stopCol + dx
         if (col >= 0 && col < rows[stopRow].length) setStop(stopRow, col)
+      } else if (!view.live) {
+        // Offline the sliders are dimmed and setControl drops the request, so a nudge would only
+        // look like a change for a moment.
+        return
       } else if (item) {
         item.nudge(dx)
       } else {
@@ -1016,14 +1212,16 @@ Panel {
     // Enter: press the control the ring is on; with none, turn the light or fan on or off, or play
     // and pause.
     function activate() {
+      // Offline the controls are dimmed: a press would show a change that is never sent.
+      if (!view.live) return
       var item = stopRow >= 0 ? currentStop(stopRows()) : null
       if (item && item.isSlider !== true) {
         item.pressStop()
         return
       }
       if (!ctl) return
-      if (kind === "light" || kind === "fan") root.setControl("power", !ctl.on)
-      else if (kind === "media") root.setControl("play_pause")
+      if (kind === "light" || kind === "fan") setPower(!shown("power", ctl.on === true))
+      else if (kind === "media") setPlaying()
     }
 
     // Left and right arrows with no control selected: the main slider.
@@ -1036,9 +1234,11 @@ Panel {
     }
 
     function stepTemperature(direction) {
-      var current = ctl.target !== null ? ctl.target : ctl.min
-      var next = Math.round((current + direction * ctl.step) * 100) / 100
-      root.setControl("temperature", Math.max(ctl.min, Math.min(ctl.max, next)))
+      var asked = shown("target", ctl.target)
+      var current = asked !== null && asked !== undefined ? asked : ctl.min
+      var next = Math.max(ctl.min, Math.min(ctl.max, Math.round((current + direction * ctl.step) * 100) / 100))
+      ask("target", next)
+      root.setControl("temperature", next)
     }
 
     // Header: back, the tile's icon and name, its status, and its power switch.
@@ -1077,7 +1277,7 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
         spacing: Style.space(1)
 
-        Text {
+        PlainText {
           width: parent.width
           text: view.tile ? view.tile.name : ""
           color: root.foreground
@@ -1087,7 +1287,7 @@ Panel {
           elide: Text.ElideRight
         }
 
-        Text {
+        PlainText {
           width: parent.width
           visible: text !== ""
           text: Countdown.value(view.tile, root.now)
@@ -1103,15 +1303,31 @@ Panel {
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         visible: view.kind === "light" || view.kind === "fan"
-        checked: view.ctl ? view.ctl.on === true : false
+        checked: view.shown("power", view.ctl ? view.ctl.on === true : false)
+        enabled: view.live
         foreground: root.foreground
-        onToggled: root.setControl("power", !checked)
+        onToggled: view.setPower(!checked)
       }
+    }
+
+    // Why nothing below responds, when it does not.
+    PlainText {
+      visible: !view.live
+      width: parent.width
+      text: !root.connected
+        ? "Not connected to Home Assistant. Changes can't be sent right now."
+        : "Can't reach the widget. Changes can't be sent right now."
+      color: Color.urgent
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.bodySmall
+      wrapMode: Text.WordWrap
     }
 
     // Light: brightness, presets, colour temperature, colours.
     Column {
       visible: view.kind === "light"
+      enabled: view.live
+      opacity: view.live ? 1 : 0.45
       width: parent.width
       spacing: Style.space(10)
 
@@ -1187,6 +1403,8 @@ Panel {
     // Fan: speed and presets.
     Column {
       visible: view.kind === "fan" && view.ctl.canSetPercentage === true
+      enabled: view.live
+      opacity: view.live ? 1 : 0.45
       width: parent.width
       spacing: Style.space(10)
 
@@ -1216,6 +1434,8 @@ Panel {
     // Cover: position, and open, stop, close.
     Column {
       visible: view.kind === "cover"
+      enabled: view.live
+      opacity: view.live ? 1 : 0.45
       width: parent.width
       spacing: Style.space(10)
 
@@ -1242,6 +1462,8 @@ Panel {
     // Climate: target temperature and HVAC mode.
     Column {
       visible: view.kind === "climate"
+      enabled: view.live
+      opacity: view.live ? 1 : 0.45
       width: parent.width
       spacing: Style.space(10)
 
@@ -1265,16 +1487,16 @@ Panel {
         Column {
           anchors.centerIn: parent
 
-          Text {
+          PlainText {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: view.kind === "climate" ? root.formatTemperature(view.ctl.target) : ""
+            text: view.kind === "climate" ? root.formatTemperature(view.shown("target", view.ctl.target)) : ""
             color: root.foreground
             font.family: root.fontFamily
             font.pixelSize: Style.font.displayLarge
             font.bold: true
           }
 
-          Text {
+          PlainText {
             anchors.horizontalCenter: parent.horizontalCenter
             visible: view.kind === "climate" && view.ctl.current !== null
             text: view.kind === "climate" ? root.word("now", "Now {{temperature}}").replace("{{temperature}}", root.formatTemperature(view.ctl.current)) : ""
@@ -1297,6 +1519,45 @@ Panel {
         }
       }
 
+      // A thermostat in heat/cool mode has two setpoints rather than one target: shown, not changed
+      // here (the widget's own controls set the range).
+      Column {
+        visible: view.kind === "climate" && !view.ctl.canSetTemperature
+        width: parent.width
+        spacing: Style.space(2)
+
+        PlainText {
+          anchors.horizontalCenter: parent.horizontalCenter
+          text: view.kind !== "climate" ? ""
+            : (view.ctl.targetLow !== null && view.ctl.targetHigh !== null
+              ? root.formatTemperature(view.ctl.targetLow) + " – " + root.formatTemperature(view.ctl.targetHigh)
+              : root.formatTemperature(view.ctl.current))
+          color: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.displayLarge
+          font.bold: true
+        }
+
+        PlainText {
+          anchors.horizontalCenter: parent.horizontalCenter
+          visible: view.kind === "climate" && view.ctl.current !== null
+            && view.ctl.targetLow !== null && view.ctl.targetHigh !== null
+          text: view.kind === "climate" ? root.word("now", "Now {{temperature}}").replace("{{temperature}}", root.formatTemperature(view.ctl.current)) : ""
+          color: root.dimColor
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+        }
+
+        PlainText {
+          anchors.horizontalCenter: parent.horizontalCenter
+          visible: view.kind === "climate" && view.ctl.targetLow !== null && view.ctl.targetHigh !== null
+          text: root.word("setRange", "Set the range in the widget.")
+          color: root.dimColor
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+        }
+      }
+
       SectionLabel {
         visible: view.kind === "climate" && view.ctl.modes.length > 0
         text: root.word("mode", "Mode").toUpperCase()
@@ -1313,12 +1574,12 @@ Panel {
           delegate: KeyButton {
             required property string modelData
             text: root.modeLabel(modelData)
-            active: view.ctl.mode === modelData
+            active: view.shown("mode", view.ctl.mode) === modelData
             bordered: true
             foreground: root.foreground
             fontFamily: root.fontFamily
             fontSize: Style.font.bodySmall
-            onClicked: root.setControl("mode", modelData)
+            onClicked: view.setMode(modelData)
           }
         }
       }
@@ -1327,6 +1588,8 @@ Panel {
     // Media: what is playing, transport, volume.
     Column {
       visible: view.kind === "media"
+      enabled: view.live
+      opacity: view.live ? 1 : 0.45
       width: parent.width
       spacing: Style.space(10)
 
@@ -1335,7 +1598,7 @@ Panel {
         width: parent.width
         spacing: Style.space(2)
 
-        Text {
+        PlainText {
           width: parent.width
           text: view.kind === "media" ? view.ctl.title : ""
           color: root.foreground
@@ -1345,7 +1608,7 @@ Panel {
           elide: Text.ElideRight
         }
 
-        Text {
+        PlainText {
           width: parent.width
           visible: text !== ""
           text: view.kind === "media" ? view.ctl.artist : ""
@@ -1361,14 +1624,17 @@ Panel {
         choices: view.kind !== "media" ? [] : [
           { icon: "󰒮", command: "previous", enabled: view.ctl.canPrevious },
           {
-            icon: view.ctl.playing ? "󰏤" : "󰐊",
+            icon: view.shown("playing", view.ctl.playing) ? "󰏤" : "󰐊",
             command: "play_pause",
-            enabled: view.ctl.playing ? view.ctl.canPause : view.ctl.canPlay,
-            active: view.ctl.playing
+            enabled: view.shown("playing", view.ctl.playing) ? view.ctl.canPause : view.ctl.canPlay,
+            active: view.shown("playing", view.ctl.playing)
           },
           { icon: "󰒭", command: "next", enabled: view.ctl.canNext }
         ]
-        onChosen: function(choice) { root.setControl(choice.command) }
+        onChosen: function(choice) {
+          if (choice.command === "play_pause") view.setPlaying()
+          else root.setControl(choice.command)
+        }
       }
 
       Row {
@@ -1380,11 +1646,11 @@ Panel {
           id: muteButton
           anchors.bottom: parent.bottom
           visible: view.kind === "media" && view.ctl.canMute
-          iconText: view.kind === "media" && view.ctl.muted ? "󰖁" : "󰕾"
-          tooltipText: view.kind === "media" && view.ctl.muted ? root.word("unmute", "Unmute") : root.word("mute", "Mute")
+          iconText: view.kind === "media" && view.shown("muted", view.ctl.muted) ? "󰖁" : "󰕾"
+          tooltipText: view.kind === "media" && view.shown("muted", view.ctl.muted) ? root.word("unmute", "Unmute") : root.word("mute", "Mute")
           foreground: root.foreground
           fontFamily: root.fontFamily
-          onClicked: root.setControl("mute", !view.ctl.muted)
+          onClicked: view.setMuted()
         }
 
         ControlSlider {

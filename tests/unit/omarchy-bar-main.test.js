@@ -101,6 +101,44 @@ describe('Omarchy bar requests in the main process', () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  describe('which runs take part in the bar integration', () => {
+    function startWith(flags) {
+      const context = {
+        process: { platform: 'linux' },
+        IS_SMOKE_TEST_MODE: false,
+        IS_ISOLATED_PROFILE: false,
+        IS_SOURCE_DEV_RUN: false,
+        isOmarchyShellInstalled: jest.fn(() => false),
+        ...flags,
+      };
+      vm.runInNewContext(block('function startOmarchyBarIntegration'), context);
+      context.startOmarchyBarIntegration();
+      return context.isOmarchyShellInstalled;
+    }
+
+    it('lets the installed widget in', () => {
+      expect(startWith({})).toHaveBeenCalledTimes(1);
+    });
+
+    // npm run dev and the demos use a profile of their own, but the bar's socket and status file
+    // live outside it. One of them would unlink the real widget's socket and delete both on exit.
+    it.each([['a run from source'], ['a smoke test'], ['an isolated profile']])(
+      'keeps %s out',
+      (name) => {
+        const flag = {
+          'a run from source': 'IS_SOURCE_DEV_RUN',
+          'a smoke test': 'IS_SMOKE_TEST_MODE',
+          'an isolated profile': 'IS_ISOLATED_PROFILE',
+        }[name];
+        expect(startWith({ [flag]: true })).not.toHaveBeenCalled();
+      }
+    );
+
+    it('treats --dev as a run from source only when the app is not packaged', () => {
+      expect(mainSource).toContain('const IS_SOURCE_DEV_RUN = IS_DEV_MODE && !app.isPackaged;');
+    });
+  });
+
   it('listens on the bar socket while the integration runs', () => {
     const start = block('function startOmarchyBarIntegration');
     expect(start).toContain('socketPath: paths.socket');

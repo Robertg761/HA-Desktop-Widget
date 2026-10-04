@@ -287,13 +287,28 @@ class WebSocketManager extends EventEmitter {
     return !!this.ws && this.ws.readyState === WebSocket.OPEN && !!this.isAuthenticated;
   }
 
-  request(payload) {
+  /**
+   * Sends a request and resolves with Home Assistant's result message.
+   *
+   * Rejects without sending when the socket is not open and authenticated: Home Assistant answers
+   * any other frame during the authentication phase with auth_invalid and closes, which the
+   * renderer reads as a revoked token. The auth message itself goes out on the socket directly.
+   *
+   * @param {Object} payload - The message, without its id.
+   * @param {Object} [options]
+   * @param {number} [options.timeoutMs] - How long to wait for the result.
+   * @returns {Promise<Object> & {id: number}}
+   */
+  request(payload, { timeoutMs = WS_REQUEST_TIMEOUT_MS } = {}) {
     const id = this.wsId++;
     const promise = new Promise((resolve, reject) => {
       try {
         const socket = this.ws;
         if (!socket || socket.readyState !== WebSocket.OPEN) {
           return reject(new Error('WebSocket not connected'));
+        }
+        if (!this.isAuthenticated) {
+          return reject(new Error('WebSocket not authenticated'));
         }
         const msg = { id, ...payload };
         const pending = {
@@ -310,7 +325,7 @@ class WebSocketManager extends EventEmitter {
           const timeoutError = new Error('WebSocket request timeout');
           timeoutError.code = 'timeout';
           timedOut.reject(timeoutError);
-        }, WS_REQUEST_TIMEOUT_MS);
+        }, timeoutMs);
         try {
           socket.send(JSON.stringify(msg));
         } catch (e) {

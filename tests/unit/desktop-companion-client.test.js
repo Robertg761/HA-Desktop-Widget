@@ -591,3 +591,388 @@ describe('DesktopCompanionClient', () => {
     client.stop();
   });
 });
+
+describe('DesktopCompanionClient session retries', () => {
+  const unknownCommand = () =>
+    Object.assign(new Error('Unknown command.'), { code: 'unknown_command' });
+  const flush = async () => {
+    for (let i = 0; i < 30; i += 1) await Promise.resolve();
+  };
+
+  // A fake socket whose get_info fails the given number of times before it answers.
+  function createFlakyClient(failures, failWith = unknownCommand) {
+    const websocket = new FakeWebSocket();
+    let remaining = failures;
+    const answer = websocket.request.bind(websocket);
+    websocket.request = async (message) => {
+      if (message.type === 'ha_desktop_widget/get_info' && remaining > 0) {
+        remaining -= 1;
+        websocket.requests.push(message);
+        return {
+          success: false,
+          error: { code: failWith().code, message: failWith().message },
+        };
+      }
+      return answer(message);
+    };
+    const { client } = createClient({ websocket });
+    return { client, websocket };
+  }
+
+  const registrations = (websocket) =>
+    websocket.requests.filter((request) => request.type.endsWith('/register_device'));
+  const infoRequests = (websocket) =>
+    websocket.requests.filter((request) => request.type.endsWith('/get_info'));
+
+  afterEach(() => {
+    jest.clearAllMocks();
+    jest.useRealTimers();
+  });
+
+  test('registers on a later try when Home Assistant did not know the commands yet', async () => {
+    jest.useFakeTimers();
+    const { client, websocket } = createFlakyClient(1);
+    client.start();
+    await flush();
+    expect(infoRequests(websocket)).toHaveLength(1);
+    expect(registrations(websocket)).toHaveLength(0);
+
+    await jest.advanceTimersByTimeAsync(14_999);
+    expect(infoRequests(websocket)).toHaveLength(1);
+    await jest.advanceTimersByTimeAsync(1);
+    await flush();
+
+    expect(infoRequests(websocket)).toHaveLength(2);
+    expect(registrations(websocket)).toHaveLength(1);
+    expect(client.heartbeatTimer).not.toBeNull();
+    client.stop();
+  });
+
+  // How long each retry of a session that keeps failing waited, in milliseconds. Time jumps from
+  // timer to timer, so a wait of half an hour costs one step.
+  async function waitsBetweenAttempts(client, websocket, count) {
+    client.start();
+    await flush();
+    const waits = [];
+    for (let attempt = 0; attempt < count; attempt += 1) {
+      const before = infoRequests(websocket).length;
+      const startedAt = Date.now();
+      for (let step = 0; step < 20 && infoRequests(websocket).length === before; step += 1) {
+        await jest.advanceTimersToNextTimerAsync();
+      }
+      waits.push(Date.now() - startedAt);
+    }
+    client.stop();
+    return waits;
+  }
+
+  test('waits longer after each failure, up to five minutes', async () => {
+    jest.useFakeTimers();
+    const { client, websocket } = createFlakyClient(Infinity, () => ({
+      code: 'other',
+      message: 'Unsupported protocol',
+    }));
+
+    expect(await waitsBetweenAttempts(client, websocket, 5)).toEqual([
+      15_000, 60_000, 300_000, 300_000, 300_000,
+    ]);
+  });
+
+  test('asks every half hour once the waits are over when the integration is not installed', async () => {
+    jest.useFakeTimers();
+    const { client, websocket } = createFlakyClient(Infinity);
+
+    // Most people never install the integration; five-minute asks would go on for as long as the
+    // app runs. The first three waits stay short for an integration that is still loading.
+    expect(await waitsBetweenAttempts(client, websocket, 5)).toEqual([
+      15_000, 60_000, 300_000, 1_800_000, 1_800_000,
+    ]);
+  });
+
+  test('registers when the integration turns up after the waits are over', async () => {
+    jest.useFakeTimers();
+    const { client, websocket } = createFlakyClient(4);
+    client.start();
+    await flush();
+    await jest.advanceTimersByTimeAsync(15_000 + 60_000 + 300_000);
+    await flush();
+    expect(registrations(websocket)).toHaveLength(0);
+
+    await jest.advanceTimersByTimeAsync(29 * 60_000);
+    expect(registrations(websocket)).toHaveLength(0);
+    await jest.advanceTimersByTimeAsync(60_000);
+    await flush();
+
+    expect(registrations(websocket)).toHaveLength(1);
+    client.stop();
+  });
+
+  test('says the integration is missing once, not on every retry', async () => {
+    jest.useFakeTimers();
+    const { client } = createFlakyClient(Infinity);
+    client.start();
+    await flush();
+    await jest.advanceTimersByTimeAsync(15_000 + 60_000 + 300_000);
+    await flush();
+
+    const notices = mockLogger.info.mock.calls.filter(([message]) =>
+      String(message).includes('integration is not installed')
+    );
+    expect(notices).toHaveLength(1);
+    client.stop();
+  });
+
+  test('says an unchanged failure once, and a different one when it changes', async () => {
+    jest.useFakeTimers();
+    let message = 'Unsupported protocol';
+    const { client } = createFlakyClient(Infinity, () => ({ code: 'other', message }));
+    client.start();
+    await flush();
+    await jest.advanceTimersByTimeAsync(15_000);
+    await flush();
+    const warnings = () =>
+      mockLogger.warn.mock.calls.filter(([text]) => String(text).includes('session failed'));
+    expect(warnings()).toHaveLength(1);
+
+    message = 'Something else';
+    await jest.advanceTimersByTimeAsync(60_000);
+    await flush();
+    expect(warnings()).toHaveLength(2);
+    client.stop();
+  });
+
+  test('a socket that closes cancels the retry, and the next connection starts the waits over', async () => {
+    jest.useFakeTimers();
+    const { client, websocket } = createFlakyClient(Infinity);
+    client.start();
+    await flush();
+    await jest.advanceTimersByTimeAsync(15_000);
+    await flush();
+    expect(infoRequests(websocket)).toHaveLength(2);
+
+    websocket.emit('close', { intentional: false });
+    expect(client.sessionRetryTimer).toBeNull();
+    await jest.advanceTimersByTimeAsync(10 * 60_000);
+    expect(infoRequests(websocket)).toHaveLength(2);
+
+    websocket.emit('message', { type: 'auth_ok' });
+    await flush();
+    expect(infoRequests(websocket)).toHaveLength(3);
+    await jest.advanceTimersByTimeAsync(15_000);
+    await flush();
+    expect(infoRequests(websocket)).toHaveLength(4);
+    client.stop();
+  });
+
+  test('stop cancels a pending retry', async () => {
+    jest.useFakeTimers();
+    const { client, websocket } = createFlakyClient(Infinity);
+    client.start();
+    await flush();
+    client.stop();
+
+    await jest.advanceTimersByTimeAsync(10 * 60_000);
+
+    expect(infoRequests(websocket)).toHaveLength(1);
+  });
+
+  test('registers again at the next heartbeat when the commands disappear mid-session', async () => {
+    jest.useFakeTimers();
+    const { client, websocket } = createClient();
+    const answer = websocket.request.bind(websocket);
+    let missing = false;
+    websocket.request = async (message) => {
+      if (missing && message.type === 'ha_desktop_widget/report_state') {
+        return { success: false, error: { code: 'unknown_command', message: 'Unknown command.' } };
+      }
+      return answer(message);
+    };
+    client.start();
+    await flush();
+    expect(registrations(websocket)).toHaveLength(1);
+
+    missing = true;
+    await jest.advanceTimersByTimeAsync(60_000);
+    await flush();
+    expect(client.integrationMissing).toBe(true);
+
+    missing = false;
+    await jest.advanceTimersByTimeAsync(60_000);
+    await flush();
+
+    expect(registrations(websocket)).toHaveLength(2);
+    expect(client.integrationMissing).toBe(false);
+    client.stop();
+  });
+});
+
+describe('DesktopCompanionClient rejected layouts', () => {
+  const flush = async () => {
+    for (let i = 0; i < 30; i += 1) await Promise.resolve();
+  };
+  const snapshots = (websocket) =>
+    websocket.requests.filter((request) => request.type.endsWith('/put_config_snapshot'));
+
+  function createRefusingClient(document) {
+    const websocket = new FakeWebSocket();
+    const answer = websocket.request.bind(websocket);
+    websocket.request = async (message) => {
+      if (message.type === 'ha_desktop_widget/put_config_snapshot') {
+        websocket.requests.push(message);
+        return { success: false, error: { code: 'invalid_format', message: 'Layout too large' } };
+      }
+      return answer(message);
+    };
+    const { client } = createClient({ websocket });
+    client.getConfigDocument = async () => document.current;
+    return { client, websocket };
+  }
+
+  // Every layout upload fails the way `failure` says, until `recover()` is called.
+  function createFailingClient(document, failure) {
+    const websocket = new FakeWebSocket();
+    const answer = websocket.request.bind(websocket);
+    let failing = true;
+    websocket.request = async (message) => {
+      if (message.type === 'ha_desktop_widget/put_config_snapshot' && failing) {
+        websocket.requests.push(message);
+        return failure();
+      }
+      return answer(message);
+    };
+    const { client } = createClient({ websocket });
+    client.getConfigDocument = async () => document.current;
+    return {
+      client,
+      websocket,
+      recover: () => {
+        failing = false;
+      },
+    };
+  }
+
+  afterEach(() => {
+    jest.clearAllMocks();
+    jest.useRealTimers();
+  });
+
+  test.each([
+    [
+      'times out',
+      () => Promise.reject(Object.assign(new Error('request timeout'), { code: 'timeout' })),
+    ],
+    [
+      'finds the desktop session not ready',
+      () => ({
+        success: false,
+        error: { code: 'desktop_unavailable', message: 'Desktop is not registered' },
+      }),
+    ],
+    [
+      'meets a Home Assistant that is reloading the integration',
+      () => ({
+        success: false,
+        error: { code: 'integration_not_loaded', message: 'HA Desktop Widget is not configured' },
+      }),
+    ],
+  ])(
+    'an unchanged layout is uploaded again after the wait when the upload %s',
+    async (_name, failure) => {
+      jest.useFakeTimers();
+      const document = { current: { pages: ['a'] } };
+      const { client, websocket, recover } = createFailingClient(document, failure);
+      client.start();
+      await flush();
+      expect(snapshots(websocket)).toHaveLength(1);
+
+      await jest.advanceTimersByTimeAsync(60_000); // the heartbeat, inside the first wait
+      await flush();
+      expect(snapshots(websocket)).toHaveLength(1);
+
+      recover();
+      await jest.advanceTimersByTimeAsync(60_000);
+      await flush();
+      expect(snapshots(websocket)).toHaveLength(2);
+      expect(client.lastConfigSnapshot).toBe(JSON.stringify(document.current));
+
+      await jest.advanceTimersByTimeAsync(10 * 60_000);
+      await flush();
+      expect(snapshots(websocket)).toHaveLength(2);
+      client.stop();
+    }
+  );
+
+  test('a layout Home Assistant called invalid stays refused after a failure of another kind', async () => {
+    jest.useFakeTimers();
+    const document = { current: { pages: ['a'] } };
+    const answers = [
+      () => ({ success: false, error: { code: 'invalid_format', message: 'Layout too large' } }),
+      () => Promise.reject(Object.assign(new Error('request timeout'), { code: 'timeout' })),
+    ];
+    const { client, websocket } = createFailingClient(document, () => {
+      const answer = answers.length > 1 ? answers.shift() : answers[0];
+      return answer();
+    });
+    client.start();
+    await flush();
+    expect(snapshots(websocket)).toHaveLength(1);
+
+    await jest.advanceTimersByTimeAsync(30 * 60_000);
+    await flush();
+
+    expect(snapshots(websocket)).toHaveLength(1);
+    client.stop();
+  });
+
+  test('a refused layout is not uploaded again at every heartbeat', async () => {
+    jest.useFakeTimers();
+    const document = { current: { pages: ['a'] } };
+    const { client, websocket } = createRefusingClient(document);
+    client.start();
+    await flush();
+    expect(snapshots(websocket)).toHaveLength(1);
+
+    await jest.advanceTimersByTimeAsync(10 * 60_000);
+    await flush();
+
+    expect(snapshots(websocket)).toHaveLength(1);
+    expect(
+      mockLogger.warn.mock.calls.filter(([text]) => String(text).includes('not accepted'))
+    ).toHaveLength(1);
+    client.stop();
+  });
+
+  test('a changed layout is tried again once the wait after the refusal is over', async () => {
+    jest.useFakeTimers();
+    const document = { current: { pages: ['a'] } };
+    const { client, websocket } = createRefusingClient(document);
+    client.start();
+    await flush();
+    expect(snapshots(websocket)).toHaveLength(1);
+
+    document.current = { pages: ['a', 'b'] };
+    await jest.advanceTimersByTimeAsync(60_000); // the heartbeat, inside the first wait
+    await flush();
+    expect(snapshots(websocket)).toHaveLength(1);
+
+    await jest.advanceTimersByTimeAsync(60_000);
+    await flush();
+    expect(snapshots(websocket)).toHaveLength(2);
+    client.stop();
+  });
+
+  test('a new session sends the layout again, since the integration may have changed', async () => {
+    jest.useFakeTimers();
+    const document = { current: { pages: ['a'] } };
+    const { client, websocket } = createRefusingClient(document);
+    client.start();
+    await flush();
+    expect(snapshots(websocket)).toHaveLength(1);
+
+    websocket.emit('message', { type: 'auth_ok' });
+    await flush();
+
+    expect(snapshots(websocket)).toHaveLength(2);
+    client.stop();
+  });
+});

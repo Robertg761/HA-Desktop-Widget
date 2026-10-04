@@ -30,7 +30,12 @@ import {
   bindTabTooltips,
   syncRovingTabIndex,
 } from './src/tab-navigation.js';
-import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
+import {
+  BASE_RECONNECT_DELAY_MS,
+  MAX_RECONNECT_DELAY_MS,
+  WS_INITIAL_STATES_TIMEOUT_MS,
+} from './src/constants.js';
+import { startUpdateStatus } from './src/update-status.js';
 import { WeatherEffectsManager } from './src/weather-effects.js';
 import { bindWeatherCardPicker } from './src/weather-card.js';
 import { SeasonalEffectsManager } from './src/seasonal-effects.js';
@@ -81,6 +86,9 @@ if (window.electronAPI) {
 const OFFLINE_CONNECTION_ERROR_KEY = 'offline-network';
 const FAVORITE_STALE_ENTITY_PRESERVE_MS = 15 * 60 * 1000;
 const STATE_CHANGED_HIDDEN_FLUSH_DELAY_MS = 50;
+// A frame callback is skipped while the window is hidden, minimised or covered, and the window can
+// go hidden after the callback was requested; this timer is what flushes then.
+const STATE_CHANGED_FRAME_FALLBACK_MS = 250;
 const WINDOW_QUERY = new URLSearchParams(window.location.search);
 const WINDOW_MODE = WINDOW_QUERY.get('mode') || '';
 const IS_DESKTOP_PIN_MODE = WINDOW_MODE === 'desktop-pin';
@@ -264,8 +272,11 @@ let configuredRuntimeStarted = false;
 let climateDemoController = null;
 let desktopCompanionClient = null;
 const pendingStateChangedEntities = new Map();
-let pendingStateChangedFlushId = null;
+let pendingStateChangedFrameId = null;
+let pendingStateChangedTimerId = null;
 let desktopPinStatePublishingActive = false;
+// The pinned entities whose state main was sent, so a pin added later is sent too.
+let desktopPinPublishedIds = new Set();
 let haStatesSnapshotReceived = false;
 // The Omarchy bar tiles last sent to main, serialized, so unchanged sets are not sent again.
 let publishedOmarchyBarTiles = '';
@@ -406,10 +417,27 @@ function hasDesktopPinsConfigured() {
   return !!desktopPins && Object.keys(desktopPins).length > 0;
 }
 
+function isDesktopPinEntity(entityId) {
+  const desktopPins = state.CONFIG?.desktopPins;
+  return !!desktopPins && Object.prototype.hasOwnProperty.call(desktopPins, entityId);
+}
+
+// A pin window shows its own entity and main reads nothing else from what is published, so the
+// rest of the state map would only cost a structured clone per event (and a full copy in main).
+function getDesktopPinStates() {
+  const states = state.STATES || {};
+  const pinned = {};
+  Object.keys(state.CONFIG?.desktopPins || {}).forEach((entityId) => {
+    if (states[entityId]) pinned[entityId] = states[entityId];
+  });
+  return pinned;
+}
+
 let inflightDesktopPinSnapshotPublish = null;
 function publishDesktopPinSnapshotNow() {
+  desktopPinPublishedIds = new Set(Object.keys(state.CONFIG?.desktopPins || {}));
   const publish = window.electronAPI
-    .publishHaSnapshot(state.STATES || {})
+    .publishHaSnapshot(getDesktopPinStates())
     .catch((error) => {
       log.warn('Failed to publish HA snapshot to main process:', error);
       return null;
@@ -456,9 +484,17 @@ function refreshDesktopPinStatePublishing({ force = false, coalesce = true } = {
   const active = hasDesktopPinsConfigured();
   const becameActive = active !== desktopPinStatePublishingActive;
   desktopPinStatePublishingActive = active;
-  if (!becameActive && !force) return;
+  // Only the pinned entities are published, so a pin added next to others needs its own state sent.
+  desktopPinPublishedIds.forEach((entityId) => {
+    if (!isDesktopPinEntity(entityId)) desktopPinPublishedIds.delete(entityId);
+  });
+  const gainedPin = Object.keys(state.CONFIG?.desktopPins || {}).some(
+    (entityId) => !desktopPinPublishedIds.has(entityId)
+  );
+  if (!becameActive && !force && !gainedPin) return;
   if (!active || !haStatesSnapshotReceived) return;
-  publishDesktopPinSnapshot({ coalesce });
+  // A publish already in flight was built before this pin existed, so it cannot stand in.
+  publishDesktopPinSnapshot({ coalesce: coalesce && !gainedPin });
 }
 
 /**
@@ -498,12 +534,16 @@ function publishOmarchyBarTiles({ force = false } = {}) {
 }
 
 function flushPendingStateChangedEntities() {
-  pendingStateChangedFlushId = null;
+  cancelPendingStateChangedFlush();
   const changedEntityIds = Array.from(pendingStateChangedEntities.keys());
   const changes = Array.from(pendingStateChangedEntities.values());
   pendingStateChangedEntities.clear();
   const hasDeletion = changes.some(({ entity }) => !entity);
   const publishForDesktopPins = hasDesktopPinsConfigured();
+  // Only a removed pin changes what main holds; the rest of the home is not published.
+  const hasPinDeletion =
+    publishForDesktopPins &&
+    changes.some(({ entity }, index) => !entity && isDesktopPinEntity(changedEntityIds[index]));
   const omarchyBarEntities = state.CONFIG?.omarchyBarEntities;
   if (
     Array.isArray(omarchyBarEntities) &&
@@ -512,7 +552,7 @@ function flushPendingStateChangedEntities() {
     publishOmarchyBarTiles();
   }
 
-  if (hasDeletion && publishForDesktopPins) {
+  if (hasPinDeletion) {
     // A full snapshot is the only renderer-to-main IPC operation that can remove
     // an entity from the desktop-pin cache. It also carries every coalesced update
     // in this flush, avoiding an update/snapshot ordering race. No coalescing: the
@@ -522,7 +562,7 @@ function flushPendingStateChangedEntities() {
 
   changes.forEach(({ entity }) => {
     if (!entity) return;
-    if (!hasDeletion && publishForDesktopPins) {
+    if (!hasPinDeletion && publishForDesktopPins && isDesktopPinEntity(entity.entity_id)) {
       window.electronAPI.publishHaEntityUpdate(entity).catch((error) => {
         log.warn('Failed to publish HA entity update to main process:', error);
       });
@@ -539,24 +579,58 @@ function flushPendingStateChangedEntities() {
     changedEntityIds.forEach((entityId) => handleTrayEntityStateChange(entityId));
   }
 
+  // A removal only changes what is drawn when the entity is drawn: a burst of removals while Home
+  // Assistant reloads an integration would otherwise rebuild the whole page every frame.
+  let redrawn = false;
   if (hasDeletion) {
-    if (IS_SPECIAL_PIN_MODE) {
-      renderCurrentMode();
-    } else {
-      ui.renderActiveTab();
-      renderMainWidgetState();
+    const removedFromView = changes.some(
+      ({ entity }, index) => !entity && ui.isEntityVisible(changedEntityIds[index])
+    );
+    if (removedFromView) {
+      redrawn = true;
+      if (IS_SPECIAL_PIN_MODE) {
+        renderCurrentMode();
+      } else {
+        ui.renderActiveTab();
+        renderMainWidgetState();
+      }
     }
   }
 
-  nudgeUiTickScheduler();
+  // The tick only needs a look when what it runs for may have changed: a redraw, or the player
+  // whose seek bar it moves. Timers and the clock keep their own cadence.
+  const primaryMediaPlayer = state.CONFIG?.primaryMediaPlayer;
+  if (redrawn || (primaryMediaPlayer && changedEntityIds.includes(primaryMediaPlayer))) {
+    nudgeUiTickScheduler();
+  }
 }
 
+function cancelPendingStateChangedFlush() {
+  if (pendingStateChangedFrameId != null) {
+    window.cancelAnimationFrame?.(pendingStateChangedFrameId);
+    pendingStateChangedFrameId = null;
+  }
+  if (pendingStateChangedTimerId != null) {
+    window.clearTimeout(pendingStateChangedTimerId);
+    pendingStateChangedTimerId = null;
+  }
+}
+
+// Chromium does not run animation frames for a window that is hidden or covered. A frame requested
+// just before the window went to the tray never fires, and with only that frame to wait for, the
+// flush stayed "pending" and every later event returned here: alerts, pins and the Omarchy bar
+// stopped until the window was shown. A timer is armed beside the frame, and whichever runs first
+// cancels the other.
 function scheduleStateChangedFlush() {
-  if (pendingStateChangedFlushId != null) return;
+  if (pendingStateChangedFrameId != null || pendingStateChangedTimerId != null) return;
   const canUseRaf = typeof window.requestAnimationFrame === 'function' && !document.hidden;
-  pendingStateChangedFlushId = canUseRaf
-    ? window.requestAnimationFrame(flushPendingStateChangedEntities)
-    : window.setTimeout(flushPendingStateChangedEntities, STATE_CHANGED_HIDDEN_FLUSH_DELAY_MS);
+  if (canUseRaf) {
+    pendingStateChangedFrameId = window.requestAnimationFrame(flushPendingStateChangedEntities);
+  }
+  pendingStateChangedTimerId = window.setTimeout(
+    flushPendingStateChangedEntities,
+    canUseRaf ? STATE_CHANGED_FRAME_FALLBACK_MS : STATE_CHANGED_HIDDEN_FLUSH_DELAY_MS
+  );
 }
 
 function queueStateChangedEntity(entity) {
@@ -1318,7 +1392,7 @@ function renderWizardStep() {
         'h2',
         'first-run-title',
         'first-run-title',
-        t('Welcome to Home Assistant Widget')
+        t('Welcome to HA Desktop Widget')
       )
     );
     content.appendChild(
@@ -2352,7 +2426,13 @@ websocket.on('message', (msg) => {
       resetConnectionToastTracking();
       clearReconnectTimer();
       setDisconnectedStatus(t('Waiting for live Home Assistant data...'));
-      const statesReq = websocket.request({ type: 'get_states' });
+      // The first snapshot is the one request that can legitimately take a long time. Giving up
+      // at the usual 15 s tore the socket down and asked Home Assistant to serialise every entity
+      // again, so a large instance never finished loading.
+      const statesReq = websocket.request(
+        { type: 'get_states' },
+        { timeoutMs: WS_INITIAL_STATES_TIMEOUT_MS }
+      );
       const servicesReq = websocket.request({ type: 'get_services' });
       const areasReq = websocket.request({ type: 'config/area_registry/list' });
       const configReq = websocket.request({ type: 'get_config' });
@@ -2724,7 +2804,12 @@ window.electronAPI.onHotkeyTriggered(({ entityId, action }) => {
 window.electronAPI.onOmarchyBarEntityAction?.(({ entityId, kind, command, value } = {}) => {
   const resolvedEntityId = utils.resolveEntityId(entityId, state.STATES) || entityId;
   const entity = state.STATES[resolvedEntityId];
-  if (!entity) return;
+  if (!entity) {
+    // A tile for an entity Home Assistant no longer has: the widget came forward for it, so offer
+    // the same repair dialog its own tile for a removed entity opens.
+    if (kind === 'primary') ui.openUnavailableEntityRepair(entityId);
+    return;
+  }
   if (kind === 'set') ui.executeQuickAccessControl(entity, command, value);
   else if (kind === 'controls') ui.openEntityControls(entity);
   else ui.executeEntityPrimaryAction(entity, { source: 'omarchy-bar' });
@@ -2735,6 +2820,24 @@ window.electronAPI.onOpenSettings(() => {
   if (IS_SPECIAL_PIN_MODE) return;
   openSettingsModal();
 });
+
+// Update events are heard from the start, not from the first time Settings opens: the check 30 s
+// after launch, one run from the tray with Settings closed and a download finishing would
+// otherwise be missed. Settings draws what has been heard when it opens.
+if (!IS_SPECIAL_PIN_MODE) {
+  startUpdateStatus(window.electronAPI, (event) => {
+    // A check asked for from the tray: its answer belongs on the Updates row.
+    if (event.reveal !== true) return;
+    const settingsOpen = !document.getElementById('settings-modal')?.classList.contains('hidden');
+    void (async () => {
+      if (!settingsOpen) {
+        dismissConnectionToasts({ includeStartupWarnings: true });
+        await settings.openSettings(getSettingsUiHooks());
+      }
+      settings.revealUpdateStatus?.();
+    })();
+  });
+}
 
 // Settings shows the sync state, but only to someone who has it open: a sync that starts
 // waiting for a choice or failing is also said once, wherever the person is.
@@ -2759,7 +2862,11 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
   try {
     if (!nextConfig || !nextConfig.homeAssistant) return;
     const wasConfigured = isConfigured(state.CONFIG);
-    const wasSecureStoragePending = isSecureStoragePending();
+    // The push that ends the secure-storage wait usually repeats a sign-in that is already
+    // connected (a plaintext legacy token connects before it arrives). Closing that socket dropped
+    // its first requests and flickered the status, so only a wait that left nothing connected
+    // counts here.
+    const wasSecureStoragePending = isSecureStoragePending() && !websocket.ws;
     const previousConnection = getConnectionIdentity(state.CONFIG);
     const previousToken = state.CONFIG?.homeAssistant?.token || '';
     const applied = applyRendererConfig(nextConfig);
@@ -2805,6 +2912,12 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
       renderMainWidgetState();
     }
     if (!IS_SPECIAL_PIN_MODE) settings.refreshHomeAssistantAuthStatus?.();
+    // The Hyprland bindings shown in Settings follow the hotkeys, whichever control changed them.
+    if (!IS_SPECIAL_PIN_MODE) {
+      void settings.refreshDesktopIntegrationIfHotkeysChanged?.().catch((error) => {
+        log.warn('Failed to refresh the shortcut bindings:', error);
+      });
+    }
   } catch (error) {
     log.error('Failed to apply config-updated event:', error);
   }
@@ -2855,6 +2968,10 @@ window.electronAPI.onDesktopPinSnapshotNeeded?.(() => {
 window.electronAPI.onTrayEntitiesRefreshNeeded?.(({ reconnect = false, entityId = null } = {}) => {
   if (IS_DESKTOP_PIN_MODE) return;
   if (reconnect) {
+    // A reconnect request is how main reports waking from suspend. Timers do not count the time
+    // the machine slept, so the tick armed before it could fire up to a minute late and leave the
+    // clock behind.
+    runUiTick();
     setTrayEntityConnectionState(false);
     closeWebSocket();
     connectWebSocket();

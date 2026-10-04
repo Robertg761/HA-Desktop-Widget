@@ -378,6 +378,22 @@ const TILE_NAMES_ALIGNED = `(() => {
   return rows.size > 0 && [...rows.values()].every((tops) => Math.max(...tops) - Math.min(...tops) <= 0.5);
 })()`;
 const NO_SIDEWAYS_SCROLL = `document.documentElement.scrollWidth <= innerWidth + 1`;
+// The camera viewer's toolbar with its sound toggle: the status text and the buttons lie inside the
+// dialog, do not overlap (side by side, or the buttons wrapped under the text), and the status
+// text is not cut off.
+const CAMERA_TOOLBAR_FITS = `(() => {
+  const content = document.querySelector('.camera-modal .modal-content');
+  const info = content?.querySelector('.camera-info');
+  const buttons = content?.querySelector('.camera-mode-buttons');
+  if (!info || !buttons) return false;
+  const box = content.getBoundingClientRect();
+  const infoBox = info.getBoundingClientRect();
+  const buttonsBox = buttons.getBoundingClientRect();
+  const sideways = Math.min(infoBox.right, buttonsBox.right) - Math.max(infoBox.left, buttonsBox.left);
+  const upright = Math.min(infoBox.bottom, buttonsBox.bottom) - Math.max(infoBox.top, buttonsBox.top);
+  return [infoBox, buttonsBox].every((part) => part.left >= box.left - 1 && part.right <= box.right + 1) &&
+    (sideways <= 1 || upright <= 1) && [...info.children].every((part) => part.scrollWidth <= part.clientWidth + 1);
+})()`;
 // A lost connection: the panel sits above Quick Access with its buttons in view, the page has not
 // scrolled, and the tiles are dimmed.
 const OFFLINE_PANEL_IN_VIEW = `(() => {
@@ -500,6 +516,56 @@ async function openGraphEditor(ctx) {
   await ctx.waitForSelector('#add-comparison-graph-btn');
   await ctx.click('#add-comparison-graph-btn');
   await ctx.waitForSelector('.comparison-graph-modal .entity-selector-list .entity-item');
+}
+
+// The Updates row of Settings > Advanced as it looks for a given result. The app's update events
+// come from its main process, which a scene cannot send, and the update module is bundled out of
+// the page's reach, so this writes the line the way src/update-status.js draws a state. A scene
+// names the event and what it should leave on screen; tests/unit/update-markup.test.js runs the
+// module on that event and fails if the text, state, button or bar written here differ from it.
+async function showUpdateState(ctx, { state, text, install = null, progress = null }) {
+  await openSettingsTab(ctx, 'advanced');
+  await ctx.ev(`(() => {
+    const status = document.getElementById('update-status');
+    status.dataset.state = ${JSON.stringify(state)};
+    document.getElementById('update-status-text').textContent = ${JSON.stringify(text)};
+    const install = document.getElementById('install-update-btn');
+    install.classList.toggle('hidden', ${JSON.stringify(install)} === null);
+    if (${JSON.stringify(install)} !== null) {
+      document.getElementById('install-update-text').textContent = ${JSON.stringify(install)};
+    }
+    const bar = document.getElementById('update-progress');
+    bar.classList.toggle('hidden', ${JSON.stringify(progress)} === null);
+    if (${JSON.stringify(progress)} !== null) {
+      document.getElementById('progress-fill').style.width = '${progress}%';
+      bar.setAttribute('aria-valuenow', '${progress}');
+      // As the app writes it, in the language of the page.
+      document.getElementById('progress-text').textContent = new Intl.NumberFormat(
+        document.documentElement.lang || 'en',
+        { style: 'percent' }
+      ).format(${progress} / 100);
+    }
+    status.scrollIntoView({ block: 'center' });
+  })()`);
+}
+
+const updateScene = (name, event, shown) => ({
+  name,
+  update: { event, shown },
+  setup: (ctx) => showUpdateState(ctx, shown),
+});
+
+// The camera viewer with its sound toggle showing. The toggle appears over an HLS stream and the
+// fixture's camera has none, so the scene shows it to see how the toolbar holds three buttons.
+async function openCameraViewerWithMute(ctx) {
+  await ctx.click(tile('camera.driveway'));
+  await ctx.waitForSelector('.camera-modal #mute-btn');
+  await ctx.ev(`document.getElementById('mute-btn').hidden = false`);
+  // The dialog scales in, and its boxes are only comparable once it has settled.
+  await ctx.waitForExpression(
+    CAMERA_TOOLBAR_FITS,
+    'the status text and the three buttons fit side by side'
+  );
 }
 
 // The command palette with a query that finds the longest row type.
@@ -820,6 +886,37 @@ const scenes = [
     },
   },
 
+  // The camera viewer's toolbar: Snapshot and Live are a pair, and the one on screen is filled.
+  {
+    name: 'popup-camera-viewer',
+    setup: async (ctx) => {
+      await ctx.click(tile('camera.driveway'));
+      await ctx.waitForSelector('.camera-modal #snapshot-btn');
+    },
+  },
+  // The sound toggle sits beside the pair: three buttons next to the status text, at the default
+  // width and where the window is narrow and the words long.
+  { name: 'popup-camera-viewer-mute', setup: openCameraViewerWithMute },
+  {
+    name: 'popup-camera-viewer-mute-narrow',
+    size: NARROW_WINDOW,
+    setup: openCameraViewerWithMute,
+  },
+  {
+    name: 'de-popup-camera-viewer-mute-narrow',
+    size: NARROW_WINDOW,
+    ui: { language: 'de' },
+    setup: openCameraViewerWithMute,
+  },
+  {
+    name: 'popup-camera-viewer-live',
+    setup: async (ctx) => {
+      await ctx.click(tile('camera.driveway'));
+      await ctx.waitForSelector('.camera-modal #live-btn');
+      await ctx.click('.camera-modal #live-btn');
+    },
+  },
+
   {
     name: 'popup-light-colour',
     config: dialogsPage,
@@ -954,6 +1051,44 @@ const scenes = [
     setup: (ctx) => openHotkeysFor(ctx, 'zzzzz', { expectNoMatch: true }),
   },
   { name: 'settings-advanced', setup: (ctx) => openSettingsTab(ctx, 'advanced') },
+  // What a check can find, each in its own colour instead of the idle grey.
+  updateScene(
+    'settings-advanced-update-error',
+    {
+      status: 'error',
+      error: 'Could not reach GitHub to check for updates. Check your internet connection.',
+    },
+    {
+      state: 'error',
+      text: 'Error: Could not reach GitHub to check for updates. Check your internet connection.',
+    }
+  ),
+  updateScene(
+    'settings-advanced-update-downloading',
+    { status: 'downloading', progress: { percent: 42 } },
+    { state: 'downloading', text: 'Downloading update...', progress: 42 }
+  ),
+  updateScene(
+    'settings-advanced-update-ready',
+    { status: 'downloaded', info: { version: '4.0.1' } },
+    { state: 'downloaded', text: 'Update v4.0.1 ready to install', install: 'Install update' }
+  ),
+  // A package that cannot update itself: the line names the button, which opens the release page.
+  updateScene(
+    'settings-advanced-update-manual',
+    {
+      status: 'manual',
+      message:
+        'Update available: v4.0.1. This package cannot update itself; use Download Update to get it from GitHub.',
+      version: '4.0.1',
+      downloadUrl: 'https://github.com/Robertg761/HA-Desktop-Widget/releases/tag/v4.0.1',
+    },
+    {
+      state: 'manual',
+      text: 'Update available: v4.0.1. This package cannot update itself; use Download Update to get it from GitHub.',
+      install: 'Download Update',
+    }
+  ),
   // The profile sync controls, opened by the switch alone: nothing is saved, so no sync starts and
   // the next scene finds Settings as it was.
   {
@@ -1674,6 +1809,49 @@ const scenes = [
     setup: (ctx) => openSettingsTab(ctx, 'personalization'),
   },
 
+  // A followed Omarchy palette (Linux only; the run stages a light, warm one for these scenes): the
+  // Mode shows the palette's own, the Colors are out of reach with a note, and the fields keep the
+  // faint hairline of the stock themes instead of the palette's full-strength border.
+  {
+    name: 'omarchy-settings-general',
+    omarchyPalette: true,
+    ui: { followOmarchy: true },
+    setup: (ctx) => openSettingsTab(ctx, 'general'),
+  },
+  {
+    name: 'omarchy-settings-appearance',
+    omarchyPalette: true,
+    ui: { followOmarchy: true },
+    setup: (ctx) => openSettingsTab(ctx, 'personalization'),
+  },
+
+  // The notice on a pin whose desktop decides where it sits (native Wayland), in edit mode: left
+  // out of the default pin, where it would cover the controls, and shown in a wider one.
+  ...[
+    ['pin-edit-wayland', null],
+    ['pin-edit-wayland-328x156', { width: 328, height: 156 }],
+  ].map(([name, size]) => ({
+    name,
+    pin: 'light.desk_lamp',
+    config: pinsPage,
+    setup: async (ctx) => {
+      const pin = await ctx.openPin('light.desk_lamp');
+      if (size) {
+        await ctx.ev(`(async () => {
+          await window.electronAPI.setDesktopPinEditMode(true);
+          await window.electronAPI.updateDesktopPinBounds('light.desk_lamp', ${JSON.stringify(size)});
+          await window.electronAPI.setDesktopPinEditMode(false);
+        })()`);
+        await ctx.sleep(900);
+      }
+      await pin.evaluate(`(() => {
+        document.body.classList.add('desktop-pin-edit-mode', 'desktop-pin-compositor-placement');
+        document.getElementById('desktop-pin-content')?.setAttribute('data-edit-hint', 'Drag or resize');
+      })()`);
+      return { capture: pin };
+    },
+  })),
+
   // Desktop pins are windows of their own, opened at the default 168x148.
   { name: 'pin-light', pin: 'light.desk_lamp', setup: (ctx) => pinEntity(ctx, 'light.desk_lamp') },
   {
@@ -1731,6 +1909,12 @@ const scenes = [
   {
     name: 'halloween',
     ui: { seasonal: holiday('halloween') },
+  },
+  // Settings over a holiday: its header and rail sit over the art without a blur of their own.
+  {
+    name: 'settings-halloween',
+    ui: { seasonal: holiday('halloween') },
+    setup: (ctx) => openSettingsTab(ctx, 'general'),
   },
   {
     name: 'christmas-light',

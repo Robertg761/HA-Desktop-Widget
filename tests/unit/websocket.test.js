@@ -446,6 +446,8 @@ describe('WebSocket Manager', () => {
       state.setConfig(sampleConfig);
       wsManager.connect();
       await new Promise((resolve) => setTimeout(resolve, 20));
+      // A request is only sent once the handshake is done.
+      wsManager.isAuthenticated = true;
     });
 
     test('should emit message event on incoming message', () => {
@@ -512,6 +514,7 @@ describe('WebSocket Manager', () => {
       state.setConfig(sampleConfig);
       wsManager.connect();
       await new Promise((resolve) => setTimeout(resolve, 20));
+      wsManager.isAuthenticated = true;
     });
 
     test('should send request with incremented ID', async () => {
@@ -642,6 +645,69 @@ describe('WebSocket Manager', () => {
         result: [],
       });
       await promise;
+    });
+  });
+
+  describe('Request gating', () => {
+    beforeEach(async () => {
+      state.setConfig(sampleConfig);
+      wsManager.connect();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    // Home Assistant answers any frame other than the auth message during the authentication
+    // phase with auth_invalid and closes, which the renderer reads as a revoked token.
+    test('rejects between open and auth_ok without sending anything', async () => {
+      expect(wsManager.ws.readyState).toBe(MockWebSocket.OPEN);
+      const sent = wsManager.ws.sentMessages.length;
+
+      await expect(wsManager.request({ type: 'get_states' })).rejects.toThrow(
+        'WebSocket not authenticated'
+      );
+
+      expect(wsManager.ws.sentMessages).toHaveLength(sent);
+      expect(wsManager.pendingWs.size).toBe(0);
+    });
+
+    test('sends once auth_ok has arrived', async () => {
+      wsManager.ws.simulateMessage({ type: 'auth_ok' });
+
+      const promise = wsManager.request({ type: 'get_states' });
+      const sentMessage = JSON.parse(wsManager.ws.sentMessages.at(-1));
+      expect(sentMessage.type).toBe('get_states');
+      wsManager.ws.simulateMessage({ id: promise.id, type: 'result', success: true, result: [] });
+      await expect(promise).resolves.toMatchObject({ success: true });
+    });
+
+    test('rejects again after auth_invalid', async () => {
+      wsManager.ws.simulateMessage({ type: 'auth_ok' });
+      wsManager.ws.simulateMessage({ type: 'auth_invalid' });
+
+      await expect(wsManager.request({ type: 'get_states' })).rejects.toThrow(
+        'WebSocket not authenticated'
+      );
+    });
+
+    test('lets a caller wait longer than the usual request timeout', async () => {
+      wsManager.ws.simulateMessage({ type: 'auth_ok' });
+      jest.useFakeTimers();
+      try {
+        const quick = wsManager.request({ type: 'get_services' });
+        const patient = wsManager.request({ type: 'get_states' }, { timeoutMs: 90000 });
+        const settled = jest.fn();
+        patient.then(settled, settled);
+
+        jest.advanceTimersByTime(15000);
+        await expect(quick).rejects.toMatchObject({ code: 'timeout' });
+        await Promise.resolve();
+        expect(settled).not.toHaveBeenCalled();
+        expect(wsManager.pendingWs.has(patient.id)).toBe(true);
+
+        jest.advanceTimersByTime(75000);
+        await expect(patient).rejects.toMatchObject({ code: 'timeout' });
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 

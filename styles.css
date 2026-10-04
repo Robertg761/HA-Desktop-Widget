@@ -869,6 +869,20 @@ html.desktop-pin-mode body {
   -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
   /* The glass's top edge catching the light. */
   box-shadow: inset 0 1px 0 var(--window-highlight);
+  /* The whole bar moves the window, not only the line of text in it: the title is 17px tall inside a
+     41px bar, and the rest of it (above, below, left of the title) was a dead strip. The buttons
+     and the status dot opt back out (.header-controls, .connection-indicator). */
+  -webkit-app-region: drag;
+}
+
+/* Electron builds the drag regions from each element's own declaration and ignores what is painted
+   on top of it, so a dialog, the palette or a toast that reaches the top 41px would hand its
+   clicks there to the window drag. Their panels opt out; the dimmed strip around them still moves
+   the window, as the title bar behind a dialog does. */
+.modal-content,
+.command-palette-panel,
+.toast {
+  -webkit-app-region: no-drag;
 }
 
 .desktop-pin-shell {
@@ -1020,11 +1034,12 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   .desktop-pin-placement-notice {
   display: block;
   position: absolute;
-  left: 50%;
+  /* Spans the tile between its margins. Centred with left: 50% and no width, it could only grow to
+     the half of the tile to the right of its own left edge, and wrapped to a column of words. */
+  left: 12px;
+  right: 12px;
   bottom: 8px;
-  transform: translateX(-50%);
   z-index: 2;
-  max-width: calc(100% - 24px);
   padding: 4px 8px;
   border-radius: var(--radius-md);
   background: rgba(8, 12, 20, 0.78);
@@ -1035,7 +1050,9 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   pointer-events: none;
 }
 
-@media (max-width: 160px), (max-height: 120px) {
+/* The notice is a block of text over the tile's bottom row: two lines from 240px wide, four in the
+   default 168px pin, where it covered the brightness slider and the preset buttons. */
+@media (max-width: 239px), (max-height: 120px) {
   body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
     .desktop-pin-placement-notice {
     display: none;
@@ -3032,7 +3049,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   display: flex;
   align-items: center;
   gap: 8px;
-  -webkit-app-region: drag;
   flex: 1;
   /* Without this the nowrap title keeps the area as wide as itself, so in a narrow window it
      pushes the header buttons out of the window instead of being cut short. */
@@ -6876,7 +6892,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .camera-expanded-preview[data-camera-preview-state='error'] .camera-expanded-preview-dot,
 .camera-expanded-preview[data-camera-preview-state='fallback'] .camera-expanded-preview-dot,
-.camera-expanded-preview[data-camera-preview-state='stale'] .camera-expanded-preview-dot {
+.camera-expanded-preview[data-camera-preview-state='stale'] .camera-expanded-preview-dot,
+.camera-expanded-preview[data-camera-preview-state='unavailable'] .camera-expanded-preview-dot {
   background: var(--warning);
   box-shadow: 0 0 0 2px rgba(255, 152, 0, 0.16);
 }
@@ -6935,9 +6952,19 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .camera-expanded-preview[data-camera-preview-state='refreshing'] .camera-tile-fallback,
 .camera-expanded-preview[data-camera-preview-state='fallback'] .camera-tile-fallback,
 .camera-expanded-preview[data-camera-preview-state='stale'] .camera-tile-fallback,
+.camera-expanded-preview[data-camera-preview-state='unavailable'][data-camera-preview-has-frame='true']
+  .camera-tile-fallback,
 .camera-expanded-preview[data-camera-preview-state='loading'][data-camera-preview-has-frame='true']
   .camera-tile-fallback {
   opacity: 0;
+}
+
+/* The tile desaturates the last frame of a camera that went offline so it does not pass for a
+   current picture; the viewer opened over it does the same. */
+.camera-expanded-preview[data-camera-preview-state='unavailable']
+  .camera-expanded-preview-stage
+  .camera-tile-preview-image {
+  filter: saturate(0.25) brightness(0.7);
 }
 
 .camera-expanded-preview-stage .camera-tile-scrim {
@@ -6998,7 +7025,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .camera-expanded-preview[data-camera-preview-state='error'] .camera-expanded-preview-status,
 .camera-expanded-preview[data-camera-preview-state='fallback'] .camera-expanded-preview-status,
-.camera-expanded-preview[data-camera-preview-state='stale'] .camera-expanded-preview-status {
+.camera-expanded-preview[data-camera-preview-state='stale'] .camera-expanded-preview-status,
+.camera-expanded-preview[data-camera-preview-state='unavailable'] .camera-expanded-preview-status {
   color: rgba(255, 209, 151, 0.86);
 }
 
@@ -7476,6 +7504,11 @@ body.theme-light:not(.high-contrast)
   font-size: var(--font-size-sm);
 }
 
+/* The count under the width field is a form-help line, which hugged the search box below it. */
+.comparison-graph-hint {
+  margin: 0 0 var(--space-2);
+}
+
 .modal-footer.comparison-graph-modal-footer {
   justify-content: space-between;
 }
@@ -7832,11 +7865,18 @@ body.theme-light:not(.high-contrast)
     rgba(var(--settings-modal-bg-rgb), var(--settings-modal-bg-alpha));
 }
 
+/* Without a blur on the header the holiday art in the corner is crisp, and drawn from the dialog's
+   top corner it lay behind the Close button. Placed on the grid cell of the page body, it hangs
+   from the header's line instead, clear of the button whatever the height of the header. */
+body[data-season] #settings-modal .modal-content::before {
+  grid-area: body;
+}
+
+/* The header and the rail sit inside the dialog's own blurred pane, so a blur of their own only
+   smeared the holiday art behind them and cut it in half at the line. They are plain panels. */
 #settings-modal .modal-header {
   grid-area: header;
   background: rgba(var(--settings-modal-panel-rgb), var(--settings-modal-panel-alpha));
-  backdrop-filter: blur(28px) saturate(160%) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(160%) !important;
   padding: var(--space-3) var(--space-4);
 }
 
@@ -7866,8 +7906,6 @@ body.theme-light:not(.high-contrast)
   border-inline-end: 1px solid var(--border-color);
   border-bottom: none;
   background: rgba(var(--settings-modal-panel-rgb), var(--settings-modal-panel-alpha));
-  backdrop-filter: blur(28px) saturate(160%) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(160%) !important;
 }
 
 #settings-modal .modal-body {
@@ -8275,6 +8313,13 @@ body.theme-light:not(.high-contrast)
 .calendar-events-list {
   display: grid;
   gap: 8px;
+}
+
+/* A list being read again keeps its rows on screen, dimmed, until the new ones replace them. This is
+   not aria-busy: that attribute draws a spinner in the middle of the dialog and blocks the pointer. */
+.todo-detail-list-container[data-refreshing='true'] {
+  opacity: 0.6;
+  transition: opacity var(--duration-fast) var(--ease-in-out);
 }
 
 .todo-item-row,
@@ -8797,7 +8842,11 @@ body.theme-light:not(.high-contrast)
   -webkit-backdrop-filter: blur(var(--blur-sm)) saturate(160%);
   opacity: 0;
   pointer-events: none;
-  transition: var(--transition-fast);
+  /* Only the fade and the lift animate. The tooltip is placed with top and left, and a transition
+     on those made its first show fly in from the window's corner. */
+  transition:
+    opacity var(--duration-fast) var(--ease-in-out),
+    transform var(--duration-fast) var(--ease-in-out);
   z-index: var(--z-tooltip);
   min-width: 160px;
   max-width: 240px;
@@ -9902,7 +9951,8 @@ body {
   color: var(--on-accent);
 }
 
-/* Remove button in reorganize mode - with glassmorphism */
+/* Remove button in reorganize mode. Near-opaque, so it carries no blur of its own: one more
+   compositing layer on every tile hid at most 8% of what is behind it. */
 .reorganize-mode .control-item .remove-btn {
   position: absolute;
   top: 8px;
@@ -9910,8 +9960,6 @@ body {
   width: 24px;
   height: 24px;
   background: rgba(211, 47, 47, 0.95);
-  backdrop-filter: blur(var(--blur-sm));
-  -webkit-backdrop-filter: blur(var(--blur-sm));
   color: white;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 50%;
@@ -10035,8 +10083,6 @@ body {
   width: 24px;
   height: 24px;
   background: rgba(25, 118, 210, 0.95);
-  backdrop-filter: blur(var(--blur-sm));
-  -webkit-backdrop-filter: blur(var(--blur-sm));
   color: white;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 50%;
@@ -10087,8 +10133,6 @@ body {
   font-size: var(--font-size-sm);
   cursor: pointer;
   transition: all var(--transition-base);
-  backdrop-filter: blur(18px) saturate(170%);
-  -webkit-backdrop-filter: blur(18px) saturate(170%);
   box-shadow:
     0 6px 14px rgba(0, 0, 0, 0.34),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
@@ -11392,6 +11436,7 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
      loading overlay stays *below* toasts on purpose (see the :root scale). */
   z-index: calc(var(--z-notification) + 1);
   font-size: var(--font-size-lg);
+  animation: modalFadeIn var(--duration-base) var(--ease-emphasized);
 }
 
 /* Global Hotkeys and Alerts Styles */
@@ -11629,20 +11674,9 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
     display: none;
   }
 
-  /* Disable glassmorphism blur effects for better performance */
-  .modal,
-  .modal-content,
-  .status-card,
-  .media-tile,
-  .control-item,
-  .btn,
-  .close-btn,
-  .form-group input,
-  .form-group select,
-  .form-group textarea {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-  }
+  /* A backdrop blur is not motion, so it stays: stripping it here flattened dialogs and scrims for
+     everyone who asked for less movement (Windows and macOS), while Linux, which has its own rule,
+     kept it. Someone who wants less transparency would ask for that, not for less motion. */
 }
 
 /* The OS asked for more contrast (macOS Increase contrast, GNOME and KDE high-contrast settings).
@@ -11690,20 +11724,41 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   }
 }
 
+/* A dialog keeps ONE blur in Linux performance mode: its backdrop, at the radius the dialog recipe
+   gives it everywhere else. The panel inside it sits within that backdrop's root and can only blur
+   the flat scrim, so its own blur (and the one on every chip in it) was a full-size pass for no
+   visible change. The hotkey recorder's scrim is a dialog backdrop too, although it is not a .modal.
+   What floats over a panel's own content loses nothing: the swatch tooltip is a child of <body>
+   (stripped before as well), the chart tooltip fills with the dialog colour at 96%, and the to-do
+   field's glass is a ::before, which this selector does not reach. The visible change is the
+   backdrop: 24px of blur became 8px, as on every other platform. */
 body.linux-performance-mode,
-body.linux-performance-mode *:not(.modal):not(.modal-content):not(.modal *) {
+body.linux-performance-mode *:not(.modal):not(.hotkey-capture-modal) {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
 
-/* Keep backdrop blur for modals even in Linux performance mode */
-body.linux-performance-mode .modal {
-  backdrop-filter: blur(var(--blur-lg)) saturate(120%) !important;
-  -webkit-backdrop-filter: blur(var(--blur-lg)) saturate(120%) !important;
+/* The glow that pulses on the playing button repaints a filter every frame; without a GPU that is
+   software work for one small button. It keeps the glow, still. */
+body.linux-performance-mode .play-pause-btn.playing,
+body.linux-performance-mode .media-player-entity[data-media-playing='true'] .play-pause-btn {
+  animation: none;
 }
-body.linux-performance-mode .modal-content {
-  backdrop-filter: blur(var(--blur-xl)) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%) !important;
+
+body.linux-performance-mode .play-pause-btn.playing:not(:hover),
+body.linux-performance-mode
+  .media-player-entity[data-media-playing='true']
+  .play-pause-btn:not(:hover) {
+  filter: drop-shadow(0 3px 12px rgba(var(--accent-rgb), 0.6));
+}
+
+/* Linux performance mode strips backdrop blur from everything but modals, and what the palette, a
+   toast, a menu or a tooltip floats over then shows through their 96% opaque panel: the text of the
+   tile beneath doubles up faintly behind the rows. Without a blur to hide it they take the solid
+   panel colour. (Settings and the other dialogs keep their blur and their 96% panel.) */
+body.linux-performance-mode
+  :is(.command-palette-panel, .toast, .connection-status-tooltip, .theme-tooltip-flyout) {
+  --dialog-bg: var(--dialog-bg-solid);
 }
 
 /* Ensure all interactive elements have visible focus */
@@ -12207,7 +12262,7 @@ label.disabled {
 }
 
 /* Dragging a Wayland layer uses compositor coordinates, never native xdg move. */
-body.layer-drag-enabled .header,
+body.layer-drag-enabled .widget-header,
 body.layer-drag-enabled .drag-area,
 body.layer-drag-enabled .drag-region {
   -webkit-app-region: no-drag;
@@ -13856,6 +13911,30 @@ body.theme-light #settings-modal .modal-footer {
   border: 1px solid var(--tile-border);
 }
 
+/* Selected text in a field takes the Omarchy palette's selection colour while it is followed
+   (--selection-bg, set by src/desktop-appearance.js), and the accent otherwise. */
+input::selection,
+textarea::selection {
+  background: var(--selection-bg, rgba(var(--accent-rgb), 0.35));
+}
+
+/* A line under a group's caption, above its pane, saying why the pane is not live. */
+.settings-group-note {
+  margin: 0 4px 8px;
+}
+
+/* While the Omarchy palette is followed it sets the accent and the background, and the controls for
+   them show that instead of looking live (they are also inert, see updateColorsFollowState). */
+#colors-group.is-following-palette .settings-group-body {
+  opacity: 0.45;
+}
+
+/* Always on top says in words why it cannot be changed (desktop layer mode); the dimming a disabled
+   switch gives its row's help text would put that explanation under a readable contrast. */
+#always-on-top-help {
+  opacity: 1;
+}
+
 /* Every direct child of a pane is a row, separated by hairlines. The hairline is the top edge of
    each visible row that follows another one, so a hidden row (Follow Omarchy off Omarchy, the
    weather override, the alerts list, profile sync) never leaves the last visible row with a
@@ -14150,6 +14229,13 @@ body.theme-light
 
 .segmented-control.is-disabled {
   opacity: 0.45;
+}
+
+/* The control is dimmed once. Its options are disabled as well, and the dimming every disabled
+   button gets would multiply with this one into a row that is hard to read, which is the row that
+   says which mode the followed Omarchy palette is in. */
+.segmented-control.is-disabled .segmented-option:disabled {
+  opacity: 1;
 }
 
 .segmented-option,
@@ -14657,6 +14743,23 @@ body.theme-light
   border: none;
   border-radius: 0;
   background: transparent;
+}
+
+/* What the check found is told in colour as well as words: a failure is not the idle line, and an
+   update waiting is not the same grey as "ready to check". */
+#settings-modal .update-status[data-state='error'] {
+  color: var(--error-text);
+}
+
+#settings-modal .update-status[data-state='up-to-date'],
+#settings-modal .update-status[data-state='downloaded'] {
+  color: var(--success-text);
+}
+
+#settings-modal .update-status[data-state='available'],
+#settings-modal .update-status[data-state='downloading'],
+#settings-modal .update-status[data-state='manual'] {
+  color: var(--accent-text);
 }
 
 #settings-modal .update-actions {
@@ -15259,9 +15362,10 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
 
 .camera-modal .camera-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
+  gap: var(--space-2) var(--space-3);
   margin-top: var(--space-3);
 }
 
@@ -15286,10 +15390,22 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   font-size: var(--font-size-xs-plus);
 }
 
+/* The sound toggle and the pair of modes take their own width, and the status text gives way to
+   them: when the window is narrow or the words are long (Stummschalten, Schnappschuss) they wrap
+   under it instead of squeezing it away, and among themselves rather than past the dialog's edge. */
 .camera-mode-buttons {
   display: flex;
-  flex: none;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  max-width: 100%;
+  align-items: center;
+  justify-content: flex-end;
   gap: var(--space-2);
+  margin-inline-start: auto;
+}
+
+.camera-mode-buttons .camera-mute-toggle[hidden] {
+  display: none;
 }
 
 /* A dialog built around a pick list (Manage Quick Access, the repair, alert and weather pickers,

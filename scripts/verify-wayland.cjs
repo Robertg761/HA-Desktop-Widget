@@ -23,7 +23,7 @@ async function connect() {
       item.type === 'page' &&
       item.url.startsWith('file:') &&
       item.url.includes('index.html') &&
-      item.title === 'Home Assistant Widget' &&
+      item.title === 'HA Desktop Widget' &&
       !item.url.includes('desktop-pin')
   );
   assert(target, 'packaged main renderer must be running');
