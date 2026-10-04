@@ -2375,7 +2375,6 @@ describe('Camera Module', () => {
 
   describe('Quick Access camera previews - recovery and liveness', () => {
     let visibilityState;
-    let intersectionCallback = null;
     const flushLivePreviewStart = async () => {
       await jest.advanceTimersByTimeAsync(0);
       for (let attempt = 0; attempt < 8; attempt += 1) await Promise.resolve();
@@ -2411,9 +2410,6 @@ describe('Camera Module', () => {
 
     beforeAll(() => {
       globalThis.IntersectionObserver = class {
-        constructor(callback) {
-          intersectionCallback = callback;
-        }
         observe() {}
         unobserve() {}
         disconnect() {}
