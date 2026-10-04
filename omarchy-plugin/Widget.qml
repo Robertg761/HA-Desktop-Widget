@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import "Clip.js" as Clip
 import "Countdown.js" as Countdown
 
 // Home Assistant in the Omarchy bar. HA Desktop Widget publishes its connection state and its
@@ -146,8 +147,10 @@ Panel {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
+  // Cut to `limit` characters as a reader counts them (grapheme clusters, see Clip.js), so an emoji
+  // or a letter with its accents is never split at the cut.
   function clipText(text, limit) {
-    return text.length > limit ? text.slice(0, limit - 1) + "…" : text
+    return Clip.clip(text, limit)
   }
 
   function statusLine() {
