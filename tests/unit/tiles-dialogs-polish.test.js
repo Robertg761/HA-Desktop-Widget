@@ -37,36 +37,12 @@ jest.mock('../../src/camera.js', () => ({
 }));
 
 jest.mock('../../src/ui-utils.js', () => {
-  const releaseFocusTrap = jest.fn();
   return {
     showToast: jest.fn(),
     showConfirm: jest.fn().mockResolvedValue(false),
     showLoading: jest.fn(),
     setStatus: jest.fn(),
-    trapFocus: jest.fn(),
-    releaseFocusTrap,
-    // Mirrors the real shared modal helper, which settles synchronously under NODE_ENV=test.
-    closeModal: jest.fn((modal, { remove = false, releaseFocus = false, onClosed } = {}) => {
-      if (modal) {
-        modal.classList.remove('modal-closing');
-        if (remove) {
-          modal.remove();
-        } else {
-          modal.classList.add('hidden');
-          if (modal.style.display) modal.style.display = 'none';
-        }
-        if (releaseFocus) releaseFocusTrap(modal);
-        onClosed?.();
-      }
-      return Promise.resolve();
-    }),
-    openModal: jest.fn((modal, { display = 'flex' } = {}) => {
-      if (!modal) return;
-      modal.classList.remove('modal-closing');
-      modal.classList.remove('hidden');
-      if (display) modal.style.display = display;
-      else modal.style.removeProperty('display');
-    }),
+    ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
     applyTheme: jest.fn(),
     applyUiPreferences: jest.fn(),
     hexToRgb: jest.fn((hex) => {
@@ -752,6 +728,104 @@ describe('tile and device dialog polish', () => {
       expect(high.value).toBe('24');
     });
 
+    describe('keyboard and focus', () => {
+      const dual = (value) =>
+        climate(
+          {
+            temperature: value === 'heat' ? 21.5 : null,
+            target_temp_low: 20,
+            target_temp_high: 24,
+            supported_features: 3,
+            hvac_modes: ['heat', 'heat_cool', 'off'],
+          },
+          value
+        );
+      const modal = () => document.querySelector('.climate-modal');
+      const chip = (group, mode) =>
+        modal().querySelector(`[data-chip-group="${group}"] [data-mode="${mode}"]`);
+
+      it('starts on the heading, so a stray key cannot change the thermostat', async () => {
+        state.setStates({ 'climate.hvac': dual('heat') });
+        ui.openEntityDetailModal(dual('heat'));
+        await jest.advanceTimersByTimeAsync(0);
+
+        expect(document.activeElement).toBe(modal().querySelector('.modal-header h2'));
+        expect(modal().getAttribute('role')).toBe('dialog');
+      });
+
+      it('says which mode is on, in groups that carry their label', () => {
+        state.setStates({ 'climate.hvac': dual('heat') });
+        ui.openEntityDetailModal(dual('heat'));
+
+        const group = modal().querySelector('[data-chip-group="mode"]');
+        expect(group.getAttribute('role')).toBe('group');
+        expect(document.getElementById(group.getAttribute('aria-labelledby')).textContent).toBe(
+          'Mode'
+        );
+        expect(chip('mode', 'heat').getAttribute('aria-pressed')).toBe('true');
+        expect(chip('mode', 'off').getAttribute('aria-pressed')).toBe('false');
+      });
+
+      it('keeps the keyboard on the same mode chip when the dialog is rebuilt around a new slider', async () => {
+        state.setStates({ 'climate.hvac': dual('heat') });
+        ui.openEntityDetailModal(dual('heat'));
+        await jest.advanceTimersByTimeAsync(0);
+        const before = modal();
+        chip('mode', 'heat_cool').focus();
+
+        // Choosing heat/cool swaps the one target slider for a low and a high.
+        liveUpdate(dual('heat_cool'));
+        await jest.advanceTimersByTimeAsync(0);
+
+        expect(document.querySelectorAll('.climate-modal')).toHaveLength(1);
+        expect(modal()).not.toBe(before);
+        expect(before.isConnected).toBe(false);
+        expect(modal().querySelector('[data-climate-range="low"]')).not.toBeNull();
+        // The same chip, not the Close button, and no second entrance animation.
+        expect(document.activeElement).toBe(chip('mode', 'heat_cool'));
+        expect(modal().classList.contains('modal-rebuilt')).toBe(true);
+      });
+
+      it('still returns focus to the tile it was opened from, after being rebuilt', async () => {
+        document.body.insertAdjacentHTML(
+          'beforeend',
+          '<button id="tile-opener">Thermostat</button>'
+        );
+        const opener = document.getElementById('tile-opener');
+        state.setStates({ 'climate.hvac': dual('heat') });
+        opener.focus();
+        ui.openEntityDetailModal(dual('heat'));
+        await jest.advanceTimersByTimeAsync(0);
+        liveUpdate(dual('heat_cool'));
+        await jest.advanceTimersByTimeAsync(0);
+
+        document.activeElement.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+        );
+        await jest.advanceTimersByTimeAsync(400);
+
+        expect(document.querySelector('.climate-modal')).toBeNull();
+        expect(document.activeElement).toBe(opener);
+      });
+
+      it('closes on Escape and on the backdrop', async () => {
+        state.setStates({ 'climate.hvac': dual('heat') });
+        ui.openEntityDetailModal(dual('heat'));
+        await jest.advanceTimersByTimeAsync(0);
+
+        document.activeElement.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+        );
+        await jest.advanceTimersByTimeAsync(400);
+        expect(document.querySelector('.climate-modal')).toBeNull();
+
+        ui.openEntityDetailModal(dual('heat'));
+        modal().click();
+        await jest.advanceTimersByTimeAsync(400);
+        expect(document.querySelector('.climate-modal')).toBeNull();
+      });
+    });
+
     describe('heat/cool targets during live updates', () => {
       const range = (low, high) =>
         climate(
@@ -797,6 +871,8 @@ describe('tile and device dialog polish', () => {
 
       it('keeps a keyboard change and follows Home Assistant once the user moves on', async () => {
         const { low } = open();
+        // The dialog takes its own focus first; the user then moves onto the slider.
+        await jest.advanceTimersByTimeAsync(0);
         low.focus();
         inputValue('[data-climate-range="low"]', 22);
         await jest.advanceTimersByTimeAsync(300);

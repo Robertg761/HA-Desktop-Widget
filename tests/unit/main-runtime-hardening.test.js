@@ -20,7 +20,7 @@ describe('main-process wiring safeguards', () => {
       const repair = jest.fn(() => ({}));
       const repairLaunchers = jest.fn(() => []);
       const start = mainSource.indexOf('// An AppImage update writes a new versioned filename');
-      const end = mainSource.indexOf('installApplicationMenu(Menu);', start);
+      const end = mainSource.indexOf('installApplicationMenu(Menu, process.platform', start);
       expect(start).toBeGreaterThan(-1);
       expect(end).toBeGreaterThan(start);
       require('vm').runInNewContext(mainSource.slice(start, end), {

@@ -3249,6 +3249,12 @@ body.theme-light .notification-bell-count {
   transform: rotate(60deg);
 }
 
+/* The wizard leaves the header usable (move, minimize, hide), but Settings would open underneath
+   it, out of sight. "Full Settings" in the wizard is the way there. */
+body.first-run-active #settings-btn {
+  visibility: hidden;
+}
+
 #close-btn:hover {
   background: rgba(239, 83, 80, 0.18);
   color: var(--error-text);
@@ -6631,7 +6637,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   --focus-ring: var(--accent);
   position: fixed;
   inset: 0;
-  z-index: var(--z-modal-backdrop);
+  z-index: calc(var(--z-modal-backdrop) + var(--dialog-depth, 0));
   display: grid;
   padding: 16px;
   place-items: center;
@@ -7449,10 +7455,19 @@ body.theme-light:not(.high-contrast)
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: var(--z-modal-backdrop);
+  /* A dialog opened over another sits one step higher (openDialog sets --dialog-depth), so the
+     newest is on top whatever order the elements are in the document. */
+  z-index: calc(var(--z-modal-backdrop) + var(--dialog-depth, 0));
   backdrop-filter: blur(var(--blur-lg)) saturate(120%);
   -webkit-backdrop-filter: blur(var(--blur-lg)) saturate(120%);
   animation: modalFadeIn var(--duration-base) var(--ease-emphasized);
+}
+
+/* A pop-up rebuilt in place (a thermostat gaining a control while it is open) is not opening
+   again, so it must not replay the entrance. */
+.modal.modal-rebuilt,
+.modal.modal-rebuilt .modal-content {
+  animation: none;
 }
 
 @keyframes modalFadeIn {
@@ -7738,7 +7753,10 @@ body.theme-light:not(.high-contrast)
 }
 
 .modal-body {
-  padding: var(--space-5);
+  /* Named so what sticks to the body's edges (the to-do add field) can take the padding back by the
+     same amount at every window height. */
+  --modal-body-inset: var(--space-5);
+  padding: var(--modal-body-inset);
   overflow-y: auto;
   position: relative;
 }
@@ -7936,11 +7954,40 @@ body.theme-light:not(.high-contrast)
   filter: drop-shadow(0 2px 8px rgba(var(--accent-rgb), 0.22));
 }
 
+/* In a long list the add field used to scroll away with the first rows, and adding is what this
+   dialog is for. It stays at the top of the scrolling body. The negative margin and the padding that
+   gives the space back let its backing reach the body's edges, and the negative top is the body's
+   padding: a sticky box is held at the content edge, not the scrollport's. */
 .todo-add-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
-  margin-bottom: 14px;
+  position: sticky;
+  top: calc(-1 * var(--modal-body-inset));
+  z-index: 1;
+  margin: calc(-1 * var(--modal-body-inset)) calc(-1 * var(--modal-body-inset)) 0;
+  padding: var(--modal-body-inset) var(--modal-body-inset) 14px;
+  container-type: scroll-state;
+}
+
+/* The panel's own glass, blurred behind, so the rows passing under the field do not show through.
+   Only while it is held at the top: at rest it would be a second layer of glass on the dialog's. */
+.todo-add-form::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(var(--glass-elevated), var(--glass-elevated)), var(--modal-backstop);
+  backdrop-filter: blur(var(--blur-lg));
+  -webkit-backdrop-filter: blur(var(--blur-lg));
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+@container scroll-state(stuck: top) {
+  .todo-add-form::before {
+    opacity: 1;
+  }
 }
 
 .calendar-toolbar {
@@ -8231,7 +8278,6 @@ body.theme-light:not(.high-contrast)
     margin-top var(--transition-base);
   overflow: hidden;
   contain: layout paint;
-  will-change: max-height, opacity, transform;
 }
 
 .personalization-section.collapsed .section-body {
@@ -8240,6 +8286,17 @@ body.theme-light:not(.high-contrast)
   transform: translateY(-4px);
   margin-top: 0;
   pointer-events: none;
+  /* Gone for keyboard and assistive technology once it has finished closing, not only to the eye:
+     a body that is merely 0px high still took focus on its fields and was read out as content.
+     Visibility animates as visible for the whole transition and hidden after it, and the reverse on
+     opening, so the collapse still plays out and the controls are reachable as soon as it opens. */
+  visibility: hidden;
+  transition:
+    max-height var(--transition-base),
+    opacity var(--transition-fast),
+    transform var(--transition-base),
+    margin-top var(--transition-base),
+    visibility var(--duration-base);
 }
 
 .personalization-section.collapsed .section-toggle-icon {
@@ -8543,12 +8600,6 @@ body.theme-light:not(.high-contrast)
   font-size: var(--font-size-xs-plus);
   color: var(--text-secondary);
   line-height: 1.2;
-}
-
-.custom-editor-save-lock-hint {
-  border-inline-start: 3px solid rgba(var(--accent-rgb), 0.6);
-  padding-inline-start: var(--space-3);
-  color: var(--accent-text);
 }
 
 #custom-color-picker {
@@ -8963,6 +9014,18 @@ body.theme-light:not(.high-contrast)
   color: var(--text-secondary);
 }
 
+/* Nothing to say: out of sight and out of the layout, but still in the page, so the message that
+   comes next is announced. */
+.connection-status-empty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* The waiting signal sits with the status text it describes instead of floating
    beside the buttons, so it always has the full modal width and cannot overlap
    anything. An indeterminate sweep also reads better than a spinner for a wait
@@ -9039,7 +9102,9 @@ body.theme-light:not(.high-contrast)
 
 .first-run-onboarding {
   position: fixed;
-  inset: 0;
+  /* Below the header, so the window's own buttons and drag area keep working while the wizard is
+     up. renderer.js measures the header, whose height follows the text size. */
+  inset: var(--header-height, 40px) 0 0;
   z-index: var(--z-overlay);
   display: flex;
   align-items: center;
@@ -9355,7 +9420,8 @@ body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
 
 .toast {
   display: flex;
-  align-items: center;
+  /* The icon sits against the first line, not the middle of a toast that runs to several. */
+  align-items: flex-start;
   justify-content: center;
   gap: var(--space-3);
   background: var(--surface-3);
@@ -9385,7 +9451,50 @@ body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
   flex-shrink: 0;
   width: 16px;
   height: 16px;
+  /* Half the gap between the 16px glyph and the first line's height. */
+  margin-top: 2px;
   color: var(--text-secondary);
+}
+
+.toast-message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* For the pointer: errors and warnings stay until dismissed, so they say how. The toast itself is
+   the keyboard's one stop (Enter, Space or Escape closes it). */
+.toast-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  margin-inline-start: var(--space-1);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.toast-close:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.toast-close svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+/* A notice that asks nothing (Reorganize mode is on) must not catch a drag aimed at the tile under it. */
+.toast.toast-passive {
+  pointer-events: none;
+  cursor: default;
 }
 
 .toast-icon svg {
@@ -9421,12 +9530,16 @@ body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
   color: var(--warning);
 }
 
+/* Information has its own blue, not the accent: with a rose, amber or emerald accent an accent-coloured
+   "Reorganize mode is on" read as an error, a warning or a success. The two values below are fixed on
+   purpose (the blue the default accent started from, not a reference to --accent), and the light
+   theme restates the glyph further down; their exact shades belong with the status colours. */
 .toast.info {
-  border-color: rgba(var(--accent-rgb), 0.6);
+  border-color: rgba(100, 181, 246, 0.5);
 }
 
 .toast.info .toast-icon {
-  color: var(--accent-text);
+  color: #64b5f6;
 }
 
 /* Light-theme status glyphs. The dark-theme hues (--success #81c784,
@@ -9649,12 +9762,6 @@ body {
 }
 
 /* Confirmation Modal - Compact Style */
-/* The confirmation is one static element near the top of <body>, but dialogs built on demand
-   (the comparison graph editor) are appended after it at the same z-index and would paint over it. */
-#confirm-modal {
-  z-index: var(--z-modal);
-}
-
 .confirm-modal-content {
   /* No minimum width: a window narrower than that would push the buttons off both sides. */
   width: min(400px, calc(100vw - 24px));
@@ -9673,14 +9780,24 @@ body {
 
 .confirm-modal-content .modal-footer {
   display: flex;
+  /* Three buttons (Save, Discard, Keep editing) do not fit in a 400px dialog, let alone a 340px
+     window or a wordier language: the row wraps, still lined up on the end, rather than cutting
+     the labels off. */
+  flex-wrap: wrap;
   gap: var(--space-3);
   justify-content: flex-end;
   padding: var(--space-3) var(--space-5);
 }
 
-/* Size, corners and fill come from the dialog buttons; this only sets how wide they are. */
+/* Size, corners and fill come from the dialog buttons; this only sets how wide they are. A label
+   longer than the dialog wraps inside its button, which is the shared button's single line with the
+   end clipped otherwise. */
 .confirm-modal-content .btn {
   min-width: 88px;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .confirm-modal-content .btn-danger {
@@ -11521,10 +11638,15 @@ label.disabled {
 }
 
 .command-palette-result.highlighted,
-.command-palette-result:hover,
 .command-palette-result:focus-visible {
   border-color: rgba(var(--accent-rgb), 0.38);
   background: rgba(var(--accent-rgb), 0.14);
+}
+
+/* A pointer resting on the list is not the selection: with the arrow keys moving the highlight, two
+   rows in the strong tint left Enter's target ambiguous. Hover is a lighter wash, no border. */
+.command-palette-result:hover:not(.highlighted) {
+  background: rgba(var(--accent-rgb), 0.07);
 }
 
 /* Arrow keys move the highlight while focus stays in the search field, so the highlighted row
@@ -11759,6 +11881,16 @@ label.disabled {
 
 .donate-secure-note {
   margin-top: var(--space-3);
+}
+
+/* A rejected amount is said under the field, in red, until it is changed. */
+.donate-amount-error {
+  margin: var(--space-2) 0 0;
+  color: var(--error);
+}
+
+#donate-custom-amount[aria-invalid='true'] {
+  border-color: var(--error);
 }
 
 /* Dragging a Wayland layer uses compositor coordinates, never native xdg move. */
@@ -12176,6 +12308,14 @@ body.software-glass.frosted-glass .modal-content {
 
 .modal-header .close-btn {
   flex: none;
+}
+
+/* The pop-ups for lights, fans, covers, climate and media open with focus on their heading, so a
+   screen reader starts there and no stray key reaches a slider. It is not a control, so it draws no
+   ring: the browser's default one boxes the glyphs and looks like a field. */
+.modal-header :is(h1, h2, h3)[tabindex='-1']:focus,
+.modal-header :is(h1, h2, h3)[tabindex='-1']:focus-visible {
+  outline: none;
 }
 
 .modal-footer {
@@ -12751,6 +12891,14 @@ body.theme-light:not(.high-contrast)
   background: var(--tile-bg);
 }
 
+/* The list scrolls, which clips on both axes, so a ring drawn outside an option showed only as
+   stray top and bottom lines (and not at all for the only one). Drawn inside, with the hover tint. */
+.entity-selector-list .entity-item:focus-visible {
+  outline-offset: -2px;
+  box-shadow: none;
+  background: var(--tile-bg-hover);
+}
+
 .entity-item {
   border-bottom-color: var(--tile-border);
   min-height: 52px;
@@ -12864,6 +13012,18 @@ body.theme-light:not(.high-contrast)
   border-bottom-color: var(--tile-border);
 }
 
+/* The field is the palette's whole point, so focus is the normal state and the global field ring
+   (a hard-cornered box with a glow, on top of the highlighted row's own ring) only competes with
+   it. The line under the field carries focus instead. */
+.command-palette-search .command-palette-input:focus-visible {
+  outline: 0;
+  box-shadow: none;
+}
+
+.command-palette-search:focus-within {
+  border-bottom-color: var(--accent);
+}
+
 .command-palette-result-icon {
   background: var(--tile-bg);
   color: color-mix(in srgb, var(--text-primary) 72%, transparent);
@@ -12913,7 +13073,7 @@ select option {
   }
 
   .modal-body {
-    padding: var(--space-4);
+    --modal-body-inset: var(--space-4);
   }
 
   .brightness-content,
@@ -13006,7 +13166,30 @@ body.opaque-panels #settings-modal .modal-header {
     filter var(--transition-fast);
 }
 
-/* The rail is icons only; each tab keeps its name for screen readers and as a hover tooltip. */
+/* The rail is icons only; each tab keeps its name for screen readers, and shows it in a label beside
+   the tab on hover and keyboard focus (bindTabTooltips). The label sits outside the rail, whose own
+   scrolling would clip it. */
+.tab-tooltip {
+  position: absolute;
+  z-index: 6;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--dialog-border);
+  border-radius: var(--radius-md);
+  background: var(--dialog-bg);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--duration-fast);
+}
+
+.tab-tooltip.visible {
+  opacity: 1;
+}
+
 #settings-modal .tab-link-label {
   position: absolute;
   width: 1px;
@@ -13033,6 +13216,10 @@ body.opaque-panels #settings-modal .modal-header {
   padding: 18px 18px 76px;
   padding-inline-end: 9px;
   scrollbar-gutter: stable;
+  /* The Save/Cancel pill floats over the bottom of the page, where the switches and selects sit.
+     Without this, Tab scrolled a control that was already inside the box under the pill, and its
+     ring and state were hidden. */
+  scroll-padding-block-end: 80px;
 }
 
 /* A column of at most 680px, centred: across a 900px window the labels sat 750px from their
@@ -13105,6 +13292,47 @@ body.theme-light #settings-modal .modal-footer {
 #settings-search-results:not([hidden]) {
   display: grid;
   gap: 8px;
+}
+
+/* While search results stand in for the page, no page is the current one: the pill steps back and
+   the rail's active colours go quiet until a page is chosen or the search is cleared. */
+#settings-modal.settings-searching .modal-tabs > .sliding-indicator {
+  opacity: 0;
+}
+
+#settings-modal.settings-searching .tab-link.active {
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-secondary);
+}
+
+#settings-modal.settings-searching .tab-link.active .tab-link-icon {
+  color: inherit;
+  filter: none;
+}
+
+/* The setting a search result jumped to. The outline stays for the whole second and a half; only
+   the tint fades, and not at all under reduced motion. */
+.settings-search-target {
+  border-radius: var(--radius-md);
+  outline: 2px solid rgba(var(--accent-rgb), 0.6);
+  outline-offset: 2px;
+  animation: settingsSearchTarget 1.6s var(--ease-out) both;
+}
+
+@keyframes settingsSearchTarget {
+  from {
+    background-color: rgba(var(--accent-rgb), 0.18);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-search-target {
+    animation: none;
+  }
 }
 
 #settings-modal .settings-search-result {
@@ -13329,6 +13557,14 @@ body.theme-light #settings-modal .modal-footer {
       0 2px 6px rgba(0, 0, 0, 0.25),
       0 0 0 1.5px rgba(0, 0, 0, 0.45);
   }
+}
+
+/* The form field rule that removes inputs' outline and draws a glow instead also reaches this
+   slider, and a range paints neither a border nor a glow of its own, so a focused slider looked
+   exactly like an unfocused one. */
+#settings-modal .setting-slider input[type='range']:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 4px;
 }
 
 .setting-slider-value {
@@ -13566,6 +13802,11 @@ body.theme-light
 
 #settings-modal .settings-disclosure-section .section-body {
   margin-top: 12px;
+  /* The body clips to animate its height, which also cut off the sides of the focus glow on the
+     full-width search fields. Padding with a matching negative margin leaves room without moving
+     anything. */
+  padding-inline: 4px;
+  margin-inline: -4px;
 }
 
 #settings-modal .settings-disclosure-section.collapsed .section-body {
@@ -13619,8 +13860,13 @@ body.theme-light
 #settings-modal .settings-disclosure > summary {
   width: 100%;
   margin: 0;
-  border-radius: 0;
+  /* Rounded like every other focus ring, with the outline pulled in so it clears the pane's edge. */
+  border-radius: var(--radius-md);
   background: transparent;
+}
+
+#settings-modal .settings-disclosure > summary:focus-visible {
+  outline-offset: -2px;
 }
 
 #settings-modal .accent-theme-grid {
@@ -13646,7 +13892,9 @@ body.theme-light
   grid-row: 1;
 }
 
-#settings-modal .custom-color-editor-grid > :nth-child(5) {
+/* The hex field follows the picker in the markup, so Tab goes picker, hex, R, G, B, Save: the order
+   the eye reads them. Grid placement only sets the hex beside the swatch. */
+#settings-modal .custom-color-editor-grid > :nth-child(2) {
   grid-column: 2 / span 2;
   grid-row: 1;
 }
@@ -13699,10 +13947,6 @@ body.theme-light
    margin. */
 #settings-modal .custom-theme-management {
   margin-top: var(--space-4);
-}
-
-#settings-modal .custom-editor-save-lock-hint {
-  margin-top: var(--space-3);
 }
 
 #settings-modal .primary-card-value {
@@ -14061,6 +14305,29 @@ body.theme-light:not(.high-contrast) :is(#quick-controls .control-item, .status-
 
 @media (max-width: 300px) {
   .status-grid:not(.single-card):not(.primary-cards-hidden) > .status-card + .status-card {
+    box-shadow: inset 0 1px 0 var(--tile-border);
+  }
+}
+
+/* The hero pane clips its overflow and its cards fill it, so the global ring (drawn 2px outside) was
+   cut off on three sides, leaving a stray bar on the divider. Inside the card it is clear of the
+   pane's rounded corners, and the glow would be clipped anyway. The divider is drawn by a
+   box-shadow, which the glow would also have replaced. */
+.status-grid:not(.single-card):not(.primary-cards-hidden) > .status-card:focus-visible {
+  outline-offset: -4px;
+  box-shadow: none;
+}
+
+.status-grid:not(.single-card):not(.primary-cards-hidden)
+  > .status-card
+  + .status-card:focus-visible {
+  box-shadow: inset 1px 0 0 var(--tile-border);
+}
+
+@media (max-width: 420px) {
+  .status-grid:not(.single-card):not(.primary-cards-hidden)
+    > .status-card
+    + .status-card:focus-visible {
     box-shadow: inset 0 1px 0 var(--tile-border);
   }
 }

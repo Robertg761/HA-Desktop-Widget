@@ -26,6 +26,7 @@ const os = require('os');
 const path = require('path');
 const { startMockHomeAssistant } = require('./mock-home-assistant.cjs');
 const {
+  FAILING_ENTITIES,
   RESETTABLE_SETTINGS,
   TOKEN,
   WINDOW_POSITION,
@@ -181,6 +182,7 @@ async function main() {
     states: buildStates(),
     services: buildServices(),
     serviceResponses: buildServiceResponses(),
+    failingEntities: FAILING_ENTITIES,
   });
   const haUrl = `http://127.0.0.1:${server.address().port}`;
   const baseConfig = buildConfig(haUrl);
@@ -431,6 +433,8 @@ async function main() {
         await capture(`${scene.name}-failed`, cdp).catch(() => {});
       }
       try {
+        // A scene that keeps its toast for the picture must not leave it for the next scene.
+        await cdp.evaluate(REMOVE_TOASTS);
         await restore();
       } catch (error) {
         // A dialog or pin left behind would leak into every later scene, so the run must not pass.

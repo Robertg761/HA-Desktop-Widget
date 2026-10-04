@@ -76,18 +76,39 @@ function settingsSearchEntries(modal) {
   );
 }
 
+// Marks the setting a search result jumped to for a moment, so there is something to find on a page
+// of similar rows. Reduced motion (and forced colours) get the outline without the fade.
+function highlightTarget(row) {
+  if (!row?.classList) return;
+  document.querySelectorAll('.settings-search-target').forEach((node) => {
+    node.classList.remove('settings-search-target');
+  });
+  row.classList.add('settings-search-target');
+  setTimeout(() => row.classList.remove('settings-search-target'), 1600);
+}
+
 function initializeSettingsSearch(modal) {
   const input = modal.querySelector('#settings-search');
   const results = modal.querySelector('#settings-search-results');
   const status = modal.querySelector('#settings-search-status');
   if (!input || !results || !status) return;
 
+  // While results stand in for the page, no page is the current one. The rail says so, to the eye
+  // (the pill steps back, in CSS) and to assistive technology (aria-selected), instead of claiming
+  // General while showing matches from every page. Which tab is the current one is the `.active`
+  // class, which searching does not touch, so it is read back from there.
+  const syncTabSelection = (searching) => {
+    modal.querySelectorAll('.modal-tabs .tab-link').forEach((tab) => {
+      tab.setAttribute('aria-selected', String(!searching && tab.classList.contains('active')));
+    });
+  };
   const reset = () => {
     input.value = '';
     results.replaceChildren();
     results.hidden = true;
     status.textContent = '';
     modal.classList.remove('settings-searching');
+    syncTabSelection(false);
   };
   const search = () => {
     const words = searchText(input.value.trim()).split(/\s+/).filter(Boolean);
@@ -110,6 +131,9 @@ function initializeSettingsSearch(modal) {
       button.append(title, page);
       button.onclick = () => {
         reset();
+        // Where the result lands is lost on arrival (several similar rows, and a pointer click
+        // does not draw a focus ring), so the row says "this one" for a moment.
+        highlightTarget(entry.row || entry.label);
         modal
           .querySelector(`.modal-tabs [data-tab="${entry.panel.id.replace(/-tab$/, '')}"]`)
           ?.click();
@@ -160,8 +184,27 @@ function initializeSettingsSearch(modal) {
     const active = !!input.value.trim();
     results.hidden = !active;
     modal.classList.toggle('settings-searching', active);
+    syncTabSelection(active);
     status.textContent = '';
   }
+  // Escape and the arrows work from the results too, as they do from the field: Escape backs out of
+  // the search (and not out of Settings with every unsaved edit), and the arrows walk the list.
+  results.onkeydown = (event) => {
+    const buttons = [...results.querySelectorAll('button')];
+    const current = buttons.indexOf(event.target.closest('button'));
+    if (current < 0) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      reset();
+      input.focus();
+    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const next = buttons[current + (event.key === 'ArrowDown' ? 1 : -1)];
+      // Up from the first result returns to the field.
+      (next || (event.key === 'ArrowUp' ? input : buttons[current])).focus();
+    }
+  };
   // Reopening Settings must not accumulate listeners or keep an old query.
   input.oninput = search;
   input.onkeydown = (event) => {

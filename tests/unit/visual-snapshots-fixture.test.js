@@ -133,6 +133,16 @@ describe('visual snapshot scenes', () => {
       'pin-ar-light',
       'pin-large-climate',
       'pin-theme-light-climate',
+      'focus-settings-opens-on-tab',
+      'focus-settings-rail-label',
+      'focus-settings-opacity-slider',
+      'focus-confirm-unsaved-color',
+      'focus-weather-card',
+      'focus-weather-picker',
+      'focus-command-palette',
+      'focus-tile-settings',
+      'toast-error-over-settings',
+      'toast-reorganize-notice',
     ]) {
       expect(names).toContain(required);
     }

@@ -7,7 +7,7 @@ import {
   requestAlarmCode,
 } from './ui.js';
 import websocket from './websocket.js';
-import { releaseFocusTrap, showToast, trapFocus } from './ui-utils.js';
+import { closeDialog, openDialog, showToast } from './ui-utils.js';
 import { t } from './i18n.js';
 import { renderEntityIcon, setLineIconContent } from './entity-icons.js';
 import { applyCloseButtonIcons } from './icons.js';
@@ -26,7 +26,6 @@ let list = null;
 let emptyState = null;
 let results = [];
 let highlightedIndex = -1;
-let previouslyFocusedElement = null;
 let paletteCommands = null;
 let hint = null;
 // Where the pointer last moved, so a row that renders under a still pointer does not take the
@@ -170,8 +169,6 @@ function createPaletteShell() {
   overlay.setAttribute('aria-hidden', 'true');
 
   const palettePanel = createElement('div', 'command-palette-panel');
-  palettePanel.setAttribute('role', 'dialog');
-  palettePanel.setAttribute('aria-modal', 'true');
 
   const searchWrap = createElement('div', 'command-palette-search');
 
@@ -207,9 +204,6 @@ function createPaletteShell() {
   document.body.appendChild(overlay);
   applyPaletteLabels();
 
-  overlay.addEventListener('click', (event) => {
-    if (event.target === overlay) closeCommandPalette();
-  });
   overlay.addEventListener('keydown', handlePaletteKeydown);
   input.addEventListener('input', renderResults);
 }
@@ -217,7 +211,6 @@ function createPaletteShell() {
 // The shell outlives a language change, so its labels are applied again on every open.
 function applyPaletteLabels() {
   if (!overlay) return;
-  overlay.querySelector('.command-palette-panel')?.setAttribute('aria-label', t('Command palette'));
   if (input) {
     input.placeholder = t('Search entities, commands, and pages');
     input.setAttribute('aria-label', t('Search entities, commands, and pages'));
@@ -402,6 +395,10 @@ function createResultRow(item, index) {
   const { entity, displayName } = item;
   const row = createElement('button', 'command-palette-result');
   row.type = 'button';
+  // The input keeps focus and the arrows move the highlight (aria-activedescendant), so the rows
+  // are not Tab stops: Tab would walk up to twenty of them, and Enter would run the highlighted
+  // row rather than the one under the focus ring.
+  row.tabIndex = -1;
   row.id = `command-palette-result-${index}`;
   row.setAttribute('role', 'option');
   row.setAttribute('aria-selected', 'false');
@@ -436,6 +433,11 @@ function createResultRow(item, index) {
     const moved = lastPointerPosition !== null && position !== lastPointerPosition;
     lastPointerPosition = position;
     if (moved && highlightedIndex !== index) updateHighlightedResult(index);
+  });
+  // Anything that focuses a row (a click, a screen reader) moves the highlight with it, so Enter
+  // always runs the row that is selected.
+  row.addEventListener('focus', () => {
+    if (highlightedIndex !== index) updateHighlightedResult(index);
   });
   row.addEventListener('click', () => {
     highlightedIndex = index;
@@ -488,13 +490,16 @@ function renderResults() {
 function openCommandPalette() {
   ensurePaletteShell();
   applyPaletteLabels();
-  if (!isPaletteOpen() && document.activeElement && document.activeElement !== document.body) {
-    previouslyFocusedElement = document.activeElement;
-  }
-  // Registered as the top dialog so Escape pressed with focus on <body> closes the palette, not
-  // a dialog open underneath it. The palette returns focus itself.
-  if (!isPaletteOpen()) trapFocus(overlay, { initialFocus: false });
-  overlay.classList.remove('hidden');
+  // The overlay is the dialog: it names itself, traps focus and answers Escape and a click on
+  // the backdrop as the top layer, so Escape pressed with focus on <body> closes the palette and
+  // not a dialog open underneath it. Focus goes back to whatever opened it, found again if that
+  // was a tile rebuilt while the palette was up. The search field takes focus below.
+  openDialog(overlay, {
+    display: null,
+    label: t('Command palette'),
+    initialFocus: false,
+    dismiss: () => closeCommandPalette(),
+  });
   overlay.setAttribute('aria-hidden', 'false');
   input.setAttribute('aria-expanded', 'true');
   input.value = '';
@@ -509,16 +514,11 @@ function openCommandPalette() {
 
 function closeCommandPalette({ restoreFocus = true } = {}) {
   if (!overlay) return;
-  releaseFocusTrap(overlay, { restoreFocus: false });
-  overlay.classList.add('hidden');
+  void closeDialog(overlay, { animate: false, restoreFocus });
   overlay.setAttribute('aria-hidden', 'true');
   paletteCommands = null;
   input?.setAttribute('aria-expanded', 'false');
   input?.removeAttribute('aria-activedescendant');
-  if (restoreFocus && previouslyFocusedElement?.isConnected) {
-    previouslyFocusedElement.focus();
-  }
-  previouslyFocusedElement = null;
 }
 
 function handleGlobalKeydown(event) {
@@ -527,6 +527,14 @@ function handleGlobalKeydown(event) {
     key === 'k' && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
   if (!isCommandPaletteShortcut) return;
   if (isTypingTarget(event.target) && !isPaletteOpen()) return;
+  // Behind the first-run wizard or the connecting screen the palette would open out of sight and
+  // take the keyboard from the controls that are showing.
+  if (
+    document.body.classList.contains('first-run-active') ||
+    document.querySelector('#loading-overlay:not(.hidden)')
+  ) {
+    return;
+  }
 
   event.preventDefault();
   event.stopPropagation();
@@ -541,7 +549,7 @@ function handlePaletteKeydown(event) {
       overlay.querySelectorAll(
         'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
       )
-    ).filter((element) => element.getAttribute('aria-hidden') !== 'true');
+    ).filter((element) => element.getAttribute('aria-hidden') !== 'true' && element.tabIndex >= 0);
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
     if (!first || !last) {
@@ -562,13 +570,6 @@ function handlePaletteKeydown(event) {
     return;
   }
 
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    event.stopPropagation();
-    closeCommandPalette();
-    return;
-  }
-
   if (event.key === 'ArrowDown') {
     event.preventDefault();
     event.stopPropagation();
@@ -584,6 +585,8 @@ function handlePaletteKeydown(event) {
   }
 
   if (event.key === 'Enter') {
+    // On the Close button Enter is that button's own click, not a command.
+    if (event.target?.closest?.('.command-palette-close')) return;
     event.preventDefault();
     event.stopPropagation();
     executeHighlightedResult();

@@ -34,21 +34,8 @@ jest.mock('hls.js', () => mockHls, { virtual: true });
 
 // Mock dependencies
 jest.mock('../../src/ui-utils.js', () => ({
+  ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
   showToast: jest.fn(),
-  trapFocus: jest.fn((...args) => jest.requireActual('../../src/ui-utils.js').trapFocus(...args)),
-  releaseFocusTrap: jest.fn((...args) =>
-    jest.requireActual('../../src/ui-utils.js').releaseFocusTrap(...args)
-  ),
-  // Mirrors the real shared modal helper, which settles synchronously under NODE_ENV=test.
-  closeModal: jest.fn((modal, { remove = false, onClosed } = {}) => {
-    if (modal) {
-      modal.classList.remove('modal-closing');
-      if (remove) modal.remove();
-      else modal.classList.add('hidden');
-      onClosed?.();
-    }
-    return Promise.resolve();
-  }),
 }));
 
 jest.mock('../../src/utils.js', () => ({
@@ -1538,12 +1525,37 @@ describe('Camera Module', () => {
       const modal = document.querySelector('.camera-modal');
       expect(modal.getAttribute('role')).toBe('dialog');
       expect(modal.getAttribute('aria-modal')).toBe('true');
-      expect(document.activeElement).toBe(modal.querySelector('.close-btn'));
+      // Focus starts on Live, the action people open the viewer for, and not on Close.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(document.activeElement).toBe(modal.querySelector('#live-btn'));
 
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
       expect(document.querySelector('.camera-modal')).toBeNull();
       expect(document.activeElement).toBe(opener);
+    });
+
+    it('keeps Tab inside the viewer, wrapping from Live to Close and back', async () => {
+      await camera.openCamera('camera.front_door');
+      const modal = document.querySelector('.camera-modal');
+      const close = modal.querySelector('.close-btn');
+      const live = modal.querySelector('#live-btn');
+      const tab = (target, shiftKey = false) => {
+        const event = new KeyboardEvent('keydown', {
+          key: 'Tab',
+          shiftKey,
+          bubbles: true,
+          cancelable: true,
+        });
+        target.dispatchEvent(event);
+        return event;
+      };
+
+      live.focus();
+      expect(tab(live).defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(close);
+      expect(tab(close, true).defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(live);
     });
 
     it('reports a failed snapshot instead of leaving a broken image', async () => {

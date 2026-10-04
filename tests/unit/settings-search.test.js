@@ -82,6 +82,106 @@ describe('settings search', () => {
     expect(input.value).toBe('');
     expect(document.querySelectorAll('.settings-search-result')).toHaveLength(0);
   });
+  describe('keyboard and the rail while results stand in for the page', () => {
+    const press = (target, key) => {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      target.dispatchEvent(event);
+      return event;
+    };
+    const tabs = () => [...modal.querySelectorAll('.modal-tabs .tab-link')];
+
+    test('Escape on a result backs out of the search and does not leave Settings', () => {
+      const results = search('theme');
+      expect(results.length).toBeGreaterThan(1);
+      results[1].focus();
+      const pageEscape = jest.fn();
+      document.addEventListener('keydown', pageEscape);
+
+      const event = press(results[1], 'Escape');
+
+      document.removeEventListener('keydown', pageEscape);
+      expect(event.defaultPrevented).toBe(true);
+      // Stopped here: Settings would have closed and thrown away every unsaved edit.
+      expect(pageEscape).not.toHaveBeenCalled();
+      expect(input.value).toBe('');
+      expect(modal.classList.contains('settings-searching')).toBe(false);
+      expect(document.activeElement).toBe(input);
+    });
+
+    test('the arrows walk the results, and Up from the first returns to the field', () => {
+      const results = search('theme');
+      results[0].focus();
+
+      press(results[0], 'ArrowDown');
+      expect(document.activeElement).toBe(results[1]);
+      press(results[1], 'ArrowUp');
+      expect(document.activeElement).toBe(results[0]);
+      press(results[0], 'ArrowUp');
+      expect(document.activeElement).toBe(input);
+      // The last result has nowhere further to go, and stays put.
+      const last = results.at(-1);
+      last.focus();
+      press(last, 'ArrowDown');
+      expect(document.activeElement).toBe(last);
+    });
+
+    test('no page is selected in the rail while results stand in for it, and the current one returns after', () => {
+      expect(tabs().map((tab) => tab.getAttribute('aria-selected'))).toContain('true');
+      const selected = tabs().find((tab) => tab.getAttribute('aria-selected') === 'true');
+      selected.classList.add('active');
+
+      search('theme');
+      expect(tabs().map((tab) => tab.getAttribute('aria-selected'))).toEqual(
+        Array(tabs().length).fill('false')
+      );
+
+      input.value = '';
+      input.dispatchEvent(new Event('input'));
+      expect(selected.getAttribute('aria-selected')).toBe('true');
+    });
+
+    test('choosing a page from the rail while searching selects that page, not the one before', () => {
+      const first = tabs()[0];
+      first.classList.add('active');
+      search('theme');
+      const other = tabs()[1];
+      other.addEventListener('click', () => {
+        tabs().forEach((tab) => {
+          tab.classList.toggle('active', tab === other);
+          tab.setAttribute('aria-selected', String(tab === other));
+        });
+      });
+
+      other.click();
+
+      expect(other.getAttribute('aria-selected')).toBe('true');
+      expect(first.getAttribute('aria-selected')).toBe('false');
+    });
+
+    test('names the results region by the count it announces', () => {
+      const region = document.getElementById('settings-search-results');
+
+      expect(region.getAttribute('role')).toBe('region');
+      expect(region.getAttribute('aria-labelledby')).toBe('settings-search-status');
+    });
+
+    test('marks the setting a result jumped to, for a moment', () => {
+      jest.useFakeTimers();
+      try {
+        search('beta updates')
+          .find((button) => button.textContent.includes('Receive beta updates'))
+          .click();
+        const target = document.querySelector('.settings-search-target');
+
+        expect(target).not.toBeNull();
+        expect(target.contains(document.getElementById('allow-prerelease-updates'))).toBe(true);
+        jest.advanceTimersByTime(1700);
+        expect(document.querySelector('.settings-search-target')).toBeNull();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
   test('does not offer settings hidden on the current platform', () => {
     document.getElementById('follow-omarchy-group').classList.add('hidden');
     expect(search('Follow Omarchy theme')).toHaveLength(0);

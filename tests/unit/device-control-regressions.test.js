@@ -37,36 +37,12 @@ jest.mock('../../src/camera.js', () => ({
 }));
 
 jest.mock('../../src/ui-utils.js', () => {
-  const releaseFocusTrap = jest.fn();
   return {
     showToast: jest.fn(),
     showConfirm: jest.fn().mockResolvedValue(false),
     showLoading: jest.fn(),
     setStatus: jest.fn(),
-    trapFocus: jest.fn(),
-    releaseFocusTrap,
-    // Mirrors the real shared modal helper, which settles synchronously under NODE_ENV=test.
-    closeModal: jest.fn((modal, { remove = false, releaseFocus = false, onClosed } = {}) => {
-      if (modal) {
-        modal.classList.remove('modal-closing');
-        if (remove) {
-          modal.remove();
-        } else {
-          modal.classList.add('hidden');
-          if (modal.style.display) modal.style.display = 'none';
-        }
-        if (releaseFocus) releaseFocusTrap(modal);
-        onClosed?.();
-      }
-      return Promise.resolve();
-    }),
-    openModal: jest.fn((modal, { display = 'flex' } = {}) => {
-      if (!modal) return;
-      modal.classList.remove('modal-closing');
-      modal.classList.remove('hidden');
-      if (display) modal.style.display = display;
-      else modal.style.removeProperty('display');
-    }),
+    ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
     applyTheme: jest.fn(),
     applyUiPreferences: jest.fn(),
     hexToRgb: jest.fn((hex) => {
@@ -139,7 +115,6 @@ const ui = require('../../src/ui.js');
 const state = require('../../src/state.js').default;
 const { sampleConfig } = require('../fixtures/ha-data.js');
 const i18n = require('../../src/i18n.js');
-const uiUtils = require('../../src/ui-utils.js');
 const entity = (entity_id, value, attributes = {}) => ({ entity_id, state: value, attributes });
 const renderTiles = (states) => {
   const ids = states.map((item) => item.entity_id);
@@ -248,6 +223,66 @@ describe('device control and live data regressions', () => {
       expect([...input.options].map((option) => option.value)).toEqual(['Auto']);
     }
   );
+  describe('where focus starts in the helper, to-do and calendar dialogs', () => {
+    // Keyboard users used to land on the header's Close button and had to Tab past it before they
+    // could type or pick a value.
+    const settle = async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      jest.advanceTimersByTime(1);
+    };
+
+    test('a number helper starts on its value field', async () => {
+      const helper = entity('input_number.audit', '3', { min: 0, max: 10, step: 1 });
+      state.setServices({ input_number: { set_value: {} } });
+      state.setEntityState(helper);
+      ui.openEntityControls(helper);
+      await settle();
+
+      expect(document.activeElement).toBe(document.querySelector('.helper-controls-modal input'));
+    });
+
+    test('a select helper starts on its list', async () => {
+      const helper = entity('input_select.audit', 'Auto', { options: ['Auto', 'Quiet'] });
+      state.setServices({ input_select: { select_option: {} } });
+      state.setEntityState(helper);
+      ui.openEntityControls(helper);
+      await settle();
+
+      expect(document.activeElement).toBe(document.querySelector('.helper-controls-modal select'));
+    });
+
+    test('a vacuum starts on its first action', async () => {
+      const robot = entity('vacuum.audit', 'docked', { supported_features: 8192 });
+      state.setServices({ vacuum: { start: {}, pause: {}, return_to_base: {} } });
+      state.setEntityState(robot);
+      ui.openEntityControls(robot);
+      await settle();
+
+      expect(document.activeElement).toBe(
+        document.querySelector('.helper-controls-modal .entity-detail-actions button')
+      );
+    });
+
+    test('a writable to-do list starts on the add field', async () => {
+      const list = entity('todo.audit', '1', { supported_features: 5 });
+      mockCallServiceWithResponse.mockResolvedValue({ 'todo.audit': { items: [] } });
+      ui.openEntityControls(list);
+      await settle();
+
+      expect(document.activeElement).toBe(document.querySelector('.todo-add-form input'));
+    });
+
+    test('a calendar starts on Refresh', async () => {
+      const calendar = entity('calendar.audit', 'off');
+      mockCallServiceWithResponse.mockResolvedValue({ 'calendar.audit': { events: [] } });
+      ui.openEntityControls(calendar);
+      await settle();
+
+      expect(document.activeElement.textContent).toBe('Refresh');
+      expect(document.activeElement.closest('.calendar-modal')).not.toBeNull();
+    });
+  });
   test('vacuum exposes only entity-supported services and stops accepting actions while unavailable', () => {
     const robot = entity('vacuum.audit', 'docked', { supported_features: 8192 });
     state.setServices({ vacuum: { start: {}, pause: {}, return_to_base: {} } });
@@ -409,9 +444,7 @@ describe('device control and live data regressions', () => {
     void ui.requestAlarmCode(entity('alarm_control_panel.audit', 'armed_home', {}));
     const modal = document.querySelector('.alarm-code-modal');
     jest.advanceTimersByTime(1);
-    expect(uiUtils.trapFocus).toHaveBeenCalledWith(modal, {
-      initialFocus: modal.querySelector('input'),
-    });
+    expect(document.activeElement).toBe(modal.querySelector('input'));
     modal.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   });
   test('alarm prompt cancels on Escape and clears its secret field', async () => {
@@ -454,6 +487,46 @@ describe('device control and live data regressions', () => {
     expect(modal.querySelector('#media-volume-slider').disabled).toBe(false);
     modal.querySelector('.media-detail-play-btn').click();
     expect(mockCallService).toHaveBeenCalledTimes(1);
+  });
+  test('media detail keeps the keyboard where it was, and its way back to the opener, when it gains controls', () => {
+    document.body.insertAdjacentHTML('beforeend', '<button id="tile-opener">Player</button>');
+    const opener = document.getElementById('tile-opener');
+    const player = entity('media_player.audit', 'paused', {
+      supported_features: 16445,
+      volume_level: 0.5,
+    });
+    state.setServices({ media_player: { media_seek: {} } });
+    state.setEntityState(player);
+    opener.focus();
+    ui.openEntityControls(player);
+    jest.advanceTimersByTime(20);
+    const first = document.querySelector('.media-modal');
+    document.querySelector('#media-volume-slider').focus();
+    expect(document.activeElement.id).toBe('media-volume-slider');
+
+    // The player gains seeking, so the dialog is rebuilt with its seek buttons.
+    state.setEntityState(
+      entity('media_player.audit', 'paused', {
+        supported_features: 16445 | 2,
+        volume_level: 0.5,
+        media_position: 5,
+        media_duration: 200,
+      })
+    );
+    jest.advanceTimersByTime(0);
+
+    const modals = document.querySelectorAll('.media-modal');
+    expect(modals).toHaveLength(1);
+    expect(modals[0]).not.toBe(first);
+    expect(modals[0].classList.contains('modal-rebuilt')).toBe(true);
+    expect(document.activeElement.id).toBe('media-volume-slider');
+
+    document.activeElement.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    );
+    jest.advanceTimersByTime(400);
+    expect(document.querySelector('.media-modal')).toBeNull();
+    expect(document.activeElement).toBe(opener);
   });
   test('unknown state blocks stale climate readings but not a never-pressed button', () => {
     const { getClimateTileTemperature } = require('../../src/entity-control-policy.js');

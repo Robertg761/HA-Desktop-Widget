@@ -1,5 +1,5 @@
 import state from './state.js';
-import { closeModal, showToast, trapFocus } from './ui-utils.js';
+import { closeDialog, openDialog, renderKeepingFocus, showToast } from './ui-utils.js';
 import { getEntityDisplayName, getSearchScore } from './utils.js';
 import { t } from './i18n.js';
 
@@ -129,32 +129,38 @@ function renderHotkeysTab() {
       .filter((item) => item.score > 0)
       .sort((a, b) => b.score - a.score);
 
-    container.innerHTML = '';
-    hotkeyEntities.forEach(({ entity }) => {
-      const hotkeyConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entity.entity_id] || {};
-      const hotkey = typeof hotkeyConfig === 'string' ? hotkeyConfig : hotkeyConfig.hotkey;
-      const action =
-        typeof hotkeyConfig === 'object' && hotkeyConfig.action ? hotkeyConfig.action : 'toggle';
-      const domain = entity.entity_id.split('.')[0];
+    // The list is rebuilt after a failed action change or a cleared hotkey; the keyboard stays on the
+    // same row's control (the keys below say which), not on <body> with Tab starting over.
+    renderKeepingFocus(container, () => {
+      container.innerHTML = '';
+      hotkeyEntities.forEach(({ entity }) => {
+        const hotkeyConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entity.entity_id] || {};
+        const hotkey = typeof hotkeyConfig === 'string' ? hotkeyConfig : hotkeyConfig.hotkey;
+        const action =
+          typeof hotkeyConfig === 'object' && hotkeyConfig.action ? hotkeyConfig.action : 'toggle';
+        const domain = entity.entity_id.split('.')[0];
 
-      // Get action options based on entity type
-      const actionOptions = getActionOptionsForDomain(domain);
-      const dropdownHTML = createCustomDropdownHTML(actionOptions, action, entity.entity_id);
+        // Get action options based on entity type
+        const actionOptions = getActionOptionsForDomain(domain);
+        const dropdownHTML = createCustomDropdownHTML(actionOptions, action, entity.entity_id);
 
-      const item = document.createElement('div');
-      item.className = 'hotkey-item';
-      const displayName = escapeHtml(getEntityDisplayName(entity));
-      const escapedHotkey = escapeHtmlAttribute(hotkey || '');
-      const escapedEntityId = escapeHtmlAttribute(entity.entity_id);
-      item.innerHTML = `
+        const item = document.createElement('div');
+        item.className = 'hotkey-item';
+        const displayName = escapeHtml(getEntityDisplayName(entity));
+        const escapedHotkey = escapeHtmlAttribute(hotkey || '');
+        const escapedEntityId = escapeHtmlAttribute(entity.entity_id);
+        item.innerHTML = `
                 <span class="entity-name">${displayName}</span>
                 <div class="hotkey-input-container">
-                    <input type="text" readonly role="button" aria-label="${escapeHtmlAttribute(t('Hotkey for {{name}}', { name: getEntityDisplayName(entity) }))}" aria-keyshortcuts="Enter Space" class="hotkey-input" value="${escapedHotkey}" placeholder="${escapeHtmlAttribute(t('None'))}" data-entity-id="${escapedEntityId}">
+                    <input type="text" readonly role="button" aria-label="${escapeHtmlAttribute(t('Hotkey for {{name}}', { name: getEntityDisplayName(entity) }))}" aria-keyshortcuts="Enter Space" class="hotkey-input" value="${escapedHotkey}" placeholder="${escapeHtmlAttribute(t('None'))}" data-entity-id="${escapedEntityId}" data-focus-key="hotkey-input:${escapedEntityId}">
                     ${dropdownHTML}
-                    <button type="button" class="btn-clear-hotkey" title="${escapeHtmlAttribute(t('Clear hotkey'))}" aria-label="${escapeHtmlAttribute(t('Clear hotkey'))}">&times;</button>
+                    <button type="button" class="btn-clear-hotkey" title="${escapeHtmlAttribute(t('Clear hotkey'))}" aria-label="${escapeHtmlAttribute(t('Clear hotkey'))}" data-focus-key="hotkey-clear:${escapedEntityId}">&times;</button>
                 </div>
             `;
-      container.appendChild(item);
+        const trigger = item.querySelector('.custom-dropdown-trigger');
+        if (trigger) trigger.dataset.focusKey = `hotkey-action:${escapedEntityId}`;
+        container.appendChild(item);
+      });
     });
 
     // Set up event listeners after rendering
@@ -312,25 +318,36 @@ function captureHotkey() {
     try {
       const modal = document.createElement('div');
       modal.className = 'hotkey-capture-modal';
-      modal.setAttribute('role', 'dialog');
-      modal.setAttribute('aria-modal', 'true');
       modal.setAttribute('aria-label', t('Press the desired key combination...'));
-      // Nothing inside is focusable, so the dialog itself takes focus while it records.
+      // The dialog itself takes focus while it records: every key is the recording's, so a
+      // focused button could not be pressed from the keyboard anyway.
       modal.tabIndex = -1;
+      // Cancel is for the pointer and touch; Escape does it from the keyboard.
       modal.innerHTML = `
                 <div class="modal-content">
                     <p>${escapeHtml(t('Press the desired key combination...'))}</p>
                     <div id="hotkey-preview" class="hotkey-preview-box" role="status"></div>
                     <p><small>${escapeHtml(t('Press Esc to cancel.'))}</small></p>
+                    <button type="button" class="btn btn-secondary hotkey-capture-cancel" tabindex="-1">${escapeHtml(t('Cancel'))}</button>
                 </div>
             `;
       document.body.appendChild(modal);
-      // Registered as the top dialog so Escape pressed with focus on <body> reaches this overlay
-      // rather than closing the dialog underneath it (Settings).
-      // The trap remembers the control that opened this and hands focus back when it closes; key
-      // capture listens on the document, so it still sees keys while the dialog has focus.
-      trapFocus(modal, { initialFocus: false });
+      // A dialog layer, so Escape with focus on <body> reaches this overlay rather than closing
+      // the dialog underneath it (Settings), and focus returns to the control that opened it.
+      // Key capture listens on the document, so it still sees keys while the dialog has focus.
+      openDialog(modal, {
+        display: null,
+        initialFocus: false,
+        dismiss: () => {
+          cleanup();
+          resolve(null);
+        },
+      });
       modal.focus();
+      modal.querySelector('.hotkey-capture-cancel')?.addEventListener('click', () => {
+        cleanup();
+        resolve(null);
+      });
       // Scoped rather than by id: the overlay now animates out, so a previous capture's node can
       // still be in the document when the next one opens.
       const previewBox = modal.querySelector('#hotkey-preview');
@@ -371,7 +388,7 @@ function captureHotkey() {
         if (cleanedUp) return;
         cleanedUp = true;
         document.removeEventListener('keydown', onKeyDown, true);
-        void closeModal(modal, { remove: true, releaseFocus: true });
+        void closeDialog(modal, { remove: true });
       };
 
       document.addEventListener('keydown', onKeyDown, true);
@@ -554,8 +571,12 @@ function setupHotkeyEventListenersInternal() {
           options[nextIndex]?.focus();
         } else if (e.key === 'Escape') {
           const dropdown = trigger.closest('.custom-dropdown');
-          dropdown.classList.remove('open');
-          trigger.setAttribute('aria-expanded', 'false');
+          // Escape closes an open menu and goes no further; on a closed one it is the dialog's.
+          if (dropdown.classList.contains('open')) {
+            e.preventDefault();
+            dropdown.classList.remove('open');
+            trigger.setAttribute('aria-expanded', 'false');
+          }
         }
         return;
       }
