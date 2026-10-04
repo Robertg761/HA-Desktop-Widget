@@ -84,7 +84,7 @@ describe('the palette hint for locks and alarms', () => {
     String(text)
       .normalize('NFKD')
       .replace(/[̀-ͯ]/g, '')
-      .replace(/[\s  ]+/g, ' ')
+      .replace(/[\s\u00a0\u202f]+/g, ' ')
       .toLowerCase()
       .trim();
   // The words between quotation marks of any of the languages' styles: "x", „x“, «x», “x”.
