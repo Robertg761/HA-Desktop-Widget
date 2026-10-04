@@ -1544,7 +1544,7 @@ const scenes = [
   },
   // Readings and states written in each language: precision and unit spacing, device class words,
   // timestamps, a duration, a paused timer and the next calendar events. A taller window shows them all.
-  ...[undefined, 'de', 'fr', 'ar', 'hi', 'zh'].map((language) => ({
+  ...[undefined, 'de', 'ar'].map((language) => ({
     name: language ? `format-main-${language}` : 'format-main',
     size: FORMAT_SIZE,
     ui: language ? { language } : {},

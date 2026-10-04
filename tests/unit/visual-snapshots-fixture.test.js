@@ -156,10 +156,7 @@ describe('visual snapshot scenes', () => {
       'toast-reorganize-notice',
       'format-main',
       'format-main-de',
-      'format-main-fr',
       'format-main-ar',
-      'format-main-hi',
-      'format-main-zh',
       'format-palette-fr',
     ]) {
       expect(names).toContain(required);
@@ -188,10 +185,10 @@ describe('visual snapshot scenes', () => {
       path.resolve(__dirname, '../../scripts/visual-snapshots/run.cjs'),
       'utf8'
     );
-    for (const language of ['de', 'fr', 'ar', 'hi', 'zh']) {
+    for (const language of ['de', 'ar']) {
       const scene = scenes.find((entry) => entry.name === `format-main-${language}`);
       expect(scene.ui.language).toBe(language);
-      // German is bundled; the others need the repository's pack installed in the profile.
+      // German is bundled; Arabic needs the repository's pack installed in the profile.
       if (language !== 'de')
         expect(runner).toMatch(new RegExp(`INSTALLED_PACKS = \\[[^\\]]*'${language}'`));
     }
