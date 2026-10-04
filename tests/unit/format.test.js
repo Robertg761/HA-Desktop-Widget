@@ -298,6 +298,27 @@ describe('units and percentages', () => {
     expect(format.formatPercent(80)).toBe('80%');
   });
 
+  it('puts the percent sign first where the language writes it so', () => {
+    // No pack for the computer's language: English text in Turkish number formats ("%50").
+    useLocale('en', {
+      languageSetting: 'auto',
+      detectedLocale: 'tr-TR',
+      systemLocale: 'tr-TR',
+      requestedLocale: 'tr-TR',
+      usingEnglishFallback: true,
+    });
+    expect(i18n.getFormatLocale()).toBe('tr-TR');
+    const own = (value) =>
+      new Intl.NumberFormat('tr-TR', { style: 'percent', maximumFractionDigits: 1 }).format(value);
+    expect(format.formatPercent(50)).toBe(own(0.5));
+    expect(format.formatPercent(50)).toMatch(/^%\s?50$/);
+    expect(format.formatPercent(-5)).toBe(own(-0.05));
+    expect(format.formatPercent(12.5)).toBe(own(0.125));
+    // Other units still follow the number.
+    expect(format.formatMeasurement(21.4, '°C')).toMatch(/^21,4\s?°C$/);
+    expect(format.formatMeasurement(5, 'W')).toBe(`5${NBSP}W`);
+  });
+
   it('keeps the unit next to the number in a right-to-left language', () => {
     useLocale('ar');
     const text = format.formatMeasurement(21.4, '°C');
@@ -352,6 +373,17 @@ describe('sensor readings', () => {
       '21.0°C'
     );
     expect(text('1234.5678', { suggested_display_precision: 0 })).toBe(`1,235${NBSP}W`);
+  });
+
+  it('rounds to a suggested precision even when the reading is small', () => {
+    // Home Assistant shows these as 0, so the tile does too; only the built-in defaults keep two
+    // significant digits to avoid hiding a small reading.
+    expect(text('-0.04', { unit_of_measurement: '°C', suggested_display_precision: 0 })).toBe(
+      '0°C'
+    );
+    expect(text('0.3', { suggested_display_precision: 0 })).toBe(`0${NBSP}W`);
+    expect(text('0.0045', { suggested_display_precision: 2 })).toBe(`0.00${NBSP}W`);
+    expect(text('0.3', { unit_of_measurement: '°C' })).toBe('0.3°C');
   });
 
   it('never writes "-0", and keeps a value that is small but not zero', () => {
@@ -591,10 +623,51 @@ describe('dates, times and relative times', () => {
     expect(format.formatDayAndTime(at(-10 * 24 * hour), now)).toMatch(/^Sep 20/);
     // Another year says so.
     expect(format.formatDayAndTime(new Date(2027, 0, 5, 9, 0), now)).toMatch(/2027/);
-    // Ahead: how far, not a clock time.
-    expect(format.formatMoment(at(14 * hour), now)).toMatch(/14/);
-    expect(format.formatMoment(at(14 * hour), now)).not.toMatch(/:/);
-    expect(format.formatMoment(at(-2 * hour), now)).toMatch(/^Today 1:00/);
+  });
+
+  it('counts calendar days for a moment ahead, not blocks of 24 hours', () => {
+    // 11 p.m. on Oct 4: 35 hours later is the day after tomorrow, not tomorrow.
+    const lateNow = new Date(2026, 9, 4, 23, 0).getTime();
+    expect(format.formatDayAndTime(new Date(lateNow + 35 * 3600 * 1000), lateNow)).toMatch(
+      /^Tue 10:00/
+    );
+    expect(format.formatDayAndTime(new Date(2026, 9, 5, 8, 0), lateNow)).toMatch(/^Tomorrow 8:00/);
+    expect(format.formatDayAndTime(new Date(2026, 9, 8, 10, 0), lateNow)).toMatch(/^Thu 10:00/);
+    // The same through a date entity's state: a day and a time, capitalised, never a bare "tomorrow".
+    const state = (raw) => format.formatDateState(raw, { now: lateNow });
+    expect(state('2026-10-05 08:00:00')).toMatch(/^Tomorrow 8:00/);
+    expect(state('2026-10-06T10:00:00')).toMatch(/^Tue 10:00/);
+    expect(state('2026-10-04 23:30:00')).toMatch(/^Today 11:30/);
+    expect(state('2026-10-02T22:00:00')).toMatch(/^Oct 2, 10:00/);
+  });
+
+  it('counts calendar days in relative times, and keeps hours under a day', () => {
+    const lateNow = new Date(2026, 9, 4, 23, 0).getTime();
+    const relative = (locale, value, unit) =>
+      new Intl.RelativeTimeFormat(locale, { numeric: 'auto', style: 'short' }).format(value, unit);
+    const at = (...parts) => new Date(...parts).getTime();
+    // 47.5 hours back at 11 p.m. is two calendar days back, which is not "yesterday".
+    expect(format.formatRelativeTime(at(2026, 9, 2, 23, 30), { now: lateNow })).toBe(
+      relative('en', -2, 'day')
+    );
+    expect(format.formatRelativeTime(at(2026, 9, 3, 22, 0), { now: lateNow })).toBe(
+      relative('en', -1, 'day')
+    );
+    expect(format.formatRelativeTime(at(2026, 9, 3, 23, 30), { now: lateNow })).toBe(
+      relative('en', -23, 'hour')
+    );
+    expect(format.formatRelativeTime(at(2026, 9, 1, 10, 0), { now: lateNow })).toBe(
+      relative('en', -3, 'day')
+    );
+    // 35 hours ahead is the day after tomorrow, not "tomorrow".
+    expect(format.formatRelativeTime(at(2026, 9, 6, 10, 0), { now: lateNow })).toBe(
+      relative('en', 2, 'day')
+    );
+    // 23.6 hours ahead is hours, not "tomorrow", even when it crosses no midnight.
+    const earlyNow = at(2026, 9, 4, 0, 10);
+    expect(format.formatRelativeTime(at(2026, 9, 4, 23, 46), { now: earlyNow })).toBe(
+      relative('en', 24, 'hour')
+    );
   });
 
   it('labels a calendar day for a glance', () => {
@@ -619,8 +692,8 @@ describe('dates, times and relative times', () => {
         device_class: 'timestamp',
       })
     );
-    expect(dawn).not.toMatch(/:/);
-    expect(dawn).toMatch(/5/);
+    // A day and a time, not a relative label that nothing would redraw.
+    expect(dawn).toMatch(/\d{1,2}:\d{2}/);
     // A full date-time with no device class is still a date.
     expect(
       utils.getEntityDisplayState(entity('sensor.seen', '2020-09-20T08:12:44+00:00'))
@@ -676,14 +749,27 @@ describe('dates, times and relative times', () => {
 describe('lists, search and sorting', () => {
   it('joins labels with the separator each language writes, without an "and"', () => {
     const items = ['Quick Access and layout', 'Appearance', 'Weather and media'];
-    const separator = (locale) =>
-      new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' })
-        .formatToParts(['a', 'b', 'c'])
-        .find((part) => part.type === 'literal').value;
-    for (const locale of ['en', 'de', 'fr', 'ar', 'zh', 'hi']) {
+    // Written out, not read back from Intl: Arabic's own list pattern has an "and" in every gap.
+    const separators = { en: ', ', de: ', ', fr: ', ', es: ', ', hi: ', ', zh: '、', ar: '، ' };
+    for (const [locale, separator] of Object.entries(separators)) {
       useLocale(locale);
-      expect(format.formatList(items)).toBe(items.join(separator(locale)));
+      expect(format.formatList(items)).toBe(items.join(separator));
     }
+    // Persian and Urdu use the Arabic comma too, and a Persian bidi mark is not part of the gap.
+    for (const locale of ['fa-IR', 'ur-PK']) {
+      // No pack for the computer's language: English text in the computer's own formats.
+      useLocale('en', {
+        languageSetting: 'auto',
+        detectedLocale: locale,
+        systemLocale: locale,
+        requestedLocale: locale,
+        usingEnglishFallback: true,
+      });
+      expect(i18n.getFormatLocale()).toBe(locale);
+      expect(format.formatList(['A', 'B', 'C'])).toBe('A، B، C');
+    }
+    useLocale('ar');
+    expect(format.formatList(['A', 'B', 'C'])).toBe('A، B، C');
     useLocale('en');
     expect(format.formatList(items)).toBe('Quick Access and layout, Appearance, Weather and media');
     useLocale('zh');
@@ -705,6 +791,16 @@ describe('lists, search and sorting', () => {
     expect(format.normalizeSearchText('ＡＢＣ')).toBe('abc');
     expect(format.normalizeSearchText('')).toBe('');
     expect(format.normalizeSearchText(null)).toBe('');
+  });
+
+  it('folds accents and Arabic vowel marks but keeps the marks inside a Hindi word', () => {
+    expect(format.foldSearchMarks('Cafe\u0301')).toBe('Cafe');
+    expect(format.foldSearchMarks('لَمْبَة')).toBe('لمبة');
+    // The vowel signs and the virama are part of the word.
+    expect(format.foldSearchMarks('कुत्ता')).toBe('कुत्ता'.normalize('NFKD'));
+    expect(format.foldSearchMarks('कुत्ता')).not.toBe('कतत');
+    expect(format.normalizeSearchText('कुत्ता')).toBe('कुत्ता');
+    expect(format.foldSearchMarks(null)).toBe('');
   });
 
   it('scores a Chinese, Arabic or Hindi query against matching names only', () => {
@@ -798,6 +894,7 @@ describe('what counts as a countdown', () => {
     const future = new Date(Date.now() + 14 * 3600 * 1000).toISOString();
     const dawn = sensor('sensor.next_dawn', future, { device_class: 'timestamp' });
     expect(utils.isTimerLikeSensor(dawn)).toBe(false);
-    expect(utils.getEntityDisplayState(dawn)).toMatch(/14/);
+    // 14 hours ahead is later today or tomorrow, written as a day and a time.
+    expect(utils.getEntityDisplayState(dawn)).toMatch(/^(Today|Tomorrow) \d{1,2}:\d{2}/);
   });
 });

@@ -26,8 +26,8 @@ const NO_BREAK_SPACE = '\u00a0';
 // --- Clock and calendar settings -------------------------------------------------------------
 
 /**
- * Intl options for the Time format setting. "System default" leaves the choice to the format
- * locale: Electron cannot read the operating system's own 12/24-hour switch.
+ * Intl options for the Time format setting. "Automatic" leaves the choice to the format locale:
+ * Electron cannot read the operating system's own 12/24-hour switch.
  * @returns {{hour12?: boolean}}
  */
 export function getClockTimeOptions() {
@@ -92,8 +92,20 @@ export function formatClockDateTime(date, options = { dateStyle: 'medium', timeS
 
 const spacingCache = new Map();
 
+// Only the spaces of a run of literals: bidi marks in right-to-left patterns are not part of the
+// gap, and a plain space (German writes "21 °C" with one) becomes a no-break one, so the unit never
+// wraps onto its own line.
+function gapFrom(parts) {
+  return parts
+    .map((part) => part.value)
+    .join('')
+    .replace(/[^\s\u00a0\u202f]/g, '')
+    .replace(/ /g, NO_BREAK_SPACE);
+}
+
 // The gap this locale writes between a number and "%" or a degree unit, read from its own
-// patterns ("50 %" with a no-break space in German and French, "50%" in English).
+// patterns ("50 %" with a no-break space in German and French, "50%" in English), and whether "%"
+// comes first ("%50" in Turkish).
 function readUnitSpacing(locale) {
   const spacingBetween = (parts, signType) => {
     const signIndex = parts.findIndex((part) => part.type === signType);
@@ -102,31 +114,25 @@ function readUnitSpacing(locale) {
       if (part.type !== 'literal' && part.type !== signType && index < signIndex) numberEnd = index;
     });
     if (signIndex < 0 || numberEnd < 0) return '';
-    return (
-      parts
-        .slice(numberEnd + 1, signIndex)
-        .map((part) => part.value)
-        // Keep only the spaces; bidi marks in right-to-left patterns are not part of the gap. A
-        // plain space (German writes "21 °C" with one) becomes a no-break one, so the unit never
-        // wraps onto its own line.
-        .join('')
-        .replace(/[^\s\u00a0\u202f]/g, '')
-        .replace(/ /g, NO_BREAK_SPACE)
-    );
+    return gapFrom(parts.slice(numberEnd + 1, signIndex));
   };
   try {
+    const percentParts = new Intl.NumberFormat(locale, { style: 'percent' }).formatToParts(0.5);
+    const percentIndex = percentParts.findIndex((part) => part.type === 'percentSign');
+    const numberStart = percentParts.findIndex((part) => part.type === 'integer');
+    const percentFirst = percentIndex >= 0 && numberStart > percentIndex;
     return {
-      percent: spacingBetween(
-        new Intl.NumberFormat(locale, { style: 'percent' }).formatToParts(0.5),
-        'percentSign'
-      ),
+      percent: percentFirst
+        ? gapFrom(percentParts.slice(percentIndex + 1, numberStart))
+        : spacingBetween(percentParts, 'percentSign'),
+      percentFirst,
       degree: spacingBetween(
         new Intl.NumberFormat(locale, { style: 'unit', unit: 'celsius' }).formatToParts(21),
         'unit'
       ),
     };
   } catch {
-    return { percent: '', degree: '' };
+    return { percent: '', percentFirst: false, degree: '' };
   }
 }
 
@@ -143,7 +149,8 @@ function getUnitSpacing() {
 /**
  * Joins a formatted number and its unit with the right gap: the locale's own for "%" and the
  * degree units, nothing before a bare "°", and a no-break space for every other unit so a unit
- * never wraps onto its own line.
+ * never wraps onto its own line. "%" goes before the number where the locale writes it so
+ * ("%50" in Turkish); other units always follow it.
  * @param {string} valueText - The number, already formatted.
  * @param {string} unit - The unit as Home Assistant reports it ("°C", "%", "kWh").
  * @returns {string}
@@ -152,8 +159,15 @@ export function joinUnit(valueText, unit) {
   const trimmed = typeof unit === 'string' ? unit.trim() : '';
   if (!trimmed) return valueText;
   let gap = NO_BREAK_SPACE;
-  if (trimmed === '%') gap = getUnitSpacing().percent;
-  else if (trimmed === '°') gap = '';
+  if (trimmed === '%') {
+    const spacing = getUnitSpacing();
+    if (spacing.percentFirst) {
+      // A minus sign stays in front of the whole thing: "-%50".
+      const [, sign, digits] = /^([-\u2212+]?)([\s\S]*)$/.exec(valueText);
+      return `${sign}%${spacing.percent}${digits}`;
+    }
+    gap = spacing.percent;
+  } else if (trimmed === '°') gap = '';
   else if (trimmed.startsWith('°')) gap = getUnitSpacing().degree;
   return `${valueText}${gap}${trimmed}`;
 }
@@ -200,12 +214,13 @@ function isMeasurement(attributes) {
   return !!(attributes?.unit_of_measurement || attributes?.state_class);
 }
 
-// How many decimals a sensor tile shows: the integration's own suggestion when it has one, else
-// one for temperatures, humidity and percentages and two for everything else.
+// How many decimals a sensor tile shows: the integration's own suggestion when it has one (marked
+// exact, so a reading is rounded to it like Home Assistant does), else one for temperatures,
+// humidity and percentages and two for everything else.
 export function getSensorPrecision(attributes = {}) {
   const suggested = attributes.suggested_display_precision;
   if (Number.isInteger(suggested) && suggested >= 0 && suggested <= 6) {
-    return { minimum: suggested, maximum: suggested };
+    return { minimum: suggested, maximum: suggested, exact: true };
   }
   const unit =
     typeof attributes.unit_of_measurement === 'string' ? attributes.unit_of_measurement.trim() : '';
@@ -220,14 +235,15 @@ export function getSensorPrecision(attributes = {}) {
 
 /**
  * Rounds a reading for display without ever showing "-0" or losing a value that is small but
- * not zero: -0.04 at one decimal reads "-0.04", not "-0".
+ * not zero: -0.04 at one decimal reads "-0.04", not "-0". A precision the integration asked for
+ * (`exact`) is kept as asked: -0.04 at no decimals reads "0", as it does in Home Assistant.
  * @param {number} value
- * @param {{minimum?: number, maximum: number}} precision
+ * @param {{minimum?: number, maximum: number, exact?: boolean}} precision
  * @param {boolean} [useGrouping]
  * @returns {string}
  */
 export function formatReadingNumber(value, precision, useGrouping = true) {
-  const { minimum = 0, maximum } = precision;
+  const { minimum = 0, maximum, exact = false } = precision;
   const options = {
     minimumFractionDigits: minimum,
     maximumFractionDigits: maximum,
@@ -236,7 +252,7 @@ export function formatReadingNumber(value, precision, useGrouping = true) {
   };
   const formatted = formatNumber(value, options);
   // Rounded to zero although the reading is not: keep two significant digits (down to 0.0001).
-  if (value !== 0 && Math.abs(value) >= 1e-4 && Number(value.toFixed(maximum)) === 0) {
+  if (!exact && value !== 0 && Math.abs(value) >= 1e-4 && Number(value.toFixed(maximum)) === 0) {
     return formatNumber(value, {
       maximumSignificantDigits: 2,
       useGrouping,
@@ -444,7 +460,8 @@ function dayDifference(date, now) {
  * "5 min. ago", "in 14 hr.", "yesterday": the language's own relative time, so no hand-made
  * "{{count}}m ago" strings and no Arabic abbreviations. Under a minute reads "just now". A time
  * in the past counts whole units ("5 min. ago" until the sixth minute); one ahead rounds to the
- * nearest ("in 14 hr." with 13 h 40 min left).
+ * nearest ("in 14 hr." with 13 h 40 min left). From a day out it counts calendar days, so a
+ * notification from 10 p.m. two evenings ago is "2 days ago", not "yesterday".
  * @param {Date|number|string} when
  * @param {{now?: number, style?: 'long'|'short'|'narrow'}} [options]
  * @returns {string} '' when `when` is not a date.
@@ -461,9 +478,10 @@ export function formatRelativeTime(when, { now = Date.now(), style = 'short' } =
   const minutes = round(elapsed / MINUTE_MS);
   if (minutes < 1) return t('just now');
   if (minutes < 60) return formatter.format(sign * minutes, 'minute');
-  const hours = round(elapsed / HOUR_MS);
-  if (hours < 24) return formatter.format(sign * hours, 'hour');
-  return formatter.format(sign * round(elapsed / DAY_MS), 'day');
+  // Under a day away is still hours, even when 23.6 hours round up to "in 24 hr.".
+  if (elapsed < DAY_MS) return formatter.format(sign * round(elapsed / HOUR_MS), 'hour');
+  const days = Math.max(1, Math.abs(dayDifference(new Date(timestamp), new Date(now))));
+  return formatter.format(sign * days, 'day');
 }
 
 /**
@@ -513,21 +531,6 @@ export function formatDayAndTime(date, now = Date.now()) {
 }
 
 /**
- * A moment as a glanceable label: how far away it is when it is ahead ("in 14 hr."), otherwise
- * its day and time ("Today 8:12 AM", "Sep 20, 8:12 AM").
- * @param {Date} date
- * @param {number} [now]
- */
-export function formatMoment(date, now = Date.now()) {
-  if (date.getTime() > now) {
-    return date.getTime() - now < 7 * DAY_MS
-      ? formatRelativeTime(date, { now })
-      : formatDayAndTime(date, now);
-  }
-  return formatDayAndTime(date, now);
-}
-
-/**
  * The state of a timestamp or date sensor, or of a date/time entity, as text. A value that is not a
  * date stays as sent.
  * @param {string} raw - The state, an ISO date or date-time.
@@ -542,7 +545,9 @@ export function formatDateState(raw, { dateOnly = false, now = Date.now() } = {}
   const date = isoDate ? new Date(`${text}T00:00:00`) : new Date(text);
   if (Number.isNaN(date.getTime())) return String(raw);
   if (dateOnly || isoDate) return formatDayLabel(date, now);
-  return formatMoment(date, now);
+  // The day and time, never "in 9 hr.": nothing redraws a tile every minute, so a relative label
+  // would go stale until the entity next changes.
+  return formatDayAndTime(date, now);
 }
 
 /**
@@ -619,20 +624,31 @@ export function formatDurationReading(value, unit) {
 
 const listSeparatorCache = new Map();
 
+// Arabic-script lists put an "and" in the first gap (" و" in Arabic, "، و" in Persian), so these
+// languages use their comma instead of reading the gap from Intl.
+const ARABIC_COMMA_LANGUAGES = new Set(['ar', 'fa', 'ur']);
+
 // The separator a language puts between the first two items of a list: ", " in English and German,
-// "、" in Chinese and Japanese, " و" in Arabic.
+// "、" in Chinese and Japanese, "، " in Arabic.
 function getListSeparator() {
   const locale = getFormatLocale();
   if (!listSeparatorCache.has(locale)) {
     let separator = ', ';
-    try {
-      const parts = new Intl.ListFormat(locale, {
-        style: 'long',
-        type: 'conjunction',
-      }).formatToParts(['a', 'b', 'c']);
-      separator = parts.find((part) => part.type === 'literal')?.value ?? separator;
-    } catch {
-      // Keep the comma.
+    if (ARABIC_COMMA_LANGUAGES.has(locale.split('-')[0].toLowerCase())) {
+      separator = '، ';
+    } else {
+      try {
+        const parts = new Intl.ListFormat(locale, {
+          style: 'long',
+          type: 'conjunction',
+        }).formatToParts(['a', 'b', 'c']);
+        const literal = parts.find((part) => part.type === 'literal')?.value ?? separator;
+        // A gap that holds a word is an "and" the labels do not want; a bidi mark is not text.
+        const cleaned = literal.replace(/[\u200e\u200f\u061c]/g, '');
+        if (cleaned && !/\p{L}/u.test(cleaned)) separator = cleaned;
+      } catch {
+        // Keep the comma.
+      }
     }
     listSeparatorCache.set(locale, separator);
   }
@@ -652,6 +668,18 @@ export function formatList(items) {
 // --- Search and sorting ----------------------------------------------------------------------
 
 /**
+ * Compatibility-folds text and drops the marks a search should ignore: Latin accents and Arabic
+ * vowel marks. Every other combining mark stays, because Hindi vowel signs and the virama are part
+ * of the word ("कुत्ता" must not become "कतत").
+ * @param {unknown} value
+ */
+export function foldSearchMarks(value) {
+  return String(value ?? '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f\u064b-\u065f\u0670]/g, '');
+}
+
+/**
  * Text prepared for a search: compatibility-folded, without accents or Arabic vowel marks, lower
  * case, with punctuation dropped, so "Küche" finds "kuche" and a Chinese or Hindi query stays a
  * query instead of vanishing. Letters and digits of every script are kept.
@@ -660,9 +688,7 @@ export function formatList(items) {
  *   as one.
  */
 export function normalizeSearchText(value, { keepDots = false } = {}) {
-  return String(value ?? '')
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f\u064b-\u065f\u0670]/g, '')
+  return foldSearchMarks(value)
     .toLowerCase()
     .replace(/['’`]/g, '')
     .replace(/[_-]/g, ' ')
