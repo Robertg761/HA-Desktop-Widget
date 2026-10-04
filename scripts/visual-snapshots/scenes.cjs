@@ -1833,6 +1833,8 @@ const scenes = [
   // A touch-first machine gets 44px targets in the header and in dialogs, and 72px tiles.
   coarsePointer('coarse-pointer-main'),
   coarsePointer('coarse-pointer-dialog', openBrightness),
+  // Settings' option controls (the theme mode) are as tall as the buttons beside them.
+  coarsePointer('coarse-pointer-settings', (ctx) => openSettingsTab(ctx, 'personalization')),
 
   // Windows High Contrast, as Chromium emulates it: a dark contrast theme, then a light one.
   { name: 'forced-colors-main', media: FORCED_COLORS },
