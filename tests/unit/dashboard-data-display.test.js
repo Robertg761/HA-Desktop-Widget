@@ -1703,6 +1703,25 @@ describe('dashboard data display', () => {
         expect(slider.value).toBe('20');
       });
 
+      it('goes back to the volume the player has when the command is never sent', async () => {
+        const modal = open({ volume_level: 0.5 });
+        const slider = modal.querySelector('#media-volume-slider');
+        keyboardStep(slider, 60);
+        // The player goes away inside the debounce, without a live update to the dialog, so the
+        // command is not sent and nothing has answered for the slider.
+        state.STATES['media_player.den'] = entity('media_player.den', 'unavailable', {
+          friendly_name: 'Den',
+          supported_features: 152463,
+          volume_level: 0.5,
+        });
+        await jest.advanceTimersByTimeAsync(150);
+        await jest.advanceTimersByTimeAsync(0);
+
+        expect(mockCallService).not.toHaveBeenCalled();
+        expect(slider.value).toBe('50');
+        expect(modal.querySelector('#media-volume-value').textContent).toBe('50%');
+      });
+
       it('goes back to the volume the player has when the command fails', async () => {
         mockCallService.mockRejectedValue(new Error('refused'));
         const modal = open({ volume_level: 0.5 });

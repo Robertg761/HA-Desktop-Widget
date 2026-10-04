@@ -12821,9 +12821,10 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
             })
           ).then((response) => {
             volumeCommandsInFlight -= 1;
-            // What the player reported meanwhile is shown now; a command that failed leaves the
-            // slider where it was, so it goes back to the volume the player still has.
-            if (modal.isConnected && (missedVolumeUpdate || response === null)) {
+            // What the player reported meanwhile is shown now. A command that failed (null) or
+            // was never sent, because the player stopped accepting it (nothing), leaves the slider
+            // where the user put it, so it goes back to the volume the player still has.
+            if (modal.isConnected && (missedVolumeUpdate || response == null)) {
               updateVolumeControls();
             }
           });
