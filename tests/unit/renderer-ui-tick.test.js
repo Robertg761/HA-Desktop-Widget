@@ -233,6 +233,85 @@ describe('Renderer UI tick scheduler', () => {
     expect(mockUi.getTickTargets).toHaveBeenCalledTimes(2);
   });
 
+  describe('when a live update changes whether a visible entity counts down', () => {
+    const sensor = { entity_id: 'sensor.oven', state: 'idle', attributes: {} };
+    // A live update, flushed (the next frame, or the 250 ms fallback) and handed to the tile code,
+    // plus the zero-delay tick the renderer may have queued for it.
+    const sensorUpdate = (attributes = {}, state = 'idle') => {
+      mockWebsocket.emit('message', {
+        type: 'event',
+        event: {
+          event_type: 'state_changed',
+          data: {
+            entity_id: sensor.entity_id,
+            old_state: sensor,
+            new_state: { ...sensor, state, attributes },
+          },
+        },
+      });
+      jest.advanceTimersByTime(300);
+      expect(mockUi.updateEntityInUI).toHaveBeenCalledTimes(1);
+    };
+
+    // What ui.updateEntityInUI does for a visible entity: re-read whether any of them is a timer.
+    const showsCountdown = (targets, hasVisibleTimers) => {
+      mockUi.isEntityVisible.mockReturnValue(true);
+      mockUi.updateEntityInUI.mockImplementation(() => {
+        targets.hasVisibleTimers = hasVisibleTimers;
+      });
+    };
+
+    it('ticks a sensor that gained a finish time at once, not at the idle poll', async () => {
+      const targets = { timeVisible: false, hasVisibleTimers: false, mediaEntity: null };
+      await loadRenderer({ hidden: false, focused: true, tickTargets: targets });
+      showsCountdown(targets, true);
+      expect(mockUi.updateTimerDisplays).not.toHaveBeenCalled();
+
+      // Well inside the 15 s idle poll.
+      sensorUpdate({ finishes_at: '2026-07-06T12:05:00.000Z' });
+
+      expect(mockUi.updateTimerDisplays).toHaveBeenCalledTimes(1);
+      jest.advanceTimersByTime(1000);
+      expect(mockUi.updateTimerDisplays).toHaveBeenCalledTimes(2);
+    });
+
+    it('ticks a clock card out of its minute cadence when a visible sensor becomes a timer', async () => {
+      const targets = { timeVisible: true, hasVisibleTimers: false, mediaEntity: null };
+      await loadRenderer({ hidden: false, focused: true, tickTargets: targets });
+      showsCountdown(targets, true);
+
+      sensorUpdate({ end_time: '2026-07-06T12:05:00.000Z' });
+
+      expect(mockUi.updateTimerDisplays).toHaveBeenCalledTimes(1);
+    });
+
+    it('looks at the tick again when the last visible countdown stops being one', async () => {
+      const targets = { timeVisible: true, hasVisibleTimers: true, mediaEntity: null };
+      await loadRenderer({ hidden: false, focused: true, tickTargets: targets });
+      showsCountdown(targets, false);
+      expect(mockUi.updateTimeDisplay).toHaveBeenCalledTimes(1);
+
+      sensorUpdate({});
+
+      // The extra tick reschedules at the clock's minute cadence instead of one second later.
+      expect(mockUi.updateTimeDisplay).toHaveBeenCalledTimes(2);
+      jest.advanceTimersByTime(5000);
+      expect(mockUi.updateTimeDisplay).toHaveBeenCalledTimes(2);
+    });
+
+    it('leaves the tick alone for a change that is not about timers', async () => {
+      const targets = { timeVisible: true, hasVisibleTimers: false, mediaEntity: null };
+      await loadRenderer({ hidden: false, focused: true, tickTargets: targets });
+      showsCountdown(targets, false);
+      expect(mockUi.updateTimeDisplay).toHaveBeenCalledTimes(1);
+
+      sensorUpdate({ unit_of_measurement: 'C' }, '180');
+
+      expect(mockUi.updateTimeDisplay).toHaveBeenCalledTimes(1);
+      expect(mockUi.updateTimerDisplays).not.toHaveBeenCalled();
+    });
+  });
+
   it('still pauses dashboard ticks while the document is hidden', async () => {
     await loadRenderer({ hidden: true, focused: false });
 
