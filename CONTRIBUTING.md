@@ -76,6 +76,13 @@ Thank you for your interest in contributing to HA Desktop Widget! This document 
 - **Modularity**: Break large functions into smaller, focused functions
 - **Error Handling**: Always include proper error handling and user feedback
 
+### Values, Units, Dates and Sorting
+
+- **One formatter**: Show an entity's state with `getEntityDisplayState()` (`packages/widget-renderer/src/utils.js`) and build any other number, unit, percentage, temperature, time, date, duration or relative time with the helpers in `packages/widget-renderer/src/format.js` (`formatMeasurement`, `formatPercent`, `formatClockTime`, `formatRelativeTime`, ...). Do not write `` `${value}${unit}` ``, `` `${n}%` `` or `.toFixed()` for text a person reads: the helpers follow the language and region (`getFormatLocale()`), take Home Assistant's own unit and precision, and never wrap a unit onto its own line.
+- **State words**: Raw states map to translated names through `ha-state-names.cjs`, shared with the tray. A select, text or other free-form state is shown as written.
+- **Search and sort**: Use `normalizeSearchText()` for matching and `compareNames()` for ordering names, not `toLowerCase().includes()` or `localeCompare()` without a locale.
+- **Time settings**: Merge the Time format setting through `formatClockTime()` / `formatClockDateTime()` rather than passing `hour12` yourself.
+
 ### Dialogs, Focus and Toasts
 
 - **Dialogs**: Open every dialog with `openDialog()` and close it with `closeDialog()` from `src/ui-utils.js`. They give you the role, focus trap, Escape and Enter handling, backdrop dismissal, stacking over other dialogs and focus return to whatever opened it. Do not add your own keydown or backdrop listener to a dialog.

@@ -154,6 +154,13 @@ describe('visual snapshot scenes', () => {
       'focus-tile-settings',
       'toast-error-over-settings',
       'toast-reorganize-notice',
+      'format-main',
+      'format-main-de',
+      'format-main-fr',
+      'format-main-ar',
+      'format-main-hi',
+      'format-main-zh',
+      'format-palette-fr',
     ]) {
       expect(names).toContain(required);
     }
@@ -162,6 +169,32 @@ describe('visual snapshot scenes', () => {
     expect(scenes.find((scene) => scene.name === 'forced-colors-main').media).toEqual([
       { name: 'forced-colors', value: 'active' },
     ]);
+  });
+
+  it('has a page of readings for the format scenes, with a pack installed for each language', () => {
+    const formats = PAGE_SETS.formats.flatMap((page) => page.entityIds);
+    const states = new Map(buildStates().map((entity) => [entity.entity_id, entity]));
+    // Each kind of text the formatter writes is on the page: a Fahrenheit reading, a value below
+    // zero, two timestamps, a duration, device class words, a paused timer and a free-form select.
+    expect(states.get('sensor.pool_temp').attributes.unit_of_measurement).toBe('°F');
+    expect(Number(states.get('sensor.cold_room').state)).toBeLessThan(0);
+    expect(states.get('sensor.last_boot').attributes.device_class).toBe('timestamp');
+    expect(states.get('sensor.next_dawn').attributes.device_class).toBe('timestamp');
+    expect(states.get('sensor.uptime').attributes.device_class).toBe('duration');
+    expect(states.get('binary_sensor.router').attributes.device_class).toBe('connectivity');
+    expect(states.get('timer.tea').state).toBe('paused');
+    expect(formats).toEqual(expect.arrayContaining(['select.heating_mode', 'calendar.bins']));
+    const runner = fs.readFileSync(
+      path.resolve(__dirname, '../../scripts/visual-snapshots/run.cjs'),
+      'utf8'
+    );
+    for (const language of ['de', 'fr', 'ar', 'hi', 'zh']) {
+      const scene = scenes.find((entry) => entry.name === `format-main-${language}`);
+      expect(scene.ui.language).toBe(language);
+      // German is bundled; the others need the repository's pack installed in the profile.
+      if (language !== 'de')
+        expect(runner).toMatch(new RegExp(`INSTALLED_PACKS = \\[[^\\]]*'${language}'`));
+    }
   });
 
   it('shows every desktop pin family it can pin, and only pins entities the fixture holds', () => {

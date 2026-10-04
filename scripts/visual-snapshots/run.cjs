@@ -47,7 +47,7 @@ const SCREEN_MARGIN = 32;
 const CTRL = 2;
 // Language packs are not bundled (except German); scenes in these languages need the repo's pack
 // installed in the profile, which is also the version a PR is changing.
-const INSTALLED_PACKS = ['ar', 'es', 'fr'];
+const INSTALLED_PACKS = ['ar', 'es', 'fr', 'hi', 'zh'];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
