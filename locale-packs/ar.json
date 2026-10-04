@@ -1797,6 +1797,8 @@
     "Results: {{count}}": "النتائج: {{count}}",
     "Showing {{shown}} of {{total}} results": "عرض {{shown}} من {{total}} نتيجة",
     "Command": "أمر",
-    "Try a device name, a command like \"turn on\", or a page name": "جرّب اسم جهاز أو أمرًا مثل «تشغيل» أو اسم صفحة"
+    "Try a device name, a command like \"turn on\", or a page name": "جرّب اسم جهاز أو أمرًا مثل «تشغيل» أو اسم صفحة",
+    "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).": "بدّل الكيانات أو تحكّم بها من أي مكان. مفاتيح التعديل: Ctrl وAlt وShift وWin وCommand وSuper (مثل <code>Ctrl+Shift+A</code>).",
+    "Action chosen: {{action}}. It applies once you record a hotkey.": "تم اختيار الإجراء: {{action}}. سيُطبَّق عند تسجيل اختصار."
   }
 }

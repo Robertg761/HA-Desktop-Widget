@@ -1797,6 +1797,8 @@
     "Results: {{count}}": "परिणाम: {{count}}",
     "Showing {{shown}} of {{total}} results": "{{total}} में से {{shown}} परिणाम दिखाए जा रहे हैं",
     "Command": "कमांड",
-    "Try a device name, a command like \"turn on\", or a page name": "किसी डिवाइस का नाम, “चालू करें” जैसी कमांड या किसी पेज का नाम आज़माएँ"
+    "Try a device name, a command like \"turn on\", or a page name": "किसी डिवाइस का नाम, “चालू करें” जैसी कमांड या किसी पेज का नाम आज़माएँ",
+    "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).": "कहीं से भी एंटिटी टॉगल या नियंत्रित करें। मॉडिफ़ायर: Ctrl, Alt, Shift, Win, Command, Super (उदाहरण के लिए <code>Ctrl+Shift+A</code>)।",
+    "Action chosen: {{action}}. It applies once you record a hotkey.": "कार्रवाई चुनी गई: {{action}}। हॉटकी रिकॉर्ड करते ही यह लागू होगी।"
   }
 }

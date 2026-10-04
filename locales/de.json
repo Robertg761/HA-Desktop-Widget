@@ -1400,7 +1400,6 @@
   "Hide when released": "Beim Loslassen ausblenden",
   "Hide the window when you let go of the hotkey, instead of only sending it back.": "Blendet das Fenster aus, wenn du das Tastenkürzel loslässt, statt es nur in den Hintergrund zu schicken.",
   "Entity hotkeys": "Entitäts-Tastenkürzel",
-  "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Command, Super (for example <code>Ctrl+Shift+A</code>).": "Schalte oder steuere Entitäten von überall aus. Modifikatortasten: Ctrl, Alt, Shift, Command, Super (zum Beispiel <code>Ctrl+Shift+A</code>).",
   "Entity alerts": "Entitätswarnungen",
   "Choose which entities send a desktop notification when they change.": "Wähle, welche Entitäten bei Änderungen eine Desktop-Benachrichtigung senden.",
   "Sync provider": "Sync-Anbieter",
@@ -1705,5 +1704,7 @@
   "Results: {{count}}": "Ergebnisse: {{count}}",
   "Showing {{shown}} of {{total}} results": "{{shown}} von {{total}} Ergebnissen werden angezeigt",
   "Command": "Befehl",
-  "Try a device name, a command like \"turn on\", or a page name": "Probiere einen Gerätenamen, einen Befehl wie „einschalten“ oder einen Seitennamen"
+  "Try a device name, a command like \"turn on\", or a page name": "Probiere einen Gerätenamen, einen Befehl wie „einschalten“ oder einen Seitennamen",
+  "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).": "Schalte oder steuere Entitäten von überall aus. Modifikatortasten: Ctrl, Alt, Shift, Win, Command, Super (zum Beispiel <code>Ctrl+Shift+A</code>).",
+  "Action chosen: {{action}}. It applies once you record a hotkey.": "Aktion gewählt: {{action}}. Sie gilt, sobald du ein Tastenkürzel aufzeichnest."
 }

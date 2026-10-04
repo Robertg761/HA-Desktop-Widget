@@ -516,8 +516,16 @@ function setupHotkeyEventListenersInternal() {
           showToast(failureMessage, 'error', 4000);
         }
       } else {
-        // Nothing to save yet: the action waits for the hotkey and is recorded with it.
+        // Nothing to save yet: the action waits for the hotkey and is recorded with it. Say so,
+        // or the choice looks like it did nothing.
         pendingActions.set(entityId, action);
+        showToast(
+          t('Action chosen: {{action}}. It applies once you record a hotkey.', {
+            action: actionLabel,
+          }),
+          'info',
+          3500
+        );
       }
     };
     container.addEventListener('change', containerChangeHandler);

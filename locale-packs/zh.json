@@ -1797,6 +1797,8 @@
     "Results: {{count}}": "结果：{{count}}",
     "Showing {{shown}} of {{total}} results": "正在显示 {{shown}} 个结果，共 {{total}} 个",
     "Command": "命令",
-    "Try a device name, a command like \"turn on\", or a page name": "试试设备名称、像“打开”这样的命令或页面名称"
+    "Try a device name, a command like \"turn on\", or a page name": "试试设备名称、像“打开”这样的命令或页面名称",
+    "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).": "随时随地切换或控制实体。修饰键：Ctrl、Alt、Shift、Win、Command、Super（例如 <code>Ctrl+Shift+A</code>）。",
+    "Action chosen: {{action}}. It applies once you record a hotkey.": "已选择操作：{{action}}。录制快捷键后生效。"
   }
 }

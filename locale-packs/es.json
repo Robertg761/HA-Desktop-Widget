@@ -1797,6 +1797,8 @@
     "Results: {{count}}": "Resultados: {{count}}",
     "Showing {{shown}} of {{total}} results": "Mostrando {{shown}} de {{total}} resultados",
     "Command": "Comando",
-    "Try a device name, a command like \"turn on\", or a page name": "Prueba con el nombre de un dispositivo, un comando como «encender» o el nombre de una página"
+    "Try a device name, a command like \"turn on\", or a page name": "Prueba con el nombre de un dispositivo, un comando como «encender» o el nombre de una página",
+    "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).": "Activa o controla entidades desde cualquier lugar. Modificadores: Ctrl, Alt, Shift, Win, Command, Super (por ejemplo <code>Ctrl+Shift+A</code>).",
+    "Action chosen: {{action}}. It applies once you record a hotkey.": "Acción elegida: {{action}}. Se aplicará cuando grabes un atajo."
   }
 }

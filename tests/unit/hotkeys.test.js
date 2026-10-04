@@ -721,6 +721,20 @@ describe('hotkeys module', () => {
       );
     });
 
+    it('says it waits for a hotkey, where a saved row says it was updated', async () => {
+      const showToast = require('../../src/ui-utils.js').showToast;
+      showToast.mockClear();
+
+      choose('light.desk', 'turn_off');
+
+      expect(showToast).toHaveBeenCalledTimes(1);
+      expect(showToast).toHaveBeenCalledWith(
+        expect.stringMatching(/^Action chosen: .+\. It applies once you record a hotkey\.$/),
+        'info',
+        expect.any(Number)
+      );
+    });
+
     it('is used when the recorder is opened without naming an action, as the tile menu does', async () => {
       choose('light.desk', 'turn_on');
 

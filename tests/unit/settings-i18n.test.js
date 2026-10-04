@@ -25,8 +25,8 @@ describe('index.html static Settings text', () => {
         'Search entities...': 'Entitäten suchen...',
         'Search entities': 'Entitäten suchen',
         'Card {{index}}': 'Karte {{index}}',
-        'Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Command, Super (for example <code>Ctrl+Shift+A</code>).':
-          'Schalte oder steuere Entitäten von überall aus. Modifikatortasten: Ctrl, Alt, Shift, Command, Super (zum Beispiel <code>Ctrl+Shift+A</code>).',
+        'Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).':
+          'Schalte oder steuere Entitäten von überall aus. Modifikatortasten: Ctrl, Alt, Shift, Win, Command, Super (zum Beispiel <code>Ctrl+Shift+A</code>).',
         'View logs': 'Protokolle anzeigen',
         'Opens the log file location in your file explorer':
           'Öffnet den Speicherort der Protokolldatei im Dateimanager',
@@ -84,7 +84,7 @@ describe('index.html static Settings text', () => {
   test('keeps code formatting in translated help text', () => {
     const help = document.querySelector('[data-i18n-html^="Toggle or control entities"]');
     expect(help.textContent).toBe(
-      'Schalte oder steuere Entitäten von überall aus. Modifikatortasten: Ctrl, Alt, Shift, Command, Super (zum Beispiel Ctrl+Shift+A).'
+      'Schalte oder steuere Entitäten von überall aus. Modifikatortasten: Ctrl, Alt, Shift, Win, Command, Super (zum Beispiel Ctrl+Shift+A).'
     );
     expect(help.querySelectorAll('code')).toHaveLength(1);
   });

@@ -1401,7 +1401,6 @@
   "Hide when released": "Hide when released",
   "Hide the window when you let go of the hotkey, instead of only sending it back.": "Hide the window when you let go of the hotkey, instead of only sending it back.",
   "Entity hotkeys": "Entity hotkeys",
-  "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Command, Super (for example <code>Ctrl+Shift+A</code>).": "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Command, Super (for example <code>Ctrl+Shift+A</code>).",
   "Entity alerts": "Entity alerts",
   "Choose which entities send a desktop notification when they change.": "Choose which entities send a desktop notification when they change.",
   "Sync provider": "Sync provider",
@@ -1705,5 +1704,7 @@
   "Results: {{count}}": "Results: {{count}}",
   "Showing {{shown}} of {{total}} results": "Showing {{shown}} of {{total}} results",
   "Command": "Command",
-  "Try a device name, a command like \"turn on\", or a page name": "Try a device name, a command like \"turn on\", or a page name"
+  "Try a device name, a command like \"turn on\", or a page name": "Try a device name, a command like \"turn on\", or a page name",
+  "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).": "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).",
+  "Action chosen: {{action}}. It applies once you record a hotkey.": "Action chosen: {{action}}. It applies once you record a hotkey."
 }
