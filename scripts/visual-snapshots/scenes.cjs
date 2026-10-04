@@ -10,6 +10,8 @@
  *            entityAlerts)
  *   size     { width, height } to resize the window to
  *   media    CDP media features to emulate, e.g. forced-colors
+ *   extraStates  (now) => entity states the home has only for this scene; the runner adds them
+ *            before the scene and takes them away afterwards (see buildLandingLights)
  *   setup    async (ctx) that drives the UI; may return { capture } to photograph another
  *            window (a desktop pin) instead of the main one
  *   pin      the entity a pin scene pins (only a label for the tests, which check that every
@@ -24,7 +26,7 @@
  * few pixels differ from run to run. Everything else comes from the fixture.
  */
 
-const { PAGE_SETS, WINDOW_SIZE } = require('./fixture.cjs');
+const { PAGE_SETS, WINDOW_SIZE, buildLandingLights } = require('./fixture.cjs');
 
 const NARROW_WINDOW = { width: 340, height: WINDOW_SIZE.height };
 // The size the app opens at (the fixture's window is 60px taller to fit a 768px display), a window
@@ -718,6 +720,29 @@ const scenes = [
     name: 'settings-hotkeys-entities',
     config: hotkeysOn,
     setup: (ctx) => openHotkeysFor(ctx, ''),
+  },
+  // A home with more lights than one page of the list holds: the last page, with its rows above the
+  // pager (Previous available, Next not).
+  {
+    name: 'settings-hotkeys-page-2',
+    config: hotkeysOn,
+    extraStates: buildLandingLights,
+    setup: async (ctx) => {
+      await openHotkeysPage(ctx);
+      await ctx.waitForSelector('#hotkeys-list .primary-cards-pagination');
+      await ctx.click('#hotkeys-list [data-primary-page="next"]');
+      await ctx.waitForExpression(
+        `document.querySelector('#hotkeys-list [data-primary-page="next"]')?.getAttribute('aria-disabled') === 'true'`,
+        'the last page of the Hotkeys list'
+      );
+      // The pager sticks to the bottom of the list, so the list itself is what comes into view.
+      await revealInSettings(ctx, '#hotkeys-list');
+      await ctx.expect(
+        `document.querySelector('#hotkeys-list [data-primary-page="previous"]').getAttribute('aria-disabled') === 'false' &&
+          document.querySelectorAll('#hotkeys-list .hotkey-item').length > 0`,
+        'a page of rows after the first, with Previous available'
+      );
+    },
   },
   {
     name: 'settings-alerts',
