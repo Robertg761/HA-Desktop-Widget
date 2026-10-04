@@ -38,6 +38,21 @@ const FORCED_COLORS = [{ name: 'forced-colors', value: 'active' }];
 // colour scheme.
 const FORCED_COLORS_LIGHT = [...FORCED_COLORS, { name: 'prefers-color-scheme', value: 'light' }];
 
+// The media tile's track is a button. Its title has to run out of room (so the ellipsis is doing
+// its job), the ellipsis has to be set, and neither the track nor the tile may leave the window.
+const MEDIA_TRACK_CUT_OFF = `(() => {
+  const tile = document.getElementById('media-tile');
+  const info = document.getElementById('media-tile-info');
+  const title = document.getElementById('media-tile-title');
+  if (!tile || !info || !title || info.tagName !== 'BUTTON') return false;
+  const tileBox = tile.getBoundingClientRect();
+  const infoBox = info.getBoundingClientRect();
+  return title.scrollWidth > title.clientWidth &&
+    getComputedStyle(title).textOverflow === 'ellipsis' &&
+    infoBox.left >= tileBox.left - 1 && infoBox.right <= tileBox.right + 1 &&
+    tileBox.left >= 0 && tileBox.right <= window.innerWidth;
+})()`;
+
 const tileDetails = (entityId) =>
   `#quick-controls [data-entity-id="${entityId}"] .tile-details-button`;
 const tile = (entityId) => `#quick-controls [data-entity-id="${entityId}"]`;
@@ -110,6 +125,16 @@ async function openSettingsTab(ctx, tab) {
   await ctx.ev(
     `(() => { const body = document.querySelector('#settings-modal .modal-body'); if (body) body.scrollTop = 0; })()`
   );
+}
+
+// Types into a field the way a person does, so the input handlers run.
+async function typeInto(ctx, selector, text) {
+  await ctx.ev(`(() => {
+    const field = document.querySelector(${JSON.stringify(selector)});
+    field.focus();
+    field.value = ${JSON.stringify(text)};
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
 }
 
 // The alarm tile has no click action; its commands live in the command palette. "Disarm" asks
@@ -300,11 +325,14 @@ const withPage = (set, activeTabId = 'default') => ({
 const edgePage = withPage('edge');
 const formatsPage = withPage('formats');
 const FORMAT_SIZE = { width: 520, height: 1040 };
+// The list of entities is shown only while the Entity hotkeys switch is on, so every scene that
+// photographs it turns the switch on.
+const hotkeysOn = { globalHotkeys: { enabled: true, hotkeys: {} } };
 // Hotkeys for two rows, so the Hotkeys scenes show a row with a hotkey beside one without.
 const hotkeyPage = {
   ...edgePage,
   globalHotkeys: {
-    enabled: false,
+    enabled: true,
     hotkeys: {
       'light.hallway_ceiling_long': { hotkey: 'Ctrl+Shift+Space', action: 'toggle' },
       'light.desk_lamp': { hotkey: 'Ctrl+Alt+L', action: 'toggle' },
@@ -607,6 +635,7 @@ const scenes = [
   // The entity list, where each row picks the action its hotkey runs from a select.
   {
     name: 'settings-hotkeys-entities',
+    config: hotkeysOn,
     setup: async (ctx) => {
       await openSettingsTab(ctx, 'hotkeys');
       await revealInSettings(ctx, '#hotkeys-list');
@@ -625,6 +654,71 @@ const scenes = [
       await revealInSettings(ctx, '#custom-color-picker');
     },
   },
+
+  // The settings search: ranked results (the setting of that name first, with its group beside its
+  // page), and a query that finds nothing, which fills the page with its own empty state.
+  ...[
+    ['settings-search-results', 'hotkey'],
+    ['settings-search-empty', 'zzzz'],
+  ].map(([name, query]) => ({
+    name,
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'general');
+      await typeInto(ctx, '#settings-search', query);
+    },
+  })),
+  // Save from another page with a bad address: General opens with the field marked and the
+  // reason under it, instead of a toast about a field that is not on screen.
+  {
+    name: 'settings-url-error',
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'personalization');
+      await ctx.ev(`document.getElementById('ha-url').value = 'http://'`);
+      await ctx.click('#save-settings');
+      await ctx.waitForExpression(
+        `!!document.getElementById('ha-url-error') && document.activeElement?.id === 'ha-url'`,
+        'the inline URL error, with the field focused'
+      );
+    },
+  },
+  // The icon editor with a picker open: the home's own icons first, in a list that is paged.
+  {
+    name: 'settings-icons-picker',
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'dashboard');
+      await ctx.click('#custom-entity-icons-toggle');
+      await ctx.waitForSelector('#custom-entity-icons-list .custom-entity-icon-item');
+      await ctx.click('[data-custom-icon-picker-toggle]');
+      await ctx.waitForSelector('.custom-entity-icon-choice');
+      await revealInSettings(ctx, '#custom-entity-icons-list', 'start');
+    },
+  },
+  // The alert picker keeps its search field where it is while the list narrows to a few rows and to
+  // none: the dialog used to shrink and re-centre under the person's typing.
+  ...[
+    ['dialog-alert-picker-filtered', 'lamp'],
+    ['dialog-alert-picker-no-match', 'zzzz'],
+  ].map(([name, query]) => ({
+    name,
+    size: DEFAULT_SIZE,
+    config: alertsConfig,
+    setup: async (ctx) => {
+      await openAlertPicker(ctx);
+      // Measure once the dialog has stopped sliding in. A runner that animates it (macOS) would
+      // otherwise record a top that is still moving.
+      await ctx.waitForExpression(
+        `!document.getElementById('alert-entity-picker-modal').getAnimations({ subtree: true }).length`,
+        'the alert picker to finish opening'
+      );
+      const search = `document.getElementById('alert-entity-picker-search').getBoundingClientRect().top`;
+      await ctx.ev(`window.__pickerSearchTop = ${search}`);
+      await typeInto(ctx, '#alert-entity-picker-search', query);
+      await ctx.expect(
+        `Math.abs(${search} - window.__pickerSearchTop) < 1`,
+        'the search field keeps its place while the list narrows'
+      );
+    },
+  })),
 
   // A light as a primary card: the lit lamp warms its icon and glow.
   { name: 'primary-light-card', config: { primaryCards: ['light.desk_lamp', 'time'] } },
@@ -924,6 +1018,7 @@ const scenes = [
   {
     name: 'de-settings-hotkeys-entities',
     ui: { language: 'de' },
+    config: hotkeysOn,
     setup: async (ctx) => {
       await openSettingsTab(ctx, 'hotkeys');
       await revealInSettings(ctx, '#hotkeys-list');
@@ -1326,6 +1421,29 @@ const scenes = [
     size: NARROW_SIZE,
     config: { primaryMediaPlayer: 'media_player.theater' },
   },
+  // The track is a button that opens the player, and a title too long for the tile is still cut
+  // off by an ellipsis inside it, with an artist under it or without, at the default width and at
+  // 340px, where the grid stacks the rows, in the light theme and right to left.
+  ...[
+    ['layout-media-title-long', 'media_player.bedroom_tv', DEFAULT_SIZE, {}],
+    ['layout-media-title-long-narrow', 'media_player.bedroom_tv', NARROW_SIZE, {}],
+    [
+      'layout-media-no-artist-narrow-light',
+      'media_player.audiobook',
+      NARROW_SIZE,
+      { theme: 'light' },
+    ],
+    ['layout-media-no-artist-ar', 'media_player.audiobook', DEFAULT_SIZE, { language: 'ar' }],
+  ].map(([name, player, size, ui]) => ({
+    name,
+    size,
+    ui,
+    config: { primaryMediaPlayer: player },
+    setup: async (ctx) => {
+      await ctx.waitForExpression(`document.getElementById('media-tile-title')?.textContent`);
+      await ctx.expect(MEDIA_TRACK_CUT_OFF, 'a long title is cut off inside the media tile');
+    },
+  })),
   { name: 'layout-time-long-date-es', ui: { language: 'es', dateFormat: 'long' } },
   {
     name: 'layout-time-long-date-es-narrow',

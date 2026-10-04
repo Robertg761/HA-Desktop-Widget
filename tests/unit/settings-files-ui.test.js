@@ -8,6 +8,13 @@ describe('settings file controls', () => {
   const flush = async () => {
     for (let i = 0; i < 20; i += 1) await Promise.resolve();
   };
+  // The rows of the confirmation, as label to value.
+  const facts = () => {
+    const rows = [...showConfirm.mock.calls[0][1].querySelectorAll('dt, dd')];
+    const result = {};
+    for (let i = 0; i < rows.length; i += 2) result[rows[i].textContent] = rows[i + 1].textContent;
+    return result;
+  };
   beforeEach(() => {
     jest.clearAllMocks();
     document.body.innerHTML =
@@ -37,9 +44,16 @@ describe('settings file controls', () => {
     await flush();
     expect(showConfirm).toHaveBeenCalledWith(
       'Import settings',
-      expect.stringContaining('Entities not found on this connection: 1'),
-      expect.any(Object)
+      expect.any(Node),
+      expect.objectContaining({ confirmText: 'Replace settings' })
     );
+    expect(facts()).toEqual({
+      File: 'settings.json',
+      Changes: 'Quick Access and layout',
+      'Page names': 'Home',
+      'Entities used': '2',
+      'Missing from this connection': '1',
+    });
     expect(api.applySettingsImport).toHaveBeenCalledWith('selected');
     expect(imported).toHaveBeenCalledWith({ ui: { theme: 'light' } });
     expect(showToast).toHaveBeenCalledWith('Settings imported.', 'success', 2200);
@@ -111,9 +125,18 @@ describe('settings file controls', () => {
     state.setStates({});
     document.getElementById('import-settings-file').click();
     await flush();
-    const message = showConfirm.mock.calls[0][1];
-    expect(message).toContain('Referenced entities: 2');
-    expect(message).not.toContain('Unavailable entities');
+    expect(facts()['Entities used']).toBe('2');
+    expect(facts()).not.toHaveProperty('Missing from this connection');
+  });
+  test('puts the replace-and-backup warning first, and the facts after it as rows', async () => {
+    document.getElementById('import-settings-file').click();
+    await flush();
+    const summary = showConfirm.mock.calls[0][1];
+    expect(summary.firstElementChild.className).toBe('confirm-callout');
+    expect(summary.firstElementChild.textContent).toMatch(
+      /^Import applies immediately and replaces unsaved Settings edits\. Your current saved settings are backed up first\./
+    );
+    expect(summary.lastElementChild.tagName).toBe('DL');
   });
   test('lists a few page names, shortened, and counts the rest', async () => {
     api.previewSettingsImport.mockResolvedValue({
@@ -129,11 +152,11 @@ describe('settings file controls', () => {
     });
     document.getElementById('import-settings-file').click();
     await flush();
-    const message = showConfirm.mock.calls[0][1];
-    expect(message).toContain(`${'x'.repeat(39)}…, Page 2`);
-    expect(message).toContain('Page 8 … (+5)');
-    expect(message).not.toContain('x'.repeat(41));
-    expect(message).not.toContain('Page 9');
+    const { 'Page names': pages } = facts();
+    expect(pages).toContain(`${'x'.repeat(39)}…, Page 2`);
+    expect(pages).toContain('Page 8 … (+5)');
+    expect(pages).not.toContain('x'.repeat(41));
+    expect(pages).not.toContain('Page 9');
   });
   test('names the size a settings file may have', async () => {
     api.previewSettingsImport.mockResolvedValue({ success: false, code: 'file_too_large' });

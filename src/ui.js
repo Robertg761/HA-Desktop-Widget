@@ -2451,7 +2451,7 @@ function showRenameModal(entityId) {
         </div>
         <div class="modal-footer">
           <button id="cancel-rename-btn" class="btn btn-secondary">${utils.escapeHtml(t('Cancel'))}</button>
-          <button id="reset-rename-btn" class="btn btn-secondary">${utils.escapeHtml(t('Reset to Default'))}</button>
+          <button id="reset-rename-btn" class="btn btn-secondary btn-reset">${utils.escapeHtml(t('Reset to Default'))}</button>
           <button id="save-rename-btn" class="btn btn-primary">${utils.escapeHtml(t('Save'))}</button>
         </div>
       </div>
@@ -14983,11 +14983,14 @@ function populateQuickControlsList({ resetSearch = true } = {}) {
       const pages = Math.max(1, Math.ceil(scoredEntities.length / pageSize));
       page = Math.min(page, pages - 1);
       list.dataset.page = String(page);
-      count.textContent = t('Page {{page}} of {{pages}} · {{count}} entities', {
-        page: formatNumber(page + 1),
-        pages: formatNumber(pages),
-        count: formatNumber(scoredEntities.length),
-      });
+      const pageNumbers = { page: formatNumber(page + 1), pages: formatNumber(pages) };
+      count.textContent =
+        scoredEntities.length === 1
+          ? t('Page {{page}} of {{pages}} · 1 entity', pageNumbers)
+          : t('Page {{page}} of {{pages}} · {{count}} entities', {
+              ...pageNumbers,
+              count: formatNumber(scoredEntities.length),
+            });
       previous.setAttribute('aria-disabled', String(page === 0));
       next.setAttribute('aria-disabled', String(page >= pages - 1));
       previous.onclick = () => {
