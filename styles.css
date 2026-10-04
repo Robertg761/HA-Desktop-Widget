@@ -7377,6 +7377,11 @@ body.theme-light:not(.high-contrast)
   /* The tile centres its text; the rows are start-aligned, so the heading is too. */
   text-align: start;
   white-space: nowrap;
+  /* The script sets left and top (and the names' widths) and reads the result at once. Under
+     reduced motion the stylesheet gives every transition 0.01ms instead of none, which still starts
+     one: the box stays where it was for a frame, a tooltip first shown sat at the left edge, and a
+     measurement taken in the same frame read the old place. It is placed, not animated. */
+  transition: none;
 }
 
 .comparison-graph-tooltip-time {
@@ -7412,6 +7417,7 @@ body.theme-light:not(.high-contrast)
   text-overflow: ellipsis;
   /* The script narrows this when the tooltip would not fit beside the pointer. */
   max-width: 160px;
+  transition: none;
 }
 
 .comparison-graph-warning {

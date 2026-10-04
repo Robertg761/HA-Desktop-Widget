@@ -854,6 +854,19 @@ describe('comparison graph tile', () => {
       });
     });
 
+    it('is placed without a transition, which reduced motion would stretch to 0.01ms and so still start', () => {
+      // The stylesheet gives every transition 0.01ms under reduced motion rather than none, so a
+      // tooltip that sets left and reads it back in the same frame saw the old place, and one
+      // shown for the first time sat at the left edge for a frame.
+      const styles = require('fs').readFileSync(
+        require('path').resolve(__dirname, '../../styles.css'),
+        'utf8'
+      );
+      const rule = (selector) => styles.split('}').find((part) => part.includes(`\n${selector} {`));
+      expect(rule('.comparison-graph-tooltip')).toContain('transition: none;');
+      expect(rule('.comparison-graph-tooltip-name')).toContain('transition: none;');
+    });
+
     it('puts the crosshair under the pointer, allowing for the margin round the plot', async () => {
       // The plot is a 252-unit stretch inside a 260-unit box with a 4-unit margin: the pointer at
       // the left edge is the plot's start, in the middle it is the plot's middle, at the right edge
