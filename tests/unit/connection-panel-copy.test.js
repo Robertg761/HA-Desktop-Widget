@@ -17,6 +17,7 @@ describe('the connection panel on the dashboard', () => {
     while (!done() && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
+    return !!done();
   };
   const retryOver = () =>
     !document.querySelector('.widget-state-copy + .widget-state-details .connection-progress') &&
@@ -227,7 +228,13 @@ describe('the connection panel on the dashboard', () => {
       });
 
       // The panel is drawn once the first connection state is known, a little after init is done.
-      await until(() => harness.findButton('Reconnect with Home Assistant'));
+      // A busy machine (CI on Windows ARM, a full test run) can take several seconds to get there.
+      const drawn = await until(() => harness.findButton('Reconnect with Home Assistant'), 15000);
+      if (!drawn) {
+        throw new Error(
+          `The Reconnect button never appeared; the panel says: ${document.getElementById('widget-state-panel')?.textContent}`
+        );
+      }
       harness.findButton('Reconnect with Home Assistant').click();
       await harness.flushAsync();
 
@@ -235,6 +242,6 @@ describe('the connection panel on the dashboard', () => {
       const panel = document.getElementById('widget-state-panel');
       expect(panel.querySelector('.connection-progress')).not.toBeNull();
       expect(panel.getAttribute('aria-busy')).toBe('true');
-    });
+    }, 30000);
   });
 });

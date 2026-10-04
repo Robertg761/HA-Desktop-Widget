@@ -9146,7 +9146,6 @@ body.theme-light:not(.high-contrast)
   outline: none;
 }
 
-/* The reassurance under the instruction: quieter than it, not louder. */
 /* The address step 3 is about to open, between the lead paragraph and the note. */
 .first-run-url {
   margin: 0 0 var(--space-2);
@@ -9156,6 +9155,7 @@ body.theme-light:not(.high-contrast)
   overflow-wrap: anywhere;
 }
 
+/* The reassurance under the instruction: quieter than it, not louder. */
 .first-run-security-note {
   margin: 0 0 18px;
   color: var(--text-dim);
