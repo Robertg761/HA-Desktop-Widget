@@ -939,6 +939,22 @@ describe('what counts as a countdown', () => {
     ).toMatch(/^1:\d{2}$/);
   });
 
+  it('counts any unitless, non-numeric sensor with "timer" in its id, on purpose', () => {
+    // One loose rule for the tile, the pin, the icon, the palette and the tray, so a sensor reads
+    // the same everywhere. A word match would leave "sensor.timer_mode" a countdown on one surface
+    // and a plain text reading on another.
+    expect(utils.isTimerLikeSensor(sensor('sensor.timer_mode', 'eco'))).toBe(true);
+    expect(utils.isTimerLikeSensor(sensor('sensor.egg_timer_preset', 'soft'))).toBe(true);
+    expect(utils.isTimerLikeSensor(sensor('sensor.EggTimerPreset', 'soft'))).toBe(true);
+    // A unit or a number still makes it a reading.
+    expect(
+      utils.isTimerLikeSensor(sensor('sensor.timer_mode', 'eco', { unit_of_measurement: 'min' }))
+    ).toBe(false);
+    expect(utils.isTimerLikeSensor(sensor('sensor.timer_mode', '3'))).toBe(false);
+    // It is a sensor rule: other domains keep their own.
+    expect(utils.isTimerLikeSensor(entity('switch.timer_mode', 'on'))).toBe(false);
+  });
+
   it('shows a timestamp sensor with no timer hint as a date, not a countdown', () => {
     const future = new Date(Date.now() + 14 * 3600 * 1000).toISOString();
     const dawn = sensor('sensor.next_dawn', future, { device_class: 'timestamp' });

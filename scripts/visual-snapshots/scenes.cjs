@@ -517,9 +517,11 @@ async function showToasts(ctx) {
   await ctx.sleep(500);
 }
 
-// Home Assistant's notifications arrive over a subscription the mock does not serve (and a bell in
-// every scene's header is not wanted), so the panel is filled the way createNotificationListItem
-// fills it: English text, as Home Assistant writes it, under whatever language the app is in.
+// The ar-* scenes fill the notifications panel by hand, the way createNotificationListItem fills
+// it: English text, as Home Assistant writes it, under whatever language the app is in. A bell in
+// every scene's header is not wanted, so they do not subscribe. The notifications-markdown scene
+// uses ctx.showNotifications() instead, which sends the mock's notifications over the real
+// subscription.
 async function showNotificationsPanel(ctx) {
   await ctx.ev(`(() => {
     const notes = [
