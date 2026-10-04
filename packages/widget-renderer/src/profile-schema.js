@@ -12,6 +12,9 @@
 
 import { normalizeQuickAccessConfig } from './quick-access-tabs.js';
 import { normalizeComparisonGraphsConfig } from './comparison-graphs.js';
+import pageNames from '../../../src/page-names.cjs';
+
+const { toStoredPages } = pageNames;
 
 const PROFILE_SCHEMA_VERSION = 1;
 
@@ -247,11 +250,10 @@ function buildProfileDocumentFromConfig(config) {
     if (key in source) document[key] = source[key];
   }
   const profile = normalizeProfileDocument(document);
-  // The document goes to Home Assistant. An unnamed page leaves with the name of today's language,
-  // and without the marker the app keeps it by, which Home Assistant has no use for.
-  if (Array.isArray(profile.customTabs)) {
-    profile.customTabs = profile.customTabs.map(({ nameIsDefault: _unnamed, ...page }) => page);
-  }
+  // The document goes to Home Assistant and from there to other desktops, which may speak another
+  // language. An unnamed page stays unnamed, as in the saved config, so each desktop names it for
+  // itself; Home Assistant only checks the structure of a profile, so an empty name is accepted.
+  if (Array.isArray(profile.customTabs)) profile.customTabs = toStoredPages(profile.customTabs);
   return profile;
 }
 

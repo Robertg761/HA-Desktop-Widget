@@ -146,7 +146,7 @@ describe('the profile document sent to Home Assistant', () => {
     buildProfileDocumentFromConfig,
   } = require('../../packages/widget-renderer/src/profile-schema.js');
 
-  it('names an unnamed page for today, and leaves the app’s marker out', () => {
+  it('leaves an unnamed page unnamed, so each desktop names it in its own language', () => {
     speak('de');
 
     const profile = buildProfileDocumentFromConfig({
@@ -158,8 +158,27 @@ describe('the profile document sent to Home Assistant', () => {
     });
 
     expect(profile.customTabs).toEqual([
-      { id: 'default', name: 'Alle', entityIds: ['light.a'] },
+      { id: 'default', name: '', entityIds: ['light.a'] },
       { id: 'kitchen', name: 'Küche', entityIds: [] },
     ]);
+  });
+
+  it('is named by the desktop that applies it, in that desktop’s language', () => {
+    const {
+      buildConfigPatchFromApplyPayload,
+    } = require('../../packages/widget-renderer/src/profile-schema.js');
+    speak('de');
+    const sent = buildProfileDocumentFromConfig({
+      customTabs: [{ id: 'default', name: '', entityIds: ['light.a'] }],
+      activeTabId: 'default',
+    });
+
+    speak('en');
+    const patch = buildConfigPatchFromApplyPayload(
+      { schema_version: 1, profile_id: 'home', revision: 1, profile: sent },
+      {}
+    );
+
+    expect(patch.customTabs[0]).toMatchObject({ name: 'All', nameIsDefault: true });
   });
 });
