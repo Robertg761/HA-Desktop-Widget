@@ -6781,6 +6781,30 @@ function openAlertConfigModal(entityId) {
       group.insertBefore(specificStateGroup, threshold.parentElement);
       addField('alert-duration', 'Condition duration in seconds', 'number');
       addField('alert-cooldown', 'Notification cooldown in seconds', 'number');
+      // A State Change rule tells about an entity going offline unless this is off. The help
+      // names the built-in wait and limit (UNAVAILABLE_GRACE_MS and UNAVAILABLE_NOTIFY_INTERVAL_MS
+      // in alert-rules.js) so a flapping device's silence is not a surprise.
+      const unavailableRow = document.createElement('div');
+      unavailableRow.className = 'alert-switch-row';
+      const unavailableText = document.createElement('div');
+      unavailableText.className = 'alert-switch-text';
+      const unavailableLabel = document.createElement('label');
+      unavailableLabel.htmlFor = 'alert-notify-unavailable';
+      const unavailableLabelText = document.createElement('span');
+      unavailableLabelText.dataset.alertLabelKey = 'Notify when unavailable or unknown';
+      unavailableLabel.append(unavailableLabelText);
+      const unavailableHelp = document.createElement('div');
+      unavailableHelp.id = 'alert-notify-unavailable-help';
+      unavailableHelp.className = 'form-help';
+      unavailableHelp.dataset.alertLabelKey =
+        'Only after 30 seconds, and at most once every 15 minutes per device.';
+      unavailableText.append(unavailableLabel, unavailableHelp);
+      const unavailableSwitch = document.createElement('input');
+      unavailableSwitch.type = 'checkbox';
+      unavailableSwitch.id = 'alert-notify-unavailable';
+      unavailableSwitch.setAttribute('aria-describedby', unavailableHelp.id);
+      unavailableRow.append(unavailableText, unavailableSwitch);
+      group.append(unavailableRow);
       addField('alert-quiet-enabled', 'Enable quiet hours', 'checkbox');
       addField('alert-quiet-start', 'Quiet hours start, local time', 'time');
       addField('alert-quiet-end', 'Quiet hours end, local time', 'time');
@@ -6799,6 +6823,9 @@ function openAlertConfigModal(entityId) {
     modal.querySelector('#alert-threshold').value = alertConfig?.threshold ?? '';
     modal.querySelector('#alert-duration').value = alertConfig?.durationSeconds || 0;
     modal.querySelector('#alert-cooldown').value = alertConfig?.cooldownSeconds || 0;
+    // On unless the rule says otherwise, which is also how a rule saved before the switch reads.
+    modal.querySelector('#alert-notify-unavailable').checked =
+      alertConfig?.notifyOnUnavailable !== false;
     modal.querySelector('#alert-quiet-enabled').checked = !!alertConfig?.quietHours?.enabled;
     modal.querySelector('#alert-quiet-start').value = alertConfig?.quietHours?.start || '22:00';
     modal.querySelector('#alert-quiet-end').value = alertConfig?.quietHours?.end || '07:00';
@@ -6809,6 +6836,9 @@ function openAlertConfigModal(entityId) {
       modal.querySelector('#alert-threshold').parentElement.hidden = !['above', 'below'].includes(
         condition.value
       );
+      // Only a State Change rule tells about an entity going offline unasked. A rule for the state
+      // "unavailable" is that request itself, and a threshold rule ignores a missing reading.
+      modal.querySelector('.alert-switch-row').hidden = condition.value !== 'state-change';
     };
     condition.onchange = syncCondition;
     const quietEnabled = modal.querySelector('#alert-quiet-enabled');
@@ -6901,6 +6931,9 @@ async function saveAlert() {
         return;
       }
       alertConfig[field] = seconds;
+    }
+    if (alertConfig.onStateChange) {
+      alertConfig.notifyOnUnavailable = modal.querySelector('#alert-notify-unavailable').checked;
     }
     alertConfig.quietHours = {
       enabled: modal.querySelector('#alert-quiet-enabled').checked,

@@ -6321,6 +6321,120 @@ describe('Settings + Config Integration', () => {
         });
       });
 
+      describe('the switch for unavailable and unknown', () => {
+        const row = () => document.querySelector('#alert-config-modal .alert-switch-row');
+        const toggle = () => document.getElementById('alert-notify-unavailable');
+        const open = async (entityId) => {
+          document.querySelector(`.edit-alert[data-entity="${entityId}"]`).click();
+          await tick();
+        };
+        const chooseCondition = (value) => {
+          const condition = document.getElementById('alert-condition');
+          condition.value = value;
+          condition.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+        const savedRule = (entityId) =>
+          mockElectronAPI.updateConfig.mock.calls.at(-1)[0].entityAlerts.alerts[entityId];
+
+        beforeEach(() => {
+          state.CONFIG.entityAlerts.alerts['switch.kitchen'] = {
+            onStateChange: true,
+            notifyOnUnavailable: false,
+          };
+          settings.renderAlertsListInline();
+          mockElectronAPI.updateConfig.mockClear();
+          mockElectronAPI.updateConfig.mockImplementation(async (next) => next);
+        });
+        afterEach(() => mockElectronAPI.updateConfig.mockReset());
+
+        test('is on for a rule saved before it existed, with a label and a line of help', async () => {
+          await open('light.living_room');
+
+          expect(row().hidden).toBe(false);
+          expect(toggle().checked).toBe(true);
+          expect(row().querySelector('label').getAttribute('for')).toBe('alert-notify-unavailable');
+          expect(row().querySelector('label').textContent).toBe(
+            'Notify when unavailable or unknown'
+          );
+          const help = document.getElementById(toggle().getAttribute('aria-describedby'));
+          expect(help.className).toBe('form-help');
+          expect(help.textContent).toBe(
+            'Only after 30 seconds, and at most once every 15 minutes per device.'
+          );
+        });
+
+        test('says the wait and the limit the alerts really apply', async () => {
+          const {
+            UNAVAILABLE_GRACE_MS,
+            UNAVAILABLE_NOTIFY_INTERVAL_MS,
+          } = require('../../src/alert-rules.js');
+          await open('light.living_room');
+
+          expect(
+            document.getElementById(toggle().getAttribute('aria-describedby')).textContent
+          ).toBe(
+            `Only after ${UNAVAILABLE_GRACE_MS / 1000} seconds, and at most once every ${
+              UNAVAILABLE_NOTIFY_INTERVAL_MS / 60000
+            } minutes per device.`
+          );
+        });
+
+        test('shows a rule that has it off as off', async () => {
+          await open('switch.kitchen');
+          expect(toggle().checked).toBe(false);
+        });
+
+        test('is saved with the rule: off, and on when left alone', async () => {
+          await open('switch.kitchen');
+          toggle().checked = true;
+          await settings.saveAlert();
+          expect(savedRule('switch.kitchen').notifyOnUnavailable).toBe(true);
+
+          settings.closeAlertConfigModal();
+          await tick();
+          await open('light.living_room');
+          await settings.saveAlert();
+          expect(savedRule('light.living_room').notifyOnUnavailable).toBe(true);
+
+          settings.closeAlertConfigModal();
+          await tick();
+          await open('light.living_room');
+          toggle().checked = false;
+          await settings.saveAlert();
+          expect(savedRule('light.living_room').notifyOnUnavailable).toBe(false);
+          expect(savedRule('light.living_room').onStateChange).toBe(true);
+        });
+
+        test('is offered only for a State Change rule, and not saved for another', async () => {
+          await open('light.living_room');
+          toggle().checked = false;
+          for (const condition of ['specific-state', 'above', 'below']) {
+            chooseCondition(condition);
+            expect(row().hidden).toBe(true);
+          }
+          chooseCondition('state-change');
+          expect(row().hidden).toBe(false);
+
+          chooseCondition('above');
+          document.getElementById('alert-threshold').value = '20';
+          await settings.saveAlert();
+          expect(savedRule('light.living_room').onNumericThreshold).toBe(true);
+          expect(savedRule('light.living_room')).not.toHaveProperty('notifyOnUnavailable');
+        });
+
+        test('is not toggled by Enter, which saves the fields', async () => {
+          await open('light.living_room');
+          const event = new KeyboardEvent('keydown', {
+            key: 'Enter',
+            bubbles: true,
+            cancelable: true,
+          });
+          toggle().dispatchEvent(event);
+          expect(event.defaultPrevented).toBe(false);
+          expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+        });
+      });
+
       test('puts focus on the Add button when the alert it was removing is gone', async () => {
         const remove = document.querySelector('.remove-alert[data-entity="switch.kitchen"]');
         remove.focus();

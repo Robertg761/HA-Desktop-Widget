@@ -1706,5 +1706,7 @@
   "Command": "Command",
   "Try a device name, a command like \"turn on\", or a page name": "Try a device name, a command like \"turn on\", or a page name",
   "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).": "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).",
-  "Action chosen: {{action}}. It applies once you record a hotkey.": "Action chosen: {{action}}. It applies once you record a hotkey."
+  "Action chosen: {{action}}. It applies once you record a hotkey.": "Action chosen: {{action}}. It applies once you record a hotkey.",
+  "Notify when unavailable or unknown": "Notify when unavailable or unknown",
+  "Only after 30 seconds, and at most once every 15 minutes per device.": "Only after 30 seconds, and at most once every 15 minutes per device."
 }

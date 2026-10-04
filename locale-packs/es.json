@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.57",
+  "version": "1.2.58",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1799,6 +1799,8 @@
     "Command": "Comando",
     "Try a device name, a command like \"turn on\", or a page name": "Prueba con el nombre de un dispositivo, un comando como «encender» o el nombre de una página",
     "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).": "Activa o controla entidades desde cualquier lugar. Modificadores: Ctrl, Alt, Shift, Win, Command, Super (por ejemplo <code>Ctrl+Shift+A</code>).",
-    "Action chosen: {{action}}. It applies once you record a hotkey.": "Acción elegida: {{action}}. Se aplicará cuando grabes un atajo."
+    "Action chosen: {{action}}. It applies once you record a hotkey.": "Acción elegida: {{action}}. Se aplicará cuando grabes un atajo.",
+    "Notify when unavailable or unknown": "Notificar cuando no esté disponible o sea desconocido",
+    "Only after 30 seconds, and at most once every 15 minutes per device.": "Solo después de 30 segundos y como máximo una vez cada 15 minutos por dispositivo."
   }
 }

@@ -189,10 +189,11 @@ const alertsConfig = {
   },
 };
 
-async function openAlertConfig(ctx) {
+// The threshold alert by default; the state change one shows the switch for unavailable and unknown.
+async function openAlertConfig(ctx, entityId = 'sensor.office_temp') {
   await openSettingsTab(ctx, 'alerts');
   await ctx.waitForSelector('.edit-alert');
-  await ctx.click('.edit-alert[data-entity="sensor.office_temp"]');
+  await ctx.click(`.edit-alert[data-entity="${entityId}"]`);
   await ctx.waitForExpression(
     `!document.querySelector('#alert-config-modal')?.classList.contains('hidden')`
   );
@@ -606,6 +607,11 @@ const scenes = [
     config: alertsConfig,
     setup: openAlertConfig,
   },
+  {
+    name: 'dialog-alert-config-state-change',
+    config: alertsConfig,
+    setup: (ctx) => openAlertConfig(ctx, 'binary_sensor.front_door'),
+  },
 
   // The sensor pop-up with its history period, and the dialogs the Advanced page opens.
   { name: 'popup-sensor', setup: (ctx) => ctx.click(tile('sensor.office_temp')) },
@@ -1003,6 +1009,12 @@ const scenes = [
     setup: openAlertConfig,
   },
   {
+    name: 'de-dialog-alert-config-state-change',
+    ui: { language: 'de' },
+    config: alertsConfig,
+    setup: (ctx) => openAlertConfig(ctx, 'binary_sensor.front_door'),
+  },
+  {
     name: 'de-dialog-manage-quick-access',
     ui: { language: 'de' },
     setup: (ctx) => ctx.click('#manage-quick-controls-btn'),
@@ -1012,6 +1024,12 @@ const scenes = [
     ui: { language: 'ar' },
     config: alertsConfig,
     setup: openAlertConfig,
+  },
+  {
+    name: 'ar-dialog-alert-config-state-change',
+    ui: { language: 'ar' },
+    config: alertsConfig,
+    setup: (ctx) => openAlertConfig(ctx, 'binary_sensor.front_door'),
   },
   {
     name: 'ar-dialog-manage-quick-access',
@@ -1500,6 +1518,15 @@ const scenes = [
     config: alertsConfig,
     setup: async (ctx) => {
       await openAlertConfig(ctx);
+      await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
+    },
+  },
+  {
+    name: 'layout-dialog-alert-config-state-change',
+    size: DEFAULT_SIZE,
+    config: alertsConfig,
+    setup: async (ctx) => {
+      await openAlertConfig(ctx, 'binary_sensor.front_door');
       await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
     },
   },

@@ -216,6 +216,8 @@ Press **Ctrl+K** or **Cmd+K** to search entities and actions. Choose an explicit
 
 In **Settings > Alerts**, configure a state change, exact state, or numeric threshold. Optional duration and cooldown fields use seconds. A duration requires the condition to remain true continuously while the app observes it; disconnecting cancels pending alerts. Quiet hours use the computer's local time and can cross midnight. Matching updates do not repeat an alert until the condition clears and is reached again. Alerts suppressed by quiet hours or cooldown are not queued for later delivery. The app must be running and connected.
 
+A state change alert also tells you when the entity goes unavailable or unknown, but only if it stays that way for 30 seconds, and at most once every 15 minutes per entity, so a flapping device does not flood you. The rule's own duration, cooldown and quiet hours apply as well. Coming back is not announced unless the entity returns as something other than it was before the outage. Turn off **Notify when unavailable or unknown** on the rule to skip these. To be told about every outage, use an exact-state alert for `unavailable` or `unknown`, which follows only its own duration and cooldown.
+
 ### Sensor history
 
 Click a numeric sensor tile to open its larger chart. Select **1 hour**, **6 hours**, **24 hours**, or **7 days** and use **Refresh** to fetch new readings. Minimum, maximum, and sample average describe the recorded numeric values. The average is not time-weighted. History availability depends on Home Assistant's recorder and retention settings; an empty period and a failed request have separate messages.

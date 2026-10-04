@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.57",
+  "version": "1.2.58",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1799,6 +1799,8 @@
     "Command": "أمر",
     "Try a device name, a command like \"turn on\", or a page name": "جرّب اسم جهاز أو أمرًا مثل «تشغيل» أو اسم صفحة",
     "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).": "بدّل الكيانات أو تحكّم بها من أي مكان. مفاتيح التعديل: Ctrl وAlt وShift وWin وCommand وSuper (مثل <code>Ctrl+Shift+A</code>).",
-    "Action chosen: {{action}}. It applies once you record a hotkey.": "تم اختيار الإجراء: {{action}}. سيُطبَّق عند تسجيل اختصار."
+    "Action chosen: {{action}}. It applies once you record a hotkey.": "تم اختيار الإجراء: {{action}}. سيُطبَّق عند تسجيل اختصار.",
+    "Notify when unavailable or unknown": "الإشعار عندما يصبح الكيان غير متاح أو غير معروف",
+    "Only after 30 seconds, and at most once every 15 minutes per device.": "فقط بعد 30 ثانية، ومرة واحدة على الأكثر كل 15 دقيقة لكل جهاز."
   }
 }
