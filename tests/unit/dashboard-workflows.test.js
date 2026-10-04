@@ -1,4 +1,9 @@
-const { entitiesForArea, loadRoomRegistry } = require('../../src/room-dashboard.js');
+const {
+  defaultPageEntityIds,
+  entitiesForArea,
+  loadRoomRegistry,
+  pickStarterArea,
+} = require('../../src/room-dashboard.js');
 const {
   dashboardSnapshot,
   rememberDashboard,
@@ -63,6 +68,100 @@ describe('room dashboards', () => {
       code: 'registry_unavailable',
     });
     expect(request).toHaveBeenCalledTimes(6);
+  });
+});
+
+describe('first page starter', () => {
+  const entity = (entity_id, area_id, extra = {}) => ({ entity_id, area_id, ...extra });
+  const on = (...ids) => Object.fromEntries(ids.map((id) => [id, { state: 'on' }]));
+
+  it('starts from the room with the most things to control, not the first with any entity', () => {
+    // Attic holds one device setting; Kitchen and Living room hold real lights and switches.
+    const entities = [
+      entity('switch.attic_led_indicator', 'attic', { entity_category: 'config' }),
+      entity('light.kitchen_ceiling', 'kitchen'),
+      entity('switch.kitchen_coffee', 'kitchen'),
+      entity('light.living_lamp', 'living'),
+      entity('light.living_strip', 'living'),
+      entity('media_player.living_tv', 'living'),
+    ];
+    const areas = [
+      { area_id: 'living', name: 'Living room' },
+      { area_id: 'attic', name: 'Attic' },
+      { area_id: 'kitchen', name: 'Kitchen' },
+    ];
+    const states = on(...entities.map((item) => item.entity_id));
+    expect(pickStarterArea(areas, entities, [], states)).toBe('living');
+  });
+
+  it('breaks a tie by room name, whatever order the rooms arrive in', () => {
+    const entities = [entity('light.a', 'zeta'), entity('light.b', 'alpha')];
+    const areas = [
+      { area_id: 'zeta', name: 'Zeta room' },
+      { area_id: 'alpha', name: 'Alpha room' },
+    ];
+    expect(pickStarterArea(areas, entities, [], on('light.a', 'light.b'))).toBe('alpha');
+  });
+
+  it('shows every device when no room has anything to control', () => {
+    const entities = [
+      entity('sensor.attic_temperature', 'attic'),
+      entity('switch.attic_child_lock', 'attic', { entity_category: 'config' }),
+      entity('light.cellar_lamp', 'cellar'),
+    ];
+    const areas = [
+      { area_id: 'attic', name: 'Attic' },
+      { area_id: 'cellar', name: 'Cellar' },
+    ];
+    // The cellar lamp is unavailable, so it is not a start either.
+    const states = {
+      ...on('sensor.attic_temperature', 'switch.attic_child_lock'),
+      'light.cellar_lamp': { state: 'unavailable' },
+    };
+    expect(pickStarterArea(areas, entities, [], states)).toBe('');
+    expect(pickStarterArea([], entities, [], states)).toBe('');
+  });
+
+  it('counts the controllable domains a home really has', () => {
+    const ids = [
+      'lock.front_door',
+      'scene.movie',
+      'script.goodnight',
+      'vacuum.robot',
+      'humidifier.bedroom',
+      'water_heater.tank',
+      'sensor.power',
+      'binary_sensor.door',
+      'button.restart',
+    ];
+    expect(defaultPageEntityIds(ids, [], on(...ids))).toEqual(ids.slice(0, 6));
+  });
+
+  it('leaves out device settings and what is not ready, and keeps state-only entities', () => {
+    const registry = [
+      entity('switch.lamp_led_indicator', null, { entity_category: 'config' }),
+      entity('switch.lamp_diagnostic', null, { entity_category: 'diagnostic' }),
+      entity('light.lamp', null, { entity_category: null }),
+    ];
+    const states = {
+      ...on('switch.lamp_led_indicator', 'switch.lamp_diagnostic', 'light.lamp', 'fan.state_only'),
+      'light.broken': { state: 'unavailable' },
+      'light.waking': { state: 'unknown' },
+    };
+    const ids = [
+      'switch.lamp_led_indicator',
+      'switch.lamp_diagnostic',
+      'light.lamp',
+      'fan.state_only',
+      'light.broken',
+      'light.waking',
+    ];
+    expect(defaultPageEntityIds(ids, registry, states)).toEqual(['light.lamp', 'fan.state_only']);
+  });
+
+  it('caps the suggestion at the limit it is given', () => {
+    const ids = Array.from({ length: 12 }, (_, index) => `light.l${index}`);
+    expect(defaultPageEntityIds(ids, [], on(...ids), 8)).toEqual(ids.slice(0, 8));
   });
 });
 

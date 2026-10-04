@@ -9,8 +9,10 @@ import {
 import { mountSensorHistoryDetail, summarizeHistory } from './sensor-history-detail.js';
 import { rememberDashboard, dashboardSnapshot } from './dashboard-history.js';
 import {
+  defaultPageEntityIds,
   entitiesForArea,
   loadRoomRegistry,
+  pickStarterArea,
   selectableEntityIds,
   waitForRoomConnection,
 } from './room-dashboard.js';
@@ -1368,12 +1370,12 @@ function showAddPageModal({ starter = false } = {}) {
       roomStatus.textContent = registry.areas.length ? '' : t('No rooms found in Home Assistant.');
       loadRooms.hidden = true;
       if (starter) {
-        roomSelect.value =
-          registry.areas.find(
-            (area) =>
-              entitiesForArea(area.area_id, registry.entities, registry.devices, availableStates)
-                .length
-          )?.area_id || '';
+        roomSelect.value = pickStarterArea(
+          registry.areas,
+          registry.entities,
+          registry.devices,
+          availableStates
+        );
         roomSelect.onchange();
         if (registryUnavailable) {
           roomStatus.textContent = t('Rooms are unavailable. Choose from your devices instead.');
@@ -1431,16 +1433,9 @@ function showAddPageModal({ starter = false } = {}) {
         .getEntityDisplayName(availableStates[a])
         .localeCompare(utils.getEntityDisplayName(availableStates[b]))
     );
-    // Suggest up to eight available devices you can control; sensors and buttons stay optional.
-    const defaults = new Set(
-      ids
-        .filter(
-          (id) =>
-            /^(light|switch|climate|fan|cover|media_player)\./.test(id) &&
-            !['unknown', 'unavailable'].includes(availableStates[id].state)
-        )
-        .slice(0, 8)
-    );
+    // Suggest up to eight available devices you can control; sensors, buttons and a device's own
+    // settings stay optional.
+    const defaults = new Set(defaultPageEntityIds(ids, registry.entities, availableStates, 8));
     deviceSearch.hidden = !ids.length;
     ids.forEach((id) => {
       const label = document.createElement('label');
