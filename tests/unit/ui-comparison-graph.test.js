@@ -48,7 +48,7 @@ const state = require('../../src/state.js').default;
 const NOW = Date.now();
 const HOUR = 60 * 60 * 1000;
 
-// Mirrors COMPARISON_GRAPH_REDRAW_DEBOUNCE_MS in ui.js: live updates coalesce into one repaint.
+// Mirrors COMPARISON_GRAPH_REDRAW_INTERVAL_MS in ui.js: live updates coalesce into one repaint.
 const REDRAW_DEBOUNCE_MS = 250;
 
 // The sensor history cache is module state keyed by entity id and throttled for 5 minutes, so each
@@ -653,5 +653,154 @@ describe('comparison graph tile', () => {
       (el) => el.textContent
     );
     expect(values[0]).toBe('21.5 °C');
+  });
+
+  describe('live repaints', () => {
+    // Two graphs, each with a sensor of its own.
+    const twoGraphs = () => {
+      const a = makeScenario();
+      const first = { ...state.STATES };
+      const b = makeScenario();
+      // makeScenario replaces every state, so the first pair is put back beside the second.
+      state.setStates({ ...first, ...state.STATES });
+      state.setConfig({
+        homeAssistant: { url: 'http://ha.local', token: 'x' },
+        comparisonGraphs: [
+          { id: 'graph:a', name: 'A', span: 2, entityIds: [a.warmId] },
+          { id: 'graph:b', name: 'B', span: 2, entityIds: [b.warmId] },
+        ],
+        customTabs: [{ id: 'default', name: 'All', entityIds: ['graph:a', 'graph:b'] }],
+        activeTabId: 'default',
+        favoriteEntities: ['graph:a', 'graph:b'],
+        primaryCards: ['none', 'none'],
+        ui: {},
+      });
+      mockRequest.mockResolvedValue(
+        historyResponse({
+          [a.warmId]: [
+            [20, NOW - 3 * HOUR],
+            [21, NOW - 1 * HOUR],
+          ],
+          [b.warmId]: [
+            [10, NOW - 3 * HOUR],
+            [11, NOW - 1 * HOUR],
+          ],
+        })
+      );
+      return { a: a.warmId, b: b.warmId };
+    };
+    const legendOf = (graphId) =>
+      document
+        .querySelector(`.comparison-graph-tile[data-entity-id="${graphId}"]`)
+        .querySelector('.comparison-graph-legend-value').textContent;
+    const report = (entityId, value) => {
+      const next = { ...state.STATES[entityId], state: String(value) };
+      state.setEntityState(next);
+      ui.updateEntityInUI(next);
+    };
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    it('repaints every graph that changed in one burst, not only the last one', async () => {
+      const { a, b } = twoGraphs();
+      ui.renderActiveTab();
+      await flush();
+      expect(legendOf('graph:a')).toBe('21.4 °C');
+      report(a, 25);
+      await wait(50);
+      report(b, 9);
+      await wait(REDRAW_DEBOUNCE_MS + 100);
+      // The first graph's repaint was cancelled by the second sensor's update, and it kept the old
+      // end point and legend until one of its own sensors reported again.
+      expect(legendOf('graph:a')).toBe('25 °C');
+      expect(legendOf('graph:b')).toBe('9 °C');
+    });
+
+    it('repaints while sensors keep reporting faster than the delay', async () => {
+      const { a } = twoGraphs();
+      ui.renderActiveTab();
+      await flush();
+      // A reading every 80 ms never leaves a quiet moment; a repaint that waits for one waits
+      // for the readings to stop.
+      for (let value = 22; value < 30; value += 1) {
+        report(a, value);
+        await wait(80);
+      }
+      expect(legendOf('graph:a')).not.toBe('21.4 °C');
+      await wait(REDRAW_DEBOUNCE_MS + 100);
+      expect(legendOf('graph:a')).toBe('29 °C');
+    });
+  });
+
+  describe('the hover readout', () => {
+    // jsdom lays nothing out, so the frame, the plot and the tooltip are given the sizes they have
+    // in a two-column graph: a 260px plot and a tooltip about 140px wide and 100px high.
+    const hover = async (clientX, { tooltipHeight = 100 } = {}) => {
+      const { warmId, coldId } = makeScenario();
+      mockRequest.mockResolvedValue(
+        historyResponse({
+          [warmId]: [
+            [20, NOW - 3 * HOUR],
+            [22, NOW - 1 * HOUR],
+          ],
+          [coldId]: [[5, NOW - 2 * HOUR]],
+        })
+      );
+      setupConfig([warmId, coldId]);
+      ui.renderActiveTab();
+      await flush();
+      const tile = document.querySelector('.comparison-graph-tile');
+      const frame = tile.querySelector('.comparison-graph-frame');
+      const tooltip = tile.querySelector('.comparison-graph-tooltip');
+      const box = { left: 0, top: 0, width: 260, height: 90 };
+      tile.querySelector('.comparison-graph-svg').getBoundingClientRect = () => box;
+      frame.getBoundingClientRect = () => box;
+      Object.defineProperty(frame, 'clientWidth', { value: 260 });
+      Object.defineProperty(frame, 'clientHeight', { value: 90 });
+      Object.defineProperty(tooltip, 'offsetWidth', { value: 140 });
+      Object.defineProperty(tooltip, 'offsetHeight', { value: tooltipHeight });
+      frame.dispatchEvent(new MouseEvent('pointermove', { clientX, bubbles: true }));
+      return {
+        tooltip,
+        crosshair: tile.querySelector('.comparison-graph-crosshair'),
+      };
+    };
+
+    it('sits to the right of the pointer when there is room, and to its left when there is not', async () => {
+      const left = await hover(65);
+      expect(left.tooltip.style.left).toBe('79px');
+      const right = await hover(195);
+      // 195 - 14 - 140: the tooltip ends before the crosshair.
+      expect(right.tooltip.style.left).toBe('41px');
+    });
+
+    it('keeps the crosshair clear of it wherever the pointer is', async () => {
+      for (const clientX of [10, 65, 130, 150, 195, 250]) {
+        const { tooltip, crosshair } = await hover(clientX);
+        const line = Number(crosshair.getAttribute('x1')) + 4;
+        const start = parseFloat(tooltip.style.left);
+        const covers = line >= start && line <= start + 140;
+        // Room for it beside the pointer except in the last few pixels either side of the middle,
+        // where a 140px tooltip fits on neither side of a 260px plot.
+        if (clientX !== 130 && clientX !== 150)
+          expect({ clientX, covers }).toEqual({ clientX, covers: false });
+      }
+    });
+
+    it('rises over the header, not down over the legend, when it is taller than the plot', async () => {
+      const { tooltip } = await hover(65, { tooltipHeight: 112 });
+      expect(tooltip.style.top).toBe('-22px');
+      const short = await hover(65, { tooltipHeight: 60 });
+      expect(short.tooltip.style.top).toBe('0px');
+    });
+
+    it('puts the crosshair under the pointer, allowing for the margin round the plot', async () => {
+      // The plot is a 252-unit stretch inside a 260-unit box with a 4-unit margin: the pointer at
+      // the left edge is the plot's start, in the middle it is the plot's middle, at the right edge
+      // its end.
+      expect((await hover(0)).crosshair.getAttribute('x1')).toBe('0');
+      expect((await hover(130)).crosshair.getAttribute('x1')).toBe('126');
+      expect((await hover(260)).crosshair.getAttribute('x1')).toBe('252');
+      expect((await hover(65)).crosshair.getAttribute('x1')).toBe('61');
+    });
   });
 });

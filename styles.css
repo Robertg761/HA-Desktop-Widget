@@ -7339,6 +7339,8 @@ body.theme-light:not(.high-contrast)
   color: var(--text-tertiary);
 }
 
+/* The script sets left and top beside the pointer, in physical pixels: the plot is not mirrored in
+   right-to-left layouts, so neither is the tooltip. */
 .comparison-graph-tooltip {
   position: absolute;
   top: 0;
@@ -7358,11 +7360,6 @@ body.theme-light:not(.high-contrast)
   /* The tile centres its text; the rows are start-aligned, so the heading is too. */
   text-align: start;
   white-space: nowrap;
-}
-
-.comparison-graph-tooltip.align-right {
-  left: auto;
-  right: 0;
 }
 
 .comparison-graph-tooltip-time {
@@ -7396,7 +7393,9 @@ body.theme-light:not(.high-contrast)
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 160px;
+  /* Narrow enough that the tooltip fits beside the pointer on a two-tile graph; the legend below
+     carries the whole name. */
+  max-width: 80px;
 }
 
 .comparison-graph-warning {

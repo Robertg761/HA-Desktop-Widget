@@ -179,7 +179,9 @@ const COMPARISON_GRAPH_WIDTH = 260;
 const COMPARISON_GRAPH_HEIGHT = 90;
 // The plot is inset so 2px strokes and the end-dot rings aren't clipped by the viewBox edge.
 const COMPARISON_GRAPH_INSET = 4;
-const COMPARISON_GRAPH_REDRAW_DEBOUNCE_MS = 250;
+const COMPARISON_GRAPH_REDRAW_INTERVAL_MS = 250;
+// How often a sensor dialog's value is spoken to a screen reader, whatever its update rate.
+const SENSOR_ANNOUNCE_INTERVAL_MS = 8000;
 const DESKTOP_PIN_CLIMATE_MODE_PRIORITY = [
   'off',
   'heat',
@@ -2262,14 +2264,19 @@ function addButtonsToElement(item) {
           e.preventDefault();
 
           const entityId = item.dataset.entityId;
-          const entity = state.STATES[entityId];
-          const entityName = entity ? utils.getEntityDisplayName(entity) : entityId;
-
-          const confirmed = await uiUtils.showConfirm(
-            t('Remove from Quick Access'),
-            t('Remove "{{name}}" from Quick Access?', { name: entityName }),
-            { confirmText: t('Remove'), confirmClass: 'btn-danger' }
-          );
+          // Removing a graph tile deletes the graph, so it says that, with the words of the
+          // editor's own Delete. Any other tile is named as the tile shows itself: its custom
+          // name, or the name a missing entity's placeholder carries, never a bare id.
+          const confirmed = await (isComparisonGraphId(entityId)
+            ? uiUtils.showConfirm(t('Delete graph'), t('This removes the graph and its tile.'), {
+                confirmText: t('Delete'),
+                confirmClass: 'btn-danger',
+              })
+            : uiUtils.showConfirm(
+                t('Remove from Quick Access'),
+                t('Remove "{{name}}" from Quick Access?', { name: getQuickAccessTileLabel(item) }),
+                { confirmText: t('Remove'), confirmClass: 'btn-danger' }
+              ));
 
           if (confirmed) {
             await removeFromQuickAccess(entityId);
@@ -4627,16 +4634,42 @@ function attachComparisonGraphHover(frame, plot, entries) {
     crosshair.setAttribute('visibility', 'hidden');
   };
 
+  // Beside the pointer, on whichever side has room, so the crosshair and the curves being read stay
+  // visible. A tooltip taller than the plot (four series or more) ends where the plot does and rises
+  // over the header instead of dropping over the legend.
+  const placeTooltip = (pointerX) => {
+    const frameWidth = frame.clientWidth;
+    const frameHeight = frame.clientHeight;
+    const width = tooltip.offsetWidth;
+    const height = tooltip.offsetHeight;
+    const gap = 14;
+    let left = pointerX + gap;
+    if (left + width > frameWidth) {
+      left = pointerX - gap - width;
+      // Room on neither side: sit at the edge with more of it left.
+      if (left < 0) left = pointerX > frameWidth / 2 ? 0 : frameWidth - width;
+    }
+    tooltip.style.left = `${Math.max(0, Math.min(left, frameWidth - width))}px`;
+    tooltip.style.top = `${Math.min(0, frameHeight - height)}px`;
+  };
+
   const move = (event) => {
     const bounds = svg.getBoundingClientRect();
     if (!bounds.width) return;
 
     const ratio = Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width));
-    const timestamp = timeDomain.start + (timeDomain.end - timeDomain.start) * ratio;
+    // The plot sits inside the viewBox's margin, so the pointer's place on the plot is its place in
+    // the box less that margin. Without it the crosshair trailed the pointer by up to 14px at the
+    // edges and the time was read from the wrong spot.
+    const plotX = Math.min(
+      plotWidth,
+      Math.max(0, ratio * COMPARISON_GRAPH_WIDTH - COMPARISON_GRAPH_INSET)
+    );
+    const timestamp = timeDomain.start + (timeDomain.end - timeDomain.start) * (plotX / plotWidth);
 
     crosshair.setAttribute('visibility', 'visible');
-    crosshair.setAttribute('x1', String(ratio * plotWidth));
-    crosshair.setAttribute('x2', String(ratio * plotWidth));
+    crosshair.setAttribute('x1', String(plotX));
+    crosshair.setAttribute('x2', String(plotX));
 
     // One tooltip lists every series at this time, so the pointer never has to land on a line.
     tooltip.textContent = '';
@@ -4685,7 +4718,7 @@ function attachComparisonGraphHover(frame, plot, entries) {
     });
 
     tooltip.hidden = false;
-    tooltip.classList.toggle('align-right', ratio > 0.5);
+    placeTooltip(event.clientX - frame.getBoundingClientRect().left);
   };
 
   frame.addEventListener('pointermove', move);
@@ -4860,9 +4893,16 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
 }
 
 let comparisonGraphRedrawTimer = null;
+// Graphs waiting for the next repaint. Each call only knows the graphs its own entity is in, and
+// its reading is already in the history cache, so a graph forgotten here would keep a stale curve
+// and legend until one of its own sensors reported again.
+const pendingComparisonGraphIds = new Set();
 
 /**
- * Repaints graph tiles in place after a live state change, debounced so bursts coalesce.
+ * Repaints graph tiles in place after a live state change. Changes inside one window coalesce into
+ * a single repaint of every graph that changed, and the window is a throttle, not a debounce: a
+ * graph whose sensors report faster than the window still repaints once per window instead of
+ * waiting for them to go quiet.
  *
  * @param {Object} entity - The Home Assistant entity that just changed.
  * @returns {void}
@@ -4894,19 +4934,22 @@ function refreshComparisonGraphTiles(entity) {
     }
   }
 
-  if (comparisonGraphRedrawTimer) clearTimeout(comparisonGraphRedrawTimer);
+  graphs.forEach((graph) => pendingComparisonGraphIds.add(graph.id));
+  if (comparisonGraphRedrawTimer) return;
   comparisonGraphRedrawTimer = setTimeout(() => {
     comparisonGraphRedrawTimer = null;
+    const graphIds = [...pendingComparisonGraphIds];
+    pendingComparisonGraphIds.clear();
     // Matched on the dataset rather than through a selector: a graph id contains a colon, and
     // building a selector out of it drags in CSS.escape — which this timer callback runs outside
     // of any try/catch, so a host without it takes the whole repaint down with a ReferenceError.
     const tiles = [...document.querySelectorAll('.comparison-graph-tile')];
-    graphs.forEach((graph) => {
-      const tile = tiles.find((node) => node.dataset.entityId === graph.id);
-      const current = getComparisonGraphById(graph.id);
+    graphIds.forEach((graphId) => {
+      const tile = tiles.find((node) => node.dataset.entityId === graphId);
+      const current = getComparisonGraphById(graphId);
       if (tile && current) renderComparisonGraphBody(tile, current);
     });
-  }, COMPARISON_GRAPH_REDRAW_DEBOUNCE_MS);
+  }, COMPARISON_GRAPH_REDRAW_INTERVAL_MS);
 }
 
 /**
@@ -5088,6 +5131,11 @@ function showComparisonGraphModal(graphId) {
     list.setAttribute('aria-busy', String(inFlight));
   };
 
+  // The sensors the graph had when the editor opened lead the list, and stay where they are as
+  // sensors are added and removed: re-sorting the selection to the top on every change moved the
+  // row that was just clicked away and slid its neighbour under the pointer.
+  const openedWith = new Set(initial.entityIds);
+
   const reconcileEditor = () => {
     const current = getComparisonGraphById(graphId);
     if (!current) {
@@ -5174,8 +5222,8 @@ function showComparisonGraphModal(graphId) {
       })
       .filter((item) => item.score > 0)
       .sort((a, b) => {
-        const aSelected = selected.has(a.entity.entity_id);
-        const bSelected = selected.has(b.entity.entity_id);
+        const aSelected = openedWith.has(a.entity.entity_id);
+        const bSelected = openedWith.has(b.entity.entity_id);
         if (aSelected !== bSelected) return aSelected ? -1 : 1;
 
         // Surface the weather entity near the top: it is the outside temperature, which is the
@@ -5223,7 +5271,7 @@ function showComparisonGraphModal(graphId) {
       const unit = getGraphSeriesUnitFor(entity);
 
       const item = document.createElement('div');
-      item.className = 'entity-item';
+      item.className = isSelected ? 'entity-item selected' : 'entity-item';
 
       const main = document.createElement('div');
       main.className = 'entity-item-main';
@@ -5254,6 +5302,14 @@ function showComparisonGraphModal(graphId) {
       info.appendChild(meta);
       main.appendChild(icon);
       main.appendChild(info);
+
+      // A sensor in the graph carries the colour of its line, as in the legend.
+      if (isSelected) {
+        const swatch = document.createElement('span');
+        swatch.className = 'comparison-graph-swatch';
+        swatch.style.background = `var(--chart-series-${getSeriesColorSlot(graph.entityIds.indexOf(entityId))})`;
+        main.appendChild(swatch);
+      }
 
       // The unit gets its own element rather than being appended to the entity id — ids are long
       // enough that the ellipsis would swallow it, and the unit is the thing you need to see
