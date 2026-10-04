@@ -498,6 +498,38 @@ describe('stylesheet one-offs', () => {
     });
   });
 
+  describe('the first-run wizard', () => {
+    const step = (content) =>
+      `<div class="first-run-panel"><div class="first-run-content">${content}</div><div class="first-run-status connection-status-empty" role="status"></div></div>`;
+
+    it.each([
+      ['the URL step', '<label class="first-run-label">Home Assistant URL</label><input />'],
+      [
+        'the Authorize step',
+        '<p class="first-run-security-note">Your password never enters this app.</p>',
+      ],
+    ])('keeps room for a status line of two lines on %s, even when it is empty', (_, content) => {
+      render(step(content));
+      const status = document.querySelector('.first-run-status');
+      expect(resolvedValue(status, 'position')).toBe('static');
+      expect(resolvedValue(status, 'min-height')).toBe('2.8em');
+    });
+
+    it('keeps the same room once it has a message', () => {
+      render(step('<label class="first-run-label">Home Assistant URL</label>'));
+      const status = document.querySelector('.first-run-status');
+      status.classList.remove('connection-status-empty');
+      expect(resolvedValue(status, 'min-height')).toBe('2.8em');
+    });
+
+    it('leaves the welcome step, which has no status line to show, as it was', () => {
+      render(step('<p class="first-run-copy">Connect your server.</p>'));
+      const status = document.querySelector('.first-run-status');
+      expect(resolvedValue(status, 'position')).toBe('absolute');
+      expect(resolvedValue(status, 'min-height')).toBeNull();
+    });
+  });
+
   describe('reduced motion keeps the waiting indicators moving', () => {
     // The blanket "no animation" rule gives every animation 0.01ms and one iteration. A spinner or a
     // progress bar frozen that way reads as a stalled app, and the bar as a finished one.

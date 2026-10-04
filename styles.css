@@ -9156,6 +9156,24 @@ body.theme-light:not(.high-contrast)
   margin-inline-end: auto;
 }
 
+/* The URL and Authorize steps can say something under their text (a rejected address, the pairing's
+   progress). The card is centred, so a line that appeared made it taller and moved the buttons by
+   half its height under the pointer. These two steps keep room for two lines whether or not there
+   is one to show. */
+.first-run-content:has(.first-run-label, .first-run-security-note) + .first-run-status {
+  min-height: 2.8em;
+}
+
+.first-run-content:has(.first-run-label, .first-run-security-note)
+  + .first-run-status.connection-status-empty {
+  position: static;
+  width: auto;
+  height: auto;
+  margin-top: var(--space-3);
+  overflow: visible;
+  clip-path: none;
+}
+
 .widget-state-panel {
   margin: 0;
   padding: var(--space-6) var(--space-4);
