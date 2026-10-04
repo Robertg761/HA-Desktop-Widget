@@ -1918,7 +1918,12 @@ async function refreshLocaleBootstrap() {
   if (!IS_DESKTOP_PIN_MODE) refreshTrayEntityIcons({ force: true });
   translateDocument(document);
   const locale = bootstrap?.activeLocale || '';
-  if (appliedLocale !== null && locale !== appliedLocale) refreshConnectionStatusLanguage();
+  if (appliedLocale !== null && locale !== appliedLocale) {
+    refreshConnectionStatusLanguage();
+    // An open device dialog was written in the old language and has no markers to translate it by.
+    // (A newer pack for the same language leaves it open: its words are nearly the same.)
+    ui.closeAllEntityDetailDialogs?.();
+  }
   appliedLocale = locale;
   return bootstrap;
 }

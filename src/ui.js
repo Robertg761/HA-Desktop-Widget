@@ -548,9 +548,15 @@ function ensureEntityCacheScope({ force = false } = {}) {
   desktopPinLightBrightnessTimers.clear();
   [...desktopPinControlInteractionState.keys()].forEach(clearDesktopPinControlInteraction);
   [...desktopPinLightInteractionState.keys()].forEach(clearDesktopPinLightInteraction);
-  [...entityDetailClosers].forEach((close) => close());
+  closeAllEntityDetailDialogs();
   return entityCacheGeneration;
 }
+// A device dialog is built once, with its words in place, so after a language change it would go on
+// speaking the old language until closed. The renderer closes them when the language changes.
+function closeAllEntityDetailDialogs() {
+  [...entityDetailClosers].forEach((close) => close());
+}
+
 const WEATHER_UNAVAILABLE_STATES = new Set(['unknown', 'unavailable']);
 
 function generateQuickAccessViewId() {
@@ -15573,6 +15579,7 @@ function removeEscapeKeyListener() {
 
 export {
   requestAlarmCode,
+  closeAllEntityDetailDialogs,
   ensureEntityCacheScope,
   showAddPageModal,
   restoreDashboard,

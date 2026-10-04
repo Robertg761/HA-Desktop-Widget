@@ -90,6 +90,7 @@ const eventListeners = {
   desktopPinEditModeEnded: [],
   entityTileHotkeyRequested: [],
   desktopCompanionStateChanged: [],
+  localePacksUpdated: [],
 };
 
 /**
@@ -481,6 +482,13 @@ function createMockElectronAPI() {
         if (index > -1) eventListeners.desktopCompanionStateChanged.splice(index, 1);
       };
     }),
+    onLocalePacksUpdated: jest.fn((callback) => {
+      eventListeners.localePacksUpdated.push(callback);
+      return () => {
+        const index = eventListeners.localePacksUpdated.indexOf(callback);
+        if (index > -1) eventListeners.localePacksUpdated.splice(index, 1);
+      };
+    }),
   };
 }
 
@@ -582,6 +590,7 @@ function resetMockElectronAPI() {
   eventListeners.desktopPinEditModeEnded = [];
   eventListeners.entityTileHotkeyRequested = [];
   eventListeners.desktopCompanionStateChanged = [];
+  eventListeners.localePacksUpdated = [];
 }
 
 /**
