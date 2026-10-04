@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.57",
+  "version": "1.2.58",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1781,6 +1781,7 @@
     "Keep editing": "संपादन जारी रखें",
     "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "{{count}} में से पहले {{shown}} आइकन दिखाए जा रहे हैं। सीमित करने के लिए टाइप करें।",
     "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "पुनर्व्यवस्थित मोड सक्षम। क्रम बदलने के लिए खींचें या Alt+तीर कुंजियाँ दबाएं। पूरा करने के लिए Esc दबाएं।",
-    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "पुनर्व्यवस्थित मोड सक्षम। क्रम बदलने के लिए खींचें, चुनें या Alt+तीर कुंजियाँ दबाएं। पिन करने, नाम बदलने या हटाने के लिए टाइल के बटन उपयोग करें। पूरा करने के लिए Esc दबाएं।"
+    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "पुनर्व्यवस्थित मोड सक्षम। क्रम बदलने के लिए खींचें, चुनें या Alt+तीर कुंजियाँ दबाएं। पिन करने, नाम बदलने या हटाने के लिए टाइल के बटन उपयोग करें। पूरा करने के लिए Esc दबाएं।",
+    "Waiting for you to approve HA Desktop Widget in your browser. If it did not open, choose Cancel, then Connect again.": "आपके ब्राउज़र में HA Desktop Widget को स्वीकृति देने की प्रतीक्षा है। यदि ब्राउज़र नहीं खुला, तो रद्द करें चुनें, फिर दोबारा कनेक्ट करें चुनें।"
   }
 }

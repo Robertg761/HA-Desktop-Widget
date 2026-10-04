@@ -82,6 +82,7 @@ const FAVORITE_STALE_ENTITY_PRESERVE_MS = 15 * 60 * 1000;
 // it were live. After this it shows as unavailable until Home Assistant reports it again.
 const FAVORITE_STALE_LIVE_MS = 60 * 1000;
 const STATE_CHANGED_HIDDEN_FLUSH_DELAY_MS = 50;
+const WIZARD_WAIT_NOTICE_DELAY_MS = 4000;
 const WINDOW_QUERY = new URLSearchParams(window.location.search);
 const WINDOW_MODE = WINDOW_QUERY.get('mode') || '';
 const IS_DESKTOP_PIN_MODE = WINDOW_MODE === 'desktop-pin';
@@ -1192,6 +1193,15 @@ function createWizardText(tagName, className, id, text) {
   return element;
 }
 
+// Back moves between steps, so the first step and the last have none to offer. While authorization
+// waits in the browser the same button is the way out of it.
+function syncWizardBackButton() {
+  const backButton = firstRunWizard?.backButton;
+  if (!backButton) return;
+  backButton.hidden = firstRunWizard.step === 0 || firstRunWizard.step === 3;
+  backButton.textContent = firstRunWizard.finishInProgress ? t('Cancel') : t('Back');
+}
+
 function renderWizardStep() {
   if (!firstRunWizard?.content) return;
   const stepIndex = firstRunWizard.step;
@@ -1305,9 +1315,7 @@ function renderWizardStep() {
     );
   }
 
-  if (firstRunWizard.backButton) {
-    firstRunWizard.backButton.disabled = stepIndex === 0 || stepIndex === 3;
-  }
+  syncWizardBackButton();
   firstRunWizard.skipButton.textContent = stepIndex === 3 ? t('Skip for now') : t('Full Settings');
   if (firstRunWizard.nextButton) {
     firstRunWizard.nextButton.textContent =
@@ -1326,10 +1334,12 @@ function renderWizardStep() {
 async function finishFirstRunWizard() {
   if (!firstRunWizard || firstRunWizard.finishInProgress) return;
   firstRunWizard.finishInProgress = true;
+  syncWizardBackButton();
   if (firstRunWizard.nextButton) {
     firstRunWizard.nextButton.disabled = true;
     firstRunWizard.nextButton.setAttribute('aria-busy', 'true');
   }
+  let waitNoticeTimer = null;
 
   try {
     // Inside the try: a throw here used to skip the finally, stranding the button disabled and
@@ -1341,6 +1351,17 @@ async function finishFirstRunWizard() {
       return;
     }
     setWizardStatus(t('Opening Home Assistant for authorization...'), 'pending');
+    // Approval can take the five minutes the pairing is allowed. Once the browser has had time to
+    // open, say what the wizard is waiting for, and what to do if no browser appeared.
+    waitNoticeTimer = window.setTimeout(() => {
+      if (!firstRunWizard?.finishInProgress || firstRunWizard.cancelRequested) return;
+      setWizardStatus(
+        t(
+          'Waiting for you to approve HA Desktop Widget in your browser. If it did not open, choose Cancel, then Connect again.'
+        ),
+        'pending'
+      );
+    }, WIZARD_WAIT_NOTICE_DELAY_MS);
     const result = await startHomeAssistantPairing(window.electronAPI, normalizedUrl);
     if (!result?.config) throw new Error(t('Home Assistant did not return a saved connection.'));
     applyRendererConfig(result.config);
@@ -1371,9 +1392,11 @@ async function finishFirstRunWizard() {
       uiUtils.showToast(message, 'error', 6000);
     }
   } finally {
+    window.clearTimeout(waitNoticeTimer);
     if (firstRunWizard) {
       firstRunWizard.finishInProgress = false;
       firstRunWizard.cancelRequested = false;
+      syncWizardBackButton();
       if (firstRunWizard.nextButton) {
         firstRunWizard.nextButton.disabled = false;
         firstRunWizard.nextButton.setAttribute('aria-busy', 'false');
@@ -1444,8 +1467,11 @@ function ensureFirstRunWizard() {
     skipWizardToSettings
   );
   const backButton = createActionButton(t('Back'), 'btn btn-secondary', async () => {
+    // While authorization waits this is Cancel: it stops the wait and stays on the step, ready to
+    // connect again. Otherwise it goes back one step.
+    const cancelling = firstRunWizard.finishInProgress;
     await cancelFirstRunAuthorization();
-    firstRunWizard.step = Math.max(0, firstRunWizard.step - 1);
+    if (!cancelling) firstRunWizard.step = Math.max(0, firstRunWizard.step - 1);
     renderWizardStep();
   });
   const nextButton = createActionButton(t('Next'), 'btn btn-primary', async () => {

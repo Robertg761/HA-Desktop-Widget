@@ -970,7 +970,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockState.CONFIG.homeAssistant.token).toBe('YOUR_LONG_LIVED_ACCESS_TOKEN');
   });
 
-  it('keeps the pairing message and busy button when stepping back mid-authorization', async () => {
+  it('keeps the pairing message and busy button until a cancelled authorization has stopped', async () => {
     let releasePairing;
     await loadRenderer({
       configureApi(api) {
@@ -987,22 +987,23 @@ describe('Renderer first-run Home Assistant authorization', () => {
 
     // Authorization runs for minutes in the browser. Leaving the step used to wipe the only
     // sign it was running, stranding a disabled button with nothing to explain it.
-    await clickButton('Back');
+    await clickButton('Cancel');
 
     const status = document.querySelector('.first-run-status');
     expect(status.textContent).toContain('Opening Home Assistant for authorization');
     expect(status.dataset.status).toBe('pending');
-    const next = Array.from(document.querySelectorAll('button')).find(
-      (candidate) => candidate.textContent === 'Next'
+    // Cancel stays on the Authorize step, whose button is Connect.
+    const connect = Array.from(document.querySelectorAll('button')).find(
+      (candidate) => candidate.textContent === 'Connect'
     );
-    expect(next.disabled).toBe(true);
-    expect(next.getAttribute('aria-busy')).toBe('true');
+    expect(connect.disabled).toBe(true);
+    expect(connect.getAttribute('aria-busy')).toBe('true');
 
     releasePairing?.({ success: true, config: oauthConfig() });
     await flushAsync();
   });
 
-  it('cancels the pairing when the user steps back out of authorization', async () => {
+  it('cancels the pairing when the user cancels out of authorization', async () => {
     await loadRenderer({
       configureApi(api) {
         api.startHomeAssistantOAuth.mockImplementationOnce(() => new Promise(() => {}));
@@ -1011,10 +1012,98 @@ describe('Renderer first-run Home Assistant authorization', () => {
     await reachAuthorizationStep('http://ha.local:8123');
     await clickButton('Connect');
 
-    await clickButton('Back');
+    await clickButton('Cancel');
 
     // Otherwise the loopback listener stays open and the next attempt is refused.
     expect(mockElectronAPI.cancelHomeAssistantOAuth).toHaveBeenCalled();
+  });
+
+  const wizardButton = (label) =>
+    Array.from(document.querySelectorAll('.first-run-actions button')).find(
+      (candidate) => candidate.textContent === label
+    );
+
+  it('offers no Back on the first step or the last, where there is nowhere to go back to', async () => {
+    await loadRenderer();
+    expect(wizardButton('Back').hidden).toBe(true);
+    expect(wizardButton('Back').disabled).toBe(false);
+
+    await clickButton('Next');
+    expect(wizardButton('Back').hidden).toBe(false);
+    enterInput('#first-run-ha-url', 'http://ha.local:8123');
+    await clickButton('Next');
+    expect(wizardButton('Back').hidden).toBe(false);
+
+    mockElectronAPI.startHomeAssistantOAuth.mockResolvedValueOnce({
+      success: true,
+      config: oauthConfig(),
+    });
+    await clickButton('Connect');
+    expect(document.querySelector('.first-run-title').textContent).toBe('Choose rooms and devices');
+    expect(wizardButton('Back').hidden).toBe(true);
+  });
+
+  it('turns Back into Cancel while authorization waits, and Cancel keeps the step', async () => {
+    let rejectPairing;
+    await loadRenderer({
+      configureApi(api) {
+        api.startHomeAssistantOAuth.mockImplementationOnce(
+          () =>
+            new Promise((resolve, reject) => {
+              rejectPairing = reject;
+            })
+        );
+      },
+    });
+    await reachAuthorizationStep('http://ha.local:8123');
+    expect(wizardButton('Back')).toBeTruthy();
+
+    await clickButton('Connect');
+    expect(wizardButton('Back')).toBeUndefined();
+    expect(wizardButton('Cancel').hidden).toBe(false);
+
+    await clickButton('Cancel');
+    const cancelError = new Error('Home Assistant authorization was cancelled');
+    cancelError.result = { code: 'OAUTH_AUTHORIZATION_CANCELED' };
+    rejectPairing(cancelError);
+    await flushAsync();
+
+    // Still on the Authorize step, Connect ready again, Back where it was.
+    expect(document.querySelector('.first-run-title').textContent).toBe(
+      'Authorize in Home Assistant'
+    );
+    expect(wizardButton('Connect').disabled).toBe(false);
+    expect(wizardButton('Back').hidden).toBe(false);
+    expect(wizardButton('Cancel')).toBeUndefined();
+  });
+
+  it('says what it is waiting for once the browser has had time to open', async () => {
+    await loadRenderer({
+      configureApi(api) {
+        api.startHomeAssistantOAuth.mockImplementationOnce(() => new Promise(() => {}));
+      },
+    });
+    await reachAuthorizationStep('http://ha.local:8123');
+    jest.useFakeTimers();
+    try {
+      wizardButton('Connect').click();
+      await jest.advanceTimersByTimeAsync(1000);
+      const status = document.querySelector('.first-run-status');
+      expect(status.textContent).toContain('Opening Home Assistant for authorization');
+
+      await jest.advanceTimersByTimeAsync(4000);
+      expect(status.textContent).toBe(
+        'Waiting for you to approve HA Desktop Widget in your browser. If it did not open, choose Cancel, then Connect again.'
+      );
+      expect(status.dataset.status).toBe('pending');
+
+      // A cancelled wait does not announce itself again.
+      wizardButton('Cancel').click();
+      await jest.advanceTimersByTimeAsync(10);
+      expect(mockElectronAPI.cancelHomeAssistantOAuth).toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('reports a cancelled pairing as cancelled rather than as a failure', async () => {
@@ -1032,7 +1121,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
     await reachAuthorizationStep('http://ha.local:8123');
     await clickButton('Connect');
 
-    await clickButton('Back');
+    await clickButton('Cancel');
     rejectPairing?.(new Error('Home Assistant authorization was cancelled'));
     await flushAsync();
 

@@ -1694,5 +1694,6 @@
   "Discard color edits": "Discard color edits",
   "Keep editing": "Keep editing",
   "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Showing the first {{shown}} of {{count}} icons. Type to narrow them.",
-  "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish."
+  "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.",
+  "Waiting for you to approve HA Desktop Widget in your browser. If it did not open, choose Cancel, then Connect again.": "Waiting for you to approve HA Desktop Widget in your browser. If it did not open, choose Cancel, then Connect again."
 }

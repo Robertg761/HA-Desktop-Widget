@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.56",
+  "version": "1.2.57",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1781,6 +1781,7 @@
     "Keep editing": "Seguir editando",
     "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Mostrando los primeros {{shown}} de {{count}} iconos. Escribe para acotarlos.",
     "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "Modo de reorganización activado. Arrastra o pulsa Alt+flechas para reordenar. Pulsa Esc para finalizar.",
-    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "Modo de reorganización activado. Arrastra, selecciona o pulsa Alt+flechas para reordenar. Usa los botones de una tarjeta para anclarla, renombrarla o eliminarla. Pulsa Esc para finalizar."
+    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "Modo de reorganización activado. Arrastra, selecciona o pulsa Alt+flechas para reordenar. Usa los botones de una tarjeta para anclarla, renombrarla o eliminarla. Pulsa Esc para finalizar.",
+    "Waiting for you to approve HA Desktop Widget in your browser. If it did not open, choose Cancel, then Connect again.": "Esperando a que apruebes HA Desktop Widget en el navegador. Si no se abrió, elige Cancelar y luego Conectar de nuevo."
   }
 }

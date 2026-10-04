@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.57",
+  "version": "1.2.58",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1781,6 +1781,7 @@
     "Keep editing": "متابعة التعديل",
     "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "عرض أول {{shown}} من {{count}} أيقونة. اكتب لتضييق النتائج.",
     "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "وضع إعادة الترتيب مفعّل. اسحب أو اضغط Alt مع مفاتيح الأسهم لإعادة الترتيب. اضغط Esc للإنهاء.",
-    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "وضع إعادة الترتيب مفعّل. اسحب أو حدّد أو اضغط Alt مع مفاتيح الأسهم لإعادة الترتيب. استخدم الأزرار على البطاقة للتثبيت أو إعادة التسمية أو الإزالة. اضغط Esc للإنهاء."
+    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "وضع إعادة الترتيب مفعّل. اسحب أو حدّد أو اضغط Alt مع مفاتيح الأسهم لإعادة الترتيب. استخدم الأزرار على البطاقة للتثبيت أو إعادة التسمية أو الإزالة. اضغط Esc للإنهاء.",
+    "Waiting for you to approve HA Desktop Widget in your browser. If it did not open, choose Cancel, then Connect again.": "في انتظار موافقتك على HA Desktop Widget في متصفحك. إذا لم يُفتح المتصفح، اختر إلغاء ثم اتصال مرة أخرى."
   }
 }
