@@ -648,19 +648,19 @@ describe('DesktopCompanionClient session retries', () => {
     client.stop();
   });
 
-  // How long each retry of a session that keeps failing waited, in milliseconds.
+  // How long each retry of a session that keeps failing waited, in milliseconds. Time jumps from
+  // timer to timer, so a wait of half an hour costs one step.
   async function waitsBetweenAttempts(client, websocket, count) {
     client.start();
     await flush();
     const waits = [];
     for (let attempt = 0; attempt < count; attempt += 1) {
       const before = infoRequests(websocket).length;
-      let waited = 0;
-      while (infoRequests(websocket).length === before && waited < 40 * 60_000) {
-        await jest.advanceTimersByTimeAsync(1000);
-        waited += 1000;
+      const startedAt = Date.now();
+      for (let step = 0; step < 20 && infoRequests(websocket).length === before; step += 1) {
+        await jest.advanceTimersToNextTimerAsync();
       }
-      waits.push(waited);
+      waits.push(Date.now() - startedAt);
     }
     client.stop();
     return waits;
