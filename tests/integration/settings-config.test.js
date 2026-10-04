@@ -2527,8 +2527,9 @@ describe('Settings + Config Integration', () => {
       const allChoices = picker.querySelectorAll('.custom-entity-icon-choice');
       expect(allChoices).toHaveLength(120);
       const summary = picker.querySelector('.custom-entity-icon-picker-meta');
+      // Skin tones, joined people and flags stay out of the list that opens, but not out of search
       expect(summary.textContent).toMatch(
-        /^Showing the first 120 of 3\d{3} icons\. Type to narrow them\.$/
+        /^Showing the first 120 of 1\d{3} icons\. Type to narrow them\.$/
       );
       // The count is announced as it narrows.
       expect(summary.getAttribute('aria-live')).toBe('polite');
@@ -2774,7 +2775,7 @@ describe('Settings + Config Integration', () => {
 
       // Assert
       expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-        expect.stringContaining('single emoji or glyph'),
+        expect.stringContaining('a single emoji'),
         'error',
         expect.any(Number)
       );
@@ -2868,10 +2869,259 @@ describe('Settings + Config Integration', () => {
 
       // Act
       resetAllBtn.click();
+      await flushMicrotasks();
 
       // Assert
+      expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
+        'Reset all custom icons',
+        expect.stringContaining('Remove every custom icon'),
+        expect.objectContaining({ confirmText: 'Reset', confirmClass: 'btn-danger' })
+      );
       const summaryAfterResetAll = document.getElementById('custom-entity-icons-summary');
       expect(summaryAfterResetAll.textContent).toContain('No custom icons configured');
+    });
+
+    const flushMicrotasks = async () => {
+      for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    };
+    // The emoji catalogue is a dynamic import, so the first picker may open on "Loading".
+    const catalogLoaded = async () => {
+      for (let i = 0; i < 200; i += 1) {
+        document.querySelector('[data-custom-icon-picker-toggle="light.living_room"]')?.click();
+        if (document.querySelector('.custom-entity-icon-choice')) return;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    };
+    const typeInto = (input, value) => {
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const press = (target, key, init = {}) => {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init });
+      target.dispatchEvent(event);
+      return event;
+    };
+    const rowInput = (entityId = 'light.living_room') =>
+      document.querySelector(`[data-custom-icon-input="${entityId}"]`);
+
+    test('opens on the curated icons for the home, not on the sorted Unicode list', async () => {
+      await openSettingsWithCustomIconsExpanded();
+      await catalogLoaded();
+
+      const shown = [...document.querySelectorAll('.custom-entity-icon-choice')].map(
+        (choice) => choice.dataset.customIconChoice
+      );
+
+      // The first icons are the ones written for lights, switches and sensors...
+      expect(shown[0]).toBe('💡');
+      // ...and neither punctuation nor a keycap digit is among them
+      expect(shown.some((icon) => /^[#*0-9\u00a9\u00ae]/u.test(icon))).toBe(false);
+    });
+
+    test('keeps skin tones, flags and joined emoji out of the list that opens, but findable', async () => {
+      await openSettingsWithCustomIconsExpanded();
+      await catalogLoaded();
+      const input = rowInput();
+      const opened = [...document.querySelectorAll('.custom-entity-icon-choice')].map(
+        (choice) => choice.dataset.customIconChoice
+      );
+      expect(opened.some((icon) => /[\u{1F3FB}-\u{1F3FF}\u200D]/u.test(icon))).toBe(false);
+
+      // A flag is a regional-indicator pair; its code points are a search term
+      typeInto(input, '1f1e8');
+      expect(document.querySelector('[data-custom-icon-choice="🇨🇦"]')).toBeTruthy();
+    });
+
+    test('Search keeps the picker open after typing already opened it', async () => {
+      await openSettingsWithCustomIconsExpanded();
+      const input = rowInput();
+      typeInto(input, 'lamp');
+      expect(document.querySelector('[data-custom-icon-picker="light.living_room"]')).toBeTruthy();
+
+      const search = document.querySelector('[data-custom-icon-picker-toggle="light.living_room"]');
+      search.click();
+
+      expect(document.querySelector('[data-custom-icon-picker="light.living_room"]')).toBeTruthy();
+      expect(
+        document
+          .querySelector('[data-custom-icon-picker-toggle="light.living_room"]')
+          .getAttribute('aria-expanded')
+      ).toBe('true');
+      // The query is kept, so the same matches are shown
+      expect(rowInput().value).toBe('lamp');
+    });
+
+    test('Enter on a keyword searches instead of reporting it is not an icon', async () => {
+      await openSettingsWithCustomIconsExpanded();
+      const input = rowInput();
+      input.focus();
+      input.value = 'timer';
+      mockUiUtils.showToast.mockClear();
+
+      const event = press(input, 'Enter');
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(document.querySelector('[data-custom-icon-picker="light.living_room"]')).toBeTruthy();
+      // Straight into the matches, so the arrow keys and Enter choose one
+      expect(document.activeElement.classList.contains('custom-entity-icon-choice')).toBe(true);
+      expect(state.CONFIG.customEntityIcons).toEqual({});
+    });
+
+    test('Enter composing text in an input method does not apply anything', async () => {
+      await openSettingsWithCustomIconsExpanded();
+      const input = rowInput();
+      input.value = '🔥';
+      mockUiUtils.showToast.mockClear();
+
+      press(input, 'Enter', { isComposing: true });
+
+      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(document.querySelector('.custom-entity-icon-action-badge')).toBeNull();
+    });
+
+    test('Enter or Apply on a row with no icon says nothing and marks nothing edited', async () => {
+      await openSettingsWithCustomIconsExpanded();
+      mockUiUtils.showToast.mockClear();
+
+      press(rowInput(), 'Enter');
+      document.querySelector('[data-custom-icon-apply="light.living_room"]').click();
+
+      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(document.querySelector('.custom-entity-icon-action-badge')).toBeNull();
+      // Saving now does not count the icons as edited either
+      await settings.saveSettings();
+      expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          profileSyncTouchedKeys: expect.not.arrayContaining(['customEntityIcons']),
+        })
+      );
+    });
+
+    test('emptying the field of a row that has an icon and applying clears it', async () => {
+      state.CONFIG.customEntityIcons = { 'light.living_room': '🔥' };
+      await openSettingsWithCustomIconsExpanded();
+
+      typeInto(rowInput(), '');
+      document.querySelector('[data-custom-icon-apply="light.living_room"]').click();
+
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        expect.stringContaining('Custom icon cleared'),
+        'info',
+        expect.any(Number)
+      );
+      expect(document.getElementById('custom-entity-icons-summary').textContent).toContain(
+        'No custom icons'
+      );
+    });
+
+    test('Reset all custom icons is off while there is nothing to reset', async () => {
+      await openSettingsWithCustomIconsExpanded();
+      const resetAll = document.getElementById('custom-entity-icons-reset-all');
+      expect(resetAll.disabled).toBe(true);
+
+      resetAll.click();
+      await flushMicrotasks();
+      expect(mockUiUtils.showConfirm).not.toHaveBeenCalled();
+      expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+        expect.stringContaining('All custom icons cleared'),
+        expect.anything(),
+        expect.anything()
+      );
+
+      rowInput().value = '🔥';
+      document.querySelector('[data-custom-icon-apply="light.living_room"]').click();
+      expect(document.getElementById('custom-entity-icons-reset-all').disabled).toBe(false);
+    });
+
+    test('Reset all asks first, and declining keeps every icon', async () => {
+      state.CONFIG.customEntityIcons = { 'light.living_room': '🔥', 'switch.bedroom': '⚡' };
+      await openSettingsWithCustomIconsExpanded();
+      mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+
+      document.getElementById('custom-entity-icons-reset-all').click();
+      await flushMicrotasks();
+
+      expect(mockUiUtils.showConfirm).toHaveBeenCalledTimes(1);
+      expect(document.getElementById('custom-entity-icons-summary').textContent).toContain(
+        '2 custom icons'
+      );
+    });
+
+    describe('in a large home', () => {
+      const manyLights = (count) => {
+        const states = {};
+        for (let i = 0; i < count; i += 1) {
+          const entityId = `light.lamp_${String(i).padStart(3, '0')}`;
+          states[entityId] = {
+            entity_id: entityId,
+            state: 'off',
+            attributes: { friendly_name: `Lamp ${String(i).padStart(3, '0')}` },
+          };
+        }
+        state.setStates(states);
+      };
+      const rows = () =>
+        document.querySelectorAll('#custom-entity-icons-list .custom-entity-icon-item');
+
+      test('shows one page of rows and a pager, not every entity', async () => {
+        manyLights(130);
+        await openSettingsWithCustomIconsExpanded();
+
+        expect(rows()).toHaveLength(50);
+        const status = document.querySelector('#custom-entity-icons-list [role="status"]');
+        expect(status.textContent).toBe('Page 1 / 3');
+
+        document.querySelector('#custom-entity-icons-list [data-primary-page="next"]').click();
+        expect(rows()).toHaveLength(50);
+        expect(rowInput('light.lamp_049')).toBeNull();
+        expect(rowInput('light.lamp_050')).toBeTruthy();
+        expect(
+          document.querySelector('#custom-entity-icons-list [role="status"]').textContent
+        ).toBe('Page 2 / 3');
+      });
+
+      test('the search waits for a pause in typing before rebuilding the rows', async () => {
+        manyLights(130);
+        await openSettingsWithCustomIconsExpanded();
+        const search = document.getElementById('custom-entity-icons-search');
+        const firstRow = rows()[0];
+
+        jest.useFakeTimers();
+        try {
+          typeInto(search, 'lamp 1');
+          typeInto(search, 'lamp 12');
+          expect(rows()[0]).toBe(firstRow);
+          jest.advanceTimersByTime(200);
+        } finally {
+          jest.useRealTimers();
+        }
+
+        expect(rows()[0]).not.toBe(firstRow);
+        expect(rows().length).toBeLessThan(50);
+        expect(rowInput('light.lamp_120')).toBeTruthy();
+      });
+
+      test('opening a picker brings its row back into view', async () => {
+        manyLights(60);
+        await openSettingsWithCustomIconsExpanded();
+        const scrolled = [];
+        const original = window.HTMLElement.prototype.scrollIntoView;
+        window.HTMLElement.prototype.scrollIntoView = function scrollIntoView(options) {
+          scrolled.push({ element: this, options });
+        };
+        try {
+          document.querySelector('[data-custom-icon-picker-toggle="light.lamp_040"]').click();
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+        } finally {
+          window.HTMLElement.prototype.scrollIntoView = original;
+        }
+
+        const lampRow = rowInput('light.lamp_040').closest('.custom-entity-icon-item');
+        const forLamp = scrolled.filter(({ element }) => element === lampRow);
+        expect(forLamp).toHaveLength(1);
+        expect(forLamp[0].options).toEqual({ block: 'nearest' });
+      });
     });
   });
 
@@ -6335,8 +6585,10 @@ describe('Settings + Config Integration', () => {
     });
 
     test('passes translated text to toasts and confirmations', async () => {
+      state.CONFIG.customEntityIcons = { 'light.living_room': '💡' };
       await openSettingsWithCustomIconsExpanded();
       document.getElementById('custom-entity-icons-reset-all').click();
+      for (let i = 0; i < 5; i += 1) await Promise.resolve();
       expect(mockUiUtils.showToast).toHaveBeenCalledWith(
         'Alle eigenen Symbole entfernt. Zum Übernehmen Speichern klicken.',
         'info',

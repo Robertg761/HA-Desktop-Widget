@@ -5039,7 +5039,9 @@ body.theme-light:not(.high-contrast)
 
 /* Keyboard focus scrolls rows clear of the sticky pager (about 38px tall) and its focus ring,
    instead of just to the list edge. */
-#primary-cards-list:has(> .primary-cards-pagination) {
+:is(#primary-cards-list, #custom-entity-icons-list, #hotkeys-list):has(
+  > .primary-cards-pagination
+) {
   scroll-padding-bottom: 48px;
 }
 

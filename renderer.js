@@ -3339,7 +3339,7 @@ function wireUI() {
 
     const hotkeySearch = document.getElementById('hotkey-entity-search');
     if (hotkeySearch) {
-      hotkeySearch.addEventListener('input', hotkeys.renderHotkeysTab);
+      hotkeySearch.addEventListener('input', hotkeys.scheduleHotkeysTabRender);
     }
 
     // Add click handler to widget content to bring window to focus

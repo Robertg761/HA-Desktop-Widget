@@ -100,6 +100,8 @@ let pendingCustomEntityIcons = {};
 let activeCustomEntityIconPickerEntityId = null;
 let customEntityIconPickerQueryByEntityId = {};
 let lastCustomEntityIconAction = null;
+let customEntityIconPage = 0;
+let customEntityIconSearchTimer;
 let pendingCustomColors = [];
 let activeCustomManagementThemeId = null;
 let isSyncingCustomColorEditor = false;
@@ -820,50 +822,62 @@ function buildCustomEntityIconSearchTerms(icon, aliases, codepointTerms) {
   return Array.from(searchTerms);
 }
 
+// Skin tones, joined people and objects (family, profession), flags and their tag sequences are
+// about three quarters of the emoji list and near-duplicates of one another. They stay findable by
+// searching and by pasting, but the list a person scrolls through does not open with them.
+const ICON_VARIANT_PATTERN = /[\u{1F3FB}-\u{1F3FF}\u{1F1E6}-\u{1F1FF}\u{E0020}-\u{E007F}]|\u200D/u;
+
+function isCustomEntityIconVariant(icon) {
+  return ICON_VARIANT_PATTERN.test(icon);
+}
+
 function buildCustomEntityIconChoices(rgiEmojiData) {
-  const iconSet = new Set(CUSTOM_ENTITY_ICON_FALLBACKS);
+  // The icons made for the home first, in the order they were written, then the rest of Unicode's
+  // emoji. A sorted catalogue opened on copyright signs and keycap digits.
+  const curatedIcons = new Set(CUSTOM_ENTITY_ICON_FALLBACKS);
 
   Object.values(CUSTOM_ENTITY_ICON_KEYWORD_GROUPS).forEach((icons) => {
     (Array.isArray(icons) ? icons : []).forEach((icon) => {
       const normalized = normalizeCustomEntityIcon(icon);
-      if (normalized) iconSet.add(normalized);
+      if (normalized) curatedIcons.add(normalized);
     });
   });
 
-  if (Array.isArray(rgiEmojiData?.strings)) {
-    rgiEmojiData.strings.forEach((icon) => {
-      const normalized = normalizeCustomEntityIcon(icon);
-      if (normalized) iconSet.add(normalized);
-    });
-  }
+  const otherIcons = new Set();
+  const addOther = (icon) => {
+    const normalized = normalizeCustomEntityIcon(icon);
+    if (normalized && !curatedIcons.has(normalized)) otherIcons.add(normalized);
+  };
+  if (Array.isArray(rgiEmojiData?.strings)) rgiEmojiData.strings.forEach(addOther);
 
   if (rgiEmojiData?.characters && typeof rgiEmojiData.characters.toArray === 'function') {
     rgiEmojiData.characters.toArray().forEach((codepoint) => {
-      if (!Number.isInteger(codepoint)) return;
-      const normalized = normalizeCustomEntityIcon(String.fromCodePoint(codepoint));
-      if (normalized) iconSet.add(normalized);
+      // Digits, # and * are only emoji as part of a keycap sequence, which the strings carry.
+      if (!Number.isInteger(codepoint) || codepoint < 0x80) return;
+      addOther(String.fromCodePoint(codepoint));
     });
   }
 
-  return Array.from(iconSet)
-    .map((icon) => {
-      const stripped = stripEmojiVariationSelectors(icon);
-      const aliases = getCustomEntityIconSearchAliases(icon);
-      const codepointTerms = getIconCodepointTerms(icon);
-      const searchTerms = buildCustomEntityIconSearchTerms(icon, aliases, codepointTerms);
-      const searchText = [icon, stripped, ...aliases, ...codepointTerms, ...searchTerms]
-        .join(' ')
-        .toLowerCase();
+  // Unicode order keeps the neighbours together (faces, animals, food, travel).
+  const byCodepoint = (a, b) => a.codePointAt(0) - b.codePointAt(0) || (a < b ? -1 : a > b ? 1 : 0);
+  return [...curatedIcons, ...[...otherIcons].sort(byCodepoint)].map((icon) => {
+    const stripped = stripEmojiVariationSelectors(icon);
+    const aliases = getCustomEntityIconSearchAliases(icon);
+    const codepointTerms = getIconCodepointTerms(icon);
+    const searchTerms = buildCustomEntityIconSearchTerms(icon, aliases, codepointTerms);
+    const searchText = [icon, stripped, ...aliases, ...codepointTerms, ...searchTerms]
+      .join(' ')
+      .toLowerCase();
 
-      return {
-        icon,
-        aliases,
-        codepointTerms,
-        searchTerms,
-        searchText,
-      };
-    })
-    .sort((a, b) => a.icon.localeCompare(b.icon));
+    return {
+      icon,
+      aliases,
+      codepointTerms,
+      searchTerms,
+      searchText,
+      variant: !curatedIcons.has(icon) && isCustomEntityIconVariant(icon),
+    };
+  });
 }
 
 async function ensureCustomEntityIconChoicesLoaded() {
@@ -899,7 +913,7 @@ function getFilteredCustomEntityIconChoices(filterValue = '') {
   const rawFilter = String(filterValue || '')
     .trim()
     .toLowerCase();
-  if (!rawFilter) return choices;
+  if (!rawFilter) return choices.filter((choice) => !choice.variant);
 
   const alternativeGroups = buildEmojiSearchAlternativeGroups(rawFilter);
   if (!alternativeGroups.length) return choices;
@@ -2270,7 +2284,6 @@ function updatePrimaryCardActionButtons() {
   syncSegmentedIndicators(document.getElementById('settings-modal') || document);
 }
 
-const PRIMARY_CARD_PAGE_SIZE = 50;
 let primaryCardPage = 0;
 let primaryCardSearchTimer;
 
@@ -2311,34 +2324,32 @@ function renderPrimaryCardsEntityRows() {
     return;
   }
 
-  const pageCount = Math.ceil(scoredEntities.length / PRIMARY_CARD_PAGE_SIZE);
-  primaryCardPage = Math.min(primaryCardPage, pageCount - 1);
-  scoredEntities
-    .slice(primaryCardPage * PRIMARY_CARD_PAGE_SIZE, (primaryCardPage + 1) * PRIMARY_CARD_PAGE_SIZE)
-    .forEach(({ entity }) => {
-      const item = document.createElement('div');
-      item.className = 'entity-item';
+  const shown = paginate(scoredEntities, primaryCardPage);
+  primaryCardPage = shown.page;
+  shown.items.forEach(({ entity }) => {
+    const item = document.createElement('div');
+    item.className = 'entity-item';
 
-      const icon = entityIconMarkup(entity);
-      const displayName = utils.escapeHtml(utils.getEntityDisplayName(entity));
-      const entityId = utils.escapeHtml(entity.entity_id);
-      const entityIdAttr = utils.escapeHtmlAttribute(entity.entity_id);
+    const icon = entityIconMarkup(entity);
+    const displayName = utils.escapeHtml(utils.getEntityDisplayName(entity));
+    const entityId = utils.escapeHtml(entity.entity_id);
+    const entityIdAttr = utils.escapeHtmlAttribute(entity.entity_id);
 
-      const isCardOne = selections[0] === entity.entity_id;
-      const isCardTwo = selections[1] === entity.entity_id;
+    const isCardOne = selections[0] === entity.entity_id;
+    const isCardTwo = selections[1] === entity.entity_id;
 
-      const cardOneLabel = utils.escapeHtml(
-        isCardOne ? t('Card {{index}} ✓', { index: 1 }) : t('Set Card {{index}}', { index: 1 })
-      );
-      const cardTwoLabel = utils.escapeHtml(
-        isCardTwo ? t('Card {{index}} ✓', { index: 2 }) : t('Set Card {{index}}', { index: 2 })
-      );
-      const cardOneClass = isCardOne ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
-      const cardTwoClass = isCardTwo ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
-      const cardOneDisabled = isCardOne ? 'aria-disabled="true"' : '';
-      const cardTwoDisabled = isCardTwo ? 'aria-disabled="true"' : '';
+    const cardOneLabel = utils.escapeHtml(
+      isCardOne ? t('Card {{index}} ✓', { index: 1 }) : t('Set Card {{index}}', { index: 1 })
+    );
+    const cardTwoLabel = utils.escapeHtml(
+      isCardTwo ? t('Card {{index}} ✓', { index: 2 }) : t('Set Card {{index}}', { index: 2 })
+    );
+    const cardOneClass = isCardOne ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
+    const cardTwoClass = isCardTwo ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
+    const cardOneDisabled = isCardOne ? 'aria-disabled="true"' : '';
+    const cardTwoDisabled = isCardTwo ? 'aria-disabled="true"' : '';
 
-      item.innerHTML = `
+    item.innerHTML = `
       <div class="entity-item-main">
         <span class="entity-icon">${icon}</span>
         <div class="entity-item-info">
@@ -2352,41 +2363,17 @@ function renderPrimaryCardsEntityRows() {
       </div>
     `;
 
-      list.appendChild(item);
-    });
+    list.appendChild(item);
+  });
 
-  if (pageCount > 1) {
-    const navigation = document.createElement('div');
-    navigation.className = 'primary-cards-list-actions primary-cards-pagination';
-    const status = document.createElement('span');
-    status.setAttribute('role', 'status');
-    status.textContent = t('Page {{page}} / {{count}}', {
-      page: primaryCardPage + 1,
-      count: pageCount,
-    });
-    navigation.appendChild(status);
-    for (const [key, label, delta] of [
-      ['previous', t('Previous'), -1],
-      ['next', t('Next'), 1],
-    ]) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'btn btn-secondary btn-sm';
-      button.textContent = label;
-      button.dataset.primaryPage = key;
-      const unavailable = primaryCardPage + delta < 0 || primaryCardPage + delta >= pageCount;
-      button.setAttribute('aria-disabled', String(unavailable));
-      button.addEventListener('click', () => {
-        if (unavailable) return;
-        primaryCardPage += delta;
-        renderPrimaryCardsEntityList();
-        // A new page starts at its first row; focus stays on this pager button.
-        list.scrollTop = 0;
-      });
-      navigation.appendChild(button);
-    }
-    list.appendChild(navigation);
-  }
+  renderListPager(list, {
+    page: shown.page,
+    pageCount: shown.pageCount,
+    onChange: (page) => {
+      primaryCardPage = page;
+      renderPrimaryCardsEntityList();
+    },
+  });
 
   syncPersonalizationSectionHeight(document.getElementById('primary-cards-section'));
 }
@@ -2462,6 +2449,9 @@ function updateCustomEntityIconSummary() {
   const summaryEl = document.getElementById('custom-entity-icons-summary');
   if (!summaryEl) return;
   const count = Object.keys(pendingCustomEntityIcons).length;
+  // Nothing to reset with no icons set; the button says so instead of claiming it cleared them.
+  const resetAll = document.getElementById('custom-entity-icons-reset-all');
+  if (resetAll) resetAll.disabled = count === 0;
   if (count === 0) {
     summaryEl.textContent = t('No custom icons configured.');
     return;
@@ -2598,10 +2588,19 @@ function handleCustomEntityIconGridKeydown(event) {
   choices[next].focus();
 }
 
+// The row the person is working in: the one whose picker is open, or the one holding the focus.
+function getCustomEntityIconAnchorEntityId(list) {
+  if (activeCustomEntityIconPickerEntityId) return activeCustomEntityIconPickerEntityId;
+  const focused = list.contains(document.activeElement) ? document.activeElement : null;
+  const control = focused?.closest('[data-custom-icon-input], [data-custom-icon-picker-toggle]');
+  return control?.dataset.customIconInput || control?.dataset.customIconPickerToggle || '';
+}
+
 function renderCustomEntityIconsList() {
   const list = document.getElementById('custom-entity-icons-list');
   const searchInput = document.getElementById('custom-entity-icons-search');
   if (!list || !searchInput) return;
+  const anchorEntityId = getCustomEntityIconAnchorEntityId(list);
   list.classList.toggle(
     'custom-entity-icons-list-expanded',
     !!activeCustomEntityIconPickerEntityId
@@ -2618,7 +2617,9 @@ function renderCustomEntityIconsList() {
     return;
   }
 
-  scoredEntities.forEach(({ entity }) => {
+  const shown = paginate(scoredEntities, customEntityIconPage);
+  customEntityIconPage = shown.page;
+  shown.items.forEach(({ entity }) => {
     const entityId = entity.entity_id;
     const pendingIcon = getPendingCustomIcon(entityId);
     const pickerQuery = getCustomEntityIconPickerQuery(entityId);
@@ -2683,7 +2684,7 @@ function renderCustomEntityIconsList() {
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'custom-entity-icon-input';
-    input.placeholder = t('Search icons or paste icon');
+    input.placeholder = t('Search emoji or paste one');
     input.maxLength = 64;
     input.value = pickerQuery || pendingIcon || '';
     input.autocomplete = 'off';
@@ -2708,7 +2709,7 @@ function renderCustomEntityIconsList() {
 
     const resetBtn = document.createElement('button');
     resetBtn.type = 'button';
-    resetBtn.className = 'btn btn-secondary btn-sm';
+    resetBtn.className = 'btn btn-secondary btn-reset btn-sm';
     resetBtn.textContent = t('Reset');
     resetBtn.disabled = !hasCustomIcon;
     resetBtn.dataset.customIconReset = entityId;
@@ -2729,8 +2730,26 @@ function renderCustomEntityIconsList() {
     list.appendChild(item);
   });
 
+  renderListPager(list, {
+    page: shown.page,
+    pageCount: shown.pageCount,
+    onChange: (page) => {
+      customEntityIconPage = page;
+      activeCustomEntityIconPickerEntityId = null;
+      renderCustomEntityIconsList();
+    },
+  });
+
   updateCustomEntityIconSummary();
   syncPersonalizationSectionHeight(document.getElementById('custom-entity-icons-section'));
+  // The list is rebuilt, and opening a picker also lets the list grow to its full height, which
+  // used to leave the row the person was in thousands of pixels away. Bring it back into view.
+  if (anchorEntityId) {
+    const anchorRow = [...list.querySelectorAll('[data-custom-icon-input]')]
+      .find((input) => input.dataset.customIconInput === anchorEntityId)
+      ?.closest('.custom-entity-icon-item');
+    requestAnimationFrame(() => anchorRow?.scrollIntoView?.({ block: 'nearest' }));
+  }
 }
 
 function applyCustomEntityIconFromInput(entityId, rawIcon) {
@@ -2739,9 +2758,12 @@ function applyCustomEntityIconFromInput(entityId, rawIcon) {
   const trimmed = typeof rawIcon === 'string' ? rawIcon.trim() : '';
   const normalized = normalizeCustomEntityIcon(rawIcon);
   if (trimmed && !normalized) {
-    showToast(t('Custom icon must be a single emoji or glyph.'), 'error', 3000);
+    showToast(t('Custom icon must be a single emoji.'), 'error', 3000);
     return;
   }
+  // An empty field on a row with no icon has nothing to clear: no message, no unsaved badge, and
+  // the setting is not marked edited.
+  if (!normalized && !getPendingCustomIcon(entityId)) return;
 
   const next = { ...pendingCustomEntityIcons };
   if (normalized) {
@@ -2774,7 +2796,16 @@ function resetCustomEntityIcon(entityId) {
   renderCustomEntityIconsList();
 }
 
-function resetAllCustomEntityIcons() {
+async function resetAllCustomEntityIcons() {
+  if (!Object.keys(pendingCustomEntityIcons).length) return;
+  // Every icon the person set is dropped at once, and Cancel on the Settings window would also drop
+  // every other edit to get them back.
+  const confirmed = await showConfirm(
+    t('Reset all custom icons'),
+    t('Remove every custom icon? Nothing changes for good until you select Save.'),
+    { confirmText: t('Reset'), confirmClass: 'btn-danger' }
+  );
+  if (!confirmed) return;
   pendingCustomEntityIcons = {};
   markSettingsTouched('customEntityIcons');
   customEntityIconPickerQueryByEntityId = {};
@@ -2791,7 +2822,7 @@ function initCustomEntityIconsUI() {
   section.addEventListener('click', (event) => {
     const resetAllBtn = event.target.closest('#custom-entity-icons-reset-all');
     if (resetAllBtn) {
-      resetAllCustomEntityIcons();
+      void resetAllCustomEntityIcons();
       return;
     }
 
@@ -2800,8 +2831,9 @@ function initCustomEntityIconsUI() {
       const entityId = pickerToggleBtn.dataset.customIconPickerToggle;
       const iconInput = section.querySelector(`[data-custom-icon-input="${entityId}"]`);
       syncCustomEntityIconPickerQueryFromInput(entityId, iconInput?.value || '');
-      activeCustomEntityIconPickerEntityId =
-        activeCustomEntityIconPickerEntityId === entityId ? null : entityId;
+      // Search always shows the matches. It used to toggle, so a query that had already opened the
+      // picker was hidden by pressing the button that says Search; Escape and leaving the row close.
+      activeCustomEntityIconPickerEntityId = entityId;
       renderCustomEntityIconsList();
       // The list was rebuilt under the Search button; the keyboard stays on it.
       section.querySelector(`[data-custom-icon-picker-toggle="${entityId}"]`)?.focus();
@@ -2896,14 +2928,35 @@ function initCustomEntityIconsUI() {
     const input = event.target.closest('[data-custom-icon-input]');
     if (!input) return;
     event.preventDefault();
-    applyCustomEntityIconFromInput(input.dataset.customIconInput, input.value || '');
+    // An IME's Enter confirms its composition; it is not a request to apply.
+    if (event.isComposing) return;
+    const entityId = input.dataset.customIconInput;
+    const typed = input.value.trim();
+    if (typed && !normalizeCustomEntityIcon(typed)) {
+      // A keyword is a search, not an icon: show what it found and step into the matches, rather
+      // than reporting that "lamp" is not a single emoji.
+      syncCustomEntityIconPickerQueryFromInput(entityId, input.value);
+      activeCustomEntityIconPickerEntityId = entityId;
+      renderCustomEntityIconsList();
+      refocusCustomEntityIconInput(section, entityId);
+      section
+        .querySelector(`[data-custom-icon-picker="${entityId}"] .custom-entity-icon-choice`)
+        ?.focus();
+      return;
+    }
+    applyCustomEntityIconFromInput(entityId, input.value || '');
   });
 
+  // Rows are rebuilt for every query, so typing waits for a pause, as the top cards' search does.
   const searchInput = document.getElementById('custom-entity-icons-search');
   if (searchInput) {
     searchInput.addEventListener('input', () => {
-      activeCustomEntityIconPickerEntityId = null;
-      renderCustomEntityIconsList();
+      clearTimeout(customEntityIconSearchTimer);
+      customEntityIconSearchTimer = setTimeout(() => {
+        activeCustomEntityIconPickerEntityId = null;
+        customEntityIconPage = 0;
+        renderCustomEntityIconsList();
+      }, 150);
     });
   }
 
@@ -5431,6 +5484,8 @@ async function openSettings(uiHooks) {
     activeCustomEntityIconPickerEntityId = null;
     customEntityIconPickerQueryByEntityId = {};
     lastCustomEntityIconAction = null;
+    customEntityIconPage = 0;
+    clearTimeout(customEntityIconSearchTimer);
     initCustomEntityIconsUI();
     const customIconSearch = document.getElementById('custom-entity-icons-search');
     if (customIconSearch) customIconSearch.value = '';
@@ -5493,7 +5548,9 @@ async function openSettings(uiHooks) {
  */
 function closeSettings() {
   clearTimeout(primaryCardSearchTimer);
+  clearTimeout(customEntityIconSearchTimer);
   primaryCardPage = 0;
+  customEntityIconPage = 0;
   try {
     // A recording left armed would swallow the next key pressed anywhere in the widget, and register
     // a combination such as Ctrl+K as the global popup hotkey.

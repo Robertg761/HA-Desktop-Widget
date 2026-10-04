@@ -2,6 +2,7 @@ import state from './state.js';
 import { closeDialog, openDialog, renderKeepingFocus, showToast } from './ui-utils.js';
 import { getEntityDisplayName, getSearchScore } from './utils.js';
 import { t } from './i18n.js';
+import { paginate, renderListPager } from './list-pager.js';
 
 let globalHotkeys = {};
 const HOTKEY_SUPPORTED_DOMAINS = new Set([
@@ -93,12 +94,26 @@ function createActionSelectHTML(options, selectedAction, entityId) {
   return `<select class="hotkey-action-select" data-entity-id="${escapeHtmlAttribute(entityId)}" data-focus-key="hotkey-action:${escapeHtmlAttribute(entityId)}" aria-label="${escapeHtmlAttribute(t('Hotkey action'))}">${optionsHTML}</select>`;
 }
 
+// The list is one page of rows, and typing in the search waits for a pause: building a row for
+// every entity that can take a hotkey on each keystroke took about a second in a large home.
+let hotkeyListPage = 0;
+let hotkeyListFilter = '';
+let hotkeySearchTimer;
+
+function scheduleHotkeysTabRender() {
+  clearTimeout(hotkeySearchTimer);
+  hotkeySearchTimer = setTimeout(renderHotkeysTab, 150);
+}
+
 function renderHotkeysTab() {
   try {
     const container = document.getElementById('hotkeys-list');
     if (!container) return;
 
     const filter = document.getElementById('hotkey-entity-search').value.toLowerCase();
+    // A new query starts at its first page.
+    if (filter !== hotkeyListFilter) hotkeyListPage = 0;
+    hotkeyListFilter = filter;
     const hotkeyEntities = Object.values(state.STATES)
       .filter((e) => HOTKEY_SUPPORTED_DOMAINS.has(e.entity_id.split('.')[0]))
       .map((entity) => {
@@ -113,9 +128,11 @@ function renderHotkeysTab() {
 
     // The list is rebuilt after a failed action change or a cleared hotkey; the keyboard stays on the
     // same row's control (the keys below say which), not on <body> with Tab starting over.
+    const shown = paginate(hotkeyEntities, hotkeyListPage);
+    hotkeyListPage = shown.page;
     renderKeepingFocus(container, () => {
       container.innerHTML = '';
-      hotkeyEntities.forEach(({ entity }) => {
+      shown.items.forEach(({ entity }) => {
         const hotkeyConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entity.entity_id] || {};
         const hotkey = typeof hotkeyConfig === 'string' ? hotkeyConfig : hotkeyConfig.hotkey;
         const action =
@@ -140,6 +157,14 @@ function renderHotkeysTab() {
                 </div>
             `;
         container.appendChild(item);
+      });
+      renderListPager(container, {
+        page: shown.page,
+        pageCount: shown.pageCount,
+        onChange: (page) => {
+          hotkeyListPage = page;
+          renderHotkeysTab();
+        },
       });
     });
 
@@ -490,6 +515,7 @@ function setupHotkeyEventListeners() {
 export {
   initializeHotkeys,
   renderHotkeysTab,
+  scheduleHotkeysTabRender,
   toggleHotkeys,
   captureHotkey,
   assignHotkeyToEntity,
