@@ -282,6 +282,27 @@ describe('persistent notification helpers', () => {
       expect(time.title.length).toBeGreaterThan(8);
     });
 
+    test('writes that time in the format of the app, not of the page', () => {
+      const i18n = require('../../packages/widget-renderer/src/i18n.js');
+      i18n.setLocaleBootstrap({
+        languageSetting: 'de',
+        requestedLocale: 'de',
+        activeLocale: 'de',
+        messages: {},
+      });
+      // The page's own language can differ from the pack in use; the tooltip follows the pack.
+      document.documentElement.lang = 'en';
+      try {
+        load('a');
+        expect(document.querySelector('.persistent-notification-time').title).toMatch(
+          /^\d{2}\.\d{2}\.2026/
+        );
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+        document.documentElement.lang = '';
+      }
+    });
+
     describe('with a long list', () => {
       const toolbar = () => document.getElementById('persistent-notifications-toolbar');
       const summary = () => document.getElementById('persistent-notifications-summary');
