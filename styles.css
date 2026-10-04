@@ -9106,6 +9106,11 @@ body.theme-light:not(.high-contrast)
   margin-inline-end: auto;
 }
 
+/* Back is hidden on the first and last steps; a button's own display would otherwise win. */
+.first-run-actions .btn[hidden] {
+  display: none;
+}
+
 .widget-state-panel {
   margin: 0;
   padding: var(--space-6) var(--space-4);
