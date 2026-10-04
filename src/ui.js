@@ -9289,7 +9289,12 @@ function renderQuickControls() {
     });
 
     while (container.children.length > desiredNodes.length) {
-      container.removeChild(container.lastElementChild);
+      const removed = container.lastElementChild;
+      // Released while it is still on the page: Chromium keeps a loaded <img> that had its source
+      // cleared after it was detached, and with it the whole tile (about a hundred nodes) for every
+      // page switch.
+      camera.disposeCameraPreview(removed);
+      container.removeChild(removed);
     }
     camera.pruneCameraPreviews();
 

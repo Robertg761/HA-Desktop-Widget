@@ -37,6 +37,18 @@ const CAMERA_PREVIEW_MAX_STAGGER_MS = 900;
 const CAMERA_PREVIEW_LIVE_RETRY_STEPS_MS = Object.freeze([30000, 60000, 300000]);
 const CAMERA_PREVIEW_WARMUP_REUSE_MS = 15000;
 const CAMERA_PREVIEW_MJPEG_TIMEOUT_MS = 8000;
+// A stream that showed its first frame and then stops moving keeps the last picture on screen and
+// the LIVE badge with it. The video's clock is checked this often, and a stream whose clock has not
+// moved for the stall limit is no longer called live.
+const CAMERA_LIVE_WATCHDOG_POLL_MS = 5000;
+const CAMERA_LIVE_STALL_MS = 15000;
+// How long the full viewer waits for a live stream to show its first frame before it tries the
+// plain MJPEG stream instead. Some cloud cameras need 20s to negotiate.
+const CAMERA_VIEWER_LIVE_START_TIMEOUT_MS = 20000;
+// hls.js would start a Web Worker from a blob: URL, which the page's Content-Security-Policy
+// refuses (it has no worker-src). Each start then logged a violation, and hls.js gave up on the
+// worker and demuxed on the main thread after a failed attempt. Asking for no worker skips both.
+const HLS_PLAYER_OPTIONS = Object.freeze({ enableWorker: false });
 // Learned per entity rather than assumed per brand: a camera that answers the MJPEG endpoint with
 // nothing usable is remembered, which covers every integration with the quirk instead of one.
 const cameraMjpegUnusableEntities = new Set();
@@ -105,6 +117,43 @@ function armCameraPreviewLoadTimeout(
     if (record.disposed || record.requestId !== requestId || !record.loading) return;
     onTimeout();
   }, timeoutMs);
+}
+
+function clearCameraLiveWatchdog(record) {
+  if (!record?.liveWatchdogId) return;
+  clearInterval(record.liveWatchdogId);
+  record.liveWatchdogId = null;
+}
+
+// Watches a stream that is already on screen. A stalled playlist or a dead socket raises no fatal
+// error, so nothing else would notice that the picture stopped changing: the tile would keep
+// saying "Live now" over an old frame. The video's own clock is the evidence: it advances while
+// frames arrive, and stands still when they do not.
+function startCameraLiveWatchdog(record, requestId) {
+  clearCameraLiveWatchdog(record);
+  const video = record?.video;
+  if (!video) return;
+  let lastTime = video.currentTime;
+  let lastProgressAt = Date.now();
+  record.liveWatchdogId = setInterval(() => {
+    if (record.disposed || record.requestId !== requestId) {
+      clearCameraLiveWatchdog(record);
+      return;
+    }
+    // A paused video is not a stalled stream: the browser pauses it when the page is hidden.
+    if (video.paused) {
+      lastProgressAt = Date.now();
+      return;
+    }
+    if (video.currentTime !== lastTime) {
+      lastTime = video.currentTime;
+      lastProgressAt = Date.now();
+      return;
+    }
+    if (Date.now() - lastProgressAt >= CAMERA_LIVE_STALL_MS) {
+      failCameraLivePreview(record, requestId, 'stream-stalled');
+    }
+  }, CAMERA_LIVE_WATCHDOG_POLL_MS);
 }
 
 function getCameraPreviewBadgeLabel(record) {
@@ -229,6 +278,7 @@ function resetCameraPreviewImage(record) {
 
 function resetCameraPreviewVideo(record) {
   if (!record) return;
+  clearCameraLiveWatchdog(record);
   if (record.hls) {
     const hls = record.hls;
     record.hls = null;
@@ -393,6 +443,26 @@ function resetCameraLiveRetryBackoff(record) {
   record.liveRetryAt = 0;
 }
 
+// After an outage the ladder still holds the failures earned while Home Assistant was away, so a
+// tile could show "showing last frame" for up to five minutes after everything was back. The
+// failures are forgotten and the tiles that were backed off try again at once (staggered, so a
+// wall of cameras does not hit the proxy together). Tiles that are doing fine are left alone.
+function resetCameraPreviewBackoff() {
+  let index = 0;
+  cameraPreviewRecords.forEach((record) => {
+    if (record.disposed) return;
+    const wasBackedOff =
+      (record.snapshotFailureCount || 0) > 0 || (record.liveFailureCount || 0) > 0;
+    record.snapshotFailureCount = 0;
+    resetCameraLiveRetryBackoff(record);
+    if (!wasBackedOff || record.loading || record.previewMode === 'off') return;
+    clearCameraPreviewTimer(record);
+    const stagger = Math.min(index * CAMERA_PREVIEW_STAGGER_MS, CAMERA_PREVIEW_MAX_STAGGER_MS);
+    scheduleCameraPreview(record, stagger);
+    index += 1;
+  });
+}
+
 function isCameraLiveRetryDue(record) {
   return !record?.liveRetryAt || Date.now() >= record.liveRetryAt;
 }
@@ -462,6 +532,7 @@ function markCameraLivePreviewReady(record, requestId) {
   // plain caption colours) over a bright picture for as long as the stream played.
   setCameraPreviewHasFrame(record, true);
   setCameraPreviewState(record, 'ready', 'Live now');
+  startCameraLiveWatchdog(record, requestId);
 }
 
 function failCameraLivePreview(record, requestId, reason = 'unknown') {
@@ -516,14 +587,23 @@ function requestCameraMjpegPreview(record, requestId) {
     failCameraLivePreview(record, requestId, reason);
   };
 
+  // A multipart stream fires load once, when its first picture is complete, and again only when the
+  // stream itself ends. Another load therefore means the camera closed the connection cleanly,
+  // which no error reports, and the picture left behind is not live any more.
+  let streamStarted = false;
   target.onload = () => {
     if (record.disposed || record.requestId !== requestId) return;
+    if (streamStarted) {
+      failMjpegProbe('mjpeg-ended');
+      return;
+    }
     // Some integrations answer the stream endpoint with an empty payload, which fires load rather
     // than error. Treat a frame with no pixels as the failure it is.
     if (!target.naturalWidth || !target.naturalHeight) {
       failMjpegProbe('mjpeg-empty');
       return;
     }
+    streamStarted = true;
     clearCameraPreviewLoadTimeout(record);
     record.loading = false;
     record.hasLoaded = true;
@@ -653,6 +733,7 @@ async function requestCameraLivePreview(record) {
 
     if (HlsLib && HlsLib.isSupported()) {
       const hls = new HlsLib({
+        ...HLS_PLAYER_OPTIONS,
         lowLatencyMode: true,
         backBufferLength: 15,
         maxBufferLength: 30,
@@ -725,6 +806,13 @@ function ensureCameraPreviewLifecycle() {
   });
 
   window.addEventListener('beforeunload', () => disposeAllCameraPreviews());
+
+  // The socket authenticating again means Home Assistant is reachable, whatever failed before it.
+  if (typeof websocket.on === 'function') {
+    websocket.on('message', (message) => {
+      if (message?.type === 'auth_ok') resetCameraPreviewBackoff();
+    });
+  }
 }
 
 function ensureCameraPreviewObserver() {
@@ -838,6 +926,7 @@ function mountCameraPreview(tile, entityId, refreshValue) {
     lastLoadedAt: 0,
     liveFailureCount: 0,
     liveRetryAt: 0,
+    liveWatchdogId: null,
     loadTimeoutId: null,
     loading: false,
     previewMode,
@@ -1031,6 +1120,9 @@ function openExpandedCameraPreview(record, camera) {
   overlay.className = 'camera-expanded-preview';
   overlay.dataset.cameraPreviewState = record.previewState || 'loading';
   overlay.dataset.cameraPreviewSource = record.previewSource || 'image';
+  // setCameraPreviewHasFrame only copies the flag when it changes, so a viewer opened over a tile
+  // that already has a frame would not otherwise know about it.
+  overlay.dataset.cameraPreviewHasFrame = record.tile.dataset.cameraPreviewHasFrame || 'false';
   overlay.innerHTML = `
     <div class="camera-expanded-preview-shell">
       <header class="camera-expanded-preview-header">
@@ -1282,8 +1374,11 @@ async function openCamera(cameraId, options = {}) {
               <span class="camera-info-updated" title="${escapeHtmlAttribute(t('Last updated: {{time}}', { time: formatDateTime(camera.last_updated) }))}">${escapeHtml(getCameraUpdatedLabel(camera.last_updated))}</span>
             </p>
             <div class="camera-mode-buttons">
-              <button class="btn btn-secondary" id="snapshot-btn">${escapeHtml(t('Snapshot'))}</button>
-              <button class="btn btn-primary" id="live-btn">${escapeHtml(t('Live'))}</button>
+              <button type="button" class="media-mute-toggle camera-mute-toggle active" id="mute-btn" aria-pressed="true" hidden>${escapeHtml(t('Mute'))}</button>
+              <div class="segmented-control">
+                <button type="button" class="btn btn-primary" id="snapshot-btn" aria-pressed="true">${escapeHtml(t('Snapshot'))}</button>
+                <button type="button" class="btn btn-secondary" id="live-btn" aria-pressed="false">${escapeHtml(t('Live'))}</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1296,6 +1391,8 @@ async function openCamera(cameraId, options = {}) {
     const img = modal.querySelector('.camera-stream');
     const snapshotBtn = modal.querySelector('#snapshot-btn');
     const liveBtn = modal.querySelector('#live-btn');
+    const muteBtn = modal.querySelector('#mute-btn');
+    const updatedEl = modal.querySelector('.camera-info-updated');
     const loadingEl = modal.querySelector('#camera-loading');
     const messageEl = modal.querySelector('#camera-viewer-message');
     // A failed frame shows a calm message in the viewer instead of a broken-image icon.
@@ -1308,6 +1405,13 @@ async function openCamera(cameraId, options = {}) {
     let isStartingLive = false;
     let streamGeneration = 0;
     let closed = false;
+    // Sound is off until asked for: a stream that starts talking is a surprise, and the player
+    // would not be allowed to autoplay with sound anyway.
+    let soundOn = false;
+    let stallTimer = null;
+    // Live was running when the window was hidden, so it starts again when the window comes back.
+    let resumeLiveWhenVisible = false;
+    let detachVideoListeners = () => {};
 
     // `.camera-loading` is hidden by default and revealed by `.show`, so no inline display is
     // written here; the stylesheet stays the single source of truth for the overlay's layout.
@@ -1316,8 +1420,37 @@ async function openCamera(cameraId, options = {}) {
       loadingEl?.classList.toggle('show', show);
     };
 
-    const stopLive = () => {
+    const clearStallTimer = () => {
+      if (stallTimer) clearTimeout(stallTimer);
+      stallTimer = null;
+    };
+
+    // The two mode buttons are a segmented control: the one for the picture on screen is pressed.
+    const showMode = (mode) => {
+      const live = mode === 'live';
+      snapshotBtn?.setAttribute('aria-pressed', String(!live));
+      snapshotBtn?.classList.toggle('btn-primary', !live);
+      snapshotBtn?.classList.toggle('btn-secondary', live);
+      liveBtn?.setAttribute('aria-pressed', String(live));
+      liveBtn?.classList.toggle('btn-primary', live);
+      liveBtn?.classList.toggle('btn-secondary', !live);
+    };
+
+    const showMuteToggle = (show) => {
+      if (muteBtn) muteBtn.hidden = !show;
+    };
+
+    // The time under the picture is when it was taken, not when the camera last changed state.
+    const showFrameTime = (live = false) => {
+      if (!updatedEl) return;
+      updatedEl.textContent = live ? t('Live now') : getCameraUpdatedLabel(new Date());
+      updatedEl.removeAttribute('title');
+    };
+
+    const stopLive = ({ keepFrame = false } = {}) => {
       streamGeneration += 1;
+      clearStallTimer();
+      detachVideoListeners();
       showLoading(false);
       // Every new snapshot or live attempt starts from a clean frame; its own handlers decide.
       showFrameMessage(false);
@@ -1340,20 +1473,23 @@ async function openCamera(cameraId, options = {}) {
       }
 
       if (img) {
-        img.onload = null;
-        img.onerror = null;
-        img.removeAttribute('src');
+        // Starting a stream leaves the picture that is on screen where it is, under the spinner,
+        // until the stream has a frame of its own.
+        if (!keepFrame) {
+          img.onload = null;
+          img.onerror = null;
+          img.removeAttribute('src');
+        }
         img.style.display = 'block';
       }
       isLive = false;
       isStartingLive = false;
-      if (liveBtn) {
-        liveBtn.textContent = t('Live');
-        liveBtn.setAttribute('aria-busy', 'false');
-      }
+      showMuteToggle(false);
+      showMode('snapshot');
     };
 
     const loadSnapshot = () => {
+      resumeLiveWhenVisible = false;
       stopLive();
       if (!img) return;
       const generation = streamGeneration;
@@ -1363,6 +1499,7 @@ async function openCamera(cameraId, options = {}) {
         if (closed || generation !== streamGeneration) return;
         showLoading(false);
         showFrameMessage(false);
+        showFrameTime();
       };
       img.onerror = () => {
         if (closed || generation !== streamGeneration) return;
@@ -1376,14 +1513,72 @@ async function openCamera(cameraId, options = {}) {
       });
     };
 
+    // A stream that has not shown its first frame by now is given up on, so the viewer is never
+    // left on a spinner or an empty pane that looks like a working stream.
+    const armStallTimer = (generation, onStall) => {
+      clearStallTimer();
+      stallTimer = setTimeout(() => {
+        stallTimer = null;
+        if (closed || generation !== streamGeneration) return;
+        onStall();
+      }, CAMERA_VIEWER_LIVE_START_TIMEOUT_MS);
+    };
+
+    // The plain MJPEG stream: what the viewer shows when HLS is unavailable, broke, or did not start
+    // in time. The spinner stays until its first picture arrives.
+    const useMjpegStream = (generation) => {
+      detachVideoListeners();
+      clearStallTimer();
+      const video = modal.querySelector('video.camera-video');
+      if (video) {
+        try {
+          video.pause();
+        } catch {
+          // Best-effort teardown before switching transports.
+        }
+        video.removeAttribute('src');
+        video.style.display = 'none';
+      }
+      showMuteToggle(false);
+      img.style.display = 'block';
+      // See requestCameraMjpegPreview: a second load means the camera ended the stream.
+      let pictureShown = false;
+      img.onload = () => {
+        if (closed || generation !== streamGeneration) return;
+        clearStallTimer();
+        showLoading(false);
+        if (pictureShown) {
+          showFrameMessage(true);
+          return;
+        }
+        pictureShown = true;
+        showFrameMessage(false);
+        showFrameTime(true);
+      };
+      img.onerror = () => {
+        if (closed || generation !== streamGeneration) return;
+        clearStallTimer();
+        showLoading(false);
+        showFrameMessage(true);
+      };
+      img.src = getRendererHost().resolveMediaUrl({
+        kind: 'camera_stream',
+        entityId: cameraId,
+        cacheKey: Date.now(),
+      });
+      // A camera that never answers would otherwise keep the spinner up for good.
+      armStallTimer(generation, () => {
+        showLoading(false);
+        showFrameMessage(true);
+      });
+    };
+
     const startLive = async () => {
-      stopLive();
+      resumeLiveWhenVisible = false;
+      stopLive({ keepFrame: true });
       const generation = streamGeneration;
       isStartingLive = true;
-      if (liveBtn) {
-        liveBtn.textContent = t('Stop');
-        liveBtn.setAttribute('aria-busy', 'true');
-      }
+      showMode('live');
       showLoading(true);
 
       // Load the optional player and request the stream in parallel. Either may
@@ -1404,16 +1599,65 @@ async function openCamera(cameraId, options = {}) {
         if (!video) {
           video = document.createElement('video');
           video.className = 'camera-video';
-          video.muted = true;
           video.playsInline = true;
           video.autoplay = true;
           video.controls = false;
           viewer.insertBefore(video, viewer.firstChild);
           showFrameMessage(false);
         }
+        video.muted = !soundOn;
+
+        // The stream replaces the snapshot that held the place only once it has a frame of its own;
+        // until then the spinner stays over that snapshot.
+        let firstFrameShown = false;
+        const showStream = () => {
+          if (firstFrameShown || closed || generation !== streamGeneration) return;
+          firstFrameShown = true;
+          clearStallTimer();
+          img.onload = null;
+          img.onerror = null;
+          img.removeAttribute('src');
+          img.style.display = 'none';
+          showLoading(false);
+          showFrameMessage(false);
+          showFrameTime(true);
+        };
+        let activeHls = null;
+        const abandonHls = () => {
+          if (activeHls) {
+            try {
+              activeHls.destroy();
+            } catch (error) {
+              console.warn('Failed to destroy HLS instance:', error);
+            }
+            if (state.ACTIVE_HLS.get(cameraId) === activeHls) state.ACTIVE_HLS.delete(cameraId);
+            activeHls = null;
+          }
+          useMjpegStream(generation);
+        };
+        const videoListeners = [
+          ['loadeddata', showStream],
+          ['playing', showStream],
+          [
+            'error',
+            () => {
+              if (!closed && generation === streamGeneration) abandonHls();
+            },
+          ],
+        ];
+        videoListeners.forEach(([type, handler]) => video.addEventListener(type, handler));
+        detachVideoListeners = () => {
+          videoListeners.forEach(([type, handler]) => video.removeEventListener(type, handler));
+          detachVideoListeners = () => {};
+        };
 
         if (HlsLib && HlsLib.isSupported()) {
-          const hls = new HlsLib({ lowLatencyMode: true, backBufferLength: 90 });
+          const hls = new HlsLib({
+            ...HLS_PLAYER_OPTIONS,
+            lowLatencyMode: true,
+            backBufferLength: 90,
+          });
+          activeHls = hls;
           // Track the instance before setup so a synchronous load/attach failure
           // is still reachable by teardown.
           state.ACTIVE_HLS.set(cameraId, hls);
@@ -1429,39 +1673,8 @@ async function openCamera(cameraId, options = {}) {
                 return;
               }
               console.warn('HLS error', data?.details || data);
-              if (data?.fatal) {
-                try {
-                  hls.destroy();
-                } catch (_error) {
-                  console.warn('Failed to destroy HLS instance:', _error);
-                }
-                if (state.ACTIVE_HLS.get(cameraId) === hls) {
-                  state.ACTIVE_HLS.delete(cameraId);
-                }
-                // Fallback to MJPEG if fatal error
-                try {
-                  video.pause();
-                } catch {
-                  // Best-effort teardown before switching transports.
-                }
-                video.removeAttribute('src');
-                video.style.display = 'none';
-                img.style.display = 'block';
-                img.onload = () => {
-                  if (closed || generation !== streamGeneration) return;
-                  showFrameMessage(false);
-                };
-                img.onerror = () => {
-                  if (closed || generation !== streamGeneration) return;
-                  showFrameMessage(true);
-                };
-                img.src = getRendererHost().resolveMediaUrl({
-                  kind: 'camera_stream',
-                  entityId: cameraId,
-                  cacheKey: Date.now(),
-                });
-                showLoading(false);
-              }
+              // Fall back to MJPEG on a fatal error.
+              if (data?.fatal) abandonHls();
             });
           } catch (error) {
             if (state.ACTIVE_HLS.get(cameraId) === hls) {
@@ -1474,10 +1687,8 @@ async function openCamera(cameraId, options = {}) {
             }
             throw error;
           }
-          img.style.display = 'none';
           video.style.display = 'block';
           hlsStarted = true;
-          showLoading(false);
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
           // Safari native HLS support
           video.src = hlsUrl;
@@ -1489,56 +1700,57 @@ async function openCamera(cameraId, options = {}) {
           } catch {
             // Autoplay failure leaves native controls hidden but does not leak the stream.
           }
-          img.style.display = 'none';
           video.style.display = 'block';
           hlsStarted = true;
-          showLoading(false);
+        }
+
+        if (hlsStarted) {
+          showMuteToggle(true);
+          // Attaching the player is not a stream: the spinner stays until a frame plays, and a
+          // stream that never produces one is given up on instead of leaving an empty pane.
+          armStallTimer(generation, () => {
+            console.warn(`Camera viewer live stream did not start (${cameraId}); using MJPEG`);
+            abandonHls();
+          });
         }
       }
 
-      if (!hlsStarted) {
-        // Fallback to MJPEG stream using ha:// protocol
-        // Hide video element if it was created during HLS attempt
-        const modalBody = modal.querySelector('.modal-body');
-        const video = modalBody?.querySelector('video.camera-video');
-        if (video) {
-          try {
-            video.pause();
-          } catch {
-            // Best-effort teardown before switching transports.
-          }
-          video.removeAttribute('src');
-          video.style.display = 'none';
-        }
-
-        img.style.display = 'block';
-        img.src = getRendererHost().resolveMediaUrl({
-          kind: 'camera_stream',
-          entityId: cameraId,
-          cacheKey: Date.now(),
-        });
-
-        // Hide loading when MJPEG starts
-        img.onload = () => {
-          if (closed || generation !== streamGeneration) return;
-          showLoading(false);
-          showFrameMessage(false);
-        };
-        img.onerror = () => {
-          if (closed || generation !== streamGeneration) return;
-          showLoading(false);
-          showFrameMessage(true);
-        };
-      }
+      // Fallback to MJPEG stream using ha:// protocol
+      if (!hlsStarted) useMjpegStream(generation);
 
       if (closed || generation !== streamGeneration || !modal.isConnected) return;
       isStartingLive = false;
       isLive = true;
-      if (liveBtn) {
-        liveBtn.textContent = t('Stop');
-        liveBtn.setAttribute('aria-busy', 'false');
-      }
     };
+
+    const launchLive = () => {
+      const startPromise = startLive();
+      const generation = streamGeneration;
+      void startPromise.catch((error) => {
+        if (closed || generation !== streamGeneration || !isStartingLive) return;
+        console.warn('Failed to start camera live stream:', error);
+        loadSnapshot();
+        showToast(t('Failed to open camera viewer'), 'error', 2500);
+      });
+    };
+
+    // A stream left running while the window is hidden to the tray keeps downloading and decoding
+    // for nobody. It stops with the window and starts again when the window is back.
+    const handleVisibilityChange = () => {
+      // A viewer taken out of the page without closing it (a re-render) has nothing to stop.
+      if (closed || !modal.isConnected) {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        return;
+      }
+      if (document.visibilityState === 'hidden') {
+        if (!isLive && !isStartingLive) return;
+        stopLive();
+        resumeLiveWhenVisible = true;
+        return;
+      }
+      if (resumeLiveWhenVisible) launchLive();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Button handlers
     if (snapshotBtn) {
@@ -1550,21 +1762,26 @@ async function openCamera(cameraId, options = {}) {
         if (isLive || isStartingLive) {
           loadSnapshot();
         } else {
-          const startPromise = startLive();
-          const generation = streamGeneration;
-          void startPromise.catch((error) => {
-            if (closed || generation !== streamGeneration || !isStartingLive) return;
-            console.warn('Failed to start camera live stream:', error);
-            loadSnapshot();
-            showToast(t('Failed to open camera viewer'), 'error', 2500);
-          });
+          launchLive();
         }
+      };
+    }
+
+    // Pressed means muted, as in the media dialog: the label stays "Mute".
+    if (muteBtn) {
+      muteBtn.onclick = () => {
+        soundOn = !soundOn;
+        const video = modal.querySelector('video.camera-video');
+        if (video) video.muted = !soundOn;
+        muteBtn.setAttribute('aria-pressed', String(!soundOn));
+        muteBtn.classList.toggle('active', !soundOn);
       };
     }
 
     const closeModal = () => {
       if (closed) return;
       closed = true;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       stopLive();
       // Focus goes back to the tile (or its replacement) that opened the viewer.
       void closeDialog(modal, { remove: true });
@@ -1598,6 +1815,7 @@ async function openCamera(cameraId, options = {}) {
 
 export {
   CAMERA_PREVIEW_REFRESH_OPTIONS,
+  HLS_PLAYER_OPTIONS,
   disposeAllCameraPreviews,
   disposeCameraPreview,
   getCameraPreviewRefreshMs,
@@ -1607,5 +1825,6 @@ export {
   openCamera,
   pruneCameraPreviews,
   refreshCameraPreview,
+  resetCameraPreviewBackoff,
   stopHlsStream,
 };

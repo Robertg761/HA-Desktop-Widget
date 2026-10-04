@@ -3332,6 +3332,39 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
     });
 
+    it("releases a camera tile's preview while the tile is still on the page when a page switch removes it", () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['camera.front_door'];
+      config.quickAccessTileOptions = {
+        'camera.front_door': { cameraPreviewRefresh: '10s' },
+      };
+      state.setConfig(config);
+      state.setStates({
+        'camera.front_door': sampleStates['camera.front_door'],
+        'light.living_room': sampleStates['light.living_room'],
+      });
+      ui.renderActiveTab();
+      const cameraTile = document.querySelector(
+        '.control-item[data-entity-id="camera.front_door"]'
+      );
+      expect(cameraTile).toBeTruthy();
+      camera.disposeCameraPreview.mockClear();
+
+      // The page the person switches to has no camera on it.
+      config.favoriteEntities = ['light.living_room'];
+      state.setConfig(config);
+      let attachedWhenReleased = null;
+      camera.disposeCameraPreview.mockImplementation((tile) => {
+        if (tile === cameraTile) attachedWhenReleased = tile.isConnected;
+      });
+      ui.renderActiveTab();
+
+      expect(cameraTile.isConnected).toBe(false);
+      expect(camera.disposeCameraPreview).toHaveBeenCalledWith(cameraTile);
+      expect(attachedWhenReleased).toBe(true);
+      camera.disposeCameraPreview.mockReset();
+    });
+
     it('labels and mounts a true live camera tile distinctly from snapshots', () => {
       const config = state.CONFIG;
       config.favoriteEntities = ['camera.front_door'];

@@ -70,9 +70,14 @@ jest.mock('../../src/utils.js', () => ({
 // Mock WebSocket
 const mockWebSocketRequest = jest.fn();
 const mockWebSocketCallService = jest.fn();
+// The module subscribes once, for its whole life, so the handlers outlive every test.
+const mockSocketMessageHandlers = [];
 jest.mock('../../src/websocket.js', () => ({
   request: mockWebSocketRequest,
   callService: mockWebSocketCallService,
+  on: (event, handler) => {
+    if (event === 'message') mockSocketMessageHandlers.push(handler);
+  },
 }));
 
 // Mock state module
@@ -802,6 +807,27 @@ describe('Camera Module', () => {
       snapshot.onload();
       expect(status.textContent).toBe('Snapshot fallback');
       expect(badgeLabel(tile)).toBe('Snapshot');
+    });
+
+    it('stops calling an MJPEG stream live when the camera ends it cleanly', async () => {
+      const tile = createPreviewTile();
+      mockWebSocketRequest.mockResolvedValue({ success: false });
+
+      camera.mountCameraPreview(tile, 'camera.front_door', 'live');
+      await flushLivePreviewStart();
+      const stream = pendingImage(tile);
+      markDecoded(stream).onload();
+      expect(tile.dataset.cameraPreviewState).toBe('ready');
+
+      // A multipart stream fires load for its first picture and again only when it ends; no error
+      // reports a connection that was closed properly.
+      stream.onload();
+
+      expect(tile.dataset.cameraPreviewState).not.toBe('ready');
+      expect(stream.hasAttribute('src')).toBe(false);
+      expect(pendingImage(tile).getAttribute('src')).toMatch(
+        /^ha:\/\/camera\/camera\.front_door\?/
+      );
     });
 
     it('treats an empty MJPEG response as a failure and stops probing that camera', async () => {
@@ -1637,7 +1663,7 @@ describe('Camera Module', () => {
       expect(img.src).toBe('ha://camera/camera.front_door?t=1234567890');
     });
 
-    it('should toggle Live button text to Stop when live started', async () => {
+    it('marks the mode on screen as pressed, and keeps both labels where they are', async () => {
       mockWebSocketRequest.mockResolvedValue({
         success: false, // Make HLS fail to avoid complexity
       });
@@ -1645,17 +1671,22 @@ describe('Camera Module', () => {
       camera.openCamera('camera.front_door');
 
       const liveBtn = document.querySelector('#live-btn');
+      const snapshotBtn = document.querySelector('#snapshot-btn');
+      expect(snapshotBtn.getAttribute('aria-pressed')).toBe('true');
+      expect(liveBtn.getAttribute('aria-pressed')).toBe('false');
 
-      // Click Live button
       await liveBtn.click();
-
-      // Wait for async operations
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(liveBtn.textContent).toBe('Stop');
+      expect(liveBtn.getAttribute('aria-pressed')).toBe('true');
+      expect(snapshotBtn.getAttribute('aria-pressed')).toBe('false');
+      // The pressed one is drawn as selected; the label does not change width under the pointer.
+      expect(liveBtn.classList.contains('btn-primary')).toBe(true);
+      expect(snapshotBtn.classList.contains('btn-primary')).toBe(false);
+      expect(liveBtn.textContent).toBe('Live');
     });
 
-    it('should toggle Live button back to Live when stopped', async () => {
+    it('goes back to Snapshot when the pressed Live button is pressed again', async () => {
       mockWebSocketRequest.mockResolvedValue({
         success: false,
       });
@@ -1671,7 +1702,9 @@ describe('Camera Module', () => {
       // Stop live
       await liveBtn.click();
 
-      expect(liveBtn.textContent).toBe('Live');
+      expect(liveBtn.getAttribute('aria-pressed')).toBe('false');
+      expect(document.querySelector('#snapshot-btn').getAttribute('aria-pressed')).toBe('true');
+      expect(document.querySelector('.camera-img').getAttribute('src')).toContain('ha://camera/');
     });
 
     it('should show camera status and last updated time', () => {
@@ -1802,7 +1835,9 @@ describe('Camera Module', () => {
       await liveBtn.click();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
+      // No worker: the page's Content-Security-Policy refuses the blob: worker hls.js would start.
       expect(mockHls).toHaveBeenCalledWith({
+        enableWorker: false,
         lowLatencyMode: true,
         backBufferLength: 90,
       });
@@ -1846,7 +1881,7 @@ describe('Camera Module', () => {
       expect(video.controls).toBe(false);
     });
 
-    it('should show video and hide img on HLS success', async () => {
+    it('should show video and hide img once the stream has a frame', async () => {
       mockWebSocketRequest.mockResolvedValue({
         success: true,
         result: { url: '/api/hls/master_playlist.m3u8' },
@@ -1862,6 +1897,7 @@ describe('Camera Module', () => {
       const img = document.querySelector('.camera-img');
 
       expect(video.style.display).toBe('block');
+      video.dispatchEvent(new Event('playing'));
       expect(img.style.display).toBe('none');
     });
 
@@ -2065,6 +2101,517 @@ describe('Camera Module', () => {
         'ha://camera/camera.front_door?t=1234567890'
       );
       expect(showToast).toHaveBeenCalledWith('Failed to open camera viewer', 'error', 2500);
+    });
+  });
+
+  describe('openCamera - the live viewer', () => {
+    const settle = async () => {
+      await jest.advanceTimersByTimeAsync(0);
+      for (let attempt = 0; attempt < 8; attempt += 1) await Promise.resolve();
+    };
+    let visibilityState;
+
+    beforeEach(() => {
+      mockState.CONFIG = getMockConfig();
+      mockState.STATES = sampleStates;
+      visibilityState = 'visible';
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        get: () => visibilityState,
+      });
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-07-17T12:00:00.000Z'));
+      mockWebSocketRequest.mockResolvedValue({
+        success: true,
+        result: { url: '/api/hls/master_playlist.m3u8' },
+      });
+    });
+
+    afterEach(() => {
+      document.querySelectorAll('.camera-modal').forEach((modal) => modal.remove());
+      jest.useRealTimers();
+    });
+
+    // Opens the viewer, lets the snapshot arrive, and presses Live.
+    const openAndGoLive = async () => {
+      camera.openCamera('camera.front_door');
+      const modal = document.querySelector('.camera-modal');
+      const img = modal.querySelector('.camera-img');
+      img.onload();
+      expect(modal.querySelector('#camera-loading').classList.contains('show')).toBe(false);
+      modal.querySelector('#live-btn').click();
+      await settle();
+      return {
+        modal,
+        img,
+        video: modal.querySelector('video.camera-video'),
+        spinner: modal.querySelector('#camera-loading'),
+        message: modal.querySelector('#camera-viewer-message'),
+      };
+    };
+
+    it('keeps the spinner and the snapshot up until the stream plays a frame', async () => {
+      const { img, video, spinner } = await openAndGoLive();
+
+      // The player is attached, but attaching it is not a picture.
+      expect(mockHlsInstance.attachMedia).toHaveBeenCalledWith(video);
+      expect(spinner.classList.contains('show')).toBe(true);
+      expect(img.hasAttribute('src')).toBe(true);
+      expect(img.getAttribute('src')).toContain('ha://camera/');
+      expect(img.style.display).toBe('block');
+
+      video.dispatchEvent(new Event('playing'));
+
+      expect(spinner.classList.contains('show')).toBe(false);
+      expect(img.style.display).toBe('none');
+      expect(img.hasAttribute('src')).toBe(false);
+    });
+
+    it('takes loadeddata as the first frame too, and only once', async () => {
+      const { video, spinner } = await openAndGoLive();
+
+      video.dispatchEvent(new Event('loadeddata'));
+      expect(spinner.classList.contains('show')).toBe(false);
+      video.dispatchEvent(new Event('playing'));
+      expect(spinner.classList.contains('show')).toBe(false);
+      await jest.advanceTimersByTimeAsync(60000);
+      expect(mockHlsInstance.destroy).not.toHaveBeenCalled();
+    });
+
+    it('gives up on a stream that never shows a frame and tries the MJPEG stream', async () => {
+      const { img, video, spinner } = await openAndGoLive();
+
+      await jest.advanceTimersByTimeAsync(19999);
+      expect(mockHlsInstance.destroy).not.toHaveBeenCalled();
+      expect(spinner.classList.contains('show')).toBe(true);
+
+      await jest.advanceTimersByTimeAsync(1);
+
+      expect(mockHlsInstance.destroy).toHaveBeenCalledTimes(1);
+      expect(mockState.ACTIVE_HLS.size).toBe(0);
+      expect(img.getAttribute('src')).toContain('ha://camera_stream/');
+      expect(video.style.display).toBe('none');
+      // The spinner stays until the MJPEG picture arrives.
+      expect(spinner.classList.contains('show')).toBe(true);
+      img.onload();
+      expect(spinner.classList.contains('show')).toBe(false);
+    });
+
+    it('says so when the camera ends the MJPEG stream cleanly', async () => {
+      mockWebSocketRequest.mockResolvedValue({ success: false });
+      camera.openCamera('camera.front_door');
+      const modal = document.querySelector('.camera-modal');
+      modal.querySelector('#live-btn').click();
+      await settle();
+      const img = modal.querySelector('.camera-img');
+      const message = modal.querySelector('#camera-viewer-message');
+
+      img.onload();
+      expect(message.hidden).toBe(true);
+      img.onload(); // the second load is the end of the stream
+
+      expect(message.hidden).toBe(false);
+    });
+
+    it('says so when the MJPEG stream does not answer either', async () => {
+      const { img, spinner, message } = await openAndGoLive();
+      await jest.advanceTimersByTimeAsync(20000);
+      expect(img.getAttribute('src')).toContain('ha://camera_stream/');
+
+      await jest.advanceTimersByTimeAsync(20000);
+
+      expect(spinner.classList.contains('show')).toBe(false);
+      expect(message.hidden).toBe(false);
+    });
+
+    it('falls back to MJPEG on a fatal HLS error and keeps the spinner for its first picture', async () => {
+      const { img, spinner } = await openAndGoLive();
+
+      mockHlsEventHandlers.hlsError(null, { fatal: true, details: 'manifestLoadError' });
+
+      expect(mockHlsInstance.destroy).toHaveBeenCalledTimes(1);
+      expect(img.getAttribute('src')).toContain('ha://camera_stream/');
+      expect(spinner.classList.contains('show')).toBe(true);
+      img.onload();
+      expect(spinner.classList.contains('show')).toBe(false);
+    });
+
+    it('falls back to MJPEG when the video element reports an error', async () => {
+      const { img, video } = await openAndGoLive();
+
+      video.dispatchEvent(new Event('error'));
+
+      expect(mockHlsInstance.destroy).toHaveBeenCalledTimes(1);
+      expect(img.getAttribute('src')).toContain('ha://camera_stream/');
+    });
+
+    it('stops the stream while the window is hidden and starts it again when it is back', async () => {
+      const { video } = await openAndGoLive();
+      video.dispatchEvent(new Event('playing'));
+      expect(mockWebSocketRequest).toHaveBeenCalledTimes(1);
+
+      visibilityState = 'hidden';
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      expect(mockHlsInstance.destroy).toHaveBeenCalledTimes(1);
+      expect(mockState.ACTIVE_HLS.size).toBe(0);
+      expect(document.querySelector('#live-btn').getAttribute('aria-pressed')).toBe('false');
+
+      visibilityState = 'visible';
+      document.dispatchEvent(new Event('visibilitychange'));
+      await settle();
+
+      expect(mockWebSocketRequest).toHaveBeenCalledTimes(2);
+      expect(mockHls).toHaveBeenCalledTimes(2);
+      expect(document.querySelector('#live-btn').getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('does not start a stream on return that was not running when the window hid', async () => {
+      camera.openCamera('camera.front_door');
+      await settle();
+
+      visibilityState = 'hidden';
+      document.dispatchEvent(new Event('visibilitychange'));
+      visibilityState = 'visible';
+      document.dispatchEvent(new Event('visibilitychange'));
+      await settle();
+
+      expect(mockWebSocketRequest).not.toHaveBeenCalled();
+    });
+
+    it('does not bring a stream back that was stopped on purpose before the window hid', async () => {
+      const { modal } = await openAndGoLive();
+      modal.querySelector('#snapshot-btn').click();
+      visibilityState = 'hidden';
+      document.dispatchEvent(new Event('visibilitychange'));
+      visibilityState = 'visible';
+      document.dispatchEvent(new Event('visibilitychange'));
+      await settle();
+
+      expect(mockWebSocketRequest).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops listening for the window when the viewer is closed', async () => {
+      const { modal, video } = await openAndGoLive();
+      video.dispatchEvent(new Event('playing'));
+      visibilityState = 'hidden';
+      document.dispatchEvent(new Event('visibilitychange'));
+      modal.querySelector('.close-btn').click();
+      mockWebSocketRequest.mockClear();
+
+      visibilityState = 'visible';
+      document.dispatchEvent(new Event('visibilitychange'));
+      await settle();
+
+      expect(mockWebSocketRequest).not.toHaveBeenCalled();
+    });
+
+    it('offers sound for a stream that has it, muted until asked', async () => {
+      const { modal, video } = await openAndGoLive();
+      const mute = modal.querySelector('#mute-btn');
+
+      expect(mute.hidden).toBe(false);
+      expect(video.muted).toBe(true);
+      expect(mute.getAttribute('aria-pressed')).toBe('true');
+
+      mute.click();
+      expect(video.muted).toBe(false);
+      expect(mute.getAttribute('aria-pressed')).toBe('false');
+
+      mute.click();
+      expect(video.muted).toBe(true);
+      expect(mute.getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('keeps the choice about sound when the stream starts again, and hides the toggle for MJPEG', async () => {
+      const { modal, video } = await openAndGoLive();
+      const mute = modal.querySelector('#mute-btn');
+      mute.click();
+      expect(video.muted).toBe(false);
+
+      modal.querySelector('#live-btn').click(); // back to Snapshot
+      expect(mute.hidden).toBe(true);
+      modal.querySelector('#live-btn').click();
+      await settle();
+      expect(mute.hidden).toBe(false);
+      expect(modal.querySelector('video.camera-video').muted).toBe(false);
+
+      mockHlsEventHandlers.hlsError(null, { fatal: true });
+      expect(mute.hidden).toBe(true);
+    });
+
+    it('does not offer sound where there is no video, and says Live now over MJPEG', async () => {
+      mockWebSocketRequest.mockResolvedValue({ success: false });
+      camera.openCamera('camera.front_door');
+      const modal = document.querySelector('.camera-modal');
+      modal.querySelector('#live-btn').click();
+      await settle();
+
+      expect(modal.querySelector('#mute-btn').hidden).toBe(true);
+      modal.querySelector('.camera-img').onload();
+      expect(modal.querySelector('.camera-info-updated').textContent).toBe('Live now');
+    });
+
+    it('puts the time the picture was taken under it, not when the camera last changed', async () => {
+      camera.openCamera('camera.front_door');
+      const modal = document.querySelector('.camera-modal');
+      const updated = modal.querySelector('.camera-info-updated');
+      // The entity's own last update, from last year.
+      expect(updated.textContent).toContain('2025');
+
+      modal.querySelector('.camera-img').onload();
+
+      expect(updated.textContent).toMatch(/^Updated /);
+      expect(updated.textContent).not.toContain('2025');
+      expect(updated.hasAttribute('title')).toBe(false);
+
+      jest.setSystemTime(new Date('2026-07-17T12:30:00.000Z'));
+      const before = updated.textContent;
+      modal.querySelector('#snapshot-btn').click();
+      modal.querySelector('.camera-img').onload();
+      expect(updated.textContent).not.toBe(before);
+    });
+  });
+
+  describe('Quick Access camera previews - recovery and liveness', () => {
+    let visibilityState;
+    let intersectionCallback = null;
+    const flushLivePreviewStart = async () => {
+      await jest.advanceTimersByTimeAsync(0);
+      for (let attempt = 0; attempt < 8; attempt += 1) await Promise.resolve();
+    };
+    const createPreviewTile = () => {
+      const tile = document.createElement('button');
+      tile.innerHTML = `
+        <div class="camera-tile-visual">
+          <video class="camera-tile-preview-video" muted autoplay playsinline></video>
+          <img class="camera-tile-preview-image" data-camera-buffer-active="true" alt="">
+          <img class="camera-tile-preview-image" data-camera-buffer-active="false" alt="">
+          <div class="camera-tile-fallback"></div>
+        </div>
+        <div class="camera-tile-preview-badge">
+          <span class="camera-tile-preview-dot"></span>
+          <span class="camera-tile-preview-badge-label"></span>
+        </div>
+        <span class="camera-tile-preview-status"></span>
+      `;
+      document.body.appendChild(tile);
+      return tile;
+    };
+    const pendingImage = (tile) =>
+      tile.querySelector('.camera-tile-preview-image[data-camera-buffer-active="false"]');
+    const badgeLabel = (tile) =>
+      tile.querySelector('.camera-tile-preview-badge-label')?.textContent || '';
+    const setVideoClock = (video, { paused, currentTime }) => {
+      Object.defineProperty(video, 'paused', { configurable: true, value: paused });
+      Object.defineProperty(video, 'currentTime', { configurable: true, value: currentTime });
+    };
+    const authenticate = () =>
+      mockSocketMessageHandlers.forEach((handler) => handler({ type: 'auth_ok' }));
+
+    beforeAll(() => {
+      globalThis.IntersectionObserver = class {
+        constructor(callback) {
+          intersectionCallback = callback;
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      };
+    });
+
+    beforeEach(() => {
+      camera.disposeAllCameraPreviews();
+      document.body.innerHTML = '';
+      visibilityState = 'visible';
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        get: () => visibilityState,
+      });
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-07-17T12:00:00.000Z'));
+      mockState.CONFIG = getMockConfig();
+      mockState.STATES = sampleStates;
+      mockWebSocketRequest.mockResolvedValue({
+        success: true,
+        result: { url: '/api/hls/master_playlist.m3u8' },
+      });
+    });
+
+    afterEach(() => {
+      camera.disposeAllCameraPreviews();
+      jest.useRealTimers();
+    });
+
+    it('starts a stream with no worker, which the page policy would refuse', async () => {
+      const tile = createPreviewTile();
+      camera.mountCameraPreview(tile, 'camera.front_door', 'live');
+      await flushLivePreviewStart();
+
+      expect(mockHls).toHaveBeenCalledWith(expect.objectContaining({ enableWorker: false }));
+    });
+
+    describe('a stream that stops after it started', () => {
+      const startPlaying = async (tile) => {
+        const video = tile.querySelector('.camera-tile-preview-video');
+        setVideoClock(video, { paused: false, currentTime: 10 });
+        camera.mountCameraPreview(tile, 'camera.front_door', 'live');
+        await flushLivePreviewStart();
+        video.onloadeddata();
+        expect(tile.dataset.cameraPreviewState).toBe('ready');
+        return video;
+      };
+
+      it('stops saying Live now once the picture has stood still for fifteen seconds', async () => {
+        const tile = createPreviewTile();
+        await startPlaying(tile);
+
+        await jest.advanceTimersByTimeAsync(10000);
+        expect(tile.dataset.cameraPreviewState).toBe('ready');
+        await jest.advanceTimersByTimeAsync(5000);
+
+        expect(tile.dataset.cameraPreviewState).not.toBe('ready');
+        expect(mockHlsInstance.destroy).toHaveBeenCalledTimes(1);
+        // A fresh still replaces the frozen picture, and the badge stops claiming Live.
+        expect(pendingImage(tile).getAttribute('src')).toMatch(/^ha:\/\/camera\//);
+        pendingImage(tile).onload();
+        expect(badgeLabel(tile)).toBe('Snapshot');
+      });
+
+      it('keeps saying Live now while the picture moves', async () => {
+        const tile = createPreviewTile();
+        const video = await startPlaying(tile);
+
+        for (let second = 1; second <= 12; second += 1) {
+          setVideoClock(video, { paused: false, currentTime: 10 + second * 5 });
+          await jest.advanceTimersByTimeAsync(5000);
+        }
+
+        expect(tile.dataset.cameraPreviewState).toBe('ready');
+        expect(mockHlsInstance.destroy).not.toHaveBeenCalled();
+      });
+
+      it('does not count a paused video as a stalled stream', async () => {
+        const tile = createPreviewTile();
+        const video = await startPlaying(tile);
+        setVideoClock(video, { paused: true, currentTime: 10 });
+
+        await jest.advanceTimersByTimeAsync(60000);
+
+        expect(tile.dataset.cameraPreviewState).toBe('ready');
+      });
+
+      it('stops watching when the tile is disposed', async () => {
+        const tile = createPreviewTile();
+        await startPlaying(tile);
+
+        camera.disposeCameraPreview(tile);
+
+        expect(jest.getTimerCount()).toBe(0);
+      });
+
+      it('waits out the usual backoff before trying the stream again', async () => {
+        const tile = createPreviewTile();
+        await startPlaying(tile);
+        await jest.advanceTimersByTimeAsync(15000);
+        pendingImage(tile).onload();
+        mockHls.mockClear();
+
+        await jest.advanceTimersByTimeAsync(29000);
+        await flushLivePreviewStart();
+        expect(mockHls).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('after the connection to Home Assistant comes back', () => {
+      // Each snapshot that is never answered times out after 20s, and every failure widens the
+      // wait before the next one: 30s, then 60s, then 5 minutes.
+      const failSnapshotsThreeTimes = async (tile) => {
+        camera.mountCameraPreview(tile, 'camera.front_door', '10s');
+        await flushLivePreviewStart();
+        await jest.advanceTimersByTimeAsync(20000);
+        await jest.advanceTimersByTimeAsync(30000 + 20000);
+        await jest.advanceTimersByTimeAsync(60000 + 20000);
+        expect(tile.dataset.cameraPreviewState).toBe('error');
+      };
+
+      it('retries a tile that was backed off for minutes right away', async () => {
+        const tile = createPreviewTile();
+        await failSnapshotsThreeTimes(tile);
+        expect(pendingImage(tile).hasAttribute('src')).toBe(false);
+
+        // Without the reset the next try is five minutes after the third failure.
+        authenticate();
+        await jest.advanceTimersByTimeAsync(300);
+
+        expect(pendingImage(tile).getAttribute('src')).toMatch(
+          /^ha:\/\/camera\/camera\.front_door\?/
+        );
+      });
+
+      it('starts the ladder over: the next failure waits thirty seconds again', async () => {
+        const tile = createPreviewTile();
+        await failSnapshotsThreeTimes(tile);
+
+        authenticate();
+        await jest.advanceTimersByTimeAsync(300);
+        expect(pendingImage(tile).hasAttribute('src')).toBe(true);
+        await jest.advanceTimersByTimeAsync(19700); // this one times out too, 20s after it began
+        expect(pendingImage(tile).hasAttribute('src')).toBe(false);
+
+        await jest.advanceTimersByTimeAsync(29999);
+        expect(pendingImage(tile).hasAttribute('src')).toBe(false);
+        await jest.advanceTimersByTimeAsync(1);
+        expect(pendingImage(tile).hasAttribute('src')).toBe(true);
+      });
+
+      it('leaves a healthy tile on its own cadence', async () => {
+        const tile = createPreviewTile();
+        camera.mountCameraPreview(tile, 'camera.front_door', '30s');
+        await flushLivePreviewStart();
+        pendingImage(tile).onload();
+        const source = tile
+          .querySelector('img[data-camera-buffer-active="true"]')
+          .getAttribute('src');
+
+        authenticate();
+        await jest.advanceTimersByTimeAsync(5000);
+
+        expect(tile.dataset.cameraPreviewState).toBe('ready');
+        expect(
+          tile.querySelector('img[data-camera-buffer-active="true"]').getAttribute('src')
+        ).toBe(source);
+      });
+
+      it('retries a live tile that was waiting out its backoff', async () => {
+        const tile = createPreviewTile();
+        camera.mountCameraPreview(tile, 'camera.front_door', 'live');
+        await flushLivePreviewStart();
+        await jest.advanceTimersByTimeAsync(30000); // the first attempt gives up
+        pendingImage(tile).onload();
+        mockHls.mockClear();
+
+        camera.resetCameraPreviewBackoff();
+        await jest.advanceTimersByTimeAsync(300);
+        await flushLivePreviewStart();
+
+        expect(mockHls).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it("gives the expanded viewer the tile's frame flag from the start", async () => {
+      const tile = createPreviewTile();
+      camera.mountCameraPreview(tile, 'camera.front_door', '30s');
+      await flushLivePreviewStart();
+      pendingImage(tile).onload();
+      expect(tile.dataset.cameraPreviewHasFrame).toBe('true');
+      tile.dataset.cameraPreviewHasFrame = 'true';
+
+      await camera.openCamera('camera.front_door', { sourceTile: tile });
+
+      const overlay = document.querySelector('.camera-expanded-preview');
+      expect(overlay.dataset.cameraPreviewHasFrame).toBe('true');
+      overlay.querySelector('.camera-expanded-preview-close').click();
     });
   });
 });
