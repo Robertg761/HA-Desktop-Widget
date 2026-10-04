@@ -194,11 +194,21 @@ async function assignHotkeyToEntity(entityId, options = {}) {
           .find((input) => input.dataset.entityId === entityId)
           ?.focus();
       }
-      showToast(
-        t('Hotkey set for {{name}}', { name: getEntityDisplayName(entity) }),
-        'success',
-        2200
-      );
+      // On Hyprland the shortcut is only a target until its bind is copied into the Hyprland
+      // config, so say that instead of promising the key works (the popup hotkey does the same).
+      if (result.requiresCompositorBinding) {
+        showToast(
+          t('Shortcut target registered. Copy its binding from the Hyprland shortcuts panel.'),
+          'success',
+          5000
+        );
+      } else {
+        showToast(
+          t('Hotkey set for {{name}}', { name: getEntityDisplayName(entity) }),
+          'success',
+          2200
+        );
+      }
       return { success: true, hotkey, action };
     }
 

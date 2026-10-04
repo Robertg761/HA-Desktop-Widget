@@ -11178,6 +11178,9 @@ ipcMain.handle(
 
     const previousHotkey = config.globalHotkeys.hotkeys[normalizedEntityId];
     config.globalHotkeys.hotkeys[normalizedEntityId] = { hotkey, action };
+    // On Hyprland the portal only registers a shortcut target; the key itself is a bind the user
+    // copies into their Hyprland config, so the renderer must not say the hotkey is set.
+    let requiresCompositorBinding = false;
 
     // Only register if hotkeys are enabled
     if (config.globalHotkeys.enabled) {
@@ -11187,6 +11190,7 @@ ipcMain.handle(
       const portalBinding = registrationResult?.bound?.find(
         (entry) => entry.id === PORTAL_ENTITY_SHORTCUT_PREFIX + normalizedEntityId
       );
+      requiresCompositorBinding = portalBinding?.requiresCompositorBinding === true;
       let registered = portalShortcutsActive
         ? registrationResult.success && isPortalBindingRegistered(portalBinding)
         : hasLegacyGlobalShortcutFallback && globalShortcut.isRegistered(hotkey);
@@ -11260,6 +11264,7 @@ ipcMain.handle(
     return {
       success: true,
       backend: portalShortcutsActive ? PORTAL_SHORTCUTS_BACKEND : 'globalShortcut',
+      requiresCompositorBinding,
     };
   })
 );

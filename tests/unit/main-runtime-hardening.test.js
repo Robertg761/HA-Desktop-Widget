@@ -314,6 +314,17 @@ describe('main-process wiring safeguards', () => {
     );
   });
 
+  it('tells the renderer when a Hyprland shortcut still needs its bind', () => {
+    const handlerStart = mainSource.indexOf("'register-hotkey'");
+    const handlerEnd = mainSource.indexOf("'unregister-hotkey'", handlerStart);
+    const handlerSource = mainSource.slice(handlerStart, handlerEnd);
+
+    expect(handlerSource).toContain(
+      'requiresCompositorBinding = portalBinding?.requiresCompositorBinding === true'
+    );
+    expect(handlerSource).toMatch(/success: true,\s+backend: [^\n]+,\s+requiresCompositorBinding,/);
+  });
+
   it('keeps native Wayland minimize and compositor-owned positions recoverable', () => {
     const minimizeStart = mainSource.indexOf('function minimizeMainWindow');
     const minimizeEnd = mainSource.indexOf("ipcMain.handle('focus-window'", minimizeStart);
