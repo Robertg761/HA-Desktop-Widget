@@ -152,9 +152,12 @@ function showDashboardHistory() {
       : formatClockDateTime(entry.at);
     const pages = document.createElement('span');
     pages.className = 'dashboard-restore-pages';
-    // A page nobody named was saved with the name of the language of the day; show today's.
+    // A page nobody named is saved either with the name of the language of the day or, as the
+    // server stores it, with no name at all; both are shown with today's default name.
     pages.textContent = entry.layout.customTabs
-      .map((tab, index) => (tab.nameIsDefault ? defaultPageName(index, t) : tab.name))
+      .map((tab, index) =>
+        tab.nameIsDefault || !String(tab.name ?? '').trim() ? defaultPageName(index, t) : tab.name
+      )
       .join(', ');
     // Near-identical rows are told apart by how much each holds, not only by when it was saved.
     const count = document.createElement('span');

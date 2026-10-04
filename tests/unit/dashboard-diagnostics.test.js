@@ -259,6 +259,25 @@ describe('tool dialogs and the keyboard', () => {
     expect(document.querySelector('.dashboard-restore-pages').textContent).toBe('All, Küche');
   });
 
+  test('names a restore point’s stored unnamed pages too, which the server keeps with an empty name', async () => {
+    const { rememberDashboard } = require('../../src/dashboard-history.js');
+    const layout = (tabs) => ({ homeAssistant: { url: 'http://server' }, customTabs: tabs });
+    // What main stores and returns for a page nobody named: an empty name and no marker.
+    const saved = layout([
+      { id: 'default', name: '', entityIds: ['light.a'] },
+      { id: 'second', name: '   ', entityIds: [] },
+      { id: 'kitchen', name: 'Küche', entityIds: [] },
+    ]);
+    rememberDashboard(saved, layout([]));
+
+    tools.showDashboardHistory();
+    await tick();
+
+    expect(document.querySelector('.dashboard-restore-pages').textContent).toBe(
+      'All, View 2, Küche'
+    );
+  });
+
   test('a failed restore keeps focus on the restore point that was pressed', async () => {
     const { rememberDashboard } = require('../../src/dashboard-history.js');
     const { restoreDashboard } = require('../../src/ui.js');
