@@ -94,9 +94,10 @@ describe('holiday art beside controls', () => {
   });
 
   it('keeps the title hat on the cap line and the clock spider clear of the time', () => {
-    expect(declared('body[data-season] .drag-area::before', 'top')).toBe('-9px');
+    expect(declared('body[data-season] .drag-area::before', 'top')).toBe('-10px');
     expect(declared('body[data-season] .drag-area::before', 'width')).toBe('18px');
     expect(declared('body[data-season] .drag-area::before', 'height')).toBe('14px');
+    expect(declared('body[data-season] .drag-area::before', 'transform')).toContain('-6deg');
     expect(
       declared(
         "body[data-season='halloween'] .status-card:not(.weather-card, .primary-light-card)::after",

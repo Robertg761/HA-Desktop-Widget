@@ -15322,19 +15322,19 @@ body[data-season] .drag-area {
 body[data-season] .drag-area::before {
   content: '';
   position: absolute;
-  top: -9px;
+  top: -10px;
   inset-inline-start: 17px;
   width: 18px;
   height: 14px;
   background: var(--season-hat, none) no-repeat center bottom / contain;
-  transform: scaleX(var(--season-dir)) rotate(var(--season-hat-tilt, -10deg));
+  transform: scaleX(var(--season-dir)) rotate(var(--season-hat-tilt, -6deg));
   transform-origin: bottom center;
   transition: transform var(--duration-base) var(--ease-back);
   pointer-events: none;
 }
 
 body[data-season] .widget-header:hover .drag-area::before {
-  transform: scaleX(var(--season-dir)) rotate(calc(var(--season-hat-tilt, -10deg) + 10deg))
+  transform: scaleX(var(--season-dir)) rotate(calc(var(--season-hat-tilt, -6deg) + 10deg))
     translateY(-1px);
 }
 
