@@ -3300,10 +3300,32 @@ body.first-run-active #settings-btn {
   color: var(--error-text);
 }
 
+/* The header and the content share the window, the content taking what the header leaves. It was
+   sized as 100vh less a hard-coded 40px under a header that is 41px, which left the page a pixel
+   taller than the window: focusing the last tile scrolled it by that pixel and clipped the header's
+   top edge, and the constant drifted with the header's own height. Everything else the body holds
+   is fixed or hidden. */
+body:not(.desktop-pin-mode) {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+body:not(.desktop-pin-mode) .widget-header {
+  flex: none;
+}
+
 /* Main content */
 .widget-content {
   padding: 12px 14px 14px;
-  height: calc(100vh - 40px);
+  /* The scrollbar gutter is always reserved, so a page that scrolls and one that does not are the
+     same width, and tiles do not shift sideways when switching between them. The end padding gives
+     the gutter back: both margins stay 14px when there is no scrollbar, and the thumb sits in the
+     margin when there is. */
+  padding-inline-end: 5px;
+  scrollbar-gutter: stable;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   background: var(--glass-elevated);
@@ -9882,6 +9904,7 @@ body {
 @media (max-width: 420px) {
   .widget-content {
     padding: 10px;
+    padding-inline-end: 1px;
   }
 
   .status-grid {
@@ -9933,6 +9956,7 @@ body {
 @media (max-width: 360px) {
   .widget-content {
     padding: 8px;
+    padding-inline-end: 0;
   }
 
   .media-tile {
@@ -10022,6 +10046,7 @@ body {
 @media (max-height: 420px) and (min-width: 421px) {
   .widget-content {
     padding: 8px;
+    padding-inline-end: 0;
   }
 
   .status-grid {

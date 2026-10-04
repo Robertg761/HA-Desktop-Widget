@@ -457,6 +457,47 @@ describe('stylesheet one-offs', () => {
     });
   });
 
+  describe('the main window layout', () => {
+    const page = '<div class="widget-header"></div><div class="widget-content"></div>';
+
+    it('shares the window between the header and the content instead of subtracting a constant', () => {
+      render(page);
+      const content = document.querySelector('.widget-content');
+      expect(resolvedValue(document.body, 'display')).toBe('flex');
+      expect(resolvedValue(document.body, 'flex-direction')).toBe('column');
+      expect(resolvedValue(document.body, 'height')).toBe('100vh');
+      expect(resolvedValue(content, 'flex')).toBe('1 1 auto');
+      expect(resolvedValue(content, 'min-height')).toBe('0');
+      // The old 100vh - 40px under a header that is 41px made the page one pixel too tall.
+      expect(resolvedValue(content, 'height')).toBeNull();
+    });
+
+    it('leaves a pinned widget window alone', () => {
+      render(page, { bodyClass: 'desktop-pin-mode' });
+      expect(resolvedValue(document.body, 'display')).not.toBe('flex');
+    });
+
+    it('keeps the scrollbar gutter always, so a page that scrolls is as wide as one that does not', () => {
+      render(page);
+      const content = document.querySelector('.widget-content');
+      expect(resolvedValue(content, 'scrollbar-gutter')).toBe('stable');
+      // The gutter is 9px, so the end padding is 14 - 9: the margins are level when nothing scrolls.
+      expect(resolvedValue(content, 'padding-inline-end')).toBe('5px');
+    });
+
+    it.each([
+      [419, '1px'],
+      [359, '0'],
+    ])('gives the gutter back from the narrower padding at %ipx', (width, padding) => {
+      render(page);
+      expect(
+        resolvedValue(document.querySelector('.widget-content'), 'padding-inline-end', {
+          viewport: { width, height: 600 },
+        })
+      ).toBe(padding);
+    });
+  });
+
   describe('reduced motion keeps the waiting indicators moving', () => {
     // The blanket "no animation" rule gives every animation 0.01ms and one iteration. A spinner or a
     // progress bar frozen that way reads as a stalled app, and the bar as a finished one.
