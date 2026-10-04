@@ -299,7 +299,9 @@ function keyFromKeyName(key) {
 // registers an accelerator by the character or name the layout gives, so the recorder does the
 // same for these. Only a name Electron can parse counts: a printable ASCII character, or a named
 // key like Enter. The yen sign and other letters outside ASCII stay unrecorded rather than become
-// a hotkey that cannot be registered.
+// a hotkey that cannot be registered. The popup hotkey's uiohook backend reads keycodes instead and
+// has no key for "<": it refuses that chord with its own message, and reads a backslash as the main
+// backslash key.
 function keyFromLayout(key) {
   if (typeof key === 'string' && key.length === 1 && !/^[\x20-\x7e]$/.test(key)) return '';
   return keyFromKeyName(key);
