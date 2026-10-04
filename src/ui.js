@@ -3822,9 +3822,10 @@ function formatEventTime(date) {
   return formatClockTime(date);
 }
 
-// An event's date for a list, with its weekday ("Thu, 10/1/2026").
+// An event's day for a list, in the words the tiles use: "Today", "Tomorrow", "Thu" within the
+// week, else "Oct 12". An all-numeric date ("10/1/2026") has to be worked out by the reader.
 function formatEventDate(date) {
-  return formatDate(date, { weekday: 'short', year: 'numeric', month: 'numeric', day: 'numeric' });
+  return formatDayLabel(date);
 }
 
 function formatDateTimeValue(value, { timeOnly = false } = {}) {
@@ -3832,7 +3833,7 @@ function formatDateTimeValue(value, { timeOnly = false } = {}) {
   if (!dateValue) return '--';
   const date = parseHomeAssistantDateTime(dateValue);
   if (Number.isNaN(date.getTime())) return String(dateValue);
-  return timeOnly ? formatEventTime(date) : `${formatEventDate(date)} ${formatEventTime(date)}`;
+  return timeOnly ? formatEventTime(date) : formatDayAndTime(date);
 }
 
 // Where a tile's next event falls. Home Assistant's calendar entity reports the next event even
