@@ -495,6 +495,29 @@ describe('hotkeys module', () => {
           jest.useRealTimers();
         }
       });
+
+      it('drops a pending search, and goes back to the first page, when Settings closes', () => {
+        jest.useFakeTimers();
+        try {
+          hotkeys.renderHotkeysTab();
+          pager('next').click();
+          const secondPageRow = rows()[0];
+
+          searchInput.value = 'lamp 1';
+          hotkeys.scheduleHotkeysTabRender();
+          hotkeys.cleanupHotkeyEventListeners();
+          jest.advanceTimersByTime(200);
+
+          // Nothing was rebuilt for a dialog that had gone
+          expect(rows()[0]).toBe(secondPageRow);
+
+          searchInput.value = '';
+          hotkeys.renderHotkeysTab();
+          expect(rows()[0].querySelector('.hotkey-input').dataset.entityId).toBe('light.lamp_000');
+        } finally {
+          jest.useRealTimers();
+        }
+      });
     });
   });
 

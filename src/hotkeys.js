@@ -492,8 +492,11 @@ function setupHotkeyEventListenersInternal() {
   }
 }
 
-// Cleanup function to remove event listeners
+// Cleanup function to remove event listeners, and to stop a pending search from rebuilding a list
+// that is no longer on screen. Settings reopens on the first page, as the other lists do.
 function cleanupHotkeyEventListeners() {
+  clearTimeout(hotkeySearchTimer);
+  hotkeyListPage = 0;
   try {
     if (activeContainer && containerChangeHandler) {
       activeContainer.removeEventListener('change', containerChangeHandler);
