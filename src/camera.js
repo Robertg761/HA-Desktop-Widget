@@ -253,6 +253,8 @@ function resetCameraPreviewVideo(record) {
     // The video may not have reached a playable state.
   }
   record.video.removeAttribute('src');
+  // A stream that stopped leaves a frame only if a still is still showing.
+  setCameraPreviewHasFrame(record, hasCameraPreviewFrame(record));
 }
 
 function setCameraPreviewSource(record, source) {
@@ -461,6 +463,9 @@ function markCameraLivePreviewReady(record, requestId) {
   // still is cleared rather than kept because an MJPEG source holds its connection open.
   setCameraPreviewSource(record, 'video');
   resetCameraPreviewImage(record);
+  // The video is the frame now. Without this the tile styled itself as an empty pane (no scrim,
+  // plain caption colours) over a bright picture for as long as the stream played.
+  setCameraPreviewHasFrame(record, true);
   setCameraPreviewState(record, 'ready', 'Live now');
 }
 

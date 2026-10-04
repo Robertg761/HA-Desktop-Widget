@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.54",
+  "version": "1.2.55",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget, including German date and time formats.",
   "messages": {
@@ -1771,6 +1771,7 @@
     "Device class: Door": "Tür",
     "Device class: Window": "Fenster",
     "Device class: Motion": "Bewegung",
-    "Device class: Occupancy": "Belegung"
+    "Device class: Occupancy": "Belegung",
+    "Original base (no tint)": "Ursprüngliche Basis (ohne Tönung)"
   }
 }

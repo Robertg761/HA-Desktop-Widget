@@ -11,6 +11,7 @@ import {
   applyBackgroundTheme,
   applyBackgroundThemeFromColor,
   getAccentThemes,
+  getBackgroundWindowColor,
   setCustomThemes,
   applyUiPreferences,
   suspendSeasonalColors,
@@ -1790,7 +1791,7 @@ function renderColorThemeOptions() {
     const tooltipName = getThemeDisplayName(theme);
     const tooltipDescription = isOriginalTheme
       ? isBackgroundTarget
-        ? t('Original dark base (no tint)')
+        ? t('Original base (no tint)')
         : t('Original accent blue')
       : theme.isCustom
         ? t('Saved custom color')
@@ -1804,12 +1805,25 @@ function renderColorThemeOptions() {
       option.classList.add('selected');
     }
 
-    if (isOriginalTheme && isBackgroundTarget) {
-      const isLightTheme = document.body?.classList.contains('theme-light');
-      const swatchRgb = isLightTheme ? '250, 250, 250' : '18, 22, 30';
-      const swatchHex = isLightTheme ? '#fafafa' : '#12161e';
-      option.style.setProperty('--swatch', swatchHex);
-      option.style.setProperty('--swatch-rgb', swatchRgb);
+    if (isBackgroundTarget) {
+      // A background swatch is the window the choice gives (the colour mixed in lightly, in the
+      // theme that is showing), with the choice itself as a dot, so the picker does not promise
+      // a full-strength colour. The untinted base has no dot, and is the window colour itself.
+      const windowColor =
+        getBackgroundWindowColor(isOriginalTheme ? null : theme.color) ??
+        getBackgroundWindowColor();
+      const windowRgb = hexToRgb(windowColor);
+      option.dataset.backgroundSwatch = isOriginalTheme ? 'base' : 'tinted';
+      option.style.setProperty('--swatch-window', windowColor);
+      option.style.setProperty(
+        '--swatch',
+        isOriginalTheme ? windowColor : theme.color || windowColor
+      );
+      if (isOriginalTheme && windowRgb) {
+        option.style.setProperty('--swatch-rgb', `${windowRgb.r}, ${windowRgb.g}, ${windowRgb.b}`);
+      } else if (theme.rgb) {
+        option.style.setProperty('--swatch-rgb', theme.rgb);
+      }
     } else {
       if (theme.color) {
         option.style.setProperty('--swatch', theme.color);
@@ -1910,6 +1924,8 @@ function previewThemeMode(mode) {
   const values = getPreviewValuesFromInputs();
   applyWindowEffects(values || state.CONFIG || {});
   updateThemeModeControl();
+  // The background swatches are drawn in the theme that is showing.
+  if (activeColorTarget === COLOR_TARGETS.background) renderColorThemeOptions();
 }
 
 function restoreSavedThemeMode() {
@@ -1920,8 +1936,9 @@ function restoreSavedThemeMode() {
   applyTheme(getSavedThemeMode());
   applyAccentTheme(state.CONFIG?.ui?.accent || getCurrentAccentTheme());
   applyBackgroundTheme(state.CONFIG?.ui?.background || getCurrentBackgroundTheme());
-  applyWindowEffects(state.CONFIG || {});
   applyDesktopAppearance(state.CONFIG || {});
+  applyWindowEffects(state.CONFIG || {});
+  if (activeColorTarget === COLOR_TARGETS.background) renderColorThemeOptions();
 }
 
 function initThemeModeControl() {
@@ -2810,6 +2827,19 @@ function sliderValueToOpacity(sliderValue, storedOpacity) {
 }
 
 /**
+ * Write the Window opacity readout beside the slider: the opacity its position stands for, as a
+ * percentage. The slider runs 1 to 100 over opacities of 50 to 100%, so its raw position is not
+ * a figure anyone can read as a percentage.
+ */
+function updateOpacityReadout() {
+  const slider = document.getElementById('opacity-slider');
+  const readout = document.getElementById('opacity-value');
+  if (!slider || !readout) return;
+  const opacity = sliderValueToOpacity(parseInt(slider.value, 10) || 90, state.CONFIG?.opacity);
+  readout.textContent = `${Math.round(opacity * 100)}%`;
+}
+
+/**
  * Read preview controls from the DOM and derive window effect values.
  *
  * Reads the #opacity-slider and #frosted-glass inputs; if either is missing, returns `null`.
@@ -3591,8 +3621,8 @@ function applyConfigFromProfileSync(nextConfig) {
   applyAccentTheme(state.CONFIG.ui?.accent || 'original');
   applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
   applyUiPreferences(state.CONFIG.ui || {});
-  applyWindowEffects(state.CONFIG || {});
   applyDesktopAppearance(state.CONFIG);
+  applyWindowEffects(state.CONFIG || {});
 }
 
 /**
@@ -5063,7 +5093,6 @@ async function openSettings(uiHooks) {
     const alwaysOnTop = document.getElementById('always-on-top');
     const hideOnBlur = document.getElementById('hide-on-blur');
     const opacitySlider = document.getElementById('opacity-slider');
-    const opacityValue = document.getElementById('opacity-value');
     const frostedGlass = document.getElementById('frosted-glass');
     const enableInteractionDebugLogs = document.getElementById('enable-interaction-debug-logs');
     const allowPrereleaseUpdates = document.getElementById('allow-prerelease-updates');
@@ -5157,7 +5186,7 @@ async function openSettings(uiHooks) {
     const storedOpacity = Math.max(0.5, Math.min(1, state.CONFIG.opacity || 0.95));
     const sliderScale = opacityToSliderValue(storedOpacity);
     if (opacitySlider) opacitySlider.value = sliderScale;
-    if (opacityValue) opacityValue.textContent = `${sliderScale}`;
+    updateOpacityReadout();
 
     const weatherEffectsEnabled = document.getElementById('weather-effects-enabled');
     const weatherOverrideSelect = document.getElementById('weather-override-select');
@@ -6261,8 +6290,8 @@ async function saveSettings() {
     applyAccentTheme(state.CONFIG.ui?.accent || getCurrentAccentTheme());
     applyBackgroundTheme(state.CONFIG.ui?.background || getCurrentBackgroundTheme());
     applyUiPreferences(state.CONFIG.ui || {});
-    applyWindowEffects(state.CONFIG || {});
     applyDesktopAppearance(state.CONFIG);
+    applyWindowEffects(state.CONFIG || {});
 
     // Update UI to reflect the newly saved settings selection.
     if (settingsUiHooks?.renderActiveTab) {
@@ -6320,9 +6349,6 @@ function renderAlertsListInline() {
       noAlertsMsg.textContent = t(
         'No alerts configured yet. Click the button below to add your first alert.'
       );
-      noAlertsMsg.style.padding = '20px';
-      noAlertsMsg.style.textAlign = 'center';
-      noAlertsMsg.style.color = 'var(--text-muted)';
       alertsList.appendChild(noAlertsMsg);
     }
 
@@ -7284,6 +7310,7 @@ function showProfileSyncAttention() {
 }
 
 export {
+  updateOpacityReadout,
   syncSegmentedIndicators,
   refreshRestoredDashboardSettings,
   openSettings,

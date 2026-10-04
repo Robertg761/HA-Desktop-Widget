@@ -4,21 +4,66 @@ import {
   applyAccentThemeFromColor,
   applyBackgroundThemeFromColor,
   applyTheme,
+  applyWindowEffects,
+  contrastBetween,
   getSeasonalColors,
+  hexToRgb,
+  mixRgb,
 } from './ui-utils.js';
 
 let currentConfig = null;
 let paletteApplied = false;
+// The palette's foreground is the primary text colour as it is.
+const FOREGROUND_PROPERTIES = ['--text-color', '--text-primary'];
+// The quieter text tones come from the foreground and background, so a palette that has only one
+// text colour still has a hierarchy. Each starts at its share of the foreground (the rest being the
+// background) and gets stronger until it reads. --palette-text-dim and --palette-text-faint are
+// what --text-dim and --text-faint pick up when they are set (see styles.css).
+const QUIET_TEXT_SHARES = {
+  '--text-secondary': 0.8,
+  '--text-tertiary': 0.72,
+  '--muted-text': 0.7,
+  '--palette-text-dim': 0.68,
+  '--palette-text-faint': 0.62,
+};
+const MIN_TEXT_CONTRAST = 4.5;
 const paletteProperties = [
-  '--text-color',
-  '--text-primary',
-  '--text-secondary',
-  '--text-tertiary',
-  '--muted-text',
+  ...FOREGROUND_PROPERTIES,
+  ...Object.keys(QUIET_TEXT_SHARES),
   '--border-color',
   '--selection-bg',
 ];
 
+/**
+ * The quiet text tones for a palette, each the weakest mix of its foreground and background that
+ * still clears 4.5:1 on the surface it sits on: the main view's tile, which is the background
+ * lifted a little in a dark palette and veiled a little in a light one. A foreground that cannot
+ * reach 4.5:1 itself is used as it is.
+ * @param {{mode: string, foreground: string, background: string}} palette
+ * @returns {Record<string, string>} rgb() strings by property name; empty for unusable colours.
+ */
+function solveQuietText(palette) {
+  const foreground = hexToRgb(palette.foreground);
+  const background = hexToRgb(palette.background);
+  if (!foreground || !background) return {};
+  const surface =
+    palette.mode === 'light'
+      ? mixRgb(background, { r: 0, g: 0, b: 0 }, 0.09)
+      : mixRgb(background, { r: 255, g: 255, b: 255 }, 0.13);
+  const tones = {};
+  for (const [name, nominal] of Object.entries(QUIET_TEXT_SHARES)) {
+    let tone = foreground;
+    for (let share = nominal; share <= 1.0001; share += 0.02) {
+      tone = mixRgb(background, foreground, Math.min(1, share));
+      if (contrastBetween(tone, surface) >= MIN_TEXT_CONTRAST) break;
+    }
+    tones[name] = `rgb(${tone.r}, ${tone.g}, ${tone.b})`;
+  }
+  return tones;
+}
+
+// Callers draw the window effects after this: the glass alphas depend on whether the light or the
+// dark theme is showing, which a palette decides here.
 export function applyDesktopAppearance(config) {
   currentConfig = config;
   const body = document.body;
@@ -49,8 +94,10 @@ export function applyDesktopAppearance(config) {
     document.documentElement.style.setProperty('--window-bg-rgb', rgb);
     body.style.setProperty('--frosted-bg-rgb', rgb);
   }
-  for (const name of paletteProperties.slice(0, 5))
-    body.style.setProperty(name, palette.foreground);
+  for (const name of FOREGROUND_PROPERTIES) body.style.setProperty(name, palette.foreground);
+  for (const [name, tone] of Object.entries(solveQuietText(palette))) {
+    body.style.setProperty(name, tone);
+  }
   body.style.setProperty('--border-color', palette.border);
   body.style.setProperty('--selection-bg', palette.selection);
 }
@@ -68,5 +115,7 @@ query?.addEventListener?.('change', () => {
     applyAccentTheme(currentConfig.ui?.accent || 'original');
     applyBackgroundTheme(currentConfig.ui?.background || 'original');
     applyDesktopAppearance(currentConfig);
+    // The theme flipped under the saved window effects, whose alphas follow it.
+    applyWindowEffects(currentConfig);
   }
 });
