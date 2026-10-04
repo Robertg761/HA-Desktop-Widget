@@ -14622,14 +14622,14 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
         setReadout(`${brightness}%`);
         updateIconAndAccent(brightness);
       }
-      if (
-        colorTempSlider &&
-        !isColorTempHeld() &&
-        (attributes.color_temp_kelvin != null || attributes.color_temp != null)
-      ) {
-        confirmedColorTemp = getInitialLightColorTempKelvin(attributes, colorTempRange);
-        colorTempSlider.value = String(confirmedColorTemp);
-        showColorTemp(confirmedColorTemp);
+      // A light that reports no colour temperature (off, in RGB mode, or a reading that is not a
+      // positive number) leaves the slider as it is, so it does not flip to unset each time the
+      // light is switched off.
+      const liveColorTemp = getInitialLightColorTempKelvin(attributes, colorTempRange);
+      if (colorTempSlider && !isColorTempHeld() && liveColorTemp !== null) {
+        confirmedColorTemp = liveColorTemp;
+        colorTempSlider.value = String(liveColorTemp);
+        showColorTemp(liveColorTemp);
         colorTempSlider.classList.remove('is-unset');
       }
       if (colorPicker && document.activeElement !== colorPicker && attributes.rgb_color) {

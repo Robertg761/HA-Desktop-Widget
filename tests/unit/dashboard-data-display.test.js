@@ -872,6 +872,41 @@ describe('dashboard data display', () => {
       );
     });
 
+    it('keeps the slider as it was for a live reading that is not a temperature', () => {
+      const modal = open(
+        light('on', {
+          supported_color_modes: ['color_temp'],
+          color_temp_kelvin: 3200,
+          min_color_temp_kelvin: 2000,
+          max_color_temp_kelvin: 6500,
+        })
+      );
+      const slider = modal.querySelector('#light-color-temp-slider');
+      // A light that reports a zero (or any reading that is not above zero) says nothing; the
+      // slider and its readout keep the last real value, not "null".
+      state.setEntityState(
+        light('on', {
+          supported_color_modes: ['color_temp'],
+          color_temp_kelvin: 0,
+          min_color_temp_kelvin: 2000,
+          max_color_temp_kelvin: 6500,
+        })
+      );
+      expect(slider.value).toBe('3200');
+      expect(modal.querySelector('#light-color-temp-value').textContent).toBe('3200K');
+      expect(slider.classList.contains('is-unset')).toBe(false);
+      state.setEntityState(
+        light('on', {
+          supported_color_modes: ['color_temp'],
+          color_temp_kelvin: 4100,
+          min_color_temp_kelvin: 2000,
+          max_color_temp_kelvin: 6500,
+        })
+      );
+      expect(slider.value).toBe('4100');
+      expect(modal.querySelector('#light-color-temp-value').textContent).toBe('4100K');
+    });
+
     it('still shows a real colour temperature', () => {
       const modal = open(
         light('on', {
