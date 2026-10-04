@@ -105,7 +105,7 @@
   font-weight: var(--font-weight-normal);
 }
 
-/* The switch that shows every entity, not just the controllable ones, above the list. */
+/* The checkbox that shows every entity, not just the controllable ones, above the list. */
 .room-dashboard .room-show-all {
   display: flex;
   align-items: center;

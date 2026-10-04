@@ -9189,6 +9189,7 @@ body.theme-light:not(.high-contrast)
   font-size: var(--font-size-xs-plus);
   line-height: 1.4;
   overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 
 .widget-state-details .connection-progress {
