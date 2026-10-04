@@ -13439,11 +13439,15 @@ body.theme-light #settings-modal .modal-footer {
   min-width: min(9rem, 100%);
 }
 
+/* Row selects size to their longest option, so short ones all start at the same width (Time
+   format, Date format, Sync app and the interval line up) and a longer one grows from there. A
+   value wider than the row ends in an ellipsis instead of running under the chevron. */
 #settings-modal .setting-row > select {
   flex: 0 0 auto;
   width: auto;
-  min-width: min(120px, 100%);
+  min-width: min(10rem, 100%);
   max-width: 100%;
+  text-overflow: ellipsis;
   padding-block: 7px;
   padding-inline-start: 10px;
   font-size: var(--font-size-sm);
