@@ -187,6 +187,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       saveSettings: jest.fn(),
       renderAlertsListInline: jest.fn(),
       refreshHomeAssistantAuthStatus: jest.fn(),
+      revealUpdateStatus: jest.fn(),
     }));
     mockUiUtils = {
       __esModule: true,
@@ -865,6 +866,49 @@ describe('Renderer Home Assistant connection lifecycle', () => {
         true,
         '[de] Real-time updates active.'
       );
+    });
+  });
+
+  describe('Check for Updates from the tray', () => {
+    const settingsModule = () => require('../../src/settings.js');
+
+    it('opens Settings on the Updates row, which says a check is running', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      connectSuccessfully();
+      const updateStatus = require('../../src/update-status.js');
+
+      triggerMockEvent('autoUpdate', { status: 'checking', reveal: true });
+      await flushAsync();
+
+      expect(settingsModule().openSettings).toHaveBeenCalledTimes(1);
+      expect(settingsModule().revealUpdateStatus).toHaveBeenCalledTimes(1);
+      expect(updateStatus.getUpdateState()).toEqual({ status: 'checking' });
+    });
+
+    it('does not open Settings a second time when it is already open, but still shows the row', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      connectSuccessfully();
+      document.getElementById('settings-modal').classList.remove('hidden');
+
+      triggerMockEvent('autoUpdate', { status: 'none', reveal: true });
+      await flushAsync();
+
+      expect(settingsModule().openSettings).not.toHaveBeenCalled();
+      expect(settingsModule().revealUpdateStatus).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps what a background check found without opening anything', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      connectSuccessfully();
+      const updateStatus = require('../../src/update-status.js');
+
+      // Nothing has opened Settings: the 30-second check after launch found an update.
+      triggerMockEvent('autoUpdate', { status: 'available', info: { version: '4.0.1' } });
+      triggerMockEvent('autoUpdate', { status: 'downloaded', info: { version: '4.0.1' } });
+      await flushAsync();
+
+      expect(settingsModule().openSettings).not.toHaveBeenCalled();
+      expect(updateStatus.getUpdateState()).toEqual({ status: 'downloaded', version: '4.0.1' });
     });
   });
 

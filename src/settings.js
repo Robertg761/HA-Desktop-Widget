@@ -4998,12 +4998,12 @@ function isSettingsModalOpen() {
 }
 
 function renderUpdateButtonLabels() {
-  // The update buttons' labels live in spans the update UI owns, so they are translated here
-  // rather than with data-i18n.
+  // The check button's label lives in a span the update UI owns, so it is translated here rather
+  // than with data-i18n. The install button's depends on the update (Install, Download, Download
+  // Portable) and is drawn with the status line. One spelling for both: the ui module and this one
+  // used different cases, and the label changed case after a language change.
   const checkUpdatesText = document.getElementById('check-updates-text');
-  if (checkUpdatesText) checkUpdatesText.textContent = t('Check for Updates');
-  const installUpdateText = document.getElementById('install-update-text');
-  if (installUpdateText) installUpdateText.textContent = t('Install Update');
+  if (checkUpdatesText) checkUpdatesText.textContent = t('Check for updates');
 }
 
 function getSettingsLocaleSignature() {
@@ -7532,6 +7532,12 @@ function revealProfileSyncField(field) {
   field?.scrollIntoView?.({ block: 'center' });
 }
 
+/** Shows the Advanced page with the update status in view: where a tray check reports. */
+function revealUpdateStatus() {
+  document.querySelector('.modal-tabs .tab-link[data-tab="advanced"]')?.click();
+  document.getElementById('update-status')?.scrollIntoView?.({ block: 'center' });
+}
+
 /** Brings the person to the part of Advanced that asks something of them. */
 function showProfileSyncAttention() {
   document.querySelector('.modal-tabs .tab-link[data-tab="advanced"]')?.click();
@@ -7545,6 +7551,7 @@ function showProfileSyncAttention() {
 }
 
 export {
+  revealUpdateStatus,
   updateOpacityReadout,
   syncSegmentedIndicators,
   refreshRestoredDashboardSettings,

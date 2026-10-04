@@ -17,6 +17,12 @@ import {
 import * as utils from './utils.js';
 import websocket from './websocket.js';
 import * as camera from './camera.js';
+import {
+  applyUpdateEvent,
+  describeUpdateState,
+  getUpdateState,
+  subscribeToUpdateState,
+} from './update-status.js';
 import * as uiUtils from './ui-utils.js';
 import {
   formatDate,
@@ -242,7 +248,6 @@ const { getDesktopPinCapabilities, getDesktopPinVacuumServices, resolveDesktopPi
   desktopPinSupport;
 const PRESS_ACTION_DOMAINS = new Set(['button', 'input_button']);
 const sensorHistoryCache = new Map();
-let unsubscribeAutoUpdate = null;
 
 function pruneExpiredArtworkRetryEntries(now = Date.now()) {
   failedMediaArtworkRetryAtByUrl.forEach((retryAt, key) => {
@@ -15252,12 +15257,60 @@ function toggleQuickAccess(entityId) {
   }
 }
 
-let updateStatusRender = null;
+// Settings shows the update state that src/update-status.js keeps; this draws it. Disabling the
+// check button while a check runs drops keyboard focus to <body>, and enabling it again does not
+// bring it back; disableControlsKeepingFocus does, as the entity switches in Settings do.
+// The release notes of a version are on its GitHub release, tagged with a "v" before the version.
+const RELEASE_PAGE_URL = 'https://github.com/Robertg761/HA-Desktop-Widget/releases/tag';
+let checkUpdatesFocusGuard = null;
+let unsubscribeUpdateState = null;
+
+function renderUpdateStatus() {
+  const description = describeUpdateState(getUpdateState());
+
+  const statusEl = document.getElementById('update-status');
+  if (statusEl) statusEl.dataset.state = description.tone;
+  const statusText = document.getElementById('update-status-text');
+  if (statusText) statusText.textContent = description.text;
+
+  // The button's label lives in a span that the update state sets, so a language change and a
+  // different kind of update both reach it.
+  const installBtn = document.getElementById('install-update-btn');
+  const installLabel = document.getElementById('install-update-text');
+  if (installLabel && description.installLabel) installLabel.textContent = description.installLabel;
+  if (installBtn) installBtn.classList.toggle('hidden', !description.installLabel);
+
+  const progress = document.getElementById('update-progress');
+  if (progress) {
+    progress.classList.toggle('hidden', description.progress === null);
+    const percent = description.progress ?? 0;
+    progress.setAttribute('aria-valuenow', String(percent));
+    const fill = document.getElementById('progress-fill');
+    if (fill) fill.style.width = `${percent}%`;
+    const percentText = document.getElementById('progress-text');
+    if (percentText) percentText.textContent = `${percent}%`;
+  }
+
+  const checkBtn = document.getElementById('check-updates-btn');
+  if (checkBtn) {
+    if (description.busy) {
+      if (checkUpdatesFocusGuard?.button !== checkBtn) {
+        checkUpdatesFocusGuard = {
+          button: checkBtn,
+          reenable: uiUtils.disableControlsKeepingFocus([checkBtn]),
+        };
+      }
+    } else {
+      if (checkUpdatesFocusGuard?.button === checkBtn) checkUpdatesFocusGuard.reenable();
+      checkUpdatesFocusGuard = null;
+      checkBtn.disabled = false;
+    }
+  }
+}
 
 // Re-renders the Settings update status line in the current language.
 function relocalizeUpdateStatus() {
-  const updateStatusText = document.getElementById('update-status-text');
-  if (updateStatusText && updateStatusRender) updateStatusText.textContent = updateStatusRender();
+  renderUpdateStatus();
 }
 
 function initUpdateUI() {
@@ -15271,211 +15324,76 @@ function initUpdateUI() {
       currentVersionEl.textContent = version;
     }
 
-    // The button labels are owned here (ids on the i18n guardrail's dynamic list).
+    // The check button's label is owned here (the id is on the i18n guardrail's dynamic list); the
+    // install button's depends on the update, so renderUpdateStatus sets it.
     const checkUpdatesLabel = document.getElementById('check-updates-text');
     if (checkUpdatesLabel) checkUpdatesLabel.textContent = t('Check for updates');
-    const installUpdateLabel = document.getElementById('install-update-text');
-    if (installUpdateLabel) installUpdateLabel.textContent = t('Install update');
 
-    // Wire up check for updates button
+    // A pointer to what changed, for someone who has just been moved to a new version. Only a real
+    // release has a page; a development build has none.
+    const whatsNewBtn = document.getElementById('whats-new-btn');
+    if (whatsNewBtn) {
+      const hasReleasePage = /^\d+\.\d+\.\d+/.test(version);
+      whatsNewBtn.classList.toggle('hidden', !hasReleasePage);
+      whatsNewBtn.onclick = () => {
+        window.electronAPI.openExternal(`${RELEASE_PAGE_URL}/v${version}`);
+      };
+    }
+
     const checkUpdatesBtn = document.getElementById('check-updates-btn');
-    const updateStatusText = document.getElementById('update-status-text');
-    const installUpdateBtn = document.getElementById('install-update-btn');
-    const updateProgress = document.getElementById('update-progress');
-    const progressFill = document.getElementById('progress-fill');
-    const progressText = document.getElementById('progress-text');
-    let portableDownloadUrl = null;
-    // Keep how the status line was produced so a language change can re-render it.
-    const showUpdateStatus = (render) => {
-      updateStatusRender = render;
-      if (updateStatusText) updateStatusText.textContent = render();
-    };
-
-    // Disabling the button while a check runs drops keyboard focus to <body>, and enabling it again
-    // does not bring it back; this does, as the entity switches in Settings do.
-    let reenableCheckUpdates = null;
-    const setCheckUpdatesDisabled = (disabled) => {
-      if (!checkUpdatesBtn) return;
-      if (disabled) {
-        reenableCheckUpdates ??= uiUtils.disableControlsKeepingFocus([checkUpdatesBtn]);
-        return;
-      }
-      if (reenableCheckUpdates) reenableCheckUpdates();
-      else checkUpdatesBtn.disabled = false;
-      reenableCheckUpdates = null;
-    };
-
-    // Enable the check button
     if (checkUpdatesBtn) {
-      checkUpdatesBtn.disabled = false;
       checkUpdatesBtn.onclick = async () => {
-        // Disable button and show checking status
-        setCheckUpdatesDisabled(true);
-        showUpdateStatus(() => t('Checking for updates...'));
+        applyUpdateEvent({ status: 'checking' });
 
         try {
-          const result = await window.electronAPI.checkForUpdates();
-          if (result.status === 'dev') {
-            // In development mode, auto-updater doesn't work
-            showUpdateStatus(() => t('Auto-updates only work in packaged builds'));
-            setCheckUpdatesDisabled(false);
-          } else if (result.status === 'portable' || result.status === 'manual') {
-            portableDownloadUrl = result.downloadUrl || null;
-            showUpdateStatus(
-              () => result.message || t('Portable builds do not support in-app updates.')
-            );
-            setCheckUpdatesDisabled(false);
-            if (installUpdateBtn) {
-              if (portableDownloadUrl) {
-                installUpdateBtn.textContent =
-                  result.status === 'manual' ? t('Download Update') : t('Download Portable Update');
-                installUpdateBtn.classList.remove('hidden');
-              } else {
-                installUpdateBtn.classList.add('hidden');
-              }
-            }
-            if (updateProgress) updateProgress.classList.add('hidden');
-          } else if (result.status === 'none') {
-            portableDownloadUrl = null;
-            showUpdateStatus(() => result.message || t('You are up to date!'));
-            setCheckUpdatesDisabled(false);
-            if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
-            if (updateProgress) updateProgress.classList.add('hidden');
-          } else if (result.status === 'error') {
-            portableDownloadUrl = null;
-            showUpdateStatus(() =>
-              t('Error: {{error}}', {
-                error: result.error || t('Unknown error'),
-              })
-            );
-            setCheckUpdatesDisabled(false);
-            if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
-            if (updateProgress) updateProgress.classList.add('hidden');
-          }
-          // In packaged mode, the auto-update events will update the UI
-          // The button will be re-enabled by the event handlers
+          // The channel is asked for as the switch beside the button shows it: Save has not run
+          // yet, and a check that ignored the switch said "up to date" when a beta existed.
+          const betaSwitch = document.getElementById('allow-prerelease-updates');
+          const result = await window.electronAPI.checkForUpdates(
+            betaSwitch ? { allowPrerelease: betaSwitch.checked } : undefined
+          );
+          // A self-updating build only says that the check began; the updater's own events carry
+          // what it found, and the state has already taken them. Every other kind of build answers
+          // with the outcome itself.
+          if (result && result.status !== 'checking') applyUpdateEvent(result);
         } catch (error) {
           console.error('Error checking for updates:', error);
-          showUpdateStatus(() => t('Error checking for updates'));
-          setCheckUpdatesDisabled(false);
+          applyUpdateEvent({ status: 'check-failed' });
         }
       };
     }
 
-    // Wire up install button
+    const installUpdateBtn = document.getElementById('install-update-btn');
     if (installUpdateBtn) {
-      installUpdateBtn.onclick = () => {
-        if (portableDownloadUrl) {
-          window.electronAPI.openExternal(portableDownloadUrl);
-        } else {
-          window.electronAPI.quitAndInstall();
+      installUpdateBtn.onclick = async () => {
+        const { downloadUrl } = getUpdateState();
+        if (downloadUrl) {
+          window.electronAPI.openExternal(downloadUrl);
+          return;
+        }
+        // Installing closes the app, so an answer only comes back when it did not work.
+        try {
+          const result = await window.electronAPI.quitAndInstall();
+          if (result?.success === false) {
+            applyUpdateEvent({
+              status: 'install-failed',
+              error: result.error || t('Unknown error'),
+            });
+          }
+        } catch (error) {
+          console.error('Error installing the update:', error);
+          applyUpdateEvent({
+            status: 'install-failed',
+            error: error?.message || t('Unknown error'),
+          });
         }
       };
     }
 
-    // Listen for auto-update events from main process
-    if (typeof unsubscribeAutoUpdate === 'function') {
-      unsubscribeAutoUpdate();
-      unsubscribeAutoUpdate = null;
-    }
-    const disposeAutoUpdateListener = window.electronAPI.onAutoUpdate((data) => {
-      try {
-        if (!data) return;
-
-        switch (data.status) {
-          case 'checking':
-            portableDownloadUrl = null;
-            showUpdateStatus(() => t('Checking for updates...'));
-            setCheckUpdatesDisabled(true);
-            if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
-            if (updateProgress) updateProgress.classList.add('hidden');
-            break;
-
-          case 'available':
-            portableDownloadUrl = null;
-            showUpdateStatus(() =>
-              t('Update available: v{{version}}', { version: data.info?.version || 'unknown' })
-            );
-            setCheckUpdatesDisabled(false);
-            if (updateProgress) updateProgress.classList.remove('hidden');
-            break;
-
-          case 'none':
-            portableDownloadUrl = null;
-            showUpdateStatus(() => t('You are up to date!'));
-            setCheckUpdatesDisabled(false);
-            if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
-            if (updateProgress) updateProgress.classList.add('hidden');
-            break;
-
-          case 'downloading':
-            portableDownloadUrl = null;
-            showUpdateStatus(() => t('Downloading update...'));
-            setCheckUpdatesDisabled(true);
-            if (updateProgress) updateProgress.classList.remove('hidden');
-            if (data.progress) {
-              const percent = Math.round(data.progress.percent);
-              if (progressFill) progressFill.style.width = `${percent}%`;
-              if (progressText) progressText.textContent = `${percent}%`;
-            }
-            break;
-
-          case 'downloaded':
-            portableDownloadUrl = null;
-            showUpdateStatus(() =>
-              t('Update v{{version}} ready to install', {
-                version: data.info?.version || 'unknown',
-              })
-            );
-            setCheckUpdatesDisabled(false);
-            if (installUpdateBtn) {
-              installUpdateBtn.textContent = t('Install update');
-              installUpdateBtn.classList.remove('hidden');
-            }
-            if (updateProgress) updateProgress.classList.add('hidden');
-            break;
-
-          case 'error':
-            portableDownloadUrl = null;
-            showUpdateStatus(() =>
-              t('Error: {{error}}', {
-                error: data.error || t('Unknown error'),
-              })
-            );
-            setCheckUpdatesDisabled(false);
-            if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
-            if (updateProgress) updateProgress.classList.add('hidden');
-            break;
-
-          case 'portable':
-          case 'manual':
-            portableDownloadUrl = data.downloadUrl || null;
-            showUpdateStatus(
-              () => data.message || t('Portable builds do not support in-app updates.')
-            );
-            setCheckUpdatesDisabled(false);
-            if (installUpdateBtn) {
-              if (portableDownloadUrl) {
-                installUpdateBtn.textContent =
-                  data.status === 'manual' ? t('Download Update') : t('Download Portable Update');
-                installUpdateBtn.classList.remove('hidden');
-              } else {
-                installUpdateBtn.classList.add('hidden');
-              }
-            }
-            if (updateProgress) updateProgress.classList.add('hidden');
-            break;
-        }
-      } catch (error) {
-        console.error('Error handling auto-update event:', error);
-      }
-    });
-    if (typeof disposeAutoUpdateListener === 'function') {
-      unsubscribeAutoUpdate = disposeAutoUpdateListener;
-    }
-
-    // Initialize with ready status
-    showUpdateStatus(() => t('Ready to check for updates'));
+    // Settings is built again on every open; the state it draws is not, so it only has to follow it.
+    if (typeof unsubscribeUpdateState === 'function') unsubscribeUpdateState();
+    unsubscribeUpdateState = subscribeToUpdateState(renderUpdateStatus);
+    renderUpdateStatus();
   } catch (error) {
     console.error('Error initializing update UI:', error);
   }

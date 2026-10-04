@@ -84,7 +84,6 @@ nsis:
   allowToChangeInstallationDirectory: false
   createDesktopShortcut: always
   createStartMenuShortcut: true
-  shortcutName: Home Assistant Widget
 portable:
   artifactName: '${productName}-${version}-win-${arch}-Portable.${ext}'
 linux:

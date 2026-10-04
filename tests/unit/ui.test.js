@@ -2291,56 +2291,280 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   });
 
   describe('update UI lifecycle', () => {
-    it('unsubscribes the previous auto-update listener before binding another one', () => {
-      const firstUnsubscribe = jest.fn();
-      const secondUnsubscribe = jest.fn();
-      mockElectronAPI.onAutoUpdate = jest
-        .fn()
-        .mockReturnValueOnce(firstUnsubscribe)
-        .mockReturnValueOnce(secondUnsubscribe);
+    const updateStatus = require('../../src/update-status.js');
+    const MARKUP = `
+      <div id="update-section">
+        <strong id="current-version"></strong>
+        <p id="update-status" class="form-help update-status" data-state="idle">
+          <span id="update-status-text"></span>
+        </p>
+        <button id="check-updates-btn" disabled><span id="check-updates-text"></span></button>
+        <button id="install-update-btn" class="hidden"><span id="install-update-text"></span></button>
+        <div id="update-progress" class="hidden" role="progressbar" aria-valuenow="0">
+          <div class="progress-bar"><div id="progress-fill"></div></div>
+          <span id="progress-text">0%</span>
+        </div>
+        <input type="checkbox" id="allow-prerelease-updates" />
+        <button id="whats-new-btn" class="btn btn-link hidden"></button>
+      </div>`;
+    const $ = (id) => document.getElementById(id);
+    const status = () => $('update-status-text').textContent;
+    const flush = async () => {
+      for (let i = 0; i < 6; i += 1) await Promise.resolve();
+    };
 
-      ui.initUpdateUI();
-      ui.initUpdateUI();
-
-      expect(mockElectronAPI.onAutoUpdate).toHaveBeenCalledTimes(2);
-      expect(firstUnsubscribe).toHaveBeenCalledTimes(1);
-      expect(secondUnsubscribe).not.toHaveBeenCalled();
+    beforeEach(() => {
+      updateStatus.resetUpdateStatus();
+      document.body.insertAdjacentHTML('beforeend', MARKUP);
+      mockElectronAPI.checkForUpdates = jest.fn().mockResolvedValue({ status: 'checking' });
+      mockElectronAPI.quitAndInstall = jest.fn().mockResolvedValue({ success: true });
+      mockElectronAPI.openExternal = jest.fn().mockResolvedValue({ success: true });
     });
 
-    it('re-renders the update status line in a new language', () => {
-      const i18n = require('../../src/i18n.js');
-      document.body.insertAdjacentHTML('beforeend', '<span id="update-status-text"></span>');
-      let onUpdate = null;
-      mockElectronAPI.onAutoUpdate = jest.fn((callback) => {
-        onUpdate = callback;
-        return jest.fn();
+    afterEach(() => {
+      $('update-section')?.remove();
+      updateStatus.resetUpdateStatus();
+      require('../../src/i18n.js').setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+    });
+
+    it('starts with nothing to report and a check button that can be pressed', () => {
+      ui.initUpdateUI();
+
+      expect(status()).toBe('Ready to check for updates');
+      expect($('check-updates-btn').disabled).toBe(false);
+      expect($('check-updates-text').textContent).toBe('Check for updates');
+      expect($('install-update-btn').classList.contains('hidden')).toBe(true);
+      expect($('update-progress').classList.contains('hidden')).toBe(true);
+    });
+
+    describe('the What’s new link', () => {
+      afterEach(() => {
+        delete global.__APP_VERSION__;
       });
-      const status = document.getElementById('update-status-text');
-      try {
+
+      it('opens the release page of the version that is running', () => {
+        global.__APP_VERSION__ = '4.0.0-beta.12';
         ui.initUpdateUI();
-        expect(status.textContent).toBe('Ready to check for updates');
-        i18n.setLocaleBootstrap({
-          activeLocale: 'de',
-          messages: {
-            'Ready to check for updates': 'Bereit zur Suche nach Updates',
-            'You are up to date!': 'Du bist auf dem neuesten Stand!',
-          },
-        });
-        ui.relocalizeUpdateStatus();
-        expect(status.textContent).toBe('Bereit zur Suche nach Updates');
-        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
-        onUpdate({ status: 'none' });
-        expect(status.textContent).toBe('You are up to date!');
-        i18n.setLocaleBootstrap({
-          activeLocale: 'de',
-          messages: { 'You are up to date!': 'Du bist auf dem neuesten Stand!' },
-        });
-        ui.relocalizeUpdateStatus();
-        expect(status.textContent).toBe('Du bist auf dem neuesten Stand!');
-      } finally {
-        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
-        status.remove();
-      }
+
+        expect($('whats-new-btn').classList.contains('hidden')).toBe(false);
+        $('whats-new-btn').click();
+
+        expect(mockElectronAPI.openExternal).toHaveBeenCalledWith(
+          'https://github.com/Robertg761/HA-Desktop-Widget/releases/tag/v4.0.0-beta.12'
+        );
+      });
+
+      it('is not offered for a development build, which has no release page', () => {
+        ui.initUpdateUI();
+
+        expect($('whats-new-btn').classList.contains('hidden')).toBe(true);
+      });
+    });
+
+    it('does not listen to the main process itself; the renderer feeds the state', () => {
+      mockElectronAPI.onAutoUpdate = jest.fn(() => jest.fn());
+
+      ui.initUpdateUI();
+      ui.initUpdateUI();
+
+      expect(mockElectronAPI.onAutoUpdate).not.toHaveBeenCalled();
+    });
+
+    it('shows what was heard before Settings was opened', () => {
+      updateStatus.applyUpdateEvent({ status: 'downloaded', info: { version: '4.0.1' } });
+
+      ui.initUpdateUI();
+
+      expect(status()).toBe('Update v4.0.1 ready to install');
+      expect($('install-update-btn').classList.contains('hidden')).toBe(false);
+      expect($('install-update-text').textContent).toBe('Install update');
+      expect($('update-status').dataset.state).toBe('downloaded');
+    });
+
+    it('keeps the outcome when Settings is opened again instead of resetting it', () => {
+      ui.initUpdateUI();
+      updateStatus.applyUpdateEvent({ status: 'none' });
+      expect(status()).toBe('You are up to date!');
+
+      ui.initUpdateUI();
+
+      expect(status()).toBe('You are up to date!');
+      expect($('update-status').dataset.state).toBe('up-to-date');
+    });
+
+    it('follows the state while Settings is open, and stops following the previous opening', () => {
+      ui.initUpdateUI();
+      ui.initUpdateUI();
+      const draw = jest.spyOn(document, 'getElementById');
+
+      updateStatus.applyUpdateEvent({ status: 'checking' });
+
+      // One listener, not one per opening.
+      expect(draw.mock.calls.filter(([id]) => id === 'update-status-text')).toHaveLength(1);
+      draw.mockRestore();
+      expect(status()).toBe('Checking for updates...');
+      expect($('check-updates-btn').disabled).toBe(true);
+
+      updateStatus.applyUpdateEvent({ status: 'error', error: 'Could not reach GitHub' });
+      expect($('check-updates-btn').disabled).toBe(false);
+    });
+
+    it('opens the release page from a Download button that survives the window being reopened', () => {
+      updateStatus.applyUpdateEvent({
+        status: 'manual',
+        message: 'Version 4.0.1 is available.',
+        version: '4.0.1',
+        downloadUrl: 'https://example.test/releases/v4.0.1',
+      });
+      ui.initUpdateUI();
+      ui.initUpdateUI(); // closed and opened again
+
+      expect($('install-update-text').textContent).toBe('Download Update');
+      $('install-update-btn').click();
+
+      expect(mockElectronAPI.openExternal).toHaveBeenCalledWith(
+        'https://example.test/releases/v4.0.1'
+      );
+      expect(mockElectronAPI.quitAndInstall).not.toHaveBeenCalled();
+    });
+
+    it("labels the portable build's button for its download", () => {
+      updateStatus.applyUpdateEvent({
+        status: 'portable',
+        message: 'Portable update available: v4.0.1.',
+        downloadUrl: 'https://example.test/Portable.exe',
+      });
+      ui.initUpdateUI();
+
+      expect($('install-update-text').textContent).toBe('Download Portable Update');
+    });
+
+    it('installs a downloaded update through the main process', async () => {
+      updateStatus.applyUpdateEvent({ status: 'downloaded', info: { version: '4.0.1' } });
+      ui.initUpdateUI();
+
+      $('install-update-btn').click();
+      await flush();
+
+      expect(mockElectronAPI.quitAndInstall).toHaveBeenCalledTimes(1);
+      expect(mockElectronAPI.openExternal).not.toHaveBeenCalled();
+    });
+
+    it('says so, beside the button, when installing did not work', async () => {
+      mockElectronAPI.quitAndInstall.mockResolvedValue({
+        success: false,
+        error: 'In-app updates are not supported for this package',
+      });
+      updateStatus.applyUpdateEvent({ status: 'downloaded', info: { version: '4.0.1' } });
+      ui.initUpdateUI();
+
+      $('install-update-btn').click();
+      await flush();
+
+      expect(status()).toBe('Error: In-app updates are not supported for this package');
+      expect($('update-status').dataset.state).toBe('error');
+      // The update is still downloaded, so the button stays for another try.
+      expect($('install-update-btn').classList.contains('hidden')).toBe(false);
+    });
+
+    it('checks the channel the beta switch shows, saved or not', async () => {
+      ui.initUpdateUI();
+      $('allow-prerelease-updates').checked = true;
+
+      $('check-updates-btn').click();
+      await flush();
+
+      expect(mockElectronAPI.checkForUpdates).toHaveBeenCalledWith({ allowPrerelease: true });
+
+      // The check ends; the switch is turned off; the next check asks for the stable channel.
+      updateStatus.applyUpdateEvent({ status: 'none' });
+      $('allow-prerelease-updates').checked = false;
+      $('check-updates-btn').click();
+      await flush();
+      expect(mockElectronAPI.checkForUpdates).toHaveBeenLastCalledWith({ allowPrerelease: false });
+    });
+
+    it("waits for the updater's events after a self-updating build says the check began", async () => {
+      ui.initUpdateUI();
+
+      $('check-updates-btn').click();
+      await flush();
+      expect(status()).toBe('Checking for updates...');
+      expect($('check-updates-btn').disabled).toBe(true);
+
+      updateStatus.applyUpdateEvent({ status: 'available', info: { version: '4.0.1' } });
+      expect(status()).toBe('Update available: v4.0.1');
+      expect($('update-progress').classList.contains('hidden')).toBe(false);
+      expect($('progress-fill').style.width).toBe('0%');
+
+      updateStatus.applyUpdateEvent({ status: 'downloading', progress: { percent: 41.6 } });
+      expect(status()).toBe('Downloading update...');
+      expect($('progress-fill').style.width).toBe('42%');
+      expect($('progress-text').textContent).toBe('42%');
+      expect($('update-progress').getAttribute('aria-valuenow')).toBe('42');
+      expect($('check-updates-btn').disabled).toBe(true);
+    });
+
+    it('takes the outcome itself from a build that does not update itself', async () => {
+      mockElectronAPI.checkForUpdates.mockResolvedValue({
+        status: 'manual',
+        message: 'Update available: v4.0.1.',
+        downloadUrl: 'https://example.test/releases',
+      });
+      ui.initUpdateUI();
+
+      $('check-updates-btn').click();
+      await flush();
+
+      expect(status()).toBe('Update available: v4.0.1.');
+      expect($('install-update-btn').classList.contains('hidden')).toBe(false);
+      expect($('check-updates-btn').disabled).toBe(false);
+    });
+
+    it('reports a check that could not be made, and lets it be tried again', async () => {
+      mockElectronAPI.checkForUpdates.mockRejectedValue(new Error('boom'));
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+      ui.initUpdateUI();
+
+      $('check-updates-btn').click();
+      await flush();
+
+      expect(status()).toBe('Error checking for updates');
+      expect($('update-status').dataset.state).toBe('error');
+      expect($('check-updates-btn').disabled).toBe(false);
+      consoleError.mockRestore();
+    });
+
+    it('colours what a check found, and not the idle line', () => {
+      ui.initUpdateUI();
+      const toneAfter = (event) => {
+        updateStatus.applyUpdateEvent(event);
+        return $('update-status').dataset.state;
+      };
+
+      expect(toneAfter({ status: 'error', error: 'x' })).toBe('error');
+      expect(toneAfter({ status: 'none' })).toBe('up-to-date');
+      expect(toneAfter({ status: 'available', info: { version: '4.0.1' } })).toBe('available');
+      expect(toneAfter({ status: 'dev' })).toBe('idle');
+    });
+
+    it('re-renders the update status and the install button in a new language', () => {
+      const i18n = require('../../src/i18n.js');
+      updateStatus.applyUpdateEvent({ status: 'downloaded', info: { version: '4.0.1' } });
+      ui.initUpdateUI();
+      expect(status()).toBe('Update v4.0.1 ready to install');
+
+      i18n.setLocaleBootstrap({
+        activeLocale: 'de',
+        messages: {
+          'Update v{{version}} ready to install': 'Update v{{version}} bereit zur Installation',
+          'Install update': 'Update installieren',
+        },
+      });
+      ui.relocalizeUpdateStatus();
+
+      expect(status()).toBe('Update v4.0.1 bereit zur Installation');
+      expect($('install-update-text').textContent).toBe('Update installieren');
     });
   });
 

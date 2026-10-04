@@ -35,6 +35,7 @@ import {
   MAX_RECONNECT_DELAY_MS,
   WS_INITIAL_STATES_TIMEOUT_MS,
 } from './src/constants.js';
+import { startUpdateStatus } from './src/update-status.js';
 import { WeatherEffectsManager } from './src/weather-effects.js';
 import { SeasonalEffectsManager } from './src/seasonal-effects.js';
 import { normalizeQuickAccessConfig } from './src/quick-access-tabs.js';
@@ -1260,7 +1261,7 @@ function renderWizardStep() {
         'h2',
         'first-run-title',
         'first-run-title',
-        t('Welcome to Home Assistant Widget')
+        t('Welcome to HA Desktop Widget')
       )
     );
     content.appendChild(
@@ -2644,6 +2645,24 @@ window.electronAPI.onOpenSettings(() => {
   if (IS_SPECIAL_PIN_MODE) return;
   openSettingsModal();
 });
+
+// Update events are heard from the start, not from the first time Settings opens: the check 30 s
+// after launch, one run from the tray with Settings closed and a download finishing would
+// otherwise be missed. Settings draws what has been heard when it opens.
+if (!IS_SPECIAL_PIN_MODE) {
+  startUpdateStatus(window.electronAPI, (event) => {
+    // A check asked for from the tray: its answer belongs on the Updates row.
+    if (event.reveal !== true) return;
+    const settingsOpen = !document.getElementById('settings-modal')?.classList.contains('hidden');
+    void (async () => {
+      if (!settingsOpen) {
+        dismissConnectionToasts({ includeStartupWarnings: true });
+        await settings.openSettings(getSettingsUiHooks());
+      }
+      settings.revealUpdateStatus?.();
+    })();
+  });
+}
 
 // Settings shows the sync state, but only to someone who has it open: a sync that starts
 // waiting for a choice or failing is also said once, wherever the person is.
