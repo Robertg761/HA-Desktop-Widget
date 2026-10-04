@@ -3,7 +3,7 @@
  */
 
 // Small renderer.js behaviours that need the whole renderer loaded: what a Home Assistant profile
-// leaves behind.
+// leaves behind, and the weather picker's Clear button.
 
 const EventEmitter = require('events');
 const { createMockElectronAPI, resetMockElectronAPI } = require('../mocks/electron.js');
@@ -258,6 +258,48 @@ describe('Renderer one-off behaviours', () => {
         })
       ).rejects.toThrow('disk full');
       expect(readDashboardHistory(baseConfig())).toHaveLength(0);
+    });
+  });
+
+  describe('weather picker Clear', () => {
+    const weatherModal = `
+      <div id="weather-config-modal" class="modal hidden">
+        <button id="clear-weather" type="button">Clear</button>
+      </div>`;
+
+    it('does nothing while no weather entity is picked', async () => {
+      await loadRenderer({ bodyHtml: weatherModal });
+      mockElectronAPI.updateConfig.mockClear();
+
+      document.getElementById('clear-weather').click();
+      await flushAsync();
+
+      expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+      expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+        'Weather entity cleared (using first available)',
+        expect.anything(),
+        expect.anything()
+      );
+    });
+
+    it('clears a picked weather entity and says so', async () => {
+      await loadRenderer({
+        config: baseConfig({ selectedWeatherEntity: 'weather.cabin' }),
+        bodyHtml: weatherModal,
+      });
+      mockElectronAPI.updateConfig.mockClear();
+      mockElectronAPI.updateConfig.mockResolvedValue(baseConfig({ selectedWeatherEntity: null }));
+
+      document.getElementById('clear-weather').click();
+      await flushAsync();
+
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledWith({ selectedWeatherEntity: null });
+      expect(mockUi.populateWeatherEntitiesList).toHaveBeenCalled();
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        'Weather entity cleared (using first available)',
+        'success',
+        2000
+      );
     });
   });
 });

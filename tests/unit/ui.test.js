@@ -2149,6 +2149,22 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(options().map((option) => option.tabIndex)).toEqual([0, -1, -1]);
     });
 
+    it('offers Clear only while a weather entity is picked', () => {
+      document.body.insertAdjacentHTML('beforeend', '<button id="clear-weather">Clear</button>');
+      const clear = document.getElementById('clear-weather');
+      ui.populateWeatherEntitiesList();
+      expect(clear.getAttribute('aria-disabled')).toBe('false');
+
+      state.CONFIG.selectedWeatherEntity = null;
+      ui.populateWeatherEntitiesList();
+      expect(clear.getAttribute('aria-disabled')).toBe('true');
+
+      // A pick that is no longer in Home Assistant is still stored, so there is something to clear.
+      state.CONFIG.selectedWeatherEntity = 'weather.gone';
+      ui.populateWeatherEntitiesList();
+      expect(clear.getAttribute('aria-disabled')).toBe('false');
+    });
+
     it('moves between options with the arrows, Home and End, and carries the Tab stop along', () => {
       options()[1].focus();
       expect(key(options()[1], 'ArrowDown').defaultPrevented).toBe(true);

@@ -13000,6 +13000,12 @@ function populateWeatherEntitiesList() {
     list.setAttribute('role', 'listbox');
     list.setAttribute('aria-label', t('Weather entities'));
 
+    // Clear returns the card to the first available entity, so it has nothing to do until one has
+    // been picked. aria-disabled keeps it focusable, like the other buttons that wait.
+    document
+      .getElementById('clear-weather')
+      ?.setAttribute('aria-disabled', state.CONFIG.selectedWeatherEntity ? 'false' : 'true');
+
     const weatherEntities = Object.values(state.STATES || {})
       .filter((e) => e.entity_id.startsWith('weather.'))
       .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)));

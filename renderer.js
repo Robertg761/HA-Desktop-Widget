@@ -3259,6 +3259,9 @@ function wireUI() {
     const clearWeatherBtn = document.getElementById('clear-weather');
     if (clearWeatherBtn) {
       clearWeatherBtn.onclick = async () => {
+        // Nothing is picked while the card follows the first available entity; there is nothing to
+        // clear, and no write or "cleared" toast to give for it.
+        if (!state.CONFIG.selectedWeatherEntity) return;
         try {
           // Clear the selected weather entity (revert to default). null, as Settings saves it:
           // an undefined survives the IPC and sits in main's config until the next restart.
