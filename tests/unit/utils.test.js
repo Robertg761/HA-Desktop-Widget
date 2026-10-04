@@ -1001,10 +1001,30 @@ describe('Utils Module', () => {
       expect(output).toContain('&lt;div');
     });
 
-    test('should return non-string values unchanged', () => {
-      expect(utils.escapeHtml(123)).toBe(123);
-      expect(utils.escapeHtml(null)).toBe(null);
-      expect(utils.escapeHtml(undefined)).toBe(undefined);
+    test('should write numbers as text and nothing for null or undefined', () => {
+      expect(utils.escapeHtml(123)).toBe('123');
+      expect(utils.escapeHtml(0)).toBe('0');
+      expect(utils.escapeHtml(null)).toBe('');
+      expect(utils.escapeHtml(undefined)).toBe('');
+    });
+
+    test('should escape an array or object a template would stringify', () => {
+      // A friendly_name from a template or MQTT entity can be a list; handed back as it came, the
+      // template literal it lands in would write the tag into innerHTML.
+      const fromArray = utils.escapeHtml(['<img src=x onerror=alert(1)>']);
+      expect(fromArray).toBe('&lt;img src=x onerror=alert(1)&gt;');
+      const host = document.createElement('div');
+      host.innerHTML = `<span>${utils.escapeHtml(['<img src=x>', '<b>'])}</span>`;
+      expect(host.querySelector('img, b')).toBeNull();
+      const fromObject = utils.escapeHtml({ toString: () => '<script>x</script>' });
+      expect(fromObject).toBe('&lt;script&gt;x&lt;/script&gt;');
+    });
+
+    test('should keep attribute values escaped for arrays and objects too', () => {
+      const attribute = utils.escapeHtmlAttribute(['" onmouseover="x', "'"]);
+      expect(attribute).not.toContain('"');
+      expect(attribute).toContain('&quot;');
+      expect(attribute).toContain('&#39;');
     });
 
     test('should handle empty string', () => {
