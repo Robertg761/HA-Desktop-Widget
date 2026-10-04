@@ -3406,6 +3406,18 @@ body.first-run-active .widget-content > * {
   transform: scale(1.08);
 }
 
+/* The artwork and the title open the player's controls dialog. */
+.media-tile-artwork,
+.media-tile-info {
+  cursor: pointer;
+}
+
+.media-tile-info:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
 .media-tile-artwork-placeholder {
   display: flex;
   font-size: var(--font-size-icon);
@@ -3483,6 +3495,11 @@ body.first-run-active .widget-content > * {
   width: 100%;
   grid-column: 2;
   justify-self: stretch;
+}
+
+/* No length to show (radio, an idle player): hidden rather than removed, so the controls stay put. */
+.media-tile-seek[data-empty='true'] {
+  visibility: hidden;
 }
 
 /* A time takes the width of its own text, so a long one never runs under the bar. */
@@ -4122,13 +4139,19 @@ body.first-run-active .widget-content > * {
   align-self: center;
 }
 
-.control-item:hover {
+/* A tile that does nothing (data-readonly: a person, a sun, a binary sensor) takes no hover and no
+   press: :where() leaves the weight of these rules as it was. */
+.control-item:where(:not([data-readonly='true'])):hover {
   background: var(--tile-bg-hover);
   border-color: var(--tile-border-hover);
 }
 
-.control-item:active {
+.control-item:where(:not([data-readonly='true'])):active {
   transform: scale(0.96);
+}
+
+#quick-controls:not(.reorganize-mode) .control-item[data-readonly='true'] {
+  cursor: default;
 }
 
 .control-item:focus-visible {
@@ -4137,35 +4160,13 @@ body.first-run-active .widget-content > * {
   box-shadow: var(--glow-focus);
 }
 
-.control-item.active {
-  background: linear-gradient(
-    135deg,
-    rgba(var(--accent-rgb), 0.22) 0%,
-    rgba(var(--accent-rgb), 0.08) 100%
-  );
-  color: var(--text-primary);
-  border-color: rgba(var(--accent-rgb), 0.6);
-  box-shadow:
-    0 0 15px rgba(var(--accent-rgb), 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
-}
-
-.control-item.active:hover {
-  border-color: rgba(var(--accent-rgb), 0.8);
-  box-shadow:
-    0 0 20px rgba(var(--accent-rgb), 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.15);
-}
-
-.control-item.active::before {
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
-}
-
-/* Data-state based active styling for consistency */
-.control-item[data-state='on'],
-.control-item[data-state='open'],
-.control-item[data-state='unlocked'],
-.control-item[data-state='home'] {
+/* A pin's tile colours follow its own data-state. Quick Access tiles do not: their lit state is
+   body.active-tile-glow [data-active='true'], so the glow opt-out covers every tile, and a media
+   player that Home Assistant reports as 'on' no longer glows on its own. */
+.desktop-pin-control[data-state='on'],
+.desktop-pin-control[data-state='open'],
+.desktop-pin-control[data-state='unlocked'],
+.desktop-pin-control[data-state='home'] {
   background: linear-gradient(
     135deg,
     rgba(var(--accent-rgb), 0.16) 0%,
@@ -4177,10 +4178,10 @@ body.first-run-active .widget-content > * {
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.control-item[data-state='on']:hover,
-.control-item[data-state='open']:hover,
-.control-item[data-state='unlocked']:hover,
-.control-item[data-state='home']:hover {
+.desktop-pin-control[data-state='on']:hover,
+.desktop-pin-control[data-state='open']:hover,
+.desktop-pin-control[data-state='unlocked']:hover,
+.desktop-pin-control[data-state='home']:hover {
   border-color: rgba(var(--accent-rgb), 0.7);
   box-shadow:
     0 0 20px rgba(var(--accent-rgb), 0.4),
@@ -4188,7 +4189,7 @@ body.first-run-active .widget-content > * {
 }
 
 /* Locked state styling */
-.control-item[data-state='locked'] {
+.desktop-pin-control[data-state='locked'] {
   background: linear-gradient(135deg, rgba(255, 152, 0, 0.16) 0%, rgba(255, 152, 0, 0.05) 100%);
   border-color: rgba(255, 152, 0, 0.45);
   box-shadow:
@@ -4196,7 +4197,7 @@ body.first-run-active .widget-content > * {
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.control-item[data-state='locked']:hover {
+.desktop-pin-control[data-state='locked']:hover {
   border-color: rgba(255, 152, 0, 0.7);
   box-shadow:
     0 0 20px rgba(255, 152, 0, 0.4),
@@ -4204,10 +4205,10 @@ body.first-run-active .widget-content > * {
 }
 
 /* Climate active state */
-.control-item[data-state='heat'],
-.control-item[data-state='cool'],
-.control-item[data-state='heat_cool'],
-.control-item[data-state='auto'] {
+.desktop-pin-control[data-state='heat'],
+.desktop-pin-control[data-state='cool'],
+.desktop-pin-control[data-state='heat_cool'],
+.desktop-pin-control[data-state='auto'] {
   background: linear-gradient(
     135deg,
     rgba(var(--accent-rgb), 0.16) 0%,
@@ -4219,15 +4220,15 @@ body.first-run-active .widget-content > * {
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.control-item[data-state='heat_cool']:hover,
-.control-item[data-state='auto']:hover {
+.desktop-pin-control[data-state='heat_cool']:hover,
+.desktop-pin-control[data-state='auto']:hover {
   border-color: rgba(var(--accent-rgb), 0.7);
   box-shadow:
     0 0 20px rgba(var(--accent-rgb), 0.4),
     inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
-.control-item[data-state='heat'] {
+.desktop-pin-control[data-state='heat'] {
   background: linear-gradient(135deg, rgba(255, 110, 64, 0.16) 0%, rgba(255, 110, 64, 0.05) 100%);
   border-color: rgba(255, 110, 64, 0.45);
   box-shadow:
@@ -4235,14 +4236,14 @@ body.first-run-active .widget-content > * {
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.control-item[data-state='heat']:hover {
+.desktop-pin-control[data-state='heat']:hover {
   border-color: rgba(255, 110, 64, 0.7);
   box-shadow:
     0 0 20px rgba(255, 110, 64, 0.4),
     inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
-.control-item[data-state='cool'] {
+.desktop-pin-control[data-state='cool'] {
   background: linear-gradient(135deg, rgba(3, 169, 244, 0.16) 0%, rgba(3, 169, 244, 0.05) 100%);
   border-color: rgba(3, 169, 244, 0.45);
   box-shadow:
@@ -4250,7 +4251,7 @@ body.first-run-active .widget-content > * {
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.control-item[data-state='cool']:hover {
+.desktop-pin-control[data-state='cool']:hover {
   border-color: rgba(3, 169, 244, 0.7);
   box-shadow:
     0 0 20px rgba(3, 169, 244, 0.4),
@@ -4318,32 +4319,31 @@ body.first-run-active .widget-content > * {
   flex-shrink: 0;
 }
 
-.control-item.active .control-icon,
-.control-item[data-state='on'] .control-icon,
-.control-item[data-state='open'] .control-icon,
-.control-item[data-state='unlocked'] .control-icon,
-.control-item[data-state='home'] .control-icon {
+.desktop-pin-control[data-state='on'] .control-icon,
+.desktop-pin-control[data-state='open'] .control-icon,
+.desktop-pin-control[data-state='unlocked'] .control-icon,
+.desktop-pin-control[data-state='home'] .control-icon {
   filter: drop-shadow(0 0 4px rgba(var(--accent-rgb), 0.75));
   color: var(--accent-text);
 }
 
-.control-item[data-state='locked'] .control-icon {
+.desktop-pin-control[data-state='locked'] .control-icon {
   filter: drop-shadow(0 0 4px rgba(255, 152, 0, 0.6));
   color: #ff9800;
 }
 
-.control-item[data-state='heat'] .control-icon {
+.desktop-pin-control[data-state='heat'] .control-icon {
   filter: drop-shadow(0 0 5px rgba(255, 110, 64, 0.8));
   color: #ff6e40;
 }
 
-.control-item[data-state='cool'] .control-icon {
+.desktop-pin-control[data-state='cool'] .control-icon {
   filter: drop-shadow(0 0 5px rgba(3, 169, 244, 0.8));
   color: #03a9f4;
 }
 
-.control-item[data-state='heat_cool'] .control-icon,
-.control-item[data-state='auto'] .control-icon {
+.desktop-pin-control[data-state='heat_cool'] .control-icon,
+.desktop-pin-control[data-state='auto'] .control-icon {
   filter: drop-shadow(0 0 5px rgba(0, 150, 136, 0.8));
   color: #009688;
 }
@@ -4594,6 +4594,8 @@ body.first-run-active .widget-content > * {
 
 .status-card.weather-card {
   justify-content: center;
+  /* A click opens the weather picker (a long press still does). */
+  cursor: pointer;
 }
 
 .status-card.weather-card .weather-content {
@@ -6278,6 +6280,80 @@ body.theme-light.active-tile-glow #quick-controls .control-item[data-active='tru
   filter: drop-shadow(0 0 6px rgba(var(--accent-rgb), 0.45));
 }
 
+/* Security states that have to catch the eye, with the accent glow on or off: an alarm that went
+   off (red), a lock that is jammed or a door that is unlocked (amber). The icon and the state line
+   take the status colour and the edge a tint of it; there is no wash, so the tile stays a plain
+   pane. The glow rules above are matched in weight so the status colour wins over the accent. */
+#quick-controls .control-item[data-attention] {
+  --attention-color: var(--warning-text);
+}
+
+#quick-controls .control-item[data-attention='danger'] {
+  --attention-color: var(--error-text);
+}
+
+#quick-controls .control-item[data-attention],
+body.active-tile-glow #quick-controls .control-item[data-attention][data-active='true'] {
+  border-color: color-mix(in srgb, var(--attention-color) 55%, var(--tile-border));
+}
+
+#quick-controls .control-item[data-attention]:hover,
+body.active-tile-glow #quick-controls .control-item[data-attention][data-active='true']:hover {
+  border-color: color-mix(in srgb, var(--attention-color) 75%, var(--tile-border-hover));
+}
+
+#quick-controls .control-item[data-attention] .control-icon,
+body.active-tile-glow
+  #quick-controls
+  .control-item[data-attention][data-active='true']
+  .control-icon {
+  color: var(--attention-color);
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--attention-color) 45%, transparent));
+}
+
+#quick-controls .control-item[data-attention] .control-state,
+body.active-tile-glow
+  #quick-controls
+  .control-item[data-attention][data-active='true']
+  .control-state {
+  color: var(--attention-color);
+}
+
+/* With the glow on, these tiles are lit like any other, but in their own colour: an amber icon on a
+   blue wash read as two things at once. */
+body.active-tile-glow #quick-controls .control-item[data-attention][data-active='true'] {
+  background-color: color-mix(
+    in srgb,
+    var(--attention-color) var(--dash-tile-wash),
+    var(--tile-bg)
+  );
+}
+
+body.active-tile-glow #quick-controls .control-item[data-attention][data-active='true']:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--attention-color) var(--dash-tile-wash-hover),
+    var(--tile-bg-hover)
+  );
+}
+
+/* The solid panels paint the wash as a layer over their own fill (see opaque-panels below). */
+body.opaque-panels.active-tile-glow
+  #quick-controls
+  .control-item[data-attention][data-active='true'] {
+  --active-tile-wash: color-mix(in srgb, var(--attention-color) var(--dash-tile-wash), transparent);
+}
+
+body.opaque-panels.active-tile-glow
+  #quick-controls
+  .control-item[data-attention][data-active='true']:hover {
+  --active-tile-wash: color-mix(
+    in srgb,
+    var(--attention-color) var(--dash-tile-wash-hover),
+    transparent
+  );
+}
+
 #quick-controls .control-item[data-unavailable='true'] {
   background: transparent;
   border-style: dashed;
@@ -7006,17 +7082,12 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 #quick-controls .control-item.sensor-numeric-entity {
   min-height: 74px;
-  gap: 6px;
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-info {
   position: relative;
   z-index: 1;
   padding-bottom: 18px;
-}
-
-#quick-controls .control-item.sensor-numeric-entity .control-icon {
-  margin-bottom: 0;
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-name {
@@ -7077,6 +7148,13 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   height: 100%;
   overflow: visible;
   filter: drop-shadow(0 1px 3px rgba(var(--accent-rgb), 0.2));
+}
+
+/* The 96x24 viewBox is stretched to a band about 14px high and as wide as the tile, so a scaled
+   stroke came out about 1px on flat runs and 3px on steep ones. Keep it one width. */
+#quick-controls .control-item.sensor-numeric-entity .control-sensor-sparkline-svg polyline {
+  vector-effect: non-scaling-stroke;
+  stroke-width: 1.5px;
 }
 
 /* The dark tile's faint accent line is about 1.3:1 on the near-white one, so the light theme draws
@@ -7252,11 +7330,21 @@ body.theme-light:not(.high-contrast)
   opacity: 0.55;
 }
 
+/* The end dot is a zero-length round-capped line (see createSvgDot), so it stays round when the
+   plot is stretched. A ring in the surface colour under it keeps overlapping series legible where
+   they cross: 6px of series colour in 8px of surface. */
+.comparison-graph-end-ring,
 .comparison-graph-end-dot {
-  /* Ringed in the surface colour so overlapping series stay legible where they cross. */
-  stroke: var(--card-bg, var(--surface-2));
-  stroke-width: 2;
   vector-effect: non-scaling-stroke;
+}
+
+.comparison-graph-end-ring {
+  stroke: var(--card-bg, var(--surface-2));
+  stroke-width: 8px;
+}
+
+.comparison-graph-end-dot {
+  stroke-width: 6px;
 }
 
 .comparison-graph-crosshair {
@@ -7316,6 +7404,8 @@ body.theme-light:not(.high-contrast)
   color: var(--text-tertiary);
 }
 
+/* The script sets left and top beside the pointer, in physical pixels: the plot is not mirrored in
+   right-to-left layouts, so neither is the tooltip. */
 .comparison-graph-tooltip {
   position: absolute;
   top: 0;
@@ -7335,11 +7425,11 @@ body.theme-light:not(.high-contrast)
   /* The tile centres its text; the rows are start-aligned, so the heading is too. */
   text-align: start;
   white-space: nowrap;
-}
-
-.comparison-graph-tooltip.align-right {
-  left: auto;
-  right: 0;
+  /* The script sets left and top (and the names' widths) and reads the result at once. Under
+     reduced motion the stylesheet gives every transition 0.01ms instead of none, which still starts
+     one: the box stays where it was for a frame, a tooltip first shown sat at the left edge, and a
+     measurement taken in the same frame read the old place. It is placed, not animated. */
+  transition: none;
 }
 
 .comparison-graph-tooltip-time {
@@ -7373,7 +7463,9 @@ body.theme-light:not(.high-contrast)
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
+  /* The script narrows this when the tooltip would not fit beside the pointer. */
   max-width: 160px;
+  transition: none;
 }
 
 .comparison-graph-warning {
@@ -7944,8 +8036,56 @@ body[data-season] #settings-modal .modal-content::before {
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
   line-height: var(--line-height-normal);
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* The message is Markdown (see notification-markdown.js): paragraphs, lists, links and code take
+   the spacing the plain pre-wrapped text gave line breaks. */
+.persistent-notification-message > * {
+  margin: 0 0 var(--space-2);
+}
+
+.persistent-notification-message > :last-child {
+  margin-bottom: 0;
+}
+
+.persistent-notification-message :is(ul, ol) {
+  padding-inline-start: 1.25em;
+}
+
+.persistent-notification-message .persistent-notification-heading {
+  color: var(--text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.persistent-notification-message a {
+  color: var(--accent-text);
+  text-decoration: underline;
+}
+
+.persistent-notification-message code {
+  padding: 0 4px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.95em;
+}
+
+.persistent-notification-message pre {
+  overflow-x: auto;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.persistent-notification-message pre code {
+  padding: 0;
+  background: none;
+}
+
+.persistent-notification-message blockquote {
+  padding-inline-start: var(--space-3);
+  border-inline-start: 2px solid var(--border-color);
 }
 
 .persistent-notification-time {
@@ -8061,6 +8201,19 @@ body[data-season] #settings-modal .modal-content::before {
   height: 100%;
   overflow: visible;
   filter: drop-shadow(0 2px 8px rgba(var(--accent-rgb), 0.22));
+}
+
+/* The viewBox is stretched to the frame, so the line keeps its width in screen pixels instead of
+   going thin where it runs flat and thick where it climbs. */
+.sensor-detail-sparkline-svg polyline {
+  vector-effect: non-scaling-stroke;
+  stroke-width: 1.5px;
+}
+
+.sensor-detail-sparkline-dot {
+  stroke: currentcolor;
+  stroke-width: 6px;
+  vector-effect: non-scaling-stroke;
 }
 
 /* In a long list the add field used to scroll away with the first rows, and adding is what this
@@ -8183,10 +8336,24 @@ body[data-season] #settings-modal .modal-content::before {
 }
 
 .calendar-event-time,
+.calendar-event-location,
 .calendar-event-description {
   margin-top: 4px;
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
+}
+
+/* The place, with a pin glyph in front of it, so it does not read as part of the time. */
+.calendar-event-location {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.calendar-event-location > .entity-line-icon {
+  flex-shrink: 0;
 }
 
 /* Keep the paragraphs and line breaks of multi-line descriptions. */
@@ -9969,6 +10136,22 @@ body {
   flex-wrap: wrap;
 }
 
+/* Reset drops the tile's saved settings, so it is not another Cancel: it keeps to the start of the
+   footer, apart from Cancel and Save, in the error text with no fill until it is pointed at. */
+.rename-modal .modal-footer #reset-rename-btn {
+  margin-inline-end: auto;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--error-text);
+}
+
+.rename-modal .modal-footer #reset-rename-btn:hover {
+  background: rgba(239, 83, 80, 0.14);
+  border-color: rgba(239, 83, 80, 0.45);
+  color: var(--error-text);
+}
+
 /* The last field needs no margin of its own: the body's padding already closes the dialog. */
 .rename-modal .modal-body > .form-group:last-child {
   margin-bottom: 0;
@@ -10456,8 +10639,9 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   filter: drop-shadow(0 4px 12px rgba(var(--accent-rgb), 0.6));
 }
 
-/* Media Player State Indicators */
-.media-player-entity[data-state='playing'] {
+/* Media Player State Indicators. Only with the accent glow on: that setting is the one opt-out for
+   a lit tile, and a player Home Assistant calls 'on' no longer glows on its own either. */
+body.active-tile-glow .media-player-entity[data-state='playing'] {
   background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.1), rgba(var(--accent-rgb), 0.05));
   border-color: rgba(var(--accent-rgb), 0.3);
 }
@@ -10521,6 +10705,11 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   }
 }
 
+/* A light in colour mode reports no colour temperature: the slider is dimmed until it is moved. */
+.light-color-temp-slider.is-unset {
+  opacity: 0.55;
+}
+
 /* Camera Modal */
 
 .camera-content {
@@ -10534,24 +10723,79 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
 }
 
 .media-detail-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 12px;
 }
 
+.media-detail-artwork {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+}
+
+.media-detail-artwork[hidden] {
+  display: none;
+}
+
+.media-detail-artwork img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.media-detail-text {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The dialog is where the whole title is read, so it wraps (the tooltip carries it all) instead of
+   stopping at the first line the way the tile does. A track named "Artist - Song (Remastered
+   2011) [Official Video]" took more than the 45 characters a line held. */
 .media-detail-title {
   font-size: var(--font-size-md);
   font-weight: 600;
   color: var(--text-color);
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
 }
 
 .media-detail-artist {
   font-size: var(--font-size-base);
   color: var(--muted-text);
-  white-space: nowrap;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.media-detail-artist[hidden] {
+  display: none;
+}
+
+.media-detail-caption {
+  margin-top: 2px;
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.media-detail-caption:empty {
+  display: none;
 }
 
 .media-progress {
@@ -11345,6 +11589,18 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  /* The press pulse of a scene, script or button is the only sign it ran, and the line above cuts
+     it to nothing. The 600 ms the class lasts shows as a still tint and edge instead. */
+  #quick-controls .control-item.activating {
+    animation: none;
+    background-color: rgba(var(--accent-rgb), 0.22) !important;
+    border-color: rgba(var(--accent-rgb), 0.6) !important;
+  }
+
+  #quick-controls .control-item.activating::after {
+    display: none;
   }
 
   /* Disable glassmorphism blur effects for better performance */
@@ -14477,7 +14733,7 @@ body.theme-light:not(.high-contrast) #quick-controls .control-item[data-unavaila
    little. Lit and unavailable tiles keep their own hover. */
 body.theme-light:not(.high-contrast)
   #quick-controls
-  .control-item:not([data-active='true'], [data-unavailable='true']):hover {
+  .control-item:not([data-active='true'], [data-unavailable='true'], [data-readonly='true']):hover {
   background-color: color-mix(in srgb, rgb(var(--accent-rgb)) 6%, var(--tile-bg-hover));
   box-shadow: var(--shadow-sm);
 }
@@ -14670,18 +14926,59 @@ body.theme-light:not(.high-contrast) :is(#quick-controls .control-item, .status-
 
 #quick-controls {
   --qa-tile-height: 104px;
+  /* How far the name sits below the icon. Every tile starts its name here, so a row of scenes,
+     sensors and switches shares one baseline instead of centring each tile's own stack. */
+  --qa-tile-info-offset: 4px;
 }
 
 body.density-compact #quick-controls {
   --qa-tile-height: 78px;
 }
 
+/* The height is a floor, not a fixed size: the name and state lines are clamped, so a tile only
+   grows to match a taller media tile in its row, which the grid stretches it to. */
 #quick-controls .control-item:not(.comparison-graph-tile):not(.media-player-entity) {
-  height: var(--qa-tile-height);
+  height: auto;
   min-height: var(--qa-tile-height);
   /* A tile too full for its height loses its bottom edge, not both ends: with plain centring the
      icon above and the state below were cut off equally. */
   justify-content: safe center;
+}
+
+/* While editing, the buttons take the top of every tile and the content sits below them, which
+   leaves no slack for a floor: the tiles keep the fixed row height they always had, and the name
+   sits where it did, a few pixels closer to the icon. */
+#quick-controls.reorganize-mode {
+  --qa-tile-info-offset: 0px;
+}
+
+#quick-controls.reorganize-mode
+  .control-item:not(.comparison-graph-tile):not(.media-player-entity) {
+  height: var(--qa-tile-height);
+}
+
+/* Icon, name and state hang from the top. Centring the name block in what is left under the icon
+   put it 6 to 14px apart across a row: a scene has no state line, a timer's is taller, a sensor
+   makes room for its sparkline, and a two-line name moved both ends. Cameras with a preview, graphs,
+   media players and the gauge (whose arc stands in for the icon) lay themselves out. */
+#quick-controls
+  .control-item:not(.comparison-graph-tile):not(.media-player-entity):not(.camera-preview-tile):not(
+    [data-chart-type='gauge']
+  )
+  > .control-info {
+  justify-content: flex-start;
+  padding-top: var(--qa-tile-info-offset);
+}
+
+/* With everything hanging from the top the foot only needs room to breathe, and a name on two lines
+   above a state line fills the 104px floor to the pixel when it keeps the 12px the centred layout
+   gave it. A number sensor keeps its own padding (none on the tile, the sparkline's band on its
+   info block). */
+#quick-controls
+  .control-item:not(.comparison-graph-tile):not(.media-player-entity):not(.camera-preview-tile):not(
+    .sensor-numeric-entity
+  ) {
+  padding-bottom: 8px;
 }
 
 /* A long name gives up its tail, not the icon above it or the state below it: Home Assistant's
@@ -14711,13 +15008,18 @@ body.density-compact
   white-space: nowrap;
 }
 
+/* Only the foot is the sensor's own (the sparkline's band, below). The top and the gap are the
+   standard tile's at every width, so the icon and the name sit where every other tile's do: a fixed
+   12px top stayed put when a narrow window, or enlarged text, tightened the others to 4px, and put
+   the name 6px lower than its neighbours' across the row. */
 #quick-controls .control-item.sensor-numeric-entity {
-  gap: 6px;
-  padding: 10px 8px 0;
+  padding-bottom: 0;
 }
 
-#quick-controls .control-item.sensor-numeric-entity .control-icon {
-  margin-bottom: 0;
+/* While editing, the buttons cover the icon, which is hidden, so the sensor keeps its name close to
+   the top instead of clear of the buttons like a tile with an icon. */
+#quick-controls.reorganize-mode .control-item.sensor-numeric-entity {
+  padding-top: 12px;
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-name {
@@ -14729,17 +15031,26 @@ body.density-compact
   gap: 2px;
 }
 
+/* The sparkline lies in a band along the foot of the tile, and the text is kept out of it: the info
+   block reserves the band as padding. The tile's height is a floor, so a name that wraps to a second
+   line, a larger value or larger text makes the tile taller (and the row with it) instead of running
+   the line through the digits. A one-line name and the default value fit the floor as they are. */
+#quick-controls .control-item.sensor-numeric-entity {
+  --sparkline-band: 14px;
+  --sparkline-inset: 4px;
+}
+
 #quick-controls .control-item.sensor-numeric-entity .control-info {
-  padding-bottom: 20px;
+  padding-bottom: calc(var(--sparkline-band) + var(--sparkline-inset));
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-sensor-sparkline {
-  bottom: 4px;
-  height: 14px;
+  bottom: var(--sparkline-inset);
+  height: var(--sparkline-band);
 }
 
 #quick-controls .control-item.sensor-numeric-entity[data-chart-type='none'] .control-info {
-  padding-bottom: 10px;
+  padding-bottom: 0;
 }
 
 /* Gauge: the arc is the tile's picture, so it stands in for the icon, and the
@@ -16521,8 +16832,10 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   );
 }
 
-/* A value and its unit in separate spans keep their left-to-right order. */
-[dir='rtl'] :is(.control-sensor-readout, .sensor-detail-readout, .media-tile-time) {
+/* A value and its unit in separate spans keep their left-to-right order, and so does the light
+   dialog's colour temperature ("3,200 K"), which would read "K 3,200" in a right-to-left row. */
+[dir='rtl']
+  :is(.control-sensor-readout, .sensor-detail-readout, .media-tile-time, #light-color-temp-value) {
   direction: ltr;
   unicode-bidi: isolate;
 }

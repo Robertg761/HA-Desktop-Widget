@@ -4,6 +4,7 @@
 
 const {
   createWeatherIcon,
+  getWeatherConditionLabel,
   normalizeWeatherCondition,
   renderWeatherIcon,
 } = require('../../src/weather-icons.js');
@@ -59,5 +60,14 @@ describe('weather icons', () => {
     expect(container.children).toHaveLength(1);
     expect(container.firstElementChild.tagName.toLowerCase()).toBe('svg');
     expect(container.dataset.weatherCondition).toBe('fog');
+  });
+
+  it('names an entity that is offline in words, not as the raw lowercase state', () => {
+    expect(getWeatherConditionLabel('unavailable')).toBe('Unavailable');
+    expect(getWeatherConditionLabel('Unavailable')).toBe('Unavailable');
+    expect(getWeatherConditionLabel('unknown')).toBe('Unknown');
+    // A condition the widget does not know is still the provider's own text.
+    expect(getWeatherConditionLabel('Volcanic eruption')).toBe('Volcanic eruption');
+    expect(getWeatherConditionLabel('')).toBe('--');
   });
 });

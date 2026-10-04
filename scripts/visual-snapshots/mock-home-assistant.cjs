@@ -3,10 +3,15 @@
  *
  * It speaks the WebSocket API's auth handshake and answers every request from a fixture: states
  * for get_states, services for get_services (the command palette only offers commands for
- * services that exist), empty lists and objects for registries and history, null for
- * subscriptions; the few services that return data answer from `serviceResponses`.
- * A scene can also change what the home holds while the app runs (server.changeStates), which
- * reaches the app the way Home Assistant's own changes do, as state_changed events.
+ * services that exist), empty lists and objects for registries, null for subscriptions; the few
+ * services that return data answer from `serviceResponses`. History is empty unless `histories`
+ * returns rows for an entity, and a subscription starts with the events `subscriptionEvents`
+ * lists for it (the persistent notifications that exist when the app subscribes). A scene that
+ * needs events later than that, without them showing in every scene, sends them with
+ * `server.pushEvents(subscriptionType, events)` to the subscriptions that are open. A scene can
+ * also change what the home holds while the app runs (`server.changeStates`), which reaches the
+ * app the way Home Assistant's own changes do, as state_changed events to the subscriptions that
+ * asked for them.
  * The WebSocket framing is done by hand (text frames, ping, close) so the snapshot job needs no
  * dependency beyond Node itself. Test-only; never shipped.
  */
@@ -67,8 +72,16 @@ function decodeFrames(buffer) {
   return [frames, buffer.subarray(offset)];
 }
 
-function resultFor(message, { states, services, serviceResponses }) {
+function resultFor(message, { states, services, serviceResponses, histories }) {
   switch (message.type) {
+    case 'history/history_during_period': {
+      // Home Assistant's minimal response: rows of {s: state, lu: last_updated in seconds}, keyed by
+      // entity, and only for entities that recorded something.
+      const rows = (message.entity_ids || [])
+        .map((entityId) => [entityId, histories?.(entityId, message) || []])
+        .filter(([, entityRows]) => entityRows.length);
+      return Object.fromEntries(rows);
+    }
     case 'call_service': {
       // A service that returns data (todo.get_items, calendar.get_events) answers from the
       // fixture; every other call just succeeds.
@@ -163,6 +176,8 @@ function startMockHomeAssistant({
   states,
   services = {},
   serviceResponses = {},
+  histories = null,
+  subscriptionEvents = null,
   failingEntities = [],
 }) {
   const server = http.createServer((request, response) => {
@@ -179,6 +194,22 @@ function startMockHomeAssistant({
     sockets.clear();
   };
 
+  // The subscriptions the app has open, by socket: the request they were made with (its type, and
+  // the event type of a subscribe_events) and how to reach them. Every way of sending the app
+  // events later looks them up here.
+  const subscriptions = new Map();
+  const eachSubscription = (matches, callback) => {
+    for (const open of subscriptions.values()) {
+      for (const subscription of open) if (matches(subscription)) callback(subscription);
+    }
+  };
+  server.pushEvents = (type, events) => {
+    eachSubscription(
+      (subscription) => subscription.type === type,
+      ({ id, send }) => events.forEach((event) => send({ id, type: 'event', event }))
+    );
+  };
+
   // An outage needs the server to stay away, not only to drop the sockets: the app reconnects within
   // a second and would be back before a screenshot.
   let refusing = false;
@@ -187,26 +218,28 @@ function startMockHomeAssistant({
     if (refuse) server.closeAllConnections();
   };
 
-  // The sockets that asked for state_changed events, with the id of that subscription.
-  const stateSubscribers = new Map();
   /**
    * Changes what the home holds while the app runs: the entities in `add` appear (or are
-   * replaced) and those in `remove` (entity ids) go, and every subscriber is told as it would be
-   * by Home Assistant. A later get_states, such as after a reconnect, answers with the new list.
+   * replaced) and those in `remove` (entity ids) go, and every state_changed subscription is told
+   * as it would be by Home Assistant. A later get_states, such as after a reconnect, answers with
+   * the new list.
    */
   server.changeStates = (changes) => {
     for (const change of applyStateChanges(states, changes)) {
-      for (const [socket, subscriptionId] of stateSubscribers) {
-        socket.write(encodeFrame(JSON.stringify(stateChangedMessage(subscriptionId, change))));
-      }
+      eachSubscription(
+        (subscription) =>
+          subscription.type === 'subscribe_events' && subscription.eventType === 'state_changed',
+        ({ id, send }) => send(stateChangedMessage(id, change))
+      );
     }
   };
 
   server.on('upgrade', (request, socket) => {
     sockets.add(socket);
+    subscriptions.set(socket, []);
     socket.on('close', () => {
       sockets.delete(socket);
-      stateSubscribers.delete(socket);
+      subscriptions.delete(socket);
     });
     if (refusing || request.url !== '/api/websocket') {
       socket.destroy();
@@ -244,9 +277,6 @@ function startMockHomeAssistant({
           continue;
         }
         for (const item of Array.isArray(message) ? message : [message]) {
-          if (item.type === 'subscribe_events' && item.event_type === 'state_changed') {
-            stateSubscribers.set(socket, item.id);
-          }
           if (item.type === 'auth') {
             send(
               item.access_token === token
@@ -267,8 +297,22 @@ function startMockHomeAssistant({
               id: item.id,
               type: 'result',
               success: true,
-              result: resultFor(item, { states, services, serviceResponses }),
+              result: resultFor(item, { states, services, serviceResponses, histories }),
             });
+            // What a subscription starts with, sent under the subscription's own id.
+            for (const event of subscriptionEvents?.(item) || []) {
+              send({ id: item.id, type: 'event', event });
+            }
+            if (item.type === 'unsubscribe_events') {
+              subscriptions.set(
+                socket,
+                (subscriptions.get(socket) || []).filter(({ id }) => id !== item.subscription)
+              );
+            } else if (/subscribe/.test(item.type)) {
+              subscriptions
+                .get(socket)
+                ?.push({ id: item.id, type: item.type, eventType: item.event_type, send });
+            }
           }
         }
       }

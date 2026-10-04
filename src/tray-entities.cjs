@@ -230,6 +230,15 @@ function toFiniteNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+// Home Assistant's 0-255 brightness as a percent, the way utils.brightnessToPercent reads it on
+// every other surface: the dimmest a light can be and still be on (1) is 1%, not the 0% that
+// rounding gives. This module is CommonJS and cannot import that ESM helper, so a test keeps
+// the two in step.
+function brightnessToPercent(brightness) {
+  if (!(brightness > 0)) return 0;
+  return Math.min(100, Math.max(1, Math.round((brightness / 255) * 100)));
+}
+
 function getDomain(entityId) {
   return typeof entityId === 'string' ? entityId.split('.')[0] : '';
 }
@@ -452,7 +461,7 @@ function buildTrayEntityPresentation(entity, options = {}) {
   } else if (domain === 'light') {
     const brightness = toFiniteNumber(attributes.brightness);
     if (stateKey === 'on' && brightness !== null) {
-      candidates = numericCandidates(Math.round((brightness / 255) * 100), '%');
+      candidates = numericCandidates(brightnessToPercent(brightness), '%');
       candidates.push('ON');
     }
   } else if (domain === 'fan') {
