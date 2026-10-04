@@ -1791,6 +1791,12 @@
     "Connect to Home Assistant to assign hotkeys": "连接到 Home Assistant 以分配快捷键",
     "Hotkey saved. Turn on Entity hotkeys in Settings > Hotkeys to use it.": "快捷键已保存。请在“设置 > 快捷键”中开启“实体快捷键”后使用。",
     "Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again": "请在“系统设置 > 隐私与安全性 > 辅助功能”中允许 HA Desktop Widget，然后重新设置快捷键",
-    "Use the state Home Assistant reports, such as not_home. Pick one from the list or type it.": "请使用 Home Assistant 报告的状态，例如 not_home。可从列表中选择，也可直接输入。"
+    "Use the state Home Assistant reports, such as not_home. Pick one from the list or type it.": "请使用 Home Assistant 报告的状态，例如 not_home。可从列表中选择，也可直接输入。",
+    "Could not run command: {{errorMessage}}": "无法执行命令：{{errorMessage}}",
+    "Search results": "搜索结果",
+    "Results: {{count}}": "结果：{{count}}",
+    "Showing {{shown}} of {{total}} results": "正在显示 {{shown}} 个结果，共 {{total}} 个",
+    "Command": "命令",
+    "Try a device name, a command like \"turn on\", or a page name": "试试设备名称、像“打开”这样的命令或页面名称"
   }
 }

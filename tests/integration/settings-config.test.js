@@ -2532,6 +2532,34 @@ describe('Settings + Config Integration', () => {
       expect(document.querySelector('[data-custom-icon-picker="light.living_room"]')).toBeNull();
     });
 
+    test('should not apply the icon on the Enter that commits an input method candidate', async () => {
+      await openSettingsWithCustomIconsExpanded();
+      const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
+      iconInput.focus();
+      iconInput.value = '星';
+
+      for (const init of [{ isComposing: true }, { keyCode: 229 }]) {
+        const enter = new KeyboardEvent('keydown', {
+          key: 'Enter',
+          bubbles: true,
+          cancelable: true,
+          ...init,
+        });
+        iconInput.dispatchEvent(enter);
+        expect(enter.defaultPrevented).toBe(false);
+      }
+
+      // Still being typed: nothing was applied or reset.
+      expect(iconInput.value).toBe('星');
+      const applied = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        bubbles: true,
+        cancelable: true,
+      });
+      iconInput.dispatchEvent(applied);
+      expect(applied.defaultPrevented).toBe(true);
+    });
+
     test('should open the picker when a query is typed, and close it with Escape without leaving Settings', async () => {
       // Arrange
       await openSettingsWithCustomIconsExpanded();

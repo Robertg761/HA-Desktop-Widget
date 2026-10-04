@@ -1791,6 +1791,12 @@
     "Connect to Home Assistant to assign hotkeys": "Connectez-vous à Home Assistant pour attribuer des raccourcis",
     "Hotkey saved. Turn on Entity hotkeys in Settings > Hotkeys to use it.": "Raccourci enregistré. Activez « Raccourcis d'entité » dans Paramètres > Raccourcis pour l'utiliser.",
     "Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again": "Autorisez HA Desktop Widget dans Réglages Système > Confidentialité et sécurité > Accessibilité, puis redéfinissez le raccourci",
-    "Use the state Home Assistant reports, such as not_home. Pick one from the list or type it.": "Utilisez l'état signalé par Home Assistant, par exemple not_home. Choisissez-en un dans la liste ou saisissez-le."
+    "Use the state Home Assistant reports, such as not_home. Pick one from the list or type it.": "Utilisez l'état signalé par Home Assistant, par exemple not_home. Choisissez-en un dans la liste ou saisissez-le.",
+    "Could not run command: {{errorMessage}}": "Impossible d'exécuter la commande : {{errorMessage}}",
+    "Search results": "Résultats de recherche",
+    "Results: {{count}}": "Résultats : {{count}}",
+    "Showing {{shown}} of {{total}} results": "Affichage de {{shown}} résultats sur {{total}}",
+    "Command": "Commande",
+    "Try a device name, a command like \"turn on\", or a page name": "Essayez le nom d'un appareil, une commande comme « allumer » ou le nom d'une page"
   }
 }

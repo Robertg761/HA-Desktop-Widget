@@ -1412,7 +1412,8 @@ function initCustomColorEditor() {
       setCustomEditorActive(true);
     };
     nameInput.onkeydown = (event) => {
-      if (event.key !== 'Enter') return;
+      // The Enter that commits an input method's candidate is not a request to save the name.
+      if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return;
       event.preventDefault();
       renameSelectedCustomColor();
       setCustomEditorActive(false);
@@ -2902,7 +2903,7 @@ function initCustomEntityIconsUI() {
       refocusCustomEntityIconInput(section, entityId);
       return;
     }
-    if (event.key !== 'Enter') return;
+    if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return;
     const input = event.target.closest('[data-custom-icon-input]');
     if (!input) return;
     event.preventDefault();

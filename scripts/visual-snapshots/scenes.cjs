@@ -374,6 +374,70 @@ async function openPaletteFor(ctx, query) {
   await ctx.waitForSelector('.command-palette-result');
 }
 
+// The palette with nothing typed: what was used last, the pages, the page on screen, then the rest.
+async function openPaletteEmpty(ctx) {
+  await ctx.ev(`document.activeElement?.blur?.()`);
+  await ctx.pressKey('k', { code: 'KeyK', keyCode: 75, modifiers: ctx.CTRL });
+  await ctx.waitForExpression(
+    `document.activeElement?.classList.contains('command-palette-input')`
+  );
+  await ctx.waitForSelector('.command-palette-result');
+}
+
+// An entity with nothing to open or run: Enter keeps the palette and says so.
+async function pressEnterOnEntityWithoutAction(ctx) {
+  await ctx.ev(`document.activeElement?.blur?.()`);
+  await ctx.pressKey('k', { code: 'KeyK', keyCode: 75, modifiers: ctx.CTRL });
+  await ctx.waitForExpression(
+    `document.activeElement?.classList.contains('command-palette-input')`
+  );
+  await ctx.insertText('front door');
+  await ctx.waitForExpression(
+    `document.querySelector('.command-palette-result.highlighted')?.textContent.includes('Front door')`,
+    'the Front door row'
+  );
+  await ctx.pressKey('Enter', { code: 'Enter', keyCode: 13, text: '\r' });
+  await ctx.waitForExpression(
+    `!document.querySelector('.command-palette-hint')?.hidden`,
+    'the hint under the results'
+  );
+}
+
+// A search that finds nothing.
+async function searchPaletteForNothing(ctx) {
+  await ctx.ev(`document.activeElement?.blur?.()`);
+  await ctx.pressKey('k', { code: 'KeyK', keyCode: 75, modifiers: ctx.CTRL });
+  await ctx.waitForExpression(
+    `document.activeElement?.classList.contains('command-palette-input')`
+  );
+  await ctx.insertText('zzzzz');
+  await ctx.waitForExpression(
+    `!document.querySelector('.command-palette-empty')?.hidden`,
+    'the empty message'
+  );
+}
+
+// An alert whose entity Home Assistant does not list, beside one it does.
+const alertsWithMissingEntity = {
+  entityAlerts: {
+    enabled: true,
+    alerts: {
+      ...alertsConfig.entityAlerts.alerts,
+      'light.removed_lamp': {
+        onStateChange: false,
+        onSpecificState: true,
+        onNumericThreshold: false,
+        targetState: 'unavailable',
+        comparison: 'above',
+        threshold: null,
+        durationSeconds: 0,
+        cooldownSeconds: 0,
+        quietHours: { enabled: false, start: '22:00', end: '07:00' },
+      },
+    },
+  },
+};
+
 // The edit-mode hint is a long toast; a second one stands in for a pair of warnings.
 async function showToasts(ctx) {
   await ctx.ev(
@@ -580,6 +644,18 @@ const scenes = [
     config: alertsConfig,
     setup: (ctx) => openSettingsTab(ctx, 'alerts'),
   },
+  // An alert for an entity that is gone keeps its row, under its id.
+  {
+    name: 'settings-alerts-missing-entity',
+    config: alertsWithMissingEntity,
+    setup: (ctx) => openSettingsTab(ctx, 'alerts'),
+  },
+  // A hotkey search that finds nothing says so, instead of leaving an empty line.
+  {
+    name: 'settings-hotkeys-no-match',
+    config: hotkeyPage,
+    setup: (ctx) => openHotkeysFor(ctx, 'zzzzz'),
+  },
   { name: 'settings-advanced', setup: (ctx) => openSettingsTab(ctx, 'advanced') },
   {
     name: 'settings-custom-color',
@@ -762,6 +838,11 @@ const scenes = [
       await ctx.waitForExpression(`document.querySelector('.command-palette-result.highlighted')`);
     },
   },
+  // The command palette with nothing typed, with an entity that has nothing to run, and with a
+  // search that finds nothing.
+  { name: 'palette-empty', setup: openPaletteEmpty },
+  { name: 'palette-no-action', setup: pressEnterOnEntityWithoutAction },
+  { name: 'palette-no-results', setup: searchPaletteForNothing },
   {
     name: 'focus-tile-settings',
     setup: async (ctx) => {

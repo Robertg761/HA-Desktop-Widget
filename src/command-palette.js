@@ -5,10 +5,13 @@ import {
   getEntityDomain,
   switchQuickAccessPage,
   requestAlarmCode,
+  hasEntityAction,
+  describeServiceErrorMessage,
+  isConnectionServiceError,
 } from './ui.js';
 import websocket from './websocket.js';
 import { closeDialog, openDialog, showToast } from './ui-utils.js';
-import { t } from './i18n.js';
+import { formatNumber, t } from './i18n.js';
 import { renderEntityIcon, setLineIconContent } from './entity-icons.js';
 import { applyCloseButtonIcons } from './icons.js';
 import { getActiveQuickAccessTab } from './quick-access-tabs.js';
@@ -24,6 +27,9 @@ let overlay = null;
 let input = null;
 let list = null;
 let emptyState = null;
+let footer = null;
+let statusRegion = null;
+let unsubscribeStates = null;
 let results = [];
 let highlightedIndex = -1;
 let paletteCommands = null;
@@ -50,7 +56,14 @@ function normalizeSearchValue(value) {
     .trim();
 }
 
+// Fuzzy (in-order, gaps allowed) matching only helps with an abbreviation of a real word. With one
+// or two letters nearly every name has them somewhere, and over a long name any word does: "disarm"
+// scattered through "Upstairs hallway ceiling pendant light" is not a match. So it needs three letters
+// and a match that stays close together.
+const MIN_FUZZY_QUERY_LENGTH = 3;
+
 function getSubsequenceScore(text, query) {
+  if (query.length < MIN_FUZZY_QUERY_LENGTH) return 0;
   let queryIndex = 0;
   let firstMatch = -1;
   let lastMatch = -1;
@@ -65,11 +78,14 @@ function getSubsequenceScore(text, query) {
   if (queryIndex !== query.length) return 0;
 
   const span = lastMatch - firstMatch + 1;
+  if (span > Math.max(query.length * 2, query.length + 4)) return 0;
   const gaps = Math.max(0, span - query.length);
-  return Math.max(250, 400 - firstMatch - gaps);
+  return Math.max(1, 400 - firstMatch - gaps);
 }
 
-function scoreCommandPaletteMatch(text, query) {
+// With `fuzzy` off only an exact, prefix, substring or all-the-words match counts; entity ids are
+// matched that way, since an id is not a word to abbreviate.
+function scoreCommandPaletteMatch(text, query, { fuzzy = true } = {}) {
   const normalizedText = normalizeSearchValue(text);
   const normalizedQuery = normalizeSearchValue(query);
 
@@ -85,7 +101,23 @@ function scoreCommandPaletteMatch(text, query) {
     return Math.max(500, 650 - substringIndex);
   }
 
-  return getSubsequenceScore(normalizedText, normalizedQuery);
+  // Every word of the query somewhere in the text, in any order: "lamp desk" finds "Desk lamp".
+  const words = normalizedQuery.split(' ');
+  if (words.length > 1 && words.every((word) => normalizedText.includes(word))) {
+    return Math.max(300, 450 - normalizedText.indexOf(words[0]));
+  }
+
+  return fuzzy ? getSubsequenceScore(normalizedText, normalizedQuery) : 0;
+}
+
+// The object id on its own ("kitchen" of light.kitchen), unless the query carries a dot, which is
+// part of a full id. Matching the whole id made every domain a prefix: "a" put every
+// alarm_control_panel.* ahead of the entities actually named for it.
+function scoreEntityIdMatch(entityId, query) {
+  const target = String(query ?? '').includes('.')
+    ? entityId
+    : entityId.slice(entityId.indexOf('.') + 1);
+  return scoreCommandPaletteMatch(target, query, { fuzzy: false });
 }
 
 function rankCommandPaletteEntities(entities, query, options = {}) {
@@ -95,7 +127,7 @@ function rankCommandPaletteEntities(entities, query, options = {}) {
     .map((entity) => {
       const displayName = getDisplayName(entity);
       const nameScore = scoreCommandPaletteMatch(displayName, query);
-      const idScore = scoreCommandPaletteMatch(entity.entity_id, query);
+      const idScore = scoreEntityIdMatch(entity.entity_id, query);
       return {
         entity,
         displayName,
@@ -146,15 +178,28 @@ function isPaletteOpen() {
   return !!overlay && !overlay.classList.contains('hidden');
 }
 
-function isTypingTarget(target) {
+// Input types that take typed text. A checkbox, a slider or a button has no use for Ctrl+K, so the
+// palette opens from them as it does from the page.
+const TEXT_INPUT_TYPES = new Set([
+  'text',
+  'search',
+  'email',
+  'url',
+  'tel',
+  'password',
+  'number',
+  'date',
+  'datetime-local',
+  'month',
+  'time',
+  'week',
+]);
+
+function isTextEntryTarget(target) {
   if (!target || target === document.body) return false;
   const tagName = target.tagName?.toLowerCase();
-  return (
-    tagName === 'input' ||
-    tagName === 'textarea' ||
-    tagName === 'select' ||
-    target.isContentEditable === true
-  );
+  if (tagName === 'input') return TEXT_INPUT_TYPES.has((target.type || 'text').toLowerCase());
+  return tagName === 'textarea' || target.isContentEditable === true;
 }
 
 function createElement(tagName, className, text = '') {
@@ -196,10 +241,22 @@ function createPaletteShell() {
   emptyState.hidden = true;
 
   hint = createElement('div', 'command-palette-empty command-palette-hint');
-  hint.setAttribute('role', 'status');
+  // Spoken through the status region below. A live region that starts hidden and changes its text
+  // and its visibility in one go is not announced, so the visible hint stays out of the way.
+  hint.setAttribute('aria-hidden', 'true');
   hint.hidden = true;
 
-  palettePanel.append(searchWrap, list, emptyState, hint);
+  footer = createElement('div', 'command-palette-footer');
+  footer.hidden = true;
+
+  // Always present, so screen readers have a region to watch when its text changes: the number of
+  // results, that nothing matched, or the hint.
+  statusRegion = createElement('div', 'sr-only');
+  statusRegion.setAttribute('role', 'status');
+  statusRegion.setAttribute('aria-live', 'polite');
+  statusRegion.setAttribute('aria-atomic', 'true');
+
+  palettePanel.append(searchWrap, list, emptyState, hint, footer, statusRegion);
   overlay.appendChild(palettePanel);
   document.body.appendChild(overlay);
   applyPaletteLabels();
@@ -220,11 +277,23 @@ function applyPaletteLabels() {
     closeButton.title = t('Close');
     closeButton.setAttribute('aria-label', t('Close command palette'));
   }
-  if (emptyState) emptyState.textContent = t('No matching results');
+  if (list) list.setAttribute('aria-label', t('Search results'));
 }
 
 function ensurePaletteShell() {
-  if (!overlay || !input || !list || !emptyState || !hint) createPaletteShell();
+  if (!overlay || !input || !list || !emptyState || !hint || !footer || !statusRegion) {
+    createPaletteShell();
+  }
+}
+
+function announce(text) {
+  if (statusRegion) statusRegion.textContent = text;
+}
+
+function showHint(text) {
+  hint.textContent = text;
+  hint.hidden = false;
+  announce(text);
 }
 
 function updateHighlightedResult(nextIndex) {
@@ -326,27 +395,38 @@ function redirectToExplicitCommand(selected) {
   }
   const name = utils.getEntityDisplayName(selected.entity);
   const hasCommand = (paletteCommands || []).some((item) => item.entity?.entity_id === entityId);
-  hint.textContent = hasCommand
-    ? getEntityDomain(entityId) === 'alarm_control_panel'
-      ? t('To control {{name}}, type "arm" or "disarm".', { name })
-      : t('To control {{name}}, type "lock" or "unlock".', { name })
-    : t('No command is available for {{name}}.', { name });
-  hint.hidden = false;
+  showHint(
+    hasCommand
+      ? getEntityDomain(entityId) === 'alarm_control_panel'
+        ? t('To control {{name}}, type "arm" or "disarm".', { name })
+        : t('To control {{name}}, type "lock" or "unlock".', { name })
+      : t('No command is available for {{name}}.', { name })
+  );
 }
 
 async function executeHighlightedResult() {
   const selected = results[highlightedIndex];
   if (!selected || executing) return;
-  if (
-    !selected.service &&
-    !selected.tabId &&
-    COMMAND_ONLY_DOMAINS.has(getEntityDomain(selected.entity.entity_id))
-  ) {
-    redirectToExplicitCommand(selected);
-    return;
+  if (!selected.service && !selected.tabId) {
+    if (COMMAND_ONLY_DOMAINS.has(getEntityDomain(selected.entity.entity_id))) {
+      redirectToExplicitCommand(selected);
+      return;
+    }
+    // Sun, a person, an update or a binary sensor have no controls and nothing to run. Closing on
+    // them looked like a click that failed, so the palette stays and says so.
+    if (!hasEntityAction(selected.entity)) {
+      showHint(
+        t('No command is available for {{name}}.', {
+          name: utils.getEntityDisplayName(selected.entity),
+        })
+      );
+      return;
+    }
   }
   closeCommandPalette();
   if (!selected.service && !selected.tabId) {
+    // Opened entities are remembered too, so what is looked up often is where an empty search starts.
+    rememberRecentCommand(selected.key);
     openEntityDetailModal(selected.entity, { source: 'command-palette' });
     return;
   }
@@ -357,12 +437,17 @@ async function executeHighlightedResult() {
       if (result?.success === false) return;
     } else {
       let current = state.STATES[selected.entity.entity_id];
+      const ensureConnected = () => {
+        // A connection error, so the toast says to check the connection and not that the entity
+        // is unavailable.
+        if (!websocket.isConnected()) throw new Error('WebSocket not connected');
+      };
       const allowed = () =>
-        websocket.isConnected() &&
         current &&
         buildPaletteCommands([current], state.CONFIG, state.SERVICES).some(
           (item) => item.service === selected.service && item.domain === selected.domain
         );
+      ensureConnected();
       if (!allowed()) throw new Error(t('Entity is unavailable'));
       let code = null;
       if (
@@ -374,6 +459,7 @@ async function executeHighlightedResult() {
         code = await requestAlarmCode(current);
         if (code === null) return;
         current = state.STATES[selected.entity.entity_id];
+        ensureConnected();
         if (connection !== JSON.stringify(state.CONFIG.homeAssistant) || !allowed())
           throw new Error(t('Entity is unavailable'));
       }
@@ -384,8 +470,17 @@ async function executeHighlightedResult() {
       showToast(t('Command sent'), 'success', 1600);
     }
     rememberRecentCommand(selected.key);
-  } catch {
-    showToast(t('Could not run command. Check your connection and retry.'), 'error');
+  } catch (error) {
+    // Home Assistant's own reason (a wrong alarm code, a refused service) is what helps the user;
+    // only a lost connection gets the generic advice.
+    showToast(
+      isConnectionServiceError(error)
+        ? t('Could not run command. Check your connection and retry.')
+        : t('Could not run command: {{errorMessage}}', {
+            errorMessage: describeServiceErrorMessage(error),
+          }),
+      'error'
+    );
   } finally {
     executing = false;
   }
@@ -413,15 +508,17 @@ function createResultRow(item, index) {
   main.append(name);
 
   const meta = createElement('span', 'command-palette-result-meta');
+  // A command row says what kind of row it is, not the entity's state before the command runs (a
+  // "Turn on" row showing "Off" read as if it were the result).
   const domain = createElement(
     'span',
     'command-palette-result-domain',
-    item.tabId ? t('Page') : utils.getEntityTypeDescription(entity)
+    item.tabId ? t('Page') : item.service ? t('Command') : utils.getEntityTypeDescription(entity)
   );
   const value = createElement(
     'span',
     'command-palette-result-state',
-    entity ? utils.getEntityDisplayState(entity) : ''
+    entity && !item.service ? utils.getEntityDisplayState(entity) : ''
   );
   // Long type names ("Panel de control de alarma") end in an ellipsis; the title keeps them whole.
   domain.title = domain.textContent;
@@ -446,6 +543,58 @@ function createResultRow(item, index) {
   return row;
 }
 
+// What an empty search lists: what was used last, then the pages to switch to, then the entities of
+// the page on screen, then the rest by name, then the device commands. Sorting all of them by score
+// (every score being 1) kept only the first twenty entities alphabetically, and no command or page
+// ever showed in a home of any size.
+function orderForEmptyQuery(entityRows, commands) {
+  const ordered = [];
+  const taken = new Set();
+  const add = (item) => {
+    if (!item || taken.has(item)) return;
+    taken.add(item);
+    ordered.push(item);
+  };
+  const byKey = new Map();
+  [...entityRows, ...commands].forEach((item) => {
+    if (!item.key) return;
+    byKey.set(item.key, [...(byKey.get(item.key) || []), item]);
+  });
+  recentCommands.forEach((key) => {
+    (byKey.get(key) || []).filter((item) => !QUERY_ONLY_SERVICES.has(item.service)).forEach(add);
+  });
+  commands.filter((item) => item.tabId).forEach(add);
+  const rowById = new Map(entityRows.map((item) => [item.entity.entity_id, item]));
+  const activeTab = getActiveQuickAccessTab(state.CONFIG);
+  (activeTab?.entityIds || []).forEach((entityId) => add(rowById.get(entityId)));
+  entityRows.forEach(add);
+  // A small home has room for its commands too, by name; in a large one they fall past the cut and
+  // are found by searching.
+  commands
+    .filter((item) => !item.tabId && !QUERY_ONLY_SERVICES.has(item.service))
+    .sort((a, b) => a.displayName.localeCompare(b.displayName))
+    .forEach(add);
+  return ordered;
+}
+
+// Says why the list is empty. An empty search with no entities is not "no match": nothing has
+// loaded, or the connection is down.
+function renderEmptyState(query, hasEntities) {
+  const title = createElement('div', 'command-palette-empty-title');
+  const detail = createElement('div', 'command-palette-empty-hint');
+  if (!query.trim() && !hasEntities) {
+    title.textContent = websocket.isConnected()
+      ? t('Waiting for live Home Assistant data...')
+      : t('Not connected to Home Assistant');
+    emptyState.replaceChildren(title);
+    return title.textContent;
+  }
+  title.textContent = t('No matching results');
+  detail.textContent = t('Try a device name, a command like "turn on", or a page name');
+  emptyState.replaceChildren(title, detail);
+  return title.textContent;
+}
+
 function renderResults() {
   const query = input?.value || '';
   const server = state.CONFIG?.homeAssistant?.url || '';
@@ -457,24 +606,20 @@ function renderResults() {
   // Building commands interpolates a label per entity action, so do it once per open rather than
   // on every keystroke. Execution re-reads the live entity state before sending anything.
   paletteCommands ??= buildPaletteCommands(entities);
-  const commands = paletteCommands
-    .filter((item) => query.trim() || !QUERY_ONLY_SERVICES.has(item.service))
-    .map((item) => ({
-      ...item,
-      score: scoreCommandPaletteMatch(item.displayName, query),
-    }))
-    .filter((item) => item.score > 0);
-  results = [...rankCommandPaletteEntities(entities, query), ...commands]
-    .sort((a, b) => {
-      if (!query.trim()) {
-        const aRecent = recentCommands.indexOf(a.key);
-        const bRecent = recentCommands.indexOf(b.key);
-        if (aRecent !== bRecent)
-          return (aRecent < 0 ? Infinity : aRecent) - (bRecent < 0 ? Infinity : bRecent);
-      }
-      return b.score - a.score;
-    })
-    .slice(0, MAX_RESULTS);
+  const entityRows = rankCommandPaletteEntities(entities, query).map((item) => ({
+    ...item,
+    key: `entity:${item.entity.entity_id}`,
+  }));
+  let ranked;
+  if (query.trim()) {
+    const commands = paletteCommands
+      .map((item) => ({ ...item, score: scoreCommandPaletteMatch(item.displayName, query) }))
+      .filter((item) => item.score > 0);
+    ranked = [...entityRows, ...commands].sort((a, b) => b.score - a.score);
+  } else {
+    ranked = orderForEmptyQuery(entityRows, paletteCommands);
+  }
+  results = ranked.slice(0, MAX_RESULTS);
   highlightedIndex = results.length ? 0 : -1;
   list.replaceChildren();
 
@@ -482,8 +627,27 @@ function renderResults() {
     list.appendChild(createResultRow(item, index));
   });
 
+  const truncated = ranked.length > results.length;
+  footer.hidden = !truncated;
+  footer.textContent = truncated
+    ? t('Showing {{shown}} of {{total}} results', {
+        shown: formatNumber(results.length),
+        total: formatNumber(ranked.length),
+      })
+    : '';
   emptyState.hidden = results.length > 0;
+  let spoken;
+  if (results.length) {
+    emptyState.replaceChildren();
+    spoken = truncated
+      ? footer.textContent
+      : t('Results: {{count}}', { count: formatNumber(results.length) });
+  } else {
+    spoken = renderEmptyState(query, entities.length > 0);
+  }
   hint.hidden = true;
+  input.setAttribute('aria-expanded', String(results.length > 0));
+  announce(spoken);
   updateHighlightedResult(highlightedIndex);
 }
 
@@ -501,11 +665,20 @@ function openCommandPalette() {
     dismiss: () => closeCommandPalette(),
   });
   overlay.setAttribute('aria-hidden', 'false');
-  input.setAttribute('aria-expanded', 'true');
   input.value = '';
   paletteCommands = null;
   lastPointerPosition = null;
   renderResults();
+  // Entities arriving while the palette is open (the first snapshot after launch or a reconnect)
+  // fill an empty list, instead of leaving "waiting" on screen.
+  unsubscribeStates?.();
+  unsubscribeStates =
+    state.subscribeStates?.(() => {
+      if (isPaletteOpen() && !results.length) {
+        paletteCommands = null;
+        renderResults();
+      }
+    }) || null;
   requestAnimationFrame(() => {
     input.focus();
     input.select();
@@ -517,8 +690,11 @@ function closeCommandPalette({ restoreFocus = true } = {}) {
   void closeDialog(overlay, { animate: false, restoreFocus });
   overlay.setAttribute('aria-hidden', 'true');
   paletteCommands = null;
+  unsubscribeStates?.();
+  unsubscribeStates = null;
   input?.setAttribute('aria-expanded', 'false');
   input?.removeAttribute('aria-activedescendant');
+  announce('');
 }
 
 function handleGlobalKeydown(event) {
@@ -526,7 +702,17 @@ function handleGlobalKeydown(event) {
   const isCommandPaletteShortcut =
     key === 'k' && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
   if (!isCommandPaletteShortcut) return;
-  if (isTypingTarget(event.target) && !isPaletteOpen()) return;
+  // Ctrl+K has no meaning in a text field, apart from a Mac's "delete to the end of the line"; the
+  // palette opens from there too, and from checkboxes and sliders, which is where the Quick
+  // Access search that advertises the shortcut sits.
+  if (
+    !isPaletteOpen() &&
+    isTextEntryTarget(event.target) &&
+    window.electronAPI?.platform === 'darwin' &&
+    !event.metaKey
+  ) {
+    return;
+  }
   // Behind the first-run wizard or the connecting screen the palette would open out of sight and
   // take the keyboard from the controls that are showing.
   if (
@@ -569,6 +755,11 @@ function handlePaletteKeydown(event) {
     }
     return;
   }
+
+  // While an input method is composing, Enter commits the candidate, the arrows pick one and
+  // Escape cancels the composition: none of them is the palette's. (Some engines report the key
+  // after the composition ends with keyCode 229 and isComposing false.)
+  if (event.isComposing || event.keyCode === 229) return;
 
   if (event.key === 'ArrowDown') {
     event.preventDefault();

@@ -11612,6 +11612,23 @@ label.disabled {
   font-size: var(--font-size-base);
 }
 
+/* What to try when nothing matched, under the plain "No matching results". */
+.command-palette-empty-hint {
+  margin-top: 6px;
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+}
+
+/* Said when the list is cut at its limit, so a short list is not mistaken for the whole of it. */
+.command-palette-footer {
+  flex: none;
+  padding: 8px 16px;
+  border-top: 1px solid var(--tile-border);
+  color: var(--text-secondary);
+  text-align: center;
+  font-size: var(--font-size-sm);
+}
+
 @media (width <= 520px) {
   .command-palette-overlay {
     padding: 10px;

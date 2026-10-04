@@ -1791,6 +1791,12 @@
     "Connect to Home Assistant to assign hotkeys": "हॉटकी असाइन करने के लिए Home Assistant से कनेक्ट करें",
     "Hotkey saved. Turn on Entity hotkeys in Settings > Hotkeys to use it.": "हॉटकी सहेजी गई। इसे इस्तेमाल करने के लिए सेटिंग्स > हॉटकी में “एंटिटी हॉटकी” चालू करें।",
     "Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again": "सिस्टम सेटिंग्स > गोपनीयता और सुरक्षा > एक्सेसिबिलिटी में HA Desktop Widget को अनुमति दें, फिर हॉटकी दोबारा सेट करें",
-    "Use the state Home Assistant reports, such as not_home. Pick one from the list or type it.": "Home Assistant द्वारा बताई गई स्थिति का उपयोग करें, जैसे not_home। सूची से चुनें या टाइप करें।"
+    "Use the state Home Assistant reports, such as not_home. Pick one from the list or type it.": "Home Assistant द्वारा बताई गई स्थिति का उपयोग करें, जैसे not_home। सूची से चुनें या टाइप करें।",
+    "Could not run command: {{errorMessage}}": "कमांड नहीं चलाई जा सकी: {{errorMessage}}",
+    "Search results": "खोज परिणाम",
+    "Results: {{count}}": "परिणाम: {{count}}",
+    "Showing {{shown}} of {{total}} results": "{{total}} में से {{shown}} परिणाम दिखाए जा रहे हैं",
+    "Command": "कमांड",
+    "Try a device name, a command like \"turn on\", or a page name": "किसी डिवाइस का नाम, “चालू करें” जैसी कमांड या किसी पेज का नाम आज़माएँ"
   }
 }

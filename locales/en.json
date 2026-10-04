@@ -1699,5 +1699,11 @@
   "Connect to Home Assistant to assign hotkeys": "Connect to Home Assistant to assign hotkeys",
   "Hotkey saved. Turn on Entity hotkeys in Settings > Hotkeys to use it.": "Hotkey saved. Turn on Entity hotkeys in Settings > Hotkeys to use it.",
   "Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again": "Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again",
-  "Use the state Home Assistant reports, such as not_home. Pick one from the list or type it.": "Use the state Home Assistant reports, such as not_home. Pick one from the list or type it."
+  "Use the state Home Assistant reports, such as not_home. Pick one from the list or type it.": "Use the state Home Assistant reports, such as not_home. Pick one from the list or type it.",
+  "Could not run command: {{errorMessage}}": "Could not run command: {{errorMessage}}",
+  "Search results": "Search results",
+  "Results: {{count}}": "Results: {{count}}",
+  "Showing {{shown}} of {{total}} results": "Showing {{shown}} of {{total}} results",
+  "Command": "Command",
+  "Try a device name, a command like \"turn on\", or a page name": "Try a device name, a command like \"turn on\", or a page name"
 }

@@ -1791,6 +1791,12 @@
     "Connect to Home Assistant to assign hotkeys": "Mit Home Assistant verbinden, um Tastenkürzel zuzuweisen",
     "Hotkey saved. Turn on Entity hotkeys in Settings > Hotkeys to use it.": "Tastenkürzel gespeichert. Aktiviere „Entitäts-Tastenkürzel“ unter Einstellungen > Tastenkürzel, um es zu verwenden.",
     "Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again": "Erlaube HA Desktop Widget unter Systemeinstellungen > Datenschutz & Sicherheit > Bedienungshilfen und lege das Tastenkürzel dann erneut fest",
-    "Use the state Home Assistant reports, such as not_home. Pick one from the list or type it.": "Verwende den Zustand, den Home Assistant meldet, zum Beispiel not_home. Wähle einen aus der Liste oder tippe ihn ein."
+    "Use the state Home Assistant reports, such as not_home. Pick one from the list or type it.": "Verwende den Zustand, den Home Assistant meldet, zum Beispiel not_home. Wähle einen aus der Liste oder tippe ihn ein.",
+    "Could not run command: {{errorMessage}}": "Befehl konnte nicht ausgeführt werden: {{errorMessage}}",
+    "Search results": "Suchergebnisse",
+    "Results: {{count}}": "Ergebnisse: {{count}}",
+    "Showing {{shown}} of {{total}} results": "{{shown}} von {{total}} Ergebnissen werden angezeigt",
+    "Command": "Befehl",
+    "Try a device name, a command like \"turn on\", or a page name": "Probiere einen Gerätenamen, einen Befehl wie „einschalten“ oder einen Seitennamen"
   }
 }
