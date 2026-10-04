@@ -1,4 +1,9 @@
-const { entitiesForArea, loadRoomRegistry } = require('../../src/room-dashboard.js');
+const {
+  defaultPageEntityIds,
+  entitiesForArea,
+  loadRoomRegistry,
+  pickStarterArea,
+} = require('../../src/room-dashboard.js');
 const {
   dashboardSnapshot,
   rememberDashboard,
@@ -63,6 +68,128 @@ describe('room dashboards', () => {
       code: 'registry_unavailable',
     });
     expect(request).toHaveBeenCalledTimes(6);
+  });
+});
+
+describe('first page starter', () => {
+  const entity = (entity_id, area_id, extra = {}) => ({ entity_id, area_id, ...extra });
+  const on = (...ids) => Object.fromEntries(ids.map((id) => [id, { state: 'on' }]));
+
+  it('starts from the room with the most things to control, not the first with any entity', () => {
+    // Attic holds one device setting; Kitchen and Living room hold real lights and switches.
+    const entities = [
+      entity('switch.attic_led_indicator', 'attic', { entity_category: 'config' }),
+      entity('light.kitchen_ceiling', 'kitchen'),
+      entity('switch.kitchen_coffee', 'kitchen'),
+      entity('light.living_lamp', 'living'),
+      entity('light.living_strip', 'living'),
+      entity('media_player.living_tv', 'living'),
+    ];
+    const areas = [
+      { area_id: 'living', name: 'Living room' },
+      { area_id: 'attic', name: 'Attic' },
+      { area_id: 'kitchen', name: 'Kitchen' },
+    ];
+    const states = on(...entities.map((item) => item.entity_id));
+    expect(pickStarterArea(areas, entities, [], states)).toBe('living');
+  });
+
+  it('breaks a tie by room name, whatever order the rooms arrive in', () => {
+    const entities = [entity('light.a', 'zeta'), entity('light.b', 'alpha')];
+    const areas = [
+      { area_id: 'zeta', name: 'Zeta room' },
+      { area_id: 'alpha', name: 'Alpha room' },
+    ];
+    expect(pickStarterArea(areas, entities, [], on('light.a', 'light.b'))).toBe('alpha');
+  });
+
+  it('shows every device when no room has anything to control', () => {
+    const entities = [
+      entity('sensor.attic_temperature', 'attic'),
+      entity('switch.attic_child_lock', 'attic', { entity_category: 'config' }),
+      entity('light.cellar_lamp', 'cellar'),
+    ];
+    const areas = [
+      { area_id: 'attic', name: 'Attic' },
+      { area_id: 'cellar', name: 'Cellar' },
+    ];
+    // The cellar lamp is unavailable, so it is not a start either.
+    const states = {
+      ...on('sensor.attic_temperature', 'switch.attic_child_lock'),
+      'light.cellar_lamp': { state: 'unavailable' },
+    };
+    expect(pickStarterArea(areas, entities, [], states)).toBe('');
+    expect(pickStarterArea([], entities, [], states)).toBe('');
+  });
+
+  it('suggests the devices and appliances a home has, but not what acts with one click', () => {
+    const ids = [
+      'lock.front_door',
+      'scene.movie',
+      'script.goodnight',
+      'vacuum.robot',
+      'humidifier.bedroom',
+      'water_heater.tank',
+      'sensor.power',
+      'binary_sensor.door',
+      'button.restart',
+    ];
+    // Unticked but still listed: the Add Page dialog lists every id and ticks only these.
+    expect(defaultPageEntityIds(ids, [], on(...ids))).toEqual([
+      'vacuum.robot',
+      'humidifier.bedroom',
+      'water_heater.tank',
+    ]);
+  });
+
+  it('fills a page of eight with devices before appliances', () => {
+    const ids = [
+      'vacuum.aaa_robot',
+      ...Array.from({ length: 8 }, (_, index) => `light.l${index}`),
+      'humidifier.bedroom',
+    ];
+    expect(defaultPageEntityIds(ids, [], on(...ids), 8)).toEqual(ids.slice(1, 9));
+    // With room to spare the appliances come after the devices.
+    expect(defaultPageEntityIds(ids, [], on(...ids), 10)).toEqual([
+      ...ids.slice(1, 9),
+      'vacuum.aaa_robot',
+      'humidifier.bedroom',
+    ]);
+  });
+
+  it('does not start a first page in a room whose only controls act with one click', () => {
+    const entities = [entity('lock.hall_door', 'hall'), entity('script.hall_scene', 'hall')];
+    const areas = [{ area_id: 'hall', name: 'Hall' }];
+    expect(pickStarterArea(areas, entities, [], on('lock.hall_door', 'script.hall_scene'))).toBe(
+      ''
+    );
+  });
+
+  it('leaves out device settings and what is not ready, and keeps state-only entities', () => {
+    const registry = [
+      entity('switch.lamp_led_indicator', null, { entity_category: 'config' }),
+      entity('switch.lamp_diagnostic', null, { entity_category: 'diagnostic' }),
+      entity('light.lamp', null, { entity_category: null }),
+    ];
+    const states = {
+      ...on('switch.lamp_led_indicator', 'switch.lamp_diagnostic', 'light.lamp', 'fan.state_only'),
+      'light.broken': { state: 'unavailable' },
+      'light.waking': { state: 'unknown' },
+    };
+    const ids = [
+      'switch.lamp_led_indicator',
+      'switch.lamp_diagnostic',
+      'light.lamp',
+      'fan.state_only',
+      'light.broken',
+      'light.waking',
+    ];
+    expect(defaultPageEntityIds(ids, registry, states)).toEqual(['light.lamp', 'fan.state_only']);
+  });
+
+  it('caps the suggestion at the limit it is given', () => {
+    const ids = Array.from({ length: 12 }, (_, index) => `light.l${index}`);
+    expect(defaultPageEntityIds(ids, [], on(...ids), 8)).toEqual(ids.slice(0, 8));
   });
 });
 
@@ -252,6 +379,35 @@ describe('sensor history detail', () => {
     expect(request).toHaveBeenCalledTimes(2);
     expect(document.activeElement).toBe(refresh);
     modal.remove();
+  });
+  it('puts the Refresh label back when a retry succeeds with no recorded values', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const modal = document.createElement('div');
+    document.body.append(modal);
+    const request = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('recorder offline'))
+      .mockResolvedValue({ result: [] });
+    mountSensorHistoryDetail({
+      body: modal,
+      modal,
+      entity: { entity_id: 'sensor.test' },
+      websocket: { request },
+      normalize: (response) => response.result,
+      render: jest.fn(),
+    });
+    const refresh = modal.querySelector('button');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(refresh.textContent).toBe('Retry');
+    refresh.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(modal.querySelector('.sensor-history-summary').textContent).toBe(
+      'No recorded values in this period.'
+    );
+    expect(refresh.textContent).toBe('Refresh');
+    modal.remove();
+    warn.mockRestore();
   });
   it('ignores an older response after the user selects another period', async () => {
     const modal = document.createElement('div');

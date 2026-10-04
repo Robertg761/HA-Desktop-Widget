@@ -2336,11 +2336,11 @@ function setStatus(connected, detailMessage = '') {
       status.dataset.statusSummary = summary;
       status.dataset.statusDetail = normalizedDetail;
 
+      // No title attribute: the dot has its own tooltip, and Chromium's native one would come up
+      // after it with the same words.
       if (normalizedDetail) {
-        status.title = `${summary}: ${normalizedDetail}`;
         status.setAttribute('aria-label', `${summary}. ${normalizedDetail}`);
       } else {
-        status.title = summary;
         status.setAttribute('aria-label', summary);
       }
 

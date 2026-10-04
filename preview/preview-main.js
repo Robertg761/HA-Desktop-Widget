@@ -17,6 +17,8 @@ import '../styles.css';
 import '../dashboard-workflows.css';
 import Sortable from 'sortablejs';
 import state from '@hadw/renderer/state.js';
+import { createElectronHost } from '@hadw/renderer/electron-host.js';
+import { setRendererHost } from '@hadw/renderer/host.js';
 import { buildProfileDocumentFromConfig } from '@hadw/renderer/profile-schema.js';
 import websocket from '../src/websocket.js';
 import * as ui from '../src/ui.js';
@@ -394,8 +396,24 @@ function initPreview() {
   return installPreviewApi();
 }
 
+// The virtual desktop answers the same API the preload bridge does, so the Electron host is built
+// over it, but this is the panel preview: no Electron, and no desktop pin windows to open.
+function createPreviewHost(electronAPI) {
+  const host = createElectronHost(electronAPI);
+  return {
+    ...host,
+    capabilities: Object.freeze({
+      ...host.capabilities,
+      isElectron: false,
+      isPreview: true,
+      supportsPins: false,
+    }),
+  };
+}
+
 installVirtualElectronApi();
 installVirtualSocket();
+setRendererHost(createPreviewHost(window.electronAPI));
 
 // Boot the real app. Its DOMContentLoaded handler wires every control exactly
 // as on the desktop; module evaluation order guarantees our seams exist first.
@@ -415,6 +433,7 @@ import('../renderer.js')
 
 export {
   applyProfile,
+  createPreviewHost,
   currentDocument as getDocument,
   initPreview,
   installVirtualElectronApi,

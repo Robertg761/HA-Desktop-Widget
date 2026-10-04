@@ -88,23 +88,35 @@ function addCircle(svg, cx, cy, r, className = '') {
   );
 }
 
-function drawSun(svg, { cx = 18, cy = 17, radius = 6, rays = true } = {}) {
-  addCircle(svg, cx, cy, radius, 'weather-glyph-fill');
+// `scale` grows the whole sun about its centre (rays included) without thickening its strokes.
+function drawSun(svg, { cx = 18, cy = 17, radius = 6, rays = true, scale = 1 } = {}) {
+  addCircle(svg, cx, cy, radius * scale, 'weather-glyph-fill');
   if (!rays) return;
 
   [
-    [cx, cy - 12, cx, cy - 9],
-    [cx, cy + 9, cx, cy + 12],
-    [cx - 12, cy, cx - 9, cy],
-    [cx + 9, cy, cx + 12, cy],
-    [cx - 8.5, cy - 8.5, cx - 6.4, cy - 6.4],
-    [cx + 6.4, cy + 6.4, cx + 8.5, cy + 8.5],
-    [cx + 6.4, cy - 6.4, cx + 8.5, cy - 8.5],
-    [cx - 8.5, cy + 8.5, cx - 6.4, cy + 6.4],
-  ].forEach((line) => addLine(svg, ...line, 'weather-glyph-ray'));
+    [0, -12, 0, -9],
+    [0, 9, 0, 12],
+    [-12, 0, -9, 0],
+    [9, 0, 12, 0],
+    [-8.5, -8.5, -6.4, -6.4],
+    [6.4, 6.4, 8.5, 8.5],
+    [6.4, -6.4, 8.5, -8.5],
+    [-8.5, 8.5, -6.4, 6.4],
+  ].forEach(([x1, y1, x2, y2]) =>
+    addLine(
+      svg,
+      cx + x1 * scale,
+      cy + y1 * scale,
+      cx + x2 * scale,
+      cy + y2 * scale,
+      'weather-glyph-ray'
+    )
+  );
 }
 
-function drawCloud(svg, { compact = false } = {}) {
+// The cloud is drawn high in the box to leave room for rain, snow or a bolt under it; `lower`
+// moves it down when nothing is drawn there.
+function drawCloud(svg, { compact = false, lower = 0 } = {}) {
   addPath(
     svg,
     compact
@@ -112,6 +124,7 @@ function drawCloud(svg, { compact = false } = {}) {
       : 'M11.5 31.5h25a7.5 7.5 0 0 0 .4-15A12.5 12.5 0 0 0 13 13.2a9.2 9.2 0 0 0-1.5 18.3Z',
     'weather-glyph-cloud'
   );
+  if (lower) svg.lastChild.setAttribute('transform', `translate(0 ${lower})`);
 }
 
 function drawRain(svg, { heavy = false, mixed = false } = {}) {
@@ -162,7 +175,8 @@ function drawWind(svg) {
 function drawWeatherGlyph(svg, condition) {
   switch (condition) {
     case 'sunny':
-      drawSun(svg, { cx: 24, cy: 24, radius: 7 });
+      // About as big as the cloud and the moon beside it: at 7 units the sun was half their size.
+      drawSun(svg, { cx: 24, cy: 24, radius: 7, scale: 1.4 });
       break;
     case 'clear-night':
       addPath(svg, 'M33 35A16 16 0 0 1 20 9a17 17 0 1 0 13 26Z', 'weather-glyph-fill');
@@ -174,7 +188,7 @@ function drawWeatherGlyph(svg, condition) {
       drawCloud(svg, { compact: true });
       break;
     case 'cloudy':
-      drawCloud(svg);
+      drawCloud(svg, { lower: 4 });
       break;
     case 'rainy':
       drawRain(svg);

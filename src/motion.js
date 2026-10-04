@@ -52,6 +52,16 @@ function rectWithin(container, element) {
   };
 }
 
+// The frame an indicator is drawn at this moment. While it slides, its computed transform and size
+// are the animated ones, between the item it left and the item it is heading for.
+function drawnFrame(indicator) {
+  const style = window.getComputedStyle(indicator);
+  const matrix = /^matrix\(([^)]+)\)$/.exec(style.transform || '');
+  const values = matrix ? matrix[1].split(',').map(Number) : [];
+  const [x, y] = values.length === 6 ? values.slice(4) : [0, 0];
+  return { transform: `translate(${x}px, ${y}px)`, width: style.width, height: style.height };
+}
+
 function frameFor(rect) {
   return {
     transform: `translate(${rect.x}px, ${rect.y}px)`,
@@ -92,16 +102,21 @@ function syncSlidingIndicator(container, activeElement) {
 
   const previous = indicatorRects.get(container);
   const next = frameFor(rect);
-  Object.assign(indicator.style, next);
-  indicatorRects.set(container, rect);
-
   const moved =
     previous &&
     (Math.abs(previous.x - rect.x) > 0.5 ||
       Math.abs(previous.y - rect.y) > 0.5 ||
       Math.abs(previous.width - rect.width) > 0.5);
+  // A switch that comes while the pill is still sliding starts from where the pill is drawn, not
+  // from the item it was heading for, or it would hop there first.
+  const running = moved && canAnimate(indicator) ? (indicator.getAnimations?.() ?? []) : [];
+  const start = running.length ? drawnFrame(indicator) : previous && frameFor(previous);
+  running.forEach((animation) => animation.cancel());
+  Object.assign(indicator.style, next);
+  indicatorRects.set(container, rect);
+
   if (moved && canAnimate(indicator)) {
-    indicator.animate([frameFor(previous), next], { duration: 320, easing: EASE_EMPHASIZED });
+    indicator.animate([start, next], { duration: 320, easing: EASE_EMPHASIZED });
   }
 
   // Re-measure when the bar resizes (window resize, text size change), without animating.

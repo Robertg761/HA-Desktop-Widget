@@ -807,6 +807,77 @@ describe('external artwork URL validation', () => {
     expect(isPrivateOrReservedIp(address)).toBe(true);
   });
 
+  it.each([
+    // NAT64 (64:ff9b::/96) carries an IPv4 address in its last 32 bits.
+    ['64:ff9b::a00:1', '10.0.0.1'],
+    ['64:ff9b::7f00:1', '127.0.0.1'],
+    ['64:ff9b::192.168.1.1', '192.168.1.1'],
+    ['64:ff9b::a9fe:a9fe', '169.254.169.254'],
+    // The local-use prefix (64:ff9b:1::/48) skips the "u" octet: 10.1.2.3 is a01:2:300.
+    ['64:ff9b:1:a01:2:300::', '10.1.2.3'],
+    // 6to4 (2002::/16) puts it right after the prefix.
+    ['2002:7f00:1::', '127.0.0.1'],
+    ['2002:c0a8:101::1', '192.168.1.1'],
+    ['2002:a9fe:a9fe::1', '169.254.169.254'],
+    // An IPv4 address mapped into IPv6, in either spelling.
+    ['::ffff:10.0.0.1', '10.0.0.1'],
+    ['::ffff:a00:1', '10.0.0.1'],
+  ])('blocks %s, which carries the private address %s', (address) => {
+    expect(isPrivateOrReservedIp(address)).toBe(true);
+  });
+
+  it.each([
+    // Teredo tunnels (2001::/32), the deprecated IPv4-compatible range, site-local and the
+    // discard-only prefix, and multicast.
+    '2001:0:4136:e378:8000:63bf:3fff:fdd2',
+    '2001::1',
+    '::7f00:1',
+    '::10.0.0.1',
+    'fec0::1',
+    '100::1',
+    'ff02::1',
+    '2001:db8::1',
+    'fe80::1%eth0',
+  ])('blocks the reserved IPv6 address %s outright', (address) => {
+    expect(isPrivateOrReservedIp(address)).toBe(true);
+  });
+
+  it.each([
+    // The same translators in front of a public IPv4 address, and ordinary global addresses.
+    '64:ff9b::5db8:d822',
+    '64:ff9b::93.184.216.34',
+    '64:ff9b:1:5db8:d8:2200::',
+    '2002:5db8:d822::1',
+    '::ffff:93.184.216.34',
+    '2606:2800:220:1:248:1893:25c8:1946',
+    '2a00:1450:4001::200e',
+    '2001:4860:4860::8888',
+  ])('allows the public address %s', (address) => {
+    expect(isPrivateOrReservedIp(address)).toBe(false);
+  });
+
+  it('blocks a NAT64 or 6to4 literal in an artwork URL before any lookup', async () => {
+    const lookup = jest.fn();
+    for (const url of [
+      'http://[64:ff9b::a9fe:a9fe]/latest/meta-data',
+      'http://[2002:a9fe:a9fe::1]/image.png',
+      'http://[2001:0:4136:e378:8000:63bf:3fff:fdd2]/image.png',
+    ]) {
+      await expect(validatePublicArtworkUrl(url, lookup)).rejects.toMatchObject({
+        statusCode: 403,
+        code: 'MEDIA_ARTWORK_BLOCKED_URL',
+      });
+    }
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it('blocks a hostname that resolves to a NAT64 address of an internal host', async () => {
+    const lookup = jest.fn(async () => [{ address: '64:ff9b::c0a8:103', family: 6 }]);
+    await expect(
+      validatePublicArtworkUrl('https://images.example.test/cover.png', lookup)
+    ).rejects.toMatchObject({ statusCode: 403, code: 'MEDIA_ARTWORK_BLOCKED_URL' });
+  });
+
   it('allows a hostname only when every resolved address is public', async () => {
     const publicLookup = jest.fn(async () => [
       { address: '93.184.216.34', family: 4 },

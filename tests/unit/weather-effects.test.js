@@ -29,6 +29,7 @@ describe('WeatherEffectsManager', () => {
 
     mockContext = {
       clearRect: jest.fn(),
+      setTransform: jest.fn(),
       beginPath: jest.fn(),
       moveTo: jest.fn(),
       lineTo: jest.fn(),
@@ -71,6 +72,152 @@ describe('WeatherEffectsManager', () => {
     expect(mockCanvas.width).toBe(window.innerWidth);
     expect(mockCanvas.height).toBe(window.innerHeight);
     manager.destroy();
+  });
+
+  describe('on a high-density screen', () => {
+    let originalRatio;
+
+    beforeEach(() => {
+      originalRatio = window.devicePixelRatio;
+    });
+
+    afterEach(() => {
+      window.devicePixelRatio = originalRatio;
+    });
+
+    it('draws at device resolution and keeps its scenes in CSS pixels', () => {
+      window.devicePixelRatio = 2;
+      const manager = new WeatherEffectsManager('weather-effects-canvas');
+
+      expect(mockCanvas.width).toBe(window.innerWidth * 2);
+      expect(mockCanvas.height).toBe(window.innerHeight * 2);
+      expect(mockContext.setTransform).toHaveBeenLastCalledWith(2, 0, 0, 2, 0, 0);
+
+      // Particles are placed in window coordinates, not in backing-store pixels.
+      manager.setEffect('rainy');
+      expect(Math.max(...manager.particles.map((p) => p.x))).toBeLessThanOrEqual(window.innerWidth);
+      expect(Math.min(...manager.particles.map((p) => p.y))).toBeGreaterThanOrEqual(
+        -window.innerHeight
+      );
+      manager.setEffect('sunny');
+      expect(manager.sun.x).toBeCloseTo(window.innerWidth * 0.15);
+      manager.destroy();
+    });
+
+    it('stops at twice the pixels and never draws below one per CSS pixel', () => {
+      window.devicePixelRatio = 3;
+      const heavy = new WeatherEffectsManager('weather-effects-canvas');
+      expect(mockCanvas.width).toBe(window.innerWidth * 2);
+      heavy.destroy();
+
+      window.devicePixelRatio = 0.75;
+      const light = new WeatherEffectsManager('weather-effects-canvas');
+      expect(mockCanvas.width).toBe(window.innerWidth);
+      light.destroy();
+    });
+
+    it('clears the whole scene in CSS pixels and does not resize a canvas that has not changed', () => {
+      window.devicePixelRatio = 2;
+      const manager = new WeatherEffectsManager('weather-effects-canvas');
+      manager.setEffect('sunny');
+      manager.setEffect(null);
+      expect(mockContext.clearRect).toHaveBeenLastCalledWith(
+        0,
+        0,
+        window.innerWidth,
+        window.innerHeight
+      );
+
+      // Assigning a canvas size clears it, so a resize event that changes nothing leaves it be.
+      mockContext.setTransform.mockClear();
+      mockCanvas.width = 1;
+      window.dispatchEvent(new Event('resize'));
+      expect(mockCanvas.width).toBe(1);
+      expect(mockContext.setTransform).not.toHaveBeenCalled();
+      manager.destroy();
+    });
+
+    it('follows the window to a screen with another scale factor', () => {
+      // Every query here is this one object; the scale-factor watcher registers first.
+      const changeHandlers = [];
+      const query = {
+        matches: false,
+        addEventListener: jest.fn((event, handler) => {
+          if (event === 'change') changeHandlers.push(handler);
+        }),
+        removeEventListener: jest.fn(),
+      };
+      window.matchMedia = jest.fn().mockReturnValue(query);
+      window.devicePixelRatio = 1;
+      const manager = new WeatherEffectsManager('weather-effects-canvas');
+      expect(window.matchMedia).toHaveBeenCalledWith('(resolution: 1dppx)');
+      expect(mockCanvas.width).toBe(window.innerWidth);
+
+      window.devicePixelRatio = 2;
+      changeHandlers[0]();
+      expect(mockCanvas.width).toBe(window.innerWidth * 2);
+      expect(mockContext.setTransform).toHaveBeenLastCalledWith(2, 0, 0, 2, 0, 0);
+      // The query matches one ratio only, so it is renewed for the new one.
+      expect(window.matchMedia).toHaveBeenCalledWith('(resolution: 2dppx)');
+      expect(query.removeEventListener).toHaveBeenCalledWith('change', expect.any(Function));
+      manager.destroy();
+    });
+  });
+
+  describe('with reduced motion, where the scene is drawn once', () => {
+    beforeEach(() => {
+      window.matchMedia = jest.fn().mockReturnValue({
+        matches: true,
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      });
+    });
+
+    // The positions the static frame drew its strokes and flakes at.
+    const drawnYs = (calls, index) => calls.map((call) => call[index]);
+
+    it.each(['rainy', 'stormy'])('draws %s rain inside the window', (effect) => {
+      const manager = new WeatherEffectsManager('weather-effects-canvas');
+      manager.setEffect(effect);
+
+      const starts = drawnYs(mockContext.moveTo.mock.calls, 1);
+      expect(starts).toHaveLength(effect === 'stormy' ? 48 : 32);
+      // Rain starts above the window and falls in; a still frame must not leave it all up there.
+      expect(manager.particles.every((p) => p.y < 0)).toBe(true);
+      starts.forEach((y) => {
+        expect(y).toBeGreaterThanOrEqual(0);
+        expect(y).toBeLessThan(window.innerHeight);
+      });
+      manager.destroy();
+    });
+
+    it('draws snow inside the window', () => {
+      const manager = new WeatherEffectsManager('weather-effects-canvas');
+      manager.setEffect('snowy');
+
+      const ys = drawnYs(mockContext.arc.mock.calls, 1);
+      expect(ys).toHaveLength(36);
+      ys.forEach((y) => {
+        expect(y).toBeGreaterThanOrEqual(0);
+        expect(y).toBeLessThan(window.innerHeight);
+      });
+      manager.destroy();
+    });
+
+    it('also brings in particles that an animation had already moved', () => {
+      const manager = new WeatherEffectsManager('weather-effects-canvas');
+      manager.setEffect('snowy');
+      mockContext.arc.mockClear();
+      manager.particles.forEach((p, index) => {
+        p.y = index % 2 ? window.innerHeight + 40 : -3 * window.innerHeight;
+      });
+      manager.renderStaticFrame();
+      drawnYs(mockContext.arc.mock.calls, 1).forEach((y) => {
+        expect(y).toBeGreaterThanOrEqual(0);
+        expect(y).toBeLessThan(window.innerHeight);
+      });
+      manager.destroy();
+    });
   });
 
   it('should set effect and initialize appropriate objects', () => {

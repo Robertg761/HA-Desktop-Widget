@@ -25,6 +25,46 @@ function entitiesForArea(areaId, entities, devices, states) {
     .map((entity) => entity.entity_id);
 }
 
+// A first page is made of what a person switches or sets. A lock, a scene or a script does
+// something with one click, so those stay in the list unticked, like sensors and buttons.
+const PAGE_DEVICE_DOMAINS = ['light', 'switch', 'climate', 'fan', 'cover', 'media_player'];
+// Appliances come after a room's lights and switches when the page has no room for all of them.
+const PAGE_APPLIANCE_DOMAINS = ['vacuum', 'humidifier', 'water_heater'];
+const UNREADY_STATES = new Set(['unknown', 'unavailable']);
+
+// The entities among these ids that a new page can start with: available, in one of the domains
+// above, and not a device's own configuration or diagnostic entity (the "LED indicator" and "Child
+// lock" switches a Zigbee or Z-Wave device adds to every room). Those stay in the list for anyone
+// who wants them. An id with no registry entry is a state-only entity and counts like any other.
+function defaultPageEntityIds(entityIds, registryEntities, states, limit = Infinity) {
+  const deviceSettings = new Set(
+    registryEntities.filter((entity) => entity.entity_category).map((entity) => entity.entity_id)
+  );
+  const ready = entityIds.filter(
+    (id) => !deviceSettings.has(id) && !UNREADY_STATES.has(states[id]?.state)
+  );
+  const inDomains = (domains) => ready.filter((id) => domains.includes(id.split('.')[0]));
+  return [...inDomains(PAGE_DEVICE_DOMAINS), ...inDomains(PAGE_APPLIANCE_DOMAINS)].slice(0, limit);
+}
+
+// The room a first-run page starts from: the one with the most controllable entities, and by name
+// when rooms tie. A room that holds only sensors or a device's settings is not a start, and with
+// no room that has anything to control the starter shows every device instead (an empty id).
+function pickStarterArea(areas, entities, devices, states) {
+  let best = { areaId: '', count: 0 };
+  [...areas]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .forEach((area) => {
+      const count = defaultPageEntityIds(
+        entitiesForArea(area.area_id, entities, devices, states),
+        entities,
+        states
+      ).length;
+      if (count > best.count) best = { areaId: area.area_id, count };
+    });
+  return best.areaId;
+}
+
 async function loadRoomRegistry(websocket) {
   const responses = await Promise.all(
     ['area', 'entity', 'device'].map((kind) =>
@@ -69,4 +109,11 @@ async function waitForRoomConnection(websocket, isActive, timeoutMs = 15000) {
   return false;
 }
 
-export { entitiesForArea, loadRoomRegistry, selectableEntityIds, waitForRoomConnection };
+export {
+  defaultPageEntityIds,
+  entitiesForArea,
+  loadRoomRegistry,
+  pickStarterArea,
+  selectableEntityIds,
+  waitForRoomConnection,
+};

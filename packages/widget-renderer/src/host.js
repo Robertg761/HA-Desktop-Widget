@@ -39,6 +39,11 @@ function setRendererHost(host) {
   activeHost = host || null;
 }
 
+/** Whether an embedder has already injected a host, as the panel preview does before boot. */
+function hasRendererHost() {
+  return activeHost !== null;
+}
+
 /**
  * Return the injected host. Without one, fall back to the ambient
  * window.electronAPI resolved at call time — this keeps the Electron app and
@@ -52,4 +57,4 @@ function getRendererHost() {
   return createNullHost();
 }
 
-export { createNullHost, getRendererHost, setRendererHost };
+export { createNullHost, getRendererHost, hasRendererHost, setRendererHost };

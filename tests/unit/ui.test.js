@@ -534,6 +534,73 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
       expect(document.querySelector('#add-page-modal')).toBeNull();
     });
+    it('starts from the room with real devices, and ticks no device setting', async () => {
+      const homeStates = [
+        { entity_id: 'switch.attic_led_indicator', state: 'on', attributes: {} },
+        { entity_id: 'light.kitchen_ceiling', state: 'on', attributes: {} },
+        { entity_id: 'switch.kitchen_child_lock', state: 'off', attributes: {} },
+        { entity_id: 'sensor.kitchen_temperature', state: '21', attributes: {} },
+      ];
+      mockRequest.mockImplementation(({ type }) =>
+        Promise.resolve({
+          success: true,
+          result: {
+            get_states: homeStates,
+            'config/area_registry/list': [
+              { area_id: 'attic', name: 'Attic' },
+              { area_id: 'kitchen', name: 'Kitchen' },
+            ],
+            'config/entity_registry/list': [
+              {
+                entity_id: 'switch.attic_led_indicator',
+                area_id: 'attic',
+                entity_category: 'config',
+              },
+              { entity_id: 'light.kitchen_ceiling', area_id: 'kitchen' },
+              {
+                entity_id: 'switch.kitchen_child_lock',
+                area_id: 'kitchen',
+                entity_category: 'config',
+              },
+              { entity_id: 'sensor.kitchen_temperature', area_id: 'kitchen' },
+            ],
+            'config/device_registry/list': [],
+          }[type],
+        })
+      );
+      ui.showAddPageModal({ starter: true });
+      await flush();
+
+      // Attic comes first by name but holds only a device setting.
+      expect(document.querySelector('#add-page-room').value).toBe('kitchen');
+      expect(document.querySelector('#add-page-name').value).toBe('Kitchen');
+      const checked = [...document.querySelectorAll('.room-dashboard input:checked')].map(
+        (input) => input.value
+      );
+      expect(checked).toEqual(['light.kitchen_ceiling']);
+      // The setting is still listed for anyone who wants it.
+      expect(document.querySelector('input[value="switch.kitchen_child_lock"]')).not.toBeNull();
+    });
+
+    it('shows All devices when no room has anything to control', async () => {
+      mockRequest.mockImplementation(({ type }) =>
+        Promise.resolve({
+          success: true,
+          result: {
+            get_states: entities,
+            'config/area_registry/list': [{ area_id: 'office', name: 'Office' }],
+            'config/entity_registry/list': [{ entity_id: 'sensor.temperature', area_id: 'office' }],
+            'config/device_registry/list': [],
+          }[type],
+        })
+      );
+      ui.showAddPageModal({ starter: true });
+      await flush();
+
+      expect(document.querySelector('#add-page-room').value).toBe('');
+      expect(document.querySelector('#add-page-name').value).toBe('My devices');
+    });
+
     it('excludes hidden and disabled devices from All devices and its defaults', async () => {
       const states = [
         ...entities,
@@ -2147,6 +2214,22 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       state.CONFIG.selectedWeatherEntity = null;
       ui.populateWeatherEntitiesList();
       expect(options().map((option) => option.tabIndex)).toEqual([0, -1, -1]);
+    });
+
+    it('offers Clear only while a weather entity is picked', () => {
+      document.body.insertAdjacentHTML('beforeend', '<button id="clear-weather">Clear</button>');
+      const clear = document.getElementById('clear-weather');
+      ui.populateWeatherEntitiesList();
+      expect(clear.getAttribute('aria-disabled')).toBe('false');
+
+      state.CONFIG.selectedWeatherEntity = null;
+      ui.populateWeatherEntitiesList();
+      expect(clear.getAttribute('aria-disabled')).toBe('true');
+
+      // A pick that is no longer in Home Assistant is still stored, so there is something to clear.
+      state.CONFIG.selectedWeatherEntity = 'weather.gone';
+      ui.populateWeatherEntitiesList();
+      expect(clear.getAttribute('aria-disabled')).toBe('false');
     });
 
     it('moves between options with the arrows, Home and End, and carries the Tab stop along', () => {

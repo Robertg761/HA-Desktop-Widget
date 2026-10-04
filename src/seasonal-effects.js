@@ -36,6 +36,10 @@ const FROST_ALPHA = 0.5;
 const FROST_REFRESH_MS = 500;
 // The scroller the tiles and cards move in.
 const SCROLLER_SELECTOR = '.widget-content';
+// Rows of controls that are not frosted but must not be crossed by a flier either: its dark
+// silhouette swallows the faint tab and toolbar glyphs, and in the default layout this row is the
+// only strip between the cards and the tiles that is tall enough for a sleigh.
+const NO_FLY_SELECTOR = '.quick-access-header';
 
 export class SeasonalEffectsManager {
   constructor(canvasId) {
@@ -325,12 +329,24 @@ export class SeasonalEffectsManager {
       .filter((rect) => rect.y + rect.height > 0 && rect.y < this.height);
   }
 
+  // The rows a flier keeps off, measured when a lane is chosen: that happens once per crossing.
+  readNoFlyRects() {
+    const rects = [];
+    for (const element of document.querySelectorAll(NO_FLY_SELECTOR)) {
+      const rect = element.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1) continue;
+      rects.push({ x: rect.left, y: rect.top, width: rect.width, height: rect.height });
+    }
+    return rects;
+  }
+
   /**
    * The height nearest `preferredY` where a band `band` tall crosses the window without passing
-   * behind a tile, so a witch or a sleigh stays sharp; `preferredY` when there is none.
+   * behind a tile or over the tab and toolbar row, so a witch or a sleigh stays sharp and keeps
+   * off the controls; `preferredY` when there is none.
    */
   findClearLane(preferredY, band) {
-    const rects = this.readFrostRects(performance.now());
+    const rects = [...this.readFrostRects(performance.now()), ...this.readNoFlyRects()];
     const half = band / 2;
     let best = null;
     for (let y = half; y <= this.height - half; y += 4) {
@@ -416,11 +432,25 @@ export class SeasonalEffectsManager {
 
   renderFrame(time) {
     if (!this.ctx || !this.canvas || !this.layers.length || this.isForcedColors()) return;
+    // The outlines are read once per frame, and only when a layer asks.
+    let surfaces = null;
     const frame = {
       time,
       light: !!document.body?.classList.contains('theme-light'),
       width: this.width,
       height: this.height,
+      // Whether any of this box (window coordinates) is behind a tile or card, where the frost
+      // blurs what a layer draws.
+      isCovered: (x, y, width, height) => {
+        surfaces ??= this.readFrostRects(time);
+        return surfaces.some(
+          (rect) =>
+            rect.x < x + width &&
+            rect.x + rect.width > x &&
+            rect.y < y + height &&
+            rect.y + rect.height > y
+        );
+      },
     };
     this.ctx.clearRect(0, 0, this.width, this.height);
     this.layers.forEach((layer, index) => {

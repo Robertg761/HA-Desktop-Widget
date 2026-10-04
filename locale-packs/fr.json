@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.62",
+  "version": "1.2.63",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1888,6 +1888,7 @@
     "Up to {{max}} sensors. Selected: {{count}}.": "Jusqu'à {{max}} capteurs. Sélectionnés : {{count}}.",
     "Maximum reached. Remove a sensor to add another.": "Maximum atteint. Supprimez un capteur pour en ajouter un autre.",
     "No sensors match \"{{query}}\"": "Aucun capteur ne correspond à « {{query}} »",
-    "What’s new": "Nouveautés"
+    "What’s new": "Nouveautés",
+    "Waiting for you to approve HA Desktop Widget in your browser. If it did not open, choose Cancel, then Connect again.": "En attente de votre approbation de HA Desktop Widget dans votre navigateur. S'il ne s'est pas ouvert, choisissez Annuler, puis Se connecter à nouveau."
   }
 }

@@ -4,7 +4,8 @@
  *   init(width, height)                          -> state (with `particles` when it has any)
  *   update(state, width, height, frameScale, time, env)  optional; frameScale 1 is one 60fps
  *     frame, and env.findClearLane(preferredY, band) finds a height clear of the tiles
- *   draw(ctx, state, frame)                       frame = { time, light, width, height }
+ *   draw(ctx, state, frame)                       frame = { time, light, width, height, isCovered }
+ *     where isCovered(x, y, width, height) says whether a tile or card is over that box
  * Sizes are CSS pixels. Layers that only exist while animating (fireworks, passers-by) start
  * empty, so a reduced-motion still frame leaves them out.
  */
@@ -924,6 +925,11 @@ const fogLayer = {
   },
 };
 
+// The share of its strength a pumpkin keeps with a tile over it. The frost turns what is behind a
+// tile into a soft blur, which for a bright orange pumpkin is a stain, so it only hints at being
+// there.
+const COVERED_PUMPKIN_SHARE = 0.3;
+
 // Pumpkins sitting along the bottom edge: lit jack-o'-lanterns, or a plain harvest.
 function pumpkinRowLayer({ faces }) {
   const spots = [
@@ -933,19 +939,31 @@ function pumpkinRowLayer({ faces }) {
     [0.94, 19, '#ea580c'],
   ];
   return {
-    init: () => ({ phases: spots.map(() => random(0, TAU)) }),
-    draw(ctx, state, { time, width, height }) {
+    init: () => ({
+      phases: spots.map(() => random(0, TAU)),
+      shown: spots.map(() => 1),
+      time: null,
+    }),
+    draw(ctx, state, { time, width, height, isCovered }) {
       const scale = Math.min(1.2, Math.max(0.7, width / 420));
+      // Scrolling the page moves tiles over the pumpkins and off them again; the fade follows over
+      // a quarter of a second rather than flipping.
+      const ease = state.time === null ? 1 : Math.min(1, Math.max(0, (time - state.time) / 250));
+      state.time = time;
       spots.forEach(([fraction, size, color], index) => {
         const s = size * scale;
+        const x = width * fraction;
+        const y = height - s * 0.8;
         const phase = state.phases[index];
         const flicker =
           0.75 + 0.25 * Math.sin(time * 0.011 + phase) * Math.sin(time * 0.0047 + phase);
-        drawPumpkin(ctx, width * fraction, height - s * 0.8, s, {
+        const covered = !!isCovered?.(x - s, y - s, s * 2, s * 2);
+        state.shown[index] += ((covered ? COVERED_PUMPKIN_SHARE : 1) - state.shown[index]) * ease;
+        drawPumpkin(ctx, x, y, s, {
           face: faces,
           flicker,
           color,
-          alpha: 0.85,
+          alpha: 0.85 * state.shown[index],
         });
       });
     },

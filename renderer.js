@@ -41,6 +41,7 @@ import { bindWeatherCardPicker } from './src/weather-card.js';
 import { SeasonalEffectsManager } from './src/seasonal-effects.js';
 import { normalizeQuickAccessConfig } from './src/quick-access-tabs.js';
 import { normalizeComparisonGraphsConfig } from './src/comparison-graphs.js';
+import { rememberDashboard } from './src/dashboard-history.js';
 import {
   handleTrayEntityStateChange,
   initTrayEntityIcons,
@@ -55,7 +56,7 @@ import {
   buildProfileDocumentFromConfig,
 } from './src/profile-schema.js';
 import { createElectronHost } from '@hadw/renderer/electron-host.js';
-import { setRendererHost, getRendererHost } from '@hadw/renderer/host.js';
+import { setRendererHost, getRendererHost, hasRendererHost } from '@hadw/renderer/host.js';
 import {
   installClimateDemo,
   isClimateDemoConfig,
@@ -76,14 +77,19 @@ import {
   setConnectionStatusBusy,
 } from './src/connection-status.js';
 
-// Shared renderer modules reach the desktop surface only through this host.
-if (window.electronAPI) {
+// Shared renderer modules reach the desktop surface only through this host. The panel preview
+// injects its own before it boots this file; it must not be replaced by one that says Electron.
+if (window.electronAPI && !hasRendererHost()) {
   setRendererHost(createElectronHost(window.electronAPI));
 }
 
 const OFFLINE_CONNECTION_ERROR_KEY = 'offline-network';
 const FAVORITE_STALE_ENTITY_PRESERVE_MS = 15 * 60 * 1000;
+// How long a favorite that a reconnect left out of get_states keeps showing its last state as if
+// it were live. After this it shows as unavailable until Home Assistant reports it again.
+const FAVORITE_STALE_LIVE_MS = 60 * 1000;
 const STATE_CHANGED_HIDDEN_FLUSH_DELAY_MS = 50;
+const WIZARD_WAIT_NOTICE_DELAY_MS = 4000;
 // A frame callback is skipped while the window is hidden, minimised or covered, and the window can
 // go hidden after the callback was requested; this timer is what flushes then.
 const STATE_CHANGED_FRAME_FALLBACK_MS = 250;
@@ -104,6 +110,7 @@ let desktopPinHasSnapshot = false;
 let desktopPinSupportsWindowPositioning = true;
 let desktopPinConnectionIssue = '';
 const favoriteStalePreservation = new Map();
+let staleFavoriteTimerId = null;
 let entityRenameMigrationQueue = Promise.resolve();
 
 async function persistEntityRegistryRename(eventData = {}) {
@@ -540,7 +547,7 @@ function flushPendingStateChangedEntities() {
     void publishDesktopPinSnapshot();
   }
 
-  changes.forEach(({ entity }) => {
+  changes.forEach(({ entity, local }) => {
     if (!entity) return;
     if (!hasPinDeletion && publishForDesktopPins && isDesktopPinEntity(entity.entity_id)) {
       window.electronAPI.publishHaEntityUpdate(entity).catch((error) => {
@@ -552,7 +559,8 @@ function flushPendingStateChangedEntities() {
     } else if (ui.isEntityVisible(entity.entity_id)) {
       ui.updateEntityInUI(entity);
     }
-    alerts.checkEntityAlerts(entity.entity_id, entity.state);
+    // A state the widget put there itself is not news from Home Assistant, so no alert rule hears it.
+    if (!local) alerts.checkEntityAlerts(entity.entity_id, entity.state);
   });
 
   if (!IS_DESKTOP_PIN_MODE) {
@@ -613,13 +621,15 @@ function scheduleStateChangedFlush() {
   );
 }
 
-function queueStateChangedEntity(entity) {
+// `local` marks a state the widget derived rather than received (see markStaleFavoritesUnavailable).
+function queueStateChangedEntity(entity, { local = false } = {}) {
   if (!entity?.entity_id) return;
   state.setEntityState(entity);
   // Hidden dashboard flushes are throttled; tray updates must follow the live event itself.
   if (!IS_DESKTOP_PIN_MODE && document.hidden) handleTrayEntityStateChange(entity.entity_id);
   pendingStateChangedEntities.set(entity.entity_id, {
     entity,
+    local,
   });
   scheduleStateChangedFlush();
 }
@@ -634,6 +644,31 @@ function queueDeletedEntity(entityId) {
     entity: null,
   });
   scheduleStateChangedFlush();
+}
+
+// A favorite that is kept through a reconnect shows its last state, so that a Home Assistant
+// restart does not flash every tile to Unavailable while its integration loads. One that Home
+// Assistant has still not reported a minute later was probably removed or renamed while this
+// computer was offline, and a tile that says "On, 50%" for it is wrong. It becomes unavailable,
+// through the same path as any state change, so tiles, pins and the tray agree. Alerts do not hear
+// it: Home Assistant never reported an outage, and a State Change alert that tells about devices
+// going unavailable would otherwise announce every entity that was deleted while the app was away.
+function scheduleStaleFavoriteCheck() {
+  window.clearTimeout(staleFavoriteTimerId);
+  staleFavoriteTimerId = null;
+  if (IS_DESKTOP_PIN_MODE || !favoriteStalePreservation.size) return;
+  staleFavoriteTimerId = window.setTimeout(markStaleFavoritesUnavailable, FAVORITE_STALE_LIVE_MS);
+}
+
+function markStaleFavoritesUnavailable() {
+  staleFavoriteTimerId = null;
+  favoriteStalePreservation.forEach((record, entityId) => {
+    const entity = state.STATES?.[entityId];
+    // Any event since the reconnect replaced the object: Home Assistant has spoken for it.
+    if (!entity || entity !== record.entity || entity.state === 'unavailable') return;
+    record.entity = { ...entity, state: 'unavailable' };
+    queueStateChangedEntity(record.entity, { local: true });
+  });
 }
 
 function reconcileFavoriteStalePreservation(newStates) {
@@ -674,6 +709,7 @@ function reconcileFavoriteStalePreservation(newStates) {
       favoriteStalePreservation.set(entityId, {
         missingSince,
         lastPreservedAt: now,
+        entity: oldStates[entityId],
       });
       return;
     }
@@ -681,6 +717,8 @@ function reconcileFavoriteStalePreservation(newStates) {
     droppedStaleFavorites.push(entityId);
     favoriteStalePreservation.delete(entityId);
   });
+
+  scheduleStaleFavoriteCheck();
 
   return {
     favoriteCount: favoriteEntityIds.length,
@@ -1250,6 +1288,15 @@ function createWizardText(tagName, className, id, text) {
   return element;
 }
 
+// Back moves between steps, so the first step and the last have none to offer. While authorization
+// waits in the browser the same button is the way out of it.
+function syncWizardBackButton() {
+  const backButton = firstRunWizard?.backButton;
+  if (!backButton) return;
+  backButton.hidden = firstRunWizard.step === 0 || firstRunWizard.step === 3;
+  backButton.textContent = firstRunWizard.finishInProgress ? t('Cancel') : t('Back');
+}
+
 function renderWizardStep() {
   if (!firstRunWizard?.content) return;
   const stepIndex = firstRunWizard.step;
@@ -1367,9 +1414,7 @@ function renderWizardStep() {
     );
   }
 
-  if (firstRunWizard.backButton) {
-    firstRunWizard.backButton.disabled = stepIndex === 0 || stepIndex === 3;
-  }
+  syncWizardBackButton();
   firstRunWizard.skipButton.textContent = stepIndex === 3 ? t('Skip for now') : t('Full Settings');
   if (firstRunWizard.nextButton) {
     firstRunWizard.nextButton.textContent =
@@ -1388,10 +1433,12 @@ function renderWizardStep() {
 async function finishFirstRunWizard() {
   if (!firstRunWizard || firstRunWizard.finishInProgress) return;
   firstRunWizard.finishInProgress = true;
+  syncWizardBackButton();
   if (firstRunWizard.nextButton) {
     firstRunWizard.nextButton.disabled = true;
     firstRunWizard.nextButton.setAttribute('aria-busy', 'true');
   }
+  let waitNoticeTimer = null;
 
   try {
     // Inside the try: a throw here used to skip the finally, stranding the button disabled and
@@ -1403,6 +1450,17 @@ async function finishFirstRunWizard() {
       return;
     }
     setWizardStatus(t('Opening Home Assistant for authorization...'), 'pending');
+    // Approval can take the five minutes the pairing is allowed. Once the browser has had time to
+    // open, say what the wizard is waiting for, and what to do if no browser appeared.
+    waitNoticeTimer = window.setTimeout(() => {
+      if (!firstRunWizard?.finishInProgress || firstRunWizard.cancelRequested) return;
+      setWizardStatus(
+        t(
+          'Waiting for you to approve HA Desktop Widget in your browser. If it did not open, choose Cancel, then Connect again.'
+        ),
+        'pending'
+      );
+    }, WIZARD_WAIT_NOTICE_DELAY_MS);
     const result = await startHomeAssistantPairing(window.electronAPI, normalizedUrl);
     if (!result?.config) throw new Error(t('Home Assistant did not return a saved connection.'));
     applyRendererConfig(result.config);
@@ -1433,9 +1491,11 @@ async function finishFirstRunWizard() {
       uiUtils.showToast(message, 'error', 6000);
     }
   } finally {
+    window.clearTimeout(waitNoticeTimer);
     if (firstRunWizard) {
       firstRunWizard.finishInProgress = false;
       firstRunWizard.cancelRequested = false;
+      syncWizardBackButton();
       if (firstRunWizard.nextButton) {
         firstRunWizard.nextButton.disabled = false;
         firstRunWizard.nextButton.setAttribute('aria-busy', 'false');
@@ -1506,8 +1566,11 @@ function ensureFirstRunWizard() {
     skipWizardToSettings
   );
   const backButton = createActionButton(t('Back'), 'btn btn-secondary', async () => {
+    // While authorization waits this is Cancel: it stops the wait and stays on the step, ready to
+    // connect again. Otherwise it goes back one step.
+    const cancelling = firstRunWizard.finishInProgress;
     await cancelFirstRunAuthorization();
-    firstRunWizard.step = Math.max(0, firstRunWizard.step - 1);
+    if (!cancelling) firstRunWizard.step = Math.max(0, firstRunWizard.step - 1);
     renderWizardStep();
   });
   const nextButton = createActionButton(t('Next'), 'btn btn-primary', async () => {
@@ -1590,10 +1653,17 @@ function maybeShowFirstRunWizard() {
 async function executeDesktopCompanionCommand({ action, payload }) {
   if (action === 'apply_profile') {
     const patch = buildConfigPatchFromApplyPayload(payload, state.CONFIG);
+    const previousConfig = JSON.parse(JSON.stringify(state.CONFIG || {}));
     const result = await window.electronAPI.updateConfig(patch);
     if (result?.success === false) {
       throw new Error(result?.error || 'Profile could not be saved on this desktop');
     }
+    // A profile can replace every page, span, name and icon. Keep the layout it replaced, as a
+    // save from Settings does, so Undo and Restore dashboard can bring it back.
+    rememberDashboard(
+      previousConfig,
+      result?.homeAssistant ? result : { ...previousConfig, ...patch }
+    );
     const mainState = await window.electronAPI.getDesktopCompanionState();
     return {
       ...mainState,
@@ -3359,6 +3429,9 @@ function wireUI() {
     const clearWeatherBtn = document.getElementById('clear-weather');
     if (clearWeatherBtn) {
       clearWeatherBtn.onclick = async () => {
+        // Nothing is picked while the card follows the first available entity; there is nothing to
+        // clear, and no write or "cleared" toast to give for it.
+        if (!state.CONFIG.selectedWeatherEntity) return;
         try {
           // Clear the selected weather entity (revert to default). null, as Settings saves it:
           // an undefined survives the IPC and sits in main's config until the next restart.
