@@ -7281,7 +7281,9 @@ async function initializePopupHotkey() {
       input.value = currentHotkey;
       input.placeholder = currentHotkey || t('Not set');
       setBtn.disabled = false;
-      clearBtn.disabled = false;
+      // Clear and the suggestions come back too, as they were switched off when the service was
+      // not there; a recording that is still going keeps them off.
+      setPopupHotkeyControlsRecording(isCapturingPopupHotkey);
       clearBtn.style.display = currentHotkey ? 'inline-block' : 'none';
     }
 

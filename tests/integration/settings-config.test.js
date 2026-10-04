@@ -1237,6 +1237,26 @@ describe('Settings + Config Integration', () => {
       mockElectronAPI.isPopupHotkeyAvailable.mockResolvedValue(true);
     });
 
+    test('the card comes back to life when the shortcut service turns up later', async () => {
+      mockElectronAPI.isPopupHotkeyAvailable.mockResolvedValue(false);
+      await settings.openSettings();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(document.querySelector('.preset-hotkey-btn').disabled).toBe(true);
+
+      mockElectronAPI.isPopupHotkeyAvailable.mockResolvedValue(true);
+      await settings.initializePopupHotkey();
+
+      expect(document.getElementById('popup-hotkey-input').disabled).toBe(false);
+      for (const chip of document.querySelectorAll('.preset-hotkey-btn')) {
+        expect(chip.disabled).toBe(false);
+      }
+      for (const id of ['popup-hotkey-toggle-mode', 'popup-hotkey-hide-on-release']) {
+        expect(document.getElementById(id).disabled).toBe(false);
+        expect(document.getElementById(`${id}-label`).classList.contains('disabled')).toBe(false);
+      }
+    });
+
     test('closing settings cleans up modal and focus trap', () => {
       // First open settings
       settings.openSettings();
