@@ -490,5 +490,29 @@
   "Entities not found on this connection: {{count}}.": {
     "retiredIn": "4.0.0",
     "reason": "Reworded or removed by the Settings forms pass (#150)"
+  },
+  "Global hotkeys enabled": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the switch is labelled Entity hotkeys, and the popup hotkey is not part of it"
+  },
+  "Global hotkeys disabled": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the switch is labelled Entity hotkeys, and the popup hotkey is not part of it"
+  },
+  "{{hotkey}} (add Ctrl/Alt/Shift)": {
+    "retiredIn": "4.0.0",
+    "reason": "Replaced by a prompt naming the platform's modifier keys"
+  },
+  "Hotkey action": {
+    "retiredIn": "4.0.0",
+    "reason": "Replaced by a label that names the entity"
+  },
+  "Enter the state you want to be notified about": {
+    "retiredIn": "4.0.0",
+    "reason": "Replaced by help that says to use the Home Assistant state and offers the entity's own"
+  },
+  "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Command, Super (for example <code>Ctrl+Shift+A</code>).": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the modifier list now includes Win, the key the Windows recorder names"
   }
 }

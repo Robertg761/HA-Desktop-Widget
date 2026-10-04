@@ -426,7 +426,11 @@ async function main() {
     }
 
     for (const scene of selected) {
+      // Entities only this scene needs arrive the way Home Assistant's own changes do and go again
+      // once it is captured, so no other scene's lists carry them.
+      const sceneStates = scene.extraStates ? scene.extraStates(new Date()) : [];
       try {
+        if (sceneStates.length) server.changeStates({ add: sceneStates });
         await prepare(scene);
         const result = scene.setup ? await scene.setup(ctx) : null;
         await sleep(scene.settle ?? 900);
@@ -441,6 +445,9 @@ async function main() {
       try {
         // A scene that keeps its toast for the picture must not leave it for the next scene.
         await cdp.evaluate(REMOVE_TOASTS);
+        if (sceneStates.length) {
+          server.changeStates({ remove: sceneStates.map((entity) => entity.entity_id) });
+        }
         await restore();
       } catch (error) {
         // A dialog or pin left behind would leak into every later scene, so the run must not pass.

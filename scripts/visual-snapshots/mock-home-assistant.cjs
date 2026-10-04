@@ -5,6 +5,8 @@
  * for get_states, services for get_services (the command palette only offers commands for
  * services that exist), empty lists and objects for registries and history, null for
  * subscriptions; the few services that return data answer from `serviceResponses`.
+ * A scene can also change what the home holds while the app runs (server.changeStates), which
+ * reaches the app the way Home Assistant's own changes do, as state_changed events.
  * The WebSocket framing is done by hand (text frames, ping, close) so the snapshot job needs no
  * dependency beyond Node itself. Test-only; never shipped.
  */
@@ -109,6 +111,45 @@ function resultFor(message, { states, services, serviceResponses }) {
   }
 }
 
+/**
+ * Adds, replaces and removes entities in the list get_states answers from, and says what changed.
+ * @param {Array} states - The mock's entity states; changed in place.
+ * @param {{add?: Array, remove?: string[]}} changes - Entities to add (or replace) and entity ids to remove.
+ * @returns {Array<{entityId: string, oldState: Object|null, newState: Object|null}>}
+ */
+function applyStateChanges(states, { add = [], remove = [] } = {}) {
+  const changes = [];
+  for (const entityId of remove) {
+    const index = states.findIndex((entity) => entity.entity_id === entityId);
+    if (index === -1) continue;
+    const [oldState] = states.splice(index, 1);
+    changes.push({ entityId, oldState, newState: null });
+  }
+  for (const newState of add) {
+    const index = states.findIndex((entity) => entity.entity_id === newState.entity_id);
+    const oldState = index === -1 ? null : states[index];
+    if (index === -1) states.push(newState);
+    else states[index] = newState;
+    changes.push({ entityId: newState.entity_id, oldState, newState });
+  }
+  return changes;
+}
+
+/** The event Home Assistant sends to a state_changed subscription for one change. */
+function stateChangedMessage(subscriptionId, { entityId, oldState, newState }) {
+  return {
+    id: subscriptionId,
+    type: 'event',
+    event: {
+      event_type: 'state_changed',
+      data: { entity_id: entityId, old_state: oldState, new_state: newState },
+      origin: 'LOCAL',
+      time_fired: new Date().toISOString(),
+      context: { id: 'mock', parent_id: null, user_id: null },
+    },
+  };
+}
+
 // A service call aimed at an entity the scene wants to fail, in either place Home Assistant takes it.
 function isRefusedCall(message, failingEntities) {
   if (message.type !== 'call_service' || !failingEntities.length) return false;
@@ -146,9 +187,27 @@ function startMockHomeAssistant({
     if (refuse) server.closeAllConnections();
   };
 
+  // The sockets that asked for state_changed events, with the id of that subscription.
+  const stateSubscribers = new Map();
+  /**
+   * Changes what the home holds while the app runs: the entities in `add` appear (or are
+   * replaced) and those in `remove` (entity ids) go, and every subscriber is told as it would be
+   * by Home Assistant. A later get_states, such as after a reconnect, answers with the new list.
+   */
+  server.changeStates = (changes) => {
+    for (const change of applyStateChanges(states, changes)) {
+      for (const [socket, subscriptionId] of stateSubscribers) {
+        socket.write(encodeFrame(JSON.stringify(stateChangedMessage(subscriptionId, change))));
+      }
+    }
+  };
+
   server.on('upgrade', (request, socket) => {
     sockets.add(socket);
-    socket.on('close', () => sockets.delete(socket));
+    socket.on('close', () => {
+      sockets.delete(socket);
+      stateSubscribers.delete(socket);
+    });
     if (refusing || request.url !== '/api/websocket') {
       socket.destroy();
       return;
@@ -185,6 +244,9 @@ function startMockHomeAssistant({
           continue;
         }
         for (const item of Array.isArray(message) ? message : [message]) {
+          if (item.type === 'subscribe_events' && item.event_type === 'state_changed') {
+            stateSubscribers.set(socket, item.id);
+          }
           if (item.type === 'auth') {
             send(
               item.access_token === token
@@ -219,4 +281,12 @@ function startMockHomeAssistant({
   });
 }
 
-module.exports = { startMockHomeAssistant, encodeFrame, decodeFrames, isRefusedCall, resultFor };
+module.exports = {
+  startMockHomeAssistant,
+  applyStateChanges,
+  decodeFrames,
+  encodeFrame,
+  isRefusedCall,
+  resultFor,
+  stateChangedMessage,
+};

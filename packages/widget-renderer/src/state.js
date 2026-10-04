@@ -20,6 +20,25 @@ export function subscribeEntity(entityId, listener) {
   };
 }
 
+// For whoever shows the whole entity list (the command palette) and needs to know when a snapshot
+// replaced it; entity listeners only hear about entities they follow.
+const statesListeners = new Set();
+
+export function subscribeStates(listener) {
+  statesListeners.add(listener);
+  return () => statesListeners.delete(listener);
+}
+
+function notifyStates() {
+  statesListeners.forEach((listener) => {
+    try {
+      listener(STATES);
+    } catch (error) {
+      console.error('Error updating states subscriber:', error);
+    }
+  });
+}
+
 function notifyEntity(entityId) {
   entityListeners.get(entityId)?.forEach((listener) => {
     try {
@@ -75,6 +94,7 @@ export function setStates(newStates) {
   try {
     STATES = newStates;
     entityListeners.forEach((_, entityId) => notifyEntity(entityId));
+    notifyStates();
   } catch (error) {
     console.error('Error setting states:', error);
   }
@@ -159,6 +179,7 @@ const state = {
   setStates,
   setEntityState,
   subscribeEntity,
+  subscribeStates,
   deleteEntityState,
   setServices,
   setAreas,
