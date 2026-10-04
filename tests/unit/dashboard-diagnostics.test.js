@@ -223,6 +223,21 @@ describe('tool dialogs and the keyboard', () => {
     ]);
   });
 
+  test('names a restore point’s unnamed pages in today’s language, not the one it was saved in', async () => {
+    const { rememberDashboard } = require('../../src/dashboard-history.js');
+    const layout = (tabs) => ({ homeAssistant: { url: 'http://server' }, customTabs: tabs });
+    const saved = layout([
+      { id: 'default', name: 'Alle', nameIsDefault: true, entityIds: ['light.a'] },
+      { id: 'kitchen', name: 'Küche', entityIds: [] },
+    ]);
+    rememberDashboard(saved, layout([]));
+
+    tools.showDashboardHistory();
+    await tick();
+
+    expect(document.querySelector('.dashboard-restore-pages').textContent).toBe('All, Küche');
+  });
+
   test('a failed restore keeps focus on the restore point that was pressed', async () => {
     const { rememberDashboard } = require('../../src/dashboard-history.js');
     const { restoreDashboard } = require('../../src/ui.js');

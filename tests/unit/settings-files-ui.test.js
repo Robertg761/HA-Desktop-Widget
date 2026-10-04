@@ -158,6 +158,20 @@ describe('settings file controls', () => {
     expect(pages).not.toContain('x'.repeat(41));
     expect(pages).not.toContain('Page 9');
   });
+  test('names a page nobody named, which a settings file saves without a name', async () => {
+    api.previewSettingsImport.mockResolvedValue({
+      success: true,
+      id: 'selected',
+      fileName: 'settings.json',
+      changedSections: [],
+      pageNames: ['', 'Office', ''],
+      entityIds: [],
+    });
+    document.getElementById('import-settings-file').click();
+    await flush();
+    // The same names the widget gives them: "All" for the first, "View 3" by position.
+    expect(facts()['Page names']).toBe('All, Office, View 3');
+  });
   test('names the size a settings file may have', async () => {
     api.previewSettingsImport.mockResolvedValue({ success: false, code: 'file_too_large' });
     document.getElementById('import-settings-file').click();

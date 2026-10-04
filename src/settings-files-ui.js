@@ -2,6 +2,9 @@ import { formatList } from './format.js';
 import { formatNumber, t } from './i18n.js';
 import { showConfirm, showToast } from './ui-utils.js';
 import state from './state.js';
+import pageNameRules from './page-names.cjs';
+
+const { defaultPageName } = pageNameRules;
 
 function settingsFileError(code) {
   if (code === 'invalid_file') return t('Choose a valid HA Desktop Widget settings file.');
@@ -22,7 +25,9 @@ const PREVIEW_PAGE_NAMES = 8;
 const PREVIEW_NAME_LENGTH = 40;
 
 function describePageNames(pageNames) {
-  const shown = pageNames.slice(0, PREVIEW_PAGE_NAMES).map((name) => {
+  const shown = pageNames.slice(0, PREVIEW_PAGE_NAMES).map((saved, index) => {
+    // A page nobody named is saved without a name, and shown with the name of the interface language.
+    const name = saved || defaultPageName(index, t);
     // Cut on whole characters, so a name ending in an emoji is not left with half of it.
     const characters = Array.from(name);
     return characters.length > PREVIEW_NAME_LENGTH

@@ -1,7 +1,7 @@
 import { t } from './i18n.js';
 import pageNames from '../../../src/page-names.cjs';
 
-const { toStoredPages } = pageNames;
+const { defaultPageName, toStoredPages } = pageNames;
 
 const DEFAULT_QUICK_ACCESS_TAB_ID = 'default';
 const DEFAULT_QUICK_ACCESS_TAB_NAME = 'All';
@@ -80,11 +80,7 @@ function normalizeExistingTabs(customTabs) {
     // A page without a name (or marked as showing the default one) is named for the language now
     // active. It is marked, so that it is stored unnamed and not in the language of the day.
     const isDefaultName = rawTab.nameIsDefault === true || !normalizeTabName(rawTab.name, '');
-    const name = isDefaultName
-      ? index === 0
-        ? t(DEFAULT_QUICK_ACCESS_TAB_NAME)
-        : t('View {{index}}', { index: index + 1 })
-      : normalizeTabName(rawTab.name, '');
+    const name = isDefaultName ? defaultPageName(index, t) : normalizeTabName(rawTab.name, '');
     const entityIds = normalizeEntityIds(
       Array.isArray(rawTab.entityIds) ? rawTab.entityIds : rawTab.entities
     );

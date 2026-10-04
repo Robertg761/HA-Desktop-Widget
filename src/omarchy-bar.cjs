@@ -15,6 +15,7 @@ const net = require('net');
 const os = require('os');
 const path = require('path');
 const { appId: APP_ID } = require('../package.json');
+const { defaultPageName } = require('./page-names.cjs');
 
 const OMARCHY_BAR_PLUGIN_ID = APP_ID;
 const OMARCHY_BAR_STATUS_VERSION = 1;
@@ -106,13 +107,17 @@ function readOmarchyBarEntry(text, pluginId = OMARCHY_BAR_PLUGIN_ID) {
 
 /**
  * The Quick Access pages, in order, as [{ name, ids }]. Older configs only have favoriteEntities,
- * which then reads as a single page.
+ * which then reads as a single page. The saved config keeps a page nobody named unnamed (see
+ * page-names.cjs), so it gets the name the widget shows for it, in the language `translate`
+ * (mainT) speaks. The position counts every saved page, as it does in the widget.
  */
-function getQuickAccessPages(config = {}) {
+function getQuickAccessPages(config = {}, translate) {
   const tabs = Array.isArray(config?.customTabs) ? config.customTabs : [];
   const pages = tabs
-    .map((tab) => ({
-      name: typeof tab?.name === 'string' ? tab.name.trim().slice(0, 60) : '',
+    .map((tab, index) => ({
+      name:
+        (typeof tab?.name === 'string' ? tab.name.trim().slice(0, 60) : '') ||
+        defaultPageName(index, translate),
       ids: normalizeEntityIds(tab?.entityIds, MAX_PANEL_ENTITIES) || [],
     }))
     .filter((page) => page.ids.length);
@@ -126,7 +131,7 @@ function getQuickAccessPages(config = {}) {
  * into the widget's pages when it has more than one; `entities` on the shell.json entry replaces
  * that with a single list.
  */
-function resolveOmarchyBarEntities(entry, config = {}) {
+function resolveOmarchyBarEntities(entry, config = {}, translate) {
   let sections;
   if (entry?.entities) {
     sections = [{ name: '', ids: entry.entities }];
@@ -135,7 +140,7 @@ function resolveOmarchyBarEntities(entry, config = {}) {
     // Only the distinct ids count toward the panel's limit.
     sections = [];
     const seen = new Set();
-    for (const page of getQuickAccessPages(config)) {
+    for (const page of getQuickAccessPages(config, translate)) {
       if (sections.length >= MAX_PANEL_SECTIONS) break;
       const ids = page.ids.filter((id) => {
         if (seen.has(id)) return true;

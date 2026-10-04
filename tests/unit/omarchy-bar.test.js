@@ -542,6 +542,41 @@ describe('Omarchy bar settings in shell.json', () => {
     });
   });
 
+  it('names a page nobody named, as the widget does, in the language of the widget', () => {
+    const entry = { present: true, entities: null, barEntities: null };
+    // Saved pages carry no name unless someone typed one (see src/page-names.cjs), so the bar has to
+    // name them or the first section would have no heading and the others would run together.
+    const config = {
+      customTabs: [
+        { id: 'default', name: '', entityIds: ['light.a'] },
+        { id: 'empty', name: '', entityIds: [] },
+        { id: 'third', entityIds: ['switch.b'] },
+        { id: 'office', name: 'Office', entityIds: ['sensor.temp'] },
+      ],
+    };
+    // Without a translator the English the widget would show.
+    expect(resolveOmarchyBarEntities(entry, config).sections).toEqual([
+      { name: 'All', ids: ['light.a'] },
+      { name: 'View 3', ids: ['switch.b'] },
+      { name: 'Office', ids: ['sensor.temp'] },
+    ]);
+    const german = (key, vars = {}) =>
+      ({ All: 'Alle', 'View {{index}}': 'Ansicht {{index}}' })[key].replace(
+        '{{index}}',
+        vars.index
+      );
+    expect(resolveOmarchyBarEntities(entry, config, german).sections.map((s) => s.name)).toEqual([
+      'Alle',
+      'Ansicht 3',
+      'Office',
+    ]);
+    // A single unnamed page still needs no heading.
+    expect(
+      resolveOmarchyBarEntities(entry, { customTabs: [{ name: '', entityIds: ['light.a'] }] })
+        .sections
+    ).toEqual([{ name: '', ids: ['light.a'] }]);
+  });
+
   it('keeps a duplicated page in the panel and skips its comparison graphs', () => {
     const entry = { present: true, entities: null, barEntities: null };
     const resolved = resolveOmarchyBarEntities(entry, {

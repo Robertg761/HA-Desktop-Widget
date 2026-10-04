@@ -13,6 +13,9 @@ import {
 import { formatClockDateTime } from './format.js';
 import { t } from './i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './icons.js';
+import pageNameRules from './page-names.cjs';
+
+const { defaultPageName } = pageNameRules;
 
 const MAX_RECENT_ISSUES = 5;
 const connection = {
@@ -149,7 +152,10 @@ function showDashboardHistory() {
       : formatClockDateTime(entry.at);
     const pages = document.createElement('span');
     pages.className = 'dashboard-restore-pages';
-    pages.textContent = entry.layout.customTabs.map((tab) => tab.name).join(', ');
+    // A page nobody named was saved with the name of the language of the day; show today's.
+    pages.textContent = entry.layout.customTabs
+      .map((tab, index) => (tab.nameIsDefault ? defaultPageName(index, t) : tab.name))
+      .join(', ');
     // Near-identical rows are told apart by how much each holds, not only by when it was saved.
     const count = document.createElement('span');
     count.className = 'dashboard-restore-count';

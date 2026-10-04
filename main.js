@@ -7723,7 +7723,7 @@ function buildTrayContextMenu() {
 
 function getOmarchyBarEntities() {
   if (!omarchyBarPublisher || !omarchyBarEntry.present) return { panel: [], bar: [], all: [] };
-  return resolveOmarchyBarEntities(omarchyBarEntry, config);
+  return resolveOmarchyBarEntities(omarchyBarEntry, config, mainT);
 }
 
 /** What the bar should tell the user to fix, when the widget cannot fix it by itself. */
