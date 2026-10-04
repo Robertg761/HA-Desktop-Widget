@@ -734,7 +734,7 @@ describe('comparison graph tile', () => {
   describe('the hover readout', () => {
     // jsdom lays nothing out, so the frame, the plot and the tooltip are given the sizes they have
     // in a two-column graph: a 260px plot and a tooltip about 140px wide and 100px high.
-    const hover = async (clientX, { tooltipHeight = 100 } = {}) => {
+    const hover = async (clientX, { tooltipHeight = 100, tooltipWidth = 140 } = {}) => {
       const { warmId, coldId } = makeScenario();
       mockRequest.mockResolvedValue(
         historyResponse({
@@ -756,7 +756,9 @@ describe('comparison graph tile', () => {
       frame.getBoundingClientRect = () => box;
       Object.defineProperty(frame, 'clientWidth', { value: 260 });
       Object.defineProperty(frame, 'clientHeight', { value: 90 });
-      Object.defineProperty(tooltip, 'offsetWidth', { value: 140 });
+      // 'content': the width follows the names (see the test that fits them), as a laid-out one would.
+      if (tooltipWidth !== 'content')
+        Object.defineProperty(tooltip, 'offsetWidth', { value: tooltipWidth });
       Object.defineProperty(tooltip, 'offsetHeight', { value: tooltipHeight });
       frame.dispatchEvent(new MouseEvent('pointermove', { clientX, bubbles: true }));
       return {
@@ -791,6 +793,65 @@ describe('comparison graph tile', () => {
       expect(tooltip.style.top).toBe('-22px');
       const short = await hover(65, { tooltipHeight: 60 });
       expect(short.tooltip.style.top).toBe('0px');
+    });
+
+    describe('with long series names', () => {
+      // A long name is 160px wide, the cap the stylesheet gives it, until the script narrows it; the
+      // rest of the tooltip (swatch, value, padding) is `rest`. jsdom lays nothing out, so widths
+      // follow those two numbers. The pointer is at 250 of 260, where the series have readings.
+      let rest;
+      let original;
+      beforeEach(() => {
+        rest = 60;
+        original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+        const nameWidth = (element) => Math.min(300, parseFloat(element.style.maxWidth) || 160);
+        Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+          configurable: true,
+          get() {
+            if (this.classList.contains('comparison-graph-tooltip-name')) return nameWidth(this);
+            if (this.classList.contains('comparison-graph-tooltip')) {
+              const names = [...this.querySelectorAll('.comparison-graph-tooltip-name')];
+              return rest + Math.max(0, ...names.map(nameWidth));
+            }
+            return 0;
+          },
+        });
+      });
+      afterEach(() => {
+        if (original) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', original);
+        else delete HTMLElement.prototype.offsetWidth;
+      });
+      const capOf = (tooltip) =>
+        [...tooltip.querySelectorAll('.comparison-graph-tooltip-name')].map(
+          (name) => name.style.maxWidth
+        );
+
+      it('shows each name whole while the tooltip fits beside the pointer', async () => {
+        // 236px of room to the pointer's left, against 60 + 160 = 220 wanted.
+        const { tooltip } = await hover(250, { tooltipWidth: 'content' });
+        expect(capOf(tooltip)).toEqual(['', '']);
+        expect(tooltip.style.left).toBe('16px');
+      });
+
+      it('shortens them only as far as it takes to fit beside the pointer', async () => {
+        // 236px of room against 120 + 160 = 280 wanted: the names give up the 44px between them,
+        // not the 80 a fixed cap would take whatever the room.
+        rest = 120;
+        const { tooltip, crosshair } = await hover(250, { tooltipWidth: 'content' });
+        expect(capOf(tooltip)).toEqual(['116px', '116px']);
+        const start = parseFloat(tooltip.style.left);
+        expect(start).toBe(0);
+        expect(start + tooltip.offsetWidth).toBeLessThanOrEqual(236);
+        expect(Number(crosshair.getAttribute('x1')) + 4).toBeGreaterThan(
+          start + tooltip.offsetWidth
+        );
+      });
+
+      it('never takes a name below a few letters, however little room there is', async () => {
+        rest = 300;
+        const { tooltip } = await hover(250, { tooltipWidth: 'content' });
+        expect(capOf(tooltip)).toEqual(['48px', '48px']);
+      });
     });
 
     it('puts the crosshair under the pointer, allowing for the margin round the plot', async () => {

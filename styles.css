@@ -7411,9 +7411,8 @@ body.theme-light:not(.high-contrast)
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
-  /* Narrow enough that the tooltip fits beside the pointer on a two-tile graph; the legend below
-     carries the whole name. */
-  max-width: 80px;
+  /* The script narrows this when the tooltip would not fit beside the pointer. */
+  max-width: 160px;
 }
 
 .comparison-graph-warning {

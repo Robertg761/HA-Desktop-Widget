@@ -178,6 +178,9 @@ const COMPARISON_GRAPH_WIDTH = 260;
 const COMPARISON_GRAPH_HEIGHT = 90;
 // The plot is inset so 2px strokes and the end-dot rings aren't clipped by the viewBox edge.
 const COMPARISON_GRAPH_INSET = 4;
+// The hover tooltip keeps this far from the pointer, and its series names never shrink below this.
+const COMPARISON_GRAPH_TOOLTIP_GAP = 14;
+const COMPARISON_GRAPH_TOOLTIP_NAME_MIN_WIDTH = 48;
 const COMPARISON_GRAPH_REDRAW_INTERVAL_MS = 250;
 // How often a sensor dialog's value is spoken to a screen reader, whatever its update rate.
 const SENSOR_ANNOUNCE_INTERVAL_MS = 8000;
@@ -4694,15 +4697,34 @@ function attachComparisonGraphHover(frame, plot, entries) {
     crosshair.setAttribute('visibility', 'hidden');
   };
 
+  // A series name gives up its tail only as far as it has to: when the tooltip is wider than the
+  // room on the roomier side of the pointer, the names (never below a few letters) take the
+  // difference, so 'Upstairs bedroom temperature' and 'Upstairs bedroom humidity' still differ
+  // wherever there is space to say so.
+  const fitNames = (room) => {
+    const names = [...tooltip.querySelectorAll('.comparison-graph-tooltip-name')];
+    names.forEach((name) => {
+      name.style.maxWidth = '';
+    });
+    const excess = tooltip.offsetWidth - room;
+    const widest = Math.max(0, ...names.map((name) => name.offsetWidth));
+    if (excess <= 0 || !widest) return;
+    const cap = Math.max(COMPARISON_GRAPH_TOOLTIP_NAME_MIN_WIDTH, widest - excess);
+    names.forEach((name) => {
+      name.style.maxWidth = `${cap}px`;
+    });
+  };
+
   // Beside the pointer, on whichever side has room, so the crosshair and the curves being read stay
   // visible. A tooltip taller than the plot (four series or more) ends where the plot does and rises
   // over the header instead of dropping over the legend.
   const placeTooltip = (pointerX) => {
     const frameWidth = frame.clientWidth;
     const frameHeight = frame.clientHeight;
+    fitNames(Math.max(pointerX, frameWidth - pointerX) - COMPARISON_GRAPH_TOOLTIP_GAP);
     const width = tooltip.offsetWidth;
     const height = tooltip.offsetHeight;
-    const gap = 14;
+    const gap = COMPARISON_GRAPH_TOOLTIP_GAP;
     let left = pointerX + gap;
     if (left + width > frameWidth) {
       left = pointerX - gap - width;
