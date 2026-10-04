@@ -204,7 +204,10 @@ Operational notes:
   `HA_WIDGET_LAYER_SHELL_LAYER` (`bottom` or `background`). An invalid override is
   logged and replaced with the default. In layer mode the widget's own saved screen
   position is not applied — anchor plus margin decide where the surface sits. The
-  saved `config.windowSize` seeds the surface size. `HA_WIDGET_WINDOWTOLAYER` points
+  saved `config.windowSize` seeds the surface size, held to a 320x360 minimum that does
+  not grow with "Text and control size" (a normal window's minimum does), so a small
+  surface at 150% text is narrower than the 320 CSS pixels the layout is designed for.
+  `HA_WIDGET_WINDOWTOLAYER` points
   at an alternative helper binary; without it the app uses the packaged
   `resources/helpers/windowtolayer` or the in-repo cargo build.
 - An in-app restart cannot use `app.relaunch()`: the clone would inherit the child

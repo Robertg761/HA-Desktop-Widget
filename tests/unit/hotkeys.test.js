@@ -11,19 +11,8 @@ const { sampleStates } = require('../fixtures/ha-data.js');
 
 // Mock dependencies
 jest.mock('../../src/ui-utils.js', () => ({
+  ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
   showToast: jest.fn(),
-  // Mirrors the real shared modal helper, which settles synchronously under NODE_ENV=test.
-  closeModal: jest.fn((modal, { remove = false, releaseFocus = false, onClosed } = {}) => {
-    if (modal) {
-      modal.classList.remove('modal-closing');
-      if (remove) modal.remove();
-      else modal.classList.add('hidden');
-      if (releaseFocus) jest.requireActual('../../src/ui-utils.js').releaseFocusTrap(modal);
-      onClosed?.();
-    }
-    return Promise.resolve();
-  }),
-  trapFocus: jest.fn((...args) => jest.requireActual('../../src/ui-utils.js').trapFocus(...args)),
 }));
 
 jest.mock('../../src/utils.js', () => ({
@@ -335,19 +324,16 @@ describe('hotkeys module', () => {
         messages: {
           Toggle: 'Umschalten',
           'Turn On': 'Einschalten',
-          Remove: 'Entfernen',
           'Action updated to: {{action}}': 'Aktion geändert: {{action}}',
         },
       });
       try {
         const container = document.createElement('div');
         const searchInput = document.createElement('input');
-        const existing = document.createElement('div');
         container.id = 'hotkeys-list';
         searchInput.id = 'hotkey-entity-search';
         searchInput.value = 'living';
-        existing.id = 'existing-hotkeys-list';
-        document.body.append(container, searchInput, existing);
+        document.body.append(container, searchInput);
         mockElectronAPI.updateConfig.mockImplementationOnce((nextConfig) =>
           Promise.resolve(nextConfig)
         );
@@ -362,9 +348,6 @@ describe('hotkeys module', () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
 
         expect(showToast).toHaveBeenCalledWith('Aktion geändert: Einschalten', 'success', 2000);
-
-        hotkeys.renderExistingHotkeys();
-        expect(existing.querySelector('.btn-remove-hotkey').textContent).toBe('Entfernen');
       } finally {
         i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
       }
@@ -434,75 +417,6 @@ describe('hotkeys module', () => {
     });
   });
 
-  describe('renderExistingHotkeys', () => {
-    beforeEach(() => {
-      const config = getMockConfig();
-      config.globalHotkeys = {
-        enabled: true,
-        hotkeys: {
-          'light.living_room': { hotkey: 'Ctrl+Shift+L', action: 'toggle' },
-          'switch.bedroom': 'Ctrl+Shift+B',
-        },
-      };
-      state.setConfig(config);
-      state.setStates(sampleStates);
-    });
-
-    it('should handle missing container gracefully', () => {
-      document.getElementById = jest.fn(() => null);
-
-      expect(() => hotkeys.renderExistingHotkeys()).not.toThrow();
-    });
-
-    it('should render existing hotkeys', () => {
-      // Create real DOM element
-      const container = document.createElement('div');
-      container.id = 'existing-hotkeys-list';
-      document.body.appendChild(container);
-
-      expect(() => hotkeys.renderExistingHotkeys()).not.toThrow();
-
-      document.body.removeChild(container);
-    });
-
-    it('should skip entities that do not exist in STATES', () => {
-      const config = getMockConfig();
-      config.globalHotkeys = {
-        enabled: true,
-        hotkeys: {
-          'light.living_room': { hotkey: 'Ctrl+Shift+L', action: 'toggle' },
-          'light.nonexistent': 'Ctrl+Shift+N',
-        },
-      };
-      state.setConfig(config);
-
-      // Create real DOM element
-      const container = document.createElement('div');
-      container.id = 'existing-hotkeys-list';
-      document.body.appendChild(container);
-
-      expect(() => hotkeys.renderExistingHotkeys()).not.toThrow();
-
-      document.body.removeChild(container);
-    });
-
-    it('should handle rendering errors gracefully', () => {
-      const consoleError = jest.spyOn(console, 'error').mockImplementation();
-
-      document.getElementById = jest.fn(() => {
-        throw new Error('DOM error');
-      });
-
-      expect(() => hotkeys.renderExistingHotkeys()).not.toThrow();
-      expect(consoleError).toHaveBeenCalledWith(
-        'Error rendering existing hotkeys:',
-        expect.any(Error)
-      );
-
-      consoleError.mockRestore();
-    });
-  });
-
   describe('captureHotkey', () => {
     it('should handle errors gracefully when DOM operations fail', async () => {
       // This test is mainly to ensure the error handling works
@@ -517,10 +431,7 @@ describe('hotkeys module', () => {
       settings.innerHTML = '<div class="modal-content"><button>Save</button></div>';
       document.body.appendChild(settings);
       const settingsEscape = jest.fn();
-      settings.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') settingsEscape();
-      });
-      uiUtils.trapFocus(settings, { initialFocus: false });
+      uiUtils.openDialog(settings, { initialFocus: false, dismiss: settingsEscape });
 
       const capture = hotkeys.captureHotkey();
       // A click on the overlay's text leaves focus on <body>.
@@ -540,6 +451,93 @@ describe('hotkeys module', () => {
       expect(settingsEscape).toHaveBeenCalledTimes(1);
       uiUtils.releaseFocusTrap(settings);
       settings.remove();
+    });
+
+    it('can be cancelled with the mouse or a tap, which used to need the keyboard', async () => {
+      const capture = hotkeys.captureHotkey();
+      const cancel = document.querySelector('.hotkey-capture-cancel');
+
+      expect(cancel.textContent).toBe('Cancel');
+      // Pressing a key could not reach it anyway: every key is the recording's.
+      expect(cancel.tabIndex).toBe(-1);
+      cancel.click();
+
+      await expect(capture).resolves.toBeNull();
+      expect(document.querySelector('.hotkey-capture-modal')).toBeNull();
+    });
+
+    it('is cancelled by a click on the backdrop, and not by a click on its prompt', async () => {
+      const capture = hotkeys.captureHotkey();
+      const overlay = document.querySelector('.hotkey-capture-modal');
+
+      overlay.querySelector('.modal-content').click();
+      expect(document.querySelector('.hotkey-capture-modal')).toBe(overlay);
+      overlay.click();
+
+      await expect(capture).resolves.toBeNull();
+      expect(document.querySelector('.hotkey-capture-modal')).toBeNull();
+    });
+
+    it('is a named dialog', () => {
+      void hotkeys.captureHotkey();
+      const overlay = document.querySelector('.hotkey-capture-modal');
+
+      expect(overlay.getAttribute('role')).toBe('dialog');
+      expect(overlay.getAttribute('aria-modal')).toBe('true');
+      expect(overlay.getAttribute('aria-label')).toBe('Press the desired key combination...');
+      overlay
+        .querySelector('.hotkey-capture-cancel')
+        .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+  });
+
+  describe('the hotkey list in Settings', () => {
+    const entity = (id) => ({
+      entity_id: id,
+      state: 'off',
+      attributes: { friendly_name: id.split('.')[1] },
+    });
+    const press = (target, key) => {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      target.dispatchEvent(event);
+      return event;
+    };
+
+    beforeEach(() => {
+      const config = getMockConfig();
+      config.globalHotkeys = {
+        enabled: true,
+        hotkeys: { 'light.kitchen': { hotkey: 'Ctrl+K', action: 'toggle' } },
+      };
+      state.setConfig(config);
+      state.setStates({
+        'light.kitchen': entity('light.kitchen'),
+        'light.hall': entity('light.hall'),
+      });
+      // The list wires itself once; a test builds a new one each time.
+      hotkeys.cleanupHotkeyEventListeners();
+      document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+      hotkeys.renderHotkeysTab();
+    });
+
+    it('keeps the keyboard on the same control when the list is rebuilt', () => {
+      const select = document.querySelector('[data-focus-key="hotkey-action:light.hall"]');
+      expect(select.matches('select.hotkey-action-select')).toBe(true);
+      select.focus();
+
+      hotkeys.renderHotkeysTab();
+
+      const after = document.querySelector('[data-focus-key="hotkey-action:light.hall"]');
+      expect(after).not.toBe(select);
+      expect(document.activeElement).toBe(after);
+    });
+
+    it('leaves Escape on an action select to the browser and the dialog', () => {
+      // An open native list closes itself on Escape before the page sees the key; on a closed
+      // select Escape is the dialog's, so the list must not claim it.
+      const select = document.querySelector('select.hotkey-action-select');
+
+      expect(press(select, 'Escape').defaultPrevented).toBe(false);
     });
   });
 
@@ -774,7 +772,6 @@ describe('hotkeys module', () => {
       expect(typeof hotkeys.renderHotkeysTab).toBe('function');
       expect(typeof hotkeys.toggleHotkeys).toBe('function');
       expect(typeof hotkeys.captureHotkey).toBe('function');
-      expect(typeof hotkeys.renderExistingHotkeys).toBe('function');
       expect(typeof hotkeys.assignHotkeyToEntity).toBe('function');
       expect(typeof hotkeys.setupHotkeyEventListeners).toBe('function');
       expect(typeof hotkeys.cleanupHotkeyEventListeners).toBe('function');
@@ -785,7 +782,10 @@ describe('hotkeys module', () => {
 describe('entity hotkey row layout', () => {
   const fs = require('fs');
   const path = require('path');
-  const styles = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
+  // Without its comments, which would otherwise count as part of the selector that follows them.
+  const styles = fs
+    .readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
   // Every declaration block whose selector list names `selector` exactly.
   const declarationsFor = (selector) =>
     [...styles.matchAll(/([^{}]+)\{([^}]*)\}/g)]
@@ -793,11 +793,14 @@ describe('entity hotkey row layout', () => {
       .map(([, , body]) => body)
       .join(';');
 
-  it('sizes the hotkey field to its text so translated placeholders are not clipped', () => {
-    // German "Kein Tastenkürzel gesetzt" does not fit a fixed 120px field.
+  it('gives the hotkey field the row so translated placeholders are not clipped', () => {
+    // German "Kein Tastenkürzel gesetzt" does not fit a fixed 120px field: the field takes what
+    // the action and the clear button leave, and the action drops under it when that is too little.
     const input = declarationsFor('.hotkey-input');
-    expect(input).toMatch(/field-sizing:\s*content/);
+    expect(input).toMatch(/flex:\s*1 1 8rem/);
+    expect(input).toMatch(/min-width:\s*0/);
     expect(input).not.toMatch(/(^|[;\s])width:/);
+    expect(declarationsFor('.hotkey-input-container')).toMatch(/flex-wrap:\s*wrap/);
     // The row wraps the controls under the name instead of squeezing the field.
     expect(declarationsFor('.hotkey-item')).toMatch(/flex-wrap:\s*wrap/);
     expect(declarationsFor('.hotkey-item')).not.toMatch(/flex-wrap:\s*nowrap/);

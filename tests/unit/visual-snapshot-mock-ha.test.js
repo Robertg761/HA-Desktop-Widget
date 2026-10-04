@@ -5,6 +5,7 @@
 const {
   decodeFrames,
   encodeFrame,
+  isRefusedCall,
   resultFor,
 } = require('../../scripts/visual-snapshots/mock-home-assistant.cjs');
 const { buildServiceResponses } = require('../../scripts/visual-snapshots/fixture.cjs');
@@ -70,5 +71,35 @@ describe('visual snapshot mock Home Assistant service responses', () => {
   test('just succeeds for every other call, or when no response was asked for', () => {
     expect(resultFor(call('todo', 'get_items'), context)).toBeNull();
     expect(resultFor(call('light', 'turn_on', { return_response: true }), context)).toBeNull();
+  });
+});
+
+describe('visual snapshot mock Home Assistant refused calls', () => {
+  const failing = ['light.unreachable'];
+
+  test('refuses a service call aimed at a failing entity, in either place Home Assistant takes it', () => {
+    expect(
+      isRefusedCall(
+        { type: 'call_service', service_data: { entity_id: 'light.unreachable' } },
+        failing
+      )
+    ).toBe(true);
+    expect(
+      isRefusedCall(
+        { type: 'call_service', target: { entity_id: ['light.office', 'light.unreachable'] } },
+        failing
+      )
+    ).toBe(true);
+  });
+
+  test('lets every other call through', () => {
+    expect(
+      isRefusedCall({ type: 'call_service', service_data: { entity_id: 'light.office' } }, failing)
+    ).toBe(false);
+    expect(isRefusedCall({ type: 'get_states' }, failing)).toBe(false);
+    expect(
+      isRefusedCall({ type: 'call_service', service_data: { entity_id: 'light.unreachable' } }, [])
+    ).toBe(false);
+    expect(isRefusedCall({ type: 'call_service' }, failing)).toBe(false);
   });
 });

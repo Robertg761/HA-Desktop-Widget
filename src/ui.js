@@ -20,6 +20,7 @@ import * as camera from './camera.js';
 import * as uiUtils from './ui-utils.js';
 import {
   formatDate,
+  formatDateTime,
   formatNumber,
   formatTime,
   getLocaleState,
@@ -69,13 +70,19 @@ import {
   setActiveQuickAccessView,
 } from './quick-access-tabs.js';
 import {
+  getFittedSensorValueFontSize,
   getNextQuickAccessFocusIndex,
   getNextQuickAccessFocusIndexByLayout,
   getQuickAccessTabOverflow,
   getQuickAccessTabRevealDelta,
   getQuickAccessTabWheelDelta,
 } from './quick-access-ui-helpers.js';
-import { bindTabListKeyboard, getTextDirection } from './tab-navigation.js';
+import {
+  bindTabListKeyboard,
+  getNextTabIndex,
+  getTextDirection,
+  syncRovingTabIndex,
+} from './tab-navigation.js';
 import { duplicateQuickAccessView } from './page-duplication.js';
 import { getRendererHost } from '@hadw/renderer/host.js';
 import {
@@ -1195,10 +1202,7 @@ function createQuickAccessPage(name, entityIds = [], { fillEmptyPage = false } =
 // reorganize mode exits, so it detaches immediately instead of animating out over a replacement.
 function closeAddPageModal() {
   const modal = document.getElementById('add-page-modal');
-  if (modal) {
-    uiUtils.releaseFocusTrap(modal);
-    modal.remove();
-  }
+  if (modal) void uiUtils.closeDialog(modal, { remove: true, animate: false });
 }
 
 function showAddPageModal({ starter = false } = {}) {
@@ -1220,8 +1224,6 @@ function showAddPageModal({ starter = false } = {}) {
   const modal = document.createElement('div');
   modal.id = 'add-page-modal';
   modal.className = 'modal add-page-modal';
-  modal.setAttribute('role', 'dialog');
-  modal.setAttribute('aria-modal', 'true');
   modal.setAttribute('aria-labelledby', 'add-page-title');
   modal.innerHTML = `
     <div class="modal-content">
@@ -1490,9 +1492,9 @@ function showAddPageModal({ starter = false } = {}) {
       else focusActiveQuickAccessPage();
     }, 0);
   };
-  const closeOptions = { remove: true, releaseFocus: true, onClosed: restoreLauncherFocus };
+  const closeOptions = { remove: true, onClosed: restoreLauncherFocus };
   const close = () => {
-    if (!submissionInFlight) void uiUtils.closeModal(modal, closeOptions);
+    if (!submissionInFlight) void uiUtils.closeDialog(modal, closeOptions);
   };
   const submit = async () => {
     if (submissionInFlight || saveBtn.disabled) return;
@@ -1512,7 +1514,7 @@ function showAddPageModal({ starter = false } = {}) {
     );
     const result = await createQuickAccessPage(name, selectedIds, { fillEmptyPage: starter });
     if (result.success) {
-      void uiUtils.closeModal(modal, closeOptions);
+      void uiUtils.closeDialog(modal, closeOptions);
       return;
     }
     if (modal.isConnected) {
@@ -1550,35 +1552,17 @@ function showAddPageModal({ starter = false } = {}) {
   if (cancelBtn) cancelBtn.onclick = close;
   if (closeBtn) closeBtn.onclick = close;
 
-  if (input) {
-    input.addEventListener('input', clearNameError);
-    input.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        void submit();
-      } else if (event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation(); // close the modal without exiting reorganize mode
-        close();
-      }
-    });
-  }
+  if (input) input.addEventListener('input', clearNameError);
 
-  uiUtils.trapFocus(modal);
-  // The trap lands on the first control (the close button); the page name is where typing starts.
-  setTimeout(() => {
-    if (modal.isConnected && !submissionInFlight) input?.focus();
-  }, 0);
-  modal.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      event.stopPropagation();
-      close();
-    }
+  // The page name is where typing starts; Enter in it (or in the device search) adds the page.
+  uiUtils.openDialog(modal, {
+    display: null,
+    initialFocus: input,
+    dismiss: close,
+    onEnter: (event) => {
+      if (event.target === input) void submit();
+    },
   });
-  modal.onclick = (event) => {
-    if (event.target === modal) close();
-  };
   if (starter || websocket.isConnected?.()) void loadRooms.onclick();
 }
 
@@ -2124,12 +2108,12 @@ function toggleReorganizeMode() {
       window.electronAPI.setDesktopPinEditMode(true).catch((error) => {
         console.error('Failed to enable desktop pin edit mode:', error);
       });
+      // A notice, not a question: passive, so it cannot swallow the first drag it sits over.
       uiUtils.showToast(
-        t(
-          'Reorganize mode enabled - Drag, select or press Alt+arrow keys to reorder, click X to remove, ESC to exit'
-        ),
+        t('Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.'),
         'info',
-        4500
+        4500,
+        { passive: true }
       );
     } else {
       // Destroy Sortable instance
@@ -2164,6 +2148,15 @@ function toggleReorganizeMode() {
   } catch (error) {
     console.error('Error toggling reorganize mode:', error);
   }
+}
+
+/**
+ * Leaves Reorganize mode if it is on. Main calls for this when it ended the pins' edit mode itself
+ * (it hid the window, taking the exit controls with it), so the dashboard does not come back
+ * reorganizing while the pins are no longer editable.
+ */
+function exitReorganizeMode() {
+  if (isReorganizeMode) toggleReorganizeMode();
 }
 
 function addRemoveButtons() {
@@ -2425,8 +2418,6 @@ function showRenameModal(entityId) {
 
     const modal = document.createElement('div');
     modal.className = 'modal rename-modal';
-    modal.setAttribute('role', 'dialog');
-    modal.setAttribute('aria-modal', 'true');
     modal.setAttribute('aria-labelledby', 'tile-settings-title');
     modal.innerHTML = `
       <div class="modal-content">
@@ -2474,8 +2465,6 @@ function showRenameModal(entityId) {
     const cancelBtn = modal.querySelector('#cancel-rename-btn');
     const closeBtn = modal.querySelector('.close-btn');
 
-    if (input) input.focus();
-
     const syncGaugeRangeVisibility = () => {
       if (!gaugeRangeGroup) return;
       gaugeRangeGroup.hidden =
@@ -2505,11 +2494,18 @@ function showRenameModal(entityId) {
     const closeTileSettingsModal = () => {
       if (tileSettingsModalClosing) return;
       tileSettingsModalClosing = true;
-      void uiUtils.closeModal(modal, { remove: true });
+      void uiUtils.closeDialog(modal, { remove: true });
     };
+    let reenableTileSettings = null;
     const setTileSettingsMutationInFlight = (inFlight) => {
       tileSettingsMutationInFlight = inFlight;
-      [
+      if (!inFlight) {
+        reenableTileSettings?.();
+        reenableTileSettings = null;
+        return;
+      }
+      // A save that fails puts the form back for another try, with the keyboard where it was.
+      reenableTileSettings = uiUtils.disableControlsKeepingFocus([
         input,
         valueSizeSelect,
         cameraPreviewRefreshSelect,
@@ -2523,9 +2519,7 @@ function showRenameModal(entityId) {
         resetBtn,
         cancelBtn,
         closeBtn,
-      ].forEach((control) => {
-        if (control) control.disabled = inFlight;
-      });
+      ]);
     };
     const reconcileRecoveredTileSettings = (error) => {
       if (!error?.result?.config?.homeAssistant) return;
@@ -2769,9 +2763,18 @@ function showRenameModal(entityId) {
       };
     }
 
-    modal.onclick = (e) => {
-      if (e.target === modal && !tileSettingsMutationInFlight) closeTileSettingsModal();
-    };
+    // The name is what people come here to change, so typing starts there with it selected.
+    uiUtils.openDialog(modal, {
+      display: null,
+      initialFocus: input,
+      dismiss: () => {
+        if (!tileSettingsMutationInFlight) closeTileSettingsModal();
+      },
+      // Enter in a field saves, as Enter does in the other forms.
+      onEnter: (event) => {
+        if (event.target.matches?.('input')) saveBtn?.click();
+      },
+    });
   } catch (error) {
     console.error('Error showing rename modal:', error);
   }
@@ -4209,6 +4212,46 @@ function renderSensorTileChart(tile, entity, series = []) {
   info.appendChild(sparkline);
 }
 
+/**
+ * Draws a number that is wider than its tile smaller, down to a floor, so it keeps all its digits
+ * ('123,456.79' cut to '123,456…' reads as a smaller number than it is). The ellipsis stays as the
+ * last resort.
+ *
+ * @param {HTMLElement} readout - The tile's `.control-sensor-readout`.
+ */
+function fitSensorTileValue(readout) {
+  const value = readout?.querySelector('.control-sensor-value');
+  if (!value?.isConnected) return;
+  value.style.removeProperty('font-size');
+  const fitted = getFittedSensorValueFontSize({
+    fontSize: parseFloat(getComputedStyle(value).fontSize),
+    naturalWidth: value.scrollWidth,
+    availableWidth: value.clientWidth,
+  });
+  if (fitted !== null) value.style.fontSize = `${fitted}px`;
+  readout.dataset.fitWidth = String(readout.clientWidth);
+  readout.dataset.fitSize = readout.closest('.control-item')?.dataset.valueSize || '';
+}
+
+// Refits a reading when its tile's width changes (a resize, a different number of columns). The
+// height changes with the font size, so only a change of width counts, or fitting would loop.
+const sensorValueFitObserver =
+  typeof ResizeObserver === 'function'
+    ? new ResizeObserver((entries) => {
+        // Fitting changes layout, which an observer must not do while it is being delivered.
+        requestAnimationFrame(() => {
+          for (const { target } of entries) {
+            if (target.dataset.fitWidth !== String(target.clientWidth)) fitSensorTileValue(target);
+          }
+        });
+      })
+    : null;
+
+function observeSensorTileValueFit(tile) {
+  const readout = tile?.querySelector('.control-sensor-readout');
+  if (readout) sensorValueFitObserver?.observe(readout);
+}
+
 function mountSensorTileChart(tile, entity) {
   const generation = ensureEntityCacheScope();
   if (!tile || !entity?.entity_id || !isFiniteNumericSensorState(entity)) return;
@@ -4511,6 +4554,7 @@ function buildComparisonGraphLegend(entries) {
  */
 function attachComparisonGraphHover(frame, plot, entries) {
   const { svg, crosshair, timeDomain, plotWidth } = plot;
+  const spansDays = timeDomain.end - timeDomain.start >= 24 * 60 * 60 * 1000;
 
   const tooltip = document.createElement('div');
   tooltip.className = 'comparison-graph-tooltip';
@@ -4538,7 +4582,14 @@ function attachComparisonGraphHover(frame, plot, entries) {
 
     const heading = document.createElement('div');
     heading.className = 'comparison-graph-tooltip-time';
-    heading.textContent = formatTime(new Date(timestamp));
+    // Hour and minute, with the weekday once the graph reaches back a day or more, so a reading
+    // from yesterday does not look like one from today.
+    heading.textContent = formatDateTime(new Date(timestamp), {
+      ...(spansDays ? { weekday: 'short' } : {}),
+      hour: 'numeric',
+      minute: '2-digit',
+      ...getClockTimeOptions(),
+    });
     tooltip.appendChild(heading);
 
     entries.forEach((entry) => {
@@ -4558,7 +4609,8 @@ function attachComparisonGraphHover(frame, plot, entries) {
 
       const value = document.createElement('span');
       value.className = 'comparison-graph-tooltip-value';
-      const sampleValue = formatNumber(sample.value);
+      // Rounded as the legend rounds, so the same number is not 21.4567 here and 21.5 there.
+      const sampleValue = formatNumber(sample.value, { maximumFractionDigits: 1 });
       value.textContent = entry.unit ? `${sampleValue} ${entry.unit}` : sampleValue;
 
       const name = document.createElement('span');
@@ -4874,9 +4926,13 @@ function showComparisonGraphModal(graphId) {
   const initial = getComparisonGraphById(graphId);
   if (!initial) return;
 
+  // Closing waits for a save that is still going, so a rename that began when the name field lost
+  // focus (the click on Done) is finished, not dropped, and the dialog then closes on that click.
+  let pendingSave = Promise.resolve();
   const modal = createEntityDetailModal({
     className: 'comparison-graph-modal',
     title: t('Edit Comparison Graph'),
+    beforeClose: () => pendingSave,
   });
   const body = modal.querySelector('.modal-body');
   if (!body) return;
@@ -4944,8 +5000,9 @@ function showComparisonGraphModal(graphId) {
   listGroup.appendChild(list);
   body.appendChild(listGroup);
 
+  // The footer sits outside the scrolling body so Done and Delete stay in view.
   const footer = document.createElement('div');
-  footer.className = 'comparison-graph-modal-footer';
+  footer.className = 'modal-footer comparison-graph-modal-footer';
   const deleteBtn = document.createElement('button');
   deleteBtn.type = 'button';
   deleteBtn.className = 'btn btn-danger';
@@ -4957,48 +5014,18 @@ function showComparisonGraphModal(graphId) {
   doneBtn.className = 'btn btn-primary';
   doneBtn.textContent = t('Done');
   footer.appendChild(doneBtn);
-  body.appendChild(footer);
+  modal.querySelector('.modal-content')?.appendChild(footer);
 
   const modalCloseBtn = modal.querySelector('.close-btn');
   doneBtn.addEventListener('click', () => modalCloseBtn?.click());
+  // Saves run one at a time, and a click on a row while one is running is ignored. Nothing is
+  // disabled meanwhile: disabling the focused control drops the keyboard to <body>, and Done and
+  // Close would swallow the click that arrives after the field's own change event.
   let graphMutationInFlight = false;
   const setGraphMutationInFlight = (inFlight) => {
     graphMutationInFlight = inFlight;
-    [
-      nameInput,
-      widthSelect,
-      search,
-      deleteBtn,
-      doneBtn,
-      modalCloseBtn,
-      ...list.querySelectorAll('button'),
-    ].forEach((control) => {
-      if (control) control.disabled = inFlight;
-    });
+    list.setAttribute('aria-busy', String(inFlight));
   };
-  modal.addEventListener(
-    'keydown',
-    (event) => {
-      if (graphMutationInFlight && event.key === 'Escape') {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-      }
-    },
-    true
-  );
-  modal.addEventListener(
-    'click',
-    (event) => {
-      if (
-        graphMutationInFlight &&
-        (event.target === modal || event.target.closest?.('.close-btn'))
-      ) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-      }
-    },
-    true
-  );
 
   const reconcileEditor = () => {
     const current = getComparisonGraphById(graphId);
@@ -5016,18 +5043,22 @@ function showComparisonGraphModal(graphId) {
     }
 
     setGraphMutationInFlight(true);
-    try {
-      const result = await persistComparisonGraphConfig(nextConfig);
-      if (!result.success && result.isCurrent !== false && reconcileOnFailure) {
-        reconcileEditor();
+    const run = (async () => {
+      try {
+        const result = await persistComparisonGraphConfig(nextConfig);
+        if (!result.success && result.isCurrent !== false && reconcileOnFailure) {
+          reconcileEditor();
+        }
+        return result;
+      } finally {
+        if (modal.isConnected) {
+          setGraphMutationInFlight(false);
+          renderList();
+        }
       }
-      return result;
-    } finally {
-      if (modal.isConnected) {
-        setGraphMutationInFlight(false);
-        renderList();
-      }
-    }
+    })();
+    pendingSave = run.catch(() => {});
+    return run;
   };
   const save = (changes) =>
     persistEditorConfig(updateComparisonGraph(state.CONFIG, graphId, changes));
@@ -5100,17 +5131,32 @@ function showComparisonGraphModal(graphId) {
           .localeCompare(utils.getEntityDisplayName(b.entity));
       });
 
-    list.textContent = '';
+    // The list is rebuilt after every add and remove, and the sensor just toggled moves. The
+    // keyboard follows it, or goes to the search field when that sensor is no longer listed, and
+    // the list stays scrolled where it was.
+    const scrollTop = list.scrollTop;
+    uiUtils.renderKeepingFocus(
+      list,
+      () => {
+        list.textContent = '';
+        renderCandidates(candidates);
+      },
+      { fallback: search }
+    );
+    list.scrollTop = scrollTop;
 
-    if (!candidates.length) {
-      const empty = document.createElement('div');
-      empty.className = 'no-entities-message';
-      empty.textContent = t('No numeric sensors found');
-      list.appendChild(empty);
-      return;
+    function renderCandidates(rows) {
+      if (!rows.length) {
+        const empty = document.createElement('div');
+        empty.className = 'no-entities-message';
+        empty.textContent = t('No numeric sensors found');
+        list.appendChild(empty);
+        return;
+      }
+      rows.forEach(({ entity }) => appendCandidate(entity));
     }
 
-    candidates.forEach(({ entity }) => {
+    function appendCandidate(entity) {
       const entityId = entity.entity_id;
       const isSelected = selected.has(entityId);
       const unit = getGraphSeriesUnitFor(entity);
@@ -5161,7 +5207,8 @@ function showComparisonGraphModal(graphId) {
       button.textContent = isSelected ? t('Remove') : t('Add');
       // A column of identical Add or Remove buttons says nothing; the sensor's name does.
       button.setAttribute('aria-describedby', name.id);
-      button.disabled = graphMutationInFlight || (!isSelected && atCapacity);
+      button.dataset.focusKey = `graph-sensor:${entityId}`;
+      button.disabled = !isSelected && atCapacity;
       button.addEventListener('click', async () => {
         if (graphMutationInFlight) return;
         const current = getComparisonGraphById(graphId);
@@ -5190,7 +5237,7 @@ function showComparisonGraphModal(graphId) {
       item.appendChild(unitBadge);
       item.appendChild(button);
       list.appendChild(item);
-    });
+    }
   };
 
   nameInput.addEventListener('change', async () => {
@@ -9843,16 +9890,16 @@ function createControlElement(entity, options = {}) {
       div.title = t('Click to toggle {{name}}', { name: utils.getEntityDisplayName(entity) });
     } else if (entity.entity_id.startsWith('light.')) {
       setupLightControls(div, entity);
-      div.title = t('Click to toggle, hold for brightness control');
+      div.title = getControlTileTitle(entity, t('Click to toggle, hold for brightness control'));
     } else if (entity.entity_id.startsWith('climate.')) {
       setupClimateControls(div, entity);
-      div.title = t('Click to toggle, hold for temperature control');
+      div.title = getControlTileTitle(entity, t('Click to toggle, hold for temperature control'));
     } else if (entity.entity_id.startsWith('fan.')) {
       setupFanControls(div, entity);
-      div.title = t('Click to toggle, hold for speed control');
+      div.title = getControlTileTitle(entity, t('Click to toggle, hold for speed control'));
     } else if (entity.entity_id.startsWith('cover.')) {
       setupCoverControls(div, entity);
-      div.title = t('Click to toggle, hold for position control');
+      div.title = getControlTileTitle(entity, t('Click to toggle, hold for position control'));
     } else if (entity.entity_id.startsWith('media_player.')) {
       div.title = t('Click to play/pause, hold for controls');
     } else if (domain === 'todo') {
@@ -10052,6 +10099,7 @@ function createControlElement(entity, options = {}) {
     }
     if (isQuickAccessContext && div.classList.contains('sensor-numeric-entity')) {
       mountSensorTileChart(div, entity);
+      observeSensorTileValueFit(div);
     }
     if (hasCameraPreview) {
       camera.mountCameraPreview(div, entity.entity_id, cameraPreviewRefresh);
@@ -10110,6 +10158,15 @@ function createUnavailableElement(entityId) {
     console.error('Error creating unavailable element:', error);
     return document.createElement('div');
   }
+}
+
+// A tile that opens controls has an instruction for its tooltip. The name leads it, so a name the
+// tile cuts short (it stops at two lines) can still be read in full. The instruction goes through
+// the existing '{{name}}: {{state}}' string as its `state`, on purpose: it is already translated in
+// every language pack, so a new string would leave each pack to catch up. Keep the placeholder
+// names, which the packs spell out.
+function getControlTileTitle(entity, hint) {
+  return t('{{name}}: {{state}}', { name: utils.getEntityDisplayName(entity), state: hint });
 }
 
 function applyQuickAccessTileAccessibility(div, entity) {
@@ -10228,8 +10285,6 @@ function openEntityRepairModal(staleEntityId) {
   const modal = document.createElement('div');
   modal.id = 'entity-repair-modal';
   modal.className = 'modal';
-  modal.setAttribute('role', 'dialog');
-  modal.setAttribute('aria-modal', 'true');
   modal.setAttribute('aria-labelledby', 'entity-repair-title');
 
   const content = document.createElement('div');
@@ -10274,17 +10329,12 @@ function openEntityRepairModal(staleEntityId) {
   let repairInFlight = false;
   const close = () => {
     if (repairInFlight) return;
-    // Release before removing: the no-argument fallback skips disconnected modals, so a detached
-    // modal would leave focus unrestored and could tear down another modal's trap instead.
-    uiUtils.releaseFocusTrap(modal);
-    void uiUtils.closeModal(modal, { remove: true });
+    void uiUtils.closeDialog(modal, { remove: true });
   };
 
   const persistReplacement = async (replacementEntityId) => {
     repairInFlight = true;
-    modal.querySelectorAll('button, input').forEach((control) => {
-      control.disabled = true;
-    });
+    const reenable = uiUtils.disableControlsKeepingFocus(modal.querySelectorAll('button, input'));
     try {
       await persistAuthoritativeEntityIdReplacement(staleEntityId, replacementEntityId);
       renderActiveTab();
@@ -10303,9 +10353,7 @@ function openEntityRepairModal(staleEntityId) {
       close();
     } catch (error) {
       repairInFlight = false;
-      modal.querySelectorAll('button, input').forEach((control) => {
-        control.disabled = false;
-      });
+      reenable();
       showConfigPersistenceError(error);
     }
   };
@@ -10367,16 +10415,15 @@ function openEntityRepairModal(staleEntityId) {
   };
 
   closeButton.addEventListener('click', close);
-  modal.addEventListener('click', (event) => {
-    if (event.target === modal) close();
-  });
-  modal.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') close();
-  });
   search.addEventListener('input', renderCandidates);
   renderCandidates();
   // The search is the first thing to do here; without it focus would start on the close button.
-  uiUtils.trapFocus(modal, { initialFocus: search });
+  uiUtils.openDialog(modal, {
+    display: null,
+    initialFocus: search,
+    describedBy: explanation,
+    dismiss: close,
+  });
 }
 
 function updateExistingQuickAccessControl(div, entity, options = {}) {
@@ -10436,9 +10483,16 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
       div.classList.add('sensor-numeric-entity');
       if (stateEl) stateEl.setAttribute('aria-label', sensorDisplay.text);
       const value = div.querySelector('.control-sensor-value');
-      if (value) value.textContent = sensorDisplay.value;
       const unit = div.querySelector('.control-sensor-unit');
+      const readout = div.querySelector('.control-sensor-readout');
+      // A reading that did not change keeps its fit: measuring it again costs a layout.
+      const needsFit =
+        value?.textContent !== sensorDisplay.value ||
+        (unit && unit.textContent !== sensorDisplay.unit) ||
+        readout?.dataset.fitSize !== (div.dataset.valueSize || '');
+      if (value) value.textContent = sensorDisplay.value;
       if (unit) unit.textContent = sensorDisplay.unit;
+      if (needsFit) fitSensorTileValue(readout);
       appendLiveSensorHistoryValue(displayEntity);
       const cachedHistory = sensorHistoryCache.get(displayEntity.entity_id);
       renderSensorTileChart(div, displayEntity, cachedHistory?.series || []);
@@ -10470,12 +10524,18 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   }
 
   if (displayEntity.entity_id.startsWith('light.')) {
-    div.title = t('Click to toggle, hold for brightness control');
+    div.title = getControlTileTitle(
+      displayEntity,
+      t('Click to toggle, hold for brightness control')
+    );
     return true;
   }
 
   if (displayEntity.entity_id.startsWith('climate.')) {
-    div.title = t('Click to toggle, hold for temperature control');
+    div.title = getControlTileTitle(
+      displayEntity,
+      t('Click to toggle, hold for temperature control')
+    );
     if (stateEl) {
       const temp = getClimateTileTemperature(displayEntity);
       stateEl.textContent =
@@ -10485,12 +10545,12 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   }
 
   if (displayEntity.entity_id.startsWith('fan.')) {
-    div.title = t('Click to toggle, hold for speed control');
+    div.title = getControlTileTitle(displayEntity, t('Click to toggle, hold for speed control'));
     return true;
   }
 
   if (displayEntity.entity_id.startsWith('cover.')) {
-    div.title = t('Click to toggle, hold for position control');
+    div.title = getControlTileTitle(displayEntity, t('Click to toggle, hold for position control'));
     return true;
   }
 
@@ -10669,28 +10729,39 @@ function showSensorDetails(entity) {
   }
 }
 
-function activateAccessibleDialogModal(modal, { titleIdPrefix = 'dialog-title' } = {}) {
+// Pop-ups whose controls act on a device with one keypress (a cover, a light, a fan) or whose
+// sliders hold off live updates while focused start on their heading, so a stray key cannot move a
+// garage door and the first update from Home Assistant still lands. Tab reaches the first control.
+function startOnHeading(modal, focusSelector = null) {
+  return () => {
+    const requested = focusSelector && modal.querySelector(focusSelector);
+    if (requested) return requested;
+    const heading = modal.querySelector('.modal-header h1, .modal-header h2, .modal-header h3');
+    if (heading) heading.tabIndex = -1;
+    return heading;
+  };
+}
+
+// Opens one of the entity pop-ups through the shared dialog helper. The pop-up's heading names it,
+// and focus starts on its first control rather than on the header's Close button; content added
+// after this call can name a better first stop with `data-initial-focus`.
+function activateAccessibleDialogModal(
+  modal,
+  { titleIdPrefix = 'dialog-title', dismiss, initialFocus, replaces = null } = {}
+) {
   if (!modal) return;
   dialogModalIdCounter += 1;
   const titleElement = modal.querySelector('h1, h2, h3');
-  if (titleElement) {
-    if (!titleElement.id) {
-      titleElement.id = `${titleIdPrefix}-${dialogModalIdCounter}`;
-    }
-    modal.setAttribute('aria-labelledby', titleElement.id);
+  if (titleElement && !titleElement.id) {
+    titleElement.id = `${titleIdPrefix}-${dialogModalIdCounter}`;
   }
-  modal.setAttribute('role', 'dialog');
-  modal.setAttribute('aria-modal', 'true');
-
-  if (typeof uiUtils.trapFocus === 'function') {
-    setTimeout(() => {
-      // Content added after activation can name its own first stop, such as a code field.
-      const initialFocus = modal.querySelector('[data-initial-focus]');
-      if (!modal.isConnected) return;
-      if (initialFocus) uiUtils.trapFocus(modal, { initialFocus });
-      else uiUtils.trapFocus(modal);
-    }, 0);
-  }
+  uiUtils.openDialog(modal, {
+    display: null,
+    labelledBy: titleElement || undefined,
+    initialFocus,
+    dismiss,
+    replaces,
+  });
 }
 
 /**
@@ -10743,13 +10814,9 @@ function showUnavailableDialogState(modal, entity) {
     });
 }
 
-function releaseAccessibleDialogModal(modal) {
-  if (typeof uiUtils.releaseFocusTrap === 'function') {
-    uiUtils.releaseFocusTrap(modal);
-  }
-}
-
-function createEntityDetailModal({ className, title, onClose = null }) {
+// `beforeClose` lets a dialog with work in flight finish it before the user's close takes effect
+// (the comparison graph editor saves as it goes). Closing programmatically skips the wait.
+function createEntityDetailModal({ className, title, onClose = null, beforeClose = null }) {
   ensureEntityCacheScope();
   const modal = document.createElement('div');
   modal.className = `modal ${className}`;
@@ -10771,28 +10838,23 @@ function createEntityDetailModal({ className, title, onClose = null }) {
     closing = true;
     entityDetailClosers.delete(closeModal);
     onClose?.();
-    releaseAccessibleDialogModal(modal);
-    void uiUtils.closeModal(modal, { remove: true });
+    void uiUtils.closeDialog(modal, { remove: true });
   };
   entityDetailClosers.add(closeModal);
   entityDetailModalClosers.set(modal, closeModal);
-  const closeBtn = modal.querySelector('.close-btn');
-  if (closeBtn) closeBtn.onclick = closeModal;
-  modal.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      closeModal();
-    }
-  });
-  modal.onclick = (event) => {
-    if (event.target === modal) closeModal();
+  const requestClose = async () => {
+    if (closing) return;
+    if (beforeClose) await beforeClose();
+    closeModal();
   };
+  const closeBtn = modal.querySelector('.close-btn');
+  if (closeBtn) closeBtn.onclick = requestClose;
   document.body.appendChild(modal);
   applyCloseButtonIcons(modal);
-  activateAccessibleDialogModal(modal, { titleIdPrefix: 'entity-detail-title' });
-  if (typeof uiUtils.trapFocus !== 'function') {
-    closeBtn?.focus();
-  }
+  activateAccessibleDialogModal(modal, {
+    titleIdPrefix: 'entity-detail-title',
+    dismiss: requestClose,
+  });
   return modal;
 }
 
@@ -11840,7 +11902,9 @@ function formatSeekStep(seconds) {
     .replace('-', '\u2212');
 }
 
-function showMediaDetail(entity) {
+// `replaces` and `focusSelector` rebuild a dialog the user is looking at (the player gained a
+// control): the new one takes the old one's place and opener, and focus returns to the same control.
+function showMediaDetail(entity, { replaces = null, focusSelector = null } = {}) {
   try {
     ensureEntityCacheScope();
     const renderedControls = getMediaDetailControls(entity);
@@ -11955,7 +12019,12 @@ function showMediaDetail(entity) {
 
     document.body.appendChild(modal);
     applyCloseButtonIcons(modal);
-    activateAccessibleDialogModal(modal, { titleIdPrefix: 'media-detail-title' });
+    activateAccessibleDialogModal(modal, {
+      titleIdPrefix: 'media-detail-title',
+      dismiss: () => closeModal(),
+      initialFocus: startOnHeading(modal, focusSelector),
+      replaces,
+    });
 
     // Set SVG icons for media controls
     // setIconContent already imported at top
@@ -12170,10 +12239,8 @@ function showMediaDetail(entity) {
         entityDetailClosers.delete(closeModal);
         stopUpdates();
         clearTimeout(volumeDebounceTimer);
-        releaseAccessibleDialogModal(modal);
+        showMediaDetail(currentEntity, { replaces: modal, focusSelector });
         modal.remove();
-        showMediaDetail(currentEntity);
-        if (focusSelector) document.querySelector(`.media-modal ${focusSelector}`)?.focus();
         return;
       }
       if (document.hidden) return;
@@ -12194,19 +12261,10 @@ function showMediaDetail(entity) {
       entityDetailClosers.delete(closeModal);
       stopUpdates();
       if (volumeDebounceTimer) clearTimeout(volumeDebounceTimer);
-      void uiUtils.closeModal(modal, {
-        remove: true,
-        onClosed: () => releaseAccessibleDialogModal(modal),
-      });
+      void uiUtils.closeDialog(modal, { remove: true });
     };
     entityDetailClosers.add(closeModal);
     closeBtns.forEach((b) => b && (b.onclick = closeModal));
-    modal.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeModal();
-    });
-    modal.onclick = (e) => {
-      if (e.target === modal) closeModal();
-    };
 
     // Init
     renderMedia();
@@ -12967,9 +13025,7 @@ function populateWeatherEntitiesList() {
         currentNameEl.textContent = t('{{name}} ✓ (selected)', {
           name: utils.getEntityDisplayName(state.STATES[selectedEntityId]),
         });
-        currentNameEl.style.fontWeight = '600';
-        currentNameEl.style.color = 'var(--primary-color)';
-        currentNameEl.style.fontStyle = 'normal';
+        currentNameEl.dataset.state = 'selected';
       } else {
         // Find the actual fallback entity being used (alphabetically first)
         const fallbackEntity = Object.values(state.STATES)
@@ -12982,14 +13038,10 @@ function populateWeatherEntitiesList() {
           currentNameEl.textContent = t('{{name}} (auto-detected)', {
             name: utils.getEntityDisplayName(fallbackEntity),
           });
-          currentNameEl.style.fontWeight = '400';
-          currentNameEl.style.color = 'var(--text-secondary)';
-          currentNameEl.style.fontStyle = 'italic';
+          currentNameEl.dataset.state = 'auto';
         } else {
           currentNameEl.textContent = t('None available');
-          currentNameEl.style.fontWeight = '400';
-          currentNameEl.style.color = 'var(--text-secondary)';
-          currentNameEl.style.fontStyle = 'normal';
+          currentNameEl.dataset.state = 'none';
         }
       }
     }
@@ -13031,9 +13083,23 @@ function populateWeatherEntitiesList() {
         selectWeatherEntity(entityId);
       };
       item.addEventListener('keydown', (event) => {
-        if (event.key !== 'Enter' && event.key !== ' ') return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          selectWeatherEntity(entityId);
+          return;
+        }
+        // A listbox is one Tab stop; the arrows, Home and End move between its options.
+        const options = [...list.querySelectorAll('[role="option"]')];
+        const next =
+          options[
+            getNextTabIndex(options.indexOf(item), options.length, event.key, {
+              orientation: 'vertical',
+            })
+          ];
+        if (!next || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
         event.preventDefault();
-        selectWeatherEntity(entityId);
+        syncRovingTabIndex(options, next);
+        next.focus();
       });
 
       item.style.cursor = 'pointer';
@@ -13041,6 +13107,12 @@ function populateWeatherEntitiesList() {
       list.appendChild(item);
       if (entityId === focusedEntityId) item.focus();
     });
+    const options = [...list.querySelectorAll('[role="option"]')];
+    syncRovingTabIndex(
+      options,
+      options.find((option) => option === document.activeElement) ||
+        options.find((option) => option.dataset.weatherEntityId === selectedEntityId)
+    );
   } catch (error) {
     console.error('Error populating weather entities list:', error);
   }
@@ -13574,7 +13646,11 @@ function showBrightnessSlider(light) {
     `;
     document.body.appendChild(modal);
     applyCloseButtonIcons(modal);
-    activateAccessibleDialogModal(modal, { titleIdPrefix: 'brightness-title' });
+    activateAccessibleDialogModal(modal, {
+      titleIdPrefix: 'brightness-title',
+      dismiss: () => closeModal(),
+      initialFocus: startOnHeading(modal),
+    });
 
     const slider = modal.querySelector('#brightness-slider');
     const valueLarge = modal.querySelector('#brightness-value-large');
@@ -13647,18 +13723,12 @@ function showBrightnessSlider(light) {
       if (brightnessDebounceTimer) clearTimeout(brightnessDebounceTimer);
       if (colorTempDebounceTimer) clearTimeout(colorTempDebounceTimer);
       if (colorDebounceTimer) clearTimeout(colorDebounceTimer);
-      void uiUtils.closeModal(modal, {
-        remove: true,
-        onClosed: () => releaseAccessibleDialogModal(modal),
-      });
+      void uiUtils.closeDialog(modal, { remove: true });
     };
     // An account or server change closes this dialog with its timers and subscription.
     entityDetailClosers.add(closeModal);
     if (closeBtn) closeBtn.onclick = closeModal;
     if (cancelBtn) cancelBtn.onclick = closeModal;
-    modal.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeModal();
-    });
 
     // Animate in
     setTimeout(() => modal.classList.add('modal-open'), 10);
@@ -13897,9 +13967,6 @@ function showBrightnessSlider(light) {
     );
 
     // Close on backdrop click only when clicking the overlay
-    modal.onclick = (e) => {
-      if (e.target === modal) closeModal();
-    };
   } catch (error) {
     console.error('Error showing brightness slider:', error);
   }
@@ -14022,7 +14089,10 @@ function bindClimateRangeControls(root, entity, capabilities, onChange) {
   return controller;
 }
 
-function showClimateControls(climateEntity) {
+// `replaces` and `focusSelector` rebuild a dialog the user is looking at (a heat/cool mode swaps the
+// slider for a range): the new one takes the old one's place and opener, focus stays on the same
+// control, and the entrance is not replayed.
+function showClimateControls(climateEntity, { replaces = null, focusSelector = null } = {}) {
   try {
     const attributes = climateEntity?.attributes || {};
     const capabilities = getClimateControlCapabilities(climateEntity);
@@ -14065,7 +14135,7 @@ function showClimateControls(climateEntity) {
         </div>
         <div class="modal-body">
           <div class="climate-content">
-            <div class="climate-temp-display">
+            <div class="climate-temp-display${capabilities.canSetRange ? ' is-range' : ''}">
               <div class="climate-current-temp">
                 <div class="climate-temp-label">${utils.escapeHtml(t('Current'))}</div>
                 <div class="climate-temp-value">${currentTemp === null ? '—' : `${formatNumber(currentTemp)}${tempUnit}`}</div>
@@ -14113,8 +14183,8 @@ function showClimateControls(climateEntity) {
             ${
               availableModes.length
                 ? `<div class="climate-modes">
-              <div class="climate-modes-label">${utils.escapeHtml(t('Mode'))}</div>
-              <div class="climate-mode-buttons" id="climate-mode-buttons"></div>
+              <div class="climate-modes-label" id="climate-mode-label">${utils.escapeHtml(t('Mode'))}</div>
+              <div class="climate-mode-buttons" id="climate-mode-buttons" role="group" aria-labelledby="climate-mode-label" data-chip-group="mode"></div>
             </div>`
                 : ''
             }
@@ -14122,8 +14192,8 @@ function showClimateControls(climateEntity) {
               availableFanModes.length
                 ? `
               <div class="climate-modes">
-                <div class="climate-modes-label">${utils.escapeHtml(t('Fan'))}</div>
-                <div class="climate-option-buttons" id="climate-fan-buttons"></div>
+                <div class="climate-modes-label" id="climate-fan-label">${utils.escapeHtml(t('Fan'))}</div>
+                <div class="climate-option-buttons" id="climate-fan-buttons" role="group" aria-labelledby="climate-fan-label" data-chip-group="fan"></div>
               </div>
             `
                 : ''
@@ -14132,8 +14202,8 @@ function showClimateControls(climateEntity) {
               availablePresetModes.length
                 ? `
               <div class="climate-modes">
-                <div class="climate-modes-label">${utils.escapeHtml(t('Preset'))}</div>
-                <div class="climate-option-buttons" id="climate-preset-buttons"></div>
+                <div class="climate-modes-label" id="climate-preset-label">${utils.escapeHtml(t('Preset'))}</div>
+                <div class="climate-option-buttons" id="climate-preset-buttons" role="group" aria-labelledby="climate-preset-label" data-chip-group="preset"></div>
               </div>
             `
                 : ''
@@ -14152,7 +14222,12 @@ function showClimateControls(climateEntity) {
     `;
     document.body.appendChild(modal);
     applyCloseButtonIcons(modal);
-    activateAccessibleDialogModal(modal, { titleIdPrefix: 'climate-title' });
+    activateAccessibleDialogModal(modal, {
+      titleIdPrefix: 'climate-title',
+      dismiss: () => closeModal(),
+      initialFocus: startOnHeading(modal, focusSelector),
+      replaces,
+    });
 
     const slider = modal.querySelector('#climate-slider');
     const targetValue = modal.querySelector('#climate-target-value');
@@ -14276,10 +14351,7 @@ function showClimateControls(climateEntity) {
       climateDialogRefreshers.delete(climateEntity.entity_id);
       if (temperatureDebounceTimer) clearTimeout(temperatureDebounceTimer);
       rangeController?.cancel();
-      void uiUtils.closeModal(modal, {
-        remove: true,
-        onClosed: () => releaseAccessibleDialogModal(modal),
-      });
+      void uiUtils.closeDialog(modal, { remove: true });
     };
     // An account or server change closes this dialog with its timers and subscription.
     entityDetailClosers.add(closeModal);
@@ -14296,23 +14368,20 @@ function showClimateControls(climateEntity) {
       const next = getClimateControlCapabilities(nextEntity);
       if (controlSignature(next) !== controlSignature(capabilities)) {
         const focused = modal.contains(document.activeElement) ? document.activeElement : null;
-        const focusId = focused?.id;
-        const focusMode = focused?.dataset?.mode;
+        // Mode, fan and preset chips share `data-mode`, so the group says which chip it was.
+        const group = focused?.closest?.('[data-chip-group]')?.dataset.chipGroup;
+        const nextFocusSelector = focused?.id
+          ? `#${focused.id}`
+          : focused?.dataset?.mode !== undefined && group
+            ? `[data-chip-group="${group}"] [data-mode="${focused.dataset.mode}"]`
+            : null;
         isClosing = true;
         clearTimeout(temperatureDebounceTimer);
         rangeController?.cancel();
         climateDialogRefreshers.delete(climateEntity.entity_id);
         entityDetailClosers.delete(closeModal);
-        releaseAccessibleDialogModal(modal);
+        showClimateControls(nextEntity, { replaces: modal, focusSelector: nextFocusSelector });
         modal.remove();
-        showClimateControls(nextEntity);
-        const replacement = document.querySelector('.climate-modal');
-        const focusTarget = focusId
-          ? replacement?.querySelector(`#${focusId}`)
-          : [...(replacement?.querySelectorAll('[data-mode]') || [])].find(
-              (button) => button.dataset.mode === focusMode
-            );
-        focusTarget?.focus();
       } else {
         rangeController?.sync({ low: next.targetLow, high: next.targetHigh });
         setActiveClimateOption(modeButtons, nextEntity.state);
@@ -14342,9 +14411,6 @@ function showClimateControls(climateEntity) {
     });
     if (closeBtn) closeBtn.onclick = closeModal;
     if (cancelBtn) cancelBtn.onclick = closeModal;
-    modal.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeModal();
-    });
 
     // Animate in
     setTimeout(() => modal.classList.add('modal-open'), 10);
@@ -14461,9 +14527,6 @@ function showClimateControls(climateEntity) {
     });
 
     // Close on backdrop click
-    modal.onclick = (e) => {
-      if (e.target === modal) closeModal();
-    };
   } catch (error) {
     console.error('Error showing climate controls:', error);
   }
@@ -14532,7 +14595,11 @@ function showFanControls(fanEntity) {
     `;
     document.body.appendChild(modal);
     applyCloseButtonIcons(modal);
-    activateAccessibleDialogModal(modal, { titleIdPrefix: 'fan-title' });
+    activateAccessibleDialogModal(modal, {
+      titleIdPrefix: 'fan-title',
+      dismiss: () => closeModal(),
+      initialFocus: startOnHeading(modal),
+    });
     showUnavailableDialogState(modal, fanEntity);
 
     const slider = modal.querySelector('#fan-slider');
@@ -14568,10 +14635,7 @@ function showFanControls(fanEntity) {
       entityDetailClosers.delete(closeModal);
       unsubscribe();
       if (speedDebounceTimer) clearTimeout(speedDebounceTimer);
-      void uiUtils.closeModal(modal, {
-        remove: true,
-        onClosed: () => releaseAccessibleDialogModal(modal),
-      });
+      void uiUtils.closeDialog(modal, { remove: true });
     };
     // An account or server change closes this dialog with its timers and subscription.
     entityDetailClosers.add(closeModal);
@@ -14584,9 +14648,6 @@ function showFanControls(fanEntity) {
         closeModal();
       };
     }
-    modal.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeModal();
-    });
 
     // Animate in
     setTimeout(() => modal.classList.add('modal-open'), 10);
@@ -14676,9 +14737,6 @@ function showFanControls(fanEntity) {
     });
 
     // Close on backdrop click
-    modal.onclick = (e) => {
-      if (e.target === modal) closeModal();
-    };
   } catch (error) {
     console.error('Error showing fan controls:', error);
   }
@@ -14773,7 +14831,11 @@ function showCoverControls(coverEntity) {
     `;
     document.body.appendChild(modal);
     applyCloseButtonIcons(modal);
-    activateAccessibleDialogModal(modal, { titleIdPrefix: 'cover-title' });
+    activateAccessibleDialogModal(modal, {
+      titleIdPrefix: 'cover-title',
+      dismiss: () => closeModal(),
+      initialFocus: startOnHeading(modal),
+    });
     showUnavailableDialogState(modal, coverEntity);
 
     const slider = modal.querySelector('#cover-slider');
@@ -14811,18 +14873,12 @@ function showCoverControls(coverEntity) {
       entityDetailClosers.delete(closeModal);
       unsubscribe();
       if (positionDebounceTimer) clearTimeout(positionDebounceTimer);
-      void uiUtils.closeModal(modal, {
-        remove: true,
-        onClosed: () => releaseAccessibleDialogModal(modal),
-      });
+      void uiUtils.closeDialog(modal, { remove: true });
     };
     // An account or server change closes this dialog with its timers and subscription.
     entityDetailClosers.add(closeModal);
     if (closeBtn) closeBtn.onclick = closeModal;
     if (cancelBtn) cancelBtn.onclick = closeModal;
-    modal.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeModal();
-    });
 
     // Animate in
     setTimeout(() => modal.classList.add('modal-open'), 10);
@@ -14925,9 +14981,6 @@ function showCoverControls(coverEntity) {
     slider?.addEventListener('blur', () => syncFromEntity(state.STATES?.[coverEntity.entity_id]));
 
     // Close on backdrop click
-    modal.onclick = (e) => {
-      if (e.target === modal) closeModal();
-    };
   } catch (error) {
     console.error('Error showing cover controls:', error);
   }
@@ -15169,12 +15222,26 @@ function initUpdateUI() {
       if (updateStatusText) updateStatusText.textContent = render();
     };
 
+    // Disabling the button while a check runs drops keyboard focus to <body>, and enabling it again
+    // does not bring it back; this does, as the entity switches in Settings do.
+    let reenableCheckUpdates = null;
+    const setCheckUpdatesDisabled = (disabled) => {
+      if (!checkUpdatesBtn) return;
+      if (disabled) {
+        reenableCheckUpdates ??= uiUtils.disableControlsKeepingFocus([checkUpdatesBtn]);
+        return;
+      }
+      if (reenableCheckUpdates) reenableCheckUpdates();
+      else checkUpdatesBtn.disabled = false;
+      reenableCheckUpdates = null;
+    };
+
     // Enable the check button
     if (checkUpdatesBtn) {
       checkUpdatesBtn.disabled = false;
       checkUpdatesBtn.onclick = async () => {
         // Disable button and show checking status
-        if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
+        setCheckUpdatesDisabled(true);
         showUpdateStatus(() => t('Checking for updates...'));
 
         try {
@@ -15182,13 +15249,13 @@ function initUpdateUI() {
           if (result.status === 'dev') {
             // In development mode, auto-updater doesn't work
             showUpdateStatus(() => t('Auto-updates only work in packaged builds'));
-            if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+            setCheckUpdatesDisabled(false);
           } else if (result.status === 'portable' || result.status === 'manual') {
             portableDownloadUrl = result.downloadUrl || null;
             showUpdateStatus(
               () => result.message || t('Portable builds do not support in-app updates.')
             );
-            if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+            setCheckUpdatesDisabled(false);
             if (installUpdateBtn) {
               if (portableDownloadUrl) {
                 installUpdateBtn.textContent =
@@ -15202,7 +15269,7 @@ function initUpdateUI() {
           } else if (result.status === 'none') {
             portableDownloadUrl = null;
             showUpdateStatus(() => result.message || t('You are up to date!'));
-            if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+            setCheckUpdatesDisabled(false);
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
             if (updateProgress) updateProgress.classList.add('hidden');
           } else if (result.status === 'error') {
@@ -15212,7 +15279,7 @@ function initUpdateUI() {
                 error: result.error || t('Unknown error'),
               })
             );
-            if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+            setCheckUpdatesDisabled(false);
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
             if (updateProgress) updateProgress.classList.add('hidden');
           }
@@ -15221,7 +15288,7 @@ function initUpdateUI() {
         } catch (error) {
           console.error('Error checking for updates:', error);
           showUpdateStatus(() => t('Error checking for updates'));
-          if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+          setCheckUpdatesDisabled(false);
         }
       };
     }
@@ -15250,7 +15317,7 @@ function initUpdateUI() {
           case 'checking':
             portableDownloadUrl = null;
             showUpdateStatus(() => t('Checking for updates...'));
-            if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
+            setCheckUpdatesDisabled(true);
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
             if (updateProgress) updateProgress.classList.add('hidden');
             break;
@@ -15260,14 +15327,14 @@ function initUpdateUI() {
             showUpdateStatus(() =>
               t('Update available: v{{version}}', { version: data.info?.version || 'unknown' })
             );
-            if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+            setCheckUpdatesDisabled(false);
             if (updateProgress) updateProgress.classList.remove('hidden');
             break;
 
           case 'none':
             portableDownloadUrl = null;
             showUpdateStatus(() => t('You are up to date!'));
-            if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+            setCheckUpdatesDisabled(false);
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
             if (updateProgress) updateProgress.classList.add('hidden');
             break;
@@ -15275,7 +15342,7 @@ function initUpdateUI() {
           case 'downloading':
             portableDownloadUrl = null;
             showUpdateStatus(() => t('Downloading update...'));
-            if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
+            setCheckUpdatesDisabled(true);
             if (updateProgress) updateProgress.classList.remove('hidden');
             if (data.progress) {
               const percent = Math.round(data.progress.percent);
@@ -15291,7 +15358,7 @@ function initUpdateUI() {
                 version: data.info?.version || 'unknown',
               })
             );
-            if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+            setCheckUpdatesDisabled(false);
             if (installUpdateBtn) {
               installUpdateBtn.textContent = t('Install update');
               installUpdateBtn.classList.remove('hidden');
@@ -15306,7 +15373,7 @@ function initUpdateUI() {
                 error: data.error || t('Unknown error'),
               })
             );
-            if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+            setCheckUpdatesDisabled(false);
             if (installUpdateBtn) installUpdateBtn.classList.add('hidden');
             if (updateProgress) updateProgress.classList.add('hidden');
             break;
@@ -15317,7 +15384,7 @@ function initUpdateUI() {
             showUpdateStatus(
               () => data.message || t('Portable builds do not support in-app updates.')
             );
-            if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+            setCheckUpdatesDisabled(false);
             if (installUpdateBtn) {
               if (portableDownloadUrl) {
                 installUpdateBtn.textContent =
@@ -15348,24 +15415,15 @@ function initUpdateUI() {
 // ESC key handler for reorganize mode
 function handleEscapeKey(e) {
   if (e.key !== 'Escape' || !isReorganizeMode) return;
-  // Let nested interactions own Escape instead of exiting reorganize mode. A modal playing its
-  // exit animation still carries `.modal-closing` (and, until the animation ends, neither
-  // `.hidden` nor detachment), so treat that as already closed or it swallows one Escape press.
-  const addPageModal = document.getElementById('add-page-modal');
-  if (addPageModal && !addPageModal.classList.contains('modal-closing')) return;
+  // Escape belongs to whatever is on top of the dashboard: a key a control or dialog already used,
+  // an open dialog (the dialog helper closes it and stops the key, but a dialog opened any other
+  // way would still reach here), or an inline rename in the page tabs.
+  if (e.defaultPrevented || uiUtils.hasOpenDialog()) return;
   if (document.querySelector('#quick-access-tabs .qa-tab-rename-input')) return;
   if (pickedUpTile?.isConnected) {
     e.preventDefault();
     e.stopPropagation();
     clearPickedUpTile();
-    return;
-  }
-  const confirmModal = document.getElementById('confirm-modal');
-  if (
-    confirmModal &&
-    !confirmModal.classList.contains('hidden') &&
-    !confirmModal.classList.contains('modal-closing')
-  ) {
     return;
   }
   e.preventDefault();
@@ -15405,6 +15463,7 @@ export {
   updateTimerDisplays,
   renderPrimaryCards,
   toggleReorganizeMode,
+  exitReorganizeMode,
   populateQuickControlsList,
   addComparisonGraphTile,
   isEntityVisible,

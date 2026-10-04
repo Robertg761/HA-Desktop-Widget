@@ -7,12 +7,7 @@ import {
   getLocalizedStateName,
 } from './utils.js';
 import { applyCloseButtonIcons } from './icons.js';
-import {
-  closeModal as closeModalAnimated,
-  releaseFocusTrap,
-  showToast,
-  trapFocus,
-} from './ui-utils.js';
+import { closeDialog, openDialog, releaseFocusTrap, showToast } from './ui-utils.js';
 import { formatDateTime, formatTime, t } from './i18n.js';
 import { lineIconMarkup } from './entity-icons.js';
 import { getRendererHost } from '@hadw/renderer/host.js';
@@ -253,6 +248,8 @@ function resetCameraPreviewVideo(record) {
     // The video may not have reached a playable state.
   }
   record.video.removeAttribute('src');
+  // A stream that stopped leaves a frame only if a still is still showing.
+  setCameraPreviewHasFrame(record, hasCameraPreviewFrame(record));
 }
 
 function setCameraPreviewSource(record, source) {
@@ -461,6 +458,9 @@ function markCameraLivePreviewReady(record, requestId) {
   // still is cleared rather than kept because an MJPEG source holds its connection open.
   setCameraPreviewSource(record, 'video');
   resetCameraPreviewImage(record);
+  // The video is the frame now. Without this the tile styled itself as an empty pane (no scrim,
+  // plain caption colours) over a bright picture for as long as the stream played.
+  setCameraPreviewHasFrame(record, true);
   setCameraPreviewState(record, 'ready', 'Live now');
 }
 
@@ -1031,9 +1031,6 @@ function openExpandedCameraPreview(record, camera) {
   overlay.className = 'camera-expanded-preview';
   overlay.dataset.cameraPreviewState = record.previewState || 'loading';
   overlay.dataset.cameraPreviewSource = record.previewSource || 'image';
-  overlay.setAttribute('role', 'dialog');
-  overlay.setAttribute('aria-modal', 'true');
-  overlay.setAttribute('aria-label', t('{{name}} camera preview', { name: displayName }));
   overlay.innerHTML = `
     <div class="camera-expanded-preview-shell">
       <header class="camera-expanded-preview-header">
@@ -1095,6 +1092,7 @@ function openExpandedCameraPreview(record, camera) {
     record.expandedPreview = null;
     if (activeExpandedCameraPreview === expandedPreview) activeExpandedCameraPreview = null;
     document.removeEventListener('keydown', handleKeydown, true);
+    // The overlay leaves with the view transition below, so only the dialog layer is let go here.
     releaseFocusTrap(overlay, { restoreFocus: false });
 
     if (wasVisualHidden) visual.setAttribute('aria-hidden', 'true');
@@ -1122,13 +1120,9 @@ function openExpandedCameraPreview(record, camera) {
     }
   };
 
+  // Escape and a click on the backdrop come from the dialog layer; only Tab is handled here,
+  // because the two controls are the whole tab order.
   const handleKeydown = (event) => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      event.stopPropagation();
-      close();
-      return;
-    }
     if (event.key === 'Tab') {
       event.preventDefault();
       const focusable = [closeButton, reconnectButton].filter(Boolean);
@@ -1150,18 +1144,20 @@ function openExpandedCameraPreview(record, camera) {
       return reconnectCameraPreview(record, camera, reconnectButton);
     };
   }
-  overlay.onclick = (event) => {
-    if (event.target === overlay) close();
-  };
   document.addEventListener('keydown', handleKeydown, true);
-  // Registered as the top dialog so Escape pressed with focus on <body> closes this preview, not
-  // a dialog open underneath it. The preview returns focus itself.
-  trapFocus(overlay, { initialFocus: false });
 
   const transition = runCameraPreviewViewTransition(() => {
     if (expandedPreview.closed) return;
     document.body.appendChild(overlay);
     stage.appendChild(visual);
+    // Escape (and the backdrop) close this preview, not a dialog open underneath it. The preview
+    // returns focus to its tile itself, once the view transition has settled.
+    openDialog(overlay, {
+      display: null,
+      label: t('{{name}} camera preview', { name: displayName }),
+      initialFocus: false,
+      dismiss: () => close(),
+    });
   });
   const focusCloseButton = () => {
     if (!expandedPreview.closed) closeButton.focus({ preventScroll: true });
@@ -1262,12 +1258,6 @@ async function openCamera(cameraId, options = {}) {
     // Create a camera popup modal
     const modal = document.createElement('div');
     modal.className = 'modal camera-modal';
-    modal.setAttribute('role', 'dialog');
-    modal.setAttribute('aria-modal', 'true');
-    modal.setAttribute(
-      'aria-label',
-      t('{{name}} camera preview', { name: getEntityDisplayName(camera) })
-    );
     modal.innerHTML = `
       <div class="modal-content camera-content">
         <div class="modal-header">
@@ -1302,15 +1292,6 @@ async function openCamera(cameraId, options = {}) {
 
     document.body.appendChild(modal);
     applyCloseButtonIcons(modal);
-
-    const previouslyFocused = document.activeElement;
-    // Escape closed the expanded preview but not this viewer, which is the one most people reach.
-    const handleModalKeydown = (event) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      event.stopPropagation();
-      closeModal();
-    };
 
     const img = modal.querySelector('.camera-stream');
     const snapshotBtn = modal.querySelector('#snapshot-btn');
@@ -1585,11 +1566,8 @@ async function openCamera(cameraId, options = {}) {
       if (closed) return;
       closed = true;
       stopLive();
-      document.removeEventListener('keydown', handleModalKeydown, true);
-      void closeModalAnimated(modal, { remove: true });
-      if (previouslyFocused?.isConnected && typeof previouslyFocused.focus === 'function') {
-        previouslyFocused.focus({ preventScroll: true });
-      }
+      // Focus goes back to the tile (or its replacement) that opened the viewer.
+      void closeDialog(modal, { remove: true });
       // Ensure any tile visuals tied to this entity are refreshed after modal closes
       document.dispatchEvent(
         new CustomEvent('camera-modal-closed', { detail: { entityId: cameraId } })
@@ -1600,15 +1578,14 @@ async function openCamera(cameraId, options = {}) {
       closeBtn.onclick = closeModal;
     }
 
-    // Click outside to close
-    modal.onclick = (e) => {
-      if (e.target === modal) {
-        closeModal();
-      }
-    };
-
-    document.addEventListener('keydown', handleModalKeydown, true);
-    closeBtn?.focus({ preventScroll: true });
+    // Escape and a click outside close the viewer; Tab stays inside it. The viewer is mostly a
+    // picture, so focus starts on Live, the action people come for, not on the Close button.
+    openDialog(modal, {
+      display: null,
+      label: t('{{name}} camera preview', { name: getEntityDisplayName(camera) }),
+      initialFocus: liveBtn || undefined,
+      dismiss: closeModal,
+    });
 
     // Load initial snapshot
     loadSnapshot();

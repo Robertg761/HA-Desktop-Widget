@@ -109,7 +109,21 @@ function resultFor(message, { states, services, serviceResponses }) {
   }
 }
 
-function startMockHomeAssistant({ port = 0, token, states, services = {}, serviceResponses = {} }) {
+// A service call aimed at an entity the scene wants to fail, in either place Home Assistant takes it.
+function isRefusedCall(message, failingEntities) {
+  if (message.type !== 'call_service' || !failingEntities.length) return false;
+  const target = message.service_data?.entity_id ?? message.target?.entity_id;
+  return [target].flat().some((entityId) => failingEntities.includes(entityId));
+}
+
+function startMockHomeAssistant({
+  port = 0,
+  token,
+  states,
+  services = {},
+  serviceResponses = {},
+  failingEntities = [],
+}) {
   const server = http.createServer((request, response) => {
     response.writeHead(404, { 'content-type': 'application/json' });
     response.end('{"message":"Not found"}');
@@ -124,10 +138,18 @@ function startMockHomeAssistant({ port = 0, token, states, services = {}, servic
     sockets.clear();
   };
 
+  // An outage needs the server to stay away, not only to drop the sockets: the app reconnects within
+  // a second and would be back before a screenshot.
+  let refusing = false;
+  server.refuseConnections = (refuse) => {
+    refusing = refuse;
+    if (refuse) server.closeAllConnections();
+  };
+
   server.on('upgrade', (request, socket) => {
     sockets.add(socket);
     socket.on('close', () => sockets.delete(socket));
-    if (request.url !== '/api/websocket') {
+    if (refusing || request.url !== '/api/websocket') {
       socket.destroy();
       return;
     }
@@ -171,6 +193,13 @@ function startMockHomeAssistant({ port = 0, token, states, services = {}, servic
             );
           } else if (item.type === 'ping') {
             send({ id: item.id, type: 'pong' });
+          } else if (typeof item.id === 'number' && isRefusedCall(item, failingEntities)) {
+            send({
+              id: item.id,
+              type: 'result',
+              success: false,
+              error: { code: 'unknown_error', message: 'The mock refused this call' },
+            });
           } else if (typeof item.id === 'number') {
             send({
               id: item.id,
@@ -190,4 +219,4 @@ function startMockHomeAssistant({ port = 0, token, states, services = {}, servic
   });
 }
 
-module.exports = { startMockHomeAssistant, encodeFrame, decodeFrames, resultFor };
+module.exports = { startMockHomeAssistant, encodeFrame, decodeFrames, isRefusedCall, resultFor };

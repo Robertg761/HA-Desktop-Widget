@@ -1,4 +1,6 @@
 const {
+  SENSOR_VALUE_MIN_FONT_PX,
+  getFittedSensorValueFontSize,
   getNextQuickAccessFocusIndex,
   getNextQuickAccessFocusIndexByLayout,
   getQuickAccessTabOverflow,
@@ -213,6 +215,50 @@ describe('quick access UI helpers', () => {
     it('measures a wheel that counts lines or pages', () => {
       expect(getQuickAccessTabWheelDelta({ deltaX: 0, deltaY: 3, deltaMode: 1 }, 300)).toBe(48);
       expect(getQuickAccessTabWheelDelta({ deltaX: 0, deltaY: 1, deltaMode: 2 }, 300)).toBe(300);
+    });
+  });
+  describe('getFittedSensorValueFontSize', () => {
+    it('leaves a reading that fits alone', () => {
+      expect(
+        getFittedSensorValueFontSize({ fontSize: 18, naturalWidth: 70, availableWidth: 90 })
+      ).toBeNull();
+      expect(
+        getFittedSensorValueFontSize({ fontSize: 18, naturalWidth: 91, availableWidth: 90 })
+      ).toBeNull();
+    });
+
+    it('shrinks a reading in proportion to what is missing, in half pixels', () => {
+      // 180px of text at 18px in 120px: two thirds, 12px.
+      expect(
+        getFittedSensorValueFontSize({ fontSize: 18, naturalWidth: 180, availableWidth: 120 })
+      ).toBe(12);
+      // 130 in 100 at 24px is 18.46px; the half pixel below keeps it inside.
+      expect(
+        getFittedSensorValueFontSize({ fontSize: 24, naturalWidth: 130, availableWidth: 100 })
+      ).toBe(18);
+    });
+
+    it('never shrinks a reading past the floor, and the ellipsis takes over there', () => {
+      expect(
+        getFittedSensorValueFontSize({ fontSize: 18, naturalWidth: 600, availableWidth: 60 })
+      ).toBe(SENSOR_VALUE_MIN_FONT_PX);
+    });
+
+    it('never makes a reading bigger, even when the floor is above its size', () => {
+      expect(
+        getFittedSensorValueFontSize({ fontSize: 8, naturalWidth: 100, availableWidth: 50 })
+      ).toBe(8);
+    });
+
+    it('gives up on a tile it cannot measure', () => {
+      for (const metrics of [
+        { fontSize: 0, naturalWidth: 100, availableWidth: 50 },
+        { fontSize: 18, naturalWidth: 0, availableWidth: 50 },
+        { fontSize: 18, naturalWidth: 100, availableWidth: 0 },
+        { fontSize: NaN, naturalWidth: 100, availableWidth: 50 },
+      ]) {
+        expect(getFittedSensorValueFontSize(metrics)).toBeNull();
+      }
     });
   });
 });

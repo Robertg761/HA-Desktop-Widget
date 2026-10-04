@@ -18,7 +18,7 @@ const { appId: APP_ID } = require('../package.json');
 
 const OMARCHY_BAR_PLUGIN_ID = APP_ID;
 const OMARCHY_BAR_STATUS_VERSION = 1;
-const PLUGIN_FILES = Object.freeze(['manifest.json', 'Countdown.js', 'Widget.qml']);
+const PLUGIN_FILES = Object.freeze(['manifest.json', 'Clip.js', 'Countdown.js', 'Widget.qml']);
 const MAX_PANEL_ENTITIES = 48;
 const MAX_BAR_ENTITIES = 4;
 const MAX_PANEL_SECTIONS = 12;

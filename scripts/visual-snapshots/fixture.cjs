@@ -19,6 +19,8 @@ const RESETTABLE_SETTINGS = [
   'activeTabId',
   'entityAlerts',
   'primaryCards',
+  'primaryMediaPlayer',
+  'globalHotkeys',
   'comparisonGraphs',
   'quickAccessTileOptions',
 ];
@@ -154,6 +156,22 @@ const PAGE_SETS = {
   ],
 };
 
+// Names and readings that strain a tile, a dialog title or a row: what Home Assistant's own
+// generated names, an unbroken German compound and a long-running film do to the layout. The edge
+// scenes show this page; the entities are listed here so the fixture test can see them.
+const EDGE_ENTITIES = [
+  'light.hallway_ceiling_long',
+  'sensor.energy_total',
+  'switch.compound_name',
+  'sensor.long_named_temperature',
+  'climate.heat_pump',
+  'cover.patio_awning_long',
+];
+PAGE_SETS.edge = [
+  { id: 'default', name: 'Home', entityIds: EDGE_ENTITIES },
+  { id: 'spare', name: 'Spare', entityIds: ['light.desk_lamp'] },
+];
+
 // Twelve pages with German names, two of them long enough to be cut short on the strip.
 const GERMAN_PAGE_NAMES = [
   'Wohnzimmer',
@@ -215,6 +233,9 @@ function buildStates(now = new Date()) {
       max_color_temp_kelvin: 6500,
     }),
     entity('switch.coffee_maker', 'off', { friendly_name: 'Coffee maker' }),
+    // On no page. The mock server refuses every service call for it, so a scene that runs its
+    // command from the command palette gets the "could not run command" error toast.
+    entity('light.unreachable', 'on', { friendly_name: 'Unreachable lamp' }),
     entity('sensor.office_temp', '21.4', {
       friendly_name: 'Office temp',
       unit_of_measurement: '°C',
@@ -336,6 +357,8 @@ function buildStates(now = new Date()) {
     }),
     // Create and update items (TodoListEntityFeature bits 1 and 4).
     entity('todo.shopping', '3', { friendly_name: 'Shopping list', supported_features: 5 }),
+    // On no page: a list long enough to scroll in a dialog, for the scene that holds the add field.
+    entity('todo.errands', '10', { friendly_name: 'Errands', supported_features: 5 }),
     entity('calendar.family', 'off', {
       friendly_name: 'Family calendar',
       message: 'Dentist',
@@ -403,6 +426,60 @@ function buildStates(now = new Date()) {
     entity('automation.morning_routine', 'on', { friendly_name: 'Morning routine' }),
     entity('person.alex', 'home', { friendly_name: 'Alex' })
   );
+  // The edge-case page: a 95-character light, a seven-figure energy reading, a name that is one
+  // unbroken word, a 90-character sensor, a heat/cool thermostat with half-degree bounds, and a
+  // cover with an entity-id style name; plus a film that runs past an hour for the media card.
+  states.push(
+    entity('light.hallway_ceiling_long', 'on', {
+      friendly_name:
+        'Upstairs hallway ceiling light above the stairs next to the master bedroom door (dimmable, warm)',
+      brightness: 153,
+      supported_color_modes: ['brightness'],
+      color_mode: 'brightness',
+    }),
+    entity('sensor.energy_total', '1234567890.12', {
+      friendly_name: 'Energy total',
+      unit_of_measurement: 'Wh',
+      device_class: 'energy',
+      state_class: 'total_increasing',
+    }),
+    entity('switch.compound_name', 'off', {
+      friendly_name: 'Wohnzimmerdeckenbeleuchtungsschalterhinterdemgroßenfensterlinks',
+    }),
+    entity('sensor.long_named_temperature', '123456.79', {
+      friendly_name:
+        'Living room north wall temperature sensor behind the bookshelf next to the window frame',
+      unit_of_measurement: 'W',
+      device_class: 'power',
+      state_class: 'measurement',
+    }),
+    entity('climate.heat_pump', 'heat_cool', {
+      friendly_name: 'Heat pump',
+      current_temperature: 21.5,
+      target_temp_low: 19.5,
+      target_temp_high: 24.5,
+      target_temp_step: 0.5,
+      hvac_modes: ['off', 'heat', 'cool', 'heat_cool', 'fan_only'],
+      min_temp: 7,
+      max_temp: 30,
+      supported_features: 2,
+    }),
+    entity('cover.patio_awning_long', 'open', {
+      friendly_name: 'sensor_living_room_north_wall_temperature_sensor_behind_bookshelf',
+      current_position: 70,
+      supported_features: 15,
+    }),
+    entity('media_player.theater', 'playing', {
+      friendly_name: 'Theater',
+      media_title: 'The Long Goodbye',
+      media_artist: "Director's cut",
+      volume_level: 0.5,
+      media_duration: 6750,
+      media_position: 4350,
+      media_position_updated_at: stamp,
+      supported_features: 152463,
+    })
+  );
   // Enough other entities that the Manage Quick Access list runs past its 50-row page.
   for (let index = 1; index <= 40; index += 1) {
     const number = String(index).padStart(2, '0');
@@ -463,17 +540,37 @@ function buildServices() {
  */
 function buildServiceResponses(now = new Date()) {
   const at = (hours) => new Date(now.getTime() + hours * 3600000).toISOString();
+  const shopping = [
+    { uid: 'milk', summary: 'Oat milk', status: 'needs_action' },
+    { uid: 'bread', summary: 'Sourdough bread', status: 'needs_action' },
+    { uid: 'coffee', summary: 'Coffee beans', status: 'needs_action' },
+    { uid: 'soap', summary: 'Dish soap', status: 'completed' },
+  ];
+  const errands = [
+    'Post the parcel',
+    'Collect the dry cleaning',
+    'Book the car in for a service',
+    'Return the library books',
+    'Pick up the prescription',
+    'Renew the parking permit',
+    'Buy a birthday card',
+    'Drop the bottles at the recycling point',
+    'Order the replacement filter',
+    'Water the plants next door',
+  ].map((summary, index) => ({
+    uid: `errand-${index}`,
+    summary,
+    status: index === 3 ? 'completed' : 'needs_action',
+  }));
   return {
-    'todo.get_items': (message) => ({
-      [message.service_data?.entity_id || 'todo.shopping']: {
-        items: [
-          { uid: 'milk', summary: 'Oat milk', status: 'needs_action' },
-          { uid: 'bread', summary: 'Sourdough bread', status: 'needs_action' },
-          { uid: 'coffee', summary: 'Coffee beans', status: 'needs_action' },
-          { uid: 'soap', summary: 'Dish soap', status: 'completed' },
-        ],
-      },
-    }),
+    'todo.get_items': (message) => {
+      const entityId = message.service_data?.entity_id || 'todo.shopping';
+      return {
+        [entityId]: {
+          items: entityId === 'todo.errands' ? errands : shopping,
+        },
+      };
+    },
     'calendar.get_events': (message) => ({
       [message.service_data?.entity_id || 'calendar.family']: {
         events: [
@@ -510,6 +607,10 @@ function buildConfig(haUrl) {
       background: 'original',
       language: 'en',
       density: 'comfortable',
+      // Reset by every scene: the runner merges a scene's settings over the app's, so a scene that
+      // enlarges the interface would otherwise leave it enlarged for the ones after it.
+      scale: 1,
+      dateFormat: 'system',
       activeTileGlow: true,
       // On by default, taking the theme from an installed Omarchy (so a developer's machine
       // would not show the light theme); omarchyThemeDefaultApplied below makes the app keep it off.
@@ -520,7 +621,11 @@ function buildConfig(haUrl) {
   };
 }
 
+// Entities whose service calls the mock Home Assistant answers with an error.
+const FAILING_ENTITIES = ['light.unreachable'];
+
 module.exports = {
+  FAILING_ENTITIES,
   PAGE_SETS,
   RESETTABLE_SETTINGS,
   TOKEN,

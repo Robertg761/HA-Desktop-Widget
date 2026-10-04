@@ -73,7 +73,8 @@ describe('Renderer Home Assistant connection lifecycle', () => {
     resetMockElectronAPI();
     document.body.innerHTML =
       '<main class="widget-content"><div id="quick-controls"></div></main>' +
-      '<div id="settings-modal" class="hidden"><input id="ha-url" value="" /></div>';
+      '<div id="settings-modal" class="hidden"><input id="ha-url" value="" /></div>' +
+      '<div id="widget-state-live" role="status"></div>';
     document.body.className = '';
     window.history.replaceState({}, '', 'http://localhost/');
 
@@ -200,13 +201,8 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       applyUiPreferences: jest.fn(),
       applyWindowEffects: jest.fn(),
       dismissToast: jest.fn(),
-      closeModal: (...args) => jest.requireActual('../../src/ui-utils.js').closeModal(...args),
-      trapFocus: jest.fn((...args) =>
-        jest.requireActual('../../src/ui-utils.js').trapFocus(...args)
-      ),
-      releaseFocusTrap: jest.fn((...args) =>
-        jest.requireActual('../../src/ui-utils.js').releaseFocusTrap(...args)
-      ),
+      dismissToasts: jest.fn(),
+      ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
     };
     jest.doMock('../../src/ui-utils.js', () => mockUiUtils);
     jest.doMock('../../src/utils.js', () => ({
@@ -296,7 +292,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
 
       expect(panelText()).toContain('Home Assistant authorization expired');
       expect(panelText()).not.toMatch(/token/i);
-      expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+      expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
       expect(mockUiUtils.setStatus).toHaveBeenLastCalledWith(
         false,
         'Home Assistant authorization expired. Reconnect with Home Assistant in Settings.'
@@ -603,7 +599,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
         message.startsWith('Unable to reach Home Assistant')
       );
 
-    it('toasts and logs the failure once, however many retries it takes', async () => {
+    it('says the failure in the connection panel, and logs it once, however many retries it takes', async () => {
       await loadRenderer({ config: tokenConfig() });
       // A retry roughly every minute for seven minutes.
       const now = jest.spyOn(Date, 'now');
@@ -613,7 +609,12 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       }
       now.mockRestore();
 
-      expect(unreachableToasts()).toHaveLength(1);
+      // The panel is on screen with Retry and Open Settings; a toast on the same spot would cover
+      // them and swallow the first click, so the reason is in the panel's copy instead.
+      expect(unreachableToasts()).toHaveLength(0);
+      expect(document.querySelector('#widget-state-panel .widget-state-copy').textContent).toMatch(
+        /^Unable to reach Home Assistant/
+      );
       expect(
         mockLog.error.mock.calls.filter(([label]) => label === 'WebSocket error:')
       ).toHaveLength(1);
@@ -621,21 +622,174 @@ describe('Renderer Home Assistant connection lifecycle', () => {
         'WebSocket error (still retrying):',
         'Could not establish WebSocket connection'
       );
+    });
+
+    it('toasts the failure once per outage where there is no connection panel to say it', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      const now = jest.spyOn(Date, 'now');
+      for (let attempt = 0; attempt < 7; attempt += 1) {
+        now.mockReturnValue(1_000_000 + attempt * 61_000);
+        document.body.classList.remove('widget-state-active');
+        failAttempt();
+      }
+      now.mockRestore();
+
+      expect(unreachableToasts()).toHaveLength(1);
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        expect.stringMatching(/^Unable to reach Home Assistant/),
+        'error',
+        15000,
+        { source: 'connection' }
+      );
 
       connectSuccessfully();
+      document.body.classList.remove('widget-state-active');
       failAttempt();
       expect(unreachableToasts()).toHaveLength(2);
     });
 
-    it('clears its toast when Settings opens so the Save button is reachable', async () => {
+    it('takes the connection toasts down when Settings opens so the Save button is reachable', async () => {
       await loadRenderer({ config: tokenConfig() });
       failAttempt();
-      const toast = mockUiUtils.showToast.mock.results.at(-1).value;
 
       findButton('Open Settings').click();
 
-      expect(mockUiUtils.dismissToast).toHaveBeenCalledWith(toast);
+      expect(mockUiUtils.dismissToasts).toHaveBeenCalledWith('connection');
+      expect(mockUiUtils.dismissToasts).toHaveBeenCalledWith('startup-warning');
       expect(document.getElementById('settings-modal').classList).not.toContain('hidden');
+    });
+
+    it('takes the connection toasts down once the connection is back, so none outlives the recovery', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      failAttempt();
+      mockUiUtils.dismissToasts.mockClear();
+
+      connectSuccessfully();
+
+      expect(mockUiUtils.dismissToasts).toHaveBeenCalledWith('connection');
+      expect(mockUiUtils.dismissToasts).not.toHaveBeenCalledWith('startup-warning');
+    });
+
+    it('says an authentication failure once, however many times Home Assistant rejects the token', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        document.body.classList.remove('widget-state-active');
+        mockWebsocket.emit('message', { type: 'auth_invalid' });
+      }
+
+      expect(
+        mockUiUtils.showToast.mock.calls.filter(([message]) =>
+          /authentication failed/i.test(message)
+        )
+      ).toHaveLength(1);
+    });
+
+    it('keeps one panel, and the keyboard on Retry, however often the retries redraw it', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      failAttempt();
+      const panel = document.getElementById('widget-state-panel');
+      const retry = findButton('Retry');
+      retry.focus();
+
+      // Each attempt reports connecting, then the error, then the close.
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        mockWebsocket.emit('connect-attempt');
+        failAttempt();
+      }
+
+      expect(document.getElementById('widget-state-panel')).toBe(panel);
+      expect(document.querySelectorAll('#widget-state-panel')).toHaveLength(1);
+      expect(findButton('Retry')).toBe(retry);
+      expect(document.activeElement).toBe(retry);
+    });
+
+    it('announces a problem once, not on every retry, through one live region', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      const live = document.getElementById('widget-state-live');
+      const changes = [];
+      new MutationObserver(() => changes.push(live.textContent)).observe(live, {
+        childList: true,
+        characterData: true,
+        subtree: true,
+      });
+      const settleAnnouncement = () => new Promise((resolve) => setTimeout(resolve, 80));
+
+      failAttempt();
+      await settleAnnouncement();
+      expect(live.textContent).toMatch(/^Home Assistant is disconnected\. Unable to reach/);
+      const announcements = changes.filter(Boolean).length;
+      expect(announcements).toBe(1);
+      expect(document.getElementById('widget-state-panel').getAttribute('role')).toBeNull();
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        mockWebsocket.emit('connect-attempt');
+        failAttempt();
+      }
+      await settleAnnouncement();
+      expect(changes.filter(Boolean)).toHaveLength(announcements);
+    });
+
+    // The panel used to be appended below every tile and scrolled into view, which threw the
+    // dashboard to the bottom at each restart of Home Assistant.
+    it('puts the panel above Quick Access and leaves the scroll where it was', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      const content = document.querySelector('.widget-content');
+      content.insertAdjacentHTML('beforeend', '<section class="controls-section"></section>');
+      const scrollIntoView = jest.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+
+      failAttempt();
+
+      const panel = document.getElementById('widget-state-panel');
+      expect(panel.nextElementSibling).toBe(content.querySelector('.controls-section'));
+      expect(scrollIntoView).not.toHaveBeenCalled();
+      delete Element.prototype.scrollIntoView;
+    });
+
+    it('dims the tiles while Home Assistant cannot be reached', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      failAttempt();
+      expect(document.body.classList).toContain('ha-offline');
+
+      connectSuccessfully();
+      await flushAsync();
+      expect(document.body.classList).not.toContain('ha-offline');
+    });
+
+    // Every retry reports a connection attempt, and login is followed by a wait for the state
+    // snapshot; the tiles are as stale then as after the failure, so they must not flash bright.
+    it('keeps the tiles dimmed through each retry and until the states arrive', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      failAttempt();
+      mockWebsocket.emit('connect-attempt');
+      expect(document.body.classList).toContain('ha-offline');
+      failAttempt();
+      expect(document.body.classList).toContain('ha-offline');
+
+      mockWebsocket.emit('connect-attempt');
+      mockWebsocket.emit('message', { type: 'auth_ok' });
+      expect(document.body.classList).toContain('ha-offline');
+
+      connectSuccessfully();
+      await flushAsync();
+      expect(document.body.classList).not.toContain('ha-offline');
+    });
+
+    it('leaves the scroll alone for an empty page too, and ends the page with its panel', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      const content = document.querySelector('.widget-content');
+      content.insertAdjacentHTML('beforeend', '<section class="controls-section"></section>');
+      const scrollIntoView = jest.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+
+      connectSuccessfully();
+      await flushAsync();
+
+      const panel = document.getElementById('widget-state-panel');
+      expect(panel.textContent).toContain('No Quick Access entities yet');
+      expect(content.lastElementChild).toBe(panel);
+      expect(scrollIntoView).not.toHaveBeenCalled();
+      delete Element.prototype.scrollIntoView;
     });
 
     it('shows one connection state instead of a placeholder beside the panel', async () => {

@@ -1,18 +1,24 @@
 /* global process */
 import { t } from './i18n.js';
 import { setIconContent } from './icons.js';
+import { setLineIconContent } from './entity-icons.js';
 import windowGlass from './window-glass.cjs';
 
 const focusTrapHandlers = new WeakMap();
-const focusTrapPreviousFocus = new WeakMap();
-const focusTrapPreviousTile = new WeakMap();
+// Where focus returns when a trapped modal is released: the control that opened it, as found
+// again if it is rebuilt (tile, focus key), and a last resort.
+const focusTrapOpeners = new WeakMap();
 const activeFocusTrapModals = new Set();
+// What each open dialog does on Escape, Enter and a backdrop click; see openDialog().
+const dialogLayers = new WeakMap();
 // One entry per modal that is currently animating out, so a later close (or a re-open) can take
 // the in-flight timer and listener away from the call that installed them.
 const pendingModalCloses = new WeakMap();
 const DEFAULT_FROSTED_STRENGTH = 60;
 const DEFAULT_FROSTED_TINT = 60;
 const MIN_BACKGROUND_OPACITY = 0.08;
+// How much of a Background colour is mixed into the window's own: a hint, not a repaint.
+const BACKGROUND_TINT = { dark: 0.12, light: 0.08 };
 const BACKGROUND_OPACITY_CURVE = 1.35;
 const CUSTOM_THEME_ID_PREFIX = 'custom-';
 // The shared modal exit animation runs for var(--duration-base) (200ms); the fallback timer only
@@ -21,14 +27,15 @@ const CUSTOM_THEME_ID_PREFIX = 'custom-';
 const MODAL_EXIT_FALLBACK_MS = 300;
 const TOAST_EXIT_FALLBACK_MS = 300;
 const TOAST_ICON_NAMES = {
-  success: 'checkCircle',
-  error: 'error',
-  warning: 'warning',
+  success: 'circle-check',
+  error: 'circle-x',
+  warning: 'triangle-alert',
   info: 'info',
 };
 const ACCENT_THEMES = [
   { id: 'original', name: 'Original', color: '#64b5f6', description: 'The classic dark look' },
-  { id: 'indigo', name: 'Indigo', color: '#6366f1', description: 'Focused and modern' },
+  // Nudged from #6366f1, whose white label was 4.47:1, just under the 4.5:1 AA floor.
+  { id: 'indigo', name: 'Indigo', color: '#5f62ef', description: 'Focused and modern' },
   { id: 'violet', name: 'Violet', color: '#8b5cf6', description: 'Creative and bold' },
   { id: 'rose', name: 'Rose', color: '#f43f5e', description: 'Vivid and energetic' },
   { id: 'coral', name: 'Coral', color: '#f97316', description: 'Warm and upbeat' },
@@ -159,6 +166,40 @@ function mixRgb(base, mixin, amount) {
   };
 }
 
+function linearChannel(channel) {
+  const value = channel / 255;
+  return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+}
+
+/** WCAG relative luminance of an {r, g, b} colour. */
+function relativeLuminance({ r, g, b }) {
+  return 0.2126 * linearChannel(r) + 0.7152 * linearChannel(g) + 0.0722 * linearChannel(b);
+}
+
+/** WCAG contrast ratio between two {r, g, b} colours. */
+function contrastBetween(first, second) {
+  const [lighter, darker] = [relativeLuminance(first), relativeLuminance(second)].sort(
+    (a, b) => b - a
+  );
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+const WHITE = { r: 255, g: 255, b: 255 };
+const BLACK = { r: 0, g: 0, b: 0 };
+// The two surfaces accent text has to clear, as the stylesheet paints them. In the dark theme it is
+// the lightest of them, a main view tile (the panel lifted for the V2 look); in the light theme the
+// darkest, the panel with its grey veil. Text sits on those with the accent's own tint behind it (a
+// secondary button, the active page tab, a lit tile), so the tint is mixed in as well.
+const ACCENT_TEXT_SURFACES = {
+  dark: { surface: { r: 44, g: 47, b: 54 }, tint: 0.18 },
+  light: { surface: { r: 228, g: 228, b: 228 }, tint: 0.14 },
+};
+
+const rgbString = ({ r, g, b }) => `rgb(${r}, ${g}, ${b})`;
+// Below this spread between the strongest and weakest channel an accent reads as grey (slate is
+// 0.14, the most muted of the other presets 0.56).
+const NEUTRAL_ACCENT_CHROMA = 0.25;
+
 /**
  * Text colour for content drawn on top of a colour: near-black or white, whichever contrasts
  * more (WCAG relative luminance), so a dark custom accent still gets readable button labels.
@@ -166,37 +207,51 @@ function mixRgb(base, mixin, amount) {
  * @returns {string} '#0a0c10' or '#ffffff'.
  */
 function getReadableTextColor(rgb) {
-  const linear = (channel) => {
-    const value = channel / 255;
-    return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
-  };
-  const luminance = 0.2126 * linear(rgb.r) + 0.7152 * linear(rgb.g) + 0.0722 * linear(rgb.b);
+  const luminance = relativeLuminance(rgb);
   // Contrast with white is 1.05 / (L + 0.05); with #0a0c10 (L ≈ 0.0037) it is (L + 0.05) / 0.0537.
   return 1.05 / (luminance + 0.05) > (luminance + 0.05) / 0.0537 ? '#ffffff' : '#0a0c10';
 }
 
 /**
- * The accent darkened just enough to read as text on the light theme's near-white panes
- * (at least 4.8:1 against #fafafa), so pale accents like aqua or yellow still work for links and
- * secondary buttons. Returns an rgb() string.
+ * The accent moved toward `target` just far enough to reach `minContrast` on the surface the theme
+ * paints behind accent text, bare and with the accent's own tint on it. An accent that already
+ * reads well comes back unchanged.
+ */
+function solveAccentText(rgb, { surface, tint }, target, minContrast) {
+  const tinted = mixRgb(surface, rgb, tint);
+  let color = rgb;
+  for (let amount = 0; amount <= 1; amount += 0.02) {
+    color = mixRgb(rgb, target, amount);
+    // The plain surface counts too: a near-black accent's tint is darker than the surface itself.
+    if (Math.min(contrastBetween(color, surface), contrastBetween(color, tinted)) >= minContrast) {
+      break;
+    }
+  }
+  return rgbString(color);
+}
+
+/**
+ * The accent darkened just enough to read as text on the light theme's panes (at least
+ * `minContrast` on the veiled panel under the accent's tint, which is the darkest place text
+ * sits), so pale accents like aqua or yellow still work for links and secondary buttons. Returns an
+ * rgb() string.
  * @param {{r:number, g:number, b:number}} rgb - Accent colour.
  * @param {number} [minContrast=4.8]
  */
 function getAccentTextOnLight(rgb, minContrast = 4.8) {
-  const linear = (channel) => {
-    const value = channel / 255;
-    return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
-  };
-  const luminance = ({ r, g, b }) => 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
-  const backgroundLuminance = luminance({ r: 250, g: 250, b: 250 });
-  let amount = 0;
-  let color = rgb;
-  while (amount < 0.95) {
-    color = mixRgb(rgb, { r: 0, g: 0, b: 0 }, amount);
-    if ((backgroundLuminance + 0.05) / (luminance(color) + 0.05) >= minContrast) break;
-    amount += 0.05;
-  }
-  return `rgb(${color.r}, ${color.g}, ${color.b})`;
+  return solveAccentText(rgb, ACCENT_TEXT_SURFACES.light, BLACK, minContrast);
+}
+
+/**
+ * The accent lightened just enough to read as text on the dark theme's tiles and panes (at least
+ * `minContrast` on a main view tile under the accent's tint). Indigo, violet, rose, the holiday
+ * reds and any dark custom colour fall short as they are; the default blue is left alone.
+ * Returns an rgb() string.
+ * @param {{r:number, g:number, b:number}} rgb - Accent colour.
+ * @param {number} [minContrast=4.6]
+ */
+function getAccentTextOnDark(rgb, minContrast = 4.6) {
+  return solveAccentText(rgb, ACCENT_TEXT_SURFACES.dark, WHITE, minContrast);
 }
 
 function mapWindowOpacityToBackgroundAlpha(opacity) {
@@ -374,6 +429,29 @@ function resolveBackgroundThemeId(backgroundKey) {
   return themeMap.original ? 'original' : allThemes[0]?.id || 'original';
 }
 
+/**
+ * The fill a primary button takes on hover: the accent stepped toward white in the dark theme and
+ * toward black in the light one. The label colour was picked for the accent at rest, so the step
+ * must not take it below 4.5:1 (or below what it had at rest): an accent whose label is white
+ * steps the other way, in the dark theme too (so Indigo hovers darker there), since a lighter
+ * fill only costs it contrast, and any other step is shortened until the label holds.
+ * @param {{r:number, g:number, b:number}} rgb - Accent colour.
+ * @param {string} onAccent - The label colour picked for the accent, '#0a0c10' or '#ffffff'.
+ * @param {boolean} isLightTheme
+ * @returns {{r:number, g:number, b:number}}
+ */
+function getAccentHoverColor(rgb, onAccent, isLightTheme) {
+  const label = hexToRgb(onAccent);
+  const toward = isLightTheme || onAccent === '#ffffff' ? BLACK : WHITE;
+  const floor = Math.min(4.5, contrastBetween(label, rgb));
+  let hover = rgb;
+  for (let mix = isLightTheme ? 0.18 : 0.22; mix > 0; mix -= 0.02) {
+    hover = mixRgb(rgb, toward, mix);
+    if (contrastBetween(label, hover) >= floor) return hover;
+  }
+  return rgb;
+}
+
 function applyAccentColor(color, accentId = 'custom-preview') {
   const normalizedColor = normalizeHexColor(color);
   const rgb = hexToRgb(normalizedColor);
@@ -383,12 +461,8 @@ function applyAccentColor(color, accentId = 'custom-preview') {
   if (!root) return false;
 
   const isLightTheme = document.body?.classList.contains('theme-light');
-  const hoverMix = isLightTheme ? 0.18 : 0.22;
-  const hoverRgb = mixRgb(
-    rgb,
-    isLightTheme ? { r: 0, g: 0, b: 0 } : { r: 255, g: 255, b: 255 },
-    hoverMix
-  );
+  const onAccent = getReadableTextColor(rgb);
+  const hoverRgb = getAccentHoverColor(rgb, onAccent, isLightTheme);
   const accentBgAlpha = isLightTheme ? 0.12 : 0.18;
   const glowAlpha = isLightTheme ? 0.22 : 0.35;
   const focusAlpha = isLightTheme ? 0.18 : 0.25;
@@ -396,13 +470,15 @@ function applyAccentColor(color, accentId = 'custom-preview') {
   root.style.setProperty('--accent', normalizedColor);
   root.style.setProperty('--accent-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
   root.style.setProperty('--accent-hover', `rgb(${hoverRgb.r}, ${hoverRgb.g}, ${hoverRgb.b})`);
-  root.style.setProperty('--on-accent', getReadableTextColor(rgb));
+  root.style.setProperty('--on-accent', onAccent);
+  // Both themes get a solved text colour; the stylesheet picks the one for the theme.
   root.style.setProperty('--accent-text-light', getAccentTextOnLight(rgb));
   root.style.setProperty('--accent-text-light-hover', getAccentTextOnLight(rgb, 6.5));
-  root.style.setProperty('--primary', normalizedColor);
-  root.style.setProperty('--primary-hover', `rgb(${hoverRgb.r}, ${hoverRgb.g}, ${hoverRgb.b})`);
+  root.style.setProperty('--accent-text-dark', getAccentTextOnDark(rgb));
+  root.style.setProperty('--accent-text-dark-hover', getAccentTextOnDark(rgb, 6.5));
+  // A focus ring is a graphic, so 3:1 is enough; most accents keep their own colour for it.
+  root.style.setProperty('--accent-ring-dark', getAccentTextOnDark(rgb, 3.2));
   root.style.setProperty('--accent-bg', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${accentBgAlpha})`);
-  root.style.setProperty('--border-focus', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.5)`);
   root.style.setProperty(
     '--glow-accent',
     `0 0 20px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${glowAlpha})`
@@ -414,6 +490,11 @@ function applyAccentColor(color, accentId = 'custom-preview') {
 
   if (document.body) {
     document.body.dataset.accent = accentId;
+    // A grey-ish accent (slate, a custom grey) has no hue to tell a lit tile's icon from an idle
+    // one, so the stylesheet draws lit icons in the text colour for it.
+    const chroma = (Math.max(rgb.r, rgb.g, rgb.b) - Math.min(rgb.r, rgb.g, rgb.b)) / 255;
+    if (chroma < NEUTRAL_ACCENT_CHROMA) document.body.dataset.accentNeutral = 'true';
+    else delete document.body.dataset.accentNeutral;
   }
 
   return true;
@@ -472,7 +553,7 @@ function applyBackgroundColor(
 
   const isLightTheme = body.classList.contains('theme-light');
   const base = isLightTheme ? BACKGROUND_BASES.light : BACKGROUND_BASES.dark;
-  const tintAmount = disableTint ? 0 : isLightTheme ? 0.08 : 0.12;
+  const tintAmount = disableTint ? 0 : isLightTheme ? BACKGROUND_TINT.light : BACKGROUND_TINT.dark;
   const tint = (baseRgb) => mixRgb(baseRgb, rgb, tintAmount);
   const setRgbaVar = (name, baseEntry) => {
     const tinted = tint(baseEntry);
@@ -513,8 +594,28 @@ function applyBackgroundColor(
   setBodyRgb('--loading-overlay-rgb', loadingOverlay);
 
   body.dataset.background = backgroundId;
+  // The colour itself, for the Background chip in Settings to show next to the tinted window.
+  if (disableTint) root.style.removeProperty('--background-pick');
+  else root.style.setProperty('--background-pick', normalizedColor);
 
   return true;
+}
+
+/**
+ * The window colour a Background choice gives in the theme that is showing: the theme's own base
+ * with the colour mixed in as lightly as applyBackgroundColor mixes it. The colour picker draws
+ * its swatches with this, so a swatch shows the window it makes and not the full-strength colour.
+ * @param {string|null} color - The Background colour, or null for the untinted base.
+ * @returns {string|null} '#rrggbb', or null for a colour that cannot be read.
+ */
+function getBackgroundWindowColor(color = null) {
+  const isLightTheme = document.body?.classList.contains('theme-light');
+  const { bgColor } = isLightTheme ? BACKGROUND_BASES.light : BACKGROUND_BASES.dark;
+  const rgb = color === null ? null : hexToRgb(normalizeHexColor(color));
+  if (color !== null && !rgb) return null;
+  const tint = rgb ? (isLightTheme ? BACKGROUND_TINT.light : BACKGROUND_TINT.dark) : 0;
+  const mixed = mixRgb(bgColor, rgb || bgColor, tint);
+  return `#${[mixed.r, mixed.g, mixed.b].map((c) => c.toString(16).padStart(2, '0')).join('')}`;
 }
 
 /**
@@ -695,10 +796,21 @@ function shouldSkipExitAnimation() {
  * @param {Object} [options] - Close behaviour.
  * @param {boolean} [options.remove=false] - Remove the modal from the DOM instead of hiding it with `.hidden`.
  * @param {boolean} [options.releaseFocus=false] - Release the modal's focus trap once it is hidden.
+ * @param {boolean} [options.restoreFocus=true] - With `releaseFocus`, hand focus back to the opener.
+ * @param {boolean} [options.animate=true] - False to hide at once, for overlays with no exit animation.
  * @param {Function} [options.onClosed] - Callback invoked after the modal is hidden or removed.
  * @returns {Promise<void>} Resolves once the modal has been hidden or removed.
  */
-function closeModal(modal, { remove = false, releaseFocus = false, onClosed = null } = {}) {
+function closeModal(
+  modal,
+  {
+    remove = false,
+    releaseFocus = false,
+    restoreFocus = true,
+    animate = true,
+    onClosed = null,
+  } = {}
+) {
   return new Promise((resolve) => {
     if (!modal || typeof modal.classList?.add !== 'function') {
       resolve();
@@ -761,7 +873,9 @@ function closeModal(modal, { remove = false, releaseFocus = false, onClosed = nu
           // visibility toggles are not silently pinned shut by a stale inline style.
           if (modal.style?.display) modal.style.display = 'none';
         }
-        if (releaseFocus) releaseFocusTrap(modal);
+        // A close with no exit animation (reduced motion, or an overlay that has none) hands focus
+        // back at once; one that waited for its animation does so a tick later.
+        if (releaseFocus) releaseFocusTrap(modal, { restoreFocus, restoreNow: !animating });
         onClosed?.();
       } catch (error) {
         console.error('Error closing modal:', error);
@@ -772,7 +886,7 @@ function closeModal(modal, { remove = false, releaseFocus = false, onClosed = nu
     const superseded = pendingModalCloses.get(modal);
     if (superseded) waiters.push(...superseded.supersede());
 
-    if (shouldSkipExitAnimation()) {
+    if (!animate || shouldSkipExitAnimation()) {
       finish();
       return;
     }
@@ -810,6 +924,37 @@ function openModal(modal, { display = 'flex' } = {}) {
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Toasts. One manager owns the stack: it keeps the container clear of the buttons of whatever
+// raised them, folds repeats into one toast, caps the stack, keeps problems on screen until they
+// are read, and pauses the clock while a toast is being looked at.
+// ---------------------------------------------------------------------------------------------
+
+const TOAST_FOOTER_GAP_PX = 8;
+const TOAST_LIMIT = 3;
+// A pin window is 168px tall, so one toast at a time is all it can hold. For the same reason an
+// error there does not wait to be dismissed: it would sit over the pin's tile until someone clicked
+// it, and a pin on the desktop layer may never get the keyboard focus that closes it. It lives as
+// long as a warning does, with the same pause while it is being read.
+const TOAST_PIN_LIMIT = 1;
+// Warnings are read, not glanced at: long enough for the sentence at a reading pace.
+const TOAST_MIN_WARNING_MS = 6000;
+const TOAST_MS_PER_CHARACTER = 55;
+// After the pointer leaves or focus moves on, the toast stays long enough to see it go.
+const TOAST_RESUME_MIN_MS = 1500;
+const TOAST_TYPES = new Set(['success', 'error', 'warning', 'info']);
+
+// Where a toast must not sit: the controls its surface is waiting on. Dialogs come first, because
+// anything behind an open dialog is covered by its backdrop and no longer matters.
+const TOAST_DIALOG_AVOID_SELECTOR = '.modal:not(.hidden):not(.modal-closing) .modal-footer';
+const TOAST_SURFACE_AVOID_SELECTOR = [
+  '.first-run-onboarding:not(.hidden) .first-run-actions',
+  '.widget-state-panel .widget-state-actions',
+].join(', ');
+
+// Timing per toast: how long is left, whether the pointer or focus is on it, and the live timer.
+const toastTiming = new WeakMap();
+
 /**
  * Play the toast exit animation and then detach the toast.
  *
@@ -820,6 +965,13 @@ function openModal(modal, { display = 'flex' } = {}) {
 function dismissToast(toast) {
   if (!toast || toast.dataset?.dismissing === 'true') return;
   if (toast.dataset) toast.dataset.dismissing = 'true';
+  const timing = toastTiming.get(toast);
+  clearTimeout(timing?.timer);
+  toastTiming.delete(toast);
+  // A toast that had keyboard focus hands it back to where the user was, not to <body>.
+  if (timing?.returnTo?.isConnected && toast.contains(document.activeElement)) {
+    timing.returnTo.focus({ preventScroll: true });
+  }
 
   let settled = false;
   let fallbackTimer = null;
@@ -835,6 +987,7 @@ function dismissToast(toast) {
     if (fallbackTimer) clearTimeout(fallbackTimer);
     toast.removeEventListener?.('animationend', handleAnimationEnd);
     toast.remove();
+    layoutToasts();
   }
 
   if (shouldSkipExitAnimation()) {
@@ -848,72 +1001,273 @@ function dismissToast(toast) {
 }
 
 /**
- * Display a transient toast notification in the element with id "toast-container".
- *
- * The toast leads with a status icon matching its type, is dismissible by clicking it or from the
- * keyboard, and exits through the shared `.toast-closing` animation.
- *
- * @param {string} message - Text to show inside the toast.
- * @param {string} [type='success'] - Visual variant/class to apply ('success', 'error', 'warning' or 'info').
- * @param {number} [timeout=2000] - Time in milliseconds before the toast begins animating out.
- * @returns {HTMLElement|undefined} The toast element, or undefined when it could not be shown.
+ * Dismiss every toast that was shown with the given `source`.
+ * @param {string} source - The tag passed to {@link showToast}.
  */
-// Toasts sit at the bottom of the window, where an open dialog keeps its footer buttons (Close,
-// Save, Turn On). While a dialog is open, stack them just above its footer instead.
-const TOAST_FOOTER_GAP_PX = 8;
-function placeToastContainer(container) {
-  const footerTops = Array.from(
-    document.querySelectorAll('.modal:not(.hidden):not(.modal-closing) .modal-footer')
-  )
-    .filter((footer) => footer.getClientRects().length > 0)
-    .map((footer) => footer.getBoundingClientRect().top);
-  if (!footerTops.length) {
+function dismissToasts(source) {
+  const container = document.getElementById('toast-container');
+  getLiveToasts(container)
+    .filter((toast) => toast.dataset.source === source)
+    .forEach(dismissToast);
+}
+
+function getLiveToasts(container) {
+  return Array.from(container?.querySelectorAll?.('.toast') || []).filter(
+    (toast) => toast.dataset?.dismissing !== 'true'
+  );
+}
+
+function scheduleToastDismiss(toast, delay) {
+  const timing = toastTiming.get(toast);
+  if (!timing) return;
+  clearTimeout(timing.timer);
+  timing.timer = null;
+  timing.remaining = delay;
+  timing.startedAt = Date.now();
+  if (!timing.paused && Number.isFinite(delay)) {
+    timing.timer = setTimeout(() => dismissToast(toast), delay);
+  }
+}
+
+function setToastPaused(toast, paused) {
+  const timing = toastTiming.get(toast);
+  if (!timing || timing.paused === paused) return;
+  timing.paused = paused;
+  if (paused) {
+    clearTimeout(timing.timer);
+    timing.timer = null;
+    if (Number.isFinite(timing.remaining)) {
+      timing.remaining = Math.max(0, timing.remaining - (Date.now() - timing.startedAt));
+    }
+    return;
+  }
+  if (Number.isFinite(timing.remaining)) {
+    scheduleToastDismiss(toast, Math.max(timing.remaining, TOAST_RESUME_MIN_MS));
+  }
+}
+
+function isPinWindow() {
+  return !!document.body?.classList.contains('desktop-pin-mode');
+}
+
+// How long a toast stays when nobody is reading it. Problems wait to be dismissed: an error that
+// vanishes after two seconds is an error the user may never learn about, and it is announced as an
+// alert for the same reason. A pin window cannot hold one that long (see TOAST_PIN_LIMIT).
+function getToastLifetime(type, message, timeout, inPin = false) {
+  if (type === 'error' && !inPin) return Infinity;
+  if (type === 'warning' || type === 'error') {
+    return Math.max(timeout, TOAST_MIN_WARNING_MS, 1500 + TOAST_MS_PER_CHARACTER * message.length);
+  }
+  return timeout;
+}
+
+/**
+ * Keep the toast stack clear of the controls its surface is waiting on.
+ *
+ * Toasts sit at the bottom of the window, which is also where a dialog keeps its footer buttons
+ * (Close, Save, Turn On), where the first-run wizard keeps Next, and where the connection panel
+ * keeps Retry. The stack is lifted above whichever of those is showing. It is recomputed whenever
+ * one of them opens or closes, as well as when a toast is added, so a stack that was already up
+ * does not end up covering a footer that appeared afterwards, or float where one used to be.
+ */
+function layoutToasts() {
+  if (typeof document === 'undefined') return;
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  if (!container.querySelector('.toast')) {
     container.style.removeProperty('bottom');
     return;
   }
-  const bottom = Math.max(0, window.innerHeight - Math.min(...footerTops)) + TOAST_FOOTER_GAP_PX;
+  const tops = (selector) =>
+    Array.from(document.querySelectorAll(selector))
+      .filter((element) => element.getClientRects().length > 0)
+      .map((element) => element.getBoundingClientRect())
+      // A surface scrolled out of view has nothing for a toast to cover.
+      .filter((rect) => rect.bottom > 0 && rect.top < window.innerHeight)
+      .map((rect) => rect.top);
+  let avoid = tops(TOAST_DIALOG_AVOID_SELECTOR);
+  if (!avoid.length && !document.querySelector('.modal:not(.hidden):not(.modal-closing)')) {
+    avoid = tops(TOAST_SURFACE_AVOID_SELECTOR);
+  }
+  if (!avoid.length) {
+    container.style.removeProperty('bottom');
+    return;
+  }
+  const bottom = Math.max(0, window.innerHeight - Math.min(...avoid)) + TOAST_FOOTER_GAP_PX;
   container.style.bottom = `${Math.round(bottom)}px`;
 }
 
-function showToast(message, type = 'success', timeout = 2000) {
+let toastLayoutWired = false;
+function wireToastLayout() {
+  if (toastLayoutWired || typeof window === 'undefined') return;
+  toastLayoutWired = true;
+  installDialogKeyRouter();
+  window.addEventListener('resize', layoutToasts);
+  // The wizard, the connection panel and the like announce themselves with a class on <body>.
+  if (typeof MutationObserver === 'function' && document.body) {
+    new MutationObserver(layoutToasts).observe(document.body, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+  }
+}
+
+// A dialog is often filled in after it opens: createEntityDetailModal hands its caller an open,
+// empty dialog, and the caller builds the body and sometimes the footer. A stack that was already
+// up would stay docked where the footer was going to be, over buttons that did not exist when it
+// was placed. So while a dialog is open, whatever is added to or taken out of it re-docks the stack.
+const dialogLayoutWatchers = new WeakMap();
+
+function watchDialogLayout(modal) {
+  if (dialogLayoutWatchers.has(modal) || typeof MutationObserver !== 'function') return;
+  const observer = new MutationObserver(() => layoutToasts());
+  observer.observe(modal, { childList: true, subtree: true });
+  dialogLayoutWatchers.set(modal, observer);
+}
+
+function unwatchDialogLayout(modal) {
+  dialogLayoutWatchers.get(modal)?.disconnect();
+  dialogLayoutWatchers.delete(modal);
+}
+
+// With no dialog open, Escape sends away the newest toast. Errors stay until dismissed, and
+// reaching one by Tab means walking the whole page first.
+function dismissNewestToastForEscape(event) {
+  const container = document.getElementById('toast-container');
+  const newest = getLiveToasts(container).pop();
+  if (!newest) return;
+  // Typing in a field is not a request to clear the notice.
+  if (event.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+  event.preventDefault();
+  dismissToast(newest);
+}
+
+/**
+ * Display a toast notification in the element with id "toast-container".
+ *
+ * The toast leads with a status icon matching its type and exits through the shared
+ * `.toast-closing` animation. Errors and warnings are announced as alerts and carry a close
+ * button; errors stay until dismissed (in a pin window, as long as a warning) and warnings stay
+ * long enough to read. Every toast pauses while the pointer or keyboard focus is on it, is
+ * dismissed by click or from the keyboard (Enter, Space or Escape), and is folded into an
+ * identical toast already showing. At most three stay on screen at once (one in a pin window).
+ *
+ * @param {string} message - Text to show inside the toast.
+ * @param {string} [type='success'] - Visual variant/class to apply ('success', 'error', 'warning' or 'info').
+ * @param {number} [timeout=2000] - Time in milliseconds before a success or info toast begins animating out.
+ * @param {Object} [options] - Extra behaviour.
+ * @param {boolean} [options.passive=false] - A notice that asks nothing of the user: it ignores the pointer, so it never swallows a drag aimed at what is under it, and cannot take focus.
+ * @param {string} [options.source] - Tags the toast so its caller can take it down later with {@link dismissToasts}, without keeping hold of the element.
+ * @returns {HTMLElement|undefined} The toast element, or undefined when it could not be shown.
+ */
+function showToast(
+  message,
+  type = 'success',
+  timeout = 2000,
+  { passive = false, source = '' } = {}
+) {
   try {
     const container = document.getElementById('toast-container');
     if (!container) return undefined;
-    placeToastContainer(container);
-    // The same message twice at once is one problem reported twice; the first stays up.
-    const showing = [...container.querySelectorAll('.toast')].find(
+    wireToastLayout();
+    const kind = TOAST_TYPES.has(type) ? type : 'info';
+    const text = String(message ?? '');
+    const inPin = isPinWindow();
+    const lifetime = getToastLifetime(kind, text, timeout, inPin);
+
+    // The same message twice at once is one problem reported twice: the first stays, with a fresh
+    // clock, instead of a second toast joining the stack.
+    const showing = getLiveToasts(container).find(
       (existing) =>
-        existing.dataset?.dismissing !== 'true' &&
-        existing.classList.contains(type) &&
-        existing.querySelector('.toast-message')?.textContent === message
+        existing.classList.contains(kind) &&
+        existing.querySelector('.toast-message')?.textContent === text
     );
-    if (showing) return showing;
+    if (showing) {
+      scheduleToastDismiss(showing, lifetime);
+      layoutToasts();
+      return showing;
+    }
+
+    // A full stack makes room by letting go of the oldest notice, an error last: it is the one
+    // the user has not necessarily seen.
+    const limit = inPin ? TOAST_PIN_LIMIT : TOAST_LIMIT;
+    let live = getLiveToasts(container);
+    while (live.length >= limit) {
+      const evicted = live.find((existing) => !existing.classList.contains('error')) || live[0];
+      dismissToast(evicted);
+      live = live.filter((existing) => existing !== evicted);
+    }
+
     const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
+    toast.className = `toast ${kind}`;
+    if (source) toast.dataset.source = source;
+    // The container is a polite live region for the quiet kinds; a problem is interrupting.
+    if (kind === 'error' || kind === 'warning') toast.setAttribute('role', 'alert');
 
     const icon = document.createElement('span');
     icon.className = 'toast-icon';
     icon.setAttribute('aria-hidden', 'true');
-    setIconContent(icon, TOAST_ICON_NAMES[type] || TOAST_ICON_NAMES.info, { size: 16 });
+    setLineIconContent(icon, TOAST_ICON_NAMES[kind]);
     toast.appendChild(icon);
 
-    const text = document.createElement('span');
-    text.className = 'toast-message';
-    text.textContent = message;
-    toast.appendChild(text);
+    const body = document.createElement('span');
+    body.className = 'toast-message';
+    body.textContent = text;
+    toast.appendChild(body);
 
-    // A toast that outlasts its usefulness should be dismissible rather than merely waited out,
-    // from the keyboard as well: it takes focus with Tab, and Enter, Space or Escape closes it.
-    toast.tabIndex = 0;
-    toast.addEventListener('click', () => dismissToast(toast));
-    toast.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Escape') return;
-      event.preventDefault();
-      dismissToast(toast);
-    });
+    toastTiming.set(toast, { remaining: lifetime, startedAt: Date.now(), timer: null });
+
+    if (passive) {
+      toast.classList.add('toast-passive');
+    } else {
+      // Dismissible by click, and from the keyboard: it takes focus with Tab, and Enter, Space or
+      // Escape closes it.
+      toast.tabIndex = 0;
+      toast.addEventListener('click', () => dismissToast(toast));
+      toast.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Escape') return;
+        event.preventDefault();
+        dismissToast(toast);
+      });
+      if (kind === 'error' || kind === 'warning') {
+        // For the pointer: the toast itself is the keyboard's one stop, so this stays out of Tab.
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'toast-close';
+        close.tabIndex = -1;
+        close.setAttribute('aria-label', t('Close'));
+        setIconContent(close, 'close', { size: 14 });
+        toast.appendChild(close);
+      }
+      // Reading takes longer than the clock allows for: hold it while it is under the pointer
+      // or focused, then give it a moment more.
+      const hold = { hovered: false, focused: false };
+      const update = () => setToastPaused(toast, hold.hovered || hold.focused);
+      toast.addEventListener('pointerenter', () => {
+        hold.hovered = true;
+        update();
+      });
+      toast.addEventListener('pointerleave', () => {
+        hold.hovered = false;
+        update();
+      });
+      toast.addEventListener('focusin', (event) => {
+        const timing = toastTiming.get(toast);
+        if (timing && event.relatedTarget && !toast.contains(event.relatedTarget)) {
+          timing.returnTo = event.relatedTarget;
+        }
+        hold.focused = true;
+        update();
+      });
+      toast.addEventListener('focusout', () => {
+        hold.focused = false;
+        update();
+      });
+    }
 
     container.appendChild(toast);
-    setTimeout(() => dismissToast(toast), timeout);
+    scheduleToastDismiss(toast, lifetime);
+    layoutToasts();
     return toast;
   } catch (error) {
     console.error('Error showing toast:', error);
@@ -1020,6 +1374,11 @@ function applyWindowEffects(config = {}) {
     const backgroundAlpha = mapWindowOpacityToBackgroundAlpha(opacity);
 
     body.classList.toggle('linux-performance-mode', linuxPerformanceMode);
+    // linux-performance-mode is also what Windows draws without acrylic, so a rule meant for Linux
+    // alone cannot key on it. An attribute rather than a class keeps the body's class list, which
+    // the glass tests pin per platform, as it was.
+    if (platform) body.dataset.platform = platform;
+    else delete body.dataset.platform;
     body.style.setProperty('--window-opacity', opacity.toFixed(3));
     body.style.setProperty('--window-bg-alpha', backgroundAlpha.toFixed(3));
     body.style.setProperty('--desktop-pin-window-opacity', backgroundAlpha.toFixed(3));
@@ -1140,12 +1499,22 @@ function getTopFocusTrapModal() {
 }
 
 /**
+ * Whether a dialog is open. While one is, Escape and Enter belong to it and not to the dashboard
+ * behind it (leaving Reorganize mode, for one).
+ * @returns {boolean}
+ */
+function hasOpenDialog() {
+  return getTopFocusTrapModal() !== null;
+}
+
+/**
  * Keep Tab and Escape working in an open dialog after focus has fallen back to `<body>`.
  *
  * A dialog's keydown listeners only hear keys while focus is inside it, and the browser drops
  * focus to `<body>` whenever the focused control is disabled or re-rendered. Tab then walks the
- * page behind an `aria-modal` dialog and Escape does nothing. This brings Tab back into the top
- * dialog and replays Escape inside it so the dialog's own handler closes it as usual.
+ * page behind an `aria-modal` dialog. This brings Tab back into the top dialog. Dialogs opened
+ * with {@link openDialog} get Escape from the document-level router, wherever focus is; any
+ * other trapped modal still has Escape replayed inside it so its own handler closes it.
  * @param {KeyboardEvent} event - A keydown event seen on the window before any other listener.
  */
 let replayingEscape = false;
@@ -1166,6 +1535,7 @@ function handleKeydownWithoutFocus(event) {
     }, 0);
     return;
   }
+  if (dialogLayers.has(modal)) return;
   event.preventDefault();
   event.stopImmediatePropagation();
   replayingEscape = true;
@@ -1212,22 +1582,164 @@ function findTileFocusTarget(descriptor) {
   return (descriptor.className && tile.getElementsByClassName(descriptor.className)[0]) || tile;
 }
 
+// Lists inside and behind a dialog are rebuilt while it is open, so the control that opened it may
+// be replaced by an equivalent one. A rebuilt control keeps its id, or carries `data-focus-key`
+// when it has none (several rows share one button class), and that says which one it was.
+function describeFocusKey(element) {
+  if (!element || element === document.body) return null;
+  const key = element.dataset?.focusKey || null;
+  const id = element.id || null;
+  return key || id ? { key, id } : null;
+}
+
+/**
+ * Find the control carrying a `data-focus-key`.
+ * @param {string} key - The key a rebuilt list gave the control.
+ * @param {ParentNode} [scope=document] - Where to look.
+ * @returns {HTMLElement|null}
+ */
+function findFocusKey(key, scope = document) {
+  if (!key) return null;
+  return (
+    Array.from(scope.querySelectorAll('[data-focus-key]')).find(
+      (candidate) => candidate.dataset.focusKey === key
+    ) || null
+  );
+}
+
+function findFocusKeyTarget(descriptor, scope = document) {
+  if (!descriptor) return null;
+  return (
+    findFocusKey(descriptor.key, scope) || document.getElementById(descriptor.id || '') || null
+  );
+}
+
+/**
+ * Run a render that rebuilds part of the page and keep the keyboard where it was.
+ *
+ * Replacing the focused control sends focus to `<body>`, so the next Tab starts from the top of
+ * the page. When focus was inside `container`, the equivalent control (same id or
+ * `data-focus-key`) takes it back after `render`; failing that the `fallback`, then the control now
+ * at the same position, so deleting a row lands on its neighbour.
+ *
+ * @param {HTMLElement|null} container - The element whose children `render` rebuilds.
+ * @param {Function} render - Rebuilds the container; its return value is passed through.
+ * @param {Object} [options] - Focus behaviour.
+ * @param {HTMLElement|string|Function} [options.fallback] - Element, selector or callback used when the
+ *   focused control no longer exists.
+ * @returns {*} Whatever `render` returned.
+ */
+function renderKeepingFocus(container, render, { fallback = null } = {}) {
+  const active = document.activeElement;
+  const hadFocus = !!container && !!active && active !== container && container.contains(active);
+  if (!hadFocus) return render();
+  const descriptor = describeFocusKey(active);
+  const position = getFocusableElements(container).indexOf(active);
+  const result = render();
+  const now = document.activeElement;
+  if (now && now !== document.body && now.isConnected) return result;
+  // A control that came back hidden (a Clear button with nothing left to clear) cannot take focus.
+  let target = findFocusKeyTarget(descriptor, container);
+  if (target?.checkVisibility?.() === false) target = null;
+  if (!target && fallback) {
+    const resolved = typeof fallback === 'function' ? fallback() : fallback;
+    target = typeof resolved === 'string' ? document.querySelector(resolved) : resolved;
+  }
+  if (!target) {
+    const remaining = getFocusableElements(container);
+    target = remaining[Math.min(Math.max(position, 0), remaining.length - 1)] || null;
+  }
+  target?.focus?.({ preventScroll: true });
+  return result;
+}
+
+/**
+ * Disable controls while something is saved, and hand keyboard focus back when they are enabled
+ * again. The browser drops focus to `<body>` when the focused control becomes disabled and does not
+ * restore it on re-enable, so a keyboard user loses their place after every save.
+ * @param {Iterable<HTMLElement|null>} controls - The controls to disable; nulls are skipped.
+ * @returns {Function} Re-enables them and restores focus if the page was left with none.
+ */
+function disableControlsKeepingFocus(controls) {
+  const list = Array.from(controls).filter(Boolean);
+  const focused = document.activeElement;
+  const hadFocus = list.includes(focused);
+  list.forEach((control) => {
+    control.disabled = true;
+  });
+  return () => {
+    list.forEach((control) => {
+      control.disabled = false;
+    });
+    const active = document.activeElement;
+    if (hadFocus && focused.isConnected && (!active || active === document.body)) {
+      focused.focus({ preventScroll: true });
+    }
+  };
+}
+
+/**
+ * Pick the control a dialog should focus when it opens: the one the caller asked for, one marked
+ * `data-initial-focus`, or else the first control that is not in the header. The header's Close
+ * button comes first in the DOM, and landing there means a stray Enter or Space dismisses the
+ * dialog and the user has to Tab before they can type.
+ * @param {HTMLElement} modal - The dialog overlay.
+ * @param {HTMLElement|string|Function|undefined} initialFocus - Element, selector inside the dialog,
+ *   or a callback returning one.
+ * @returns {HTMLElement|null}
+ */
+function resolveInitialFocus(modal, initialFocus) {
+  const requested =
+    typeof initialFocus === 'function'
+      ? initialFocus(modal)
+      : typeof initialFocus === 'string'
+        ? modal.querySelector(initialFocus)
+        : initialFocus;
+  if (requested && requested.isConnected !== false && !requested.disabled) return requested;
+  const marked = modal.querySelector('[data-initial-focus]:not(:disabled)');
+  if (marked) return marked;
+  const focusable = getFocusableElements(modal);
+  return focusable.find((element) => !element.closest('.modal-header')) || focusable[0] || null;
+}
+
+// A text field that opens with a value in it (a name being edited) starts selected, so typing
+// replaces the name instead of landing in front of it.
+function focusInitialControl(control) {
+  if (!control) return;
+  control.focus();
+  if (control.matches?.('input:not([type]), input[type="text"], input[type="search"]')) {
+    if (control.value) control.select?.();
+  }
+}
+
 /**
  * Activate a focus trap inside a modal element so keyboard Tab navigation cycles within it.
  *
- * Attaches a keydown handler to the provided modal that confines Tab (and Shift+Tab) focus movement to the modal's focusable descendants, sets focus to the first focusable element, and records the previously focused element for later restoration. The handler is stored in the module-level `focusTrapHandlers` WeakMap keyed by the modal.
+ * Attaches a keydown handler to the provided modal that confines Tab (and Shift+Tab) focus movement to the modal's focusable descendants, sets focus to the first meaningful control, and records the previously focused element for later restoration. The handler is stored in the module-level `focusTrapHandlers` WeakMap keyed by the modal.
+ * Dialogs go through {@link openDialog}, which wraps this; call it directly only for overlays that manage their own visibility.
  * @param {HTMLElement} modal - The modal container element within which focus should be trapped.
  * @param {Object} [options] - Trap behaviour.
- * @param {HTMLElement|false} [options.initialFocus] - Element to focus instead of the first focusable one, or false to leave focus where the caller puts it.
+ * @param {HTMLElement|string|Function|false} [options.initialFocus] - Element (or selector, or callback returning one) to focus instead of the first control outside the header, or false to leave focus where the caller puts it.
+ * @param {HTMLElement|string|Function} [options.focusFallback] - Where focus goes on release when the opener has been replaced and cannot be found again.
+ * @param {Object} [options.opener] - The opener record of a dialog this one replaces (internal).
  */
-function trapFocus(modal, { initialFocus } = {}) {
+function trapFocus(modal, { initialFocus, focusFallback = null, opener = null } = {}) {
   try {
     const existingHandler = focusTrapHandlers.get(modal);
     if (existingHandler) {
       modal.removeEventListener('keydown', existingHandler);
     }
-    focusTrapPreviousFocus.set(modal, document.activeElement);
-    focusTrapPreviousTile.set(modal, describeTileFocusTarget(document.activeElement));
+    // A dialog that replaces another takes over the first one's opener, so Escape still lands
+    // where the user started and not on a control inside the dialog that went away.
+    focusTrapOpeners.set(
+      modal,
+      opener || {
+        element: document.activeElement,
+        tile: describeTileFocusTarget(document.activeElement),
+        key: describeFocusKey(document.activeElement),
+        fallback: focusFallback,
+      }
+    );
     const handler = (e) => {
       // Overlays with their own Tab order (camera preview, command palette) already moved focus.
       if (e.key !== 'Tab' || e.defaultPrevented) return;
@@ -1253,8 +1765,11 @@ function trapFocus(modal, { initialFocus } = {}) {
     activeFocusTrapModals.add(modal);
     installKeydownWithoutFocusHandler();
     if (initialFocus !== false) {
-      const target = initialFocus || getFocusableElements(modal)[0];
-      setTimeout(() => target?.focus(), 0);
+      // Resolved when the timer fires, not now: callers add content in the tick after opening.
+      setTimeout(() => {
+        if (!modal.isConnected) return;
+        focusInitialControl(resolveInitialFocus(modal, initialFocus));
+      }, 0);
     }
   } catch (error) {
     console.error('Error trapping focus:', error);
@@ -1286,11 +1801,17 @@ function canRestorePreviousFocus(modal) {
 
 /**
  * Release a focus trap started by {@link trapFocus} and hand focus back to where it was.
+ *
+ * The opener is found again if it was rebuilt meanwhile: by its id or `data-focus-key`, as the
+ * Quick Access tile it belonged to, or failing both through the `focusFallback` given to the trap.
  * @param {HTMLElement} [modal] - The modal to release; the top trapped modal when omitted.
  * @param {Object} [options] - Release behaviour.
  * @param {boolean} [options.restoreFocus=true] - False when the caller moves focus itself.
+ * @param {boolean} [options.restoreNow=false] - Hand focus back before returning, and not only on
+ *   the next tick. For a dialog that closes at once, because the next thing the caller does may
+ *   open another dialog, which then records the control that has focus as the one to return to.
  */
-function releaseFocusTrap(modal, { restoreFocus = true } = {}) {
+function releaseFocusTrap(modal, { restoreFocus = true, restoreNow = false } = {}) {
   try {
     let targetModal = modal;
     if (!targetModal) {
@@ -1311,24 +1832,269 @@ function releaseFocusTrap(modal, { restoreFocus = true } = {}) {
     if (handler) targetModal.removeEventListener('keydown', handler);
     focusTrapHandlers.delete(targetModal);
     activeFocusTrapModals.delete(targetModal);
+    dialogLayers.delete(targetModal);
+    unwatchDialogLayout(targetModal);
+    targetModal.style?.removeProperty('--dialog-depth');
 
-    const previousFocus = focusTrapPreviousFocus.get(targetModal);
-    const previousTile = focusTrapPreviousTile.get(targetModal);
-    focusTrapPreviousFocus.delete(targetModal);
-    focusTrapPreviousTile.delete(targetModal);
-    if (restoreFocus && previousFocus?.focus && (previousFocus.isConnected || previousTile)) {
-      setTimeout(() => {
-        const target = previousFocus.isConnected
-          ? previousFocus
-          : findTileFocusTarget(previousTile);
-        if (!target?.isConnected) return;
+    const {
+      element: previousFocus,
+      tile: previousTile,
+      key: previousKey,
+      fallback,
+    } = focusTrapOpeners.get(targetModal) || {};
+    focusTrapOpeners.delete(targetModal);
+    if (restoreFocus && (previousFocus?.focus || fallback)) {
+      const restore = () => {
+        // The opener can have been replaced, or can sit in a dialog that has closed since.
+        const usable = (element) => !!element?.isConnected && element.checkVisibility?.() !== false;
+        const resolveFallback = () => {
+          const resolved = typeof fallback === 'function' ? fallback() : fallback;
+          return typeof resolved === 'string' ? document.querySelector(resolved) : resolved;
+        };
+        const target = [
+          previousFocus === document.body ? null : previousFocus,
+          findFocusKeyTarget(previousKey),
+          findTileFocusTarget(previousTile),
+          fallback ? resolveFallback() : null,
+        ].find(usable);
+        if (!target) return;
         if (!canRestorePreviousFocus(targetModal)) return;
         target.focus();
-      }, 0);
+      };
+      // On the next tick, once whatever closed this dialog has finished with focus; or now as well
+      // for a dialog that closed at once (the palette running a command that opens a pop-up), so
+      // the pop-up finds focus back on the tile and returns there in turn.
+      if (restoreNow) restore();
+      setTimeout(restore, 0);
     }
   } catch (error) {
     console.error('Error releasing focus trap:', error);
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Dialog layers. Every dialog opens and closes through openDialog()/closeDialog(), which own the
+// parts that must agree between dialogs: the ARIA role and name, the focus trap, where focus lands
+// and returns to, which dialog Escape/Enter/backdrop act on, and stacking.
+// ---------------------------------------------------------------------------------------------
+
+let dialogLabelCounter = 0;
+
+function ensureElementId(element, prefix) {
+  if (!element.id) {
+    dialogLabelCounter += 1;
+    element.id = `${prefix}-${dialogLabelCounter}`;
+  }
+  return element.id;
+}
+
+function labelDialog(modal, { label, labelledBy }) {
+  const requested =
+    typeof labelledBy === 'string' ? document.getElementById(labelledBy) : labelledBy;
+  if (requested) {
+    modal.setAttribute('aria-labelledby', ensureElementId(requested, 'dialog-title'));
+    return;
+  }
+  if (label) {
+    modal.setAttribute('aria-label', label);
+    modal.removeAttribute('aria-labelledby');
+    return;
+  }
+  // A name that points at nothing (or at a whole content container) names nothing useful.
+  const existing = modal.getAttribute('aria-labelledby');
+  if (existing && document.getElementById(existing)) return;
+  if (modal.getAttribute('aria-label')) return;
+  const heading =
+    modal.querySelector('.modal-header h1, .modal-header h2, .modal-header h3') ||
+    modal.querySelector('h1, h2, h3');
+  if (heading) modal.setAttribute('aria-labelledby', ensureElementId(heading, 'dialog-title'));
+}
+
+function describeDialog(modal, describedBy) {
+  if (!describedBy) return;
+  const ids = (Array.isArray(describedBy) ? describedBy : [describedBy])
+    .map((node) => (typeof node === 'string' ? node : node && ensureElementId(node, 'dialog-desc')))
+    .filter(Boolean);
+  if (ids.length) modal.setAttribute('aria-describedby', ids.join(' '));
+}
+
+// Presses that start on the dialog and end on the backdrop (selecting text, dragging a slider
+// past the edge) are not clicks on the backdrop, and must not dismiss it.
+const dialogBackdropWired = new WeakSet();
+function wireDialogBackdrop(modal) {
+  if (dialogBackdropWired.has(modal)) return;
+  dialogBackdropWired.add(modal);
+  let pressStartedInside = false;
+  modal.addEventListener('pointerdown', (event) => {
+    pressStartedInside = event.target !== modal;
+  });
+  modal.addEventListener('click', (event) => {
+    const startedInside = pressStartedInside;
+    pressStartedInside = false;
+    if (event.target !== modal || startedInside) return;
+    const layer = dialogLayers.get(modal);
+    if (!layer?.dismiss || !layer.dismissOnBackdrop || getTopFocusTrapModal() !== modal) return;
+    void layer.dismiss('backdrop');
+  });
+}
+
+// Keys that a control activates itself, so Enter there is that control's click and not the
+// dialog's default action.
+const ENTER_NATIVE_SELECTOR =
+  'button, a[href], summary, select, textarea, [role="button"], [role="option"], [role="tab"], ' +
+  'input[type="button"], input[type="submit"], input[type="checkbox"], input[type="radio"]';
+
+/**
+ * Send Escape and Enter to the top dialog, and only to it.
+ *
+ * One document-level listener instead of one per dialog, so a dialog that opens over another
+ * (a confirmation over Settings) is the only one that hears the key, wherever focus happens to
+ * be, and the dashboard behind never sees an Escape a dialog used. It runs after the controls
+ * inside the dialog, so a dropdown, field or picker that handled the key itself (and called
+ * preventDefault) keeps it.
+ * @param {KeyboardEvent} event
+ */
+function routeDialogKeydown(event) {
+  if (event.defaultPrevented || event.isComposing) return;
+  if (event.key !== 'Escape' && event.key !== 'Enter') return;
+  const modal = getTopFocusTrapModal();
+  const layer = modal && dialogLayers.get(modal);
+  if (!layer) {
+    if (!modal && event.key === 'Escape') dismissNewestToastForEscape(event);
+    return;
+  }
+  // The key that opened this dialog is still on its way up to the document: it was meant for what
+  // raised the dialog, so it must not answer the dialog that just appeared.
+  if (event === layer.openingEvent) return;
+  if (event.key === 'Escape') {
+    if (!layer.dismiss) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    void layer.dismiss('escape');
+    return;
+  }
+  if (!layer.onEnter || event.repeat || event.target?.closest?.(ENTER_NATIVE_SELECTOR)) return;
+  event.preventDefault();
+  void layer.onEnter(event);
+}
+
+let dialogKeyRouterInstalled = false;
+function installDialogKeyRouter() {
+  if (dialogKeyRouterInstalled || typeof document === 'undefined') return;
+  dialogKeyRouterInstalled = true;
+  document.addEventListener('keydown', routeDialogKeydown);
+}
+
+/**
+ * Open a dialog: reveal it, give it its role, name and description, trap focus in it, move focus
+ * to its first meaningful control, and make it the layer Escape, Enter and the backdrop act on.
+ *
+ * Opening over another dialog stacks above it, and closing returns focus to whatever opened it
+ * (or `focusFallback` when that was rebuilt meanwhile). Pair with {@link closeDialog}.
+ *
+ * @param {HTMLElement} modal - The dialog overlay element (the `.modal` container).
+ * @param {Object} [options] - Dialog behaviour.
+ * @param {string|null} [options.display='flex'] - Inline display to write, or null to leave visibility to CSS.
+ * @param {boolean} [options.alert=false] - Use role="alertdialog": a confirmation or error the user must answer.
+ * @param {string} [options.label] - Accessible name when the dialog has no visible heading to point at.
+ * @param {string|HTMLElement} [options.labelledBy] - Heading (or its id) that names the dialog; defaults to the first heading in the header.
+ * @param {string|HTMLElement|Array} [options.describedBy] - Text (or its id) that describes the dialog, read after the name.
+ * @param {HTMLElement|string|Function|false} [options.initialFocus] - First control to focus; defaults to the first one outside the header, or false to leave focus to the caller.
+ * @param {HTMLElement|string|Function} [options.focusFallback] - Where focus returns if the opener was rebuilt and cannot be found.
+ * @param {Function|null} [options.dismiss] - Called with 'escape' or 'backdrop' when the user dismisses this dialog; defaults to {@link closeDialog}. Null makes it undismissable.
+ * @param {boolean} [options.dismissOnBackdrop=true] - False when only Escape and the buttons close it.
+ * @param {Function} [options.onEnter] - Called when Enter is pressed outside a button or link, to run the dialog's default action.
+ * @param {HTMLElement} [options.replaces] - A dialog being rebuilt in place (a pop-up that gains controls while open). The new one takes its place in the stack and its opener, skips the entry animation, and the caller removes the old element.
+ */
+function openDialog(modal, options = {}) {
+  if (!modal || typeof modal.classList?.remove !== 'function') return;
+  const {
+    display = 'flex',
+    alert = false,
+    label,
+    labelledBy,
+    describedBy,
+    initialFocus,
+    focusFallback = null,
+    dismissOnBackdrop = true,
+    onEnter = null,
+    replaces = null,
+  } = options;
+  const dismiss = 'dismiss' in options ? options.dismiss : () => closeDialog(modal);
+
+  modal.setAttribute('role', alert ? 'alertdialog' : 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  labelDialog(modal, { label, labelledBy });
+  describeDialog(modal, describedBy);
+
+  const alreadyOpen = dialogLayers.has(modal) && isFocusTrapModalShown(modal);
+  // The pop-up the user is looking at is rebuilt rather than opened: no second entrance, and the
+  // old one's place in the stack and its opener carry over before it is released.
+  const inheritedOpener = replaces ? focusTrapOpeners.get(replaces) : null;
+  const inheritedDepth = replaces ? replaces.style.getPropertyValue('--dialog-depth') : '';
+  if (replaces) {
+    modal.classList.add('modal-rebuilt');
+    releaseFocusTrap(replaces, { restoreFocus: false });
+  }
+  openModal(modal, { display });
+  // A dialog raised from a keydown handler (Enter on a row, Escape on a field) is opened while that
+  // very event is still being dispatched, so the router would otherwise hand it to the new dialog.
+  const openingEvent = typeof window !== 'undefined' ? window.event : null;
+  dialogLayers.set(modal, {
+    dismiss,
+    dismissOnBackdrop,
+    onEnter,
+    openingEvent: openingEvent?.type === 'keydown' ? openingEvent : null,
+  });
+  wireDialogBackdrop(modal);
+  installDialogKeyRouter();
+
+  if (alreadyOpen) {
+    // Re-opened while showing (a second long-press): keep the opener it will return focus to. A
+    // caller that took focus for itself (initialFocus: false) keeps it.
+    if (initialFocus !== false) focusInitialControl(resolveInitialFocus(modal, initialFocus));
+  } else {
+    // Each dialog opened over another sits one step higher, so the newest is always on top
+    // whatever order the elements happen to be in the document.
+    const depth = Array.from(activeFocusTrapModals).reduce((highest, other) => {
+      if (other === modal || !isFocusTrapModalShown(other)) return highest;
+      return Math.max(highest, Number(other.style.getPropertyValue('--dialog-depth') || 0) + 1);
+    }, 0);
+    modal.style.setProperty('--dialog-depth', inheritedDepth || String(depth));
+    trapFocus(modal, { initialFocus, focusFallback, opener: inheritedOpener });
+  }
+  watchDialogLayout(modal);
+  layoutToasts();
+}
+
+/**
+ * Close a dialog opened with {@link openDialog}: play the exit animation, release the focus trap
+ * and return focus to the opener, then re-dock the toasts it was holding up.
+ * @param {HTMLElement} modal - The dialog overlay element.
+ * @param {Object} [options] - Close behaviour.
+ * @param {boolean} [options.remove=false] - Remove the element instead of hiding it (dialogs built per open).
+ * @param {boolean} [options.restoreFocus=true] - False when the caller moves focus itself.
+ * @param {boolean} [options.animate=true] - False to hide at once, for overlays with no exit animation.
+ * @param {Function} [options.onClosed] - Callback invoked after the dialog is hidden or removed.
+ * @returns {Promise<void>} Resolves once the dialog has been hidden or removed.
+ */
+function closeDialog(
+  modal,
+  { remove = false, restoreFocus = true, animate = true, onClosed = null } = {}
+) {
+  const closed = closeModal(modal, {
+    remove,
+    releaseFocus: true,
+    restoreFocus,
+    animate,
+    onClosed: () => {
+      layoutToasts();
+      onClosed?.();
+    },
+  });
+  // The exit class is already on, so the footer being animated away no longer holds toasts up.
+  layoutToasts();
+  return closed;
 }
 
 function showLoading(show) {
@@ -1390,6 +2156,14 @@ function positionConnectionStatusTooltip(target) {
   connectionStatusTooltip.style.top = `${top}px`;
   connectionStatusTooltip.style.left = `${left}px`;
   connectionStatusTooltip.dataset.placement = placeBelow ? 'bottom' : 'top';
+  // Keeping the tooltip inside the window moves it off the dot, so the arrow slides to stay under
+  // it, short of the rounded corners.
+  const arrowInset = 14;
+  const arrowX = Math.max(
+    arrowInset,
+    Math.min(tooltipRect.width - arrowInset, rect.left + rect.width / 2 - left)
+  );
+  connectionStatusTooltip.style.setProperty('--arrow-x', `${arrowX}px`);
 }
 
 function showConnectionStatusTooltip(target, { pinned = false } = {}) {
@@ -1581,6 +2355,29 @@ window.electronAPI?.onHotkeyRegistrationFailed?.(({ hotkey }) => {
   );
 });
 
+/**
+ * Ask the user to confirm something, in the shared confirmation dialog.
+ *
+ * Focus starts on Cancel, so a stray Enter or Space declines. Enter elsewhere in the dialog
+ * confirms; Escape and a click outside decline.
+ *
+ * @param {string} title - Dialog title.
+ * @param {string} message - What is being asked; also the dialog's accessible description.
+ * @param {Object} [options] - Wording and behaviour.
+ * @param {string} [options.confirmText] - Label of the confirm button.
+ * @param {string} [options.cancelText] - Label of the cancel button.
+ * @param {string} [options.confirmClass='btn-danger'] - Style class of the confirm button.
+ * @param {string} [options.alternateText] - Adds a third choice with this label, for questions with
+ *   two ways forward and a way back (save, discard, keep editing).
+ * @param {string} [options.alternateClass='btn-secondary'] - Style class of the third button.
+ * @param {boolean} [options.confirmFirst=false] - Start on the confirm button, for a question whose
+ *   safe answer is yes. Only then does Enter outside a button confirm; otherwise it does just what
+ *   the focused button does.
+ * @param {HTMLElement|string|Function} [options.focusFallback] - Where focus goes afterwards if the
+ *   control that raised the question is replaced meanwhile.
+ * @returns {Promise<boolean|string>} True for confirm; false for cancel, Escape or a click outside;
+ *   'alternate' for the third button.
+ */
 function showConfirm(title, message, options = {}) {
   return new Promise((resolve) => {
     try {
@@ -1589,6 +2386,7 @@ function showConfirm(title, message, options = {}) {
       const messageEl = document.getElementById('confirm-message');
       const cancelBtn = document.getElementById('confirm-cancel-btn');
       const okBtn = document.getElementById('confirm-ok-btn');
+      const alternateBtn = document.getElementById('confirm-alternate-btn');
 
       if (!modal || !titleEl || !messageEl || !cancelBtn || !okBtn) {
         console.error('Confirm modal elements not found');
@@ -1604,54 +2402,45 @@ function showConfirm(title, message, options = {}) {
 
       // Configure buttons
       okBtn.className = `btn ${options.confirmClass || 'btn-danger'}`;
+      if (alternateBtn) {
+        alternateBtn.hidden = !options.alternateText;
+        alternateBtn.textContent = options.alternateText || '';
+        alternateBtn.className = `btn ${options.alternateClass || 'btn-secondary'}`;
+      }
 
-      // Handle confirmation
-      const handleConfirm = () => {
+      const settle = (result) => {
         cleanup();
-        resolve(true);
+        resolve(result);
       };
-
-      const handleCancel = () => {
-        cleanup();
-        resolve(false);
-      };
-
-      const handleKeydown = (e) => {
-        if (e.key === 'Escape') {
-          handleCancel();
-        } else if (e.key === 'Enter') {
-          // Focus starts on Cancel, and Enter on a focused button is that button's own click.
-          // Confirming here would run the action the user is trying to decline, and the shortcut
-          // also must not fire again while the key that opened the dialog is still held down.
-          if (e.repeat || e.target?.closest?.('button')) return;
-          handleConfirm();
-        }
-      };
+      const handleConfirm = () => settle(true);
+      const handleCancel = () => settle(false);
+      const handleAlternate = () => settle('alternate');
 
       const cleanup = () => {
         okBtn.removeEventListener('click', handleConfirm);
         cancelBtn.removeEventListener('click', handleCancel);
-        modal.removeEventListener('click', handleBackdropClick);
-        document.removeEventListener('keydown', handleKeydown);
-
-        void closeModal(modal, { releaseFocus: true });
-      };
-
-      const handleBackdropClick = (e) => {
-        if (e.target === modal) {
-          handleCancel();
-        }
+        alternateBtn?.removeEventListener('click', handleAlternate);
+        void closeDialog(modal);
       };
 
       // Wire up events
       okBtn.addEventListener('click', handleConfirm);
       cancelBtn.addEventListener('click', handleCancel);
-      modal.addEventListener('click', handleBackdropClick);
-      document.addEventListener('keydown', handleKeydown);
+      alternateBtn?.addEventListener('click', handleAlternate);
 
-      // Show modal
-      openModal(modal);
-      trapFocus(modal);
+      // Show modal. Enter on a focused button is that button's own click, so the dialog's Enter
+      // (confirm) only applies elsewhere, and not while the key that opened it is held down. It
+      // applies only to a question whose safe answer is yes: one that starts on Cancel is asking
+      // about something that cannot be undone, and an Enter that lands on the message text (after
+      // a click there) must not be the one that runs it.
+      openDialog(modal, {
+        alert: true,
+        describedBy: messageEl,
+        initialFocus: options.confirmFirst ? okBtn : cancelBtn,
+        focusFallback: options.focusFallback,
+        dismiss: handleCancel,
+        onEnter: options.confirmFirst ? handleConfirm : null,
+      });
     } catch (error) {
       console.error('Error showing confirm dialog:', error);
       resolve(false);
@@ -1677,8 +2466,16 @@ export {
   showToast,
   copyTextToClipboard,
   dismissToast,
+  dismissToasts,
+  layoutToasts,
   closeModal,
   openModal,
+  openDialog,
+  closeDialog,
+  hasOpenDialog,
+  renderKeepingFocus,
+  disableControlsKeepingFocus,
+  findFocusKey,
   applyTheme,
   setCustomThemes,
   applyAccentTheme,
@@ -1701,6 +2498,11 @@ export {
   setStatus,
   showConfirm,
   hexToRgb,
+  mixRgb,
+  contrastBetween,
+  getAccentHoverColor,
+  getBackgroundWindowColor,
+  getAccentTextOnDark,
   getAccentTextOnLight,
   getReadableTextColor,
   miredsToKelvin,

@@ -196,6 +196,7 @@ describe('preload Electron API', () => {
       ['onDesktopPinSnapshotNeeded', 'desktop-pin-snapshot-needed'],
       ['onTrayEntitiesRefreshNeeded', 'tray-entities-refresh-needed'],
       ['onDesktopPinActionRequested', 'desktop-pin-action-requested'],
+      ['onDesktopPinEditModeEnded', 'desktop-pin-edit-mode-ended'],
       ['onEntityTileHotkeyRequested', 'entity-tile-hotkey-requested'],
       ['onDesktopCompanionStateChanged', 'desktop-companion-state-changed'],
     ];

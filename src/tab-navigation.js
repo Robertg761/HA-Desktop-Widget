@@ -121,8 +121,75 @@ function bindTabListOrientation(tablist) {
   window.addEventListener('resize', sync);
 }
 
+/**
+ * Give an icon-only tab list a label for the tab under the pointer or focus.
+ *
+ * The Settings rail shows icons and keeps each page's name only for screen readers. A native `title`
+ * appears for the mouse alone, so a keyboard user tabbing the rail saw a ring round a bare icon (a
+ * house, a grid, a wrench) and learned the page by opening it. One shared label element is placed
+ * beside the tab, outside the rail, whose own overflow would clip a tooltip drawn inside it.
+ * It reads the tab's visually hidden `.tab-link-label`, so there is nothing more to translate.
+ *
+ * @param {HTMLElement} tablist - The rail.
+ * @param {string} tabSelector - Selector for the tab buttons inside it.
+ * @param {HTMLElement} [host] - Where the label lives; the rail's dialog by default.
+ */
+function bindTabTooltips(tablist, tabSelector, host = tablist.closest('.modal-content')) {
+  if (!host || tablist.dataset.tabTooltips) return;
+  tablist.dataset.tabTooltips = 'true';
+  let tooltip = null;
+  const ensure = () => {
+    if (tooltip) return tooltip;
+    tooltip = document.createElement('div');
+    tooltip.className = 'tab-tooltip';
+    // The tab already has its name; this is a visual aid, so assistive technology skips it.
+    tooltip.setAttribute('aria-hidden', 'true');
+    host.appendChild(tooltip);
+    return tooltip;
+  };
+  const hide = () => tooltip?.classList.remove('visible');
+  const show = (tab) => {
+    const label = tab.querySelector('.tab-link-label')?.textContent.trim();
+    if (!label) return;
+    const bubble = ensure();
+    bubble.textContent = label;
+    bubble.classList.add('visible');
+    const hostRect = host.getBoundingClientRect();
+    const rect = tab.getBoundingClientRect();
+    const gap = 8;
+    const vertical = tablist.getAttribute('aria-orientation') !== 'horizontal';
+    const rtl = getTextDirection(tablist) === 'rtl';
+    const size = bubble.getBoundingClientRect();
+    // Beside a column of tabs; below a row of them. Coordinates are the host's, which is positioned.
+    const top = vertical ? rect.top + rect.height / 2 - size.height / 2 : rect.bottom + gap;
+    const left = vertical
+      ? rtl
+        ? rect.left - size.width - gap
+        : rect.right + gap
+      : rect.left + rect.width / 2 - size.width / 2;
+    bubble.style.top = `${Math.round(top - hostRect.top)}px`;
+    bubble.style.left = `${Math.round(Math.max(gap, left - hostRect.left))}px`;
+  };
+  tablist.addEventListener('pointerover', (event) => {
+    const tab = event.target.closest?.(tabSelector);
+    if (tab) show(tab);
+  });
+  tablist.addEventListener('pointerout', (event) => {
+    if (event.target.closest?.(tabSelector)) hide();
+  });
+  tablist.addEventListener('focusin', (event) => {
+    const tab = event.target.closest?.(tabSelector);
+    if (tab) show(tab);
+  });
+  tablist.addEventListener('focusout', hide);
+  // Choosing a page makes its title the label; scrolling the rail moves the tab away from it.
+  tablist.addEventListener('click', hide);
+  tablist.addEventListener('scroll', hide, { passive: true });
+}
+
 export {
   bindTabListKeyboard,
+  bindTabTooltips,
   bindTabListOrientation,
   getNextTabIndex,
   getTextDirection,

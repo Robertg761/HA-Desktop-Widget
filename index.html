@@ -116,6 +116,7 @@
           title="Home Assistant Notifications"
           data-i18n-aria-label="Home Assistant Notifications"
           aria-label="Home Assistant Notifications"
+          aria-describedby="persistent-notifications-count"
           aria-hidden="true"
         >
           <span id="persistent-notifications-icon" class="notification-bell-icon">
@@ -440,8 +441,6 @@
             id="settings-tab-general"
             aria-controls="general-tab"
             data-tab="general"
-            title="General"
-            data-i18n-title="General"
           >
             <svg
               class="tab-link-icon"
@@ -471,8 +470,6 @@
             aria-controls="personalization-tab"
             tabindex="-1"
             data-tab="personalization"
-            title="Appearance"
-            data-i18n-title="Appearance"
           >
             <svg
               class="tab-link-icon"
@@ -505,8 +502,6 @@
             aria-controls="dashboard-tab"
             tabindex="-1"
             data-tab="dashboard"
-            title="Dashboard"
-            data-i18n-title="Dashboard"
           >
             <svg
               class="tab-link-icon"
@@ -536,8 +531,6 @@
             aria-controls="hotkeys-tab"
             tabindex="-1"
             data-tab="hotkeys"
-            title="Hotkeys"
-            data-i18n-title="Hotkeys"
           >
             <svg
               class="tab-link-icon"
@@ -572,8 +565,6 @@
             aria-controls="alerts-tab"
             tabindex="-1"
             data-tab="alerts"
-            title="Alerts"
-            data-i18n-title="Alerts"
           >
             <svg
               class="tab-link-icon"
@@ -603,8 +594,6 @@
             aria-controls="advanced-tab"
             tabindex="-1"
             data-tab="advanced"
-            title="Advanced"
-            data-i18n-title="Advanced"
           >
             <svg
               class="tab-link-icon"
@@ -640,7 +629,12 @@
             />
             <p id="settings-search-status" class="form-help" role="status"></p>
           </div>
-          <div id="settings-search-results" hidden></div>
+          <div
+            id="settings-search-results"
+            role="region"
+            aria-labelledby="settings-search-status"
+            hidden
+          ></div>
           <div
             id="general-tab"
             class="tab-content active"
@@ -671,12 +665,7 @@
                     data-i18n-placeholder="http://homeassistant.local"
                   />
                 </div>
-                <div
-                  id="ha-oauth-status"
-                  class="connection-test-status"
-                  role="status"
-                  aria-live="polite"
-                ></div>
+                <div id="ha-oauth-status" class="connection-test-status" role="status"></div>
                 <p
                   id="secure-storage-notice"
                   class="form-help form-warning hidden"
@@ -735,7 +724,6 @@
                       id="test-ha-connection-status"
                       class="connection-test-status"
                       role="status"
-                      aria-live="polite"
                     ></div>
                   </div>
                 </details>
@@ -1009,6 +997,27 @@
                         </div>
                         <div class="custom-color-field">
                           <label
+                            for="custom-color-hex"
+                            class="custom-color-field-label"
+                            data-i18n="Hex"
+                            >Hex</label
+                          >
+                          <input
+                            id="custom-color-hex"
+                            spellcheck="false"
+                            autocapitalize="off"
+                            autocomplete="off"
+                            type="text"
+                            maxlength="7"
+                            placeholder="#RRGGBB"
+                            data-i18n-placeholder="#RRGGBB"
+                            aria-label="Hex color"
+                            data-i18n-aria-label="Hex color"
+                            aria-describedby="custom-color-hex-error"
+                          />
+                        </div>
+                        <div class="custom-color-field">
+                          <label
                             for="custom-color-r"
                             class="custom-color-field-label"
                             data-i18n="Red (R)"
@@ -1058,27 +1067,6 @@
                             inputmode="numeric"
                           />
                         </div>
-                        <div class="custom-color-field">
-                          <label
-                            for="custom-color-hex"
-                            class="custom-color-field-label"
-                            data-i18n="Hex"
-                            >Hex</label
-                          >
-                          <input
-                            id="custom-color-hex"
-                            spellcheck="false"
-                            autocapitalize="off"
-                            autocomplete="off"
-                            type="text"
-                            maxlength="7"
-                            placeholder="#RRGGBB"
-                            data-i18n-placeholder="#RRGGBB"
-                            aria-label="Hex color"
-                            data-i18n-aria-label="Hex color"
-                            aria-describedby="custom-color-hex-error"
-                          />
-                        </div>
                         <div class="custom-color-action">
                           <span
                             class="custom-color-field-label"
@@ -1102,14 +1090,6 @@
                         data-i18n="Use 3 or 6 hex digits, for example #2E9BD6"
                       >
                         Use 3 or 6 hex digits, for example #2E9BD6
-                      </div>
-                      <div
-                        id="custom-editor-save-lock-hint"
-                        class="form-help custom-editor-save-lock-hint hidden"
-                        data-i18n="Main Save is temporarily disabled while editing custom color. Click outside these fields to continue."
-                      >
-                        Main Save is temporarily disabled while editing custom color. Click outside
-                        these fields to continue.
                       </div>
                     </div>
                     <div
@@ -1671,12 +1651,6 @@
                 <div class="form-group setting-row">
                   <div class="setting-text">
                     <label for="date-format" data-i18n="Date format">Date format</label>
-                    <p
-                      class="form-help"
-                      data-i18n="Date and time always use your selected language and regional conventions."
-                    >
-                      Date and time always use your selected language and regional conventions.
-                    </p>
                   </div>
                   <select id="date-format">
                     <option value="system" data-i18n="System default">System default</option>
@@ -1687,6 +1661,14 @@
                     <option value="numeric" data-i18n="Numeric date">Numeric date</option>
                   </select>
                 </div>
+                <!-- It covers both rows above, so it sits under them instead of squeezing the
+                     Date format row's label beside its select. -->
+                <p
+                  class="form-help"
+                  data-i18n="Date and time always use your selected language and regional conventions."
+                >
+                  Date and time always use your selected language and regional conventions.
+                </p>
               </div>
             </section>
             <section class="settings-group">
@@ -2748,9 +2730,10 @@
     <div
       id="confirm-modal"
       class="modal hidden"
-      role="dialog"
+      role="alertdialog"
       aria-modal="true"
       aria-labelledby="confirm-title"
+      aria-describedby="confirm-message"
     >
       <div class="modal-content confirm-modal-content">
         <div class="modal-header">
@@ -2768,6 +2751,12 @@
           >
             Cancel
           </button>
+          <button
+            type="button"
+            id="confirm-alternate-btn"
+            class="btn btn-secondary"
+            hidden
+          ></button>
           <button type="button" id="confirm-ok-btn" class="btn btn-danger" data-i18n="Remove">
             Remove
           </button>
@@ -2798,6 +2787,7 @@
         </div>
         <div class="modal-body">
           <p
+            id="donate-intro"
             class="help-text"
             data-i18n="Thank you for considering a donation! Pick an amount below and checkout opens on GitHub Sponsors with everything pre-filled."
           >
@@ -2820,8 +2810,10 @@
             </label>
           </div>
           <div class="form-group">
-            <label for="donate-custom-amount" data-i18n="Amount (USD)">Amount (USD)</label>
-            <div class="donate-amount-grid">
+            <label id="donate-amount-label" for="donate-custom-amount" data-i18n="Amount (USD)"
+              >Amount (USD)</label
+            >
+            <div class="donate-amount-grid" role="group" aria-labelledby="donate-amount-label">
               <button type="button" class="donate-amount-chip" data-amount="3" aria-pressed="false">
                 $3
               </button>
@@ -2859,6 +2851,12 @@
               placeholder="Custom amount"
               data-i18n-placeholder="Custom amount"
             />
+            <p
+              id="donate-amount-error"
+              class="form-help donate-amount-error"
+              role="alert"
+              hidden
+            ></p>
           </div>
           <p
             class="help-text donate-secure-note"
@@ -2940,188 +2938,6 @@
               </button>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Global Hotkeys Management Modal -->
-    <div
-      id="hotkeys-modal"
-      class="modal hidden"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="hotkeys-title"
-    >
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2 id="hotkeys-title" data-i18n="Manage Global Hotkeys">Manage Global Hotkeys</h2>
-          <button
-            id="close-hotkeys"
-            class="close-btn"
-            type="button"
-            data-i18n-aria-label="Close"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <input
-              type="text"
-              id="hotkey-search"
-              aria-label="Search entities"
-              data-i18n-aria-label="Search entities"
-              spellcheck="false"
-              autocapitalize="off"
-              autocomplete="off"
-              placeholder="Search entities..."
-              data-i18n-placeholder="Search entities..."
-              class="form-control"
-            />
-          </div>
-          <div class="form-group">
-            <label data-i18n="Configure hotkeys">Configure hotkeys</label>
-            <div id="hotkeys-list" class="hotkeys-list">
-              <!-- Hotkey configurations will be loaded here -->
-            </div>
-          </div>
-          <div class="form-group">
-            <label data-i18n="Existing hotkeys">Existing hotkeys</label>
-            <div id="existing-hotkeys-list" class="existing-hotkeys-list">
-              <!-- Existing hotkey configurations will be loaded here -->
-            </div>
-          </div>
-          <div class="hotkey-help">
-            <h4 data-i18n="Hotkey format">Hotkey format</h4>
-            <p>
-              <span data-i18n="Use combinations like:">Use combinations like:</span>
-              <code>Ctrl+Alt+L</code>, <code>Ctrl+Shift+1</code>, <code>Alt+F1</code>
-            </p>
-            <p>
-              <span data-i18n="Available modifiers:">Available modifiers:</span> <code>Ctrl</code>,
-              <code>Alt</code>, <code>Shift</code>, <code>Win</code>
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Entity Alerts Management Modal -->
-    <div
-      id="alerts-modal"
-      class="modal hidden"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="alerts-title"
-    >
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2 id="alerts-title" data-i18n="Manage Entity Alerts">Manage Entity Alerts</h2>
-          <button
-            id="close-alerts"
-            class="close-btn"
-            type="button"
-            data-i18n-aria-label="Close"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <input
-              type="text"
-              id="alert-search"
-              aria-label="Search entities"
-              data-i18n-aria-label="Search entities"
-              spellcheck="false"
-              autocapitalize="off"
-              autocomplete="off"
-              placeholder="Search entities..."
-              data-i18n-placeholder="Search entities..."
-              class="form-control"
-            />
-          </div>
-          <div class="form-group">
-            <label data-i18n="Configure alerts">Configure alerts</label>
-            <div id="alerts-list" class="alerts-list">
-              <!-- Alert configurations will be loaded here -->
-            </div>
-          </div>
-          <div class="form-group">
-            <label data-i18n="Existing alerts">Existing alerts</label>
-            <div id="existing-alerts-list" class="existing-alerts-list">
-              <!-- Existing alert configurations will be loaded here -->
-            </div>
-          </div>
-          <div class="alert-help">
-            <h4 data-i18n="Alert types">Alert types</h4>
-            <p>
-              <strong data-i18n="State Change:">State Change:</strong>
-              <span data-i18n="Notify when entity state changes"
-                >Notify when entity state changes</span
-              >
-            </p>
-            <p>
-              <strong data-i18n="Specific State:">Specific State:</strong>
-              <span data-i18n="Notify when entity reaches a specific state"
-                >Notify when entity reaches a specific state</span
-              >
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Hotkey Configuration Modal -->
-    <div
-      id="hotkey-config-modal"
-      class="modal hidden"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="hotkey-config-title"
-    >
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2 id="hotkey-config-title" data-i18n="Configure Hotkey">Configure Hotkey</h2>
-          <button
-            id="close-hotkey-config"
-            class="close-btn"
-            type="button"
-            data-i18n-aria-label="Close"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label for="hotkey-input" data-i18n="Hotkey combination">Hotkey combination</label>
-            <button
-              type="button"
-              id="hotkey-input"
-              class="btn btn-secondary btn-block hotkey-capture-btn"
-              data-i18n="Click to set hotkey"
-            >
-              Click to set hotkey
-            </button>
-            <div
-              class="form-help"
-              data-i18n-html="Click the button and press your desired key combination. Press <code>ESC</code> to clear."
-            >
-              Click the button and press your desired key combination. Press <code>ESC</code> to
-              clear.
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" id="save-hotkey" class="btn btn-primary" data-i18n="Save">
-            Save
-          </button>
-          <button type="button" id="cancel-hotkey" class="btn btn-secondary" data-i18n="Cancel">
-            Cancel
-          </button>
         </div>
       </div>
     </div>
@@ -3298,6 +3114,10 @@
       <div class="spinner"></div>
       <p data-i18n="Connecting to Home Assistant...">Connecting to Home Assistant...</p>
     </div>
+
+    <!-- Says when the connection panel reports a new problem; the panel itself is not a live
+         region, because it is redrawn on every retry and would be read out on every retry. -->
+    <div id="widget-state-live" class="sr-only" role="status" aria-atomic="true"></div>
 
     <!-- Toast notifications -->
     <!-- aria-atomic="false" so a new toast is announced on its own instead of re-reading the
