@@ -13,6 +13,83 @@ function inQuietHours(quietHours, date = new Date()) {
   return start < end ? minute >= start && minute < end : minute >= start || minute < end;
 }
 
+/**
+ * A state as Home Assistant spells it. People type "Not home" or "Armed Away", Home Assistant says
+ * `not_home` and `armed_away`; case, spaces and underscores are not what an alert is about.
+ */
+function normalizeAlertState(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, '_');
+}
+
+// The states each kind of entity reports, for the Specific State suggestions. Home Assistant's own
+// words, not what a tile shows ("Locked" is the lock state `locked`).
+const DOMAIN_STATES = {
+  binary_sensor: ['on', 'off'],
+  light: ['on', 'off'],
+  switch: ['on', 'off'],
+  input_boolean: ['on', 'off'],
+  fan: ['on', 'off'],
+  automation: ['on', 'off'],
+  update: ['on', 'off'],
+  lock: ['locked', 'unlocked', 'locking', 'unlocking', 'jammed', 'open', 'opening'],
+  cover: ['open', 'closed', 'opening', 'closing'],
+  alarm_control_panel: [
+    'disarmed',
+    'armed_home',
+    'armed_away',
+    'armed_night',
+    'armed_vacation',
+    'armed_custom_bypass',
+    'pending',
+    'arming',
+    'disarming',
+    'triggered',
+  ],
+  person: ['home', 'not_home'],
+  device_tracker: ['home', 'not_home'],
+  media_player: ['playing', 'paused', 'idle', 'standby', 'buffering', 'on', 'off'],
+  climate: ['off', 'heat', 'cool', 'heat_cool', 'auto', 'dry', 'fan_only'],
+  vacuum: ['cleaning', 'docked', 'returning', 'paused', 'idle', 'error'],
+  timer: ['idle', 'active', 'paused'],
+  sun: ['above_horizon', 'below_horizon'],
+};
+
+/**
+ * The states worth offering as a target for an entity: what it reports now, the choices it lists
+ * itself (a select's options, a thermostat's hvac_modes), its kind's usual states, and the two an
+ * offline alert needs. Each once, in that order.
+ */
+function getAlertStateSuggestions(entity) {
+  if (!entity?.entity_id) return ['unavailable', 'unknown'];
+  const domain = entity.entity_id.split('.')[0];
+  const attributes = entity.attributes || {};
+  const own = [attributes.options, attributes.hvac_modes].flatMap((list) =>
+    Array.isArray(list) ? list : []
+  );
+  const suggestions = [entity.state, ...own, ...(DOMAIN_STATES[domain] || [])]
+    .filter((value) => typeof value === 'string' && value.trim())
+    .map((value) => value.trim());
+  return [...new Set([...suggestions, 'unavailable', 'unknown'])];
+}
+
+// Entities without a reading report these. They say nothing about a threshold or a target, so those
+// rules ignore them, unless the rule names that very state ("tell me when it goes offline").
+const NO_READING_STATES = new Set(['unknown', 'unavailable']);
+
+function isUsableState(rule, value) {
+  if (value === null || value === undefined) return false;
+  if (!NO_READING_STATES.has(value)) return true;
+  return !!rule && (!!rule.onStateChange || matchesTargetState(rule, value));
+}
+
+function matchesTargetState(rule, value) {
+  const target = normalizeAlertState(rule.targetState);
+  return !!rule.onSpecificState && !!target && normalizeAlertState(value) === target;
+}
+
 function matchesAlert(rule, value) {
   if (rule.onNumericThreshold) {
     if (value === null || value === undefined || String(value).trim() === '') return false;
@@ -27,7 +104,7 @@ function matchesAlert(rule, value) {
     if (!Number.isFinite(number) || !Number.isFinite(threshold)) return false;
     return rule.comparison === 'below' ? number < threshold : number > threshold;
   }
-  return !!rule.onSpecificState && value === rule.targetState;
+  return matchesTargetState(rule, value);
 }
 
 function createAlertEvaluator({ getConfig, notify, now = () => Date.now() }) {
@@ -81,8 +158,7 @@ function createAlertEvaluator({ getConfig, notify, now = () => Date.now() }) {
       // notified matches that still hold, but take the snapshot as the new change baseline.
       const value = states[id]?.state;
       const rule = getConfig()?.alerts?.[id];
-      const valid =
-        value !== null && value !== undefined && !['unknown', 'unavailable'].includes(value);
+      const valid = isUsableState(rule, value);
       if (
         !valid ||
         (rule?.onStateChange ? value !== record.previous : !matchesAlert(rule || {}, value))
@@ -106,8 +182,7 @@ function createAlertEvaluator({ getConfig, notify, now = () => Date.now() }) {
     const previous = record.previous;
     record.previous = value;
     const changed = previous !== undefined && previous !== value;
-    const valid =
-      value !== null && value !== undefined && !['unknown', 'unavailable'].includes(value);
+    const valid = isUsableState(rule, value);
     const matched = valid && (rule.onStateChange ? changed : matchesAlert(rule, value));
     if (rule.onStateChange ? changed || !valid : !matched) {
       clearTimeout(record.timer);
@@ -137,4 +212,10 @@ function createAlertEvaluator({ getConfig, notify, now = () => Date.now() }) {
   return { check, reset, reconcile, suspend };
 }
 
-export { inQuietHours, matchesAlert, createAlertEvaluator };
+export {
+  inQuietHours,
+  matchesAlert,
+  normalizeAlertState,
+  getAlertStateSuggestions,
+  createAlertEvaluator,
+};

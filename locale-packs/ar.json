@@ -1790,6 +1790,7 @@
     "Press Enter or Space to record a hotkey": "اضغط Enter أو Space لتسجيل اختصار",
     "Connect to Home Assistant to assign hotkeys": "اتصل بـ Home Assistant لتعيين الاختصارات",
     "Hotkey saved. Turn on Entity hotkeys in Settings > Hotkeys to use it.": "تم حفظ الاختصار. فعّل «اختصارات الكيانات» من الإعدادات > الاختصارات لاستخدامه.",
-    "Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again": "اسمح لـ HA Desktop Widget في إعدادات النظام > الخصوصية والأمان > تسهيلات الاستخدام، ثم عيّن الاختصار مرة أخرى"
+    "Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again": "اسمح لـ HA Desktop Widget في إعدادات النظام > الخصوصية والأمان > تسهيلات الاستخدام، ثم عيّن الاختصار مرة أخرى",
+    "Use the state Home Assistant reports, such as not_home. Pick one from the list or type it.": "استخدم الحالة التي يبلغ عنها Home Assistant، مثل not_home. اختر واحدة من القائمة أو اكتبها."
   }
 }

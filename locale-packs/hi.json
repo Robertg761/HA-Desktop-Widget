@@ -1790,6 +1790,7 @@
     "Press Enter or Space to record a hotkey": "हॉटकी रिकॉर्ड करने के लिए Enter या Space दबाएं",
     "Connect to Home Assistant to assign hotkeys": "हॉटकी असाइन करने के लिए Home Assistant से कनेक्ट करें",
     "Hotkey saved. Turn on Entity hotkeys in Settings > Hotkeys to use it.": "हॉटकी सहेजी गई। इसे इस्तेमाल करने के लिए सेटिंग्स > हॉटकी में “एंटिटी हॉटकी” चालू करें।",
-    "Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again": "सिस्टम सेटिंग्स > गोपनीयता और सुरक्षा > एक्सेसिबिलिटी में HA Desktop Widget को अनुमति दें, फिर हॉटकी दोबारा सेट करें"
+    "Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again": "सिस्टम सेटिंग्स > गोपनीयता और सुरक्षा > एक्सेसिबिलिटी में HA Desktop Widget को अनुमति दें, फिर हॉटकी दोबारा सेट करें",
+    "Use the state Home Assistant reports, such as not_home. Pick one from the list or type it.": "Home Assistant द्वारा बताई गई स्थिति का उपयोग करें, जैसे not_home। सूची से चुनें या टाइप करें।"
   }
 }

@@ -265,6 +265,15 @@ function clearReconnectTimer() {
   reconnectTimerId = null;
 }
 
+// websocket.close() is an intentional close, which never emits "close", so the pending duration
+// alerts are only suspended when it is told here. Left running they would fire on an outage the
+// widget already knows about, after the condition may have ended ("front door open for 10 minutes"
+// notifying about a door closed while the Wi-Fi was down).
+function closeWebSocket() {
+  alerts.suspendEntityAlerts?.();
+  websocket.close();
+}
+
 function connectWebSocket() {
   if (IS_DESKTOP_PIN_MODE) return;
   clearReconnectTimer();
@@ -2168,7 +2177,7 @@ window.addEventListener('offline', () => {
   // Use the manager lifecycle so authentication and message subscription state are
   // cleared before the browser delivers the socket's asynchronous close event.
   try {
-    websocket.close();
+    closeWebSocket();
   } catch (error) {
     log.warn('Error closing WebSocket after offline event:', error);
   }
@@ -2254,7 +2263,7 @@ websocket.on('message', (msg) => {
         log.warn('[WS] Home Assistant rejected the access token; refreshing authorization');
         oauthAuthRecoveryAttempted = true;
         updateMainConnectionState('connecting');
-        websocket.close();
+        closeWebSocket();
         setDisconnectedStatus(t('Refreshing Home Assistant authorization...'));
         uiUtils.showLoading(false);
         renderCurrentMode();
@@ -2263,7 +2272,7 @@ websocket.on('message', (msg) => {
       }
       log.error('[WS] Invalid authentication token');
       updateMainConnectionState('auth-failed');
-      websocket.close();
+      closeWebSocket();
       const authFailureMessage = getAuthFailureMessage();
       setDisconnectedStatus(authFailureMessage);
       setDesktopPinConnectionIssue(authFailureMessage);
@@ -2618,7 +2627,7 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
         wasSecureStoragePending ||
         previousConnection !== nextConnection
       ) {
-        websocket.close();
+        closeWebSocket();
         connectWebSocket();
       } else if (previousToken !== (state.CONFIG?.homeAssistant?.token || '') && !websocket.ws) {
         // A refreshed OAuth access token is only needed for the next handshake: an open socket
@@ -2628,7 +2637,7 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
         connectWebSocket();
       }
     } else if (!nowConfigured && configuredRuntimeStarted && wasConfigured) {
-      websocket.close();
+      closeWebSocket();
     }
     if (!nowConfigured && usesOAuth() && !IS_DESKTOP_PIN_MODE) {
       setOAuthRestoreStatus();
@@ -2686,7 +2695,7 @@ window.electronAPI.onTrayEntitiesRefreshNeeded?.(({ reconnect = false, entityId 
   if (IS_DESKTOP_PIN_MODE) return;
   if (reconnect) {
     setTrayEntityConnectionState(false);
-    websocket.close();
+    closeWebSocket();
     connectWebSocket();
     return;
   }

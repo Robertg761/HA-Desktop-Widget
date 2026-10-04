@@ -11048,6 +11048,17 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   font-size: var(--font-size-sm);
 }
 
+/* An alert whose entity Home Assistant does not list: the row keeps the entity id so it can still
+   be edited or removed, and says why it has no name or icon. */
+.alert-missing {
+  margin-inline-start: 6px;
+  padding: 2px 6px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
 .alert-actions {
   display: flex;
   gap: 8px;

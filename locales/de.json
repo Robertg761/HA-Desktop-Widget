@@ -1216,7 +1216,6 @@
   "Alert Type:": "Warnungstyp:",
   "Target state": "Zielzustand",
   "e.g., on, off, open, closed": "z. B. on, off, open, closed",
-  "Enter the state you want to be notified about": "Gib den Zustand ein, über den du benachrichtigt werden möchtest",
   "Select Entity to Configure Alert:": "Entität für die Warnung auswählen:",
   "Heat": "Heizen",
   "Eco": "Eco",
@@ -1699,5 +1698,6 @@
   "Press Enter or Space to record a hotkey": "Enter oder Leertaste drücken, um ein Tastenkürzel aufzuzeichnen",
   "Connect to Home Assistant to assign hotkeys": "Mit Home Assistant verbinden, um Tastenkürzel zuzuweisen",
   "Hotkey saved. Turn on Entity hotkeys in Settings > Hotkeys to use it.": "Tastenkürzel gespeichert. Aktiviere „Entitäts-Tastenkürzel“ unter Einstellungen > Tastenkürzel, um es zu verwenden.",
-  "Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again": "Erlaube HA Desktop Widget unter Systemeinstellungen > Datenschutz & Sicherheit > Bedienungshilfen und lege das Tastenkürzel dann erneut fest"
+  "Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again": "Erlaube HA Desktop Widget unter Systemeinstellungen > Datenschutz & Sicherheit > Bedienungshilfen und lege das Tastenkürzel dann erneut fest",
+  "Use the state Home Assistant reports, such as not_home. Pick one from the list or type it.": "Verwende den Zustand, den Home Assistant meldet, zum Beispiel not_home. Wähle einen aus der Liste oder tippe ihn ein."
 }

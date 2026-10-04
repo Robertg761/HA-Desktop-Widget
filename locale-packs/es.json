@@ -1790,6 +1790,7 @@
     "Press Enter or Space to record a hotkey": "Pulsa Intro o Espacio para grabar un atajo",
     "Connect to Home Assistant to assign hotkeys": "Conéctate a Home Assistant para asignar atajos",
     "Hotkey saved. Turn on Entity hotkeys in Settings > Hotkeys to use it.": "Atajo guardado. Activa «Atajos de entidad» en Configuración > Atajos para usarlo.",
-    "Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again": "Permite HA Desktop Widget en Ajustes del Sistema > Privacidad y seguridad > Accesibilidad y vuelve a configurar el atajo"
+    "Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again": "Permite HA Desktop Widget en Ajustes del Sistema > Privacidad y seguridad > Accesibilidad y vuelve a configurar el atajo",
+    "Use the state Home Assistant reports, such as not_home. Pick one from the list or type it.": "Usa el estado que informa Home Assistant, por ejemplo not_home. Elige uno de la lista o escríbelo."
   }
 }

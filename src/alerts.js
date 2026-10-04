@@ -60,14 +60,67 @@ function checkEntityAlerts(entityId, newState) {
   }
 }
 
+const NOTIFICATION_ICON_SIZE = 64;
+// The same stack as the entity icons in the window: MDI glyphs first, then the platform's emoji.
+const NOTIFICATION_ICON_FONT =
+  '"Material Design Icons", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+
+/**
+ * A desktop notification's icon is a URL, never a character, so an entity's glyph (an emoji, or a
+ * Material Design Icons code point) is drawn to a small image: white on a dark disc, which reads on
+ * a light or a dark notification. Returns undefined when nothing could be drawn (no canvas, or a
+ * font that has not loaded), and the notification then carries the app's own icon.
+ */
+function renderNotificationIcon(glyph) {
+  try {
+    if (!glyph || typeof document === 'undefined') return undefined;
+    const size = NOTIFICATION_ICON_SIZE;
+    const glyphCanvas = document.createElement('canvas');
+    glyphCanvas.width = size;
+    glyphCanvas.height = size;
+    const glyphContext = glyphCanvas.getContext('2d');
+    if (!glyphContext) return undefined;
+    glyphContext.font = `${Math.round(size * 0.56)}px ${NOTIFICATION_ICON_FONT}`;
+    glyphContext.fillStyle = '#ffffff';
+    glyphContext.textAlign = 'center';
+    glyphContext.textBaseline = 'middle';
+    glyphContext.fillText(glyph, size / 2, size / 2 + size * 0.03);
+    const pixels = glyphContext.getImageData(0, 0, size, size).data;
+    let drawn = false;
+    for (let index = 3; index < pixels.length; index += 4) {
+      if (pixels[index] > 0) {
+        drawn = true;
+        break;
+      }
+    }
+    if (!drawn) return undefined;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const context = canvas.getContext('2d');
+    if (!context) return undefined;
+    context.fillStyle = '#2b3445';
+    context.beginPath();
+    context.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+    context.fill();
+    context.drawImage(glyphCanvas, 0, 0);
+    const url = canvas.toDataURL('image/png');
+    return typeof url === 'string' && url.startsWith('data:image/png') ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function showEntityAlert(message, entityId) {
   try {
     if (Notification.permission === 'granted') {
       const entity = state.STATES[entityId];
-      const icon = entity ? getEntityIcon(entity) : '❓';
+      // An entity that is gone has no glyph to draw; its notification keeps the app icon.
+      const icon = entity ? renderNotificationIcon(getEntityIcon(entity)) : undefined;
       const notification = new Notification(t('Home Assistant Alert'), {
         body: message,
-        icon: icon,
+        ...(icon ? { icon } : {}),
         tag: `ha-alert-${entityId}`,
         requireInteraction: false,
       });

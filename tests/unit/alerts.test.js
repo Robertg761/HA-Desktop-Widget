@@ -79,6 +79,35 @@ beforeEach(() => {
   mockState.STATES = {};
   global.Notification.lastNotification = null;
   global.Notification.permission = 'granted';
+  // jsdom has no canvas and reports every getContext call as an error; without one a notification
+  // simply carries the app icon.
+  jest.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+});
+
+afterEach(() => jest.restoreAllMocks());
+
+describe('the Specific State field in the alert dialog', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const html = fs.readFileSync(path.resolve(__dirname, '../../index.html'), 'utf8');
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+
+  it("offers a list of the entity's states, filled in by the dialog", () => {
+    const input = doc.getElementById('target-state-input');
+    expect(input.getAttribute('list')).toBe('target-state-options');
+    expect(doc.getElementById('target-state-options').tagName).toBe('DATALIST');
+  });
+
+  it('says to use the state Home Assistant reports, with an example', () => {
+    const help = (input) => input.closest('.form-group').querySelector('.form-help');
+    const text = help(doc.getElementById('target-state-input')).textContent.replace(/\s+/g, ' ');
+    expect(text.trim()).toBe(
+      'Use the state Home Assistant reports, such as not_home. Pick one from the list or type it.'
+    );
+    expect(help(doc.getElementById('target-state-input')).dataset.i18n).toBe(
+      'Use the state Home Assistant reports, such as not_home. Pick one from the list or type it.'
+    );
+  });
 });
 
 describe('alerts module', () => {
@@ -609,13 +638,86 @@ describe('alerts module', () => {
       expect(mockElectronAPI.showWindow).toHaveBeenCalledTimes(1);
     });
 
-    it('should include entity icon in notification', () => {
-      global.Notification.permission = 'granted';
+    describe("the notification's icon", () => {
+      // A notification icon is a URL, so the entity's glyph has to be drawn to an image; jsdom has
+      // no canvas, so a small one stands in.
+      let context;
+      let getContext;
+      const fakeContext = (drawn = true) => ({
+        font: '',
+        fillStyle: '',
+        textAlign: '',
+        textBaseline: '',
+        fillText: jest.fn(),
+        beginPath: jest.fn(),
+        arc: jest.fn(),
+        fill: jest.fn(),
+        drawImage: jest.fn(),
+        getImageData: jest.fn(() => ({
+          data: new Uint8ClampedArray(drawn ? [255, 255, 255, 255] : [0, 0, 0, 0]),
+        })),
+      });
 
-      // Trigger state change (from 'on' to 'off')
-      alerts.checkEntityAlerts('light.living_room', 'off');
+      beforeEach(() => {
+        global.Notification.permission = 'granted';
+        context = fakeContext();
+        getContext = jest
+          .spyOn(HTMLCanvasElement.prototype, 'getContext')
+          .mockImplementation(() => context);
+        jest
+          .spyOn(HTMLCanvasElement.prototype, 'toDataURL')
+          .mockReturnValue('data:image/png;base64,AAAA');
+      });
 
-      expect(global.Notification.lastNotification.options.icon).toBe('💡');
+      it('is a drawn image, not the glyph itself, which is not a URL and showed nothing', () => {
+        alerts.checkEntityAlerts('light.living_room', 'off');
+
+        const { icon } = global.Notification.lastNotification.options;
+        expect(icon).toBe('data:image/png;base64,AAAA');
+        expect(icon).not.toBe('💡');
+        expect(context.fillText).toHaveBeenCalledWith('💡', expect.any(Number), expect.any(Number));
+        // The MDI font comes first, as it does for the icons in the window.
+        expect(context.font).toContain('"Material Design Icons"');
+        expect(context.font).toContain('Emoji');
+      });
+
+      it('is left out, so the app icon shows, when the glyph drew nothing', () => {
+        context = fakeContext(false);
+
+        alerts.checkEntityAlerts('light.living_room', 'off');
+
+        expect(global.Notification.lastNotification.options).not.toHaveProperty('icon');
+      });
+
+      it('is left out when there is no canvas to draw on', () => {
+        getContext.mockImplementation(() => null);
+
+        alerts.checkEntityAlerts('light.living_room', 'off');
+
+        expect(global.Notification.lastNotification.options).not.toHaveProperty('icon');
+      });
+
+      it('is left out when drawing fails', () => {
+        context.fillText.mockImplementation(() => {
+          throw new Error('font error');
+        });
+
+        alerts.checkEntityAlerts('light.living_room', 'off');
+
+        expect(global.Notification.lastNotification).toBeTruthy();
+        expect(global.Notification.lastNotification.options).not.toHaveProperty('icon');
+      });
+
+      it('is never anything but a data URL or absent', () => {
+        for (const url of [undefined, null, '', 'not a url']) {
+          HTMLCanvasElement.prototype.toDataURL.mockReturnValue(url);
+          alerts.resetEntityAlerts();
+          alerts.initializeEntityAlerts();
+          alerts.checkEntityAlerts('light.living_room', 'off');
+          const options = global.Notification.lastNotification.options;
+          expect(options.icon === undefined || options.icon.startsWith('data:')).toBe(true);
+        }
+      });
     });
 
     it('should show toast notification regardless of permission', () => {
@@ -627,7 +729,7 @@ describe('alerts module', () => {
       expect(showToast).toHaveBeenCalledWith(expect.any(String), 'info', 4000);
     });
 
-    it('should use unknown icon for missing entity', () => {
+    it('should keep the app icon for an entity that is gone', () => {
       global.Notification.permission = 'granted';
 
       // Don't initialize alerts, so no previous state exists
@@ -639,7 +741,7 @@ describe('alerts module', () => {
       alerts.checkEntityAlerts('light.living_room', 'on');
 
       expect(global.Notification.lastNotification).toBeTruthy();
-      expect(global.Notification.lastNotification.options.icon).toBe('❓');
+      expect(global.Notification.lastNotification.options).not.toHaveProperty('icon');
     });
 
     it('should handle notification errors gracefully', () => {

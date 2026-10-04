@@ -1,4 +1,5 @@
 import { applyDesktopAppearance } from './desktop-appearance.js';
+import { getAlertStateSuggestions, normalizeAlertState } from './alert-rules.js';
 import { initializeSettingsSearch } from './settings-search.js';
 import { initializeSettingsFiles } from './settings-files-ui.js';
 import state from './state.js';
@@ -43,7 +44,12 @@ import {
   setConnectionStatusBusy,
 } from './connection-status.js';
 import * as utils from './utils.js';
-import { entityIconMarkup, renderEntityIcon, setLineIconContent } from './entity-icons.js';
+import {
+  entityIconMarkup,
+  lineIconMarkup,
+  renderEntityIcon,
+  setLineIconContent,
+} from './entity-icons.js';
 import {
   PRIMARY_CARD_DEFAULTS,
   PRIMARY_CARD_NONE,
@@ -6508,10 +6514,11 @@ function renderAlertsListInline() {
       alertsList.appendChild(noAlertsMsg);
     }
 
-    // Add existing alerts
+    // Add existing alerts. An entity that is not in the state map (Home Assistant has not sent it
+    // yet, or it was deleted or renamed) keeps its row under its id, so the alert can still be
+    // edited and removed; skipping it made the alerts look lost.
     Object.keys(alerts).forEach((entityId) => {
       const entity = state.STATES[entityId];
-      if (!entity) return;
 
       const alertItem = document.createElement('div');
       alertItem.className = 'alert-item';
@@ -6528,10 +6535,11 @@ function renderAlertsListInline() {
 
       alertItem.innerHTML = `
         <div class="alert-item-info">
-          <span class="alert-icon">${entityIconMarkup(entity)}</span>
+          <span class="alert-icon">${entity ? entityIconMarkup(entity) : lineIconMarkup('bell')}</span>
           <div class="alert-details">
-            <span class="alert-name">${utils.escapeHtml(utils.getEntityDisplayName(entity))}</span>
+            <span class="alert-name">${utils.escapeHtml(entity ? utils.getEntityDisplayName(entity) : entityId)}</span>
             <span class="alert-type">${utils.escapeHtml(alertType)}</span>
+            ${entity ? '' : `<span class="alert-missing">${utils.escapeHtml(t('Unavailable'))}</span>`}
           </div>
         </div>
         <div class="alert-actions">
@@ -6699,6 +6707,16 @@ function relabelAlertAdvancedOptions(root = document) {
   });
 }
 
+// The states this entity really has, so "Specific State" is picked rather than guessed. The field
+// still takes anything: a state that is not listed (a zone name) is a legitimate target.
+function populateAlertStateSuggestions(entity) {
+  const list = document.getElementById('target-state-options');
+  if (!list) return;
+  list.replaceChildren(
+    ...getAlertStateSuggestions(entity).map((suggestion) => new Option(suggestion, suggestion))
+  );
+}
+
 function openAlertConfigModal(entityId) {
   try {
     if (!entityId) {
@@ -6776,6 +6794,7 @@ function openAlertConfigModal(entityId) {
         ? 'specific-state'
         : 'state-change';
     targetStateInput.value = alertConfig?.targetState || '';
+    populateAlertStateSuggestions(state.STATES[entityId]);
     modal.querySelector('#alert-threshold').value = alertConfig?.threshold ?? '';
     modal.querySelector('#alert-duration').value = alertConfig?.durationSeconds || 0;
     modal.querySelector('#alert-cooldown').value = alertConfig?.cooldownSeconds || 0;
@@ -6846,7 +6865,9 @@ async function saveAlert() {
     const alertConfig = {
       onStateChange: stateChangeRadio?.checked || false,
       onSpecificState: specificStateRadio?.checked || false,
-      targetState: targetStateInput?.value.trim() || '',
+      // Saved the way Home Assistant spells it ("Not home" becomes not_home), which is also how
+      // the alert list then reads and what the rule compares against.
+      targetState: normalizeAlertState(targetStateInput?.value),
     };
     const condition = modal.querySelector('#alert-condition')?.value;
     alertConfig.onNumericThreshold = ['above', 'below'].includes(condition);

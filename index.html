@@ -3038,10 +3038,16 @@
               maxlength="255"
               placeholder="e.g., on, off, open, closed"
               data-i18n-placeholder="e.g., on, off, open, closed"
+              list="target-state-options"
               class="form-control"
             />
-            <div class="form-help" data-i18n="Enter the state you want to be notified about">
-              Enter the state you want to be notified about
+            <datalist id="target-state-options"></datalist>
+            <div
+              class="form-help"
+              data-i18n="Use the state Home Assistant reports, such as not_home. Pick one from the list or type it."
+            >
+              Use the state Home Assistant reports, such as not_home. Pick one from the list or type
+              it.
             </div>
           </div>
         </div>

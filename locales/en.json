@@ -1217,7 +1217,6 @@
   "Alert Type:": "Alert Type:",
   "Target state": "Target state",
   "e.g., on, off, open, closed": "e.g., on, off, open, closed",
-  "Enter the state you want to be notified about": "Enter the state you want to be notified about",
   "Select Entity to Configure Alert:": "Select Entity to Configure Alert:",
   "Heat": "Heat",
   "Eco": "Eco",
@@ -1699,5 +1698,6 @@
   "Press Enter or Space to record a hotkey": "Press Enter or Space to record a hotkey",
   "Connect to Home Assistant to assign hotkeys": "Connect to Home Assistant to assign hotkeys",
   "Hotkey saved. Turn on Entity hotkeys in Settings > Hotkeys to use it.": "Hotkey saved. Turn on Entity hotkeys in Settings > Hotkeys to use it.",
-  "Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again": "Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again"
+  "Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again": "Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again",
+  "Use the state Home Assistant reports, such as not_home. Pick one from the list or type it.": "Use the state Home Assistant reports, such as not_home. Pick one from the list or type it."
 }

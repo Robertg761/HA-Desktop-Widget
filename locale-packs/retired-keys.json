@@ -338,5 +338,9 @@
   "Hotkey action": {
     "retiredIn": "4.0.0",
     "reason": "Replaced by a label that names the entity"
+  },
+  "Enter the state you want to be notified about": {
+    "retiredIn": "4.0.0",
+    "reason": "Replaced by help that says to use the Home Assistant state and offers the entity's own"
   }
 }
