@@ -9041,17 +9041,36 @@ function renderTodoTileStateMarkup(entity) {
   return `<div class="control-state todo-active-count">${utils.escapeHtml(getTodoTileCountLabel(entity))}</div>`;
 }
 
-function getCalendarNextEventSummary(entity) {
-  const message = entity?.attributes?.message || t('No upcoming event');
+// The event's title and where it falls, apart, so the tile can cut a long title short and keep
+// the day and time whole.
+function getCalendarNextEventParts(entity) {
+  const title = entity?.attributes?.message || t('No upcoming event');
   const start = formatCalendarTileStart(
     entity?.attributes?.start_time || entity?.attributes?.start,
     { allDay: entity?.attributes?.all_day === true, ongoing: entity?.state === 'on' }
   );
-  return start ? `${message} · ${start}` : message;
+  return { title, start };
+}
+
+function getCalendarNextEventSummary(entity) {
+  const { title, start } = getCalendarNextEventParts(entity);
+  return start ? `${title} · ${start}` : title;
+}
+
+// "Dentist · Tomorrow 8:22 AM" in pieces. A narrow tile cuts a long title short with an ellipsis and
+// moves the day and time to a second line before it would cut them, so the AM/PM never goes missing.
+function getCalendarNextEventMarkup(entity) {
+  const { title, start } = getCalendarNextEventParts(entity);
+  const name = `<span class="calendar-next-event-title">${utils.escapeHtml(title)}</span>`;
+  if (!start) return name;
+  return (
+    `<span class="calendar-next-event-lead">${name}<span class="calendar-next-event-sep"> · </span></span>` +
+    `<span class="calendar-next-event-when">${utils.escapeHtml(start)}</span>`
+  );
 }
 
 function renderCalendarTileStateMarkup(entity) {
-  return `<div class="control-state calendar-next-event">${utils.escapeHtml(getCalendarNextEventSummary(entity))}</div>`;
+  return `<div class="control-state calendar-next-event">${getCalendarNextEventMarkup(entity)}</div>`;
 }
 
 // --- Quick Controls ---
@@ -9879,7 +9898,7 @@ function createControlElement(entity, options = {}) {
         const sensorLabel = escapeHtmlAttribute(sensorDisplay.text);
         stateDisplay = `
         <div class="control-state control-sensor-readout" aria-label="${sensorLabel}">
-          <span class="control-sensor-value">${utils.escapeHtml(sensorDisplay.value)}</span>
+          <span class="control-sensor-value" dir="auto">${utils.escapeHtml(sensorDisplay.value)}</span>
           ${sensorDisplay.unit ? `<span class="control-sensor-unit">${utils.escapeHtml(sensorDisplay.unit)}</span>` : ''}
         </div>
       `;
@@ -10507,7 +10526,7 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
         });
     };
     div.title = t('Click to view {{name}}', { name: utils.getEntityDisplayName(displayEntity) });
-    if (stateEl) stateEl.textContent = getCalendarNextEventSummary(displayEntity);
+    if (stateEl) stateEl.innerHTML = getCalendarNextEventMarkup(displayEntity);
     return true;
   }
 
@@ -13792,7 +13811,7 @@ function showBrightnessSlider(light) {
         if (lightIsOn) {
           lightIsOn = false;
           if (slider) slider.value = '0';
-          if (valueLarge) valueLarge.textContent = '0%';
+          if (valueLarge) valueLarge.textContent = formatPercent(0);
           updateIconAndAccent(0);
           callLightService('turn_off', { entity_id: light.entity_id }, () => {
             lightIsOn = previousLightIsOn;
@@ -14839,11 +14858,11 @@ function showCoverControls(coverEntity) {
         // Visual feedback
         if (action === 'open_cover' && slider) {
           slider.value = '100';
-          if (positionValue) positionValue.textContent = '100%';
+          if (positionValue) positionValue.textContent = formatPercent(100);
           updateVisual(100);
         } else if (action === 'close_cover' && slider) {
           slider.value = '0';
-          if (positionValue) positionValue.textContent = '0%';
+          if (positionValue) positionValue.textContent = formatPercent(0);
           updateVisual(0);
         }
         callCoverService(action, { entity_id: coverEntity.entity_id }, () => {

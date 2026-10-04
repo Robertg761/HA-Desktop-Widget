@@ -7451,9 +7451,35 @@ body.theme-light:not(.high-contrast)
 }
 
 #quick-controls .control-item.calendar-entity .calendar-next-event {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   font-size: var(--font-size-xs-plus);
   line-height: 1.2;
   color: var(--text-secondary);
+}
+
+/* A narrow tile cuts the event's title short, and moves the day and time to a second line before it
+   would cut them. */
+#quick-controls .control-item.calendar-entity .calendar-next-event-lead {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+}
+
+#quick-controls .control-item.calendar-entity .calendar-next-event-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#quick-controls .control-item.calendar-entity .calendar-next-event-sep {
+  flex: none;
+  white-space: pre;
+}
+
+#quick-controls .control-item.calendar-entity .calendar-next-event-when {
+  flex: none;
 }
 
 .entity-name {

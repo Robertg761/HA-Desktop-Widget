@@ -222,6 +222,26 @@ describe('tile and device dialog polish', () => {
       expect(nextEvent()).toBe('Dentist · 10:00 PM');
     });
 
+    it('keeps the day and time whole and lets the title be the part that is cut short', () => {
+      jest.setSystemTime(new Date(2026, 8, 20, 9, 0));
+      const event = (message) =>
+        entity('calendar.work', 'off', { message, start_time: '2026-09-21 08:22:00' });
+      renderTiles([event('Dentist')]);
+      const line = () => tile('calendar.work').querySelector('.calendar-next-event');
+      const piece = (name) => line().querySelector(`.calendar-next-event-${name}`).textContent;
+      expect(piece('title')).toBe('Dentist');
+      expect(piece('sep')).toBe(' · ');
+      expect(piece('when')).toBe('Tomorrow 8:22 AM');
+      // The same split after a live update, and with no time when there is no event.
+      liveUpdate(event('Quarterly planning with the whole team'));
+      expect(piece('title')).toBe('Quarterly planning with the whole team');
+      expect(piece('when')).toBe('Tomorrow 8:22 AM');
+      expect(line().textContent).toBe('Quarterly planning with the whole team · Tomorrow 8:22 AM');
+      liveUpdate(entity('calendar.work', 'off', {}));
+      expect(line().textContent).toBe('No upcoming event');
+      expect(line().querySelector('.calendar-next-event-when')).toBeNull();
+    });
+
     it('shows the date of an all-day event on another day, and All day while it is on', () => {
       const bins = (state, attributes = {}) =>
         entity('calendar.work', state, {
@@ -363,6 +383,23 @@ describe('tile and device dialog polish', () => {
         'Opening 30\u00a0%'
       );
     });
+  });
+
+  it('gives a sensor value its own text direction, so a duration in Arabic reads in order', () => {
+    // 4500 seconds is "1 hr 15 min" in letters; inside the left-to-right readout of a right-to-left
+    // page they would run in the wrong order unless the value decides its own direction.
+    const uptime = entity('sensor.uptime', '4500', {
+      unit_of_measurement: 's',
+      device_class: 'duration',
+      state_class: 'total_increasing',
+    });
+    renderTiles([uptime]);
+    const value = () => tile('sensor.uptime').querySelector('.control-sensor-value');
+    expect(value().getAttribute('dir')).toBe('auto');
+    // Still the same span after a live update, with the new reading in it.
+    liveUpdate(entity('sensor.uptime', '9000', uptime.attributes));
+    expect(value().getAttribute('dir')).toBe('auto');
+    expect(value().textContent).toMatch(/2\D+30/);
   });
 
   it('keeps compact media artwork square', () => {

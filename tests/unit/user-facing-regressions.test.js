@@ -206,6 +206,37 @@ describe('User-facing audit regressions', () => {
     expect(document.querySelector('#cover-position-value').textContent).toBe('0%');
   });
 
+  it('writes the optimistic 0% and 100% the way the next state sync does', async () => {
+    const i18n = require('../../src/i18n.js');
+    i18n.setLocaleBootstrap({
+      languageSetting: 'de',
+      requestedLocale: 'de',
+      activeLocale: 'de',
+      messages: {},
+    });
+    try {
+      // German puts a no-break space before the percent sign, so "0%" would flip to "0 %" later.
+      const percent = (value) => `${value}\u00a0%`;
+      ui.openEntityDetailModal(
+        entity('cover.audit', 'open', { current_position: 40, supported_features: 15 })
+      );
+      document.querySelector('[data-action="open_cover"]').click();
+      expect(document.querySelector('#cover-position-value').textContent).toBe(percent(100));
+      document.querySelector('[data-action="close_cover"]').click();
+      expect(document.querySelector('#cover-position-value').textContent).toBe(percent(0));
+      await jest.advanceTimersByTimeAsync(400);
+
+      ui.openEntityDetailModal(
+        entity('light.audit', 'on', { brightness: 128, supported_color_modes: ['brightness'] })
+      );
+      document.querySelector('#turn-off-btn').click();
+      expect(document.querySelector('#brightness-value-large').textContent).toBe(percent(0));
+      await jest.advanceTimersByTimeAsync(400);
+    } finally {
+      i18n.setLocaleBootstrap({ activeLocale: 'en', languageSetting: 'en', messages: {} });
+    }
+  });
+
   it.each([
     ['#brightness-slider', 80],
     ['#light-color-temp-slider', 4000],
