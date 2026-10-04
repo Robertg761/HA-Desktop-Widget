@@ -704,6 +704,12 @@ const scenes = [
     config: alertsConfig,
     setup: async (ctx) => {
       await openAlertPicker(ctx);
+      // Measure once the dialog has stopped sliding in. A runner that animates it (macOS) would
+      // otherwise record a top that is still moving.
+      await ctx.waitForExpression(
+        `!document.getElementById('alert-entity-picker-modal').getAnimations({ subtree: true }).length`,
+        'the alert picker to finish opening'
+      );
       const search = `document.getElementById('alert-entity-picker-search').getBoundingClientRect().top`;
       await ctx.ev(`window.__pickerSearchTop = ${search}`);
       await typeInto(ctx, '#alert-entity-picker-search', query);
