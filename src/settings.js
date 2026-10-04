@@ -1,6 +1,7 @@
 import { applyDesktopAppearance } from './desktop-appearance.js';
 import { initializeSettingsSearch } from './settings-search.js';
 import { initializeSettingsFiles } from './settings-files-ui.js';
+import { createEmojiSupportCheck } from './emoji-support.js';
 import { clearFieldError, clearFieldErrors, showFieldError } from './field-errors.js';
 import { paginate, renderListPager } from './list-pager.js';
 import { linkSettingsHelpText, setDescribedByLine } from './settings-help-links.js';
@@ -847,10 +848,15 @@ function buildCustomEntityIconChoices(rgiEmojiData) {
     });
   });
 
+  // An emoji the computer's fonts cannot draw would be an empty box here and on the saved tile.
+  // Only the list a person scrolls through is checked: the variants are three quarters of the
+  // emoji and cost three quarters of the check, and they are only ever found by searching.
+  const isDrawn = createEmojiSupportCheck(getComputedStyle(document.body).fontFamily || undefined);
   const otherIcons = new Set();
   const addOther = (icon) => {
     const normalized = normalizeCustomEntityIcon(icon);
-    if (normalized && !curatedIcons.has(normalized)) otherIcons.add(normalized);
+    if (!normalized || curatedIcons.has(normalized)) return;
+    if (isCustomEntityIconVariant(normalized) || isDrawn(normalized)) otherIcons.add(normalized);
   };
   if (Array.isArray(rgiEmojiData?.strings)) rgiEmojiData.strings.forEach(addOther);
 

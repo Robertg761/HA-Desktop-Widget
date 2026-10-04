@@ -116,6 +116,11 @@ jest.mock('../../src/websocket.js', () => mockWebsocket);
 jest.mock('../../src/ui-utils.js', () => mockUiUtils);
 jest.mock('../../src/hotkeys.js', () => mockHotkeys);
 jest.mock('../../src/ui.js', () => mockUI, { virtual: true });
+// The check measures text on a canvas, which jsdom does not have. This one says the nazar amulet
+// is the one emoji the computer's fonts cannot draw.
+jest.mock('../../src/emoji-support.js', () => ({
+  createEmojiSupportCheck: () => (icon) => icon !== '\u{1F9FF}',
+}));
 
 // Setup mock electronAPI
 let mockElectronAPI;
@@ -2998,6 +3003,18 @@ describe('Settings + Config Integration', () => {
       // A flag is a regional-indicator pair; its code points are a search term
       typeInto(input, '1f1e8');
       expect(document.querySelector('[data-custom-icon-choice="🇨🇦"]')).toBeTruthy();
+    });
+
+    test('leaves out an emoji the computer cannot draw, which would be an empty box', async () => {
+      await openSettingsWithCustomIconsExpanded();
+      await catalogLoaded();
+      const input = rowInput();
+
+      // Its neighbour in Unicode is offered, and it is not
+      typeInto(input, '1f9fe');
+      expect(document.querySelector('[data-custom-icon-choice="\u{1F9FE}"]')).toBeTruthy();
+      typeInto(input, '1f9ff');
+      expect(document.querySelector('[data-custom-icon-choice="\u{1F9FF}"]')).toBeNull();
     });
 
     test('Search keeps the picker open after typing already opened it', async () => {
