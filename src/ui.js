@@ -4080,7 +4080,11 @@ function appendLiveSensorHistoryValue(entity) {
 
 function createSensorSparklineSvg(series, { width, height, className }) {
   const values = Array.isArray(series) ? series.map((point) => point.value) : [];
-  const points = buildSparklinePoints(values, width, height);
+  // A sensor unchanged for the whole window has one row of history. A reading holds until the next
+  // one, so it draws as a flat line across the band, as the detail view does, not as a dot that the
+  // stretched viewBox turns into a 6x2px dash.
+  const plotted = values.length === 1 ? [values[0], values[0]] : values;
+  const points = buildSparklinePoints(plotted, width, height);
   if (!points) return null;
 
   const svg = document.createElementNS(SENSOR_SPARKLINE_SVG_NS, 'svg');
@@ -4090,24 +4094,16 @@ function createSensorSparklineSvg(series, { width, height, className }) {
   svg.setAttribute('aria-hidden', 'true');
   svg.setAttribute('focusable', 'false');
 
+  // The CSS sets the stroke width in screen pixels (non-scaling-stroke), since the box stretches
+  // the viewBox unevenly; this width is only the fallback.
   const polyline = document.createElementNS(SENSOR_SPARKLINE_SVG_NS, 'polyline');
   polyline.setAttribute('points', points);
   polyline.setAttribute('fill', 'none');
   polyline.setAttribute('stroke', 'currentColor');
-  polyline.setAttribute('stroke-width', values.length === 1 ? '0' : '2');
+  polyline.setAttribute('stroke-width', '2');
   polyline.setAttribute('stroke-linecap', 'round');
   polyline.setAttribute('stroke-linejoin', 'round');
   svg.appendChild(polyline);
-
-  if (values.length === 1) {
-    const [x, y] = points.split(',').map(Number);
-    const dot = document.createElementNS(SENSOR_SPARKLINE_SVG_NS, 'circle');
-    dot.setAttribute('cx', String(x));
-    dot.setAttribute('cy', String(y));
-    dot.setAttribute('r', '2');
-    dot.setAttribute('fill', 'currentColor');
-    svg.appendChild(dot);
-  }
 
   return svg;
 }
@@ -4306,7 +4302,7 @@ function renderSensorDetailSparkline(container, series, timeDomain) {
   );
   if (series.length === 1) {
     const [cx, cy] = points.split(' ')[0].split(',');
-    svg.append(createSvgElement('circle', { cx, cy, r: '3', fill: 'currentColor' }));
+    svg.append(createSvgDot(cx, cy, 'sensor-detail-sparkline-dot'));
   }
   container.append(svg);
 }
@@ -4361,6 +4357,27 @@ function createSvgElement(name, attributes = {}) {
     node.setAttribute(key, String(value));
   });
   return node;
+}
+
+/**
+ * A round dot that stays round in an SVG stretched unevenly by preserveAspectRatio="none": a
+ * zero-length segment with a round cap, whose width the CSS sets in screen pixels
+ * (vector-effect: non-scaling-stroke). A <circle> would be drawn as an ellipse.
+ *
+ * @param {number|string} cx - Centre x, in viewBox units.
+ * @param {number|string} cy - Centre y, in viewBox units.
+ * @param {string} className - Class carrying the dot's colour and diameter.
+ * @param {Object<string, (string|number)>} [attributes] - Extra attributes (the series stroke).
+ * @returns {SVGElement}
+ */
+function createSvgDot(cx, cy, className, attributes = {}) {
+  return createSvgElement('path', {
+    class: className,
+    d: `M${cx} ${cy}h0`,
+    fill: 'none',
+    'stroke-linecap': 'round',
+    ...attributes,
+  });
 }
 
 /**
@@ -4475,15 +4492,8 @@ function buildComparisonGraphPlot(entries) {
     const endPoints = trail || project(entry.spans.measured);
     if (!endPoints) return;
     const [endX, endY] = endPoints.split(' ').at(-1).split(',').map(Number);
-    plot.appendChild(
-      createSvgElement('circle', {
-        class: 'comparison-graph-end-dot',
-        cx: endX,
-        cy: endY,
-        r: 3,
-        fill: stroke,
-      })
-    );
+    plot.appendChild(createSvgDot(endX, endY, 'comparison-graph-end-ring'));
+    plot.appendChild(createSvgDot(endX, endY, 'comparison-graph-end-dot', { stroke }));
   });
 
   if (!drew) return null;

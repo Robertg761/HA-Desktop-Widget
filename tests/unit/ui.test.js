@@ -9062,9 +9062,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(points[0][1]).toBe(points[1][1]);
       expect(points[1][0]).toBe(420);
       expect(points[0][0]).toBeLessThan(420);
-      const dot = document.querySelector('.sensor-detail-modal circle');
-      expect(Number(dot.getAttribute('cx'))).toBe(points[0][0]);
-      expect(Number(dot.getAttribute('cy'))).toBe(points[0][1]);
+      // The marker is a round-capped zero-length line, so a stretched viewBox cannot turn it into
+      // an ellipse the way a <circle> would be.
+      const dot = document.querySelector('.sensor-detail-modal .sensor-detail-sparkline-dot');
+      expect(document.querySelector('.sensor-detail-modal circle')).toBeNull();
+      expect(dot.getAttribute('d')).toBe(`M${points[0][0]} ${points[0][1]}h0`);
+      expect(dot.getAttribute('stroke-linecap')).toBe('round');
       document.querySelector('.sensor-detail-modal')?.remove();
     });
 
