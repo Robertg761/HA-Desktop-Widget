@@ -515,6 +515,42 @@
     "retiredIn": "4.0.0",
     "reason": "Reworded: the modifier list now includes Win, the key the Windows recorder names"
   },
+  "Display Name:": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Display name"
+  },
+  "Value Font Size:": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Value font size"
+  },
+  "Camera Preview:": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the label lost its trailing colon and Title Case; Tile Settings uses the Camera preview string that already existed"
+  },
+  "Long-press to configure weather": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded as Click to configure weather: the weather card opens its picker on a click now"
+  },
+  "Add Page": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the Add page dialog's title takes the sentence case of the Add page string that already existed"
+  },
+  "Page name:": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Page name"
+  },
+  "Quick picks:": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Quick picks"
+  },
+  "Chart:": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Chart"
+  },
+  "Gauge range:": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Gauge range"
+  },
   "Opening Home Assistant for authorization...": {
     "retiredIn": "4.0.0",
     "reason": "Authorization now waits for approval in the browser, so the status says that instead"

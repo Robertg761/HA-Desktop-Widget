@@ -336,6 +336,15 @@ function getEntityIcon(entity, options = {}) {
   }
 }
 
+// Home Assistant's 0-255 brightness as a percent. The dimmest a light can be and still be on (1)
+// is 1%, not the 0% that rounding gives, which every surface reads as off. The number only: the
+// percent sign and its spacing are the value formatter's to add.
+function brightnessToPercent(brightness) {
+  const value = Number(brightness);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.min(100, Math.max(1, Math.round((value / 255) * 100)));
+}
+
 function getTimerEnd(entity) {
   try {
     const fin = entity.attributes?.finishes_at;
@@ -461,7 +470,7 @@ function getEntityDisplayState(entity) {
       case 'light':
         // A light that is on reads as its brightness.
         if (rawState === 'on' && attributes.brightness) {
-          return formatPercent(Math.round((attributes.brightness / 255) * 100));
+          return formatPercent(brightnessToPercent(attributes.brightness));
         }
         break;
 
@@ -1044,6 +1053,7 @@ export {
   normalizeHomeAssistantMdiIcon,
   decodeCssContent,
   formatDuration,
+  brightnessToPercent,
   getTimerEnd,
   getSearchScore,
   getEntityDisplayState,

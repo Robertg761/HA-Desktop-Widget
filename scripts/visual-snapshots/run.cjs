@@ -18,6 +18,8 @@
  *   SNAPSHOT_DEBUG_PORT   the app's remote debugging port (default 9333); give parallel runs on
  *                         one machine different ports
  *   SNAPSHOT_SCENES       only run scenes whose name matches this regular expression
+ *   SNAPSHOT_REDUCED_MOTION  set to 1 to run with the OS's reduced-motion setting on, as the
+ *                         Windows and macOS runners do
  */
 
 const { spawn, execFileSync } = require('child_process');
@@ -33,9 +35,11 @@ const {
   WINDOW_POSITION,
   WINDOW_SIZE,
   buildConfig,
+  buildHistories,
   buildServiceResponses,
   buildServices,
   buildStates,
+  buildSubscriptionEvents,
 } = require('./fixture.cjs');
 const { scenes } = require('./scenes.cjs');
 
@@ -183,6 +187,7 @@ async function main() {
     states: buildStates(),
     services: buildServices(),
     serviceResponses: buildServiceResponses(),
+    histories: buildHistories(),
     failingEntities: FAILING_ENTITIES,
   });
   const haUrl = `http://127.0.0.1:${server.address().port}`;
@@ -196,7 +201,12 @@ async function main() {
   delete env.ELECTRON_RUN_AS_NODE;
   const app = spawn(
     electron,
-    ['.', `--user-data-dir=${profileDir}`, `--remote-debugging-port=${DEBUG_PORT}`],
+    [
+      '.',
+      `--user-data-dir=${profileDir}`,
+      `--remote-debugging-port=${DEBUG_PORT}`,
+      ...(process.env.SNAPSHOT_REDUCED_MOTION === '1' ? ['--force-prefers-reduced-motion'] : []),
+    ],
     { cwd: ROOT, env, stdio: 'inherit' }
   );
 
@@ -232,10 +242,21 @@ async function main() {
     const openPins = [];
     const extraTargets = [];
     let offline = false;
+    let notificationsPushed = false;
+    const NOTIFICATIONS = 'persistent_notification/subscribe';
     const ctx = {
       CTRL,
       sleep,
       ev: (expression) => cdp.evaluate(expression),
+      /**
+       * Give the app the persistent notifications the fixture lists, as Home Assistant would send
+       * them to its open subscription. They are not there from the start, because their bell
+       * would sit in the header of every scene; `restore` takes them away again.
+       */
+      showNotifications() {
+        notificationsPushed = true;
+        server.pushEvents(NOTIFICATIONS, buildSubscriptionEvents()({ type: NOTIFICATIONS }));
+      },
       async click(selector) {
         const found = await cdp.evaluate(
           `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (el) el.click(); return !!el; })()`
@@ -335,6 +356,10 @@ async function main() {
     }
 
     async function restore() {
+      if (notificationsPushed) {
+        notificationsPushed = false;
+        server.pushEvents(NOTIFICATIONS, [{ type: 'current', notifications: {} }]);
+      }
       if (offline) {
         // Retry connects at once; waiting for the app's own backoff would run into the next scene.
         offline = false;
@@ -381,19 +406,42 @@ async function main() {
 
       const size = scene.size || WINDOW_SIZE;
       if (size.width !== applied.size.width || size.height !== applied.size.height) {
+        const pageSize = () => cdp.evaluate('[innerWidth, innerHeight]');
+        const before = await pageSize();
         await cdp.evaluate(`window.resizeTo(${size.width}, ${size.height})`);
         // The window is sized in screen pixels, but an enlarged interface zooms the page, so the
         // page sees fewer CSS pixels than the window has.
         const zoom = settings.ui.scale || 1;
         const cssWidth = Math.round(size.width / zoom);
         const cssHeight = Math.round(size.height / zoom);
+        // A window cannot be bigger than the screen holds, and a hosted runner's display is small:
+        // macOS keeps a 900x700 window to 900x674 there. A size that has moved, stayed inside what
+        // was asked for and stopped changing is the screen's limit, not a slow resize, so the scene
+        // goes on at that size instead of waiting out the clock.
+        let seen = before;
+        let steadySince = Date.now();
+        let reached = null;
         await waitFor(
-          () =>
-            cdp.evaluate(
-              `Math.abs(innerWidth - ${cssWidth}) <= 1 && Math.abs(innerHeight - ${cssHeight}) <= 1`
-            ),
+          async () => {
+            const [width, height] = (reached = await pageSize());
+            if (Math.abs(width - cssWidth) <= 1 && Math.abs(height - cssHeight) <= 1) return true;
+            if (width !== seen[0] || height !== seen[1]) {
+              seen = [width, height];
+              steadySince = Date.now();
+            }
+            const moved = width !== before[0] || height !== before[1];
+            const inside = width <= cssWidth + 1 && height <= cssHeight + 1;
+            return moved && inside && Date.now() - steadySince >= 750;
+          },
           { label: `a ${size.width}x${size.height} window`, timeoutMs: 5000 }
-        ).catch((error) => console.warn(`${scene.name}: ${error.message}`));
+        )
+          .then(() => {
+            if (Math.abs(reached[0] - cssWidth) > 1 || Math.abs(reached[1] - cssHeight) > 1)
+              console.log(
+                `${scene.name}: the screen holds a ${reached[0]}x${reached[1]} window, not ${cssWidth}x${cssHeight}`
+              );
+          })
+          .catch((error) => console.warn(`${scene.name}: ${error.message}`));
         applied.size = size;
         await sleep(500);
       }
