@@ -3820,6 +3820,66 @@ describe('Settings + Config Integration', () => {
       delete window.electronAPI.getDesktopIntegration;
     });
 
+    describe('says what was last received in words, not ids', () => {
+      const show = async (info) => {
+        window.electronAPI.getDesktopIntegration = jest
+          .fn()
+          .mockResolvedValue({
+            hyprland: true,
+            shortcuts: [],
+            appId: 'ha-desktop-widget',
+            ...info,
+          });
+        await settings.initializePopupHotkey();
+        await document.getElementById('desktop-integration-refresh').onclick();
+        return {
+          status: document.getElementById('desktop-integration-status').textContent,
+          legacy: document.getElementById('desktop-integration-legacy').textContent,
+        };
+      };
+
+      test('names the popup hotkey, not popup-toggle', async () => {
+        const { status } = await show({
+          lastActivation: { id: 'popup-toggle', at: 'just now' },
+        });
+        expect(status).toBe('Last shortcut received: Popup hotkey at just now');
+      });
+
+      test('names an entity hotkey by the entity, and falls back to its id', async () => {
+        state.STATES['light.desk_lamp'] = {
+          entity_id: 'light.desk_lamp',
+          state: 'on',
+          attributes: { friendly_name: 'Desk lamp' },
+        };
+        const known = await show({ lastActivation: { id: 'entity.light.desk_lamp', at: 'x' } });
+        expect(known.status).toBe('Last shortcut received: Hotkey for Desk lamp at x');
+        const unknown = await show({ lastActivation: { id: 'entity.light.gone', at: 'x' } });
+        expect(unknown.status).toBe('Last shortcut received: Hotkey for light.gone at x');
+        delete state.STATES['light.desk_lamp'];
+      });
+
+      test('builds the retired-app-id warning from its parts, in the interface language', async () => {
+        const { legacy } = await show({
+          lastActivation: null,
+          legacyActivation: {
+            legacyAppId: 'ha_desktop_widget',
+            id: 'popup-toggle',
+            binding: 'bind = SUPER, H, global, ha-desktop-widget:popup-toggle',
+          },
+        });
+        expect(legacy).toBe(
+          'Hyprland sent "Popup hotkey" through the old app name "ha_desktop_widget". That still works for now; change the bind to "ha-desktop-widget:popup-toggle", for example: bind = SUPER, H, global, ha-desktop-widget:popup-toggle'
+        );
+        const noExample = await show({
+          lastActivation: null,
+          legacyActivation: { legacyAppId: 'ha_desktop_widget', id: 'popup-toggle', binding: '' },
+        });
+        expect(noExample.legacy).toBe(
+          'Hyprland sent "Popup hotkey" through the old app name "ha_desktop_widget". That still works for now; change the bind to "ha-desktop-widget:popup-toggle".'
+        );
+      });
+    });
+
     test.each([{ hyprland: false }, null])(
       'keeps refresh and copy working after detection returns %p',
       async (initialInfo) => {

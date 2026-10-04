@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.66",
+  "version": "1.2.67",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1823,6 +1823,8 @@
     "Disarm": "إلغاء تسليح",
     "None selected": "لم يتم اختيار أي شيء",
     "Home Assistant has no weather entities. Add a weather integration, then reopen this list.": "لا توجد كيانات طقس في Home Assistant. أضف تكامل طقس ثم أعد فتح هذه القائمة.",
-    "Not downloaded": "غير منزّل"
+    "Not downloaded": "غير منزّل",
+    "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\", for example: {{binding}}": "أرسل Hyprland «{{shortcut}}» عبر اسم التطبيق القديم «{{legacyAppId}}». ما زال هذا يعمل حاليًا؛ غيّر الربط إلى «{{target}}»، على سبيل المثال: {{binding}}",
+    "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\".": "أرسل Hyprland «{{shortcut}}» عبر اسم التطبيق القديم «{{legacyAppId}}». ما زال هذا يعمل حاليًا؛ غيّر الربط إلى «{{target}}»."
   }
 }

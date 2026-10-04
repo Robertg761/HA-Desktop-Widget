@@ -1725,5 +1725,7 @@
   "Disarm": "Unscharf stellen",
   "None selected": "Keine ausgewählt",
   "Home Assistant has no weather entities. Add a weather integration, then reopen this list.": "Home Assistant hat keine Wetterentitäten. Füge eine Wetter-Integration hinzu und öffne diese Liste dann erneut.",
-  "Not downloaded": "Nicht heruntergeladen"
+  "Not downloaded": "Nicht heruntergeladen",
+  "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\", for example: {{binding}}": "Hyprland hat „{{shortcut}}“ über den alten App-Namen „{{legacyAppId}}“ gesendet. Das funktioniert vorerst weiter; ändere die Bindung in „{{target}}“, zum Beispiel: {{binding}}",
+  "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\".": "Hyprland hat „{{shortcut}}“ über den alten App-Namen „{{legacyAppId}}“ gesendet. Das funktioniert vorerst weiter; ändere die Bindung in „{{target}}“."
 }

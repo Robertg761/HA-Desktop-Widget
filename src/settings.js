@@ -7658,6 +7658,42 @@ async function refreshSecureStorageNotice() {
   notice.classList.toggle('hidden', !unavailable);
 }
 
+// A Hyprland shortcut's id as a person would name it: the popup hotkey, or the hotkey of an entity
+// ("entity.light.desk_lamp"). The id itself is what a bind names, so it stays in the bindings.
+function describeDesktopShortcut(id) {
+  const shortcutId = String(id || '');
+  if (shortcutId === 'popup-toggle') return t('Popup hotkey');
+  if (shortcutId.startsWith('entity.')) {
+    const entityId = shortcutId.slice('entity.'.length);
+    const entity = state.STATES?.[entityId];
+    return t('Hotkey for {{name}}', {
+      name: entity ? utils.getEntityDisplayName(entity) : entityId,
+    });
+  }
+  return shortcutId;
+}
+
+// What to change in a Hyprland bind that still names the retired app id, in the user's language. Main
+// logs the same advice in English; it sends the parts so the panel can say it in the right words.
+function describeLegacyDesktopActivation(activation, appId) {
+  if (!activation?.legacyAppId || !activation.id || !appId) return activation?.notice || '';
+  const values = {
+    shortcut: describeDesktopShortcut(activation.id),
+    legacyAppId: activation.legacyAppId,
+    target: `${appId}:${activation.id}`,
+    binding: activation.binding,
+  };
+  return activation.binding
+    ? t(
+        'Hyprland sent "{{shortcut}}" through the old app name "{{legacyAppId}}". That still works for now; change the bind to "{{target}}", for example: {{binding}}',
+        values
+      )
+    : t(
+        'Hyprland sent "{{shortcut}}" through the old app name "{{legacyAppId}}". That still works for now; change the bind to "{{target}}".',
+        values
+      );
+}
+
 async function refreshDesktopIntegration() {
   void refreshDesktopBlur().catch((error) => {
     log.error('Failed to read Hyprland blur status:', error);
@@ -7692,7 +7728,7 @@ async function refreshDesktopIntegration() {
   const activationTime = Date.parse(info.lastActivation?.at || '');
   document.getElementById('desktop-integration-status').textContent = info.lastActivation
     ? t('Last shortcut received: {{id}} at {{time}}', {
-        id: info.lastActivation.id,
+        id: describeDesktopShortcut(info.lastActivation.id),
         time: Number.isNaN(activationTime)
           ? info.lastActivation.at
           : formatDateTime(activationTime),
@@ -7703,6 +7739,6 @@ async function refreshDesktopIntegration() {
   const legacy = document.getElementById('desktop-integration-legacy');
   if (legacy) {
     legacy.hidden = !info.legacyActivation;
-    legacy.textContent = info.legacyActivation?.notice || '';
+    legacy.textContent = describeLegacyDesktopActivation(info.legacyActivation, info.appId);
   }
 }

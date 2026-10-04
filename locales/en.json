@@ -1725,5 +1725,7 @@
   "Disarm": "Disarm",
   "None selected": "None selected",
   "Home Assistant has no weather entities. Add a weather integration, then reopen this list.": "Home Assistant has no weather entities. Add a weather integration, then reopen this list.",
-  "Not downloaded": "Not downloaded"
+  "Not downloaded": "Not downloaded",
+  "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\", for example: {{binding}}": "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\", for example: {{binding}}",
+  "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\".": "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\"."
 }
