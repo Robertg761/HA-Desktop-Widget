@@ -311,16 +311,27 @@ const hotkeyPage = {
   },
 };
 
-async function openHotkeysFor(ctx, filter) {
+// The Hotkeys page, with its list drawn from the search box. The box keeps what was typed into it
+// when Settings closes and the list is drawn from it, so a scene that searches leaves the next one
+// with whatever that search found (nothing, for the one that looks for nothing). Every scene that
+// opens the page therefore sets the box itself, empty unless it wants a filter, and waits for the
+// list or for the line that says nothing matched.
+async function openHotkeysPage(ctx, filter = '', { expectNoMatch = false } = {}) {
   await openSettingsTab(ctx, 'hotkeys');
-  await ctx.waitForSelector('#hotkeys-list .hotkey-item');
   await ctx.ev(`(() => {
     const search = document.getElementById('hotkey-entity-search');
     if (!search) return;
     search.value = ${JSON.stringify(filter)};
     search.dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
+  await ctx.waitForSelector(
+    expectNoMatch ? '#hotkeys-list .hotkeys-empty' : '#hotkeys-list .hotkey-item'
+  );
   await ctx.sleep(300);
+}
+
+async function openHotkeysFor(ctx, filter, options) {
+  await openHotkeysPage(ctx, filter, options);
   await revealInSettings(ctx, '#hotkeys-list');
 }
 
@@ -636,14 +647,11 @@ const scenes = [
 
   // Settings pages the first scenes do not reach, and the custom colour editor.
   { name: 'settings-dashboard', setup: (ctx) => openSettingsTab(ctx, 'dashboard') },
-  { name: 'settings-hotkeys', setup: (ctx) => openSettingsTab(ctx, 'hotkeys') },
+  { name: 'settings-hotkeys', setup: (ctx) => openHotkeysPage(ctx) },
   // The entity list, where each row picks the action its hotkey runs from a select.
   {
     name: 'settings-hotkeys-entities',
-    setup: async (ctx) => {
-      await openSettingsTab(ctx, 'hotkeys');
-      await revealInSettings(ctx, '#hotkeys-list');
-    },
+    setup: (ctx) => openHotkeysFor(ctx, ''),
   },
   {
     name: 'settings-alerts',
@@ -660,7 +668,7 @@ const scenes = [
   {
     name: 'settings-hotkeys-no-match',
     config: hotkeyPage,
-    setup: (ctx) => openHotkeysFor(ctx, 'zzzzz'),
+    setup: (ctx) => openHotkeysFor(ctx, 'zzzzz', { expectNoMatch: true }),
   },
   { name: 'settings-advanced', setup: (ctx) => openSettingsTab(ctx, 'advanced') },
   {
@@ -969,15 +977,12 @@ const scenes = [
   {
     name: 'de-settings-hotkeys',
     ui: { language: 'de' },
-    setup: (ctx) => openSettingsTab(ctx, 'hotkeys'),
+    setup: (ctx) => openHotkeysPage(ctx),
   },
   {
     name: 'de-settings-hotkeys-entities',
     ui: { language: 'de' },
-    setup: async (ctx) => {
-      await openSettingsTab(ctx, 'hotkeys');
-      await revealInSettings(ctx, '#hotkeys-list');
-    },
+    setup: (ctx) => openHotkeysFor(ctx, ''),
   },
   {
     name: 'de-popup-media',
@@ -1039,7 +1044,7 @@ const scenes = [
   {
     name: 'ar-settings-hotkeys',
     ui: { language: 'ar' },
-    setup: (ctx) => openSettingsTab(ctx, 'hotkeys'),
+    setup: (ctx) => openHotkeysPage(ctx),
   },
   {
     name: 'popup-media-light',
@@ -1072,7 +1077,7 @@ const scenes = [
   {
     name: 'settings-hotkeys-light',
     ui: { theme: 'light' },
-    setup: (ctx) => openSettingsTab(ctx, 'hotkeys'),
+    setup: (ctx) => openHotkeysPage(ctx),
   },
   {
     name: 'popup-input-select-light',
@@ -1276,7 +1281,7 @@ const scenes = [
     name: `contrast-${theme}-hotkey-capture`,
     ui: { theme },
     setup: async (ctx) => {
-      await openSettingsTab(ctx, 'hotkeys');
+      await openHotkeysPage(ctx);
       await ctx.waitForSelector('#hotkeys-list .hotkey-input');
       await ctx.ev(`document.querySelector('#hotkeys-list .hotkey-input').click()`);
       await ctx.waitForSelector('.hotkey-capture-modal');
