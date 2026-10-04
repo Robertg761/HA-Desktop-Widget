@@ -6,7 +6,8 @@ const MAX_COMMAND_HISTORY = 100;
 // A command carries the time Home Assistant gave it up at, and this computer reads its own clock
 // against it. A clock that runs ahead (an unsynchronised VM, a dual-boot RTC offset) would refuse
 // every command, so a command is still run this long after its time. A command that waited
-// minutes for a desktop that was offline is still left out.
+// minutes for a desktop that was offline is still left out. The price is that a show, hide or
+// apply_profile Home Assistant already gave up on can still run for these two minutes.
 const COMMAND_CLOCK_SKEW_MS = 2 * 60 * 1000;
 const ALLOWED_ACTIONS = new Set(['show', 'hide', 'toggle', 'switch_page', 'apply_profile']);
 const SESSION_ENDED_RESULT = Object.freeze({
