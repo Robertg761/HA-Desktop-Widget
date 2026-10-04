@@ -1548,6 +1548,47 @@ describe('Settings + Config Integration', () => {
       expect(checkedMode()).toBe('dark');
       settings.closeSettings();
     });
+
+    test('in right-to-left text the arrow that points at a neighbour moves there', async () => {
+      state.CONFIG.ui = { ...(state.CONFIG.ui || {}), theme: 'dark' };
+      await settings.openSettings();
+      const control = document.getElementById('theme-mode-control');
+      const press = (mode, key) =>
+        control
+          .querySelector(`[data-theme-mode="${mode}"]`)
+          .dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+      // The segments run Auto, Dark, Light from the right, so Light is the one on the left.
+      control.style.direction = 'rtl';
+
+      press('dark', 'ArrowLeft');
+      expect(checkedMode()).toBe('light');
+      press('light', 'ArrowRight');
+      expect(checkedMode()).toBe('dark');
+      press('dark', 'ArrowRight');
+      expect(checkedMode()).toBe('auto');
+      // The vertical arrows and Home and End do not depend on the direction.
+      press('auto', 'ArrowDown');
+      expect(checkedMode()).toBe('dark');
+      press('dark', 'End');
+      expect(checkedMode()).toBe('light');
+      settings.closeSettings();
+    });
+
+    test('leaves an arrow with a modifier to the browser', async () => {
+      state.CONFIG.ui = { ...(state.CONFIG.ui || {}), theme: 'auto' };
+      await settings.openSettings();
+      const event = new KeyboardEvent('keydown', {
+        key: 'ArrowRight',
+        altKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      document.querySelector('#theme-mode-control [data-theme-mode="auto"]').dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(checkedMode()).toBe('auto');
+      settings.closeSettings();
+    });
   });
 
   describe('Background swatches', () => {
@@ -2857,6 +2898,69 @@ describe('Settings + Config Integration', () => {
   });
 
   describe('Custom Color Palette', () => {
+    describe('in Arabic', () => {
+      const i18n = require('../../src/i18n.js');
+      const ARABIC = {
+        'Accent: {{accent}} • Background: {{background}}':
+          'التمييز: {{accent}} • الخلفية: {{background}}',
+        'Custom {{color}}': '{{color}} مخصص',
+      };
+
+      afterEach(() => {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      });
+
+      const openWithCustomAccent = async (name) => {
+        state.CONFIG.ui.customColors = [
+          { id: 'custom-ab34cd', name, color: '#AB34CD', createdAt: 'x', updatedAt: 'x' },
+        ];
+        state.CONFIG.ui.accent = 'custom-ab34cd';
+        await settings.openSettings();
+      };
+
+      test('keeps the hex code of a custom colour in one piece in the summary line', async () => {
+        i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: ARABIC });
+        await openWithCustomAccent('#AB34CD مخصص');
+
+        // Between an Arabic word and Latin letters a lone '#' would land on the wrong side.
+        expect(document.getElementById('theme-current-selection').textContent).toContain(
+          '\u2066#AB34CD\u2069 مخصص'
+        );
+      });
+
+      test('does not change the name itself, which the rename field shows and compares', async () => {
+        i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: ARABIC });
+        await openWithCustomAccent('#AB34CD مخصص');
+
+        const option = document.querySelector('.color-theme-option[data-theme="custom-ab34cd"]');
+        expect(option.getAttribute('aria-label')).toContain('\u2066#AB34CD\u2069');
+        expect(document.getElementById('custom-color-name-input').value).not.toMatch(
+          /[\u2066\u2069]/
+        );
+      });
+
+      test('leaves a name the person typed alone', async () => {
+        i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: ARABIC });
+        await openWithCustomAccent('Ocean');
+
+        expect(document.getElementById('theme-current-selection').textContent).toContain('Ocean');
+        expect(document.getElementById('theme-current-selection').textContent).not.toMatch(
+          /[\u2066\u2069]/
+        );
+      });
+
+      test('adds nothing in a left-to-right language', async () => {
+        await openWithCustomAccent('Custom #AB34CD');
+
+        expect(document.getElementById('theme-current-selection').textContent).toContain(
+          'Custom #AB34CD'
+        );
+        expect(document.getElementById('theme-current-selection').textContent).not.toMatch(
+          /[\u2066\u2069]/
+        );
+      });
+    });
+
     test('should open with saved custom colors appended after built-ins', async () => {
       // Arrange
       state.CONFIG.ui.customColors = [
