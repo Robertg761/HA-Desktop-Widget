@@ -319,19 +319,16 @@ describe('hotkeys module', () => {
         messages: {
           Toggle: 'Umschalten',
           'Turn On': 'Einschalten',
-          Remove: 'Entfernen',
           'Action updated to: {{action}}': 'Aktion geändert: {{action}}',
         },
       });
       try {
         const container = document.createElement('div');
         const searchInput = document.createElement('input');
-        const existing = document.createElement('div');
         container.id = 'hotkeys-list';
         searchInput.id = 'hotkey-entity-search';
         searchInput.value = 'living';
-        existing.id = 'existing-hotkeys-list';
-        document.body.append(container, searchInput, existing);
+        document.body.append(container, searchInput);
         mockElectronAPI.updateConfig.mockImplementationOnce((nextConfig) =>
           Promise.resolve(nextConfig)
         );
@@ -344,9 +341,6 @@ describe('hotkeys module', () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
 
         expect(showToast).toHaveBeenCalledWith('Aktion geändert: Einschalten', 'success', 2000);
-
-        hotkeys.renderExistingHotkeys();
-        expect(existing.querySelector('.btn-remove-hotkey').textContent).toBe('Entfernen');
       } finally {
         i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
       }
@@ -414,75 +408,6 @@ describe('hotkeys module', () => {
 
       expect(() => hotkeys.renderHotkeysTab()).not.toThrow();
       expect(consoleError).toHaveBeenCalledWith('Error rendering hotkeys tab:', expect.any(Error));
-
-      consoleError.mockRestore();
-    });
-  });
-
-  describe('renderExistingHotkeys', () => {
-    beforeEach(() => {
-      const config = getMockConfig();
-      config.globalHotkeys = {
-        enabled: true,
-        hotkeys: {
-          'light.living_room': { hotkey: 'Ctrl+Shift+L', action: 'toggle' },
-          'switch.bedroom': 'Ctrl+Shift+B',
-        },
-      };
-      state.setConfig(config);
-      state.setStates(sampleStates);
-    });
-
-    it('should handle missing container gracefully', () => {
-      document.getElementById = jest.fn(() => null);
-
-      expect(() => hotkeys.renderExistingHotkeys()).not.toThrow();
-    });
-
-    it('should render existing hotkeys', () => {
-      // Create real DOM element
-      const container = document.createElement('div');
-      container.id = 'existing-hotkeys-list';
-      document.body.appendChild(container);
-
-      expect(() => hotkeys.renderExistingHotkeys()).not.toThrow();
-
-      document.body.removeChild(container);
-    });
-
-    it('should skip entities that do not exist in STATES', () => {
-      const config = getMockConfig();
-      config.globalHotkeys = {
-        enabled: true,
-        hotkeys: {
-          'light.living_room': { hotkey: 'Ctrl+Shift+L', action: 'toggle' },
-          'light.nonexistent': 'Ctrl+Shift+N',
-        },
-      };
-      state.setConfig(config);
-
-      // Create real DOM element
-      const container = document.createElement('div');
-      container.id = 'existing-hotkeys-list';
-      document.body.appendChild(container);
-
-      expect(() => hotkeys.renderExistingHotkeys()).not.toThrow();
-
-      document.body.removeChild(container);
-    });
-
-    it('should handle rendering errors gracefully', () => {
-      const consoleError = jest.spyOn(console, 'error').mockImplementation();
-
-      document.getElementById = jest.fn(() => {
-        throw new Error('DOM error');
-      });
-
-      expect(() => hotkeys.renderExistingHotkeys()).not.toThrow();
-      expect(consoleError).toHaveBeenCalledWith(
-        'Error rendering existing hotkeys:',
-        expect.any(Error)
-      );
 
       consoleError.mockRestore();
     });
@@ -759,7 +684,6 @@ describe('hotkeys module', () => {
       expect(typeof hotkeys.renderHotkeysTab).toBe('function');
       expect(typeof hotkeys.toggleHotkeys).toBe('function');
       expect(typeof hotkeys.captureHotkey).toBe('function');
-      expect(typeof hotkeys.renderExistingHotkeys).toBe('function');
       expect(typeof hotkeys.assignHotkeyToEntity).toBe('function');
       expect(typeof hotkeys.setupHotkeyEventListeners).toBe('function');
       expect(typeof hotkeys.cleanupHotkeyEventListeners).toBe('function');

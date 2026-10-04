@@ -90,6 +90,8 @@ const mockUiUtils = {
       .filter((entry) => entry.color && entry.rgb);
   }),
   getAccentThemes: jest.fn(() => [...BASE_THEMES, ...mockCustomThemes]),
+  // The window a Background choice gives: the untinted base for null, a tinted one otherwise.
+  getBackgroundWindowColor: jest.fn((color = null) => (color === null ? '#12161e' : '#222c3c')),
   trapFocus: jest.fn(),
   releaseFocusTrap: jest.fn(),
   // Mirrors the real shared modal helpers: class-based visibility plus the inline display the
@@ -1521,6 +1523,48 @@ describe('Settings + Config Integration', () => {
     });
   });
 
+  describe('Background swatches', () => {
+    const openBackgroundSwatches = async () => {
+      await settings.openSettings();
+      const target = document.getElementById('color-target-select');
+      target.value = 'background';
+      target.dispatchEvent(new Event('change'));
+      return [...document.querySelectorAll('#theme-options .color-theme-option')];
+    };
+
+    test('draw the window a choice gives, with the choice as a dot', async () => {
+      const swatches = await openBackgroundSwatches();
+      const original = swatches.find((option) => option.dataset.theme === 'original');
+      const rose = swatches.find((option) => option.dataset.theme === 'rose');
+
+      // The untinted base is the window colour itself, with no dot to show for it.
+      expect(original.dataset.backgroundSwatch).toBe('base');
+      expect(original.style.getPropertyValue('--swatch-window')).toBe('#12161e');
+      expect(original.style.getPropertyValue('--swatch')).toBe('#12161e');
+      // Any other choice shows the tinted window, and its own colour for the dot.
+      expect(rose.dataset.backgroundSwatch).toBe('tinted');
+      expect(rose.style.getPropertyValue('--swatch-window')).toBe('#222c3c');
+      expect(rose.style.getPropertyValue('--swatch').toLowerCase()).toBe('#f43f5e');
+      settings.closeSettings();
+    });
+
+    test('call the untinted base neutral in either theme', async () => {
+      const swatches = await openBackgroundSwatches();
+      const original = swatches.find((option) => option.dataset.theme === 'original');
+      expect(original.getAttribute('aria-label')).toContain('Original base (no tint)');
+      expect(original.getAttribute('aria-label')).not.toContain('dark');
+      settings.closeSettings();
+    });
+
+    test('are drawn again in the new theme when the mode changes', async () => {
+      await openBackgroundSwatches();
+      mockUiUtils.getBackgroundWindowColor.mockClear();
+      document.querySelector('#theme-mode-control [data-theme-mode="light"]').click();
+      expect(mockUiUtils.getBackgroundWindowColor).toHaveBeenCalled();
+      settings.closeSettings();
+    });
+  });
+
   describe('Config Save Flow', () => {
     test('saving without moving the opacity slider keeps the stored opacity', async () => {
       state.CONFIG.opacity = 0.95;
@@ -1538,6 +1582,23 @@ describe('Settings + Config Integration', () => {
       document.getElementById('opacity-slider').value = '91';
       await settings.saveSettings();
       expect(state.CONFIG.opacity).toBeCloseTo(0.9545, 4);
+    });
+
+    test('the opacity readout is a percentage of the opacity, not the slider position', async () => {
+      state.CONFIG.opacity = 0.95;
+      await settings.openSettings();
+      const readout = document.getElementById('opacity-value');
+      // Position 90 stands for the stored 95%, and the ends of the slider for 50% and 100%.
+      expect(readout.textContent).toBe('95%');
+
+      const slider = document.getElementById('opacity-slider');
+      slider.value = '1';
+      settings.updateOpacityReadout();
+      expect(readout.textContent).toBe('50%');
+      slider.value = '100';
+      settings.updateOpacityReadout();
+      expect(readout.textContent).toBe('100%');
+      settings.closeSettings();
     });
 
     test('save valid settings updates config and IPC', async () => {

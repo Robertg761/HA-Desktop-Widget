@@ -368,6 +368,52 @@ async function showToasts(ctx) {
   await ctx.sleep(500);
 }
 
+// Text and status colour in both themes for accents from the pale to the saturated end. The
+// wizard's scenes come last (see below), because they empty the server address.
+const CONTRAST_ACCENTS = ['original', 'indigo', 'rose', 'aqua'];
+const contrastScenes = (suffix, make) =>
+  ['dark', 'light'].flatMap((theme) =>
+    CONTRAST_ACCENTS.map((accent) => ({
+      name: `contrast-${theme}-${accent}-${suffix}`,
+      ui: { theme, accent },
+      ...make(theme),
+    }))
+  );
+
+// The connection result lines Settings shows, in the three states, without needing a server that
+// fails: written the way renderConnectionStatus writes them.
+async function showConnectionResults(ctx) {
+  await openSettingsTab(ctx, 'general');
+  await ctx.ev(`(() => {
+    document.querySelector('#test-ha-connection-btn')?.closest('details')?.setAttribute('open', '');
+    const write = (id, type, message) => {
+      const status = document.getElementById(id);
+      status.classList.remove('hidden');
+      status.dataset.status = type;
+      status.innerHTML = '<span class="connection-status-text"></span>';
+      status.firstChild.textContent = message;
+    };
+    write('ha-oauth-status', 'success', 'Connected with Home Assistant authorization.');
+    write('test-ha-connection-status', 'error', 'Could not reach Home Assistant at that URL.');
+    document.querySelector('#test-ha-connection-btn')?.scrollIntoView({ block: 'center' });
+  })()`);
+}
+
+// The profile sync error and the on-device warning under Advanced: the other status colours
+// Settings uses. The sync section is hidden until sync is set up, so it is opened and filled here.
+async function showSyncError(ctx) {
+  await openSettingsTab(ctx, 'advanced');
+  await ctx.ev(`(() => {
+    const error = document.getElementById('profile-sync-error');
+    error.textContent = 'The sync file could not be read. Sync is paused until it is fixed.';
+    error.closest('.hidden, [hidden]')?.classList.remove('hidden');
+    document.querySelectorAll('#settings-modal .form-warning').forEach((warning) => {
+      if (warning.closest('#advanced-tab')) warning.classList.remove('hidden');
+    });
+    error.scrollIntoView({ block: 'center' });
+  })()`);
+}
+
 const scenes = [
   // The main view and the dialogs opened from it, dark and in English.
   { name: 'main-dark' },
@@ -825,6 +871,54 @@ const scenes = [
     name: 'christmas-light',
     ui: { theme: 'light', seasonal: holiday('christmas') },
   },
+  // The holiday art that was drawn pale for the dark theme: flutes, the bunny and the chicks.
+  {
+    name: 'new-year-light',
+    ui: { theme: 'light', seasonal: holiday('new-year') },
+  },
+  {
+    name: 'easter-light',
+    ui: { theme: 'light', seasonal: holiday('easter') },
+  },
+
+  // Colour contrast of text and status colours, dark and light, with four accents.
+  ...contrastScenes('main', () => ({})),
+  ...contrastScenes('settings', () => ({
+    setup: (ctx) => openSettingsTab(ctx, 'personalization'),
+  })),
+  ...contrastScenes('popup', () => ({ setup: openBrightness })),
+  ...['dark', 'light'].map((theme) => ({
+    name: `contrast-${theme}-connection`,
+    ui: { theme },
+    setup: showConnectionResults,
+  })),
+  // The Background picker: swatches drawn as the window a choice gives, with the choice as a dot,
+  // with a tinted background picked so the Background chip carries it too.
+  ...['dark', 'light'].map((theme) => ({
+    name: `contrast-${theme}-background-swatches`,
+    ui: { theme, background: 'rose' },
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'personalization');
+      await ctx.click('.color-target-option[data-color-target="background"]');
+      await ctx.ev(`document.querySelector('#theme-options')?.scrollIntoView({ block: 'center' })`);
+    },
+  })),
+  // The hotkey prompt, which drew white text on the light panel.
+  ...['dark', 'light'].map((theme) => ({
+    name: `contrast-${theme}-hotkey-capture`,
+    ui: { theme },
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'hotkeys');
+      await ctx.waitForSelector('#hotkeys-list .hotkey-input');
+      await ctx.ev(`document.querySelector('#hotkeys-list .hotkey-input').click()`);
+      await ctx.waitForSelector('.hotkey-capture-modal');
+    },
+  })),
+  ...['dark', 'light'].map((theme) => ({
+    name: `contrast-${theme}-sync-error`,
+    ui: { theme },
+    setup: showSyncError,
+  })),
 
   // Layout robustness. The edge page has a 95-character light, a seven-figure reading, one
   // unbroken German word as a name and a 90-character sensor; the scenes show it, and the dialogs
@@ -1221,6 +1315,10 @@ const scenes = [
     config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
     setup: showFirstRunWelcome,
   },
+  ...contrastScenes('first-run', () => ({
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: showFirstRunWelcome,
+  })),
 ];
 
 module.exports = { scenes };

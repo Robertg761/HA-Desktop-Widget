@@ -617,8 +617,25 @@ describe('Camera Module', () => {
       // nothing left to display into.
       expect(warmup.onload).toBeNull();
       expect(warmup.hasAttribute('src')).toBe(false);
-      expect(tile.dataset.cameraPreviewHasFrame).toBe('false');
       expect(tile.dataset.cameraPreviewState).toBe('ready');
+    });
+
+    it('counts the playing stream as the tile frame, and drops it when the stream ends', async () => {
+      const tile = createPreviewTile();
+      const video = tile.querySelector('.camera-tile-preview-video');
+
+      camera.mountCameraPreview(tile, 'camera.front_door', 'live');
+      await flushLivePreviewStart();
+      expect(tile.dataset.cameraPreviewHasFrame).toBe('false');
+
+      video.onloadeddata();
+      // The scrim and the white caption are styled for a tile that has a picture; the video is one.
+      expect(tile.dataset.cameraPreviewSource).toBe('video');
+      expect(tile.dataset.cameraPreviewHasFrame).toBe('true');
+
+      mockHlsEventHandlers.hlsError(null, { fatal: true });
+      expect(tile.dataset.cameraPreviewSource).not.toBe('video');
+      expect(tile.dataset.cameraPreviewHasFrame).toBe('false');
     });
 
     it('reuses the warmup still instead of refetching when the stream fails', async () => {

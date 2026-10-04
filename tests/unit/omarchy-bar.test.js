@@ -726,3 +726,61 @@ describe('bar requests and installation', () => {
     expect(updateInstalledOmarchyBarPlugin({ sourceDir: pluginDir, pluginDir: target })).toBe(true);
   });
 });
+
+describe('Omarchy bar secondary text', () => {
+  // The colour helpers are plain JavaScript inside the QML; run them against Qt's rgba().
+  const qml = fs.readFileSync(path.join(pluginDir, 'Widget.qml'), 'utf8');
+  const start = qml.indexOf('function colorChannel');
+  const end = qml.indexOf('// Keyboard cursor');
+  const rgba = (r, g, b, a = 1) => ({ r, g, b, a });
+  const { quietTone, contrastRatio } = new vm.Script(
+    `(function () { ${qml.slice(start, end)}; return { quietTone, contrastRatio }; })()`
+  ).runInNewContext({ Qt: { rgba }, Math });
+  const color = (hex) => {
+    const [r, g, b] = [1, 3, 5].map((index) => parseInt(hex.slice(index, index + 2), 16) / 255);
+    return rgba(r, g, b);
+  };
+
+  // Foreground and background of bundled Omarchy themes, the dark ones that fell under 4.5:1 and
+  // the light ones whose dim text came out darker than their primary text.
+  const themes = {
+    'tokyo-night': ['#a9b1d6', '#1a1b26'],
+    everforest: ['#d3c6aa', '#2d353b'],
+    gruvbox: ['#d4be98', '#282828'],
+    nord: ['#d8dee9', '#2e3440'],
+    miasma: ['#c2c2b0', '#222222'],
+    'catppuccin-latte': ['#4c4f69', '#eff1f5'],
+    'rose-pine-dawn': ['#575279', '#faf4ed'],
+    lupine: ['#212121', '#fafafa'],
+    white: ['#000000', '#ffffff'],
+    vantablack: ['#ffffff', '#000000'],
+  };
+
+  it('uses the shipped blend, not Qt.darker, for the dim tone', () => {
+    expect(qml).toContain('readonly property color dimColor: quietTone(foreground');
+    expect(qml).not.toContain('Qt.darker(foreground');
+  });
+
+  it.each(Object.entries(themes))(
+    'reads at 4.5:1 and stays below the foreground (%s)',
+    (_, [fg, bg]) => {
+      const tone = quietTone(color(fg), color(bg));
+      expect(contrastRatio(tone, color(bg))).toBeGreaterThanOrEqual(4.5);
+      // Never stronger than the primary text, whichever way the theme runs.
+      expect(contrastRatio(tone, color(bg))).toBeLessThanOrEqual(
+        contrastRatio(color(fg), color(bg)) + 0.01
+      );
+    }
+  );
+
+  it('returns a foreground that cannot reach 4.5:1 unchanged', () => {
+    const fg = color('#8a8a8a');
+    const bg = color('#999999');
+    expect(quietTone(fg, bg)).toEqual(fg);
+  });
+
+  it('dims an unavailable tile by its icon and name instead of fading its text', () => {
+    expect(qml).not.toContain('opacity: tileRoot.available ? 1 : 0.55');
+    expect(qml).toContain('iconOpacity: tileRoot.active ? 1 : (tileRoot.available ? 0.72 : 0.45)');
+  });
+});

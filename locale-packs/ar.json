@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.54",
+  "version": "1.2.55",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1771,6 +1771,7 @@
     "Device class: Door": "باب",
     "Device class: Window": "نافذة",
     "Device class: Motion": "حركة",
-    "Device class: Occupancy": "الإشغال"
+    "Device class: Occupancy": "الإشغال",
+    "Original base (no tint)": "الأساس الأصلي (دون صبغة)"
   }
 }
