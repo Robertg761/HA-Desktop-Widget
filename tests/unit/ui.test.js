@@ -767,7 +767,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.showAddPageModal();
       const modal = document.getElementById('add-page-modal');
       expect(modal.getAttribute('aria-labelledby')).toBe('add-page-title');
-      expect(document.getElementById('add-page-title').textContent).toBe('Add Page');
+      expect(document.getElementById('add-page-title').textContent).toBe('Add page');
       expect(
         [...modal.querySelectorAll('.modal-footer button')].map((button) => button.id)
       ).toEqual(['add-page-cancel-btn', 'add-page-save-btn']);
@@ -840,7 +840,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const chips = document.querySelector('.qa-add-chips');
       expect(chips.getAttribute('role')).toBe('group');
       const label = document.getElementById(chips.getAttribute('aria-labelledby'));
-      expect(label.textContent).toBe('Quick picks:');
+      expect(label.textContent).toBe('Quick picks');
       expect(label.tagName).toBe('SPAN');
     });
 
@@ -895,7 +895,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         registryResponses();
         ui.showAddPageModal({ starter: true });
         await flush();
-        expect(document.getElementById('add-page-title').textContent).toBe('Add Page');
+        expect(document.getElementById('add-page-title').textContent).toBe('Add page');
         expect(document.querySelector('#add-page-name').value).toBe('Kitchen');
       });
     });
@@ -2811,7 +2811,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
 
     /**
-     * Ensures missing timeline values always fall back to 0:00 and 0% seek width.
+     * Ensures missing timeline values fall back to a 0:00 position, no total and 0% seek width.
      */
     it.each([
       ['null', null, null],
@@ -2838,7 +2838,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         const seekFill = document.getElementById('media-tile-seek-fill');
 
         expect(currentTime.textContent).toBe('0:00');
-        expect(totalTime.textContent).toBe('0:00');
+        expect(totalTime.textContent).toBe('--:--');
         expect(seekFill.style.width).toBe('0%');
       }
     );
@@ -2861,7 +2861,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const totalTime = document.getElementById('media-tile-time-total');
       const seekFill = document.getElementById('media-tile-seek-fill');
       expect(currentTime.textContent).toBe('0:00');
-      expect(totalTime.textContent).toBe('0:00');
+      expect(totalTime.textContent).toBe('--:--');
       expect(seekFill.style.width).toBe('0%');
     });
 
@@ -2876,7 +2876,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const totalTime = document.getElementById('media-tile-time-total');
       const seekFill = document.getElementById('media-tile-seek-fill');
       expect(currentTime.textContent).toBe('0:00');
-      expect(totalTime.textContent).toBe('0:00');
+      expect(totalTime.textContent).toBe('--:--');
       expect(seekFill.style.width).toBe('0%');
     });
 
@@ -2908,7 +2908,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         const seekFill = document.getElementById('media-tile-seek-fill');
 
         expect(currentTime.textContent).toBe('1:05:30');
-        expect(totalTime.textContent).toBe('0:00');
+        expect(totalTime.textContent).toBe('--:--');
         expect(seekFill.style.width).toBe('0%');
       }
     );
@@ -2931,7 +2931,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         const totalTime = document.getElementById('media-tile-time-total');
         const seekFill = document.getElementById('media-tile-seek-fill');
         expect(currentTime.textContent).toBe('1:10');
-        expect(totalTime.textContent).toBe('0:00');
+        expect(totalTime.textContent).toBe('--:--');
         expect(seekFill.style.width).toBe('0%');
       } finally {
         nowSpy.mockRestore();
@@ -3435,6 +3435,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
 
     it('resets an enabled camera snapshot preview to the static icon', async () => {
+      // Resetting asks first, so the page's own config writes land before it. They answer with what
+      // the page holds, as Home Assistant's would.
+      mockElectronAPI.updateConfig.mockImplementation(async (patch) => ({
+        ...state.CONFIG,
+        ...patch,
+      }));
       const config = state.CONFIG;
       config.favoriteEntities = ['camera.front_door'];
       config.quickAccessTileOptions = {
@@ -3453,10 +3459,10 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       const modal = document.querySelector('.rename-modal');
       expect(modal.querySelector('#camera-preview-refresh-select').value).toBe('5s');
+      uiUtils.showConfirm.mockResolvedValueOnce(true);
       modal.querySelector('#reset-rename-btn').click();
 
-      await Promise.resolve();
-      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(state.CONFIG.quickAccessTileOptions['camera.front_door']).toBeUndefined();
       expect(
@@ -3625,6 +3631,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
 
     it('hides value font size controls for quick access tiles without displayed values', async () => {
+      // Resetting asks first, so the page's own config writes land before it. They answer with what
+      // the page holds, as Home Assistant's would.
+      mockElectronAPI.updateConfig.mockImplementation(async (patch) => ({
+        ...state.CONFIG,
+        ...patch,
+      }));
       const config = state.CONFIG;
       config.favoriteEntities = ['input_button.tv_rewind'];
       config.quickAccessTileOptions = {
@@ -3651,9 +3663,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(modal).toBeTruthy();
       expect(modal.querySelector('#tile-value-size-select')).toBeNull();
 
+      uiUtils.showConfirm.mockResolvedValueOnce(true);
       modal.querySelector('#reset-rename-btn').click();
-      await Promise.resolve();
-      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(state.CONFIG.quickAccessTileOptions['input_button.tv_rewind']).toBeUndefined();
       expect(mockElectronAPI.updateConfig).toHaveBeenCalledWith(
@@ -3923,7 +3935,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       expect(
         [...modal.querySelectorAll('.modal-footer button')].map((button) => button.id)
-      ).toEqual(['cancel-rename-btn', 'reset-rename-btn', 'save-rename-btn']);
+      ).toEqual(['reset-rename-btn', 'cancel-rename-btn', 'save-rename-btn']);
     });
 
     it('switches a sensor tile to a gauge with a custom range from the settings modal', async () => {
@@ -4061,9 +4073,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         const reopened = document.querySelector('.rename-modal');
         expect(reopened.querySelector('#tile-tray-label').value).toBe('Office');
         expect(reopened.querySelector('#tile-tray-color').value).toBe('purple');
+        uiUtils.showConfirm.mockResolvedValueOnce(true);
         reopened.querySelector('#reset-rename-btn').click();
-        await Promise.resolve();
-        await Promise.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
         expect(state.CONFIG.trayEntities['sensor.office_temperature']).toEqual({});
       } finally {
         setRendererHost(previousHost);
@@ -4208,6 +4220,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
 
     it('resets quick access tile name and value font size from the pencil settings modal', async () => {
+      // Resetting asks first, so the page's own config writes land before it. They answer with what
+      // the page holds, as Home Assistant's would.
+      mockElectronAPI.updateConfig.mockImplementation(async (patch) => ({
+        ...state.CONFIG,
+        ...patch,
+      }));
       const config = state.CONFIG;
       config.favoriteEntities = ['sensor.office_temperature'];
       config.customEntityNames = {
@@ -4239,10 +4257,10 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const modal = document.querySelector('.rename-modal');
       expect(modal.querySelector('#rename-input').value).toBe('Desk "Temp"');
       expect(modal.querySelector('#tile-value-size-select').value).toBe('large');
+      uiUtils.showConfirm.mockResolvedValueOnce(true);
       modal.querySelector('#reset-rename-btn').click();
 
-      await Promise.resolve();
-      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(state.CONFIG.customEntityNames['sensor.office_temperature']).toBeUndefined();
       expect(state.CONFIG.quickAccessTileOptions['sensor.office_temperature']).toBeUndefined();
@@ -7506,13 +7524,16 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
 
       const mappings = [
-        { haState: 'clear-night', expected: 'sunny' },
+        // The sun scene is a day sky: a clear night, an offline entity and a state nobody knows get
+        // no effect, not a warm glow.
+        { haState: 'clear-night', expected: null },
         { haState: 'sunny', expected: 'sunny' },
         { haState: 'stable', expected: 'sunny' },
         { haState: 'pouring', expected: 'rainy' },
         { haState: 'rainy', expected: 'rainy' },
         { haState: 'drizzle', expected: 'rainy' },
         { haState: 'snowy', expected: 'snowy' },
+        { haState: 'snowy-rainy', expected: 'snowy' },
         { haState: 'hail', expected: 'snowy' },
         { haState: 'sleet', expected: 'snowy' },
         { haState: 'cloudy', expected: 'cloudy' },
@@ -7525,7 +7546,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         { haState: 'exceptional', expected: 'cloudy' },
         { haState: 'lightning', expected: 'stormy' },
         { haState: 'lightning-rainy', expected: 'stormy' },
-        { haState: 'unknown-weird-state', expected: 'sunny' },
+        { haState: 'unavailable', expected: null },
+        { haState: 'unknown', expected: null },
+        { haState: 'unknown-weird-state', expected: null },
       ];
 
       for (const { haState, expected } of mappings) {
@@ -7839,7 +7862,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const modal = document.getElementById('add-page-modal');
       expect(modal).not.toBeNull();
       expect(modal.classList.contains('modal')).toBe(true);
-      expect(modal.querySelector('.modal-header h2').textContent).toContain('Add Page');
+      expect(modal.querySelector('.modal-header h2').textContent).toContain('Add page');
 
       const chipLabels = Array.from(modal.querySelectorAll('.qa-add-chip')).map(
         (c) => c.textContent
@@ -9252,9 +9275,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(points[0][1]).toBe(points[1][1]);
       expect(points[1][0]).toBe(420);
       expect(points[0][0]).toBeLessThan(420);
-      const dot = document.querySelector('.sensor-detail-modal circle');
-      expect(Number(dot.getAttribute('cx'))).toBe(points[0][0]);
-      expect(Number(dot.getAttribute('cy'))).toBe(points[0][1]);
+      // The marker is a round-capped zero-length line, so a stretched viewBox cannot turn it into
+      // an ellipse the way a <circle> would be.
+      const dot = document.querySelector('.sensor-detail-modal .sensor-detail-sparkline-dot');
+      expect(document.querySelector('.sensor-detail-modal circle')).toBeNull();
+      expect(dot.getAttribute('d')).toBe(`M${points[0][0]} ${points[0][1]}h0`);
+      expect(dot.getAttribute('stroke-linecap')).toBe('round');
       document.querySelector('.sensor-detail-modal')?.remove();
     });
 

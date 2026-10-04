@@ -23,6 +23,8 @@ function summarizeHistory(series) {
 function mountSensorHistoryDetail({ body, modal, entity, websocket, normalize, render }) {
   const controls = document.createElement('div');
   controls.className = 'sensor-history-controls';
+  // A sensor that dropped out still has a history to read, so the unavailable dialog leaves these on.
+  controls.dataset.unavailableKeep = 'true';
   const label = document.createElement('label');
   label.textContent = t('History period');
   const period = document.createElement('select');

@@ -2,6 +2,7 @@
  * @jest-environment node
  */
 
+const http = require('http');
 const net = require('net');
 const {
   applyStateChanges,
@@ -12,7 +13,11 @@ const {
   startMockHomeAssistant,
   stateChangedMessage,
 } = require('../../scripts/visual-snapshots/mock-home-assistant.cjs');
-const { buildServiceResponses } = require('../../scripts/visual-snapshots/fixture.cjs');
+const {
+  buildHistories,
+  buildServiceResponses,
+  buildSubscriptionEvents,
+} = require('../../scripts/visual-snapshots/fixture.cjs');
 
 function maskedClientFrame(text) {
   const payload = Buffer.from(text, 'utf8');
@@ -105,6 +110,154 @@ describe('visual snapshot mock Home Assistant refused calls', () => {
       isRefusedCall({ type: 'call_service', service_data: { entity_id: 'light.unreachable' } }, [])
     ).toBe(false);
     expect(isRefusedCall({ type: 'call_service' }, failing)).toBe(false);
+  });
+});
+
+describe('visual snapshot mock Home Assistant history and subscriptions', () => {
+  const now = new Date('2026-10-04T12:00:00Z');
+  const history = (entityIds, histories = buildHistories(now)) =>
+    resultFor(
+      { type: 'history/history_during_period', entity_ids: entityIds },
+      { states: [], services: {}, serviceResponses: {}, histories }
+    );
+
+  test('answers a history request with rows only for the sensors that recorded something', () => {
+    const result = history(['sensor.graph_living_temp', 'sensor.office_temp']);
+    expect(Object.keys(result)).toEqual(['sensor.graph_living_temp']);
+    const rows = result['sensor.graph_living_temp'];
+    // A reading every half hour for a day, oldest first, in Home Assistant's minimal format.
+    expect(rows).toHaveLength(49);
+    expect(rows[0].lu).toBeLessThan(rows.at(-1).lu);
+    expect(rows.at(-1).lu).toBe(now.getTime() / 1000);
+    expect(Number.isFinite(Number(rows[0].s))).toBe(true);
+  });
+
+  test('leaves history empty when nothing is given, as before', () => {
+    expect(history(['sensor.graph_living_temp'], null)).toEqual({});
+  });
+
+  test('has the persistent notifications a subscription starts with, with Markdown in them', () => {
+    const events = buildSubscriptionEvents(now)({ type: 'persistent_notification/subscribe' });
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('current');
+    const messages = Object.values(events[0].notifications).map((entry) => entry.message);
+    expect(messages.some((message) => /\[[^\]]+\]\(\/config\/[a-z]+\)/.test(message))).toBe(true);
+    expect(messages.some((message) => message.includes('**'))).toBe(true);
+    expect(buildSubscriptionEvents(now)({ type: 'subscribe_events' })).toEqual([]);
+  });
+});
+
+describe('visual snapshot mock Home Assistant pushed events', () => {
+  // A client as small as the mock needs: the upgrade handshake, then masked text frames out and
+  // the server's frames in.
+  function connect(port) {
+    return new Promise((resolve, reject) => {
+      const request = http.request({
+        port,
+        host: '127.0.0.1',
+        path: '/api/websocket',
+        headers: {
+          Connection: 'Upgrade',
+          Upgrade: 'websocket',
+          'Sec-WebSocket-Version': '13',
+          'Sec-WebSocket-Key': Buffer.from('0123456789abcdef').toString('base64'),
+        },
+      });
+      request.on('upgrade', (response, socket) => {
+        const received = [];
+        let pending = Buffer.alloc(0);
+        socket.on('data', (chunk) => {
+          const [frames, rest] = decodeFrames(Buffer.concat([pending, chunk]));
+          pending = rest;
+          frames.forEach(({ payload }) => received.push(JSON.parse(payload.toString('utf8'))));
+        });
+        resolve({
+          received,
+          socket,
+          send: (value) => socket.write(maskedClientFrame(JSON.stringify(value))),
+        });
+      });
+      request.on('error', reject);
+      request.end();
+    });
+  }
+  const until = async (condition) => {
+    for (let attempt = 0; attempt < 100 && !condition(); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  };
+
+  test('sends events to the subscriptions that are open, and only to the type asked for', async () => {
+    const server = await startMockHomeAssistant({ token: 'token', states: [] });
+    const client = await connect(server.address().port);
+    try {
+      client.send({ type: 'auth', access_token: 'token' });
+      client.send({ id: 1, type: 'persistent_notification/subscribe' });
+      client.send({ id: 2, type: 'subscribe_events' });
+      await until(() => client.received.some((message) => message.id === 2));
+      // Nothing is sent when the subscription opens: the bell stays out of every scene.
+      expect(client.received.filter((message) => message.type === 'event')).toEqual([]);
+
+      server.pushEvents('persistent_notification/subscribe', [
+        { type: 'current', notifications: { a: { notification_id: 'a' } } },
+      ]);
+      await until(() => client.received.some((message) => message.type === 'event'));
+      expect(client.received.filter((message) => message.type === 'event')).toEqual([
+        {
+          id: 1,
+          type: 'event',
+          event: { type: 'current', notifications: { a: { notification_id: 'a' } } },
+        },
+      ]);
+    } finally {
+      client.socket.destroy();
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
+  test('keeps the pushed events and the state changes apart on one connection', async () => {
+    const server = await startMockHomeAssistant({
+      token: 'token',
+      states: [{ entity_id: 'light.one', state: 'on', attributes: {} }],
+    });
+    const client = await connect(server.address().port);
+    const events = () => client.received.filter((message) => message.type === 'event');
+    const roundTrip = async (id) => {
+      client.send({ id, type: 'ping' });
+      await until(() => client.received.some((message) => message.id === id));
+    };
+    try {
+      client.send({ type: 'auth', access_token: 'token' });
+      client.send({ id: 1, type: 'persistent_notification/subscribe' });
+      client.send({ id: 2, type: 'subscribe_events', event_type: 'state_changed' });
+      client.send({ id: 3, type: 'subscribe_events', event_type: 'call_service' });
+      await roundTrip(10);
+
+      // Notifications go to the notification subscription and to nothing else.
+      server.pushEvents('persistent_notification/subscribe', [{ type: 'current' }]);
+      // A new entity goes to the state_changed subscription alone, and not to the other
+      // subscribe_events, whose event type is a different one.
+      server.changeStates({ add: [{ entity_id: 'light.two', state: 'on', attributes: {} }] });
+      await roundTrip(11);
+      expect(
+        events().map((message) => [message.id, message.event.type ?? message.event.event_type])
+      ).toEqual([
+        [1, 'current'],
+        [2, 'state_changed'],
+      ]);
+
+      // Once the app unsubscribes, its changes stop arriving.
+      client.send({ id: 4, type: 'unsubscribe_events', subscription: 2 });
+      await roundTrip(12);
+      server.changeStates({ remove: ['light.two'] });
+      await roundTrip(13);
+      expect(events()).toHaveLength(2);
+    } finally {
+      client.socket.destroy();
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 });
 

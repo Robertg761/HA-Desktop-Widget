@@ -44,6 +44,11 @@ let lastPointerPosition = null;
 const QUERY_ONLY_SERVICES = new Set(['unlock', 'alarm_disarm']);
 // Devices whose result row has no safe default action; Enter looks for their explicit command.
 const COMMAND_ONLY_DOMAINS = new Set(['lock', 'alarm_control_panel']);
+// The kinds of device the palette has named commands for: Turn on and Turn off, Run, Lock and
+// Unlock, Arm and Disarm. buildPaletteCommands reads these, and so does the decision whether Enter
+// on a result may act (hasCommandDomain), so the two cannot drift apart.
+const TOGGLE_COMMAND_DOMAINS = new Set(['light', 'switch', 'fan', 'input_boolean']);
+const RUN_COMMAND_DOMAINS = new Set(['scene', 'script']);
 
 // The same text rules as every other search, keeping dots so an entity id still reads as one.
 function normalizeSearchValue(value) {
@@ -316,16 +321,16 @@ function buildPaletteCommands(entities, config = state.CONFIG, services = state.
     const name = utils.getEntityDisplayName(entity);
     if (
       entity.state === 'unavailable' ||
-      (entity.state === 'unknown' && !['scene', 'script'].includes(domain))
+      (entity.state === 'unknown' && !RUN_COMMAND_DOMAINS.has(domain))
     )
       return [];
     // Only offer the action that changes something: a device that is on gets "Turn off".
-    const actions = ['light', 'switch', 'fan', 'input_boolean'].includes(domain)
+    const actions = TOGGLE_COMMAND_DOMAINS.has(domain)
       ? [
           entity.state !== 'on' && ['turn_on', t('Turn on {{name}}', { name })],
           entity.state !== 'off' && ['turn_off', t('Turn off {{name}}', { name })],
         ].filter(Boolean)
-      : ['scene', 'script'].includes(domain)
+      : RUN_COMMAND_DOMAINS.has(domain)
         ? [['turn_on', t('Run {{name}}', { name })]]
         : domain === 'lock'
           ? [
@@ -377,6 +382,24 @@ function getAlarmActions(entity, name) {
     .concat(entity.state !== 'disarmed' ? [['alarm_disarm', t('Disarm {{name}}', { name })]] : []);
 }
 
+// Whether the palette lists a command (turn on, run, lock) for the entity right now.
+function hasCommandFor(entityId) {
+  return (paletteCommands || []).some((item) => item.entity?.entity_id === entityId);
+}
+
+// Whether the palette has commands for this kind of device, whether or not it lists one right now.
+// A switch whose state is unknown has no Turn on or Turn off, and none are listed before Home
+// Assistant has answered get_services, yet Enter on its result must still only say what it is: the
+// command that acts is the row beside it, when there is one. The list cannot decide this.
+function hasCommandDomain(entityId) {
+  const domain = getEntityDomain(entityId);
+  return (
+    TOGGLE_COMMAND_DOMAINS.has(domain) ||
+    RUN_COMMAND_DOMAINS.has(domain) ||
+    COMMAND_ONLY_DOMAINS.has(domain)
+  );
+}
+
 function redirectToExplicitCommand(selected) {
   const entityId = selected.entity.entity_id;
   const commandIndex = results.findIndex(
@@ -388,9 +411,8 @@ function redirectToExplicitCommand(selected) {
     return;
   }
   const name = utils.getEntityDisplayName(selected.entity);
-  const hasCommand = (paletteCommands || []).some((item) => item.entity?.entity_id === entityId);
   showHint(
-    hasCommand
+    hasCommandFor(entityId)
       ? getEntityDomain(entityId) === 'alarm_control_panel'
         ? t('To control {{name}}, type "arm" or "disarm".', { name })
         : t('To control {{name}}, type "lock" or "unlock".', { name })
@@ -417,11 +439,12 @@ async function executeHighlightedResult() {
       return;
     }
   }
+  const hasCommand = hasCommandDomain(selected.entity?.entity_id);
   closeCommandPalette();
   if (!selected.service && !selected.tabId) {
     // Opened entities are remembered too, so what is looked up often is where an empty search starts.
     rememberRecentCommand(selected.key);
-    openEntityDetailModal(selected.entity, { source: 'command-palette' });
+    openEntityDetailModal(selected.entity, { source: 'command-palette', hasCommand });
     return;
   }
   executing = true;

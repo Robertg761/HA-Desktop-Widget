@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.59",
+  "version": "1.2.60",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget.",
   "messages": {
@@ -1860,6 +1860,16 @@
     "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).": "Schalte oder steuere Entitäten von überall aus. Modifikatortasten: Ctrl, Alt, Shift, Win, Command, Super (zum Beispiel <code>Ctrl+Shift+A</code>).",
     "Action chosen: {{action}}. It applies once you record a hotkey.": "Aktion gewählt: {{action}}. Sie gilt, sobald du ein Tastenkürzel aufzeichnest.",
     "Notify when unavailable or unknown": "Benachrichtigen, wenn nicht verfügbar oder unbekannt",
-    "Waits 30 seconds first, and tells you at most once every 15 minutes per device.": "Wartet zuerst 30 Sekunden und benachrichtigt höchstens alle 15 Minuten pro Gerät."
+    "Waits 30 seconds first, and tells you at most once every 15 minutes per device.": "Wartet zuerst 30 Sekunden und benachrichtigt höchstens alle 15 Minuten pro Gerät.",
+    "Display name": "Anzeigename",
+    "Value font size": "Schriftgröße des Werts",
+    "Chart": "Diagramm",
+    "Gauge range": "Skalenbereich",
+    "Page name": "Seitenname",
+    "Quick picks": "Schnellauswahl",
+    "Click to configure weather": "Zum Einstellen des Wetters klicken",
+    "Activated {{name}}": "{{name}} ausgeführt",
+    "Range {{min}} to {{max}}, step {{step}}": "Bereich {{min}} bis {{max}}, Schritt {{step}}",
+    "Use the command palette to control {{name}}": "Nutze die Befehlspalette, um {{name}} zu steuern"
   }
 }

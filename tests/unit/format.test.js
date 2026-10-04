@@ -298,6 +298,19 @@ describe('units and percentages', () => {
     expect(format.formatPercent(80)).toBe('80%');
   });
 
+  it("writes a light's colour temperature as whole kelvin with a fixed gap", () => {
+    useLocale('en');
+    expect(format.formatKelvin(3200)).toBe(`3,200${NBSP}K`);
+    expect(format.formatKelvin(2700.4)).toBe(`2,700${NBSP}K`);
+
+    useLocale('de');
+    expect(format.formatKelvin(3200)).toMatch(new RegExp(`^3\\.200${FIXED_SPACE}K$`));
+
+    useLocale('ar');
+    const digits = new Intl.NumberFormat('ar', { maximumFractionDigits: 0 }).format(3200);
+    expect(format.formatKelvin(3200)).toBe(`${digits}${NBSP}K`);
+  });
+
   it('puts the percent sign first where the language writes it so', () => {
     // No pack for the computer's language: English text in Turkish number formats ("%50").
     useLocale('en', {
@@ -924,6 +937,22 @@ describe('what counts as a countdown', () => {
     expect(
       utils.getEntityDisplayState(sensor('sensor.oven', 'on', { finishes_at: finishes }))
     ).toMatch(/^1:\d{2}$/);
+  });
+
+  it('counts any unitless, non-numeric sensor with "timer" in its id, on purpose', () => {
+    // One loose rule for the tile, the pin, the icon, the palette and the tray, so a sensor reads
+    // the same everywhere. A word match would leave "sensor.timer_mode" a countdown on one surface
+    // and a plain text reading on another.
+    expect(utils.isTimerLikeSensor(sensor('sensor.timer_mode', 'eco'))).toBe(true);
+    expect(utils.isTimerLikeSensor(sensor('sensor.egg_timer_preset', 'soft'))).toBe(true);
+    expect(utils.isTimerLikeSensor(sensor('sensor.EggTimerPreset', 'soft'))).toBe(true);
+    // A unit or a number still makes it a reading.
+    expect(
+      utils.isTimerLikeSensor(sensor('sensor.timer_mode', 'eco', { unit_of_measurement: 'min' }))
+    ).toBe(false);
+    expect(utils.isTimerLikeSensor(sensor('sensor.timer_mode', '3'))).toBe(false);
+    // It is a sensor rule: other domains keep their own.
+    expect(utils.isTimerLikeSensor(entity('switch.timer_mode', 'on'))).toBe(false);
   });
 
   it('shows a timestamp sensor with no timer hint as a date, not a countdown', () => {
