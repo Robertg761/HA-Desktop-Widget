@@ -13,7 +13,6 @@
     "ar|Arm {{name}} with bypass",
     "ar|Disarm {{name}}",
     "ar|Hotkey for {{name}}",
-    "ar|To control {{name}}, type \"arm\" or \"disarm\".",
     "es|Arm {{name}} at home",
     "es|Arm {{name}} at night",
     "es|Arm {{name}} away",

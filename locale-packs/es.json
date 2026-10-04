@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.58",
+  "version": "1.2.59",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -558,10 +558,10 @@
     "Tray: Unlocking": "D…",
     "Tray: Armed at home": "CA",
     "Tray: Armed away": "FU",
-    "Tray: Armed at night": "NO",
+    "Tray: Armed at night": "NOC",
     "Tray: Armed on vacation": "VA",
     "Tray: Arming": "A…",
-    "Tray: Disarmed": "NO",
+    "Tray: Disarmed": "DES",
     "Beta": "Beta",
     "All day": "Todo el día",
     "Heating target": "Temperatura de calefacción",
@@ -1642,11 +1642,11 @@
     "Could not import settings. Your current settings are unchanged.": "No se pudieron importar los ajustes. Tus ajustes actuales no han cambiado.",
     "Settings exported.": "Ajustes exportados.",
     "Settings imported.": "Ajustes importados.",
-    "Settings imported. Reopen Settings to refresh the controls.": "Ajustes importados. Vuelve a abrir Ajustes para actualizar los controles.",
+    "Settings imported. Reopen Settings to refresh the controls.": "Ajustes importados. Vuelve a abrir Configuración para actualizar los controles.",
     "No changes": "Sin cambios",
     "File: {{name}}": "Archivo: {{name}}",
     "Changes: {{sections}}": "Cambios: {{sections}}",
-    "Import applies immediately and replaces unsaved Settings edits. Your current saved settings are backed up first. Connection details, desktop pins, shortcuts and profile sync stay on this computer. Imported settings follow your existing sync scope.": "La importación se aplica de inmediato y reemplaza los cambios sin guardar en Ajustes. Primero se guarda una copia de tus ajustes actuales. La conexión, los elementos fijados, los atajos y la sincronización permanecen en este equipo. Los ajustes importados respetan tu alcance de sincronización actual.",
+    "Import applies immediately and replaces unsaved Settings edits. Your current saved settings are backed up first. Connection details, desktop pins, shortcuts and profile sync stay on this computer. Imported settings follow your existing sync scope.": "La importación se aplica de inmediato y reemplaza los cambios sin guardar en Configuración. Primero se guarda una copia de tus ajustes actuales. La conexión, los elementos fijados, los atajos y la sincronización permanecen en este equipo. Los ajustes importados respetan tu alcance de sincronización actual.",
     "Pages: {{pages}}. Referenced entities: {{count}}.": "Páginas: {{pages}}. Entidades referenciadas: {{count}}.",
     "Unavailable entities on this connection: {{count}}.": "Entidades no disponibles en esta conexión: {{count}}.",
     "Apply this backup on this computer? Your current settings are backed up first.": "¿Aplicar esta copia de seguridad en este equipo? Tus ajustes actuales se guardan antes en una copia de seguridad.",
@@ -1789,6 +1789,10 @@
     "Show log file": "Mostrar archivo de registro",
     "Shows the log file in your file manager": "Muestra el archivo de registro en el explorador de archivos",
     "Showing the log file: {{path}}": "Mostrando el archivo de registro: {{path}}",
-    "No file manager opened. The path of the log file was copied: {{path}}": "No se abrió ningún explorador de archivos. Se copió la ruta del archivo de registro: {{path}}"
+    "No file manager opened. The path of the log file was copied: {{path}}": "No se abrió ningún explorador de archivos. Se copió la ruta del archivo de registro: {{path}}",
+    "Connection, window behavior and language.": "Conexión, comportamiento de la ventana e idioma.",
+    "Theme, colors, glass and readability.": "Tema, colores, cristal y legibilidad.",
+    "Tints Quick Access tiles with your accent color while their light, switch, fan or player is running. Sensors and cameras are unaffected.": "Tiñe las tarjetas de acceso rápido con tu color de acento mientras su luz, interruptor, ventilador o reproductor está en marcha. Los sensores y las cámaras no se ven afectados.",
+    "Entities": "Entidades"
   }
 }

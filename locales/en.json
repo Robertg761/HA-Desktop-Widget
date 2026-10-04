@@ -36,7 +36,6 @@
   "Enter the current remote passphrase before disabling encrypted sync.": "Enter the current remote passphrase before disabling encrypted sync.",
   "Diagnostics & Troubleshooting": "Diagnostics & Troubleshooting",
   "Global Popup Trigger": "Global Popup Trigger",
-  "Entity Shortcuts": "Entity Shortcuts",
   "Desktop Notifications": "Desktop Notifications",
   "Home Assistant Notifications": "Home Assistant Notifications",
   "Persistent Notifications": "Persistent Notifications",
@@ -336,7 +335,6 @@
   "Development demo": "Development demo",
   "Ends {{time}}": "Ends {{time}}",
   "Glow tiles that are on": "Glow tiles that are on",
-  "Tints Quick Access tiles with your accent colour while their light, switch, fan or player is running. Sensors and cameras are unaffected.": "Tints Quick Access tiles with your accent colour while their light, switch, fan or player is running. Sensors and cameras are unaffected.",
   "Failed to save tile glow setting": "Failed to save tile glow setting",
   "Auto-updates only work in packaged builds": "Auto-updates only work in packaged builds",
   "Download Portable Update": "Download Portable Update",
@@ -1356,8 +1354,6 @@
   "Readability": "Readability",
   "Date & time": "Date & time",
   "Home Assistant": "Home Assistant",
-  "Connection, window behaviour and language.": "Connection, window behaviour and language.",
-  "Theme, colours, glass and readability.": "Theme, colours, glass and readability.",
   "What the main window shows.": "What the main window shows.",
   "Keyboard shortcuts for the widget and your entities.": "Keyboard shortcuts for the widget and your entities.",
   "Desktop notifications when entities change.": "Desktop notifications when entities change.",
@@ -1699,5 +1695,9 @@
   "Show log file": "Show log file",
   "Shows the log file in your file manager": "Shows the log file in your file manager",
   "Showing the log file: {{path}}": "Showing the log file: {{path}}",
-  "No file manager opened. The path of the log file was copied: {{path}}": "No file manager opened. The path of the log file was copied: {{path}}"
+  "No file manager opened. The path of the log file was copied: {{path}}": "No file manager opened. The path of the log file was copied: {{path}}",
+  "Connection, window behavior and language.": "Connection, window behavior and language.",
+  "Theme, colors, glass and readability.": "Theme, colors, glass and readability.",
+  "Tints Quick Access tiles with your accent color while their light, switch, fan or player is running. Sensors and cameras are unaffected.": "Tints Quick Access tiles with your accent color while their light, switch, fan or player is running. Sensors and cameras are unaffected.",
+  "Entities": "Entities"
 }

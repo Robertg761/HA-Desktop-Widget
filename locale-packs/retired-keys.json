@@ -334,5 +334,21 @@
   "Opens the log file location in your file explorer": {
     "retiredIn": "4.0.0",
     "reason": "The button shows the log file in the file manager, and says so, instead of opening it in a file explorer"
+  },
+  "Connection, window behaviour and language.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled the American way like the rest of the interface"
+  },
+  "Theme, colours, glass and readability.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled the American way like the rest of the interface"
+  },
+  "Tints Quick Access tiles with your accent colour while their light, switch, fan or player is running. Sensors and cameras are unaffected.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled the American way like the rest of the interface"
+  },
+  "Entity Shortcuts": {
+    "retiredIn": "4.0.0",
+    "reason": "The group's caption translated like its only row, Entity hotkeys, in most languages; it is now just Entities"
   }
 }

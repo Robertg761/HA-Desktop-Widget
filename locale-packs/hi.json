@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.59",
+  "version": "1.2.60",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -462,7 +462,7 @@
     "Leave a field blank to size that side of the gauge automatically from the sensor unit, attributes, or recent history.": "उस तरफ की गेज सीमा सेंसर इकाई, विशेषताओं या हाल के इतिहास से स्वतः तय करने के लिए फ़ील्ड खाली छोड़ें।",
     "Gauge minimum must be less than the maximum.": "गेज का न्यूनतम मान अधिकतम से कम होना चाहिए।",
     "Show in system tray": "सिस्टम ट्रे में दिखाएं",
-    "Shows this entity’s current value as its own icon in the system tray.": "इस इकाई का वर्तमान मान सिस्टम ट्रे में उसके अपने आइकन के रूप में दिखाता है।",
+    "Shows this entity’s current value as its own icon in the system tray.": "इस एंटिटी का वर्तमान मान सिस्टम ट्रे में उसके अपने आइकन के रूप में दिखाता है।",
     "Show in Tray": "ट्रे में दिखाएं",
     "Remove from Tray": "ट्रे से हटाएं",
     "On": "चालू",
@@ -782,7 +782,7 @@
     "No matching results": "कोई मेल खाता परिणाम नहीं",
     "Lock {{name}}": "{{name}} लॉक करें",
     "Unlock {{name}}": "{{name}} अनलॉक करें",
-    "To control {{name}}, type \"lock\" or \"unlock\".": "{{name}} को नियंत्रित करने के लिए \"लॉक\" या \"अनलॉक\" टाइप करें।",
+    "To control {{name}}, type \"lock\" or \"unlock\".": "{{name}} को नियंत्रित करने के लिए “लॉक” या “अनलॉक” टाइप करें।",
     "No command is available for {{name}}.": "{{name}} के लिए कोई कमांड उपलब्ध नहीं है।",
     "Authorization was declined in Home Assistant.": "Home Assistant में प्राधिकरण अस्वीकार कर दिया गया।",
     "Home Assistant authorization timed out. Try again.": "Home Assistant प्राधिकरण का समय समाप्त हो गया। फिर से प्रयास करें।",
@@ -1789,6 +1789,10 @@
     "Show log file": "लॉग फ़ाइल दिखाएं",
     "Shows the log file in your file manager": "आपके फ़ाइल एक्सप्लोरर में लॉग फ़ाइल दिखाता है",
     "Showing the log file: {{path}}": "लॉग फ़ाइल दिखाई जा रही है: {{path}}",
-    "No file manager opened. The path of the log file was copied: {{path}}": "कोई फ़ाइल एक्सप्लोरर नहीं खुला। लॉग फ़ाइल का पथ कॉपी कर लिया गया: {{path}}"
+    "No file manager opened. The path of the log file was copied: {{path}}": "कोई फ़ाइल एक्सप्लोरर नहीं खुला। लॉग फ़ाइल का पथ कॉपी कर लिया गया: {{path}}",
+    "Connection, window behavior and language.": "कनेक्शन, विंडो व्यवहार और भाषा।",
+    "Theme, colors, glass and readability.": "थीम, रंग, ग्लास और पठनीयता।",
+    "Tints Quick Access tiles with your accent color while their light, switch, fan or player is running. Sensors and cameras are unaffected.": "जब किसी टाइल की लाइट, स्विच, पंखा या प्लेयर चल रहा हो, तो उसे आपके एक्सेंट रंग से रंग देता है। सेंसर और कैमरे इससे प्रभावित नहीं होते।",
+    "Entities": "एंटिटी"
   }
 }

@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.59",
+  "version": "1.2.60",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -242,7 +242,7 @@
     "Please enter a whole dollar amount between $1 and $12,000.": "يرجى إدخال مبلغ صحيح بالدولار بين 1$ و12,000$.",
     "Enter the current remote passphrase before disabling encrypted sync.": "أدخل عبارة المرور البعيدة الحالية قبل تعطيل المزامنة المشفرة.",
     "Diagnostics & Troubleshooting": "التشخيص وحل المشكلات",
-    "Global Popup Trigger": "اختصار الفتح العام",
+    "Global Popup Trigger": "اختصار النافذة المنبثقة العام",
     "Entity Shortcuts": "اختصارات الكيانات",
     "Desktop Notifications": "إشعارات سطح المكتب",
     "Home Assistant Notifications": "إشعارات Home Assistant",
@@ -782,7 +782,7 @@
     "No matching results": "لا توجد نتائج مطابقة",
     "Lock {{name}}": "قفل {{name}}",
     "Unlock {{name}}": "فتح قفل {{name}}",
-    "To control {{name}}, type \"lock\" or \"unlock\".": "للتحكم في {{name}}، اكتب \"قفل\" أو \"فتح قفل\".",
+    "To control {{name}}, type \"lock\" or \"unlock\".": "للتحكم في {{name}}، اكتب «قفل» أو «فتح قفل».",
     "No command is available for {{name}}.": "لا يتوفر أمر لـ {{name}}.",
     "Authorization was declined in Home Assistant.": "رُفض التفويض في Home Assistant.",
     "Home Assistant authorization timed out. Try again.": "انتهت مهلة تفويض Home Assistant. حاول مرة أخرى.",
@@ -1415,7 +1415,7 @@
     "Offline language packs": "حزم اللغات دون اتصال",
     "Time format": "تنسيق الوقت",
     "Date format": "تنسيق التاريخ",
-    "Popup hotkey": "اختصار الإظهار",
+    "Popup hotkey": "اختصار النافذة المنبثقة",
     "Profile sync": "مزامنة الملف الشخصي",
     "Accent colors": "ألوان التمييز",
     "Background colors": "ألوان الخلفية",
@@ -1618,7 +1618,7 @@
     "Arm {{name}} with bypass": "Arm {{name}} with bypass",
     "Arm {{name}} for vacation": "Arm {{name}} for vacation",
     "Disarm {{name}}": "Disarm {{name}}",
-    "To control {{name}}, type \"arm\" or \"disarm\".": "To control {{name}}, type \"arm\" or \"disarm\".",
+    "To control {{name}}, type \"arm\" or \"disarm\".": "للتحكم في {{name}}، اكتب «تسليح» أو «إلغاء تسليح».",
     "Upcoming events for the next 7 days": "الأحداث القادمة خلال الأيام السبعة المقبلة",
     "Page {{page}} of {{pages}} · {{count}} entities": "الصفحة {{page}} من {{pages}} · {{count}} من الكيانات",
     "Return to base": "العودة إلى القاعدة",
@@ -1789,6 +1789,10 @@
     "Show log file": "إظهار ملف السجل",
     "Shows the log file in your file manager": "يعرض ملف السجل في مستكشف الملفات",
     "Showing the log file: {{path}}": "عرض ملف السجل: {{path}}",
-    "No file manager opened. The path of the log file was copied: {{path}}": "لم يُفتح مستكشف ملفات. تم نسخ مسار ملف السجل: {{path}}"
+    "No file manager opened. The path of the log file was copied: {{path}}": "لم يُفتح مستكشف ملفات. تم نسخ مسار ملف السجل: {{path}}",
+    "Connection, window behavior and language.": "الاتصال وسلوك النافذة واللغة.",
+    "Theme, colors, glass and readability.": "السمة والألوان والزجاج وسهولة القراءة.",
+    "Tints Quick Access tiles with your accent color while their light, switch, fan or player is running. Sensors and cameras are unaffected.": "يلوّن بطاقات الوصول السريع بلون التمييز الخاص بك أثناء تشغيل الإضاءة أو المفتاح أو المروحة أو المشغّل التابع لها. ولا يؤثر ذلك على المستشعرات والكاميرات.",
+    "Entities": "الكيانات"
   }
 }
