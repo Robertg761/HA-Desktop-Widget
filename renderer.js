@@ -497,7 +497,7 @@ function flushPendingStateChangedEntities() {
     void publishDesktopPinSnapshot();
   }
 
-  changes.forEach(({ entity }) => {
+  changes.forEach(({ entity, local }) => {
     if (!entity) return;
     if (!hasDeletion && publishForDesktopPins) {
       window.electronAPI.publishHaEntityUpdate(entity).catch((error) => {
@@ -509,7 +509,8 @@ function flushPendingStateChangedEntities() {
     } else if (ui.isEntityVisible(entity.entity_id)) {
       ui.updateEntityInUI(entity);
     }
-    alerts.checkEntityAlerts(entity.entity_id, entity.state);
+    // A state the widget put there itself is not news from Home Assistant, so no alert rule hears it.
+    if (!local) alerts.checkEntityAlerts(entity.entity_id, entity.state);
   });
 
   if (!IS_DESKTOP_PIN_MODE) {
@@ -536,13 +537,15 @@ function scheduleStateChangedFlush() {
     : window.setTimeout(flushPendingStateChangedEntities, STATE_CHANGED_HIDDEN_FLUSH_DELAY_MS);
 }
 
-function queueStateChangedEntity(entity) {
+// `local` marks a state the widget derived rather than received (see markStaleFavoritesUnavailable).
+function queueStateChangedEntity(entity, { local = false } = {}) {
   if (!entity?.entity_id) return;
   state.setEntityState(entity);
   // Hidden dashboard flushes are throttled; tray updates must follow the live event itself.
   if (!IS_DESKTOP_PIN_MODE && document.hidden) handleTrayEntityStateChange(entity.entity_id);
   pendingStateChangedEntities.set(entity.entity_id, {
     entity,
+    local,
   });
   scheduleStateChangedFlush();
 }
@@ -563,7 +566,9 @@ function queueDeletedEntity(entityId) {
 // restart does not flash every tile to Unavailable while its integration loads. One that Home
 // Assistant has still not reported a minute later was probably removed or renamed while this
 // computer was offline, and a tile that says "On, 50%" for it is wrong. It becomes unavailable,
-// through the same path as any state change, so tiles, pins, the tray and alerts agree.
+// through the same path as any state change, so tiles, pins and the tray agree. Alerts do not hear
+// it: Home Assistant never reported an outage, and a State Change alert that tells about devices
+// going unavailable would otherwise announce every entity that was deleted while the app was away.
 function scheduleStaleFavoriteCheck() {
   window.clearTimeout(staleFavoriteTimerId);
   staleFavoriteTimerId = null;
@@ -578,7 +583,7 @@ function markStaleFavoritesUnavailable() {
     // Any event since the reconnect replaced the object: Home Assistant has spoken for it.
     if (!entity || entity !== record.entity || entity.state === 'unavailable') return;
     record.entity = { ...entity, state: 'unavailable' };
-    queueStateChangedEntity(record.entity);
+    queueStateChangedEntity(record.entity, { local: true });
   });
 }
 

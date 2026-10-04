@@ -325,10 +325,32 @@ describe('Renderer stale favorite state handling', () => {
       expect(mockUi.updateEntityInUI).not.toHaveBeenCalledWith(
         expect.objectContaining({ state: 'on' })
       );
-      expect(mockAlerts.checkEntityAlerts).toHaveBeenCalledWith(
-        favoriteEntity.entity_id,
-        'unavailable'
-      );
+    });
+
+    it('does not tell the alert rules about it, since Home Assistant never reported an outage', async () => {
+      await loadRenderer();
+      receiveStates([favoriteEntity, otherEntity]);
+      now += 60 * 1000;
+      receiveStates([otherEntity]);
+      mockAlerts.checkEntityAlerts.mockClear();
+
+      await jest.advanceTimersByTimeAsync(61 * 1000);
+      expect(keptFavorite().state).toBe('unavailable');
+      expect(mockAlerts.checkEntityAlerts).not.toHaveBeenCalled();
+
+      // What Home Assistant reports after that is news again, whatever it is.
+      mockWebsocket.emit('message', {
+        type: 'event',
+        event: {
+          event_type: 'state_changed',
+          data: {
+            entity_id: favoriteEntity.entity_id,
+            new_state: { ...favoriteEntity, state: 'off' },
+          },
+        },
+      });
+      await jest.advanceTimersByTimeAsync(20);
+      expect(mockAlerts.checkEntityAlerts).toHaveBeenCalledWith(favoriteEntity.entity_id, 'off');
     });
 
     it('leaves it alone when Home Assistant reports it within the grace', async () => {
