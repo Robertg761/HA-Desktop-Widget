@@ -1619,7 +1619,8 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-preset {
-  min-height: 20px;
+  /* 24px, the least a pointer is asked to hit (the compact layout's presets are the same). */
+  min-height: 24px;
   font-size: var(--font-size-2xs);
   border-radius: var(--radius-md);
 }
@@ -11379,22 +11380,6 @@ textarea:focus-visible,
   box-shadow: var(--glow-focus);
 }
 
-/* Improve touch target sizes for mobile/touch devices */
-@media (pointer: coarse) {
-  .btn,
-  .close-btn,
-  .media-tile-btn,
-  .control-btn,
-  .section-btn {
-    min-height: 44px;
-    min-width: 44px;
-  }
-
-  .control-item {
-    min-height: 72px;
-  }
-}
-
 /* ARIA live region styling */
 [aria-live] {
   position: relative;
@@ -12481,6 +12466,23 @@ body.software-glass.frosted-glass .modal-content {
 .btn-primary:hover {
   background: var(--accent-hover);
   border-color: transparent;
+}
+
+/* Touch targets. This sits after the dialog recipe's .btn (34px) and .close-btn (28px), which have
+   the same weight and came later in the file, so a touch screen was getting those instead. */
+@media (pointer: coarse) {
+  .btn,
+  .close-btn,
+  .media-tile-btn,
+  .control-btn,
+  .section-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .control-item {
+    min-height: 72px;
+  }
 }
 
 .btn-secondary {

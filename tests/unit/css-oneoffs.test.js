@@ -93,6 +93,30 @@ describe('stylesheet one-offs', () => {
     });
   });
 
+  describe('touch targets on a coarse pointer', () => {
+    // The 44px minimum comes first in the file, and the dialog recipe's 34px button and 28px close
+    // button have the same weight, so they used to win on a touch screen.
+    it.each([
+      ['.btn', 'min-height'],
+      ['.close-btn', 'min-height'],
+      ['.close-btn', 'min-width'],
+    ])('gives %s a 44px %s', (selector, property) => {
+      render(`<div class="modal"><button class="${selector.slice(1)}">x</button></div>`);
+      const element = document.querySelector(selector);
+      expect(resolvedValue(element, property, { pointer: 'coarse' })).toBe('44px');
+      expect(resolvedValue(element, property, { pointer: 'fine' })).not.toBe('44px');
+    });
+
+    it('gives the micro pin’s presets the 24px every other preset has', () => {
+      render(
+        '<div class="desktop-pin-light-control" data-layout="micro"><button class="desktop-pin-light-preset">25</button></div>'
+      );
+      expect(resolvedValue(document.querySelector('.desktop-pin-light-preset'), 'min-height')).toBe(
+        '24px'
+      );
+    });
+  });
+
   describe('the Settings page chrome', () => {
     const page = (extra = '') => `
       <div id="settings-modal" class="modal"><div class="modal-body">
