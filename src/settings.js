@@ -25,7 +25,14 @@ import {
   showConfirm,
   copyTextToClipboard,
 } from './ui-utils.js';
-import { cleanupHotkeyEventListeners } from './hotkeys.js';
+import {
+  cleanupHotkeyEventListeners,
+  describeHotkeyFailure,
+  describeRecording,
+  flashHotkeyRow,
+  formatHotkey,
+  recordKeyEvent,
+} from './hotkeys.js';
 import { getNextTabIndex, getTextDirection, syncRovingTabIndex } from './tab-navigation.js';
 import { syncSlidingIndicator } from './motion.js';
 import {
@@ -7036,7 +7043,7 @@ function relocalizePopupHotkeyText() {
     } else if (popupHotkeyAvailable === false) {
       input.placeholder = t('Not available on this platform');
     } else {
-      input.placeholder = state.CONFIG?.popupHotkey || t('Not set');
+      input.placeholder = formatHotkey(state.CONFIG?.popupHotkey) || t('Not set');
     }
   }
   const notice = document.querySelector('#popup-hotkey-container .unavailable-notice');
@@ -7063,8 +7070,8 @@ async function initializePopupHotkey() {
     if (isAvailable) {
       container?.querySelector('.unavailable-notice')?.remove();
       input.disabled = false;
-      input.value = currentHotkey;
-      input.placeholder = currentHotkey || t('Not set');
+      input.value = formatHotkey(currentHotkey);
+      input.placeholder = formatHotkey(currentHotkey) || t('Not set');
       setBtn.disabled = false;
       clearBtn.disabled = false;
       clearBtn.style.display = currentHotkey ? 'inline-block' : 'none';
@@ -7097,8 +7104,8 @@ async function initializePopupHotkey() {
 
     // Load current popup hotkey
     if (currentHotkey) {
-      input.value = currentHotkey;
-      input.placeholder = currentHotkey;
+      input.value = formatHotkey(currentHotkey);
+      input.placeholder = formatHotkey(currentHotkey);
       clearBtn.style.display = 'inline-block';
     }
 
@@ -7291,14 +7298,16 @@ async function initializePopupHotkey() {
     // Preset hotkey buttons
     const presetButtons = document.querySelectorAll('.preset-hotkey-btn');
     presetButtons.forEach((btn) => {
+      // The chip says the keys as this platform prints them; the accelerator it registers is the same.
+      btn.textContent = formatHotkey(btn.dataset.hotkey);
       btn.onclick = async () => {
         if (isCapturingPopupHotkey) stopCapturingPopupHotkey();
         const hotkey = btn.dataset.hotkey;
         try {
           const result = await window.electronAPI.registerPopupHotkey(hotkey);
           if (result.success) {
-            input.value = hotkey;
-            input.placeholder = hotkey;
+            input.value = formatHotkey(hotkey);
+            input.placeholder = formatHotkey(hotkey);
             clearBtn.style.display = 'inline-block';
             state.CONFIG.popupHotkey = hotkey;
             // showToast already imported at top
@@ -7308,12 +7317,13 @@ async function initializePopupHotkey() {
                 ? t(
                     'Shortcut target registered. Copy its binding from the Hyprland shortcuts panel.'
                   )
-                : t('Popup hotkey set to {{hotkey}}', { hotkey }),
+                : t('Popup hotkey set to {{hotkey}}', { hotkey: formatHotkey(hotkey) }),
               'success'
             );
           } else {
             // showToast already imported at top
-            showToast(result.error || t('Failed to set popup hotkey'), 'error');
+            showToast(describeHotkeyFailure(result, t('Failed to set popup hotkey')), 'error');
+            if (result.conflictEntityId) flashHotkeyRow(result.conflictEntityId);
           }
         } catch (error) {
           log.error('Failed to set preset hotkey:', error);
@@ -7369,67 +7379,48 @@ function startCapturingPopupHotkey() {
     e.preventDefault();
     e.stopPropagation();
 
-    // Ignore pure modifier keys - wait for a main key to be pressed
-    if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
-      return; // Don't process until user presses a non-modifier key
+    // The same recorder as the entity hotkeys use: by physical key, so Space, the arrows and
+    // Shift+digit work and the key is the one the keyboard hook sees. A modifier alone waits for
+    // its key; a key with nothing but Shift is only a capital letter, and says what to add.
+    const recorded = recordKeyEvent(e);
+    if (!recorded.complete) {
+      if (input && recorded.needsModifier) input.value = describeRecording(recorded);
+      return;
     }
+    const hotkey = recorded.accelerator;
 
-    // Build hotkey string
-    const parts = [];
-    if (e.ctrlKey) parts.push('Ctrl');
-    if (e.altKey) parts.push('Alt');
-    if (e.shiftKey) parts.push('Shift');
-    if (e.metaKey) parts.push('Command');
-
-    // Add the main key
-    let mainKeyAdded = false;
-    if (e.key && e.key.length === 1) {
-      parts.push(e.key.toUpperCase());
-      mainKeyAdded = true;
-    } else if (e.key === ' ') {
-      parts.push('Space');
-      mainKeyAdded = true;
-    } else if (e.key && !['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
-      parts.push(e.key);
-      mainKeyAdded = true;
-    }
-
-    // Only proceed if we have a main key (not just modifiers)
-    if (mainKeyAdded && parts.length > 0) {
-      const hotkey = parts.join('+');
-
-      try {
-        const result = await window.electronAPI.registerPopupHotkey(hotkey);
-        if (result.success) {
-          if (input) {
-            input.value = hotkey;
-            input.placeholder = hotkey;
-          }
-          const clearBtn = document.getElementById('popup-hotkey-clear-btn');
-          if (clearBtn) clearBtn.style.display = 'inline-block';
-          state.CONFIG.popupHotkey = hotkey;
-          // showToast already imported at top
-          await refreshDesktopIntegration();
-          showToast(
-            result.binding?.requiresCompositorBinding
-              ? t('Shortcut target registered. Copy its binding from the Hyprland shortcuts panel.')
-              : t('Popup hotkey set to {{hotkey}}', { hotkey }),
-            'success'
-          );
-        } else {
-          // showToast already imported at top
-          showToast(result.error || t('Failed to set popup hotkey'), 'error');
-          if (input) input.value = state.CONFIG.popupHotkey || '';
+    try {
+      const result = await window.electronAPI.registerPopupHotkey(hotkey);
+      if (result.success) {
+        if (input) {
+          input.value = formatHotkey(hotkey);
+          input.placeholder = formatHotkey(hotkey);
         }
-      } catch (error) {
-        log.error('Failed to register popup hotkey:', error);
+        const clearBtn = document.getElementById('popup-hotkey-clear-btn');
+        if (clearBtn) clearBtn.style.display = 'inline-block';
+        state.CONFIG.popupHotkey = hotkey;
         // showToast already imported at top
-        showToast(t('Failed to register popup hotkey'), 'error');
-        if (input) input.value = state.CONFIG.popupHotkey || '';
+        await refreshDesktopIntegration();
+        showToast(
+          result.binding?.requiresCompositorBinding
+            ? t('Shortcut target registered. Copy its binding from the Hyprland shortcuts panel.')
+            : t('Popup hotkey set to {{hotkey}}', { hotkey: formatHotkey(hotkey) }),
+          'success'
+        );
+      } else {
+        // showToast already imported at top
+        showToast(describeHotkeyFailure(result, t('Failed to set popup hotkey')), 'error');
+        if (result.conflictEntityId) flashHotkeyRow(result.conflictEntityId);
+        if (input) input.value = formatHotkey(state.CONFIG.popupHotkey);
       }
-
-      stopCapturingPopupHotkey();
+    } catch (error) {
+      log.error('Failed to register popup hotkey:', error);
+      // showToast already imported at top
+      showToast(t('Failed to register popup hotkey'), 'error');
+      if (input) input.value = formatHotkey(state.CONFIG.popupHotkey);
     }
+
+    stopCapturingPopupHotkey();
   };
 
   // Clicking elsewhere, or switching to another window, leaves nothing to record into. Pressing the
@@ -7460,8 +7451,8 @@ function stopCapturingPopupHotkey({ keepFocus = false } = {}) {
       window.removeEventListener('blur', input._captureAbandon);
       input._captureAbandon = null;
     }
-    input.value = state.CONFIG.popupHotkey || '';
-    input.placeholder = state.CONFIG.popupHotkey || t('Not set');
+    input.value = formatHotkey(state.CONFIG.popupHotkey);
+    input.placeholder = formatHotkey(state.CONFIG.popupHotkey) || t('Not set');
     if (!keepFocus) input.blur();
 
     if (input._captureHandler) {

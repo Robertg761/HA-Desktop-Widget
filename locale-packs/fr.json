@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.56",
+  "version": "1.2.57",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1611,7 +1611,7 @@
     "No controls available": "Aucune commande disponible",
     "Invalid value": "Valeur invalide",
     "Alarm code": "Code de l'alarme",
-    "Hotkey for {{name}}": "Hotkey for {{name}}",
+    "Hotkey for {{name}}": "Raccourci pour {{name}}",
     "Arm {{name}} at home": "Arm {{name}} at home",
     "Arm {{name}} away": "Arm {{name}} away",
     "Arm {{name}} at night": "Arm {{name}} at night",
@@ -1781,6 +1781,15 @@
     "Keep editing": "Continuer la modification",
     "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Affichage des {{shown}} premières icônes sur {{count}}. Saisissez du texte pour les affiner.",
     "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "Mode réorganisation activé. Glissez ou appuyez sur Alt+flèches pour réordonner. Appuyez sur Échap pour terminer.",
-    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "Mode réorganisation activé. Glissez, sélectionnez ou appuyez sur Alt+flèches pour réordonner. Utilisez les boutons d'une vignette pour l'épingler, la renommer ou la supprimer. Appuyez sur Échap pour terminer."
+    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "Mode réorganisation activé. Glissez, sélectionnez ou appuyez sur Alt+flèches pour réordonner. Utilisez les boutons d'une vignette pour l'épingler, la renommer ou la supprimer. Appuyez sur Échap pour terminer.",
+    "Entity hotkeys enabled": "Raccourcis d'entité activés",
+    "Entity hotkeys disabled": "Raccourcis d'entité désactivés",
+    "{{hotkey}} (add {{modifiers}})": "{{hotkey}} (ajoutez {{modifiers}})",
+    "Hotkey action for {{name}}": "Action du raccourci pour {{name}}",
+    "Clear hotkey for {{name}}": "Effacer le raccourci de {{name}}",
+    "Press Enter or Space to record a hotkey": "Appuyez sur Entrée ou Espace pour enregistrer un raccourci",
+    "Connect to Home Assistant to assign hotkeys": "Connectez-vous à Home Assistant pour attribuer des raccourcis",
+    "Hotkey saved. Turn on Entity hotkeys in Settings > Hotkeys to use it.": "Raccourci enregistré. Activez « Raccourcis d'entité » dans Paramètres > Raccourcis pour l'utiliser.",
+    "Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again": "Autorisez HA Desktop Widget dans Réglages Système > Confidentialité et sécurité > Accessibilité, puis redéfinissez le raccourci"
   }
 }

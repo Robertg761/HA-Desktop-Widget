@@ -133,6 +133,14 @@ describe('hotkeys module', () => {
       expect(mockElectronAPI.toggleHotkeys).toHaveBeenCalledWith(false);
     });
 
+    it('confirms with the name on the switch, not "Global hotkeys"', async () => {
+      // The switch is labelled "Entity hotkeys"; the popup hotkey is global too and is not on it.
+      await hotkeys.toggleHotkeys(true);
+      expect(showToast).toHaveBeenLastCalledWith('Entity hotkeys enabled', 'success', 2000);
+      await hotkeys.toggleHotkeys(false);
+      expect(showToast).toHaveBeenLastCalledWith('Entity hotkeys disabled', 'success', 2000);
+    });
+
     it('should handle IPC failure', async () => {
       mockElectronAPI.toggleHotkeys.mockResolvedValue({
         success: false,
@@ -221,7 +229,7 @@ describe('hotkeys module', () => {
 
       const select = container.querySelector('select.hotkey-action-select');
       expect(select.dataset.entityId).toBe('light.living_room');
-      expect(select.getAttribute('aria-label')).toBe('Hotkey action');
+      expect(select.getAttribute('aria-label')).toBe('Hotkey action for Living Room Light');
       expect(select.value).toBe('turn_off');
       expect([...select.options].map((option) => option.value)).toEqual([
         'toggle',
@@ -538,6 +546,442 @@ describe('hotkeys module', () => {
       const select = document.querySelector('select.hotkey-action-select');
 
       expect(press(select, 'Escape').defaultPrevented).toBe(false);
+    });
+  });
+
+  describe('the hotkey list: order, empty states and accessible names', () => {
+    const entity = (id, name) => ({
+      entity_id: id,
+      state: 'off',
+      attributes: { friendly_name: name },
+    });
+    const mount = (states = {}, hotkeysConfig = {}, enabled = true) => {
+      const config = getMockConfig();
+      config.globalHotkeys = { enabled, hotkeys: hotkeysConfig };
+      state.setConfig(config);
+      state.setStates(states);
+      hotkeys.cleanupHotkeyEventListeners();
+      document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+      hotkeys.renderHotkeysTab();
+      return document.getElementById('hotkeys-list');
+    };
+    const names = (list) =>
+      [...list.querySelectorAll('.hotkey-item .entity-name')].map((node) => node.textContent);
+
+    it('lists entities by name, not in the order Home Assistant sent them', () => {
+      const list = mount({
+        'light.zeta': entity('light.zeta', 'Zeta lamp'),
+        'switch.alpha': entity('switch.alpha', 'alpha plug'),
+        'scene.movie': entity('scene.movie', 'Movie night'),
+        'light.beta': entity('light.beta', 'Beta lamp'),
+      });
+
+      expect(names(list)).toEqual(['alpha plug', 'Beta lamp', 'Movie night', 'Zeta lamp']);
+    });
+
+    it('keeps the better search match first and orders ties by name', () => {
+      const list = mount({
+        'light.b': entity('light.b', 'Desk b'),
+        'light.a': entity('light.a', 'Desk a'),
+        'light.c': entity('light.c', 'Back desk'),
+      });
+      document.getElementById('hotkey-entity-search').value = 'desk';
+
+      hotkeys.renderHotkeysTab();
+
+      // The prefix matches (2 per field in the stub scorer) come before the substring match.
+      expect(names(list)).toEqual(['Desk a', 'Desk b', 'Back desk']);
+    });
+
+    it('says nothing matched when the search finds no entity', () => {
+      const list = mount({ 'light.kitchen': entity('light.kitchen', 'Kitchen') });
+      document.getElementById('hotkey-entity-search').value = 'zzz';
+
+      hotkeys.renderHotkeysTab();
+
+      const empty = list.querySelector('.hotkeys-empty');
+      expect(empty.textContent).toBe('No matching entities');
+      expect(empty.getAttribute('role')).toBe('status');
+      expect(list.querySelector('.hotkey-item')).toBeNull();
+    });
+
+    it('says to connect, not that nothing matched, while Home Assistant has sent nothing', () => {
+      const list = mount({});
+
+      expect(list.querySelector('.hotkeys-empty').textContent).toBe(
+        'Connect to Home Assistant to assign hotkeys'
+      );
+    });
+
+    it('gives every row an action select and a clear button that name their entity', () => {
+      const list = mount({
+        'light.kitchen': entity('light.kitchen', 'Kitchen'),
+        'light.hall': entity('light.hall', 'Hall'),
+      });
+
+      const labels = (selector) =>
+        [...list.querySelectorAll(selector)].map((node) => node.getAttribute('aria-label'));
+      expect(labels('select.hotkey-action-select')).toEqual([
+        'Hotkey action for Hall',
+        'Hotkey action for Kitchen',
+      ]);
+      expect(labels('.btn-clear-hotkey')).toEqual([
+        'Clear hotkey for Hall',
+        'Clear hotkey for Kitchen',
+      ]);
+      expect(labels('.hotkey-input')).toEqual(['Hotkey for Hall', 'Hotkey for Kitchen']);
+    });
+
+    it('keeps the hotkey field a read-only textbox that reads out its hotkey and how to record', () => {
+      const list = mount(
+        { 'light.kitchen': entity('light.kitchen', 'Kitchen') },
+        { 'light.kitchen': { hotkey: 'Ctrl+Alt+1', action: 'toggle' } }
+      );
+      const field = list.querySelector('.hotkey-input');
+
+      // role=button is not allowed on an input, and hid the value from assistive technology.
+      expect(field.hasAttribute('role')).toBe(false);
+      expect(field.readOnly).toBe(true);
+      expect(field.value).toBe('Ctrl+Alt+1');
+      const hint = document.getElementById(field.getAttribute('aria-describedby'));
+      expect(hint.textContent).toBe('Press Enter or Space to record a hotkey');
+      expect(list.querySelectorAll(`#${hint.id}`)).toHaveLength(1);
+    });
+
+    it('shows each hotkey as the keys are printed on this keyboard, and stores it unchanged', () => {
+      const original = window.electronAPI.platform;
+      try {
+        window.electronAPI.platform = 'darwin';
+        const list = mount(
+          { 'light.kitchen': entity('light.kitchen', 'Kitchen') },
+          { 'light.kitchen': { hotkey: 'Ctrl+Alt+Super+K', action: 'toggle' } }
+        );
+
+        expect(list.querySelector('.hotkey-input').value).toBe('Control+Option+Cmd+K');
+        expect(state.CONFIG.globalHotkeys.hotkeys['light.kitchen'].hotkey).toBe('Ctrl+Alt+Super+K');
+      } finally {
+        window.electronAPI.platform = original;
+      }
+    });
+  });
+
+  describe('an action chosen before the hotkey is recorded', () => {
+    const entity = (id, name) => ({
+      entity_id: id,
+      state: 'on',
+      attributes: { friendly_name: name },
+    });
+    const nextTick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const choose = (entityId, action) => {
+      const select = document.querySelector(`select[data-entity-id="${entityId}"]`);
+      select.value = action;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    const record = (code, init = {}) =>
+      document.activeElement.dispatchEvent(
+        new KeyboardEvent('keydown', { code, key: code, ctrlKey: true, bubbles: true, ...init })
+      );
+
+    beforeEach(() => {
+      const config = getMockConfig();
+      config.globalHotkeys = { enabled: true, hotkeys: {} };
+      state.setConfig(config);
+      state.setStates({
+        'light.desk': entity('light.desk', 'Desk lamp'),
+        'light.hall': entity('light.hall', 'Hall light'),
+      });
+      hotkeys.cleanupHotkeyEventListeners();
+      document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+      hotkeys.renderHotkeysTab();
+    });
+
+    it('survives the list being rebuilt by a search, and is the action that gets recorded', async () => {
+      choose('light.desk', 'turn_off');
+      const search = document.getElementById('hotkey-entity-search');
+      search.value = 'hall';
+      hotkeys.renderHotkeysTab();
+      search.value = '';
+      hotkeys.renderHotkeysTab();
+
+      const select = document.querySelector('select[data-entity-id="light.desk"]');
+      expect(select.value).toBe('turn_off');
+      // Nothing was saved: the row has no hotkey to attach the action to yet.
+      expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+
+      const field = document.querySelector('.hotkey-input[data-entity-id="light.desk"]');
+      field.focus();
+      const assignment = hotkeys.assignHotkeyToEntity('light.desk', { action: select.value });
+      record('KeyD', { key: 'd' });
+      await assignment;
+
+      expect(mockElectronAPI.registerHotkey).toHaveBeenCalledWith(
+        'light.desk',
+        'Ctrl+D',
+        'turn_off'
+      );
+    });
+
+    it('is used when the recorder is opened without naming an action, as the tile menu does', async () => {
+      choose('light.desk', 'turn_on');
+
+      const assignment = hotkeys.assignHotkeyToEntity('light.desk');
+      record('KeyD', { key: 'd' });
+      await assignment;
+
+      expect(mockElectronAPI.registerHotkey).toHaveBeenCalledWith(
+        'light.desk',
+        'Ctrl+D',
+        'turn_on'
+      );
+    });
+
+    it('is forgotten once the hotkey is saved, and when Settings closes', async () => {
+      choose('light.desk', 'turn_on');
+      choose('light.hall', 'turn_off');
+      const assignment = hotkeys.assignHotkeyToEntity('light.desk');
+      record('KeyD', { key: 'd' });
+      await assignment;
+      await nextTick();
+      expect(state.CONFIG.globalHotkeys.hotkeys['light.desk'].action).toBe('turn_on');
+
+      hotkeys.cleanupHotkeyEventListeners();
+      document.getElementById('hotkeys-list').innerHTML = '';
+      hotkeys.renderHotkeysTab();
+
+      expect(document.querySelector('select[data-entity-id="light.hall"]').value).toBe('toggle');
+    });
+  });
+
+  describe('the recorder', () => {
+    const entity = { entity_id: 'light.desk', state: 'on', attributes: { friendly_name: 'Desk' } };
+    const nextTick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const press = (init) =>
+      document.activeElement.dispatchEvent(
+        new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init })
+      );
+    const preview = () => document.querySelector('#hotkey-preview').textContent;
+    let originalPlatform;
+
+    beforeEach(() => {
+      originalPlatform = window.electronAPI.platform;
+      const config = getMockConfig();
+      config.globalHotkeys = { enabled: true, hotkeys: {} };
+      state.setConfig(config);
+      state.setStates({ 'light.desk': entity });
+      document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+    });
+    afterEach(() => {
+      window.electronAPI.platform = originalPlatform;
+    });
+
+    it('records Ctrl+Shift+Space, which the old recorder could not', async () => {
+      const capture = hotkeys.captureHotkey();
+
+      press({ key: ' ', code: 'Space', ctrlKey: true, shiftKey: true });
+
+      await expect(capture).resolves.toBe('Ctrl+Shift+Space');
+    });
+
+    it('records Ctrl+Up as the name an accelerator uses', async () => {
+      const capture = hotkeys.captureHotkey();
+
+      press({ key: 'ArrowUp', code: 'ArrowUp', ctrlKey: true });
+
+      await expect(capture).resolves.toBe('Ctrl+Up');
+    });
+
+    it('shows the keys held while it waits for the rest', async () => {
+      const capture = hotkeys.captureHotkey();
+
+      press({ key: 'Control', code: 'ControlLeft', ctrlKey: true });
+      expect(preview()).toBe('Ctrl');
+      press({ key: 'Shift', code: 'ShiftLeft', ctrlKey: true, shiftKey: true });
+      expect(preview()).toBe('Ctrl+Shift');
+
+      press({ key: 'Escape', code: 'Escape' });
+      await capture;
+    });
+
+    it('does not take a key with only Shift, and says what to add', async () => {
+      window.electronAPI.platform = 'win32';
+      const capture = hotkeys.captureHotkey();
+
+      press({ key: 'A', code: 'KeyA', shiftKey: true });
+      expect(preview()).toBe('Shift+A (add Ctrl/Alt/Win)');
+      press({ key: 'a', code: 'KeyA' });
+      expect(preview()).toBe('A (add Ctrl/Alt/Win)');
+      expect(document.querySelector('.hotkey-capture-modal')).not.toBeNull();
+
+      press({ key: 'a', code: 'KeyA', altKey: true });
+      await expect(capture).resolves.toBe('Alt+A');
+    });
+
+    it.each([
+      ['darwin', 'Shift+A (add Control/Option/Cmd)'],
+      ['linux', 'Shift+A (add Ctrl/Alt/Super)'],
+    ])('names the keys to add the way a %s keyboard prints them', async (platform, expected) => {
+      window.electronAPI.platform = platform;
+      const capture = hotkeys.captureHotkey();
+
+      press({ key: 'A', code: 'KeyA', shiftKey: true });
+
+      expect(preview()).toBe(expected);
+      press({ key: 'Escape', code: 'Escape' });
+      await capture;
+    });
+
+    it('records the Meta key as Command on a Mac and Super elsewhere', async () => {
+      window.electronAPI.platform = 'darwin';
+      let capture = hotkeys.captureHotkey();
+      press({ key: 'k', code: 'KeyK', metaKey: true, altKey: true });
+      await expect(capture).resolves.toBe('Alt+Command+K');
+      expect(document.querySelector('.hotkey-capture-modal')).toBeNull();
+
+      window.electronAPI.platform = 'win32';
+      capture = hotkeys.captureHotkey();
+      press({ key: 'k', code: 'KeyK', metaKey: true, altKey: true });
+      await expect(capture).resolves.toBe('Alt+Super+K');
+    });
+
+    it('says "Recording..." in the row field behind the dialog and puts the hotkey back after', async () => {
+      hotkeys.renderHotkeysTab();
+      const field = document.querySelector('.hotkey-input');
+      field.focus();
+
+      const assignment = hotkeys.assignHotkeyToEntity('light.desk');
+      expect(field.value).toBe('Recording...');
+      expect(field.dataset.recording).toBe('true');
+      expect(field.getAttribute('aria-busy')).toBe('true');
+      press({ key: 'Escape', code: 'Escape' });
+      await assignment;
+
+      expect(field.value).toBe('');
+      expect(field.dataset.recording).toBeUndefined();
+      expect(field.hasAttribute('aria-busy')).toBe(false);
+    });
+
+    it('opens one recorder at a time', async () => {
+      const first = hotkeys.assignHotkeyToEntity('light.desk');
+      const second = await hotkeys.assignHotkeyToEntity('light.desk');
+
+      expect(second).toEqual({ success: false, canceled: true });
+      expect(document.querySelectorAll('.hotkey-capture-modal')).toHaveLength(1);
+      press({ key: 'Escape', code: 'Escape' });
+      await first;
+      await nextTick();
+    });
+  });
+
+  describe('assigning a hotkey while Entity hotkeys is off', () => {
+    const nextTick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const assign = async (enabled) => {
+      const config = getMockConfig();
+      config.globalHotkeys = { enabled, hotkeys: {} };
+      state.setConfig(config);
+      state.setStates({
+        'light.desk': {
+          entity_id: 'light.desk',
+          state: 'on',
+          attributes: { friendly_name: 'Desk' },
+        },
+      });
+      document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+      const assignment = hotkeys.assignHotkeyToEntity('light.desk');
+      document.activeElement.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'd', code: 'KeyD', ctrlKey: true, bubbles: true })
+      );
+      const result = await assignment;
+      await nextTick();
+      return result;
+    };
+
+    it('saves the hotkey but warns it does nothing until the switch is on, instead of a green toast', async () => {
+      const result = await assign(false);
+
+      expect(result.success).toBe(true);
+      expect(state.CONFIG.globalHotkeys.hotkeys['light.desk'].hotkey).toBe('Ctrl+D');
+      expect(showToast).toHaveBeenCalledTimes(1);
+      expect(showToast).toHaveBeenCalledWith(
+        'Hotkey saved. Turn on Entity hotkeys in Settings > Hotkeys to use it.',
+        'warning',
+        5000
+      );
+    });
+
+    it('keeps the plain confirmation when the switch is on', async () => {
+      await assign(true);
+
+      expect(showToast).toHaveBeenCalledWith('Hotkey set for Desk', 'success', 2200);
+      expect(showToast).not.toHaveBeenCalledWith(
+        expect.stringContaining('Turn on Entity hotkeys'),
+        expect.anything(),
+        expect.anything()
+      );
+    });
+  });
+
+  describe('a hotkey another entity already holds', () => {
+    const nextTick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const states = {
+      'light.desk': { entity_id: 'light.desk', state: 'on', attributes: { friendly_name: 'Desk' } },
+      'light.lamp': {
+        entity_id: 'light.lamp',
+        state: 'on',
+        attributes: { friendly_name: 'Desk lamp' },
+      },
+    };
+
+    beforeEach(() => {
+      const config = getMockConfig();
+      config.globalHotkeys = {
+        enabled: true,
+        hotkeys: { 'light.lamp': { hotkey: 'Ctrl+D', action: 'toggle' } },
+      };
+      state.setConfig(config);
+      state.setStates(states);
+      hotkeys.cleanupHotkeyEventListeners();
+      document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+      hotkeys.renderHotkeysTab();
+    });
+
+    it('is named by the friendly name the row shows, and the row is marked', async () => {
+      mockElectronAPI.registerHotkey.mockResolvedValueOnce({
+        success: false,
+        error: 'Hotkey already assigned to light.lamp',
+        conflictEntityId: 'light.lamp',
+      });
+      document.querySelector('.hotkey-input[data-entity-id="light.desk"]').focus();
+
+      const assignment = hotkeys.assignHotkeyToEntity('light.desk');
+      document.activeElement.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'd', code: 'KeyD', ctrlKey: true, bubbles: true })
+      );
+      const result = await assignment;
+      await nextTick();
+
+      expect(result.error).toBe('Hotkey already assigned to Desk lamp');
+      expect(showToast).toHaveBeenCalledWith('Hotkey already assigned to Desk lamp', 'error', 3000);
+      const row = document
+        .querySelector('.hotkey-input[data-entity-id="light.lamp"]')
+        .closest('.hotkey-item');
+      expect(row.classList.contains('settings-search-target')).toBe(true);
+    });
+
+    it('falls back to the id when the entity is not loaded, and to main text otherwise', () => {
+      expect(
+        hotkeys.describeHotkeyFailure({ conflictEntityId: 'light.gone', error: 'x' }, 'fallback')
+      ).toBe('Hotkey already assigned to light.gone');
+      expect(hotkeys.describeHotkeyFailure({ error: 'Portal said no' }, 'fallback')).toBe(
+        'Portal said no'
+      );
+      expect(hotkeys.describeHotkeyFailure({}, 'fallback')).toBe('fallback');
+    });
+
+    it('leaves a row that is not in the list alone', () => {
+      document.getElementById('hotkey-entity-search').value = 'zzz';
+      hotkeys.renderHotkeysTab();
+
+      expect(() => hotkeys.flashHotkeyRow('light.lamp')).not.toThrow();
     });
   });
 

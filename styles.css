@@ -10831,6 +10831,14 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   border-radius: var(--radius-md);
 }
 
+/* Nothing to list: no entity matches the search, or Home Assistant has not sent its entities yet. */
+.hotkeys-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: var(--font-size-base);
+}
+
 .hotkey-item {
   display: flex;
   /* Controls drop below the name when a longer translation needs the room. */

@@ -12,7 +12,6 @@
     "ar|Arm {{name}} for vacation",
     "ar|Arm {{name}} with bypass",
     "ar|Disarm {{name}}",
-    "ar|Hotkey for {{name}}",
     "ar|To control {{name}}, type \"arm\" or \"disarm\".",
     "es|Arm {{name}} at home",
     "es|Arm {{name}} at night",
@@ -20,7 +19,6 @@
     "es|Arm {{name}} for vacation",
     "es|Arm {{name}} with bypass",
     "es|Disarm {{name}}",
-    "es|Hotkey for {{name}}",
     "es|To control {{name}}, type \"arm\" or \"disarm\".",
     "fr|Arm {{name}} at home",
     "fr|Arm {{name}} at night",
@@ -28,7 +26,6 @@
     "fr|Arm {{name}} for vacation",
     "fr|Arm {{name}} with bypass",
     "fr|Disarm {{name}}",
-    "fr|Hotkey for {{name}}",
     "fr|To control {{name}}, type \"arm\" or \"disarm\".",
     "hi|Arm {{name}} at home",
     "hi|Arm {{name}} at night",
@@ -36,7 +33,6 @@
     "hi|Arm {{name}} for vacation",
     "hi|Arm {{name}} with bypass",
     "hi|Disarm {{name}}",
-    "hi|Hotkey for {{name}}",
     "hi|To control {{name}}, type \"arm\" or \"disarm\".",
     "zh|Arm {{name}} at home",
     "zh|Arm {{name}} at night",
@@ -44,7 +40,6 @@
     "zh|Arm {{name}} for vacation",
     "zh|Arm {{name}} with bypass",
     "zh|Disarm {{name}}",
-    "zh|Hotkey for {{name}}",
     "zh|To control {{name}}, type \"arm\" or \"disarm\"."
   ]
 }

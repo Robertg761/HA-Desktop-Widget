@@ -322,5 +322,21 @@
   "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": {
     "retiredIn": "4.0.0",
     "reason": "Shortened before release: the first wording wrapped to three lines at 500px and four at 340px, over the bottom tile row"
+  },
+  "Global hotkeys enabled": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the switch is labelled Entity hotkeys, and the popup hotkey is not part of it"
+  },
+  "Global hotkeys disabled": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the switch is labelled Entity hotkeys, and the popup hotkey is not part of it"
+  },
+  "{{hotkey}} (add Ctrl/Alt/Shift)": {
+    "retiredIn": "4.0.0",
+    "reason": "Replaced by a prompt naming the platform's modifier keys"
+  },
+  "Hotkey action": {
+    "retiredIn": "4.0.0",
+    "reason": "Replaced by a label that names the entity"
   }
 }

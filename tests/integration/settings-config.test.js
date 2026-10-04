@@ -100,7 +100,9 @@ const mockUiUtils = {
   copyTextToClipboard: jest.fn().mockResolvedValue(true),
 };
 
+// The recorder helpers are the real ones (both recorders share them); only the cleanup is observed.
 const mockHotkeys = {
+  ...jest.requireActual('../../src/hotkeys.js'),
   cleanupHotkeyEventListeners: jest.fn(),
 };
 
@@ -5887,6 +5889,113 @@ describe('Settings + Config Integration', () => {
 
         expect(setBtn.textContent).toBe('Set hotkey');
         expect(input.value).toBe(state.CONFIG.popupHotkey || '');
+      });
+
+      describe('building the accelerator', () => {
+        // The recorder reads the physical key (event.code), as the entity recorder does.
+        const record = async (init) => {
+          const parts = await open();
+          mockElectronAPI.registerPopupHotkey.mockClear();
+          mockUiUtils.showToast.mockClear();
+          press(document.body, init.key, init);
+          await tick();
+          await tick();
+          return parts;
+        };
+
+        test('Ctrl+Shift+Space records, which turned into "Ctrl+Shift+ " before', async () => {
+          await record({ key: ' ', code: 'Space', ctrlKey: true, shiftKey: true });
+
+          expect(mockElectronAPI.registerPopupHotkey).toHaveBeenCalledWith('Ctrl+Shift+Space');
+        });
+
+        test('arrows and Shift+digit record by position', async () => {
+          await record({ key: 'ArrowUp', code: 'ArrowUp', ctrlKey: true });
+          expect(mockElectronAPI.registerPopupHotkey).toHaveBeenLastCalledWith('Ctrl+Up');
+
+          const { setBtn } = recorder();
+          setBtn.click();
+          press(document.body, '!', { code: 'Digit1', ctrlKey: true, shiftKey: true });
+          await tick();
+          expect(mockElectronAPI.registerPopupHotkey).toHaveBeenLastCalledWith('Ctrl+Shift+1');
+        });
+
+        test('names the Meta key Super here, and the field shows it as this keyboard prints it', async () => {
+          window.electronAPI.platform = 'win32';
+          try {
+            const { input } = await record({ key: 'k', code: 'KeyK', metaKey: true, altKey: true });
+
+            expect(mockElectronAPI.registerPopupHotkey).toHaveBeenCalledWith('Alt+Super+K');
+            expect(input.value).toBe('Alt+Win+K');
+            expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+              'Popup hotkey set to Alt+Win+K',
+              'success'
+            );
+          } finally {
+            window.electronAPI.platform = 'test';
+          }
+        });
+
+        test('names it Command on a Mac', async () => {
+          window.electronAPI.platform = 'darwin';
+          try {
+            await record({ key: 'k', code: 'KeyK', metaKey: true, altKey: true });
+
+            expect(mockElectronAPI.registerPopupHotkey).toHaveBeenCalledWith('Alt+Command+K');
+          } finally {
+            window.electronAPI.platform = 'test';
+          }
+        });
+
+        test('does not register a key with only Shift, and says what to add', async () => {
+          const { input, setBtn } = await record({ key: 'A', code: 'KeyA', shiftKey: true });
+
+          expect(mockElectronAPI.registerPopupHotkey).not.toHaveBeenCalled();
+          expect(input.value).toBe('Shift+A (add Ctrl/Alt/Super)');
+          // Still recording: the next key can complete it.
+          expect(setBtn.textContent).toBe('Stop recording');
+        });
+
+        test('waits through a modifier on its own', async () => {
+          const { setBtn } = await record({
+            key: 'Control',
+            code: 'ControlLeft',
+            ctrlKey: true,
+          });
+
+          expect(mockElectronAPI.registerPopupHotkey).not.toHaveBeenCalled();
+          expect(setBtn.textContent).toBe('Stop recording');
+        });
+
+        test('names the entity that holds the hotkey, and marks its row', async () => {
+          state.setStates({
+            'light.lamp': {
+              entity_id: 'light.lamp',
+              state: 'on',
+              attributes: { friendly_name: 'Desk lamp' },
+            },
+          });
+          document.body.insertAdjacentHTML(
+            'beforeend',
+            '<div id="hotkeys-list"><div class="hotkey-item"><input class="hotkey-input" data-entity-id="light.lamp" /></div></div>'
+          );
+          mockElectronAPI.registerPopupHotkey.mockResolvedValueOnce({
+            success: false,
+            error: 'Hotkey already assigned to light.lamp',
+            conflictEntityId: 'light.lamp',
+          });
+          const { input } = await record({ key: 'd', code: 'KeyD', ctrlKey: true });
+
+          expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+            'Hotkey already assigned to Desk lamp',
+            'error'
+          );
+          expect(
+            document.querySelector('.hotkey-item').classList.contains('settings-search-target')
+          ).toBe(true);
+          expect(input.value).toBe(state.CONFIG.popupHotkey || '');
+          document.getElementById('hotkeys-list').remove();
+        });
       });
 
       test('a suggestion chip or Clear ends a recording that is somehow still on', async () => {

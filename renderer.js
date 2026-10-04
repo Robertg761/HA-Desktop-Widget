@@ -3357,53 +3357,12 @@ function wireUI() {
       hotkeysList.addEventListener('click', async (e) => {
         const target = e.target;
         if (target.classList.contains('hotkey-input')) {
-          if (target.dataset.recording === 'true') return;
-          const entityId = target.dataset.entityId;
-          target.dataset.recording = 'true';
-          target.setAttribute('aria-busy', 'true');
-          target.value = t('Recording...');
-          try {
-            const hotkey = await hotkeys.captureHotkey();
-            if (hotkey) {
-              // The action picked in the row's select
-              const actionSelect = target.parentElement.querySelector('.hotkey-action-select');
-              const action = actionSelect?.value || 'toggle';
-              const result = await window.electronAPI.registerHotkey(entityId, hotkey, action);
-              if (result?.success) {
-                target.value = hotkey;
-                state.CONFIG.globalHotkeys ||= { hotkeys: {} };
-                state.CONFIG.globalHotkeys.hotkeys ||= {};
-                state.CONFIG.globalHotkeys.hotkeys[entityId] = { hotkey, action };
-                uiUtils.showToast(
-                  t('Hotkey set for {{name}}', {
-                    name: utils.getEntityDisplayName(
-                      state.STATES[entityId] || { entity_id: entityId, attributes: {} }
-                    ),
-                  }),
-                  'success',
-                  2200
-                );
-              } else {
-                uiUtils.showToast(result?.error || t('Failed to set hotkey'), 'error');
-                const currentConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
-                target.value =
-                  typeof currentConfig === 'string' ? currentConfig : currentConfig?.hotkey || '';
-              }
-            } else {
-              const currentConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
-              target.value =
-                typeof currentConfig === 'string' ? currentConfig : currentConfig?.hotkey || '';
-            }
-          } catch (error) {
-            uiUtils.showToast(error?.message || t('Error toggling hotkeys'), 'error');
-          } finally {
-            target.dataset.recording = 'false';
-            target.removeAttribute('aria-busy');
-            const currentConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
-            target.value =
-              typeof currentConfig === 'string' ? currentConfig : currentConfig?.hotkey || '';
-            if (target.isConnected) target.focus();
-          }
+          // The same recorder as the tile menu's Add Hotkey, so both say the same things about a
+          // clash, a hotkey saved while the switch is off, and the action picked in this row.
+          const actionSelect = target.parentElement.querySelector('.hotkey-action-select');
+          await hotkeys.assignHotkeyToEntity(target.dataset.entityId, {
+            action: actionSelect?.value,
+          });
         } else if (target.classList.contains('btn-clear-hotkey')) {
           const container = target.parentElement;
           const input = container.querySelector('.hotkey-input');

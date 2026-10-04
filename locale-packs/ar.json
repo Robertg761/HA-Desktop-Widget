@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.56",
+  "version": "1.2.57",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1611,7 +1611,7 @@
     "No controls available": "لا توجد عناصر تحكم متاحة",
     "Invalid value": "قيمة غير صالحة",
     "Alarm code": "رمز الإنذار",
-    "Hotkey for {{name}}": "Hotkey for {{name}}",
+    "Hotkey for {{name}}": "اختصار لـ {{name}}",
     "Arm {{name}} at home": "Arm {{name}} at home",
     "Arm {{name}} away": "Arm {{name}} away",
     "Arm {{name}} at night": "Arm {{name}} at night",
@@ -1781,6 +1781,15 @@
     "Keep editing": "متابعة التعديل",
     "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "عرض أول {{shown}} من {{count}} أيقونة. اكتب لتضييق النتائج.",
     "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "وضع إعادة الترتيب مفعّل. اسحب أو اضغط Alt مع مفاتيح الأسهم لإعادة الترتيب. اضغط Esc للإنهاء.",
-    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "وضع إعادة الترتيب مفعّل. اسحب أو حدّد أو اضغط Alt مع مفاتيح الأسهم لإعادة الترتيب. استخدم الأزرار على البطاقة للتثبيت أو إعادة التسمية أو الإزالة. اضغط Esc للإنهاء."
+    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "وضع إعادة الترتيب مفعّل. اسحب أو حدّد أو اضغط Alt مع مفاتيح الأسهم لإعادة الترتيب. استخدم الأزرار على البطاقة للتثبيت أو إعادة التسمية أو الإزالة. اضغط Esc للإنهاء.",
+    "Entity hotkeys enabled": "تم تفعيل اختصارات الكيانات",
+    "Entity hotkeys disabled": "تم تعطيل اختصارات الكيانات",
+    "{{hotkey}} (add {{modifiers}})": "{{hotkey}} (أضف {{modifiers}})",
+    "Hotkey action for {{name}}": "إجراء الاختصار لـ {{name}}",
+    "Clear hotkey for {{name}}": "مسح الاختصار لـ {{name}}",
+    "Press Enter or Space to record a hotkey": "اضغط Enter أو Space لتسجيل اختصار",
+    "Connect to Home Assistant to assign hotkeys": "اتصل بـ Home Assistant لتعيين الاختصارات",
+    "Hotkey saved. Turn on Entity hotkeys in Settings > Hotkeys to use it.": "تم حفظ الاختصار. فعّل «اختصارات الكيانات» من الإعدادات > الاختصارات لاستخدامه.",
+    "Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again": "اسمح لـ HA Desktop Widget في إعدادات النظام > الخصوصية والأمان > تسهيلات الاستخدام، ثم عيّن الاختصار مرة أخرى"
   }
 }

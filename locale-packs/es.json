@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.56",
+  "version": "1.2.57",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1611,7 +1611,7 @@
     "No controls available": "No hay controles disponibles",
     "Invalid value": "Valor no válido",
     "Alarm code": "Código de la alarma",
-    "Hotkey for {{name}}": "Hotkey for {{name}}",
+    "Hotkey for {{name}}": "Atajo de {{name}}",
     "Arm {{name}} at home": "Arm {{name}} at home",
     "Arm {{name}} away": "Arm {{name}} away",
     "Arm {{name}} at night": "Arm {{name}} at night",
@@ -1781,6 +1781,15 @@
     "Keep editing": "Seguir editando",
     "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Mostrando los primeros {{shown}} de {{count}} iconos. Escribe para acotarlos.",
     "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "Modo de reorganización activado. Arrastra o pulsa Alt+flechas para reordenar. Pulsa Esc para finalizar.",
-    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "Modo de reorganización activado. Arrastra, selecciona o pulsa Alt+flechas para reordenar. Usa los botones de una tarjeta para anclarla, renombrarla o eliminarla. Pulsa Esc para finalizar."
+    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "Modo de reorganización activado. Arrastra, selecciona o pulsa Alt+flechas para reordenar. Usa los botones de una tarjeta para anclarla, renombrarla o eliminarla. Pulsa Esc para finalizar.",
+    "Entity hotkeys enabled": "Atajos de entidad activados",
+    "Entity hotkeys disabled": "Atajos de entidad desactivados",
+    "{{hotkey}} (add {{modifiers}})": "{{hotkey}} (añade {{modifiers}})",
+    "Hotkey action for {{name}}": "Acción del atajo para {{name}}",
+    "Clear hotkey for {{name}}": "Borrar atajo de {{name}}",
+    "Press Enter or Space to record a hotkey": "Pulsa Intro o Espacio para grabar un atajo",
+    "Connect to Home Assistant to assign hotkeys": "Conéctate a Home Assistant para asignar atajos",
+    "Hotkey saved. Turn on Entity hotkeys in Settings > Hotkeys to use it.": "Atajo guardado. Activa «Atajos de entidad» en Configuración > Atajos para usarlo.",
+    "Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again": "Permite HA Desktop Widget en Ajustes del Sistema > Privacidad y seguridad > Accesibilidad y vuelve a configurar el atajo"
   }
 }

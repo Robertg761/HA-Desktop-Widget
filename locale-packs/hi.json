@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.56",
+  "version": "1.2.57",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1611,7 +1611,7 @@
     "No controls available": "कोई नियंत्रण उपलब्ध नहीं है",
     "Invalid value": "अमान्य मान",
     "Alarm code": "अलार्म कोड",
-    "Hotkey for {{name}}": "Hotkey for {{name}}",
+    "Hotkey for {{name}}": "{{name}} के लिए हॉटकी",
     "Arm {{name}} at home": "Arm {{name}} at home",
     "Arm {{name}} away": "Arm {{name}} away",
     "Arm {{name}} at night": "Arm {{name}} at night",
@@ -1781,6 +1781,15 @@
     "Keep editing": "संपादन जारी रखें",
     "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "{{count}} में से पहले {{shown}} आइकन दिखाए जा रहे हैं। सीमित करने के लिए टाइप करें।",
     "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "पुनर्व्यवस्थित मोड सक्षम। क्रम बदलने के लिए खींचें या Alt+तीर कुंजियाँ दबाएं। पूरा करने के लिए Esc दबाएं।",
-    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "पुनर्व्यवस्थित मोड सक्षम। क्रम बदलने के लिए खींचें, चुनें या Alt+तीर कुंजियाँ दबाएं। पिन करने, नाम बदलने या हटाने के लिए टाइल के बटन उपयोग करें। पूरा करने के लिए Esc दबाएं।"
+    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "पुनर्व्यवस्थित मोड सक्षम। क्रम बदलने के लिए खींचें, चुनें या Alt+तीर कुंजियाँ दबाएं। पिन करने, नाम बदलने या हटाने के लिए टाइल के बटन उपयोग करें। पूरा करने के लिए Esc दबाएं।",
+    "Entity hotkeys enabled": "एंटिटी हॉटकी सक्षम",
+    "Entity hotkeys disabled": "एंटिटी हॉटकी अक्षम",
+    "{{hotkey}} (add {{modifiers}})": "{{hotkey}} ({{modifiers}} जोड़ें)",
+    "Hotkey action for {{name}}": "{{name}} के लिए हॉटकी कार्रवाई",
+    "Clear hotkey for {{name}}": "{{name}} के लिए हॉटकी साफ़ करें",
+    "Press Enter or Space to record a hotkey": "हॉटकी रिकॉर्ड करने के लिए Enter या Space दबाएं",
+    "Connect to Home Assistant to assign hotkeys": "हॉटकी असाइन करने के लिए Home Assistant से कनेक्ट करें",
+    "Hotkey saved. Turn on Entity hotkeys in Settings > Hotkeys to use it.": "हॉटकी सहेजी गई। इसे इस्तेमाल करने के लिए सेटिंग्स > हॉटकी में “एंटिटी हॉटकी” चालू करें।",
+    "Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again": "सिस्टम सेटिंग्स > गोपनीयता और सुरक्षा > एक्सेसिबिलिटी में HA Desktop Widget को अनुमति दें, फिर हॉटकी दोबारा सेट करें"
   }
 }
