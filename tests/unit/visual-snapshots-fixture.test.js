@@ -15,6 +15,7 @@ const {
   buildLandingLights,
   buildServices,
   buildStates,
+  buildUnavailableDevices,
 } = require('../../scripts/visual-snapshots/fixture.cjs');
 const { scenes } = require('../../scripts/visual-snapshots/scenes.cjs');
 const { LIST_PAGE_SIZE } = require('../../src/list-pager.js');
@@ -107,6 +108,31 @@ describe('visual snapshot scenes', () => {
       // Nothing the fixture holds is replaced, so taking the entities away puts the home back.
       expect(brought.filter((entity) => fixtureIds.has(entity.entity_id))).toEqual([]);
     }
+  });
+
+  it('brings an unreachable light and cover whose tiles the scenes open', () => {
+    const brought = buildUnavailableDevices(new Date());
+
+    expect(brought.map((entity) => [entity.entity_id, entity.state])).toEqual([
+      ['light.hall', 'unavailable'],
+      ['cover.side_gate', 'unavailable'],
+    ]);
+    for (const name of ['popup-light-unavailable', 'popup-cover-unavailable']) {
+      const scene = scenes.find((entry) => entry.name === name);
+      const tiles = scene.config.customTabs.find(
+        (page) => page.id === scene.config.activeTabId
+      ).entityIds;
+      expect(tiles).toEqual(brought.map((entity) => entity.entity_id));
+    }
+  });
+
+  it('puts the page back after a scene that rewrote its stylesheet', () => {
+    // The runner restores settings, dialogs, media and the window size, not the page's own
+    // stylesheet, so a scene that switches the coarse-pointer block on has to switch it off again.
+    const touch = scenes.filter((scene) => scene.name.startsWith('coarse-pointer-'));
+
+    expect(touch.length).toBeGreaterThan(0);
+    for (const scene of touch) expect(typeof scene.teardown).toBe('function');
   });
 
   it('shows the Hotkeys list on a later page, in a home with the lights for one', () => {
