@@ -2697,6 +2697,17 @@ window.electronAPI.onTrayEntitiesRefreshNeeded?.(({ reconnect = false, entityId 
   refreshTrayEntityIcons({ force: true });
 });
 
+// Main downloads newer versions of the installed language packs in the background (an upgrade's
+// new strings only live in the packs). Draw the window again with the new words.
+window.electronAPI.onLocalePacksUpdated?.(async () => {
+  try {
+    await refreshLocaleBootstrap();
+    renderCurrentMode();
+  } catch (error) {
+    log.warn('Failed to apply the updated language packs:', error);
+  }
+});
+
 /**
  * Give the statically authored controls their SVG icons.
  *

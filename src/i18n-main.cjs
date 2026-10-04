@@ -81,10 +81,14 @@ function createLocalizationService(options = {}) {
   } = options;
 
   const bundledCache = new Map();
+  // Installed packs parsed once per file version. The tray menu asks for a dozen strings in a row,
+  // and every one used to read and parse each installed pack (~170 KB) again.
+  const installedPackCache = new Map();
   const manifestCache = {
     fetchedAt: 0,
     packs: null,
   };
+  let refreshInFlight = null;
 
   function getInstalledLocaleDir() {
     return path.join(getUserDataDir(), 'locales');
@@ -145,13 +149,28 @@ function createLocalizationService(options = {}) {
     }
   }
 
+  /**
+   * The parsed pack file with its stats. Parsed again only when the file changed on disk, so a
+   * hand edit or another instance's download is still picked up.
+   */
+  function readPackFileCached(packPath) {
+    const stats = fs.statSync(packPath);
+    const cached = installedPackCache.get(packPath);
+    if (cached && cached.mtimeMs === stats.mtimeMs && cached.size === stats.size) {
+      return { pack: cached.pack, stats };
+    }
+    const pack = readJsonFile(packPath);
+    installedPackCache.set(packPath, { mtimeMs: stats.mtimeMs, size: stats.size, pack });
+    return { pack, stats };
+  }
+
   function readInstalledPack(locale) {
     const normalized = normalizeLocaleCode(locale);
     if (!normalized || normalized === 'en') return null;
     const packPath = getInstalledPackPath(normalized);
     if (!fs.existsSync(packPath)) return null;
     try {
-      const pack = readJsonFile(packPath);
+      const { pack } = readPackFileCached(packPath);
       if (
         !pack ||
         typeof pack !== 'object' ||
@@ -167,6 +186,7 @@ function createLocalizationService(options = {}) {
     } catch {
       // A partial or manually edited download must never prevent the main window or tray from
       // starting. Move it aside for diagnosis when possible, then continue with English.
+      installedPackCache.delete(packPath);
       quarantineInstalledPack(packPath);
       return null;
     }
@@ -214,8 +234,7 @@ function createLocalizationService(options = {}) {
       .map((fileName) => {
         const packPath = path.join(installedDir, fileName);
         try {
-          const stats = fs.statSync(packPath);
-          const pack = readJsonFile(packPath);
+          const { pack, stats } = readPackFileCached(packPath);
           return buildInstalledPackMetadata(pack, stats);
         } catch {
           return null;
@@ -397,16 +416,15 @@ function createLocalizationService(options = {}) {
     };
   }
 
-  async function downloadLocalePack(locale) {
-    const normalizedLocale = normalizeLocaleCode(locale);
-    if (!normalizedLocale || normalizedLocale === 'en') {
-      throw new Error('English is bundled with the app and does not need to be downloaded.');
-    }
-
-    const availablePacks = await fetchAvailableLocaleManifest(true);
-    const manifestEntry =
+  function findManifestEntry(availablePacks, normalizedLocale) {
+    return (
       availablePacks.find((pack) => pack.locale === normalizedLocale) ||
-      availablePacks.find((pack) => getBaseLocale(pack.locale) === getBaseLocale(normalizedLocale));
+      availablePacks.find((pack) => getBaseLocale(pack.locale) === getBaseLocale(normalizedLocale))
+    );
+  }
+
+  /** Download one manifest entry, check it against the manifest's hash and install it. */
+  async function installManifestEntry(manifestEntry, normalizedLocale) {
     if (!manifestEntry?.downloadUrl) {
       throw new Error('Language pack is not available for download.');
     }
@@ -427,7 +445,71 @@ function createLocalizationService(options = {}) {
       downloadedAt: new Date().toISOString(),
     };
     writeJsonFileAtomic(filePath, storedPack);
+    installedPackCache.delete(filePath);
     return buildInstalledPackMetadata(storedPack, fs.statSync(filePath));
+  }
+
+  async function downloadLocalePack(locale) {
+    const normalizedLocale = normalizeLocaleCode(locale);
+    if (!normalizedLocale || normalizedLocale === 'en') {
+      throw new Error('English is bundled with the app and does not need to be downloaded.');
+    }
+
+    const availablePacks = await fetchAvailableLocaleManifest(true);
+    return installManifestEntry(
+      findManifestEntry(availablePacks, normalizedLocale),
+      normalizedLocale
+    );
+  }
+
+  /**
+   * Bring the installed packs up to the manifest's versions without being asked. A pack is only
+   * downloaded from the Settings button otherwise, so an app that was upgraded kept the old pack's
+   * missing strings in English until the user found that button.
+   *
+   * Conservative on purpose, because this runs unseen:
+   * - No pack installed means no request at all.
+   * - A pack is replaced only when the manifest has a higher version, lists the same locale code,
+   *   asks for no newer app than this one and carries a sha256 to check the download against.
+   *   A pack installed from a base-locale match, or one the manifest cannot vouch for, stays.
+   * - One pack failing (a hash that does not match, a download that times out) leaves it as it was
+   *   and does not stop the others.
+   * - A manifest that cannot be fetched (offline, GitHub down) throws, so the caller can try again
+   *   later; the installed packs keep working from disk either way.
+   *
+   * @returns {Promise<{updated: string[], failed: string[]}>} Locales replaced, and locales whose
+   *   download failed.
+   */
+  function refreshInstalledLocalePacks() {
+    if (refreshInFlight) return refreshInFlight;
+    refreshInFlight = (async () => {
+      const result = { updated: [], failed: [] };
+      const installed = listInstalledLocalePacks();
+      if (!installed.length) return result;
+
+      const available = await fetchAvailableLocaleManifest(true);
+      for (const pack of installed) {
+        const entry = available.find((candidate) => candidate.locale === pack.locale);
+        if (
+          !entry?.downloadUrl ||
+          !entry.sha256 ||
+          compareVersions(entry.version, pack.version) <= 0 ||
+          compareVersions(appVersion, entry.minAppVersion) < 0
+        ) {
+          continue;
+        }
+        try {
+          await installManifestEntry(entry, pack.locale);
+          result.updated.push(pack.locale);
+        } catch {
+          result.failed.push(pack.locale);
+        }
+      }
+      return result;
+    })().finally(() => {
+      refreshInFlight = null;
+    });
+    return refreshInFlight;
   }
 
   function removeLocalePack(locale) {
@@ -440,12 +522,13 @@ function createLocalizationService(options = {}) {
       return { removed: false, locale: normalizedLocale };
     }
     fs.unlinkSync(filePath);
+    installedPackCache.delete(filePath);
     return { removed: true, locale: normalizedLocale };
   }
 
   function translate(languageSetting, key, vars = {}) {
-    const bootstrap = getLocaleBootstrap(languageSetting);
-    const template = bootstrap.messages?.[key] || key;
+    // Only the messages: the bootstrap also lists every installed pack, which a lookup has no use for.
+    const template = resolveActiveMessages(languageSetting).messages?.[key] || key;
     return formatTemplate(template, vars);
   }
 
@@ -459,6 +542,7 @@ function createLocalizationService(options = {}) {
     fetchAvailableLocaleManifest,
     listLocalePacks,
     downloadLocalePack,
+    refreshInstalledLocalePacks,
     removeLocalePack,
     translate,
   };

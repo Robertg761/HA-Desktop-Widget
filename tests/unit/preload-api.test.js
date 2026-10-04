@@ -199,6 +199,7 @@ describe('preload Electron API', () => {
       ['onDesktopPinEditModeEnded', 'desktop-pin-edit-mode-ended'],
       ['onEntityTileHotkeyRequested', 'entity-tile-hotkey-requested'],
       ['onDesktopCompanionStateChanged', 'desktop-companion-state-changed'],
+      ['onLocalePacksUpdated', 'locale-packs-updated'],
     ];
 
     for (const [method, channel] of listeners) {

@@ -251,6 +251,7 @@ function createElectronApi(ipcRenderer, platform) {
     onEntityTileHotkeyRequested: (callback) => subscribe('entity-tile-hotkey-requested', callback),
     onDesktopCompanionStateChanged: (callback) =>
       subscribe('desktop-companion-state-changed', callback),
+    onLocalePacksUpdated: (callback) => subscribe('locale-packs-updated', callback),
   };
 }
 

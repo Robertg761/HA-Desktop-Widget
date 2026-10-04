@@ -338,6 +338,7 @@ if (
 
 const profileSyncCore = require('./profile-sync-core.js');
 const { createLocalizationService } = require('./src/i18n-main.cjs');
+const { createLocalePackRefresher } = require('./src/locale-pack-refresh.cjs');
 const { fetchChecked } = require('./src/net-fetch.cjs');
 const {
   normalizeEntityId,
@@ -1158,6 +1159,19 @@ const localizationService = createLocalizationService({
   // Locale pack downloads only run from IPC handlers, so the app is always ready by the time
   // net.fetch is invoked here.
   fetchImpl: (url, init) => net.fetch(url, init),
+});
+// Installed language packs follow the manifest on main, so an upgrade's new strings arrive without
+// the user finding the Update button. Only started once the window is up; see
+// schedulePostWindowStartupTasks.
+const localePackRefresher = createLocalePackRefresher({
+  refresh: () => localizationService.refreshInstalledLocalePacks(),
+  onUpdated: () => {
+    for (const target of [mainWindow, ...desktopPinWindows.values()]) {
+      if (target && !target.isDestroyed()) target.webContents.send('locale-packs-updated');
+    }
+    if (tray && !tray.isDestroyed?.()) createTray();
+  },
+  log,
 });
 const DEV_RENDERER_BUNDLE_PATH = path.join(__dirname, 'dist-renderer', 'renderer.bundle.js');
 const DEV_RELOAD_DEBOUNCE_MS = 220;
@@ -7976,6 +7990,7 @@ function schedulePostWindowStartupTasks() {
     void initializeProfileSyncOnStartup().catch((error) => {
       log.warn('Profile sync startup initialization failed:', error.message);
     });
+    if (!IS_SMOKE_TEST_MODE) localePackRefresher.start();
   }, 1000);
 }
 
