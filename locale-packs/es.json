@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.63",
+  "version": "1.2.64",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1497,6 +1497,7 @@
     "Last updated: {{time}}": "Última actualización: {{time}}",
     "Connection is not ready": "La conexión aún no está lista",
     "Fan only": "Solo ventilador",
+    "Heat/Cool": "Calor/Frío",
     "Disarming": "Desarmando",
     "Triggered": "Disparada",
     "Above horizon": "Sobre el horizonte",
@@ -1887,6 +1888,8 @@
     "Up to {{max}} sensors. Selected: {{count}}.": "Hasta {{max}} sensores. Seleccionados: {{count}}.",
     "Maximum reached. Remove a sensor to add another.": "Se alcanzó el máximo. Elimina un sensor para añadir otro.",
     "No sensors match \"{{query}}\"": "Ningún sensor coincide con \"{{query}}\"",
+    "What’s new": "Novedades",
+    "Waiting for you to approve HA Desktop Widget in your browser. If it did not open, choose Cancel, then Connect again.": "Esperando a que apruebes HA Desktop Widget en el navegador. Si no se abrió, elige Cancelar y luego Conectar de nuevo.",
     "Home Assistant did not answer. Check that it is running and that the URL is correct.": "Home Assistant no responde. Comprueba que esté en marcha y que la URL sea correcta.",
     "Retrying...": "Reintentando...",
     "Still can't reach Home Assistant (tried {{time}}).": "Sigue sin poder accederse a Home Assistant (intento a las {{time}}).",
@@ -1992,7 +1995,6 @@
     "Set the range in the widget.": "Ajusta el rango en el widget.",
     "1 more tile is not shown here. Open the widget to see it.": "Hay 1 tarjeta más que no se muestra aquí. Abre el widget para verla.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "Hay {{count}} tarjetas más que no se muestran aquí. Abre el widget para verlas.",
-    "Heat/Cool": "Calor/Frío",
     "What's new": "Novedades"
   }
 }

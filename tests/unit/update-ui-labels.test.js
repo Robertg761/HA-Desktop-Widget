@@ -46,7 +46,6 @@ const ui = require('../../src/ui.js');
 const updateStatus = require('../../src/update-status.js');
 
 const GERMAN = {
-  'Check for updates': 'Nach Updates suchen',
   'Install update': 'Update installieren',
   'Download Update': 'Update herunterladen',
   'Download Portable Update': 'Portables Update herunterladen',

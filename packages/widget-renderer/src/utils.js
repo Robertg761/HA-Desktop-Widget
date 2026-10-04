@@ -707,13 +707,16 @@ function getTimerDisplay(entity) {
 
 /**
  * Escapes HTML special characters to prevent XSS attacks
- * @param {string} text - The text to escape
+ * @param {*} text - The text to escape; a number, array or object is escaped as its text, and
+ *   null or undefined as nothing
  * @returns {string} - HTML-safe text
  */
 function escapeHtml(text) {
-  if (typeof text !== 'string') return text;
+  // Home Assistant data is not always a string (a friendly_name from a template or an MQTT entity
+  // can be a list). Handed back as it came, such a value is stringified by the template it lands
+  // in and reaches innerHTML unescaped.
   const div = document.createElement('div');
-  div.textContent = text;
+  div.textContent = text == null ? '' : String(text);
   return div.innerHTML;
 }
 

@@ -82,7 +82,8 @@ describe('the connection indicator names the outage once', () => {
     expect(status.getAttribute('aria-label')).toBe(
       'Disconnected from Home Assistant. Retrying automatically.'
     );
-    expect(status.title).toBe('Disconnected from Home Assistant: Retrying automatically.');
+    // The dot's own tooltip carries the words; a title attribute would add Chromium's after it.
+    expect(status.hasAttribute('title')).toBe(false);
   });
 
   it('keeps a detail that adds something else whole', () => {
@@ -100,7 +101,7 @@ describe('the connection indicator names the outage once', () => {
     uiUtils.setStatus(false, 'Disconnected from Home Assistant');
 
     expect(status.getAttribute('aria-label')).toBe('Disconnected from Home Assistant');
-    expect(status.title).toBe('Disconnected from Home Assistant');
+    expect(status.hasAttribute('title')).toBe(false);
   });
 
   it('does not repeat it in the tooltip either, including the default detail', () => {

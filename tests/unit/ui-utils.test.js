@@ -1084,7 +1084,8 @@ describe('UI Utilities', () => {
 
       expect(statusIndicator.classList.contains('connection-indicator')).toBe(true);
       expect(statusIndicator.classList.contains('connected')).toBe(true);
-      expect(statusIndicator.title).toBe('Connected to Home Assistant');
+      expect(statusIndicator.getAttribute('aria-label')).toBe('Connected to Home Assistant');
+      expect(statusIndicator.hasAttribute('title')).toBe(false);
     });
 
     it('should set disconnected status', () => {
@@ -1094,7 +1095,8 @@ describe('UI Utilities', () => {
 
       expect(statusIndicator.classList.contains('connection-indicator')).toBe(true);
       expect(statusIndicator.classList.contains('connected')).toBe(false);
-      expect(statusIndicator.title).toBe('Disconnected from Home Assistant');
+      expect(statusIndicator.getAttribute('aria-label')).toBe('Disconnected from Home Assistant');
+      expect(statusIndicator.hasAttribute('title')).toBe(false);
     });
 
     it('should clear innerHTML', () => {
@@ -1121,9 +1123,8 @@ describe('UI Utilities', () => {
 
       expect(statusIndicator.dataset.statusSummary).toBe('Disconnected from Home Assistant');
       expect(statusIndicator.dataset.statusDetail).toBe('No network connection detected.');
-      expect(statusIndicator.title).toBe(
-        'Disconnected from Home Assistant: No network connection detected.'
-      );
+      // The custom tooltip carries the words; a title attribute would add Chromium's own after it.
+      expect(statusIndicator.hasAttribute('title')).toBe(false);
       expect(statusIndicator.getAttribute('aria-label')).toBe(
         'Disconnected from Home Assistant. No network connection detected.'
       );

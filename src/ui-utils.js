@@ -2347,11 +2347,11 @@ function setStatus(connected, detailMessage = '') {
       // Read out as "summary. what it adds", so a detail that begins with the summary is cut.
       const addedDetail = stripSummaryPrefix(summary, normalizedDetail);
 
+      // No title attribute: the dot has its own tooltip, and Chromium's native one would come up
+      // after it with the same words.
       if (addedDetail) {
-        status.title = `${summary}: ${addedDetail}`;
         status.setAttribute('aria-label', `${summary}. ${addedDetail}`);
       } else {
-        status.title = summary;
         status.setAttribute('aria-label', summary);
       }
 

@@ -159,7 +159,7 @@ async function openAlarmCodeDialog(ctx) {
 
 // The first-run wizard is one panel that outlives config changes: it only starts over when it
 // was hidden, so a scene that follows another first-run scene finds it on that scene's step.
-// Back is disabled on the welcome step, so stepping back until then starts every scene from the
+// Back is hidden on the welcome step, so stepping back until then starts every scene from the
 // same place, however the scenes were selected.
 async function showFirstRunWelcome(ctx) {
   await ctx.waitForSelector('.first-run-onboarding:not(.hidden)');
@@ -167,12 +167,12 @@ async function showFirstRunWelcome(ctx) {
   await ctx.ev(`(async () => {
     const back = ${back};
     // The URL and authorization steps are the most there is to step back from.
-    for (let attempt = 0; attempt < 2 && !back.disabled; attempt += 1) {
+    for (let attempt = 0; attempt < 2 && !back.hidden; attempt += 1) {
       back.click();
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
   })()`);
-  await ctx.waitForExpression(`${back}.disabled`, 'the first-run welcome step');
+  await ctx.waitForExpression(`${back}.hidden`, 'the first-run welcome step');
 }
 
 // Settings opens one page at a time; this scrolls the wanted element to the top (or wherever `block`
@@ -1928,6 +1928,24 @@ const scenes = [
   {
     name: 'easter-light',
     ui: { theme: 'light', seasonal: holiday('easter') },
+  },
+  // Where holiday art meets controls: the cobweb behind a dialog's close button, the egg and the
+  // bunny in the Settings header and rail, and the pumpkins under a tile row that reaches the
+  // bottom of a window as short as the app opens at.
+  {
+    name: 'halloween-popup',
+    ui: { seasonal: holiday('halloween') },
+    setup: openBrightness,
+  },
+  {
+    name: 'easter-settings',
+    ui: { seasonal: holiday('easter') },
+    setup: (ctx) => openSettingsTab(ctx, 'general'),
+  },
+  {
+    name: 'thanksgiving-short',
+    ui: { seasonal: holiday('thanksgiving') },
+    size: DEFAULT_SIZE,
   },
 
   // Colour contrast of text and status colours, dark and light, with four accents.

@@ -1394,5 +1394,9 @@
   "View logs": {
     "retiredIn": "4.0.0",
     "reason": "The button shows the log file in the file manager, and says so, instead of opening it in a file explorer"
+  },
+  "What’s new": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with a straight apostrophe like the rest of the catalog"
   }
 }

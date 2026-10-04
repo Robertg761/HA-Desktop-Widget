@@ -9,8 +9,10 @@ import {
 import { mountSensorHistoryDetail, summarizeHistory } from './sensor-history-detail.js';
 import { rememberDashboard, dashboardSnapshot } from './dashboard-history.js';
 import {
+  defaultPageEntityIds,
   entitiesForArea,
   loadRoomRegistry,
+  pickStarterArea,
   selectableEntityIds,
   waitForRoomConnection,
 } from './room-dashboard.js';
@@ -1463,12 +1465,12 @@ function showAddPageModal({ starter = false } = {}) {
       roomStatus.textContent = registry.areas.length ? '' : t('No rooms found in Home Assistant.');
       loadRooms.hidden = true;
       if (starter) {
-        roomSelect.value =
-          registry.areas.find(
-            (area) =>
-              entitiesForArea(area.area_id, registry.entities, registry.devices, availableStates)
-                .length
-          )?.area_id || '';
+        roomSelect.value = pickStarterArea(
+          registry.areas,
+          registry.entities,
+          registry.devices,
+          availableStates
+        );
         roomSelect.onchange();
         if (registryUnavailable) {
           roomStatus.textContent = t('Rooms are unavailable. Choose from your entities instead.');
@@ -1533,16 +1535,9 @@ function showAddPageModal({ starter = false } = {}) {
         utils.getEntityDisplayName(availableStates[b])
       )
     );
-    // Suggest up to eight available devices you can control; sensors and buttons stay optional.
-    const defaults = new Set(
-      ids
-        .filter(
-          (id) =>
-            CONTROLLABLE_ENTITY_PATTERN.test(id) &&
-            !['unknown', 'unavailable'].includes(availableStates[id].state)
-        )
-        .slice(0, 8)
-    );
+    // Suggest up to eight available devices you can control; sensors, buttons and a device's own
+    // settings stay optional.
+    const defaults = new Set(defaultPageEntityIds(ids, registry.entities, availableStates, 8));
     deviceSearch.hidden = !ids.length;
     ids.forEach((id) => {
       const label = document.createElement('label');
@@ -13790,6 +13785,12 @@ function populateWeatherEntitiesList() {
     list.setAttribute('role', 'listbox');
     list.setAttribute('aria-label', t('Weather entities'));
 
+    // Clear returns the card to the first available entity, so it has nothing to do until one has
+    // been picked. aria-disabled keeps it focusable, like the other buttons that wait.
+    document
+      .getElementById('clear-weather')
+      ?.setAttribute('aria-disabled', state.CONFIG.selectedWeatherEntity ? 'false' : 'true');
+
     const weatherEntities = Object.values(state.STATES || {})
       .filter((e) => e.entity_id.startsWith('weather.'))
       .sort((a, b) => compareNames(utils.getEntityDisplayName(a), utils.getEntityDisplayName(b)));
@@ -13799,12 +13800,6 @@ function populateWeatherEntitiesList() {
       ? document.activeElement.closest('.entity-item')?.dataset.weatherEntityId
       : null;
     list.innerHTML = '';
-
-    // Nothing to clear when no entity was chosen. aria-disabled keeps the button in the tab order, so
-    // pressing Clear does not drop the keyboard out of the dialog.
-    document
-      .getElementById('clear-weather')
-      ?.setAttribute('aria-disabled', state.CONFIG.selectedWeatherEntity ? 'false' : 'true');
 
     if (weatherEntities.length === 0) {
       // Connected, an empty list is Home Assistant's: it has no weather integration. Only before

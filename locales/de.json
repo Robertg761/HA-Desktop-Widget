@@ -1210,6 +1210,7 @@
   "{{name}} preview": "Vorschau: {{name}}",
   "Last updated: {{time}}": "Zuletzt aktualisiert: {{time}}",
   "Connection is not ready": "Verbindung ist noch nicht bereit",
+  "Heat/Cool": "Heizen/Kühlen",
   "Disarming": "Wird unscharf geschaltet",
   "Triggered": "Ausgelöst",
   "Above horizon": "Über dem Horizont",
@@ -1532,6 +1533,7 @@
   "Up to {{max}} sensors. Selected: {{count}}.": "Bis zu {{max}} Sensoren. Ausgewählt: {{count}}.",
   "Maximum reached. Remove a sensor to add another.": "Maximum erreicht. Entferne einen Sensor, um einen anderen hinzuzufügen.",
   "No sensors match \"{{query}}\"": "Keine Sensoren passen zu \"{{query}}\"",
+  "Waiting for you to approve HA Desktop Widget in your browser. If it did not open, choose Cancel, then Connect again.": "Warte darauf, dass du HA Desktop Widget in deinem Browser genehmigst. Falls er sich nicht geöffnet hat, wähle Abbrechen und dann erneut Verbinden.",
   "Home Assistant did not answer. Check that it is running and that the URL is correct.": "Home Assistant antwortet nicht. Prüfe, ob es läuft und ob die URL stimmt.",
   "Retrying...": "Wird erneut versucht…",
   "Still can't reach Home Assistant (tried {{time}}).": "Home Assistant ist weiterhin nicht erreichbar (Versuch um {{time}}).",
@@ -1637,6 +1639,5 @@
   "Set the range in the widget.": "Stelle den Bereich im Widget ein.",
   "1 more tile is not shown here. Open the widget to see it.": "Eine weitere Kachel wird hier nicht angezeigt. Öffne das Widget, um sie zu sehen.",
   "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} weitere Kacheln werden hier nicht angezeigt. Öffne das Widget, um sie zu sehen.",
-  "Heat/Cool": "Heizen/Kühlen",
   "What's new": "Neuerungen"
 }

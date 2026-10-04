@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.64",
+  "version": "1.2.65",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1497,6 +1497,7 @@
     "Last updated: {{time}}": "آخر تحديث: {{time}}",
     "Connection is not ready": "الاتصال غير جاهز بعد",
     "Fan only": "مروحة فقط",
+    "Heat/Cool": "تدفئة/تبريد",
     "Disarming": "جارٍ إلغاء التسليح",
     "Triggered": "تم التفعيل",
     "Above horizon": "فوق الأفق",
@@ -1887,6 +1888,8 @@
     "Up to {{max}} sensors. Selected: {{count}}.": "حتى {{max}} مستشعرات. المحدد: {{count}}.",
     "Maximum reached. Remove a sensor to add another.": "تم بلوغ الحد الأقصى. أزل مستشعرًا لإضافة آخر.",
     "No sensors match \"{{query}}\"": "لا توجد مستشعرات تطابق \"{{query}}\"",
+    "What’s new": "الجديد",
+    "Waiting for you to approve HA Desktop Widget in your browser. If it did not open, choose Cancel, then Connect again.": "في انتظار موافقتك على HA Desktop Widget في متصفحك. إذا لم يُفتح المتصفح، اختر إلغاء ثم اتصال مرة أخرى.",
     "Home Assistant did not answer. Check that it is running and that the URL is correct.": "لم يستجب Home Assistant. تحقق من أنه يعمل وأن الرابط صحيح.",
     "Retrying...": "جارٍ إعادة المحاولة...",
     "Still can't reach Home Assistant (tried {{time}}).": "ما زال الوصول إلى Home Assistant متعذرًا (آخر محاولة {{time}}).",
@@ -1992,7 +1995,6 @@
     "Set the range in the widget.": "اضبط النطاق في الأداة.",
     "1 more tile is not shown here. Open the widget to see it.": "هناك بطاقة واحدة أخرى غير معروضة هنا. افتح الأداة لمشاهدتها.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "هناك {{count}} بطاقات أخرى غير معروضة هنا. افتح الأداة لمشاهدتها.",
-    "Heat/Cool": "تدفئة/تبريد",
     "What's new": "الجديد"
   }
 }

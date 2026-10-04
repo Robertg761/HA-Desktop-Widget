@@ -1211,6 +1211,7 @@
   "{{name}} preview": "{{name}} preview",
   "Last updated: {{time}}": "Last updated: {{time}}",
   "Connection is not ready": "Connection is not ready",
+  "Heat/Cool": "Heat/Cool",
   "Disarming": "Disarming",
   "Triggered": "Triggered",
   "Above horizon": "Above horizon",
@@ -1532,6 +1533,7 @@
   "Up to {{max}} sensors. Selected: {{count}}.": "Up to {{max}} sensors. Selected: {{count}}.",
   "Maximum reached. Remove a sensor to add another.": "Maximum reached. Remove a sensor to add another.",
   "No sensors match \"{{query}}\"": "No sensors match \"{{query}}\"",
+  "Waiting for you to approve HA Desktop Widget in your browser. If it did not open, choose Cancel, then Connect again.": "Waiting for you to approve HA Desktop Widget in your browser. If it did not open, choose Cancel, then Connect again.",
   "Home Assistant did not answer. Check that it is running and that the URL is correct.": "Home Assistant did not answer. Check that it is running and that the URL is correct.",
   "Retrying...": "Retrying...",
   "Still can't reach Home Assistant (tried {{time}}).": "Still can't reach Home Assistant (tried {{time}}).",
@@ -1637,6 +1639,5 @@
   "Set the range in the widget.": "Set the range in the widget.",
   "1 more tile is not shown here. Open the widget to see it.": "1 more tile is not shown here. Open the widget to see it.",
   "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} more tiles are not shown here. Open the widget to see them.",
-  "Heat/Cool": "Heat/Cool",
   "What's new": "What's new"
 }

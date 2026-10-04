@@ -42,6 +42,36 @@ describe('weather icons', () => {
     }
   );
 
+  it('draws the sun about as big as the cloud and moon beside it, centred in the box', () => {
+    const sun = createWeatherIcon('sunny');
+    const disc = sun.querySelector('circle.weather-glyph-fill');
+    expect(Number(disc.getAttribute('r'))).toBeCloseTo(9.8);
+    expect([disc.getAttribute('cx'), disc.getAttribute('cy')]).toEqual(['24', '24']);
+    // Every ray stays inside the 48 unit box, and the sun spans about 34 units of it.
+    const rays = [...sun.querySelectorAll('line.weather-glyph-ray')];
+    expect(rays).toHaveLength(8);
+    const reach = rays.flatMap((ray) =>
+      ['x1', 'y1', 'x2', 'y2'].map((name) => Number(ray.getAttribute(name)))
+    );
+    expect(Math.min(...reach)).toBeGreaterThan(5);
+    expect(Math.max(...reach)).toBeLessThan(43);
+    expect(Math.max(...reach) - Math.min(...reach)).toBeGreaterThan(32);
+  });
+
+  it('keeps the partly cloudy sun as it was', () => {
+    const disc = createWeatherIcon('partlycloudy').querySelector('circle.weather-glyph-fill');
+    expect(disc.getAttribute('r')).toBe('5');
+  });
+
+  it('lowers a cloud that has nothing under it, and not one that has rain or snow', () => {
+    const cloudOf = (condition) =>
+      createWeatherIcon(condition).querySelector('path.weather-glyph-cloud');
+    expect(cloudOf('cloudy').getAttribute('transform')).toBe('translate(0 4)');
+    for (const condition of ['rainy', 'pouring', 'snowy', 'hail', 'lightning', 'lightning-rainy']) {
+      expect(cloudOf(condition).hasAttribute('transform')).toBe(false);
+    }
+  });
+
   it('normalizes common integration aliases and unknown values safely', () => {
     expect(normalizeWeatherCondition('Partly Cloudy')).toBe('partlycloudy');
     expect(normalizeWeatherCondition('thunderstorm with rain')).toBe('lightning-rainy');

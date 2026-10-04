@@ -427,6 +427,65 @@ describe('SeasonalEffectsManager', () => {
     expect(manager.findClearLane(20, 60)).toBe(20);
   });
 
+  test('keeps fliers off the tab and toolbar row, even when it is the only gap', () => {
+    addTile(0, 100);
+    addTile(160, window.innerHeight);
+    // Without the row there is a gap from 100 to 160, tall enough for a 24px band.
+    expect(manager.findClearLane(20, 24)).toBeGreaterThanOrEqual(114);
+
+    const header = document.createElement('div');
+    header.className = 'section-header quick-access-header';
+    header.getBoundingClientRect = () => ({
+      left: 10,
+      top: 104,
+      width: 400,
+      height: 52,
+      right: 410,
+      bottom: 156,
+    });
+    document.body.appendChild(header);
+    // Nothing is clear now, so the flier keeps its own height, behind the cards.
+    expect(manager.findClearLane(20, 24)).toBe(20);
+
+    // A header that is not laid out (a hidden page) blocks nothing.
+    header.getBoundingClientRect = () => ({ left: 0, top: 0, width: 0, height: 0 });
+    expect(manager.findClearLane(20, 24)).toBeGreaterThanOrEqual(114);
+  });
+
+  test('tells layers whether a tile or card is over a box, measuring the tiles once a frame', () => {
+    const measure = jest.fn(() => ({
+      left: 10,
+      top: 300,
+      width: 200,
+      height: 100,
+      right: 210,
+      bottom: 400,
+    }));
+    const tile = addTile(300, 100);
+    tile.getBoundingClientRect = measure;
+    manager.apply({ seasonal: picked('christmas') });
+    const frames = [];
+    manager.layers = [
+      {
+        draw: (ctx, state, frame) =>
+          frames.push([
+            frame.isCovered(20, 310, 10, 10),
+            frame.isCovered(20, 250, 10, 40),
+            frame.isCovered(300, 310, 10, 10),
+          ]),
+      },
+      { draw: (ctx, state, frame) => frame.isCovered(0, 0, 5, 5) },
+    ];
+    manager.states = [{}, {}];
+    measure.mockClear();
+    manager.renderFrame(1000);
+
+    // Inside a tile; above it; beside it.
+    expect(frames).toEqual([[true, false, false]]);
+    // Three questions from two layers, one measurement of the tile.
+    expect(measure).toHaveBeenCalledTimes(1);
+  });
+
   test('holds no canvas pixels while no holiday runs', () => {
     jest.setSystemTime(new Date(2026, 8, 20, 12));
     manager.apply({});

@@ -4595,6 +4595,45 @@ describe('Settings + Config Integration', () => {
     });
   });
 
+  describe('the check for updates button', () => {
+    const i18n = require('../../src/i18n.js');
+    const GERMAN = { 'Check for updates': 'Nach Updates suchen' };
+    const label = () => document.getElementById('check-updates-text');
+
+    beforeEach(() => {
+      // The label sits in a span the update UI owns, which translateDocument() does not reach: the
+      // two places that write it are Settings opening and the language changing while it is open.
+      document
+        .getElementById('settings-modal')
+        .insertAdjacentHTML(
+          'beforeend',
+          '<button id="check-updates-btn"><span id="check-updates-text"></span></button>'
+        );
+    });
+
+    afterEach(() => {
+      i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+    });
+
+    test('opens in the language of the interface', async () => {
+      i18n.setLocaleBootstrap({ activeLocale: 'de', messages: GERMAN });
+      await settings.openSettings();
+
+      expect(label().textContent).toBe('Nach Updates suchen');
+    });
+
+    test('follows a language change while Settings is open', async () => {
+      await settings.openSettings();
+      expect(label().textContent).toBe('Check for updates');
+
+      i18n.setLocaleBootstrap({ activeLocale: 'de', messages: GERMAN });
+      // The locale observer runs as a microtask after <html lang> changes.
+      await Promise.resolve();
+
+      expect(label().textContent).toBe('Nach Updates suchen');
+    });
+  });
+
   describe('the keyring notice', () => {
     const notice = () => document.getElementById('secure-storage-notice');
     const openWithIntegration = async (info) => {
