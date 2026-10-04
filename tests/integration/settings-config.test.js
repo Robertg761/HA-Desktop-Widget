@@ -100,7 +100,9 @@ const mockUiUtils = {
   copyTextToClipboard: jest.fn().mockResolvedValue(true),
 };
 
+// The recorder helpers are the real ones (both recorders share them); only the cleanup is observed.
 const mockHotkeys = {
+  ...jest.requireActual('../../src/hotkeys.js'),
   cleanupHotkeyEventListeners: jest.fn(),
 };
 
@@ -2761,6 +2763,34 @@ describe('Settings + Config Integration', () => {
 
       // Assert
       expect(document.querySelector('[data-custom-icon-picker="light.living_room"]')).toBeNull();
+    });
+
+    test('should not apply the icon on the Enter that commits an input method candidate', async () => {
+      await openSettingsWithCustomIconsExpanded();
+      const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
+      iconInput.focus();
+      iconInput.value = '星';
+
+      for (const init of [{ isComposing: true }, { keyCode: 229 }]) {
+        const enter = new KeyboardEvent('keydown', {
+          key: 'Enter',
+          bubbles: true,
+          cancelable: true,
+          ...init,
+        });
+        iconInput.dispatchEvent(enter);
+        expect(enter.defaultPrevented).toBe(false);
+      }
+
+      // Still being typed: nothing was applied or reset.
+      expect(iconInput.value).toBe('星');
+      const applied = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        bubbles: true,
+        cancelable: true,
+      });
+      iconInput.dispatchEvent(applied);
+      expect(applied.defaultPrevented).toBe(true);
     });
 
     test('should open the picker when a query is typed, and close it with Escape without leaving Settings', async () => {
@@ -6788,6 +6818,113 @@ describe('Settings + Config Integration', () => {
         expect(input.value).toBe(state.CONFIG.popupHotkey || '');
       });
 
+      describe('building the accelerator', () => {
+        // The recorder reads the physical key (event.code), as the entity recorder does.
+        const record = async (init) => {
+          const parts = await open();
+          mockElectronAPI.registerPopupHotkey.mockClear();
+          mockUiUtils.showToast.mockClear();
+          press(document.body, init.key, init);
+          await tick();
+          await tick();
+          return parts;
+        };
+
+        test('Ctrl+Shift+Space records, which turned into "Ctrl+Shift+ " before', async () => {
+          await record({ key: ' ', code: 'Space', ctrlKey: true, shiftKey: true });
+
+          expect(mockElectronAPI.registerPopupHotkey).toHaveBeenCalledWith('Ctrl+Shift+Space');
+        });
+
+        test('arrows and Shift+digit record by position', async () => {
+          await record({ key: 'ArrowUp', code: 'ArrowUp', ctrlKey: true });
+          expect(mockElectronAPI.registerPopupHotkey).toHaveBeenLastCalledWith('Ctrl+Up');
+
+          const { setBtn } = recorder();
+          setBtn.click();
+          press(document.body, '!', { code: 'Digit1', ctrlKey: true, shiftKey: true });
+          await tick();
+          expect(mockElectronAPI.registerPopupHotkey).toHaveBeenLastCalledWith('Ctrl+Shift+1');
+        });
+
+        test('names the Meta key Super here, and the field shows it as this keyboard prints it', async () => {
+          window.electronAPI.platform = 'win32';
+          try {
+            const { input } = await record({ key: 'k', code: 'KeyK', metaKey: true, altKey: true });
+
+            expect(mockElectronAPI.registerPopupHotkey).toHaveBeenCalledWith('Alt+Super+K');
+            expect(input.value).toBe('Alt+Win+K');
+            expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+              'Popup hotkey set to Alt+Win+K',
+              'success'
+            );
+          } finally {
+            window.electronAPI.platform = 'test';
+          }
+        });
+
+        test('names it Command on a Mac', async () => {
+          window.electronAPI.platform = 'darwin';
+          try {
+            await record({ key: 'k', code: 'KeyK', metaKey: true, altKey: true });
+
+            expect(mockElectronAPI.registerPopupHotkey).toHaveBeenCalledWith('Alt+Command+K');
+          } finally {
+            window.electronAPI.platform = 'test';
+          }
+        });
+
+        test('does not register a key with only Shift, and says what to add', async () => {
+          const { input, setBtn } = await record({ key: 'A', code: 'KeyA', shiftKey: true });
+
+          expect(mockElectronAPI.registerPopupHotkey).not.toHaveBeenCalled();
+          expect(input.value).toBe('Shift+A (add Ctrl/Alt/Super)');
+          // Still recording: the next key can complete it.
+          expect(setBtn.textContent).toBe('Stop recording');
+        });
+
+        test('waits through a modifier on its own', async () => {
+          const { setBtn } = await record({
+            key: 'Control',
+            code: 'ControlLeft',
+            ctrlKey: true,
+          });
+
+          expect(mockElectronAPI.registerPopupHotkey).not.toHaveBeenCalled();
+          expect(setBtn.textContent).toBe('Stop recording');
+        });
+
+        test('names the entity that holds the hotkey, and marks its row', async () => {
+          state.setStates({
+            'light.lamp': {
+              entity_id: 'light.lamp',
+              state: 'on',
+              attributes: { friendly_name: 'Desk lamp' },
+            },
+          });
+          document.body.insertAdjacentHTML(
+            'beforeend',
+            '<div id="hotkeys-list"><div class="hotkey-item"><input class="hotkey-input" data-entity-id="light.lamp" /></div></div>'
+          );
+          mockElectronAPI.registerPopupHotkey.mockResolvedValueOnce({
+            success: false,
+            error: 'Hotkey already assigned to light.lamp',
+            conflictEntityId: 'light.lamp',
+          });
+          const { input } = await record({ key: 'd', code: 'KeyD', ctrlKey: true });
+
+          expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+            'Hotkey already assigned to Desk lamp',
+            'error'
+          );
+          expect(
+            document.querySelector('.hotkey-item').classList.contains('settings-search-target')
+          ).toBe(true);
+          expect(input.value).toBe(state.CONFIG.popupHotkey || '');
+          document.getElementById('hotkeys-list').remove();
+        });
+      });
+
       test('a suggestion chip or Clear ends a recording that is somehow still on', async () => {
         const parts = await open();
         parts.preset.disabled = false;
@@ -6848,7 +6985,8 @@ describe('Settings + Config Integration', () => {
                   <input type="radio" name="alert-type" value="specific-state" />
                 </div></div>
                 <div class="form-group" id="specific-state-group" style="display: none">
-                  <input type="text" id="target-state-input" />
+                  <input type="text" id="target-state-input" list="target-state-options" />
+                  <datalist id="target-state-options"></datalist>
                 </div>
               </div>
             </div>
@@ -6924,6 +7062,280 @@ describe('Settings + Config Integration', () => {
         const rebuilt = document.querySelector('.edit-alert[data-entity="light.living_room"]');
         expect(rebuilt).not.toBe(edit);
         expect(document.activeElement).toBe(rebuilt);
+      });
+
+      describe('with an entity Home Assistant does not list', () => {
+        beforeEach(() => {
+          state.CONFIG.entityAlerts.alerts['light.gone'] = {
+            onSpecificState: true,
+            targetState: 'on',
+          };
+          settings.renderAlertsListInline();
+        });
+        const row = (id) =>
+          document.querySelector(`.edit-alert[data-entity="${id}"]`)?.closest('.alert-item') ??
+          null;
+
+        test('keeps its row, under its id, with Edit and Remove', () => {
+          state.setStates({});
+          settings.renderAlertsListInline();
+
+          const orphan = row('light.gone');
+          expect(orphan).not.toBeNull();
+          expect(orphan.querySelector('.alert-name').textContent).toBe('light.gone');
+          expect(orphan.querySelector('.alert-type').textContent).toBe('Specific state (on)');
+          expect(orphan.querySelector('.alert-missing').textContent).toBe('Unavailable');
+          expect(orphan.querySelector('.alert-icon svg')).not.toBeNull();
+          expect(orphan.querySelector('.edit-alert').disabled).toBe(false);
+          expect(orphan.querySelector('.remove-alert').disabled).toBe(false);
+          // Every alert is listed while the states have not loaded, and none claims to be missing
+          // once its entity is known.
+          expect(document.querySelectorAll('.alert-item')).toHaveLength(3);
+          expect(document.querySelector('.no-alerts-message')).toBeNull();
+        });
+
+        test('does not mark an entity that is listed', () => {
+          expect(row('switch.kitchen').querySelector('.alert-missing')).toBeNull();
+          expect(row('switch.kitchen').querySelector('.alert-name').textContent).toBe('Kitchen');
+          expect(row('light.gone').querySelector('.alert-missing')).not.toBeNull();
+        });
+
+        test('can be removed, which an orphan could not be before', async () => {
+          mockUiUtils.showConfirm.mockResolvedValueOnce(true);
+          mockElectronAPI.updateConfig.mockImplementationOnce(async (next) => next);
+
+          row('light.gone').querySelector('.remove-alert').click();
+          await tick();
+          await tick();
+
+          expect(mockUiUtils.showConfirm.mock.calls.at(-1)[1]).toContain('light.gone');
+          expect(
+            mockElectronAPI.updateConfig.mock.calls.at(-1)[0].entityAlerts.alerts
+          ).not.toHaveProperty('light.gone');
+          expect(row('light.gone')).toBeNull();
+        });
+
+        test('can be edited under its id', async () => {
+          row('light.gone').querySelector('.edit-alert').click();
+          await tick();
+
+          expect(document.getElementById('alert-config-title').textContent).toBe(
+            'Configure alert – light.gone'
+          );
+          expect(document.getElementById('target-state-input').value).toBe('on');
+        });
+
+        test('says there are no alerts only when there are none', () => {
+          state.CONFIG.entityAlerts.alerts = {};
+          settings.renderAlertsListInline();
+
+          expect(document.querySelector('.no-alerts-message')).not.toBeNull();
+          expect(document.querySelector('.alert-item')).toBeNull();
+        });
+      });
+
+      describe('the Specific State field', () => {
+        const openFor = async (entityId) => {
+          document.querySelector(`.edit-alert[data-entity="${entityId}"]`).click();
+          await tick();
+          const condition = document.getElementById('alert-condition');
+          condition.value = 'specific-state';
+          condition.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+        const options = () =>
+          [...document.querySelectorAll('#target-state-options option')].map(
+            (option) => option.value
+          );
+
+        test('suggests the states a lock really has, so the label on its tile is not guessed', async () => {
+          state.CONFIG.entityAlerts.alerts['lock.front'] = { onStateChange: true };
+          state.setStates({
+            ...state.STATES,
+            'lock.front': {
+              entity_id: 'lock.front',
+              state: 'locked',
+              attributes: { friendly_name: 'Front door' },
+            },
+          });
+          settings.renderAlertsListInline();
+
+          await openFor('lock.front');
+
+          expect(options().slice(0, 3)).toEqual(['locked', 'unlocked', 'locking']);
+          expect(options()).toEqual(expect.arrayContaining(['jammed', 'unavailable', 'unknown']));
+        });
+
+        test("suggests a thermostat's own modes", async () => {
+          state.CONFIG.entityAlerts.alerts['climate.hall'] = { onStateChange: true };
+          state.setStates({
+            ...state.STATES,
+            'climate.hall': {
+              entity_id: 'climate.hall',
+              state: 'heat',
+              attributes: { friendly_name: 'Hall', hvac_modes: ['off', 'heat', 'eco'] },
+            },
+          });
+          settings.renderAlertsListInline();
+
+          await openFor('climate.hall');
+
+          expect(options()).toEqual(expect.arrayContaining(['heat', 'off', 'eco']));
+        });
+
+        test('is refilled for the next entity, not appended to', async () => {
+          await openFor('switch.kitchen');
+          const first = options();
+          settings.closeAlertConfigModal();
+          await tick();
+          await openFor('light.living_room');
+
+          expect(first).toEqual(['off', 'on', 'unavailable', 'unknown']);
+          expect(options()).toEqual(expect.arrayContaining(['on', 'off']));
+          expect(new Set(options()).size).toBe(options().length);
+        });
+
+        test('saves what was typed the way Home Assistant spells it', async () => {
+          await openFor('switch.kitchen');
+          document.getElementById('target-state-input').value = 'Not Home';
+          mockElectronAPI.updateConfig.mockImplementationOnce(async (next) => next);
+
+          await settings.saveAlert();
+
+          const saved =
+            mockElectronAPI.updateConfig.mock.calls.at(-1)[0].entityAlerts.alerts['switch.kitchen'];
+          expect(saved.onSpecificState).toBe(true);
+          expect(saved.targetState).toBe('not_home');
+        });
+
+        test('still asks for a state when none was typed', async () => {
+          await openFor('switch.kitchen');
+          document.getElementById('target-state-input').value = '   ';
+          mockUiUtils.showToast.mockClear();
+          mockElectronAPI.updateConfig.mockClear();
+
+          await settings.saveAlert();
+
+          expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+          expect(mockUiUtils.showToast).toHaveBeenCalledWith('Enter a target state.', 'error');
+        });
+      });
+
+      describe('the switch for unavailable and unknown', () => {
+        const row = () => document.querySelector('#alert-config-modal .alert-switch-row');
+        const toggle = () => document.getElementById('alert-notify-unavailable');
+        const open = async (entityId) => {
+          document.querySelector(`.edit-alert[data-entity="${entityId}"]`).click();
+          await tick();
+        };
+        const chooseCondition = (value) => {
+          const condition = document.getElementById('alert-condition');
+          condition.value = value;
+          condition.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+        const savedRule = (entityId) =>
+          mockElectronAPI.updateConfig.mock.calls.at(-1)[0].entityAlerts.alerts[entityId];
+
+        // The mock API is made once for the whole file, so what this block swaps in has to be put
+        // back: a reset would leave every test after it with an updateConfig that returns nothing.
+        let defaultUpdateConfig;
+        beforeEach(() => {
+          state.CONFIG.entityAlerts.alerts['switch.kitchen'] = {
+            onStateChange: true,
+            notifyOnUnavailable: false,
+          };
+          settings.renderAlertsListInline();
+          defaultUpdateConfig = mockElectronAPI.updateConfig.getMockImplementation();
+          mockElectronAPI.updateConfig.mockClear();
+          mockElectronAPI.updateConfig.mockImplementation(async (next) => next);
+        });
+        afterEach(() => mockElectronAPI.updateConfig.mockImplementation(defaultUpdateConfig));
+
+        test('is on for a rule saved before it existed, with a label and a line of help', async () => {
+          await open('light.living_room');
+
+          expect(row().hidden).toBe(false);
+          expect(toggle().checked).toBe(true);
+          expect(row().querySelector('label').getAttribute('for')).toBe('alert-notify-unavailable');
+          expect(row().querySelector('label').textContent).toBe(
+            'Notify when unavailable or unknown'
+          );
+          const help = document.getElementById(toggle().getAttribute('aria-describedby'));
+          expect(help.className).toBe('form-help');
+          expect(help.textContent).toBe(
+            'Waits 30 seconds first, and tells you at most once every 15 minutes per device.'
+          );
+        });
+
+        test('says the wait and the limit the alerts really apply', async () => {
+          const {
+            UNAVAILABLE_GRACE_MS,
+            UNAVAILABLE_NOTIFY_INTERVAL_MS,
+          } = require('../../src/alert-rules.js');
+          await open('light.living_room');
+
+          expect(
+            document.getElementById(toggle().getAttribute('aria-describedby')).textContent
+          ).toBe(
+            `Waits ${UNAVAILABLE_GRACE_MS / 1000} seconds first, and tells you at most once every ${
+              UNAVAILABLE_NOTIFY_INTERVAL_MS / 60000
+            } minutes per device.`
+          );
+        });
+
+        test('shows a rule that has it off as off', async () => {
+          await open('switch.kitchen');
+          expect(toggle().checked).toBe(false);
+        });
+
+        test('is saved with the rule: off, and on when left alone', async () => {
+          await open('switch.kitchen');
+          toggle().checked = true;
+          await settings.saveAlert();
+          expect(savedRule('switch.kitchen').notifyOnUnavailable).toBe(true);
+
+          settings.closeAlertConfigModal();
+          await tick();
+          await open('light.living_room');
+          await settings.saveAlert();
+          expect(savedRule('light.living_room').notifyOnUnavailable).toBe(true);
+
+          settings.closeAlertConfigModal();
+          await tick();
+          await open('light.living_room');
+          toggle().checked = false;
+          await settings.saveAlert();
+          expect(savedRule('light.living_room').notifyOnUnavailable).toBe(false);
+          expect(savedRule('light.living_room').onStateChange).toBe(true);
+        });
+
+        test('is offered only for a State Change rule, and not saved for another', async () => {
+          await open('light.living_room');
+          toggle().checked = false;
+          for (const condition of ['specific-state', 'above', 'below']) {
+            chooseCondition(condition);
+            expect(row().hidden).toBe(true);
+          }
+          chooseCondition('state-change');
+          expect(row().hidden).toBe(false);
+
+          chooseCondition('above');
+          document.getElementById('alert-threshold').value = '20';
+          await settings.saveAlert();
+          expect(savedRule('light.living_room').onNumericThreshold).toBe(true);
+          expect(savedRule('light.living_room')).not.toHaveProperty('notifyOnUnavailable');
+        });
+
+        test('is not toggled by Enter, which saves the fields', async () => {
+          await open('light.living_room');
+          const event = new KeyboardEvent('keydown', {
+            key: 'Enter',
+            bubbles: true,
+            cancelable: true,
+          });
+          toggle().dispatchEvent(event);
+          expect(event.defaultPrevented).toBe(false);
+          expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+        });
       });
 
       test('puts focus on the Add button when the alert it was removing is gone', async () => {

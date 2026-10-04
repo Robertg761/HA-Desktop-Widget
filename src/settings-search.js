@@ -322,6 +322,10 @@ function initializeSettingsSearch(modal) {
   // Reopening Settings must not accumulate listeners or keep an old query.
   input.oninput = search;
   input.onkeydown = (event) => {
+    // Enter commits an input method's candidate, and the arrows and Escape belong to it; none of
+    // them is a command to leave the field or clear it. Some engines report the key after the
+    // composition ended with keyCode 229.
+    if (event.isComposing || event.keyCode === 229) return;
     if (event.key === 'Escape' && input.value) {
       event.preventDefault();
       event.stopPropagation();

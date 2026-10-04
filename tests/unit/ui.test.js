@@ -8865,6 +8865,31 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           expect(tabBar.classList.contains('reorganize')).toBe(true);
         });
 
+        it('keeps renaming through the Enter that commits an input method candidate', async () => {
+          setPages(pagesNamed(2), 'p1');
+          ui.toggleReorganizeMode();
+          const input = startRename();
+          input.value = '客厅';
+
+          for (const init of [{ isComposing: true }, { keyCode: 229 }]) {
+            const event = new KeyboardEvent('keydown', {
+              key: 'Enter',
+              bubbles: true,
+              cancelable: true,
+              ...init,
+            });
+            input.dispatchEvent(event);
+            expect(event.defaultPrevented).toBe(false);
+          }
+          await settle();
+
+          expect(state.CONFIG.customTabs[0].name).toBe('Page 1');
+          expect(tabBar.querySelector('.qa-tab-rename-input')).toBe(input);
+          press(input, 'Enter');
+          await settle();
+          expect(state.CONFIG.customTabs[0].name).toBe('客厅');
+        });
+
         it('keeps focus where the person went when the field loses it', async () => {
           setPages(pagesNamed(2), 'p1');
           ui.toggleReorganizeMode();
@@ -9276,6 +9301,123 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(typeof ui.updateMediaSeekBar).toBe('function');
       expect(typeof ui.callMediaTileService).toBe('function');
       expect(typeof ui.updateWeatherEffects).toBe('function');
+    });
+  });
+
+  describe('hasEntityAction, for what the command palette can do with a row', () => {
+    const entity = (id, entityState = 'on') => ({
+      entity_id: id,
+      state: entityState,
+      attributes: { friendly_name: id },
+    });
+
+    it.each([
+      'sun.sun',
+      'person.sam',
+      'weather.home',
+      'device_tracker.phone',
+      'update.core',
+      'zone.home',
+      'binary_sensor.door',
+    ])('is false for %s, which has no controls and nothing to run', (id) => {
+      expect(ui.hasEntityAction(entity(id))).toBe(false);
+    });
+
+    it.each([
+      'light.desk',
+      'switch.plug',
+      'fan.attic',
+      'cover.garage',
+      'climate.hall',
+      'media_player.tv',
+      'camera.porch',
+      'sensor.temperature',
+      'timer.kitchen',
+      'todo.shopping',
+      'calendar.family',
+      'number.volume',
+      'input_number.level',
+      'select.mode',
+      'input_select.mode',
+      'vacuum.robot',
+      'scene.movie',
+      'script.goodnight',
+      'button.restart',
+      'input_button.ring',
+      'input_boolean.guest',
+      'automation.sunset',
+    ])('is true for %s', (id) => {
+      expect(ui.hasEntityAction(entity(id))).toBe(true);
+    });
+
+    it('is false for locks and alarm panels, which the palette runs only by named command', () => {
+      expect(ui.hasEntityAction(entity('lock.front', 'locked'))).toBe(false);
+      expect(ui.hasEntityAction(entity('alarm_control_panel.home', 'disarmed'))).toBe(false);
+    });
+
+    it('is false for what only toggles or runs while it is unavailable, and true for what opens a dialog', () => {
+      for (const id of ['switch.plug', 'scene.movie', 'button.restart', 'automation.sunset']) {
+        expect(ui.hasEntityAction(entity(id, 'unavailable'))).toBe(false);
+      }
+      for (const id of ['light.desk', 'sensor.temperature', 'climate.hall']) {
+        expect(ui.hasEntityAction(entity(id, 'unavailable'))).toBe(true);
+      }
+    });
+
+    it('reads the live entity, not the one the row was built from', () => {
+      state.setStates({ 'switch.plug': entity('switch.plug', 'unavailable') });
+      expect(ui.hasEntityAction(entity('switch.plug', 'on'))).toBe(false);
+      state.setStates({ 'switch.plug': entity('switch.plug', 'on') });
+      expect(ui.hasEntityAction(entity('switch.plug', 'unavailable'))).toBe(true);
+    });
+
+    it('is false for nothing at all', () => {
+      expect(ui.hasEntityAction(undefined)).toBe(false);
+      expect(ui.hasEntityAction({})).toBe(false);
+    });
+
+    it('agrees with what Enter really does for the domains it says have an action', () => {
+      // Whatever it says is runnable must reach Home Assistant or open a dialog, never nothing.
+      state.setStates({ 'switch.plug': entity('switch.plug', 'off') });
+      mockCallService.mockClear();
+      ui.executeEntityPrimaryAction(entity('scene.movie', 'scening'));
+      expect(mockCallService).toHaveBeenCalledWith('scene', 'turn_on', expect.any(Object));
+      // And the ones it says have none do nothing.
+      mockCallService.mockClear();
+      for (const id of ['sun.sun', 'person.sam', 'binary_sensor.door', 'update.core']) {
+        ui.executeEntityPrimaryAction(entity(id));
+      }
+      expect(mockCallService).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('service errors', () => {
+    it('tells a failed connection from Home Assistant refusing the call', () => {
+      for (const message of [
+        'WebSocket not connected',
+        'WebSocket not authenticated',
+        'WebSocket connection closed',
+        'WebSocket connection replaced',
+        'Home Assistant connection lost',
+        'WebSocket request timeout',
+      ]) {
+        expect(ui.isConnectionServiceError(new Error(message))).toBe(true);
+      }
+      expect(ui.isConnectionServiceError(new Error('Invalid alarm code provided'))).toBe(false);
+      expect(ui.isConnectionServiceError(undefined)).toBe(false);
+    });
+
+    it('says what Home Assistant said, and a plain line for an outage', () => {
+      expect(ui.describeServiceErrorMessage(new Error('Invalid alarm code provided'))).toBe(
+        'Invalid alarm code provided'
+      );
+      expect(ui.describeServiceErrorMessage(new Error('WebSocket not connected'))).toBe(
+        'Not connected to Home Assistant'
+      );
+      expect(ui.describeServiceErrorMessage(new Error('WebSocket request timeout'))).toBe(
+        'Home Assistant did not respond'
+      );
+      expect(ui.describeServiceErrorMessage(new Error(''))).toBe('Unknown error');
     });
   });
 

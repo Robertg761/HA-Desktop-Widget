@@ -286,14 +286,20 @@ describe('Escape, Enter and the backdrop', () => {
     expect(dismiss).not.toHaveBeenCalled();
   });
 
-  it('ignores Escape that ends an IME composition', async () => {
+  it.each([
+    ['isComposing', { isComposing: true }],
+    ['keyCode 229, which engines send once isComposing is false', { keyCode: 229 }],
+  ])('ignores the Escape and Enter that end an IME composition (%s)', async (_name, init) => {
     const dismiss = jest.fn();
-    uiUtils.openDialog(dialog('ime'), { dismiss });
+    const onEnter = jest.fn();
+    uiUtils.openDialog(dialog('ime'), { dismiss, onEnter, initialFocus: '#field' });
     await tick();
 
-    key(document.activeElement, 'Escape', { isComposing: true });
+    key(document.activeElement, 'Escape', init);
+    key(document.activeElement, 'Enter', init);
 
     expect(dismiss).not.toHaveBeenCalled();
+    expect(onEnter).not.toHaveBeenCalled();
   });
 
   it('cannot be dismissed when it asks for an answer', async () => {

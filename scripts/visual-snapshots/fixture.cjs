@@ -239,9 +239,10 @@ function localDate(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-function buildStates(now = new Date()) {
+// Builds the state objects Home Assistant sends, all stamped with the moment given.
+function stateBuilder(now) {
   const stamp = now.toISOString();
-  const entity = (entityId, state, attributes = {}) => ({
+  return (entityId, state, attributes = {}) => ({
     entity_id: entityId,
     state,
     attributes,
@@ -249,6 +250,11 @@ function buildStates(now = new Date()) {
     last_updated: stamp,
     context: { id: entityId, parent_id: null, user_id: null },
   });
+}
+
+function buildStates(now = new Date()) {
+  const stamp = now.toISOString();
+  const entity = stateBuilder(now);
   const states = [
     entity('weather.home', 'cloudy', {
       friendly_name: 'Home',
@@ -624,6 +630,23 @@ function buildStates(now = new Date()) {
   return states;
 }
 
+// A home with more lights than the Hotkeys list shows on one page. Not in the fixture itself:
+// the other lists that name every entity (the alert picker, the palette) would fill up with them
+// in every scene, so the one scene that pages the Hotkeys list brings them and the runner takes
+// them away again.
+const LANDING_LIGHT_COUNT = 60;
+function buildLandingLights(now = new Date()) {
+  const entity = stateBuilder(now);
+  return Array.from({ length: LANDING_LIGHT_COUNT }, (_, index) => {
+    const number = String(index + 1).padStart(2, '0');
+    return entity(`light.landing_${number}`, index % 2 ? 'off' : 'on', {
+      friendly_name: `Landing light ${number}`,
+      supported_color_modes: ['onoff'],
+      color_mode: index % 2 ? null : 'onoff',
+    });
+  });
+}
+
 /** The services the fixture's domains offer, as get_services reports them. */
 function buildServices() {
   const domain = (...names) =>
@@ -768,6 +791,7 @@ module.exports = {
   WINDOW_POSITION,
   WINDOW_SIZE,
   buildConfig,
+  buildLandingLights,
   buildServiceResponses,
   buildServices,
   buildStates,

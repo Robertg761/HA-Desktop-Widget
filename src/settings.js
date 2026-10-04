@@ -1,4 +1,5 @@
 import { applyDesktopAppearance } from './desktop-appearance.js';
+import { getAlertStateSuggestions, normalizeAlertState } from './alert-rules.js';
 import { initializeSettingsSearch } from './settings-search.js';
 import { initializeSettingsFiles } from './settings-files-ui.js';
 import { createEmojiSupportCheck } from './emoji-support.js';
@@ -29,7 +30,14 @@ import {
   showConfirm,
   copyTextToClipboard,
 } from './ui-utils.js';
-import { cleanupHotkeyEventListeners } from './hotkeys.js';
+import {
+  cleanupHotkeyEventListeners,
+  describeHotkeyFailure,
+  describeRecording,
+  flashHotkeyRow,
+  formatHotkey,
+  recordKeyEvent,
+} from './hotkeys.js';
 import { getNextTabIndex, getTextDirection, syncRovingTabIndex } from './tab-navigation.js';
 import { syncSlidingIndicator } from './motion.js';
 import {
@@ -40,7 +48,12 @@ import {
   setConnectionStatusBusy,
 } from './connection-status.js';
 import * as utils from './utils.js';
-import { entityIconMarkup, renderEntityIcon, setLineIconContent } from './entity-icons.js';
+import {
+  entityIconMarkup,
+  lineIconMarkup,
+  renderEntityIcon,
+  setLineIconContent,
+} from './entity-icons.js';
 import {
   PRIMARY_CARD_DEFAULTS,
   PRIMARY_CARD_NONE,
@@ -1483,7 +1496,8 @@ function initCustomColorEditor() {
       setCustomEditorActive(true);
     };
     nameInput.onkeydown = (event) => {
-      if (event.key !== 'Enter') return;
+      // The Enter that commits an input method's candidate is not a request to save the name.
+      if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return;
       event.preventDefault();
       renameSelectedCustomColor();
       setCustomEditorActive(false);
@@ -3020,7 +3034,7 @@ function initCustomEntityIconsUI() {
       refocusCustomEntityIconInput(section, entityId);
       return;
     }
-    if (event.key !== 'Enter') return;
+    if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return;
     const input = event.target.closest('[data-custom-icon-input]');
     if (!input) return;
     event.preventDefault();
@@ -6784,10 +6798,11 @@ function renderAlertsListInline() {
       alertsList.appendChild(noAlertsMsg);
     }
 
-    // Add existing alerts
+    // Add existing alerts. An entity that is not in the state map (Home Assistant has not sent it
+    // yet, or it was deleted or renamed) keeps its row under its id, so the alert can still be
+    // edited and removed; skipping it made the alerts look lost.
     Object.keys(alerts).forEach((entityId) => {
       const entity = state.STATES[entityId];
-      if (!entity) return;
 
       const alertItem = document.createElement('div');
       alertItem.className = 'alert-item';
@@ -6804,10 +6819,11 @@ function renderAlertsListInline() {
 
       alertItem.innerHTML = `
         <div class="alert-item-info">
-          <span class="alert-icon">${entityIconMarkup(entity)}</span>
+          <span class="alert-icon">${entity ? entityIconMarkup(entity) : lineIconMarkup('bell')}</span>
           <div class="alert-details">
-            <span class="alert-name">${utils.escapeHtml(utils.getEntityDisplayName(entity))}</span>
+            <span class="alert-name">${utils.escapeHtml(entity ? utils.getEntityDisplayName(entity) : entityId)}</span>
             <span class="alert-type">${utils.escapeHtml(alertType)}</span>
+            ${entity ? '' : `<span class="alert-missing">${utils.escapeHtml(t('Unavailable'))}</span>`}
           </div>
         </div>
         <div class="alert-actions">
@@ -6994,6 +7010,16 @@ function relabelAlertAdvancedOptions(root = document) {
   });
 }
 
+// The states this entity really has, so "Specific State" is picked rather than guessed. The field
+// still takes anything: a state that is not listed (a zone name) is a legitimate target.
+function populateAlertStateSuggestions(entity) {
+  const list = document.getElementById('target-state-options');
+  if (!list) return;
+  list.replaceChildren(
+    ...getAlertStateSuggestions(entity).map((suggestion) => new Option(suggestion, suggestion))
+  );
+}
+
 const ALERT_TIME_STEP_MINUTES = 15;
 
 // Quiet hours are picked from a list of times written in the Time format setting and the app's
@@ -7091,6 +7117,30 @@ function openAlertConfigModal(entityId) {
       group.insertBefore(specificStateGroup, threshold.parentElement);
       addField('alert-duration', 'Condition duration in seconds', 'number');
       addField('alert-cooldown', 'Notification cooldown in seconds', 'number');
+      // A State Change rule tells about an entity going offline unless this is off. The help
+      // names the built-in wait and limit (UNAVAILABLE_GRACE_MS and UNAVAILABLE_NOTIFY_INTERVAL_MS
+      // in alert-rules.js) so a flapping device's silence is not a surprise.
+      const unavailableRow = document.createElement('div');
+      unavailableRow.className = 'alert-switch-row';
+      const unavailableText = document.createElement('div');
+      unavailableText.className = 'alert-switch-text';
+      const unavailableLabel = document.createElement('label');
+      unavailableLabel.htmlFor = 'alert-notify-unavailable';
+      const unavailableLabelText = document.createElement('span');
+      unavailableLabelText.dataset.alertLabelKey = 'Notify when unavailable or unknown';
+      unavailableLabel.append(unavailableLabelText);
+      const unavailableHelp = document.createElement('div');
+      unavailableHelp.id = 'alert-notify-unavailable-help';
+      unavailableHelp.className = 'form-help';
+      unavailableHelp.dataset.alertLabelKey =
+        'Waits 30 seconds first, and tells you at most once every 15 minutes per device.';
+      unavailableText.append(unavailableLabel, unavailableHelp);
+      const unavailableSwitch = document.createElement('input');
+      unavailableSwitch.type = 'checkbox';
+      unavailableSwitch.id = 'alert-notify-unavailable';
+      unavailableSwitch.setAttribute('aria-describedby', unavailableHelp.id);
+      unavailableRow.append(unavailableText, unavailableSwitch);
+      group.append(unavailableRow);
       addField('alert-quiet-enabled', 'Enable quiet hours', 'checkbox');
       addField('alert-quiet-start', 'Quiet hours start, local time', 'time');
       addField('alert-quiet-end', 'Quiet hours end, local time', 'time');
@@ -7105,9 +7155,13 @@ function openAlertConfigModal(entityId) {
         ? 'specific-state'
         : 'state-change';
     targetStateInput.value = alertConfig?.targetState || '';
+    populateAlertStateSuggestions(state.STATES[entityId]);
     modal.querySelector('#alert-threshold').value = alertConfig?.threshold ?? '';
     modal.querySelector('#alert-duration').value = alertConfig?.durationSeconds || 0;
     modal.querySelector('#alert-cooldown').value = alertConfig?.cooldownSeconds || 0;
+    // On unless the rule says otherwise, which is also how a rule saved before the switch reads.
+    modal.querySelector('#alert-notify-unavailable').checked =
+      alertConfig?.notifyOnUnavailable !== false;
     modal.querySelector('#alert-quiet-enabled').checked = !!alertConfig?.quietHours?.enabled;
     populateAlertTimeOptions(
       modal.querySelector('#alert-quiet-start'),
@@ -7124,6 +7178,9 @@ function openAlertConfigModal(entityId) {
       modal.querySelector('#alert-threshold').parentElement.hidden = !['above', 'below'].includes(
         condition.value
       );
+      // Only a State Change rule tells about an entity going offline unasked. A rule for the state
+      // "unavailable" is that request itself, and a threshold rule ignores a missing reading.
+      modal.querySelector('.alert-switch-row').hidden = condition.value !== 'state-change';
     };
     condition.onchange = syncCondition;
     const quietEnabled = modal.querySelector('#alert-quiet-enabled');
@@ -7181,7 +7238,9 @@ async function saveAlert() {
     const alertConfig = {
       onStateChange: stateChangeRadio?.checked || false,
       onSpecificState: specificStateRadio?.checked || false,
-      targetState: targetStateInput?.value.trim() || '',
+      // Saved the way Home Assistant spells it ("Not home" becomes not_home), which is also how
+      // the alert list then reads and what the rule compares against.
+      targetState: normalizeAlertState(targetStateInput?.value),
     };
     const condition = modal.querySelector('#alert-condition')?.value;
     alertConfig.onNumericThreshold = ['above', 'below'].includes(condition);
@@ -7214,6 +7273,9 @@ async function saveAlert() {
         return;
       }
       alertConfig[field] = seconds;
+    }
+    if (alertConfig.onStateChange) {
+      alertConfig.notifyOnUnavailable = modal.querySelector('#alert-notify-unavailable').checked;
     }
     alertConfig.quietHours = {
       enabled: modal.querySelector('#alert-quiet-enabled').checked,
@@ -7387,7 +7449,7 @@ function relocalizePopupHotkeyText() {
     } else if (popupHotkeyAvailable === false) {
       input.placeholder = t('Not available on this platform');
     } else {
-      input.placeholder = state.CONFIG?.popupHotkey || t('Not set');
+      input.placeholder = formatHotkey(state.CONFIG?.popupHotkey) || t('Not set');
     }
   }
 }
@@ -7410,8 +7472,8 @@ async function initializePopupHotkey() {
 
     if (isAvailable) {
       input.disabled = false;
-      input.value = currentHotkey;
-      input.placeholder = currentHotkey || t('Not set');
+      input.value = formatHotkey(currentHotkey);
+      input.placeholder = formatHotkey(currentHotkey) || t('Not set');
       setBtn.disabled = false;
       // Clear and the suggestions come back too, as they were switched off when the service was
       // not there; a recording that is still going keeps them off.
@@ -7444,8 +7506,8 @@ async function initializePopupHotkey() {
 
     // Load current popup hotkey
     if (currentHotkey) {
-      input.value = currentHotkey;
-      input.placeholder = currentHotkey;
+      input.value = formatHotkey(currentHotkey);
+      input.placeholder = formatHotkey(currentHotkey);
       clearBtn.style.display = 'inline-block';
     }
 
@@ -7638,14 +7700,16 @@ async function initializePopupHotkey() {
     // Preset hotkey buttons
     const presetButtons = document.querySelectorAll('.preset-hotkey-btn');
     presetButtons.forEach((btn) => {
+      // The chip says the keys as this platform prints them; the accelerator it registers is the same.
+      btn.textContent = formatHotkey(btn.dataset.hotkey);
       btn.onclick = async () => {
         if (isCapturingPopupHotkey) stopCapturingPopupHotkey();
         const hotkey = btn.dataset.hotkey;
         try {
           const result = await window.electronAPI.registerPopupHotkey(hotkey);
           if (result.success) {
-            input.value = hotkey;
-            input.placeholder = hotkey;
+            input.value = formatHotkey(hotkey);
+            input.placeholder = formatHotkey(hotkey);
             clearBtn.style.display = 'inline-block';
             state.CONFIG.popupHotkey = hotkey;
             // showToast already imported at top
@@ -7655,12 +7719,13 @@ async function initializePopupHotkey() {
                 ? t(
                     'Shortcut target registered. Copy its binding from the Hyprland shortcuts panel.'
                   )
-                : t('Popup hotkey set to {{hotkey}}', { hotkey }),
+                : t('Popup hotkey set to {{hotkey}}', { hotkey: formatHotkey(hotkey) }),
               'success'
             );
           } else {
             // showToast already imported at top
-            showToast(result.error || t('Failed to set popup hotkey'), 'error');
+            showToast(describeHotkeyFailure(result, t('Failed to set popup hotkey')), 'error');
+            if (result.conflictEntityId) flashHotkeyRow(result.conflictEntityId);
           }
         } catch (error) {
           log.error('Failed to set preset hotkey:', error);
@@ -7721,67 +7786,48 @@ function startCapturingPopupHotkey() {
     e.preventDefault();
     e.stopPropagation();
 
-    // Ignore pure modifier keys - wait for a main key to be pressed
-    if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
-      return; // Don't process until user presses a non-modifier key
+    // The same recorder as the entity hotkeys use: by physical key, so Space, the arrows and
+    // Shift+digit work and the key is the one the keyboard hook sees. A modifier alone waits for
+    // its key; a key with nothing but Shift is only a capital letter, and says what to add.
+    const recorded = recordKeyEvent(e);
+    if (!recorded.complete) {
+      if (input && recorded.needsModifier) input.value = describeRecording(recorded);
+      return;
     }
+    const hotkey = recorded.accelerator;
 
-    // Build hotkey string
-    const parts = [];
-    if (e.ctrlKey) parts.push('Ctrl');
-    if (e.altKey) parts.push('Alt');
-    if (e.shiftKey) parts.push('Shift');
-    if (e.metaKey) parts.push('Command');
-
-    // Add the main key
-    let mainKeyAdded = false;
-    if (e.key && e.key.length === 1) {
-      parts.push(e.key.toUpperCase());
-      mainKeyAdded = true;
-    } else if (e.key === ' ') {
-      parts.push('Space');
-      mainKeyAdded = true;
-    } else if (e.key && !['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
-      parts.push(e.key);
-      mainKeyAdded = true;
-    }
-
-    // Only proceed if we have a main key (not just modifiers)
-    if (mainKeyAdded && parts.length > 0) {
-      const hotkey = parts.join('+');
-
-      try {
-        const result = await window.electronAPI.registerPopupHotkey(hotkey);
-        if (result.success) {
-          if (input) {
-            input.value = hotkey;
-            input.placeholder = hotkey;
-          }
-          const clearBtn = document.getElementById('popup-hotkey-clear-btn');
-          if (clearBtn) clearBtn.style.display = 'inline-block';
-          state.CONFIG.popupHotkey = hotkey;
-          // showToast already imported at top
-          await refreshDesktopIntegration();
-          showToast(
-            result.binding?.requiresCompositorBinding
-              ? t('Shortcut target registered. Copy its binding from the Hyprland shortcuts panel.')
-              : t('Popup hotkey set to {{hotkey}}', { hotkey }),
-            'success'
-          );
-        } else {
-          // showToast already imported at top
-          showToast(result.error || t('Failed to set popup hotkey'), 'error');
-          if (input) input.value = state.CONFIG.popupHotkey || '';
+    try {
+      const result = await window.electronAPI.registerPopupHotkey(hotkey);
+      if (result.success) {
+        if (input) {
+          input.value = formatHotkey(hotkey);
+          input.placeholder = formatHotkey(hotkey);
         }
-      } catch (error) {
-        log.error('Failed to register popup hotkey:', error);
+        const clearBtn = document.getElementById('popup-hotkey-clear-btn');
+        if (clearBtn) clearBtn.style.display = 'inline-block';
+        state.CONFIG.popupHotkey = hotkey;
         // showToast already imported at top
-        showToast(t('Failed to register popup hotkey'), 'error');
-        if (input) input.value = state.CONFIG.popupHotkey || '';
+        await refreshDesktopIntegration();
+        showToast(
+          result.binding?.requiresCompositorBinding
+            ? t('Shortcut target registered. Copy its binding from the Hyprland shortcuts panel.')
+            : t('Popup hotkey set to {{hotkey}}', { hotkey: formatHotkey(hotkey) }),
+          'success'
+        );
+      } else {
+        // showToast already imported at top
+        showToast(describeHotkeyFailure(result, t('Failed to set popup hotkey')), 'error');
+        if (result.conflictEntityId) flashHotkeyRow(result.conflictEntityId);
+        if (input) input.value = formatHotkey(state.CONFIG.popupHotkey);
       }
-
-      stopCapturingPopupHotkey();
+    } catch (error) {
+      log.error('Failed to register popup hotkey:', error);
+      // showToast already imported at top
+      showToast(t('Failed to register popup hotkey'), 'error');
+      if (input) input.value = formatHotkey(state.CONFIG.popupHotkey);
     }
+
+    stopCapturingPopupHotkey();
   };
 
   // Clicking elsewhere, or switching to another window, leaves nothing to record into. Pressing the
@@ -7812,8 +7858,8 @@ function stopCapturingPopupHotkey({ keepFocus = false } = {}) {
       window.removeEventListener('blur', input._captureAbandon);
       input._captureAbandon = null;
     }
-    input.value = state.CONFIG.popupHotkey || '';
-    input.placeholder = state.CONFIG.popupHotkey || t('Not set');
+    input.value = formatHotkey(state.CONFIG.popupHotkey);
+    input.placeholder = formatHotkey(state.CONFIG.popupHotkey) || t('Not set');
     if (!keepFocus) input.blur();
 
     if (input._captureHandler) {
