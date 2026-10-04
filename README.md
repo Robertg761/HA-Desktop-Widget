@@ -214,7 +214,9 @@ Press **Ctrl+K** or **Cmd+K** to search entities and actions. Choose an explicit
 
 ### Alert conditions
 
-In **Settings > Alerts**, configure a state change, exact state, or numeric threshold. Optional duration and cooldown fields use seconds. A duration requires the condition to remain true continuously while the app observes it; disconnecting cancels pending alerts. Quiet hours use the computer's local time and can cross midnight. Matching updates do not repeat an alert until the condition clears and is reached again. Alerts suppressed by quiet hours or cooldown are not queued for later delivery. The app must be running and connected.
+In **Settings > Alerts**, configure a state change, exact state, or numeric threshold. Optional duration and cooldown fields use seconds. A duration requires the condition to remain true continuously while the app observes it; disconnecting cancels pending alerts, except the wait before an unavailable notification, which starts over when the app reconnects and the entity is still offline. Quiet hours use the computer's local time and can cross midnight. Matching updates do not repeat an alert until the condition clears and is reached again. Alerts suppressed by quiet hours or cooldown are not queued for later delivery. The app must be running and connected.
+
+A state change alert also tells you when the entity goes unavailable or unknown, but only if it stays that way for 30 seconds, and at most once every 15 minutes per entity, so a flapping device does not flood you. An outage that begins inside those 15 minutes is not reported later, even if it lasts. Saving the rule starts a pending wait over, but does not reset the 15 minutes. The rule's own duration, cooldown and quiet hours apply as well. Coming back is not announced unless the entity returns as something other than it was before the outage. Turn off **Notify when unavailable or unknown** on the rule to skip these. To be told about every outage, use an exact-state alert for `unavailable` or `unknown`, which follows only its own duration and cooldown.
 
 ### Sensor history
 
@@ -261,6 +263,9 @@ power controls without a brightness slider.
 - **Custom Entity Icons**: Search or paste emoji/glyph overrides for entity icons
 - **Media Tile**: Select the primary media player or hide the tile
 - **Hotkeys**: Configure global entity hotkeys, action-specific shortcuts, and a popup hotkey (hold/toggle on macOS and Windows; press/toggle on Linux)
+
+  On macOS the popup hotkey needs **System Settings > Privacy & Security > Accessibility** access. The widget asks when you set the hotkey and says so if it is still missing. macOS may ask again after an update; if the popup hotkey stops working, switch the widget on in that list and set the hotkey once more.
+
 - **Alerts**: Enable desktop notifications for entity state changes or target states
 - **Advanced**: Updates, [profile sync](#profile-sync), logs, and interaction diagnostics for troubleshooting
 

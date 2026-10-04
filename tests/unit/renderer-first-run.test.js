@@ -1563,48 +1563,25 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockHotkeys.renderHotkeysTab).toHaveBeenCalled();
     expect(document.activeElement).toBe(document.querySelector('.hotkey-input'));
   });
-  it.each(['Enter', ' '])(
-    'starts hotkey recording with %s and restores focus after cancellation',
-    async (key) => {
-      const config = unconfiguredConfig();
-      config.globalHotkeys.hotkeys['light.office'] = { hotkey: 'Ctrl+L', action: 'toggle' };
-      await loadRenderer({
-        config,
-        bodyHtml:
-          '<main class="widget-content"></main><div id="hotkeys-list"><div><input readonly class="hotkey-input" data-entity-id="light.office" value="Ctrl+L"></div></div>',
-      });
-      mockHotkeys.captureHotkey.mockResolvedValueOnce(null);
-      const input = document.querySelector('.hotkey-input');
-      input.focus();
-      input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-      await flushAsync();
-      expect(mockHotkeys.captureHotkey).toHaveBeenCalledTimes(1);
-      expect(input.value).toBe('Ctrl+L');
-      expect(document.activeElement).toBe(input);
-      expect(input.hasAttribute('aria-busy')).toBe(false);
-    }
-  );
-  it('restores the configured hotkey and focus after a registration conflict', async () => {
-    const config = unconfiguredConfig();
-    config.globalHotkeys.hotkeys['light.office'] = 'Ctrl+L';
+  // Recording itself (the dialog, the clash message, focus afterwards, the saved-while-off warning)
+  // is the shared recorder's, tested in hotkeys.test.js; the list only has to start it for its row.
+  it.each(['Enter', ' '])('starts the shared recorder for a row with %s', async (key) => {
     await loadRenderer({
-      config,
+      config: unconfiguredConfig(),
       bodyHtml:
         '<main class="widget-content"></main><div id="hotkeys-list"><div><input readonly class="hotkey-input" data-entity-id="light.office" value="Ctrl+L"></div></div>',
-      configureApi(api) {
-        api.registerHotkey.mockResolvedValueOnce({ success: false, error: 'Already registered' });
-      },
     });
-    mockHotkeys.captureHotkey.mockResolvedValueOnce('Ctrl+K');
     const input = document.querySelector('.hotkey-input');
-    input.click();
+    input.focus();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
     await flushAsync();
-    expect(mockElectronAPI.registerHotkey).toHaveBeenCalledWith('light.office', 'Ctrl+K', 'toggle');
-    expect(input.value).toBe('Ctrl+L');
-    expect(document.activeElement).toBe(input);
-    expect(mockUiUtils.showToast).toHaveBeenCalledWith('Already registered', 'error');
+    expect(mockHotkeys.assignHotkeyToEntity).toHaveBeenCalledTimes(1);
+    expect(mockHotkeys.assignHotkeyToEntity).toHaveBeenCalledWith('light.office', {
+      action: undefined,
+    });
   });
-  it('registers a recorded hotkey with the action picked in the same row', async () => {
+
+  it('records a row with the action picked in the same row', async () => {
     await loadRenderer({
       config: unconfiguredConfig(),
       bodyHtml: `<main class="widget-content"></main><div id="hotkeys-list"><div>
@@ -1613,43 +1590,13 @@ describe('Renderer first-run Home Assistant authorization', () => {
           <option value="toggle">Toggle</option><option value="turn_on" selected>Turn On</option>
         </select></div></div>`,
     });
-    mockHotkeys.captureHotkey.mockResolvedValueOnce('Ctrl+K');
-    mockElectronAPI.registerHotkey.mockResolvedValueOnce({ success: true });
 
     document.querySelector('.hotkey-input').click();
     await flushAsync();
 
-    expect(mockElectronAPI.registerHotkey).toHaveBeenCalledWith(
-      'light.office',
-      'Ctrl+K',
-      'turn_on'
-    );
-    expect(mockState.CONFIG.globalHotkeys.hotkeys['light.office']).toEqual({
-      hotkey: 'Ctrl+K',
+    expect(mockHotkeys.assignHotkeyToEntity).toHaveBeenCalledWith('light.office', {
       action: 'turn_on',
     });
-  });
-
-  it('announces a successful keyboard hotkey assignment', async () => {
-    await loadRenderer({
-      config: unconfiguredConfig(),
-      bodyHtml:
-        '<main class="widget-content"></main><div id="hotkeys-list"><div><input readonly class="hotkey-input" data-entity-id="light.office"></div></div>',
-    });
-    mockHotkeys.captureHotkey.mockResolvedValueOnce('Ctrl+K');
-    mockElectronAPI.registerHotkey.mockResolvedValueOnce({ success: true });
-    const input = document.querySelector('.hotkey-input');
-    input.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
-    );
-    await flushAsync();
-    expect(input.value).toBe('Ctrl+K');
-    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-      expect.stringContaining('Hotkey set for'),
-      'success',
-      2200
-    );
-    expect(document.activeElement).toBe(input);
   });
 
   it('publishes stale status until a fresh snapshot arrives, and preserves actionable auth failure', async () => {

@@ -16,6 +16,7 @@ const {
   session,
   nativeTheme,
   clipboard,
+  systemPreferences,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -411,6 +412,12 @@ const {
   createLinuxPopupHotkeyController,
   isLinuxPopupHotkeyPlatform,
 } = require('./src/linux-popup-hotkey.cjs');
+const {
+  acceleratorToUiohookParts,
+  acceleratorsConflict,
+  validateAccelerator,
+} = require('./src/accelerators.cjs');
+const { isAccessibilityGranted } = require('./src/macos-accessibility.cjs');
 const { createPopupWindowPresenter } = require('./src/popup-window-presenter.cjs');
 const {
   createLayerPointerRelease,
@@ -10800,10 +10807,7 @@ ipcMain.handle(
       };
     }
 
-    if (
-      typeof config.popupHotkey === 'string' &&
-      config.popupHotkey.toLowerCase() === hotkey.toLowerCase()
-    ) {
+    if (acceleratorsConflict(config.popupHotkey, hotkey, process.platform)) {
       return { success: false, error: mainT('Hotkey already assigned to the popup trigger') };
     }
 
@@ -10812,12 +10816,7 @@ ipcMain.handle(
     const existingEntity = findConfiguredEntityHotkey(hotkey, normalizedEntityId);
 
     if (existingEntity) {
-      return {
-        success: false,
-        error: existingEntity[0]
-          ? mainT('Hotkey already assigned to {{entity}}', { entity: existingEntity[0] })
-          : mainT('Hotkey already assigned to another action'),
-      };
+      return hotkeyConflictResult(existingEntity[0]);
     }
 
     if (config.globalHotkeys.enabled && usesPortalGlobalShortcuts) {
@@ -11183,10 +11182,13 @@ ipcMain.handle(
 
     const conflictingEntity = findConfiguredEntityHotkey(hotkey);
     if (conflictingEntity) {
-      return {
-        success: false,
-        error: mainT('Hotkey already assigned to {{entity}}', { entity: conflictingEntity[0] }),
-      };
+      return hotkeyConflictResult(conflictingEntity[0]);
+    }
+
+    // Setting a hotkey is the one moment macOS may show its Accessibility prompt; registering at
+    // launch only checks, so a denied app is not asked again every time it starts.
+    if (!usesLinuxPopupHotkeyBackend) {
+      isAccessibilityGranted({ systemPreferences, prompt: true });
     }
 
     const previousHotkey = config.popupHotkey || '';
@@ -11864,63 +11866,31 @@ function unregisterGlobalHotkeys() {
   registeredEntityHotkeyAccelerators.clear();
 }
 
+// Whether an accelerator may become a global hotkey on this platform; src/accelerators.cjs holds
+// the rules (one key plus Ctrl, Alt or Meta, not a system shortcut) so the recorders agree.
 function validateHotkey(hotkey) {
-  if (!hotkey || typeof hotkey !== 'string') return false;
-
-  // A valid hotkey must have at least one non-modifier key.
-  // Support multiple modifier name variants: Ctrl/Control, Alt/Option, Shift, Meta/Cmd/Command/Super
-  const modifiers = [
-    'ctrl',
-    'control',
-    'alt',
-    'option',
-    'shift',
-    'meta',
-    'cmd',
-    'command',
-    'super',
-    'commandorcontrol',
-    'cmdorctrl',
-  ];
-  const keys = hotkey.split('+').map((key) => key.trim());
-  const hasModifier = keys.some((key) => modifiers.includes(key.toLowerCase()));
-  const nonModifiers = keys.filter((key) => !modifiers.includes(key.toLowerCase()));
-  if (!hasModifier || nonModifiers.length !== 1 || !nonModifiers[0].trim()) {
-    return false;
-  }
-
-  // Check for conflicts with system shortcuts
-  const systemShortcuts = [
-    'ctrl+alt+del',
-    'alt+f4',
-    'ctrl+c',
-    'ctrl+v',
-    'ctrl+x',
-    'ctrl+z',
-    'ctrl+a',
-    'ctrl+s',
-    'ctrl+o',
-    'ctrl+n',
-    'ctrl+w',
-    'ctrl+r',
-    'alt+tab',
-    'ctrl+tab',
-    'ctrl+shift+tab',
-    'alt+shift+tab',
-    'win+l',
-    'win+r',
-    'win+e',
-    'win+d',
-    'win+m',
-    'win+tab',
-  ];
-
-  return !systemShortcuts.includes(hotkey.toLowerCase());
+  return validateAccelerator(hotkey, process.platform).valid;
 }
 
+// The failure for a hotkey another entity already holds. Main only knows the entity id (the names
+// live in the renderer), so the text names the custom name when there is one and the result carries
+// the id, which lets the renderer say the friendly name and point at the row.
+function hotkeyConflictResult(entityId) {
+  return {
+    success: false,
+    error: entityId
+      ? mainT('Hotkey already assigned to {{entity}}', {
+          entity: config?.customEntityNames?.[entityId] || entityId,
+        })
+      : mainT('Hotkey already assigned to another action'),
+    conflictEntityId: entityId || '',
+  };
+}
+
+// Command+K, Super+K and Win+K are one chord, so the comparison goes through the shared model
+// instead of lower-casing the text.
 function findConfiguredEntityHotkey(hotkey, excludedEntityId = '') {
   if (!hotkey || typeof hotkey !== 'string') return null;
-  const normalizedHotkey = hotkey.toLowerCase();
 
   return (
     Object.entries(config?.globalHotkeys?.hotkeys || {}).find(([entityId, hotkeyConfig]) => {
@@ -11929,9 +11899,7 @@ function findConfiguredEntityHotkey(hotkey, excludedEntityId = '') {
         typeof hotkeyConfig === 'object' && hotkeyConfig?.hotkey
           ? hotkeyConfig.hotkey
           : hotkeyConfig;
-      return (
-        typeof configuredHotkey === 'string' && configuredHotkey.toLowerCase() === normalizedHotkey
-      );
+      return acceleratorsConflict(configuredHotkey, hotkey, process.platform);
     }) || null
   );
 }
@@ -11939,121 +11907,19 @@ function findConfiguredEntityHotkey(hotkey, excludedEntityId = '') {
 // Popup Hotkey Management
 function acceleratorToUIOhookKey(accelerator) {
   if (!uiohookAvailable) return null;
-  if (!accelerator || typeof accelerator !== 'string') return null;
+  const parts = acceleratorToUiohookParts(accelerator, process.platform);
+  if (!parts) return null;
 
-  const parts = accelerator.split('+').map((p) => p.trim().toLowerCase());
-
-  // Extract modifiers - support all variants
-  const config = {
-    ctrl:
-      parts.includes('ctrl') ||
-      parts.includes('control') ||
-      parts.includes('commandorcontrol') ||
-      parts.includes('cmdorctrl'),
-    alt: parts.includes('alt') || parts.includes('option'),
-    shift: parts.includes('shift'),
-    meta:
-      parts.includes('meta') ||
-      parts.includes('cmd') ||
-      parts.includes('command') ||
-      parts.includes('super'),
-  };
-
-  // Get the main key (non-modifier) - include all possible modifier name variants
-  const modifiers = [
-    'ctrl',
-    'control',
-    'commandorcontrol',
-    'cmdorctrl',
-    'alt',
-    'option',
-    'shift',
-    'meta',
-    'cmd',
-    'command',
-    'super',
-  ];
-  const mainKey = parts.find((p) => !modifiers.includes(p));
-
-  if (!mainKey) return null;
-
-  // Map common keys to UiohookKey codes
-  const keyMap = {
-    space: UiohookKey.Space,
-    enter: UiohookKey.Enter,
-    return: UiohookKey.Return,
-    tab: UiohookKey.Tab,
-    backspace: UiohookKey.Backspace,
-    delete: UiohookKey.Delete,
-    escape: UiohookKey.Escape,
-    esc: UiohookKey.Escape,
-    home: UiohookKey.Home,
-    end: UiohookKey.End,
-    pageup: UiohookKey.PageUp,
-    pagedown: UiohookKey.PageDown,
-    up: UiohookKey.Up,
-    down: UiohookKey.Down,
-    left: UiohookKey.Left,
-    right: UiohookKey.Right,
-    f1: UiohookKey.F1,
-    f2: UiohookKey.F2,
-    f3: UiohookKey.F3,
-    f4: UiohookKey.F4,
-    f5: UiohookKey.F5,
-    f6: UiohookKey.F6,
-    f7: UiohookKey.F7,
-    f8: UiohookKey.F8,
-    f9: UiohookKey.F9,
-    f10: UiohookKey.F10,
-    f11: UiohookKey.F11,
-    f12: UiohookKey.F12,
-    // uiohook-napi names the number-row digit keys '0'..'9' (there is no DigitN alias),
-    // so UiohookKey.DigitN is undefined and silently fails to parse digit hotkeys.
-    0: UiohookKey['0'],
-    1: UiohookKey['1'],
-    2: UiohookKey['2'],
-    3: UiohookKey['3'],
-    4: UiohookKey['4'],
-    5: UiohookKey['5'],
-    6: UiohookKey['6'],
-    7: UiohookKey['7'],
-    8: UiohookKey['8'],
-    9: UiohookKey['9'],
-    a: UiohookKey.A,
-    b: UiohookKey.B,
-    c: UiohookKey.C,
-    d: UiohookKey.D,
-    e: UiohookKey.E,
-    f: UiohookKey.F,
-    g: UiohookKey.G,
-    h: UiohookKey.H,
-    i: UiohookKey.I,
-    j: UiohookKey.J,
-    k: UiohookKey.K,
-    l: UiohookKey.L,
-    m: UiohookKey.M,
-    n: UiohookKey.N,
-    o: UiohookKey.O,
-    p: UiohookKey.P,
-    q: UiohookKey.Q,
-    r: UiohookKey.R,
-    s: UiohookKey.S,
-    t: UiohookKey.T,
-    u: UiohookKey.U,
-    v: UiohookKey.V,
-    w: UiohookKey.W,
-    x: UiohookKey.X,
-    y: UiohookKey.Y,
-    z: UiohookKey.Z,
-  };
-
-  const keycode = keyMap[mainKey];
+  // uiohook names the number-row digits '0'..'9' and the arrows ArrowUp..ArrowRight, so a name the
+  // library does not have is looked up rather than assumed.
+  const keycode = UiohookKey[parts.keyName];
   if (!keycode) {
-    log.warn(`Unknown key in accelerator: ${mainKey}`);
+    log.warn(`Unknown key in accelerator: ${accelerator}`);
     return null;
   }
 
-  return { keycode, ...config };
+  const { ctrl, alt, shift, meta } = parts;
+  return { keycode, ctrl, alt, shift, meta };
 }
 
 /**
@@ -12140,6 +12006,17 @@ function registerPopupHotkey() {
       success: false,
       backend: 'uiohook',
       error: mainT('Popup hotkey feature is not available on this platform'),
+    };
+  }
+
+  if (!isAccessibilityGranted({ systemPreferences })) {
+    log.warn('The popup hotkey needs the macOS Accessibility permission, which is not granted');
+    return {
+      success: false,
+      backend: 'uiohook',
+      error: mainT(
+        'Allow HA Desktop Widget in System Settings > Privacy & Security > Accessibility, then set the hotkey again'
+      ),
     };
   }
 

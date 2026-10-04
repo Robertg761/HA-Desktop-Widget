@@ -11,10 +11,12 @@ const {
   WINDOW_POSITION,
   WINDOW_SIZE,
   buildConfig,
+  buildLandingLights,
   buildServices,
   buildStates,
 } = require('../../scripts/visual-snapshots/fixture.cjs');
 const { scenes } = require('../../scripts/visual-snapshots/scenes.cjs');
+const { LIST_PAGE_SIZE } = require('../../src/list-pager.js');
 const {
   DESKTOP_PIN_SUPPORTED_FAMILIES,
   resolveDesktopPinProfile,
@@ -58,6 +60,21 @@ describe('visual snapshot fixture', () => {
   it('lists more entities than one Manage Quick Access page shows', () => {
     expect(entityIds.size).toBeGreaterThan(50);
   });
+
+  it('keeps a home of more lights than one Hotkeys page holds out of the fixture itself', () => {
+    const landing = buildLandingLights();
+
+    // Alone they run past a page, whatever else the home has ...
+    expect(landing.length).toBeGreaterThan(LIST_PAGE_SIZE);
+    expect(new Set(landing.map((light) => light.entity_id)).size).toBe(landing.length);
+    expect(landing.every((light) => light.entity_id.startsWith('light.'))).toBe(true);
+    expect(landing.every((light) => light.attributes.friendly_name)).toBe(true);
+    // ... and the fixture's own lists, which every other scene shows, do not carry them.
+    expect(landing.some((light) => entityIds.has(light.entity_id))).toBe(false);
+    expect(
+      [...entityIds].filter((entityId) => /^(light|switch|fan)\./.test(entityId)).length
+    ).toBeLessThan(LIST_PAGE_SIZE);
+  });
 });
 
 describe('visual snapshot scenes', () => {
@@ -76,6 +93,27 @@ describe('visual snapshot scenes', () => {
     // Everything after the first such scene changes them too, so no scene starts from a state an
     // earlier one left behind.
     expect(scenes.slice(firstIndex).every(changesMore)).toBe(true);
+  });
+
+  it('gives the scenes that bring entities of their own a function that builds them', () => {
+    const withStates = scenes.filter((scene) => 'extraStates' in scene);
+    const fixtureIds = new Set(buildStates().map((entity) => entity.entity_id));
+
+    expect(withStates.map((scene) => scene.name)).toContain('settings-hotkeys-page-2');
+    for (const scene of withStates) {
+      const brought = scene.extraStates(new Date());
+      expect(brought.length).toBeGreaterThan(0);
+      // Nothing the fixture holds is replaced, so taking the entities away puts the home back.
+      expect(brought.filter((entity) => fixtureIds.has(entity.entity_id))).toEqual([]);
+    }
+  });
+
+  it('shows the Hotkeys list on a later page, in a home with the lights for one', () => {
+    const scene = scenes.find((entry) => entry.name === 'settings-hotkeys-page-2');
+
+    // The list is drawn only while Entity hotkeys is on.
+    expect(scene.config.globalHotkeys.enabled).toBe(true);
+    expect(scene.extraStates(new Date()).length).toBeGreaterThan(LIST_PAGE_SIZE);
   });
 
   it('activates pages that exist in the page set it brings', () => {

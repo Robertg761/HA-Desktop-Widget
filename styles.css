@@ -10938,6 +10938,14 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   border-radius: var(--radius-md);
 }
 
+/* Nothing to list: no entity matches the search, or Home Assistant has not sent its entities yet. */
+.hotkeys-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: var(--font-size-base);
+}
+
 .hotkey-item {
   display: flex;
   /* Controls drop below the name when a longer translation needs the room. */
@@ -11138,13 +11146,31 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   margin-bottom: 2px;
 }
 
-.alert-type {
-  color: var(--accent-text);
-  font-weight: 500;
-  background: var(--accent-bg);
+/* The chips beside an alert's name are one shape. An inline-block keeps a chip whole when the row
+   wraps ("Above threshold 25" no longer breaks across two lines); a very long target state still
+   breaks inside the chip rather than pushing the buttons out. */
+.alert-type,
+.alert-missing {
+  display: inline-block;
+  max-width: 100%;
   padding: 2px 6px;
   border-radius: var(--radius-sm);
   font-size: var(--font-size-sm);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.alert-type {
+  color: var(--accent-text);
+  background: var(--accent-bg);
+}
+
+/* An alert whose entity Home Assistant does not list: the row keeps the entity id so it can still
+   be edited or removed, and says why it has no name or icon. A muted chip of the same shape as the
+   type chip, so the two read as a pair. */
+.alert-missing {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text-primary) 14%, transparent);
 }
 
 .alert-actions {
@@ -11698,6 +11724,23 @@ label.disabled {
   color: var(--text-secondary);
   text-align: center;
   font-size: var(--font-size-base);
+}
+
+/* What to try when nothing matched, under the plain "No matching results". */
+.command-palette-empty-hint {
+  margin-top: 6px;
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+}
+
+/* Said when the list is cut at its limit, so a short list is not mistaken for the whole of it. */
+.command-palette-footer {
+  flex: none;
+  padding: 8px 16px;
+  border-top: 1px solid var(--tile-border);
+  color: var(--text-secondary);
+  text-align: center;
+  font-size: var(--font-size-sm);
 }
 
 @media (width <= 520px) {

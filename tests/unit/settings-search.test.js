@@ -109,6 +109,40 @@ describe('settings search', () => {
       expect(document.activeElement).toBe(input);
     });
 
+    test.each([
+      ['isComposing', { isComposing: true }],
+      ['keyCode 229', { keyCode: 229 }],
+    ])('leaves the Enter and arrows of an input method composition (%s) to it', (_label, init) => {
+      const results = search('theme');
+      expect(results.length).toBeGreaterThan(0);
+      input.focus();
+
+      for (const key of ['Enter', 'ArrowDown']) {
+        const event = new KeyboardEvent('keydown', {
+          key,
+          bubbles: true,
+          cancelable: true,
+          ...init,
+        });
+        input.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(false);
+        expect(document.activeElement).toBe(input);
+      }
+      // Escape cancels the composition, not the query.
+      const escape = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+        ...init,
+      });
+      input.dispatchEvent(escape);
+      expect(escape.defaultPrevented).toBe(false);
+      expect(input.value).toBe('theme');
+      // And once the composition is over Enter moves on to the first result again.
+      press(input, 'Enter');
+      expect(document.activeElement).toBe(results[0]);
+    });
+
     test('the arrows walk the results, and Up from the first returns to the field', () => {
       const results = search('theme');
       results[0].focus();

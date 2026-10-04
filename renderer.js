@@ -272,6 +272,15 @@ function clearReconnectTimer() {
   reconnectTimerId = null;
 }
 
+// websocket.close() is an intentional close, which never emits "close", so the pending duration
+// alerts are only suspended when it is told here. Left running they would fire on an outage the
+// widget already knows about, after the condition may have ended ("front door open for 10 minutes"
+// notifying about a door closed while the Wi-Fi was down).
+function closeWebSocket() {
+  alerts.suspendEntityAlerts?.();
+  websocket.close();
+}
+
 function connectWebSocket() {
   if (IS_DESKTOP_PIN_MODE) return;
   clearReconnectTimer();
@@ -2257,7 +2266,7 @@ window.addEventListener('offline', () => {
   // Use the manager lifecycle so authentication and message subscription state are
   // cleared before the browser delivers the socket's asynchronous close event.
   try {
-    websocket.close();
+    closeWebSocket();
   } catch (error) {
     log.warn('Error closing WebSocket after offline event:', error);
   }
@@ -2343,7 +2352,7 @@ websocket.on('message', (msg) => {
         log.warn('[WS] Home Assistant rejected the access token; refreshing authorization');
         oauthAuthRecoveryAttempted = true;
         updateMainConnectionState('connecting');
-        websocket.close();
+        closeWebSocket();
         setDisconnectedStatus(t('Refreshing Home Assistant authorization...'));
         uiUtils.showLoading(false);
         renderCurrentMode();
@@ -2352,7 +2361,7 @@ websocket.on('message', (msg) => {
       }
       log.error('[WS] Invalid authentication token');
       updateMainConnectionState('auth-failed');
-      websocket.close();
+      closeWebSocket();
       const authFailureMessage = getAuthFailureMessage();
       setDisconnectedStatus(authFailureMessage);
       setDesktopPinConnectionIssue(authFailureMessage);
@@ -2707,7 +2716,7 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
         wasSecureStoragePending ||
         previousConnection !== nextConnection
       ) {
-        websocket.close();
+        closeWebSocket();
         connectWebSocket();
       } else if (previousToken !== (state.CONFIG?.homeAssistant?.token || '') && !websocket.ws) {
         // A refreshed OAuth access token is only needed for the next handshake: an open socket
@@ -2717,7 +2726,7 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
         connectWebSocket();
       }
     } else if (!nowConfigured && configuredRuntimeStarted && wasConfigured) {
-      websocket.close();
+      closeWebSocket();
     }
     if (!nowConfigured && usesOAuth() && !IS_DESKTOP_PIN_MODE) {
       setOAuthRestoreStatus();
@@ -2775,7 +2784,7 @@ window.electronAPI.onTrayEntitiesRefreshNeeded?.(({ reconnect = false, entityId 
   if (IS_DESKTOP_PIN_MODE) return;
   if (reconnect) {
     setTrayEntityConnectionState(false);
-    websocket.close();
+    closeWebSocket();
     connectWebSocket();
     return;
   }
@@ -3458,53 +3467,12 @@ function wireUI() {
       hotkeysList.addEventListener('click', async (e) => {
         const target = e.target;
         if (target.classList.contains('hotkey-input')) {
-          if (target.dataset.recording === 'true') return;
-          const entityId = target.dataset.entityId;
-          target.dataset.recording = 'true';
-          target.setAttribute('aria-busy', 'true');
-          target.value = t('Recording...');
-          try {
-            const hotkey = await hotkeys.captureHotkey();
-            if (hotkey) {
-              // The action picked in the row's select
-              const actionSelect = target.parentElement.querySelector('.hotkey-action-select');
-              const action = actionSelect?.value || 'toggle';
-              const result = await window.electronAPI.registerHotkey(entityId, hotkey, action);
-              if (result?.success) {
-                target.value = hotkey;
-                state.CONFIG.globalHotkeys ||= { hotkeys: {} };
-                state.CONFIG.globalHotkeys.hotkeys ||= {};
-                state.CONFIG.globalHotkeys.hotkeys[entityId] = { hotkey, action };
-                uiUtils.showToast(
-                  t('Hotkey set for {{name}}', {
-                    name: utils.getEntityDisplayName(
-                      state.STATES[entityId] || { entity_id: entityId, attributes: {} }
-                    ),
-                  }),
-                  'success',
-                  2200
-                );
-              } else {
-                uiUtils.showToast(result?.error || t('Failed to set hotkey'), 'error');
-                const currentConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
-                target.value =
-                  typeof currentConfig === 'string' ? currentConfig : currentConfig?.hotkey || '';
-              }
-            } else {
-              const currentConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
-              target.value =
-                typeof currentConfig === 'string' ? currentConfig : currentConfig?.hotkey || '';
-            }
-          } catch (error) {
-            uiUtils.showToast(error?.message || t('Error toggling hotkeys'), 'error');
-          } finally {
-            target.dataset.recording = 'false';
-            target.removeAttribute('aria-busy');
-            const currentConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
-            target.value =
-              typeof currentConfig === 'string' ? currentConfig : currentConfig?.hotkey || '';
-            if (target.isConnected) target.focus();
-          }
+          // The same recorder as the tile menu's Add Hotkey, so both say the same things about a
+          // clash, a hotkey saved while the switch is off, and the action picked in this row.
+          const actionSelect = target.parentElement.querySelector('.hotkey-action-select');
+          await hotkeys.assignHotkeyToEntity(target.dataset.entityId, {
+            action: actionSelect?.value,
+          });
         } else if (target.classList.contains('btn-clear-hotkey')) {
           const container = target.parentElement;
           const input = container.querySelector('.hotkey-input');
