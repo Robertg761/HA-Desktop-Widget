@@ -554,6 +554,58 @@ describe('dashboard data display', () => {
       expect(document.querySelector('#media-tile-artwork img')).not.toBe(img);
     });
 
+    describe('when its picture fails to load', () => {
+      const playerWith = (picture, attributes = {}) =>
+        entity('media_player.den', 'playing', {
+          media_title: 'Song',
+          entity_picture: `/api/media_player_proxy/media_player.den?token=${picture}`,
+          volume_level: 0.2,
+          ...attributes,
+        });
+      const artworkImage = () => document.querySelector('#media-tile-artwork img');
+      const update = (player) => {
+        state.setEntityState(player);
+        ui.updateMediaTile();
+      };
+      const fail = (img) => img.dispatchEvent(new Event('error'));
+
+      it('shows the placeholder and asks again after the retry delay, whatever else changes', () => {
+        const player = playerWith('retry-a');
+        show(player);
+        fail(artworkImage());
+        expect(artworkImage()).toBeNull();
+        expect(document.querySelector('.media-tile-artwork-placeholder')).not.toBeNull();
+
+        // Volume and position updates do not ask again inside the delay...
+        update(playerWith('retry-a', { volume_level: 0.3 }));
+        expect(artworkImage()).toBeNull();
+
+        // ...but the first one after it does, though the title and state are the same.
+        jest.advanceTimersByTime(31000);
+        update(playerWith('retry-a', { volume_level: 0.4 }));
+        expect(artworkImage()).not.toBeNull();
+        expect(document.querySelector('.media-tile-artwork-placeholder')).toBeNull();
+      });
+
+      it('leaves the newer picture alone when an older one fails late', () => {
+        show(playerWith('late-a'));
+        const older = artworkImage();
+        update(playerWith('late-b'));
+        const newer = artworkImage();
+        expect(newer).not.toBe(older);
+
+        const uncaught = jest.fn();
+        window.addEventListener('error', uncaught);
+        fail(older);
+        window.removeEventListener('error', uncaught);
+
+        expect(uncaught).not.toHaveBeenCalled();
+        expect(artworkImage()).toBe(newer);
+        update(playerWith('late-b', { volume_level: 0.5 }));
+        expect(artworkImage()).toBe(newer);
+      });
+    });
+
     it('opens the player dialog from its title and from its artwork', () => {
       show(entity('media_player.den', 'playing', { media_title: 'Song', friendly_name: 'Den' }));
       const info = document.querySelector('.media-tile-info');
@@ -1481,6 +1533,34 @@ describe('dashboard data display', () => {
       expect(modal.querySelector('.media-detail-caption').textContent).toBe('Playing · Netflix');
       expect(modal.querySelector('.media-detail-artwork').hidden).toBe(false);
       expect(modal.querySelector('.media-detail-artwork img')).not.toBeNull();
+    });
+
+    it('keeps the newer picture when an older one fails after it was replaced', () => {
+      const attributes = (token) => ({
+        entity_picture: `/api/media_player_proxy/media_player.den?token=${token}`,
+      });
+      const modal = open(attributes('a'));
+      const box = modal.querySelector('.media-detail-artwork');
+      const older = box.querySelector('img');
+      state.setEntityState(
+        entity('media_player.den', 'playing', {
+          friendly_name: 'Den',
+          media_title: title,
+          supported_features: 152463,
+          ...attributes('b'),
+        })
+      );
+      const newer = box.querySelector('img');
+      expect(newer).not.toBe(older);
+
+      older.dispatchEvent(new Event('error'));
+
+      expect(box.querySelector('img')).toBe(newer);
+      expect(box.hidden).toBe(false);
+      // The picture that is on show failing still clears it.
+      newer.dispatchEvent(new Event('error'));
+      expect(box.querySelector('img')).toBeNull();
+      expect(box.hidden).toBe(true);
     });
 
     it('draws no picture from a track id', () => {

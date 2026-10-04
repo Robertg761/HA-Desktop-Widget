@@ -12827,6 +12827,9 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
       img.alt = t('Album art');
       img.src = buildMediaArtworkProxyUrl(target);
       img.onerror = () => {
+        // A picture replaced while it loaded fails into a box that holds the newer one, which
+        // would be cleared and, its target being the one on record, never drawn again.
+        if (img.parentNode !== artworkBox) return;
         artworkBox.replaceChildren();
         artworkBox.hidden = true;
       };
@@ -13997,6 +14000,43 @@ function buildMediaArtworkProxyUrl(artworkUrl) {
   });
 }
 
+const mediaTilePlaceholderMarkup = () =>
+  `<div class="media-tile-artwork-placeholder">${lineIconMarkup('music')}</div>`;
+
+// The primary card's picture: drawn when the player's artwork target changes, and again once a
+// picture that failed has waited out its retry delay. It follows the picture's target, not its
+// proxy URL: that carries a 30 s cache bucket, and the next volume change after each bucket would
+// redraw the same picture. Cheap when nothing is due, so it runs on every update.
+function renderMediaTileArtwork(artworkTarget) {
+  const artworkContainer = document.getElementById('media-tile-artwork');
+  if (!artworkContainer) return;
+  const retryKey = artworkTarget ? utils.base64Encode(artworkTarget) : '';
+  const now = Date.now();
+  pruneExpiredArtworkRetryEntries(now);
+  // A picture that failed is not asked for again at every state change.
+  if (artworkTarget && (failedMediaArtworkRetryAtByUrl.get(retryKey) || 0) <= now) {
+    const existingImg = artworkContainer.querySelector('img');
+    if (existingImg && lastMediaTileArtworkSrc === artworkTarget) return;
+    const img = document.createElement('img');
+    img.src = buildMediaArtworkProxyUrl(artworkTarget);
+    img.alt = t('Album art');
+    img.onload = () => failedMediaArtworkRetryAtByUrl.delete(retryKey);
+    img.onerror = () => {
+      failedMediaArtworkRetryAtByUrl.set(retryKey, Date.now() + MEDIA_ARTWORK_RETRY_DELAY_MS);
+      // A picture that was replaced while it loaded fails into a card that shows another one.
+      if (img.parentElement !== artworkContainer) return;
+      artworkContainer.innerHTML = mediaTilePlaceholderMarkup();
+      lastMediaTileArtworkSrc = '';
+    };
+    artworkContainer.innerHTML = '';
+    artworkContainer.appendChild(img);
+    lastMediaTileArtworkSrc = artworkTarget;
+  } else if (lastMediaTileArtworkSrc !== '') {
+    artworkContainer.innerHTML = mediaTilePlaceholderMarkup();
+    lastMediaTileArtworkSrc = '';
+  }
+}
+
 // --- Media Player Tile ---
 function updateMediaTile() {
   try {
@@ -14055,14 +14095,13 @@ function updateMediaTile() {
       getMediaFallbackText(entity, { idleText: t('No media playing') });
     const mediaArtist = entity.attributes?.media_artist || '';
     const isPlaying = entity.state === 'playing';
-    // The signature follows the picture's target, not its proxy URL: that carries a 30 s cache
-    // bucket, and the next volume change after each bucket would redraw the same picture.
+    // The words and the play button are redrawn only when one of them changes; the volume and the
+    // position change far more often and must not touch them.
     const nextSignature = JSON.stringify({
       entityId: entity.entity_id,
       state: entity.state || '',
       title: mediaTitle,
       artist: mediaArtist,
-      artwork: artworkTarget || '',
     });
 
     if (nextSignature !== lastMediaTileRenderSignature) {
@@ -14077,39 +14116,12 @@ function updateMediaTile() {
         setIconContent(playBtn, isPlaying ? 'pause' : 'play', { size: 30 });
         playBtn.classList.toggle('playing', isPlaying);
       }
-
-      // Update artwork only when the picture actually changes.
-      const artworkContainer = document.getElementById('media-tile-artwork');
-      if (artworkContainer) {
-        const retryKey = artworkTarget ? utils.base64Encode(artworkTarget) : '';
-        const now = Date.now();
-        pruneExpiredArtworkRetryEntries(now);
-        // A picture that failed is not asked for again at every state change.
-        if (artworkTarget && (failedMediaArtworkRetryAtByUrl.get(retryKey) || 0) <= now) {
-          const existingImg = artworkContainer.querySelector('img');
-          if (!existingImg || lastMediaTileArtworkSrc !== artworkTarget) {
-            const img = document.createElement('img');
-            img.src = buildMediaArtworkProxyUrl(artworkTarget);
-            img.alt = t('Album art');
-            img.onload = () => failedMediaArtworkRetryAtByUrl.delete(retryKey);
-            img.onerror = function () {
-              failedMediaArtworkRetryAtByUrl.set(
-                retryKey,
-                Date.now() + MEDIA_ARTWORK_RETRY_DELAY_MS
-              );
-              this.parentElement.innerHTML = `<div class="media-tile-artwork-placeholder">${lineIconMarkup('music')}</div>`;
-              lastMediaTileArtworkSrc = '';
-            };
-            artworkContainer.innerHTML = '';
-            artworkContainer.appendChild(img);
-            lastMediaTileArtworkSrc = artworkTarget;
-          }
-        } else if (lastMediaTileArtworkSrc !== '') {
-          artworkContainer.innerHTML = `<div class="media-tile-artwork-placeholder">${lineIconMarkup('music')}</div>`;
-          lastMediaTileArtworkSrc = '';
-        }
-      }
     }
+
+    // The picture is kept up outside the signature gate: a picture that failed to load is asked for
+    // again once its retry delay has passed, on whichever update comes next, even when nothing
+    // else about the player changed in between.
+    renderMediaTileArtwork(artworkTarget);
 
     // Keep seek bar updates separate from metadata/artwork render signature.
     updateMediaSeekBar(entity);
