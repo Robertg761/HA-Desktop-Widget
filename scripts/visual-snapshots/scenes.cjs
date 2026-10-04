@@ -1707,7 +1707,7 @@ const scenes = [
   },
   // The authorization step names the address it is about to open.
   {
-    name: 'first-run-authorize',
+    name: 'wizard-authorize-url',
     config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
     setup: async (ctx) => {
       await showFirstRunWelcome(ctx);

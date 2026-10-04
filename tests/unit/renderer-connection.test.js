@@ -219,6 +219,9 @@ describe('Renderer Home Assistant connection lifecycle', () => {
         )
       ),
       translateDocument: jest.fn(),
+      formatTime: jest.fn(
+        (date) => `${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`
+      ),
     }));
     jest.doMock('../../src/icons.js', () => ({
       __esModule: true,

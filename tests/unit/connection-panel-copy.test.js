@@ -226,6 +226,8 @@ describe('the connection panel on the dashboard', () => {
         },
       });
 
+      // The panel is drawn once the first connection state is known, a little after init is done.
+      await until(() => harness.findButton('Reconnect with Home Assistant'));
       harness.findButton('Reconnect with Home Assistant').click();
       await harness.flushAsync();
 
