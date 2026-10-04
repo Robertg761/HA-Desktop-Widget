@@ -1,3 +1,7 @@
+import pageNames from './page-names.cjs';
+
+const { toStoredPages } = pageNames;
+
 // Only dashboard data belongs in these local backups, never connection credentials.
 const FIELDS = [
   'customTabs',
@@ -22,6 +26,15 @@ function dashboardSnapshot(config) {
       )
     )
   );
+}
+
+// Whether two layouts are the same dashboard. A page nobody named is shown with the name of the
+// language of the day ("Alle") in the layout on screen and kept without one by the main process, so
+// the two are compared as stored: that difference is not an edit and earns no restore point.
+function sameLayout(a, b) {
+  const stored = (layout) =>
+    JSON.stringify({ ...layout, customTabs: toStoredPages(layout.customTabs) });
+  return stored(a) === stored(b);
 }
 
 function historyKey(config) {
@@ -68,13 +81,9 @@ function readDashboardHistory(config) {
 
 function rememberDashboard(previous, next) {
   const layout = dashboardSnapshot(previous);
-  if (
-    !Array.isArray(layout.customTabs) ||
-    JSON.stringify(layout) === JSON.stringify(dashboardSnapshot(next))
-  )
-    return;
+  if (!Array.isArray(layout.customTabs) || sameLayout(layout, dashboardSnapshot(next))) return;
   const entries = readDashboardHistory(previous);
-  const sameAsNewest = JSON.stringify(entries[0]?.layout) === JSON.stringify(layout);
+  const sameAsNewest = !!entries[0] && sameLayout(entries[0].layout, layout);
   if (sameAsNewest && !entries[0].undone) return;
   const entry = { at: Date.now(), layout };
   if (typeof previous?.activeTabId === 'string') entry.activeTabId = previous.activeTabId;

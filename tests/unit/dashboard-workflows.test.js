@@ -89,6 +89,24 @@ describe('dashboard restore points', () => {
     rememberDashboard(before, config('two'));
     expect(readDashboardHistory({ homeAssistant: { url: 'http://other' } })).toEqual([]);
   });
+  it('does not count the name a page is shown with in some language as a change', () => {
+    // The layout on screen names a page nobody named for the language ("Alle"); the main process
+    // keeps it unnamed. They are the same dashboard, whichever way round they are compared.
+    const shown = { id: 'default', name: 'Alle', nameIsDefault: true, entityIds: ['light.a'] };
+    const stored = { id: 'default', name: '', entityIds: ['light.a'] };
+    const layout = (tab) => ({ homeAssistant: { url: 'http://test' }, customTabs: [tab] });
+
+    rememberDashboard(layout(shown), layout(stored));
+    rememberDashboard(layout(stored), layout(shown));
+    rememberDashboard(layout(shown), layout({ ...shown, name: 'All' }));
+    expect(readDashboardHistory(layout(stored))).toEqual([]);
+
+    // A change that is one still counts, and the same layout is not kept twice because it was
+    // seen once under a language's name and once as stored.
+    rememberDashboard(layout(shown), layout({ ...stored, entityIds: [] }));
+    rememberDashboard(layout(stored), layout({ ...stored, entityIds: ['light.b'] }));
+    expect(readDashboardHistory(layout(stored))).toHaveLength(1);
+  });
   it('does not break saves when browser storage is corrupt', () => {
     localStorage.setItem('dashboard-history:http://test', '{');
     expect(readDashboardHistory(config('one'))).toEqual([]);
