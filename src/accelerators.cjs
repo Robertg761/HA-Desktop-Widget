@@ -105,7 +105,10 @@ const MODIFIER_KEY_NAMES = new Set(['Control', 'Shift', 'Alt', 'AltGraph', 'Meta
 
 // A combination that already belongs to the system or to every application. Registering one as a
 // global hotkey would take it from them (Ctrl+C would stop copying everywhere). The Ctrl family
-// stays reserved on every platform, because terminals and editors use it everywhere.
+// stays reserved on every platform, because terminals and editors use it everywhere. Entries are
+// compared as chords, so "Win+L" is the Meta key's L on Windows only. Linux has no list of its
+// own on purpose: the compositor owns its Super bindings (Super+L locks one desktop and moves
+// focus in another), and what a person bound there is theirs to give up.
 const RESERVED_ACCELERATORS = Object.freeze({
   all: [
     'Ctrl+Alt+Del',
@@ -300,6 +303,11 @@ function keyFromKeyName(key) {
  * modifiers alone while no key is down). `complete` is a chord that can be registered; with a key
  * but no Ctrl, Alt or Meta, `needsModifier` is true instead, because Shift+A is just typing a capital.
  * The Meta key is "Command" on a Mac and "Super" elsewhere.
+ *
+ * Known limit: a letter is named by where its key sits, which is right for uiohook but not for a
+ * global shortcut on a layout that moves letters. On AZERTY the key printed A sits at KeyQ and
+ * records as Q, while Electron registers an accelerator by the character the layout gives it. The
+ * entity recorder could take letters and digits from event.key if that ever matters.
  */
 function acceleratorFromKeyEvent(event, platform) {
   const parts = [];

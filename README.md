@@ -262,7 +262,7 @@ power controls without a brightness slider.
 - **Media Tile**: Select the primary media player or hide the tile
 - **Hotkeys**: Configure global entity hotkeys, action-specific shortcuts, and a popup hotkey (hold/toggle on macOS and Windows; press/toggle on Linux)
 
-  On macOS the popup hotkey needs **System Settings > Privacy & Security > Accessibility** access. The widget asks when you set the hotkey and says so if it is still missing. Current macOS builds are ad-hoc signed, so macOS can forget the permission after an update; switch the widget on again in that list and set the hotkey once more.
+  On macOS the popup hotkey needs **System Settings > Privacy & Security > Accessibility** access. The widget asks when you set the hotkey and says so if it is still missing. macOS may ask again after an update; if the popup hotkey stops working, switch the widget on in that list and set the hotkey once more.
 
 - **Alerts**: Enable desktop notifications for entity state changes or target states
 - **Advanced**: Updates, [profile sync](#profile-sync), logs, and interaction diagnostics for troubleshooting
