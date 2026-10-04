@@ -84,6 +84,7 @@ import {
 import trayEntitySupport from './tray-entities.cjs';
 import desktopPinSupport from './desktop-pin-support.cjs';
 import climateControls from './climate-controls.cjs';
+import pageNameRules from './page-names.cjs';
 import { DEV_CLIMATE_DEMO_ENTITY_ID, isClimateDemoOverlayConfig } from '@dev-climate-demo';
 import {
   addEntityToQuickAccessView,
@@ -692,6 +693,14 @@ function buildQuickAccessConfigPatch(config) {
   };
 }
 
+// The layout as the host stores it, for telling whether a save changed it. A page nobody named is
+// drawn with its name in the language and a marker, and comes back from the host unnamed: the same
+// layout, not one to draw again.
+function getStoredQuickAccessLayout(config) {
+  const patch = buildQuickAccessConfigPatch(config);
+  return JSON.stringify({ ...patch, customTabs: pageNameRules.toStoredPages(patch.customTabs) });
+}
+
 async function persistQuickAccessConfigSnapshot(
   nextConfig,
   previousConfig,
@@ -721,9 +730,9 @@ async function persistQuickAccessConfigSnapshot(
     }
     if (isCurrent) {
       // The optimistic render already drew this layout; only redraw when the host changed it.
-      const rendered = JSON.stringify(buildQuickAccessConfigPatch(state.CONFIG));
+      const rendered = getStoredQuickAccessLayout(state.CONFIG);
       state.setConfig(authoritativeConfig);
-      if (JSON.stringify(buildQuickAccessConfigPatch(state.CONFIG)) !== rendered) {
+      if (getStoredQuickAccessLayout(state.CONFIG) !== rendered) {
         renderQuickAccessConfigState();
       }
     }
