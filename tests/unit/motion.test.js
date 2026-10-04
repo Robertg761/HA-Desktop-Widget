@@ -95,6 +95,57 @@ describe('motion helpers', () => {
     expect(pill.style.height).toBe('56px');
   });
 
+  test('starts a second slide from where the pill is drawn while the first is still running', () => {
+    const { bar, first, second } = buildBar();
+    const third = document.createElement('button');
+    bar.appendChild(third);
+    setRect(third, { x: 180, y: 14, width: 70, height: 28 });
+    syncSlidingIndicator(bar, first);
+    syncSlidingIndicator(bar, second);
+    expect(animate).toHaveBeenCalledTimes(1);
+
+    // Halfway through the first slide the pill is drawn at 40px, not at the 70px it is heading for.
+    const cancel = jest.fn();
+    HTMLElement.prototype.getAnimations = jest.fn(() => [{ cancel }]);
+    const style = jest.spyOn(window, 'getComputedStyle').mockReturnValue({
+      transform: 'matrix(1, 0, 0, 1, 40, 4)',
+      width: '75px',
+      height: '28px',
+    });
+    try {
+      const pill = syncSlidingIndicator(bar, third);
+      expect(cancel).toHaveBeenCalledTimes(1);
+      expect(pill.style.transform).toBe('translate(170px, 4px)');
+      expect(animate).toHaveBeenCalledTimes(2);
+      const [frames] = animate.mock.calls[1];
+      expect(frames[0]).toEqual({
+        transform: 'translate(40px, 4px)',
+        width: '75px',
+        height: '28px',
+      });
+      expect(frames[1].transform).toBe('translate(170px, 4px)');
+    } finally {
+      style.mockRestore();
+      delete HTMLElement.prototype.getAnimations;
+    }
+  });
+
+  test('leaves a slide alone when the same item is synced again', () => {
+    const { bar, first, second } = buildBar();
+    syncSlidingIndicator(bar, first);
+    syncSlidingIndicator(bar, second);
+    const cancel = jest.fn();
+    HTMLElement.prototype.getAnimations = jest.fn(() => [{ cancel }]);
+    try {
+      // The Quick Access bar is rebuilt twice per switch; the second pass must not cut the slide.
+      syncSlidingIndicator(bar, second);
+      expect(cancel).not.toHaveBeenCalled();
+      expect(animate).toHaveBeenCalledTimes(1);
+    } finally {
+      delete HTMLElement.prototype.getAnimations;
+    }
+  });
+
   test('does not animate when the selection has not moved', () => {
     const { bar, first } = buildBar();
     syncSlidingIndicator(bar, first);

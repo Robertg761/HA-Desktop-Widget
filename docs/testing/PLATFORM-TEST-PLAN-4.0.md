@@ -128,12 +128,13 @@ Run these on every machine. Where a step is specific to one system, it says so.
 2. Note what the window looks like for the first two seconds, then when the welcome screen appears.
 3. Do steps 1 and 2 twice: once with the OS in the light theme and once in the dark theme (Settings > Appearance > Mode stays on Auto). Use a new empty folder each time, because a second start in the same folder is no longer a first launch.
 4. Look at the welcome heading, and at any buttons under it.
+5. Press Next, type your Home Assistant address, press Next again, then Connect. Leave the approval page in the browser alone for ten seconds and look at the buttons and the line of text in the widget. If no browser opened (a minimal Linux install, say), note that. Press Cancel, then Connect again.
 
-Expected: The window appears once and is already in its final theme. There is no empty glass slab and no dark panel that turns light. The welcome heading has no box or ring around it, every button has space around it, and the reassurance text about security is not the loudest text on the screen.
+Expected: The window appears once and is already in its final theme. There is no empty glass slab and no dark panel that turns light. The welcome heading has no box or ring around it, every button has space around it, and the reassurance text about security is not the loudest text on the screen. The welcome step has no Back button. While the widget waits for the browser, the Back button reads Cancel, and after a few seconds the text says it is waiting for you to approve in the browser and what to do if it did not open. Cancel stops the wait and stays on the same step, and Connect opens the browser again.
 
 Capture: A recording or a sequence of screenshots covering the first seconds, the OS theme, and the display scale.
 
-Ref: MP-17, RO1-16
+Ref: MP-17, RO1-16, RO1-32
 
 ### ALL-2 Start hidden
 
@@ -297,11 +298,13 @@ Ref: SM2-26
 1. Settings > Appearance > Window Effects: turn on Frosted glass background and Subtle weather effects. Use Weather effect override to pick Sunny, Cloudy, Rainy, Snowy and Stormy in turn.
 2. Look at the weather card icon and the background effect for each, in the dark and the light theme. If you have a display at 125% scale or more (or a Retina Mac), use it.
 
-Expected: The sun, cloud and rain icons look about the same size and sit centered in the card. Rain, snow, clouds and sun are crisp, not soft, on a high-DPI display. The effects stay visible in the light theme; snow does not disappear.
+3. Turn on the OS setting that reduces motion (Windows: animation effects off; macOS: Reduce motion; a Linux desktop: animations off), restart the widget and pick Rainy, Snowy and Stormy again.
+
+Expected: The sun, cloud and rain icons look about the same size and sit centered in the card. Rain, snow, clouds and sun are crisp, not soft, on a high-DPI display, and stay crisp after you drag the widget to a screen with another scale. The effects stay visible in the light theme; snow does not disappear. With reduced motion, rain, snow and storms show a still scatter of drops or flakes, not an empty window.
 
 Capture: A screenshot of each condition in both themes, and the display scale.
 
-Ref: RO1-53, RO3-19, RO3-21
+Ref: RO1-53, RO3-19, RO3-20, RO3-21
 
 ### ALL-13 Icon picker
 

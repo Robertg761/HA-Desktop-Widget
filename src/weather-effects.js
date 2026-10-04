@@ -51,11 +51,19 @@ export class WeatherEffectsManager {
     this.reducedMotionQuery = null;
     this.reducedMotionChangeHandler = null;
     this.themeObserver = null;
+    // The window's size in CSS pixels, which is what the scenes are laid out and drawn in. The
+    // canvas itself has pixelRatio times as many pixels (see resizeCanvas).
+    this.width = 0;
+    this.height = 0;
+    this.pixelRatio = 1;
+    this.pixelRatioQuery = null;
 
     // Resize handler
     this.resizeCanvas = this.resizeCanvas.bind(this);
+    this.handlePixelRatioChange = this.handlePixelRatioChange.bind(this);
     window.addEventListener('resize', this.resizeCanvas);
     this.resizeCanvas();
+    this.watchPixelRatio();
 
     this.loop = this.loop.bind(this);
     this.setupReducedMotionListener();
@@ -115,13 +123,47 @@ export class WeatherEffectsManager {
     return !!this.reducedMotionQuery?.matches;
   }
 
+  /**
+   * Moving the window to a screen with another scale factor changes devicePixelRatio without a
+   * resize event, so watch the ratio itself. The query matches one ratio, so it is renewed on
+   * each change.
+   */
+  watchPixelRatio() {
+    this.pixelRatioQuery?.removeEventListener?.('change', this.handlePixelRatioChange);
+    this.pixelRatioQuery = null;
+    if (typeof window.matchMedia !== 'function') return;
+    try {
+      this.pixelRatioQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+      this.pixelRatioQuery?.addEventListener?.('change', this.handlePixelRatioChange);
+    } catch {
+      this.pixelRatioQuery = null;
+    }
+  }
+
+  handlePixelRatioChange() {
+    this.resizeCanvas();
+    this.watchPixelRatio();
+  }
+
   resizeCanvas() {
     if (!this.canvas) return;
-    this.canvas.width = window.innerWidth;
-    this.canvas.height = window.innerHeight;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    // Draw at device resolution so a 1.5px streak and a snow dot stay crisp on HiDPI screens; past
+    // 2x costs more than it shows. The scenes keep working in CSS pixels through the transform.
+    const pixelRatio = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+    // Assigning a canvas size clears it, so an unchanged size is left alone.
+    if (width === this.width && height === this.height && pixelRatio === this.pixelRatio) return;
+    this.width = width;
+    this.height = height;
+    this.pixelRatio = pixelRatio;
+    this.canvas.width = Math.round(width * pixelRatio);
+    this.canvas.height = Math.round(height * pixelRatio);
+    // Resizing a canvas resets its transform.
+    this.ctx?.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     if (this.sun) {
-      this.sun.x = this.canvas.width * 0.15;
-      this.sun.y = this.canvas.height * 0.15;
+      this.sun.x = width * 0.15;
+      this.sun.y = height * 0.15;
     }
     if (this.activeEffect && this.prefersReducedMotion()) {
       this.renderStaticFrame();
@@ -175,7 +217,7 @@ export class WeatherEffectsManager {
 
   clearCanvas() {
     if (!this.ctx || !this.canvas) return;
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.clearRect(0, 0, this.width, this.height);
   }
 
   renderStaticFrame() {
@@ -197,8 +239,8 @@ export class WeatherEffectsManager {
     const count = this.activeEffect === 'stormy' ? 180 : 100;
     for (let i = 0; i < count; i++) {
       this.particles.push({
-        x: Math.random() * this.canvas.width,
-        y: Math.random() * this.canvas.height - this.canvas.height,
+        x: Math.random() * this.width,
+        y: Math.random() * this.height - this.height,
         vy: 8 + Math.random() * 6,
         vx: -1.5 - Math.random() * 2.5,
         length: 20 + Math.random() * 20,
@@ -212,8 +254,8 @@ export class WeatherEffectsManager {
     const count = 75;
     for (let i = 0; i < count; i++) {
       this.particles.push({
-        x: Math.random() * this.canvas.width,
-        y: Math.random() * this.canvas.height - this.canvas.height,
+        x: Math.random() * this.width,
+        y: Math.random() * this.height - this.height,
         vy: 1.0 + Math.random() * 1.2,
         vx: 0,
         radius: 2.0 + Math.random() * 3.5,
@@ -230,8 +272,8 @@ export class WeatherEffectsManager {
     const count = 7;
     for (let i = 0; i < count; i++) {
       this.clouds.push({
-        x: Math.random() * this.canvas.width,
-        y: Math.random() * this.canvas.height * 0.6,
+        x: Math.random() * this.width,
+        y: Math.random() * this.height * 0.6,
         vx: 0.08 + Math.random() * 0.08,
         radius: 180 + Math.random() * 120,
         opacity: 0.12 + Math.random() * 0.12,
@@ -242,8 +284,8 @@ export class WeatherEffectsManager {
   initSun() {
     if (!this.canvas) return;
     this.sun = {
-      x: this.canvas.width * 0.15,
-      y: this.canvas.height * 0.15,
+      x: this.width * 0.15,
+      y: this.height * 0.15,
       pulse: 0,
       pulseDirection: 1,
     };
@@ -265,7 +307,7 @@ export class WeatherEffectsManager {
     this.lastTime = timestamp;
 
     if (this.ctx && this.canvas) {
-      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      this.ctx.clearRect(0, 0, this.width, this.height);
 
       if (this.activeEffect === 'rainy' || this.activeEffect === 'stormy') {
         this.updateAndDrawRain(frameScale);
@@ -293,12 +335,12 @@ export class WeatherEffectsManager {
       p.y += p.vy * frameScale;
       p.x += p.vx * frameScale;
 
-      if (p.y > this.canvas.height) {
+      if (p.y > this.height) {
         p.y = -p.length;
-        p.x = Math.random() * this.canvas.width;
+        p.x = Math.random() * this.width;
       }
       if (p.x < 0) {
-        p.x = this.canvas.width;
+        p.x = this.width;
       }
 
       this.ctx.beginPath();
@@ -310,16 +352,26 @@ export class WeatherEffectsManager {
     this.ctx.globalAlpha = 1.0;
   }
 
+  /**
+   * Where a particle sits in a scene that is drawn once. Rain and snow start above the window and
+   * fall into it, so their starting y is negative; a still frame has to bring them down into view
+   * or it would draw nothing. Wrapping also covers particles that an animation had already moved.
+   */
+  stillY(y) {
+    return this.height > 0 ? ((y % this.height) + this.height) % this.height : 0;
+  }
+
   drawRainStatic() {
     if (!this.ctx || !this.canvas) return;
     this.ctx.strokeStyle = this.colors.rainStatic;
     this.ctx.lineWidth = 1.2;
     const drops = this.particles.slice(0, this.activeEffect === 'stormy' ? 48 : 32);
     for (const p of drops) {
+      const y = this.stillY(p.y);
       this.ctx.beginPath();
       this.ctx.globalAlpha = Math.min(p.opacity || 0.4, 0.5);
-      this.ctx.moveTo(p.x, p.y);
-      this.ctx.lineTo(p.x + (p.vx || -1) * 1.5, p.y + (p.length || 20));
+      this.ctx.moveTo(p.x, y);
+      this.ctx.lineTo(p.x + (p.vx || -1) * 1.5, y + (p.length || 20));
       this.ctx.stroke();
     }
     this.ctx.globalAlpha = 1.0;
@@ -364,7 +416,7 @@ export class WeatherEffectsManager {
 
     if (this.lightningOpacity > 0) {
       this.ctx.fillStyle = this.colors.flash(this.lightningOpacity);
-      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+      this.ctx.fillRect(0, 0, this.width, this.height);
     }
   }
 
@@ -380,9 +432,9 @@ export class WeatherEffectsManager {
       p.swingAngle += p.swingSpeed * frameScale;
       p.x += (Math.sin(p.swingAngle) * p.swingRange * 0.2 + 0.3) * frameScale;
 
-      if (p.y > this.canvas.height) {
+      if (p.y > this.height) {
         p.y = -p.radius * 2;
-        p.x = Math.random() * this.canvas.width;
+        p.x = Math.random() * this.width;
       }
 
       this.ctx.beginPath();
@@ -403,7 +455,7 @@ export class WeatherEffectsManager {
     for (const p of this.particles.slice(0, 36)) {
       this.ctx.beginPath();
       this.ctx.globalAlpha = Math.min(p.opacity || 0.45, 0.65);
-      this.ctx.arc(p.x, p.y, p.radius || 2, 0, Math.PI * 2);
+      this.ctx.arc(p.x, this.stillY(p.y), p.radius || 2, 0, Math.PI * 2);
       this.ctx.fill();
       if (snowEdge) this.ctx.stroke();
     }
@@ -415,7 +467,7 @@ export class WeatherEffectsManager {
     const { cloud } = this.colors;
     for (const c of this.clouds) {
       c.x += c.vx * frameScale;
-      if (c.x - c.radius > this.canvas.width) {
+      if (c.x - c.radius > this.width) {
         c.x = -c.radius;
       }
 
@@ -487,6 +539,8 @@ export class WeatherEffectsManager {
     window.removeEventListener('resize', this.resizeCanvas);
     this.stopAnimation();
     this.themeObserver?.disconnect();
+    this.pixelRatioQuery?.removeEventListener?.('change', this.handlePixelRatioChange);
+    this.pixelRatioQuery = null;
     if (this.reducedMotionQuery && this.reducedMotionChangeHandler) {
       if (typeof this.reducedMotionQuery.removeEventListener === 'function') {
         this.reducedMotionQuery.removeEventListener('change', this.reducedMotionChangeHandler);

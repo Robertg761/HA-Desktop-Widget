@@ -1739,5 +1739,6 @@
   "Up to {{max}} sensors. Selected: {{count}}.": "Up to {{max}} sensors. Selected: {{count}}.",
   "Maximum reached. Remove a sensor to add another.": "Maximum reached. Remove a sensor to add another.",
   "No sensors match \"{{query}}\"": "No sensors match \"{{query}}\"",
-  "What’s new": "What’s new"
+  "What’s new": "What’s new",
+  "Waiting for you to approve HA Desktop Widget in your browser. If it did not open, choose Cancel, then Connect again.": "Waiting for you to approve HA Desktop Widget in your browser. If it did not open, choose Cancel, then Connect again."
 }

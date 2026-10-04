@@ -7851,13 +7851,6 @@ body.theme-light:not(.high-contrast)
     rgba(var(--settings-modal-bg-rgb), var(--settings-modal-bg-alpha));
 }
 
-/* Without a blur on the header the holiday art in the corner is crisp, and drawn from the dialog's
-   top corner it lay behind the Close button. Placed on the grid cell of the page body, it hangs
-   from the header's line instead, clear of the button whatever the height of the header. */
-body[data-season] #settings-modal .modal-content::before {
-  grid-area: body;
-}
-
 /* The header and the rail sit inside the dialog's own blurred pane, so a blur of their own only
    smeared the holiday art behind them and cut it in half at the line. They are plain panels. */
 #settings-modal .modal-header {
@@ -9418,6 +9411,11 @@ body[data-season] #settings-modal .modal-content::before {
 
 .first-run-actions .btn:first-child {
   margin-inline-end: auto;
+}
+
+/* Back is hidden on the first and last steps; a button's own display would otherwise win. */
+.first-run-actions .btn[hidden] {
+  display: none;
 }
 
 .widget-state-panel {
@@ -15979,6 +15977,12 @@ body[data-season] .modal-content {
   --season-size: 84px;
 }
 
+/* A dialog's close button takes the last 44px of its header, so the art sits beside it and not
+   behind it. */
+body[data-season] .modal-content::before {
+  inset-inline-end: 48px;
+}
+
 /* Compact tiles are smaller, so their art is too. */
 body.density-compact[data-season] .control-item {
   --season-scale: 0.7;
@@ -15989,6 +15993,15 @@ body[data-season] .control-item:nth-child(3n + 2)::before {
 }
 
 body[data-season] .control-item:nth-child(3n + 1)::before {
+  inset-block: 0 auto;
+  inset-inline: 0 auto;
+}
+
+/* The Controls button sits in a tile's top end corner, and a tile has one wherever it falls in the
+   grid, so its art takes the start corner as it does in the first column. Christmas draws its
+   snow along the whole top edge and Easter draws at the bottom, so neither is in the way. */
+body[data-season]:where(:not([data-season='christmas'], [data-season='easter']))
+  .control-item:has(> .tile-details-button)::before {
   inset-block: 0 auto;
   inset-inline: 0 auto;
 }
@@ -16005,14 +16018,36 @@ body[data-season] .status-card {
 }
 
 body[data-season] .weather-card {
-  --season-sit: var(--season-weather-sit);
+  --season-sit: var(--season-weather-sit, var(--season-time-sit));
 }
 
 /* Only Settings has the room: in a short dialog, such as a confirmation, the piece would sit
    behind the message. */
 body[data-season] #settings-modal .modal-content {
+  --season-size: 44px;
   --season-sit: var(--season-dialog-sit);
-  --season-sit-size: 60px;
+  --season-sit-size: 40px;
+}
+
+/* Settings' header is about 50px tall: the piece beside the close button fits inside it instead
+   of hanging down into the page. */
+body[data-season] #settings-modal .modal-content::before {
+  inset-block-start: 3px;
+}
+
+/* The piece sits in the 52px icon rail, below its icons. Across the rail's edge it was dimmed on
+   one side and sharp on the other, and on the page it covers the section labels. The rail blurs
+   what is behind it, so the piece is drawn above the rail instead, out of the way of the pointer. */
+body[data-season] #settings-modal .modal-content::after {
+  inset-inline-start: 6px;
+  z-index: 1;
+}
+
+/* In a short window the rail's icons reach the bottom, where the piece would cover them. */
+@media (max-height: 420px) {
+  body[data-season] #settings-modal .modal-content::after {
+    display: none;
+  }
 }
 
 body[data-season] .control-item:nth-child(3n + 2):not(.activating)::after,
@@ -16060,19 +16095,19 @@ body[data-season] .drag-area {
 body[data-season] .drag-area::before {
   content: '';
   position: absolute;
-  top: -12px;
+  top: calc(-10px - var(--season-hat-lift, 0px));
   inset-inline-start: 17px;
-  width: 22px;
-  height: 18px;
+  width: 18px;
+  height: 14px;
   background: var(--season-hat, none) no-repeat center bottom / contain;
-  transform: scaleX(var(--season-dir)) rotate(var(--season-hat-tilt, -16deg));
+  transform: scaleX(var(--season-dir)) rotate(var(--season-hat-tilt, -6deg));
   transform-origin: bottom center;
   transition: transform var(--duration-base) var(--ease-back);
   pointer-events: none;
 }
 
 body[data-season] .widget-header:hover .drag-area::before {
-  transform: scaleX(var(--season-dir)) rotate(calc(var(--season-hat-tilt, -16deg) + 10deg))
+  transform: scaleX(var(--season-dir)) rotate(calc(var(--season-hat-tilt, -6deg) + 10deg))
     translateY(-1px);
 }
 
@@ -16136,6 +16171,7 @@ body[data-season='halloween'] .control-item::before {
 }
 
 body[data-season='halloween'] .control-item:nth-child(3n + 1)::before,
+body[data-season='halloween'] .control-item:has(> .tile-details-button)::before,
 body[data-season='halloween'] .weather-card::before {
   inset-block: 0 auto;
   inset-inline: 0 auto;
@@ -16149,6 +16185,13 @@ body[data-season='halloween'] .modal-content::before {
   transform: scaleX(var(--season-dir));
 }
 
+/* The web stays in the dialog's corner, so the close button gets a backing that keeps its strands
+   off the glyph. Settings' header is a plain panel with no blur, so its web is as crisp as any
+   dialog's and its button gets the same backing. */
+body[data-season='halloween'] .modal .modal-header .close-btn:not(:hover, :focus-visible) {
+  background: rgba(var(--window-bg-rgb), 0.8);
+}
+
 /* Lit from inside. */
 body[data-season='halloween'] .control-item:nth-child(3n + 2):not(.activating)::after,
 body[data-season='halloween'] .weather-card:not(.primary-light-card)::after {
@@ -16157,7 +16200,7 @@ body[data-season='halloween'] .weather-card:not(.primary-light-card)::after {
 
 body[data-season='halloween'] .status-card:not(.weather-card, .primary-light-card)::after {
   inset-block: 0 auto;
-  inset-inline: auto 40px;
+  inset-inline: auto 20px;
   width: 18px;
   height: 46px;
   background: var(--season-spider) no-repeat top center / contain;
@@ -16208,7 +16251,7 @@ body[data-season='christmas'] .status-card::before {
 
 body[data-season='christmas'] .modal-content::before {
   inset-block: 8px auto;
-  inset-inline: auto 8px;
+  inset-inline: auto 52px;
   width: 60px;
   height: 46px;
 }
@@ -16299,6 +16342,8 @@ body[data-season='easter'] {
   --season-dialog-sit: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 34'%3E%3Cg stroke='%23d4d4d8' stroke-width='0.7' fill='%23f8fafc'%3E%3Cellipse cx='13' cy='10' rx='3.4' ry='9' transform='rotate(-10 13 10)'/%3E%3Cellipse cx='23' cy='10' rx='3.4' ry='9' transform='rotate(10 23 10)'/%3E%3Cellipse cx='18' cy='25' rx='11' ry='9'/%3E%3C/g%3E %3Cellipse cx='13' cy='10' rx='1.5' ry='6.5' fill='%23f9a8d4' transform='rotate(-10 13 10)'/%3E%3Cellipse cx='23' cy='10' rx='1.5' ry='6.5' fill='%23f9a8d4' transform='rotate(10 23 10)'/%3E %3Ccircle cx='14' cy='23' r='1.3' fill='%231f2937'/%3E%3Ccircle cx='22' cy='23' r='1.3' fill='%231f2937'/%3E%3Cellipse cx='18' cy='26.2' rx='1.4' ry='1' fill='%23f472b6'/%3E %3Cpath d='M12 27 L6 26 M12 28.5 L6.5 29.5 M24 27 L30 26 M24 28.5 L29.5 29.5' stroke='%23a1a1aa' stroke-width='0.5'/%3E %3Cellipse cx='11' cy='27' rx='1.8' ry='1' fill='%23fbcfe8'/%3E%3Cellipse cx='25' cy='27' rx='1.8' ry='1' fill='%23fbcfe8'/%3E%3C/svg%3E");
   --season-hat: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 22'%3E%3Cg stroke='%23d4d4d8' stroke-width='0.7'%3E%3Cellipse cx='8' cy='11' rx='3.6' ry='10' fill='%23f8fafc' transform='rotate(-14 8 11)'/%3E%3Cellipse cx='16' cy='11' rx='3.6' ry='10' fill='%23f8fafc' transform='rotate(12 16 11)'/%3E%3C/g%3E %3Cellipse cx='8' cy='11.5' rx='1.6' ry='7' fill='%23f9a8d4' transform='rotate(-14 8 11)'/%3E%3Cellipse cx='16' cy='11.5' rx='1.6' ry='7' fill='%23f9a8d4' transform='rotate(12 16 11)'/%3E%3C/svg%3E");
   --season-hat-tilt: -4deg;
+  /* The ears' tips reach the foot of the box, which is the cap line of the title. */
+  --season-hat-lift: 1px;
   --season-title-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 28'%3E %3Cdefs%3E%3CclipPath id='e'%3E%3Cpath d='M12 1 C17.5 1 21 10 21 16 C21 22 17 27 12 27 C7 27 3 22 3 16 C3 10 6.5 1 12 1Z'/%3E%3C/clipPath%3E%3C/defs%3E %3Cpath d='M12 1 C17.5 1 21 10 21 16 C21 22 17 27 12 27 C7 27 3 22 3 16 C3 10 6.5 1 12 1Z' fill='%23c4b5fd'/%3E %3Cg clip-path='url(%23e)'%3E%3Cpath d='M0 12 L4 9 L8 12 L12 9 L16 12 L20 9 L24 12 V15 L20 12 L16 15 L12 12 L8 15 L4 12 L0 15Z' fill='%23fde68a'/%3E %3Crect x='0' y='19' width='24' height='3' fill='%23f9a8d4'/%3E %3Cg fill='%23fff' opacity='0.8'%3E%3Ccircle cx='8' cy='6' r='1.2'/%3E%3Ccircle cx='15' cy='5' r='1.2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
   --season-label-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 26'%3E%3Ccircle cx='12' cy='10' r='6.2' fill='%23fde047'/%3E%3Cpath d='M9 5 Q10 2 12 4 Q13 1.5 14.5 4.5' stroke='%23facc15' stroke-width='1' fill='none'/%3E %3Ccircle cx='10' cy='9' r='0.9' fill='%231f2937'/%3E%3Ccircle cx='14' cy='9' r='0.9' fill='%231f2937'/%3E%3Cpath d='M11 11 L13 11 L12 13Z' fill='%23fb923c'/%3E %3Cpath d='M3.5 13.5 L6.5 16.5 L9.5 13.5 L12.5 16.5 L15.5 13.5 L18.5 16.5 L20.5 13.5 Q21 25 12 25 Q3 25 3.5 13.5Z' fill='%23f5f5f4' stroke='%23d6d3d1' stroke-width='0.7'/%3E%3C/svg%3E");
   --season-garland: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 13'%3E%3Cpath d='M0 1.5 Q32 5 64 1.5' stroke='%23a1a1aa' stroke-width='0.8' fill='none'/%3E %3Cpath d='M2 2 L14 2.8 L8 12Z' fill='%23f9a8d4'/%3E%3Cpath d='M18 3.2 L30 3.5 L24 12.5Z' fill='%23fde68a'/%3E%3Cpath d='M34 3.5 L46 3.2 L40 12.5Z' fill='%23a7f3d0'/%3E%3Cpath d='M50 2.8 L62 2 L56 12Z' fill='%23c4b5fd'/%3E%3C/svg%3E");
@@ -16336,7 +16381,7 @@ body[data-season='easter'] .status-card {
 
 /* The bunny peeks up over the bottom edge. */
 body[data-season='easter'] .status-card:not(.weather-card, .primary-light-card)::after {
-  inset-block: auto -10px;
+  inset-block: auto -5px;
   inset-inline: auto 14px;
   width: 44px;
   height: 44px;
@@ -16369,7 +16414,13 @@ body[data-season='lunar-new-year'] .modal-content::before {
   transform-origin: top center;
 }
 
-body[data-season='lunar-new-year'] .control-item:nth-child(3n + 1)::before {
+/* A dialog's lantern hangs beside the close button, not in the tiles' 14px from the edge. */
+body[data-season='lunar-new-year'] .modal-content::before {
+  inset-inline-end: 56px;
+}
+
+body[data-season='lunar-new-year'] .control-item:nth-child(3n + 1)::before,
+body[data-season='lunar-new-year'] .control-item:has(> .tile-details-button)::before {
   inset-inline: 14px auto;
 }
 
@@ -16450,7 +16501,7 @@ body[data-season='thanksgiving'] .control-item {
   }
 
   45% {
-    transform: rotate(3deg) scaleY(1.25);
+    transform: rotate(3deg) scaleY(1.1);
   }
 }
 

@@ -301,6 +301,109 @@ describe('Renderer stale favorite state handling', () => {
     });
   });
 
+  describe('a favorite kept through a reconnect that Home Assistant does not report', () => {
+    const keptFavorite = () => mockState.STATES[favoriteEntity.entity_id];
+
+    it('shows it as unavailable once the minute of grace has passed', async () => {
+      await loadRenderer();
+      receiveStates([favoriteEntity, otherEntity]);
+      now += 60 * 1000;
+      receiveStates([otherEntity]);
+      mockElectronAPI.publishHaEntityUpdate.mockClear();
+      mockAlerts.checkEntityAlerts.mockClear();
+
+      // Still its last state while integrations load after a Home Assistant restart.
+      await jest.advanceTimersByTimeAsync(59 * 1000);
+      expect(keptFavorite().state).toBe('on');
+
+      await jest.advanceTimersByTimeAsync(2 * 1000);
+      expect(keptFavorite()).toEqual({ ...favoriteEntity, state: 'unavailable' });
+      expect(mockElectronAPI.publishHaEntityUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ entity_id: favoriteEntity.entity_id, state: 'unavailable' })
+      );
+      expect(mockUi.updateEntityInUI).not.toHaveBeenCalledWith(
+        expect.objectContaining({ state: 'on' })
+      );
+    });
+
+    it('does not tell the alert rules about it, since Home Assistant never reported an outage', async () => {
+      await loadRenderer();
+      receiveStates([favoriteEntity, otherEntity]);
+      now += 60 * 1000;
+      receiveStates([otherEntity]);
+      mockAlerts.checkEntityAlerts.mockClear();
+
+      await jest.advanceTimersByTimeAsync(61 * 1000);
+      expect(keptFavorite().state).toBe('unavailable');
+      expect(mockAlerts.checkEntityAlerts).not.toHaveBeenCalled();
+
+      // What Home Assistant reports after that is news again, whatever it is.
+      mockWebsocket.emit('message', {
+        type: 'event',
+        event: {
+          event_type: 'state_changed',
+          data: {
+            entity_id: favoriteEntity.entity_id,
+            new_state: { ...favoriteEntity, state: 'off' },
+          },
+        },
+      });
+      await jest.advanceTimersByTimeAsync(20);
+      expect(mockAlerts.checkEntityAlerts).toHaveBeenCalledWith(favoriteEntity.entity_id, 'off');
+    });
+
+    it('leaves it alone when Home Assistant reports it within the grace', async () => {
+      await loadRenderer();
+      receiveStates([favoriteEntity, otherEntity]);
+      now += 60 * 1000;
+      receiveStates([otherEntity]);
+
+      // The integration finished loading and sent its state.
+      const reported = { ...favoriteEntity, state: 'off' };
+      mockWebsocket.emit('message', {
+        type: 'event',
+        event: {
+          event_type: 'state_changed',
+          data: { entity_id: favoriteEntity.entity_id, new_state: reported },
+        },
+      });
+      await jest.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+      expect(keptFavorite()).toEqual(reported);
+    });
+
+    it('starts the minute again at the next reconnect', async () => {
+      await loadRenderer();
+      receiveStates([favoriteEntity, otherEntity]);
+      now += 60 * 1000;
+      receiveStates([otherEntity]);
+      await jest.advanceTimersByTimeAsync(40 * 1000);
+      now += 40 * 1000;
+      receiveStates([otherEntity]);
+
+      await jest.advanceTimersByTimeAsync(40 * 1000);
+      expect(keptFavorite().state).toBe('on');
+      await jest.advanceTimersByTimeAsync(21 * 1000);
+      expect(keptFavorite().state).toBe('unavailable');
+    });
+
+    it('keeps it unavailable through a later reconnect, until the grace for dropping it ends', async () => {
+      await loadRenderer();
+      receiveStates([favoriteEntity, otherEntity]);
+      now += 60 * 1000;
+      receiveStates([otherEntity]);
+      await jest.advanceTimersByTimeAsync(61 * 1000);
+      now += 61 * 1000;
+
+      receiveStates([otherEntity]);
+      expect(keptFavorite().state).toBe('unavailable');
+
+      now += STALE_PRESERVE_MS + 1;
+      receiveStates([otherEntity]);
+      expect(mockState.STATES).toEqual({ [otherEntity.entity_id]: otherEntity });
+    });
+  });
+
   it('removes a deleted favorite immediately and republishes an authoritative snapshot', async () => {
     await loadRenderer();
     receiveStates([favoriteEntity, otherEntity]);

@@ -118,13 +118,17 @@ describe('how many blur passes a dialog costs', () => {
     // The cascade helper does not match pseudo-elements, so this reads the stylesheet itself.
     const css = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
 
-    it('hangs from the header line instead of lying behind the Close button', () => {
-      // Without the header's blur the corner art is crisp. A grid-placed absolute box is
-      // positioned in its grid area, so the body cell's top corner is under the header.
-      expect(css).toMatch(
-        /body\[data-season\] #settings-modal \.modal-content::before\s*\{\s*grid-area:\s*body;\s*\}/
-      );
-      expect(css).toMatch(/#settings-modal \.modal-content \{[^}]*grid-template:[^;]*'nav body'/);
+    it('draws the header and the rail as plain panels, so the art behind them stays crisp', () => {
+      // The header and rail sit inside the dialog's own blurred pane; a blur of their own only
+      // smeared the holiday art and cut it in half at their edge. (Where the art sits is pinned in
+      // css-seasonal-art.test.js.)
+      const rule = (selector) =>
+        css.match(new RegExp(`(?:^|\\n)${selector.replace(/[.#]/g, '\\$&')} \\{([^}]*)\\}`))?.[1] ||
+        '';
+      for (const selector of ['#settings-modal .modal-header', '#settings-modal .modal-tabs']) {
+        expect(rule(selector)).not.toBe('');
+        expect(rule(selector)).not.toMatch(/backdrop-filter/);
+      }
     });
   });
 

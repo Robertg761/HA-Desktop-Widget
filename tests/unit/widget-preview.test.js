@@ -73,6 +73,16 @@ describe('panel preview virtual desktop', () => {
     expect(document.getElementById('settings-modal')).toBeTruthy();
   });
 
+  test('the app runs on a preview host, not an Electron one', () => {
+    const { getRendererHost } = require('@hadw/renderer/host.js');
+    const { capabilities } = getRendererHost();
+    expect(capabilities.isPreview).toBe(true);
+    expect(capabilities.isElectron).toBe(false);
+    expect(capabilities.supportsPins).toBe(false);
+    // The same host every time, not a new wrapper around the virtual API per call.
+    expect(getRendererHost()).toBe(getRendererHost());
+  });
+
   test('preview readiness and locale stubs follow the desktop response contracts', async () => {
     await expect(window.electronAPI.signalRendererReady()).resolves.toEqual({ success: true });
     await expect(window.electronAPI.getLocalePacks()).resolves.toEqual([]);

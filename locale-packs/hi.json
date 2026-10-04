@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.63",
+  "version": "1.2.64",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1888,6 +1888,7 @@
     "Up to {{max}} sensors. Selected: {{count}}.": "अधिकतम {{max}} सेंसर। चयनित: {{count}}।",
     "Maximum reached. Remove a sensor to add another.": "अधिकतम सीमा पूरी हो गई। दूसरा जोड़ने के लिए एक सेंसर हटाएं।",
     "No sensors match \"{{query}}\"": "\"{{query}}\" से मेल खाता कोई सेंसर नहीं",
-    "What’s new": "नया क्या है"
+    "What’s new": "नया क्या है",
+    "Waiting for you to approve HA Desktop Widget in your browser. If it did not open, choose Cancel, then Connect again.": "आपके ब्राउज़र में HA Desktop Widget को स्वीकृति देने की प्रतीक्षा है। यदि ब्राउज़र नहीं खुला, तो रद्द करें चुनें, फिर दोबारा कनेक्ट करें चुनें।"
   }
 }

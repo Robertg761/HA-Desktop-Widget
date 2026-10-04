@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.62",
+  "version": "1.2.63",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1888,6 +1888,7 @@
     "Up to {{max}} sensors. Selected: {{count}}.": "Hasta {{max}} sensores. Seleccionados: {{count}}.",
     "Maximum reached. Remove a sensor to add another.": "Se alcanzó el máximo. Elimina un sensor para añadir otro.",
     "No sensors match \"{{query}}\"": "Ningún sensor coincide con \"{{query}}\"",
-    "What’s new": "Novedades"
+    "What’s new": "Novedades",
+    "Waiting for you to approve HA Desktop Widget in your browser. If it did not open, choose Cancel, then Connect again.": "Esperando a que apruebes HA Desktop Widget en el navegador. Si no se abrió, elige Cancelar y luego Conectar de nuevo."
   }
 }
