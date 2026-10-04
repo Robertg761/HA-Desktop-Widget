@@ -1,4 +1,5 @@
 import { applyDesktopAppearance } from './src/desktop-appearance.js';
+import { installClippedTextTooltips } from './src/clipped-text-tooltips.js';
 import { installLayerDrag } from './src/layer-drag.js';
 import desktopPinResize from './src/desktop-pin-resize.cjs';
 // Load all required modules (ES Modules)
@@ -727,16 +728,30 @@ function renderWidgetStatePanel({ tone, title, message, actions = [] }) {
     return;
   }
 
+  // A connection problem sits above Quick Access, where it is seen without scrolling and the
+  // tiles stay in place; at the end of the page it was below the fold on a full page, and
+  // scrolling it into view threw the dashboard to the bottom at every restart of Home Assistant. An
+  // empty page has no tiles to push down, so its panel stays where the tiles would be. Neither
+  // scrolls the page: the user's place in it is not the panel's to take.
+  const tiles = tone === 'empty' ? null : widgetContent.querySelector('.controls-section');
+
   const isNew = !panel;
   if (isNew) {
     panel = document.createElement('div');
     panel.id = 'widget-state-panel';
     panel.appendChild(createTextElement('h3', 'widget-state-title', title));
     panel.appendChild(createTextElement('p', 'widget-state-copy', message));
-    widgetContent.appendChild(panel);
+    if (tiles) widgetContent.insertBefore(panel, tiles);
+    else widgetContent.appendChild(panel);
   } else {
     panel.querySelector('.widget-state-title').textContent = title;
     panel.querySelector('.widget-state-copy').textContent = message;
+    // The empty page's panel becoming a problem (or back) changes where it belongs. Moving it takes
+    // focus with it, so a button that had focus gets it back.
+    const focused = panel.contains(document.activeElement) ? document.activeElement : null;
+    if (tiles && panel.nextElementSibling !== tiles) widgetContent.insertBefore(panel, tiles);
+    else if (!tiles && panel.nextElementSibling) widgetContent.appendChild(panel);
+    if (focused?.isConnected && document.activeElement !== focused) focused.focus();
   }
   panel.className = `widget-state-panel ${tone ? `widget-state-${tone}` : ''}`.trim();
 
@@ -753,9 +768,6 @@ function renderWidgetStatePanel({ tone, title, message, actions = [] }) {
   if (tone === 'error' && title !== announcedWidgetStateTitle) {
     announcedWidgetStateTitle = title;
     announceWidgetState(`${title}. ${message}`);
-    // The panel follows the tiles, so on a full page a new problem could appear below the fold.
-    // Only the first time: each retry used to pull a reader who had scrolled up back down.
-    panel.scrollIntoView?.({ block: 'nearest' });
   }
 }
 
@@ -910,6 +922,15 @@ function retryConnection() {
 }
 
 function renderMainWidgetState() {
+  // Tiles keep showing what Home Assistant last said while it cannot be reached; the page dims
+  // them so a lamp that has since been switched off, or a timer that stopped, does not look live.
+  // Connecting counts: every retry and the wait for the first state snapshot after login still
+  // show the old values, and the tiles would otherwise flash back to full brightness at each try.
+  document.body.classList.toggle(
+    'ha-offline',
+    !IS_DESKTOP_PIN_MODE &&
+      ['disconnected', 'auth-failed', 'connecting'].includes(mainConnectionState)
+  );
   if (IS_DESKTOP_PIN_MODE || firstRunWizard?.visible) {
     removeWidgetStatePanel();
     return;
@@ -1707,8 +1728,9 @@ function applyRendererConfig(nextConfig) {
     uiUtils.applyAccentTheme(state.CONFIG.ui?.accent || 'original');
     uiUtils.applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
     uiUtils.applyUiPreferences(state.CONFIG.ui || {});
-    uiUtils.applyWindowEffects(state.CONFIG || {});
+    // The palette can change the theme, which the window effects' alphas follow, so it goes first.
     applyDesktopAppearance(state.CONFIG);
+    uiUtils.applyWindowEffects(state.CONFIG || {});
 
     if (ui.updateWeatherEffects) {
       ui.updateWeatherEffects();
@@ -3003,13 +3025,10 @@ function wireUI() {
     // Opacity slider handler with real-time preview
     // Scale: 1-100 where 1 = 50% opacity, 100 = 100% opacity
     const opacitySlider = document.getElementById('opacity-slider');
-    const opacityValue = document.getElementById('opacity-value');
-    if (opacitySlider && opacityValue) {
-      opacitySlider.addEventListener('input', (e) => {
-        const sliderValue = parseInt(e.target.value) || 90;
-        // Convert slider value (1-100) to opacity (0.5-1.0)
-        // Formula: opacity = 0.5 + (sliderValue - 1) * 0.5 / 99
-        opacityValue.textContent = `${sliderValue}`;
+    if (opacitySlider && document.getElementById('opacity-value')) {
+      opacitySlider.addEventListener('input', () => {
+        // The readout shows the opacity the position stands for (0.5-1.0), as a percentage.
+        settings.updateOpacityReadout?.();
         // Apply preview without persisting
         if (settings.previewWindowEffects) {
           settings.previewWindowEffects();
@@ -3602,3 +3621,4 @@ window.addEventListener(
 );
 
 installLayerDrag();
+installClippedTextTooltips();

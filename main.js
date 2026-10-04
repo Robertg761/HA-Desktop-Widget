@@ -126,6 +126,7 @@ const {
   detectTilingLayerShellCompositor,
   watchHyprlandConfigReloads,
   getLayerShellControlSocketPath,
+  getMainWindowMinimumSize,
   isLayerShellChild,
   materializeLayerShellHelper,
   readInitialLayerShellOutputName,
@@ -2384,12 +2385,15 @@ function normalizeWindowGeometryConfig(targetConfig) {
   if (!isPlainObject(targetConfig)) return targetConfig;
   const isCoordinate = (value) => typeof value === 'number' && Number.isFinite(value);
   const size = targetConfig.windowSize;
+  // The minimum the window is created with, which grows with "Text and control size". A window
+  // dragged down to a sliver once saved that size, and opened as a window with its buttons out of
+  // reach on every start after; a size saved under a smaller text size is raised the same way.
+  const minimum = getMainWindowMinimumSizeForConfig(targetConfig);
   targetConfig.windowSize =
     isPlainObject(size) && isCoordinate(size.width) && isCoordinate(size.height)
       ? {
-          // The same bounds the layer-shell surface uses for a saved size.
-          width: Math.min(16384, Math.max(100, Math.round(size.width))),
-          height: Math.min(16384, Math.max(100, Math.round(size.height))),
+          width: Math.min(16384, Math.max(minimum.width, Math.round(size.width))),
+          height: Math.min(16384, Math.max(minimum.height, Math.round(size.height))),
         }
       : { ...DEFAULT_WINDOW_SIZE };
   const position = targetConfig.windowPosition;
@@ -3382,6 +3386,15 @@ function applyMainWindowSettingSideEffects(previousConfig, nextConfig) {
 
     if (previousConfig?.frostedGlass !== nextConfig?.frostedGlass) {
       applyFrostedGlass();
+    }
+
+    if (previousConfig?.ui?.scale !== nextConfig?.ui?.scale) {
+      try {
+        const minimumSize = getMainWindowMinimumSizeForConfig(nextConfig);
+        mainWindow.setMinimumSize(minimumSize.width, minimumSize.height);
+      } catch (error) {
+        log.warn('Failed to update the main window minimum size:', error.message);
+      }
     }
 
     try {
@@ -6919,6 +6932,22 @@ function mainWindowMatchesSavedBounds(bounds) {
   );
 }
 
+/**
+ * A size no smaller than the main window's minimum at the current "Text and control size", for a
+ * size about to be saved. Electron's minimum-size hint is all that holds a window to that
+ * minimum, and some window managers ignore it, so this is what stops a too-small window from being
+ * saved and then accepted on the next start. The minimum grows with the setting (480x540 at
+ * 150%), so the unscaled 320x360 would let through a window only 213x240 CSS pixels wide. A
+ * desktop-layer surface keeps the unscaled one, see getMainWindowMinimumSizeForConfig.
+ */
+function clampToMinimumWindowSize({ width, height }, targetConfig = config) {
+  const minimum = getMainWindowMinimumSizeForConfig(targetConfig);
+  return {
+    width: Math.max(minimum.width, width),
+    height: Math.max(minimum.height, height),
+  };
+}
+
 /** Save the main window's position and size after the user moves or resizes it. */
 function watchMainWindowBounds(targetWindow) {
   const changeWin = () => {
@@ -6948,10 +6977,7 @@ function watchMainWindowBounds(targetWindow) {
         if (!usesCompositorOwnedPlacement) {
           config.windowPosition = { x: boundsToPersist.x, y: boundsToPersist.y };
         }
-        config.windowSize = {
-          width: boundsToPersist.width,
-          height: boundsToPersist.height,
-        };
+        config.windowSize = clampToMinimumWindowSize(boundsToPersist);
         saveConfig();
       }, 'window bounds save');
     }, 400);
@@ -6965,6 +6991,16 @@ function watchMainWindowBounds(targetWindow) {
     onMove: changeWin,
     onResize: changeWin,
   });
+}
+
+/**
+ * The main window's minimum size for the current "Text and control size". A desktop-layer surface
+ * is sized by the helper from the saved size, which is already held to the unscaled minimum, so it
+ * keeps that one. At 150% such a surface can be as narrow as 213 CSS pixels, under the 320 the
+ * layout is designed for: the header and Settings are cramped there but still reachable.
+ */
+function getMainWindowMinimumSizeForConfig(targetConfig) {
+  return getMainWindowMinimumSize(isLayerShellChildProcess ? 1 : targetConfig?.ui?.scale);
 }
 
 function createWindow() {
@@ -7011,10 +7047,13 @@ function createWindow() {
     positionOptions.y = config.windowPosition.y;
   }
 
+  const minimumSize = getMainWindowMinimumSizeForConfig(config);
   const windowOptions = {
     ...positionOptions,
     width: config.windowSize.width,
     height: config.windowSize.height,
+    minWidth: minimumSize.width,
+    minHeight: minimumSize.height,
     ...visualOptions,
     frame: false,
     // A frameless window still reports a title to the window manager, and a stable one is what
@@ -12472,10 +12511,7 @@ function capturePendingWindowBoundsForShutdown() {
         y: pendingWindowBounds.y,
       };
     }
-    config.windowSize = {
-      width: pendingWindowBounds.width,
-      height: pendingWindowBounds.height,
-    };
+    config.windowSize = clampToMinimumWindowSize(pendingWindowBounds);
     pendingWindowBounds = null;
     changed = true;
   }

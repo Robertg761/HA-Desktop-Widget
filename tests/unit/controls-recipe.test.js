@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const {
   cascadedDeclaration,
+  contrastRatio,
   loadAppStylesheets,
   resolvedValue,
 } = require('../helpers/css-cascade.js');
@@ -77,10 +78,12 @@ describe('the control recipe', () => {
       expect(resolvedValue(confirm, 'color')).toBe('white');
     });
 
-    it('steps the destructive text down to read on the light panel', () => {
+    it('takes the error text token, which reads on the light panel', () => {
       render('theme-light', button('btn btn-danger'));
 
-      expect(resolvedValue(document.querySelector('button'), 'color')).toBe('#c62828');
+      const color = resolvedValue(document.querySelector('button'), 'color');
+      expect(color).toBe(resolvedValue(document.body, '--error-text'));
+      expect(contrastRatio(color, '#e3e3e3')).toBeGreaterThanOrEqual(4.5);
     });
 
     it('sizes the confirmation buttons like the dialogs', () => {
@@ -154,9 +157,9 @@ describe('the control recipe', () => {
       const input = document.querySelector('input');
 
       expect(resolvedValue(input, 'border')).toBe(
-        '1px solid var(--border-color)'.replace(
-          /var\(--border-color\)/,
-          resolvedValue(input, '--border-color')
+        '1px solid var(--control-border)'.replace(
+          /var\(--control-border\)/,
+          resolvedValue(input, '--control-border')
         )
       );
       expect(resolvedValue(input, 'border-radius')).toBe('0.5rem');

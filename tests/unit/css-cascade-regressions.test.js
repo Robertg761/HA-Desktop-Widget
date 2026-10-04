@@ -473,7 +473,9 @@ describe('stylesheet cascade regressions', () => {
       render('', '<div class="toast-container"><div class="toast info"></div></div>');
       const stack = document.querySelector('.toast-container');
 
-      expect(resolvedValue(stack, 'inset-inline')).toBe('0.75rem');
+      expect(resolvedValue(stack, 'left')).toBe('0');
+      expect(resolvedValue(stack, 'right')).toBe('0');
+      expect(resolvedValue(stack, 'padding-inline')).toBe('0.75rem');
       expect(resolvedValue(stack, 'transform')).toBeNull();
       expect(resolvedValue(stack, 'align-items')).toBe('center');
       expect(resolvedValue(document.querySelector('.toast'), 'max-width')).toBe('min(420px, 100%)');
@@ -1265,10 +1267,11 @@ describe('stylesheet cascade regressions', () => {
       const toast = document.querySelector('.toast');
       expect(resolvedValue(toast, 'min-width', options)).toBe('0');
       expect(resolvedValue(toast, 'max-width', options)).toBe('100%');
-      // The stack spans the window, so the toast can use all of it.
-      const stack = document.querySelector('.toast-container');
-      expect(resolvedValue(stack, 'inset-inline', options)).toBe('0.5rem');
-      expect(resolvedValue(stack, 'width', options)).toBeNull();
+      // The container spans the window, so the toast fits whatever the pin's size.
+      const container = document.querySelector('.toast-container');
+      expect(resolvedValue(container, 'left', options)).toBe('0');
+      expect(resolvedValue(container, 'right', options)).toBe('0');
+      expect(resolvedValue(container, 'width', options)).toBeNull();
     });
 
     it('keeps the glass rim the same in the light theme', () => {

@@ -6,6 +6,8 @@ const {
   isEnabledEnvFlag,
 } = require('./platform.cjs');
 const { CONFIG_FILE_NAME } = require('./config-write-guard.cjs');
+// The "Text and control size" steps live with the pin bounds, which zoom by the same factor.
+const { normalizeDesktopPinScale } = require('./desktop-pin-bounds.js');
 
 /**
  * Wayland layer-shell relaunch policy for tiling compositors (issue #79).
@@ -53,6 +55,11 @@ const DEFAULT_ANCHOR = 'bottom,right';
 const DEFAULT_MARGIN = '20';
 const DEFAULT_LAYER = 'bottom';
 const DEFAULT_WINDOW_SIZE = { width: 500, height: 600 };
+// The smallest main window, in CSS pixels at 100% "Text and control size": Settings, the header
+// buttons, a column of tiles and a page's name with its edit buttons in the tab strip still work at
+// this size, and below it they do not. The window has no title bar of its own to grab, so a size
+// that hides the buttons cannot be undone from inside.
+const MIN_WINDOW_SIZE = { width: 320, height: 360 };
 const VALID_ANCHOR_EDGES = new Set(['top', 'bottom', 'left', 'right']);
 const VALID_LAYERS = new Set(['background', 'bottom']);
 
@@ -211,17 +218,32 @@ function normalizeMargin(value, onInvalid) {
   return parts.join(',');
 }
 
+/**
+ * The window's minimum size in device pixels. Enlarged text zooms the page, so at 150% the same
+ * 320x360 CSS pixels take 480x540 of the screen; the minimum grows with it.
+ *
+ * @param {number} [uiScale=1] - The "Text and control size" setting.
+ * @returns {{width: number, height: number}}
+ */
+function getMainWindowMinimumSize(uiScale = 1) {
+  const scale = normalizeDesktopPinScale(uiScale);
+  return {
+    width: Math.round(MIN_WINDOW_SIZE.width * scale),
+    height: Math.round(MIN_WINDOW_SIZE.height * scale),
+  };
+}
+
 function normalizeWindowSize(windowSize) {
-  const clamp = (value, fallback) => {
+  const clamp = (value, fallback, minimum) => {
     if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
     // Guards against corrupt saved values, not against a real compositor limit:
     // layer-shell set_size is an unbounded u32. 16384 comfortably covers any
     // real multi-monitor span (an 8K display is 7680 wide).
-    return Math.min(16384, Math.max(100, Math.round(value)));
+    return Math.min(16384, Math.max(minimum, Math.round(value)));
   };
   return {
-    width: clamp(windowSize?.width, DEFAULT_WINDOW_SIZE.width),
-    height: clamp(windowSize?.height, DEFAULT_WINDOW_SIZE.height),
+    width: clamp(windowSize?.width, DEFAULT_WINDOW_SIZE.width, MIN_WINDOW_SIZE.width),
+    height: clamp(windowSize?.height, DEFAULT_WINDOW_SIZE.height, MIN_WINDOW_SIZE.height),
   };
 }
 
@@ -703,6 +725,7 @@ function buildLayerShellSpawnPlan({
 
 module.exports = {
   DEFAULT_WINDOW_SIZE,
+  MIN_WINDOW_SIZE,
   LAYER_SHELL_ANCHOR_ENV,
   LAYER_SHELL_CHILD_ENV,
   LAYER_SHELL_ENV_OVERRIDE,
@@ -717,6 +740,7 @@ module.exports = {
   detectTilingLayerShellCompositor,
   disableHyprlandLayerMoveAnimation,
   getLayerShellControlSocketPath,
+  getMainWindowMinimumSize,
   isLayerShellChild,
   isProcessAlive,
   layerShellSocketName,

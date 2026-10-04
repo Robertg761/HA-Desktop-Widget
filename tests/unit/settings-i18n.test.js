@@ -25,8 +25,8 @@ describe('index.html static Settings text', () => {
         'Search entities...': 'Entitäten suchen...',
         'Search entities': 'Entitäten suchen',
         'Card {{index}}': 'Karte {{index}}',
-        'Click the button and press your desired key combination. Press <code>ESC</code> to clear.':
-          'Klicke auf die Schaltfläche und drücke die Tastenkombination. <code>ESC</code> löscht sie.',
+        'Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Command, Super (for example <code>Ctrl+Shift+A</code>).':
+          'Schalte oder steuere Entitäten von überall aus. Modifikatortasten: Ctrl, Alt, Shift, Command, Super (zum Beispiel <code>Ctrl+Shift+A</code>).',
         'View logs': 'Protokolle anzeigen',
         'Opens the log file location in your file explorer':
           'Öffnet den Speicherort der Protokolldatei im Dateimanager',
@@ -82,9 +82,9 @@ describe('index.html static Settings text', () => {
   });
 
   test('keeps code formatting in translated help text', () => {
-    const help = document.querySelector('[data-i18n-html^="Click the button and press"]');
+    const help = document.querySelector('[data-i18n-html^="Toggle or control entities"]');
     expect(help.textContent).toBe(
-      'Klicke auf die Schaltfläche und drücke die Tastenkombination. ESC löscht sie.'
+      'Schalte oder steuere Entitäten von überall aus. Modifikatortasten: Ctrl, Alt, Shift, Command, Super (zum Beispiel Ctrl+Shift+A).'
     );
     expect(help.querySelectorAll('code')).toHaveLength(1);
   });

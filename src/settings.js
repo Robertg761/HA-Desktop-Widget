@@ -11,6 +11,7 @@ import {
   applyBackgroundTheme,
   applyBackgroundThemeFromColor,
   getAccentThemes,
+  getBackgroundWindowColor,
   setCustomThemes,
   applyUiPreferences,
   suspendSeasonalColors,
@@ -1684,24 +1685,36 @@ function ensureThemeTooltip() {
 /**
  * Position the theme tooltip relative to a target element.
  *
- * Computes whether the tooltip should be placed above or below the target based on available space,
- * clamps horizontal placement within the viewport with a padding margin, sets the tooltip's `top`
- * and `left` CSS properties, and records the chosen placement in `dataset.placement`.
+ * The tooltip sits under the whole swatch grid (above it when the window has no room below), not
+ * beside the one swatch: centred over a swatch it hid the swatches being compared, and over the
+ * first column it spilled across the icon rail. It stays inside the settings page, the arrow keeps
+ * pointing at the swatch, and the chosen placement is recorded in `dataset.placement`.
  * @param {Element} target - The DOM element to anchor the tooltip to.
  */
 function positionThemeTooltip(target) {
   if (!themeTooltip || !target) return;
   const rect = target.getBoundingClientRect();
+  const grid = (target.closest('.accent-theme-grid') || target).getBoundingClientRect();
+  const page = (
+    document.querySelector('#settings-modal .modal-body') || document.body
+  ).getBoundingClientRect();
   const tooltipRect = themeTooltip.getBoundingClientRect();
   const padding = 12;
-  const preferredTop = rect.top - tooltipRect.height - 12;
-  const placeBelow = preferredTop < padding;
-  const top = placeBelow ? rect.bottom + 12 : preferredTop;
-  let left = rect.left + rect.width / 2 - tooltipRect.width / 2;
-  left = Math.max(padding, Math.min(left, window.innerWidth - tooltipRect.width - padding));
+  const below = grid.bottom + 12;
+  const placeAbove = below + tooltipRect.height > window.innerHeight - padding;
+  const top = placeAbove ? grid.top - tooltipRect.height - 12 : below;
+  const minLeft = Math.max(padding, page.left + padding);
+  const maxLeft = Math.min(window.innerWidth, page.right) - tooltipRect.width - padding;
+  const centred = rect.left + rect.width / 2 - tooltipRect.width / 2;
+  const left = Math.max(minLeft, Math.min(centred, maxLeft));
+  const arrowX = rect.left + rect.width / 2 - left;
   themeTooltip.style.top = `${top}px`;
   themeTooltip.style.left = `${left}px`;
-  themeTooltip.dataset.placement = placeBelow ? 'bottom' : 'top';
+  themeTooltip.style.setProperty(
+    '--tooltip-arrow-x',
+    `${Math.max(16, Math.min(arrowX, tooltipRect.width - 16))}px`
+  );
+  themeTooltip.dataset.placement = placeAbove ? 'top' : 'bottom';
 }
 
 /**
@@ -1786,7 +1799,7 @@ function renderColorThemeOptions() {
     const tooltipName = getThemeDisplayName(theme);
     const tooltipDescription = isOriginalTheme
       ? isBackgroundTarget
-        ? t('Original dark base (no tint)')
+        ? t('Original base (no tint)')
         : t('Original accent blue')
       : theme.isCustom
         ? t('Saved custom color')
@@ -1800,12 +1813,25 @@ function renderColorThemeOptions() {
       option.classList.add('selected');
     }
 
-    if (isOriginalTheme && isBackgroundTarget) {
-      const isLightTheme = document.body?.classList.contains('theme-light');
-      const swatchRgb = isLightTheme ? '250, 250, 250' : '18, 22, 30';
-      const swatchHex = isLightTheme ? '#fafafa' : '#12161e';
-      option.style.setProperty('--swatch', swatchHex);
-      option.style.setProperty('--swatch-rgb', swatchRgb);
+    if (isBackgroundTarget) {
+      // A background swatch is the window the choice gives (the colour mixed in lightly, in the
+      // theme that is showing), with the choice itself as a dot, so the picker does not promise
+      // a full-strength colour. The untinted base has no dot, and is the window colour itself.
+      const windowColor =
+        getBackgroundWindowColor(isOriginalTheme ? null : theme.color) ??
+        getBackgroundWindowColor();
+      const windowRgb = hexToRgb(windowColor);
+      option.dataset.backgroundSwatch = isOriginalTheme ? 'base' : 'tinted';
+      option.style.setProperty('--swatch-window', windowColor);
+      option.style.setProperty(
+        '--swatch',
+        isOriginalTheme ? windowColor : theme.color || windowColor
+      );
+      if (isOriginalTheme && windowRgb) {
+        option.style.setProperty('--swatch-rgb', `${windowRgb.r}, ${windowRgb.g}, ${windowRgb.b}`);
+      } else if (theme.rgb) {
+        option.style.setProperty('--swatch-rgb', theme.rgb);
+      }
     } else {
       if (theme.color) {
         option.style.setProperty('--swatch', theme.color);
@@ -1924,6 +1950,8 @@ function previewThemeMode(mode) {
   const values = getPreviewValuesFromInputs();
   applyWindowEffects(values || state.CONFIG || {});
   updateThemeModeControl();
+  // The background swatches are drawn in the theme that is showing.
+  if (activeColorTarget === COLOR_TARGETS.background) renderColorThemeOptions();
 }
 
 function restoreSavedThemeMode() {
@@ -1934,8 +1962,9 @@ function restoreSavedThemeMode() {
   applyTheme(getSavedThemeMode());
   applyAccentTheme(state.CONFIG?.ui?.accent || getCurrentAccentTheme());
   applyBackgroundTheme(state.CONFIG?.ui?.background || getCurrentBackgroundTheme());
-  applyWindowEffects(state.CONFIG || {});
   applyDesktopAppearance(state.CONFIG || {});
+  applyWindowEffects(state.CONFIG || {});
+  if (activeColorTarget === COLOR_TARGETS.background) renderColorThemeOptions();
 }
 
 function initThemeModeControl() {
@@ -2112,6 +2141,8 @@ function initColorThemeSectionToggle() {
   sections.forEach((section) => {
     const toggle = section.querySelector('.section-toggle');
     if (!toggle) return;
+    const body = section.querySelector('.section-body');
+    if (body) personalizationSectionObserver?.observe(body);
 
     const isCollapsed =
       savedSectionStates[section.id] === true ? true : section.classList.contains('collapsed');
@@ -2124,6 +2155,23 @@ function initColorThemeSectionToggle() {
     };
   });
 }
+
+// A section's open height is measured when it opens and whenever its list is drawn, so a window
+// made narrower (or a tiling manager resizing it) while one is open reflowed the text inside it and
+// cut off its last rows. Watching the body re-measures it when its width changes.
+const personalizationSectionObserver =
+  typeof ResizeObserver === 'function'
+    ? new ResizeObserver((entries) => {
+        // Measuring changes layout, which an observer must not do while it is being delivered.
+        requestAnimationFrame(() => {
+          for (const { target } of entries) {
+            // A hidden Settings dialog measures as zero, which would collapse the section.
+            if (!target.getClientRects().length) continue;
+            syncPersonalizationSectionHeight(target.closest('.personalization-section'));
+          }
+        });
+      })
+    : null;
 
 function syncPersonalizationSectionHeight(section) {
   if (!section) return;
@@ -2877,6 +2925,19 @@ function sliderValueToOpacity(sliderValue, storedOpacity) {
     return storedOpacity;
   }
   return 0.5 + ((sliderValue - 1) * 0.5) / 99;
+}
+
+/**
+ * Write the Window opacity readout beside the slider: the opacity its position stands for, as a
+ * percentage. The slider runs 1 to 100 over opacities of 50 to 100%, so its raw position is not
+ * a figure anyone can read as a percentage.
+ */
+function updateOpacityReadout() {
+  const slider = document.getElementById('opacity-slider');
+  const readout = document.getElementById('opacity-value');
+  if (!slider || !readout) return;
+  const opacity = sliderValueToOpacity(parseInt(slider.value, 10) || 90, state.CONFIG?.opacity);
+  readout.textContent = `${Math.round(opacity * 100)}%`;
 }
 
 /**
@@ -3661,8 +3722,8 @@ function applyConfigFromProfileSync(nextConfig) {
   applyAccentTheme(state.CONFIG.ui?.accent || 'original');
   applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
   applyUiPreferences(state.CONFIG.ui || {});
-  applyWindowEffects(state.CONFIG || {});
   applyDesktopAppearance(state.CONFIG);
+  applyWindowEffects(state.CONFIG || {});
 }
 
 /**
@@ -5145,7 +5206,6 @@ async function openSettings(uiHooks) {
     const alwaysOnTop = document.getElementById('always-on-top');
     const hideOnBlur = document.getElementById('hide-on-blur');
     const opacitySlider = document.getElementById('opacity-slider');
-    const opacityValue = document.getElementById('opacity-value');
     const frostedGlass = document.getElementById('frosted-glass');
     const enableInteractionDebugLogs = document.getElementById('enable-interaction-debug-logs');
     const allowPrereleaseUpdates = document.getElementById('allow-prerelease-updates');
@@ -5239,7 +5299,7 @@ async function openSettings(uiHooks) {
     const storedOpacity = Math.max(0.5, Math.min(1, state.CONFIG.opacity || 0.95));
     const sliderScale = opacityToSliderValue(storedOpacity);
     if (opacitySlider) opacitySlider.value = sliderScale;
-    if (opacityValue) opacityValue.textContent = `${sliderScale}`;
+    updateOpacityReadout();
 
     const weatherEffectsEnabled = document.getElementById('weather-effects-enabled');
     const weatherOverrideSelect = document.getElementById('weather-override-select');
@@ -6353,8 +6413,8 @@ async function saveSettings() {
     applyAccentTheme(state.CONFIG.ui?.accent || getCurrentAccentTheme());
     applyBackgroundTheme(state.CONFIG.ui?.background || getCurrentBackgroundTheme());
     applyUiPreferences(state.CONFIG.ui || {});
-    applyWindowEffects(state.CONFIG || {});
     applyDesktopAppearance(state.CONFIG);
+    applyWindowEffects(state.CONFIG || {});
 
     // Update UI to reflect the newly saved settings selection.
     if (settingsUiHooks?.renderActiveTab) {
@@ -6425,9 +6485,6 @@ function renderAlertsListInline() {
       noAlertsMsg.textContent = t(
         'No alerts configured yet. Click the button below to add your first alert.'
       );
-      noAlertsMsg.style.padding = '20px';
-      noAlertsMsg.style.textAlign = 'center';
-      noAlertsMsg.style.color = 'var(--text-muted)';
       alertsList.appendChild(noAlertsMsg);
     }
 
@@ -7432,6 +7489,7 @@ function showProfileSyncAttention() {
 }
 
 export {
+  updateOpacityReadout,
   syncSegmentedIndicators,
   refreshRestoredDashboardSettings,
   openSettings,
@@ -7541,7 +7599,10 @@ async function refreshDesktopIntegration() {
   const format = document.getElementById('desktop-bindings-format');
   const renderBindings = () => {
     const field = format?.value === 'hyprlang' ? 'legacyBinding' : 'binding';
-    output.value = (info.shortcuts || []).map((shortcut) => shortcut[field] || '').join('\n');
+    const lines = (info.shortcuts || []).map((shortcut) => shortcut[field]).filter(Boolean);
+    output.value = lines.join('\n');
+    // Every bind is visible without scrolling, up to ten lines.
+    output.rows = Math.min(10, Math.max(4, lines.length));
   };
   renderBindings();
   if (format) format.onchange = renderBindings;

@@ -166,8 +166,31 @@ function getQuickAccessTabWheelDelta({ deltaX, deltaY, deltaMode }, viewWidth, d
   return direction === 'rtl' ? -pixels : pixels;
 }
 
+/** The smallest a sensor reading is shrunk to before it is cut with an ellipsis instead. */
+const SENSOR_VALUE_MIN_FONT_PX = 10;
+
+/**
+ * The font size at which a number that is too wide for its tile fits, so a reading shrinks instead
+ * of losing digits: '123,456.79' cut to '123,456…' reads as a smaller number than it is.
+ *
+ * @param {Object} metrics
+ * @param {number} metrics.fontSize - The size the reading is drawn at, in px.
+ * @param {number} metrics.naturalWidth - Its full width at that size.
+ * @param {number} metrics.availableWidth - The room it has.
+ * @returns {number|null} The size to draw it at, in px (half pixels, never below
+ *   SENSOR_VALUE_MIN_FONT_PX), or null when it already fits or cannot be measured.
+ */
+function getFittedSensorValueFontSize({ fontSize, naturalWidth, availableWidth }) {
+  if (!(fontSize > 0) || !(naturalWidth > 0) || !(availableWidth > 0)) return null;
+  if (naturalWidth <= availableWidth + 1) return null;
+  const fitted = Math.floor(((fontSize * availableWidth) / naturalWidth) * 2) / 2;
+  return Math.min(fontSize, Math.max(SENSOR_VALUE_MIN_FONT_PX, fitted));
+}
+
 export {
   QUICK_ACCESS_TAB_EDGE_INSET,
+  SENSOR_VALUE_MIN_FONT_PX,
+  getFittedSensorValueFontSize,
   getNextQuickAccessFocusIndex,
   getNextQuickAccessFocusIndexByLayout,
   getQuickAccessTabOverflow,

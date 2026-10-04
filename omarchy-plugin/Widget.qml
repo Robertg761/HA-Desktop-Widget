@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import "Clip.js" as Clip
 import "Countdown.js" as Countdown
 
 // Home Assistant in the Omarchy bar. HA Desktop Widget publishes its connection state and its
@@ -47,10 +48,19 @@ Panel {
   readonly property var panelTiles: running && Array.isArray(status.panel) ? status.panel : []
   readonly property var barTiles: running && Array.isArray(status.bar) ? status.bar : []
   readonly property var lineIcons: running && status.icons ? status.icons : ({})
-  readonly property string barText: barTiles
+  readonly property var barValues: barTiles
     .map(function(tile) { return Countdown.value(tile, root.now) })
     .filter(function(value) { return value !== "" })
-    .join("  ")
+  // The bar slot is as wide as its text, so each value is cut to a short stretch and the whole
+  // readout to a few dozen characters (a media title can run to 96); the tooltip has them in
+  // full. A vertical bar has a slot one glyph wide, so it shows only the glyph.
+  readonly property bool verticalBar: bar ? bar.vertical === true : false
+  readonly property int barValueChars: 16
+  readonly property int barTextChars: 48
+  readonly property string barText: verticalBar ? "" : clipText(
+    barValues.map(function(value) { return clipText(value, barValueChars) }).join("  "),
+    barTextChars
+  )
   readonly property bool hasVisibleCountdown: running && (
     barTiles.some(function(tile) { return Countdown.isRunning(tile, root.now) })
     || (opened && panelTiles.some(function(tile) { return Countdown.isRunning(tile, root.now) }))
@@ -95,10 +105,41 @@ Panel {
   readonly property bool showingControls: controlsTile !== null && controlState !== null
 
   readonly property color foreground: bar ? bar.foreground : Color.popups.text
-  readonly property color dimColor: Qt.darker(foreground, 1.55)
+  // The tone of secondary lines (status text, counts, "Unavailable"): the foreground blended toward
+  // the panel, and no further than still reads at 4.5:1 there. Qt.darker made a light theme's dim
+  // text darker than its primary text, and left several dark themes under 4.5:1 at 10 px.
+  readonly property color dimColor: quietTone(foreground, Color.popups.background)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property int columns: Math.max(1, Math.min(4, flatTiles.length))
   readonly property real tileGap: Style.space(8)
+
+  function colorChannel(value) {
+    return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4)
+  }
+
+  function luminance(c) {
+    return 0.2126 * colorChannel(c.r) + 0.7152 * colorChannel(c.g) + 0.0722 * colorChannel(c.b)
+  }
+
+  function contrastRatio(a, b) {
+    var x = luminance(a)
+    var y = luminance(b)
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)
+  }
+
+  // A tone between background and foreground, starting at 70% of the way to the foreground and going
+  // on only until it reads. A foreground that does not reach 4.5:1 itself is returned as it is.
+  function quietTone(fg, bg) {
+    var tone = fg
+    for (var share = 0.7; share <= 1.0001; share += 0.05) {
+      var amount = Math.min(1, share)
+      tone = Qt.rgba(bg.r + (fg.r - bg.r) * amount,
+                     bg.g + (fg.g - bg.g) * amount,
+                     bg.b + (fg.b - bg.b) * amount, 1)
+      if (contrastRatio(tone, bg) >= 4.5) break
+    }
+    return tone
+  }
 
   // Keyboard cursor, shared with mouse hover so only one tile is ever highlighted.
   property bool cursorActive: false
@@ -106,6 +147,12 @@ Panel {
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
+
+  // Cut to `limit` characters as a reader counts them (grapheme clusters, see Clip.js), so an emoji
+  // or a letter with its accents is never split at the cut.
+  function clipText(text, limit) {
+    return Clip.clip(text, limit)
+  }
 
   function statusLine() {
     if (!running) return "HA Desktop Widget is not running"
@@ -369,7 +416,9 @@ Panel {
     bar: root.bar
     text: root.barText !== "" ? "󰟐  " + root.barText : "󰟐"
     dimmed: !root.connected
-    tooltipText: root.running ? "Home Assistant: " + root.statusLine() : root.statusLine()
+    tooltipText: root.running
+      ? "Home Assistant: " + root.statusLine() + (root.barValues.length > 0 ? "\n" + root.barValues.join("  ") : "")
+      : root.statusLine()
     onPressed: function(buttonCode) {
       if (buttonCode === Qt.RightButton || buttonCode === Qt.MiddleButton) root.toggleWidget()
       else if (!root.running || root.flatTiles.length === 0) root.toggleWidget()
@@ -624,7 +673,6 @@ Panel {
       anchors.leftMargin: Style.space(6)
       anchors.rightMargin: Style.space(6)
       spacing: Style.space(3)
-      opacity: tileRoot.available ? 1 : 0.55
 
       TileIcon {
         anchors.horizontalCenter: parent.horizontalCenter
@@ -632,7 +680,9 @@ Panel {
         height: Style.space(22)
         icon: tileRoot.tile.icon || null
         color: tileRoot.iconColor
-        iconOpacity: tileRoot.active ? 1 : 0.72
+        // An unavailable tile is dimmed by its name's tone and its icon, not by fading the whole
+        // column, which put its text under 3:1 on most themes.
+        iconOpacity: tileRoot.active ? 1 : (tileRoot.available ? 0.72 : 0.45)
       }
 
       Text {

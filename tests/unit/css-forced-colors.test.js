@@ -171,6 +171,35 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
       expect(resolvedValue(document.querySelector('input'), 'background')).toMatch(/gradient/);
     });
 
+    // The light theme's stronger tracks and edges are for the colour themes; forced colours draw
+    // the ButtonText bar, and a light rule that outranked it left a thumb floating on nothing.
+    it.each(SLIDERS.filter((name) => name !== 'light-color-temp-slider'))(
+      'draws the %s track in ButtonText in the light theme too',
+      (name) => {
+        render('theme-light', `<input type="range" class="${name}">`);
+        const slider = document.querySelector('input');
+        expect(resolvedValue(slider, 'background', FORCED)).toBe('ButtonText');
+        expect(resolvedValue(slider, 'background')).toMatch(/gradient/);
+      }
+    );
+
+    it.each(['', 'theme-light'])(
+      'draws the Window opacity range as a ButtonText bar with a Highlight thumb (%s)',
+      (bodyClass) => {
+        render(
+          bodyClass,
+          `<div id="settings-modal"><div class="setting-slider"><input type="range" id="opacity-slider"></div></div>`
+        );
+        const slider = document.querySelector('input');
+        expect(resolvedValue(slider, 'background', FORCED)).toBe('ButtonText');
+        // The colour themes draw the same rail as the dialog sliders.
+        expect(resolvedValue(slider, 'background')).toMatch(/gradient/);
+        expect(
+          forcedRule("#settings-modal .setting-slider input[type='range']::-webkit-slider-thumb")
+        ).toContain('background: Highlight');
+      }
+    );
+
     it('draws every thumb as a Highlight disc with an edge', () => {
       const rule = forcedRule('::-webkit-slider-thumb');
       const css = forcedColorsCss();

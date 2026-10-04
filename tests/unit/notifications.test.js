@@ -309,4 +309,22 @@ describe('persistent notification helpers', () => {
     const modal = document.getElementById('persistent-notifications-modal');
     expect(modal.classList.contains('hidden')).toBe(false);
   });
+
+  it('describes the bell by its count, which its fixed label would otherwise hide', () => {
+    // An aria-label replaces the button's content as its name, so a screen reader never reached the
+    // number. The count is the button's description instead, which costs no translated string.
+    const html = require('fs').readFileSync(
+      require('path').resolve(__dirname, '../../index.html'),
+      'utf8'
+    );
+    document.body.innerHTML = html.slice(
+      html.indexOf('<button'),
+      html.indexOf('id="settings-btn"')
+    );
+    const button = document.getElementById('persistent-notifications-btn');
+    const describedBy = button.getAttribute('aria-describedby');
+    expect(describedBy).toBe('persistent-notifications-count');
+    expect(button.contains(document.getElementById(describedBy))).toBe(true);
+    expect(button.getAttribute('aria-label')).toBe('Home Assistant Notifications');
+  });
 });

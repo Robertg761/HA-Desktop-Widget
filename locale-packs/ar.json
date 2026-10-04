@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.55",
+  "version": "1.2.56",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1772,14 +1772,15 @@
     "Device class: Window": "نافذة",
     "Device class: Motion": "حركة",
     "Device class: Occupancy": "الإشغال",
+    "Original base (no tint)": "الأساس الأصلي (دون صبغة)",
     "Could not dismiss notification": "تعذّر تجاهل الإشعار",
-    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "وضع إعادة الترتيب مفعّل. اسحب أو حدّد أو اضغط Alt مع مفاتيح الأسهم لإعادة الترتيب. استخدم الأزرار على البطاقة للتثبيت أو إعادة التسمية أو الإزالة. اضغط Esc للإنهاء.",
     "No network connection detected. Check your network connection and the widget will retry automatically.": "لم يتم اكتشاف اتصال بالشبكة. تحقق من اتصالك بالشبكة وسيحاول التطبيق تلقائيًا مرة أخرى.",
     "Stop recording": "إيقاف التسجيل",
     "Press keys... (Esc to cancel)": "اضغط المفاتيح... (Esc للإلغاء)",
     "Discard color edits": "تجاهل تعديلات اللون",
     "Keep editing": "متابعة التعديل",
     "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "عرض أول {{shown}} من {{count}} أيقونة. اكتب لتضييق النتائج.",
-    "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "وضع إعادة الترتيب مفعّل. اسحب أو اضغط Alt مع مفاتيح الأسهم لإعادة الترتيب. اضغط Esc للإنهاء."
+    "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "وضع إعادة الترتيب مفعّل. اسحب أو اضغط Alt مع مفاتيح الأسهم لإعادة الترتيب. اضغط Esc للإنهاء.",
+    "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": "وضع إعادة الترتيب مفعّل. اسحب أو حدّد أو اضغط Alt مع مفاتيح الأسهم لإعادة الترتيب. استخدم الأزرار على البطاقة للتثبيت أو إعادة التسمية أو الإزالة. اضغط Esc للإنهاء."
   }
 }

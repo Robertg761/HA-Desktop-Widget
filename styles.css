@@ -177,7 +177,8 @@ html {
      against the current slate. The previous #808080 sat at ~3.7:1, under the
      4.5:1 WCAG AA floor for body text. */
   --text-tertiary: #9a9aa3;
-  --muted-text: #a0a0a0;
+  /* 5.7:1 on a lifted main view tile; the old #a0a0a0 was 5.1:1 there and 3.8:1 on a lit one. */
+  --muted-text: #a8a8ae;
 
   /* Brand & Accent */
   --accent: #64b5f6;
@@ -185,14 +186,18 @@ html {
   --accent-hover: #90caf9;
   /* Text on an accent fill; ui-utils picks black or white per accent. */
   --on-accent: #0a0c10;
-  /* Accent used as text. The light theme darkens it so labels and links clear 4.5:1 on white. */
-  --accent-text: var(--accent);
-  --accent-text-hover: var(--accent-hover);
+  /* Accent used as text and as a glyph. ui-utils solves a colour per accent for each theme (the
+     accent itself where it already reads well, lightened here for the dark tiles, darkened in the
+     light theme), so labels and links clear 4.5:1 for any accent, a custom one included. */
+  --accent-text: var(--accent-text-dark, var(--accent));
+  --accent-text-hover: var(--accent-text-dark-hover, var(--accent-hover));
   --accent-bg: rgba(var(--accent-rgb), 0.15);
   /* Keyboard focus outlines and focus borders. */
-  --focus-ring: var(--accent);
-  --primary: #64b5f6;
-  --primary-hover: #90caf9;
+  --focus-ring: var(--accent-ring-dark, var(--accent));
+  /* The warm glow of a lit light: the bulb glyph on a primary light card and in the brightness
+     dialog, and the end of the brightness track. The light theme steps it down to 3:1 and up. */
+  --lit-light: #ffd08a;
+  --lit-light-rgb: 255, 208, 138;
 
   /* Chart series (dark). Fixed categorical slots for comparison graphs — assigned in order,
      never cycled or generated. Validated as a set against the dark card surface for lightness,
@@ -206,15 +211,19 @@ html {
   --chart-series-6: #d55181;
   --chart-series-7: #d95926;
 
-  /* State Colors */
+  /* State Colors. These are fills and borders; the pale dark-theme hues fail as text on the
+     light panes, and --error is under 4:1 on the lifted dark tiles, so any status colour used
+     as text reads its -text twin below, which each theme solves for its own surfaces. */
   --success: #81c784;
   --success-hover: #a5d6a7;
   --danger: #f48fb1;
   --danger-hover: #f6a5c0;
   --warning: #ffb74d;
-  --warning-hover: #ffcc80;
   --error: #ef5350;
-  --error-hover: #e57373;
+  --success-text: var(--success);
+  --warning-text: var(--warning);
+  --error-text: #ff8a80;
+  --danger-text: var(--error-text);
 
   /* Surfaces */
   --surface-1: rgba(20, 24, 32, 0.8);
@@ -260,24 +269,21 @@ html {
   /* Borders */
   --border-color: rgba(255, 255, 255, 0.1);
   --border-hover: rgba(255, 255, 255, 0.2);
-  --border-focus: rgba(var(--accent-rgb), 0.5);
+  /* The edge of a text field or select, which is all that tells it from the pane around it: about
+     3:1 against the dialog, where --border-color (for dividers) is 1.4:1. */
+  --control-border: rgba(255, 255, 255, 0.36);
+  --control-border-hover: rgba(255, 255, 255, 0.5);
 
   /* ============================================
      GLASSMORPHISM SYSTEM
      ============================================ */
 
   /* Blur Effects */
-  --blur-none: 0;
   --blur-sm: 8px;
   --blur-md: 16px;
   --blur-lg: 24px;
   --blur-xl: 32px;
   --bg-blur: 25px;
-
-  /* Glass Opacity */
-  --glass-opacity-light: 0.6;
-  --glass-opacity-medium: 0.75;
-  --glass-opacity-dark: 0.9;
 
   /* Glass Effects (backdrop-filter compatible) */
   --glass-surface: rgba(24, 28, 37, 0.7);
@@ -299,7 +305,6 @@ html {
      ELEVATION & SHADOWS
      ============================================ */
 
-  --shadow-none: none;
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.1);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.2);
@@ -307,14 +312,10 @@ html {
   --shadow-2xl: 0 16px 48px rgba(0, 0, 0, 0.3);
 
   /* Legacy shadow variables (for compatibility) */
-  --shadow-1: var(--shadow-md);
   --shadow-2: var(--shadow-lg);
-  --shadow-3: var(--shadow-xl);
 
   /* Glow Effects */
   --glow-accent: 0 0 20px rgba(var(--accent-rgb), 0.3);
-  --glow-success: 0 0 20px rgba(129, 199, 132, 0.3);
-  --glow-danger: 0 0 20px rgba(244, 143, 177, 0.3);
   --glow-focus: 0 0 0 3px rgba(var(--accent-rgb), 0.2);
 
   /* ============================================
@@ -443,15 +444,22 @@ html {
 }
 
 /* Secondary lines on tiles and rows (state lines, captions, help text). Mixed from the text
-   colour on body, where the Omarchy palette overrides it; the light theme uses stronger mixes to
-   stay above 4.5:1 on white panes. */
+   colour on body, where the Omarchy palette overrides it. The mixes are set so the dimmest of
+   them stays above 4.5:1 on the lightest surface it sits on: a lifted main view tile in the dark
+   theme (the 50% mix it replaces was 4.3:1 there), the veiled panel under the page tabs in the
+   light one. */
 body {
-  --text-dim: color-mix(in srgb, var(--text-primary) 58%, transparent);
-  --text-faint: color-mix(in srgb, var(--text-primary) 50%, transparent);
+  --text-dim: var(--palette-text-dim, color-mix(in srgb, var(--text-primary) 66%, transparent));
+  --text-faint: var(--palette-text-faint, color-mix(in srgb, var(--text-primary) 58%, transparent));
 }
 
-/* Light Theme (Glassmorphism) */
-.theme-light {
+/* Light Theme (Glassmorphism).
+   The window and pane colours sit on the root, where the dark theme's do, and not on the body that
+   carries the theme class: the Background setting, a holiday and an Omarchy palette tint them with
+   inline styles on the root (see applyBackgroundColor), and a declaration on the body would shadow
+   that inline value, so in the light theme no background did anything unless Frosted glass was on.
+   The frosted rules below still override them on the body, as they do in the dark theme. */
+:root:has(> body.theme-light) {
   /* Base Colors */
   --bg-color: rgba(250, 250, 250, 0.8);
   --window-bg-rgb: 250, 250, 250;
@@ -460,23 +468,41 @@ body {
   --bg-secondary: rgba(255, 255, 255, 0.9);
   --bg-tertiary: rgba(240, 240, 245, 0.85);
 
-  /* Text Colors */
-  --text-color: #2c2c2c;
-  --text-primary: #1a1a1a;
-  --text-secondary: #666666;
-  /* 5.1:1 against the light window background (#fafafa). The previous #999999
-     sat at ~2.8:1, well under the 4.5:1 WCAG AA floor for body text. */
-  --text-tertiary: #6b6b70;
-  --muted-text: #808080;
-  --text-dim: color-mix(in srgb, var(--text-primary) 70%, transparent);
-  --text-faint: color-mix(in srgb, var(--text-primary) 62%, transparent);
-
   /* Surfaces */
   --surface-1: rgba(250, 250, 255, 0.8);
   --surface-2: rgba(255, 255, 255, 0.85);
   --surface-3: rgba(255, 255, 255, 0.9);
   --surface-hover: rgba(240, 240, 245, 0.95);
   --card-bg: rgba(255, 255, 255, 0.7);
+
+  /* Glass Effects */
+  --glass-surface: rgba(255, 255, 255, 0.7);
+  --glass-elevated: rgba(250, 250, 250, 0.8);
+  --glass-overlay: rgba(245, 245, 250, 0.85);
+}
+
+.theme-light {
+  /* Text Colors */
+  --text-color: #2c2c2c;
+  --text-primary: #1a1a1a;
+  /* The secondary text tokens are held to 4.5:1 on the darkest light surface they sit on, the
+     main view's panel under its grey veil (about #e3e3e3), not just on the near-white window:
+     #666666, #6b6b70 and #808080 were 4.5, 4.2 and 3.1:1 there. */
+  --text-secondary: #595959;
+  --text-tertiary: #5c5c62;
+  --muted-text: #5f5f66;
+  --text-dim: var(--palette-text-dim, color-mix(in srgb, var(--text-primary) 70%, transparent));
+  --text-faint: var(--palette-text-faint, color-mix(in srgb, var(--text-primary) 66%, transparent));
+
+  /* Status colours as text: the darker steps of the same hues, past 4.5:1 on the veiled light
+     panel and on the tint behind a status line. They are restated here because a token on
+     :root would resolve against the dark values. */
+  --success-text: #1f6b2a;
+  --warning-text: #8a5300;
+  --error-text: #b71c1c;
+  --danger-text: #b71c1c;
+  --lit-light: #b36a00;
+  --lit-light-rgb: 179, 106, 0;
 
   /* Chart series (light). The same seven hues re-stepped for the light card surface — not an
      automatic flip of the dark set. Several sit below 3:1 contrast here, which is why the graph
@@ -492,10 +518,11 @@ body {
   /* Borders */
   --border-color: rgba(0, 0, 0, 0.1);
   --border-hover: rgba(0, 0, 0, 0.2);
-  --border-focus: rgba(var(--accent-rgb), 0.5);
+  --control-border: rgba(0, 0, 0, 0.42);
+  --control-border-hover: rgba(0, 0, 0, 0.55);
   /* ui-utils computes these per accent; the mixes are the fallback before it runs. */
-  --accent-text: var(--accent-text-light, color-mix(in srgb, var(--accent) 62%, #000));
-  --accent-text-hover: var(--accent-text-light-hover, color-mix(in srgb, var(--accent) 50%, #000));
+  --accent-text: var(--accent-text-light, color-mix(in srgb, var(--accent) 55%, #000));
+  --accent-text-hover: var(--accent-text-light-hover, color-mix(in srgb, var(--accent) 45%, #000));
 
   /* Tiles: white panes on the pale glass, edged just enough to separate. */
   --tile-bg: rgba(255, 255, 255, 0.5);
@@ -514,9 +541,6 @@ body {
   --panel-veil: 0.09;
 
   /* Glass Effects */
-  --glass-surface: rgba(255, 255, 255, 0.7);
-  --glass-elevated: rgba(250, 250, 250, 0.8);
-  --glass-overlay: rgba(245, 245, 250, 0.85);
   --modal-backstop-rgb: 248, 248, 252;
   --settings-modal-bg-rgb: 248, 248, 252;
   --settings-modal-bg-alpha: 0.84;
@@ -602,8 +626,6 @@ body.frosted-glass {
   /* Update blur variable for child elements */
   --bg-blur: var(--frosted-blur, 32px);
   --glass-blur-strong: var(--bg-blur);
-  --glass-blur-medium: calc(var(--bg-blur) * 0.85);
-  --glass-blur-light: calc(var(--bg-blur) * 0.65);
 }
 
 /* Frosted Glass Mode - Light Theme */
@@ -697,22 +719,6 @@ body.frosted-glass .widget-content {
   -webkit-backdrop-filter: none;
 }
 
-body.software-glass.frosted-glass .modal-content {
-  background:
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, var(--software-acrylic-highlight-alpha, 0.08)),
-      rgba(255, 255, 255, 0)
-    ),
-    linear-gradient(var(--glass-elevated), var(--glass-elevated)), var(--modal-backstop);
-  backdrop-filter: blur(var(--bg-blur)) saturate(170%) contrast(108%);
-  -webkit-backdrop-filter: blur(var(--bg-blur)) saturate(170%) contrast(108%);
-  box-shadow:
-    var(--shadow-sm),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.12);
-}
-
 body.linux-performance-mode,
 body.linux-performance-mode .widget-header,
 body.linux-performance-mode .widget-content,
@@ -740,19 +746,22 @@ body.linux-performance-mode .rename-btn {
 body.linux-performance-mode {
   --bg-blur: 0px;
   --glass-blur-strong: 0px;
-  --glass-blur-medium: 0px;
-  --glass-blur-light: 0px;
+}
+
+/* Settings is the most see-through dialog (82 to 84% fill), counting on a 56px backdrop blur to
+   soften the dashboard behind it. On Linux that blur is not a given (the software glass has none,
+   and a machine without GPU compositing draws none), so the clock and tile labels show through
+   the panel crisp, and it carries its own legibility there, like the other dialogs. Windows and
+   macOS keep the translucent panel, with or without Frosted glass: linux-performance-mode is not
+   Linux-only, so this keys on the platform. */
+body[data-platform='linux'] {
+  --settings-modal-bg-alpha: 0.96;
+  --settings-modal-panel-alpha: 0.96;
 }
 
 /* Cards and tiles are washes over the window's single pane of glass, frosted or
    not (see .status-card and .control-item); a second backdrop blur per tile would
    only cost frames. */
-
-/* Section headers in frosted glass mode */
-body.frosted-glass .section-title {
-  color: var(--text-primary);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-}
 
 /* Loading overlay in frosted glass mode */
 body.frosted-glass .loading-overlay {
@@ -763,12 +772,6 @@ body.frosted-glass .loading-overlay {
 
 body.theme-light.frosted-glass .loading-overlay {
   background: rgba(var(--loading-overlay-rgb, 245, 245, 250), 0.7);
-}
-
-/* Modal content in frosted glass mode */
-body.frosted-glass .modal-content {
-  background: linear-gradient(var(--glass-elevated), var(--glass-elevated)), var(--modal-backstop);
-  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 /* Base styles */
@@ -905,9 +908,6 @@ body.desktop-pin-mode .widget-content,
 body.desktop-pin-mode #settings-modal,
 body.desktop-pin-mode #quick-controls-modal,
 body.desktop-pin-mode #persistent-notifications-modal,
-body.desktop-pin-mode #hotkeys-modal,
-body.desktop-pin-mode #alerts-modal,
-body.desktop-pin-mode #hotkey-config-modal,
 body.desktop-pin-mode #alert-config-modal,
 body.desktop-pin-mode #alert-entity-picker-modal {
   display: none !important;
@@ -967,7 +967,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode
 }
 
 body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content .control-item,
-body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-unavailable,
 body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-empty {
   pointer-events: none;
 }
@@ -1101,14 +1100,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   cursor: default;
   background: rgba(var(--desktop-pin-ink-rgb), 0.03);
   color: var(--text-secondary);
-}
-
-.desktop-pin-action-danger {
-  border-color: rgba(244, 143, 177, 0.26);
-}
-
-.desktop-pin-action-danger:hover {
-  background: rgba(244, 143, 177, 0.12);
 }
 
 .desktop-pin-content {
@@ -3012,9 +3003,13 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   gap: 8px;
   -webkit-app-region: drag;
   flex: 1;
+  /* Without this the nowrap title keeps the area as wide as itself, so in a narrow window it
+     pushes the header buttons out of the window instead of being cut short. */
+  min-width: 0;
 }
 
 .widget-title {
+  min-width: 0;
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
@@ -3026,7 +3021,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 /* Status dot leads the title, with a soft halo in its own colour. */
 .connection-indicator {
-  --indicator-color: var(--danger);
+  --indicator-color: var(--error);
   position: relative;
   order: -1;
   width: 8px;
@@ -3058,6 +3053,24 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 .connection-indicator.connected {
   --indicator-color: #4ade80;
   animation: pulseIndicator 3s ease-in-out 2;
+}
+
+/* Not connected is a ring and connected a solid dot, so the state does not rest on hue alone. */
+.connection-indicator:not(.connected) {
+  background: transparent;
+  box-shadow:
+    inset 0 0 0 2px var(--indicator-color),
+    0 0 0 3px color-mix(in srgb, var(--indicator-color) 18%, transparent),
+    0 0 10px color-mix(in srgb, var(--indicator-color) 50%, transparent);
+}
+
+/* The pastel dot colours are 1.7:1 and 2.2:1 on the light header; these are past 3:1 there. */
+body.theme-light .connection-indicator {
+  --indicator-color: var(--error-text);
+}
+
+body.theme-light .connection-indicator.connected {
+  --indicator-color: #15803d;
 }
 
 /* The dot is 8px, but it is a button (it opens the connection details), so its target reaches 24px. */
@@ -3102,7 +3115,9 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 .connection-status-tooltip::after {
   content: '';
   position: absolute;
-  left: 50%;
+  /* ui-utils sets --arrow-x so the arrow points at the dot, which sits near the tooltip's start
+     once the tooltip is held inside the window. */
+  left: var(--arrow-x, 50%);
   bottom: -8px;
   transform: translateX(-50%);
   border-width: 8px 8px 0 8px;
@@ -3136,6 +3151,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 .header-controls {
   display: flex;
+  flex: none;
   gap: 4px;
   -webkit-app-region: no-drag;
 }
@@ -3197,20 +3213,28 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 .notification-bell-count {
   position: absolute;
   top: -6px;
-  right: -7px;
+  inset-inline-end: -7px;
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
   border-radius: var(--radius-full);
   border: 1px solid rgba(255, 255, 255, 0.28);
   background: var(--danger);
-  color: #ffffff;
+  /* White on this pink was 2.2:1; the dark label is 8.8:1. (Not --on-accent, which follows the
+     accent and can be white.) */
+  color: #0a0c10;
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-bold);
   line-height: 14px;
   text-align: center;
   box-shadow: var(--shadow-sm);
   pointer-events: none;
+}
+
+/* On the white header the pink badge fades into it, so the light theme's badge is the error red. */
+body.theme-light .notification-bell-count {
+  background: var(--error-text);
+  color: #ffffff;
 }
 
 #settings-btn:hover {
@@ -3233,7 +3257,7 @@ body.first-run-active #settings-btn {
 
 #close-btn:hover {
   background: rgba(239, 83, 80, 0.18);
-  color: var(--error);
+  color: var(--error-text);
 }
 
 /* Main content */
@@ -3356,11 +3380,22 @@ body.first-run-active .widget-content > * {
 
 .media-tile-content {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(72px, 110px) auto;
+  /* The seek column is as wide as its two times and a bar between them, so a film or a podcast
+     (h:mm:ss) gets the room it needs and an ordinary track (m:ss) leaves that room to the title.
+     At 72-110px the long times ran into the bar and the previous button. */
+  grid-template-columns: minmax(0, 1fr) fit-content(140px) auto;
   align-items: center;
   gap: 4px 8px;
   min-width: 0;
   flex: 1;
+}
+
+/* A wide window has room to spare for the bar, which at 36px reads as a stub beside a title with
+   hundreds of pixels to itself. */
+@media (min-width: 640px) {
+  .media-tile-content {
+    grid-template-columns: minmax(0, 1fr) minmax(min-content, 200px) auto;
+  }
 }
 
 .media-tile-info {
@@ -3394,23 +3429,25 @@ body.first-run-active .widget-content > * {
   align-items: center;
   gap: 4px;
   width: 100%;
-  max-width: 110px;
   grid-column: 2;
   justify-self: stretch;
 }
 
+/* A time takes the width of its own text, so a long one never runs under the bar. */
 .media-tile-time {
+  flex: none;
   font-size: var(--font-size-xs-plus);
   color: var(--muted-text);
   font-variant-numeric: tabular-nums;
-  min-width: 26px;
+  white-space: nowrap;
   text-align: center;
 }
 
 .media-tile-seek-bar {
   flex: 1;
   height: 3px;
-  background: var(--tile-border-hover);
+  /* The unfilled part of the track had the tile's hairline colour, about 1.5:1 against the tile. */
+  background: color-mix(in srgb, var(--text-primary) 22%, transparent);
   border-radius: var(--radius-full);
   position: relative;
   min-width: 36px;
@@ -3423,7 +3460,7 @@ body.first-run-active .widget-content > * {
 
 .media-tile-seek-fill {
   height: 100%;
-  background: var(--accent);
+  background: var(--accent-text);
   transition: width var(--duration-slower) linear;
   border-radius: var(--radius-full);
   box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.5);
@@ -3564,14 +3601,8 @@ body.first-run-active .widget-content > * {
   border-color: var(--tile-border-hover);
 }
 
-.card-content {
-  flex: 1;
-  min-width: 0;
-}
-
 /* Sections */
-.controls-section,
-.cameras-section {
+.controls-section {
   margin-bottom: 16px;
 }
 
@@ -3587,17 +3618,6 @@ body.first-run-active .widget-content > * {
   display: flex;
   gap: 4px;
   align-items: center;
-}
-
-.section-title {
-  font-size: var(--font-size-sm);
-  color: var(--muted-text);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .section-btn {
@@ -3879,7 +3899,7 @@ body.first-run-active .widget-content > * {
 }
 
 .qa-tab-delete:hover {
-  color: var(--error);
+  color: var(--error-text);
   background: rgba(239, 83, 80, 0.15);
 }
 
@@ -4181,12 +4201,12 @@ body.first-run-active .widget-content > * {
     inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
-/* Unavailable entity styling: the same pane, dashed and dimmed. */
+/* Unavailable entity styling: the same pane, dashed and dimmed by colour. Fading the whole tile
+   as well took its name under 3:1 and left the hint brighter than the name. */
 .control-item.unavailable-entity {
   background: transparent;
   border-style: dashed;
   border-color: var(--tile-border-hover);
-  opacity: 0.75;
   cursor: not-allowed;
 }
 
@@ -4208,17 +4228,16 @@ body.first-run-active .widget-content > * {
 }
 
 .control-item.unavailable-entity .unavailable-icon {
-  color: var(--warning);
+  color: var(--warning-text);
   opacity: 0.85;
 }
 
 .control-item.unavailable-entity .control-name {
-  opacity: 0.8;
-  color: var(--text-secondary);
+  color: var(--text-dim);
 }
 
 .control-item.unavailable-entity .unavailable-state {
-  color: var(--text-muted);
+  color: var(--text-faint);
   font-size: var(--font-size-xs-plus);
   font-style: italic;
 }
@@ -4294,30 +4313,15 @@ body.first-run-active .widget-content > * {
   background: var(--surface-2);
 }
 
-.entity-selector-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px;
-  border-bottom: 1px solid var(--border-color);
-  transition: background-color var(--transition-base);
-  gap: 8px;
-  min-width: 0;
-}
-
-.entity-selector-item:last-child {
-  border-bottom: none;
-}
-
-.entity-selector-item:hover {
-  background: var(--surface-hover);
-}
-
+/* A row's actions wrap under the name when the name would be left with less than 9rem, as in
+   German, where 'Als Karte 1 festlegen' alone takes most of a 500px window, or at 150% text size.
+   Squeezing the name instead left only its first letter. */
 .entity-item {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px 12px;
   padding: 12px;
   border-bottom: 1px solid var(--border-color);
   transition: background-color var(--transition-base);
@@ -4333,16 +4337,16 @@ body.first-run-active .widget-content > * {
 }
 
 .entity-item.selected {
-  background: var(--primary-alpha);
-  border-inline-start: 3px solid var(--primary-color);
+  background: var(--accent-bg);
+  border-inline-start: 3px solid var(--accent);
 }
 
 .selected-badge {
-  color: var(--primary-color);
-  font-size: var(--font-size-base);
+  color: var(--accent-text);
+  font-size: var(--font-size-sm);
   font-weight: 600;
   padding: 4px 8px;
-  background: var(--primary-alpha);
+  background: var(--accent-bg);
   border-radius: var(--radius-sm);
 }
 
@@ -4372,20 +4376,19 @@ body.first-run-active .widget-content > * {
 
 .entity-item .entity-id {
   font-size: var(--font-size-xs-plus);
-  color: var(--text-secondary);
+  color: var(--text-dim);
   font-family: var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   display: block;
-  opacity: 0.7;
 }
 
 .entity-item-main {
   display: flex;
   align-items: center;
   gap: 12px;
-  flex: 1;
+  flex: 1 1 9rem;
   min-width: 0;
   overflow: hidden;
 }
@@ -4399,90 +4402,14 @@ body.first-run-active .widget-content > * {
   overflow: hidden;
 }
 
-.quick-access-view-manager {
-  display: grid;
-  gap: var(--space-2);
-  padding-bottom: var(--space-3);
-  margin-bottom: var(--space-3);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.quick-access-view-actions,
 .quick-access-entity-actions {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-}
-
-.quick-access-view-actions .form-control {
-  min-width: 0;
 }
 
 .quick-access-entity-actions {
   flex-shrink: 0;
-}
-
-.quick-access-entity-view-select {
-  width: 150px;
-  min-width: 120px;
-  max-width: 180px;
-  font-size: var(--font-size-sm);
-  padding: 6px 8px;
-}
-
-.entity-selector-info {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.entity-selector-icon {
-  font-size: var(--font-size-lg);
-  width: 24px;
-  text-align: center;
-}
-
-.entity-selector-details {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.entity-selector-name {
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 2px;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  hyphens: auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.entity-selector-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--font-size-sm);
-}
-
-.entity-selector-type {
-  color: var(--accent-text);
-  font-weight: 500;
-  background: var(--accent-bg);
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-sm);
-}
-
-.entity-selector-state {
-  color: var(--text-secondary);
-}
-
-.entity-selector-actions {
-  display: flex;
-  gap: 8px;
 }
 
 .entity-selector-btn {
@@ -4515,13 +4442,6 @@ body.first-run-active .widget-content > * {
   background: var(--danger-hover);
 }
 
-.no-entities {
-  padding: 20px;
-  text-align: center;
-  color: var(--text-secondary);
-  font-style: italic;
-}
-
 /* Shared empty state for entity lists and pickers. Rendered from several places
    in src/settings.js and src/ui.js; until now the class carried no styling at
    all and the message rendered as unpadded, full-contrast body text. */
@@ -4539,23 +4459,6 @@ body.first-run-active .widget-content > * {
   border: 1px dashed var(--border-color);
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.03);
-}
-
-/* Optional leading glyph, e.g. <span class="no-entities-message-icon">…</span>
-   holding an SVG from packages/widget-renderer/src/icons.js. */
-.no-entities-message-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  color: var(--text-tertiary);
-}
-
-.no-entities-message-icon svg {
-  display: block;
-  width: 100%;
-  height: 100%;
 }
 
 .theme-light .no-entities-message {
@@ -4598,21 +4501,34 @@ body.first-run-active .widget-content > * {
   }
 }
 
-/* Weather Configuration Styles */
+/* Weather Configuration Styles. The current entity sits in the same pane as the list below it. */
 .weather-info {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  margin-top: 8px;
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  border-radius: var(--radius-tile);
 }
 
 .weather-info span {
   font-weight: 500;
   color: var(--text-primary);
+}
+
+.weather-info #current-weather-name[data-state='selected'] {
+  font-weight: 600;
+  color: var(--accent-text);
+}
+
+.weather-info #current-weather-name:is([data-state='auto'], [data-state='none']) {
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.weather-info #current-weather-name[data-state='auto'] {
+  font-style: italic;
 }
 
 /* Enhanced Weather Card Styles */
@@ -4737,233 +4653,67 @@ body.first-run-active .widget-content > * {
   --weather-secondary: #f47c7c;
 }
 
-.weather-icon.animated {
-  animation: weatherPulse 2s ease-in-out infinite;
+/* The palette above is drawn for a dark card: pale cloud, pale rays and a white halo come out at
+   1.0 to 1.6:1 on the light one. The light theme gets the same hues stepped down to 3:1 and up on
+   the near-white card (and the dialog behind the weather picker). The Readable preset is dark
+   whatever theme is chosen, so it keeps the palette above. */
+body.theme-light:not(.high-contrast) .weather-icon {
+  --weather-primary: #c07800;
+  --weather-secondary: #2b86a8;
+  --weather-cloud: #5f7c99;
+  --weather-cloud-fill: #dbe6f2;
 }
 
-@keyframes weatherPulse {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.1);
-  }
+body.theme-light:not(.high-contrast) :is(.weather-icon-cloudy, .weather-icon-partlycloudy) {
+  --weather-cloud: #5f7c99;
+  --weather-cloud-fill: #e6eef7;
 }
 
-/* Base weather icon animations */
-@keyframes rain {
-  0% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.05);
-  }
-  100% {
-    transform: scale(1);
-  }
+body.theme-light:not(.high-contrast) .weather-icon-fog {
+  --weather-primary: #4f93ad;
+  --weather-secondary: #2b86a8;
 }
 
-@keyframes snow {
-  0% {
-    transform: rotate(0deg) scale(1);
-  }
-  25% {
-    transform: rotate(5deg) scale(1.02);
-  }
-  75% {
-    transform: rotate(-5deg) scale(1.02);
-  }
-  100% {
-    transform: rotate(0deg) scale(1);
-  }
+body.theme-light:not(.high-contrast) .weather-icon-clear-night {
+  --weather-primary: #5a78c8;
+  --weather-secondary: #8a6fc0;
 }
 
-@keyframes wind {
-  0%,
-  100% {
-    transform: translateX(0) scale(1);
-  }
-  25% {
-    transform: translateX(-1px) scale(1.02);
-  }
-  75% {
-    transform: translateX(1px) scale(1.02);
-  }
+body.theme-light:not(.high-contrast) .weather-icon-exceptional {
+  --weather-primary: #c07800;
+  --weather-secondary: #c8423f;
 }
 
-@keyframes sun {
-  0% {
-    transform: rotate(0deg) scale(1);
-  }
-  50% {
-    transform: rotate(180deg) scale(1.1);
-  }
-  100% {
-    transform: rotate(360deg) scale(1);
-  }
+body.theme-light:not(.high-contrast) :is(.weather-glyph-ray, .weather-glyph-bolt) {
+  stroke: #c07800;
 }
 
-@keyframes lightning {
-  0%,
-  90%,
-  100% {
-    opacity: 1;
-  }
-  5%,
-  15%,
-  25%,
-  35%,
-  45%,
-  55%,
-  65%,
-  75%,
-  85% {
-    opacity: 0.3;
-  }
+body.theme-light:not(.high-contrast) .weather-glyph-precip {
+  stroke: #1f8fc0;
 }
 
-@keyframes cloud {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  50% {
-    transform: translateX(2px);
-  }
+body.theme-light:not(.high-contrast) .weather-glyph-hail {
+  fill: #2f8fc4;
 }
 
-@keyframes fog {
-  0%,
-  100% {
-    transform: translateX(-1px);
-  }
-  50% {
-    transform: translateX(1px);
-  }
+body.theme-light:not(.high-contrast) :is(.weather-glyph-wind, .weather-glyph-fog) {
+  stroke: #4f93ad;
 }
 
-/* Rain droplets animation */
-@keyframes rainDroplets {
-  0% {
-    transform: translateY(0px) translateX(0px);
-    opacity: 0;
-  }
-  10% {
-    opacity: 1;
-  }
-  90% {
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(15px) translateX(2px);
-    opacity: 0;
-  }
+body.theme-light:not(.high-contrast) .weather-glyph-alert {
+  fill: #c8423f;
+  stroke: #c07800;
 }
 
-/* Snowflakes animation */
-@keyframes snowflakes {
-  0% {
-    transform: translateY(-15px) translateX(0px) rotate(0deg);
-    opacity: 0;
-  }
-  10% {
-    opacity: 1;
-  }
-  90% {
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(15px) translateX(3px) rotate(360deg);
-    opacity: 0;
-  }
+body.theme-light:not(.high-contrast) .weather-glyph {
+  filter: drop-shadow(0 1px 2px rgba(20, 30, 50, 0.3));
 }
 
-/* Lightning bolts animation */
-@keyframes lightningBolts {
-  0%,
-  90%,
-  100% {
-    opacity: 0;
-    transform: scale(0.8);
-  }
-  5%,
-  15%,
-  25%,
-  35%,
-  45%,
-  55%,
-  65%,
-  75%,
-  85% {
-    opacity: 1;
-    transform: scale(1.2);
-  }
-}
-
-/* Wind particles animation */
-@keyframes windParticles {
-  0% {
-    transform: translateX(-10px) translateY(0px);
-    opacity: 0;
-  }
-  10% {
-    opacity: 0.6;
-  }
-  90% {
-    opacity: 0.6;
-  }
-  100% {
-    transform: translateX(10px) translateY(-2px);
-    opacity: 0;
-  }
-}
-
-/* Weather icon base styles */
+/* Weather icon base styles. The glyph is an SVG that stays still; motion lives in the ambient
+   weather effects. */
 .weather-icon {
   position: relative;
   overflow: visible;
-}
-
-.weather-icon-rainy,
-.weather-icon-pouring {
-  animation: rain 2s ease-in-out infinite;
-}
-
-.weather-icon-snowy,
-.weather-icon-snowy-rainy,
-.weather-icon-hail {
-  animation: snow 3s ease-in-out infinite;
-}
-
-.weather-icon-windy,
-.weather-icon-windy-variant {
-  animation: wind 1.5s ease-in-out infinite;
-}
-
-.weather-icon-sunny {
-  animation: sun 4s linear infinite;
-}
-
-.weather-icon-lightning,
-.weather-icon-lightning-rainy {
-  animation: lightning 0.5s ease-in-out infinite;
-}
-
-.weather-icon-cloudy,
-.weather-icon-partlycloudy {
-  animation: cloud 4s ease-in-out infinite;
-}
-
-.weather-icon-fog {
-  animation: fog 3s ease-in-out infinite;
-}
-
-/* The old condition animations were designed for emoji and rotate or move the
- * whole glyph. SVG weather illustrations stay still; motion remains in the
- * widget's ambient weather effects instead. */
-.weather-icon.weather-icon-svg {
-  animation: none;
 }
 
 .weather-content {
@@ -4991,7 +4741,7 @@ body.first-run-active .widget-content > * {
 
 .weather-condition {
   font-size: var(--font-size-sm);
-  color: color-mix(in srgb, var(--text-primary) 60%, transparent);
+  color: var(--text-dim);
   line-height: 1.2;
   word-wrap: break-word;
   overflow-wrap: break-word;
@@ -4999,15 +4749,18 @@ body.first-run-active .widget-content > * {
 
 .weather-details {
   display: flex;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 2px 10px;
   margin-top: 6px;
 }
 
-/* Humidity and wind as quiet inline readouts, not chips. */
+/* Humidity and wind as quiet inline readouts, not chips. In a narrow card they wrap as a whole, one
+   under the other, and never inside ('12 km/' over 'h'). */
 .weather-detail {
   display: flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
   font-size: var(--font-size-xs-plus);
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
@@ -5030,6 +4783,9 @@ body.first-run-active .widget-content > * {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* The clock is sized to its card (see .time-display), so it shrinks in the half-width card that
+     enlarged text leaves instead of ending in an ellipsis. */
+  container-type: inline-size;
 }
 
 .status-card.time-card .time-content {
@@ -5039,8 +4795,14 @@ body.first-run-active .widget-content > * {
   height: 100%;
   align-items: center;
   justify-content: center;
-  flex: none;
-  min-width: auto;
+  /* It may shrink to the card, so a long date (Spanish 'miércoles, 30 de septiembre de 2026')
+     wraps instead of being cut off at both ends. The card's padding is 16px a side and a date
+     that only just fits used to spill a few pixels into it; those 8px a side stay available, so
+     only a date that really is too long wraps. */
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: calc(100% + 16px);
+  margin-inline: -8px;
 }
 
 .status-card.time-card .time-main {
@@ -5051,7 +4813,7 @@ body.first-run-active .widget-content > * {
 }
 
 .status-card.time-card .time-display {
-  font-size: var(--font-size-3xl);
+  font-size: clamp(var(--font-size-lg), 16cqi, var(--font-size-3xl));
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
   line-height: 1;
@@ -5071,10 +4833,6 @@ body.first-run-active .widget-content > * {
   padding: 0 4px;
 }
 
-body.theme-light .status-card.time-card .date-display {
-  color: color-mix(in srgb, var(--accent) 72%, #000);
-}
-
 .status-card.time-card .date-display {
   font-size: var(--font-size-xs-plus);
   color: var(--accent-text);
@@ -5087,6 +4845,7 @@ body.theme-light .status-card.time-card .date-display {
   overflow-wrap: break-word;
   hyphens: auto;
   width: 100%;
+  text-wrap: balance;
 }
 
 /* Primary Entity Card Styles */
@@ -5129,8 +4888,14 @@ body.theme-light .status-card.time-card .date-display {
 
 /* A lit primary light card warms its icon to match the glow behind it. */
 .status-card.primary-entity-card.primary-light-card[data-state='on'] .control-icon {
-  color: #ffd08a;
+  color: var(--lit-light);
   filter: drop-shadow(0 0 10px rgba(255, 196, 110, 0.55));
+}
+
+body.theme-light:not(.high-contrast)
+  .status-card.primary-entity-card.primary-light-card[data-state='on']
+  .control-icon {
+  filter: drop-shadow(0 0 8px rgba(var(--lit-light-rgb), 0.4));
 }
 
 .status-card.primary-entity-card .control-item {
@@ -5173,41 +4938,12 @@ body.theme-light .status-card.time-card .date-display {
 }
 
 /* Primary Cards Settings */
-.primary-cards-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  margin-bottom: var(--space-4);
-}
 
-.primary-cards-summary {
-  display: flex;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-}
-
-.primary-card-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 120px;
-}
-
-.primary-card-label {
-  font-size: var(--font-size-sm);
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: var(--text-secondary);
-  font-weight: 600;
-}
-
+/* The subtitle under a primary card's name ("Weather (default)"). It is also a .form-help, which sets
+   its size and colour; this had set bold on top of that, the only bold help line in Settings. */
 .primary-card-value {
-  font-size: var(--font-size-base);
-  font-weight: 600;
-  color: var(--text-primary);
-  word-break: break-word;
+  font-weight: var(--font-weight-normal);
+  overflow-wrap: break-word;
 }
 
 .primary-card-row {
@@ -5219,13 +4955,6 @@ body.theme-light .status-card.time-card .date-display {
   align-items: center;
   gap: var(--space-2);
   flex-wrap: wrap;
-}
-
-.primary-card-action-label {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--text-secondary);
-  min-width: 46px;
 }
 
 .primary-card-actions .btn {
@@ -5241,9 +4970,11 @@ body.theme-light .status-card.time-card .date-display {
 
 .primary-cards-list-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-  flex-shrink: 0;
+  max-width: 100%;
+  margin-inline-start: auto;
 }
 
 .primary-cards-list-actions .btn {
@@ -5299,7 +5030,7 @@ body.theme-light .status-card.time-card .date-display {
 
 .custom-entity-icons-toolbar .form-group {
   flex: 1;
-  min-width: 220px;
+  min-width: min(220px, 100%);
   margin-bottom: 0;
 }
 
@@ -5324,8 +5055,8 @@ body.theme-light .status-card.time-card .date-display {
   font-weight: 600;
   letter-spacing: 0.3px;
   color: var(--accent-text);
-  background: rgb(var(--accent-rgb) / 14%);
-  border: 1px solid rgb(var(--accent-rgb) / 28%);
+  background: rgba(var(--accent-rgb), 0.14);
+  border: 1px solid rgba(var(--accent-rgb), 0.28);
   border-radius: var(--radius-full);
   padding: 2px 8px;
   margin-top: 3px;
@@ -5385,7 +5116,7 @@ body.theme-light .status-card.time-card .date-display {
   gap: 8px;
   padding: 10px;
   border-radius: var(--radius-md);
-  border: 1px solid rgb(var(--accent-rgb) / 35%);
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
   background: var(--surface-1);
   box-shadow: 0 10px 24px rgb(0 0 0 / 22%);
   z-index: 2;
@@ -5393,12 +5124,12 @@ body.theme-light .status-card.time-card .date-display {
 
 .custom-entity-icon-picker-meta {
   font-size: var(--font-size-sm);
-  color: var(--text-muted);
+  color: var(--text-dim);
 }
 
 .custom-entity-icon-picker-empty {
   font-size: var(--font-size-sm);
-  color: var(--text-muted);
+  color: var(--text-dim);
 }
 
 .custom-entity-icon-picker-grid {
@@ -5424,13 +5155,19 @@ body.theme-light .status-card.time-card .date-display {
 .custom-entity-icon-choice:hover,
 .custom-entity-icon-choice:focus-visible {
   border-color: var(--focus-ring);
-  background: rgb(var(--accent-rgb) / 14%);
+  background: rgba(var(--accent-rgb), 0.14);
 }
 
 @media (width <= 640px) {
   .custom-entity-icon-item {
     flex-direction: column;
+    flex-wrap: nowrap;
     align-items: stretch;
+  }
+
+  /* In a column the 9rem basis of a list row's name would be a height. */
+  .custom-entity-icon-item > .entity-item-main {
+    flex: none;
   }
 
   .custom-entity-icon-controls {
@@ -5464,54 +5201,11 @@ body.theme-light .status-card.time-card .date-display {
   color: var(--text-secondary);
 }
 
-/* Sensor Modal Styles */
-.sensor-modal .modal-content {
-  max-width: 85vw;
-}
-
-.sensor-details {
-  text-align: center;
-  padding: 20px;
-}
-
-.sensor-value {
-  margin-bottom: 20px;
-}
-
-.sensor-value .value {
-  font-size: var(--font-size-6xl);
-  font-weight: 600;
-  color: var(--accent-text);
-  display: block;
-}
-
-.sensor-value .unit {
-  font-size: var(--font-size-lg);
-  color: var(--text-secondary);
-  margin-inline-start: 8px;
-}
-
-.sensor-info {
-  text-align: start;
-  background: var(--surface-1);
-  padding: 16px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
-}
-
-.sensor-info p {
-  margin: 8px 0;
-  font-size: var(--font-size-base);
-}
-
 /* Brightness Slider Modal Styles */
 .brightness-modal .modal-content {
   max-width: 360px;
   width: 90vw;
   padding: 0;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
 }
 
 .brightness-modal-content {
@@ -5519,15 +5213,6 @@ body.theme-light .status-card.time-card .date-display {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  max-height: 90vh;
-}
-
-.brightness-modal .modal-body {
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
 }
 
 .brightness-content {
@@ -5579,17 +5264,6 @@ body.theme-light .status-card.time-card .date-display {
 .brightness-icon.brightness-max {
   opacity: 1;
   filter: drop-shadow(0 4px 12px rgba(255, 193, 7, 0.7));
-  animation: brightnessGlow 2s ease-in-out infinite;
-}
-
-@keyframes brightnessGlow {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.08);
-  }
 }
 
 .brightness-value-large {
@@ -5669,34 +5343,6 @@ body.theme-light .status-card.time-card .date-display {
 }
 
 .brightness-slider::-webkit-slider-thumb:active {
-  cursor: grabbing;
-  transform: scale(1.05);
-  box-shadow:
-    0 2px 6px rgba(0, 0, 0, 0.3),
-    0 0 0 8px rgba(var(--accent-rgb), 0.3);
-}
-
-.brightness-slider::-moz-range-thumb {
-  width: 24px;
-  height: 24px;
-  background: linear-gradient(135deg, #ffffff, #f0f0f0);
-  border: 2px solid var(--accent);
-  border-radius: 50%;
-  cursor: grab;
-  box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.2),
-    0 0 0 4px rgba(var(--accent-rgb), 0.1);
-  transition: all var(--transition-base);
-}
-
-.brightness-slider::-moz-range-thumb:hover {
-  transform: scale(1.15);
-  box-shadow:
-    0 3px 12px rgba(0, 0, 0, 0.3),
-    0 0 0 6px rgba(var(--accent-rgb), 0.2);
-}
-
-.brightness-slider::-moz-range-thumb:active {
   cursor: grabbing;
   transform: scale(1.05);
   box-shadow:
@@ -5798,6 +5444,8 @@ body.theme-light .status-card.time-card .date-display {
 }
 
 .light-color-picker {
+  /* It keeps its size, so a narrow dialog wraps the swatches instead of squeezing it to a sliver. */
+  flex: 0 0 44px;
   width: 44px;
   height: 36px;
   border: 1px solid var(--border-color);
@@ -5809,9 +5457,10 @@ body.theme-light .status-card.time-card .date-display {
 
 .light-color-swatches {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(28px, 1fr));
   gap: 0.4rem;
   flex: 1;
+  min-width: 0;
 }
 
 .light-color-swatch {
@@ -5862,9 +5511,6 @@ body.theme-light .status-card.time-card .date-display {
   max-width: 400px;
   width: 90vw;
   padding: 0;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
 }
 
 .climate-modal-content {
@@ -5872,14 +5518,6 @@ body.theme-light .status-card.time-card .date-display {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.climate-modal .modal-body {
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
 }
 
 .climate-content {
@@ -5891,7 +5529,9 @@ body.theme-light .status-card.time-card .date-display {
 
 .climate-temp-display {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, ...) because 1fr alone cannot go below its content: a wide reading pushed its
+     column past the card's edge. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-4);
   padding: var(--space-4);
   background: var(--surface-2);
@@ -5922,6 +5562,31 @@ body.theme-light .status-card.time-card .date-display {
   flex-direction: column;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
+}
+
+/* A heat/cool thermostat shows a range ('19.5–24.5°C'), about twice as wide as one target. The
+   short current reading keeps what it needs and the range takes the rest; where the range would
+   not get 11rem beside it, as in a narrow window or at enlarged text, it drops under the current
+   reading and keeps the width of the card, so the target stays the biggest figure of the dialog. */
+.climate-temp-display.is-range {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.is-range .climate-current-temp {
+  flex: 1 1 auto;
+}
+
+.is-range .climate-target-temp {
+  flex: 3 1 11rem;
+}
+
+/* The target is sized to its column, one figure for a single target and a smaller one for a range,
+   and never wraps. It used to break after the dash as soon as a bound had a decimal or the window
+   was narrow, which grew the card by a line and shifted the dialog while a thumb was dragged. */
+.climate-target-temp {
+  container-type: inline-size;
 }
 
 .climate-temp-label {
@@ -5944,6 +5609,15 @@ body.theme-light .status-card.time-card .date-display {
   font-weight: 700;
   color: var(--accent-text);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.climate-target-temp .climate-temp-value-large {
+  font-size: clamp(var(--font-size-lg), 28cqi, var(--font-size-4xl));
+}
+
+.is-range .climate-target-temp .climate-temp-value-large {
+  font-size: clamp(var(--font-size-md), 15cqi, var(--font-size-4xl));
 }
 
 .climate-slider-wrapper {
@@ -6105,9 +5779,6 @@ body.theme-light .status-card.time-card .date-display {
   max-width: 360px;
   width: 90vw;
   padding: 0;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
 }
 
 .fan-modal-content {
@@ -6115,14 +5786,6 @@ body.theme-light .status-card.time-card .date-display {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.fan-modal .modal-body {
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
 }
 
 .fan-content {
@@ -6266,9 +5929,6 @@ body.theme-light .status-card.time-card .date-display {
   max-width: 360px;
   width: 90vw;
   padding: 0;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
 }
 
 .cover-modal-content {
@@ -6276,14 +5936,6 @@ body.theme-light .status-card.time-card .date-display {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.cover-modal .modal-body {
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
 }
 
 .cover-content {
@@ -6549,9 +6201,18 @@ body.active-tile-glow #quick-controls .control-item[data-active='true'] .control
   color: color-mix(in srgb, var(--text-primary) 82%, transparent);
 }
 
-/* Light theme: the accent is darkened for the icon so it holds contrast on pale glass. */
+/* A grey accent (slate, a custom grey) has no hue to set a lit icon apart: its accent text was
+   dimmer than the idle icons beside it. It draws the lit icon in the text colour, with the halo. */
+body.active-tile-glow[data-accent-neutral]
+  #quick-controls
+  .control-item[data-active='true']
+  .control-icon {
+  color: var(--text-primary);
+}
+
+/* Light theme: the icon takes the same solved accent text (3:1 and up on the tinted tile), with a
+   softer halo, since a glow around a dark glyph on a pale tile reads as a smudge. */
 body.theme-light.active-tile-glow #quick-controls .control-item[data-active='true'] .control-icon {
-  color: color-mix(in srgb, var(--accent) 72%, #000);
   filter: drop-shadow(0 0 6px rgba(var(--accent-rgb), 0.45));
 }
 
@@ -6836,7 +6497,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
 .camera-preview-tile[data-camera-preview-state='fallback'] .camera-tile-preview-dot,
 .camera-preview-tile[data-camera-preview-state='stale'] .camera-tile-preview-dot,
 .camera-preview-tile[data-camera-preview-state='unavailable'] .camera-tile-preview-dot {
-  background: var(--warning);
+  background: var(--warning-text);
   box-shadow: 0 0 0 2px rgba(255, 152, 0, 0.16);
 }
 
@@ -6910,14 +6571,24 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
   box-shadow: none;
 }
 
+/* The caption colours above are for a picture. A tile with none shows its status on a plain pane,
+   in every state: the white and pale orange it keeps otherwise vanish on the light one. A failed
+   or stale snapshot says so in a warning tone that follows the theme. */
 #quick-controls
-  .camera-preview-tile:not([data-camera-preview-has-frame='true']):is(
-    [data-camera-preview-state='loading'],
-    [data-camera-preview-state='unavailable']
-  )
+  .camera-preview-tile:not([data-camera-preview-has-frame='true'])
   .camera-tile-preview-status {
   color: var(--text-dim);
   text-shadow: none;
+}
+
+#quick-controls
+  .camera-preview-tile:not([data-camera-preview-has-frame='true']):is(
+    [data-camera-preview-state='error'],
+    [data-camera-preview-state='fallback'],
+    [data-camera-preview-state='stale']
+  )
+  .camera-tile-preview-status {
+  color: color-mix(in srgb, var(--warning-text) 70%, var(--text-primary));
 }
 
 /* Offline with nothing to show: the same dashed, dimmed pane as any other unavailable tile, in
@@ -7335,6 +7006,22 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   filter: drop-shadow(0 1px 3px rgba(var(--accent-rgb), 0.2));
 }
 
+/* The dark tile's faint accent line is about 1.3:1 on the near-white one, so the light theme draws
+   the sparkline and the gauge in the solved accent text. */
+body.theme-light:not(.high-contrast)
+  #quick-controls
+  .control-item.sensor-numeric-entity
+  :is(.control-sensor-sparkline, .control-sensor-gauge) {
+  color: var(--accent-text);
+}
+
+body.theme-light:not(.high-contrast)
+  #quick-controls
+  .control-item.sensor-numeric-entity
+  .control-sensor-sparkline {
+  opacity: 0.85;
+}
+
 /* Per-tile chart type: the gauge needs a taller band, "none" gives the space back. */
 #quick-controls .control-item.sensor-numeric-entity[data-chart-type='none'] {
   min-height: 0;
@@ -7516,7 +7203,9 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   display: flex;
   align-items: center;
   gap: 5px;
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 100%;
   font-size: var(--font-size-xs-plus);
 }
 
@@ -7534,7 +7223,9 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 90px;
+  /* A name takes the room its tile has, and gives it back one item at a time as the legend wraps;
+     capped at 90px, 'Living room temperature' and 'Living room humidity' read the same. */
+  min-width: 0;
 }
 
 .comparison-graph-legend-value {
@@ -7560,11 +7251,16 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   pointer-events: none;
   padding: 6px 8px;
   border-radius: var(--radius-sm);
-  background: var(--glass-overlay, var(--bg-elevated));
-  border: 1px solid var(--border-color);
+  /* The dialog panel (96% opaque), as the other overlays use: on Linux the blur it asks for is
+     stripped, and the chart lines ran through a translucent one. */
+  background: var(--dialog-bg);
+  border: 1px solid var(--dialog-border);
   box-shadow: var(--shadow-md);
   backdrop-filter: blur(var(--blur-sm, 6px));
   font-size: var(--font-size-xs-plus);
+  font-variant-numeric: tabular-nums;
+  /* The tile centres its text; the rows are start-aligned, so the heading is too. */
+  text-align: start;
   white-space: nowrap;
 }
 
@@ -7604,7 +7300,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 110px;
+  max-width: 160px;
 }
 
 .comparison-graph-warning {
@@ -7617,11 +7313,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   font-size: var(--font-size-sm);
 }
 
-.comparison-graph-modal-footer {
-  display: flex;
+.modal-footer.comparison-graph-modal-footer {
   justify-content: space-between;
-  gap: var(--space-2);
-  margin-top: 12px;
 }
 
 /* Unit sits beside the Add button, clear of the entity id's ellipsis, so a mismatched scale is
@@ -7738,11 +7431,6 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   color: var(--text-secondary);
 }
 
-.entity-info {
-  flex: 1;
-  min-width: 0;
-}
-
 .entity-name {
   font-size: var(--font-size-sm);
   font-weight: 500;
@@ -7754,134 +7442,6 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.entity-state {
-  font-size: var(--font-size-xs-plus);
-  color: var(--muted-text);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-
-.entity-control {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.entity-value {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--accent-text);
-}
-
-.entity-toggle {
-  width: 32px;
-  height: 18px;
-  border-radius: var(--radius-md);
-  border: none;
-  background: var(--surface-3);
-  position: relative;
-  cursor: pointer;
-  transition: all var(--transition-base);
-}
-
-.entity-toggle.active {
-  background: var(--success);
-}
-
-.entity-toggle::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--text-color);
-  transition: all var(--transition-base);
-}
-
-.entity-toggle.active::after {
-  transform: translateX(14px);
-}
-
-/* Camera cards */
-.cameras-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 8px;
-}
-
-.camera-card {
-  background: var(--surface-2);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  transition: all var(--transition-base);
-  backdrop-filter: blur(var(--bg-blur));
-  -webkit-backdrop-filter: blur(var(--bg-blur));
-}
-
-.camera-card:hover {
-  border-color: var(--border-hover);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-2);
-}
-
-.camera-header {
-  padding: 8px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: var(--surface-1);
-}
-
-.camera-name {
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  color: var(--text-color);
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.camera-controls {
-  display: flex;
-  gap: 4px;
-}
-
-.camera-btn {
-  width: 16px;
-  height: 16px;
-  border: none;
-  background: transparent;
-  color: var(--muted-text);
-  border-radius: var(--radius-xs);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--font-size-2xs);
-  transition: all var(--transition-base);
-}
-
-.camera-btn:hover {
-  background: var(--surface-2);
-  color: var(--text-color);
-}
-
-.camera-embed {
-  width: 100%;
-  height: 80px;
-  background: var(--surface-3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted-text);
-  font-size: var(--font-size-xs);
 }
 
 /* Modals */
@@ -7940,7 +7500,11 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   border-radius: var(--radius-xl);
   max-width: 85vw;
   width: 85%;
-  max-height: 85vh;
+  /* The window less a small margin, whatever the dialog holds. The body is the one part that
+     scrolls (see .modal-body), so the header and footer stay in view in a short window. */
+  max-height: calc(100dvh - var(--space-6));
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   backdrop-filter: blur(var(--blur-xl)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
@@ -8014,54 +7578,6 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 /* Settings Visual Cards Grouping */
-/* Settings cards are the same panes as the main view's tiles. */
-.settings-card {
-  background: var(--tile-bg);
-  border: 1px solid var(--tile-border);
-  border-radius: var(--radius-tile);
-  padding: var(--space-5);
-  margin-bottom: var(--space-4);
-  transition: border-color var(--transition-base);
-  position: relative;
-  overflow: hidden;
-}
-
-.settings-card:hover {
-  border-color: var(--tile-border-hover);
-}
-
-.settings-card-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
-  border-bottom: 1px solid var(--tile-border);
-  padding-bottom: var(--space-3);
-}
-
-.settings-card-header .settings-card-icon {
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--accent-text);
-}
-
-.settings-card-header .settings-card-icon svg {
-  width: 100%;
-  height: 100%;
-  fill: currentColor;
-}
-
-.settings-card-title {
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: -0.01em;
-  color: var(--text-primary);
-  margin: 0;
-}
-
 /* Tactile enhancements for inputs/dropdowns inside settings */
 #settings-modal input[type='text'],
 #settings-modal input[type='password'],
@@ -8075,7 +7591,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 #settings-modal input[type='text']:hover,
 #settings-modal input[type='password']:hover,
 #settings-modal select:hover {
-  border-color: var(--border-hover);
+  border-color: var(--control-border-hover);
   background-color: var(--tile-bg-hover);
 }
 
@@ -8173,11 +7689,6 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   padding: var(--space-4) var(--space-5);
 }
 
-#settings-modal .tab-content {
-  max-width: 100%;
-  margin: 0;
-}
-
 #settings-modal .modal-footer {
   grid-area: footer;
   padding: var(--space-2) var(--space-4);
@@ -8243,9 +7754,21 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .modal-body {
   padding: var(--space-5);
-  max-height: 60vh;
   overflow-y: auto;
   position: relative;
+}
+
+/* The body takes the height the header and footer leave, and scrolls when the content is taller.
+   A fixed share of the window (60vh) used to cap it, which made every dialog scroll in the default
+   500x600 window while a third of it stayed empty, and let header, body and footer add up to more
+   than a short window. */
+.modal-content > .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.modal-content > :is(.modal-header, .modal-footer) {
+  flex: none;
 }
 
 .modal-body::-webkit-scrollbar {
@@ -8271,10 +7794,6 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .persistent-notifications-modal-content {
   width: min(420px, 92vw);
-}
-
-.persistent-notifications-body {
-  max-height: min(60vh, 460px);
 }
 
 .persistent-notifications-list {
@@ -8358,13 +7877,6 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .entity-detail-modal-content {
   width: min(520px, 92vw);
-}
-
-.entity-detail-section-title {
-  margin: 16px 0 10px;
-  color: var(--text-primary);
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
 }
 
 .entity-detail-empty {
@@ -8563,15 +8075,6 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   white-space: pre-line;
 }
 
-/* Horizontal rule separator */
-#settings-modal hr {
-  height: 1px;
-  border: none;
-  background: var(--border-color);
-  margin: var(--space-6) 0;
-  opacity: 0.5;
-}
-
 /* Form elements */
 .form-group {
   margin-bottom: var(--space-5);
@@ -8603,7 +8106,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   ) {
   width: 100%;
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-md);
   background: var(--tile-bg);
   color: var(--text-primary);
@@ -8632,7 +8135,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
     select,
     textarea
   ):hover {
-  border-color: var(--border-hover);
+  border-color: var(--control-border-hover);
   background-color: var(--tile-bg-hover);
 }
 
@@ -8808,14 +8311,17 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   pointer-events: none;
 }
 
+/* Two cards side by side while each keeps 150px, one above the other when the pane is narrower
+   (a small window, or 130-150% text size), where 'Background' used to spill out of its card. */
 .color-target-control {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
   gap: var(--space-3);
   margin-top: var(--space-3);
 }
 
 .color-target-option {
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -8862,7 +8368,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   border: 1px solid rgba(255, 255, 255, 0.24);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.16),
-    0 8px 18px rgba(0, 0, 0, 0.18);
+    0 2px 6px rgba(0, 0, 0, 0.18);
   flex-shrink: 0;
 }
 
@@ -8870,8 +8376,15 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   background: var(--accent);
 }
 
+/* The window colour with the picked background as a corner of it: the tint alone moves it from
+   (31, 39, 51) to (40, 45, 69) for a violet, which does not show. --background-pick is only set
+   while a background is tinting the window. */
 .color-target-swatch-background {
-  background: linear-gradient(135deg, var(--bg-color), var(--surface-2));
+  background: linear-gradient(
+    135deg,
+    rgb(var(--window-bg-rgb)) 0 50%,
+    var(--background-pick, rgb(var(--window-bg-rgb))) 50% 100%
+  );
 }
 
 .color-target-copy {
@@ -8886,6 +8399,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .color-target-name {
   font-weight: var(--font-weight-semibold);
   font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
 }
 
 .color-target-note {
@@ -8935,22 +8449,52 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   outline-offset: 2px;
 }
 
+/* The chosen swatch is marked by a ring in the text colour with a gap, not by a ring in its own
+   colour: that vanished for the default Background swatch (the window colour on the window) and
+   was 1.8 to 2.8:1 for the pale accents. */
 .theme-option.selected {
-  border-color: var(--swatch, var(--accent));
+  border-color: var(--text-primary);
   box-shadow:
-    0 0 0 1px var(--swatch, var(--accent)),
-    0 10px 24px rgba(var(--swatch-rgb, var(--accent-rgb)), 0.35);
+    0 0 0 2px rgb(var(--window-bg-rgb)),
+    0 0 0 4px var(--text-primary);
 }
 
 .accent-theme-swatch {
+  position: relative;
   width: 100%;
   height: 100%;
   border-radius: var(--radius-md);
   background: var(--swatch, var(--accent));
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.35),
-    0 6px 12px rgba(var(--swatch-rgb, var(--accent-rgb)), 0.35);
+    0 2px 6px rgba(0, 0, 0, 0.18);
   flex-shrink: 0;
+}
+
+/* A white hairline is no edge on a light card, so the light theme draws a dark one. Forced colours
+   give a swatch its own CanvasText edge (see the end of this file), which this must not outrank. */
+@media (forced-colors: none) {
+  body.theme-light .accent-theme-swatch,
+  body.theme-light .color-target-swatch {
+    border-color: rgba(0, 0, 0, 0.18);
+    box-shadow:
+      inset 0 0 0 1px rgba(0, 0, 0, 0.14),
+      0 2px 6px rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* A background swatch is the window the choice gives, with the choice as a dot. */
+.theme-option[data-background-swatch] .accent-theme-swatch {
+  background: var(--swatch-window);
+}
+
+.theme-option[data-background-swatch='tinted'] .accent-theme-swatch::after {
+  content: '';
+  position: absolute;
+  inset: 32%;
+  border-radius: 50%;
+  background: var(--swatch);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--text-primary) 55%, transparent);
 }
 
 .theme-tooltip-flyout {
@@ -8987,7 +8531,7 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 .theme-tooltip-flyout::after {
   content: '';
   position: absolute;
-  left: 50%;
+  left: var(--tooltip-arrow-x, 50%);
   bottom: -8px;
   transform: translateX(-50%);
   border-width: 8px 8px 0 8px;
@@ -9402,12 +8946,6 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 /* Legacy token fallback. This is a compatibility escape hatch, not part of the
    normal connect flow, so it sits below a divider and reads as a quiet text
    link until it is hovered or opened. */
-.settings-details {
-  margin-top: var(--space-6);
-  border-top: 1px solid var(--border-color);
-  padding-top: var(--space-4);
-}
-
 .settings-details > summary {
   display: inline-flex;
   align-items: center;
@@ -9546,12 +9084,12 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 .connection-test-status[data-status='success'],
 .first-run-status[data-status='success'] {
-  color: var(--success);
+  color: var(--success-text);
 }
 
 .connection-test-status[data-status='error'],
 .first-run-status[data-status='error'] {
-  color: var(--error);
+  color: var(--error-text);
 }
 
 .connection-test-status[data-status='pending'],
@@ -9652,12 +9190,6 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   font-weight: var(--font-weight-medium);
 }
 
-.first-run-test-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
 .first-run-actions {
   display: flex;
   justify-content: flex-end;
@@ -9671,14 +9203,17 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 }
 
 .widget-state-panel {
-  /* The tiles above end with the controls section's own bottom margin. */
-  margin-top: 0;
+  margin: 0;
   padding: var(--space-6) var(--space-4);
   border: 1px dashed var(--tile-border-hover);
   border-radius: var(--radius-tile);
   text-align: center;
-  /* Scrolled into view for an error, the panel keeps the content's bottom padding clear. */
-  scroll-margin-bottom: 14px;
+}
+
+/* A connection panel sits above Quick Access and needs its own gap. The empty-page panel ends
+   the page after the controls section's bottom margin, so it takes none. */
+.widget-state-panel:not(:last-child) {
+  margin-bottom: var(--space-4);
 }
 
 .widget-state-error {
@@ -9736,17 +9271,12 @@ body.widget-state-active #quick-controls .status-message {
   display: none;
 }
 
-.language-section {
-  border-top: 1px solid var(--border-color);
-  padding-top: 16px;
-  margin-top: 16px;
-}
-
-.language-packs-section {
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--surface-1);
-  padding: 12px;
+/* While Home Assistant cannot be reached the tiles still show what it last said. Dimmed, they no
+   longer pass for live: a lamp that has been switched off since, or a timer that has stopped. The
+   weather and media cards are Home Assistant's too; the clock is the computer's and stays lit. */
+body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
+  opacity: 0.55;
+  filter: saturate(0.6);
 }
 
 .language-packs-list {
@@ -9784,66 +9314,12 @@ body.widget-state-active #quick-controls .status-message {
   flex-wrap: wrap;
 }
 
-/* Update section styles (from previous implementation) */
-.update-section {
-  border-top: 1px solid var(--border-color);
-  padding-top: 16px;
-  margin-top: 16px;
-}
-
-.update-info {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.version-info {
-  font-size: var(--font-size-sm);
-  color: var(--muted-text);
-}
-
 .update-status {
   font-size: var(--font-size-sm);
   padding: 8px 12px;
   border-radius: var(--radius-sm);
   background: var(--surface-2);
   border: 1px solid var(--border-color);
-}
-
-.update-status.checking {
-  background: rgba(var(--accent-rgb), 0.1);
-  border-color: rgba(var(--accent-rgb), 0.3);
-  color: var(--accent-text);
-}
-
-.update-status.available {
-  background: rgba(129, 199, 132, 0.1);
-  border-color: rgba(129, 199, 132, 0.3);
-  color: var(--success);
-}
-
-.update-status.downloading {
-  background: rgba(255, 183, 77, 0.1);
-  border-color: rgba(255, 183, 77, 0.3);
-  color: var(--warning);
-}
-
-.update-status.downloaded {
-  background: rgba(129, 199, 132, 0.1);
-  border-color: rgba(129, 199, 132, 0.3);
-  color: var(--success);
-}
-
-.update-status.error {
-  background: rgba(244, 143, 177, 0.1);
-  border-color: rgba(244, 143, 177, 0.3);
-  color: var(--danger);
-}
-
-.update-status.up-to-date {
-  background: rgba(160, 160, 160, 0.1);
-  border-color: rgba(160, 160, 160, 0.3);
-  color: var(--muted-text);
 }
 
 .update-actions {
@@ -9918,13 +9394,15 @@ body.widget-state-active #quick-controls .status-message {
 }
 
 /* Toast notifications */
+/* The container spans the window and centres its toasts. Centred with left: 50% and no width it
+   could only be as wide as the half of the window to its right, so every toast was capped at 250px
+   in the default window and wrapped to three or four lines over the tiles. */
 .toast-container {
   position: fixed;
-  /* As wide as the window, with the toasts centred in it. Anchored at left: 50% the stack could only
-     grow into the right half of the window, so at the default size every toast wrapped at half
-     its width and a long one ran to four lines. */
-  inset-inline: var(--space-4);
+  left: 0;
+  right: 0;
   bottom: var(--space-5);
+  padding-inline: var(--space-4);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -9948,7 +9426,7 @@ body.widget-state-active #quick-controls .status-message {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: var(--space-4) var(--space-5);
-  min-width: 200px;
+  min-width: min(200px, 100%);
   max-width: min(420px, 100%);
   text-align: start;
   box-shadow: var(--shadow-2);
@@ -10190,17 +9668,19 @@ body {
   pointer-events: auto;
 }
 
-.reorganize-mode .control-item:not(.dragging):hover {
+.reorganize-mode .control-item:not(.sortable-chosen, .sortable-ghost):hover {
   /* Only apply visual effects, no transform to avoid conflicts with shift animations */
   box-shadow: var(--shadow-lg), var(--glow-accent);
   filter: brightness(1.05);
 }
 
-/* SortableJS: Ghost element (visual placeholder where item will be dropped) */
+/* SortableJS: Ghost element (visual placeholder where item will be dropped). The dashed slot is an
+   outline drawn inside the tile, so the ghost's content does not shift by a border width. */
 .sortable-ghost {
-  opacity: 0.3;
-  background: var(--bg-panel);
-  border: 2px dashed var(--accent-primary);
+  opacity: 0.55;
+  background: rgba(var(--accent-rgb), 0.1);
+  outline: 2px dashed var(--accent-text);
+  outline-offset: -2px;
 }
 
 /* SortableJS: Chosen element (item being picked up) */
@@ -10228,26 +9708,6 @@ body {
     rotate: 0deg;
     scale: 1.02;
   }
-}
-
-/* Drop zone indicator */
-.drop-zone {
-  border: 2px dashed var(--accent);
-  background: rgba(var(--accent-rgb), 0.1);
-  border-radius: var(--radius-md);
-  min-height: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--accent-text);
-  font-size: var(--font-size-sm);
-  margin: 4px 0;
-  transition: all var(--transition-base);
-}
-
-.drop-zone.active {
-  background: rgba(var(--accent-rgb), 0.2);
-  border-color: var(--success);
 }
 
 /* Reorganize button active state */
@@ -10280,7 +9740,6 @@ body {
   transition: all var(--transition-base);
   pointer-events: auto;
   -webkit-user-drag: none;
-  user-drag: none;
 }
 
 .reorganize-mode .control-item .remove-btn:hover {
@@ -10301,8 +9760,9 @@ body {
 
 /* Confirmation Modal - Compact Style */
 .confirm-modal-content {
-  max-width: 400px;
-  min-width: 320px;
+  /* No minimum width: a window narrower than that would push the buttons off both sides. */
+  width: min(400px, calc(100vw - 24px));
+  max-width: none;
 }
 
 .confirm-modal-content .modal-body {
@@ -10372,7 +9832,6 @@ body {
   transition: all var(--transition-base);
   pointer-events: auto;
   -webkit-user-drag: none;
-  user-drag: none;
 }
 
 .reorganize-mode .control-item .rename-btn:hover {
@@ -10473,25 +9932,11 @@ body {
 }
 
 /* Tile Settings (the only dialog with this class, built in ui.js) takes the shared dialog recipe;
-   what is left here is its width, a scrolling body that keeps the header and footer in view, and
-   a footer that wraps. The panel, fields, switch and buttons all come from the dialogs section. */
+   what is left here is its width and a footer that wraps. The panel, fields, switch and buttons
+   all come from the dialogs section. */
 .rename-modal .modal-content {
   width: min(480px, calc(100vw - 24px));
   max-width: calc(100vw - 24px);
-  max-height: calc(100dvh - 24px);
-  display: flex;
-  flex-direction: column;
-}
-
-.rename-modal .modal-body {
-  min-height: 0;
-  max-height: none;
-  overflow-y: auto;
-}
-
-.rename-modal .modal-header,
-.rename-modal .modal-footer {
-  flex-shrink: 0;
 }
 
 /* Three buttons, one of them a long "Reset to Default", wrap rather than overflow. */
@@ -10511,15 +9956,19 @@ body {
   }
 
   .status-grid {
-    grid-template-columns: 1fr;
     gap: 6px;
     margin-bottom: 6px;
   }
 
+  /* Enlarged text shrinks the 500px window to 333-385 CSS px, where stacked cards took 40% of the
+     window and left room for one row of tiles, so they stay side by side (the 300px rule below
+     still stacks them). */
+  body:not(.large-interface) .status-grid {
+    grid-template-columns: 1fr;
+  }
+
   .media-tile {
     grid-template-columns: 48px minmax(0, 1fr);
-    gap: var(--space-2);
-    padding: var(--space-2);
     margin-bottom: 6px;
   }
 
@@ -10559,6 +10008,7 @@ body {
 
   .media-tile {
     grid-template-columns: 40px minmax(0, 1fr);
+    gap: var(--space-3);
     align-items: start;
   }
 
@@ -10584,7 +10034,7 @@ body {
   }
 
   .media-tile-controls {
-    justify-content: flex-start;
+    justify-content: center;
   }
 
   .media-tile-btn {
@@ -10620,14 +10070,6 @@ body {
   .control-icon {
     font-size: var(--font-size-2xl);
     width: 28px;
-  }
-
-  .control-name {
-    font-size: var(--font-size-xs);
-  }
-
-  .control-state {
-    font-size: var(--font-size-sm);
   }
 
   #quick-controls .control-item.sensor-numeric-entity {
@@ -10674,19 +10116,15 @@ body {
 
   .media-tile {
     grid-template-columns: 44px minmax(0, 1fr);
-    gap: var(--space-2);
+    gap: var(--space-3);
     min-height: 52px;
-    padding: var(--space-2);
+    padding: var(--space-3);
     margin-bottom: 6px;
   }
 
   .media-tile-artwork {
     width: 44px;
     height: 44px;
-  }
-
-  .media-tile-content {
-    grid-template-columns: minmax(0, 1fr) minmax(72px, 96px) auto;
   }
 
   .media-tile-btn {
@@ -10723,6 +10161,20 @@ body {
 @media (max-width: 300px) {
   .status-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* A narrow window that is also short (the 300x360 minimum, or 150% text in the default window)
+   leaves the two hero cards the most room to take, and pushed the Quick Access header below the
+   fold. The short-window rule above only covers windows wider than 420px. */
+@media (max-width: 420px) and (max-height: 460px) {
+  .status-card {
+    padding: 10px;
+  }
+
+  .weather-card,
+  .status-card.time-card {
+    min-height: 0;
   }
 }
 
@@ -10857,7 +10309,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 
 /* Media control title (entity name within tile) */
 .media-player-entity .control-name {
-  font-size: 0.85em;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-color);
   white-space: nowrap;
@@ -10886,7 +10338,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 
 /* Media text lines. A line that does not fit ends in an ellipsis; the full text is its tooltip. */
 .media-title {
-  font-size: 0.75em;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-color);
   white-space: nowrap;
@@ -10898,7 +10350,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 .media-artist {
-  font-size: 0.7em;
+  font-size: var(--font-size-xs-plus);
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -10909,7 +10361,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 .media-album {
-  font-size: 0.65em;
+  font-size: var(--font-size-xs-plus);
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -10919,56 +10371,21 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   text-align: center;
 }
 
+/* The pill is a black wash in the dark theme, which on the light tile is a dull taupe slab with the
+   secondary text at 2.9 to 3.3:1 on it. In the light theme it is a faint tint with an edge, and
+   the artist and album lines take the shared dim tone. */
+body.theme-light:not(.high-contrast) .media-info {
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  border: 1px solid var(--tile-border);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
+  color: var(--text-dim);
+}
+
 /* Media Controls */
-.media-controls {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 4px;
-  margin-top: auto;
-  flex-shrink: 0;
-  width: 100%;
-  padding-top: 2px;
-}
-
-.media-btn {
-  appearance: none;
-  background: transparent;
-  border: none;
-  padding: 0;
-  width: 28px;
-  height: 28px;
-  min-width: 28px;
-  cursor: pointer;
-  transition: var(--transition-base);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--accent-text);
-  font-size: var(--font-size-2xl);
-  outline: none;
-}
-
-.media-btn:hover {
-  color: var(--accent-text-hover);
-  transform: scale(1.2);
-  filter: drop-shadow(0 2px 8px rgba(var(--accent-rgb), 0.4));
-}
-
-.media-btn:active {
-  transform: scale(1);
-}
-
-.media-btn:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 3px;
-  border-radius: var(--radius-sm);
-}
-
-.media-btn-icon {
-  font-size: var(--font-size-base);
-  line-height: 1;
-}
 
 .play-pause-btn {
   width: 32px;
@@ -11003,7 +10420,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   height: 30px;
 }
 
-.play-pause-btn.is-active,
 .media-player-entity[data-media-playing='true'] .play-pause-btn {
   color: var(--accent-text);
   animation: iconGlow 2s ease-in-out infinite;
@@ -11021,25 +10437,16 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   border-color: rgba(var(--accent-rgb), 0.3);
 }
 
-.media-player-entity[data-state='paused'] {
-  background: linear-gradient(135deg, rgba(255, 183, 77, 0.1), rgba(255, 183, 77, 0.05));
-  border-color: rgba(255, 183, 77, 0.3);
-}
-
-.media-player-entity[data-state='idle'],
-.media-player-entity[data-state='off'] {
-  background: linear-gradient(135deg, rgba(158, 158, 158, 0.1), rgba(158, 158, 158, 0.05));
-  border-color: rgba(158, 158, 158, 0.3);
+/* Only a playing player takes the accent tint. A paused one is the plain tile, with the warning
+   tone on its play button (an amber wash looked like the playing tint under the warm accents), and
+   an idle or off one is the plain tile too instead of a grey slab. */
+.media-player-entity[data-state='paused'] .play-pause-btn {
+  color: var(--warning-text);
 }
 
 /* Condensed state for idle/off media players */
 .media-player-entity[data-state='idle'] .media-info,
 .media-player-entity[data-state='off'] .media-info {
-  display: none;
-}
-
-.media-player-entity[data-state='idle'] .media-controls,
-.media-player-entity[data-state='off'] .media-controls {
   display: none;
 }
 
@@ -11059,36 +10466,22 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
     min-height: 70px;
   }
 
-  .media-controls {
-    gap: 4px;
-    padding-top: 2px;
-  }
-
-  .media-btn {
-    width: 28px;
-    height: 28px;
-  }
-
-  .media-btn-icon {
-    font-size: var(--font-size-base);
-  }
-
   .play-pause-btn {
     width: 34px;
     height: 30px;
   }
 
   .media-title {
-    font-size: 0.7em;
+    font-size: var(--font-size-xs-plus);
   }
 
   .media-artist,
   .media-album {
-    font-size: 0.65em;
+    font-size: var(--font-size-xs);
   }
 
   .media-player-entity .control-name {
-    font-size: 0.8em;
+    font-size: var(--font-size-xs-plus);
   }
 }
 
@@ -11103,30 +10496,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   }
 }
 
-/* Brightness Slider */
-.brightness-slider-container {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin: 20px 0;
-}
-
-.brightness-slider-container input[type='range'] {
-  flex: 1;
-}
-
-.brightness-value {
-  min-width: 50px;
-  text-align: end;
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-  color: var(--accent-text);
-}
-
 /* Camera Modal */
-.modal-large {
-  max-width: 900px;
-}
 
 .camera-content {
   max-width: 800px;
@@ -11396,7 +10766,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   padding: 0 16px;
   overflow-x: auto;
   overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
 }
 
 .tab-link {
@@ -11555,7 +10924,12 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 #hotkeys-list {
-  max-height: 40vh;
+  /* The list holds every entity that can take a hotkey, hundreds in a large home, so it keeps its
+     own scroller inside the Settings page, as do the primary cards and custom icons lists; the
+     wheel passes on to the page at either end. The alert rows are a handful the user added and
+     scroll with the page. Rows are two lines tall now; 40vh of the default window showed less
+     than three. */
+  max-height: max(40vh, 20rem);
   overflow-y: auto;
   overflow-x: hidden;
   border: 1px solid var(--border-color);
@@ -11586,27 +10960,35 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   align-items: flex-start;
 }
 
+/* Every row has two tiers: the name on its own line, wrapping to a second one for a long name,
+   and the controls under it. Beside the controls the name had about 90px at the default window
+   and was cut to 'Coffee ma...', and a row that gained a clear button once a hotkey was set no
+   longer fitted and jumped to two lines while the others stayed on one. */
 .hotkey-item .entity-name {
   font-size: var(--font-size-base);
   font-weight: 500;
   color: var(--text-color);
-  flex: 1 1 80px;
-  min-width: 80px;
-  max-width: 100%;
+  flex: 1 1 100%;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
+/* The hotkey takes what the action and the clear button leave, and the action drops under it when
+   the row is too narrow for both (150% text, a small window). The clear button keeps its place
+   when there is nothing to clear, so setting or recording a hotkey moves nothing, and every row
+   wraps alike. */
 .hotkey-input-container {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  flex-wrap: nowrap;
-  flex: 0 1 auto;
+  flex: 1 1 100%;
   min-width: 0;
-  max-width: 100%;
-  margin-inline-start: auto;
 }
 
 .hotkey-input-container:has(.hotkey-action-dropdown.open) {
@@ -11614,14 +10996,11 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 .hotkey-input {
-  /* Sized to the placeholder or hotkey so "No hotkey set" is never clipped when translated. */
-  field-sizing: content;
-  flex-shrink: 1;
   /* Compact, level with the action dropdown beside it. The fill, border and corners come from
      the field recipe; only the value is set in mono. */
   min-height: 32px;
-  min-width: 120px;
-  max-width: 100%;
+  flex: 1 1 8rem;
+  min-width: 0;
   text-align: center;
   cursor: pointer;
   padding: 6px 10px;
@@ -11633,9 +11012,8 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 /* Hotkey Action Custom Dropdown - Compact version */
 .hotkey-action-dropdown {
   position: relative;
-  width: 120px;
-  flex-shrink: 1;
-  min-width: 100px;
+  flex: 0 1 120px;
+  min-width: min(96px, 100%);
 }
 
 .hotkey-action-dropdown.open {
@@ -11697,17 +11075,22 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 
 .btn-clear-hotkey:hover {
   background: rgba(239, 83, 80, 0.14);
-  color: #ff8a80;
+  color: var(--error-text);
   border-color: rgba(239, 83, 80, 0.45);
 }
 
-/* Nothing to clear until a hotkey is set. */
-.hotkey-input:placeholder-shown ~ .btn-clear-hotkey {
-  display: none;
+/* Nothing to clear until a hotkey is set, or while one is being recorded. */
+.hotkey-input:placeholder-shown ~ .btn-clear-hotkey,
+.hotkey-input[data-recording='true'] ~ .btn-clear-hotkey {
+  visibility: hidden;
 }
 
+/* Unlike the other dialogs this one has no header, body or footer to pad it, so the card pads its
+   own text; without it the prompt touched the top edge and the preview box ran edge to edge. */
 .hotkey-capture-modal .modal-content {
+  padding: var(--space-6) var(--space-5);
   text-align: center;
+  color: var(--text-primary);
 }
 
 /* The full-screen overlay takes focus while recording; a ring around the window would only distract. */
@@ -11726,19 +11109,12 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   min-height: 24px;
 }
 
-.hotkey-help {
-  margin-top: 16px;
-  font-size: var(--font-size-sm);
-  color: var(--muted-text);
-}
-
 .hotkey-capture-modal {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -11746,7 +11122,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
      keypress, so a toast must never paint over the keys being shown. The
      loading overlay stays *below* toasts on purpose (see the :root scale). */
   z-index: calc(var(--z-notification) + 1);
-  color: white;
   font-size: var(--font-size-lg);
 }
 
@@ -11758,29 +11133,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   background: var(--surface-2);
   border-radius: var(--radius-md);
   border: 1px solid var(--border-color);
-}
-
-.hotkeys-info,
-.alerts-info {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.hotkeys-info p,
-.alerts-info p {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: var(--font-size-base);
-}
-
-.hotkeys-list,
-.alerts-list {
-  max-height: 400px;
-  overflow-y: auto;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--surface-2);
 }
 
 .hotkey-item,
@@ -11803,42 +11155,22 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   background: var(--surface-hover);
 }
 
-.hotkey-info,
-.alert-info {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.hotkey-icon,
 .alert-icon {
   font-size: var(--font-size-lg);
   width: 24px;
   text-align: center;
 }
 
-.hotkey-details,
 .alert-details {
   flex: 1;
 }
 
-.hotkey-name,
 .alert-name {
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 2px;
 }
 
-.hotkey-meta,
-.alert-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--font-size-sm);
-}
-
-.hotkey-type,
 .alert-type {
   color: var(--accent-text);
   font-weight: 500;
@@ -11848,17 +11180,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   font-size: var(--font-size-sm);
 }
 
-.hotkey-combination,
-.alert-config {
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  background: var(--surface-3);
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-sm);
-}
-
-.hotkey-actions,
 .alert-actions {
   display: flex;
   gap: 8px;
@@ -11877,8 +11198,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 
 .inline-alerts-container {
   margin-top: 16px;
-  max-height: 400px;
-  overflow-y: auto;
   padding: 4px;
 }
 
@@ -11892,15 +11211,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 
 .alert-badge:hover {
   opacity: 1;
-}
-
-.entity-selector-btn.edit {
-  background: var(--button-secondary-bg);
-  color: var(--button-secondary-text);
-}
-
-.entity-selector-btn.edit:hover {
-  background: var(--button-secondary-bg-hover);
 }
 
 .btn-block {
@@ -11918,89 +11228,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
   margin-bottom: 12px;
 }
 
-.entity-select-group {
-  background: var(--surface-2);
-  padding: 12px;
-  border-radius: var(--radius-md);
-  margin-bottom: 16px;
-}
-
-.hotkey-help,
-.alert-help {
-  margin-top: 16px;
-  padding: 12px;
-  background: var(--surface-3);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
-}
-
-.hotkey-help h4,
-.alert-help h4 {
-  margin: 0 0 8px 0;
-  color: var(--text-primary);
-  font-size: var(--font-size-base);
-}
-
-.hotkey-help p,
-.alert-help p {
-  margin: 4px 0;
-  color: var(--text-secondary);
-  font-size: var(--font-size-base);
-}
-
-.hotkey-help code,
-.alert-help code {
-  background: var(--surface-2);
-  padding: 2px 4px;
-  border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
-  color: var(--accent-text);
-}
-
-.alert-config-form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.alert-config-options {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-
-.alert-config-options label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--font-size-base);
-  color: var(--text-primary);
-}
-
-.alert-config-options input[type='checkbox'] {
-  margin: 0;
-}
-
-.alert-config-options input[type='text'] {
-  padding: 4px 6px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--surface-1);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  width: 80px;
-}
-
-.no-hotkeys,
-.no-alerts {
-  padding: 20px;
-  text-align: center;
-  color: var(--text-secondary);
-  font-style: italic;
-}
-
 /* Custom Modal Components */
 .form-help {
   margin-top: 4px;
@@ -12009,7 +11236,7 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 }
 
 .form-warning {
-  color: var(--warning);
+  color: var(--warning-text);
 }
 
 .form-help code {
@@ -12034,34 +11261,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 
 #hotkey-input:hover {
   background: var(--surface-hover);
-}
-
-.modifier-buttons {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.modifier-btn {
-  padding: 6px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-  transition: all var(--transition-base);
-}
-
-.modifier-btn:hover {
-  background: var(--surface-hover);
-  border-color: var(--accent);
-}
-
-.modifier-btn.active {
-  background: var(--accent);
-  color: var(--on-accent);
-  border-color: var(--accent);
 }
 
 .alert-type-options {
@@ -12114,234 +11313,6 @@ body.theme-light .timer-entity[data-state='paused'] .control-icon {
 
 .radio-option:has(input:checked) .radio-label strong {
   color: var(--accent-text);
-}
-
-/* Existing Alerts List */
-.existing-alerts-list {
-  max-height: 200px;
-  overflow-y: auto;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--surface-1);
-}
-
-.existing-alert-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--surface-2);
-  transition: all var(--transition-base);
-}
-
-.existing-alert-item:last-child {
-  border-bottom: none;
-}
-
-.existing-alert-item:hover {
-  background: var(--surface-hover);
-}
-
-.existing-alert-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.existing-alert-name {
-  font-weight: 500;
-  color: var(--text-primary);
-  margin-bottom: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.existing-alert-details {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-
-.existing-alert-type {
-  background: var(--accent-bg);
-  color: var(--accent-text);
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  font-weight: 500;
-}
-
-.existing-alert-config {
-  color: var(--text-secondary);
-}
-
-.existing-alert-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.existing-alert-btn {
-  padding: 4px 8px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--surface-1);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-  transition: all var(--transition-base);
-}
-
-.existing-alert-btn:hover {
-  background: var(--surface-hover);
-  border-color: var(--accent);
-}
-
-.existing-alert-btn.edit {
-  color: var(--accent-text);
-  border-color: var(--accent);
-}
-
-.existing-alert-btn.edit:hover {
-  background: var(--accent);
-  color: var(--on-accent);
-}
-
-.existing-alert-btn.remove {
-  color: var(--error);
-  border-color: var(--error);
-}
-
-.existing-alert-btn.remove:hover {
-  background: var(--error);
-  color: white;
-}
-
-.no-existing-alerts {
-  padding: 20px;
-  text-align: center;
-  color: var(--text-secondary);
-  font-style: italic;
-  font-size: var(--font-size-base);
-}
-
-/* Existing Hotkeys List */
-.existing-hotkeys-list {
-  max-height: 200px;
-  overflow-y: auto;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--surface-1);
-}
-
-.existing-hotkey-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--surface-2);
-  transition: all var(--transition-base);
-}
-
-.existing-hotkey-item:last-child {
-  border-bottom: none;
-}
-
-.existing-hotkey-item:hover {
-  background: var(--surface-hover);
-}
-
-.existing-hotkey-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.existing-hotkey-name {
-  font-weight: 500;
-  color: var(--text-primary);
-  margin-bottom: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.existing-hotkey-details {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-
-.existing-hotkey-type {
-  background: var(--accent-bg);
-  color: var(--accent-text);
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  font-weight: 500;
-}
-
-.existing-hotkey-combination {
-  background: var(--surface-1);
-  color: var(--text-primary);
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
-  border: 1px solid var(--border-color);
-}
-
-.existing-hotkey-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.existing-hotkey-btn {
-  padding: 4px 8px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--surface-1);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-  transition: all var(--transition-base);
-}
-
-.existing-hotkey-btn:hover {
-  background: var(--surface-hover);
-  border-color: var(--accent);
-}
-
-.existing-hotkey-btn.edit {
-  color: var(--accent-text);
-  border-color: var(--accent);
-}
-
-.existing-hotkey-btn.edit:hover {
-  background: var(--accent);
-  color: var(--on-accent);
-}
-
-.existing-hotkey-btn.remove {
-  color: var(--error);
-  border-color: var(--error);
-}
-
-.existing-hotkey-btn.remove:hover {
-  background: var(--error);
-  color: white;
-}
-
-.no-existing-hotkeys {
-  padding: 20px;
-  text-align: center;
-  color: var(--text-secondary);
-  font-style: italic;
-  font-size: var(--font-size-base);
 }
 
 /* ============================================
@@ -12482,16 +11453,6 @@ textarea:focus-visible,
   border-width: 0;
 }
 
-.sr-only-focusable:focus,
-.sr-only-focusable:active {
-  position: static;
-  width: auto;
-  height: auto;
-  overflow: visible;
-  clip: auto;
-  white-space: normal;
-}
-
 /* Improve visibility of disabled elements */
 button:disabled,
 input:disabled,
@@ -12561,24 +11522,12 @@ label.disabled {
 }
 
 /* Improve error message visibility */
-.error-message,
 [role='alert'] {
-  color: var(--error);
+  color: var(--error-text);
   font-weight: var(--font-weight-medium);
   padding: var(--space-3);
   background: rgba(239, 83, 80, 0.1);
   border: 1px solid var(--error);
-  border-radius: var(--radius-md);
-  margin-top: var(--space-2);
-}
-
-/* Success message styling */
-.success-message {
-  color: var(--success);
-  font-weight: var(--font-weight-medium);
-  padding: var(--space-3);
-  background: rgba(129, 199, 132, 0.1);
-  border: 1px solid var(--success);
   border-radius: var(--radius-md);
   margin-top: var(--space-2);
 }
@@ -12649,6 +11598,8 @@ label.disabled {
   color: var(--text-primary);
   font: inherit;
   font-size: var(--font-size-md);
+  /* Chromium draws the placeholder's cut with it too. */
+  text-overflow: ellipsis;
 }
 
 .command-palette-input::placeholder {
@@ -12670,7 +11621,8 @@ label.disabled {
   width: 100%;
   min-height: 44px;
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) auto;
+  /* The name is what is scanned for, so it keeps a floor and the type and state give way. */
+  grid-template-columns: 30px minmax(140px, 1fr) minmax(0, auto);
   align-items: center;
   gap: 12px;
   border: 1px solid transparent;
@@ -12741,11 +11693,13 @@ label.disabled {
   display: flex;
   align-items: center;
   gap: 10px;
+  overflow: hidden;
 }
 
 .command-palette-result-domain {
-  flex: none;
-  max-width: 140px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -12760,7 +11714,8 @@ label.disabled {
 }
 
 .command-palette-result-state {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 140px;
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
@@ -12796,6 +11751,14 @@ label.disabled {
     width: 28px;
     height: 28px;
     font-size: var(--font-size-md);
+  }
+}
+
+/* The row's icon already says what kind of thing it is, so a narrow window gives the name the
+   room the type pill took. */
+@media (width <= 400px) {
+  .command-palette-result-domain {
+    display: none;
   }
 }
 
@@ -12941,17 +11904,18 @@ body.layer-drag-enabled.desktop-pin-edit-mode .control-item {
   -webkit-app-region: no-drag;
 }
 
+/* Each bind is a line of about 100 characters that has to be copied whole, so it scrolls sideways.
+   Wrapped, a line broke inside the entity id and read as two commands. */
 #desktop-bindings {
   width: 100%;
   min-height: 110px;
   resize: vertical;
-  font-family: monospace;
-  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
   line-height: 1.5;
-}
-
-#desktop-integration .btn {
-  margin-bottom: 8px;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
 }
 
 /* Readability preferences deliberately override custom palettes and glass effects. */
@@ -12968,6 +11932,11 @@ body.high-contrast {
   /* Help text, captions and unavailable tiles are the smallest text; they keep to 7:1 as well. */
   --text-dim: #ddd !important;
   --text-faint: #ccc !important;
+  /* Status colours as text, on the dark panels whichever theme sits beneath: 7:1 and up. */
+  --success-text: #a5d6a7 !important;
+  --warning-text: #ffcc80 !important;
+  --error-text: #ff9e99 !important;
+  --danger-text: #ff9e99 !important;
   --bg-color: #141414 !important;
   --bg-primary: #141414 !important;
   --bg-secondary: #202020 !important;
@@ -13165,12 +12134,17 @@ body.large-interface .tile-details-button {
   height: 28px;
 }
 
+/* The height cap is the one on .modal-content, the same at every text size. Only the Settings
+   dialog, which fills the window otherwise, keeps a margin at enlarged text. */
 body.large-interface .modal-content,
 body.large-interface #settings-modal .modal-content {
   max-width: calc(100vw - 16px);
-  max-height: calc(100vh - 16px);
   min-width: 0;
   min-height: 0;
+}
+
+body.large-interface #settings-modal .modal-content {
+  max-height: calc(100vh - 16px);
 }
 
 body.large-interface .modal-body {
@@ -13246,6 +12220,8 @@ body {
     color-mix(in srgb, rgb(var(--window-bg-rgb)), var(--text-primary) 5%) 96%,
     transparent
   );
+  /* The same colour without the alpha, for a tooltip's arrow, which has to match its panel. */
+  --dialog-bg-solid: color-mix(in srgb, rgb(var(--window-bg-rgb)), var(--text-primary) 5%);
   --dialog-border: rgba(255, 255, 255, 0.1);
   --dialog-shadow: 0 24px 60px -16px rgba(0, 0, 0, 0.8), 0 2px 6px rgba(0, 0, 0, 0.25);
   --dialog-scrim: rgba(8, 10, 14, 0.55);
@@ -13253,15 +12229,25 @@ body {
 
 body.theme-light {
   color-scheme: light;
+  /* A light dialog lifts toward white: mixing the dark text colour in (as the dark theme mixes
+     light in) made it about #eee, darker than the window it floats over and the same grey as its
+     own scrim. The scrim is a cool shade so the page behind a dialog steps back instead. */
+  --dialog-bg: color-mix(
+    in srgb,
+    color-mix(in srgb, rgb(var(--window-bg-rgb)), white 60%) 96%,
+    transparent
+  );
+  --dialog-bg-solid: color-mix(in srgb, rgb(var(--window-bg-rgb)), white 60%);
   --dialog-border: rgba(0, 0, 0, 0.1);
   --dialog-shadow: 0 24px 60px -16px rgba(20, 24, 40, 0.35), 0 2px 6px rgba(20, 24, 40, 0.12);
-  --dialog-scrim: rgba(240, 242, 246, 0.5);
+  --dialog-scrim: rgba(40, 44, 60, 0.18);
 }
 
 /* Toasts, the command palette, menus and tooltips draw --dialog-bg, which is 96% opaque, so a
    tile's text would ghost through a toast over it. */
 body.opaque-panels {
   --dialog-bg: color-mix(in srgb, var(--text-primary) 5%, rgb(var(--window-bg-rgb)));
+  --dialog-bg-solid: var(--dialog-bg);
 }
 
 /* --- Backdrop and panel --- */
@@ -13295,15 +12281,30 @@ body.software-glass.frosted-glass .modal-content {
 }
 
 .modal-header {
+  gap: var(--space-3);
   padding: 14px 16px;
   background: transparent;
   border-bottom: 1px solid var(--tile-border);
 }
 
+/* The pop-ups title themselves with the entity's name, which can be one long token (a German
+   compound, an entity id) that would otherwise keep the title at its full width and push the
+   close button out of the dialog. It breaks anywhere, and stops at two lines. */
 .modal-header h2 {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-semibold);
   letter-spacing: -0.01em;
+}
+
+.modal-header .close-btn {
+  flex: none;
 }
 
 /* The pop-ups for lights, fans, covers, climate and media open with focus on their heading, so a
@@ -13377,6 +12378,12 @@ body.software-glass.frosted-glass .modal-content {
   box-shadow: none;
 }
 
+/* A long label (a translation, or text at 150%) goes onto a second line inside a dialog instead of
+   being cut off with an ellipsis. */
+.modal .btn {
+  white-space: normal;
+}
+
 .btn-primary {
   background: var(--accent);
   border-color: transparent;
@@ -13418,10 +12425,6 @@ body.software-glass.frosted-glass .modal-content {
   box-shadow: none;
 }
 
-body.theme-light .btn-secondary:not([id*='cancel']):not([id*='close']):not([id*='reset']) {
-  color: color-mix(in srgb, var(--accent) 72%, #000);
-}
-
 /* Compact buttons for rows and inline actions (Edit, Remove, language packs, hotkey presets).
    Only the size changes; the colours come from the variant beside it. */
 .btn.btn-sm {
@@ -13434,22 +12437,16 @@ body.theme-light .btn-secondary:not([id*='cancel']):not([id*='close']):not([id*=
 /* A destructive action outside a confirmation (Remove, Clear, Delete graph, a hotkey being
    recorded): the secondary button's shape in red, so it reads as a warning without a wall of solid
    red. The confirmation dialog keeps its own solid red, which is why these stay at one class of
-   specificity. The text colour goes through a property so the light theme can step it down to
-   read on white without out-ranking that dialog. */
+   specificity. The text is the theme's error text, which already reads on white. */
 .btn-danger {
-  --btn-danger-text: #ff8a80;
   background: rgba(239, 83, 80, 0.14);
   border-color: rgba(239, 83, 80, 0.45);
-  color: var(--btn-danger-text);
+  color: var(--error-text);
 }
 
 .btn-danger:hover {
   background: rgba(239, 83, 80, 0.22);
   border-color: rgba(239, 83, 80, 0.6);
-}
-
-body.theme-light .btn-danger {
-  --btn-danger-text: #c62828;
 }
 
 /* --- Fields --- */
@@ -13524,7 +12521,7 @@ textarea {
 
 /* The bulb glows warmer and brighter as the level rises. */
 .brightness-icon {
-  color: #ffd08a;
+  color: var(--lit-light);
   animation: none;
 }
 
@@ -13553,10 +12550,6 @@ textarea {
   opacity: 1;
   filter: drop-shadow(0 0 14px rgba(255, 196, 110, 0.7));
   animation: none;
-}
-
-body.theme-light .brightness-icon:not(.brightness-off) {
-  color: #d98a1c;
 }
 
 .brightness-value-large,
@@ -13612,6 +12605,12 @@ body.theme-light .brightness-icon:not(.brightness-off) {
   color: color-mix(in srgb, var(--text-primary) 80%, transparent);
 }
 
+/* The closed part of the blind is a dark overlay in every theme, and the glyph sits above it. In the
+   light theme the overlay is a soft grey instead, which keeps the dark glyph readable on it. */
+body.theme-light:not(.high-contrast) .cover-overlay {
+  background: color-mix(in srgb, var(--text-primary) 22%, transparent);
+}
+
 .sensor-detail-icon {
   display: flex;
   color: var(--accent-text);
@@ -13643,7 +12642,11 @@ body.theme-light .brightness-icon:not(.brightness-off) {
 }
 
 .brightness-slider {
-  background: linear-gradient(var(--slider-dir), rgba(255, 208, 138, 0.18), #ffd08a);
+  background: linear-gradient(
+    var(--slider-dir),
+    rgba(var(--lit-light-rgb), 0.18),
+    var(--lit-light)
+  );
 }
 
 .light-color-temp-slider {
@@ -13658,6 +12661,18 @@ body.theme-light .brightness-icon:not(.brightness-off) {
 .climate-slider:hover,
 .media-volume-slider:hover {
   box-shadow: none;
+}
+
+body.theme-light:not(.high-contrast)
+  :is(
+    .brightness-slider,
+    .light-color-temp-slider,
+    .fan-slider,
+    .cover-slider,
+    .climate-slider,
+    .media-volume-slider
+  ):is(:hover, :focus) {
+  box-shadow: var(--slider-edge);
 }
 
 .brightness-slider:focus-visible,
@@ -13710,6 +12725,71 @@ body.theme-light .brightness-icon:not(.brightness-off) {
   transform: scale(1.05);
 }
 
+@media (forced-colors: none) {
+  /* On the pale dialog the tracks above fade to 1.0 to 1.9:1 at their start and the white thumb to
+     1.2:1, so the light theme gives each track a stronger start stop and a thin edge, and the
+     thumb a ring. The ring carries the 3:1 cue a slider needs; the rail only has to be seen, so
+     its far end stops short of the full accent (a full-strength end read as a progress bar) and
+     its edge stays faint. The Readable preset paints its own tracks, and forced colours draw a
+     ButtonText bar and a Highlight disc (see the end of this file), which the gradient and the
+     shadows here must not outrank. */
+  body.theme-light:not(.high-contrast) {
+    --slider-edge: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+  }
+
+  body.theme-light:not(.high-contrast) .brightness-slider {
+    background: linear-gradient(
+      var(--slider-dir),
+      rgba(var(--lit-light-rgb), 0.3),
+      color-mix(in srgb, var(--lit-light) 78%, transparent)
+    );
+    box-shadow: var(--slider-edge);
+  }
+
+  body.theme-light:not(.high-contrast)
+    :is(.fan-slider, .cover-slider, .climate-slider, .media-volume-slider) {
+    background: linear-gradient(
+      var(--slider-dir),
+      color-mix(in srgb, var(--text-primary) 28%, transparent),
+      color-mix(in srgb, var(--accent-text) 75%, transparent)
+    );
+    box-shadow: var(--slider-edge);
+  }
+
+  body.theme-light:not(.high-contrast) .light-color-temp-slider {
+    box-shadow: var(--slider-edge);
+  }
+
+  body.theme-light:not(.high-contrast)
+    :is(
+      .brightness-slider,
+      .light-color-temp-slider,
+      .fan-slider,
+      .cover-slider,
+      .climate-slider,
+      .media-volume-slider
+    )::-webkit-slider-thumb {
+    box-shadow:
+      0 2px 6px rgba(0, 0, 0, 0.25),
+      0 0 0 1.5px rgba(0, 0, 0, 0.45);
+  }
+
+  body.theme-light:not(.high-contrast)
+    :is(
+      .brightness-slider,
+      .light-color-temp-slider,
+      .fan-slider,
+      .cover-slider,
+      .climate-slider,
+      .media-volume-slider
+    )::-webkit-slider-thumb:hover {
+    box-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.3),
+      0 0 0 1.5px rgba(0, 0, 0, 0.45),
+      0 0 0 6px rgba(var(--accent-rgb), 0.18);
+  }
+}
+
 /* Chips: presets, HVAC modes and cover actions share the tile recipe. */
 .brightness-preset-btn,
 .fan-preset-btn,
@@ -13732,6 +12812,8 @@ body.theme-light .brightness-icon:not(.brightness-off) {
 .fan-preset-btn {
   flex: 1 1 0;
   min-width: 0;
+  /* The chip's own 12px side padding left 12px for '100%' in a 38px chip. */
+  padding-inline: 4px;
   height: 34px;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
@@ -13873,17 +12955,7 @@ body.theme-light .brightness-icon:not(.brightness-off) {
 .entity-selector-btn.remove:focus-visible {
   background: rgba(239, 83, 80, 0.14);
   border-color: rgba(239, 83, 80, 0.45);
-  color: #ff8a80;
-}
-
-body.theme-light .entity-selector-btn.add,
-body.theme-light .entity-selector-btn.edit {
-  color: var(--accent-text);
-}
-
-body.theme-light .entity-selector-btn.remove:hover,
-body.theme-light .entity-selector-btn.remove:focus-visible {
-  color: #c62828;
+  color: var(--error-text);
 }
 
 .alert-badge {
@@ -13957,7 +13029,8 @@ body.theme-light .entity-selector-btn.remove:focus-visible {
 /* --- Menus and tooltips drawn by the app --- */
 
 .custom-dropdown-menu,
-.connection-status-tooltip {
+.connection-status-tooltip,
+.theme-tooltip-flyout {
   background: var(--dialog-bg);
   border: 1px solid var(--dialog-border);
   border-radius: var(--radius-lg);
@@ -13968,8 +13041,18 @@ body.theme-light .entity-selector-btn.remove:focus-visible {
   -webkit-backdrop-filter: blur(20px) saturate(150%);
 }
 
-.connection-status-tooltip::after {
-  border-top-color: var(--dialog-border);
+.connection-status-tooltip::after,
+.theme-tooltip-flyout::after {
+  border-top-color: var(--dialog-bg-solid);
+}
+
+/* The swatch tooltip lives outside any dialog, so Linux (which drops backdrop blur there) would
+   show what is behind a translucent panel. It takes the dialog panel and keeps the swatch's hue
+   as a wash over the top. */
+.theme-tooltip-flyout {
+  background:
+    linear-gradient(160deg, rgba(var(--swatch-rgb, var(--accent-rgb)), 0.16), transparent),
+    var(--dialog-bg);
 }
 
 /* Windows and Linux draw <select> popups in-page; give options the dialog
@@ -13977,6 +13060,26 @@ body.theme-light .entity-selector-btn.remove:focus-visible {
 select option {
   background-color: rgb(var(--window-bg-rgb));
   color: var(--text-primary);
+}
+
+/* A short window: the header, footer and the dialog's own padding are most of what is on screen,
+   so control pop-ups give some of it back. Their bodies scroll if they still do not fit. */
+@media (max-height: 480px) {
+  .modal-header {
+    padding-block: 10px;
+  }
+
+  .modal-body {
+    padding: var(--space-4);
+  }
+
+  .brightness-content,
+  .climate-content,
+  .fan-content,
+  .cover-content {
+    padding: var(--space-3) var(--space-4);
+    gap: var(--space-3);
+  }
 }
 
 /* ============================================
@@ -14102,13 +13205,25 @@ body.opaque-panels #settings-modal .modal-header {
   filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.6));
 }
 
-/* The bottom padding keeps the last setting clear of the floating Save/Cancel pill. */
+/* The bottom padding keeps the last setting clear of the floating Save/Cancel pill. The gutter is
+   always reserved, so a page that scrolls (General) and one that does not (Alerts) are the same
+   width and nothing shifts sideways when switching pages or when a search result list grows past
+   the window; the end padding gives it back, so both margins stay 18px. */
 #settings-modal .modal-body {
   padding: 18px 18px 76px;
+  padding-inline-end: 9px;
+  scrollbar-gutter: stable;
   /* The Save/Cancel pill floats over the bottom of the page, where the switches and selects sit.
      Without this, Tab scrolled a control that was already inside the box under the pill, and its
      ring and state were hidden. */
   scroll-padding-block-end: 80px;
+}
+
+/* A column of at most 680px, centred: across a 900px window the labels sat 750px from their
+   switches and help text ran to 125 characters a line. */
+#settings-modal .modal-body > * {
+  max-width: 680px;
+  margin-inline: auto;
 }
 
 /* Save/Cancel float as a small raised pill in the bottom corner instead of a full-width bar.
@@ -14226,7 +13341,7 @@ body.theme-light #settings-modal .modal-footer {
 }
 
 .settings-search-result small {
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .settings-page-header {
@@ -14284,62 +13399,27 @@ body.theme-light #settings-modal .modal-footer {
   border: 1px solid var(--tile-border);
 }
 
-/* Every direct child of a pane is a row, separated by hairlines. */
+/* Every direct child of a pane is a row, separated by hairlines. The hairline is the top edge of
+   each visible row that follows another one, so a hidden row (Follow Omarchy off Omarchy, the
+   weather override, the alerts list, profile sync) never leaves the last visible row with a
+   divider against the pane's own border. The inline-hidden ones are matched by their style. */
 #settings-modal .settings-group-body > * {
   margin: 0;
   padding: 12px 0;
-  border-bottom: 1px solid var(--tile-border);
-}
-
-#settings-modal .settings-group-body > *:last-child {
-  border-bottom: none;
 }
 
 #settings-modal .settings-group-body > :empty,
 #settings-modal .settings-group-body > .hidden,
-#settings-modal .settings-group-body > [hidden] {
+#settings-modal .settings-group-body > [hidden],
+#settings-modal .settings-group-body > [style*='display: none'] {
   display: none;
 }
 
-/* Legacy cards that are still whole blocks (Hotkeys, Alerts) take the same pane. */
-#settings-modal .settings-card {
-  padding: 4px 14px;
-  margin-bottom: 22px;
-  border-radius: var(--radius-tile);
-  background: var(--tile-bg);
-  border: 1px solid var(--tile-border);
-  box-shadow: none;
-}
-
-#settings-modal .settings-card-header {
-  margin: 10px 0 2px;
-  padding: 0 0 8px;
-  gap: 8px;
-  border-bottom: 1px solid var(--tile-border);
-}
-
-#settings-modal .settings-card-title {
-  font-size: var(--font-size-xs-plus);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-}
-
-#settings-modal .settings-card-header .settings-card-icon {
-  width: 14px;
-  height: 14px;
-  opacity: 0.85;
-}
-
-#settings-modal .settings-card > .form-group {
-  margin: 0;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--tile-border);
-}
-
-#settings-modal .settings-card > .form-group:last-child {
-  border-bottom: none;
+#settings-modal
+  .settings-group-body
+  > :not(.hidden, [hidden], :empty, [style*='display: none'])
+  ~ :not(.hidden, [hidden], :empty, [style*='display: none']) {
+  border-top: 1px solid var(--tile-border);
 }
 
 /* --- Rows --- */
@@ -14370,21 +13450,25 @@ body.theme-light #settings-modal .modal-footer {
 
 .setting-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 10px 16px;
 }
 
+/* The label keeps room to be read: a control that would leave it less than 9rem (a wide select, a
+   segmented control, a button, or anything at 130-150% text size or in a narrow window) wraps
+   under it instead of squeezing it to a sliver. */
 .setting-text {
-  flex: 1 1 0;
-  min-width: 0;
+  flex: 1 1 9rem;
+  min-width: min(9rem, 100%);
 }
 
 #settings-modal .setting-row > select {
   flex: 0 0 auto;
   width: auto;
-  min-width: 120px;
-  max-width: 62%;
+  min-width: min(120px, 100%);
+  max-width: 100%;
   padding-block: 7px;
   padding-inline-start: 10px;
   font-size: var(--font-size-sm);
@@ -14392,12 +13476,20 @@ body.theme-light #settings-modal .modal-footer {
 
 .setting-row > .btn {
   flex-shrink: 0;
+  max-width: 100%;
 }
 
 .setting-row-stacked {
   flex-direction: column;
+  flex-wrap: nowrap;
   align-items: stretch;
   gap: 10px;
+}
+
+/* A stacked row is a column, where the text's 9rem basis would be a height. */
+.setting-row-stacked > .setting-text {
+  flex: none;
+  min-width: 0;
 }
 
 .setting-row-action {
@@ -14418,6 +13510,52 @@ body.theme-light #settings-modal .modal-footer {
   margin: 0;
 }
 
+/* The Window opacity range wears the dialog sliders' rail and thumb (see "Sliders" above). Left to
+   the browser it paints the part past the thumb from the accent's brightness, so the rail ended in
+   a black bar on the light theme and a white one with some accents. The rail here is a fixed
+   gradient, like theirs. */
+#settings-modal .setting-slider input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(var(--slider-dir), var(--tile-border-hover), var(--accent));
+  box-shadow: none;
+}
+
+#settings-modal .setting-slider input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+@media (forced-colors: none) {
+  body.theme-light:not(.high-contrast) #settings-modal .setting-slider input[type='range'] {
+    background: linear-gradient(
+      var(--slider-dir),
+      color-mix(in srgb, var(--text-primary) 28%, transparent),
+      color-mix(in srgb, var(--accent-text) 75%, transparent)
+    );
+    box-shadow: var(--slider-edge);
+  }
+
+  body.theme-light:not(.high-contrast)
+    #settings-modal
+    .setting-slider
+    input[type='range']::-webkit-slider-thumb {
+    box-shadow:
+      0 2px 6px rgba(0, 0, 0, 0.25),
+      0 0 0 1.5px rgba(0, 0, 0, 0.45);
+  }
+}
+
 /* The form field rule that removes inputs' outline and draws a glow instead also reaches this
    slider, and a range paints neither a border nor a glow of its own, so a focused slider looked
    exactly like an unfocused one. */
@@ -14427,7 +13565,7 @@ body.theme-light #settings-modal .modal-footer {
 }
 
 .setting-slider-value {
-  min-width: 30px;
+  min-width: 40px;
   text-align: end;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
@@ -14445,25 +13583,15 @@ body.theme-light #settings-modal .modal-footer {
 
 /* Warnings share the help text's spot but must still read as warnings. */
 #settings-modal .form-help.form-warning {
-  color: var(--warning);
+  color: var(--warning-text);
 }
 
 #settings-modal .form-help.form-error {
-  color: var(--error);
-}
-
-/* --error is tuned for dark surfaces; this is the same hue re-stepped to read as text on white. */
-body.theme-light #settings-modal .form-help.form-error {
-  color: #c62828;
+  color: var(--error-text);
 }
 
 #settings-modal .setting-text > .form-help:first-of-type {
   margin-top: 2px;
-}
-
-/* On non-Omarchy desktops the Follow Omarchy switch can never turn on; hide it. */
-#follow-omarchy-row:has(#follow-omarchy:disabled) {
-  display: none;
 }
 
 /* --- Switches ---
@@ -14476,8 +13604,10 @@ body.theme-light #settings-modal .form-help.form-error {
   width: 38px;
   height: 22px;
   border-color: transparent;
-  /* An off switch still has to read as a control (3:1 against the pane), not a faint smudge. */
-  background: color-mix(in srgb, var(--text-primary) 26%, transparent);
+  /* An off switch still has to read as a control (3:1 against the pane), not a faint smudge: the
+     track is the text colour at 40% in the dark theme and 50% in the light one, which measure 3.5:1
+     and 3.3:1 on the dialog (the 26% and 38% they were gave 2.3:1 and 2.5:1). */
+  background: color-mix(in srgb, var(--text-primary) 40%, transparent);
   box-shadow: none;
 }
 
@@ -14485,7 +13615,7 @@ body.theme-light
   :is(#settings-modal, #alert-config-modal, .rename-modal)
   .form-group
   input[type='checkbox']:not(:checked) {
-  background: color-mix(in srgb, var(--text-primary) 38%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 50%, transparent);
 }
 
 /* A switch that leads its text (Tile Settings' tray option) keeps a gap to it. One that trails its
@@ -14506,11 +13636,20 @@ body.theme-light
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
+/* An on switch is the accent, solved for the theme like the other accent graphics: a dark custom
+   accent stays visible on the dark pane, and the light theme's pale accents (2:1 on white) darken. */
 :is(#settings-modal, #alert-config-modal, .rename-modal)
   .form-group
   input[type='checkbox']:checked {
-  background: var(--accent);
+  background: var(--accent-ring-dark, var(--accent));
   border-color: transparent;
+}
+
+body.theme-light
+  :is(#settings-modal, #alert-config-modal, .rename-modal)
+  .form-group
+  input[type='checkbox']:checked {
+  background: var(--accent-text);
 }
 
 :is(#settings-modal, #alert-config-modal, .rename-modal)
@@ -14540,6 +13679,8 @@ body.theme-light
 .segmented-control {
   display: inline-flex;
   flex-shrink: 0;
+  flex-wrap: wrap;
+  max-width: 100%;
   gap: 2px;
   padding: 3px;
   border-radius: var(--radius-md);
@@ -14682,7 +13823,6 @@ body.theme-light
 
 #settings-modal .settings-group-body > .connection-test-row {
   padding-top: 0;
-  border-bottom: none;
 }
 
 #settings-modal .weather-entity-setting select,
@@ -14965,7 +14105,7 @@ body.theme-light
 }
 
 #settings-modal .profile-sync-error {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 #settings-modal .profile-sync-error:empty {
@@ -15044,13 +14184,8 @@ body.theme-light
   display: flex;
   flex-shrink: 0;
   flex-direction: column;
+  max-width: 100%;
   gap: 6px;
-}
-
-#settings-modal hr {
-  border: none;
-  border-top: 1px solid var(--tile-border);
-  margin: 4px 0;
 }
 
 /* --- Main view: tiles that stand apart from the panel ---
@@ -15112,22 +14247,21 @@ body.theme-light:not(.high-contrast) #quick-controls .control-item[data-unavaila
   background: color-mix(in srgb, var(--tile-bg) 70%, transparent);
 }
 
-/* The light pane is nearly white, but the text on it is set for a pane that was half see-through,
-   and a few pairs fall short of 4.5:1 on it: the secondary and tertiary text, the media
-   timestamps, the date line and the weather condition. Each is darkened a notch, on the main
-   view's tiles only, so Settings and dialogs keep theirs. */
+/* A near-white tile barely changes when its fill goes from 88% to 96% white, so on the light panel
+   the hover rested on a slightly darker edge alone. It also tints toward the accent and lifts a
+   little. Lit and unavailable tiles keep their own hover. */
+body.theme-light:not(.high-contrast)
+  #quick-controls
+  .control-item:not([data-active='true'], [data-unavailable='true']):hover {
+  background-color: color-mix(in srgb, rgb(var(--accent-rgb)) 6%, var(--tile-bg-hover));
+  box-shadow: var(--shadow-sm);
+}
+
+/* The main view's tiles are near-white and their text can run a notch darker than Settings
+   and dialogs, which keep the global mixes. */
 body.theme-light:not(.high-contrast) :is(#quick-controls .control-item, .status-grid, .media-tile) {
-  --text-dim: color-mix(in srgb, var(--text-primary) 78%, transparent);
-  --text-faint: color-mix(in srgb, var(--text-primary) 70%, transparent);
-  --muted-text: #626268;
-}
-
-body.theme-light:not(.high-contrast) .status-card.time-card .date-display {
-  color: color-mix(in srgb, var(--accent) 55%, #000);
-}
-
-body.theme-light:not(.high-contrast) .status-card .weather-condition {
-  color: var(--text-dim);
+  --text-dim: var(--palette-text-dim, color-mix(in srgb, var(--text-primary) 78%, transparent));
+  --text-faint: var(--palette-text-faint, color-mix(in srgb, var(--text-primary) 70%, transparent));
 }
 
 /* --- Main view: one hero pane for the primary cards --- */
@@ -15154,8 +14288,19 @@ body.theme-light:not(.high-contrast) .status-card .weather-condition {
   background: var(--tile-bg);
 }
 
-/* Stacked in narrow windows, the hairline moves to the top edge. */
+/* Stacked in narrow windows, the hairline moves to the top edge. The cards stack where the
+   .status-grid rules above make them one column: under 420px except at enlarged text, where they
+   stay side by side and keep the vertical hairline, and under 300px at any text size. */
 @media (max-width: 420px) {
+  body:not(.large-interface)
+    .status-grid:not(.single-card):not(.primary-cards-hidden)
+    > .status-card
+    + .status-card {
+    box-shadow: inset 0 1px 0 var(--tile-border);
+  }
+}
+
+@media (max-width: 300px) {
   .status-grid:not(.single-card):not(.primary-cards-hidden) > .status-card + .status-card {
     box-shadow: inset 0 1px 0 var(--tile-border);
   }
@@ -15308,6 +14453,36 @@ body.density-compact #quick-controls {
 #quick-controls .control-item:not(.comparison-graph-tile):not(.media-player-entity) {
   height: var(--qa-tile-height);
   min-height: var(--qa-tile-height);
+  /* A tile too full for its height loses its bottom edge, not both ends: with plain centring the
+     icon above and the state below were cut off equally. */
+  justify-content: safe center;
+}
+
+/* A long name gives up its tail, not the icon above it or the state below it: Home Assistant's
+   own names run to 40-90 characters, and three or four wrapped lines pushed both out of the
+   fixed-height tile. The tooltip carries the whole name. Compact tiles have room for one line. */
+#quick-controls .control-item:not(.comparison-graph-tile):not(.media-player-entity) .control-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+body.density-compact
+  #quick-controls
+  .control-item:not(.comparison-graph-tile):not(.media-player-entity)
+  .control-name {
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+}
+
+/* One line for the state or value as well. */
+#quick-controls .control-item:not(.comparison-graph-tile):not(.media-player-entity) .control-state {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 #quick-controls .control-item.sensor-numeric-entity {
@@ -15366,10 +14541,12 @@ body.density-compact #quick-controls {
   height: 56px;
 }
 
-/* The arc's end labels are drawn in gauge units, which the tile scales up. */
+/* The arc's end labels are drawn in gauge units, which the tile scales up, so they come out near
+   11px; they are secondary text and take the shared faint tone (the 45% mix they had was 3.2:1 on
+   a light tile). */
 #quick-controls .control-sensor-gauge-bound {
-  font-size: calc(var(--font-size-3xs) * 0.8);
-  fill: color-mix(in srgb, var(--text-primary) 45%, transparent);
+  font-size: calc(var(--font-size-3xs) * 0.9);
+  fill: var(--text-faint);
 }
 
 /* Compact rows: the value carries the tile, so the icon steps aside. */
@@ -15573,20 +14750,40 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   gap: var(--space-2);
 }
 
-/* Manage Quick Access and the repair picker: one scrolling list under a fixed search box, with
-   Manage's secondary "comparison graph" action moved to the footer. */
-#quick-controls-modal .quick-controls-modal-body,
-#entity-repair-modal .modal-body {
+/* A dialog built around a pick list (Manage Quick Access, the repair, alert and weather pickers,
+   the comparison graph editor): the fields keep their place and the list takes the height that is
+   left, so the list is the only thing that scrolls. Capped at 400px inside a body that scrolled as
+   well, the list showed a second scrollbar, scrolled the search box away and trapped the wheel.
+   Manage's secondary "comparison graph" action sits in the footer. */
+.modal-body:has(> .entity-selector-list, > .form-group > .entity-selector-list) {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  min-height: 0;
-  overflow-y: auto;
 }
 
-#entity-repair-modal .modal-lead,
-#entity-repair-modal .form-group {
+.modal-body:has(> .entity-selector-list, > .form-group > .entity-selector-list) > .modal-lead,
+.modal-body:has(> .entity-selector-list, > .form-group > .entity-selector-list) > .form-group {
   margin: 0;
+}
+
+.modal-body > .form-group:has(> .entity-selector-list) {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.modal-body > .entity-selector-list,
+.modal-body > .form-group > .entity-selector-list {
+  flex: 1 1 auto;
+  max-height: none;
+}
+
+/* A list of three rows or more keeps room for three, however short the window: below that the
+   dialog's body scrolls instead. A shorter list is only as tall as its rows. */
+.modal-body > .entity-selector-list:has(> :nth-child(3)),
+.modal-body > .form-group > .entity-selector-list:has(> :nth-child(3)) {
+  min-height: 120px;
 }
 
 #quick-controls-modal .quick-controls-target-hint {
@@ -15598,14 +14795,6 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
 
 #quick-controls-modal .quick-controls-search-group {
   margin: 0;
-}
-
-#quick-controls-modal .entity-selector-list,
-#entity-repair-modal .entity-selector-list {
-  flex: 1 1 auto;
-  min-height: 120px;
-  max-height: none;
-  overflow-y: auto;
 }
 
 #quick-controls-modal .entity-item.is-added .entity-icon {
@@ -15661,7 +14850,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   color: var(--text-dim);
 }
 
-.modal.entity-unavailable :is(.brightness-icon, .fan-icon, .cover-icon, .climate-icon) {
+.modal.entity-unavailable :is(.brightness-icon, .fan-icon, .cover-icon) {
   color: var(--text-faint);
   background: none;
   box-shadow: none;
@@ -15826,10 +15015,23 @@ body.desktop-pin-mode.theme-light {
   --text-primary: #f5f5f5;
   --text-secondary: #b0b0b0;
   --text-tertiary: #9a9aa3;
-  --accent-text: var(--accent);
-  --accent-text-hover: var(--accent-hover);
+  --muted-text: #a8a8ae;
+  --success-text: var(--success);
+  --warning-text: var(--warning);
+  --error-text: #ff8a80;
+  --danger-text: #ff8a80;
+  --accent-text: var(--accent-text-dark, var(--accent));
+  --accent-text-hover: var(--accent-text-dark-hover, var(--accent-hover));
   --desktop-pin-ink-rgb: 255, 255, 255;
-  --focus-ring: var(--accent);
+  --focus-ring: var(--accent-ring-dark, var(--accent));
+  /* The light theme lifts a dialog toward white, which on the pin's dark window colour is a mid
+     grey under near-white text. A pin keeps the dark dialog it always had. */
+  --dialog-bg: color-mix(
+    in srgb,
+    color-mix(in srgb, rgb(var(--window-bg-rgb)), var(--text-primary) 5%) 96%,
+    transparent
+  );
+  --dialog-bg-solid: color-mix(in srgb, rgb(var(--window-bg-rgb)), var(--text-primary) 5%);
 }
 
 /* Only the light and scene pins act wherever they are clicked. The others have buttons and sliders
@@ -15889,8 +15091,8 @@ body.desktop-pin-mode
 /* A toast raised in a pin (a failed command) has 168px to sit in, so it shrinks to the window
    instead of keeping its 200px minimum, and it is dark like the pin whatever the theme. */
 body.desktop-pin-mode .toast-container {
-  inset-inline: var(--space-3);
   bottom: var(--space-2);
+  padding-inline: var(--space-3);
 }
 
 body.desktop-pin-mode .toast {
@@ -16207,8 +15409,15 @@ body[data-season='christmas'] {
   --season-label-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 30'%3E%3Cpath d='M5 28 L5 9 Q5 3 10 3 Q15 3 15 9' stroke='%23f8fafc' stroke-width='4.2' stroke-linecap='round' fill='none'/%3E %3Cpath d='M5 28 L5 9 Q5 3 10 3 Q15 3 15 9' stroke='%23dc2626' stroke-width='4.2' stroke-dasharray='2.6 2.6' fill='none'/%3E%3C/svg%3E");
 }
 
+/* On a pale tile white snow and a white hat brim vanish, so the light theme keeps them white and
+   gives each a cool edge. */
 body.theme-light[data-season='christmas'] {
-  --season-snow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 12' preserveAspectRatio='none'%3E%3Cpath d='M0 0 H120 V5 Q114 10 108 6 Q100 12 92 6 Q84 10 76 5 Q68 11 60 6 Q52 10 44 5 Q36 12 28 6 Q20 10 12 5 Q6 9 0 5 Z' fill='%23d5e2f1'/%3E%3C/svg%3E");
+  --season-snow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 12' preserveAspectRatio='none'%3E%3Cpath d='M0 0 H120 V5 Q114 10 108 6 Q100 12 92 6 Q84 10 76 5 Q68 11 60 6 Q52 10 44 5 Q36 12 28 6 Q20 10 12 5 Q6 9 0 5 Z' fill='%23ffffff'/%3E%3C/svg%3E");
+  --season-hat: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 26'%3E%3Cpath d='M4 20 Q8 6 20 4 Q28 4 27.5 13 Q24.5 8.5 20 9.5 Q15 11 24 20 Z' fill='%23dc2626'/%3E %3Crect x='2' y='18' width='24' height='6' rx='3' fill='%23ffffff' stroke='%2394a3b8' stroke-width='0.9'/%3E%3Ccircle cx='27.3' cy='13.5' r='3.2' fill='%23ffffff' stroke='%2394a3b8' stroke-width='0.9'/%3E%3C/svg%3E");
+}
+
+body.theme-light[data-season='christmas'] .control-item:nth-child(n)::before {
+  filter: drop-shadow(0 1px 0 rgba(90, 120, 160, 0.4));
 }
 
 body[data-season='christmas'] .control-item:nth-child(n)::before {
@@ -16262,6 +15471,16 @@ body[data-season='new-year'] {
 
 body[data-season='new-year'] .control-item {
   --season-size: 26px;
+}
+
+/* The glass flutes were pale gold with pale grey stems: a stronger gold and slate stems read on a
+   light card. */
+body.theme-light[data-season='new-year'] {
+  --season-art: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E %3Cpath d='M20 2 Q20 12 30 12 Q20 12 20 22 Q20 12 10 12 Q20 12 20 2Z' fill='%23fbbf24'/%3E %3Cpath d='M8 18 Q8 24 14 24 Q8 24 8 30 Q8 24 2 24 Q8 24 8 18Z' fill='%23f5b800'/%3E %3Ccircle cx='27' cy='25' r='1.6' fill='%2394a3b8'/%3E%3Ccircle cx='5' cy='7' r='1.2' fill='%23f472b6'/%3E%3C/svg%3E");
+  --season-time-sit: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 28'%3E%3Cg transform='rotate(-16 10 23)'%3E%3Cpath d='M7 3 L13 3 L12.2 13 Q10 15.5 7.8 13 Z' fill='rgba(245,184,0,0.95)' stroke='%2394a3b8' stroke-width='0.8'/%3E%3Cpath d='M10 14.5 V23 M7 23.2 H13' stroke='%2394a3b8' stroke-width='1.1' stroke-linecap='round'/%3E%3Ccircle cx='9' cy='8' r='0.8' fill='%23fff'/%3E%3Ccircle cx='10.8' cy='10.5' r='0.6' fill='%23fff'/%3E%3C/g%3E%3Cg transform='translate(10 0) rotate(16 10 23)'%3E%3Cpath d='M7 3 L13 3 L12.2 13 Q10 15.5 7.8 13 Z' fill='rgba(245,184,0,0.95)' stroke='%2394a3b8' stroke-width='0.8'/%3E%3Cpath d='M10 14.5 V23 M7 23.2 H13' stroke='%2394a3b8' stroke-width='1.1' stroke-linecap='round'/%3E%3Ccircle cx='9' cy='8' r='0.8' fill='%23fff'/%3E%3Ccircle cx='10.8' cy='10.5' r='0.6' fill='%23fff'/%3E%3C/g%3E %3Cpath d='M15 0 L15.8 2.2 L18 3 L15.8 3.8 L15 6 L14.2 3.8 L12 3 L14.2 2.2Z' fill='%23fbbf24'/%3E%3C/svg%3E");
+  --season-dialog-sit: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 28'%3E%3Cg transform='rotate(-16 10 23)'%3E%3Cpath d='M7 3 L13 3 L12.2 13 Q10 15.5 7.8 13 Z' fill='rgba(245,184,0,0.95)' stroke='%2394a3b8' stroke-width='0.8'/%3E%3Cpath d='M10 14.5 V23 M7 23.2 H13' stroke='%2394a3b8' stroke-width='1.1' stroke-linecap='round'/%3E%3Ccircle cx='9' cy='8' r='0.8' fill='%23fff'/%3E%3Ccircle cx='10.8' cy='10.5' r='0.6' fill='%23fff'/%3E%3C/g%3E%3Cg transform='translate(10 0) rotate(16 10 23)'%3E%3Cpath d='M7 3 L13 3 L12.2 13 Q10 15.5 7.8 13 Z' fill='rgba(245,184,0,0.95)' stroke='%2394a3b8' stroke-width='0.8'/%3E%3Cpath d='M10 14.5 V23 M7 23.2 H13' stroke='%2394a3b8' stroke-width='1.1' stroke-linecap='round'/%3E%3Ccircle cx='9' cy='8' r='0.8' fill='%23fff'/%3E%3Ccircle cx='10.8' cy='10.5' r='0.6' fill='%23fff'/%3E%3C/g%3E %3Cpath d='M15 0 L15.8 2.2 L18 3 L15.8 3.8 L15 6 L14.2 3.8 L12 3 L14.2 2.2Z' fill='%23fbbf24'/%3E%3C/svg%3E");
+  --season-title-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 28'%3E%3Cg transform='rotate(-16 10 23)'%3E%3Cpath d='M7 3 L13 3 L12.2 13 Q10 15.5 7.8 13 Z' fill='rgba(245,184,0,0.95)' stroke='%2394a3b8' stroke-width='0.8'/%3E%3Cpath d='M10 14.5 V23 M7 23.2 H13' stroke='%2394a3b8' stroke-width='1.1' stroke-linecap='round'/%3E%3Ccircle cx='9' cy='8' r='0.8' fill='%23fff'/%3E%3Ccircle cx='10.8' cy='10.5' r='0.6' fill='%23fff'/%3E%3C/g%3E%3Cg transform='translate(10 0) rotate(16 10 23)'%3E%3Cpath d='M7 3 L13 3 L12.2 13 Q10 15.5 7.8 13 Z' fill='rgba(245,184,0,0.95)' stroke='%2394a3b8' stroke-width='0.8'/%3E%3Cpath d='M10 14.5 V23 M7 23.2 H13' stroke='%2394a3b8' stroke-width='1.1' stroke-linecap='round'/%3E%3Ccircle cx='9' cy='8' r='0.8' fill='%23fff'/%3E%3Ccircle cx='10.8' cy='10.5' r='0.6' fill='%23fff'/%3E%3C/g%3E %3Cpath d='M15 0 L15.8 2.2 L18 3 L15.8 3.8 L15 6 L14.2 3.8 L12 3 L14.2 2.2Z' fill='%23fbbf24'/%3E%3C/svg%3E");
+  --season-label-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E %3Cpath d='M20 2 Q20 12 30 12 Q20 12 20 22 Q20 12 10 12 Q20 12 20 2Z' fill='%23fbbf24'/%3E %3Cpath d='M8 18 Q8 24 14 24 Q8 24 8 30 Q8 24 2 24 Q8 24 8 18Z' fill='%23f5b800'/%3E %3Ccircle cx='27' cy='25' r='1.6' fill='%2394a3b8'/%3E%3Ccircle cx='5' cy='7' r='1.2' fill='%23f472b6'/%3E%3C/svg%3E");
 }
 
 /* --- Valentine's Day: hearts, love letters, heart balloons and a string of hearts --- */
@@ -16319,6 +15538,17 @@ body[data-season='easter'] {
 
 body[data-season='easter'] .control-item {
   --season-size: 22px;
+}
+
+/* The bunny, its ears and the chicks are white with a pale grey outline, which is no outline on a
+   near-white card; the light theme draws it a few steps darker. */
+body.theme-light[data-season='easter'] {
+  --season-tile-sit: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 26'%3E%3Ccircle cx='12' cy='10' r='6.2' fill='%23fde047'/%3E%3Cpath d='M9 5 Q10 2 12 4 Q13 1.5 14.5 4.5' stroke='%23facc15' stroke-width='1' fill='none'/%3E %3Ccircle cx='10' cy='9' r='0.9' fill='%231f2937'/%3E%3Ccircle cx='14' cy='9' r='0.9' fill='%231f2937'/%3E%3Cpath d='M11 11 L13 11 L12 13Z' fill='%23fb923c'/%3E %3Cpath d='M3.5 13.5 L6.5 16.5 L9.5 13.5 L12.5 16.5 L15.5 13.5 L18.5 16.5 L20.5 13.5 Q21 25 12 25 Q3 25 3.5 13.5Z' fill='%23f5f5f4' stroke='%23a8a29e' stroke-width='0.7'/%3E%3C/svg%3E");
+  --season-weather-sit: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 26'%3E%3Ccircle cx='12' cy='10' r='6.2' fill='%23fde047'/%3E%3Cpath d='M9 5 Q10 2 12 4 Q13 1.5 14.5 4.5' stroke='%23facc15' stroke-width='1' fill='none'/%3E %3Ccircle cx='10' cy='9' r='0.9' fill='%231f2937'/%3E%3Ccircle cx='14' cy='9' r='0.9' fill='%231f2937'/%3E%3Cpath d='M11 11 L13 11 L12 13Z' fill='%23fb923c'/%3E %3Cpath d='M3.5 13.5 L6.5 16.5 L9.5 13.5 L12.5 16.5 L15.5 13.5 L18.5 16.5 L20.5 13.5 Q21 25 12 25 Q3 25 3.5 13.5Z' fill='%23f5f5f4' stroke='%23a8a29e' stroke-width='0.7'/%3E%3C/svg%3E");
+  --season-time-sit: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 34'%3E%3Cg stroke='%23a1a1aa' stroke-width='0.7' fill='%23f8fafc'%3E%3Cellipse cx='13' cy='10' rx='3.4' ry='9' transform='rotate(-10 13 10)'/%3E%3Cellipse cx='23' cy='10' rx='3.4' ry='9' transform='rotate(10 23 10)'/%3E%3Cellipse cx='18' cy='25' rx='11' ry='9'/%3E%3C/g%3E %3Cellipse cx='13' cy='10' rx='1.5' ry='6.5' fill='%23f9a8d4' transform='rotate(-10 13 10)'/%3E%3Cellipse cx='23' cy='10' rx='1.5' ry='6.5' fill='%23f9a8d4' transform='rotate(10 23 10)'/%3E %3Ccircle cx='14' cy='23' r='1.3' fill='%231f2937'/%3E%3Ccircle cx='22' cy='23' r='1.3' fill='%231f2937'/%3E%3Cellipse cx='18' cy='26.2' rx='1.4' ry='1' fill='%23f472b6'/%3E %3Cpath d='M12 27 L6 26 M12 28.5 L6.5 29.5 M24 27 L30 26 M24 28.5 L29.5 29.5' stroke='%23a1a1aa' stroke-width='0.5'/%3E %3Cellipse cx='11' cy='27' rx='1.8' ry='1' fill='%23fbcfe8'/%3E%3Cellipse cx='25' cy='27' rx='1.8' ry='1' fill='%23fbcfe8'/%3E%3C/svg%3E");
+  --season-dialog-sit: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 34'%3E%3Cg stroke='%23a1a1aa' stroke-width='0.7' fill='%23f8fafc'%3E%3Cellipse cx='13' cy='10' rx='3.4' ry='9' transform='rotate(-10 13 10)'/%3E%3Cellipse cx='23' cy='10' rx='3.4' ry='9' transform='rotate(10 23 10)'/%3E%3Cellipse cx='18' cy='25' rx='11' ry='9'/%3E%3C/g%3E %3Cellipse cx='13' cy='10' rx='1.5' ry='6.5' fill='%23f9a8d4' transform='rotate(-10 13 10)'/%3E%3Cellipse cx='23' cy='10' rx='1.5' ry='6.5' fill='%23f9a8d4' transform='rotate(10 23 10)'/%3E %3Ccircle cx='14' cy='23' r='1.3' fill='%231f2937'/%3E%3Ccircle cx='22' cy='23' r='1.3' fill='%231f2937'/%3E%3Cellipse cx='18' cy='26.2' rx='1.4' ry='1' fill='%23f472b6'/%3E %3Cpath d='M12 27 L6 26 M12 28.5 L6.5 29.5 M24 27 L30 26 M24 28.5 L29.5 29.5' stroke='%23a1a1aa' stroke-width='0.5'/%3E %3Cellipse cx='11' cy='27' rx='1.8' ry='1' fill='%23fbcfe8'/%3E%3Cellipse cx='25' cy='27' rx='1.8' ry='1' fill='%23fbcfe8'/%3E%3C/svg%3E");
+  --season-hat: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 22'%3E%3Cg stroke='%23a1a1aa' stroke-width='0.7'%3E%3Cellipse cx='8' cy='11' rx='3.6' ry='10' fill='%23f8fafc' transform='rotate(-14 8 11)'/%3E%3Cellipse cx='16' cy='11' rx='3.6' ry='10' fill='%23f8fafc' transform='rotate(12 16 11)'/%3E%3C/g%3E %3Cellipse cx='8' cy='11.5' rx='1.6' ry='7' fill='%23f9a8d4' transform='rotate(-14 8 11)'/%3E%3Cellipse cx='16' cy='11.5' rx='1.6' ry='7' fill='%23f9a8d4' transform='rotate(12 16 11)'/%3E%3C/svg%3E");
+  --season-label-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 26'%3E%3Ccircle cx='12' cy='10' r='6.2' fill='%23fde047'/%3E%3Cpath d='M9 5 Q10 2 12 4 Q13 1.5 14.5 4.5' stroke='%23facc15' stroke-width='1' fill='none'/%3E %3Ccircle cx='10' cy='9' r='0.9' fill='%231f2937'/%3E%3Ccircle cx='14' cy='9' r='0.9' fill='%231f2937'/%3E%3Cpath d='M11 11 L13 11 L12 13Z' fill='%23fb923c'/%3E %3Cpath d='M3.5 13.5 L6.5 16.5 L9.5 13.5 L12.5 16.5 L15.5 13.5 L18.5 16.5 L20.5 13.5 Q21 25 12 25 Q3 25 3.5 13.5Z' fill='%23f5f5f4' stroke='%23a8a29e' stroke-width='0.7'/%3E%3C/svg%3E");
 }
 
 body[data-season='easter'] .control-item::before {
@@ -16584,8 +15814,21 @@ body[data-season='thanksgiving'] .control-item {
   display: block;
 }
 
+/* Holiday decorations are off under reduced motion and the Readable preset, which is when people
+   most want these rows legible, so the row dims once and lightly: its switches, select and dates
+   (which the rules for any disabled control and any disabled row would dim again, to a quarter
+   and under 2:1) keep their own opacity. The Readable preset holds the dates to its 7:1 floor. */
 #settings-modal .seasonal-option.is-disabled {
-  opacity: 0.5;
+  opacity: 0.6;
+}
+
+#settings-modal .seasonal-option.is-disabled :is(input, select):disabled,
+#settings-modal .seasonal-option.is-disabled .form-help {
+  opacity: 1;
+}
+
+body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disabled {
+  opacity: 0.85;
 }
 
 /* The Readable preset replaces these rows' effects (see syncReadablePresetOverrides). The whole
@@ -16602,8 +15845,7 @@ body[data-season='thanksgiving'] .control-item {
 
 /* Switches slide their knob with a physical translateX; mirroring the whole control keeps
    "on" at the reading end in Arabic without duplicating every knob rule. */
-[dir='rtl'] .form-group input[type='checkbox'],
-[dir='rtl'] .entity-toggle {
+[dir='rtl'] .form-group input[type='checkbox'] {
   transform: scaleX(-1);
 }
 
@@ -16646,6 +15888,7 @@ body[data-season='thanksgiving'] .control-item {
   .climate-preset-mode-btn.active,
   .media-mute-toggle.active,
   .custom-dropdown-option.selected,
+  .entity-item.selected,
   .donate-amount-chip.selected,
   .desktop-pin-panel-button[data-active='true'],
   .desktop-pin-light-power[data-active='true'] {
@@ -16708,26 +15951,22 @@ body[data-season='thanksgiving'] .control-item {
   }
 
   /* !important: the Settings switch rules carry #settings-modal and would otherwise win. */
-  .form-group input[type='checkbox'],
-  .entity-toggle {
+  .form-group input[type='checkbox'] {
     forced-color-adjust: none !important;
     border: 1px solid CanvasText !important;
     background: Canvas !important;
   }
 
-  .form-group input[type='checkbox']::after,
-  .entity-toggle::after {
+  .form-group input[type='checkbox']::after {
     background: CanvasText !important;
     box-shadow: none !important;
   }
 
-  .form-group input[type='checkbox']:checked,
-  .entity-toggle.active {
+  .form-group input[type='checkbox']:checked {
     background: Highlight !important;
   }
 
-  .form-group input[type='checkbox']:checked::after,
-  .entity-toggle.active::after {
+  .form-group input[type='checkbox']:checked::after {
     background: HighlightText !important;
   }
 
@@ -16753,6 +15992,16 @@ body[data-season='thanksgiving'] .control-item {
     .media-volume-slider
   )::-webkit-slider-thumb,
   .desktop-pin-light-slider::-webkit-slider-thumb {
+    background: Highlight;
+    border: 2px solid ButtonText;
+    box-shadow: none;
+  }
+
+  #settings-modal .setting-slider input[type='range'] {
+    background: ButtonText;
+  }
+
+  #settings-modal .setting-slider input[type='range']::-webkit-slider-thumb {
     background: Highlight;
     border: 2px solid ButtonText;
     box-shadow: none;
@@ -16926,7 +16175,6 @@ body[data-season='thanksgiving'] .control-item {
     .media-detail-title,
     .media-detail-artist,
     .sensor-detail-value,
-    .sensor-value,
     .desktop-pin-panel-name,
     .desktop-pin-light-name,
     .desktop-pin-panel-kpi,

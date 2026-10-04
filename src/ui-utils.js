@@ -17,6 +17,8 @@ const pendingModalCloses = new WeakMap();
 const DEFAULT_FROSTED_STRENGTH = 60;
 const DEFAULT_FROSTED_TINT = 60;
 const MIN_BACKGROUND_OPACITY = 0.08;
+// How much of a Background colour is mixed into the window's own: a hint, not a repaint.
+const BACKGROUND_TINT = { dark: 0.12, light: 0.08 };
 const BACKGROUND_OPACITY_CURVE = 1.35;
 const CUSTOM_THEME_ID_PREFIX = 'custom-';
 // The shared modal exit animation runs for var(--duration-base) (200ms); the fallback timer only
@@ -32,7 +34,8 @@ const TOAST_ICON_NAMES = {
 };
 const ACCENT_THEMES = [
   { id: 'original', name: 'Original', color: '#64b5f6', description: 'The classic dark look' },
-  { id: 'indigo', name: 'Indigo', color: '#6366f1', description: 'Focused and modern' },
+  // Nudged from #6366f1, whose white label was 4.47:1, just under the 4.5:1 AA floor.
+  { id: 'indigo', name: 'Indigo', color: '#5f62ef', description: 'Focused and modern' },
   { id: 'violet', name: 'Violet', color: '#8b5cf6', description: 'Creative and bold' },
   { id: 'rose', name: 'Rose', color: '#f43f5e', description: 'Vivid and energetic' },
   { id: 'coral', name: 'Coral', color: '#f97316', description: 'Warm and upbeat' },
@@ -159,6 +162,40 @@ function mixRgb(base, mixin, amount) {
   };
 }
 
+function linearChannel(channel) {
+  const value = channel / 255;
+  return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+}
+
+/** WCAG relative luminance of an {r, g, b} colour. */
+function relativeLuminance({ r, g, b }) {
+  return 0.2126 * linearChannel(r) + 0.7152 * linearChannel(g) + 0.0722 * linearChannel(b);
+}
+
+/** WCAG contrast ratio between two {r, g, b} colours. */
+function contrastBetween(first, second) {
+  const [lighter, darker] = [relativeLuminance(first), relativeLuminance(second)].sort(
+    (a, b) => b - a
+  );
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+const WHITE = { r: 255, g: 255, b: 255 };
+const BLACK = { r: 0, g: 0, b: 0 };
+// The two surfaces accent text has to clear, as the stylesheet paints them. In the dark theme it is
+// the lightest of them, a main view tile (the panel lifted for the V2 look); in the light theme the
+// darkest, the panel with its grey veil. Text sits on those with the accent's own tint behind it (a
+// secondary button, the active page tab, a lit tile), so the tint is mixed in as well.
+const ACCENT_TEXT_SURFACES = {
+  dark: { surface: { r: 44, g: 47, b: 54 }, tint: 0.18 },
+  light: { surface: { r: 228, g: 228, b: 228 }, tint: 0.14 },
+};
+
+const rgbString = ({ r, g, b }) => `rgb(${r}, ${g}, ${b})`;
+// Below this spread between the strongest and weakest channel an accent reads as grey (slate is
+// 0.14, the most muted of the other presets 0.56).
+const NEUTRAL_ACCENT_CHROMA = 0.25;
+
 /**
  * Text colour for content drawn on top of a colour: near-black or white, whichever contrasts
  * more (WCAG relative luminance), so a dark custom accent still gets readable button labels.
@@ -166,37 +203,51 @@ function mixRgb(base, mixin, amount) {
  * @returns {string} '#0a0c10' or '#ffffff'.
  */
 function getReadableTextColor(rgb) {
-  const linear = (channel) => {
-    const value = channel / 255;
-    return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
-  };
-  const luminance = 0.2126 * linear(rgb.r) + 0.7152 * linear(rgb.g) + 0.0722 * linear(rgb.b);
+  const luminance = relativeLuminance(rgb);
   // Contrast with white is 1.05 / (L + 0.05); with #0a0c10 (L ≈ 0.0037) it is (L + 0.05) / 0.0537.
   return 1.05 / (luminance + 0.05) > (luminance + 0.05) / 0.0537 ? '#ffffff' : '#0a0c10';
 }
 
 /**
- * The accent darkened just enough to read as text on the light theme's near-white panes
- * (at least 4.8:1 against #fafafa), so pale accents like aqua or yellow still work for links and
- * secondary buttons. Returns an rgb() string.
+ * The accent moved toward `target` just far enough to reach `minContrast` on the surface the theme
+ * paints behind accent text, bare and with the accent's own tint on it. An accent that already
+ * reads well comes back unchanged.
+ */
+function solveAccentText(rgb, { surface, tint }, target, minContrast) {
+  const tinted = mixRgb(surface, rgb, tint);
+  let color = rgb;
+  for (let amount = 0; amount <= 1; amount += 0.02) {
+    color = mixRgb(rgb, target, amount);
+    // The plain surface counts too: a near-black accent's tint is darker than the surface itself.
+    if (Math.min(contrastBetween(color, surface), contrastBetween(color, tinted)) >= minContrast) {
+      break;
+    }
+  }
+  return rgbString(color);
+}
+
+/**
+ * The accent darkened just enough to read as text on the light theme's panes (at least
+ * `minContrast` on the veiled panel under the accent's tint, which is the darkest place text
+ * sits), so pale accents like aqua or yellow still work for links and secondary buttons. Returns an
+ * rgb() string.
  * @param {{r:number, g:number, b:number}} rgb - Accent colour.
  * @param {number} [minContrast=4.8]
  */
 function getAccentTextOnLight(rgb, minContrast = 4.8) {
-  const linear = (channel) => {
-    const value = channel / 255;
-    return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
-  };
-  const luminance = ({ r, g, b }) => 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
-  const backgroundLuminance = luminance({ r: 250, g: 250, b: 250 });
-  let amount = 0;
-  let color = rgb;
-  while (amount < 0.95) {
-    color = mixRgb(rgb, { r: 0, g: 0, b: 0 }, amount);
-    if ((backgroundLuminance + 0.05) / (luminance(color) + 0.05) >= minContrast) break;
-    amount += 0.05;
-  }
-  return `rgb(${color.r}, ${color.g}, ${color.b})`;
+  return solveAccentText(rgb, ACCENT_TEXT_SURFACES.light, BLACK, minContrast);
+}
+
+/**
+ * The accent lightened just enough to read as text on the dark theme's tiles and panes (at least
+ * `minContrast` on a main view tile under the accent's tint). Indigo, violet, rose, the holiday
+ * reds and any dark custom colour fall short as they are; the default blue is left alone.
+ * Returns an rgb() string.
+ * @param {{r:number, g:number, b:number}} rgb - Accent colour.
+ * @param {number} [minContrast=4.6]
+ */
+function getAccentTextOnDark(rgb, minContrast = 4.6) {
+  return solveAccentText(rgb, ACCENT_TEXT_SURFACES.dark, WHITE, minContrast);
 }
 
 function mapWindowOpacityToBackgroundAlpha(opacity) {
@@ -374,6 +425,29 @@ function resolveBackgroundThemeId(backgroundKey) {
   return themeMap.original ? 'original' : allThemes[0]?.id || 'original';
 }
 
+/**
+ * The fill a primary button takes on hover: the accent stepped toward white in the dark theme and
+ * toward black in the light one. The label colour was picked for the accent at rest, so the step
+ * must not take it below 4.5:1 (or below what it had at rest): an accent whose label is white
+ * steps the other way, in the dark theme too (so Indigo hovers darker there), since a lighter
+ * fill only costs it contrast, and any other step is shortened until the label holds.
+ * @param {{r:number, g:number, b:number}} rgb - Accent colour.
+ * @param {string} onAccent - The label colour picked for the accent, '#0a0c10' or '#ffffff'.
+ * @param {boolean} isLightTheme
+ * @returns {{r:number, g:number, b:number}}
+ */
+function getAccentHoverColor(rgb, onAccent, isLightTheme) {
+  const label = hexToRgb(onAccent);
+  const toward = isLightTheme || onAccent === '#ffffff' ? BLACK : WHITE;
+  const floor = Math.min(4.5, contrastBetween(label, rgb));
+  let hover = rgb;
+  for (let mix = isLightTheme ? 0.18 : 0.22; mix > 0; mix -= 0.02) {
+    hover = mixRgb(rgb, toward, mix);
+    if (contrastBetween(label, hover) >= floor) return hover;
+  }
+  return rgb;
+}
+
 function applyAccentColor(color, accentId = 'custom-preview') {
   const normalizedColor = normalizeHexColor(color);
   const rgb = hexToRgb(normalizedColor);
@@ -383,12 +457,8 @@ function applyAccentColor(color, accentId = 'custom-preview') {
   if (!root) return false;
 
   const isLightTheme = document.body?.classList.contains('theme-light');
-  const hoverMix = isLightTheme ? 0.18 : 0.22;
-  const hoverRgb = mixRgb(
-    rgb,
-    isLightTheme ? { r: 0, g: 0, b: 0 } : { r: 255, g: 255, b: 255 },
-    hoverMix
-  );
+  const onAccent = getReadableTextColor(rgb);
+  const hoverRgb = getAccentHoverColor(rgb, onAccent, isLightTheme);
   const accentBgAlpha = isLightTheme ? 0.12 : 0.18;
   const glowAlpha = isLightTheme ? 0.22 : 0.35;
   const focusAlpha = isLightTheme ? 0.18 : 0.25;
@@ -396,13 +466,15 @@ function applyAccentColor(color, accentId = 'custom-preview') {
   root.style.setProperty('--accent', normalizedColor);
   root.style.setProperty('--accent-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
   root.style.setProperty('--accent-hover', `rgb(${hoverRgb.r}, ${hoverRgb.g}, ${hoverRgb.b})`);
-  root.style.setProperty('--on-accent', getReadableTextColor(rgb));
+  root.style.setProperty('--on-accent', onAccent);
+  // Both themes get a solved text colour; the stylesheet picks the one for the theme.
   root.style.setProperty('--accent-text-light', getAccentTextOnLight(rgb));
   root.style.setProperty('--accent-text-light-hover', getAccentTextOnLight(rgb, 6.5));
-  root.style.setProperty('--primary', normalizedColor);
-  root.style.setProperty('--primary-hover', `rgb(${hoverRgb.r}, ${hoverRgb.g}, ${hoverRgb.b})`);
+  root.style.setProperty('--accent-text-dark', getAccentTextOnDark(rgb));
+  root.style.setProperty('--accent-text-dark-hover', getAccentTextOnDark(rgb, 6.5));
+  // A focus ring is a graphic, so 3:1 is enough; most accents keep their own colour for it.
+  root.style.setProperty('--accent-ring-dark', getAccentTextOnDark(rgb, 3.2));
   root.style.setProperty('--accent-bg', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${accentBgAlpha})`);
-  root.style.setProperty('--border-focus', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.5)`);
   root.style.setProperty(
     '--glow-accent',
     `0 0 20px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${glowAlpha})`
@@ -414,6 +486,11 @@ function applyAccentColor(color, accentId = 'custom-preview') {
 
   if (document.body) {
     document.body.dataset.accent = accentId;
+    // A grey-ish accent (slate, a custom grey) has no hue to tell a lit tile's icon from an idle
+    // one, so the stylesheet draws lit icons in the text colour for it.
+    const chroma = (Math.max(rgb.r, rgb.g, rgb.b) - Math.min(rgb.r, rgb.g, rgb.b)) / 255;
+    if (chroma < NEUTRAL_ACCENT_CHROMA) document.body.dataset.accentNeutral = 'true';
+    else delete document.body.dataset.accentNeutral;
   }
 
   return true;
@@ -471,7 +548,7 @@ function applyBackgroundColor(
 
   const isLightTheme = body.classList.contains('theme-light');
   const base = isLightTheme ? BACKGROUND_BASES.light : BACKGROUND_BASES.dark;
-  const tintAmount = disableTint ? 0 : isLightTheme ? 0.08 : 0.12;
+  const tintAmount = disableTint ? 0 : isLightTheme ? BACKGROUND_TINT.light : BACKGROUND_TINT.dark;
   const tint = (baseRgb) => mixRgb(baseRgb, rgb, tintAmount);
   const setRgbaVar = (name, baseEntry) => {
     const tinted = tint(baseEntry);
@@ -512,8 +589,28 @@ function applyBackgroundColor(
   setBodyRgb('--loading-overlay-rgb', loadingOverlay);
 
   body.dataset.background = backgroundId;
+  // The colour itself, for the Background chip in Settings to show next to the tinted window.
+  if (disableTint) root.style.removeProperty('--background-pick');
+  else root.style.setProperty('--background-pick', normalizedColor);
 
   return true;
+}
+
+/**
+ * The window colour a Background choice gives in the theme that is showing: the theme's own base
+ * with the colour mixed in as lightly as applyBackgroundColor mixes it. The colour picker draws
+ * its swatches with this, so a swatch shows the window it makes and not the full-strength colour.
+ * @param {string|null} color - The Background colour, or null for the untinted base.
+ * @returns {string|null} '#rrggbb', or null for a colour that cannot be read.
+ */
+function getBackgroundWindowColor(color = null) {
+  const isLightTheme = document.body?.classList.contains('theme-light');
+  const { bgColor } = isLightTheme ? BACKGROUND_BASES.light : BACKGROUND_BASES.dark;
+  const rgb = color === null ? null : hexToRgb(normalizeHexColor(color));
+  if (color !== null && !rgb) return null;
+  const tint = rgb ? (isLightTheme ? BACKGROUND_TINT.light : BACKGROUND_TINT.dark) : 0;
+  const mixed = mixRgb(bgColor, rgb || bgColor, tint);
+  return `#${[mixed.r, mixed.g, mixed.b].map((c) => c.toString(16).padStart(2, '0')).join('')}`;
 }
 
 /**
@@ -1250,6 +1347,11 @@ function applyWindowEffects(config = {}) {
     const backgroundAlpha = mapWindowOpacityToBackgroundAlpha(opacity);
 
     body.classList.toggle('linux-performance-mode', linuxPerformanceMode);
+    // linux-performance-mode is also what Windows draws without acrylic, so a rule meant for Linux
+    // alone cannot key on it. An attribute rather than a class keeps the body's class list, which
+    // the glass tests pin per platform, as it was.
+    if (platform) body.dataset.platform = platform;
+    else delete body.dataset.platform;
     body.style.setProperty('--window-opacity', opacity.toFixed(3));
     body.style.setProperty('--window-bg-alpha', backgroundAlpha.toFixed(3));
     body.style.setProperty('--desktop-pin-window-opacity', backgroundAlpha.toFixed(3));
@@ -2025,6 +2127,14 @@ function positionConnectionStatusTooltip(target) {
   connectionStatusTooltip.style.top = `${top}px`;
   connectionStatusTooltip.style.left = `${left}px`;
   connectionStatusTooltip.dataset.placement = placeBelow ? 'bottom' : 'top';
+  // Keeping the tooltip inside the window moves it off the dot, so the arrow slides to stay under
+  // it, short of the rounded corners.
+  const arrowInset = 14;
+  const arrowX = Math.max(
+    arrowInset,
+    Math.min(tooltipRect.width - arrowInset, rect.left + rect.width / 2 - left)
+  );
+  connectionStatusTooltip.style.setProperty('--arrow-x', `${arrowX}px`);
 }
 
 function showConnectionStatusTooltip(target, { pinned = false } = {}) {
@@ -2359,6 +2469,11 @@ export {
   setStatus,
   showConfirm,
   hexToRgb,
+  mixRgb,
+  contrastBetween,
+  getAccentHoverColor,
+  getBackgroundWindowColor,
+  getAccentTextOnDark,
   getAccentTextOnLight,
   getReadableTextColor,
   miredsToKelvin,

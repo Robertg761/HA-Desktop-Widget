@@ -27,6 +27,7 @@ Object.defineProperty(window, 'matchMedia', {
 
 // Now load the module
 const uiUtils = require('../../src/ui-utils.js');
+const { SEASONAL_HOLIDAYS } = require('../../src/seasonal-calendar.js');
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -1153,6 +1154,32 @@ describe('UI Utilities', () => {
       expect(tooltip.classList.contains('visible')).toBe(false);
     });
 
+    it('points the arrow at the dot, even when the tooltip is held inside the window', () => {
+      const rect = (left, top, width, height) => ({
+        left,
+        top,
+        width,
+        height,
+        right: left + width,
+        bottom: top + height,
+      });
+      uiUtils.initializeConnectionStatusTooltip();
+      const tooltip = document.getElementById('connection-status-tooltip');
+      tooltip.getBoundingClientRect = () => rect(0, 0, 180, 60);
+      // The dot sits at the far left of the window, where a 180px tooltip cannot centre on it.
+      statusIndicator.getBoundingClientRect = () => rect(15, 12, 8, 8);
+      statusIndicator.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+      // The tooltip is held at the 12px padding; its centre would be at 90, but the dot is at 19.
+      expect(tooltip.style.left).toBe('12px');
+      expect(tooltip.style.getPropertyValue('--arrow-x')).toBe('14px');
+
+      // Away from the edge the tooltip centres on the dot and the arrow is in the middle.
+      statusIndicator.getBoundingClientRect = () => rect(300, 12, 8, 8);
+      statusIndicator.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+      expect(tooltip.style.left).toBe('214px');
+      expect(tooltip.style.getPropertyValue('--arrow-x')).toBe('90px');
+    });
+
     it('should show tooltip on focus and hide on blur', () => {
       uiUtils.initializeConnectionStatusTooltip();
       statusIndicator.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
@@ -1670,6 +1697,22 @@ describe('UI Utilities', () => {
       expect(document.body.style.opacity).toBe('');
     });
 
+    it('names the platform on the body, since linux-performance-mode is not Linux alone', () => {
+      mockElectronAPI.platform = 'win32';
+      uiUtils.applyWindowEffects({ opacity: 0.75, frostedGlass: false });
+      // Windows without Frosted glass draws the Linux class but must not read as Linux.
+      expect(document.body.classList.contains('linux-performance-mode')).toBe(true);
+      expect(document.body.dataset.platform).toBe('win32');
+
+      mockElectronAPI.platform = 'linux';
+      uiUtils.applyWindowEffects({ opacity: 0.75, frostedGlass: true });
+      expect(document.body.dataset.platform).toBe('linux');
+
+      mockElectronAPI.platform = undefined;
+      uiUtils.applyWindowEffects({ opacity: 0.75, frostedGlass: false });
+      expect('platform' in document.body.dataset).toBe(false);
+    });
+
     it('keeps backdrop filters on Windows when frosted glass is enabled', () => {
       mockElectronAPI.platform = 'win32';
 
@@ -2041,6 +2084,153 @@ describe('UI Utilities', () => {
       });
       // An accent that already reads well is left alone.
       expect(uiUtils.getAccentTextOnLight({ r: 30, g: 41, b: 120 })).toBe('rgb(30, 41, 120)');
+    });
+
+    const channels = (rgbString) => {
+      const [r, g, b] = rgbString.match(/\d+/g).map(Number);
+      return { r, g, b };
+    };
+    const contrast = (first, second) => {
+      const [lighter, darker] = [
+        luminance(first.r, first.g, first.b),
+        luminance(second.r, second.g, second.b),
+      ].sort((a, b) => b - a);
+      return (lighter + 0.05) / (darker + 0.05);
+    };
+    const mixed = (base, other, amount) => ({
+      r: base.r + (other.r - base.r) * amount,
+      g: base.g + (other.g - base.g) * amount,
+      b: base.b + (other.b - base.b) * amount,
+    });
+    const presets = () => uiUtils.getAccentThemes().map((theme) => uiUtils.hexToRgb(theme.color));
+    const seasonal = () =>
+      SEASONAL_HOLIDAYS.map((holiday) => uiUtils.hexToRgb(holiday.colors.accent));
+    // Colours a user can pick: dark, saturated, and the extremes.
+    const custom = () =>
+      ['#ab1234', '#1a237e', '#000000', '#ffffff', '#ffff00'].map(uiUtils.hexToRgb);
+
+    // The lightest dark surface accent text sits on is a main view tile; the darkest light one is
+    // the veiled panel. The accent's own tint (secondary buttons, the active tab, a lit tile) lies
+    // on top of it.
+    const DARK_TILE = { r: 44, g: 47, b: 54 };
+    const LIGHT_PANEL = { r: 228, g: 228, b: 228 };
+
+    it('lightens any accent enough to read as text on the dark theme tiles', () => {
+      for (const accent of [...presets(), ...seasonal(), ...custom()]) {
+        const text = channels(uiUtils.getAccentTextOnDark(accent));
+        expect(contrast(text, DARK_TILE)).toBeGreaterThanOrEqual(4.5);
+        expect(contrast(text, mixed(DARK_TILE, accent, 0.18))).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    it('leaves an accent that already reads on the dark tiles as it is', () => {
+      expect(uiUtils.getAccentTextOnDark({ r: 34, g: 211, b: 238 })).toBe('rgb(34, 211, 238)');
+      // The raw indigo is 2.9:1 there, and the solved text is a lighter indigo, not white.
+      const indigo = channels(uiUtils.getAccentTextOnDark(uiUtils.hexToRgb('#5f62ef')));
+      expect(indigo.b).toBeGreaterThan(indigo.r);
+      expect(indigo.r).toBeGreaterThan(95);
+    });
+
+    it('darkens any accent enough to read on the veiled light panel, tint included', () => {
+      for (const accent of [...presets(), ...seasonal(), ...custom()]) {
+        const text = channels(uiUtils.getAccentTextOnLight(accent));
+        expect(contrast(text, LIGHT_PANEL)).toBeGreaterThanOrEqual(4.5);
+        expect(contrast(text, mixed(LIGHT_PANEL, accent, 0.14))).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    it('keeps the white label of every preset at 4.5:1 or better', () => {
+      for (const accent of presets()) {
+        const label = uiUtils.hexToRgb(uiUtils.getReadableTextColor(accent));
+        expect(contrast(label, accent)).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    it('steps a hover fill the way that keeps its label readable', () => {
+      const light = { r: 100, g: 181, b: 246 };
+      const indigo = uiUtils.hexToRgb('#5f62ef');
+      const violet = uiUtils.hexToRgb('#8b5cf6');
+      const WHITE = '#ffffff';
+      const BLACK = '#0a0c10';
+
+      // A dark label on a light fill: lighter on dark, and darker on light only as far as it holds.
+      expect(uiUtils.getAccentHoverColor(light, BLACK, false).r).toBeGreaterThan(light.r);
+      expect(uiUtils.getAccentHoverColor(light, BLACK, true).r).toBeLessThan(light.r);
+      // A white label on indigo would lose contrast on a lighter fill, so dark hovers darken it too.
+      expect(uiUtils.getAccentHoverColor(indigo, WHITE, false).b).toBeLessThan(indigo.b);
+
+      for (const [accent, label, isLight] of [
+        [light, BLACK, true],
+        [light, BLACK, false],
+        [indigo, WHITE, true],
+        [indigo, WHITE, false],
+        [violet, BLACK, true],
+        [violet, BLACK, false],
+        ...presets().map((rgb) => [rgb, uiUtils.getReadableTextColor(rgb), true]),
+        ...presets().map((rgb) => [rgb, uiUtils.getReadableTextColor(rgb), false]),
+      ]) {
+        const hover = uiUtils.getAccentHoverColor(accent, label, isLight);
+        const labelRgb = uiUtils.hexToRgb(label);
+        expect(contrast(labelRgb, hover)).toBeGreaterThanOrEqual(
+          Math.min(4.5, contrast(labelRgb, accent)) - 0.001
+        );
+      }
+    });
+
+    it('mixes a Background colour into the base of the theme that is showing', () => {
+      document.body.classList.remove('theme-light');
+      expect(uiUtils.getBackgroundWindowColor()).toBe('#12161e');
+      // 12% of violet over the dark base.
+      expect(uiUtils.getBackgroundWindowColor('#8b5cf6')).toBe('#211e38');
+      expect(uiUtils.getBackgroundWindowColor('not a colour')).toBeNull();
+
+      document.body.classList.add('theme-light');
+      expect(uiUtils.getBackgroundWindowColor()).toBe('#fafafa');
+      // 8% of violet over the light base, the amount applyBackgroundColor mixes.
+      expect(uiUtils.getBackgroundWindowColor('#8b5cf6')).toBe('#f1edfa');
+      uiUtils.applyTheme('light');
+      uiUtils.applyBackgroundTheme('violet');
+      const applied = document.documentElement.style.getPropertyValue('--window-bg-rgb');
+      expect(applied).toBe('241, 237, 250');
+      document.body.classList.remove('theme-light');
+    });
+
+    it('keeps the picked Background colour for the Settings chip, and drops it for the base', () => {
+      uiUtils.applyBackgroundTheme('rose');
+      expect(document.documentElement.style.getPropertyValue('--background-pick')).toBe('#F43F5E');
+      uiUtils.applyBackgroundTheme('original');
+      expect(document.documentElement.style.getPropertyValue('--background-pick')).toBe('');
+    });
+
+    it('flags a grey accent, which has no hue for a lit tile to show', () => {
+      uiUtils.applyAccentTheme('slate');
+      expect(document.body.dataset.accentNeutral).toBe('true');
+      uiUtils.applyAccentTheme('original');
+      expect(document.body.dataset.accentNeutral).toBeUndefined();
+      uiUtils.applyAccentThemeFromColor('#808080');
+      expect(document.body.dataset.accentNeutral).toBe('true');
+      for (const theme of uiUtils.getAccentThemes().filter((entry) => entry.id !== 'slate')) {
+        uiUtils.applyAccentTheme(theme.id);
+        expect(document.body.dataset.accentNeutral).toBeUndefined();
+      }
+    });
+
+    it('sets a text colour for both themes, and a ring colour, on the root', () => {
+      uiUtils.applyAccentTheme('indigo');
+      const style = document.documentElement.style;
+      for (const name of [
+        '--accent-text-light',
+        '--accent-text-light-hover',
+        '--accent-text-dark',
+        '--accent-text-dark-hover',
+        '--accent-ring-dark',
+      ]) {
+        expect(style.getPropertyValue(name)).toMatch(/^rgb\(\d+, \d+, \d+\)$/);
+      }
+      // The ring only needs 3:1, so it stays closer to the accent than the text colour does.
+      const ring = channels(style.getPropertyValue('--accent-ring-dark'));
+      const text = channels(style.getPropertyValue('--accent-text-dark'));
+      expect(ring.r).toBeLessThanOrEqual(text.r);
     });
   });
 

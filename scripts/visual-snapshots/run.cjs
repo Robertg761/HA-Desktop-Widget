@@ -230,6 +230,7 @@ async function main() {
 
     const openPins = [];
     const extraTargets = [];
+    let offline = false;
     const ctx = {
       CTRL,
       sleep,
@@ -245,6 +246,21 @@ async function main() {
           label: selector,
           timeoutMs: 10000,
         }),
+      /** Fail the scene unless a page expression is truthy right now (a layout check). */
+      async expect(expression, label) {
+        if (!(await cdp.evaluate(`!!(${expression})`)))
+          throw new Error(`Layout check failed: ${label}`);
+      },
+      /** Take Home Assistant away, as an outage does; the runner brings it back after the scene. */
+      async goOffline() {
+        offline = true;
+        server.refuseConnections(true);
+        await waitFor(() => cdp.evaluate(`document.body.classList.contains('ha-offline')`), {
+          label: 'the app to notice the outage',
+          timeoutMs: 15000,
+        });
+        await sleep(500);
+      },
       /** Wait until a page expression is truthy. */
       waitForExpression: (expression, label = expression) =>
         waitFor(() => cdp.evaluate(`!!(${expression})`), { label, timeoutMs: 10000 }),
@@ -315,6 +331,17 @@ async function main() {
     }
 
     async function restore() {
+      if (offline) {
+        // Retry connects at once; waiting for the app's own backoff would run into the next scene.
+        offline = false;
+        server.refuseConnections(false);
+        await cdp.evaluate(`document.querySelector('#widget-state-panel .btn-secondary')?.click()`);
+        await waitFor(() => cdp.evaluate(`!document.body.classList.contains('ha-offline')`), {
+          label: 'the app to reconnect',
+          timeoutMs: 20000,
+        });
+        await sleep(600);
+      }
       for (const pin of extraTargets.splice(0)) pin.close();
       for (const entityId of openPins.splice(0)) {
         await cdp.evaluate(
@@ -349,8 +376,16 @@ async function main() {
       const size = scene.size || WINDOW_SIZE;
       if (size.width !== applied.size.width || size.height !== applied.size.height) {
         await cdp.evaluate(`window.resizeTo(${size.width}, ${size.height})`);
+        // The window is sized in screen pixels, but an enlarged interface zooms the page, so the
+        // page sees fewer CSS pixels than the window has.
+        const zoom = settings.ui.scale || 1;
+        const cssWidth = Math.round(size.width / zoom);
+        const cssHeight = Math.round(size.height / zoom);
         await waitFor(
-          () => cdp.evaluate(`innerWidth === ${size.width} && innerHeight === ${size.height}`),
+          () =>
+            cdp.evaluate(
+              `Math.abs(innerWidth - ${cssWidth}) <= 1 && Math.abs(innerHeight - ${cssHeight}) <= 1`
+            ),
           { label: `a ${size.width}x${size.height} window`, timeoutMs: 5000 }
         ).catch((error) => console.warn(`${scene.name}: ${error.message}`));
         applied.size = size;
