@@ -12,7 +12,11 @@ const mockLogger = {
 };
 jest.mock('../../src/logger', () => mockLogger);
 
-const { DesktopCompanionClient, PROTOCOL_VERSION } = require('../../src/desktop-companion-client');
+const {
+  COMMAND_CLOCK_SKEW_MS,
+  DesktopCompanionClient,
+  PROTOCOL_VERSION,
+} = require('../../src/desktop-companion-client');
 
 class FakeWebSocket extends EventEmitter {
   constructor() {
@@ -326,7 +330,7 @@ describe('DesktopCompanionClient', () => {
       {
         protocol_version: PROTOCOL_VERSION,
         action: 'show',
-        expires_at: new Date(Date.now() - 1000).toISOString(),
+        expires_at: new Date(Date.now() - COMMAND_CLOCK_SKEW_MS - 1000).toISOString(),
       },
       'expired',
     ],
@@ -363,6 +367,59 @@ describe('DesktopCompanionClient', () => {
         error: expect.stringMatching(new RegExp(errorFragment, 'i')),
       })
     );
+    client.stop();
+  });
+
+  test('runs a command whose time has passed only because this clock runs ahead of Home Assistant', async () => {
+    const { client, executeCommand, websocket } = createClient();
+    client.start();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Home Assistant gave the command 30 seconds from `issued`. It arrives 5 seconds later, and
+    // this computer's clock is 90 seconds ahead of Home Assistant's, so by its reading the command
+    // ran out a minute ago.
+    const issued = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(issued + 5_000 + 90_000);
+    try {
+      await websocket.commandHandler({
+        command_id: 'command-skew',
+        action: 'show',
+        protocol_version: PROTOCOL_VERSION,
+        expires_at: new Date(issued + 30_000).toISOString(),
+      });
+    } finally {
+      clock.mockRestore();
+    }
+
+    expect(executeCommand).toHaveBeenCalledWith({ action: 'show', payload: {} });
+    expect(websocket.requests).toContainEqual(
+      expect.objectContaining({ command_id: 'command-skew', status: 'completed' })
+    );
+    client.stop();
+  });
+
+  test('still refuses a command that is older than the clock tolerance', async () => {
+    const { client, executeCommand, websocket } = createClient();
+    client.start();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await websocket.commandHandler({
+      command_id: 'command-stale',
+      action: 'show',
+      protocol_version: PROTOCOL_VERSION,
+      // Queued for a desktop that was offline for ten minutes.
+      expires_at: new Date(Date.now() - 10 * 60_000).toISOString(),
+    });
+
+    expect(executeCommand).not.toHaveBeenCalled();
+    expect(websocket.requests).toContainEqual(
+      expect.objectContaining({
+        command_id: 'command-stale',
+        status: 'failed',
+        error: expect.stringMatching(/expired/i),
+      })
+    );
+    expect(COMMAND_CLOCK_SKEW_MS).toBeLessThan(5 * 60_000);
     client.stop();
   });
 

@@ -3,6 +3,11 @@ import log from './logger.js';
 const PROTOCOL_VERSION = 1;
 const HEARTBEAT_INTERVAL_MS = 60 * 1000;
 const MAX_COMMAND_HISTORY = 100;
+// A command carries the time Home Assistant gave it up at, and this computer reads its own clock
+// against it. A clock that runs ahead (an unsynchronised VM, a dual-boot RTC offset) would refuse
+// every command, so a command is still run this long after its time. A command that waited
+// minutes for a desktop that was offline is still left out.
+const COMMAND_CLOCK_SKEW_MS = 2 * 60 * 1000;
 const ALLOWED_ACTIONS = new Set(['show', 'hide', 'toggle', 'switch_page', 'apply_profile']);
 const SESSION_ENDED_RESULT = Object.freeze({
   status: 'failed',
@@ -330,7 +335,7 @@ class DesktopCompanionClient {
 
     let result;
     const expiresAt = Date.parse(command?.expires_at || '');
-    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+    if (!Number.isFinite(expiresAt) || expiresAt + COMMAND_CLOCK_SKEW_MS <= Date.now()) {
       result = { status: 'failed', error: 'Command expired before it reached the desktop' };
     } else if (Number(command?.protocol_version) !== PROTOCOL_VERSION) {
       result = { status: 'failed', error: 'Unsupported desktop command protocol' };
@@ -356,6 +361,7 @@ class DesktopCompanionClient {
 
 export {
   ALLOWED_ACTIONS,
+  COMMAND_CLOCK_SKEW_MS,
   DesktopCompanionClient,
   HEARTBEAT_INTERVAL_MS,
   PROTOCOL_VERSION,
