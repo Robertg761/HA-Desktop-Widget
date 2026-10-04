@@ -3822,14 +3822,12 @@ describe('Settings + Config Integration', () => {
 
     describe('says what was last received in words, not ids', () => {
       const show = async (info) => {
-        window.electronAPI.getDesktopIntegration = jest
-          .fn()
-          .mockResolvedValue({
-            hyprland: true,
-            shortcuts: [],
-            appId: 'ha-desktop-widget',
-            ...info,
-          });
+        window.electronAPI.getDesktopIntegration = jest.fn().mockResolvedValue({
+          hyprland: true,
+          shortcuts: [],
+          appId: 'ha-desktop-widget',
+          ...info,
+        });
         await settings.initializePopupHotkey();
         await document.getElementById('desktop-integration-refresh').onclick();
         return {
