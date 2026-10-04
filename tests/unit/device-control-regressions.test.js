@@ -597,6 +597,149 @@ describe('device control and live data regressions', () => {
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     expect(mockCallService).not.toHaveBeenCalled();
   });
+  describe('the to-do dialog while its list is read again', () => {
+    const list = entity('todo.shop', '2', { supported_features: 5 });
+    const shopItems = (...summaries) => ({
+      [list.entity_id]: {
+        items: summaries.map((summary, index) => ({
+          uid: `item-${index}`,
+          summary,
+          status: 'needs_action',
+        })),
+      },
+    });
+    const getItemsCalls = () =>
+      mockCallServiceWithResponse.mock.calls.filter(([, service]) => service === 'get_items');
+    const openList = async () => {
+      mockCallServiceWithResponse.mockResolvedValue(shopItems('Milk', 'Eggs'));
+      state.setEntityState(list);
+      ui.openEntityControls(list);
+      await flush();
+      return document.querySelector('.todo-modal');
+    };
+    // The next get_items waits until the test lets it through.
+    const holdNextRead = (...summaries) => {
+      let release;
+      mockCallServiceWithResponse.mockReturnValueOnce(
+        new Promise((resolve) => {
+          release = () => resolve(shopItems(...summaries));
+        })
+      );
+      return () => release();
+    };
+
+    test('shows Loading... only for a list that has nothing on screen yet', async () => {
+      let release;
+      mockCallServiceWithResponse.mockReturnValueOnce(
+        new Promise((resolve) => {
+          release = () => resolve(shopItems('Milk'));
+        })
+      );
+      state.setEntityState(list);
+      ui.openEntityControls(list);
+      await flush();
+      const modal = document.querySelector('.todo-modal');
+
+      expect(modal.querySelector('.entity-detail-empty').textContent).toBe('Loading...');
+      release();
+      await flush();
+      expect(modal.querySelectorAll('.todo-item-row')).toHaveLength(1);
+    });
+
+    test('keeps the rows on screen, dimmed, while a tick is read back', async () => {
+      const modal = await openList();
+      const release = holdNextRead('Milk', 'Eggs');
+      const container = modal.querySelector('.todo-detail-list-container');
+      const checkbox = modal.querySelector('input[type="checkbox"]');
+
+      checkbox.checked = true;
+      checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+      await flush();
+
+      // Not a line of text: the dialog does not collapse, and the rows are still the rows.
+      expect(container.querySelectorAll('.todo-item-row')).toHaveLength(2);
+      expect(container.textContent).not.toContain('Loading...');
+      expect(container.dataset.refreshing).toBe('true');
+      expect(container.getAttribute('aria-busy')).toBeNull();
+
+      release();
+      await flush();
+      expect(container.dataset.refreshing).toBeUndefined();
+      expect(container.querySelectorAll('.todo-item-row')).toHaveLength(2);
+    });
+
+    test('puts the keyboard back on the item that was ticked', async () => {
+      const modal = await openList();
+      const checkbox = modal.querySelector('input[type="checkbox"][data-uid="item-1"]');
+      checkbox.focus();
+
+      checkbox.checked = true;
+      checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+      await flush();
+
+      expect(document.activeElement.dataset.uid).toBe('item-1');
+    });
+
+    test('keeps the scroll position of a long list', async () => {
+      const modal = await openList();
+      const body = modal.querySelector('.modal-body');
+      body.scrollTop = 120;
+      const checkbox = modal.querySelector('input[type="checkbox"]');
+
+      checkbox.checked = true;
+      checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+      await flush();
+
+      expect(body.scrollTop).toBe(120);
+    });
+
+    test('reads the list once after a tick, though Home Assistant also reports the new count', async () => {
+      const modal = await openList();
+      const reads = getItemsCalls().length;
+      let finishUpdate;
+      mockCallService.mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishUpdate = () => resolve({ success: true });
+        })
+      );
+      const checkbox = modal.querySelector('input[type="checkbox"]');
+
+      checkbox.checked = true;
+      checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+      await flush();
+      // The count changes in Home Assistant before the service call has returned.
+      state.setEntityState({ ...list, state: '1' });
+      finishUpdate();
+      await flush();
+
+      expect(getItemsCalls().length - reads).toBe(1);
+    });
+
+    test('reads the list once after an added item as well', async () => {
+      const modal = await openList();
+      const reads = getItemsCalls().length;
+      const form = modal.querySelector('.todo-add-form');
+      form.querySelector('input').value = 'Bread';
+
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      state.setEntityState({ ...list, state: '3' });
+      await flush();
+
+      expect(getItemsCalls().length - reads).toBe(1);
+    });
+
+    test('still reads the list again when it changes without the person doing it', async () => {
+      const modal = await openList();
+      const reads = getItemsCalls().length;
+      mockCallServiceWithResponse.mockResolvedValue(shopItems('Milk', 'Eggs', 'Bread'));
+
+      state.setEntityState({ ...list, state: '3' });
+      await flush();
+
+      expect(getItemsCalls().length - reads).toBe(1);
+      expect(modal.querySelectorAll('.todo-item-row')).toHaveLength(3);
+    });
+  });
   test('todo dialog keeps a deleted list disabled when a pending read resolves later', async () => {
     const list = entity('todo.pending', '1', { supported_features: 5 });
     let resolveItems;

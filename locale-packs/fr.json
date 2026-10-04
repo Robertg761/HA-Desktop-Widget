@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.61",
+  "version": "1.2.62",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1880,6 +1880,14 @@
     "Bind a key in your window manager to run ha-desktop-widget --toggle, which shows or hides the widget.": "Associez une touche dans votre gestionnaire de fenêtres à ha-desktop-widget --toggle, qui affiche ou masque le widget.",
     "Turn off blur for the widget": "Désactiver le flou pour le widget",
     "Blur changes take effect immediately, without Save.": "Les modifications du flou s'appliquent immédiatement, sans enregistrer.",
-    "Shortcut status updated.": "Statut des raccourcis mis à jour."
+    "Shortcut status updated.": "Statut des raccourcis mis à jour.",
+    "Welcome to HA Desktop Widget": "Bienvenue dans HA Desktop Widget",
+    "A new version is available": "Une nouvelle version est disponible",
+    "Version {{version}} is available. Open Settings > Advanced to download it.": "La version {{version}} est disponible. Ouvrez Paramètres > Avancé pour la télécharger.",
+    "Showing the first {{shown}} of {{count}} entities. Type to narrow them.": "Affichage des {{shown}} premières entités sur {{count}}. Saisissez du texte pour les affiner.",
+    "Up to {{max}} sensors. Selected: {{count}}.": "Jusqu'à {{max}} capteurs. Sélectionnés : {{count}}.",
+    "Maximum reached. Remove a sensor to add another.": "Maximum atteint. Supprimez un capteur pour en ajouter un autre.",
+    "No sensors match \"{{query}}\"": "Aucun capteur ne correspond à « {{query}} »",
+    "What’s new": "Nouveautés"
   }
 }

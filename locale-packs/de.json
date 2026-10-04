@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.61",
+  "version": "1.2.62",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget.",
   "messages": {
@@ -1880,6 +1880,14 @@
     "Bind a key in your window manager to run ha-desktop-widget --toggle, which shows or hides the widget.": "Belege im Fenstermanager eine Taste mit ha-desktop-widget --toggle, das das Widget ein- oder ausblendet.",
     "Turn off blur for the widget": "Unschärfe für das Widget ausschalten",
     "Blur changes take effect immediately, without Save.": "Änderungen an der Unschärfe werden sofort wirksam, auch ohne Speichern.",
-    "Shortcut status updated.": "Status der Tastenkürzel aktualisiert."
+    "Shortcut status updated.": "Status der Tastenkürzel aktualisiert.",
+    "Welcome to HA Desktop Widget": "Willkommen beim HA Desktop Widget",
+    "A new version is available": "Eine neue Version ist verfügbar",
+    "Version {{version}} is available. Open Settings > Advanced to download it.": "Version {{version}} ist verfügbar. Öffne Einstellungen > Erweitert, um sie herunterzuladen.",
+    "Showing the first {{shown}} of {{count}} entities. Type to narrow them.": "Die ersten {{shown}} von {{count}} Entitäten werden angezeigt. Tippe, um sie einzugrenzen.",
+    "Up to {{max}} sensors. Selected: {{count}}.": "Bis zu {{max}} Sensoren. Ausgewählt: {{count}}.",
+    "Maximum reached. Remove a sensor to add another.": "Maximum erreicht. Entferne einen Sensor, um einen anderen hinzuzufügen.",
+    "No sensors match \"{{query}}\"": "Keine Sensoren passen zu \"{{query}}\"",
+    "What’s new": "Neuerungen"
   }
 }

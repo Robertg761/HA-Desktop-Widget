@@ -16,6 +16,8 @@ const {
   session,
   nativeTheme,
   clipboard,
+  // Named apart from the browser's Notification, which the renderer-facing globals also declare.
+  Notification: ElectronNotification,
   systemPreferences,
 } = require('electron');
 const path = require('path');
@@ -473,6 +475,16 @@ const {
   probeHomeAssistantWithElectronNet,
   requestFormWithElectronNet,
 } = require('./src/ha-oauth.cjs');
+
+const {
+  UpdateCheckScheduler,
+  createUpdateAnnouncer,
+  summarizeUpdateCheck,
+} = require('./src/update-flow.cjs');
+
+// package.json names the app "home-assistant-widget" (renaming it would move userData and orphan
+// every config), so app.getName() is that, not what the person knows it as.
+const APP_DISPLAY_NAME = 'HA Desktop Widget';
 
 let autoUpdaterInstance = null;
 
@@ -7950,25 +7962,7 @@ function buildTrayContextMenu() {
     {
       label: mainT('Check for Updates'),
       click: () => {
-        void checkForUpdatesForCurrentPackage()
-          .then((result) => {
-            if (result.status === 'dev') {
-              log.info('Update check is only available in packaged builds.');
-            }
-            // Supported auto-updaters emit their final available/none/error event before
-            // checkForUpdates resolves. Re-sending the synthetic "checking" result here
-            // would overwrite that final renderer state.
-            if (result.status === 'checking') return;
-            if (mainWindow && result) {
-              mainWindow.webContents.send('auto-update', result);
-            }
-          })
-          .catch((error) => {
-            const payload = { status: 'error', error: describeUpdateError(error) };
-            if (mainWindow) {
-              mainWindow.webContents.send('auto-update', payload);
-            }
-          });
+        void runTrayUpdateCheck();
       },
     },
     {
@@ -8240,7 +8234,7 @@ function createTray() {
   }
 
   const contextMenu = buildTrayContextMenu();
-  tray.setToolTip(mainT('Home Assistant Widget'));
+  tray.setToolTip(APP_DISPLAY_NAME);
   tray.setContextMenu(contextMenu);
   // Rebuilds this menu with the monitor submenu once the helper answers (and
   // again after hotplug, next time the tray is rebuilt). Self-terminating: the
@@ -10744,7 +10738,7 @@ ipcMain.handle('get-login-item-settings', (event) => {
       const executablePath = getLinuxStartupExecutablePath(app, process.env);
       const openAtLogin = isLinuxLoginItemEnabled({
         pkg,
-        appName: app.getName(),
+        appName: APP_DISPLAY_NAME,
         executablePath,
         env: process.env,
       });
@@ -10776,13 +10770,13 @@ ipcMain.handle('set-login-item-settings', (event, openAtLogin) => {
       const executablePath = getLinuxStartupExecutablePath(app, process.env);
       setLinuxLoginItemSettings(normalizedOpenAtLogin, {
         pkg,
-        appName: app.getName(),
+        appName: APP_DISPLAY_NAME,
         executablePath,
         env: process.env,
       });
       const confirmedOpenAtLogin = isLinuxLoginItemEnabled({
         pkg,
-        appName: app.getName(),
+        appName: APP_DISPLAY_NAME,
         executablePath,
         env: process.env,
       });
@@ -10939,27 +10933,88 @@ ipcMain.handle('focus-desktop-pin', (event, entityId) => {
 });
 
 // Updates IPC
-ipcMain.handle('check-for-updates', async (event) => {
+ipcMain.handle('check-for-updates', async (event, options) => {
   const sender = authorizeIpcSender(event, 'check-for-updates');
   if (!sender) return rejectUnauthorizedIpc('check-for-updates');
-  return checkForUpdatesForCurrentPackage();
+  // The window asks about the channel as its switch shows it, which Save may not have stored yet.
+  const allowPrerelease =
+    typeof options?.allowPrerelease === 'boolean' ? options.allowPrerelease : undefined;
+  return checkForUpdatesForCurrentPackage({ allowPrerelease });
 });
 
-async function checkForUpdatesForCurrentPackage() {
+/**
+ * Checks for an update the way this package can be updated.
+ *
+ * Every answer is plain data, because it crosses to the window: a self-updating build answers that
+ * the check began ({ status: 'checking' }) and reports what it found through the updater's events;
+ * the others answer with the outcome ('none', 'manual', 'portable' or 'error'). A build that is not
+ * packaged says 'dev'.
+ *
+ * @param {{allowPrerelease?: boolean}} [options] - The release channel to look in; the saved
+ *   setting when absent.
+ */
+async function checkForUpdatesForCurrentPackage({ allowPrerelease } = {}) {
   if (!app.isPackaged) return { status: 'dev' };
   if (isPortableBuild()) {
-    return checkPortableUpdate();
+    return checkPortableUpdate({ allowPrerelease });
   }
   if (!supportsAutoUpdater(process.platform, process.env)) {
-    return checkManualReleaseUpdate();
+    return checkManualReleaseUpdate({ allowPrerelease });
   }
   try {
     const autoUpdater = getAutoUpdater();
-    configureAutoUpdaterChannel(autoUpdater);
-    const info = await autoUpdater.checkForUpdates();
-    return { status: 'checking', info };
+    configureAutoUpdaterChannel(autoUpdater, allowPrerelease);
+    // Someone is waiting for this one, even when a scheduled check was already running and the
+    // updater hands this call that same check: its events are theirs to see.
+    manualUpdateCheckRunning = true;
+    backgroundUpdateCheckRunning = false;
+    const result = await autoUpdater.checkForUpdates();
+    // The updater answers null when it is switched off for this installation, and then sends no
+    // events either; "checking" would be a promise nothing keeps.
+    if (!result) {
+      return {
+        status: 'error',
+        error: mainT('Update information is not available for this version yet. Try again later.'),
+      };
+    }
+    return summarizeUpdateCheck(result);
   } catch (e) {
     return { status: 'error', error: describeUpdateError(e) };
+  } finally {
+    manualUpdateCheckRunning = false;
+  }
+}
+
+// The updater reports a check the app started on its own schedule exactly as it reports one a
+// person asked for. Nobody is waiting for the first, so its "checking" and "error" are marked
+// `background` and the window leaves them out of the Updates row; otherwise a laptop that woke
+// without a network would show "Could not reach GitHub" there until someone next looked.
+let backgroundUpdateCheckRunning = false;
+let manualUpdateCheckRunning = false;
+
+function sendAutoUpdateToWindow(payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('auto-update', payload);
+  }
+}
+
+// The two updater events that only mean something to a person who asked for the check.
+function sendUpdaterCheckEvent(payload) {
+  sendAutoUpdateToWindow(backgroundUpdateCheckRunning ? { ...payload, background: true } : payload);
+}
+
+// "Check for Updates" in the tray: the window comes up on the Updates row, which says that a check
+// is running and then what it found. A tray item that answered nowhere read as a dead menu entry.
+async function runTrayUpdateCheck() {
+  showMainWindowFromTray();
+  sendAutoUpdateToWindow({ status: 'checking', reveal: true });
+  try {
+    const result = await checkForUpdatesForCurrentPackage();
+    // A self-updating build sends its own final event (available, none or error) before the check
+    // resolves; saying "checking" again here would overwrite it.
+    if (result.status !== 'checking') sendAutoUpdateToWindow(result);
+  } catch (error) {
+    sendAutoUpdateToWindow({ status: 'error', error: describeUpdateError(error) });
   }
 }
 
@@ -12584,9 +12639,15 @@ function getUpdatesConfig() {
   return config.updates;
 }
 
-function configureAutoUpdaterChannel(autoUpdater = getAutoUpdater()) {
-  const allowPrerelease = !!getUpdatesConfig().allowPrerelease;
-  autoUpdater.allowPrerelease = allowPrerelease;
+// The channel to look in: the one asked for, or the saved setting.
+function resolveAllowPrerelease(allowPrerelease) {
+  return typeof allowPrerelease === 'boolean'
+    ? allowPrerelease
+    : !!getUpdatesConfig().allowPrerelease;
+}
+
+function configureAutoUpdaterChannel(autoUpdater = getAutoUpdater(), allowPrerelease) {
+  autoUpdater.allowPrerelease = resolveAllowPrerelease(allowPrerelease);
   return autoUpdater;
 }
 
@@ -12609,9 +12670,9 @@ function selectPortableRelease(releases, allowPrerelease) {
   );
 }
 
-async function fetchGitHubUpdateRelease() {
+async function fetchGitHubUpdateRelease({ allowPrerelease: requested } = {}) {
   const repo = 'Robertg761/HA-Desktop-Widget';
-  const allowPrerelease = !!getUpdatesConfig().allowPrerelease;
+  const allowPrerelease = resolveAllowPrerelease(requested);
   const apiUrl = allowPrerelease
     ? `https://api.github.com/repos/${repo}/releases?per_page=20`
     : `https://api.github.com/repos/${repo}/releases/latest`;
@@ -12657,9 +12718,9 @@ function describeUpdateError(error) {
   return firstLine.length > 160 ? `${firstLine.slice(0, 157)}…` : firstLine;
 }
 
-async function checkManualReleaseUpdate() {
+async function checkManualReleaseUpdate({ allowPrerelease } = {}) {
   try {
-    const release = await fetchGitHubUpdateRelease();
+    const release = await fetchGitHubUpdateRelease({ allowPrerelease });
     if (!release) {
       return { status: 'none', message: mainT('You are up to date!') };
     }
@@ -12692,9 +12753,9 @@ async function checkManualReleaseUpdate() {
   }
 }
 
-async function checkPortableUpdate() {
+async function checkPortableUpdate({ allowPrerelease } = {}) {
   try {
-    const release = await fetchGitHubUpdateRelease();
+    const release = await fetchGitHubUpdateRelease({ allowPrerelease });
     if (!release) {
       return { status: 'none', message: mainT('You are up to date!') };
     }
@@ -12747,69 +12808,130 @@ async function checkPortableUpdate() {
   }
 }
 
+// Tells the person, once per version, about a release this package cannot install itself.
+const updateAnnouncementFile = () => path.join(userDataPath, 'update-announcement.json');
+const updateAnnouncer = createUpdateAnnouncer({
+  Notification: ElectronNotification,
+  translate: (key, vars) => mainT(key, vars),
+  log,
+  // Kept on this computer only, beside the config: another computer has its own notice to show.
+  store: {
+    // No file yet is the normal first run, not something to warn about.
+    read: () =>
+      fs.existsSync(updateAnnouncementFile())
+        ? JSON.parse(fs.readFileSync(updateAnnouncementFile(), 'utf8'))?.version || null
+        : null,
+    write: (version) =>
+      fs.writeFileSync(updateAnnouncementFile(), JSON.stringify({ version }), { mode: 0o600 }),
+  },
+  // The notification says to open Settings > Advanced; clicking it does.
+  onClick: () => {
+    showMainWindowFromTray();
+    sendAutoUpdateToWindow({ ...getLastManualUpdateResult(), reveal: true });
+  },
+});
+let lastManualUpdateResult = null;
+function getLastManualUpdateResult() {
+  return lastManualUpdateResult || { status: 'checking' };
+}
+
+/**
+ * One check made on the app's own schedule. It never reports "up to date" or a failure to the
+ * window, since nobody asked: a build that updates itself gets the updater's events and its
+ * download notification, any other build is told of a newer release by a notification.
+ */
+async function runScheduledUpdateCheck() {
+  if (!app.isPackaged || isQuitting) return;
+  const selfUpdating = !isPortableBuild() && supportsAutoUpdater(process.platform, process.env);
+  if (selfUpdating) {
+    // The update that is already downloaded installs on exit; checking again would only fetch it
+    // a second time and announce it a second time.
+    if (autoUpdateDownloaded) return;
+    // Someone has pressed Check and is watching for the answer; theirs is the check.
+    if (manualUpdateCheckRunning) return;
+    const autoUpdater = getAutoUpdater();
+    configureAutoUpdaterChannel(autoUpdater);
+    backgroundUpdateCheckRunning = true;
+    try {
+      await autoUpdater.checkForUpdatesAndNotify({
+        title: mainT('A new update is ready to install'),
+        // electron-updater fills {version} itself when the download finishes.
+        body: mainT(
+          '{{appName}} version {{version}} has been downloaded and will be automatically installed on exit',
+          { appName: APP_DISPLAY_NAME, version: '{version}' }
+        ),
+      });
+    } finally {
+      backgroundUpdateCheckRunning = false;
+    }
+    return;
+  }
+  const result = isPortableBuild() ? await checkPortableUpdate() : await checkManualReleaseUpdate();
+  if (result.status !== 'manual' && result.status !== 'portable') return;
+  lastManualUpdateResult = result;
+  sendAutoUpdateToWindow(result);
+  updateAnnouncer.announce(result);
+}
+
+let updateCheckScheduler = null;
+
 // App event handlers
 function setupAutoUpdates() {
   if (!app.isPackaged) return;
-  if (isPortableBuild()) {
-    log.info('Portable build detected; auto-updates are disabled.');
-    return;
-  }
-  if (!supportsAutoUpdater(process.platform, process.env)) {
-    log.info(`${process.platform} package does not support in-app auto-updates.`);
-    return;
-  }
-  try {
-    const autoUpdater = getAutoUpdater();
-    autoUpdater.logger = log;
-    autoUpdater.logger.transports.file.level = 'info';
-    autoUpdater.autoDownload = true;
-    autoUpdater.autoInstallOnAppQuit = true;
-    configureAutoUpdaterChannel(autoUpdater);
+  const selfUpdating = !isPortableBuild() && supportsAutoUpdater(process.platform, process.env);
+  if (selfUpdating) {
+    try {
+      const autoUpdater = getAutoUpdater();
+      autoUpdater.logger = log;
+      autoUpdater.logger.transports.file.level = 'info';
+      autoUpdater.autoDownload = true;
+      autoUpdater.autoInstallOnAppQuit = true;
+      configureAutoUpdaterChannel(autoUpdater);
 
-    autoUpdater.on('checking-for-update', () => {
-      autoUpdateDownloaded = false;
-      mainWindow?.webContents.send('auto-update', { status: 'checking' });
-    });
-    autoUpdater.on('update-available', (info) => {
-      autoUpdateDownloaded = false;
-      mainWindow?.webContents.send('auto-update', { status: 'available', info });
-    });
-    autoUpdater.on('update-not-available', (info) => {
-      autoUpdateDownloaded = false;
-      mainWindow?.webContents.send('auto-update', { status: 'none', info });
-    });
-    autoUpdater.on('download-progress', (progress) => {
-      mainWindow?.webContents.send('auto-update', { status: 'downloading', progress });
-    });
-    autoUpdater.on('update-downloaded', (info) => {
-      autoUpdateDownloaded = true;
-      mainWindow?.webContents.send('auto-update', { status: 'downloaded', info });
-    });
-    autoUpdater.on('error', (err) => {
-      autoUpdateDownloaded = false;
-      mainWindow?.webContents.send('auto-update', {
-        status: 'error',
-        error: describeUpdateError(err),
+      autoUpdater.on('checking-for-update', () => {
+        autoUpdateDownloaded = false;
+        sendUpdaterCheckEvent({ status: 'checking' });
       });
-    });
+      autoUpdater.on('update-available', (info) => {
+        autoUpdateDownloaded = false;
+        sendAutoUpdateToWindow({ status: 'available', info: { version: info?.version } });
+      });
+      autoUpdater.on('update-not-available', () => {
+        autoUpdateDownloaded = false;
+        sendAutoUpdateToWindow({ status: 'none' });
+      });
+      autoUpdater.on('download-progress', (progress) => {
+        sendAutoUpdateToWindow({ status: 'downloading', progress: { percent: progress?.percent } });
+      });
+      autoUpdater.on('update-downloaded', (info) => {
+        autoUpdateDownloaded = true;
+        sendAutoUpdateToWindow({ status: 'downloaded', info: { version: info?.version } });
+      });
+      autoUpdater.on('error', (err) => {
+        autoUpdateDownloaded = false;
+        sendUpdaterCheckEvent({ status: 'error', error: describeUpdateError(err) });
+      });
+    } catch (error) {
+      log.error('Auto-update setup failed:', error);
+      return;
+    }
+  } else if (isPortableBuild()) {
+    log.info('Portable build detected; it is checked for new releases but cannot update itself.');
+  } else {
+    log.info(`${process.platform} package does not support in-app auto-updates.`);
+  }
 
-    // Keep the first packaged-launch window responsive before doing network/update work.
-    // electron-updater fills {appName} and {version} itself when the download finishes.
-    setTimeout(
-      () =>
-        autoUpdater
-          .checkForUpdatesAndNotify({
-            title: mainT('A new update is ready to install'),
-            body: mainT(
-              '{{appName}} version {{version}} has been downloaded and will be automatically installed on exit',
-              { appName: '{appName}', version: '{version}' }
-            ),
-          })
-          .catch(() => {}),
-      30000
-    );
+  updateCheckScheduler = new UpdateCheckScheduler({
+    check: runScheduledUpdateCheck,
+    logger: log,
+  });
+  // Keep the first packaged-launch window responsive before doing network/update work: the first
+  // check waits, then repeats, and a machine waking from suspend checks if one is due.
+  updateCheckScheduler.start();
+  try {
+    powerMonitor.on('resume', () => void updateCheckScheduler?.handleResume());
   } catch (error) {
-    log.error('Auto-update setup failed:', error);
+    log.warn('Could not subscribe to power resume for update checks:', error?.message || error);
   }
 }
 
@@ -13116,7 +13238,7 @@ app
       }
       const linuxStartupOptions = {
         pkg,
-        appName: app.getName(),
+        appName: APP_DISPLAY_NAME,
         executablePath: getLinuxStartupExecutablePath(app, process.env),
         env: process.env,
       };

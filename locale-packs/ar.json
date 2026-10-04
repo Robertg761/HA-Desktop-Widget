@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.62",
+  "version": "1.2.63",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1880,6 +1880,14 @@
     "Bind a key in your window manager to run ha-desktop-widget --toggle, which shows or hides the widget.": "اربط مفتاحًا في مدير النوافذ لتشغيل ha-desktop-widget --toggle، الذي يُظهر الأداة أو يُخفيها.",
     "Turn off blur for the widget": "إيقاف الطمس للأداة",
     "Blur changes take effect immediately, without Save.": "تسري تغييرات الطمس فورًا، دون الحاجة إلى حفظ.",
-    "Shortcut status updated.": "تم تحديث حالة الاختصارات."
+    "Shortcut status updated.": "تم تحديث حالة الاختصارات.",
+    "Welcome to HA Desktop Widget": "مرحبًا بك في HA Desktop Widget",
+    "A new version is available": "يتوفر إصدار جديد",
+    "Version {{version}} is available. Open Settings > Advanced to download it.": "الإصدار {{version}} متاح. افتح الإعدادات > متقدم لتنزيله.",
+    "Showing the first {{shown}} of {{count}} entities. Type to narrow them.": "عرض أول {{shown}} من {{count}} كيان. اكتب لتضييق النتائج.",
+    "Up to {{max}} sensors. Selected: {{count}}.": "حتى {{max}} مستشعرات. المحدد: {{count}}.",
+    "Maximum reached. Remove a sensor to add another.": "تم بلوغ الحد الأقصى. أزل مستشعرًا لإضافة آخر.",
+    "No sensors match \"{{query}}\"": "لا توجد مستشعرات تطابق \"{{query}}\"",
+    "What’s new": "الجديد"
   }
 }

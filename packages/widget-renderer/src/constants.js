@@ -5,6 +5,10 @@
 
 // WebSocket
 export const WS_REQUEST_TIMEOUT_MS = 15000;
+// The first get_states of a connection has Home Assistant serialise every entity at once, which
+// takes well over a request's usual time on a large install or a slow link. A dead connection is
+// still caught by the ping/pong heartbeat, so this only has to outlast a slow reply.
+export const WS_INITIAL_STATES_TIMEOUT_MS = 90000;
 export const WS_INITIAL_ID = 1000;
 
 // Reconnection

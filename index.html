@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; img-src 'self' ha: data: blob:; media-src 'self' ha: blob:; connect-src * ha:;"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; img-src 'self' ha: data: blob:; media-src 'self' ha: blob:; connect-src * ha:; base-uri 'none'; form-action 'none'; object-src 'none';"
     />
-    <title data-i18n="Home Assistant Widget">Home Assistant Widget</title>
+    <title>HA Desktop Widget</title>
     <link rel="stylesheet" href="node_modules/@mdi/font/css/materialdesignicons.min.css" />
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="./dashboard-workflows.css" />
@@ -2167,8 +2167,14 @@
                       ><span data-i18n="Version">Version</span>
                       <strong id="current-version">Loading...</strong></span
                     >
-                    <p class="form-help update-status" id="update-status">
-                      <span id="update-status-text">Checking for updates...</span>
+                    <p
+                      class="form-help update-status"
+                      id="update-status"
+                      role="status"
+                      aria-live="polite"
+                      data-state="idle"
+                    >
+                      <span id="update-status-text">Ready to check for updates</span>
                     </p>
                   </div>
                   <div class="update-actions">
@@ -2178,9 +2184,25 @@
                     <button type="button" id="install-update-btn" class="btn btn-primary hidden">
                       <span id="install-update-text">Install update</span>
                     </button>
+                    <button
+                      type="button"
+                      id="whats-new-btn"
+                      class="btn btn-link hidden"
+                      data-i18n="What’s new"
+                    >
+                      What’s new
+                    </button>
                   </div>
                 </div>
-                <div class="update-progress hidden" id="update-progress">
+                <div
+                  class="update-progress hidden"
+                  id="update-progress"
+                  role="progressbar"
+                  aria-labelledby="update-status-text"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  aria-valuenow="0"
+                >
                   <div class="progress-bar">
                     <div class="progress-fill" id="progress-fill"></div>
                   </div>

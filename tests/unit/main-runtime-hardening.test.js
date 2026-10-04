@@ -26,6 +26,7 @@ describe('main-process wiring safeguards', () => {
       require('vm').runInNewContext(mainSource.slice(start, end), {
         process: { platform, env: {} },
         app: { isPackaged, getName: () => 'widget' },
+        APP_DISPLAY_NAME: 'HA Desktop Widget',
         IS_DEV_MODE: dev,
         IS_ISOLATED_PROFILE: isolated,
         ensureAppImageDesktopEntry: jest.fn(),
@@ -737,7 +738,9 @@ describe('main-process wiring safeguards', () => {
 
   it('supports opt-in prerelease update checks without moving stable users to prereleases', () => {
     expect(mainSource).toContain('function configureAutoUpdaterChannel');
-    expect(mainSource).toContain('autoUpdater.allowPrerelease = allowPrerelease');
+    expect(mainSource).toContain(
+      'autoUpdater.allowPrerelease = resolveAllowPrerelease(allowPrerelease)'
+    );
     expect(mainSource).toContain('await autoUpdater.checkForUpdates()');
     expect(mainSource).toContain('function selectPortableRelease');
     expect(mainSource).toContain('allowPrerelease || !release.prerelease');
@@ -756,14 +759,24 @@ describe('main-process wiring safeguards', () => {
     );
     const updateCheckSource = mainSource.slice(updateCheckStart, updateCheckEnd);
 
-    expect(traySource).toContain('checkForUpdatesForCurrentPackage()');
+    // The menu item hands over to one function, which asks through the same guard as Settings and
+    // never reaches for the updater itself.
+    expect(traySource).toContain('runTrayUpdateCheck()');
     expect(traySource).not.toContain('getAutoUpdater()');
-    expect(traySource).toContain("if (result.status === 'checking') return;");
+    const trayCheckStart = mainSource.indexOf('async function runTrayUpdateCheck');
+    const trayCheckSource = mainSource.slice(
+      trayCheckStart,
+      mainSource.indexOf('\n}\n', trayCheckStart)
+    );
+    expect(trayCheckSource).toContain('checkForUpdatesForCurrentPackage()');
+    expect(trayCheckSource).toContain(
+      "if (result.status !== 'checking') sendAutoUpdateToWindow(result);"
+    );
     expect(
       updateCheckSource.indexOf('supportsAutoUpdater(process.platform, process.env)')
     ).toBeLessThan(updateCheckSource.indexOf('getAutoUpdater()'));
-    expect(updateCheckSource).toContain('return checkManualReleaseUpdate()');
-    expect(mainSource).toContain('async function checkManualReleaseUpdate()');
+    expect(updateCheckSource).toContain('return checkManualReleaseUpdate({ allowPrerelease })');
+    expect(mainSource).toContain('async function checkManualReleaseUpdate(');
     expect(mainSource).toContain("status: 'manual'");
   });
 

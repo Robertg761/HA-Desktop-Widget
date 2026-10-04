@@ -86,6 +86,7 @@ test('startup repairs continue after each independent operation fails', () => {
       __dirname: '/app',
       pkg: {},
       app: { getName: () => 'widget' },
+      APP_DISPLAY_NAME: 'HA Desktop Widget',
       process: { env: {} },
       log: { info: jest.fn(), warn: jest.fn() },
       getLinuxStartupExecutablePath: () => '/widget',

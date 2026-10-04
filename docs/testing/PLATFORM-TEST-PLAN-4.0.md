@@ -346,11 +346,14 @@ Windows 11 22H2 or later (build 22621 or higher). Use the Setup installer for WI
 
 ### WIN11-1 Install, shortcuts and names
 
-1. Install the Setup build. If you have a 3.x install, install over it; otherwise use a clean machine or user.
+1. If you have a 3.x install, pin it to the taskbar first. Install the Setup build over it; otherwise use a clean machine or user.
 2. Look at the Desktop shortcut, the Start menu entry, the entry in Settings > Apps > Installed apps, the tray tooltip and the welcome heading.
 3. Look at the app icon on the Desktop, the Start menu and, while the app runs, the tray.
+4. If you pinned 3.x, click the taskbar pin.
 
-Expected: One name everywhere: "HA Desktop Widget". After an upgrade from 3.x there is no second shortcut with the old name. The icon looks like a finished app icon, not a hard-edged black square.
+Expected: One name everywhere: "HA Desktop Widget". After an upgrade from 3.x there is no second shortcut with the old name (the installer renames or replaces the old Desktop and Start menu shortcuts), and the taskbar pin still starts the app. The icon looks like a finished app icon, not a hard-edged black square.
+
+Must test on a real 3.11 install, not a clean machine: upgrade a 3.11 install that has a taskbar icon pinned and Desktop and Start menu shortcuts to 4.0, then check that both shortcuts are now named "HA Desktop Widget", the taskbar pin still launches the app, no duplicate shortcut appears on the Desktop or in the Start menu, and a Windows notification (see WIN11-10) shows "HA Desktop Widget" as the app name.
 
 Capture: A screenshot of each place the name appears.
 
@@ -640,7 +643,7 @@ Run this on a machine with working GPU acceleration, and also, if you can, on a 
 3. Turn Holiday decorations off, wait two minutes, and read it again. Then play media on the media tile and read it a third time.
 4. With decorations on, make the widget show an error or empty state (disconnect from the network) and read the text on it.
 
-Expected: Idle CPU use is low and decorations are not the main cost. For reference, the maintainers measured about 5 to 8% of one core without decorations and about 48 to 51% with them on a session with no GPU, and about 0.1% when the widget was hidden to the tray. Report your numbers. The error or empty state text is not crossed by decoration shapes. Playing media does not raise CPU use noticeably.
+Expected: Idle CPU use is low and decorations are not the main cost. For reference, the maintainers measured about 5 to 8% of one core without decorations and about 48 to 51% with them on a session with no GPU, and about 0.1% when the widget was hidden to the tray; 4.0.0 draws the frost under tiles with a cheaper resample (a synthetic scene went from 20.5% to 11.2% of a core against 9.6% for the scene alone), so expect less than that on a software-rendered session. Report your numbers. The error or empty state text is not crossed by decoration shapes. Playing media does not raise CPU use noticeably.
 
 Capture: The three CPU readings, the renderer, and a screenshot of the error state.
 
@@ -1380,11 +1383,24 @@ Needs: A Home Assistant with thousands of entities, or a network link you can sl
 1. Slow the link until the first state snapshot takes more than 20 seconds, or use a very large instance.
 2. Start the widget and watch for two minutes.
 
-Expected: The dashboard fills in eventually, with one connection. While it waits the widget says Home Assistant is slow to respond; it does not sit on an empty dashboard and reconnect every second or two.
+Expected: The dashboard fills in eventually, with one connection: the first snapshot is given up to 90 seconds, and the connection is not torn down and rebuilt every second or two while it loads. The panel reads "Waiting for live Home Assistant data..." meanwhile.
 
 Capture: How long it took, and the log.
 
 Ref: RO1-39
+
+### HA-4 Artwork behind a redirect
+
+Needs: Home Assistant behind a reverse proxy or single sign-on that answers some media URLs with a redirect (a 301, 302, 307 or 308), and a media player whose artwork comes from such an address.
+
+1. Play something on that media player and look at the media tile and its dialog.
+2. In the log, search for "Redirect was cancelled" and "A JavaScript error occurred in the main process".
+
+Expected: The artwork loads. If a redirect leaves Home Assistant's own address for a different origin, that picture is not shown, and nothing else happens: no error box appears over the app, and the log has one line about the blocked redirect.
+
+Capture: The tile, and the log lines.
+
+Ref: MP-23
 
 ## Camera streams (CAM)
 
@@ -1416,18 +1432,18 @@ Ref: RO2-12
 
 1. Click Live on a cloud or HLS camera that takes several seconds to start.
 
-Expected: A loading state ("Starting live stream…") shows until video plays. If the stream stalls, the viewer falls back to a snapshot, not a blank pane with a Stop button.
+Expected: A loading spinner shows over the snapshot you were looking at until video plays; the picture is not blanked first. If no frame arrives within about 20 seconds, the viewer switches to the camera's plain MJPEG picture (or says the preview is unavailable), not a blank pane. The Snapshot and Live buttons are a pair: the one for what you are looking at is filled, and Live keeps its name instead of changing to Stop. Pressing Live while it is filled does nothing; Snapshot is the way back to the still picture. Keyboard focus starts on Snapshot, the filled one, when the viewer opens.
 
 Capture: A recording of the first ten seconds.
 
-Ref: RO2-13
+Ref: RO2-13, RO2-26, RO2-22
 
 ### CAM-4 Stream that dies
 
 1. With a live tile playing, cut the camera's power or network.
 2. Watch the tile for a minute.
 
-Expected: The tile stops saying "Live now" and LIVE within about a minute, and shows a paused or snapshot state. It does not hold the last frame labeled live.
+Expected: The tile stops saying "Live now" and LIVE within about 20 seconds of the picture freezing (15 seconds of no movement, checked every 5), and shows a snapshot state. It does not hold the last frame labeled live. An MJPEG camera that closes its stream cleanly is meant to be treated the same way: the app notices because the picture loads a second time when the stream ends, which was seen through the app's own ha:// handler (what a real Home Assistant uses) but not with a plain multipart web server. If a tile keeps saying live over a frozen MJPEG picture, say so and note the camera and integration.
 
 Capture: A recording and how long the label stayed.
 
@@ -1453,6 +1469,21 @@ Capture: A screenshot of each.
 
 Ref: CSSC3-01
 
+### CAM-7 The viewer: sound, hiding and the time
+
+Needs: A camera whose HLS stream carries audio (a doorbell is the usual one).
+
+1. Click the camera tile to open the viewer and press Live. Press Mute.
+2. Hide the widget to the tray (or switch to another desktop so it is covered), wait a minute, and show it again.
+3. Press Snapshot, wait a minute, and press Snapshot again. Read the line under the picture each time.
+4. Open the viewer on an HLS camera and watch the network use of the app while the window is hidden.
+
+Expected: Mute is off the first time and is pressed (sound off) until you press it; pressing it again lets you hear the camera. It is not shown for an MJPEG stream. Hiding the widget stops the stream (network use drops to nothing); showing it starts the stream again, and your choice about sound is kept. The line under the picture says when the snapshot was taken, "Updated" with the time, and reads "Live now" for a stream, not the time the camera last changed state.
+
+Capture: Whether you heard audio, the network use while hidden, and a screenshot of the line under the picture.
+
+Ref: RO2-28, RO2-27, RO2-25
+
 ## Long-running sessions (SOAK)
 
 Needs: A machine you can leave running for a day or more, and a throwaway profile connected to your Home Assistant. See also [Connection recovery release checks](connection-recovery.md) for the network and sleep table.
@@ -1475,13 +1506,26 @@ Ref: RO1-37, RO2-19, RO2-18, RO2-21
 
 Needs: A numeric sensor that updates at least once a second, with a long history.
 
-1. Add the sensor with a chart. Watch the widget's CPU use for five minutes.
+1. Add the sensor with a chart. Watch the widget's CPU use for five minutes. Add the same sensor to a comparison graph and leave it for an hour.
 
-Expected: CPU use stays modest; there are no repeated stalls.
+Expected: CPU use stays modest; there are no repeated stalls. The chart's line stays a few hundred points however long it runs, and still shows the day's highest and lowest readings. A sensor with more than 125,000 readings in a day still draws its chart and graph.
 
 Capture: The CPU reading and the sensor's update rate.
 
-Ref: UIA-32
+Ref: UIA-32, RO1-08
+
+### SOAK-3 Pins and alerts while the window is hidden
+
+Needs: A Home Assistant with busy entities (a dozen state changes a second is plenty), an alert on one entity, and a desktop pin on another.
+
+1. Hide the main window to the tray. Leave it hidden for ten minutes.
+2. Change the pinned entity and the alerted entity in Home Assistant, a few times each.
+
+Expected: The pin keeps updating while the main window is hidden, and the alert fires. This holds however many times you hide and show the window.
+
+Capture: Whether the pin and the alert stopped, and when.
+
+Ref: RO1-09, RO1-45
 
 ## Updates (UPD)
 
@@ -1492,14 +1536,15 @@ Update checks need a build that is older than a published one. The call for test
 1. Install the older build. Start it and wait about a minute for the automatic check. Hide the widget to the tray and use Check for Updates in the tray menu.
 2. Open Settings > Advanced > Application Updates. Press Check for updates. While an update downloads, close Settings and open it again.
 3. When it is ready, press Install update.
-4. After the restart, look at the version in Settings > Advanced.
+4. After the restart, look at the version in Settings > Advanced and press What's new.
 5. Turn off the network and press Check for updates.
+6. With Settings open on Advanced and the network off, let the machine sleep and wake (or leave the widget running for more than six hours).
 
-Expected: A newer build is announced in some visible way, including from the tray menu while the widget is hidden. The status line reads "Update available" (with the version), then shows the download progress, then "Update v… ready to install". Reopening Settings during the download keeps that state. A system notification, if shown, names "HA Desktop Widget". Install update restarts the app (an AppImage comes back by itself) and the new version is shown. With no network the check ends with a readable error, not an endless "Checking for updates...".
+Expected: A newer build is announced in some visible way, including from the tray menu while the widget is hidden: Check for Updates in the tray brings the widget up on Settings > Advanced, with the update line saying that a check is running and then what it found. The status line reads "Update available" (with the version), then shows the download progress, then "Update v… ready to install". Reopening Settings during the download keeps that state. A system notification, if shown, names "HA Desktop Widget". Install update restarts the app (an AppImage comes back by itself) and the new version is shown. With no network the check ends with a readable error, not an endless "Checking for updates...". What's new opens this version's page on GitHub in your browser. A check the app makes by itself, such as after waking without a network, leaves the update line as it was (no "Checking for updates..." and no error), and does not replace the progress bar of a download that is running.
 
 Capture: Screenshots of each state, the notification, and the log.
 
-Ref: UIC-13, MP-19, MP-47, MP-52, MP-51, MP-01
+Ref: UIC-13, MP-19, MP-47, MP-52, MP-51, MP-01, MP-77
 
 ### UPD-2 macOS, .deb, Arch and Windows Portable (manual updates)
 
@@ -1509,7 +1554,7 @@ Ref: UIC-13, MP-19, MP-47, MP-52, MP-51, MP-01
 4. Use Check for Updates in the tray menu with the widget hidden.
 5. Leave the older build running for a day while a newer release exists.
 
-Expected: The status is one sentence that says an update exists, with the version in it, and names the button that is shown (Download Update, or Download Portable Update on the Portable build). The button opens the Releases page in your browser. Reopening Settings keeps the state, or the button still works. The tray menu entry gives a visible answer. Leaving the widget running does not leave you unaware of a newer release for days.
+Expected: The status is one sentence that says an update exists, with the version in it, and names the button that is shown (Download Update, or Download Portable Update on the Portable build). The button opens the Releases page in your browser. Reopening Settings keeps the state and the button still works. The tray menu entry brings the widget up on the update line with the answer. Leaving the widget running does not leave you unaware of a newer release: the app looks every six hours (and when the machine wakes, if one is due) and shows one notification, naming HA Desktop Widget, for each new version.
 
 Capture: Screenshots of the status line and the button.
 
@@ -1530,9 +1575,9 @@ Ref: I18N-12
 
 ### UPD-4 Beta channel
 
-1. Settings > Advanced > Application Updates: turn Receive beta updates on and press Check for updates. Then turn it off and check again.
+1. Settings > Advanced > Application Updates: turn Receive beta updates on and press Check for updates without pressing Save. Then turn it off and check again, again without saving.
 
-Expected: Pre-release builds are offered only when the switch is on.
+Expected: Pre-release builds are offered only when the switch is on, as the switch shows it right now; you do not have to save first.
 
 Capture: The status line in each state.
 

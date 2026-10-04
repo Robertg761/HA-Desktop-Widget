@@ -56,8 +56,6 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     populateWeatherEntitiesList: jest.fn(),
     selectWeatherEntity: jest.fn(),
     updateTimeDisplay: jest.fn(),
-    startTimeTicker: jest.fn(),
-    stopTimeTicker: jest.fn(),
     updateTimerDisplays: jest.fn(),
     getTickTargets: jest.fn(() => ({ hasVisibleTimers: false })),
     getDesktopPinTickTargets: jest.fn(() => ({

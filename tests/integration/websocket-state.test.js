@@ -116,6 +116,8 @@ describe('WebSocket + State Integration', () => {
       const ws = MockWebSocket.lastInstance;
       expect(ws).toBeDefined();
       expect(ws.url).toBe('ws://homeassistant.local:8123/api/websocket');
+      // Requests wait for the handshake: Home Assistant drops a socket that sends one earlier.
+      ws.simulateMessage({ type: 'auth_ok', ha_version: '2025.1.0' });
 
       const statesRequest = websocket.request({ type: 'get_states' });
 
@@ -160,6 +162,7 @@ describe('WebSocket + State Integration', () => {
       await openPromise;
 
       const ws = MockWebSocket.lastInstance;
+      ws.simulateMessage({ type: 'auth_ok', ha_version: '2025.1.0' });
 
       const req1 = websocket.request({ type: 'get_states' });
       const req2 = websocket.request({ type: 'get_services' });

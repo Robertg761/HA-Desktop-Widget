@@ -433,14 +433,19 @@ function computeTimeDomain({ now, windowMs } = {}) {
 
 /** One shared value domain, so overlaid series are read against the same scale. */
 function computeValueDomain(seriesList, { padding = 0.05 } = {}) {
-  const values = (Array.isArray(seriesList) ? seriesList : []).flatMap((series) =>
-    toFinitePoints(series).map((point) => Number(point.value))
-  );
+  // A loop, not Math.min(...values): spreading a long array overflows the call stack, which a
+  // sensor that reports every second does within a day.
+  let min = Infinity;
+  let max = -Infinity;
+  (Array.isArray(seriesList) ? seriesList : []).forEach((series) => {
+    toFinitePoints(series).forEach((point) => {
+      const value = Number(point.value);
+      if (value < min) min = value;
+      if (value > max) max = value;
+    });
+  });
 
-  if (!values.length) return null;
-
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  if (min === Infinity) return null;
 
   // A flat series has no range to divide by; give it a band so it renders as a centred line.
   if (min === max) {
