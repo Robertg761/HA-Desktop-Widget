@@ -32,32 +32,25 @@ export function parsePing(body) {
   return { id, version, os };
 }
 
-/** Records one ping. Returns 'new', 'returning', or 'duplicate' (already counted today). */
+/**
+ * Records one ping. Returns 'new', 'returning', or 'duplicate' (already counted today).
+ * A single statement, so overlapping pings from one install can't both count:
+ * the update only applies when the day moves forward, and the triggers in
+ * schema.sql bump daily_totals in the same statement.
+ */
 export async function recordPing(db, { id, version, os }, day) {
-  const existing = await db
-    .prepare('SELECT last_seen FROM installs WHERE id = ?1')
-    .bind(id)
+  const row = await db
+    .prepare(
+      `INSERT INTO installs (id, first_seen, last_seen, version, os) VALUES (?1, ?2, ?2, ?3, ?4)
+       ON CONFLICT (id) DO UPDATE SET last_seen = excluded.last_seen,
+         version = excluded.version, os = excluded.os
+       WHERE excluded.last_seen > installs.last_seen
+       RETURNING first_seen`
+    )
+    .bind(id, day, version, os)
     .first();
-  if (existing && existing.last_seen >= day) return 'duplicate';
-
-  const isNew = existing ? 0 : 1;
-  await db.batch([
-    db
-      .prepare(
-        `INSERT INTO installs (id, first_seen, last_seen, version, os) VALUES (?1, ?2, ?2, ?3, ?4)
-         ON CONFLICT (id) DO UPDATE SET last_seen = excluded.last_seen,
-           version = excluded.version, os = excluded.os`
-      )
-      .bind(id, day, version, os),
-    db
-      .prepare(
-        `INSERT INTO daily_totals (day, active, new_installs) VALUES (?1, 1, ?2)
-         ON CONFLICT (day) DO UPDATE SET active = active + 1,
-           new_installs = new_installs + excluded.new_installs`
-      )
-      .bind(day, isNew),
-  ]);
-  return isNew ? 'new' : 'returning';
+  if (!row) return 'duplicate';
+  return row.first_seen === day ? 'new' : 'returning';
 }
 
 export async function readStats(db, today) {
@@ -107,6 +100,34 @@ export async function readStats(db, today) {
   };
 }
 
+/**
+ * Reads the body as text, giving up (null) as soon as it passes `limit` bytes,
+ * so an oversized request is never buffered whole.
+ */
+export async function readBodyWithLimit(request, limit) {
+  if (!request.body) return '';
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
 function isAuthorized(request, env) {
   const expected = env.STATS_TOKEN;
   if (typeof expected !== 'string' || expected.length < 16) return false;
@@ -131,8 +152,10 @@ export async function handleRequest(request, env, now = new Date()) {
 
   if (pathname === '/v1/ping') {
     if (request.method !== 'POST') return new Response(null, { status: 405 });
-    const text = await request.text();
-    if (text.length > MAX_BODY_BYTES) return new Response(null, { status: 413 });
+    const declaredLength = Number(request.headers.get('Content-Length'));
+    if (declaredLength > MAX_BODY_BYTES) return new Response(null, { status: 413 });
+    const text = await readBodyWithLimit(request, MAX_BODY_BYTES);
+    if (text === null) return new Response(null, { status: 413 });
     let body;
     try {
       body = JSON.parse(text);

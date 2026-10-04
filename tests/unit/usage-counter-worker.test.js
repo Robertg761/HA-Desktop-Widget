@@ -6,6 +6,7 @@ const {
   default: worker,
   handleRequest,
   parsePing,
+  readBodyWithLimit,
   readStats,
   recordPing,
 } = require('../../services/usage-counter/src/index.js');
@@ -36,25 +37,10 @@ function createD1(database) {
       async all() {
         return { results: database.prepare(sql).all(...this.params) };
       },
-      run() {
-        database.prepare(sql).run(...this.params);
-      },
     };
     return statement;
   };
-  return {
-    prepare,
-    async batch(statements) {
-      database.exec('BEGIN');
-      try {
-        statements.forEach((statement) => statement.run());
-        database.exec('COMMIT');
-      } catch (error) {
-        database.exec('ROLLBACK');
-        throw error;
-      }
-    },
-  };
+  return { prepare };
 }
 
 const ID_A = '6f1c2a9e-3b7d-4f0a-9c55-2e8d1b4a7f60';
@@ -96,6 +82,39 @@ describe('usage counter worker: validation', () => {
     );
     expect((await handleRequest(new Request('https://usage.example/'), env)).status).toBe(404);
     expect(env.DB.prepare).not.toHaveBeenCalled();
+  });
+
+  test('rejects an oversized body without reading it whole', async () => {
+    const env = { DB: { prepare: jest.fn() } };
+    const declaredTooBig = new Request('https://usage.example/v1/ping', {
+      method: 'POST',
+      headers: { 'Content-Length': '5000000' },
+      body: '{}',
+    });
+    expect((await handleRequest(declaredTooBig, env)).status).toBe(413);
+    expect(declaredTooBig.bodyUsed).toBe(false);
+
+    let pulls = 0;
+    const endless = new ReadableStream({
+      pull(controller) {
+        pulls += 1;
+        controller.enqueue(new Uint8Array(512));
+      },
+    });
+    const streamed = new Request('https://usage.example/v1/ping', {
+      method: 'POST',
+      body: endless,
+      duplex: 'half',
+    });
+    expect((await handleRequest(streamed, env)).status).toBe(413);
+    expect(pulls).toBeLessThan(5);
+    expect(env.DB.prepare).not.toHaveBeenCalled();
+  });
+
+  test('readBodyWithLimit returns the text of a body within the limit', async () => {
+    const request = new Request('https://usage.example/', { method: 'POST', body: 'héllo' });
+    await expect(readBodyWithLimit(request, 1024)).resolves.toBe('héllo');
+    await expect(readBodyWithLimit(new Request('https://usage.example/'), 1024)).resolves.toBe('');
   });
 
   test('stats need the bearer token', async () => {
@@ -155,6 +174,31 @@ describe('usage counter worker: validation', () => {
         { day: '2026-10-01', active: 1, new_installs: 1 },
       ],
     });
+  });
+
+  test('overlapping pings from one install are counted once', async () => {
+    const ping = { id: ID_A, version: '4.0.1', os: 'win32' };
+    const outcomes = await Promise.all([
+      recordPing(db, ping, '2026-10-02'),
+      recordPing(db, ping, '2026-10-02'),
+    ]);
+    expect(outcomes.sort()).toEqual(['duplicate', 'new']);
+
+    await Promise.all([recordPing(db, ping, '2026-10-03'), recordPing(db, ping, '2026-10-03')]);
+    const stats = await readStats(db, '2026-10-03');
+    expect(stats.daily).toEqual([
+      { day: '2026-10-03', active: 1, new_installs: 0 },
+      { day: '2026-10-02', active: 1, new_installs: 1 },
+    ]);
+  });
+
+  test('a late ping for an earlier day does not move last_seen back or count again', async () => {
+    const ping = { id: ID_A, version: '4.0.1', os: 'win32' };
+    await recordPing(db, ping, '2026-10-02');
+    await expect(recordPing(db, ping, '2026-10-01')).resolves.toBe('duplicate');
+    expect((await readStats(db, '2026-10-02')).daily).toEqual([
+      { day: '2026-10-02', active: 1, new_installs: 1 },
+    ]);
   });
 
   test('installs drop out of the active windows when they stop pinging', async () => {
