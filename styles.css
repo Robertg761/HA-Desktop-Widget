@@ -7039,7 +7039,6 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
 
 #quick-controls .control-item.sensor-numeric-entity {
   min-height: 74px;
-  gap: 6px;
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-info {
@@ -14718,7 +14717,8 @@ body.density-compact #quick-controls {
 
 /* With everything hanging from the top the foot only needs room to breathe, and a name on two lines
    above a state line fills the 104px floor to the pixel when it keeps the 12px the centred layout
-   gave it. A number sensor keeps its own padding (none, for the sparkline over its foot). */
+   gave it. A number sensor keeps its own padding (none on the tile, the sparkline's band on its
+   info block). */
 #quick-controls
   .control-item:not(.comparison-graph-tile):not(.media-player-entity):not(.camera-preview-tile):not(
     .sensor-numeric-entity
@@ -14753,10 +14753,18 @@ body.density-compact
   white-space: nowrap;
 }
 
+/* Only the foot is the sensor's own (the sparkline's band, below). The top and the gap are the
+   standard tile's at every width, so the icon and the name sit where every other tile's do: a fixed
+   12px top stayed put when a narrow window, or enlarged text, tightened the others to 4px, and put
+   the name 6px lower than its neighbours' across the row. */
 #quick-controls .control-item.sensor-numeric-entity {
-  gap: 6px;
-  /* The icon sits where every other tile's does. */
-  padding: 12px 8px 0;
+  padding-bottom: 0;
+}
+
+/* While editing, the buttons cover the icon, which is hidden, so the sensor keeps its name close to
+   the top instead of clear of the buttons like a tile with an icon. */
+#quick-controls.reorganize-mode .control-item.sensor-numeric-entity {
+  padding-top: 12px;
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-name {
@@ -14768,16 +14776,22 @@ body.density-compact
   gap: 2px;
 }
 
-/* The sparkline is drawn over the foot of the tile, not in a strip the text is kept out of, so the
-   name and value take the room they need. The padding that reserved the strip also counted towards
-   the tile's height, which is now a floor, and grew a tile whose name wraps. */
+/* The sparkline lies in a band along the foot of the tile, and the text is kept out of it: the info
+   block reserves the band as padding. The tile's height is a floor, so a name that wraps to a second
+   line, a larger value or larger text makes the tile taller (and the row with it) instead of running
+   the line through the digits. A one-line name and the default value fit the floor as they are. */
+#quick-controls .control-item.sensor-numeric-entity {
+  --sparkline-band: 14px;
+  --sparkline-inset: 4px;
+}
+
 #quick-controls .control-item.sensor-numeric-entity .control-info {
-  padding-bottom: 0;
+  padding-bottom: calc(var(--sparkline-band) + var(--sparkline-inset));
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-sensor-sparkline {
-  bottom: 4px;
-  height: 14px;
+  bottom: var(--sparkline-inset);
+  height: var(--sparkline-band);
 }
 
 #quick-controls .control-item.sensor-numeric-entity[data-chart-type='none'] .control-info {

@@ -320,6 +320,35 @@ const TILES_HOLD_THEIR_CONTENT = `[...document.querySelectorAll('#quick-controls
         rect.left >= box.left - 1 && rect.right <= box.right + 1;
     });
 })`;
+// A number sensor's line lies along the foot of its tile, below the name and the reading: a name on
+// two lines or a large value makes the tile taller instead of putting the line through the digits.
+const SENSOR_SPARKLINES_CLEAR_OF_TEXT = `(() => {
+  const lines = [...document.querySelectorAll('#quick-controls .control-sensor-sparkline')];
+  return lines.length > 0 && lines.every((line) => {
+    const band = line.getBoundingClientRect();
+    const tile = line.closest('.control-item').getBoundingClientRect();
+    return band.bottom <= tile.bottom + 1 &&
+      [...line.closest('.control-info').querySelectorAll('.control-name, .control-sensor-readout')]
+        .every((text) => text.getBoundingClientRect().bottom <= band.top + 0.5);
+  });
+})()`;
+// Tiles in one row hang their names from the same line: a scene, a switch, a sensor and a timer
+// differ in what sits below the name, not above it. A compact sensor drops its icon, so it is left
+// out, and so are the tiles that lay themselves out.
+const TILE_NAMES_ALIGNED = `(() => {
+  const rows = new Map();
+  for (const tile of document.querySelectorAll('#quick-controls .control-item')) {
+    const name = tile.querySelector('.control-name');
+    const icon = tile.querySelector('.control-icon');
+    if (!name || !icon || !icon.getClientRects().length) continue;
+    if (tile.matches('.media-player-entity, .comparison-graph-tile, .camera-preview-tile, [data-chart-type="gauge"]')) continue;
+    const box = tile.getBoundingClientRect();
+    const row = Math.round(box.top);
+    rows.set(row, [...(rows.get(row) || []), name.getBoundingClientRect().top - box.top]);
+  }
+  // Within half a pixel: enlarged text lands on fractions.
+  return rows.size > 0 && [...rows.values()].every((tops) => Math.max(...tops) - Math.min(...tops) <= 0.5);
+})()`;
 const NO_SIDEWAYS_SCROLL = `document.documentElement.scrollWidth <= innerWidth + 1`;
 // A lost connection: the panel sits above Quick Access with its buttons in view, the page has not
 // scrolled, and the tiles are dimmed.
@@ -340,6 +369,19 @@ const showOffline = async (ctx) => {
 // Every label in a Settings row keeps room to be read, at 150% text size and in a narrow window.
 const SETTING_LABELS_READABLE = `[...document.querySelectorAll('#settings-modal .tab-content.active .setting-text')]
   .filter((text) => text.getClientRects().length > 0).every((text) => text.getBoundingClientRect().width >= 100)`;
+
+// How a page of tiles is laid out, whatever its names and readings: names on one line across a row,
+// and the sensors' lines clear of their text.
+async function expectTilesLaidOut(ctx) {
+  await ctx.expect(TILE_NAMES_ALIGNED, 'the names in a row start at the same height');
+  await ctx.expect(SENSOR_SPARKLINES_CLEAR_OF_TEXT, 'no sparkline runs through a name or reading');
+}
+
+// The same, and every part of every tile inside it.
+async function expectTilesInOrder(ctx) {
+  await ctx.expect(TILES_HOLD_THEIR_CONTENT, 'every tile holds its content');
+  await expectTilesLaidOut(ctx);
+}
 
 const withPage = (set, activeTabId = 'default') => ({
   customTabs: PAGE_SETS[set],
@@ -488,7 +530,7 @@ async function showSyncError(ctx) {
 
 const scenes = [
   // The main view and the dialogs opened from it, dark and in English.
-  { name: 'main-dark' },
+  { name: 'main-dark', setup: expectTilesLaidOut },
   { name: 'popup-brightness', setup: openBrightness },
   { name: 'popup-climate', setup: openClimate },
   { name: 'edit-mode', setup: toggleEditMode },
@@ -1310,14 +1352,28 @@ const scenes = [
     name: 'layout-edge-main',
     size: DEFAULT_SIZE,
     config: edgePage,
-    setup: async (ctx) => ctx.expect(TILES_HOLD_THEIR_CONTENT, 'every tile holds its content'),
+    setup: expectTilesInOrder,
   },
   {
     name: 'layout-edge-compact',
     size: DEFAULT_SIZE,
     ui: { density: 'compact' },
     config: edgePage,
-    setup: async (ctx) => ctx.expect(TILES_HOLD_THEIR_CONTENT, 'every tile holds its content'),
+    setup: expectTilesInOrder,
+  },
+  // The two number sensors with their value at the largest size, one of them under a name on two
+  // lines: the tile grows, the line stays below the reading.
+  {
+    name: 'layout-edge-sensor-sizes',
+    size: DEFAULT_SIZE,
+    config: {
+      ...edgePage,
+      quickAccessTileOptions: {
+        'sensor.energy_total': { valueSize: 'extra-large' },
+        'sensor.long_named_temperature': { valueSize: 'extra-large' },
+      },
+    },
+    setup: expectTilesInOrder,
   },
   {
     name: 'layout-edge-narrow',
@@ -1325,15 +1381,32 @@ const scenes = [
     config: edgePage,
     setup: async (ctx) => ctx.expect(NO_SIDEWAYS_SCROLL, 'no sideways scroll'),
   },
-  { name: 'layout-edge-s130', size: DEFAULT_SIZE, ui: { scale: 1.3 }, config: edgePage },
-  { name: 'layout-edge-s150', size: DEFAULT_SIZE, ui: { scale: 1.5 }, config: edgePage },
+  {
+    name: 'layout-edge-s130',
+    size: DEFAULT_SIZE,
+    ui: { scale: 1.3 },
+    config: edgePage,
+    setup: expectTilesLaidOut,
+  },
+  {
+    name: 'layout-edge-s150',
+    size: DEFAULT_SIZE,
+    ui: { scale: 1.5 },
+    config: edgePage,
+    setup: expectTilesLaidOut,
+  },
   {
     name: 'layout-main-minimum',
     size: MINIMUM_SIZE,
     setup: async (ctx) => ctx.expect(NO_SIDEWAYS_SCROLL, 'no sideways scroll'),
   },
-  { name: 'layout-main-s150', size: DEFAULT_SIZE, ui: { scale: 1.5 } },
-  { name: 'layout-main-wide', size: WIDE_SIZE },
+  {
+    name: 'layout-main-s150',
+    size: DEFAULT_SIZE,
+    ui: { scale: 1.5 },
+    setup: expectTilesLaidOut,
+  },
+  { name: 'layout-main-wide', size: WIDE_SIZE, setup: expectTilesLaidOut },
   // A film runs past an hour: the times need an h:mm:ss, and the bar sits between them.
   {
     name: 'layout-media-long',
