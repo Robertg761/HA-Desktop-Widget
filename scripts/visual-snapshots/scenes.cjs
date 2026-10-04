@@ -482,6 +482,20 @@ const scenes = [
   { name: 'settings', setup: (ctx) => openSettingsTab(ctx, 'general') },
   { name: 'settings-appearance', setup: (ctx) => openSettingsTab(ctx, 'personalization') },
   { name: 'dialog-manage-quick-access', setup: (ctx) => ctx.click('#manage-quick-controls-btn') },
+  // A search that finds nothing: the message sits in the middle of a list that keeps its height.
+  {
+    name: 'dialog-manage-quick-access-nomatch',
+    setup: async (ctx) => {
+      await ctx.click('#manage-quick-controls-btn');
+      await ctx.waitForSelector('#quick-controls-search');
+      await ctx.ev(`(() => {
+        const input = document.getElementById('quick-controls-search');
+        input.value = 'zzzz';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      })()`);
+      await ctx.waitForSelector('#quick-controls-list .entity-selector-empty');
+    },
+  },
   { name: 'popup-alarm-code', config: sixPages('default'), setup: openAlarmCodeDialog },
 
   // The dialogs the dialogs page opens, each built by the app rather than by index.html.
