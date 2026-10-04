@@ -285,7 +285,7 @@ describe('comparison graph tile', () => {
     const values = [...tile.querySelectorAll('.comparison-graph-legend-value')].map(
       (el) => el.textContent
     );
-    expect(values).toEqual(['21.4 °C', '8.3 °C']);
+    expect(values).toEqual(['21.4°C', '8.3°C']);
   });
 
   it('retries the fetch after the first attempt fails because the socket is not open yet', async () => {
@@ -610,7 +610,7 @@ describe('comparison graph tile', () => {
 
     // Nearest-sample would have answered 22 for Living Room — a reading from the future, taken an
     // hour after the time being hovered, compared against an Outside reading from 2h ago.
-    expect(values).toEqual(['20 °C', '5 °C']);
+    expect(values).toEqual(['20°C', '5°C']);
   });
 
   it('heads the tooltip with the weekday and the minute, and rounds values as the legend does', async () => {
@@ -652,6 +652,6 @@ describe('comparison graph tile', () => {
     const values = [...tile.querySelectorAll('.comparison-graph-tooltip-value')].map(
       (el) => el.textContent
     );
-    expect(values[0]).toBe('21.5 °C');
+    expect(values[0]).toBe('21.5°C');
   });
 });

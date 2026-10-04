@@ -688,7 +688,7 @@ describe('device control and live data regressions', () => {
       temperature: 22,
     });
     state.setEntityState(climate);
-    expect(ui.describeQuickAccessTile(climate.entity_id).value).toBe('0°');
+    expect(ui.describeQuickAccessTile(climate.entity_id).value).toBe('0°C');
   });
   test('unavailable fan tile refuses its primary toggle', () => {
     const fan = entity('fan.auditunavailable', 'unavailable', {
@@ -876,9 +876,9 @@ describe('device control and live data regressions', () => {
   });
 
   test.each([
-    [0, 22, '0°'],
-    [-5, 22, '-5°'],
-    [null, 0, '0°'],
+    [0, 22, '0°C'],
+    [-5, 22, '-5°C'],
+    [null, 0, '0°C'],
     [null, null, 'Heating'],
   ])('climate current %s and target %s display %s', (current, target, expected) => {
     const climate = entity('climate.reading', 'heat', {

@@ -50,6 +50,16 @@ describe('right-to-left and script-aware typography', () => {
       ['.quick-access-tab-label', '<span class="quick-access-tab-label">Kitchen</span>'],
       ['.todo-item-summary', '<span class="todo-item-summary">Milk</span>'],
       ['.calendar-event-summary', '<span class="calendar-event-summary">Dentist</span>'],
+      // The tile's line is a row of pieces, so the event's title and its day and time each carry
+      // their own direction; the row itself has no text of its own to read.
+      [
+        '.calendar-next-event-title',
+        '<div class="calendar-next-event"><span class="calendar-next-event-title">Dentist</span></div>',
+      ],
+      [
+        '.calendar-next-event-when',
+        '<div class="calendar-next-event"><span class="calendar-next-event-when">Tomorrow 8:22 AM</span></div>',
+      ],
       ['.desktop-pin-light-name', '<div class="desktop-pin-light-name">Lamp</div>'],
       ['.desktop-pin-panel-name', '<div class="desktop-pin-panel-name">Weather</div>'],
       ['.desktop-pin-media-title', '<div class="desktop-pin-media-title">Song</div>'],

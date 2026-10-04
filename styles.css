@@ -7460,9 +7460,35 @@ body.theme-light:not(.high-contrast)
 }
 
 #quick-controls .control-item.calendar-entity .calendar-next-event {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   font-size: var(--font-size-xs-plus);
   line-height: 1.2;
   color: var(--text-secondary);
+}
+
+/* A narrow tile cuts the event's title short, and moves the day and time to a second line before it
+   would cut them. */
+#quick-controls .control-item.calendar-entity .calendar-next-event-lead {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+}
+
+#quick-controls .control-item.calendar-entity .calendar-next-event-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#quick-controls .control-item.calendar-entity .calendar-next-event-sep {
+  flex: none;
+  white-space: pre;
+}
+
+#quick-controls .control-item.calendar-entity .calendar-next-event-when {
+  flex: none;
 }
 
 .entity-name {
@@ -13452,11 +13478,15 @@ body.theme-light #settings-modal .modal-footer {
   min-width: min(9rem, 100%);
 }
 
+/* Every row select is one width, so their left edges line up down a page (Time format, Date
+   format, Sync app, scope and interval) instead of each starting where its own text ends. The
+   width fits the longest English option; a longer value ends in an ellipsis rather than running
+   under the chevron, and a narrow row wraps the select under its label as before. */
 #settings-modal .setting-row > select {
   flex: 0 0 auto;
-  width: auto;
-  min-width: min(120px, 100%);
+  width: 13.5rem;
   max-width: 100%;
+  text-overflow: ellipsis;
   padding-block: 7px;
   padding-inline-start: 10px;
   font-size: var(--font-size-sm);
@@ -13553,7 +13583,7 @@ body.theme-light #settings-modal .modal-footer {
 }
 
 .setting-slider-value {
-  min-width: 40px;
+  min-width: 44px;
   text-align: end;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
@@ -16197,6 +16227,8 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
     .calendar-event-summary,
     .calendar-event-description,
     .calendar-next-event,
+    .calendar-next-event-title,
+    .calendar-next-event-when,
     .command-palette-result-name,
     .command-palette-result-state
   ) {
