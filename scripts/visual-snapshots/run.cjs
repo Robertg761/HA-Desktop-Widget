@@ -27,6 +27,7 @@ const path = require('path');
 const { startMockHomeAssistant } = require('./mock-home-assistant.cjs');
 const {
   FAILING_ENTITIES,
+  RESET_SETTINGS_VIEW,
   RESETTABLE_SETTINGS,
   TOKEN,
   WINDOW_POSITION,
@@ -352,6 +353,8 @@ async function main() {
         );
         await sleep(400);
       }
+      // Before the dialogs close: Settings keeps the scroll position it is closed at.
+      await cdp.evaluate(RESET_SETTINGS_VIEW);
       await closeDialogs();
     }
 
