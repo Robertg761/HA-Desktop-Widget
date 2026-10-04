@@ -77,6 +77,9 @@ if (window.electronAPI) {
 
 const OFFLINE_CONNECTION_ERROR_KEY = 'offline-network';
 const FAVORITE_STALE_ENTITY_PRESERVE_MS = 15 * 60 * 1000;
+// How long a favorite that a reconnect left out of get_states keeps showing its last state as if
+// it were live. After this it shows as unavailable until Home Assistant reports it again.
+const FAVORITE_STALE_LIVE_MS = 60 * 1000;
 const STATE_CHANGED_HIDDEN_FLUSH_DELAY_MS = 50;
 const WINDOW_QUERY = new URLSearchParams(window.location.search);
 const WINDOW_MODE = WINDOW_QUERY.get('mode') || '';
@@ -95,6 +98,7 @@ let desktopPinHasSnapshot = false;
 let desktopPinSupportsWindowPositioning = true;
 let desktopPinConnectionIssue = '';
 const favoriteStalePreservation = new Map();
+let staleFavoriteTimerId = null;
 let entityRenameMigrationQueue = Promise.resolve();
 
 async function persistEntityRegistryRename(eventData = {}) {
@@ -551,6 +555,29 @@ function queueDeletedEntity(entityId) {
   scheduleStateChangedFlush();
 }
 
+// A favorite that is kept through a reconnect shows its last state, so that a Home Assistant
+// restart does not flash every tile to Unavailable while its integration loads. One that Home
+// Assistant has still not reported a minute later was probably removed or renamed while this
+// computer was offline, and a tile that says "On, 50%" for it is wrong. It becomes unavailable,
+// through the same path as any state change, so tiles, pins, the tray and alerts agree.
+function scheduleStaleFavoriteCheck() {
+  window.clearTimeout(staleFavoriteTimerId);
+  staleFavoriteTimerId = null;
+  if (IS_DESKTOP_PIN_MODE || !favoriteStalePreservation.size) return;
+  staleFavoriteTimerId = window.setTimeout(markStaleFavoritesUnavailable, FAVORITE_STALE_LIVE_MS);
+}
+
+function markStaleFavoritesUnavailable() {
+  staleFavoriteTimerId = null;
+  favoriteStalePreservation.forEach((record, entityId) => {
+    const entity = state.STATES?.[entityId];
+    // Any event since the reconnect replaced the object: Home Assistant has spoken for it.
+    if (!entity || entity !== record.entity || entity.state === 'unavailable') return;
+    record.entity = { ...entity, state: 'unavailable' };
+    queueStateChangedEntity(record.entity);
+  });
+}
+
 function reconcileFavoriteStalePreservation(newStates) {
   const oldStates = state.STATES || {};
   const favoriteEntityIds = [
@@ -589,6 +616,7 @@ function reconcileFavoriteStalePreservation(newStates) {
       favoriteStalePreservation.set(entityId, {
         missingSince,
         lastPreservedAt: now,
+        entity: oldStates[entityId],
       });
       return;
     }
@@ -596,6 +624,8 @@ function reconcileFavoriteStalePreservation(newStates) {
     droppedStaleFavorites.push(entityId);
     favoriteStalePreservation.delete(entityId);
   });
+
+  scheduleStaleFavoriteCheck();
 
   return {
     favoriteCount: favoriteEntityIds.length,
