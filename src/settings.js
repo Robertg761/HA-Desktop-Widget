@@ -5630,10 +5630,22 @@ function getConnectionTestMessage(resultOrError) {
   if (status >= 400) {
     return { type: 'error', text: t('HTTP {{status}}: check the URL and port.', { status }) };
   }
-  if (/cert|ssl|tls/i.test(detail)) {
+  // The main process passes Chromium's own error name along (net::ERR_CERT_AUTHORITY_INVALID).
+  // A certificate Chromium refuses is one problem; an https:// address that reaches a server
+  // speaking plain http (net::ERR_SSL_PROTOCOL_ERROR) is another, with the scheme or port to fix.
+  if (/ERR_CERT_|certificate/i.test(detail)) {
     return { type: 'error', text: t('The certificate is not trusted.') };
   }
-  if (/timed? ?out/i.test(detail)) {
+  if (/ERR_SSL_|ERR_TLS_|\b(?:ssl|tls)\b/i.test(detail)) {
+    return {
+      type: 'error',
+      text: t(
+        'The secure connection failed. Check whether the URL should start with http:// or https://, and the port.'
+      ),
+    };
+  }
+  // "Request timed out" from the main process, net::ERR_CONNECTION_TIMED_OUT and net::ERR_TIMED_OUT.
+  if (/time(?:d)?[\s_-]*out/i.test(detail)) {
     return { type: 'error', text: t('Timed out. Check the URL and port.') };
   }
   return {

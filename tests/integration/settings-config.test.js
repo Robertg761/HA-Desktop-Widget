@@ -6733,7 +6733,23 @@ describe('Settings + Config Integration', () => {
           'The certificate is not trusted.',
         ],
         [
+          { success: false, code: 'unreachable', error: 'net::ERR_CERT_COMMON_NAME_INVALID' },
+          'The certificate is not trusted.',
+        ],
+        [
+          { success: false, code: 'unreachable', error: 'net::ERR_SSL_PROTOCOL_ERROR' },
+          'The secure connection failed. Check whether the URL should start with http:// or https://, and the port.',
+        ],
+        [
           { success: false, code: 'unreachable', error: 'Request timed out' },
+          'Timed out. Check the URL and port.',
+        ],
+        [
+          { success: false, code: 'unreachable', error: 'net::ERR_CONNECTION_TIMED_OUT' },
+          'Timed out. Check the URL and port.',
+        ],
+        [
+          { success: false, code: 'unreachable', error: 'net::ERR_TIMED_OUT' },
           'Timed out. Check the URL and port.',
         ],
         [
