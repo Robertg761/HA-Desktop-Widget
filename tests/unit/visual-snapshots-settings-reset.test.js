@@ -48,6 +48,17 @@ describe('the snapshot runner putting Settings back between scenes', () => {
     expect(document.querySelector('.modal-body').scrollTop).toBe(0);
   });
 
+  it('leaves the page alone when General is already showing, and still scrolls to the top', () => {
+    // The click replays the page's entrance animation, so it is kept for a page that has to change.
+    document.querySelector('.modal-body').scrollTop = 480;
+
+    window.eval(RESET_SETTINGS_VIEW);
+
+    expect(tabClicks).toEqual([]);
+    expect(document.querySelector('.tab-link.active').dataset.tab).toBe('general');
+    expect(document.querySelector('.modal-body').scrollTop).toBe(0);
+  });
+
   it('does nothing before Settings has ever been built', () => {
     document.body.innerHTML = '';
 

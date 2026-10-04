@@ -29,9 +29,12 @@ const RESETTABLE_SETTINGS = [
 // without choosing a page would photograph whichever page the scene before it ended on. The runner
 // evaluates this after every scene to put it back on its first page at the top. It has to run while
 // Settings is still open, because a closed dialog has no layout and ignores a scroll position set
-// on it. It goes through the tab button, which is what the app itself listens to.
+// on it. It goes through the tab button, which is what the app itself listens to, but only when
+// another page is showing: the click replays the page's entrance animation, and most scenes never
+// open Settings at all. The scroll is set either way, as the click is skipped on General.
 const RESET_SETTINGS_VIEW = `(() => {
-  document.querySelector('#settings-modal .tab-link[data-tab="general"]')?.click();
+  const general = document.querySelector('#settings-modal .tab-link[data-tab="general"]');
+  if (general && !general.classList.contains('active')) general.click();
   const body = document.querySelector('#settings-modal .modal-body');
   if (body) body.scrollTop = 0;
 })()`;
