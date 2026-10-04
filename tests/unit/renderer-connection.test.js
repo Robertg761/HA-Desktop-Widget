@@ -868,6 +868,28 @@ describe('Renderer Home Assistant connection lifecycle', () => {
     });
   });
 
+  describe('waking from suspend', () => {
+    it('runs the clock tick at once, since the timer armed before the sleep is late', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      connectSuccessfully();
+      mockUi.getTickTargets.mockClear();
+
+      triggerMockEvent('trayEntitiesRefreshNeeded', { reconnect: true });
+
+      expect(mockUi.getTickTargets).toHaveBeenCalled();
+    });
+
+    it('leaves the tick alone for a refresh that is not a wake', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      connectSuccessfully();
+      mockUi.getTickTargets.mockClear();
+
+      triggerMockEvent('trayEntitiesRefreshNeeded', {});
+
+      expect(mockUi.getTickTargets).not.toHaveBeenCalled();
+    });
+  });
+
   describe('the first snapshot of states', () => {
     it('is given far longer than a usual request, so a large instance is not torn down', async () => {
       await loadRenderer({ config: tokenConfig() });
