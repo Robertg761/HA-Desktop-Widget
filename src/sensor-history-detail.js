@@ -60,7 +60,7 @@ function mountSensorHistoryDetail({ body, modal, entity, websocket, normalize, r
   const load = async (force = false) => {
     const requestRevision = ++revision;
     const hours = Number(periodSelect.value);
-    status.textContent = t('Loading history…');
+    status.textContent = t('Loading history...');
     // Keep the previous chart and date range in place while loading so the dialog keeps its
     // height instead of collapsing and re-centring on every request.
     frame.classList.add('is-loading');

@@ -23,9 +23,9 @@ The app also makes local configuration backups before migration/save and keeps p
 
 Each computer keeps its own sync scope. A pull does not replace that scope, and a push leaves unselected sections on the remote side intact. Home Assistant connection/credentials, window geometry, startup settings, desktop pins, hotkeys, the open page, UI scale, and Omarchy theme following stay local.
 
-3.x cannot read version 3 and stops syncing instead of overwriting the file. Update every computer sharing the file. Do not use Sync Up from an older app to try to convert it back.
+3.x cannot read version 3 and stops syncing instead of overwriting the file. Update every computer sharing the file. Do not use Sync up from an older app to try to convert it back.
 
-On first sync, review the sections shown in Settings and choose which copy to keep. Sync now merges both sides. Sync Up and Sync Down deliberately replace the selected side after confirmation. Settings → Advanced → Backups can restore a profile recovery backup. A restore applies locally and then syncs to other computers, so pause sync elsewhere if you need to inspect the result first.
+On first sync, review the sections shown in Settings and choose which copy to keep. Sync now merges both sides. Sync up and Sync down deliberately replace the selected side after confirmation. Settings → Advanced → Backups can restore a profile recovery backup. A restore applies locally and then syncs to other computers, so pause sync elsewhere if you need to inspect the result first.
 
 ## Companion profiles
 

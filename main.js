@@ -62,6 +62,7 @@ const { watchForStatusNotifierWatcher } = require('./src/linux-tray-host.cjs');
 const {
   OMARCHY_BAR_PLUGIN_ID,
   buildOmarchyBarStatus,
+  buildOmarchyBarStrings,
   createOmarchyBarPublisher,
   cleanLineIconSvg,
   cleanOmarchyBarTile,
@@ -349,6 +350,9 @@ if (
 
 const profileSyncCore = require('./profile-sync-core.js');
 const { createLocalizationService } = require('./src/i18n-main.cjs');
+const { createLocalePackRefresher } = require('./src/locale-pack-refresh.cjs');
+const { revealFile } = require('./src/reveal-file.cjs');
+const { toStoredPages } = require('./src/page-names.cjs');
 const { fetchChecked } = require('./src/net-fetch.cjs');
 const {
   normalizeEntityId,
@@ -1224,6 +1228,20 @@ const localizationService = createLocalizationService({
   // net.fetch is invoked here.
   fetchImpl: (url, init) => net.fetch(url, init),
 });
+// Installed language packs follow the manifest on main, so an upgrade's new strings arrive without
+// the user finding the Update button. Only started once the window is up; see
+// schedulePostWindowStartupTasks.
+const localePackRefresher = createLocalePackRefresher({
+  refresh: () => localizationService.refreshInstalledLocalePacks(),
+  onUpdated: () => {
+    for (const target of [mainWindow, ...desktopPinWindows.values()]) {
+      if (target && !target.isDestroyed()) target.webContents.send('locale-packs-updated');
+    }
+    if (tray && !tray.isDestroyed?.()) createTray();
+    omarchyBarPublisher?.update();
+  },
+  log,
+});
 const DEV_RENDERER_BUNDLE_PATH = path.join(__dirname, 'dist-renderer', 'renderer.bundle.js');
 const DEV_RELOAD_DEBOUNCE_MS = 220;
 const DEV_RELOAD_RETRY_MS = 160;
@@ -1377,11 +1395,11 @@ function mainLocale() {
 function describeKnownProfileSyncFailure(error) {
   if (profileSyncCore.isSyncFileDamagedError(error)) {
     return mainT(
-      'The sync file is damaged. Use Sync Up to replace it with this computer’s settings; the old file is backed up first.'
+      "The sync file is damaged. Use Sync up to replace it with this computer's settings; the old file is backed up first."
     );
   }
   if (error?.code === REWRITE_TRANSACTION_INVALID) {
-    return mainT('Could not update the sync file’s encryption. Nothing was changed. Try again.');
+    return mainT("Could not update the sync file's encryption. Nothing was changed. Try again.");
   }
   return '';
 }
@@ -4063,7 +4081,7 @@ const PROFILE_SYNC_SECTION_LABELS = {
 function createDamagedSyncSectionsError(sectionKeys) {
   return new Error(
     mainT(
-      "The sync file's {{sections}} settings are damaged. Use Sync Up to replace them with this computer's; the damaged copy is backed up first.",
+      "The sync file's {{sections}} settings are damaged. Use Sync up to replace them with this computer's; the damaged copy is backed up first.",
       {
         sections: sectionKeys
           .map((key) => mainT(PROFILE_SYNC_SECTION_LABELS[key] || key))
@@ -4372,7 +4390,7 @@ function describeSyncFileSystemError(error) {
   // the sentence names both rather than sending the user to retry what cannot succeed.
   if (error?.code === 'EPERM' && process.platform === 'win32') {
     return mainT(
-      'The sync file is in use by another program or is read-only. Try again in a moment, and check the folder’s permissions if it keeps happening.'
+      "The sync file is in use by another program or is read-only. Try again in a moment, and check the folder's permissions if it keeps happening."
     );
   }
   switch (error?.code) {
@@ -4380,7 +4398,7 @@ function describeSyncFileSystemError(error) {
     case 'EPERM':
     case 'EROFS':
       return mainT(
-        'This app does not have permission to use the sync file or its folder. Check the folder’s permissions and that it is not read-only.'
+        "This app does not have permission to use the sync file or its folder. Check the folder's permissions and that it is not read-only."
       );
     case 'ENOSPC':
       return mainT('The disk that holds the sync folder is full.');
@@ -4415,7 +4433,7 @@ function throwSyncFileSystemError(error) {
 /**
  * Reads the sync file. A file that exists but cannot be parsed comes back with
  * `damaged` (its text and the reason) instead of throwing, so the callers that may
- * replace it (Sync Up, Keep Local on first enable) can keep a copy first;
+ * replace it (Sync up, Keep Local on first enable) can keep a copy first;
  * readConfiguredSyncEnvelope throws for it unless asked to hand it back.
  */
 async function readCloudFileEnvelope(filePath) {
@@ -4732,7 +4750,7 @@ async function keepSyncFileCopy(prefix, extension, writeCopy) {
   await pruneProfileSyncBackups(backupDir, new RegExp(`^${prefix}-\\d+\\.${extension}$`));
 }
 
-/** Keeps the text of a sync file that could not be read before Sync Up replaces it. */
+/** Keeps the text of a sync file that could not be read before Sync up replaces it. */
 function backupDamagedSyncFile(raw) {
   return keepSyncFileCopy('damaged-sync-file', 'txt', (target) =>
     fs.promises.writeFile(target, raw, 'utf8')
@@ -4899,6 +4917,7 @@ async function applySyncedConfigSideEffects(previous, persistence) {
   if (previous?.ui?.language !== config?.ui?.language && tray) {
     await runPostSaveSideEffect(runtimeWarnings, 'synced tray language', () => createTray());
   }
+  if (previous?.ui?.language !== config?.ui?.language) omarchyBarPublisher?.update();
   await runPostSaveSideEffect(runtimeWarnings, 'synced desktop pin windows', () =>
     syncDesktopPinWindowsWithConfig()
   );
@@ -5377,6 +5396,8 @@ function loadConfig(options = {}) {
     },
     entityAlerts: {
       enabled: false,
+      // persistentNotifications (desktop notifications for Home Assistant's own) is absent until
+      // someone turns it off; absent means on.
       alerts: {}, // entityId -> alert configuration
     },
     ui: {
@@ -6632,7 +6653,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
     profileSyncRuntime.conflictCopies = await findProfileSyncConflictCopies();
 
     if (remoteResult.damaged) {
-      // A file that cannot be read is only replaced by an explicit Sync Up (or Keep
+      // A file that cannot be read is only replaced by an explicit Sync up (or Keep
       // Local on first enable), and only after a copy is kept.
       if (direction !== 'push') throw remoteResult.damaged.error;
       await backupDamagedSyncFile(remoteResult.damaged.raw);
@@ -6678,7 +6699,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
         );
       } catch (error) {
         // Content that parsed but cannot be read (a cut-off encrypted payload) is
-        // damage like an unparseable file: Sync Up replaces it after keeping a copy.
+        // damage like an unparseable file: Sync up replaces it after keeping a copy.
         if (!profileSyncCore.isSyncFileDamagedError(error) || direction !== 'push') throw error;
         await backupDamagedSyncFile(profileSyncCore.serializeSyncEnvelope(remoteEnvelope));
         remoteEnvelope = null;
@@ -6704,7 +6725,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
     );
     const damagedSections = Object.keys(damagedInScope);
     if (damagedSections.length > 0) {
-      // Only an explicit Sync Up may replace damaged sections, after keeping them.
+      // Only an explicit Sync up may replace damaged sections, after keeping them.
       if (direction !== 'push') throw createDamagedSyncSectionsError(damagedSections);
       await backupRemoteSectionsBeforePush(damagedInScope);
     }
@@ -6759,7 +6780,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       !!profileSync.remoteRewritePending && mayChangeEncryption && !remoteModeMatches;
     let wroteEnvelope = null;
     if (pushKeys.length > 0 || rewriteRequired) {
-      // A merge only replaces remote edits it reports as discarded. Sync Up replaces
+      // A merge only replaces remote edits it reports as discarded. Sync up replaces
       // whatever the file holds for the sections it pushes, so it keeps all of them.
       const replacedRemoteKeys = direction === 'push' ? plan.push : plan.discardsRemote;
       const replacedRemoteSections = pickSections(remoteSections, replacedRemoteKeys);
@@ -6799,7 +6820,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       if (await hasRemoteSyncEnvelopeChanged(remoteResult)) {
         log.info('Remote sync file changed while preparing a push; re-resolving direction');
         await persistProfileSyncBaseline(nextBaseline, scopeKeys);
-        // Sync Up and a conflict choice were decided against the file as it was;
+        // Sync up and a conflict choice were decided against the file as it was;
         // an automatic merge must not stand in for them, so the user is asked again.
         if (source === 'conflict_recheck' || direction !== 'auto') {
           throw new Error(mainT('Sync file kept changing on the other device; try again'));
@@ -7987,7 +8008,7 @@ function buildTrayContextMenu() {
 
 function getOmarchyBarEntities() {
   if (!omarchyBarPublisher || !omarchyBarEntry.present) return { panel: [], bar: [], all: [] };
-  return resolveOmarchyBarEntities(omarchyBarEntry, config);
+  return resolveOmarchyBarEntities(omarchyBarEntry, config, mainT);
 }
 
 /** What the bar should tell the user to fix, when the widget cannot fix it by itself. */
@@ -8073,6 +8094,7 @@ function startOmarchyBarIntegration() {
         entities: getOmarchyBarEntities(),
         launch: getOmarchyBarLaunchArgv(),
         issue: getOmarchyBarIssue(),
+        strings: buildOmarchyBarStrings(mainT),
         customNames: config?.customEntityNames,
       }),
   });
@@ -8309,6 +8331,7 @@ function schedulePostWindowStartupTasks() {
     void initializeProfileSyncOnStartup().catch((error) => {
       log.warn('Profile sync startup initialization failed:', error.message);
     });
+    if (!IS_SMOKE_TEST_MODE) localePackRefresher.start();
   }, 1000);
 }
 
@@ -8521,8 +8544,9 @@ ipcMain.handle(
       : null;
     delete newConfig.configBaseRevision;
     pruneConfig(newConfig);
+    // A page nobody named is stored unnamed; the renderer fills in the name of the language it is in.
     const customTabs = Array.isArray(newConfig.customTabs)
-      ? newConfig.customTabs
+      ? toStoredPages(newConfig.customTabs)
       : Array.isArray(config.customTabs)
         ? config.customTabs
         : { ...(config.customTabs || {}), ...(newConfig.customTabs || {}) };
@@ -8740,6 +8764,7 @@ ipcMain.handle(
     if (prevConfig?.ui?.language !== config?.ui?.language && tray) {
       await runPostSaveSideEffect(runtimeWarnings, 'tray language', () => createTray());
     }
+    if (prevConfig?.ui?.language !== config?.ui?.language) omarchyBarPublisher?.update();
     if (
       prevConfig?.updates?.allowPrerelease !== config?.updates?.allowPrerelease &&
       autoUpdaterInstance
@@ -9796,7 +9821,7 @@ ipcMain.handle('choose-profile-sync-folder', async (event, provider, currentFold
   let result;
   try {
     const dialogOptions = {
-      title: mainT('Choose Profile Sync Folder'),
+      title: mainT('Choose profile sync folder'),
       defaultPath,
       properties: ['openDirectory', 'createDirectory'],
     };
@@ -11103,7 +11128,7 @@ ipcMain.handle('get-os-info', (event) => {
 });
 
 // Log file viewer functionality
-ipcMain.handle('open-logs', (event) => {
+ipcMain.handle('open-logs', async (event) => {
   const sender = authorizeIpcSender(event, 'open-logs');
   if (!sender) return rejectUnauthorizedIpc('open-logs');
   try {
@@ -11135,8 +11160,8 @@ ipcMain.handle('open-logs', (event) => {
     }
 
     log.info(`Opening log file at: ${logFilePath}`);
-    shell.showItemInFolder(logFilePath);
-    return { success: true, path: logFilePath };
+    // The path comes back either way, so the renderer can offer it when no file manager opened.
+    return await revealFile(shell, logFilePath);
   } catch (error) {
     log.error('Failed to open log file:', error);
     return { success: false, error: error?.message || String(error) };
@@ -11577,6 +11602,28 @@ ipcMain.handle(
       };
     }
     setupEntityAlerts();
+    return { success: true };
+  })
+);
+
+// Whether Home Assistant's own notifications also show as desktop notifications. They are not entity
+// alerts, so this has its own switch, which works with entity alerts off.
+ipcMain.handle(
+  'set-persistent-notification-toasts',
+  serializeConfigMutationHandler(async (event, enabled) => {
+    const sender = authorizeIpcSender(event, 'set-persistent-notification-toasts');
+    if (!sender) return rejectUnauthorizedIpc('set-persistent-notification-toasts');
+    const previous = config.entityAlerts.persistentNotifications !== false;
+    config.entityAlerts.persistentNotifications = !!enabled;
+    const persistence = await saveConfigDurably();
+    if (!persistence.success) {
+      config.entityAlerts.persistentNotifications = previous;
+      return {
+        success: false,
+        error: mainT('Failed to save alert setting: {{error}}', { error: persistence.error }),
+      };
+    }
+    pushConfigToRenderer();
     return { success: true };
   })
 );
@@ -12741,8 +12788,9 @@ async function checkManualReleaseUpdate({ allowPrerelease } = {}) {
     }
     return {
       status: 'manual',
+      // One sentence with the version inside it, so a language can order it as it needs to.
       message: mainT(
-        'This package does not support in-app updates. Open Releases to download the latest build, v{{version}}.',
+        'Update available: v{{version}}. This package cannot update itself; use Download Update to get it from GitHub.',
         { version: latestVersion }
       ),
       version: latestVersion,

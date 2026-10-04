@@ -93,6 +93,7 @@ describe('config changes that arrive outside the settings form', () => {
       config: { ui: { language: 'de' } },
       tray: {},
       createTray: jest.fn(),
+      omarchyBarPublisher: { update: jest.fn() },
       runPostSaveSideEffect: async (warnings, label, action) => action(),
       applyMainWindowSettingSideEffects: jest.fn(),
       applyRuntimeConfigSideEffects: jest.fn(),
@@ -113,6 +114,17 @@ describe('config changes that arrive outside the settings form', () => {
   test('rebuilds the tray when a pull, import or restore changes the language', async () => {
     await context.applySyncedConfigSideEffects({ ui: { language: 'auto' } }, {});
     expect(context.createTray).toHaveBeenCalledTimes(1);
+  });
+  test('has the Omarchy bar say its words in the new language too', async () => {
+    await context.applySyncedConfigSideEffects({ ui: { language: 'auto' } }, {});
+    expect(context.omarchyBarPublisher.update).toHaveBeenCalledTimes(1);
+    await context.applySyncedConfigSideEffects({ ui: { language: 'de' } }, {});
+    expect(context.omarchyBarPublisher.update).toHaveBeenCalledTimes(1);
+    // No bar installed: nothing to tell.
+    context.omarchyBarPublisher = null;
+    await expect(
+      context.applySyncedConfigSideEffects({ ui: { language: 'auto' } }, {})
+    ).resolves.not.toThrow();
   });
   test('leaves the tray alone when the language is unchanged or there is no tray', async () => {
     await context.applySyncedConfigSideEffects({ ui: { language: 'de' } }, {});

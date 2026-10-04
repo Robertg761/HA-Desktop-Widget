@@ -2518,6 +2518,11 @@ function renderPrimaryCardsEntityRows() {
         <button class="${cardTwoClass}" type="button" data-primary-assign="1" data-entity-id="${entityIdAttr}" ${cardTwoDisabled}>${cardTwoLabel}</button>
       </div>
     `;
+    // Two buttons per entity, and a screen reader hears "Set Card 1" a hundred times; the group
+    // says which entity they are for.
+    const actionGroup = item.querySelector('.primary-cards-list-actions');
+    actionGroup.setAttribute('role', 'group');
+    actionGroup.setAttribute('aria-label', utils.getEntityDisplayName(entity));
 
     list.appendChild(item);
   });
@@ -2888,6 +2893,9 @@ function renderCustomEntityIconRows() {
     resetBtn.dataset.customIconReset = entityId;
     actions.appendChild(resetBtn);
 
+    // Search, Apply and Reset repeat for every entity; the group says which one they belong to.
+    actions.setAttribute('role', 'group');
+    actions.setAttribute('aria-label', name.textContent);
     controls.appendChild(actions);
 
     if (isPickerOpen) {
@@ -3620,7 +3628,7 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
     const warning = status.passphraseWarning || '';
     const errorText = status.lastSyncError || '';
     const rewriteWarning = status.remoteRewritePending
-      ? t('The remote profile still needs its encryption update. Use Sync Up to retry.')
+      ? t('The remote profile still needs its encryption update. Use Sync up to retry.')
       : '';
     const pendingEncryptionWarning =
       typeof status.encryptionChangePending === 'boolean'
@@ -3638,7 +3646,7 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
         )
       : status.rewriteRecoveryRequired
         ? t(
-            'A protected sync-key recovery is pending. Use Sync Up to resume it; sync remains paused if the remote changed.'
+            'A protected sync-key recovery is pending. Use Sync up to resume it; sync remains paused if the remote changed.'
           )
         : '';
     const messages = [
@@ -3688,11 +3696,11 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
         const sections = formatProfileSyncSectionList(status.conflictSections);
         resolutionHelp.textContent = sections
           ? t(
-              'This computer and the sync file have different settings for {{sections}}. Keep this computer’s settings and upload them, or replace them with the sync file’s. Either way, the replaced settings are backed up.',
+              "This computer and the sync file have different settings for {{sections}}. Keep this computer's settings and upload them, or replace them with the sync file's. Either way, the replaced settings are backed up.",
               { sections }
             )
           : t(
-              'This computer and the sync file have different settings. Keep this computer’s settings and upload them, or replace them with the sync file’s. Either way, the replaced settings are backed up.'
+              "This computer and the sync file have different settings. Keep this computer's settings and upload them, or replace them with the sync file's. Either way, the replaced settings are backed up."
             );
       }
       if (uploadButton) uploadButton.textContent = t('This computer (upload)');
@@ -3945,14 +3953,14 @@ function applyProfileSyncConfigToForm() {
 
 const PROFILE_SYNC_REPLACE_CONFIRMATIONS = {
   push: {
-    title: 'Sync Up',
+    title: 'Sync up',
     message:
-      'Replace the sync file with this computer’s settings? Your other computers receive them on their next sync. The file’s current settings are backed up on this computer.',
+      "Replace the sync file with this computer's settings? Your other computers receive them on their next sync. The file's current settings are backed up on this computer.",
   },
   pull: {
-    title: 'Sync Down',
+    title: 'Sync down',
     message:
-      'Replace this computer’s settings with the sync file’s? This computer’s current settings are backed up first.',
+      "Replace this computer's settings with the sync file's? This computer's current settings are backed up first.",
   },
 };
 
@@ -4126,7 +4134,7 @@ async function resolveProfileSyncFirstEnable(choice) {
     if (result?.status) updateProfileSyncStatusUi(result.status);
     const outcomeMessage = {
       cancel: () => t('Profile sync turned off. No settings were changed.'),
-      upload_local: () => t('This computer’s settings were uploaded to the sync file.'),
+      upload_local: () => t("This computer's settings were uploaded to the sync file."),
       use_remote: () => t('Settings downloaded from the sync file.'),
     }[choice];
     if (discardedEdits) {
@@ -4694,9 +4702,10 @@ function syncLanguageSelectOptions() {
     const option = document.createElement('option');
     option.value = pack.locale;
     option.textContent = getLanguagePackDisplayName(pack);
+    option.lang = pack.locale;
     if (!pack.installed) {
       option.disabled = true;
-      option.textContent += ` (${t('Download first')})`;
+      option.textContent += ` (${t('Not downloaded')})`;
     }
     languageSelect.appendChild(option);
   });
@@ -4708,7 +4717,7 @@ function syncLanguageSelectOptions() {
     const fallbackOption = document.createElement('option');
     fallbackOption.value = selectedValue;
     fallbackOption.disabled = !builtinValues.has(selectedValue);
-    fallbackOption.textContent = `${getLanguageDisplayName(selectedValue, selectedValue)} (${fallbackOption.disabled ? t('Download first') : t('Available')})`;
+    fallbackOption.textContent = `${getLanguageDisplayName(selectedValue, selectedValue)}${fallbackOption.disabled ? ` (${t('Not downloaded')})` : ''}`;
     languageSelect.appendChild(fallbackOption);
   }
 
@@ -4750,10 +4759,14 @@ function renderLanguagePackList() {
     const name = document.createElement('div');
     name.className = 'language-pack-name';
     name.textContent = language;
+    // The name is in its own language ("العربية", "हिन्दी"): marked as such, a screen reader reads it
+    // in that voice and the browser picks that script's font, not the interface's.
+    name.lang = pack.locale;
 
     const meta = document.createElement('div');
     meta.className = 'language-pack-meta';
-    const stateLabel = pack.installed ? t('Installed') : t('Available');
+    // The same words as the selector's suffix: a language is either downloaded or it is not.
+    const stateLabel = pack.installed ? t('Installed') : t('Not downloaded');
     const versionLabel = pack.version ? `v${pack.version}` : '';
     const downloadedLabel = pack.downloadedAt ? ` • ${formatClockDateTime(pack.downloadedAt)}` : '';
     meta.textContent = `${stateLabel}${versionLabel ? ` • ${versionLabel}` : ''}${downloadedLabel}`;
@@ -5600,6 +5613,13 @@ async function openSettings(uiHooks) {
       }
     }
 
+    // On unless it was turned off: a config from before the switch has no value for it.
+    const persistentNotificationToasts = document.getElementById('persistent-notification-toasts');
+    if (persistentNotificationToasts) {
+      persistentNotificationToasts.checked =
+        state.CONFIG.entityAlerts?.persistentNotifications !== false;
+    }
+
     const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
     if (entityAlertsEnabled) {
       entityAlertsEnabled.checked = !!(
@@ -6024,7 +6044,7 @@ async function startHomeAssistantOAuthFromSettings() {
   // Show the address that will be used (a bare host gains its scheme, a dashboard path goes).
   if (haUrl) haUrl.value = validation.url;
   setHomeAssistantOAuthBusy(true, { cancellable: true });
-  setHomeAssistantOAuthStatus(t('Opening Home Assistant for authorization...'), 'pending');
+  setHomeAssistantOAuthStatus(t('Waiting for you to approve in your browser...'), 'pending');
   try {
     const result = await startHomeAssistantPairing(window.electronAPI, validation.url);
     applyPersistedConfigResponse(result.config);
@@ -6447,7 +6467,7 @@ async function persistSettings() {
       const previousFolder = deriveProfileSyncFolderPath(previousSyncFilePath);
       const nextFolder = deriveProfileSyncFolderPath(nextSyncFilePath);
       const copyAndSwitch = await showConfirm(
-        t('Sync Folder Changed'),
+        t('Sync folder changed'),
         t('Copy the existing sync data file from {{from}} into {{to}} and switch sync there?', {
           from: previousFolder,
           to: nextFolder,
@@ -6492,7 +6512,7 @@ async function persistSettings() {
           // with a copy. Switching to it compares the two sides' settings first, and the
           // choice panel offers This computer (with the replaced settings backed up).
           usedExistingFile = await showConfirm(
-            t('Sync File Already Exists'),
+            t('Sync file already exists'),
             t(
               '{{folder}} already has a sync file, probably from another computer. Switch to it? Settings that differ are compared first, and you choose which to keep before anything is replaced.',
               { folder: nextFolder }
@@ -6888,13 +6908,19 @@ function renderAlertsListInline() {
       alertItem.className = 'alert-item';
 
       const alertConfig = alerts[entityId];
+      // "Above 25 °C", not "Above threshold 25": the reading's unit says what the number is, and a
+      // template lets a language put the number where its grammar wants it.
+      const unit = entity?.attributes?.unit_of_measurement;
+      const thresholdText = `${formatNumber(Number(alertConfig.threshold))}${unit ? ` ${unit}` : ''}`;
       let alertType = alertConfig.onNumericThreshold
-        ? `${alertConfig.comparison === 'below' ? t('Below threshold') : t('Above threshold')} ${formatNumber(Number(alertConfig.threshold))}`
+        ? alertConfig.comparison === 'below'
+          ? t('Below {{value}}', { value: thresholdText })
+          : t('Above {{value}}', { value: thresholdText })
         : alertConfig.onStateChange
           ? t('State change')
           : t('Specific state');
       if (alertConfig.onSpecificState) {
-        alertType += ` (${alertConfig.targetState})`;
+        alertType = t('When state is {{state}}', { state: alertConfig.targetState });
       }
 
       alertItem.innerHTML = `
@@ -6911,6 +6937,11 @@ function renderAlertsListInline() {
           <button class="btn btn-sm btn-danger remove-alert" data-entity="${utils.escapeHtmlAttribute(entityId)}" data-focus-key="${utils.escapeHtmlAttribute(alertFocusKey('remove', entityId))}">${utils.escapeHtml(t('Remove'))}</button>
         </div>
       `;
+
+      // Edit and Remove repeat for every alert; the group is named for the entity they are about.
+      const alertActions = alertItem.querySelector('.alert-actions');
+      alertActions.setAttribute('role', 'group');
+      alertActions.setAttribute('aria-label', alertItem.querySelector('.alert-name').textContent);
 
       alertsList.appendChild(alertItem);
     });
@@ -7011,6 +7042,13 @@ function populateAlertEntityPicker() {
         </button>
       `;
 
+      item
+        .querySelector('.entity-selector-btn')
+        .setAttribute(
+          'aria-label',
+          hasAlert ? t('Edit alert for {{name}}', { name }) : t('Add alert for {{name}}', { name })
+        );
+
       // Add badge if alert exists
       if (hasAlert) {
         const badge = document.createElement('span');
@@ -7090,6 +7128,45 @@ function populateAlertEntityPicker() {
 }
 
 let currentAlertEntity = null;
+
+// What the three numbers of the alert dialog mean, under each: the unit and current reading of the
+// threshold (filled when the dialog opens), and what 0 does for the duration and the cooldown. The
+// help sits in the field's label so it takes the field's grid cell; the input is named by the label's
+// own text and described by the help.
+function addAlertFieldHelp(group) {
+  [
+    ['alert-threshold', ''],
+    ['alert-duration', 'Only notify if the condition lasts this long. 0 = immediately.'],
+    ['alert-cooldown', 'Wait at least this long between notifications. 0 = no limit.'],
+  ].forEach(([fieldId, helpKey]) => {
+    const input = group.querySelector(`#${fieldId}`);
+    const label = input?.closest('label');
+    const labelText = label?.querySelector('[data-alert-label-key]');
+    if (!input || !label || !labelText) return;
+    labelText.id = `${fieldId}-label`;
+    const help = document.createElement('span');
+    help.id = `${fieldId}-help`;
+    help.className = 'form-help alert-field-help';
+    if (helpKey) help.dataset.alertLabelKey = helpKey;
+    label.append(help);
+    input.setAttribute('aria-labelledby', labelText.id);
+    input.setAttribute('aria-describedby', help.id);
+  });
+}
+
+// "Currently 21.5 °C" under the threshold, so the number to type is in the unit of the reading it is
+// compared with. A sensor that has no number to show leaves it empty.
+function updateAlertThresholdHelp(modal, entity) {
+  const help = modal.querySelector('#alert-threshold-help');
+  if (!help) return;
+  const reading = entity ? Number.parseFloat(entity.state) : Number.NaN;
+  const unit = entity?.attributes?.unit_of_measurement;
+  help.textContent = Number.isFinite(reading)
+    ? t('Currently {{value}}', { value: `${formatNumber(reading)}${unit ? ` ${unit}` : ''}` })
+    : unit
+      ? t('In {{unit}}', { unit })
+      : '';
+}
 
 function relabelAlertAdvancedOptions(root = document) {
   root.querySelectorAll('#alert-advanced-options [data-alert-label-key]').forEach((node) => {
@@ -7231,6 +7308,7 @@ function openAlertConfigModal(entityId) {
       addField('alert-quiet-enabled', 'Enable quiet hours', 'checkbox');
       addField('alert-quiet-start', 'Quiet hours start, local time', 'time');
       addField('alert-quiet-end', 'Quiet hours end, local time', 'time');
+      addAlertFieldHelp(group);
       modal.querySelector('.modal-body').append(group);
     }
     relabelAlertAdvancedOptions(modal);
@@ -7244,6 +7322,7 @@ function openAlertConfigModal(entityId) {
     targetStateInput.value = alertConfig?.targetState || '';
     populateAlertStateSuggestions(state.STATES[entityId]);
     modal.querySelector('#alert-threshold').value = alertConfig?.threshold ?? '';
+    updateAlertThresholdHelp(modal, state.STATES[entityId]);
     modal.querySelector('#alert-duration').value = alertConfig?.durationSeconds || 0;
     modal.querySelector('#alert-cooldown').value = alertConfig?.cooldownSeconds || 0;
     // On unless the rule says otherwise, which is also how a rule saved before the switch reads.
@@ -8189,6 +8268,27 @@ async function refreshDesktopIntegrationIfHotkeysChanged(config = state.CONFIG) 
   await refreshDesktopIntegration();
 }
 
+// What to change in a Hyprland bind that still names the retired app id, in the user's language. Main
+// logs the same advice in English; it sends the parts so the panel can say it in the right words.
+function describeLegacyDesktopActivation(activation, appId) {
+  if (!activation?.legacyAppId || !activation.id || !appId) return activation?.notice || '';
+  const values = {
+    shortcut: describeShortcutId(activation.id),
+    legacyAppId: activation.legacyAppId,
+    target: `${appId}:${activation.id}`,
+    binding: activation.binding,
+  };
+  return activation.binding
+    ? t(
+        'Hyprland sent "{{shortcut}}" through the old app name "{{legacyAppId}}". That still works for now; change the bind to "{{target}}", for example: {{binding}}',
+        values
+      )
+    : t(
+        'Hyprland sent "{{shortcut}}" through the old app name "{{legacyAppId}}". That still works for now; change the bind to "{{target}}".',
+        values
+      );
+}
+
 async function refreshDesktopIntegration({ announce = false } = {}) {
   void refreshDesktopBlur().catch((error) => {
     log.error('Failed to read Hyprland blur status:', error);
@@ -8252,7 +8352,7 @@ async function refreshDesktopIntegration({ announce = false } = {}) {
   const legacy = document.getElementById('desktop-integration-legacy');
   if (legacy) {
     legacy.hidden = !info.legacyActivation;
-    legacy.textContent = info.legacyActivation?.notice || '';
+    legacy.textContent = describeLegacyDesktopActivation(info.legacyActivation, info.appId);
   }
   // The button gives no other sign that it did anything when nothing has changed.
   if (announce) showToast(t('Shortcut status updated.'), 'info', 2000);

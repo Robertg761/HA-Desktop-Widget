@@ -1,4 +1,7 @@
 import { t } from './i18n.js';
+import pageNames from '../../../src/page-names.cjs';
+
+const { defaultPageName, toStoredPages } = pageNames;
 
 const DEFAULT_QUICK_ACCESS_TAB_ID = 'default';
 const DEFAULT_QUICK_ACCESS_TAB_NAME = 'All';
@@ -74,14 +77,14 @@ function normalizeExistingTabs(customTabs) {
     if (!isObject(rawTab)) return acc;
     const baseId = normalizeTabId(rawTab.id, index);
     const id = makeUniqueTabId(baseId, usedIds);
-    const name = normalizeTabName(
-      rawTab.name,
-      index === 0 ? t(DEFAULT_QUICK_ACCESS_TAB_NAME) : t('View {{index}}', { index: index + 1 })
-    );
+    // A page without a name (or marked as showing the default one) is named for the language now
+    // active. It is marked, so that it is stored unnamed and not in the language of the day.
+    const isDefaultName = rawTab.nameIsDefault === true || !normalizeTabName(rawTab.name, '');
+    const name = isDefaultName ? defaultPageName(index, t) : normalizeTabName(rawTab.name, '');
     const entityIds = normalizeEntityIds(
       Array.isArray(rawTab.entityIds) ? rawTab.entityIds : rawTab.entities
     );
-    acc.push({ id, name, entityIds });
+    acc.push({ id, name, entityIds, ...(isDefaultName ? { nameIsDefault: true } : {}) });
     return acc;
   }, []);
 }
@@ -95,6 +98,7 @@ function normalizeQuickAccessConfig(config, options = {}) {
       {
         id: DEFAULT_QUICK_ACCESS_TAB_ID,
         name: t(DEFAULT_QUICK_ACCESS_TAB_NAME),
+        nameIsDefault: true,
         entityIds: normalizeEntityIds(source.favoriteEntities),
       },
     ];
@@ -114,12 +118,13 @@ function normalizeQuickAccessConfig(config, options = {}) {
   if (options.withChanged) {
     const changed =
       JSON.stringify({
-        customTabs: source.customTabs,
+        customTabs: toStoredPages(source.customTabs),
         activeTabId: source.activeTabId,
         favoriteEntities: source.favoriteEntities,
       }) !==
       JSON.stringify({
-        customTabs: normalizedConfig.customTabs,
+        // As stored: a name filled in for the language only is no change to what is saved.
+        customTabs: toStoredPages(normalizedConfig.customTabs),
         activeTabId: normalizedConfig.activeTabId,
         favoriteEntities: normalizedConfig.favoriteEntities,
       });
@@ -166,9 +171,14 @@ function renameQuickAccessView(config, tabId, name) {
   if (!nextName) return normalized;
   return normalizeQuickAccessConfig({
     ...normalized,
-    customTabs: normalized.customTabs.map((tab) =>
-      tab.id === tabId ? { ...tab, name: nextName } : tab
-    ),
+    customTabs: normalized.customTabs.map((tab) => {
+      if (tab.id !== tabId) return tab;
+      // The name shown for an unnamed page, typed back as it is, names nothing: the page stays
+      // unnamed rather than keeping today's language for good.
+      if (tab.nameIsDefault && tab.name === nextName) return tab;
+      const { nameIsDefault: _unnamed, ...named } = tab;
+      return { ...named, name: nextName };
+    }),
   });
 }
 

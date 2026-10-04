@@ -178,7 +178,19 @@ const MEDIA_PLAYER_SUPPORT_SEEK = 2;
 const MEDIA_PLAYER_SUPPORT_VOLUME_SET = 4;
 const MEDIA_PLAYER_SUPPORT_VOLUME_MUTE = 8;
 const LIGHT_COLOR_MODES = new Set(['rgb', 'rgbw', 'rgbww', 'hs', 'xy']);
-const LIGHT_COLOR_PRESETS = ['#FFB347', '#FFD966', '#FFFFFF', '#9FD8FF', '#7C83FF', '#FF6B9D'];
+// The colours the light dialog offers, each with the name a screen reader and a tooltip use; a hex
+// code is not something anyone can hear. The names are translated where they are read.
+const LIGHT_COLOR_PRESETS = [
+  { hex: '#FFB347', name: 'Amber' },
+  { hex: '#FFD966', name: 'Yellow' },
+  { hex: '#FFFFFF', name: 'White' },
+  { hex: '#9FD8FF', name: 'Sky blue' },
+  { hex: '#7C83FF', name: 'Indigo' },
+  { hex: '#FF6B9D', name: 'Pink' },
+];
+// The kinds of entity a first page is made of; the starter dialog lists these first and suggests up
+// to eight of them.
+const CONTROLLABLE_ENTITY_PATTERN = /^(light|switch|climate|fan|cover|media_player)\./;
 const DESKTOP_PIN_SCENE_BASE_MIN_BOUNDS = { width: 97, height: 83 };
 const DESKTOP_PIN_SCENE_DEFAULT_BOUNDS = { width: 168, height: 148 };
 const QUICK_ACCESS_TILE_VALUE_SIZE_OPTIONS = new Set([
@@ -581,9 +593,15 @@ function ensureEntityCacheScope({ force = false } = {}) {
   desktopPinLightBrightnessTimers.clear();
   [...desktopPinControlInteractionState.keys()].forEach(clearDesktopPinControlInteraction);
   [...desktopPinLightInteractionState.keys()].forEach(clearDesktopPinLightInteraction);
-  [...entityDetailClosers].forEach((close) => close());
+  closeAllEntityDetailDialogs();
   return entityCacheGeneration;
 }
+// A device dialog is built once, with its words in place, so after a language change it would go on
+// speaking the old language until closed. The renderer closes them when the language changes.
+function closeAllEntityDetailDialogs() {
+  [...entityDetailClosers].forEach((close) => close());
+}
+
 const WEATHER_UNAVAILABLE_STATES = new Set(['unknown', 'unavailable']);
 
 function generateQuickAccessViewId() {
@@ -1187,7 +1205,9 @@ async function deleteQuickAccessPage(tabId) {
 
   const confirmed = await uiUtils.showConfirm(
     t('Delete Page'),
-    t('Delete "{{name}}"? Its entities will be removed from this page.', { name: tab.name }),
+    // The page itself goes, with its tiles; the entities are still in Home Assistant, and on any other
+    // page that shows them.
+    t('Delete "{{name}}" and its tiles?', { name: tab.name }),
     { confirmText: t('Delete'), confirmClass: 'btn-danger' }
   );
   if (!confirmed) return;
@@ -1319,8 +1339,8 @@ function showAddPageModal({ starter = false } = {}) {
   const deviceSearch = document.createElement('input');
   deviceSearch.type = 'search';
   deviceSearch.className = 'form-control room-device-search';
-  deviceSearch.placeholder = t('Search devices');
-  deviceSearch.setAttribute('aria-label', t('Search devices'));
+  deviceSearch.placeholder = t('Search entities');
+  deviceSearch.setAttribute('aria-label', t('Search entities'));
   const filterDevices = () => {
     const query = normalizeSearchText(deviceSearch.value);
     const labels = [...roomEntities.querySelectorAll('label')];
@@ -1342,6 +1362,16 @@ function showAddPageModal({ starter = false } = {}) {
   deviceSearch.addEventListener('input', filterDevices);
   deviceSearch.hidden = true;
   roomGroup.insertBefore(deviceSearch, roomEntities);
+  // With no room chosen the starter lists every entity Home Assistant has: persons, automations,
+  // updates and zones among them. It opens on the ones a first page is made of, and this shows the
+  // rest.
+  const showAllLabel = document.createElement('label');
+  showAllLabel.className = 'room-show-all';
+  const showAll = document.createElement('input');
+  showAll.type = 'checkbox';
+  showAllLabel.append(showAll, document.createTextNode(t('Show all entities')));
+  showAllLabel.hidden = true;
+  roomGroup.insertBefore(showAllLabel, deviceSearch);
   modal.querySelector('.modal-body').appendChild(roomGroup);
   let registry = null;
   let availableStates = state.STATES;
@@ -1383,17 +1413,37 @@ function showAddPageModal({ starter = false } = {}) {
     }
   };
   roomEntities.addEventListener('change', updatePreview);
+  // Showing more or fewer entities rebuilds the list. A tick belongs to its entity, not to the
+  // list: what was ticked stays ticked and what was cleared stays cleared, and an entity the list
+  // stops showing keeps its tick (out of the page and the preview while hidden) for when it is
+  // shown again.
+  let hiddenTicks = new Set();
+  showAll.addEventListener('change', () => {
+    const ticked = new Set(hiddenTicks);
+    roomEntities.querySelectorAll('input:checked').forEach((box) => ticked.add(box.value));
+    // The status line (rooms unavailable, say) is about the rooms, not about this list.
+    const status = roomStatus.textContent;
+    roomSelect.onchange();
+    roomStatus.textContent = status;
+    const shown = new Set();
+    roomEntities.querySelectorAll('input').forEach((box) => {
+      shown.add(box.value);
+      box.checked = ticked.has(box.value);
+    });
+    hiddenTicks = new Set([...ticked].filter((id) => !shown.has(id)));
+    updatePreview();
+  });
   // Remember the name we filled in from a room so a name the user typed is never overwritten.
   let autoFilledName = '';
   loadRooms.onclick = async () => {
     loadRooms.disabled = true;
     if (starter) saveBtn.disabled = true;
-    roomStatus.textContent = t('Loading rooms…');
+    roomStatus.textContent = t('Loading rooms...');
     try {
       if (starter) {
-        if (!websocket.isConnected()) roomStatus.textContent = t('Connecting to Home Assistant…');
+        if (!websocket.isConnected()) roomStatus.textContent = t('Connecting to Home Assistant...');
         if (!(await waitForRoomConnection(websocket, () => modal.isConnected))) return;
-        roomStatus.textContent = t('Loading rooms…');
+        roomStatus.textContent = t('Loading rooms...');
         const response = await websocket.request({ type: 'get_states' });
         if (response?.success === false || !Array.isArray(response?.result))
           throw new Error('states unavailable');
@@ -1412,7 +1462,7 @@ function showAddPageModal({ starter = false } = {}) {
       }
       if (!modal.isConnected) return;
       if (!starter) availableStates = state.STATES;
-      roomSelect.replaceChildren(new Option(starter ? t('All devices') : t('Empty page'), ''));
+      roomSelect.replaceChildren(new Option(starter ? t('All entities') : t('Empty page'), ''));
       roomEntities.replaceChildren();
       registry.areas
         .sort((a, b) => compareNames(a.name, b.name))
@@ -1430,10 +1480,10 @@ function showAddPageModal({ starter = false } = {}) {
         );
         roomSelect.onchange();
         if (registryUnavailable) {
-          roomStatus.textContent = t('Rooms are unavailable. Choose from your devices instead.');
+          roomStatus.textContent = t('Rooms are unavailable. Choose from your entities instead.');
         } else if (!registry.areas.length) {
           roomStatus.textContent = t(
-            'No rooms are set up in Home Assistant yet. Choose from your devices instead.'
+            'No rooms are set up in Home Assistant yet. Choose from your entities instead.'
           );
         }
         saveBtn.disabled = false;
@@ -1464,6 +1514,8 @@ function showAddPageModal({ starter = false } = {}) {
     title.textContent = '';
     clearPreviewRows();
     statusBeforeNoMatches = null;
+    // A different room is a different list; ticks kept from the last one do not follow it.
+    hiddenTicks.clear();
     if ((!roomSelect.value && !starter) || !registry) {
       roomStatus.textContent = '';
       deviceSearch.hidden = true;
@@ -1474,10 +1526,14 @@ function showAddPageModal({ starter = false } = {}) {
       setPageName(area?.name || (starter ? t('My devices') : ''));
       autoFilledName = input.value;
     }
-    const ids =
-      !roomSelect.value && starter
-        ? selectableEntityIds(availableStates, registry.entities)
-        : entitiesForArea(roomSelect.value, registry.entities, registry.devices, availableStates);
+    const unscoped = !roomSelect.value && starter;
+    let ids = unscoped
+      ? selectableEntityIds(availableStates, registry.entities)
+      : entitiesForArea(roomSelect.value, registry.entities, registry.devices, availableStates);
+    // Only the controllable kinds, unless asked for more or there is nothing else to show.
+    const controllableIds = ids.filter((id) => CONTROLLABLE_ENTITY_PATTERN.test(id));
+    showAllLabel.hidden = !unscoped || controllableIds.length === ids.length;
+    if (unscoped && !showAll.checked && controllableIds.length) ids = controllableIds;
     roomStatus.textContent = ids.length
       ? t('Choose the entities to include.')
       : t('No available entities in this room.');
@@ -2311,7 +2367,11 @@ function addButtonsToElement(item) {
               })
             : uiUtils.showConfirm(
                 t('Remove from Quick Access'),
-                t('Remove "{{name}}" from Quick Access?', { name: getQuickAccessTileLabel(item) }),
+                // Removing a tile takes it off the page it is on; the same entity on another page stays.
+                t('Remove "{{name}}" from "{{page}}"?', {
+                  name: getQuickAccessTileLabel(item),
+                  page: getActiveQuickAccessTab(state.CONFIG)?.name || '',
+                }),
                 { confirmText: t('Remove'), confirmClass: 'btn-danger' }
               ));
 
@@ -2412,7 +2472,7 @@ function showRenameModal(entityId) {
               <input type="checkbox" id="tile-tray-checkbox"${currentTrayEnabled ? ' checked' : ''} />
               <span>${utils.escapeHtml(t('Show in system tray'))} (${utils.escapeHtml(t('Beta'))})</span>
             </label>
-            <div class="form-help">${utils.escapeHtml(t('Shows this entity’s current value as its own icon in the system tray.'))}</div>
+            <div class="form-help">${utils.escapeHtml(t("Shows this entity's current value as its own icon in the system tray."))}</div>
           </div>
           <div id="tile-tray-options"${currentTrayEnabled ? '' : ' hidden'}>
             <div class="form-group">
@@ -2456,7 +2516,7 @@ function showRenameModal(entityId) {
             <select id="camera-preview-refresh-select" class="form-control">
               ${cameraPreviewOptionsMarkup}
             </select>
-            <div class="form-help">${utils.escapeHtml(t('Live mode uses the authenticated camera stream only while the tile and app are visible. Snapshot modes show the camera integration’s latest image, which may be cached.'))}</div>
+            <div class="form-help">${utils.escapeHtml(t("Live mode uses the authenticated camera stream only while the tile and app are visible. Snapshot modes show the camera integration's latest image, which may be cached."))}</div>
           </div>`
       : '';
 
@@ -2851,6 +2911,7 @@ function showRenameModal(entityId) {
 
 async function removeFromQuickAccess(entityId) {
   try {
+    const pageName = getActiveQuickAccessTab(state.CONFIG)?.name || '';
     // Removing a graph tile deletes the graph itself — leaving it behind would strand config that
     // has no way back into the UI.
     const nextConfig = isComparisonGraphId(entityId)
@@ -2871,7 +2932,7 @@ async function removeFromQuickAccess(entityId) {
       addRemoveButtons();
     }
 
-    uiUtils.showToast(t('Entity removed from Quick Access'), 'success', 2000);
+    uiUtils.showToast(t('Removed from "{{page}}"', { page: pageName }), 'success', 2000);
     return result;
   } catch (error) {
     console.error('Error removing from quick access:', error);
@@ -3329,8 +3390,7 @@ function describeQuickAccessTile(entityId) {
   if (!entity) {
     return {
       id: entityId,
-      name:
-        state.CONFIG?.customEntityNames?.[entityId] || entityId.split('.').pop().replace(/_/g, ' '),
+      name: state.CONFIG?.customEntityNames?.[entityId] || utils.humanizeEntityId(entityId),
       state: '',
       value: t('Unavailable'),
       icon: { kind: 'line', name: 'triangle-alert' },
@@ -3404,7 +3464,7 @@ function getQuickAccessTileControls(entity) {
         brightness: on ? utils.brightnessToPercent(brightness) : 0,
         canSetBrightness: !!capabilities.canSetBrightness,
         colorTemp,
-        colors: supportsLightColor(attributes) ? [...LIGHT_COLOR_PRESETS] : [],
+        colors: supportsLightColor(attributes) ? LIGHT_COLOR_PRESETS.map(({ hex }) => hex) : [],
       };
     }
     case 'fan':
@@ -4846,7 +4906,7 @@ function renderComparisonGraphBody(tile, graph) {
     body.textContent = '';
     const empty = document.createElement('div');
     empty.className = 'comparison-graph-empty';
-    empty.textContent = entries.length ? t('Waiting for history…') : t('No sensors selected');
+    empty.textContent = entries.length ? t('Waiting for history...') : t('No sensors selected');
     body.appendChild(empty);
     return;
   }
@@ -5196,8 +5256,8 @@ function showComparisonGraphModal(graphId) {
   search.type = 'text';
   search.className = 'form-control';
   search.spellcheck = false;
-  search.placeholder = t('Search sensors…');
-  search.setAttribute('aria-label', t('Search sensors…'));
+  search.placeholder = t('Search sensors...');
+  search.setAttribute('aria-label', t('Search sensors...'));
   searchGroup.appendChild(search);
   body.appendChild(searchGroup);
 
@@ -6259,6 +6319,8 @@ function applyDesktopPinLightVisualState(root, { isOn, brightnessPct }) {
   if (slider && slider.value !== String(safePct)) {
     slider.value = String(safePct);
   }
+  // A screen reader says what the slider reads, with its unit, not the bare number.
+  slider?.setAttribute('aria-valuetext', formatPercent(safePct));
 }
 
 function updateExistingDesktopPinLightControl(root, entity) {
@@ -6686,6 +6748,7 @@ function applyDesktopPinClimateVisualState(root, climateValue) {
   if (slider && slider.value !== String(targetTemp)) {
     slider.value = String(targetTemp);
   }
+  slider?.setAttribute('aria-valuetext', formatTemperature(targetTemp, unit));
 
   root.querySelectorAll('.desktop-pin-climate-mode').forEach((button) => {
     // Mode buttons carry their mode in data-action (see createDesktopPinButtonMarkup).
@@ -6936,6 +6999,7 @@ function applyDesktopPinFanVisualState(root, fanValue) {
   if (slider && slider.value !== String(percentage)) {
     slider.value = String(percentage);
   }
+  slider?.setAttribute('aria-valuetext', formatPercent(percentage));
 
   const power = root.querySelector('.desktop-pin-fan-power');
   if (power) setDesktopPinPowerButtonState(power, isOn);
@@ -7114,6 +7178,7 @@ function applyDesktopPinCoverVisualState(root, coverValue) {
   if (slider && slider.value !== String(coverValue.position)) {
     slider.value = String(coverValue.position);
   }
+  slider?.setAttribute('aria-valuetext', formatPercent(coverValue.position));
 
   const sheet = root.querySelector('.desktop-pin-cover-shade');
   if (sheet) {
@@ -7216,7 +7281,7 @@ function createDesktopPinCoverControlElement(entity) {
           ${availableActions
             .map(
               ({ action, label }) =>
-                `<button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-cover-action" type="button" data-action="${action}" title="${escapeHtmlAttribute(label)}">${desktopPinButtonLabelMarkup(label)}</button>`
+                `<button class="desktop-pin-panel-button desktop-pin-panel-chip desktop-pin-cover-action" type="button" data-action="${action}" title="${escapeHtmlAttribute(label)}" aria-label="${escapeHtmlAttribute(t('{{label}} {{name}}', { label, name: utils.getEntityDisplayName(entity) }))}">${desktopPinButtonLabelMarkup(label)}</button>`
             )
             .join('')}
         </div>`
@@ -7460,12 +7525,20 @@ function updateExistingDesktopPinMediaControl(root, entity) {
   return true;
 }
 
+// Chinese, Japanese and Korean characters (and full-width forms) are set one em wide, where Latin
+// text averages about 0.6em. A name of them has no spaces to break at; the line count breaks a token
+// wider than the line anywhere, which is where such text may break.
+const WIDE_CHARACTER_PATTERN =
+  /[\u1100-\u115f\u2e80-\u303e\u3041-\u33ff\u3400-\u4dbf\u4e00-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe6f\uff00-\uff60\uffe0-\uffe6\u{20000}-\u{3fffd}]/u;
+
 function estimateDesktopPinSceneTokenWidth(token, fontSize) {
   if (!token) return fontSize * 0.35;
   let width = 0;
   for (const char of token) {
     if (char === ' ') {
       width += fontSize * 0.34;
+    } else if (WIDE_CHARACTER_PATTERN.test(char)) {
+      width += fontSize;
     } else if ('ilI1|'.includes(char)) {
       width += fontSize * 0.34;
     } else if ('mwMW@#%&'.includes(char)) {
@@ -8473,6 +8546,10 @@ function createDesktopPinNumericControlElement(entity) {
 
   const slider = root.querySelector('.desktop-pin-numeric-slider');
   if (slider) {
+    slider.setAttribute(
+      'aria-valuetext',
+      formatDesktopPinNumericValue(spec.value, entity, { spec })
+    );
     bindDesktopPinSlider(slider, {
       entityId: entity.entity_id,
       getImmediateValue: (target) => Number(target?.value),
@@ -8482,6 +8559,7 @@ function createDesktopPinNumericControlElement(entity) {
         const value = root.querySelector('.desktop-pin-panel-value');
         if (kpi) kpi.textContent = formatted;
         if (value) value.textContent = formatted;
+        slider.setAttribute('aria-valuetext', formatted);
       },
       queueValue: (nextValue) => queueDesktopPinNumericValue(entity, nextValue),
       releaseDelayMs: 360,
@@ -8545,6 +8623,7 @@ function updateExistingDesktopPinNumericControl(root, entity) {
     slider.max = String(spec.max);
     slider.step = String(spec.step);
     slider.value = String(spec.value);
+    slider.setAttribute('aria-valuetext', formattedValue);
   }
 
   return true;
@@ -10298,7 +10377,7 @@ function createControlElement(entity, options = {}) {
         </div>
         <div class="camera-tile-copy">
           <div class="control-name">${name}</div>
-          <div class="control-state camera-tile-preview-status">${utils.escapeHtml(t(hasLiveCameraPreview ? 'Starting live stream…' : 'Loading snapshot…'))}</div>
+          <div class="control-state camera-tile-preview-status">${utils.escapeHtml(t(hasLiveCameraPreview ? 'Starting live stream...' : 'Loading snapshot...'))}</div>
         </div>
       `;
       div.classList.add('camera-entity', 'camera-preview-tile');
@@ -10706,6 +10785,11 @@ function openEntityRepairModal(staleEntityId) {
       button.className = 'entity-selector-btn add';
       button.dataset.entityId = entity.entity_id;
       button.textContent = t('Use');
+      // A column of identical "Use" buttons says nothing; the entity's name does.
+      button.setAttribute(
+        'aria-label',
+        t('Use {{name}}', { name: utils.getEntityDisplayName(entity) })
+      );
       button.addEventListener('click', () => {
         void persistReplacement(entity.entity_id);
       });
@@ -11450,13 +11534,20 @@ function showHelperControls(entity) {
   refresh();
 }
 
-function requestAlarmCode(entity) {
+/**
+ * Ask for an alarm panel's code in a small dialog; resolves with the code, or null when dismissed.
+ * @param {Object} entity - The alarm panel.
+ * @param {Object} [options]
+ * @param {string} [options.title] - What the dialog is for ("Disarm Home alarm"); the panel's name by default.
+ * @param {string} [options.submitLabel] - The submit button's word ("Disarm"); "Apply" by default.
+ */
+function requestAlarmCode(entity, { title, submitLabel } = {}) {
   return new Promise((resolve) => {
     let code = null;
     let input = null;
     const modal = createEntityDetailModal({
       className: 'alarm-code-modal',
-      title: utils.getEntityDisplayName(entity),
+      title: title || utils.getEntityDisplayName(entity),
       onClose: () => {
         if (input) input.value = '';
         resolve(code);
@@ -11483,10 +11574,16 @@ function requestAlarmCode(entity) {
     const submit = document.createElement('button');
     submit.type = 'submit';
     submit.className = 'btn btn-primary';
-    submit.textContent = t('Apply');
+    submit.textContent = submitLabel || t('Apply');
+    // A way out that says so, beside the one that does the thing; the dialog's X is the same close.
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'btn btn-secondary';
+    cancel.textContent = t('Cancel');
+    cancel.addEventListener('click', () => modal.querySelector('.close-btn').click());
     const actions = document.createElement('div');
     actions.className = 'entity-detail-actions';
-    actions.append(submit);
+    actions.append(cancel, submit);
     form.append(group, actions);
     modal.querySelector('.modal-body').append(form);
     form.onsubmit = (event) => {
@@ -13730,9 +13827,19 @@ function populateWeatherEntitiesList() {
     list.innerHTML = '';
 
     if (weatherEntities.length === 0) {
+      // Connected, an empty list is Home Assistant's: it has no weather integration. Only before
+      // that is the connection what to check.
       list.innerHTML = `<div class="no-entities-message">${utils.escapeHtml(
-        t("No weather entities available. Make sure you're connected to Home Assistant.")
+        websocket.isConnected()
+          ? t(
+              'Home Assistant has no weather entities. Add a weather integration, then reopen this list.'
+            )
+          : t("No weather entities available. Make sure you're connected to Home Assistant.")
       )}</div>`;
+      if (currentNameEl) {
+        currentNameEl.textContent = t('None available');
+        currentNameEl.dataset.state = 'none';
+      }
       return;
     }
 
@@ -14269,6 +14376,17 @@ function updateTimerDisplays() {
   }
 }
 
+// Marks the preset chip that matches the level now shown (25%, 50%..., Low, Medium...), so a row of
+// presets shows where the slider is and a screen reader hears which one is on.
+function markPresetButtons(buttons, level, dataName) {
+  const shown = Math.round(Number(level));
+  buttons.forEach((button) => {
+    const selected = Number(button.dataset[dataName]) === shown;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+  });
+}
+
 function showBrightnessSlider(light, { replaces = null, focusSelector = null } = {}) {
   try {
     const name = utils.escapeHtml(utils.getEntityDisplayName(light));
@@ -14335,13 +14453,15 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
                 />
                 <div class="light-color-swatches">
                   ${LIGHT_COLOR_PRESETS.map(
-                    (color) => `
+                    ({ hex, name }) => `
                     <button
                       class="light-color-swatch"
                       type="button"
-                      data-color="${escapeHtmlAttribute(color)}"
-                      style="--swatch-color: ${escapeHtmlAttribute(color)}"
-                      aria-label="${escapeHtmlAttribute(t('Set light color {{color}}', { color }))}"
+                      data-color="${escapeHtmlAttribute(hex)}"
+                      style="--swatch-color: ${escapeHtmlAttribute(hex)}"
+                      title="${escapeHtmlAttribute(t(name))}"
+                      aria-label="${escapeHtmlAttribute(t('Set light color {{color}}', { color: t(name) }))}"
+                      aria-pressed="${hex.toLowerCase() === currentColorHex.toLowerCase() ? 'true' : 'false'}"
                     ></button>
                   `
                   ).join('')}
@@ -14507,6 +14627,7 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
     // One bulb whose glow follows the level (see .brightness-icon in styles.css); off swaps in
     // the struck-through bulb.
     const updateIconAndAccent = (value) => {
+      markPresetButtons(presetButtons, value, 'preset');
       if (!icon) return;
       const iconName = value === 0 ? 'lightbulb-off' : 'lightbulb';
       if (icon.firstElementChild?.dataset.icon !== iconName) setLineIconContent(icon, iconName);
@@ -14621,6 +14742,7 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
           () => {
             lightIsOn = confirmedLightIsOn;
             if (colorPicker) colorPicker.value = confirmedColorHex;
+            markSwatches(confirmedColorHex);
             updateTurnButton();
           }
         ).then(({ ok }) => {
@@ -14634,12 +14756,24 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
     if (colorPicker) {
       colorPicker.addEventListener('input', (e) => {
         applyColor(e.target.value);
+        markSwatches(e.target.value);
       });
     }
+
+    // The swatch that matches the colour now chosen is marked, so a row of colours shows where it is.
+    const markSwatches = (hexColor) => {
+      colorSwatches.forEach((btn) => {
+        const selected = btn.dataset.color.toLowerCase() === String(hexColor).toLowerCase();
+        btn.classList.toggle('active', selected);
+        btn.setAttribute('aria-pressed', selected ? 'true' : 'false');
+      });
+    };
+    markSwatches(currentColorHex);
 
     colorSwatches.forEach((btn) => {
       btn.addEventListener('click', () => {
         applyColor(btn.getAttribute('data-color'));
+        markSwatches(btn.dataset.color);
       });
     });
 
@@ -15509,6 +15643,7 @@ function showFanControls(fanEntity, { replaces = null, focusSelector = null } = 
 
     // Update icon based on speed
     const updateIcon = (speed) => {
+      if (slider) markPresetButtons(presetButtons, speed, 'speed');
       if (!fanIcon) return;
       if (speed > 0) {
         fanIcon.classList.add('spinning');
@@ -15516,6 +15651,8 @@ function showFanControls(fanEntity, { replaces = null, focusSelector = null } = 
         fanIcon.classList.remove('spinning');
       }
     };
+
+    if (slider) markPresetButtons(presetButtons, currentSpeed, 'speed');
 
     // Slider behavior with debounce
     if (slider) {
@@ -15704,7 +15841,7 @@ function showCoverControls(coverEntity, { replaces = null, focusSelector = null 
               ${availableActions
                 .map(
                   ({ action, icon, label }) => `
-                <button class="cover-action-btn" type="button" data-action="${action}">
+                <button class="cover-action-btn" type="button" data-action="${action}" aria-label="${escapeHtmlAttribute(t('{{label}} {{name}}', { label, name: utils.getEntityDisplayName(coverEntity) }))}">
                   <span class="cover-action-icon">${icon}</span>
                   <span class="cover-action-label">${utils.escapeHtml(label)}</span>
                 </button>`
@@ -16043,6 +16180,16 @@ function populateQuickControlsList({ resetSearch = true } = {}) {
           : isInActiveView
             ? t('Remove')
             : t('Add');
+        // Fifty rows of "Add" and "Remove" tell a screen reader nothing without the entity's name.
+        const rowName = utils.getEntityDisplayName(entity);
+        if (!isOverlayDemo) {
+          button.setAttribute(
+            'aria-label',
+            isInActiveView
+              ? t('Remove {{name}}', { name: rowName })
+              : t('Add {{name}}', { name: rowName })
+          );
+        }
         button.disabled = isOverlayDemo;
         button.onclick = isOverlayDemo ? null : () => toggleQuickAccess(entity.entity_id);
 
@@ -16277,6 +16424,7 @@ function removeEscapeKeyListener() {
 
 export {
   requestAlarmCode,
+  closeAllEntityDetailDialogs,
   ensureEntityCacheScope,
   showAddPageModal,
   restoreDashboard,

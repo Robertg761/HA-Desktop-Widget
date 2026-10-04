@@ -105,7 +105,10 @@ function describeUpdateState(update) {
       };
     case 'available':
       return {
-        text: t('Update available: v{{version}}', { version: update.version || 'unknown' }),
+        // An updater that names no version is not given the made-up "vunknown".
+        text: update.version
+          ? t('Update available: v{{version}}', { version: update.version })
+          : t('Update available'),
         tone: 'available',
         busy: false,
         installLabel: null,
@@ -131,7 +134,9 @@ function describeUpdateState(update) {
       return {
         text: update.installError
           ? t('Error: {{error}}', { error: update.installError })
-          : t('Update v{{version}} ready to install', { version: update.version || 'unknown' }),
+          : update.version
+            ? t('Update v{{version}} ready to install', { version: update.version })
+            : t('Update ready to install'),
         tone: update.installError ? 'error' : 'downloaded',
         busy: false,
         installLabel: t('Install update'),

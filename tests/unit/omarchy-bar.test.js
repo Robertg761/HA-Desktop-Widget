@@ -566,6 +566,41 @@ describe('Omarchy bar settings in shell.json', () => {
     });
   });
 
+  it('names a page nobody named, as the widget does, in the language of the widget', () => {
+    const entry = { present: true, entities: null, barEntities: null };
+    // Saved pages carry no name unless someone typed one (see src/page-names.cjs), so the bar has to
+    // name them or the first section would have no heading and the others would run together.
+    const config = {
+      customTabs: [
+        { id: 'default', name: '', entityIds: ['light.a'] },
+        { id: 'empty', name: '', entityIds: [] },
+        { id: 'third', entityIds: ['switch.b'] },
+        { id: 'office', name: 'Office', entityIds: ['sensor.temp'] },
+      ],
+    };
+    // Without a translator the English the widget would show.
+    expect(resolveOmarchyBarEntities(entry, config).sections).toEqual([
+      { name: 'All', ids: ['light.a'] },
+      { name: 'View 3', ids: ['switch.b'] },
+      { name: 'Office', ids: ['sensor.temp'] },
+    ]);
+    const german = (key, vars = {}) =>
+      ({ All: 'Alle', 'View {{index}}': 'Ansicht {{index}}' })[key].replace(
+        '{{index}}',
+        vars.index
+      );
+    expect(resolveOmarchyBarEntities(entry, config, german).sections.map((s) => s.name)).toEqual([
+      'Alle',
+      'Ansicht 3',
+      'Office',
+    ]);
+    // A single unnamed page still needs no heading.
+    expect(
+      resolveOmarchyBarEntities(entry, { customTabs: [{ name: '', entityIds: ['light.a'] }] })
+        .sections
+    ).toEqual([{ name: '', ids: ['light.a'] }]);
+  });
+
   it('keeps a duplicated page in the panel and skips its comparison graphs', () => {
     const entry = { present: true, entities: null, barEntities: null };
     const resolved = resolveOmarchyBarEntities(entry, {
@@ -1165,7 +1200,7 @@ describe('the plugin as a package of files', () => {
   // below are updated together.
   const PUBLISHED = {
     version: '1.3.0',
-    sha256: '538357ce703006e24571741ed1997fe9a50bdf382bf961191fe21746ca4f0ade',
+    sha256: '87564b1b5ad2f4f1a5ff9ab11df37435aedefdaccb21d8491ca7e827aee13d93',
   };
 
   function pluginHash() {
@@ -1256,7 +1291,7 @@ describe('the plugin follows the widget as it changes and as it stops', () => {
     expect(qml).toContain('active: view.shown("mode", view.ctl.mode) === modelData');
     expect(qml).toContain('var asked = shown("target", ctl.target)');
     // Heat/cool and auto are different modes and read differently.
-    expect(qml).toContain('heat_cool: "Heat/Cool"');
+    expect(qml).toContain('heat_cool: word("modeHeatCool", "Heat/Cool")');
   });
 
   it('shows a thermostat in range mode instead of leaving it blank', () => {

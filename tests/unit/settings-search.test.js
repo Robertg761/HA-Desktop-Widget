@@ -290,7 +290,7 @@ describe('settings search', () => {
   test('finds settings action buttons by their label', () => {
     for (const [query, id] of [
       ['Sync now', 'profile-sync-now'],
-      ['Sync Up', 'profile-sync-push-now'],
+      ['Sync up', 'profile-sync-push-now'],
       ['Support this project', 'open-donate-modal-btn'],
     ]) {
       document
@@ -412,9 +412,9 @@ describe('settings search', () => {
 
     test('a caption over the example chips and a help link are not settings', () => {
       expect(titles(search('suggestions'))).not.toContain('Suggestions');
-      // "Need Help?" opens the docs; the settings it sits among are the results for "sync"
-      expect(titles(search('need help'))).not.toContain('Need Help?');
-      expect(titles(search('sync'))).not.toContain('Need Help?');
+      // 'Need help?' opens the docs; the settings it sits among are the results for "sync"
+      expect(titles(search('need help'))).not.toContain('Need help?');
+      expect(titles(search('sync'))).not.toContain('Need help?');
     });
 
     test('finds a page although the stylesheet shows only the current one', () => {

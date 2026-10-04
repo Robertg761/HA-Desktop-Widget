@@ -101,12 +101,26 @@
 
 /* styles.css turns every checkbox inside a .form-group into a toggle switch. A pick list of
    entities reads better as plain checkboxes, so these selectors outrank that rule. */
-.room-dashboard .room-entity-list label:has(input[type='checkbox']) {
+.room-dashboard .room-entity-list label:has(input[type='checkbox']),
+.room-dashboard .room-show-all {
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-normal);
 }
 
-.room-dashboard .room-entity-list input[type='checkbox'] {
+/* The checkbox that shows every entity, not just the controllable ones, above the list. */
+.room-dashboard .room-show-all {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.room-dashboard .room-show-all[hidden] {
+  display: none;
+}
+
+.room-dashboard .room-entity-list input[type='checkbox'],
+.room-dashboard .room-show-all input[type='checkbox'] {
   appearance: auto;
   -webkit-appearance: auto;
   width: 16px;
@@ -121,7 +135,8 @@
   accent-color: var(--accent);
 }
 
-.room-dashboard .room-entity-list input[type='checkbox']::after {
+.room-dashboard .room-entity-list input[type='checkbox']::after,
+.room-dashboard .room-show-all input[type='checkbox']::after {
   content: none;
 }
 
@@ -151,7 +166,8 @@
   overflow-wrap: anywhere;
 }
 
-.dashboard-restore-pages {
+.dashboard-restore-pages,
+.dashboard-restore-count {
   grid-column: 1;
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
@@ -160,9 +176,14 @@
   overflow-wrap: anywhere;
 }
 
+.dashboard-restore-count {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs-plus);
+}
+
 .dashboard-restore-arrow {
   grid-column: 2;
-  grid-row: 1 / 3;
+  grid-row: 1 / -1;
   align-self: center;
   display: flex;
   color: var(--accent-text);
@@ -299,6 +320,18 @@
 /* The toggle switch from styles.css carries a trailing margin meant for leading checkboxes. */
 .alert-advanced-options .workflow-checkbox input[type='checkbox'] {
   margin: 0;
+}
+
+/* What a number means, under its field. */
+.alert-advanced-options label .alert-field-help {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs-plus);
+  line-height: 1.4;
+}
+
+.alert-advanced-options label .alert-field-help:empty {
+  display: none;
 }
 
 /* A switch with a line of help under its label (Notify when unavailable or unknown). It sits in a

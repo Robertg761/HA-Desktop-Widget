@@ -112,14 +112,14 @@ describe('downloadable locale-pack manifest', () => {
       'Failed to save readability settings',
       'Controls',
       'Controls for {{name}}',
-      'All devices',
+      'All entities',
       'And {{count}} more devices',
       'Choose rooms and devices',
-      'Connecting to Home Assistant…',
+      'Connecting to Home Assistant...',
       'My devices',
       'Page preview: {{count}} devices',
-      'Rooms are unavailable. Choose from your devices instead.',
-      'Search devices',
+      'Rooms are unavailable. Choose from your entities instead.',
+      'No rooms are set up in Home Assistant yet. Choose from your entities instead.',
       'Skip for now',
       'Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.',
     ];
@@ -152,19 +152,19 @@ describe('downloadable locale-pack manifest', () => {
     }
   });
 
-  test('translates the Sync Up and Sync Down buttons and quotes them as translated', () => {
+  test('translates the Sync up and Sync down buttons and quotes them as translated', () => {
     const packDir = path.resolve(__dirname, '../../locale-packs');
     const manifest = JSON.parse(fs.readFileSync(path.join(packDir, 'manifest.json'), 'utf8'));
     const englishMessages = require('../../locales/en.json');
     const referencing = Object.keys(englishMessages).filter(
-      (key) => /Sync (Up|Down)\b/.test(key) && !/^Sync (Up|Down)$/.test(key)
+      (key) => /Sync (up|down)\b/.test(key) && !/^Sync (up|down)$/.test(key)
     );
     expect(referencing.length).toBeGreaterThan(0);
     for (const { locale } of manifest.packs) {
       const { messages } = JSON.parse(
         fs.readFileSync(path.join(packDir, `${locale}.json`), 'utf8')
       );
-      for (const button of ['Sync Up', 'Sync Down']) {
+      for (const button of ['Sync up', 'Sync down']) {
         expect(messages[button]).not.toBe(button);
         for (const key of referencing.filter((k) => k.includes(button))) {
           expect(messages[key]).toContain(messages[button]);

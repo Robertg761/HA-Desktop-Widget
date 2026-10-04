@@ -1,12 +1,12 @@
 import websocket from './websocket.js';
 import state from './state.js';
-import { formatRelativeTime as formatAge } from './format.js';
+import { formatClockDateTime, formatRelativeTime as formatAge } from './format.js';
 import { t } from './i18n.js';
 import {
   notificationMarkdownToPlainText,
   renderNotificationMarkdown,
 } from './notification-markdown.js';
-import { closeDialog, openDialog, renderKeepingFocus, showToast } from './ui-utils.js';
+import { closeDialog, openDialog, renderKeepingFocus, showConfirm, showToast } from './ui-utils.js';
 
 const DEFAULT_NOTIFICATION_TITLE = 'Home Assistant';
 const MAX_BELL_COUNT = 99;
@@ -89,6 +89,9 @@ function getSortedNotifications() {
 
 function showPersistentDesktopNotification(notification) {
   try {
+    // Home Assistant's own notifications can be kept out of the desktop's notification area; they
+    // still arrive in the bell's list. This is not the entity alerts switch, and works with it off.
+    if (state.CONFIG?.entityAlerts?.persistentNotifications === false) return;
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
     const title = notification.title || DEFAULT_NOTIFICATION_TITLE;
     const desktopNotification = new Notification(title, {
@@ -166,6 +169,39 @@ function dismissPersistentNotification(notificationId, button) {
     });
 }
 
+// Clears every notification, for the backlog an integration failure leaves behind. Home Assistant has
+// a service for it; if this one's does not know it, each notification is dismissed on its own.
+async function dismissAllPersistentNotifications(button) {
+  const ids = Array.from(activeNotifications.keys());
+  if (ids.length < 2) return;
+  const confirmed = await showConfirm(
+    t('Dismiss all notifications?'),
+    t('This clears {{count}} notifications in Home Assistant, on every device.', {
+      count: ids.length,
+    }),
+    { confirmText: t('Dismiss all'), confirmClass: 'btn-danger' }
+  );
+  if (!confirmed) return;
+  if (button) button.disabled = true;
+  try {
+    try {
+      await websocket.callService('persistent_notification', 'dismiss_all', {});
+    } catch {
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          websocket.callService('persistent_notification', 'dismiss', { notification_id: id })
+        )
+      );
+      if (results.some((result) => result.status === 'rejected')) throw new Error('dismiss failed');
+    }
+  } catch (error) {
+    console.error('Error dismissing all persistent notifications:', error);
+    showToast(t('Could not dismiss notifications'), 'error');
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 function createNotificationListItem(notification) {
   const item = document.createElement('div');
   item.className = 'persistent-notification-item';
@@ -192,6 +228,11 @@ function createNotificationListItem(notification) {
   time.className = 'persistent-notification-time';
   time.dataset.createdAt = notification.created_at;
   time.textContent = formatRelativeTime(notification.created_at);
+  // "5m ago" says how long, not when; the exact time is on hover.
+  const createdAt = new Date(notification.created_at);
+  if (Number.isFinite(createdAt.getTime())) {
+    time.title = formatClockDateTime(createdAt);
+  }
 
   content.appendChild(title);
   if (notification.message) content.appendChild(message);
@@ -201,6 +242,11 @@ function createNotificationListItem(notification) {
   dismissButton.type = 'button';
   dismissButton.className = 'btn btn-secondary btn-sm persistent-notification-dismiss';
   dismissButton.textContent = t('Dismiss');
+  // Several rows of "Dismiss" are told apart by the notification each one clears.
+  dismissButton.setAttribute(
+    'aria-label',
+    t('Dismiss {{title}}', { title: notification.title || DEFAULT_NOTIFICATION_TITLE })
+  );
   dismissButton.dataset.focusKey = `notification:${notification.notification_id}`;
   dismissButton.addEventListener('click', () => {
     dismissPersistentNotification(notification.notification_id, dismissButton);
@@ -223,6 +269,14 @@ function renderPersistentNotifications() {
 
   if (countElement) {
     countElement.textContent = count > MAX_BELL_COUNT ? `${MAX_BELL_COUNT}+` : String(count);
+  }
+
+  // A long backlog gets its size and one way to clear it; one or two notifications do not need either.
+  const toolbar = document.getElementById('persistent-notifications-toolbar');
+  if (toolbar) {
+    toolbar.classList.toggle('hidden', count < 2);
+    const summary = document.getElementById('persistent-notifications-summary');
+    if (summary) summary.textContent = t('{{count}} notifications', { count });
   }
 
   const list = document.getElementById('persistent-notifications-list');
@@ -266,6 +320,13 @@ function wirePersistentNotificationsUI() {
   const closeButton = document.getElementById('close-persistent-notifications');
   if (closeButton) {
     closeButton.addEventListener('click', closePersistentNotificationsPanel);
+  }
+
+  const dismissAllButton = document.getElementById('dismiss-all-notifications');
+  if (dismissAllButton) {
+    dismissAllButton.addEventListener('click', () =>
+      dismissAllPersistentNotifications(dismissAllButton)
+    );
   }
 }
 

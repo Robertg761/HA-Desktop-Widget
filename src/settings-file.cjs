@@ -56,6 +56,7 @@ const SETTINGS_SCHEMA = {
   primaryMediaPlayer: 'string?',
   entityAlerts: {
     enabled: 'boolean',
+    persistentNotifications: 'boolean',
     alerts: mapOf({
       onStateChange: 'boolean',
       onSpecificState: 'boolean',

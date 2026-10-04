@@ -145,6 +145,7 @@ describe('preload Electron API', () => {
       ],
       ['removeEntityAlert', ['sensor.temp'], 'remove-entity-alert', ['sensor.temp']],
       ['toggleAlerts', [true], 'toggle-alerts', [true]],
+      ['setPersistentNotificationToasts', [false], 'set-persistent-notification-toasts', [false]],
       [
         'checkForUpdates',
         [{ allowPrerelease: true }],
@@ -204,6 +205,7 @@ describe('preload Electron API', () => {
       ['onDesktopPinEditModeEnded', 'desktop-pin-edit-mode-ended'],
       ['onEntityTileHotkeyRequested', 'entity-tile-hotkey-requested'],
       ['onDesktopCompanionStateChanged', 'desktop-companion-state-changed'],
+      ['onLocalePacksUpdated', 'locale-packs-updated'],
     ];
 
     for (const [method, channel] of listeners) {

@@ -212,6 +212,8 @@ function createElectronApi(ipcRenderer, platform) {
     setEntityAlert: (entityId, alertConfig) => invoke('set-entity-alert', entityId, alertConfig),
     removeEntityAlert: (entityId) => invoke('remove-entity-alert', entityId),
     toggleAlerts: (enabled) => invoke('toggle-alerts', enabled),
+    setPersistentNotificationToasts: (enabled) =>
+      invoke('set-persistent-notification-toasts', enabled),
 
     checkForUpdates: (options) => invoke('check-for-updates', options),
     quitAndInstall: () => invoke('quit-and-install'),
@@ -251,6 +253,7 @@ function createElectronApi(ipcRenderer, platform) {
     onEntityTileHotkeyRequested: (callback) => subscribe('entity-tile-hotkey-requested', callback),
     onDesktopCompanionStateChanged: (callback) =>
       subscribe('desktop-companion-state-changed', callback),
+    onLocalePacksUpdated: (callback) => subscribe('locale-packs-updated', callback),
   };
 }
 

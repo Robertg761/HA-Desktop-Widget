@@ -369,7 +369,7 @@ describe('ui.js translations and number formatting', () => {
     expect(tile('light.desk').querySelector('.control-state').textContent).toBe('Aus');
     ui.toggleReorganizeMode();
     const toggle = tile('light.desk').querySelector('.desktop-pin-quick-toggle');
-    expect(toggle.getAttribute('aria-label')).toBe('light.desk an den Desktop anheften');
+    expect(toggle.getAttribute('aria-label')).toBe('desk an den Desktop anheften');
     expect(toggle.title).toBe('Auf dem Desktop anheften');
     ui.toggleReorganizeMode();
   });

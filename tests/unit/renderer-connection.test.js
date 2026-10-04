@@ -220,6 +220,9 @@ describe('Renderer Home Assistant connection lifecycle', () => {
         )
       ),
       translateDocument: jest.fn(),
+      formatTime: jest.fn(
+        (date) => `${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`
+      ),
     }));
     jest.doMock('../../src/icons.js', () => ({
       __esModule: true,
@@ -238,7 +241,24 @@ describe('Renderer Home Assistant connection lifecycle', () => {
     await flushAsync();
   };
 
+  // A renderer a test has finished with stays on the window: a timer it left running (Retry's
+  // "Retrying..." moment, say) would fire into the next test's page and draw its own, older, state
+  // there. So every timer a test starts is cleared when the test ends.
+  let timerSpy;
+  const startedTimers = new Set();
+  beforeEach(() => {
+    const startTimer = window.setTimeout;
+    timerSpy = jest.spyOn(window, 'setTimeout').mockImplementation((...args) => {
+      const id = startTimer.apply(window, args);
+      startedTimers.add(id);
+      return id;
+    });
+  });
+
   afterEach(() => {
+    startedTimers.forEach((id) => window.clearTimeout(id));
+    startedTimers.clear();
+    timerSpy.mockRestore();
     jest.useRealTimers();
     jest.resetModules();
     delete window.electronAPI;
@@ -347,9 +367,14 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       await flushAsync();
 
       expect(mockElectronAPI.refreshHomeAssistantOAuth).not.toHaveBeenCalled();
-      expect(panelText()).toContain(
-        'Authentication failed. Check your long-lived access token in Settings.'
+      // The title says "Authentication failed", so the paragraph under it only says what to do.
+      expect(document.querySelector('.widget-state-title').textContent).toBe(
+        'Authentication failed'
       );
+      expect(document.querySelector('.widget-state-copy').textContent).not.toMatch(
+        /^Authentication failed/
+      );
+      expect(panelText()).toContain('token in Settings.');
     });
 
     it('opens on a reconnect prompt, not the welcome wizard, after a revoke while closed', async () => {
@@ -369,7 +394,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       );
       findButton('Reconnect with Home Assistant').click();
       await flushAsync();
-      expect(panelText()).toContain('Opening Home Assistant for authorization...');
+      expect(panelText()).toContain('Waiting for you to approve in your browser...');
       findButton('Cancel').click();
       expect(mockElectronAPI.cancelHomeAssistantOAuth).toHaveBeenCalled();
 

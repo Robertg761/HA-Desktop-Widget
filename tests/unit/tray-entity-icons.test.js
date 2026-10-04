@@ -406,7 +406,8 @@ describe('tray-entity-icons', () => {
     });
     expect(buildTrayEntityIconPayload('sensor.load').tooltip).toBe('Load: 0.72\u00a0kW');
     expect(buildTrayEntityIconPayload('binary_sensor.router').tooltip).toBe('Router: Disconnected');
-    expect(buildTrayEntityIconPayload('sun.sun').tooltip).toBe('sun.sun: Below horizon');
+    // No friendly name: the entity id in words, like the tile and the missing-entity placeholder.
+    expect(buildTrayEntityIconPayload('sun.sun').tooltip).toBe('sun: Below horizon');
   });
 
   it('republishes a color-only settings change without an entity event', async () => {

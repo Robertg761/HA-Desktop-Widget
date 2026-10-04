@@ -44,6 +44,7 @@ function loadRuntime({ enabled = true, present = true, tiles = {} } = {}) {
       })
     ),
     config: { favoriteEntities: [] },
+    mainT: (key) => key,
     mainWindow: { isDestroyed: () => false, webContents: { send } },
     showMainWindowFromTray: jest.fn(),
     log: { warn: jest.fn() },
@@ -246,6 +247,31 @@ describe('Omarchy bar requests in the main process', () => {
     expect(context.getOmarchyBarIssue()).toBe('keyring');
     context.config = { homeAssistant: { oauthLastErrorCode: 'OAUTH_STORE_DECRYPT' } };
     expect(context.getOmarchyBarIssue()).toBe('');
+  });
+
+  it('names the pages nobody named in the language of the widget', () => {
+    const context = {
+      omarchyBarPublisher: {},
+      omarchyBarEntry: { present: true, entities: null, barEntities: null },
+      // Pages are saved unnamed; the renderer names them for the language, and so must the bar.
+      config: {
+        customTabs: [
+          { id: 'default', name: '', entityIds: ['light.a'] },
+          { id: 'second', name: '', entityIds: ['switch.b'] },
+        ],
+      },
+      mainT: (key, vars = {}) =>
+        ({ All: 'Alle', 'View {{index}}': 'Ansicht {{index}}' })[key].replace(
+          '{{index}}',
+          vars.index
+        ),
+      resolveOmarchyBarEntities: omarchyBar.resolveOmarchyBarEntities,
+    };
+    vm.runInNewContext(block('function getOmarchyBarEntities'), context);
+    expect(context.getOmarchyBarEntities().sections).toEqual([
+      { name: 'Alle', ids: ['light.a'] },
+      { name: 'Ansicht 2', ids: ['switch.b'] },
+    ]);
   });
 
   it('raises a desktop-layer widget started by an explicit --show or --toggle', () => {

@@ -122,8 +122,8 @@
           <span id="persistent-notifications-icon" class="notification-bell-icon">
             <svg
               class="icon line-icon"
-              width="15"
-              height="15"
+              width="16"
+              height="16"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -651,9 +651,9 @@
               <h3 class="settings-page-title" data-i18n="General">General</h3>
               <p
                 class="settings-page-description"
-                data-i18n="Connection, window behaviour and language."
+                data-i18n="Connection, window behavior and language."
               >
-                Connection, window behaviour and language.
+                Connection, window behavior and language.
               </p>
             </div>
             <section class="settings-group">
@@ -857,9 +857,9 @@
               <h3 class="settings-page-title" data-i18n="Appearance">Appearance</h3>
               <p
                 class="settings-page-description"
-                data-i18n="Theme, colours, glass and readability."
+                data-i18n="Theme, colors, glass and readability."
               >
-                Theme, colours, glass and readability.
+                Theme, colors, glass and readability.
               </p>
             </div>
             <section class="settings-group">
@@ -1230,10 +1230,10 @@
                     >
                     <p
                       class="form-help"
-                      data-i18n="Tints Quick Access tiles with your accent colour while their light, switch, fan or player is running. Sensors and cameras are unaffected."
+                      data-i18n="Tints Quick Access tiles with your accent color while their light, switch, fan or player is running. Sensors and cameras are unaffected."
                     >
-                      Tints Quick Access tiles with your accent colour while their light, switch,
-                      fan or player is running. Sensors and cameras are unaffected.
+                      Tints Quick Access tiles with your accent color while their light, switch, fan
+                      or player is running. Sensors and cameras are unaffected.
                     </p>
                   </div>
                   <input type="checkbox" id="active-tile-glow" />
@@ -2048,7 +2048,7 @@
               </div>
             </section>
             <section class="settings-group">
-              <h4 class="settings-group-caption" data-i18n="Entity Shortcuts">Entity Shortcuts</h4>
+              <h4 class="settings-group-caption" data-i18n="Entities">Entities</h4>
               <div class="settings-group-body">
                 <div class="form-group setting-row">
                   <div class="setting-text">
@@ -2138,6 +2138,23 @@
                     <!-- Inline alerts list will be rendered here -->
                   </div>
                 </div>
+                <div class="form-group setting-row">
+                  <div class="setting-text">
+                    <label
+                      for="persistent-notification-toasts"
+                      data-i18n="Home Assistant notifications"
+                      >Home Assistant notifications</label
+                    >
+                    <p
+                      class="form-help"
+                      data-i18n="Also show the notifications Home Assistant adds as desktop notifications. They stay in the bell either way."
+                    >
+                      Also show the notifications Home Assistant adds as desktop notifications. They
+                      stay in the bell either way.
+                    </p>
+                  </div>
+                  <input type="checkbox" id="persistent-notification-toasts" checked />
+                </div>
               </div>
             </section>
           </div>
@@ -2188,9 +2205,9 @@
                       type="button"
                       id="whats-new-btn"
                       class="btn btn-link hidden"
-                      data-i18n="What’s new"
+                      data-i18n="What's new"
                     >
-                      What’s new
+                      What's new
                     </button>
                   </div>
                 </div>
@@ -2250,7 +2267,7 @@
                       class="btn btn-link link-external"
                       data-search-skip
                     >
-                      <span data-i18n="Need Help?">Need Help?</span>
+                      <span data-i18n="Need help?">Need help?</span>
                       <svg
                         width="12"
                         height="12"
@@ -2351,9 +2368,9 @@
                       <label for="profile-sync-provider" data-i18n="Sync app">Sync app</label>
                       <p
                         class="form-help"
-                        data-i18n="Suggests the app’s usual folder and spots its conflict copies."
+                        data-i18n="Suggests the app's usual folder and spots its conflict copies."
                       >
-                        Suggests the app’s usual folder and spots its conflict copies.
+                        Suggests the app's usual folder and spots its conflict copies.
                       </p>
                     </div>
                     <select id="profile-sync-provider">
@@ -2397,9 +2414,9 @@
                         type="button"
                         id="profile-sync-choose-folder"
                         class="btn btn-secondary"
-                        data-i18n="Choose Folder..."
+                        data-i18n="Choose folder..."
                       >
-                        Choose Folder...
+                        Choose folder...
                       </button>
                     </div>
                     <p
@@ -2573,9 +2590,9 @@
                     </label>
                     <p
                       class="form-help"
-                      data-i18n="Saved with your system’s secure storage. When this is off, you enter the passphrase again after each restart."
+                      data-i18n="Saved with your system's secure storage. When this is off, you enter the passphrase again after each restart."
                     >
-                      Saved with your system’s secure storage. When this is off, you enter the
+                      Saved with your system's secure storage. When this is off, you enter the
                       passphrase again after each restart.
                     </p>
                     <div class="profile-sync-actions">
@@ -2604,10 +2621,10 @@
                       >
                       <p
                         class="form-help"
-                        data-i18n="Sync now keeps changes from both sides. Sync Up replaces the sync file with this computer's settings, and Sync Down replaces this computer's settings with the file's. Whatever is replaced is backed up first."
+                        data-i18n="Sync now keeps changes from both sides. Sync up replaces the sync file with this computer's settings, and Sync down replaces this computer's settings with the file's. Whatever is replaced is backed up first."
                       >
-                        Sync now keeps changes from both sides. Sync Up replaces the sync file with
-                        this computer's settings, and Sync Down replaces this computer's settings
+                        Sync now keeps changes from both sides. Sync up replaces the sync file with
+                        this computer's settings, and Sync down replaces this computer's settings
                         with the file's. Whatever is replaced is backed up first.
                       </p>
                     </div>
@@ -2616,17 +2633,17 @@
                         type="button"
                         id="profile-sync-push-now"
                         class="btn btn-secondary"
-                        data-i18n="Sync Up"
+                        data-i18n="Sync up"
                       >
-                        Sync Up
+                        Sync up
                       </button>
                       <button
                         type="button"
                         id="profile-sync-pull-now"
                         class="btn btn-secondary"
-                        data-i18n="Sync Down"
+                        data-i18n="Sync down"
                       >
-                        Sync Down
+                        Sync down
                       </button>
                     </div>
                   </div>
@@ -2743,11 +2760,11 @@
                     type="button"
                     id="view-logs-btn"
                     class="btn btn-secondary"
-                    title="Opens the log file location in your file explorer"
-                    data-i18n-title="Opens the log file location in your file explorer"
-                    data-i18n="View logs"
+                    title="Shows the log file in your file manager"
+                    data-i18n-title="Shows the log file in your file manager"
+                    data-i18n="Show log file"
                   >
-                    View logs
+                    Show log file
                   </button>
                 </div>
               </div>
@@ -3058,7 +3075,7 @@
               role="group"
               aria-labelledby="current-weather-label"
             >
-              <span id="current-weather-name">None selected</span>
+              <span id="current-weather-name" data-i18n="None selected">None selected</span>
               <button
                 type="button"
                 id="clear-weather"
@@ -3109,6 +3126,23 @@
           >
             No active notifications
           </div>
+        </div>
+        <div
+          id="persistent-notifications-toolbar"
+          class="modal-footer persistent-notifications-toolbar hidden"
+        >
+          <span
+            id="persistent-notifications-summary"
+            class="persistent-notifications-summary"
+          ></span>
+          <button
+            type="button"
+            id="dismiss-all-notifications"
+            class="btn btn-secondary btn-sm"
+            data-i18n="Dismiss all"
+          >
+            Dismiss all
+          </button>
         </div>
       </div>
     </div>

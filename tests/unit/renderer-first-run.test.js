@@ -488,20 +488,29 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(wizard.contains(document.activeElement)).toBe(true);
   });
 
-  it.each(['', 'ftp://ha.local'])(
-    'keeps the URL step and explains the problem when Next gets %p',
-    async (url) => {
-      await loadRenderer();
-      await clickButton('Next');
-      enterInput('#first-run-ha-url', url);
-      await clickButton('Next');
-      expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 2 of 4');
-      expect(document.querySelector('.first-run-status').textContent).toContain(
-        'Enter a valid Home Assistant URL before connecting.'
-      );
-      expect(document.activeElement).toBe(document.getElementById('first-run-ha-url'));
-    }
-  );
+  it.each([
+    ['', 'Home Assistant URL cannot be empty'],
+    ['   ', 'Home Assistant URL cannot be empty'],
+    ['ftp://ha.local', 'URL must start with http:// or https://'],
+    ['ha local', 'Enter a valid Home Assistant URL before connecting.'],
+  ])('keeps the URL step and explains the problem when Next gets %p', async (url, explanation) => {
+    await loadRenderer();
+    await clickButton('Next');
+    enterInput('#first-run-ha-url', url);
+    await clickButton('Next');
+    expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 2 of 4');
+    expect(document.querySelector('.first-run-status').textContent).toContain(explanation);
+    expect(document.activeElement).toBe(document.getElementById('first-run-ha-url'));
+  });
+
+  it('names the address the authorization step will open, with the scheme a bare host gains', async () => {
+    await loadRenderer();
+    await reachAuthorizationStep('ha.local:8123');
+
+    const line = document.querySelector('.first-run-url');
+    expect(line.textContent).toBe('http://ha.local:8123');
+    expect(line.querySelector('bdi').dir).toBe('ltr');
+  });
 
   it('treats Enter in the URL field as Next', async () => {
     await loadRenderer();
@@ -1019,11 +1028,8 @@ describe('Renderer first-run Home Assistant authorization', () => {
     // An error interrupts: the role and the explicit politeness have to agree, or it is read politely.
     expect(status.getAttribute('role')).toBe('alert');
     expect(status.getAttribute('aria-live')).toBe('assertive');
-    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-      expect.stringContaining('authorization denied'),
-      'error',
-      6000
-    );
+    // The wizard says it in its own status line, so a toast would say it twice.
+    expect(mockUiUtils.showToast).not.toHaveBeenCalled();
     expect(mockWebsocket.connect).not.toHaveBeenCalled();
     expect(mockState.CONFIG.homeAssistant.token).toBe('YOUR_LONG_LIVED_ACCESS_TOKEN');
   });
@@ -1048,7 +1054,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
     await clickButton('Cancel');
 
     const status = document.querySelector('.first-run-status');
-    expect(status.textContent).toContain('Opening Home Assistant for authorization');
+    expect(status.textContent).toContain('Waiting for you to approve in your browser');
     expect(status.dataset.status).toBe('pending');
     // Cancel stays on the Authorize step, whose button is Connect.
     const connect = Array.from(document.querySelectorAll('button')).find(
@@ -1147,7 +1153,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       wizardButton('Connect').click();
       await jest.advanceTimersByTimeAsync(1000);
       const status = document.querySelector('.first-run-status');
-      expect(status.textContent).toContain('Opening Home Assistant for authorization');
+      expect(status.textContent).toBe('Waiting for you to approve in your browser...');
 
       await jest.advanceTimersByTimeAsync(4000);
       expect(status.textContent).toBe(

@@ -33,10 +33,37 @@ describe('Utils Module', () => {
       expect(utils.getEntityDisplayName(entity)).toBe('Bedroom Light');
     });
 
-    test('should return entity_id when no friendly_name', () => {
+    test('should return the entity id in words when there is no friendly_name', () => {
       state.CONFIG = sampleConfig;
-      const entity = { entity_id: 'light.test', attributes: {} };
-      expect(utils.getEntityDisplayName(entity)).toBe('light.test');
+      expect(utils.getEntityDisplayName({ entity_id: 'light.test', attributes: {} })).toBe('test');
+      // The same words the placeholder of a missing entity uses, not the dotted id.
+      expect(utils.getEntityDisplayName({ entity_id: 'switch.no_name', attributes: {} })).toBe(
+        'no name'
+      );
+      expect(
+        utils.getEntityDisplayName({ entity_id: 'sensor.garage_door_battery', attributes: {} })
+      ).toBe('garage door battery');
+    });
+
+    test('gives two entities that share an object id and have no friendly_name the same words', () => {
+      state.CONFIG = sampleConfig;
+      // Accepted as rare: Home Assistant gives nearly every entity a friendly_name. The words are
+      // what the tile and the missing-entity placeholder already say, and the entity id itself is
+      // still what the pickers search, so the two can be told apart there.
+      const light = { entity_id: 'light.kitchen', attributes: {} };
+      const switchEntity = { entity_id: 'switch.kitchen', attributes: {} };
+      expect(utils.getEntityDisplayName(light)).toBe('kitchen');
+      expect(utils.getEntityDisplayName(switchEntity)).toBe(utils.getEntityDisplayName(light));
+      // A name someone typed still wins over the words, so the pair can always be told apart.
+      state.CONFIG = { ...sampleConfig, customEntityNames: { 'switch.kitchen': 'Kitchen fan' } };
+      expect(utils.getEntityDisplayName(switchEntity)).toBe('Kitchen fan');
+    });
+
+    test('should not reduce an id that has no object part to nothing', () => {
+      state.CONFIG = sampleConfig;
+      expect(utils.humanizeEntityId('light.')).toBe('light.');
+      expect(utils.humanizeEntityId('plain_id')).toBe('plain id');
+      expect(utils.humanizeEntityId(undefined)).toBe('');
     });
 
     test('should return "Unknown" for null entity', () => {

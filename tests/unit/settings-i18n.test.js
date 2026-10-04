@@ -27,9 +27,8 @@ describe('index.html static Settings text', () => {
         'Card {{index}}': 'Karte {{index}}',
         'Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).':
           'Schalte oder steuere Entitäten von überall aus. Modifikatortasten: Ctrl, Alt, Shift, Win, Command, Super (zum Beispiel <code>Ctrl+Shift+A</code>).',
-        'View logs': 'Protokolle anzeigen',
-        'Opens the log file location in your file explorer':
-          'Öffnet den Speicherort der Protokolldatei im Dateimanager',
+        'Show log file': 'Protokolldatei zeigen',
+        'Shows the log file in your file manager': 'Zeigt die Protokolldatei im Dateimanager',
       },
     });
     i18n.translateDocument(document);
@@ -72,8 +71,8 @@ describe('index.html static Settings text', () => {
     );
     expect(document.getElementById('theme-options-label')).not.toBeNull();
     const viewLogs = document.getElementById('view-logs-btn');
-    expect(viewLogs.title).toBe('Öffnet den Speicherort der Protokolldatei im Dateimanager');
-    expect(viewLogs.textContent).toContain('Protokolle anzeigen');
+    expect(viewLogs.title).toBe('Zeigt die Protokolldatei im Dateimanager');
+    expect(viewLogs.textContent).toContain('Protokolldatei zeigen');
     expect(
       [...document.querySelectorAll('.primary-card-row .setting-label')].map(
         (label) => label.textContent

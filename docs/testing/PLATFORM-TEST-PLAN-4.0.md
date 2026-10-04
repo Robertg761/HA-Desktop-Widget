@@ -114,7 +114,7 @@ MAC-3 skipped: no second Space available
 
 For a failure, add: what you did, what you saw, what you expected from the check, and the evidence the check asks for. Screenshots and screen recordings are welcome (Windows Win+Shift+S or Win+G, macOS Shift+Cmd+5, GNOME Ctrl+Alt+Shift+R for a recording). For flashes and animations, a phone video of the screen is fine.
 
-Screenshots and logs can show your Home Assistant address, entity names, and in rare cases tokens. Crop or blur them. To attach the log, use Settings > Advanced > View logs, which shows the log file in your file manager. Read it before you attach it.
+Screenshots and logs can show your Home Assistant address, entity names, and in rare cases tokens. Crop or blur them. To attach the log, use Settings > Advanced > Show log file, which shows the log file in your file manager. Read it before you attach it.
 
 The `Ref:` line at the end of each check lists cluster ids from the maintainers' private audit of 4.0, which is not published, so you cannot look them up. You can ignore them; the developers use them to map your result back to the audit.
 
@@ -340,7 +340,7 @@ Use a copy of your main test folder, never your real profile. This check damages
 
 Expected: The widget starts at its default size, without pin errors, and Settings saves normally. No invisible process is left behind.
 
-Capture: The log (Settings > Advanced > View logs) and what you saw on screen.
+Capture: The log (Settings > Advanced > Show log file) and what you saw on screen.
 
 Ref: MP-35
 
@@ -455,7 +455,7 @@ Ref: SM3-05, RO2-61, MP-49
 
 ### WIN11-9 Folder picker
 
-1. Keep Always on top on. Settings > Advanced > Profile Syncing: turn on Profile sync and choose Choose Folder...
+1. Keep Always on top on. Settings > Advanced > Profile Syncing: turn on Profile sync and choose Choose folder...
 
 Expected: The folder dialog opens in front of the widget and Settings is blocked until you close it. It cannot end up hidden behind the widget.
 
@@ -615,7 +615,7 @@ Ref: MP-75
 
 ### MAC-9 Folder picker
 
-1. Settings > Advanced > Profile Syncing: turn on Profile sync and choose Choose Folder...
+1. Settings > Advanced > Profile Syncing: turn on Profile sync and choose Choose folder...
 
 Expected: The folder dialog opens in front of the widget and attached to it (as a sheet), and the widget cannot be used until it closes.
 
@@ -666,11 +666,11 @@ Capture: A screenshot of the prompt, the process list after Restart now, and the
 
 Ref: MP-01, SM3-06, MP-08
 
-### LNX-4 View logs
+### LNX-4 Show log file
 
-1. Settings > Advanced > Diagnostics & Troubleshooting: press View logs. If you have a machine with no file manager installed, try it there too.
+1. Settings > Advanced > Diagnostics & Troubleshooting: press Show log file. If you have a machine with no file manager installed (a bare tiling window manager, say), try it there too.
 
-Expected: A file manager opens with the log file shown, or the app tells you the log path or that it could not open one. It never does nothing.
+Expected: A file manager opens on the folder with the log file, and a message gives the file's path. With no file manager, the message says none opened and that the path was copied: paste it somewhere to check. It never does nothing.
 
 Capture: What happened, and whether `xdg-open <profile folder>/logs` opens anything.
 
@@ -1004,12 +1004,13 @@ Ref: RO1-20, RO1-21, MP-64
 
 1. Switch between a light Omarchy theme (Catppuccin Latte, White, Flexoki Light) and a dark one. Read the panel's status text ("Connected", "45%", "Off") next to the tile names.
 2. Set the widget's language to German and open the panel.
+3. With two or more pages in Quick Access, at least two of them never renamed (the first one is called "All"), open the panel in English and in German. Then stop the widget and cut the network once each to read the status line in English.
 
-Expected: Status text is dimmer than tile names but readable on every theme, and "Unavailable" is readable. The panel's own labels follow the widget's language, like the tile names do.
+Expected: Status text is dimmer than tile names but readable on every theme, and "Unavailable" is readable. The panel's own labels follow the widget's language, like the tile names do. Every page has a heading, including the first and the ones nobody renamed ("All", "View 2" in English; "Alle", "Ansicht 2" in German). In English the status line for a lost connection reads "Disconnected. Retrying automatically." and the fan slider is labelled "FAN SPEED".
 
 Capture: A screenshot of the panel on a light and a dark theme, and in German.
 
-Ref: RO1-22, RO1-24
+Ref: RO1-22, RO1-24, RO1-56
 
 ### HYP-12 Bar plugin: controls and edge cases
 
@@ -1104,12 +1105,13 @@ Start Narrator with Win+Ctrl+Enter. NVDA is welcome too.
 1. In Settings > General, start a browser authorization with Connect and listen. Cancel it. Try a wrong address. If you can, run the first-run welcome flow on a new profile.
 2. Pin a scene or script, a media player, a fan and a light. Move through the pin buttons and listen to how each is read.
 3. Tab to Check for updates in Settings > Advanced, and press Enter. Tab to a popup hotkey switch and press Space.
+4. Open Manage Quick Access and Tab through a few rows. In a notification list with two or more notifications, Tab to each Dismiss. In a cover's dialog, Tab through the actions. In the light dialog, Tab to the colour swatches.
 
-Expected: Status messages are spoken when they appear, without moving focus: "Opening Home Assistant for authorization...", the failure text after Cancel, and the address error. One-shot actions (run a scene, a script, pause) are read as plain buttons, not as "pressed" toggles. On/off buttons read their state. After you press Check for updates or a switch, keyboard focus stays on it.
+Expected: Status messages are spoken when they appear, without moving focus: "Waiting for you to approve in your browser...", the failure text after Cancel, and the address error. Row buttons say what they act on ("Add Kitchen", "Dismiss Front door left open", "Close Living Room Blinds"), not only "Add" or "Dismiss". The colour swatches say a colour name ("Amber") and which one is on. One-shot actions (run a scene, a script, pause) are read as plain buttons, not as "pressed" toggles. On/off buttons read their state. After you press Check for updates or a switch, keyboard focus stays on it.
 
 Capture: What Narrator said for each point (a recording of the audio, or your notes).
 
-Ref: RO2-47, UIB-09, SM3-31
+Ref: RO2-47, UIB-09, SM3-31, UIC-12, UIC-30, UIC-37
 
 ### A11Y-3 VoiceOver on macOS
 
@@ -1251,11 +1253,25 @@ Needs: A native speaker of Spanish, Chinese, Hindi, Arabic or French. There is n
 2. Look for the same concept called by different words, English words left in the middle of a sentence, and odd punctuation. In French, look at spaces before ":" and "?".
 3. In the Spanish pack, with an alarm entity on a beta build, read the tray labels for Off, Disarmed and Armed at night.
 
-Expected: One term per concept: for example "ajustes" or "configuración" in Spanish, and one word each for tile and card in Chinese, Hindi and Arabic. No stray English. In French, a colon or a question mark does not wrap to the start of a line. Off, Disarmed and Armed at night have different tray labels in Spanish.
+Expected: One term per concept: "configuración" for the Settings page and "ajustes" for individual settings in Spanish, and one word each for tile and card in Chinese and Hindi (Arabic still uses one word for both). No stray English. In French, a colon or a question mark does not wrap to the start of a line (the packs use a non-breaking space there). Off, Disarmed and Armed at night have different tray labels in Spanish.
 
 Capture: The screen and the words you would change.
 
 Ref: I18N-14, I18N-13
+
+### LANG-3 Language packs after an upgrade
+
+Needs: A profile that has run 3.11 (or any build before 4.0) with a language pack installed, such as Spanish or French, then the 4.0 build started on it.
+
+1. Start the 4.0 build on that profile with the network on. Do not open Settings. Wait a minute.
+2. Look at the main window, the tray menu and a Settings page.
+3. Repeat on a copy of the profile with the network off (or the computer in airplane mode), then turn the network on and wait an hour or restart the widget.
+
+Expected: A minute or so after the start the new 4.0 words appear in the pack's language on their own (Settings pages, new dialogs, the tray), without pressing Update under Offline language packs. Offline, nothing is shown to you and the old pack keeps working; the update arrives once the network is back. A profile with no pack installed makes no request.
+
+Capture: The language, the pack version shown under Offline language packs before and after, and the log lines about language packs.
+
+Ref: I18N-03
 
 ## Profile sync and encryption (SYNC)
 

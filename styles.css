@@ -5543,6 +5543,14 @@ body.theme-light:not(.high-contrast)
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
 }
 
+/* The colour that is on now: a ring in the accent, which the hover and focus rings add to. */
+.light-color-swatch.active {
+  border-color: var(--accent);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.45),
+    0 0 0 2px rgba(var(--accent-rgb), 0.35);
+}
+
 .light-color-swatch:hover,
 .light-color-swatch:focus-visible {
   border-color: var(--focus-ring);
@@ -5692,7 +5700,8 @@ body.theme-light:not(.high-contrast)
 .climate-slider-wrapper {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  /* The 24px thumb hangs 8px below its 8px track; the end labels have to start below that. */
+  gap: var(--space-4);
   padding: var(--space-4);
 }
 
@@ -6074,7 +6083,8 @@ body.theme-light:not(.high-contrast)
   padding: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  /* The thumb hangs 8px below the track, and "Closed" and "Open" sit under its two ends. */
+  gap: var(--space-4);
 }
 
 .cover-slider {
@@ -8013,6 +8023,21 @@ body.theme-light:not(.high-contrast)
   gap: var(--space-3);
 }
 
+/* The size of a long list and the one way to clear it, in the dialog's footer below the rows. */
+.persistent-notifications-toolbar {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.persistent-notifications-toolbar.hidden {
+  display: none;
+}
+
+.persistent-notifications-summary {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
 .persistent-notification-item {
   display: flex;
   align-items: flex-start;
@@ -9352,6 +9377,15 @@ body.theme-light:not(.high-contrast)
   outline: none;
 }
 
+/* The address step 3 is about to open, between the lead paragraph and the note. */
+.first-run-url {
+  margin: 0 0 var(--space-2);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 /* The reassurance under the instruction: quieter than it, not louder. */
 .first-run-security-note {
   margin: 0 0 18px;
@@ -9460,6 +9494,23 @@ body.theme-light:not(.high-contrast)
   text-wrap: balance;
 }
 
+/* The server being reached, how the last Retry went, and the waiting bar sit under the copy. */
+.widget-state-host,
+.widget-state-note {
+  margin: var(--space-2) auto 0;
+  max-width: 34ch;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs-plus);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
+.widget-state-details .connection-progress {
+  max-width: 10rem;
+  margin-inline: auto;
+}
+
 .widget-state-actions {
   display: flex;
   justify-content: center;
@@ -9517,14 +9568,18 @@ body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
   min-width: 0;
 }
 
+/* An explicit line height: "normal" takes it from the font, and the Arabic, Hindi and Chinese
+   names fall back to fonts with different metrics, so the rows were three different heights. */
 .language-pack-name {
   /* A pack's name sits under the 14px disclosure that lists it; it inherited the dialog's 16px. */
   font-size: var(--font-size-base);
   font-weight: 600;
+  line-height: 1.3;
 }
 
 .language-pack-meta {
   font-size: var(--font-size-sm);
+  line-height: 1.3;
   color: var(--muted-text);
 }
 
@@ -13390,6 +13445,7 @@ body.theme-light:not(.high-contrast)
 .climate-mode-btn.active,
 .climate-fan-mode-btn.active,
 .climate-preset-mode-btn.active,
+.brightness-preset-btn.active,
 .fan-preset-btn.active {
   background: rgba(var(--accent-rgb), 0.16);
   border-color: rgba(var(--accent-rgb), 0.42);

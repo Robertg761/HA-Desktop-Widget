@@ -473,7 +473,11 @@ async function executeHighlightedResult() {
         (selected.service === 'alarm_disarm' || current.attributes?.code_arm_required !== false)
       ) {
         const connection = JSON.stringify(state.CONFIG.homeAssistant);
-        code = await requestAlarmCode(current);
+        // The dialog repeats which command it is for ("Disarm Home alarm") on a button that says it.
+        code = await requestAlarmCode(current, {
+          title: selected.displayName,
+          submitLabel: selected.service === 'alarm_disarm' ? t('Disarm') : t('Arm'),
+        });
         if (code === null) return;
         current = state.STATES[selected.entity.entity_id];
         ensureConnected();

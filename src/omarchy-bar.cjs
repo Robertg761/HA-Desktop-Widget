@@ -15,6 +15,7 @@ const net = require('net');
 const os = require('os');
 const path = require('path');
 const { appId: APP_ID } = require('../package.json');
+const { defaultPageName } = require('./page-names.cjs');
 
 const OMARCHY_BAR_PLUGIN_ID = APP_ID;
 const OMARCHY_BAR_STATUS_VERSION = 1;
@@ -111,13 +112,17 @@ function readOmarchyBarEntry(text, pluginId = OMARCHY_BAR_PLUGIN_ID) {
 
 /**
  * The Quick Access pages, in order, as [{ name, ids }]. Older configs only have favoriteEntities,
- * which then reads as a single page.
+ * which then reads as a single page. The saved config keeps a page nobody named unnamed (see
+ * page-names.cjs), so it gets the name the widget shows for it, in the language `translate`
+ * (mainT) speaks. The position counts every saved page, as it does in the widget.
  */
-function getQuickAccessPages(config = {}, limit = MAX_PANEL_ENTITIES) {
+function getQuickAccessPages(config = {}, translate, limit = MAX_PANEL_ENTITIES) {
   const tabs = Array.isArray(config?.customTabs) ? config.customTabs : [];
   const pages = tabs
-    .map((tab) => ({
-      name: typeof tab?.name === 'string' ? tab.name.trim().slice(0, 60) : '',
+    .map((tab, index) => ({
+      name:
+        (typeof tab?.name === 'string' ? tab.name.trim().slice(0, 60) : '') ||
+        defaultPageName(index, translate),
       ids: normalizeEntityIds(tab?.entityIds, limit) || [],
     }))
     .filter((page) => page.ids.length);
@@ -131,7 +136,7 @@ function getQuickAccessPages(config = {}, limit = MAX_PANEL_ENTITIES) {
  * into the widget's pages when it has more than one; `entities` on the shell.json entry replaces
  * that with a single list.
  */
-function resolveOmarchyBarEntities(entry, config = {}) {
+function resolveOmarchyBarEntities(entry, config = {}, translate) {
   let sections;
   if (entry?.entities) {
     sections = [{ name: '', ids: entry.entities }];
@@ -140,7 +145,7 @@ function resolveOmarchyBarEntities(entry, config = {}) {
     // Only the distinct ids count toward the panel's limit.
     sections = [];
     const seen = new Set();
-    for (const page of getQuickAccessPages(config)) {
+    for (const page of getQuickAccessPages(config, translate)) {
       if (sections.length >= MAX_PANEL_SECTIONS) break;
       const ids = page.ids.filter((id) => {
         if (seen.has(id)) return true;
@@ -162,7 +167,7 @@ function resolveOmarchyBarEntities(entry, config = {}) {
     ? entry.entitiesOmitted || 0
     : Math.max(
         0,
-        new Set(getQuickAccessPages(config, Infinity).flatMap((page) => page.ids)).size -
+        new Set(getQuickAccessPages(config, translate, Infinity).flatMap((page) => page.ids)).size -
           panel.length
       );
   return { panel, bar, sections, all: [...new Set([...bar, ...panel])], omitted };
@@ -347,6 +352,64 @@ function cleanLineIconSvg(svg) {
   return text;
 }
 
+// The words of the bar's panel that the plugin cannot take from a tile, by the id the plugin asks
+// for, with the English text each stands for: that text is the translation key. The plugin has no
+// translations of its own, so the widget sends them in the language it is showing, and the plugin
+// falls back to its own English when the widget predates a string or is not running.
+const OMARCHY_BAR_STRING_SOURCES = Object.freeze({
+  notRunning: 'HA Desktop Widget is not running',
+  keyringLocked: 'Keyring locked. Unlock it, then restart the widget.',
+  connected: 'Connected',
+  signInNeeded: 'Sign-in needed. Open the widget to reconnect.',
+  connecting: 'Connecting...',
+  disconnected: 'Disconnected. Retrying automatically.',
+  emptyState: 'Add entities to Quick Access in the widget to see them here.',
+  openWidget: 'Open HA Desktop Widget',
+  startWidget: 'Start HA Desktop Widget',
+  openInWidget: 'Open in widget',
+  adjust: 'Adjust',
+  back: 'Back',
+  brightness: 'Brightness',
+  colorTemperature: 'Color Temperature',
+  color: 'Color',
+  fanSpeed: 'Fan Speed',
+  position: 'Position',
+  mode: 'Mode',
+  volume: 'Volume',
+  off: 'Off',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  open: 'Action: Open',
+  stop: 'Stop',
+  close: 'Close',
+  lower: 'Lower',
+  raise: 'Raise',
+  mute: 'Mute',
+  unmute: 'Unmute',
+  now: 'Now {{temperature}}',
+  setRange: 'Set the range in the widget.',
+  omittedOne: '1 more tile is not shown here. Open the widget to see it.',
+  omittedMany: '{{count}} more tiles are not shown here. Open the widget to see them.',
+  modeHeatCool: 'Heat/Cool',
+  modeFan: 'Fan',
+  modeDry: 'Dry',
+});
+
+/**
+ * The panel's words in the widget's language. `translate` is mainT; a key it has no translation
+ * for comes back as the key, the English the plugin would show anyway ("Action: Open" is a context
+ * key whose English is the word after the colon).
+ */
+function buildOmarchyBarStrings(translate) {
+  const strings = {};
+  for (const [id, source] of Object.entries(OMARCHY_BAR_STRING_SOURCES)) {
+    const text = String(translate(source) ?? '');
+    strings[id] = text === source ? source.replace(/^Action: /, '') : text;
+  }
+  return strings;
+}
+
 /**
  * The name to show for a tile before the widget has described it: the custom name when there is
  * one, otherwise the entity's object id as words ("kitchen_speaker_timers" -> "kitchen speaker
@@ -390,6 +453,7 @@ function buildOmarchyBarStatus({
   entities = { panel: [], bar: [], sections: [] },
   launch = null,
   issue = '',
+  strings = {},
   customNames = {},
   now = Date.now(),
 } = {}) {
@@ -417,6 +481,8 @@ function buildOmarchyBarStatus({
     // Why the widget cannot connect, when it is something the user must fix ('keyring').
     issue: issue || '',
     launch: Array.isArray(launch) && launch.length ? launch : null,
+    // The panel's words in the widget's language (see buildOmarchyBarStrings).
+    strings,
     panel,
     bar,
     sections: (entities.sections || []).map((section) => ({
@@ -740,6 +806,8 @@ module.exports = {
   OMARCHY_BAR_STATUS_VERSION,
   PLUGIN_FILES,
   buildOmarchyBarStatus,
+  buildOmarchyBarStrings,
+  OMARCHY_BAR_STRING_SOURCES,
   createOmarchyBarPublisher,
   cleanLineIconSvg,
   cleanOmarchyBarTile,

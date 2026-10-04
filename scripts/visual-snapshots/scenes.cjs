@@ -726,7 +726,7 @@ async function showToasts(ctx) {
 // every scene's header is not wanted, so they do not subscribe. The notifications-markdown scene
 // uses ctx.showNotifications() instead, which sends the mock's notifications over the real
 // subscription.
-async function showNotificationsPanel(ctx) {
+async function showNotificationsPanel(ctx, { footer = false } = {}) {
   await ctx.ev(`(() => {
     const notes = [
       ['Front door left open.', 'The front door has been open for 10 minutes. Check /config/automations.yaml.'],
@@ -745,6 +745,12 @@ async function showNotificationsPanel(ctx) {
       return item;
     }));
     document.getElementById('persistent-notifications-empty').classList.add('hidden');
+    // The footer a long list gets: how many there are, and one way to clear them. The text is the
+    // English the app writes (the rows above are drawn by hand in the same way).
+    if (${footer}) {
+      document.getElementById('persistent-notifications-summary').textContent = '2 notifications';
+      document.getElementById('persistent-notifications-toolbar').classList.remove('hidden');
+    }
     document.getElementById('persistent-notifications-modal').classList.remove('hidden');
   })()`);
 }
@@ -802,6 +808,60 @@ async function showSyncError(ctx) {
     });
     error.scrollIntoView({ block: 'center' });
   })()`);
+}
+
+// A light whose brightness (75%) and colour (the first swatch) are two of the dialog's presets, so
+// the chips show which one is selected. The fixture's own lights match none of them.
+const presetLight = (now) => {
+  const stamp = now.toISOString();
+  return [
+    {
+      entity_id: 'light.preset_demo',
+      state: 'on',
+      attributes: {
+        friendly_name: 'Preset lamp',
+        brightness: 191,
+        supported_color_modes: ['color_temp', 'rgb'],
+        color_mode: 'rgb',
+        rgb_color: [255, 179, 71],
+        color_temp_kelvin: 3200,
+        min_color_temp_kelvin: 2000,
+        max_color_temp_kelvin: 6500,
+      },
+      last_changed: stamp,
+      last_updated: stamp,
+      context: { id: 'light.preset_demo', parent_id: null, user_id: null },
+    },
+  ];
+};
+
+// Restore points that differ by what they hold, one of them with a page nobody named. The list is
+// built when the dialog opens, so the history is put back as it was straight after.
+async function openRestoreDashboard(ctx) {
+  await openSettingsTab(ctx, 'advanced');
+  await ctx.ev(`(async () => {
+    const config = await window.electronAPI.getConfig();
+    const url = new URL(config.homeAssistant.url);
+    const key = 'dashboard-history:' + url.origin + url.pathname.replace(/\\/+$/, '');
+    const before = localStorage.getItem(key);
+    const hour = 60 * 60 * 1000;
+    const layout = (pages) => ({ customTabs: pages, favoriteEntities: [], comparisonGraphs: [] });
+    const home = (tiles) => ({
+      id: 'default',
+      name: 'Home',
+      entityIds: ['light.desk_lamp', 'fan.office', 'cover.garage', 'sensor.office_temp'].slice(0, tiles),
+    });
+    const now = Date.now();
+    localStorage.setItem(key, JSON.stringify([
+      { at: now - hour, layout: layout([home(4), { id: 'spare', name: 'Spare', entityIds: ['light.desk_lamp'] }]) },
+      { at: now - 2 * hour, layout: layout([home(3), { id: 'spare', name: 'Spare', entityIds: ['light.desk_lamp'] }]) },
+      { at: now - 26 * hour, layout: layout([{ id: 'default', name: 'All', nameIsDefault: true, entityIds: ['light.desk_lamp', 'fan.office'] }]) },
+    ]));
+    document.getElementById('dashboard-history-btn').click();
+    if (before === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, before);
+  })()`);
+  await ctx.waitForSelector('.dashboard-restore-entry');
 }
 
 const scenes = [
@@ -935,6 +995,18 @@ const scenes = [
     name: 'popup-light-colour',
     config: dialogsPage,
     setup: openDetails('light.color_strip'),
+  },
+  {
+    name: 'popup-light-presets',
+    config: {
+      customTabs: [
+        { id: 'default', name: 'Home', entityIds: ['light.preset_demo'] },
+        { id: 'spare', name: 'Spare', entityIds: ['light.desk_lamp'] },
+      ],
+      activeTabId: 'default',
+    },
+    extraStates: presetLight,
+    setup: openDetails('light.preset_demo'),
   },
   { name: 'popup-fan', config: dialogsPage, setup: openDetails('fan.office') },
   // A fan Home Assistant cannot reach says so and shows nothing to adjust.
@@ -1102,16 +1174,40 @@ const scenes = [
     {
       status: 'manual',
       message:
-        'This package does not support in-app updates. Open Releases to download the latest build, v4.0.1.',
+        'Update available: v4.0.1. This package cannot update itself; use Download Update to get it from GitHub.',
       version: '4.0.1',
       downloadUrl: 'https://github.com/Robertg761/HA-Desktop-Widget/releases/tag/v4.0.1',
     },
     {
       state: 'manual',
-      text: 'This package does not support in-app updates. Open Releases to download the latest build, v4.0.1.',
+      text: 'Update available: v4.0.1. This package cannot update itself; use Download Update to get it from GitHub.',
       install: 'Download Update',
     }
   ),
+  // The profile sync controls, opened by the switch alone: nothing is saved, so no sync starts and
+  // the next scene finds Settings as it was.
+  {
+    name: 'settings-profile-sync',
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'advanced');
+      await ctx.click('#profile-sync-enabled');
+      await ctx.waitForExpression(
+        `!document.getElementById('profile-sync-settings').classList.contains('hidden')`,
+        'the profile sync controls'
+      );
+      await revealInSettings(ctx, '#profile-sync-push-now', 'center');
+    },
+  },
+  { name: 'dialog-restore-dashboard', setup: openRestoreDashboard },
+  // The language packs on the General page, one row each.
+  {
+    name: 'settings-language-packs',
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'general');
+      await ctx.waitForSelector('#language-packs-list .language-pack-row');
+      await revealInSettings(ctx, '#language-packs-list', 'center');
+    },
+  },
   {
     name: 'settings-custom-color',
     setup: async (ctx) => {
@@ -1188,6 +1284,21 @@ const scenes = [
   // A light as a primary card: the lit lamp warms its icon and glow.
   { name: 'primary-light-card', config: { primaryCards: ['light.desk_lamp', 'time'] } },
 
+  // The starter that fills the empty page opens on the entities a first page is made of.
+  {
+    name: 'dialog-starter',
+    config: {
+      customTabs: [
+        { id: 'default', name: 'Home', entityIds: [] },
+        { id: 'spare', name: 'Spare', entityIds: ['light.desk_lamp'] },
+      ],
+      activeTabId: 'default',
+    },
+    setup: async (ctx) => {
+      await ctx.click('.widget-state-actions .btn-primary');
+      await ctx.waitForSelector('#add-page-modal .room-entity-list label');
+    },
+  },
   // A page with nothing on it says so instead of showing an empty grid.
   {
     name: 'empty-page',
@@ -1644,6 +1755,10 @@ const scenes = [
     },
   },
   { name: 'ar-dialog-notifications', ui: { language: 'ar' }, setup: showNotificationsPanel },
+  {
+    name: 'dialog-notifications-footer',
+    setup: (ctx) => showNotificationsPanel(ctx, { footer: true }),
+  },
   { name: 'ar-dialog-diagnostics', ui: { language: 'ar' }, setup: openDiagnostics },
   { name: 'hi-main', ui: { language: 'hi' } },
   {
@@ -2410,6 +2525,17 @@ const scenes = [
   // and they are dimmed.
   { name: 'layout-offline', size: DEFAULT_SIZE, config: edgePage, setup: showOffline },
   { name: 'layout-offline-narrow', size: NARROW_SIZE, config: edgePage, setup: showOffline },
+  // Retry against a refused connection: the panel says the retry did not get through, and when.
+  {
+    name: 'layout-offline-retry-failed',
+    size: DEFAULT_SIZE,
+    config: edgePage,
+    setup: async (ctx) => {
+      await showOffline(ctx);
+      await ctx.click('.widget-state-actions .btn-secondary');
+      await ctx.waitForSelector('.widget-state-note');
+    },
+  },
   { name: 'layout-toast', size: DEFAULT_SIZE, keepToasts: true, setup: showToasts },
   { name: 'layout-toast-narrow', size: NARROW_SIZE, keepToasts: true, setup: showToasts },
   {
@@ -2442,6 +2568,20 @@ const scenes = [
       await showFirstRunWelcome(ctx);
       await ctx.click('.first-run-actions .btn-primary');
       await ctx.waitForSelector('.first-run-content input');
+    },
+  },
+  // The authorization step names the address it is about to open.
+  {
+    name: 'wizard-authorize-url',
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await showFirstRunWelcome(ctx);
+      await ctx.click('.first-run-actions .btn-primary');
+      await ctx.waitForSelector('.first-run-content input');
+      await ctx.click('.first-run-content input');
+      await ctx.insertText('homeassistant.local:8123');
+      await ctx.click('.first-run-actions .btn-primary');
+      await ctx.waitForSelector('.first-run-url');
     },
   },
   {

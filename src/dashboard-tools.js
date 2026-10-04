@@ -13,6 +13,9 @@ import {
 import { formatClockDateTime } from './format.js';
 import { t } from './i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './icons.js';
+import pageNameRules from './page-names.cjs';
+
+const { defaultPageName } = pageNameRules;
 
 const MAX_RECENT_ISSUES = 5;
 const connection = {
@@ -151,12 +154,33 @@ function showDashboardHistory() {
       : formatClockDateTime(entry.at);
     const pages = document.createElement('span');
     pages.className = 'dashboard-restore-pages';
-    pages.textContent = entry.layout.customTabs.map((tab) => tab.name).join(', ');
+    // A page nobody named is saved either with the name of the language of the day or, as the
+    // server stores it, with no name at all; both are shown with today's default name.
+    pages.textContent = entry.layout.customTabs
+      .map((tab, index) =>
+        tab.nameIsDefault || !String(tab.name ?? '').trim() ? defaultPageName(index, t) : tab.name
+      )
+      .join(', ');
+    // Near-identical rows are told apart by how much each holds, not only by when it was saved.
+    const count = document.createElement('span');
+    count.className = 'dashboard-restore-count';
+    count.textContent = t('Pages: {{pages}} · Tiles: {{tiles}}', {
+      pages: entry.layout.customTabs.length,
+      tiles: entry.layout.customTabs.reduce(
+        (total, tab) => total + (tab.entityIds?.length || 0),
+        0
+      ),
+    });
     const arrow = document.createElement('span');
     arrow.className = 'dashboard-restore-arrow';
     setIconContent(arrow, 'undo', { size: 20 });
     arrow.setAttribute('aria-hidden', 'true');
-    button.append(date, pages, arrow);
+    button.append(date, pages, count, arrow);
+    // The row's text is a date and some page names; the name says what pressing it does.
+    button.setAttribute(
+      'aria-label',
+      t('Restore layout from {{date}}', { date: date.textContent })
+    );
     button.onclick = async () => {
       const reenable = disableControlsKeepingFocus(modal.querySelectorAll('button'));
       try {

@@ -69,7 +69,11 @@ const SYNC_FIELD_ITEM_TYPES = {
 // out (the receiving device fills in its default) but not hold another type;
 // `items` is the type of every value in that nested map.
 const SYNC_NESTED_FIELD_TYPES = {
-  entityAlerts: { enabled: { type: 'boolean' }, alerts: { type: 'object', items: 'object' } },
+  entityAlerts: {
+    enabled: { type: 'boolean' },
+    persistentNotifications: { type: 'boolean' },
+    alerts: { type: 'object', items: 'object' },
+  },
 };
 
 function hasItemsOfType(container, type) {

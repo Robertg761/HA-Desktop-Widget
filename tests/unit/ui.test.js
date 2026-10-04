@@ -292,7 +292,142 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.querySelector('.room-device-search').hidden).toBe(false);
     });
 
-    it('falls back to devices for non-admins, previews selection, and saves additively', async () => {
+    it('opens the unscoped starter list on the controllable entities, and keeps ticks when the rest is shown', async () => {
+      mockRequest.mockImplementation(({ type }) =>
+        Promise.resolve(
+          type === 'get_states'
+            ? {
+                success: true,
+                result: [
+                  ...entities,
+                  { entity_id: 'person.me', state: 'home', attributes: {} },
+                  { entity_id: 'update.core', state: 'off', attributes: {} },
+                ],
+              }
+            : { success: false, error: { code: 'unauthorized' } }
+        )
+      );
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      const values = () =>
+        [...document.querySelectorAll('.room-entity-list input')].map((input) => input.value);
+
+      // Persons, updates and sensors are not what a first page is made of.
+      expect(values()).toEqual(['light.desk', 'switch.offline']);
+
+      document.querySelector('input[value="switch.offline"]').click();
+      document.querySelector('.room-show-all input').click();
+      // In the order of the names the rows show ("core", "Desk lamp", "me", "offline", "Temperature").
+      expect(values()).toEqual([
+        'update.core',
+        'light.desk',
+        'person.me',
+        'switch.offline',
+        'sensor.temperature',
+      ]);
+      expect(
+        [...document.querySelectorAll('.room-entity-list input:checked')].map(
+          (input) => input.value
+        )
+      ).toEqual(['light.desk', 'switch.offline']);
+
+      document.querySelector('.room-show-all input').click();
+      expect(values()).toEqual(['light.desk', 'switch.offline']);
+    });
+
+    it('keeps the ticks on entities the list stops showing, for when it shows them again', async () => {
+      mockRequest.mockImplementation(({ type }) =>
+        Promise.resolve(
+          type === 'get_states'
+            ? { success: true, result: entities }
+            : { success: false, error: { code: 'unauthorized' } }
+        )
+      );
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      const showAll = document.querySelector('.room-show-all input');
+      const ticked = () =>
+        [...document.querySelectorAll('.room-entity-list input:checked')].map(
+          (input) => input.value
+        );
+
+      showAll.click();
+      document.querySelector('input[value="sensor.temperature"]').click();
+      expect(ticked()).toEqual(['light.desk', 'sensor.temperature']);
+
+      // Hiding the sensors takes its row away, and it is not part of the page while hidden.
+      showAll.click();
+      expect(document.querySelector('input[value="sensor.temperature"]')).toBeNull();
+      expect(ticked()).toEqual(['light.desk']);
+
+      // Showing them again is not a new list: the tick is still there.
+      showAll.click();
+      expect(ticked()).toEqual(['light.desk', 'sensor.temperature']);
+    });
+
+    it('keeps a default that was unticked unticked, and forgets hidden ticks when the room changes', async () => {
+      mockRequest.mockImplementation(({ type }) =>
+        Promise.resolve(
+          type === 'get_states'
+            ? { success: true, result: entities }
+            : {
+                success: true,
+                result: {
+                  'config/area_registry/list': [{ area_id: 'office', name: 'Office' }],
+                  'config/entity_registry/list': [
+                    { entity_id: 'light.desk', area_id: 'office' },
+                    { entity_id: 'sensor.temperature', area_id: 'office' },
+                  ],
+                  'config/device_registry/list': [],
+                }[type],
+              }
+        )
+      );
+      ui.showAddPageModal({ starter: true });
+      await flush();
+      const room = document.querySelector('#add-page-room');
+      room.value = '';
+      room.onchange();
+      const showAll = document.querySelector('.room-show-all input');
+      const ticked = () =>
+        [...document.querySelectorAll('.room-entity-list input:checked')].map(
+          (input) => input.value
+        );
+
+      // Turning something off is a choice too, and showing more entities does not undo it.
+      document.querySelector('input[value="light.desk"]').click();
+      showAll.click();
+      expect(ticked()).toEqual([]);
+
+      document.querySelector('input[value="sensor.temperature"]').click();
+      showAll.click();
+      // A different room is a different list, which starts again from its own suggestions.
+      room.value = 'office';
+      room.onchange();
+      room.value = '';
+      room.onchange();
+      showAll.click();
+      expect(ticked()).toEqual(['light.desk']);
+    });
+
+    it('does not offer the switch when every entity is already shown', async () => {
+      mockRequest.mockImplementation(({ type }) =>
+        Promise.resolve(
+          type === 'get_states'
+            ? {
+                success: true,
+                result: entities.filter((entity) => entity.entity_id.startsWith('light')),
+              }
+            : { success: false, error: { code: 'unauthorized' } }
+        )
+      );
+      ui.showAddPageModal({ starter: true });
+      await flush();
+
+      expect(document.querySelector('.room-show-all').hidden).toBe(true);
+    });
+
+    it('falls back to the entities for non-admins, previews selection, and saves additively', async () => {
       state.setConfig({
         ...state.CONFIG,
         customTabs: [{ id: 'existing', name: 'Existing', entityIds: ['light.kept'] }],
@@ -308,14 +443,28 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.showAddPageModal({ starter: true });
       await flush();
       expect(document.querySelector('#add-page-name').value).toBe('My devices');
+      // It opens on what a first page is made of; the sensor and the button wait behind a switch.
+      expect(
+        [...document.querySelectorAll('.room-entity-list input')].map((input) => input.value)
+      ).toEqual(['light.desk', 'switch.offline']);
+      const showAll = document.querySelector('.room-show-all input');
+      expect(showAll.closest('label').hidden).toBe(false);
+      showAll.click();
       expect(document.querySelectorAll('.room-entity-list input')).toHaveLength(3);
       expect(document.querySelectorAll('.room-entity-list input:checked')).toHaveLength(1);
       expect(document.querySelector('.room-dashboard-preview').textContent).toContain(
         'Desk lamp — On'
       );
       expect(document.querySelector('.room-dashboard [role="status"]').textContent).toBe(
-        'Rooms are unavailable. Choose from your devices instead.'
+        'Rooms are unavailable. Choose from your entities instead.'
       );
+      // One noun for what the list holds: the option, the search and the status all say entities.
+      expect(document.querySelector('#add-page-room option[value=""]').textContent).toBe(
+        'All entities'
+      );
+      const searchBox = document.querySelector('.room-device-search');
+      expect(searchBox.placeholder).toBe('Search entities');
+      expect(searchBox.getAttribute('aria-label')).toBe('Search entities');
       const preview = document.querySelector('.room-dashboard-preview');
       const count = preview.querySelector('[role="status"]');
       expect(count.textContent).toBe('Page preview: 1 entity');
@@ -454,7 +603,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.querySelector('#add-page-name').value).toBe('Office');
       expect(
         [...document.querySelectorAll('.room-entity-list input')].map((input) => input.value)
-      ).toEqual(['button.restart', 'light.desk', 'sensor.temperature']);
+      ).toEqual(['light.desk', 'button.restart', 'sensor.temperature']);
     });
 
     it('matches a translated quick pick to a room named in English or the interface language', async () => {
@@ -526,7 +675,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.showAddPageModal({ starter: true });
       await flush();
       expect(document.querySelector('.room-dashboard [role="status"]').textContent).toBe(
-        'No rooms are set up in Home Assistant yet. Choose from your devices instead.'
+        'No rooms are set up in Home Assistant yet. Choose from your entities instead.'
       );
     });
 
@@ -598,7 +747,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.querySelector('input[value="switch.kitchen_child_lock"]')).not.toBeNull();
     });
 
-    it('shows All devices when no room has anything to control', async () => {
+    it('shows All entities when no room has anything to control', async () => {
       mockRequest.mockImplementation(({ type }) =>
         Promise.resolve({
           success: true,
@@ -617,7 +766,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.querySelector('#add-page-name').value).toBe('My devices');
     });
 
-    it('excludes hidden and disabled devices from All devices and its defaults', async () => {
+    it('excludes hidden and disabled devices from All entities and its defaults', async () => {
       const states = [
         ...entities,
         { entity_id: 'light.hidden', state: 'on', attributes: {} },
@@ -639,6 +788,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
       ui.showAddPageModal({ starter: true });
       await flush();
+      document.querySelector('.room-show-all input').click();
       expect(document.querySelectorAll('.room-entity-list input')).toHaveLength(3);
       expect(document.querySelector('input[value="light.hidden"]')).toBeNull();
       expect(document.querySelector('input[value="light.disabled"]')).toBeNull();
@@ -655,14 +805,14 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
       ui.showAddPageModal({ starter: true });
       expect(document.querySelector('.room-dashboard [role="status"]').textContent).toBe(
-        'Connecting to Home Assistant…'
+        'Connecting to Home Assistant...'
       );
       expect(mockRequest).not.toHaveBeenCalled();
       expect(document.querySelector('#add-page-save-btn').disabled).toBe(true);
       connection.mockReturnValue(true);
       await jest.advanceTimersByTimeAsync(100);
       await flush();
-      expect(document.querySelectorAll('.room-entity-list input')).toHaveLength(3);
+      expect(document.querySelectorAll('.room-entity-list input')).toHaveLength(2);
       expect(document.querySelector('#add-page-save-btn').disabled).toBe(false);
       document.querySelector('#add-page-cancel-btn').click();
       connection.mockReturnValue(false);
@@ -2436,7 +2586,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect($('update-progress').classList.contains('hidden')).toBe(true);
     });
 
-    describe('the What’s new link', () => {
+    describe("the What's new link", () => {
       afterEach(() => {
         delete global.__APP_VERSION__;
       });
@@ -3668,7 +3818,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(cameraTile.dataset.cameraPreviewRefresh).toBe('10s');
       expect(cameraTile.querySelector('.camera-tile-preview-image')).toBeTruthy();
       expect(cameraTile.querySelector('.camera-tile-preview-status').textContent).toBe(
-        'Loading snapshot…'
+        'Loading snapshot...'
       );
       expect(cameraTile.querySelector('.camera-tile-preview-badge').textContent).toContain(
         'Snapshot'
@@ -3738,7 +3888,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(cameraTile.dataset.cameraPreviewRefresh).toBe('live');
       expect(cameraTile.querySelector('.camera-tile-preview-badge').textContent).toContain('Live');
       expect(cameraTile.querySelector('.camera-tile-preview-status').textContent).toBe(
-        'Starting live stream…'
+        'Starting live stream...'
       );
       expect(camera.mountCameraPreview).toHaveBeenCalledWith(
         cameraTile,
@@ -6555,6 +6705,91 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(control?.querySelector('.desktop-pin-fan-preset[data-speed="33"]')).toBeNull();
     });
 
+    it('gives each pinned slider a spoken value with its unit, kept current as it moves', () => {
+      state.setStates({
+        'climate.thermostat': {
+          ...sampleStates['climate.thermostat'],
+          attributes: {
+            ...sampleStates['climate.thermostat'].attributes,
+            min_temp: 10,
+            max_temp: 30,
+            temperature: 21,
+            target_temp_step: 0.5,
+          },
+        },
+        'cover.blinds': {
+          entity_id: 'cover.blinds',
+          state: 'open',
+          attributes: {
+            friendly_name: 'Living Room Blinds',
+            current_position: 55,
+            supported_features: 15,
+          },
+        },
+      });
+
+      ui.renderDesktopPinnedTile('climate.thermostat', state.STATES['climate.thermostat']);
+      const climate = document.querySelector('#desktop-pin-content .desktop-pin-climate-slider');
+      expect(climate.getAttribute('aria-valuetext')).toMatch(/^21(?:[.,]0)?\s?°/);
+      climate.value = '22.5';
+      climate.dispatchEvent(new Event('input', { bubbles: true }));
+      expect(climate.getAttribute('aria-valuetext')).toMatch(/^22[.,]5\s?°/);
+
+      ui.renderDesktopPinnedTile('cover.blinds', state.STATES['cover.blinds']);
+      const cover = document.querySelector('#desktop-pin-content .desktop-pin-cover-slider');
+      expect(cover.getAttribute('aria-valuetext')).toBe('55%');
+      cover.value = '80';
+      cover.dispatchEvent(new Event('input', { bubbles: true }));
+      expect(cover.getAttribute('aria-valuetext')).toBe('80%');
+
+      // A new reading from Home Assistant moves the text with the thumb.
+      const shade = {
+        entity_id: 'cover.shade',
+        state: 'open',
+        attributes: { friendly_name: 'Shade', current_position: 35, supported_features: 15 },
+      };
+      state.setStates({ 'cover.shade': shade });
+      ui.renderDesktopPinnedTile('cover.shade', shade);
+      const shadeSlider = () =>
+        document.querySelector('#desktop-pin-content .desktop-pin-cover-slider');
+      expect(shadeSlider().getAttribute('aria-valuetext')).toBe('35%');
+      const moved = { ...shade, attributes: { ...shade.attributes, current_position: 20 } };
+      state.setStates({ 'cover.shade': moved });
+      ui.renderDesktopPinnedTile('cover.shade', moved);
+      expect(shadeSlider().getAttribute('aria-valuetext')).toBe('20%');
+    });
+
+    it('speaks a pinned slider in the number format the readout is written in', () => {
+      const i18n = require('../../src/i18n.js');
+      i18n.setLocaleBootstrap({
+        languageSetting: 'fr',
+        requestedLocale: 'fr',
+        activeLocale: 'fr',
+        messages: {},
+      });
+      try {
+        state.setStates({
+          'cover.blinds': {
+            entity_id: 'cover.blinds',
+            state: 'open',
+            attributes: {
+              friendly_name: 'Living Room Blinds',
+              current_position: 55,
+              supported_features: 15,
+            },
+          },
+        });
+        ui.renderDesktopPinnedTile('cover.blinds', state.STATES['cover.blinds']);
+        const slider = document.querySelector('#desktop-pin-content .desktop-pin-cover-slider');
+        const readout = document.querySelector('#desktop-pin-content .desktop-pin-cover-position');
+        // French writes "55 %" with a space, and the spoken text must agree with what is shown.
+        expect(slider.getAttribute('aria-valuetext')).toMatch(/^55\s%$/);
+        expect(slider.getAttribute('aria-valuetext')).toBe(readout.textContent);
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
+    });
+
     it('renders compact cover controls and sends cover actions', () => {
       state.setStates({
         'cover.blinds': {
@@ -7193,6 +7428,34 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(minBounds.width).toBeLessThanOrEqual(168);
       expect(minBounds.height).toBeGreaterThanOrEqual(83);
       expect(minBounds.width === 168 || minBounds.height === 83).toBe(true);
+      jest.useRealTimers();
+    });
+
+    it('sizes a scene named in Chinese for characters that are a full em wide', async () => {
+      jest.useFakeTimers();
+      setDesktopPinViewport(97, 83);
+      const syncedMinFor = async (id, name) => {
+        mockElectronAPI.syncDesktopPinContentMinBounds.mockClear();
+        state.setStates({
+          [id]: { entity_id: id, state: 'scening', attributes: { friendly_name: name } },
+        });
+        ui.renderDesktopPinnedTile(id, state.STATES[id]);
+        await flushDesktopPinSceneMinSync();
+        return mockElectronAPI.syncDesktopPinContentMinBounds.mock.calls.at(-1)[1];
+      };
+
+      // Forty-five characters each: the Latin one sets at about 0.6em a character, the Chinese at 1em.
+      const latin = await syncedMinFor(
+        'scene.latin',
+        'Movie Night Livingroom Dining Area Hallway Li'
+      );
+      const chinese = await syncedMinFor(
+        'scene.chinese',
+        '客厅电影之夜和晚餐灯光场景再加走廊夜灯客厅电影之夜和晚餐灯光场景再加走廊夜灯客厅电影之夜和'
+      );
+
+      const area = ({ width, height }) => width * height;
+      expect(area(chinese)).toBeGreaterThan(area(latin));
       jest.useRealTimers();
     });
 
@@ -8137,6 +8400,64 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
     });
 
+    it('asks to delete the page and its tiles, not just "its entities"', async () => {
+      window.electronAPI.updateConfig.mockImplementation(async (patch) => ({
+        homeAssistant: {},
+        ...state.CONFIG,
+        ...patch,
+      }));
+      setPages(
+        [
+          { id: 'default', name: 'All', entityIds: [] },
+          { id: 'bedroom', name: 'Bedroom', entityIds: [] },
+        ],
+        'bedroom'
+      );
+      ui.toggleReorganizeMode();
+      uiUtils.showConfirm.mockResolvedValueOnce(false);
+
+      tabBar.querySelector('.qa-tab-delete').click();
+      await Promise.resolve();
+
+      expect(uiUtils.showConfirm).toHaveBeenLastCalledWith(
+        'Delete Page',
+        'Delete "Bedroom" and its tiles?',
+        expect.objectContaining({ confirmText: 'Delete' })
+      );
+    });
+
+    it('says a removed tile leaves its page, in the confirmation and the toast', async () => {
+      window.electronAPI.updateConfig.mockImplementation(async (patch) => ({
+        homeAssistant: {},
+        ...state.CONFIG,
+        ...patch,
+      }));
+      state.setStates({ 'light.bedroom': sampleStates['light.bedroom'] });
+      state.setConfig({
+        ...state.CONFIG,
+        customTabs: [
+          { id: 'home', name: 'Home', entityIds: ['light.bedroom'] },
+          { id: 'night', name: 'Night', entityIds: ['light.bedroom'] },
+        ],
+        activeTabId: 'night',
+        favoriteEntities: ['light.bedroom'],
+      });
+      ui.renderActiveTab();
+      ui.toggleReorganizeMode();
+      uiUtils.showConfirm.mockResolvedValueOnce(true);
+      uiUtils.showToast.mockClear();
+
+      document
+        .querySelector('#quick-controls [data-entity-id="light.bedroom"] .remove-btn')
+        .click();
+      for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const [, message] = uiUtils.showConfirm.mock.calls.at(-1);
+      expect(message).toMatch(/^Remove ".+" from "Night"\?$/);
+      expect(uiUtils.showToast).toHaveBeenCalledWith('Removed from "Night"', 'success', 2000);
+    });
+
     it('moves focus to the page now shown after deleting a page', async () => {
       setPages(
         [
@@ -8690,7 +9011,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(nameInput.id).not.toBe('');
 
       const search = [...modal.querySelectorAll('input')].find((input) => input !== nameInput);
-      expect(search.getAttribute('aria-label')).toBe('Search sensors…');
+      expect(search.getAttribute('aria-label')).toBe('Search sensors...');
       expect(search.spellcheck).toBe(false);
 
       const row = modal.querySelector('.entity-item');

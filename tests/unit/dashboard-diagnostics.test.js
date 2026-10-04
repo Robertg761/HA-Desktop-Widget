@@ -217,6 +217,67 @@ describe('tool dialogs and the keyboard', () => {
     expect(document.querySelector('.dashboard-tools-modal')).toBeNull();
   });
 
+  test('names each restore point by its date and says how much it holds', async () => {
+    const { rememberDashboard } = require('../../src/dashboard-history.js');
+    const layout = (name, entityIds) => ({
+      homeAssistant: { url: 'http://server' },
+      customTabs: [
+        { id: name, name, entityIds },
+        { id: `${name}-2`, name: `${name} two`, entityIds: ['light.a'] },
+      ],
+    });
+    rememberDashboard(layout('One', ['light.a', 'light.b']), layout('Two', []));
+    rememberDashboard(layout('Two', []), layout('Three', ['light.c']));
+
+    tools.showDashboardHistory();
+    await tick();
+
+    const rows = [...document.querySelectorAll('.dashboard-restore-entry')];
+    expect(rows).toHaveLength(2);
+    const dates = rows.map((row) => row.querySelector('.dashboard-restore-date').textContent);
+    expect(rows.map((row) => row.getAttribute('aria-label'))).toEqual(
+      dates.map((date) => `Restore layout from ${date}`)
+    );
+    expect(rows.map((row) => row.querySelector('.dashboard-restore-count').textContent)).toEqual([
+      'Pages: 2 · Tiles: 1',
+      'Pages: 2 · Tiles: 3',
+    ]);
+  });
+
+  test('names a restore point’s unnamed pages in today’s language, not the one it was saved in', async () => {
+    const { rememberDashboard } = require('../../src/dashboard-history.js');
+    const layout = (tabs) => ({ homeAssistant: { url: 'http://server' }, customTabs: tabs });
+    const saved = layout([
+      { id: 'default', name: 'Alle', nameIsDefault: true, entityIds: ['light.a'] },
+      { id: 'kitchen', name: 'Küche', entityIds: [] },
+    ]);
+    rememberDashboard(saved, layout([]));
+
+    tools.showDashboardHistory();
+    await tick();
+
+    expect(document.querySelector('.dashboard-restore-pages').textContent).toBe('All, Küche');
+  });
+
+  test('names a restore point’s stored unnamed pages too, which the server keeps with an empty name', async () => {
+    const { rememberDashboard } = require('../../src/dashboard-history.js');
+    const layout = (tabs) => ({ homeAssistant: { url: 'http://server' }, customTabs: tabs });
+    // What main stores and returns for a page nobody named: an empty name and no marker.
+    const saved = layout([
+      { id: 'default', name: '', entityIds: ['light.a'] },
+      { id: 'second', name: '   ', entityIds: [] },
+      { id: 'kitchen', name: 'Küche', entityIds: [] },
+    ]);
+    rememberDashboard(saved, layout([]));
+
+    tools.showDashboardHistory();
+    await tick();
+
+    expect(document.querySelector('.dashboard-restore-pages').textContent).toBe(
+      'All, View 2, Küche'
+    );
+  });
+
   test('a failed restore keeps focus on the restore point that was pressed', async () => {
     const { rememberDashboard } = require('../../src/dashboard-history.js');
     const { restoreDashboard } = require('../../src/ui.js');

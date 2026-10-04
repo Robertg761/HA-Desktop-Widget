@@ -317,6 +317,10 @@ function createSettingsModalDOM() {
         <input type="checkbox" id="entity-alerts-enabled" />
         Enable Entity Alerts
       </label>
+      <label for="persistent-notification-toasts">
+        <input type="checkbox" id="persistent-notification-toasts" checked />
+        Home Assistant notifications
+      </label>
       <div id="alerts-section" style="display: none;">
         <div id="inline-alerts-list"></div>
       </div>
@@ -349,7 +353,7 @@ function createSettingsModalDOM() {
           <label><input type="checkbox" id="profile-sync-scope-automation-alerts" /></label>
           <label><input type="checkbox" id="profile-sync-scope-connection-media-preferences" /></label>
         </div>
-        <button type="button" id="profile-sync-help-btn">Need Help?</button>
+        <button type="button" id="profile-sync-help-btn">Need help?</button>
         <select id="profile-sync-interval">
           <option value="1">1</option>
           <option value="5" selected>5</option>
@@ -375,8 +379,8 @@ function createSettingsModalDOM() {
           <button type="button" id="profile-sync-clear-passphrase">Clear Saved Passphrase</button>
         </div>
         <button type="button" id="profile-sync-now">Sync now</button>
-        <button type="button" id="profile-sync-pull-now">Sync Down</button>
-        <button type="button" id="profile-sync-push-now">Sync Up</button>
+        <button type="button" id="profile-sync-pull-now">Sync down</button>
+        <button type="button" id="profile-sync-push-now">Sync up</button>
         <select id="profile-sync-backup-select"></select>
         <button type="button" id="profile-sync-restore-backup">Restore</button>
         <p id="profile-sync-backup-detail" class="hidden"></p>
@@ -946,7 +950,7 @@ describe('Settings + Config Integration', () => {
       expect(document.getElementById('connect-ha-oauth-btn').disabled).toBe(true);
       expect(status.dataset.busy).toBe('true');
       expect(status.querySelectorAll('.connection-progress')).toHaveLength(1);
-      expect(status.textContent).toBe('Opening Home Assistant for authorization...');
+      expect(status.textContent).toBe('Waiting for you to approve in your browser...');
 
       cancelButton.click();
       await Promise.resolve();
@@ -1468,6 +1472,36 @@ describe('Settings + Config Integration', () => {
       }
     });
 
+    test('groups the two Set Card buttons of a row under the name of its entity', async () => {
+      state.setStates({
+        'sensor.kitchen_temp': {
+          entity_id: 'sensor.kitchen_temp',
+          state: '20',
+          attributes: { friendly_name: 'Kitchen temperature' },
+        },
+        'sensor.hall_temp': {
+          entity_id: 'sensor.hall_temp',
+          state: '19',
+          attributes: { friendly_name: 'Hall temperature' },
+        },
+      });
+      await settings.openSettings();
+      document.getElementById('primary-cards-toggle').click();
+
+      const groups = [
+        ...document.querySelectorAll(
+          '#primary-cards-list .primary-cards-list-actions[role="group"]'
+        ),
+      ];
+
+      expect(groups.map((group) => group.getAttribute('aria-label')).sort()).toEqual([
+        'Hall temperature',
+        'Kitchen temperature',
+      ]);
+      expect(groups.every((group) => group.querySelectorAll('button').length === 2)).toBe(true);
+      settings.closeSettings();
+    });
+
     test('starts each primary-card page at its top but keeps the scroll position on assignment', async () => {
       const entities = Object.fromEntries(
         Array.from({ length: 121 }, (_, index) => {
@@ -1938,9 +1972,21 @@ describe('Settings + Config Integration', () => {
       );
       expect(spanishOption).toBeTruthy();
       expect(spanishOption.disabled).toBe(true);
-      expect(spanishOption.textContent).toContain('Download first');
+      expect(spanishOption.textContent).toContain('Not downloaded');
       expect(frenchOption).toBeTruthy();
       expect(frenchOption.disabled).toBe(false);
+      // The pack list says the same thing, in the same words, and marks each name's language.
+      const rows = [...document.querySelectorAll('#language-packs-list .language-pack-row')];
+      const rowFor = (name) => rows.find((row) => row.textContent.includes(name));
+      expect(rowFor('Español').querySelector('.language-pack-meta').textContent).toBe(
+        'Not downloaded • v1.0.0'
+      );
+      expect(rowFor('Français').querySelector('.language-pack-meta').textContent).toContain(
+        'Installed'
+      );
+      expect(rowFor('Español').querySelector('.language-pack-name').lang).toBe('es');
+      expect(spanishOption.lang).toBe('es');
+      expect(document.body.textContent).not.toContain('Download first');
     });
 
     test('changing the language selector persists immediately without waiting for Save', async () => {
@@ -4549,6 +4595,45 @@ describe('Settings + Config Integration', () => {
     });
   });
 
+  describe('the check for updates button', () => {
+    const i18n = require('../../src/i18n.js');
+    const GERMAN = { 'Check for updates': 'Nach Updates suchen' };
+    const label = () => document.getElementById('check-updates-text');
+
+    beforeEach(() => {
+      // The label sits in a span the update UI owns, which translateDocument() does not reach: the
+      // two places that write it are Settings opening and the language changing while it is open.
+      document
+        .getElementById('settings-modal')
+        .insertAdjacentHTML(
+          'beforeend',
+          '<button id="check-updates-btn"><span id="check-updates-text"></span></button>'
+        );
+    });
+
+    afterEach(() => {
+      i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+    });
+
+    test('opens in the language of the interface', async () => {
+      i18n.setLocaleBootstrap({ activeLocale: 'de', messages: GERMAN });
+      await settings.openSettings();
+
+      expect(label().textContent).toBe('Nach Updates suchen');
+    });
+
+    test('follows a language change while Settings is open', async () => {
+      await settings.openSettings();
+      expect(label().textContent).toBe('Check for updates');
+
+      i18n.setLocaleBootstrap({ activeLocale: 'de', messages: GERMAN });
+      // The locale observer runs as a microtask after <html lang> changes.
+      await Promise.resolve();
+
+      expect(label().textContent).toBe('Nach Updates suchen');
+    });
+  });
+
   describe('the keyring notice', () => {
     const notice = () => document.getElementById('secure-storage-notice');
     const openWithIntegration = async (info) => {
@@ -4602,6 +4687,64 @@ describe('Settings + Config Integration', () => {
 
     afterEach(() => {
       delete window.electronAPI.getDesktopIntegration;
+    });
+
+    describe('says what was last received in words, not ids', () => {
+      const show = async (info) => {
+        window.electronAPI.getDesktopIntegration = jest.fn().mockResolvedValue({
+          hyprland: true,
+          shortcuts: [{ binding: 'bind', legacyBinding: 'bind' }],
+          appId: 'ha-desktop-widget',
+          ...info,
+        });
+        await settings.initializePopupHotkey();
+        await document.getElementById('desktop-integration-refresh').onclick();
+        return {
+          status: document.getElementById('desktop-integration-status').textContent,
+          legacy: document.getElementById('desktop-integration-legacy').textContent,
+        };
+      };
+
+      test('names the popup hotkey, not popup-toggle', async () => {
+        const { status } = await show({
+          lastActivation: { id: 'popup-toggle', at: 'just now' },
+        });
+        expect(status).toBe('Last shortcut received: Popup hotkey at just now');
+      });
+
+      test('names an entity hotkey by the entity, and falls back to its id', async () => {
+        state.STATES['light.desk_lamp'] = {
+          entity_id: 'light.desk_lamp',
+          state: 'on',
+          attributes: { friendly_name: 'Desk lamp' },
+        };
+        const known = await show({ lastActivation: { id: 'entity.light.desk_lamp', at: 'x' } });
+        expect(known.status).toBe('Last shortcut received: Desk lamp at x');
+        const unknown = await show({ lastActivation: { id: 'entity.light.gone', at: 'x' } });
+        expect(unknown.status).toBe('Last shortcut received: light.gone at x');
+        delete state.STATES['light.desk_lamp'];
+      });
+
+      test('builds the retired-app-id warning from its parts, in the interface language', async () => {
+        const { legacy } = await show({
+          lastActivation: null,
+          legacyActivation: {
+            legacyAppId: 'ha_desktop_widget',
+            id: 'popup-toggle',
+            binding: 'bind = SUPER, H, global, ha-desktop-widget:popup-toggle',
+          },
+        });
+        expect(legacy).toBe(
+          'Hyprland sent "Popup hotkey" through the old app name "ha_desktop_widget". That still works for now; change the bind to "ha-desktop-widget:popup-toggle", for example: bind = SUPER, H, global, ha-desktop-widget:popup-toggle'
+        );
+        const noExample = await show({
+          lastActivation: null,
+          legacyActivation: { legacyAppId: 'ha_desktop_widget', id: 'popup-toggle', binding: '' },
+        });
+        expect(noExample.legacy).toBe(
+          'Hyprland sent "Popup hotkey" through the old app name "ha_desktop_widget". That still works for now; change the bind to "ha-desktop-widget:popup-toggle".'
+        );
+      });
     });
 
     test.each([{ hyprland: false }, null])(
@@ -5164,7 +5307,7 @@ describe('Settings + Config Integration', () => {
       );
     });
 
-    test('asks before Sync Up replaces the sync file', async () => {
+    test('asks before Sync up replaces the sync file', async () => {
       enableSavedProfileSync();
       await settings.openSettings();
       mockElectronAPI.runProfileSync = jest.fn().mockResolvedValue({ ok: true });
@@ -5174,9 +5317,9 @@ describe('Settings + Config Integration', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
-        'Sync Up',
+        'Sync up',
         expect.stringContaining('Replace the sync file'),
-        expect.objectContaining({ confirmText: 'Sync Up' })
+        expect.objectContaining({ confirmText: 'Sync up' })
       );
       expect(mockElectronAPI.runProfileSync).not.toHaveBeenCalled();
 
@@ -5554,7 +5697,7 @@ describe('Settings + Config Integration', () => {
       // The file in the new folder is never replaced, so the copy is not retried.
       expect(mockElectronAPI.copyProfileSyncFile).toHaveBeenCalledTimes(1);
       expect(mockUiUtils.showConfirm).toHaveBeenLastCalledWith(
-        'Sync File Already Exists',
+        'Sync file already exists',
         expect.stringContaining('/tmp/new-sync already has a sync file'),
         expect.objectContaining({ confirmText: 'Use That File', cancelText: 'Keep Current' })
       );
@@ -5619,7 +5762,7 @@ describe('Settings + Config Integration', () => {
       await settings.saveSettings();
 
       expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
-        'Sync Folder Changed',
+        'Sync folder changed',
         'Copy the existing sync data file from /tmp/old-sync into /tmp/new-sync and switch sync there?',
         expect.objectContaining({ confirmText: 'Copy & Switch', cancelText: 'Keep Current' })
       );
@@ -5743,7 +5886,7 @@ describe('Settings + Config Integration', () => {
         expect.any(Number),
       ]);
       expect(await toastFor('upload')).toEqual([
-        'This computer’s settings were uploaded to the sync file.',
+        "This computer's settings were uploaded to the sync file.",
         'success',
         expect.any(Number),
       ]);
@@ -5812,8 +5955,8 @@ describe('Settings + Config Integration', () => {
       });
 
       describe('when the encryption choice or passphrase in the form is not saved yet', () => {
-        // Sync runs against what is saved, so Sync Up would publish in the old mode while the
-        // form shows another, and Sync Down would read the file with the old passphrase.
+        // Sync runs against what is saved, so Sync up would publish in the old mode while the
+        // form shows another, and Sync down would read the file with the old passphrase.
         const syncButtons = ['profile-sync-now', 'profile-sync-push-now', 'profile-sync-pull-now'];
         const expectEveryButtonAskedToSave = async () => {
           mockElectronAPI.runProfileSync = jest.fn().mockResolvedValue({ ok: true });
@@ -5946,7 +6089,7 @@ describe('Settings + Config Integration', () => {
         expect(lastToast()).toEqual(['The sync file is damaged.', 'error', expect.any(Number)]);
       });
 
-      test('Sync Down says so when nothing was downloaded', async () => {
+      test('Sync down says so when nothing was downloaded', async () => {
         await openWithRunningSync();
         mockUiUtils.showConfirm.mockResolvedValue(true);
 
@@ -5994,7 +6137,7 @@ describe('Settings + Config Integration', () => {
         opacity: 0.6,
       });
 
-      test('Sync Down rebuilds the form, so Save does not write the old values back', async () => {
+      test('Sync down rebuilds the form, so Save does not write the old values back', async () => {
         await openWithRunningSync();
         mockUiUtils.showConfirm.mockResolvedValue(true);
         const before = document.getElementById('opacity-slider').value;
@@ -6559,6 +6702,123 @@ describe('Settings + Config Integration', () => {
       document.getElementById('inline-alerts-list').remove();
     });
 
+    describe('what the alert lists and the dialog say about numbers and buttons', () => {
+      const temperatureAlert = (extra = {}) => ({
+        onNumericThreshold: true,
+        comparison: 'above',
+        threshold: 25,
+        ...extra,
+      });
+      const renderRow = (entityId, alert) => {
+        document.body.insertAdjacentHTML('beforeend', '<div id="inline-alerts-list"></div>');
+        state.STATES[entityId] = state.STATES[entityId] || {
+          entity_id: entityId,
+          state: '21.5',
+          attributes: { friendly_name: 'Office temperature', unit_of_measurement: '°C' },
+        };
+        state.CONFIG.entityAlerts = { enabled: true, alerts: { [entityId]: alert } };
+        settings.renderAlertsListInline();
+        return document.querySelector('#inline-alerts-list .alert-item');
+      };
+      afterEach(() => document.getElementById('inline-alerts-list')?.remove());
+
+      test('a threshold rule reads "Above 25 °C", with the entity unit', () => {
+        const row = renderRow('sensor.office_temperature', temperatureAlert());
+        expect(row.querySelector('.alert-type').textContent).toBe('Above 25 °C');
+      });
+
+      test('a below rule, and a unitless sensor, read without a dangling "threshold"', () => {
+        state.STATES['sensor.counter'] = {
+          entity_id: 'sensor.counter',
+          state: '4',
+          attributes: { friendly_name: 'Counter' },
+        };
+        const row = renderRow('sensor.counter', temperatureAlert({ comparison: 'below' }));
+        expect(row.querySelector('.alert-type').textContent).toBe('Below 25');
+        delete state.STATES['sensor.counter'];
+      });
+
+      test('a rule for one state names it in a sentence', () => {
+        const row = renderRow('sensor.office_temperature', {
+          onSpecificState: true,
+          targetState: 'unavailable',
+        });
+        expect(row.querySelector('.alert-type').textContent).toBe('When state is unavailable');
+      });
+
+      test('Edit and Remove are grouped under the name of the entity they are for', () => {
+        const row = renderRow('sensor.office_temperature', temperatureAlert());
+        const group = row.querySelector('.alert-actions');
+        expect(group.getAttribute('role')).toBe('group');
+        expect(group.getAttribute('aria-label')).toBe(row.querySelector('.alert-name').textContent);
+        expect(group.getAttribute('aria-label')).not.toBe('');
+      });
+
+      test('the dialog says what the duration and the cooldown mean, and what 0 does', () => {
+        settings.openAlertConfigModal('sensor.office_temperature');
+
+        const help = (id) => document.getElementById(`${id}-help`);
+        expect(help('alert-duration').textContent).toBe(
+          'Only notify if the condition lasts this long. 0 = immediately.'
+        );
+        expect(help('alert-cooldown').textContent).toBe(
+          'Wait at least this long between notifications. 0 = no limit.'
+        );
+        for (const id of ['alert-duration', 'alert-cooldown', 'alert-threshold']) {
+          const input = document.getElementById(id);
+          expect(input.getAttribute('aria-describedby')).toBe(`${id}-help`);
+          // The name stays the label's own words; the help is only the description.
+          expect(document.getElementById(input.getAttribute('aria-labelledby')).textContent).toBe(
+            input.closest('label').querySelector('[data-alert-label-key]').textContent
+          );
+        }
+      });
+
+      test('the threshold shows the current reading in the sensor unit', () => {
+        state.STATES['sensor.office_temperature'] = {
+          entity_id: 'sensor.office_temperature',
+          state: '21.5',
+          attributes: { friendly_name: 'Office temperature', unit_of_measurement: '°C' },
+        };
+
+        settings.openAlertConfigModal('sensor.office_temperature');
+
+        expect(document.getElementById('alert-threshold-help').textContent).toBe(
+          'Currently 21.5 °C'
+        );
+      });
+
+      test('a sensor with no number yet still names the unit, and one without either says nothing', () => {
+        state.STATES['sensor.office_temperature'] = {
+          entity_id: 'sensor.office_temperature',
+          state: 'unavailable',
+          attributes: { friendly_name: 'Office temperature', unit_of_measurement: '°C' },
+        };
+        settings.openAlertConfigModal('sensor.office_temperature');
+        expect(document.getElementById('alert-threshold-help').textContent).toBe('In °C');
+
+        state.STATES['sensor.office_temperature'].attributes = {};
+        settings.openAlertConfigModal('sensor.office_temperature');
+        expect(document.getElementById('alert-threshold-help').textContent).toBe('');
+      });
+    });
+
+    test('shows the Home Assistant notifications switch on unless it was turned off', async () => {
+      const switchEl = () => document.getElementById('persistent-notification-toasts');
+      state.CONFIG.entityAlerts = { enabled: false, alerts: {} };
+      await settings.openSettings();
+      // A config from before the switch has no value for it: on.
+      expect(switchEl().checked).toBe(true);
+      settings.closeSettings();
+
+      state.CONFIG.entityAlerts = { enabled: false, persistentNotifications: false, alerts: {} };
+      await settings.openSettings();
+      expect(switchEl().checked).toBe(false);
+      // It does not depend on the entity alerts switch beside it.
+      expect(document.getElementById('entity-alerts-enabled').checked).toBe(false);
+      settings.closeSettings();
+    });
+
     test('quiet hour times follow the quiet hours toggle', () => {
       settings.openAlertConfigModal('sensor.office_temperature');
 
@@ -7087,6 +7347,27 @@ describe('Settings + Config Integration', () => {
         expect(picker.classList.contains('hidden')).toBe(true);
       });
 
+      test('names the picker buttons for the entity they add an alert to', () => {
+        document.querySelector('.add-alert-btn').click();
+
+        const add = document.querySelector(
+          '#alert-entity-picker-list .entity-selector-btn[data-entity-id="switch.kitchen"]'
+        );
+        expect(add.getAttribute('aria-label')).toBe('Edit alert for Kitchen');
+        const names = [
+          ...document.querySelectorAll('#alert-entity-picker-list .entity-selector-btn'),
+        ].map((button) => button.getAttribute('aria-label'));
+        expect(new Set(names).size).toBe(names.length);
+        for (const button of document.querySelectorAll(
+          '#alert-entity-picker-list .entity-selector-btn'
+        )) {
+          // The visible "Add alert" or "Edit alert" starts the name, so voice control can say it.
+          expect(button.getAttribute('aria-label').startsWith(button.textContent.trim())).toBe(
+            true
+          );
+        }
+      });
+
       test('starts the picker on its search field, not on Close', async () => {
         document.querySelector('.add-alert-btn').click();
         await tick();
@@ -7291,7 +7572,7 @@ describe('Settings + Config Integration', () => {
           const orphan = row('light.gone');
           expect(orphan).not.toBeNull();
           expect(orphan.querySelector('.alert-name').textContent).toBe('light.gone');
-          expect(orphan.querySelector('.alert-type').textContent).toBe('Specific state (on)');
+          expect(orphan.querySelector('.alert-type').textContent).toBe('When state is on');
           expect(orphan.querySelector('.alert-missing').textContent).toBe('Unavailable');
           expect(orphan.querySelector('.alert-icon svg')).not.toBeNull();
           expect(orphan.querySelector('.edit-alert').disabled).toBe(false);

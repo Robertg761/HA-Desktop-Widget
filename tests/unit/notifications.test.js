@@ -20,6 +20,7 @@ jest.mock('../../src/i18n.js', () => ({
 jest.mock('../../src/ui-utils.js', () => ({
   ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
   showToast: jest.fn(),
+  showConfirm: jest.fn(),
 }));
 
 const {
@@ -116,6 +117,10 @@ describe('persistent notification helpers', () => {
           <div class="modal-body">
             <div id="persistent-notifications-list"></div>
             <div id="persistent-notifications-empty"></div>
+          </div>
+          <div id="persistent-notifications-toolbar" class="hidden">
+            <span id="persistent-notifications-summary"></span>
+            <button id="dismiss-all-notifications">Dismiss all</button>
           </div>
         </div>
       </div>
@@ -249,6 +254,144 @@ describe('persistent notification helpers', () => {
       consoleError.mockRestore();
     });
 
+    test('names each Dismiss button for its notification', () => {
+      load('a', 'b');
+      send({ type: 'added', notifications: { c: { ...notification('c'), title: '' } } });
+
+      const names = [...document.querySelectorAll('.persistent-notification-dismiss')].map(
+        (button) => button.getAttribute('aria-label')
+      );
+
+      expect(names.sort()).toEqual([
+        'Dismiss Home Assistant',
+        'Dismiss Title a',
+        'Dismiss Title b',
+      ]);
+      // The visible text stays the short word, and starts the name (label in name).
+      for (const button of document.querySelectorAll('.persistent-notification-dismiss')) {
+        expect(button.getAttribute('aria-label').startsWith(button.textContent)).toBe(true);
+      }
+    });
+
+    test('gives the age the exact time as a tooltip', () => {
+      load('a');
+
+      const time = document.querySelector('.persistent-notification-time');
+
+      expect(time.title).toMatch(/2026/);
+      expect(time.title.length).toBeGreaterThan(8);
+    });
+
+    test('writes that time in the format of the app, not of the page', () => {
+      const i18n = require('../../packages/widget-renderer/src/i18n.js');
+      i18n.setLocaleBootstrap({
+        languageSetting: 'de',
+        requestedLocale: 'de',
+        activeLocale: 'de',
+        messages: {},
+      });
+      // The page's own language can differ from the pack in use; the tooltip follows the pack.
+      document.documentElement.lang = 'en';
+      try {
+        load('a');
+        expect(document.querySelector('.persistent-notification-time').title).toMatch(
+          /^\d{2}\.\d{2}\.2026/
+        );
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+        document.documentElement.lang = '';
+      }
+    });
+
+    describe('with a long list', () => {
+      const toolbar = () => document.getElementById('persistent-notifications-toolbar');
+      const summary = () => document.getElementById('persistent-notifications-summary');
+      const dismissAll = () => document.getElementById('dismiss-all-notifications');
+      let confirm;
+
+      beforeEach(() => {
+        confirm = require('../../src/ui-utils.js').showConfirm;
+        confirm.mockReset();
+        websocket.callService.mockReset();
+      });
+
+      test('shows how many there are and a Dismiss all, for two or more', () => {
+        load('a');
+        expect(toolbar().classList).toContain('hidden');
+
+        send({ type: 'added', notifications: { b: notification('b') } });
+        expect(toolbar().classList).not.toContain('hidden');
+        expect(summary().textContent).toBe('2 notifications');
+
+        send({ type: 'removed', notifications: { b: {} } });
+        expect(toolbar().classList).toContain('hidden');
+      });
+
+      test('asks before clearing everything, and does nothing when declined', async () => {
+        load('a', 'b', 'c');
+        confirm.mockResolvedValue(false);
+
+        dismissAll().click();
+        await nextTick();
+
+        expect(confirm).toHaveBeenCalledWith(
+          'Dismiss all notifications?',
+          'This clears 3 notifications in Home Assistant, on every device.',
+          expect.objectContaining({ confirmText: 'Dismiss all' })
+        );
+        expect(websocket.callService).not.toHaveBeenCalled();
+      });
+
+      test('clears them with one service call once confirmed', async () => {
+        load('a', 'b', 'c');
+        confirm.mockResolvedValue(true);
+        websocket.callService.mockResolvedValue({});
+
+        dismissAll().click();
+        await nextTick();
+
+        expect(websocket.callService).toHaveBeenCalledTimes(1);
+        expect(websocket.callService).toHaveBeenCalledWith(
+          'persistent_notification',
+          'dismiss_all',
+          {}
+        );
+        expect(dismissAll().disabled).toBe(false);
+      });
+
+      test('dismisses them one by one when Home Assistant has no dismiss_all', async () => {
+        load('a', 'b');
+        confirm.mockResolvedValue(true);
+        websocket.callService.mockImplementation(async (domain, service) => {
+          if (service === 'dismiss_all') throw new Error('Service not found');
+          return {};
+        });
+
+        dismissAll().click();
+        await nextTick();
+
+        const dismissals = websocket.callService.mock.calls.filter(
+          ([, service]) => service === 'dismiss'
+        );
+        expect(dismissals.map(([, , data]) => data.notification_id).sort()).toEqual(['a', 'b']);
+        expect(showToast).not.toHaveBeenCalled();
+      });
+
+      test('says so when nothing could be dismissed', async () => {
+        load('a', 'b');
+        confirm.mockResolvedValue(true);
+        websocket.callService.mockRejectedValue(new Error('offline'));
+        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        dismissAll().click();
+        await nextTick();
+
+        expect(showToast).toHaveBeenCalledWith('Could not dismiss notifications', 'error');
+        expect(dismissAll().disabled).toBe(false);
+        consoleError.mockRestore();
+      });
+    });
+
     test('refreshes the ages while the panel stays open', () => {
       jest.useFakeTimers();
       jest.setSystemTime(Date.parse('2026-07-06T10:00:30Z'));
@@ -316,6 +459,72 @@ describe('persistent notification helpers', () => {
     expect(window.electronAPI.showWindow).toHaveBeenCalledTimes(1);
     const modal = document.getElementById('persistent-notifications-modal');
     expect(modal.classList.contains('hidden')).toBe(false);
+  });
+
+  describe('desktop notifications for Home Assistant notifications', () => {
+    // A fresh module for each: it keeps the notifications it has been told about.
+    beforeEach(() => jest.resetModules());
+    const arrive = () => {
+      const {
+        initializePersistentNotifications: initialize,
+      } = require('../../src/notifications.js');
+      document.body.innerHTML = `
+        <button id="persistent-notifications-btn"></button>
+        <span id="persistent-notifications-count"></span>
+        <div id="persistent-notifications-modal" class="modal hidden">
+          <div id="persistent-notifications-list"></div>
+          <div id="persistent-notifications-empty"></div>
+        </div>`;
+      const created = [];
+      global.Notification = class {
+        constructor(title) {
+          created.push(title);
+        }
+      };
+      global.Notification.permission = 'granted';
+      window.electronAPI = { showWindow: jest.fn(() => Promise.resolve()) };
+      const websocket = require('../../src/websocket.js').default;
+      initialize();
+      const handler = websocket.subscribeMessage.mock.calls.at(-1)[1];
+      handler({
+        type: 'added',
+        notifications: {
+          update: {
+            notification_id: 'update',
+            title: 'Update ready',
+            message: 'Core 2026.10',
+            created_at: '2026-07-06T10:00:00Z',
+          },
+        },
+      });
+      return created;
+    };
+    const setConfig = (entityAlerts) => {
+      require('../../src/state.js').default.setConfig({ entityAlerts });
+    };
+    afterEach(() => require('../../src/state.js').default.setConfig({}));
+
+    it('show unless the switch for them is off', () => {
+      setConfig({ enabled: false, alerts: {} });
+      expect(arrive()).toEqual(['Update ready']);
+    });
+
+    it('stay out of the desktop when the switch is off, whether or not entity alerts are on', () => {
+      setConfig({ enabled: true, persistentNotifications: false, alerts: {} });
+      expect(arrive()).toEqual([]);
+      setConfig({ enabled: false, persistentNotifications: false, alerts: {} });
+      expect(arrive()).toEqual([]);
+    });
+
+    it('still reach the bell and its list when the desktop does not get them', () => {
+      setConfig({ enabled: true, persistentNotifications: false, alerts: {} });
+      arrive();
+
+      expect(document.getElementById('persistent-notifications-count').textContent).toBe('1');
+      expect(document.getElementById('persistent-notifications-btn').classList).not.toContain(
+        'hidden'
+      );
+    });
   });
 
   it('describes the bell by its count, which its fixed label would otherwise hide', () => {
