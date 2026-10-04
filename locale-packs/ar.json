@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.61",
+  "version": "1.2.63",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1870,6 +1870,24 @@
     "Click to configure weather": "انقر لتكوين الطقس",
     "Activated {{name}}": "تم تنفيذ {{name}}",
     "Range {{min}} to {{max}}, step {{step}}": "النطاق من {{min}} إلى {{max}}، بخطوة {{step}}",
-    "Use the command palette to control {{name}}": "استخدم لوحة الأوامر للتحكم في {{name}}"
+    "Use the command palette to control {{name}}": "استخدم لوحة الأوامر للتحكم في {{name}}",
+    "The Omarchy palette sets these colors while Follow Omarchy theme is on.": "تحدد لوحة ألوان Omarchy هذه الألوان ما دام خيار اتباع سمة Omarchy مفعّلًا.",
+    "Tints the window so it stays readable while transparent. Blur depends on your desktop.": "تلوّن النافذة لتبقى مقروءة وهي شفافة. يعتمد الطمس على سطح المكتب لديك.",
+    "After setting a hotkey, copy its binding from the Hyprland shortcuts panel above.": "بعد تعيين الاختصار، انسخ تعيينه من لوحة اختصارات Hyprland أعلاه.",
+    "Press once to show the window and again to hide it.": "اضغط مرة لإظهار النافذة ومرة أخرى لإخفائها.",
+    "Set a popup hotkey or turn on entity hotkeys below, then copy the bindings here.": "عيّن اختصار النافذة المنبثقة أو فعّل اختصارات الكيانات أدناه، ثم انسخ التعيينات هنا.",
+    "No shortcuts are set yet.": "لم يُعيَّن أي اختصار بعد.",
+    "Bind a key in your window manager to run ha-desktop-widget --toggle, which shows or hides the widget.": "اربط مفتاحًا في مدير النوافذ لتشغيل ha-desktop-widget --toggle، الذي يُظهر الأداة أو يُخفيها.",
+    "Turn off blur for the widget": "إيقاف الطمس للأداة",
+    "Blur changes take effect immediately, without Save.": "تسري تغييرات الطمس فورًا، دون الحاجة إلى حفظ.",
+    "Shortcut status updated.": "تم تحديث حالة الاختصارات.",
+    "Welcome to HA Desktop Widget": "مرحبًا بك في HA Desktop Widget",
+    "A new version is available": "يتوفر إصدار جديد",
+    "Version {{version}} is available. Open Settings > Advanced to download it.": "الإصدار {{version}} متاح. افتح الإعدادات > متقدم لتنزيله.",
+    "Showing the first {{shown}} of {{count}} entities. Type to narrow them.": "عرض أول {{shown}} من {{count}} كيان. اكتب لتضييق النتائج.",
+    "Up to {{max}} sensors. Selected: {{count}}.": "حتى {{max}} مستشعرات. المحدد: {{count}}.",
+    "Maximum reached. Remove a sensor to add another.": "تم بلوغ الحد الأقصى. أزل مستشعرًا لإضافة آخر.",
+    "No sensors match \"{{query}}\"": "لا توجد مستشعرات تطابق \"{{query}}\"",
+    "What’s new": "الجديد"
   }
 }

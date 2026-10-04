@@ -189,6 +189,7 @@ describe('unavailable Quick Access tile repair affordance', () => {
 
     search.value = 'no such entity';
     search.dispatchEvent(new Event('input'));
+    await new Promise((resolve) => setTimeout(resolve, 200));
     expect(modal.querySelector('.entity-selector-empty').textContent).toMatch(/No matching/);
     expect(modal.querySelector('.entity-selector-status')).toBe(status);
     expect(status.textContent).toBe('No matching replacement entities found.');
@@ -196,8 +197,138 @@ describe('unavailable Quick Access tile repair affordance', () => {
 
     search.value = '';
     search.dispatchEvent(new Event('input'));
+    // The search runs once typing pauses, clearing it included.
+    await new Promise((resolve) => setTimeout(resolve, 200));
     expect(modal.querySelector('.entity-selector-empty')).toBeNull();
     expect(status.textContent).toBe('');
+  });
+
+  describe('with a large home', () => {
+    const makeStates = (count) => {
+      const states = {};
+      for (let index = 0; index < count; index += 1) {
+        const domain = index % 3 === 0 ? 'light' : 'sensor';
+        const id = `${domain}.thing_${String(index).padStart(4, '0')}`;
+        states[id] = {
+          entity_id: id,
+          state: 'on',
+          attributes: { friendly_name: `Thing ${index}` },
+        };
+      }
+      return states;
+    };
+    const openPicker = () => {
+      ui.renderActiveTab();
+      staleTile().click();
+      const modal = document.getElementById('entity-repair-modal');
+      return {
+        modal,
+        search: modal.querySelector('input[type="search"]'),
+        rows: () => modal.querySelectorAll('.entity-item'),
+        hint: () => modal.querySelector('.entity-selector-empty'),
+      };
+    };
+    const typeAndWait = async (search, text) => {
+      search.value = text;
+      search.dispatchEvent(new Event('input'));
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    };
+
+    it('draws the first 50 rows with a line that says how many there are', () => {
+      state.setStates(makeStates(3000));
+      const { rows, hint } = openPicker();
+
+      expect(rows()).toHaveLength(50);
+      expect(hint().textContent).toBe(
+        'Showing the first 50 of 3,000 entities. Type to narrow them.'
+      );
+    });
+
+    it('offers the same kind of entity first, then by name', () => {
+      state.setStates(makeStates(300));
+      const { rows } = openPicker();
+
+      const ids = [...rows()].map((row) => row.querySelector('.entity-id').textContent);
+      expect(ids.every((id) => id.startsWith('light.'))).toBe(true);
+      const names = [...rows()].map((row) => row.querySelector('.entity-name').textContent);
+      // Numbers count as numbers ("Thing 9" before "Thing 12"), as everywhere else names are sorted.
+      const natural = new Intl.Collator('en', { numeric: true, sensitivity: 'base' }).compare;
+      expect(names).toEqual([...names].sort(natural));
+      expect(names.slice(0, 3)).toEqual(['Thing 0', 'Thing 3', 'Thing 6']);
+    });
+
+    it('searches what was typed once typing has paused, not on every key', async () => {
+      state.setStates(makeStates(3000));
+      const { search, rows } = openPicker();
+      const before = rows().length;
+
+      search.value = 'thing_29';
+      search.dispatchEvent(new Event('input'));
+      search.value = 'thing_299';
+      search.dispatchEvent(new Event('input'));
+      // Nothing has been redrawn yet.
+      expect(rows()).toHaveLength(before);
+
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      // The id thing_2990 to thing_2999 contain the query, and so does the name "Thing 299".
+      const ids = [...rows()].map((row) => row.querySelector('.entity-id').textContent);
+      expect(ids.length).toBe(11);
+      expect(ids.filter((id) => id.includes('thing_299'))).toHaveLength(10);
+      expect(ids.some((id) => id.endsWith('thing_0299'))).toBe(true);
+    });
+
+    it('finds a name by its letters without the accents', async () => {
+      state.setStates({
+        ...makeStates(30),
+        'light.kueche': {
+          entity_id: 'light.kueche',
+          state: 'on',
+          attributes: { friendly_name: 'Küche Deckenlicht' },
+        },
+      });
+      const { search, rows } = openPicker();
+
+      await typeAndWait(search, 'kuche deckenlicht');
+
+      expect([...rows()].map((row) => row.querySelector('.entity-name').textContent)).toEqual([
+        'Küche Deckenlicht',
+      ]);
+    });
+
+    it('says nothing about more rows when the search narrows it to a few', async () => {
+      state.setStates(makeStates(3000));
+      const { search, hint } = openPicker();
+
+      await typeAndWait(search, 'thing_0001');
+
+      expect(hint()).toBeNull();
+    });
+
+    it("reads each entity's name once to open and search, however large the home is", async () => {
+      let nameReads = 0;
+      const states = makeStates(3000);
+      Object.values(states).forEach((entity) => {
+        const name = entity.attributes.friendly_name;
+        entity.attributes = {
+          get friendly_name() {
+            nameReads += 1;
+            return name;
+          },
+        };
+      });
+      state.setStates(states);
+      ui.renderActiveTab();
+      nameReads = 0;
+
+      staleTile().click();
+      const search = document.querySelector('#entity-repair-modal input[type="search"]');
+      await typeAndWait(search, 'thing');
+      await typeAndWait(search, 'thing_1');
+
+      // Sorting used to read it at every comparison: tens of thousands of reads for 3,000 entities.
+      expect(nameReads).toBeLessThanOrEqual(3000 * 2);
+    });
   });
 
   it('closes with Escape or the backdrop and returns focus to the tile it was opened from', async () => {
@@ -221,5 +352,23 @@ describe('unavailable Quick Access tile repair affordance', () => {
     tile.click();
     document.getElementById('entity-repair-modal').click();
     expect(document.getElementById('entity-repair-modal')).toBeNull();
+  });
+
+  describe('from outside the tile (the Omarchy bar)', () => {
+    it('opens the repair dialog once Home Assistant has delivered its entities', () => {
+      state.setStates({ [replacement.entity_id]: replacement });
+
+      ui.openUnavailableEntityRepair(STALE_ID);
+
+      const modal = document.getElementById('entity-repair-modal');
+      expect(modal).not.toBeNull();
+      expect(modal.querySelector(`[data-entity-id="${replacement.entity_id}"]`)).not.toBeNull();
+    });
+
+    it('opens nothing while there is nothing to repair against', () => {
+      state.setStates({});
+      ui.openUnavailableEntityRepair(STALE_ID);
+      expect(document.getElementById('entity-repair-modal')).toBeNull();
+    });
   });
 });

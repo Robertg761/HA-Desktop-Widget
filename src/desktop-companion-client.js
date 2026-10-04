@@ -2,6 +2,24 @@ import log from './logger.js';
 
 const PROTOCOL_VERSION = 1;
 const HEARTBEAT_INTERVAL_MS = 60 * 1000;
+// A session that fails to start is tried again after these waits, the last one repeating. Home
+// Assistant answers unknown_command for a while after a restart, before a custom integration has
+// registered its commands, and without a retry the desktop stayed unregistered until the socket
+// dropped again.
+const SESSION_RETRY_DELAYS_MS = Object.freeze([15 * 1000, 60 * 1000, 5 * 60 * 1000]);
+// Most people never install the integration, and for them Home Assistant answers unknown_command
+// however long it waits. Once the waits above have run out, such a session is looked at this
+// rarely: it only has to catch an integration installed while the app runs.
+const INTEGRATION_MISSING_RETRY_MS = 30 * 60 * 1000;
+// After a layout upload fails, the next try waits this long, doubling, up to the cap.
+const SNAPSHOT_REJECTION_BACKOFF_MS = 2 * 60 * 1000;
+const SNAPSHOT_REJECTION_MAX_BACKOFF_MS = 30 * 60 * 1000;
+// The only answers that say the layout itself is wrong, so that sending it again could not change
+// the result: Home Assistant's schema check ("too large", a field it does not accept). Every other
+// failure (a timeout, a dropped socket, "desktop_unavailable" while the session is still being
+// set up, "integration_not_loaded" during a reload) says nothing about the layout, and the same
+// layout is sent again once the wait is over.
+const SNAPSHOT_INVALID_CODES = new Set(['invalid_format']);
 const MAX_COMMAND_HISTORY = 100;
 const ALLOWED_ACTIONS = new Set(['show', 'hide', 'toggle', 'switch_page', 'apply_profile']);
 const SESSION_ENDED_RESULT = Object.freeze({
@@ -53,6 +71,8 @@ class DesktopCompanionClient {
     getConfigDocument = null,
     executeCommand,
     heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS,
+    sessionRetryDelaysMs = SESSION_RETRY_DELAYS_MS,
+    integrationMissingRetryMs = INTEGRATION_MISSING_RETRY_MS,
     logger = log,
   }) {
     this.websocket = websocket;
@@ -62,12 +82,24 @@ class DesktopCompanionClient {
     this.lastConfigSnapshot = null;
     this.executeCommand = executeCommand;
     this.heartbeatIntervalMs = heartbeatIntervalMs;
+    this.sessionRetryDelaysMs = sessionRetryDelaysMs;
+    this.integrationMissingRetryMs = integrationMissingRetryMs;
     this.log = logger;
     this.started = false;
     // Set when Home Assistant does not know the companion commands; cleared on each new session so
     // an integration installed or updated in the meantime is picked up after a reconnect.
     this.integrationMissing = false;
+    // Said once per connection: a session retried every few minutes would repeat it.
+    this.integrationMissingLogged = false;
     this.snapshotUnsupported = false;
+    // The layout Home Assistant declared invalid, so it is not uploaded again every heartbeat while
+    // it is unchanged, and how many failures in a row there were, of any kind.
+    this.rejectedConfigSnapshot = null;
+    this.snapshotRejections = 0;
+    this.snapshotRetryAt = 0;
+    this.sessionRetryTimer = null;
+    this.sessionRetryAttempt = 0;
+    this.lastSessionFailure = '';
     this.generation = 0;
     this.unsubscribeCommands = null;
     this.heartbeatTimer = null;
@@ -104,6 +136,10 @@ class DesktopCompanionClient {
     // already executing still finishes before the next session's commands start.
     this.pendingCommands.clear();
     this.lastConfigSnapshot = null;
+    this.clearSessionRetry();
+    this.sessionRetryAttempt = 0;
+    this.integrationMissingLogged = false;
+    this.lastSessionFailure = '';
     if (this.unsubscribeCommands) {
       this.unsubscribeCommands();
       this.unsubscribeCommands = null;
@@ -114,25 +150,63 @@ class DesktopCompanionClient {
     }
   }
 
+  clearSessionRetry() {
+    if (this.sessionRetryTimer) {
+      clearTimeout(this.sessionRetryTimer);
+      this.sessionRetryTimer = null;
+    }
+  }
+
+  // Tries the session again after a wait that grows to a few minutes. Tied to the session that
+  // failed: a socket that closed or authenticated again in the meantime starts its own.
+  scheduleSessionRetry(generation, { integrationMissing = false } = {}) {
+    if (!this.started || generation !== this.generation) return;
+    this.clearSessionRetry();
+    const delays = this.sessionRetryDelaysMs;
+    // The integration may still be loading, so it gets the same short waits as any other failure
+    // first; a session that stays "unknown command" past them is retried far less often.
+    const delay =
+      integrationMissing && this.sessionRetryAttempt >= delays.length
+        ? this.integrationMissingRetryMs
+        : delays[Math.min(this.sessionRetryAttempt, delays.length - 1)];
+    this.sessionRetryAttempt += 1;
+    this.sessionRetryTimer = setTimeout(() => {
+      this.sessionRetryTimer = null;
+      if (generation === this.generation) void this.initializeSession({ retry: true });
+    }, delay);
+  }
+
   isCurrentSession(generation) {
     return this.started && generation === this.generation && this.websocket.isConnected?.();
   }
 
   // Without the optional integration every report is refused. Say so once, then stop asking.
   noteIntegrationMissing() {
-    if (this.integrationMissing) return;
     this.integrationMissing = true;
+    if (this.integrationMissingLogged) return;
+    this.integrationMissingLogged = true;
     this.log.info(
       'HA Desktop Widget Companion integration is not installed in Home Assistant; companion updates are off for this connection.'
     );
   }
 
-  async initializeSession() {
+  async initializeSession({ retry = false } = {}) {
     if (!this.started || !this.websocket.isConnected?.()) return false;
     const generation = ++this.generation;
+    this.clearSessionRetry();
+    if (!retry) {
+      // A connection of its own, not a retry of one that failed: start the waits and the
+      // once-per-connection notices over.
+      this.sessionRetryAttempt = 0;
+      this.integrationMissingLogged = false;
+      this.lastSessionFailure = '';
+    }
     // A replacement socket can authenticate without a close event, so this is also a new session.
     this.pendingCommands.clear();
     this.lastConfigSnapshot = null;
+    this.rejectedConfigSnapshot = null;
+    this.snapshotRejections = 0;
+    this.snapshotRetryAt = 0;
     this.integrationMissing = false;
     this.snapshotUnsupported = false;
     if (this.unsubscribeCommands) {
@@ -184,15 +258,33 @@ class DesktopCompanionClient {
       await this.reportConfigSnapshot(registration.desktop_id);
       if (!this.isCurrentSession(generation)) return false;
       this.heartbeatTimer = setInterval(() => {
+        // Home Assistant stopped knowing the commands mid-session (the integration was reloaded):
+        // register again rather than staying silent until the socket drops.
+        if (this.integrationMissing) {
+          void this.initializeSession({ retry: true });
+          return;
+        }
         void this.reportState(registration.desktop_id);
         void this.reportConfigSnapshot(registration.desktop_id);
       }, this.heartbeatIntervalMs);
+      this.sessionRetryAttempt = 0;
+      this.lastSessionFailure = '';
       this.log.info('Registered this desktop with HA Desktop Widget Companion');
       return true;
     } catch (error) {
       if (this.started && generation === this.generation) {
-        if (isUnknownCommand(error)) this.noteIntegrationMissing();
-        else this.log.warn('HA Desktop Widget Companion session failed:', error?.message || error);
+        const integrationMissing = isUnknownCommand(error);
+        if (integrationMissing) {
+          this.noteIntegrationMissing();
+        } else {
+          // The same refusal on every retry would fill the log; say it again only if it changes.
+          const reason = String(error?.message || error);
+          if (reason !== this.lastSessionFailure) {
+            this.log.warn('HA Desktop Widget Companion session failed:', reason);
+          }
+          this.lastSessionFailure = reason;
+        }
+        this.scheduleSessionRetry(generation, { integrationMissing });
       }
       return false;
     }
@@ -232,12 +324,18 @@ class DesktopCompanionClient {
     const registration = desktopId ? null : await this.getRegistration();
     const resolvedDesktopId = boundedString(desktopId || registration?.desktop_id);
     if (!this.isCurrentSession(generation) || !resolvedDesktopId) return false;
+    let serialized = null;
     try {
       const document = await this.getConfigDocument();
       if (!this.isCurrentSession(generation) || !document || typeof document !== 'object')
         return false;
-      const serialized = JSON.stringify(document);
+      serialized = JSON.stringify(document);
       if (serialized === this.lastConfigSnapshot) return true;
+      // Home Assistant declared exactly this layout invalid (too large, or a schema it does not
+      // accept), and sending it again could not change the answer. A changed layout is tried again,
+      // but not before the wait after the last failure is over.
+      if (serialized === this.rejectedConfigSnapshot) return false;
+      if (this.snapshotRejections > 0 && Date.now() < this.snapshotRetryAt) return false;
       assertSuccessfulResponse(
         await this.websocket.request({
           type: 'ha_desktop_widget/put_config_snapshot',
@@ -248,6 +346,8 @@ class DesktopCompanionClient {
       );
       if (!this.isCurrentSession(generation)) return false;
       this.lastConfigSnapshot = serialized;
+      this.rejectedConfigSnapshot = null;
+      this.snapshotRejections = 0;
       return true;
     } catch (error) {
       if (!this.isCurrentSession(generation)) return false;
@@ -258,7 +358,16 @@ class DesktopCompanionClient {
         this.log.info('The HA Desktop Widget Companion integration does not store layouts.');
         return false;
       }
-      this.lastConfigSnapshot = 'unsupported';
+      this.snapshotRejections += 1;
+      this.snapshotRetryAt =
+        Date.now() +
+        Math.min(
+          SNAPSHOT_REJECTION_BACKOFF_MS * 2 ** (this.snapshotRejections - 1),
+          SNAPSHOT_REJECTION_MAX_BACKOFF_MS
+        );
+      // A timeout or a session that was not ready yet leaves the same layout worth another try
+      // after the wait; only an answer that blames the layout stops it for good.
+      if (SNAPSHOT_INVALID_CODES.has(error?.code)) this.rejectedConfigSnapshot = serialized;
       this.log.warn('Desktop layout snapshot was not accepted:', error?.message || error);
       return false;
     }

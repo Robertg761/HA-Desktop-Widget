@@ -7,6 +7,7 @@ const {
   getDesktopPinBaseBounds,
 } = require('../../src/desktop-pin-bounds.js');
 const { getMainWindowMinimumSize } = require('../../src/layer-shell.cjs');
+const { boundsVisibleOnAnyWorkArea } = require('../../src/window-placement.cjs');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
@@ -34,7 +35,9 @@ function loadConfigNormalizers() {
     electronScreen: {
       getPrimaryDisplay: () => ({ workArea }),
       getDisplayMatching: () => ({ workArea }),
+      getAllDisplays: () => [{ workArea }],
     },
+    boundsVisibleOnAnyWorkArea,
     desktopPinContentMinBounds: new Map(),
     usesCompositorOwnedPlacement: false,
   };
@@ -105,9 +108,13 @@ describe('the size saved after a resize', () => {
   });
 
   test('every place that saves the window size goes through it', () => {
-    const saves = mainSource.match(/config\.windowSize = [^;]+;/g);
+    // Putting a size back after a failed save restores one that was already saved this way.
+    const saves = mainSource
+      .match(/config\.windowSize = [^;]+;/g)
+      .filter((assignment) => !/= previous\w+;$/.test(assignment));
     expect(saves).toEqual([
       'config.windowSize = clampToMinimumWindowSize(boundsToPersist);',
+      'config.windowSize = clampToMinimumWindowSize(defaultBounds);',
       'config.windowSize = clampToMinimumWindowSize(pendingWindowBounds);',
     ]);
   });
