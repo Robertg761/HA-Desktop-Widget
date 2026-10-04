@@ -4040,6 +4040,24 @@ function pruneSensorHistorySeries(series, now = Date.now()) {
 }
 
 /**
+ * A history reply, with the readings that came in live while it was on its way.
+ *
+ * Home Assistant answers as of the moment it was asked, so a reading that arrived over the socket
+ * in the meantime is newer than the reply's last row and is not in it. Replacing the series with
+ * the reply alone dropped that reading: a sensor with nothing recorded (a reply with no rows) lost
+ * the line its tile had just drawn from the live value, depending on which of the two reached the
+ * renderer first. Everything older than the reply's last row is the reply's to say.
+ *
+ * @param {Array<{value: number, timestamp: number}>} fetched - The reply, chronological.
+ * @param {Array<{value: number, timestamp: number}>} cached - The series held before it landed.
+ * @returns {Array<{value: number, timestamp: number}>}
+ */
+function mergeLiveSensorReadings(fetched, cached) {
+  const newest = fetched.length ? fetched[fetched.length - 1].timestamp : -Infinity;
+  return [...fetched, ...cached.filter((point) => point.timestamp > newest)];
+}
+
+/**
  * Fetches 24h history for several entities in a SINGLE Home Assistant request, and writes each
  * series into the shared per-entity cache. Entities that were fetched recently, or that already
  * have a request in flight, are served from cache rather than re-requested.
@@ -4146,9 +4164,12 @@ async function fetchSensorHistoryBatch(entityIds) {
         batchIds.forEach((entityId) => {
           const entry = getSensorHistoryCacheEntry(entityId);
           entry.series = pruneSensorHistorySeries(
-            normalizeSensorHistoryResponse(response, entityId, {
-              allowBareArray: batchIds.length === 1,
-            }),
+            mergeLiveSensorReadings(
+              normalizeSensorHistoryResponse(response, entityId, {
+                allowBareArray: batchIds.length === 1,
+              }),
+              entry.series
+            ),
             completedAt
           );
           // Only a SUCCESSFUL fetch starts the refresh throttle. Tiles render before the WebSocket
@@ -4392,10 +4413,14 @@ function mountSensorTileChart(tile, entity) {
     renderSensorTileChart(tile, entity, entry?.series || []);
   }
 
-  fetchSensorHistory(entity.entity_id).then((series) => {
+  fetchSensorHistory(entity.entity_id).then(() => {
     if (generation !== ensureEntityCacheScope() || !tile.isConnected) return;
-    const latest = state.STATES?.[entity.entity_id] || entity;
-    renderSensorTileChart(tile, isFiniteNumericSensorState(latest) ? latest : entity, series);
+    const stateNow = state.STATES?.[entity.entity_id] || entity;
+    const latest = isFiniteNumericSensorState(stateNow) ? stateNow : entity;
+    // The reading the tile shows joins its line, as it does when the tile is redrawn later: a
+    // sensor with nothing recorded draws the same line the first time as it does the second.
+    appendLiveSensorHistoryValue(latest);
+    renderSensorTileChart(tile, latest, sensorHistoryCache.get(entity.entity_id)?.series || []);
   });
 }
 

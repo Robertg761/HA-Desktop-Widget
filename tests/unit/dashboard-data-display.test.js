@@ -608,6 +608,80 @@ describe('dashboard data display', () => {
       expect(svg.querySelector('polyline').getAttribute('stroke-width')).toBe('2');
     });
 
+    // The cache outlives a test, so each of these has a sensor of its own.
+    const reading = (entityId, value, changedMinutesAgo = 0) => ({
+      ...entity(entityId, value, { unit_of_measurement: '°C', state_class: 'measurement' }),
+      last_changed: new Date(Date.now() - changedMinutesAgo * 60000).toISOString(),
+    });
+    const linePoints = (entityId) =>
+      tile(entityId)
+        .querySelector('.control-sensor-sparkline-svg polyline')
+        .getAttribute('points')
+        .split(' ')
+        .map((point) => point.split(',').map(Number));
+
+    it('draws a sensor with nothing recorded from its reading the first time, not the second', async () => {
+      mockRequest.mockResolvedValue({ result: {} });
+      renderTiles([reading('sensor.attic_temp', '17.2')]);
+      await flush();
+      expect(
+        tile('sensor.attic_temp').querySelector('.control-sensor-sparkline-svg')
+      ).not.toBeNull();
+    });
+
+    it('keeps the line a reading drew while the history that came back has nothing in it', async () => {
+      let answer;
+      mockRequest.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            answer = resolve;
+          })
+      );
+      renderTiles([reading('sensor.hall_temp', '19.5')]);
+      // Drawn again before the answer comes back, which puts the reading into the series.
+      ui.renderActiveTab();
+      expect(
+        tile('sensor.hall_temp').querySelector('.control-sensor-sparkline-svg')
+      ).not.toBeNull();
+      answer({ result: {} });
+      await flush();
+      expect(
+        tile('sensor.hall_temp').querySelector('.control-sensor-sparkline-svg')
+      ).not.toBeNull();
+    });
+
+    it('keeps a reading that is newer than the last row the history came back with', async () => {
+      let answer;
+      mockRequest.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            answer = resolve;
+          })
+      );
+      renderTiles([reading('sensor.porch_temp', '20', 90)]);
+      liveUpdate(reading('sensor.porch_temp', '24', 1));
+      answer({ result: { 'sensor.porch_temp': [{ s: '20', lu: Date.now() / 1000 - 90 * 60 }] } });
+      await flush();
+      const [first, ...rest] = linePoints('sensor.porch_temp');
+      const last = rest[rest.length - 1];
+      // The line climbs from the recorded 20 to the live 24 (the y axis points down).
+      expect(last[1]).toBeLessThan(first[1]);
+    });
+
+    it('does not draw a reading twice when the history already holds it', async () => {
+      mockRequest.mockResolvedValue({
+        result: {
+          'sensor.shed_temp': [
+            { s: '20', lu: Date.now() / 1000 - 3600 },
+            { s: '22', lu: Date.now() / 1000 - 60 },
+          ],
+        },
+      });
+      renderTiles([reading('sensor.shed_temp', '22', 1)]);
+      await flush();
+      expect(linePoints('sensor.shed_temp')).toHaveLength(2);
+    });
+
     it('keeps the line one width however the viewBox is stretched', () => {
       const ruleFor = (selector) =>
         styles
