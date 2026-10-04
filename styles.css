@@ -10525,6 +10525,11 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   }
 }
 
+/* A light in colour mode reports no colour temperature: the slider is dimmed until it is moved. */
+.light-color-temp-slider.is-unset {
+  opacity: 0.55;
+}
+
 /* Camera Modal */
 
 .camera-content {
