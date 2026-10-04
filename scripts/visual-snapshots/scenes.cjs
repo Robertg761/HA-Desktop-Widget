@@ -561,6 +561,12 @@ const scenes = [
     setup: openDetails('light.color_strip'),
   },
   { name: 'popup-fan', config: dialogsPage, setup: openDetails('fan.office') },
+  // A fan Home Assistant cannot reach says so and shows nothing to adjust.
+  {
+    name: 'popup-fan-unavailable',
+    config: { activeTabId: 'bedroom' },
+    setup: openDetails('fan.bedroom'),
+  },
   { name: 'popup-cover', config: dialogsPage, setup: openDetails('cover.garage') },
   {
     name: 'popup-media',
@@ -626,6 +632,9 @@ const scenes = [
 
   // A light as a primary card: the lit lamp warms its icon and glow.
   { name: 'primary-light-card', config: { primaryCards: ['light.desk_lamp', 'time'] } },
+
+  // An entity that is gone dims on a primary card as it does in Quick Access.
+  { name: 'primary-unavailable-card', config: { primaryCards: ['fan.bedroom', 'time'] } },
 
   // A page with nothing on it says so instead of showing an empty grid.
   {

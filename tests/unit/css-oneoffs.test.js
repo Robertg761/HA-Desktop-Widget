@@ -365,6 +365,98 @@ describe('stylesheet one-offs', () => {
     });
   });
 
+  describe('pop-up controls and tiles', () => {
+    it('draws the weather details icons at 14px, at full strength, with a 2-unit stroke', () => {
+      render(
+        '<div class="weather-detail"><span class="detail-icon"><svg class="entity-line-icon"></svg></span></div>'
+      );
+      expect(resolvedValue(document.querySelector('.detail-icon'), 'font-size')).toBe('0.875rem');
+      expect(resolvedValue(document.querySelector('.detail-icon'), 'opacity')).toBeNull();
+      expect(resolvedValue(document.querySelector('.entity-line-icon'), 'stroke-width')).toBe('2');
+    });
+
+    it('accents the value in a heading, and not a heading that is all label', () => {
+      render(
+        '<div class="brightness-control-heading" id="two"><span>Color Temperature</span><span id="value">4250K</span></div><div class="brightness-control-heading" id="one"><span id="label">Color</span></div>'
+      );
+      const accent = resolvedValue(document.querySelector('#value'), 'color');
+      expect(accent).toBe(resolvedValue(document.querySelector('#value'), '--accent-text'));
+      expect(resolvedValue(document.querySelector('#label'), 'color')).not.toBe(accent);
+    });
+
+    it.each(['climate', 'fan', 'cover'])(
+      'sets the %s slider in the dialog’s own padding, level with the chips around it',
+      (name) => {
+        render(`<div class="${name}-slider-wrapper"></div>`);
+        expect(resolvedValue(document.querySelector(`.${name}-slider-wrapper`), 'padding')).toBe(
+          '0.75rem 0'
+        );
+      }
+    );
+
+    it('draws a colour swatch as a circle, not as wide as its grid column', () => {
+      render(
+        '<div class="light-color-swatches"><button class="light-color-swatch"></button></div>'
+      );
+      const swatch = document.querySelector('.light-color-swatch');
+      expect(resolvedValue(swatch, 'width')).toBe('28px');
+      expect(resolvedValue(swatch, 'height')).toBe('28px');
+      expect(resolvedValue(swatch, 'justify-self')).toBe('center');
+    });
+
+    it('lays the climate fan and preset options out on the same grid as the modes', () => {
+      render(
+        '<div class="climate-mode-buttons" id="modes"></div><div class="climate-option-buttons" id="fans"><button class="climate-fan-mode-btn"></button></div>'
+      );
+      const modes = document.querySelector('#modes');
+      const fans = document.querySelector('#fans');
+      expect(resolvedValue(fans, 'display')).toBe('grid');
+      expect(resolvedValue(fans, 'grid-template-columns')).toBe(
+        resolvedValue(modes, 'grid-template-columns')
+      );
+      // A lone last chip no longer stretches across the whole row.
+      expect(resolvedValue(document.querySelector('.climate-fan-mode-btn'), 'flex')).toBeNull();
+    });
+
+    it('sets the mode labels in the weight of the chips beside them', () => {
+      render(
+        '<span class="climate-mode-label">Heat Cool</span><button class="climate-fan-mode-btn">Auto</button>'
+      );
+      expect(resolvedValue(document.querySelector('.climate-mode-label'), 'font-weight')).toBe(
+        '600'
+      );
+    });
+
+    it('gives Add and Remove one width, so a column of them has a straight left edge', () => {
+      render('<button class="entity-selector-btn add">Add</button>');
+      const button = document.querySelector('.entity-selector-btn');
+      expect(resolvedValue(button, 'min-width')).toBe('6.5em');
+      expect(resolvedValue(button, 'text-align')).toBe('center');
+    });
+
+    it('dims an unavailable primary card the way an unavailable tile is dimmed', () => {
+      render(
+        '<div class="status-card primary-entity-card"><div class="control-item" data-unavailable="true"><div class="control-icon"></div><div class="control-name">Bedroom fan</div><div class="control-state">Unavailable</div></div></div>'
+      );
+      const name = document.querySelector('.control-name');
+      expect(resolvedValue(name, 'color')).toBe(resolvedValue(name, '--text-dim'));
+      expect(resolvedValue(document.querySelector('.control-state'), 'color')).toBe(
+        resolvedValue(name, '--text-faint')
+      );
+      // A primary card has no edge of its own to dash.
+      expect(resolvedValue(document.querySelector('.control-item'), 'border-style')).not.toBe(
+        'dashed'
+      );
+    });
+
+    it('hides the cover position caption when the cover is unavailable', () => {
+      const rule = fs
+        .readFileSync(STYLESHEET, 'utf8')
+        .match(/\.modal\.entity-unavailable\s+:is\(([^)]*)\)\s*\{\s*display: none/s);
+      expect(rule[1]).toContain('.cover-position-label');
+    });
+  });
+
   describe('reduced motion keeps the waiting indicators moving', () => {
     // The blanket "no animation" rule gives every animation 0.01ms and one iteration. A spinner or a
     // progress bar frozen that way reads as a stalled app, and the bar as a finished one.

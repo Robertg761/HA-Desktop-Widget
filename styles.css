@@ -4780,10 +4780,16 @@ body.theme-light:not(.high-contrast) .weather-glyph {
   font-variant-numeric: tabular-nums;
 }
 
+/* The wind glyph is three strokes 4 units apart in a 24-unit box. At 12px on a 1x display they
+   are 0.9px lines 2px apart and ran together into a blob; 14px with a slightly heavier stroke keeps
+   them apart, and full strength stops the droplet from fading to 3:1. */
 .detail-icon {
   display: flex;
-  font-size: var(--font-size-sm);
-  opacity: 0.85;
+  font-size: var(--font-size-base);
+}
+
+.detail-icon .entity-line-icon {
+  stroke-width: 2;
 }
 
 .detail-value {
@@ -5442,7 +5448,9 @@ body.theme-light:not(.high-contrast)
   font-weight: 600;
 }
 
-.brightness-control-heading span:last-child {
+/* The value beside a heading ('4250K' after 'Color temperature'). The 'Color' heading has a single
+   span, which :last-child matched too, and drew the label itself in the accent. */
+.brightness-control-heading span + span {
   color: var(--accent-text);
   font-variant-numeric: tabular-nums;
 }
@@ -5482,8 +5490,10 @@ body.theme-light:not(.high-contrast)
 }
 
 .light-color-swatch {
-  min-width: 28px;
+  /* A circle: a grid cell stretches the swatch to the column's width, which made it an oval. */
+  width: 28px;
   height: 28px;
+  justify-self: center;
   border: 2px solid var(--border-color);
   border-radius: 50%;
   background: var(--swatch-color);
@@ -5638,11 +5648,13 @@ body.theme-light:not(.high-contrast)
   font-size: clamp(var(--font-size-md), 15cqi, var(--font-size-4xl));
 }
 
+/* The climate, fan and cover sliders sit in the dialog's own padding like the brightness slider,
+   without a second 12px of their own (their text was 12px in from the cards and chips around them). */
 .climate-slider-wrapper {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-4);
+  padding: var(--space-4) 0;
 }
 
 .climate-slider {
@@ -5696,16 +5708,19 @@ body.theme-light:not(.high-contrast)
   font-weight: 500;
 }
 
-.climate-mode-buttons {
+/* The HVAC modes and the fan and preset options lay out alike: a grid, where a short last row
+   leaves empty cells. The options were a wrapping flex row, which stretched a lone last chip across
+   the whole width. */
+.climate-mode-buttons,
+.climate-option-buttons {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
   gap: var(--space-2);
 }
 
-.climate-option-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
+/* Four chips make two rows of two, not three and a lone one. */
+:is(.climate-mode-buttons, .climate-option-buttons):has(> :nth-child(4):last-child) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .climate-mode-btn,
@@ -5731,7 +5746,6 @@ body.theme-light:not(.high-contrast)
 .climate-fan-mode-btn,
 .climate-preset-mode-btn {
   min-height: 36px;
-  flex: 1 1 86px;
   font-size: var(--font-size-sm);
   font-weight: 600;
 }
@@ -5768,7 +5782,7 @@ body.theme-light:not(.high-contrast)
 
 .climate-mode-label {
   font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-weight: var(--font-weight-semibold);
 }
 
 .climate-modal {
@@ -5859,7 +5873,7 @@ body.theme-light:not(.high-contrast)
 
 .fan-slider-wrapper {
   width: 100%;
-  padding: var(--space-4);
+  padding: var(--space-4) 0;
 }
 
 .fan-slider {
@@ -6018,7 +6032,7 @@ body.theme-light:not(.high-contrast)
 
 .cover-slider-wrapper {
   width: 100%;
-  padding: var(--space-4);
+  padding: var(--space-4) 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -6239,16 +6253,23 @@ body.theme-light.active-tile-glow #quick-controls .control-item[data-active='tru
   border-style: dashed;
 }
 
-/* Dimmed by colour rather than opacity, so the name and "Unavailable" stay readable (4.5:1+). */
-#quick-controls .control-item[data-unavailable='true'] > .control-icon {
+/* Dimmed by colour rather than opacity, so the name and "Unavailable" stay readable (4.5:1+). A
+   primary card dims the same way (it has no edge of its own to dash). */
+:is(#quick-controls, .status-card.primary-entity-card)
+  .control-item[data-unavailable='true']
+  > .control-icon {
   opacity: 0.55;
 }
 
-#quick-controls .control-item[data-unavailable='true'] .control-name {
+:is(#quick-controls, .status-card.primary-entity-card)
+  .control-item[data-unavailable='true']
+  .control-name {
   color: var(--text-dim);
 }
 
-#quick-controls .control-item[data-unavailable='true'] .control-state {
+:is(#quick-controls, .status-card.primary-entity-card)
+  .control-item[data-unavailable='true']
+  .control-state {
   color: var(--text-faint);
 }
 
@@ -7344,7 +7365,7 @@ body.theme-light:not(.high-contrast)
   background: var(--surface-2);
   border: 1px solid var(--border-color);
   color: var(--text-secondary);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xs-plus);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -12952,6 +12973,10 @@ body.theme-light:not(.high-contrast)
 
 .entity-selector-btn {
   padding: 5px 12px;
+  /* 'Add' and 'Remove' share one width, so the column of actions has a straight left edge (and the
+     unit chips beside them in the graph editor stop shifting 24px from row to row). */
+  min-width: 6.5em;
+  text-align: center;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   font-weight: var(--font-weight-semibold);
@@ -14923,6 +14948,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
     .cover-position-value,
     .brightness-label,
     .fan-speed-label,
+    .cover-position-label,
     .control-capability-note,
     .modal-footer .btn-primary
   ) {
