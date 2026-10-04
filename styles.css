@@ -9174,18 +9174,6 @@ body.theme-light:not(.high-contrast)
   font-weight: var(--font-weight-medium);
 }
 
-.first-run-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  margin-top: 22px;
-  flex-wrap: wrap;
-}
-
-.first-run-actions .btn:first-child {
-  margin-inline-end: auto;
-}
-
 /* The URL and Authorize steps can say something under their text (a rejected address, the pairing's
    progress). The card is centred, so a line that appeared made it taller and moved the buttons by
    half its height under the pointer. These two steps keep room for one line whether or not there is
@@ -9202,6 +9190,18 @@ body.theme-light:not(.high-contrast)
   margin-top: var(--space-3);
   overflow: visible;
   clip-path: none;
+}
+
+.first-run-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: 22px;
+  flex-wrap: wrap;
+}
+
+.first-run-actions .btn:first-child {
+  margin-inline-end: auto;
 }
 
 .widget-state-panel {
@@ -11363,10 +11363,15 @@ body.theme-light .form-help code {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
+}
 
+/* Waiting indicators keep turning when the OS asks for less motion. Its own block, not part of the
+   one above, so the rules there can change without moving this. */
+@media (prefers-reduced-motion: reduce) {
   /* An indicator that says something is still happening is not decoration: frozen, the ring, the
      connecting icon and the waiting bar read as a stalled app (the bar as a finished one). These
-     keep turning, slowly. Both rules are !important, so their classes decide over the * above. */
+     keep turning, slowly. Both rules are !important, so their classes decide over the * of the block
+     above. */
   .spinner,
   [aria-busy='true']::after,
   #settings-modal .profile-sync-status[data-busy='true']::before,

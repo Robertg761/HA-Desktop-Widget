@@ -689,6 +689,8 @@ const scenes = [
     config: { activeTabId: 'bedroom' },
     setup: openDetails('fan.bedroom'),
   },
+  // An entity that is gone dims on a primary card as it does in Quick Access.
+  { name: 'primary-unavailable-card', config: { primaryCards: ['fan.bedroom', 'time'] } },
   { name: 'popup-cover', config: dialogsPage, setup: openDetails('cover.garage') },
   {
     name: 'popup-media',
@@ -857,9 +859,6 @@ const scenes = [
 
   // A light as a primary card: the lit lamp warms its icon and glow.
   { name: 'primary-light-card', config: { primaryCards: ['light.desk_lamp', 'time'] } },
-
-  // An entity that is gone dims on a primary card as it does in Quick Access.
-  { name: 'primary-unavailable-card', config: { primaryCards: ['fan.bedroom', 'time'] } },
 
   // A page with nothing on it says so instead of showing an empty grid.
   {
