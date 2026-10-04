@@ -472,11 +472,32 @@ describe('stylesheet one-offs', () => {
       );
     });
 
-    it('gives Add and Remove one width, so a column of them has a straight left edge', () => {
-      render('<button class="entity-selector-btn add">Add</button>');
-      const button = document.querySelector('.entity-selector-btn');
-      expect(resolvedValue(button, 'min-width')).toBe('6em');
-      expect(resolvedValue(button, 'text-align')).toBe('center');
+    it.each([
+      [
+        'Manage Quick Access',
+        '<div id="quick-controls-modal" class="modal"><button class="entity-selector-btn add">Add</button></div>',
+      ],
+      [
+        'the comparison graph editor',
+        '<div class="modal comparison-graph-modal"><button class="entity-selector-btn add">Add</button></div>',
+      ],
+    ])(
+      'gives Add and Remove one width in %s, so their column has a straight left edge',
+      (_, html) => {
+        render(html);
+        const button = document.querySelector('.entity-selector-btn');
+        expect(resolvedValue(button, 'min-width')).toBe('6em');
+        expect(resolvedValue(button, 'text-align')).toBe('center');
+      }
+    );
+
+    it('leaves the one-word buttons of other lists their own width', () => {
+      render(
+        '<div id="entity-repair-modal" class="modal"><button class="entity-selector-btn add">Use</button></div>'
+      );
+      expect(resolvedValue(document.querySelector('.entity-selector-btn'), 'min-width')).toBe(
+        'fit-content'
+      );
     });
 
     it('dims an unavailable primary card the way an unavailable tile is dimmed', () => {
@@ -527,12 +548,13 @@ describe('stylesheet one-offs', () => {
       const content = document.querySelector('.widget-content');
       expect(resolvedValue(content, 'scrollbar-gutter')).toBe('stable');
       // The gutter is 9px, so the end padding is 14 - 9: the margins are level when nothing scrolls.
-      expect(resolvedValue(content, 'padding-inline-end')).toBe('5px');
+      expect(resolvedValue(content, '--content-gutter')).toBe('9px');
+      expect(resolvedValue(content, 'padding-inline-end')).toBe('max(0px, calc(14px - 9px))');
     });
 
     it.each([
-      [419, '1px'],
-      [359, '0'],
+      [419, 'max(0px, calc(10px - 9px))'],
+      [359, 'max(0px, calc(8px - 9px))'],
     ])('gives the gutter back from the narrower padding at %ipx', (width, padding) => {
       render(page);
       expect(
@@ -540,6 +562,15 @@ describe('stylesheet one-offs', () => {
           viewport: { width, height: 600 },
         })
       ).toBe(padding);
+    });
+
+    it('holds no gutter in forced colours, where the system draws a scrollbar of its own width', () => {
+      render(page);
+      const content = document.querySelector('.widget-content');
+      expect(resolvedValue(content, 'scrollbar-gutter', { forcedColors: true })).toBe('auto');
+      expect(resolvedValue(content, 'padding-inline-end', { forcedColors: true })).toBe(
+        'max(0px, calc(14px - 0px))'
+      );
     });
   });
 

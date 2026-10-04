@@ -3287,7 +3287,8 @@ body:not(.desktop-pin-mode) .widget-header {
      same width, and tiles do not shift sideways when switching between them. The end padding gives
      the gutter back: both margins stay 14px when there is no scrollbar, and the thumb sits in the
      margin when there is. */
-  padding-inline-end: 5px;
+  --content-gutter: 9px;
+  padding-inline-end: max(0px, calc(14px - var(--content-gutter)));
   scrollbar-gutter: stable;
   flex: 1 1 auto;
   min-height: 0;
@@ -3297,6 +3298,16 @@ body:not(.desktop-pin-mode) .widget-header {
   backdrop-filter: blur(var(--blur-xl)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(180%);
   position: relative;
+}
+
+/* Forced colours draws the system's own scrollbar instead of the 9px one above (12px on Linux, wider
+   on Windows), so a gutter reserved for the 9px one would leave the right margin wider than the
+   left. There the gutter is held only while a scrollbar shows, as it was. */
+@media (forced-colors: active) {
+  .widget-content {
+    --content-gutter: 0px;
+    scrollbar-gutter: auto;
+  }
 }
 
 body.first-run-active .widget-content {
@@ -9979,7 +9990,7 @@ body {
 @media (max-width: 420px) {
   .widget-content {
     padding: 10px;
-    padding-inline-end: 1px;
+    padding-inline-end: max(0px, calc(10px - var(--content-gutter)));
   }
 
   .status-grid {
@@ -10031,7 +10042,7 @@ body {
 @media (max-width: 360px) {
   .widget-content {
     padding: 8px;
-    padding-inline-end: 0;
+    padding-inline-end: max(0px, calc(8px - var(--content-gutter)));
   }
 
   .media-tile {
@@ -10121,7 +10132,7 @@ body {
 @media (max-height: 420px) and (min-width: 421px) {
   .widget-content {
     padding: 8px;
-    padding-inline-end: 0;
+    padding-inline-end: max(0px, calc(8px - var(--content-gutter)));
   }
 
   .status-grid {
@@ -13072,10 +13083,6 @@ body.theme-light:not(.high-contrast)
 
 .entity-selector-btn {
   padding: 5px 12px;
-  /* 'Add' and 'Remove' share one width, so the column of actions has a straight left edge (and the
-     unit chips beside them in the graph editor stop shifting 24px from row to row). */
-  min-width: 6em;
-  text-align: center;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   font-weight: var(--font-weight-semibold);
@@ -13083,6 +13090,15 @@ body.theme-light:not(.high-contrast)
     background-color var(--transition-fast),
     border-color var(--transition-fast),
     color var(--transition-fast);
+}
+
+/* In the two lists that switch between Add and Remove, the two share one width (Remove's), so the
+   column of actions has a straight left edge, and the unit chips beside them in the graph editor stop
+   shifting 24px from row to row. The one-word 'Use' and 'Edit' buttons elsewhere keep their own. */
+#quick-controls-modal .entity-selector-btn,
+.comparison-graph-modal .entity-selector-btn {
+  min-width: 6em;
+  text-align: center;
 }
 
 .entity-selector-btn.add,
