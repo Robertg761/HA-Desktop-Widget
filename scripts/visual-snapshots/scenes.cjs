@@ -363,6 +363,30 @@ async function openGraphEditor(ctx) {
   await ctx.waitForSelector('.comparison-graph-modal .entity-selector-list .entity-item');
 }
 
+// The Updates row of Settings > Advanced as it looks for a given result. The app's update events
+// come from its main process, which a scene cannot send, so this sets the line's text and state
+// the way the update module does (src/update-status.js): what is checked is how each state looks.
+async function showUpdateState(ctx, { state, text, install = null, progress = null }) {
+  await openSettingsTab(ctx, 'advanced');
+  await ctx.ev(`(() => {
+    const status = document.getElementById('update-status');
+    status.dataset.state = ${JSON.stringify(state)};
+    document.getElementById('update-status-text').textContent = ${JSON.stringify(text)};
+    const install = document.getElementById('install-update-btn');
+    install.classList.toggle('hidden', ${JSON.stringify(install)} === null);
+    if (${JSON.stringify(install)} !== null) {
+      document.getElementById('install-update-text').textContent = ${JSON.stringify(install)};
+    }
+    const bar = document.getElementById('update-progress');
+    bar.classList.toggle('hidden', ${JSON.stringify(progress)} === null);
+    if (${JSON.stringify(progress)} !== null) {
+      document.getElementById('progress-fill').style.width = '${progress}%';
+      document.getElementById('progress-text').textContent = '${progress}%';
+    }
+    status.scrollIntoView({ block: 'center' });
+  })()`);
+}
+
 // The command palette with a query that finds the longest row type.
 async function openPaletteFor(ctx, query) {
   await ctx.ev(`document.activeElement?.blur?.()`);
@@ -555,6 +579,23 @@ const scenes = [
     },
   },
 
+  // The camera viewer's toolbar: Snapshot and Live are a pair, and the one on screen is filled.
+  {
+    name: 'popup-camera-viewer',
+    setup: async (ctx) => {
+      await ctx.click(tile('camera.driveway'));
+      await ctx.waitForSelector('.camera-modal #snapshot-btn');
+    },
+  },
+  {
+    name: 'popup-camera-viewer-live',
+    setup: async (ctx) => {
+      await ctx.click(tile('camera.driveway'));
+      await ctx.waitForSelector('.camera-modal #live-btn');
+      await ctx.click('.camera-modal #live-btn');
+    },
+  },
+
   {
     name: 'popup-light-colour',
     config: dialogsPage,
@@ -616,6 +657,33 @@ const scenes = [
     setup: (ctx) => openSettingsTab(ctx, 'alerts'),
   },
   { name: 'settings-advanced', setup: (ctx) => openSettingsTab(ctx, 'advanced') },
+  // What a check can find, each in its own colour instead of the idle grey.
+  {
+    name: 'settings-advanced-update-error',
+    setup: (ctx) =>
+      showUpdateState(ctx, {
+        state: 'error',
+        text: 'Error: Could not reach GitHub to check for updates. Check your internet connection.',
+      }),
+  },
+  {
+    name: 'settings-advanced-update-found',
+    setup: (ctx) =>
+      showUpdateState(ctx, {
+        state: 'downloading',
+        text: 'Downloading update...',
+        progress: 42,
+      }),
+  },
+  {
+    name: 'settings-advanced-update-ready',
+    setup: (ctx) =>
+      showUpdateState(ctx, {
+        state: 'downloaded',
+        text: 'Update v4.0.1 ready to install',
+        install: 'Install update',
+      }),
+  },
   {
     name: 'settings-custom-color',
     setup: async (ctx) => {
@@ -1226,6 +1294,12 @@ const scenes = [
   {
     name: 'halloween',
     ui: { seasonal: holiday('halloween') },
+  },
+  // Settings over a holiday: its header and rail sit over the art without a blur of their own.
+  {
+    name: 'settings-halloween',
+    ui: { seasonal: holiday('halloween') },
+    setup: (ctx) => openSettingsTab(ctx, 'general'),
   },
   {
     name: 'christmas-light',
