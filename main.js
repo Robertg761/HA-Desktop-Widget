@@ -1154,6 +1154,13 @@ const localizationService = createLocalizationService({
       return 'en';
     }
   },
+  getSystemLocale: () => {
+    try {
+      return app.getSystemLocale() || '';
+    } catch {
+      return '';
+    }
+  },
   manifestUrl: getLocalePackManifestSource(),
   // Locale pack downloads only run from IPC handlers, so the app is always ready by the time
   // net.fetch is invoked here.
@@ -12418,9 +12425,10 @@ async function checkManualReleaseUpdate() {
     }
     return {
       status: 'manual',
-      message: `${mainT(
-        'This package does not support in-app updates. Open Releases to download the latest build.'
-      )} v${latestVersion}`,
+      message: mainT(
+        'This package does not support in-app updates. Open Releases to download the latest build, v{{version}}.',
+        { version: latestVersion }
+      ),
       version: latestVersion,
       downloadUrl,
     };

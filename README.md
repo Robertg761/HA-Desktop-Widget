@@ -92,7 +92,7 @@ See the [Omarchy guide](docs/omarchy.md) for native desktop layers, independent 
 
 ## Export and import settings
 
-Open **Settings → Advanced → Settings files** to export your saved pages, appearance, alerts, weather and media choices to a JSON file. Connection details and credentials, desktop pins, shortcuts, tray preferences, text size, Omarchy theme following, startup, updates, and profile sync settings stay on each computer.
+Open **Settings → Advanced → Settings files** to export your saved pages, appearance, alerts, weather and media choices to a JSON file. Connection details and credentials, desktop pins, hotkeys, tray preferences, text size, Omarchy theme following, startup, updates, and profile sync settings stay on each computer.
 
 Import shows the sections that will change, page names, and how many referenced devices are missing from the current Home Assistant connection. Confirming applies the file immediately and replaces unsaved Settings edits. Imported entity IDs still refer to the original Home Assistant devices; importing does not create devices or automations.
 

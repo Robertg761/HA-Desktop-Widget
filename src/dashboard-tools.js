@@ -10,7 +10,8 @@ import {
   openDialog,
   showToast,
 } from './ui-utils.js';
-import { formatDateTime, t } from './i18n.js';
+import { formatClockDateTime } from './format.js';
+import { t } from './i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './icons.js';
 
 const MAX_RECENT_ISSUES = 5;
@@ -146,8 +147,8 @@ function showDashboardHistory() {
     const date = document.createElement('span');
     date.className = 'dashboard-restore-date';
     date.textContent = entry.undone
-      ? `${formatDateTime(entry.at)} · ${t('Before undo')}`
-      : formatDateTime(entry.at);
+      ? `${formatClockDateTime(entry.at)} · ${t('Before undo')}`
+      : formatClockDateTime(entry.at);
     const pages = document.createElement('span');
     pages.className = 'dashboard-restore-pages';
     pages.textContent = entry.layout.customTabs.map((tab) => tab.name).join(', ');

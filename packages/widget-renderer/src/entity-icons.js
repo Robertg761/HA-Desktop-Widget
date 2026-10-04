@@ -13,7 +13,7 @@
  * Copyright (c) Lucide Icons and Contributors.
  */
 
-import { getHomeAssistantMdiGlyph, normalizeEntityIconGlyph } from './utils.js';
+import { getHomeAssistantMdiGlyph, isTimerLikeSensor, normalizeEntityIconGlyph } from './utils.js';
 import state from './state.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -450,6 +450,19 @@ const LINE_ICONS = {
     ['path', { d: 'M5 12h14' }],
     ['path', { d: 'M12 5v14' }],
   ],
+  pencil: [
+    [
+      'path',
+      {
+        d: 'M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z',
+      },
+    ],
+    ['path', { d: 'm15 5 4 4' }],
+  ],
+  copy: [
+    ['rect', { width: '14', height: '14', x: '8', y: '8', rx: '2', ry: '2' }],
+    ['path', { d: 'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2' }],
+  ],
   check: [['path', { d: 'M20 6 9 17l-5-5' }]],
   'lightbulb-off': [
     ['path', { d: 'M16.8 11.2c.8-.9 1.2-2 1.2-3.2a6 6 0 0 0-9.3-5' }],
@@ -534,15 +547,7 @@ function getSensorLineIconName(entity) {
     default:
       break;
   }
-  if (
-    attributes.finishes_at ||
-    attributes.end_time ||
-    attributes.finish_time ||
-    attributes.duration ||
-    entityId.includes('timer')
-  ) {
-    return 'timer';
-  }
+  if (isTimerLikeSensor(entity)) return 'timer';
   if (entityId.includes('battery')) return 'battery';
   if (entityId.includes('temperature') || entityId.includes('temp')) return 'thermometer';
   return 'activity';
