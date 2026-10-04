@@ -153,8 +153,19 @@ describe('what the Windows and macOS packages contain', () => {
   });
 
   it('only lists files and folders that exist', () => {
+    // The two bundles are written by the vite builds, which CI runs after the tests, so they are
+    // checked against the build configs instead of the disk.
+    const buildOutputs = {
+      'dist-renderer': 'vite.config.js',
+      'dist-preload': 'vite.preload.config.js',
+    };
     for (const entry of positives(config.files)) {
       const base = entry.replace(/\/\*\*\/\*$/, '');
+      if (buildOutputs[base]) {
+        const viteConfig = fs.readFileSync(path.join(root, buildOutputs[base]), 'utf8');
+        expect(viteConfig).toContain(`outDir: '${base}'`);
+        continue;
+      }
       expect(fs.existsSync(path.join(root, base))).toBe(true);
     }
   });
