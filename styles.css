@@ -6971,10 +6971,6 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   padding-bottom: 18px;
 }
 
-#quick-controls .control-item.sensor-numeric-entity .control-icon {
-  margin-bottom: 0;
-}
-
 #quick-controls .control-item.sensor-numeric-entity .control-name {
   line-height: 1.15;
   margin-bottom: 4px;
@@ -14419,18 +14415,58 @@ body.theme-light:not(.high-contrast) :is(#quick-controls .control-item, .status-
 
 #quick-controls {
   --qa-tile-height: 104px;
+  /* How far the name sits below the icon. Every tile starts its name here, so a row of scenes,
+     sensors and switches shares one baseline instead of centring each tile's own stack. */
+  --qa-tile-info-offset: 4px;
 }
 
 body.density-compact #quick-controls {
   --qa-tile-height: 78px;
 }
 
+/* The height is a floor, not a fixed size: the name and state lines are clamped, so a tile only
+   grows to match a taller media tile in its row, which the grid stretches it to. */
 #quick-controls .control-item:not(.comparison-graph-tile):not(.media-player-entity) {
-  height: var(--qa-tile-height);
+  height: auto;
   min-height: var(--qa-tile-height);
   /* A tile too full for its height loses its bottom edge, not both ends: with plain centring the
      icon above and the state below were cut off equally. */
   justify-content: safe center;
+}
+
+/* While editing, the buttons take the top of every tile and the content sits below them, which
+   leaves no slack for a floor: the tiles keep the fixed row height they always had, and the name
+   sits where it did, a few pixels closer to the icon. */
+#quick-controls.reorganize-mode {
+  --qa-tile-info-offset: 0px;
+}
+
+#quick-controls.reorganize-mode
+  .control-item:not(.comparison-graph-tile):not(.media-player-entity) {
+  height: var(--qa-tile-height);
+}
+
+/* Icon, name and state hang from the top. Centring the name block in what is left under the icon
+   put it 6 to 14px apart across a row: a scene has no state line, a timer's is taller, a sensor
+   makes room for its sparkline, and a two-line name moved both ends. Cameras with a preview, graphs,
+   media players and the gauge (whose arc stands in for the icon) lay themselves out. */
+#quick-controls
+  .control-item:not(.comparison-graph-tile):not(.media-player-entity):not(.camera-preview-tile):not(
+    [data-chart-type='gauge']
+  )
+  > .control-info {
+  justify-content: flex-start;
+  padding-top: var(--qa-tile-info-offset);
+}
+
+/* With everything hanging from the top the foot only needs room to breathe, and a name on two lines
+   above a state line fills the 104px floor to the pixel when it keeps the 12px the centred layout
+   gave it. A number sensor keeps its own padding (none, for the sparkline over its foot). */
+#quick-controls
+  .control-item:not(.comparison-graph-tile):not(.media-player-entity):not(.camera-preview-tile):not(
+    .sensor-numeric-entity
+  ) {
+  padding-bottom: 8px;
 }
 
 /* A long name gives up its tail, not the icon above it or the state below it: Home Assistant's
@@ -14462,11 +14498,8 @@ body.density-compact
 
 #quick-controls .control-item.sensor-numeric-entity {
   gap: 6px;
-  padding: 10px 8px 0;
-}
-
-#quick-controls .control-item.sensor-numeric-entity .control-icon {
-  margin-bottom: 0;
+  /* The icon sits where every other tile's does. */
+  padding: 12px 8px 0;
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-name {
@@ -14478,8 +14511,11 @@ body.density-compact
   gap: 2px;
 }
 
+/* The sparkline is drawn over the foot of the tile, not in a strip the text is kept out of, so the
+   name and value take the room they need. The padding that reserved the strip also counted towards
+   the tile's height, which is now a floor, and grew a tile whose name wraps. */
 #quick-controls .control-item.sensor-numeric-entity .control-info {
-  padding-bottom: 20px;
+  padding-bottom: 0;
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-sensor-sparkline {
@@ -14488,7 +14524,7 @@ body.density-compact
 }
 
 #quick-controls .control-item.sensor-numeric-entity[data-chart-type='none'] .control-info {
-  padding-bottom: 10px;
+  padding-bottom: 0;
 }
 
 /* Gauge: the arc is the tile's picture, so it stands in for the icon, and the
