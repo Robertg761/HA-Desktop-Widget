@@ -1714,5 +1714,8 @@
   "Type keywords in each row to search the emoji picker, or paste one emoji and select Apply.": "Type keywords in each row to search the emoji picker, or paste one emoji and select Apply.",
   "Custom icon must be a single emoji.": "Custom icon must be a single emoji.",
   "This package does not support in-app updates. Open Releases to download the latest build, v{{version}}.": "This package does not support in-app updates. Open Releases to download the latest build, v{{version}}.",
-  "Page {{page}} of {{pages}} · 1 entity": "Page {{page}} of {{pages}} · 1 entity"
+  "Page {{page}} of {{pages}} · 1 entity": "Page {{page}} of {{pages}} · 1 entity",
+  "The secure connection failed. Check whether the URL should start with http:// or https://, and the port.": "The secure connection failed. Check whether the URL should start with http:// or https://, and the port.",
+  "Save your pages, appearance, alerts, weather and media choices in a file. Connection details, desktop pins, hotkeys and profile sync stay on this computer.": "Save your pages, appearance, alerts, weather and media choices in a file. Connection details, desktop pins, hotkeys and profile sync stay on this computer.",
+  "Import applies immediately and replaces unsaved Settings edits. Your current saved settings are backed up first. Connection details, desktop pins, hotkeys and profile sync stay on this computer. Imported settings follow your existing sync scope.": "Import applies immediately and replaces unsaved Settings edits. Your current saved settings are backed up first. Connection details, desktop pins, hotkeys and profile sync stay on this computer. Imported settings follow your existing sync scope."
 }

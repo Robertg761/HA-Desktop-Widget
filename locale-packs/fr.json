@@ -1829,6 +1829,9 @@
     "Type keywords in each row to search the emoji picker, or paste one emoji and select Apply.": "Saisissez des mots-clés dans chaque ligne pour rechercher dans le sélecteur d'emoji, ou collez un emoji et sélectionnez Appliquer.",
     "Custom icon must be a single emoji.": "L'icône personnalisée doit être un seul emoji.",
     "This package does not support in-app updates. Open Releases to download the latest build, v{{version}}.": "Ce paquet ne prend pas en charge les mises à jour intégrées. Ouvrez la page Releases pour télécharger la dernière version, v{{version}}.",
-    "Page {{page}} of {{pages}} · 1 entity": "Page {{page}} sur {{pages}} · 1 entité"
+    "Page {{page}} of {{pages}} · 1 entity": "Page {{page}} sur {{pages}} · 1 entité",
+    "The secure connection failed. Check whether the URL should start with http:// or https://, and the port.": "La connexion sécurisée a échoué. Vérifiez si l'URL doit commencer par http:// ou https://, ainsi que le port.",
+    "Save your pages, appearance, alerts, weather and media choices in a file. Connection details, desktop pins, hotkeys and profile sync stay on this computer.": "Enregistrez vos pages, apparence, alertes et choix météo et multimédia dans un fichier. La connexion, les éléments épinglés, les raccourcis et la synchronisation restent sur cet ordinateur.",
+    "Import applies immediately and replaces unsaved Settings edits. Your current saved settings are backed up first. Connection details, desktop pins, hotkeys and profile sync stay on this computer. Imported settings follow your existing sync scope.": "L’importation s’applique immédiatement et remplace les modifications non enregistrées. Vos paramètres enregistrés sont d’abord sauvegardés. La connexion, les éléments épinglés, les raccourcis et la synchronisation restent sur cet ordinateur. Les paramètres importés suivent votre périmètre de synchronisation actuel."
   }
 }

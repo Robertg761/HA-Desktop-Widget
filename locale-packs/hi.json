@@ -1829,6 +1829,9 @@
     "Type keywords in each row to search the emoji picker, or paste one emoji and select Apply.": "इमोजी पिकर में खोजने के लिए हर पंक्ति में कीवर्ड लिखें, या एक इमोजी चिपकाकर \"लागू करें\" चुनें।",
     "Custom icon must be a single emoji.": "कस्टम आइकन एक ही इमोजी होना चाहिए।",
     "This package does not support in-app updates. Open Releases to download the latest build, v{{version}}.": "यह पैकेज ऐप के भीतर अपडेट का समर्थन नहीं करता। नवीनतम बिल्ड, v{{version}}, डाउनलोड करने के लिए Releases खोलें।",
-    "Page {{page}} of {{pages}} · 1 entity": "पेज {{page}} / {{pages}} · 1 एंटिटी"
+    "Page {{page}} of {{pages}} · 1 entity": "पेज {{page}} / {{pages}} · 1 एंटिटी",
+    "The secure connection failed. Check whether the URL should start with http:// or https://, and the port.": "सुरक्षित कनेक्शन विफल रहा। जांचें कि URL http:// से शुरू होना चाहिए या https:// से, और पोर्ट भी जांचें।",
+    "Save your pages, appearance, alerts, weather and media choices in a file. Connection details, desktop pins, hotkeys and profile sync stay on this computer.": "अपने पेज, रूप, अलर्ट, मौसम और मीडिया विकल्प फ़ाइल में सहेजें। कनेक्शन विवरण, डेस्कटॉप पिन, हॉटकी और प्रोफ़ाइल सिंक इस कंप्यूटर पर रहते हैं।",
+    "Import applies immediately and replaces unsaved Settings edits. Your current saved settings are backed up first. Connection details, desktop pins, hotkeys and profile sync stay on this computer. Imported settings follow your existing sync scope.": "आयात तुरंत लागू होता है और सेटिंग में बिना सहेजे बदलाव बदल देता है। पहले आपकी वर्तमान सहेजी हुई सेटिंग का बैकअप बनता है। कनेक्शन विवरण, डेस्कटॉप पिन, हॉटकी और प्रोफ़ाइल सिंक इस कंप्यूटर पर रहते हैं। आयातित सेटिंग आपके मौजूदा सिंक दायरे का पालन करती हैं।"
   }
 }

@@ -1829,6 +1829,9 @@
     "Type keywords in each row to search the emoji picker, or paste one emoji and select Apply.": "在每一行输入关键词以搜索表情符号选择器，或粘贴一个表情符号后选择“应用”。",
     "Custom icon must be a single emoji.": "自定义图标必须是单个表情符号。",
     "This package does not support in-app updates. Open Releases to download the latest build, v{{version}}.": "此安装包不支持应用内更新。请打开 Releases 页面下载最新版本 v{{version}}。",
-    "Page {{page}} of {{pages}} · 1 entity": "第 {{page}} 页 / 共 {{pages}} 页 · 1 个实体"
+    "Page {{page}} of {{pages}} · 1 entity": "第 {{page}} 页 / 共 {{pages}} 页 · 1 个实体",
+    "The secure connection failed. Check whether the URL should start with http:// or https://, and the port.": "安全连接失败。请检查地址应以 http:// 还是 https:// 开头，并检查端口。",
+    "Save your pages, appearance, alerts, weather and media choices in a file. Connection details, desktop pins, hotkeys and profile sync stay on this computer.": "将页面、外观、提醒、天气和媒体选项保存到文件。连接信息、桌面固定磁贴、快捷键和配置同步保留在此电脑上。",
+    "Import applies immediately and replaces unsaved Settings edits. Your current saved settings are backed up first. Connection details, desktop pins, hotkeys and profile sync stay on this computer. Imported settings follow your existing sync scope.": "导入立即生效，并替换未保存的设置更改。首先备份当前已保存的设置。连接信息、桌面固定磁贴、快捷键和配置同步保留在此电脑上。导入的设置遵循现有同步范围。"
   }
 }

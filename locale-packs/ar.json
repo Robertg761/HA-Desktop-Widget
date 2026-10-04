@@ -1829,6 +1829,9 @@
     "Type keywords in each row to search the emoji picker, or paste one emoji and select Apply.": "اكتب كلمات مفتاحية في كل صف للبحث في منتقي الرموز التعبيرية، أو الصق رمزًا تعبيريًا واحدًا واختر «تطبيق».",
     "Custom icon must be a single emoji.": "يجب أن تكون الأيقونة المخصصة رمزًا تعبيريًا واحدًا.",
     "This package does not support in-app updates. Open Releases to download the latest build, v{{version}}.": "لا تدعم هذه الحزمة التحديث داخل التطبيق. افتح صفحة Releases لتنزيل أحدث نسخة، v{{version}}.",
-    "Page {{page}} of {{pages}} · 1 entity": "الصفحة {{page}} من {{pages}} · كيان واحد"
+    "Page {{page}} of {{pages}} · 1 entity": "الصفحة {{page}} من {{pages}} · كيان واحد",
+    "The secure connection failed. Check whether the URL should start with http:// or https://, and the port.": "فشل الاتصال الآمن. تحقق مما إذا كان العنوان يجب أن يبدأ بـ http:// أو https://، وتحقق من المنفذ.",
+    "Save your pages, appearance, alerts, weather and media choices in a file. Connection details, desktop pins, hotkeys and profile sync stay on this computer.": "احفظ صفحاتك ومظهرك وتنبيهاتك وخيارات الطقس والوسائط في ملف. تبقى بيانات الاتصال والعناصر المثبتة والاختصارات ومزامنة الملف الشخصي على هذا الكمبيوتر.",
+    "Import applies immediately and replaces unsaved Settings edits. Your current saved settings are backed up first. Connection details, desktop pins, hotkeys and profile sync stay on this computer. Imported settings follow your existing sync scope.": "يسري الاستيراد فوراً ويستبدل التعديلات غير المحفوظة في الإعدادات. تُحفظ نسخة احتياطية من إعداداتك الحالية أولاً. تبقى بيانات الاتصال والعناصر المثبتة والاختصارات ومزامنة الملف الشخصي على هذا الكمبيوتر. تتبع الإعدادات المستوردة نطاق المزامنة الحالي."
   }
 }
