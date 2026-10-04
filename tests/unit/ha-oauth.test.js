@@ -165,6 +165,52 @@ describe('Home Assistant OAuth', () => {
     );
   });
 
+  describe('browser callback page direction', () => {
+    async function callbackPageFor(options) {
+      let page;
+      await authorizeWithLoopback({
+        baseUrl: 'https://ha.example.test/',
+        timeoutMs: 2000,
+        ...options,
+        openExternal: async (rawAuthorizationUrl) => {
+          const authorizationUrl = new URL(rawAuthorizationUrl);
+          const callbackUrl = new URL(authorizationUrl.searchParams.get('redirect_uri'));
+          callbackUrl.searchParams.set('code', 'one-time-code');
+          callbackUrl.searchParams.set('state', authorizationUrl.searchParams.get('state'));
+          page = await requestCallbackPage(callbackUrl);
+        },
+        exchangeCode: jest.fn(async () => ({})),
+      });
+      return page.body;
+    }
+
+    test('lays an Arabic page out right to left and in the language it is written in', async () => {
+      const body = await callbackPageFor({ getLocale: () => 'ar' });
+
+      expect(body).toContain('<html lang="ar" dir="rtl">');
+    });
+
+    test('keeps a left-to-right language left to right, with a regional code intact', async () => {
+      expect(await callbackPageFor({ getLocale: () => 'de-AT' })).toContain(
+        '<html lang="de-AT" dir="ltr">'
+      );
+      expect(await callbackPageFor({})).toContain('<html lang="en" dir="ltr">');
+    });
+
+    test('follows the browser light or dark scheme, and still allows no script or remote content', async () => {
+      const body = await callbackPageFor({ getLocale: () => 'ar' });
+
+      expect(body).toContain('<meta name="color-scheme" content="light dark">');
+      expect(body).toContain("default-src 'none'; style-src 'unsafe-inline'");
+    });
+
+    test('escapes the locale like the rest of the page', async () => {
+      const body = await callbackPageFor({ getLocale: () => '"><script>' });
+
+      expect(body).not.toContain('<script>');
+    });
+  });
+
   test('passes the client translator to the pairing callback pages', async () => {
     const userDataPath = createTemporaryDirectory();
     temporaryDirectories.push(userDataPath);

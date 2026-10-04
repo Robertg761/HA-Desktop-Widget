@@ -3806,6 +3806,33 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         expect(editMode()).not.toContain('reorganize-mode');
       });
 
+      it('ends Reorganize mode on the first Escape when a toast was already up before it began', () => {
+        const actualUiUtils = jest.requireActual('../../src/ui-utils.js');
+        document.body.insertAdjacentHTML('beforeend', '<div id="toast-container"></div>');
+        // Any toast installs the toast manager's Escape handler, which then runs before the one
+        // Reorganize mode adds. The mode's own notice is a toast too, and so was this.
+        actualUiUtils.showToast('Layout saved', 'success', 60000);
+        uiUtils.showToast.mockImplementationOnce(actualUiUtils.showToast);
+        state.CONFIG.favoriteEntities = ['sensor.office_temperature'];
+        ui.renderActiveTab();
+
+        try {
+          ui.toggleReorganizeMode();
+          expect(document.querySelectorAll('#toast-container .toast')).toHaveLength(2);
+          const event = press(document.body, 'Escape');
+
+          expect(event.defaultPrevented).toBe(true);
+          expect(editMode()).not.toContain('reorganize-mode');
+          // The key went to the mode, not to either toast.
+          expect(document.querySelectorAll('#toast-container .toast-closing')).toHaveLength(0);
+        } finally {
+          // Their clocks are real timers, which must not outlive the test.
+          document
+            .querySelectorAll('#toast-container .toast')
+            .forEach((toast) => actualUiUtils.dismissToast(toast));
+        }
+      });
+
       it('saves on Enter in the name field', async () => {
         const modal = seedOfficeTemperatureTile();
         await settle();

@@ -100,6 +100,41 @@ describe('renderer i18n helpers', () => {
     expect(document.documentElement.dir).toBe('rtl');
   });
 
+  it('reads the direction from the language part of a regional code, in any case', () => {
+    for (const [locale, dir] of [
+      ['ar-EG', 'rtl'],
+      ['AR', 'rtl'],
+      ['he', 'rtl'],
+      ['fa-IR', 'rtl'],
+      ['ur', 'rtl'],
+      ['hi-IN', 'ltr'],
+      ['zh-CN', 'ltr'],
+      ['de', 'ltr'],
+    ]) {
+      i18n.setLocaleBootstrap({ activeLocale: locale, messages: {} });
+      expect({ locale, dir: document.documentElement.dir }).toEqual({ locale, dir });
+    }
+  });
+
+  it('shares its list of right-to-left languages with the main process', () => {
+    const { isRtlLocale } = require('../../packages/widget-renderer/src/rtl-locales.cjs');
+
+    expect(isRtlLocale('ar')).toBe(true);
+    expect(isRtlLocale('ar-SA')).toBe(true);
+    expect(isRtlLocale('en')).toBe(false);
+    expect(isRtlLocale('')).toBe(false);
+    expect(isRtlLocale(undefined)).toBe(false);
+  });
+
+  it('isolates a left-to-right run only while a right-to-left language is active', () => {
+    i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: {} });
+    expect(i18n.isolateLtr('#AB34CD')).toBe('\u2066#AB34CD\u2069');
+    i18n.setLocaleBootstrap({ activeLocale: 'ar-EG', messages: {} });
+    expect(i18n.isolateLtr('#AB34CD')).toBe('\u2066#AB34CD\u2069');
+    i18n.setLocaleBootstrap({ activeLocale: 'hi', messages: {} });
+    expect(i18n.isolateLtr('#AB34CD')).toBe('#AB34CD');
+  });
+
   it('formats dates and times with German regional conventions', () => {
     i18n.setLocaleBootstrap({
       activeLocale: 'de',

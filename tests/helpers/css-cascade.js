@@ -158,8 +158,9 @@ function toMatchableSelector(selector) {
 
 /**
  * jsdom's selector engine answers false for a :not() inside :is() (and fails to parse one followed
- * by a comma), so a top-level :is() group that holds one is spelled out as a selector per
- * alternative: `a :is(b:not(.x), c)` becomes `a b:not(.x)` and `a c`.
+ * by a comma), and cannot parse a :lang() inside one either, so a top-level :is() group that holds
+ * one is spelled out as a selector per alternative: `a :is(b:not(.x), c)` becomes `a b:not(.x)`
+ * and `a c`.
  */
 function expandIsGroups(selector) {
   let depth = 0;
@@ -167,7 +168,7 @@ function expandIsGroups(selector) {
     if (depth === 0 && selector.startsWith(':is(', index)) {
       const close = findClosing(selector, index + ':is'.length);
       const inner = selector.slice(index + ':is('.length, close);
-      if (inner.includes(':not(')) {
+      if (inner.includes(':not(') || inner.includes(':lang(')) {
         const before = selector.slice(0, index);
         const after = selector.slice(close + 1);
         return splitTopLevel(inner).flatMap((alternative) =>

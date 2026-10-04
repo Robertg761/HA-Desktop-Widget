@@ -2,6 +2,7 @@ const fs = require('fs');
 const http = require('http');
 const path = require('path');
 const nodeCrypto = require('crypto');
+const { isRtlLocale } = require('../packages/widget-renderer/src/rtl-locales.cjs');
 
 const OAUTH_CREDENTIALS_VERSION = 1;
 const OAUTH_CREDENTIALS_FILE = 'home-assistant-oauth.json';
@@ -78,10 +79,14 @@ function escapeCallbackPageText(value) {
 }
 
 // Title and message are already translated; language packs are downloaded data, so escape them.
-function sendCallbackPage(response, statusCode, title, message) {
+// The page says which language it is in and which way it reads, or an Arabic one would be laid
+// out left to right, and it follows the browser's light or dark scheme rather than flashing white.
+function sendCallbackPage(response, statusCode, title, message, locale = 'en') {
   const safeTitle = escapeCallbackPageText(title);
   const safeMessage = escapeCallbackPageText(message);
-  const body = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>${safeTitle}</title></head><body style="font-family:system-ui,sans-serif;max-width:36rem;margin:4rem auto;padding:0 1rem"><h1>${safeTitle}</h1><p>${safeMessage}</p></body></html>`;
+  const lang = escapeCallbackPageText(locale || 'en');
+  const dir = isRtlLocale(locale) ? 'rtl' : 'ltr';
+  const body = `<!doctype html><html lang="${lang}" dir="${dir}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta name="color-scheme" content="light dark"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>${safeTitle}</title></head><body style="font-family:system-ui,sans-serif;max-width:36rem;margin:4rem auto;padding:0 1rem"><h1>${safeTitle}</h1><p>${safeMessage}</p></body></html>`;
   response.writeHead(statusCode, {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store',
@@ -99,8 +104,10 @@ async function authorizeWithLoopback({
   timeoutMs = OAUTH_PAIRING_TIMEOUT_MS,
   createServer = http.createServer,
   randomBytes = nodeCrypto.randomBytes,
-  // Translates the browser pages shown after Home Assistant redirects back to the app.
+  // Translates the browser pages shown after Home Assistant redirects back to the app, and says
+  // which language they are in.
   translate: t = (text) => text,
+  getLocale = () => 'en',
 }) {
   const normalizedBaseUrl = normalizeHomeAssistantBaseUrl(baseUrl);
   if (!normalizedBaseUrl) {
@@ -146,16 +153,17 @@ async function authorizeWithLoopback({
       response.end('Not found');
       return;
     }
+    const send = (status, title, message) =>
+      sendCallbackPage(response, status, title, message, getLocale());
     if (settled) {
-      sendCallbackPage(response, 409, t('Authorization already handled'), t('Return to the app.'));
+      send(409, t('Authorization already handled'), t('Return to the app.'));
       return;
     }
 
     settled = true;
     const returnedState = requestUrl.searchParams.get('state') || '';
     if (!statesMatch(state, returnedState)) {
-      sendCallbackPage(
-        response,
+      send(
         400,
         t('Authorization rejected'),
         t('The authorization state did not match. Return to the app and try again.')
@@ -174,20 +182,14 @@ async function authorizeWithLoopback({
       .trim()
       .slice(0, 512);
     if (oauthError) {
-      sendCallbackPage(
-        response,
-        400,
-        t('Authorization declined'),
-        t('Return to the app to try again.')
-      );
+      send(400, t('Authorization declined'), t('Return to the app to try again.'));
       rejectCallback(createOAuthError(oauthError, 'OAUTH_AUTHORIZATION_DECLINED'));
       return;
     }
 
     const code = (requestUrl.searchParams.get('code') || '').trim();
     if (!code || code.length > 4096) {
-      sendCallbackPage(
-        response,
+      send(
         400,
         t('Authorization incomplete'),
         t('Home Assistant did not return a valid authorization code.')
@@ -201,8 +203,7 @@ async function authorizeWithLoopback({
       return;
     }
 
-    sendCallbackPage(
-      response,
+    send(
       200,
       t('HA Desktop Widget connected'),
       t('You can close this browser tab and return to the desktop app.')
@@ -446,6 +447,7 @@ class HomeAssistantOAuthClient {
     now = Date.now,
     log = console,
     translate = (text) => text,
+    getLocale = () => 'en',
   }) {
     this.safeStorage = safeStorage;
     this.platform = platform;
@@ -457,6 +459,7 @@ class HomeAssistantOAuthClient {
     this.now = now;
     this.log = log;
     this.translate = translate;
+    this.getLocale = getLocale;
     this.credentialsPath = path.join(userDataPath, OAUTH_CREDENTIALS_FILE);
     this.session = null;
     this.refreshPromise = null;
@@ -622,6 +625,7 @@ class HomeAssistantOAuthClient {
         signal: controller.signal,
         openExternal: this.openExternal,
         translate: this.translate,
+        getLocale: this.getLocale,
         exchangeCode: async ({ baseUrl: resolvedBaseUrl, clientId, redirectUri, code }) => {
           const response = await this.postForm(`${resolvedBaseUrl}/auth/token`, {
             grant_type: 'authorization_code',
