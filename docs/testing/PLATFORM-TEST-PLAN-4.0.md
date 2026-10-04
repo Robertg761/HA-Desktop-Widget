@@ -447,7 +447,7 @@ Ref: SM3-05, RO2-61, MP-49
 
 ### WIN11-9 Folder picker
 
-1. Keep Always on top on. Settings > Advanced > Profile Syncing: turn on Profile sync and choose Choose Folder...
+1. Keep Always on top on. Settings > Advanced > Profile Syncing: turn on Profile sync and choose Choose folder...
 
 Expected: The folder dialog opens in front of the widget and Settings is blocked until you close it. It cannot end up hidden behind the widget.
 
@@ -607,7 +607,7 @@ Ref: MP-75
 
 ### MAC-9 Folder picker
 
-1. Settings > Advanced > Profile Syncing: turn on Profile sync and choose Choose Folder...
+1. Settings > Advanced > Profile Syncing: turn on Profile sync and choose Choose folder...
 
 Expected: The folder dialog opens in front of the widget and attached to it (as a sheet), and the widget cannot be used until it closes.
 
@@ -1431,7 +1431,7 @@ Ref: RO2-12
 
 1. Click Live on a cloud or HLS camera that takes several seconds to start.
 
-Expected: A loading state ("Starting live stream…") shows until video plays. If the stream stalls, the viewer falls back to a snapshot, not a blank pane with a Stop button.
+Expected: A loading state ("Starting live stream...") shows until video plays. If the stream stalls, the viewer falls back to a snapshot, not a blank pane with a Stop button.
 
 Capture: A recording of the first ten seconds.
 

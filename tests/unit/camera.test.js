@@ -548,7 +548,7 @@ describe('Camera Module', () => {
       const fallbackSrc = image.getAttribute('src');
       expect(fallbackSrc).toMatch(/^ha:\/\/camera\/camera\.front_door\?/);
       // The tile is too narrow for the full explanation; the expanded view carries that.
-      expect(status.textContent).toBe('Loading snapshot…');
+      expect(status.textContent).toBe('Loading snapshot...');
       image.onload();
       expect(tile.dataset.cameraPreviewState).toBe('fallback');
       expect(status.textContent).toBe('Snapshot fallback');
@@ -579,7 +579,7 @@ describe('Camera Module', () => {
       expect(tile.dataset.cameraPreviewSource).toBe('image');
       expect(tile.dataset.cameraPreviewHasFrame).toBe('true');
       expect(activeImage(tile)).toBe(warmup);
-      expect(status.textContent).toBe('Starting live stream…');
+      expect(status.textContent).toBe('Starting live stream...');
       expect(badgeLabel(tile)).toBe('Live');
 
       video.onloadeddata();
@@ -832,7 +832,7 @@ describe('Camera Module', () => {
       expect(snapshot.getAttribute('src')).toMatch(
         /^ha:\/\/camera\/camera\.aarlo_doorbell_cam\?preview=\d+&t=\d+$/
       );
-      expect(status.textContent).toBe('Loading snapshot…');
+      expect(status.textContent).toBe('Loading snapshot...');
       snapshot.onload();
       expect(tile.dataset.cameraPreviewState).toBe('fallback');
 
@@ -851,14 +851,14 @@ describe('Camera Module', () => {
 
       jest.advanceTimersByTime(29999);
       expect(mockHlsInstance.destroy).not.toHaveBeenCalled();
-      expect(status.textContent).toBe('Starting live stream…');
+      expect(status.textContent).toBe('Starting live stream...');
 
       jest.advanceTimersByTime(1);
       expect(mockHlsInstance.destroy).toHaveBeenCalledTimes(1);
       expect(pendingImage(tile).getAttribute('src')).toMatch(
         /^ha:\/\/camera\/camera\.front_door\?/
       );
-      expect(status.textContent).toBe('Loading snapshot…');
+      expect(status.textContent).toBe('Loading snapshot...');
     });
 
     it('gives a camera the full wait once, then gives up on the stream sooner', async () => {
@@ -870,22 +870,22 @@ describe('Camera Module', () => {
 
       // A cloud camera can legitimately need 20s+, so the first attempt waits the full time.
       jest.advanceTimersByTime(29999);
-      expect(status.textContent).toBe('Starting live stream…');
+      expect(status.textContent).toBe('Starting live stream...');
       jest.advanceTimersByTime(1);
-      expect(status.textContent).toBe('Loading snapshot…');
+      expect(status.textContent).toBe('Loading snapshot...');
       pendingImage(tile).onload();
 
       await jest.advanceTimersByTimeAsync(30000);
       await flushLivePreviewStart();
       expect(mockHls).toHaveBeenCalledTimes(2);
-      expect(status.textContent).toBe('Starting live stream…');
+      expect(status.textContent).toBe('Starting live stream...');
 
       // This camera has already failed once, so the tile stops claiming to be starting a stream
       // long before another 30 seconds have gone by.
       jest.advanceTimersByTime(9999);
-      expect(status.textContent).toBe('Starting live stream…');
+      expect(status.textContent).toBe('Starting live stream...');
       jest.advanceTimersByTime(1);
-      expect(status.textContent).toBe('Loading snapshot…');
+      expect(status.textContent).toBe('Loading snapshot...');
       pendingImage(tile).onload();
       expect(tile.dataset.cameraPreviewState).toBe('fallback');
       expect(badgeLabel(tile)).toBe('Snapshot');
@@ -954,7 +954,7 @@ describe('Camera Module', () => {
       const expanded = document.querySelector('.camera-expanded-preview');
       expect(expanded.querySelector('.camera-expanded-preview-stage img')).toBe(buffers[0]);
       expect(expanded.querySelector('.camera-expanded-preview-status').textContent).toBe(
-        'Live unavailable — loading snapshot…'
+        'Live unavailable — loading snapshot...'
       );
       const loadingBuffer = buffers.find((buffer) => buffer.hasAttribute('src'));
       expect(loadingBuffer.getAttribute('src')).toMatch(/^ha:\/\/camera\/camera\.front_door\?/);
@@ -997,9 +997,9 @@ describe('Camera Module', () => {
         entity_id: entityId,
       });
       expect(reconnect.disabled).toBe(true);
-      expect(reconnect.textContent).toBe('Reconnecting…');
+      expect(reconnect.textContent).toBe('Reconnecting...');
       expect(expanded.querySelector('.camera-expanded-preview-status').textContent).toBe(
-        'Reconnecting live stream…'
+        'Reconnecting live stream...'
       );
 
       await mockWebSocketCallService.mock.results[0].value;
@@ -1576,18 +1576,18 @@ describe('Camera Module', () => {
 
       // The viewer opens on a snapshot; nobody has asked for a stream yet.
       expect(loading.classList.contains('show')).toBe(true);
-      expect(label()).toBe('Loading snapshot…');
+      expect(label()).toBe('Loading snapshot...');
       document.querySelector('.camera-modal .camera-stream').onload();
       expect(loading.classList.contains('show')).toBe(false);
 
       document.getElementById('live-btn').click();
       expect(loading.classList.contains('show')).toBe(true);
-      expect(label()).toBe('Starting live stream…');
+      expect(label()).toBe('Starting live stream...');
       expect(loading.textContent).not.toContain('Loading live stream');
 
       // Snapshot again: the label follows the mode, it does not stay on the last one.
       document.getElementById('snapshot-btn').click();
-      expect(label()).toBe('Loading snapshot…');
+      expect(label()).toBe('Loading snapshot...');
     });
 
     it('should close modal when close button clicked', () => {

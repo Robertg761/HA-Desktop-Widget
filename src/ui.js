@@ -1418,12 +1418,12 @@ function showAddPageModal({ starter = false } = {}) {
   loadRooms.onclick = async () => {
     loadRooms.disabled = true;
     if (starter) saveBtn.disabled = true;
-    roomStatus.textContent = t('Loading rooms…');
+    roomStatus.textContent = t('Loading rooms...');
     try {
       if (starter) {
-        if (!websocket.isConnected()) roomStatus.textContent = t('Connecting to Home Assistant…');
+        if (!websocket.isConnected()) roomStatus.textContent = t('Connecting to Home Assistant...');
         if (!(await waitForRoomConnection(websocket, () => modal.isConnected))) return;
-        roomStatus.textContent = t('Loading rooms…');
+        roomStatus.textContent = t('Loading rooms...');
         const response = await websocket.request({ type: 'get_states' });
         if (response?.success === false || !Array.isArray(response?.result))
           throw new Error('states unavailable');
@@ -2460,7 +2460,7 @@ function showRenameModal(entityId) {
               <input type="checkbox" id="tile-tray-checkbox"${currentTrayEnabled ? ' checked' : ''} />
               <span>${utils.escapeHtml(t('Show in system tray'))} (${utils.escapeHtml(t('Beta'))})</span>
             </label>
-            <div class="form-help">${utils.escapeHtml(t('Shows this entity’s current value as its own icon in the system tray.'))}</div>
+            <div class="form-help">${utils.escapeHtml(t("Shows this entity's current value as its own icon in the system tray."))}</div>
           </div>
           <div id="tile-tray-options"${currentTrayEnabled ? '' : ' hidden'}>
             <div class="form-group">
@@ -2504,7 +2504,7 @@ function showRenameModal(entityId) {
             <select id="camera-preview-refresh-select" class="form-control">
               ${cameraPreviewOptionsMarkup}
             </select>
-            <div class="form-help">${utils.escapeHtml(t('Live mode uses the authenticated camera stream only while the tile and app are visible. Snapshot modes show the camera integration’s latest image, which may be cached.'))}</div>
+            <div class="form-help">${utils.escapeHtml(t("Live mode uses the authenticated camera stream only while the tile and app are visible. Snapshot modes show the camera integration's latest image, which may be cached."))}</div>
           </div>`
       : '';
 
@@ -4886,7 +4886,7 @@ function renderComparisonGraphBody(tile, graph) {
     body.textContent = '';
     const empty = document.createElement('div');
     empty.className = 'comparison-graph-empty';
-    empty.textContent = entries.length ? t('Waiting for history…') : t('No sensors selected');
+    empty.textContent = entries.length ? t('Waiting for history...') : t('No sensors selected');
     body.appendChild(empty);
     return;
   }
@@ -5232,8 +5232,8 @@ function showComparisonGraphModal(graphId) {
   search.type = 'text';
   search.className = 'form-control';
   search.spellcheck = false;
-  search.placeholder = t('Search sensors…');
-  search.setAttribute('aria-label', t('Search sensors…'));
+  search.placeholder = t('Search sensors...');
+  search.setAttribute('aria-label', t('Search sensors...'));
   searchGroup.appendChild(search);
   body.appendChild(searchGroup);
 
@@ -10340,7 +10340,7 @@ function createControlElement(entity, options = {}) {
         </div>
         <div class="camera-tile-copy">
           <div class="control-name">${name}</div>
-          <div class="control-state camera-tile-preview-status">${utils.escapeHtml(t(hasLiveCameraPreview ? 'Starting live stream…' : 'Loading snapshot…'))}</div>
+          <div class="control-state camera-tile-preview-status">${utils.escapeHtml(t(hasLiveCameraPreview ? 'Starting live stream...' : 'Loading snapshot...'))}</div>
         </div>
       `;
       div.classList.add('camera-entity', 'camera-preview-tile');

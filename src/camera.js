@@ -28,7 +28,7 @@ const CAMERA_PREVIEW_LOAD_TIMEOUT_MS = 20000;
 const CAMERA_PREVIEW_LIVE_START_TIMEOUT_MS = 30000;
 // A camera gets the full wait the first time, because some cloud cameras genuinely need 20s+ to
 // negotiate a stream. Once one has failed, later attempts give up sooner rather than parking the
-// tile on "Starting live stream…" for half a minute every cycle.
+// tile on "Starting live stream..." for half a minute every cycle.
 const CAMERA_PREVIEW_LIVE_RESTART_TIMEOUT_MS = 10000;
 const CAMERA_PREVIEW_STAGGER_MS = 180;
 const CAMERA_PREVIEW_MAX_STAGGER_MS = 900;
@@ -316,11 +316,11 @@ function requestCameraSnapshot(record, { liveFallback = false } = {}) {
     record,
     liveFallback ? 'loading' : record.hasLoaded ? 'refreshing' : 'loading',
     liveFallback
-      ? 'Live unavailable — loading snapshot…'
+      ? 'Live unavailable — loading snapshot...'
       : record.hasLoaded
-        ? 'Refreshing snapshot…'
-        : 'Loading snapshot…',
-    liveFallback ? 'Loading snapshot…' : undefined
+        ? 'Refreshing snapshot...'
+        : 'Loading snapshot...',
+    liveFallback ? 'Loading snapshot...' : undefined
   );
 
   const failSnapshot = () => {
@@ -613,7 +613,7 @@ async function requestCameraLivePreview(record) {
   record.loading = true;
   record.requestId += 1;
   const requestId = record.requestId;
-  setCameraPreviewState(record, 'loading', 'Starting live stream…');
+  setCameraPreviewState(record, 'loading', 'Starting live stream...');
   requestCameraWarmupSnapshot(record, requestId);
   armCameraPreviewLoadTimeout(
     record,
@@ -860,7 +860,7 @@ function mountCameraPreview(tile, entityId, refreshValue) {
   setCameraPreviewState(
     record,
     'loading',
-    previewMode === 'live' ? 'Starting live stream…' : 'Loading snapshot…'
+    previewMode === 'live' ? 'Starting live stream...' : 'Loading snapshot...'
   );
   observer?.observe(tile);
   if (isCameraEntityOffline(entityId)) {
@@ -956,7 +956,7 @@ async function reconnectCameraPreview(record, camera, button) {
   record.reconnecting = true;
   if (button) {
     button.disabled = true;
-    button.textContent = t('Reconnecting…');
+    button.textContent = t('Reconnecting...');
   }
 
   clearCameraPreviewTimer(record);
@@ -965,7 +965,7 @@ async function reconnectCameraPreview(record, camera, button) {
   resetCameraPreviewMedia(record);
   resetCameraLiveRetryBackoff(record);
   suspendedCameraPreviewEntities.delete(record.entityId);
-  setCameraPreviewState(record, 'loading', 'Reconnecting live stream…');
+  setCameraPreviewState(record, 'loading', 'Reconnecting live stream...');
 
   const shouldStopAarloActivity = isAarloCamera(camera);
   const resetStartedAt = Date.now();
@@ -1044,7 +1044,7 @@ function openExpandedCameraPreview(record, camera) {
       </header>
       <div class="camera-expanded-preview-stage"></div>
       <footer class="camera-expanded-preview-footer">
-        <span class="camera-expanded-preview-status" role="status">${escapeHtml(t(record.statusText || 'Loading preview…'))}</span>
+        <span class="camera-expanded-preview-status" role="status">${escapeHtml(t(record.statusText || 'Loading preview...'))}</span>
         ${
           record.previewMode === 'live'
             ? `<button type="button" class="camera-expanded-preview-reconnect" aria-label="${escapeHtmlAttribute(t('Reconnect camera'))}">${escapeHtml(t('Reconnect'))}</button>`
@@ -1261,7 +1261,7 @@ async function openCamera(cameraId, options = {}) {
             <img alt="${escapeHtmlAttribute(getEntityDisplayName(camera))}" class="camera-stream camera-img">
             <div class="camera-loading" id="camera-loading">
               <div class="spinner"></div>
-              <span id="camera-loading-text">${escapeHtml(t('Loading snapshot…'))}</span>
+              <span id="camera-loading-text">${escapeHtml(t('Loading snapshot...'))}</span>
             </div>
             <div class="camera-viewer-message" id="camera-viewer-message" hidden>
               <span class="camera-viewer-message-icon" aria-hidden="true">${lineIconMarkup('cctv')}</span>
@@ -1354,7 +1354,7 @@ async function openCamera(cameraId, options = {}) {
       if (!img) return;
       const generation = streamGeneration;
       // A snapshot that fails used to leave a broken image icon and no explanation.
-      showLoading(true, t('Loading snapshot…'));
+      showLoading(true, t('Loading snapshot...'));
       img.onload = () => {
         if (closed || generation !== streamGeneration) return;
         showLoading(false);
@@ -1380,7 +1380,7 @@ async function openCamera(cameraId, options = {}) {
         liveBtn.textContent = t('Stop');
         liveBtn.setAttribute('aria-busy', 'true');
       }
-      showLoading(true, t('Starting live stream…'));
+      showLoading(true, t('Starting live stream...'));
 
       // Load the optional player and request the stream in parallel. Either may
       // outlive the modal, so every continuation is generation guarded.

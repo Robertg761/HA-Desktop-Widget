@@ -353,7 +353,7 @@ function createSettingsModalDOM() {
           <label><input type="checkbox" id="profile-sync-scope-automation-alerts" /></label>
           <label><input type="checkbox" id="profile-sync-scope-connection-media-preferences" /></label>
         </div>
-        <button type="button" id="profile-sync-help-btn">Need Help?</button>
+        <button type="button" id="profile-sync-help-btn">Need help?</button>
         <select id="profile-sync-interval">
           <option value="1">1</option>
           <option value="5" selected>5</option>
@@ -379,8 +379,8 @@ function createSettingsModalDOM() {
           <button type="button" id="profile-sync-clear-passphrase">Clear Saved Passphrase</button>
         </div>
         <button type="button" id="profile-sync-now">Sync now</button>
-        <button type="button" id="profile-sync-pull-now">Sync Down</button>
-        <button type="button" id="profile-sync-push-now">Sync Up</button>
+        <button type="button" id="profile-sync-pull-now">Sync down</button>
+        <button type="button" id="profile-sync-push-now">Sync up</button>
         <select id="profile-sync-backup-select"></select>
         <button type="button" id="profile-sync-restore-backup">Restore</button>
         <p id="profile-sync-backup-detail" class="hidden"></p>
@@ -5222,7 +5222,7 @@ describe('Settings + Config Integration', () => {
       );
     });
 
-    test('asks before Sync Up replaces the sync file', async () => {
+    test('asks before Sync up replaces the sync file', async () => {
       enableSavedProfileSync();
       await settings.openSettings();
       mockElectronAPI.runProfileSync = jest.fn().mockResolvedValue({ ok: true });
@@ -5232,9 +5232,9 @@ describe('Settings + Config Integration', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
-        'Sync Up',
+        'Sync up',
         expect.stringContaining('Replace the sync file'),
-        expect.objectContaining({ confirmText: 'Sync Up' })
+        expect.objectContaining({ confirmText: 'Sync up' })
       );
       expect(mockElectronAPI.runProfileSync).not.toHaveBeenCalled();
 
@@ -5612,7 +5612,7 @@ describe('Settings + Config Integration', () => {
       // The file in the new folder is never replaced, so the copy is not retried.
       expect(mockElectronAPI.copyProfileSyncFile).toHaveBeenCalledTimes(1);
       expect(mockUiUtils.showConfirm).toHaveBeenLastCalledWith(
-        'Sync File Already Exists',
+        'Sync file already exists',
         expect.stringContaining('/tmp/new-sync already has a sync file'),
         expect.objectContaining({ confirmText: 'Use That File', cancelText: 'Keep Current' })
       );
@@ -5677,7 +5677,7 @@ describe('Settings + Config Integration', () => {
       await settings.saveSettings();
 
       expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
-        'Sync Folder Changed',
+        'Sync folder changed',
         'Copy the existing sync data file from /tmp/old-sync into /tmp/new-sync and switch sync there?',
         expect.objectContaining({ confirmText: 'Copy & Switch', cancelText: 'Keep Current' })
       );
@@ -5801,7 +5801,7 @@ describe('Settings + Config Integration', () => {
         expect.any(Number),
       ]);
       expect(await toastFor('upload')).toEqual([
-        'This computer’s settings were uploaded to the sync file.',
+        "This computer's settings were uploaded to the sync file.",
         'success',
         expect.any(Number),
       ]);
@@ -5870,8 +5870,8 @@ describe('Settings + Config Integration', () => {
       });
 
       describe('when the encryption choice or passphrase in the form is not saved yet', () => {
-        // Sync runs against what is saved, so Sync Up would publish in the old mode while the
-        // form shows another, and Sync Down would read the file with the old passphrase.
+        // Sync runs against what is saved, so Sync up would publish in the old mode while the
+        // form shows another, and Sync down would read the file with the old passphrase.
         const syncButtons = ['profile-sync-now', 'profile-sync-push-now', 'profile-sync-pull-now'];
         const expectEveryButtonAskedToSave = async () => {
           mockElectronAPI.runProfileSync = jest.fn().mockResolvedValue({ ok: true });
@@ -6004,7 +6004,7 @@ describe('Settings + Config Integration', () => {
         expect(lastToast()).toEqual(['The sync file is damaged.', 'error', expect.any(Number)]);
       });
 
-      test('Sync Down says so when nothing was downloaded', async () => {
+      test('Sync down says so when nothing was downloaded', async () => {
         await openWithRunningSync();
         mockUiUtils.showConfirm.mockResolvedValue(true);
 
@@ -6052,7 +6052,7 @@ describe('Settings + Config Integration', () => {
         opacity: 0.6,
       });
 
-      test('Sync Down rebuilds the form, so Save does not write the old values back', async () => {
+      test('Sync down rebuilds the form, so Save does not write the old values back', async () => {
         await openWithRunningSync();
         mockUiUtils.showConfirm.mockResolvedValue(true);
         const before = document.getElementById('opacity-slider').value;

@@ -1344,11 +1344,11 @@ function mainLocale() {
 function describeKnownProfileSyncFailure(error) {
   if (profileSyncCore.isSyncFileDamagedError(error)) {
     return mainT(
-      'The sync file is damaged. Use Sync Up to replace it with this computer’s settings; the old file is backed up first.'
+      "The sync file is damaged. Use Sync up to replace it with this computer's settings; the old file is backed up first."
     );
   }
   if (error?.code === REWRITE_TRANSACTION_INVALID) {
-    return mainT('Could not update the sync file’s encryption. Nothing was changed. Try again.');
+    return mainT("Could not update the sync file's encryption. Nothing was changed. Try again.");
   }
   return '';
 }
@@ -3936,7 +3936,7 @@ const PROFILE_SYNC_SECTION_LABELS = {
 function createDamagedSyncSectionsError(sectionKeys) {
   return new Error(
     mainT(
-      "The sync file's {{sections}} settings are damaged. Use Sync Up to replace them with this computer's; the damaged copy is backed up first.",
+      "The sync file's {{sections}} settings are damaged. Use Sync up to replace them with this computer's; the damaged copy is backed up first.",
       {
         sections: sectionKeys
           .map((key) => mainT(PROFILE_SYNC_SECTION_LABELS[key] || key))
@@ -4245,7 +4245,7 @@ function describeSyncFileSystemError(error) {
   // the sentence names both rather than sending the user to retry what cannot succeed.
   if (error?.code === 'EPERM' && process.platform === 'win32') {
     return mainT(
-      'The sync file is in use by another program or is read-only. Try again in a moment, and check the folder’s permissions if it keeps happening.'
+      "The sync file is in use by another program or is read-only. Try again in a moment, and check the folder's permissions if it keeps happening."
     );
   }
   switch (error?.code) {
@@ -4253,7 +4253,7 @@ function describeSyncFileSystemError(error) {
     case 'EPERM':
     case 'EROFS':
       return mainT(
-        'This app does not have permission to use the sync file or its folder. Check the folder’s permissions and that it is not read-only.'
+        "This app does not have permission to use the sync file or its folder. Check the folder's permissions and that it is not read-only."
       );
     case 'ENOSPC':
       return mainT('The disk that holds the sync folder is full.');
@@ -4288,7 +4288,7 @@ function throwSyncFileSystemError(error) {
 /**
  * Reads the sync file. A file that exists but cannot be parsed comes back with
  * `damaged` (its text and the reason) instead of throwing, so the callers that may
- * replace it (Sync Up, Keep Local on first enable) can keep a copy first;
+ * replace it (Sync up, Keep Local on first enable) can keep a copy first;
  * readConfiguredSyncEnvelope throws for it unless asked to hand it back.
  */
 async function readCloudFileEnvelope(filePath) {
@@ -4605,7 +4605,7 @@ async function keepSyncFileCopy(prefix, extension, writeCopy) {
   await pruneProfileSyncBackups(backupDir, new RegExp(`^${prefix}-\\d+\\.${extension}$`));
 }
 
-/** Keeps the text of a sync file that could not be read before Sync Up replaces it. */
+/** Keeps the text of a sync file that could not be read before Sync up replaces it. */
 function backupDamagedSyncFile(raw) {
   return keepSyncFileCopy('damaged-sync-file', 'txt', (target) =>
     fs.promises.writeFile(target, raw, 'utf8')
@@ -6546,7 +6546,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
     profileSyncRuntime.conflictCopies = await findProfileSyncConflictCopies();
 
     if (remoteResult.damaged) {
-      // A file that cannot be read is only replaced by an explicit Sync Up (or Keep
+      // A file that cannot be read is only replaced by an explicit Sync up (or Keep
       // Local on first enable), and only after a copy is kept.
       if (direction !== 'push') throw remoteResult.damaged.error;
       await backupDamagedSyncFile(remoteResult.damaged.raw);
@@ -6592,7 +6592,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
         );
       } catch (error) {
         // Content that parsed but cannot be read (a cut-off encrypted payload) is
-        // damage like an unparseable file: Sync Up replaces it after keeping a copy.
+        // damage like an unparseable file: Sync up replaces it after keeping a copy.
         if (!profileSyncCore.isSyncFileDamagedError(error) || direction !== 'push') throw error;
         await backupDamagedSyncFile(profileSyncCore.serializeSyncEnvelope(remoteEnvelope));
         remoteEnvelope = null;
@@ -6618,7 +6618,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
     );
     const damagedSections = Object.keys(damagedInScope);
     if (damagedSections.length > 0) {
-      // Only an explicit Sync Up may replace damaged sections, after keeping them.
+      // Only an explicit Sync up may replace damaged sections, after keeping them.
       if (direction !== 'push') throw createDamagedSyncSectionsError(damagedSections);
       await backupRemoteSectionsBeforePush(damagedInScope);
     }
@@ -6673,7 +6673,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       !!profileSync.remoteRewritePending && mayChangeEncryption && !remoteModeMatches;
     let wroteEnvelope = null;
     if (pushKeys.length > 0 || rewriteRequired) {
-      // A merge only replaces remote edits it reports as discarded. Sync Up replaces
+      // A merge only replaces remote edits it reports as discarded. Sync up replaces
       // whatever the file holds for the sections it pushes, so it keeps all of them.
       const replacedRemoteKeys = direction === 'push' ? plan.push : plan.discardsRemote;
       const replacedRemoteSections = pickSections(remoteSections, replacedRemoteKeys);
@@ -6713,7 +6713,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       if (await hasRemoteSyncEnvelopeChanged(remoteResult)) {
         log.info('Remote sync file changed while preparing a push; re-resolving direction');
         await persistProfileSyncBaseline(nextBaseline, scopeKeys);
-        // Sync Up and a conflict choice were decided against the file as it was;
+        // Sync up and a conflict choice were decided against the file as it was;
         // an automatic merge must not stand in for them, so the user is asked again.
         if (source === 'conflict_recheck' || direction !== 'auto') {
           throw new Error(mainT('Sync file kept changing on the other device; try again'));
@@ -9485,7 +9485,7 @@ ipcMain.handle('choose-profile-sync-folder', async (event, provider, currentFold
   let result;
   try {
     const dialogOptions = {
-      title: mainT('Choose Profile Sync Folder'),
+      title: mainT('Choose profile sync folder'),
       defaultPath,
       properties: ['openDirectory', 'createDirectory'],
     };

@@ -647,7 +647,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
       ui.showAddPageModal({ starter: true });
       expect(document.querySelector('.room-dashboard [role="status"]').textContent).toBe(
-        'Connecting to Home Assistant…'
+        'Connecting to Home Assistant...'
       );
       expect(mockRequest).not.toHaveBeenCalled();
       expect(document.querySelector('#add-page-save-btn').disabled).toBe(true);
@@ -3404,7 +3404,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(cameraTile.dataset.cameraPreviewRefresh).toBe('10s');
       expect(cameraTile.querySelector('.camera-tile-preview-image')).toBeTruthy();
       expect(cameraTile.querySelector('.camera-tile-preview-status').textContent).toBe(
-        'Loading snapshot…'
+        'Loading snapshot...'
       );
       expect(cameraTile.querySelector('.camera-tile-preview-badge').textContent).toContain(
         'Snapshot'
@@ -3441,7 +3441,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(cameraTile.dataset.cameraPreviewRefresh).toBe('live');
       expect(cameraTile.querySelector('.camera-tile-preview-badge').textContent).toContain('Live');
       expect(cameraTile.querySelector('.camera-tile-preview-status').textContent).toBe(
-        'Starting live stream…'
+        'Starting live stream...'
       );
       expect(camera.mountCameraPreview).toHaveBeenCalledWith(
         cameraTile,
@@ -8462,7 +8462,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(nameInput.id).not.toBe('');
 
       const search = [...modal.querySelectorAll('input')].find((input) => input !== nameInput);
-      expect(search.getAttribute('aria-label')).toBe('Search sensors…');
+      expect(search.getAttribute('aria-label')).toBe('Search sensors...');
       expect(search.spellcheck).toBe(false);
 
       const row = modal.querySelector('.entity-item');

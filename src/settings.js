@@ -2455,11 +2455,11 @@ function renderPrimaryCardsEntityRows() {
         <button class="${cardTwoClass}" type="button" data-primary-assign="1" data-entity-id="${entityIdAttr}" ${cardTwoDisabled}>${cardTwoLabel}</button>
       </div>
     `;
-      // Two buttons per entity, and a screen reader hears "Set Card 1" a hundred times; the group
-      // says which entity they are for.
-      const actionGroup = item.querySelector('.primary-cards-list-actions');
-      actionGroup.setAttribute('role', 'group');
-      actionGroup.setAttribute('aria-label', utils.getEntityDisplayName(entity));
+    // Two buttons per entity, and a screen reader hears "Set Card 1" a hundred times; the group
+    // says which entity they are for.
+    const actionGroup = item.querySelector('.primary-cards-list-actions');
+    actionGroup.setAttribute('role', 'group');
+    actionGroup.setAttribute('aria-label', utils.getEntityDisplayName(entity));
 
     list.appendChild(item);
   });
@@ -3562,7 +3562,7 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
     const warning = status.passphraseWarning || '';
     const errorText = status.lastSyncError || '';
     const rewriteWarning = status.remoteRewritePending
-      ? t('The remote profile still needs its encryption update. Use Sync Up to retry.')
+      ? t('The remote profile still needs its encryption update. Use Sync up to retry.')
       : '';
     const pendingEncryptionWarning =
       typeof status.encryptionChangePending === 'boolean'
@@ -3580,7 +3580,7 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
         )
       : status.rewriteRecoveryRequired
         ? t(
-            'A protected sync-key recovery is pending. Use Sync Up to resume it; sync remains paused if the remote changed.'
+            'A protected sync-key recovery is pending. Use Sync up to resume it; sync remains paused if the remote changed.'
           )
         : '';
     const messages = [
@@ -3630,11 +3630,11 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
         const sections = formatProfileSyncSectionList(status.conflictSections);
         resolutionHelp.textContent = sections
           ? t(
-              'This computer and the sync file have different settings for {{sections}}. Keep this computer’s settings and upload them, or replace them with the sync file’s. Either way, the replaced settings are backed up.',
+              "This computer and the sync file have different settings for {{sections}}. Keep this computer's settings and upload them, or replace them with the sync file's. Either way, the replaced settings are backed up.",
               { sections }
             )
           : t(
-              'This computer and the sync file have different settings. Keep this computer’s settings and upload them, or replace them with the sync file’s. Either way, the replaced settings are backed up.'
+              "This computer and the sync file have different settings. Keep this computer's settings and upload them, or replace them with the sync file's. Either way, the replaced settings are backed up."
             );
       }
       if (uploadButton) uploadButton.textContent = t('This computer (upload)');
@@ -3887,14 +3887,14 @@ function applyProfileSyncConfigToForm() {
 
 const PROFILE_SYNC_REPLACE_CONFIRMATIONS = {
   push: {
-    title: 'Sync Up',
+    title: 'Sync up',
     message:
-      'Replace the sync file with this computer’s settings? Your other computers receive them on their next sync. The file’s current settings are backed up on this computer.',
+      "Replace the sync file with this computer's settings? Your other computers receive them on their next sync. The file's current settings are backed up on this computer.",
   },
   pull: {
-    title: 'Sync Down',
+    title: 'Sync down',
     message:
-      'Replace this computer’s settings with the sync file’s? This computer’s current settings are backed up first.',
+      "Replace this computer's settings with the sync file's? This computer's current settings are backed up first.",
   },
 };
 
@@ -4068,7 +4068,7 @@ async function resolveProfileSyncFirstEnable(choice) {
     if (result?.status) updateProfileSyncStatusUi(result.status);
     const outcomeMessage = {
       cancel: () => t('Profile sync turned off. No settings were changed.'),
-      upload_local: () => t('This computer’s settings were uploaded to the sync file.'),
+      upload_local: () => t("This computer's settings were uploaded to the sync file."),
       use_remote: () => t('Settings downloaded from the sync file.'),
     }[choice];
     if (discardedEdits) {
@@ -6375,7 +6375,7 @@ async function persistSettings() {
       const previousFolder = deriveProfileSyncFolderPath(previousSyncFilePath);
       const nextFolder = deriveProfileSyncFolderPath(nextSyncFilePath);
       const copyAndSwitch = await showConfirm(
-        t('Sync Folder Changed'),
+        t('Sync folder changed'),
         t('Copy the existing sync data file from {{from}} into {{to}} and switch sync there?', {
           from: previousFolder,
           to: nextFolder,
@@ -6420,7 +6420,7 @@ async function persistSettings() {
           // with a copy. Switching to it compares the two sides' settings first, and the
           // choice panel offers This computer (with the replaced settings backed up).
           usedExistingFile = await showConfirm(
-            t('Sync File Already Exists'),
+            t('Sync file already exists'),
             t(
               '{{folder}} already has a sync file, probably from another computer. Switch to it? Settings that differ are compared first, and you choose which to keep before anything is replaced.',
               { folder: nextFolder }

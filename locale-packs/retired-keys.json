@@ -1234,5 +1234,153 @@
   "Settings a sync replaced, newest first. Restoring one applies it on this computer, and it then syncs to your other computers.": {
     "retiredIn": "4.0.0",
     "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
+  },
+  "Live mode uses the authenticated camera stream only while the tile and app are visible. Snapshot modes show the camera integration’s latest image, which may be cached.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Starting live stream…": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Loading snapshot…": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Refreshing snapshot…": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Live unavailable — loading snapshot…": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Reconnecting…": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Reconnecting live stream…": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Loading preview…": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Search sensors…": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Waiting for history…": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Shows this entity’s current value as its own icon in the system tray.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Loading history…": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Loading rooms…": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Connecting to Home Assistant…": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Replace the sync file with this computer’s settings? Your other computers receive them on their next sync. The file’s current settings are backed up on this computer.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Replace this computer’s settings with the sync file’s? This computer’s current settings are backed up first.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "The sync file is damaged. Use Sync Up to replace it with this computer’s settings; the old file is backed up first.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "This app does not have permission to use the sync file or its folder. Check the folder’s permissions and that it is not read-only.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Could not update the sync file’s encryption. Nothing was changed. Try again.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "This computer’s settings were uploaded to the sync file.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Saved with your system’s secure storage. When this is off, you enter the passphrase again after each restart.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Suggests the app’s usual folder and spots its conflict copies.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "The sync file is in use by another program or is read-only. Try again in a moment, and check the folder’s permissions if it keeps happening.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "This computer and the sync file have different settings for {{sections}}. Keep this computer’s settings and upload them, or replace them with the sync file’s. Either way, the replaced settings are backed up.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "This computer and the sync file have different settings. Keep this computer’s settings and upload them, or replace them with the sync file’s. Either way, the replaced settings are backed up.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Choose Folder...": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Need Help?": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Sync Down": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Sync Up": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Choose Profile Sync Folder": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Sync Folder Changed": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Sync File Already Exists": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Sync Folder": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "The remote profile still needs its encryption update. Use Sync Up to retry.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "A protected sync-key recovery is pending. Use Sync Up to resume it; sync remains paused if the remote changed.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "Sync now keeps changes from both sides. Sync Up replaces the sync file with this computer's settings, and Sync Down replaces this computer's settings with the file's. Whatever is replaced is backed up first.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
+  },
+  "The sync file's {{sections}} settings are damaged. Use Sync Up to replace them with this computer's; the damaged copy is backed up first.": {
+    "retiredIn": "4.0.0",
+    "reason": "Spelled with three dots, a straight apostrophe and sentence case, like the rest of the catalog"
   }
 }

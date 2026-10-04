@@ -98,7 +98,7 @@ describe('index.html', () => {
       expect(group.style.display).toBe('none');
     });
 
-    test('Need Help? is a link under the Profile sync description, not a third overwrite button', () => {
+    test('Need help? is a link under the Profile sync description, not a third overwrite button', () => {
       const help = byId('profile-sync-help-btn');
       expect(
         help.closest('.setting-text').querySelector('label[for="profile-sync-enabled"]')

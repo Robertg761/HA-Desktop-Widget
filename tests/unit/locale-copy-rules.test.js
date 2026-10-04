@@ -36,6 +36,16 @@ describe('English wording', () => {
     const offenders = Object.keys(english).filter((key) => isBritish(key));
     expect(offenders).toEqual([]);
   });
+
+  // One way to write each mark: three dots and a straight apostrophe. The text is the key, so a
+  // second way of writing the same words is a second string to translate and to keep in step.
+  it('writes an ellipsis as three dots and an apostrophe straight', () => {
+    expect(Object.keys(english).filter((key) => /[…’‘]/.test(key))).toEqual([]);
+  });
+
+  it('keeps the names of the sync buttons in sentence case, as the buttons are written', () => {
+    expect(Object.keys(english).filter((key) => /\bSync (Up|Down|Folder)\b/.test(key))).toEqual([]);
+  });
 });
 
 describe('German register and terms', () => {

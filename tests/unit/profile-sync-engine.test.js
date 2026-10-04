@@ -79,7 +79,7 @@ describe('profile sync engine', () => {
     expect(desktop.backups('local-profile')[0].sections.visualPersonalization.opacity).toBe(0.6);
   });
 
-  test('Sync Up stops rather than merging when the file changes while it runs', async () => {
+  test('Sync up stops rather than merging when the file changes while it runs', async () => {
     const { laptop } = await createSyncedPair();
     laptop.edit((config) => {
       config.opacity = 0.4;
@@ -95,7 +95,7 @@ describe('profile sync engine', () => {
     expect(laptop.config.opacity).toBe(0.4);
   });
 
-  test('Sync Up backs up the file’s version of every section it replaces', async () => {
+  test('Sync up backs up the file’s version of every section it replaces', async () => {
     const { laptop } = await createSyncedPair();
     // Only this computer changed the section, so a merge would not count it as a conflict.
     laptop.edit((config) => {
@@ -368,7 +368,7 @@ describe('profile sync engine', () => {
     expect(desktop.config.selectedWeatherEntity).toBeUndefined();
   });
 
-  test('a damaged section stops sync until Sync Up replaces it, keeping a copy', async () => {
+  test('a damaged section stops sync until Sync up replaces it, keeping a copy', async () => {
     const desktop = createDevice('desktop');
     await desktop.sync();
     const file = readSyncFile();
@@ -380,7 +380,7 @@ describe('profile sync engine', () => {
       config.opacity = 0.3;
     });
     await expect(desktop.sync()).rejects.toThrow(
-      "The sync file's Appearance settings are damaged. Use Sync Up"
+      "The sync file's Appearance settings are damaged. Use Sync up"
     );
     expect(fs.readFileSync(syncFilePath(), 'utf8')).toBe(damaged);
 
@@ -465,7 +465,7 @@ describe('profile sync engine', () => {
       { id: 'home', name: 'Home', entityIds: ['light.kitchen'] },
     ]);
 
-    // Sync Up keeps the damaged copy and puts this computer's pages back.
+    // Sync up keeps the damaged copy and puts this computer's pages back.
     await laptop.sync('push', 'manual');
     expect(laptop.backups('remote-profile')).toHaveLength(1);
     await desktop.sync();

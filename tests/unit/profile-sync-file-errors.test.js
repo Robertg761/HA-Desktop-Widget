@@ -15,7 +15,7 @@ const harness = createProfileSyncHarness();
 const { syncFilePath, readSyncFile, createDevice, createSyncedPair } = harness;
 
 const PASSPHRASE = 'correct horse battery';
-const DAMAGED_SENTENCE = 'The sync file is damaged. Use Sync Up to replace it';
+const DAMAGED_SENTENCE = 'The sync file is damaged. Use Sync up to replace it';
 // Words that mean nothing to a person looking at a sync error.
 const JARGON = /envelope|payload|initialization vector|JSON|ENOENT|EACCES|\.tmp-/i;
 
@@ -54,7 +54,7 @@ describe('a sync file that cannot be read', () => {
     expect(fs.readFileSync(syncFilePath(), 'utf8')).toBe(contents);
   });
 
-  test('Sync Down never replaces it either', async () => {
+  test('Sync down never replaces it either', async () => {
     const { laptop } = await createSyncedPair();
     fs.writeFileSync(syncFilePath(), '');
 
@@ -63,7 +63,7 @@ describe('a sync file that cannot be read', () => {
     expect(damagedBackups(laptop)).toEqual([]);
   });
 
-  test('Sync Up keeps a copy of the text and replaces the file, and the other computer follows', async () => {
+  test('Sync up keeps a copy of the text and replaces the file, and the other computer follows', async () => {
     const { desktop, laptop } = await createSyncedPair();
     const truncated = '{\n  "schemaVersion": 3,\n  "minReaderVersion": 3,\n  "upd';
     fs.writeFileSync(syncFilePath(), truncated);
@@ -174,7 +174,7 @@ describe('an encrypted file with a damaged payload', () => {
     expect(laptop.status().lastSyncError).not.toMatch(/passphrase|initialization vector/i);
   });
 
-  test('Sync Up replaces it, encrypted with the passphrase this computer holds', async () => {
+  test('Sync up replaces it, encrypted with the passphrase this computer holds', async () => {
     const { desktop, laptop } = await encryptedPair();
     const file = readSyncFile();
     file.payload.authTag = '';
@@ -188,7 +188,7 @@ describe('an encrypted file with a damaged payload', () => {
     await expect(desktop.sync()).resolves.toMatchObject({ ok: true });
   });
 
-  test('a wrong passphrase is still a passphrase problem, and Sync Up does not override it', async () => {
+  test('a wrong passphrase is still a passphrase problem, and Sync up does not override it', async () => {
     const { laptop } = await encryptedPair();
     laptop.context.profileSyncRuntime.passphraseSession = 'a different passphrase';
     const before = fs.readFileSync(syncFilePath(), 'utf8');
@@ -295,7 +295,7 @@ describe('internal recovery failures', () => {
     const result = await desktop.invoke('run-profile-sync', 'auto').catch((error) => error);
 
     expect(result.error).toBe(
-      'Could not update the sync file’s encryption. Nothing was changed. Try again.'
+      "Could not update the sync file's encryption. Nothing was changed. Try again."
     );
   });
 
@@ -304,7 +304,7 @@ describe('internal recovery failures', () => {
     const { createRewriteTransactionError } = desktop.context;
 
     expect(desktop.context.mainTError(createRewriteTransactionError('anything technical'))).toBe(
-      'Could not update the sync file’s encryption. Nothing was changed. Try again.'
+      "Could not update the sync file's encryption. Nothing was changed. Try again."
     );
   });
 });
