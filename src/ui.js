@@ -11218,6 +11218,16 @@ function createEntityDetailModal({ className, title, onClose = null, beforeClose
   return modal;
 }
 
+// An input_select's options are the user's own words ("Movie night"), so they are shown as written.
+// One that is also a state Home Assistant names ("home", "not_home") takes that name in the user's
+// language, as the readout does.
+function getHelperOptionLabel(option) {
+  const key = String(option).trim().toLowerCase();
+  return Object.prototype.hasOwnProperty.call(utils.HA_STATE_NAMES || {}, key)
+    ? utils.getLocalizedStateName(option)
+    : option;
+}
+
 function showHelperControls(entity) {
   let unsubscribe = null;
   let closed = false;
@@ -11273,14 +11283,18 @@ function showHelperControls(entity) {
     readout.textContent = available
       ? utils.getEntityDisplayState(current)
       : t('Entity is unavailable');
+    // A number with a unit says it with the unit, which the field cannot.
+    const unit = current?.attributes?.unit_of_measurement;
+    if (available && input?.tagName === 'INPUT' && unit && Number.isFinite(Number(current.state))) {
+      readout.textContent = `${formatNumber(Number(current.state))} ${unit}`;
+    }
     if (input) {
       input.disabled = !available || busy;
       if (input.tagName === 'SELECT') {
         const options = current?.attributes?.options || [];
         const selected = document.activeElement === input ? input.value : current?.state;
-        // The readout names the state in the user's language, so the options do too.
         input.replaceChildren(
-          ...options.map((value) => new Option(utils.getLocalizedStateName(value), value))
+          ...options.map((value) => new Option(getHelperOptionLabel(value), value))
         );
         input.value = options.includes(selected) ? selected : current?.state || '';
       } else {
@@ -11330,6 +11344,12 @@ function showHelperControls(entity) {
     if (focusedService && !busy)
       actions.querySelector(`[data-service="${focusedService}"]`)?.focus();
     if (!supported.length && available) readout.textContent = t('No controls available');
+    // The field says the value already, so the readout is spoken (it is a status region) but not
+    // drawn a second time: unless it adds the unit, or something the field cannot say.
+    readout.classList.toggle(
+      'sr-only',
+      !!input && available && supported.length > 0 && !(input.tagName === 'INPUT' && unit)
+    );
   };
   const run = async (service) => {
     const current = live();
@@ -13883,7 +13903,17 @@ function bindPrimaryMediaCardControls(tile, entity) {
   if (info) {
     info.setAttribute('role', 'button');
     info.tabIndex = 0;
-    info.setAttribute('aria-label', label);
+    // The button is named by the title and artist it shows; an aria-label would replace them with
+    // the player's name. What it does is its description.
+    let hint = info.querySelector('.media-tile-controls-hint');
+    if (!hint) {
+      hint = document.createElement('span');
+      hint.className = 'sr-only media-tile-controls-hint';
+      hint.id = 'media-tile-controls-hint';
+      info.appendChild(hint);
+    }
+    hint.textContent = label;
+    info.setAttribute('aria-describedby', hint.id);
   }
   if (artwork) artwork.title = label;
   if (tile.dataset.opensControls === 'true') return;

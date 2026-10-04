@@ -558,7 +558,12 @@ describe('dashboard data display', () => {
       show(entity('media_player.den', 'playing', { media_title: 'Song', friendly_name: 'Den' }));
       const info = document.querySelector('.media-tile-info');
       expect(info.getAttribute('role')).toBe('button');
-      expect(info.getAttribute('aria-label')).toBe('Controls for Den');
+      // Named by the title and artist it shows, which an aria-label would replace; what it does is
+      // its description.
+      expect(info.hasAttribute('aria-label')).toBe(false);
+      expect(document.getElementById(info.getAttribute('aria-describedby')).textContent).toBe(
+        'Controls for Den'
+      );
       info.click();
       expect(document.querySelectorAll('.media-modal')).toHaveLength(1);
       document.querySelector('.media-modal .close-btn').click();
@@ -1139,9 +1144,11 @@ describe('dashboard data display', () => {
       return document.querySelector('.helper-controls-modal');
     };
 
-    it('lists the options as the readout names the state, in the language', () => {
+    it("lists the user's own options as written, and the ones that are states by their names", () => {
       const modal = open(
-        entity('input_select.mode', 'home', { options: ['home', 'not_home', 'unavailable'] }),
+        entity('input_select.mode', 'home', {
+          options: ['home', 'not_home', 'Movie night', 'eco boost'],
+        }),
         { input_select: { select_option: {} } }
       );
       expect(
@@ -1149,8 +1156,40 @@ describe('dashboard data display', () => {
       ).toEqual([
         ['home', 'Home'],
         ['not_home', 'Away'],
-        ['unavailable', 'Unavailable'],
+        ['Movie night', 'Movie night'],
+        ['eco boost', 'eco boost'],
       ]);
+    });
+
+    it('draws the number once: the field says it, and the readout is only spoken', () => {
+      const modal = open(entity('input_number.offset', '1.5', { min: -5, max: 5, step: 0.5 }), {
+        input_number: { set_value: {} },
+      });
+      const readout = modal.querySelector('.helper-controls-readout');
+      expect(modal.querySelector('input').value).toBe('1.5');
+      expect(readout.textContent).toBe('1.5');
+      expect(readout.classList.contains('sr-only')).toBe(true);
+      expect(readout.getAttribute('role')).toBe('status');
+    });
+
+    it('draws the readout when it adds the unit, and for a helper with no field', () => {
+      const withUnit = open(
+        entity('input_number.offset', '1.5', {
+          unit_of_measurement: '°C',
+          min: -5,
+          max: 5,
+          step: 0.5,
+        }),
+        { input_number: { set_value: {} } }
+      );
+      const unitReadout = withUnit.querySelector('.helper-controls-readout');
+      expect(unitReadout.classList.contains('sr-only')).toBe(false);
+      expect(unitReadout.textContent).toBe('1.5 °C');
+      document.body.innerHTML = '';
+      const vacuum = open(entity('vacuum.robot', 'docked'), { vacuum: { start: {} } });
+      expect(vacuum.querySelector('.helper-controls-readout').classList.contains('sr-only')).toBe(
+        false
+      );
     });
 
     it('says why a value is refused, in the field, and sends nothing', () => {
