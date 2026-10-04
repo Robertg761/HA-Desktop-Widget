@@ -475,7 +475,7 @@ describe('stylesheet one-offs', () => {
     it('gives Add and Remove one width, so a column of them has a straight left edge', () => {
       render('<button class="entity-selector-btn add">Add</button>');
       const button = document.querySelector('.entity-selector-btn');
-      expect(resolvedValue(button, 'min-width')).toBe('6.5em');
+      expect(resolvedValue(button, 'min-width')).toBe('6em');
       expect(resolvedValue(button, 'text-align')).toBe('center');
     });
 

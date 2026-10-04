@@ -12981,7 +12981,7 @@ body.theme-light:not(.high-contrast)
   padding: 5px 12px;
   /* 'Add' and 'Remove' share one width, so the column of actions has a straight left edge (and the
      unit chips beside them in the graph editor stop shifting 24px from row to row). */
-  min-width: 6.5em;
+  min-width: 6em;
   text-align: center;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
