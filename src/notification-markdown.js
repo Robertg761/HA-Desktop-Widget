@@ -259,7 +259,7 @@ function appendInline(parent, tokens, options) {
     } else if (token.type === 'link') {
       const url = resolveNotificationLink(token.url, options.baseUrl);
       if (!url) {
-        // Not an address we open: its text is shown, and the address with it so nothing is hidden.
+        // Not an address we open (a javascript: one, say): only the link's text is shown.
         appendInline(parent, token.children, options);
         return;
       }

@@ -325,38 +325,38 @@
   },
   "Long-press to configure weather": {
     "retiredIn": "4.0.0",
-    "reason": "Tile Settings and Add page labels lost their colons and Title Case, and the weather card says to click, not to long-press (dashboard data audit)."
+    "reason": "Reworded as Click to configure weather: the weather card opens its picker on a click now"
   },
   "Display Name:": {
     "retiredIn": "4.0.0",
-    "reason": "Tile Settings and Add page labels lost their colons and Title Case, and the weather card says to click, not to long-press (dashboard data audit)."
+    "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Display name"
   },
   "Value Font Size:": {
     "retiredIn": "4.0.0",
-    "reason": "Tile Settings and Add page labels lost their colons and Title Case, and the weather card says to click, not to long-press (dashboard data audit)."
+    "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Value font size"
   },
   "Chart:": {
     "retiredIn": "4.0.0",
-    "reason": "Tile Settings and Add page labels lost their colons and Title Case, and the weather card says to click, not to long-press (dashboard data audit)."
+    "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Chart"
   },
   "Camera Preview:": {
     "retiredIn": "4.0.0",
-    "reason": "Tile Settings and Add page labels lost their colons and Title Case, and the weather card says to click, not to long-press (dashboard data audit)."
+    "reason": "Reworded: the label lost its trailing colon and Title Case; Tile Settings uses the Camera preview string that already existed"
   },
   "Gauge range:": {
     "retiredIn": "4.0.0",
-    "reason": "Tile Settings and Add page labels lost their colons and Title Case, and the weather card says to click, not to long-press (dashboard data audit)."
+    "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Gauge range"
   },
   "Page name:": {
     "retiredIn": "4.0.0",
-    "reason": "Tile Settings and Add page labels lost their colons and Title Case, and the weather card says to click, not to long-press (dashboard data audit)."
+    "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Page name"
   },
   "Quick picks:": {
     "retiredIn": "4.0.0",
-    "reason": "Tile Settings and Add page labels lost their colons and Title Case, and the weather card says to click, not to long-press (dashboard data audit)."
+    "reason": "Reworded: the label lost its trailing colon and Title Case, and is now Quick picks"
   },
   "Add Page": {
     "retiredIn": "4.0.0",
-    "reason": "Tile Settings and Add page labels lost their colons and Title Case, and the weather card says to click, not to long-press (dashboard data audit)."
+    "reason": "Reworded: the Add page dialog's title takes the sentence case of the Add page string that already existed"
   }
 }

@@ -4134,10 +4134,9 @@ body.first-run-active .widget-content > * {
   box-shadow: var(--glow-focus);
 }
 
-/* A pin's tile colours follow its own data-state. Quick
-   Access tiles do not: their lit state is body.active-tile-glow [data-active='true'], so the glow
-   opt-out covers every tile, and a media player that Home Assistant reports as 'on' no longer
-   glows on its own. */
+/* A pin's tile colours follow its own data-state. Quick Access tiles do not: their lit state is
+   body.active-tile-glow [data-active='true'], so the glow opt-out covers every tile, and a media
+   player that Home Assistant reports as 'on' no longer glows on its own. */
 .desktop-pin-control[data-state='on'],
 .desktop-pin-control[data-state='open'],
 .desktop-pin-control[data-state='unlocked'],
