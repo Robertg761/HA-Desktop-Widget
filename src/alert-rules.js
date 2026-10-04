@@ -91,6 +91,13 @@ const UNAVAILABLE_NOTIFY_INTERVAL_MS = 15 * 60 * 1000;
 const hasReading = (value) =>
   value !== null && value !== undefined && !NO_READING_STATES.has(value);
 
+// Whether `rule` tells about an entity whose record shows it offline, which only a State Change rule
+// whose switch is not off does.
+const tellsOutage = (rule, record) =>
+  !!rule?.onStateChange &&
+  rule.notifyOnUnavailable !== false &&
+  NO_READING_STATES.has(record.previous);
+
 function isUsableState(rule, value) {
   if (value === null || value === undefined) return false;
   if (!NO_READING_STATES.has(value)) return true;
@@ -156,9 +163,22 @@ function createAlertEvaluator({ getConfig, notify, now = () => Date.now() }) {
     // Keep timers and cooldowns for unchanged rules across ordinary config saves.
     for (const id of new Set([...records.keys(), ...Object.keys(states)])) {
       const record = records.get(id);
-      if (!record || record.signature !== JSON.stringify(getConfig()?.alerts?.[id])) {
+      const rule = getConfig()?.alerts?.[id];
+      if (!record || record.signature !== JSON.stringify(rule)) {
         clearTimeout(record?.timer);
-        records.set(id, makeRecord(id, states[id]));
+        const fresh = makeRecord(id, states[id]);
+        if (record) {
+          // An edited rule starts over, but when an entity was last told about is not part of the
+          // rule: saving it again must not open the fifteen-minute limit to a flapping device.
+          fresh.lastNotified = record.lastNotified;
+          fresh.lastOutageNotified = record.lastOutageNotified;
+          if (fresh.lastReal === undefined) fresh.lastReal = record.lastReal;
+          // An outage still waiting to be told about starts its wait over, as after a reconnect:
+          // the entity is offline and no state change will bring it up again.
+          if (record.outagePending && (record.timer || record.resume) && tellsOutage(rule, fresh))
+            fresh.resume = true;
+        }
+        records.set(id, fresh);
       }
     }
     // The reconnect snapshot arrives without state_changed events, so a condition that is still
@@ -170,11 +190,7 @@ function createAlertEvaluator({ getConfig, notify, now = () => Date.now() }) {
         delete record.resume;
         // Only an outage's waiting period can be pending while the entity has no reading. It starts
         // over, so an entity that stays offline through a reconnect is still told about.
-        if (
-          rule?.onStateChange &&
-          NO_READING_STATES.has(record.previous) &&
-          NO_READING_STATES.has(value)
-        ) {
+        if (tellsOutage(rule, record) && NO_READING_STATES.has(value)) {
           record.previous = value;
           record.matched = true;
           arm(id, record, rule, record.lastReal, true);
@@ -219,8 +235,10 @@ function createAlertEvaluator({ getConfig, notify, now = () => Date.now() }) {
     };
     let delay = Math.min(86400, Math.max(0, Number(rule.durationSeconds) || 0)) * 1000;
     if (outage) delay = Math.max(delay, UNAVAILABLE_GRACE_MS);
-    if (delay) record.timer = setTimeout(fire, delay);
-    else fire();
+    if (delay) {
+      record.timer = setTimeout(fire, delay);
+      record.outagePending = outage;
+    } else fire();
   };
   const check = (id, value) => {
     const config = getConfig();
