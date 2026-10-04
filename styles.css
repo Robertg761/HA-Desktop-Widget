@@ -16213,7 +16213,6 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
     .media-tile-artist,
     .entity-item .entity-name,
     .entity-item .entity-id,
-    .hotkey-item .entity-name,
     .persistent-notification-title,
     .persistent-notification-message,
     .todo-item-summary,
@@ -16222,6 +16221,28 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
     .command-palette-result-name
   ) {
   text-align: right;
+}
+
+/* A name that is cut after two lines (the hotkey rows' and the pins') cannot be aligned with
+   text-align: Chromium draws the ellipsis after the aligned text, outside the box, whenever the
+   last line is short, and the name looks cut for no reason. It is as wide as its text instead,
+   which sits the box, and so the name, at the reading edge. The hotkey row's name gives up its
+   full-row basis; the controls under it keep theirs, so they still wrap below it. */
+[dir='rtl']
+  :is(
+    .desktop-pin-light-name,
+    .desktop-pin-panel-name,
+    .desktop-pin-media-title,
+    .desktop-pin-media-artist
+  ) {
+  width: fit-content;
+  max-width: 100%;
+}
+
+[dir='rtl'] .hotkey-item .entity-name {
+  flex-grow: 0;
+  flex-basis: auto;
+  max-width: 100%;
 }
 
 /* The brightness fill grows from the right, like the mirrored slider's thumb. */
@@ -16253,7 +16274,7 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   direction: ltr;
 }
 
-/* Addresses, colour codes, shortcuts and Home Assistant's own diagnostic report are left-to-right
+/* Addresses, colour codes, bindings and Home Assistant's own diagnostic report are left-to-right
    text whichever language the page is in: in a right-to-left field a trailing "/" or "#" jumps to
    the other end. The field's own alignment follows its direction, so a URL starts at the left. The
    token and folder fields show a translated hint while empty, which stays right to left. */
@@ -16261,13 +16282,21 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   :is(
     #ha-url,
     #custom-color-hex,
-    #popup-hotkey-input,
     #desktop-bindings,
-    .hotkey-input,
     .diagnostics-report,
     :is(#ha-token, #profile-sync-folder-path):not(:placeholder-shown)
   ) {
   direction: ltr;
+}
+
+/* The hotkey fields hold a shortcut ("Ctrl+Shift+/", left to right) at one moment and a translated
+   sentence at another: the popup field's "Press keys... (Esc to cancel)" while it records, and the
+   "None" or "Not set" hint while it is empty. Forcing either direction scrambles the other, so the
+   field takes its direction from its text. A hint is a placeholder, which does not follow the
+   field's own unicode-bidi, so that is set as well. */
+[dir='rtl'] :is(#popup-hotkey-input, .hotkey-input),
+[dir='rtl'] :is(#popup-hotkey-input, .hotkey-input)::placeholder {
+  unicode-bidi: plaintext;
 }
 
 /* A turning arrow points the way the page reads. The undo of the dashboard history is the only
@@ -16293,8 +16322,11 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
    and below the line than Latin letters do, so text that is clipped to its box at a line height
    set for Latin (tile names and states, list rows, notification titles) is given room, as the
    pins' names already are. The shipped packs are ar, hi and zh; the other codes share a script
-   with them. !important because some seventy rules set a tracking, in selectors of every weight.
-   Chromium reads one language in a :lang(), so each has its own. */
+   with them. !important because some seventy rules set a tracking, in selectors of every weight,
+   and the tile and density rules set a tight line height in selectors of every weight too: a line
+   height for these scripts on a particular tile belongs in the list below, not in a rule of its
+   own. Chromium (150, in Electron 43) does not accept a list in :lang() and drops the whole rule,
+   so each language has its own. */
 :is(:lang(ar), :lang(fa), :lang(ur), :lang(hi), :lang(mr), :lang(ne), :lang(zh), :lang(ja)) *,
 :is(:lang(ar), :lang(fa), :lang(ur), :lang(hi), :lang(mr), :lang(ne), :lang(zh), :lang(ja))
   *::before,

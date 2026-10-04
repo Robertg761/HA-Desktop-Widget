@@ -977,6 +977,17 @@ const scenes = [
     ui: { language: 'ar' },
     setup: (ctx) => openSettingsTab(ctx, 'hotkeys'),
   },
+  // The popup hotkey field reads its own prompt while it records: Arabic text in a field whose
+  // recorded shortcut is left to right.
+  {
+    name: 'ar-settings-popup-hotkey-capture',
+    ui: { language: 'ar' },
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'hotkeys');
+      await ctx.click('#popup-hotkey-set-btn');
+      await revealInSettings(ctx, '#popup-hotkey-input', 'center');
+    },
+  },
   {
     name: 'ar-popup-brightness',
     ui: { language: 'ar' },

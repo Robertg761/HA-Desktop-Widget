@@ -51,6 +51,9 @@ describe('right-to-left and script-aware typography', () => {
       ['.todo-item-summary', '<span class="todo-item-summary">Milk</span>'],
       ['.calendar-event-summary', '<span class="calendar-event-summary">Dentist</span>'],
       ['.desktop-pin-light-name', '<div class="desktop-pin-light-name">Lamp</div>'],
+      ['.desktop-pin-panel-name', '<div class="desktop-pin-panel-name">Weather</div>'],
+      ['.desktop-pin-media-title', '<div class="desktop-pin-media-title">Song</div>'],
+      ['.desktop-pin-media-artist', '<div class="desktop-pin-media-artist">Band</div>'],
     ];
 
     it.each(AUTHORED)(
@@ -91,6 +94,33 @@ describe('right-to-left and script-aware typography', () => {
       expect(stylesheet.replace(/\/\*[\s\S]*?\*\//g, '')).not.toMatch(/match-parent/);
     });
 
+    it('sits the names that are cut after two lines at the reading edge by their width, not their alignment', () => {
+      // Chromium draws a line-clamp ellipsis outside the box when right-aligned text ends short, so
+      // these names are not aligned: the box is as wide as the text and starts at the edge.
+      for (const [selector, html] of [
+        ['.desktop-pin-light-name', '<div class="desktop-pin-light-name">Lamp</div>'],
+        ['.desktop-pin-panel-name', '<div class="desktop-pin-panel-name">Weather</div>'],
+        ['.desktop-pin-media-title', '<div class="desktop-pin-media-title">Song</div>'],
+        ['.desktop-pin-media-artist', '<div class="desktop-pin-media-artist">Band</div>'],
+      ]) {
+        render(html);
+        expect(resolvedValue(document.querySelector(selector), 'width')).toBeNull();
+        render(html, { dir: 'rtl', lang: 'ar' });
+        const name = document.querySelector(selector);
+        expect(resolvedValue(name, 'width')).toBe('fit-content');
+        expect(resolvedValue(name, 'max-width')).toBe('100%');
+        expect(resolvedValue(name, 'text-align')).not.toBe('right');
+      }
+      render('<div class="hotkey-item"><span class="entity-name">Lamp</span></div>', {
+        dir: 'rtl',
+        lang: 'ar',
+      });
+      const hotkeyName = document.querySelector('.entity-name');
+      expect(resolvedValue(hotkeyName, 'flex-basis')).toBe('auto');
+      expect(resolvedValue(hotkeyName, 'flex-grow')).toBe('0');
+      expect(resolvedValue(hotkeyName, 'text-align')).not.toBe('right');
+    });
+
     it('keeps centred names centred', () => {
       render('<div class="media-artist">Artist</div><div class="control-name">Name</div>', {
         dir: 'rtl',
@@ -107,15 +137,39 @@ describe('right-to-left and script-aware typography', () => {
     const FIELDS = [
       '<input id="ha-url">',
       '<input id="custom-color-hex">',
-      '<input id="popup-hotkey-input">',
       '<textarea id="desktop-bindings"></textarea>',
-      '<input class="hotkey-input">',
       '<textarea class="diagnostics-report"></textarea>',
     ];
+    // They show a shortcut or a translated sentence, whichever the field holds.
+    const HOTKEY_FIELDS = ['<input id="popup-hotkey-input">', '<input class="hotkey-input">'];
 
     it.each(FIELDS)('reads left to right in an Arabic page (%s)', (html) => {
       render(html, { dir: 'rtl', lang: 'ar' });
       expect(resolvedValue(document.querySelector('input, textarea'), 'direction')).toBe('ltr');
+    });
+
+    it.each(HOTKEY_FIELDS)(
+      'reads its own text, not a fixed direction, in an Arabic page (%s)',
+      (html) => {
+        // The popup field holds "Press keys... (Esc to cancel)" in Arabic while it records, which
+        // a forced left-to-right direction would put the dots and the bracket on the wrong side of.
+        // A recorded shortcut is left to right by its own letters under plaintext.
+        render(html.replace('<input', '<input value="اضغط المفاتيح... (Esc للإلغاء)"'), {
+          dir: 'rtl',
+          lang: 'ar',
+        });
+        const field = document.querySelector('input');
+        expect(resolvedValue(field, 'unicode-bidi')).toBe('plaintext');
+        expect(resolvedValue(field, 'direction')).not.toBe('ltr');
+      }
+    );
+
+    it('reads the hint of a hotkey field from its text too', () => {
+      // A placeholder ignores the field's unicode-bidi in Chromium, so its own rule carries it; the
+      // pseudo-element is not in jsdom's reach, so the rule is read from the stylesheet.
+      expect(stylesheet).toMatch(
+        /\[dir='rtl'\] :is\(#popup-hotkey-input, \.hotkey-input\)::placeholder \{\s*unicode-bidi: plaintext;/
+      );
     });
 
     it('keeps the hotkey fields centred, as they were', () => {
@@ -124,9 +178,10 @@ describe('right-to-left and script-aware typography', () => {
     });
 
     it('does not touch the fields of a left-to-right page', () => {
-      render(FIELDS.join(''));
+      render([...FIELDS, ...HOTKEY_FIELDS].join(''));
       for (const element of document.querySelectorAll('input, textarea')) {
         expect(resolvedValue(element, 'direction')).toBeNull();
+        expect(resolvedValue(element, 'unicode-bidi')).toBeNull();
       }
     });
 
@@ -328,7 +383,8 @@ describe('right-to-left and script-aware typography', () => {
     });
 
     it('does not use a :lang() list, which Chromium does not read', () => {
-      // `:lang(ar, hi)` drops the whole rule in Chromium; each language needs its own :lang().
+      // `:lang(ar, hi)` drops the whole rule in Chromium (checked in 150, Electron 43, where
+      // CSS.supports('selector(:lang(ar, hi))') is false); each language needs its own :lang().
       expect(stylesheet).not.toMatch(/:lang\([^)]*,/);
     });
 
