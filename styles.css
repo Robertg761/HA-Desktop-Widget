@@ -7932,8 +7932,56 @@ body.theme-light:not(.high-contrast)
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
   line-height: var(--line-height-normal);
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* The message is Markdown (see notification-markdown.js): paragraphs, lists, links and code take
+   the spacing the plain pre-wrapped text gave line breaks. */
+.persistent-notification-message > * {
+  margin: 0 0 var(--space-2);
+}
+
+.persistent-notification-message > :last-child {
+  margin-bottom: 0;
+}
+
+.persistent-notification-message :is(ul, ol) {
+  padding-inline-start: 1.25em;
+}
+
+.persistent-notification-message .persistent-notification-heading {
+  color: var(--text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.persistent-notification-message a {
+  color: var(--accent-text);
+  text-decoration: underline;
+}
+
+.persistent-notification-message code {
+  padding: 0 4px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.95em;
+}
+
+.persistent-notification-message pre {
+  overflow-x: auto;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.persistent-notification-message pre code {
+  padding: 0;
+  background: none;
+}
+
+.persistent-notification-message blockquote {
+  padding-inline-start: var(--space-3);
+  border-inline-start: 2px solid var(--border-color);
 }
 
 .persistent-notification-time {

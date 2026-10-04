@@ -1,5 +1,10 @@
 import websocket from './websocket.js';
+import state from './state.js';
 import { t } from './i18n.js';
+import {
+  notificationMarkdownToPlainText,
+  renderNotificationMarkdown,
+} from './notification-markdown.js';
 import { closeDialog, openDialog, renderKeepingFocus, showToast } from './ui-utils.js';
 
 const DEFAULT_NOTIFICATION_TITLE = 'Home Assistant';
@@ -93,7 +98,8 @@ function showPersistentDesktopNotification(notification) {
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
     const title = notification.title || DEFAULT_NOTIFICATION_TITLE;
     const desktopNotification = new Notification(title, {
-      body: notification.message,
+      // The system toast draws plain text, so the Markdown syntax goes and its words stay.
+      body: notificationMarkdownToPlainText(notification.message),
       tag: `ha-persistent-notification-${notification.notification_id}`,
       requireInteraction: false,
     });
@@ -179,7 +185,14 @@ function createNotificationListItem(notification) {
 
   const message = document.createElement('div');
   message.className = 'persistent-notification-message';
-  message.textContent = notification.message;
+  renderNotificationMarkdown(message, notification.message, {
+    baseUrl: state.CONFIG?.homeAssistant?.url,
+    openLink: (url) => {
+      window.electronAPI?.openExternal?.(url)?.catch?.((error) => {
+        console.error('Error opening notification link:', error);
+      });
+    },
+  });
 
   const time = document.createElement('div');
   time.className = 'persistent-notification-time';
@@ -230,6 +243,9 @@ function renderPersistentNotifications() {
     notifications.forEach((notification) => {
       list.appendChild(createNotificationListItem(notification));
     });
+    // A message can hold links, and one comes before its Dismiss button in the order of the page.
+    // The panel still opens on the first Dismiss, where it opened when messages were plain text.
+    list.querySelector('.persistent-notification-dismiss')?.setAttribute('data-initial-focus', '');
   });
 
   if (count === 0) {
