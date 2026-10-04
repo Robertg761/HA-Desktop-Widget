@@ -587,6 +587,60 @@ async function showSyncError(ctx) {
   })()`);
 }
 
+// A light whose brightness (75%) and colour (the first swatch) are two of the dialog's presets, so
+// the chips show which one is selected. The fixture's own lights match none of them.
+const presetLight = (now) => {
+  const stamp = now.toISOString();
+  return [
+    {
+      entity_id: 'light.preset_demo',
+      state: 'on',
+      attributes: {
+        friendly_name: 'Preset lamp',
+        brightness: 191,
+        supported_color_modes: ['color_temp', 'rgb'],
+        color_mode: 'rgb',
+        rgb_color: [255, 179, 71],
+        color_temp_kelvin: 3200,
+        min_color_temp_kelvin: 2000,
+        max_color_temp_kelvin: 6500,
+      },
+      last_changed: stamp,
+      last_updated: stamp,
+      context: { id: 'light.preset_demo', parent_id: null, user_id: null },
+    },
+  ];
+};
+
+// Restore points that differ by what they hold, one of them with a page nobody named. The list is
+// built when the dialog opens, so the history is put back as it was straight after.
+async function openRestoreDashboard(ctx) {
+  await openSettingsTab(ctx, 'advanced');
+  await ctx.ev(`(async () => {
+    const config = await window.electronAPI.getConfig();
+    const url = new URL(config.homeAssistant.url);
+    const key = 'dashboard-history:' + url.origin + url.pathname.replace(/\\/+$/, '');
+    const before = localStorage.getItem(key);
+    const hour = 60 * 60 * 1000;
+    const layout = (pages) => ({ customTabs: pages, favoriteEntities: [], comparisonGraphs: [] });
+    const home = (tiles) => ({
+      id: 'default',
+      name: 'Home',
+      entityIds: ['light.desk_lamp', 'fan.office', 'cover.garage', 'sensor.office_temp'].slice(0, tiles),
+    });
+    const now = Date.now();
+    localStorage.setItem(key, JSON.stringify([
+      { at: now - hour, layout: layout([home(4), { id: 'spare', name: 'Spare', entityIds: ['light.desk_lamp'] }]) },
+      { at: now - 2 * hour, layout: layout([home(3), { id: 'spare', name: 'Spare', entityIds: ['light.desk_lamp'] }]) },
+      { at: now - 26 * hour, layout: layout([{ id: 'default', name: 'All', nameIsDefault: true, entityIds: ['light.desk_lamp', 'fan.office'] }]) },
+    ]));
+    document.getElementById('dashboard-history-btn').click();
+    if (before === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, before);
+  })()`);
+  await ctx.waitForSelector('.dashboard-restore-entry');
+}
+
 const scenes = [
   // The main view and the dialogs opened from it, dark and in English.
   { name: 'main-dark' },
@@ -673,6 +727,18 @@ const scenes = [
     name: 'popup-light-colour',
     config: dialogsPage,
     setup: openDetails('light.color_strip'),
+  },
+  {
+    name: 'popup-light-presets',
+    config: {
+      customTabs: [
+        { id: 'default', name: 'Home', entityIds: ['light.preset_demo'] },
+        { id: 'spare', name: 'Spare', entityIds: ['light.desk_lamp'] },
+      ],
+      activeTabId: 'default',
+    },
+    extraStates: presetLight,
+    setup: openDetails('light.preset_demo'),
   },
   { name: 'popup-fan', config: dialogsPage, setup: openDetails('fan.office') },
   { name: 'popup-cover', config: dialogsPage, setup: openDetails('cover.garage') },
@@ -768,6 +834,16 @@ const scenes = [
     setup: (ctx) => openHotkeysFor(ctx, 'zzzzz', { expectNoMatch: true }),
   },
   { name: 'settings-advanced', setup: (ctx) => openSettingsTab(ctx, 'advanced') },
+  { name: 'dialog-restore-dashboard', setup: openRestoreDashboard },
+  // The language packs on the General page, one row each.
+  {
+    name: 'settings-language-packs',
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'general');
+      await ctx.waitForSelector('#language-packs-list .language-pack-row');
+      await revealInSettings(ctx, '#language-packs-list', 'center');
+    },
+  },
   {
     name: 'settings-custom-color',
     setup: async (ctx) => {
