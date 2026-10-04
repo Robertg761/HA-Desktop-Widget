@@ -413,6 +413,27 @@ describe('Omarchy tile controls from the keyboard', () => {
   const qml = fs.readFileSync(path.join(pluginDir, 'Widget.qml'), 'utf8');
   const view = qml.slice(qml.indexOf('component ControlsView: Column'));
 
+  it('does nothing from the keyboard while the controls are offline', () => {
+    const moveBody = view.slice(
+      view.indexOf('function move('),
+      view.indexOf('function activate()')
+    );
+    const activateBody = view.slice(
+      view.indexOf('function activate()'),
+      view.indexOf('function nudge(direction)')
+    );
+    // The pointer controls are disabled offline; Enter and the slider arrows must be too, or the
+    // optimistic state shows a change that setControl silently drops.
+    expect(activateBody.indexOf('if (!view.live) return')).toBeGreaterThan(-1);
+    expect(activateBody.indexOf('if (!view.live) return')).toBeLessThan(
+      activateBody.indexOf('pressStop()')
+    );
+    expect(moveBody.indexOf('} else if (!view.live) {')).toBeLessThan(
+      moveBody.indexOf('item.nudge(dx)')
+    );
+    expect(moveBody.indexOf('} else if (!view.live) {')).toBeGreaterThan(-1);
+  });
+
   it('sends the arrows to the controls view, which keeps its place as a row and a column', () => {
     const moveBody = qml.slice(
       qml.indexOf('function moveCursor('),
@@ -1144,7 +1165,7 @@ describe('the plugin as a package of files', () => {
   // below are updated together.
   const PUBLISHED = {
     version: '1.3.0',
-    sha256: '56100cfbf6facbc67c891d13165cc9911b77583a5e0d06d1dc7ef1a35152af22',
+    sha256: '538357ce703006e24571741ed1997fe9a50bdf382bf961191fe21746ca4f0ade',
   };
 
   function pluginHash() {

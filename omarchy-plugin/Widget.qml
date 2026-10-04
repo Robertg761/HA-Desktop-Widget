@@ -1186,6 +1186,10 @@ Panel {
       if (item && item.isSlider !== true) {
         var col = stopCol + dx
         if (col >= 0 && col < rows[stopRow].length) setStop(stopRow, col)
+      } else if (!view.live) {
+        // Offline the sliders are dimmed and setControl drops the request, so a nudge would only
+        // look like a change for a moment.
+        return
       } else if (item) {
         item.nudge(dx)
       } else {
@@ -1196,6 +1200,8 @@ Panel {
     // Enter: press the control the ring is on; with none, turn the light or fan on or off, or play
     // and pause.
     function activate() {
+      // Offline the controls are dimmed: a press would show a change that is never sent.
+      if (!view.live) return
       var item = stopRow >= 0 ? currentStop(stopRows()) : null
       if (item && item.isSlider !== true) {
         item.pressStop()
