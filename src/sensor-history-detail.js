@@ -18,18 +18,18 @@ function mountSensorHistoryDetail({ body, modal, entity, websocket, normalize, r
   controls.className = 'sensor-history-controls';
   const label = document.createElement('label');
   label.textContent = t('History period');
-  const period = document.createElement('select');
-  period.className = 'form-control';
+  const periodSelect = document.createElement('select');
+  periodSelect.className = 'form-control';
   [
     [1, '1 hour'],
     [6, '6 hours'],
     [24, '24 hours'],
     [168, '7 days'],
   ].forEach(([hours, text]) => {
-    period.add(new Option(t(text), String(hours)));
+    periodSelect.add(new Option(t(text), String(hours)));
   });
-  period.value = '24';
-  label.append(period);
+  periodSelect.value = '24';
+  label.append(periodSelect);
   const refresh = document.createElement('button');
   refresh.className = 'btn btn-secondary';
   refresh.textContent = t('Refresh');
@@ -50,7 +50,7 @@ function mountSensorHistoryDetail({ body, modal, entity, websocket, normalize, r
   const cache = new Map();
   const load = async (force = false) => {
     const requestRevision = ++revision;
-    const hours = Number(period.value);
+    const hours = Number(periodSelect.value);
     status.textContent = t('Loading history…');
     // Keep the previous chart and date range in place while loading so the dialog keeps its
     // height instead of collapsing and re-centring on every request.
@@ -88,6 +88,8 @@ function mountSensorHistoryDetail({ body, modal, entity, websocket, normalize, r
         status.textContent = t('No recorded values in this period.');
         frame.hidden = true;
         dates.textContent = '';
+        // The request went through, so the button is no longer a Retry.
+        refresh.textContent = t('Refresh');
         return;
       }
       const format = (value) => formatNumber(value, { maximumFractionDigits: 2 });
@@ -128,7 +130,7 @@ function mountSensorHistoryDetail({ body, modal, entity, websocket, normalize, r
       }
     }
   };
-  period.onchange = () => void load();
+  periodSelect.onchange = () => void load();
   refresh.onclick = () => {
     if (refresh.getAttribute('aria-disabled') !== 'true') void load(true);
   };

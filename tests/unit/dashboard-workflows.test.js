@@ -253,6 +253,35 @@ describe('sensor history detail', () => {
     expect(document.activeElement).toBe(refresh);
     modal.remove();
   });
+  it('puts the Refresh label back when a retry succeeds with no recorded values', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const modal = document.createElement('div');
+    document.body.append(modal);
+    const request = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('recorder offline'))
+      .mockResolvedValue({ result: [] });
+    mountSensorHistoryDetail({
+      body: modal,
+      modal,
+      entity: { entity_id: 'sensor.test' },
+      websocket: { request },
+      normalize: (response) => response.result,
+      render: jest.fn(),
+    });
+    const refresh = modal.querySelector('button');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(refresh.textContent).toBe('Retry');
+    refresh.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(modal.querySelector('.sensor-history-summary').textContent).toBe(
+      'No recorded values in this period.'
+    );
+    expect(refresh.textContent).toBe('Refresh');
+    modal.remove();
+    warn.mockRestore();
+  });
   it('ignores an older response after the user selects another period', async () => {
     const modal = document.createElement('div');
     document.body.append(modal);
