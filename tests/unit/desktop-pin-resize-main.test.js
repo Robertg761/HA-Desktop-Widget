@@ -215,12 +215,43 @@ describe('resizing a desktop pin in the main process', () => {
       height: 180,
       resize: { corner: 'bottom-right', final: false },
     });
-    expect(context.saveConfig).not.toHaveBeenCalled();
+    expect(context.saveConfigDurably).not.toHaveBeenCalled();
 
-    jest.advanceTimersByTime(1600);
+    await jest.advanceTimersByTimeAsync(1600);
 
-    expect(context.saveConfig).toHaveBeenCalledTimes(1);
+    // Durably, and the session is not given up until the write has succeeded.
+    expect(context.saveConfigDurably).toHaveBeenCalledTimes(1);
+    expect(context.pushConfigToRenderer).toHaveBeenCalledTimes(1);
     expect(context.desktopPinResizeSessions.size).toBe(0);
+    expect(context.config.desktopPins['light.office']).toMatchObject({ width: 200, height: 180 });
+  });
+
+  it('keeps the drag when a step reached the config queue before the idle write did', async () => {
+    jest.useFakeTimers();
+    const { context } = loadResizeRuntime({
+      bounds: { x: 100, y: 100, width: 168, height: 148 },
+    });
+    const queued = [];
+    context.runBackgroundConfigMutation = jest.fn((task) => queued.push(task));
+    const step = (width) =>
+      context.updateDesktopPinBounds('light.office', {
+        width,
+        height: 148,
+        resize: { corner: 'bottom-right', final: false },
+      });
+    await step(200);
+    jest.advanceTimersByTime(1600);
+    expect(queued).toHaveLength(1);
+
+    // The renderer's next step is in the queue ahead of the idle write.
+    await step(210);
+    await queued[0]();
+
+    expect(context.saveConfigDurably).not.toHaveBeenCalled();
+    expect(context.saveConfig).not.toHaveBeenCalled();
+    expect(context.pushConfigToRenderer).not.toHaveBeenCalled();
+    expect(context.desktopPinResizeSessions.size).toBe(1);
+    context.endDesktopPinResizeSession('light.office');
   });
 
   it('does not store the resize hint in the saved bounds', async () => {
@@ -281,8 +312,8 @@ describe('resizing a desktop pin in the main process', () => {
       const { context } = loadResizeRuntime({ bounds: start });
       await frame(context, 200);
       // The renderer went quiet for a moment, so main wrote the size it had reached.
-      jest.advanceTimersByTime(1600);
-      expect(context.saveConfig).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(1600);
+      expect(context.saveConfigDurably).toHaveBeenCalledTimes(1);
       const written = { ...context.config.desktopPins['light.office'] };
       await frame(context, 220);
       context.saveConfigDurably.mockResolvedValueOnce({ success: false, error: 'disk full' });
@@ -291,6 +322,51 @@ describe('resizing a desktop pin in the main process', () => {
 
       expect(result.pinBounds).toEqual(written);
       expect(context.config.desktopPins['light.office']).toEqual(written);
+    });
+
+    it('puts the pin back when the write after a quiet moment fails, and a drag that resumes goes back to the saved size', async () => {
+      jest.useFakeTimers();
+      const { context, pinWindow } = loadResizeRuntime({ bounds: start });
+      await frame(context, 200);
+      context.saveConfigDurably.mockResolvedValueOnce({ success: false, error: 'disk full' });
+
+      await jest.advanceTimersByTimeAsync(1600);
+
+      // Memory and file agree again: nothing keeps a size that was never written.
+      expect(context.config.desktopPins['light.office']).toEqual(start);
+      expect(pinWindow.setBounds).toHaveBeenLastCalledWith(start);
+      expect(context.log.warn).toHaveBeenCalledWith(
+        'Failed to save the desktop pin size:',
+        'disk full'
+      );
+      expect(context.desktopPinResizeSessions.size).toBe(0);
+      expect(context.pushConfigToRenderer).not.toHaveBeenCalled();
+
+      // The drag carries on and its own final save fails too: it goes back to the file's size,
+      // not to the intermediate one the failed write never stored.
+      await frame(context, 230);
+      context.saveConfigDurably.mockResolvedValueOnce({ success: false, error: 'disk full' });
+      const result = await frame(context, 240, 'top-left', true);
+      expect(result.pinBounds).toEqual(start);
+      expect(context.config.desktopPins['light.office']).toEqual(start);
+    });
+
+    it('does not bring back a pin that was unpinned before the failed write ran', async () => {
+      jest.useFakeTimers();
+      const { context, pinWindow } = loadResizeRuntime({ bounds: start });
+      await frame(context, 200);
+      // Unpinning removes the pin from the config but leaves the drag's session to run out.
+      delete context.config.desktopPins['light.office'];
+      pinWindow.setBounds.mockClear();
+      context.sendDesktopPinUpdate.mockClear();
+      context.saveConfigDurably.mockResolvedValueOnce({ success: false, error: 'disk full' });
+
+      await jest.advanceTimersByTimeAsync(1600);
+
+      expect(context.config.desktopPins).not.toHaveProperty('light.office');
+      expect(pinWindow.setBounds).not.toHaveBeenCalled();
+      expect(context.sendDesktopPinUpdate).not.toHaveBeenCalled();
+      expect(context.desktopPinResizeSessions.size).toBe(0);
     });
 
     it('restores a single keyboard step that cannot be saved', async () => {
@@ -417,6 +493,88 @@ describe('resizing a desktop pin in the main process', () => {
       expect(context.config.desktopPins['light.office']).toEqual(start);
       expect(pinWindow.setSize).toHaveBeenLastCalledWith(168, 148);
       expect(place).toHaveBeenLastCalledWith('HA Pin: light.office', { x: 180, y: 200 });
+    });
+
+    it('keeps a surface the app placed itself where it is drawn, and saves that spot', async () => {
+      // The overlap search put this pin at (124, 154) on its output; its saved x and y say (180, 200).
+      const { context, place } = loadResizeRuntime({ bounds: start, layer: { monitor } });
+      context.layerPositions.set('light.office', { x: 124, y: 154 });
+
+      await drag(context, { corner: 'bottom-right', width: 200, height: 180 });
+
+      // Not placed afresh from the saved x and y, which can be another spot as its size changes.
+      expect(place).toHaveBeenLastCalledWith('HA Pin: light.office', { x: 124, y: 154 });
+      expect(layerPositionOf(context)).toEqual({ x: 124, y: 154 });
+      context.endDesktopPinResizeSession('light.office');
+    });
+
+    it('puts a surface the app placed itself back where it was drawn when the save fails', async () => {
+      const { context, place } = loadResizeRuntime({ bounds: start, layer: { monitor } });
+      context.layerPositions.set('light.office', { x: 124, y: 154 });
+      await drag(context, { corner: 'top-left', width: 200, height: 180 });
+      expect(place).toHaveBeenLastCalledWith('HA Pin: light.office', { x: 92, y: 122 });
+      context.saveConfigDurably.mockResolvedValueOnce({ success: false, error: 'disk full' });
+
+      const result = await drag(context, { corner: 'top-left', width: 220, height: 200 }, true);
+
+      expect(result).toMatchObject({ success: false, pinBounds: start });
+      // No position was saved before the drag, so none is left; the surface is not placed from
+      // the saved (180, 200) but goes back to where it was drawn.
+      expect(context.config.layerPositions).toEqual({});
+      expect(place).toHaveBeenLastCalledWith('HA Pin: light.office', { x: 124, y: 154 });
+      expect(context.layerPositions.get('light.office')).toEqual({ x: 124, y: 154 });
+    });
+
+    it('does the same when a write after a quiet moment fails', async () => {
+      jest.useFakeTimers();
+      const { context, place } = loadResizeRuntime({ bounds: start, layer: { monitor } });
+      context.layerPositions.set('light.office', { x: 124, y: 154 });
+      await drag(context, { corner: 'top-left', width: 200, height: 180 });
+      context.saveConfigDurably.mockResolvedValueOnce({ success: false, error: 'disk full' });
+
+      await jest.advanceTimersByTimeAsync(1600);
+
+      expect(context.config.layerPositions).toEqual({});
+      expect(place).toHaveBeenLastCalledWith('HA Pin: light.office', { x: 124, y: 154 });
+    });
+
+    it('anchors the opposite edge at an enlarged interface size too', async () => {
+      // At 150% the window is 252x222 for a saved 168x148, and asking for 200x180 makes it 300x270.
+      const { context, pinWindow, place } = loadResizeRuntime({
+        bounds: start,
+        layer: { monitor },
+        scale: 1.5,
+      });
+      expect(place).toHaveBeenLastCalledWith('HA Pin: light.office', { x: 180, y: 200 });
+
+      await drag(context, { corner: 'top-left', width: 200, height: 180 });
+
+      expect(pinWindow.setSize).toHaveBeenLastCalledWith(300, 270);
+      // The window's right and bottom edges (432, 422 on the output) stay, so its corner moves by
+      // the 48px it grew, in window pixels.
+      expect(place).toHaveBeenLastCalledWith('HA Pin: light.office', { x: 132, y: 152 });
+      expect(layerPositionOf(context)).toEqual({ x: 132, y: 152 });
+      context.endDesktopPinResizeSession('light.office');
+    });
+
+    it.each([
+      [
+        'it has no position of its own yet',
+        { monitor },
+        (context) => context.layerPositions.clear(),
+      ],
+      ['the output is not known', { monitor: null }, () => {}],
+    ])('leaves the position to the saved x and y when %s', async (_, layer, prepare) => {
+      const { context, pinWindow } = loadResizeRuntime({ bounds: start, layer });
+      prepare(context);
+
+      const result = await drag(context, { corner: 'top-left', width: 200, height: 180 });
+
+      // The compositor owns placement here: the size changes, no layer position is written.
+      expect(result.pinBounds).toMatchObject({ x: 2100, y: 200, width: 200, height: 180 });
+      expect(pinWindow.setSize).toHaveBeenLastCalledWith(200, 180);
+      expect(context.config.layerPositions).toEqual({});
+      context.endDesktopPinResizeSession('light.office');
     });
 
     it('restores a position saved before the drag when the final save fails', async () => {

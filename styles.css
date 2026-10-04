@@ -1302,8 +1302,8 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .desktop-pin-light-brightness {
-  --desktop-pin-light-slider-track-size: 8px;
-  --desktop-pin-light-slider-thumb-size: 16px;
+  --desktop-pin-slider-track-size: 8px;
+  --desktop-pin-slider-thumb-size: 16px;
   display: grid;
   align-content: center;
   gap: 8px;
@@ -1373,7 +1373,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   top: 50%;
   left: 0;
   width: 100%;
-  height: var(--desktop-pin-light-slider-thumb-size);
+  height: var(--desktop-pin-slider-thumb-size);
   transform: translateY(-50%);
   margin: 0;
   background: transparent;
@@ -1388,25 +1388,27 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 /* The slider is a transparent overlay on the track, so the ring hugs the track. */
-.desktop-pin-light-slider:focus-visible {
+.desktop-pin-light-slider:focus-visible,
+.desktop-pin-panel-slider:focus-visible {
   border-radius: var(--radius-full);
   outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
 }
 
 .desktop-pin-light-slider::-webkit-slider-runnable-track {
-  height: var(--desktop-pin-light-slider-track-size);
+  height: var(--desktop-pin-slider-track-size);
   background: transparent;
   border-radius: var(--radius-full);
   border: none;
 }
 
-.desktop-pin-light-slider::-webkit-slider-thumb {
+.desktop-pin-light-slider::-webkit-slider-thumb,
+.desktop-pin-panel-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: var(--desktop-pin-light-slider-thumb-size);
-  height: var(--desktop-pin-light-slider-thumb-size);
+  width: var(--desktop-pin-slider-thumb-size);
+  height: var(--desktop-pin-slider-thumb-size);
   margin-top: calc(
-    (var(--desktop-pin-light-slider-track-size) - var(--desktop-pin-light-slider-thumb-size)) / 2
+    (var(--desktop-pin-slider-track-size) - var(--desktop-pin-slider-thumb-size)) / 2
   );
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.95);
@@ -1417,14 +1419,15 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   transition: transform var(--transition-fast);
 }
 
-.desktop-pin-light-slider::-webkit-slider-thumb:hover {
+.desktop-pin-light-slider::-webkit-slider-thumb:hover,
+.desktop-pin-panel-slider::-webkit-slider-thumb:hover {
   transform: scale(1.1);
 }
 
 /* Doubled class: .desktop-pin-panel-progress, declared later, clips its overflow, which would
    cut the slider's round thumb down to the track's height. */
 .desktop-pin-light-brightness-track.desktop-pin-panel-progress {
-  height: var(--desktop-pin-light-slider-track-size);
+  height: var(--desktop-pin-slider-track-size);
   margin: 8px 0;
   border-radius: var(--radius-full);
   overflow: visible;
@@ -1589,9 +1592,10 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   gap: 6px;
 }
 
-.desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-slider {
-  --desktop-pin-light-slider-track-size: 6px;
-  --desktop-pin-light-slider-thumb-size: 12px;
+.desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-slider,
+.desktop-pin-panel-control[data-layout='micro'] .desktop-pin-panel-slider {
+  --desktop-pin-slider-track-size: 6px;
+  --desktop-pin-slider-thumb-size: 12px;
 }
 
 .desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-presets {
@@ -1639,9 +1643,10 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   gap: 0;
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-slider {
-  --desktop-pin-light-slider-track-size: 7px;
-  --desktop-pin-light-slider-thumb-size: 14px;
+.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-slider,
+.desktop-pin-panel-control[data-layout='compact'] .desktop-pin-panel-slider {
+  --desktop-pin-slider-track-size: 7px;
+  --desktop-pin-slider-thumb-size: 14px;
 }
 
 .desktop-pin-light-control[data-layout='compact']
@@ -2010,11 +2015,36 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   align-items: center;
 }
 
+/* The climate, fan, cover and numeric pins' sliders are drawn like the lamp's: a round track in a
+   pale wash with a hairline rim, filled in the pin's tint up to a white thumb. The fill is a
+   gradient because CSS cannot read the value; --range-progress carries it (src/range-progress.js).
+   The input is as tall as its thumb, so the thumb is not clipped to the thinner track. */
 .desktop-pin-panel-slider {
+  --desktop-pin-slider-track-size: 8px;
+  --desktop-pin-slider-thumb-size: 16px;
   width: 100%;
+  height: var(--desktop-pin-slider-thumb-size);
   margin: 0;
-  accent-color: var(--accent);
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
   cursor: ew-resize;
+}
+
+.desktop-pin-panel-slider:focus {
+  outline: none;
+}
+
+.desktop-pin-panel-slider::-webkit-slider-runnable-track {
+  height: var(--desktop-pin-slider-track-size);
+  border-radius: var(--radius-full);
+  background: linear-gradient(
+    var(--slider-dir),
+    rgba(var(--desktop-pin-tint-rgb, var(--accent-rgb)), 0.7),
+    rgb(var(--desktop-pin-tint-rgb, var(--accent-rgb))) var(--range-progress, 0%),
+    rgba(var(--desktop-pin-ink-rgb), 0.16) var(--range-progress, 0%)
+  );
+  box-shadow: inset 0 0 0 1px rgba(var(--desktop-pin-ink-rgb), 0.14);
 }
 
 /* One row of equal columns, however many buttons a family offers: a lone button fills the row
@@ -6234,11 +6264,6 @@ body.theme-light.active-tile-glow #quick-controls .control-item[data-active='tru
   color: var(--text-faint);
 }
 
-body.active-tile-glow.high-contrast #quick-controls .control-item[data-active='true'] {
-  background-color: rgba(var(--accent-rgb), 0.26);
-  border-color: rgba(var(--accent-rgb), 0.8);
-}
-
 .control-icon {
   font-size: var(--font-size-2xl);
   width: 32px;
@@ -8675,139 +8700,6 @@ body.theme-light:not(.high-contrast)
   }
 }
 
-/* Custom Dropdown */
-.custom-dropdown {
-  position: relative;
-  width: 100%;
-}
-
-/* The trigger is a select that draws its own menu, so it takes the select's recipe: the same fill,
-   border, height and thin chevron (see the field recipe above and the select rules below). */
-.custom-dropdown-trigger {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  min-height: 36px;
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--tile-bg);
-  color: var(--text-primary);
-  font-size: var(--font-size-base);
-  font-family: inherit;
-  text-align: start;
-  cursor: pointer;
-  transition: var(--transition-base);
-}
-
-.custom-dropdown-trigger:hover {
-  border-color: var(--border-hover);
-  background: var(--tile-bg-hover);
-}
-
-.custom-dropdown-trigger:focus {
-  outline: none;
-  border-color: var(--focus-ring);
-  background: var(--tile-bg-hover);
-  box-shadow: var(--glow-focus);
-}
-
-.custom-dropdown-value {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.custom-dropdown-arrow {
-  flex-shrink: 0;
-  color: var(--text-secondary);
-  transition: transform var(--transition-base);
-}
-
-.custom-dropdown.open .custom-dropdown-arrow {
-  transform: rotate(180deg);
-}
-
-.custom-dropdown-menu {
-  position: absolute;
-  top: calc(100% + var(--space-2));
-  left: 0;
-  right: 0;
-  max-height: 300px;
-  overflow-y: auto;
-  background: var(--glass-elevated);
-  backdrop-filter: blur(var(--blur-md));
-  -webkit-backdrop-filter: blur(var(--blur-md));
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(-8px);
-  transition:
-    opacity var(--transition-base),
-    transform var(--transition-base),
-    visibility var(--transition-base);
-  z-index: var(--z-dropdown);
-}
-
-.custom-dropdown.open .custom-dropdown-menu {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0);
-}
-
-.custom-dropdown-option {
-  padding: var(--space-3) var(--space-4);
-  /* The 3px accent edge takes room the trigger's 1px border does not, so the text still lines
-     up with the trigger's. */
-  padding-inline-start: calc(var(--space-4) - 2px);
-  color: var(--text-primary);
-  font-size: var(--font-size-base);
-  cursor: pointer;
-  transition: var(--transition-base);
-  border-inline-start: 3px solid transparent;
-}
-
-.custom-dropdown-option:hover {
-  background: var(--tile-bg-hover);
-  border-inline-start-color: var(--accent);
-}
-
-.custom-dropdown-option.selected {
-  background: var(--accent-bg);
-  border-inline-start-color: var(--accent);
-  color: var(--accent-text);
-}
-
-.custom-dropdown-option:active {
-  background: var(--accent-bg);
-}
-
-/* Custom scrollbar for dropdown menu */
-.custom-dropdown-menu::-webkit-scrollbar {
-  width: 10px;
-}
-
-.custom-dropdown-menu::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.custom-dropdown-menu::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  background-clip: padding-box;
-  border: 2px solid transparent;
-  border-radius: var(--radius-sm);
-}
-
-.custom-dropdown-menu::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
-  background-clip: padding-box;
-}
-
 /* Buttons */
 .btn {
   padding: var(--space-3) var(--space-5);
@@ -10959,10 +10851,6 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   background: rgba(255, 255, 255, 0.02);
 }
 
-.hotkey-item:has(.hotkey-action-dropdown.open) {
-  align-items: flex-start;
-}
-
 /* Every row has two tiers: the name on its own line, wrapping to a second one for a long name,
    and the controls under it. Beside the controls the name had about 90px at the default window
    and was cut to 'Coffee ma...', and a row that gained a clear button once a hotkey was set no
@@ -10994,12 +10882,8 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   min-width: 0;
 }
 
-.hotkey-input-container:has(.hotkey-action-dropdown.open) {
-  align-items: flex-start;
-}
-
 .hotkey-input {
-  /* Compact, level with the action dropdown beside it. The fill, border and corners come from
+  /* Compact, level with the action select beside it. The fill, border and corners come from
      the field recipe; only the value is set in mono. */
   min-height: 32px;
   flex: 1 1 8rem;
@@ -11012,51 +10896,24 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   letter-spacing: 0.5px;
 }
 
-/* Hotkey Action Custom Dropdown - Compact version */
-.hotkey-action-dropdown {
-  position: relative;
-  flex: 0 1 120px;
-  min-width: min(96px, 100%);
-}
-
-.hotkey-action-dropdown.open {
-  z-index: var(--z-dropdown);
-}
-
-.hotkey-action-dropdown .custom-dropdown-trigger {
-  padding: 6px 8px;
-  font-size: var(--font-size-sm);
-  gap: 6px;
+/* The action select, compact and level with the hotkey field beside it. Its chevron is the shared
+   select one, set closer to the edge for the narrower field; the ID outranks the select rules.
+   It is 120px and gives way to the row (the guard keeps it inside a container narrower than its
+   minimum), and the hotkey field takes what it leaves; in a row too narrow for both it wraps. */
+#settings-modal .hotkey-input-container select.hotkey-action-select {
+  width: 120px;
+  flex-shrink: 1;
+  min-width: min(100px, 100%);
   min-height: 32px;
-}
-
-.hotkey-action-dropdown .custom-dropdown-arrow {
-  width: 12px;
-  height: 12px;
-}
-
-.hotkey-action-dropdown .custom-dropdown-value {
+  padding-block: 6px;
+  padding-inline: 8px 24px;
   font-size: var(--font-size-sm);
+  background-position: right 8px center;
+  background-size: 12px 12px;
 }
 
-.hotkey-action-dropdown .custom-dropdown-menu {
-  font-size: var(--font-size-sm);
-  max-height: 200px;
-  position: static;
-  display: none;
-  margin-top: var(--space-2);
-  opacity: 1;
-  visibility: visible;
-  transform: none;
-}
-
-.hotkey-action-dropdown.open .custom-dropdown-menu {
-  display: block;
-}
-
-.hotkey-action-dropdown .custom-dropdown-option {
-  padding: 6px 8px;
-  font-size: var(--font-size-sm);
+[dir='rtl'] #settings-modal .hotkey-input-container select.hotkey-action-select {
+  background-position: left 8px center;
 }
 
 .btn-clear-hotkey {
@@ -12008,6 +11865,28 @@ body.theme-light.opaque-panels:not(.high-contrast)
   background: color-mix(in srgb, var(--bg-primary), white 70%) !important;
 }
 
+/* The opaque fill above is a background shorthand, which also wiped the accent wash of an "on" tile
+   and the tint of a running or paused timer. Each is painted back as a layer over that fill: only
+   the background image is set, so the opaque colour underneath (the panel's, or the lifted tile's)
+   stays. */
+body.opaque-panels.active-tile-glow #quick-controls .control-item[data-active='true'] {
+  --active-tile-wash: color-mix(in srgb, rgb(var(--accent-rgb)) var(--dash-tile-wash), transparent);
+  background-image: linear-gradient(var(--active-tile-wash), var(--active-tile-wash)) !important;
+}
+
+body.opaque-panels.active-tile-glow #quick-controls .control-item[data-active='true']:hover {
+  --active-tile-wash: color-mix(
+    in srgb,
+    rgb(var(--accent-rgb)) var(--dash-tile-wash-hover),
+    transparent
+  );
+}
+
+body.opaque-panels #quick-controls .timer-entity:is([data-state='active'], [data-state='paused']) {
+  --timer-wash: color-mix(in srgb, rgb(var(--timer-rgb)) 18%, transparent);
+  background-image: linear-gradient(var(--timer-wash), var(--timer-wash)) !important;
+}
+
 /* A primary card holds its entity's tile, which fills the card. The panel colour rule above
    reaches that tile too and would cover the card's lift, so it stays clear and the card shows. */
 body.opaque-panels .status-card.primary-entity-card .control-item {
@@ -12055,7 +11934,8 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
   }
 
   /* The grey fill above also flattens the selected chip, whose accent border and tint were its
-     mark, so the chip keeps a heavier accent edge. */
+     mark, so the chip keeps a heavier accent edge. The same goes for the selected colour, the
+     Accent and Background choice, the edit button while editing, and a pin's on or current chip. */
   body.high-contrast
     :is(
       .climate-mode-btn,
@@ -12063,9 +11943,84 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
       .climate-preset-mode-btn,
       .media-mute-toggle
     ).active,
-  body.high-contrast .donate-amount-chip.selected {
+  body.high-contrast :is(.color-target-option.active, .section-btn.reorganize-active),
+  body.high-contrast .theme-option.selected,
+  body.high-contrast .donate-amount-chip.selected,
+  body.high-contrast :is(.desktop-pin-panel-button, .desktop-pin-power)[data-active='true'] {
     border-color: var(--accent) !important;
     box-shadow: inset 0 0 0 2px var(--accent);
+  }
+
+  /* The grey fill is !important, so a button's own hover colour never shows and nothing answered
+     the pointer. A hovered button lightens and takes a white edge instead. The primary fill and
+     the selected chips outrank this rule and keep theirs, and the tile's overlay button has to
+     stay clear or it would cover the tile's text. */
+  body.high-contrast
+    :is(button, select):hover:not(
+      :where(
+        :disabled,
+        [aria-disabled='true'],
+        .tile-primary-button,
+        .section-toggle,
+        .tab-link,
+        .light-color-swatch
+      )
+    ) {
+    background: #333 !important;
+    border-color: #fff !important;
+  }
+
+  /* Without a fill of their own these icon buttons were flat grey blocks, as dark as the panel
+     around them; an edge shows where they are. */
+  body.high-contrast :is(.media-tile-btn, .section-btn) {
+    border: 1px solid #aaa;
+    border-radius: var(--radius-md);
+  }
+
+  /* An on switch and an off one shared the grey track, told apart only by the side the knob sat
+     on. On is the accent with a dark knob, as the primary button is. */
+  body.high-contrast .form-group input[type='checkbox']:checked {
+    background: var(--accent) !important;
+    border-color: #fff !important;
+  }
+
+  body.high-contrast .form-group input[type='checkbox']:checked::after {
+    background: #141414 !important;
+    box-shadow: none !important;
+  }
+
+  /* An "on" tile is a wash of the accent in an accent edge two pixels wide, and a running or paused
+     timer takes its own colour the same way, the paused one dashed. With the opaque panels' fill
+     the wash is the layer set above; the edge is drawn on top. The outline half of the edge steps
+     aside while the tile has keyboard focus: the focus ring is white whatever this says, but it
+     took this rule's -2px offset and sat on top of the edge, hiding it. */
+  body.active-tile-glow.high-contrast
+    #quick-controls
+    .control-item[data-active='true']:not(:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+
+  body.active-tile-glow.high-contrast #quick-controls .control-item[data-active='true'] {
+    background-color: rgba(var(--accent-rgb), 0.26);
+    border-color: var(--accent);
+  }
+
+  body.high-contrast
+    #quick-controls
+    .timer-entity:is([data-state='active'], [data-state='paused']) {
+    border-color: rgb(var(--timer-rgb));
+  }
+
+  body.high-contrast
+    #quick-controls
+    .timer-entity:is([data-state='active'], [data-state='paused']):not(:focus-visible) {
+    outline: 2px solid rgb(var(--timer-rgb));
+    outline-offset: -2px;
+  }
+
+  body.high-contrast #quick-controls .timer-entity[data-state='paused']:not(:focus-visible) {
+    outline: 2px dashed rgb(var(--timer-rgb));
   }
 
   /* The rail marks its active page with the sliding pill (the active tab's own border is cancelled
@@ -12075,11 +12030,30 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
     box-shadow: inset 0 0 0 2px var(--accent);
   }
 
-  /* A range input's background is its track: give it one that stands out from the #141414 panels.
-     The colour temperature gradient already does, and the pin light slider is a transparent
-     overlay above its own track. */
-  body.high-contrast input[type='range']:not(.light-color-temp-slider, .desktop-pin-light-slider) {
-    background: #8a8a8a !important;
+  /* A range input's background is its track: give it one that stands out from the #141414 panels,
+     filled in the accent up to the thumb so the value shows without relying on the thumb alone.
+     The colour temperature gradient already stands out, the pin light slider is a transparent
+     overlay above its own track, and the other pin sliders draw their track below. */
+  body.high-contrast
+    input[type='range']:not(
+      .light-color-temp-slider,
+      .desktop-pin-light-slider,
+      .desktop-pin-panel-slider
+    ) {
+    background: linear-gradient(
+      var(--slider-dir),
+      var(--accent) var(--range-progress, 0%),
+      #8a8a8a var(--range-progress, 0%)
+    ) !important;
+  }
+
+  body.high-contrast .desktop-pin-panel-slider::-webkit-slider-runnable-track {
+    background: linear-gradient(
+      var(--slider-dir),
+      var(--accent) var(--range-progress, 0%),
+      #8a8a8a var(--range-progress, 0%)
+    );
+    box-shadow: none;
   }
 }
 
@@ -12465,7 +12439,7 @@ body.theme-light {
 }
 
 /* One height for text fields and selects, so a native select no longer stands 2px taller than the
-   input beside it, and both match the custom dropdown trigger. */
+   input beside it. */
 .form-group
   :is(input, select):not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
 :where(.modal-body, .first-run-content)
@@ -12473,9 +12447,9 @@ body.theme-light {
   min-height: 36px;
 }
 
-/* A native select drawn like the custom dropdown: the browser's heavy chevron (which each OS
-   draws differently) gives way to the same thin one, set at the end of the line and mirrored in
-   right-to-left. The menu itself is still the browser's. The fill comes from the field recipe;
+/* A native select with a thin chevron: the browser's heavy one (which each OS draws differently)
+   gives way to it, set at the end of the line and mirrored in right-to-left. The menu itself is
+   still the browser's. The fill comes from the field recipe;
    only the background image is set here, so a rule that sets just the colour keeps the chevron.
    The readable preset repaints every field with a plain background shorthand, which would take
    the chevron with it, so it keeps the browser's own select. */
@@ -13029,9 +13003,8 @@ body.theme-light:not(.high-contrast)
   color: color-mix(in srgb, var(--text-primary) 72%, transparent);
 }
 
-/* --- Menus and tooltips drawn by the app --- */
+/* --- Tooltips drawn by the app --- */
 
-.custom-dropdown-menu,
 .connection-status-tooltip,
 .theme-tooltip-flyout {
   background: var(--dialog-bg);
@@ -13446,7 +13419,6 @@ body.theme-light #settings-modal .modal-footer {
 /* A label above a full-width field (URL, search, the media picker) keeps a gap. */
 #settings-modal .form-group > label + input,
 #settings-modal .form-group > label + select,
-#settings-modal .form-group > label + .custom-dropdown,
 #settings-modal .form-group > label + textarea {
   margin-top: 8px;
 }
@@ -15890,11 +15862,10 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   .climate-fan-mode-btn.active,
   .climate-preset-mode-btn.active,
   .media-mute-toggle.active,
-  .custom-dropdown-option.selected,
   .entity-item.selected,
   .donate-amount-chip.selected,
   .desktop-pin-panel-button[data-active='true'],
-  .desktop-pin-light-power[data-active='true'] {
+  .desktop-pin-power[data-active='true'] {
     outline: 2px solid Highlight;
     outline-offset: -2px;
   }
@@ -15925,7 +15896,7 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
 
   /* Fields signal focus with a border colour and a shadow, and some switch their outline off,
      which leaves nothing once forced colours take the first two away. */
-  :is(input, select, textarea, .custom-dropdown-trigger):focus-visible {
+  :is(input, select, textarea):focus-visible {
     outline: 2px solid Highlight !important;
     outline-offset: 2px;
   }
@@ -15994,7 +15965,8 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
     .light-color-temp-slider,
     .media-volume-slider
   )::-webkit-slider-thumb,
-  .desktop-pin-light-slider::-webkit-slider-thumb {
+  .desktop-pin-light-slider::-webkit-slider-thumb,
+  .desktop-pin-panel-slider::-webkit-slider-thumb {
     background: Highlight;
     border: 2px solid ButtonText;
     box-shadow: none;
@@ -16013,6 +15985,23 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   /* The pin's slider is a transparent overlay above its own fill, so its track is only an edge. */
   .desktop-pin-light-slider::-webkit-slider-runnable-track {
     background: transparent;
+    border: 1px solid ButtonText;
+    box-shadow: none;
+  }
+
+  /* The other pin sliders fill their own track, so it keeps its gradient in system colours. Forced
+     colours take a slider's background image away, so the slider opts out; the colours below are
+     all system keywords, and the focus ring above is Highlight whatever the slider opts out of. */
+  .desktop-pin-panel-slider {
+    forced-color-adjust: none;
+  }
+
+  .desktop-pin-panel-slider::-webkit-slider-runnable-track {
+    background: linear-gradient(
+      var(--slider-dir),
+      Highlight var(--range-progress, 0%),
+      Canvas var(--range-progress, 0%)
+    );
     border: 1px solid ButtonText;
     box-shadow: none;
   }
@@ -16120,8 +16109,7 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
 
   /* A custom scrollbar thumb is a background, which is the Canvas colour here. */
   ::-webkit-scrollbar,
-  .modal-body::-webkit-scrollbar,
-  .custom-dropdown-menu::-webkit-scrollbar {
+  .modal-body::-webkit-scrollbar {
     width: 12px;
     height: 12px;
   }
@@ -16129,16 +16117,13 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   ::-webkit-scrollbar-thumb,
   ::-webkit-scrollbar-thumb:hover,
   .modal-body::-webkit-scrollbar-thumb,
-  .modal-body::-webkit-scrollbar-thumb:hover,
-  .custom-dropdown-menu::-webkit-scrollbar-thumb,
-  .custom-dropdown-menu::-webkit-scrollbar-thumb:hover {
+  .modal-body::-webkit-scrollbar-thumb:hover {
     background: ButtonText;
     border: 3px solid Canvas;
   }
 
   ::-webkit-scrollbar-track,
-  .modal-body::-webkit-scrollbar-track,
-  .custom-dropdown-menu::-webkit-scrollbar-track {
+  .modal-body::-webkit-scrollbar-track {
     background: Canvas;
   }
 

@@ -81,34 +81,16 @@ function getActionOptionsForDomain(domain) {
   return options[domain] || options.switch;
 }
 
-function createCustomDropdownHTML(options, selectedAction, entityId) {
-  const selectedOption = options.find((opt) => opt.value === selectedAction) || options[0];
-  const selectedLabel = escapeHtml(selectedOption.label);
-  const escapedEntityId = escapeHtmlAttribute(entityId);
-  const listboxId = escapeHtmlAttribute(
-    `hotkey-action-options-${String(entityId || '').replace(/[^a-zA-Z0-9_-]/g, '-')}`
-  );
-
+// The action is a native select, like every other choice in Settings: it brings the keyboard model
+// and the screen reader roles, and its list opens over the page instead of pushing the rows below.
+function createActionSelectHTML(options, selectedAction, entityId) {
   const optionsHTML = options
     .map(
       (opt) =>
-        `<div class="custom-dropdown-option ${opt.value === selectedAction ? 'selected' : ''}" role="option" tabindex="-1" aria-selected="${opt.value === selectedAction ? 'true' : 'false'}" data-value="${escapeHtmlAttribute(opt.value)}">${escapeHtml(opt.label)}</div>`
+        `<option value="${escapeHtmlAttribute(opt.value)}"${opt.value === selectedAction ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`
     )
     .join('');
-
-  return `
-        <div class="custom-dropdown hotkey-action-dropdown" data-entity-id="${escapedEntityId}">
-            <button type="button" class="custom-dropdown-trigger" aria-haspopup="listbox" aria-controls="${listboxId}" aria-expanded="false">
-                <span class="custom-dropdown-value">${selectedLabel}</span>
-                <svg class="custom-dropdown-arrow" aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-            </button>
-            <div class="custom-dropdown-menu" id="${listboxId}" role="listbox" aria-label="${escapeHtmlAttribute(t('Hotkey action'))}">
-                ${optionsHTML}
-            </div>
-        </div>
-    `;
+  return `<select class="hotkey-action-select" data-entity-id="${escapeHtmlAttribute(entityId)}" data-focus-key="hotkey-action:${escapeHtmlAttribute(entityId)}" aria-label="${escapeHtmlAttribute(t('Hotkey action'))}">${optionsHTML}</select>`;
 }
 
 function renderHotkeysTab() {
@@ -142,7 +124,7 @@ function renderHotkeysTab() {
 
         // Get action options based on entity type
         const actionOptions = getActionOptionsForDomain(domain);
-        const dropdownHTML = createCustomDropdownHTML(actionOptions, action, entity.entity_id);
+        const actionSelectHTML = createActionSelectHTML(actionOptions, action, entity.entity_id);
 
         const item = document.createElement('div');
         item.className = 'hotkey-item';
@@ -153,12 +135,10 @@ function renderHotkeysTab() {
                 <span class="entity-name">${displayName}</span>
                 <div class="hotkey-input-container">
                     <input type="text" readonly role="button" aria-label="${escapeHtmlAttribute(t('Hotkey for {{name}}', { name: getEntityDisplayName(entity) }))}" aria-keyshortcuts="Enter Space" class="hotkey-input" value="${escapedHotkey}" placeholder="${escapeHtmlAttribute(t('None'))}" data-entity-id="${escapedEntityId}" data-focus-key="hotkey-input:${escapedEntityId}">
-                    ${dropdownHTML}
+                    ${actionSelectHTML}
                     <button type="button" class="btn-clear-hotkey" title="${escapeHtmlAttribute(t('Clear hotkey'))}" aria-label="${escapeHtmlAttribute(t('Clear hotkey'))}" data-focus-key="hotkey-clear:${escapedEntityId}">&times;</button>
                 </div>
             `;
-        const trigger = item.querySelector('.custom-dropdown-trigger');
-        if (trigger) trigger.dataset.focusKey = `hotkey-action:${escapedEntityId}`;
         container.appendChild(item);
       });
     });
@@ -401,11 +381,8 @@ function captureHotkey() {
 
 // Flag to track if listeners have been set up
 let listenersSetUp = false;
-// Store reference to document-level click handler for cleanup
-let documentClickHandler = null;
-let containerClickHandler = null;
-let containerOptionHandler = null;
-let containerKeydownHandler = null;
+// Store the reference to the change handler for cleanup
+let containerChangeHandler = null;
 let activeContainer = null;
 
 function setupHotkeyEventListenersInternal() {
@@ -417,205 +394,72 @@ function setupHotkeyEventListenersInternal() {
     if (!container) return;
     activeContainer = container;
 
-    // Handle custom dropdown toggle
-    containerClickHandler = (e) => {
-      const trigger = e.target.closest('.custom-dropdown-trigger');
-      if (trigger) {
-        e.stopPropagation();
-        const dropdown = trigger.closest('.custom-dropdown');
-        const isOpen = dropdown.classList.contains('open');
+    // A new action picked in a row's select is saved and registered straight away.
+    containerChangeHandler = async (e) => {
+      const select = e.target.closest?.('.hotkey-action-select');
+      if (!select) return;
+      const entityId = select.dataset.entityId;
+      const action = select.value;
+      const actionLabel = select.selectedOptions[0]?.textContent || action;
 
-        // Close all other dropdowns first
-        container.querySelectorAll('.custom-dropdown.open').forEach((dd) => {
-          dd.classList.remove('open');
-          dd.querySelector('.custom-dropdown-trigger').setAttribute('aria-expanded', 'false');
-        });
+      // Save to config
+      const hotkeyConfig = state.CONFIG.globalHotkeys.hotkeys[entityId];
+      if (hotkeyConfig) {
+        const previousConfig = JSON.parse(JSON.stringify(state.CONFIG));
+        // The rollback below may be sent after a profile sync pull has landed, so
+        // it names the revision it was taken at and main keeps the pulled values.
+        const previousRevision = window.electronAPI.getConfigRevision?.();
+        if (Number.isFinite(previousRevision)) previousConfig.configRevision = previousRevision;
+        const nextConfig = JSON.parse(JSON.stringify(state.CONFIG));
+        const nextHotkeyConfig = nextConfig.globalHotkeys.hotkeys[entityId];
+        nextConfig.globalHotkeys.hotkeys[entityId] =
+          typeof nextHotkeyConfig === 'string'
+            ? { hotkey: nextHotkeyConfig, action }
+            : { ...nextHotkeyConfig, action };
+        let updatePersisted = false;
 
-        // Toggle current dropdown
-        if (!isOpen) {
-          dropdown.classList.add('open');
-          trigger.setAttribute('aria-expanded', 'true');
-        }
-      }
-    };
-    container.addEventListener('click', containerClickHandler);
+        try {
+          const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
+          if (!updatedConfig?.homeAssistant) {
+            throw new Error(updatedConfig?.error || t('Failed to save hotkey action'));
+          }
+          state.setConfig(updatedConfig);
+          updatePersisted = true;
 
-    // Handle custom dropdown option selection
-    containerOptionHandler = async (e) => {
-      const option = e.target.closest('.custom-dropdown-option');
-      if (option) {
-        const dropdown = option.closest('.custom-dropdown');
-        const entityId = dropdown.dataset.entityId;
-        const action = option.dataset.value;
-        const actionLabel = option.textContent;
+          const registrationResult = await window.electronAPI.registerHotkeys();
+          if (registrationResult?.success === false) {
+            throw new Error(
+              registrationResult.error || t('Failed to activate the updated hotkey action')
+            );
+          }
 
-        // Update dropdown display
-        const valueSpan = dropdown.querySelector('.custom-dropdown-value');
-        if (valueSpan) {
-          valueSpan.textContent = actionLabel;
-        }
-
-        // Update selected state
-        dropdown.querySelectorAll('.custom-dropdown-option').forEach((opt) => {
-          opt.classList.remove('selected');
-          opt.setAttribute('aria-selected', 'false');
-        });
-        option.classList.add('selected');
-        option.setAttribute('aria-selected', 'true');
-
-        // Close dropdown
-        dropdown.classList.remove('open');
-        dropdown.querySelector('.custom-dropdown-trigger').setAttribute('aria-expanded', 'false');
-
-        // Save to config
-        const hotkeyConfig = state.CONFIG.globalHotkeys.hotkeys[entityId];
-        if (hotkeyConfig) {
-          const previousConfig = JSON.parse(JSON.stringify(state.CONFIG));
-          // The rollback below may be sent after a profile sync pull has landed, so
-          // it names the revision it was taken at and main keeps the pulled values.
-          const previousRevision = window.electronAPI.getConfigRevision?.();
-          if (Number.isFinite(previousRevision)) previousConfig.configRevision = previousRevision;
-          const nextConfig = JSON.parse(JSON.stringify(state.CONFIG));
-          const nextHotkeyConfig = nextConfig.globalHotkeys.hotkeys[entityId];
-          nextConfig.globalHotkeys.hotkeys[entityId] =
-            typeof nextHotkeyConfig === 'string'
-              ? { hotkey: nextHotkeyConfig, action }
-              : { ...nextHotkeyConfig, action };
-          let updatePersisted = false;
-
-          try {
-            const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
-            if (!updatedConfig?.homeAssistant) {
-              throw new Error(updatedConfig?.error || t('Failed to save hotkey action'));
-            }
-            state.setConfig(updatedConfig);
-            updatePersisted = true;
-
-            const registrationResult = await window.electronAPI.registerHotkeys();
-            if (registrationResult?.success === false) {
-              throw new Error(
-                registrationResult.error || t('Failed to activate the updated hotkey action')
-              );
-            }
-
-            showToast(t('Action updated to: {{action}}', { action: actionLabel }), 'success', 2000);
-          } catch (error) {
-            let failureMessage = error?.message || t('Failed to update hotkey action');
-            if (updatePersisted) {
-              try {
-                const restoredConfig = await window.electronAPI.updateConfig(previousConfig);
-                if (!restoredConfig?.homeAssistant) {
-                  throw new Error(restoredConfig?.error || t('Failed to restore hotkey action'));
-                }
-                state.setConfig(restoredConfig);
-                const rollbackRegistration = await window.electronAPI.registerHotkeys();
-                if (rollbackRegistration?.success === false) {
-                  throw new Error(
-                    rollbackRegistration.error ||
-                      t('The previous hotkey action was restored, but its runtime binding was not')
-                  );
-                }
-              } catch (rollbackError) {
-                failureMessage = `${failureMessage}. ${rollbackError?.message || t('Rollback failed')}`;
+          showToast(t('Action updated to: {{action}}', { action: actionLabel }), 'success', 2000);
+        } catch (error) {
+          let failureMessage = error?.message || t('Failed to update hotkey action');
+          if (updatePersisted) {
+            try {
+              const restoredConfig = await window.electronAPI.updateConfig(previousConfig);
+              if (!restoredConfig?.homeAssistant) {
+                throw new Error(restoredConfig?.error || t('Failed to restore hotkey action'));
               }
+              state.setConfig(restoredConfig);
+              const rollbackRegistration = await window.electronAPI.registerHotkeys();
+              if (rollbackRegistration?.success === false) {
+                throw new Error(
+                  rollbackRegistration.error ||
+                    t('The previous hotkey action was restored, but its runtime binding was not')
+                );
+              }
+            } catch (rollbackError) {
+              failureMessage = `${failureMessage}. ${rollbackError?.message || t('Rollback failed')}`;
             }
-            renderHotkeysTab();
-            showToast(failureMessage, 'error', 4000);
           }
+          renderHotkeysTab();
+          showToast(failureMessage, 'error', 4000);
         }
       }
     };
-    container.addEventListener('click', containerOptionHandler);
-
-    // Close dropdowns when clicking outside - store handler reference for cleanup
-    documentClickHandler = (e) => {
-      const container = document.getElementById('hotkeys-list');
-      if (!container) return; // Container was removed
-
-      if (!e.target.closest('.custom-dropdown')) {
-        container.querySelectorAll('.custom-dropdown.open').forEach((dropdown) => {
-          dropdown.classList.remove('open');
-          const trigger = dropdown.querySelector('.custom-dropdown-trigger');
-          if (trigger) {
-            trigger.setAttribute('aria-expanded', 'false');
-          }
-        });
-      }
-    };
-    document.addEventListener('click', documentClickHandler);
-
-    // Handle keyboard navigation
-    containerKeydownHandler = (e) => {
-      const trigger = e.target.closest('.custom-dropdown-trigger');
-      if (trigger) {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          trigger.click();
-        } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-          e.preventDefault();
-          const dropdown = trigger.closest('.custom-dropdown');
-          dropdown.classList.add('open');
-          trigger.setAttribute('aria-expanded', 'true');
-          const options = Array.from(dropdown.querySelectorAll('.custom-dropdown-option'));
-          const selectedIndex = options.findIndex((option) =>
-            option.classList.contains('selected')
-          );
-          const nextIndex =
-            e.key === 'ArrowUp'
-              ? selectedIndex > 0
-                ? selectedIndex - 1
-                : options.length - 1
-              : selectedIndex >= 0 && selectedIndex < options.length - 1
-                ? selectedIndex + 1
-                : 0;
-          options[nextIndex]?.focus();
-        } else if (e.key === 'Escape') {
-          const dropdown = trigger.closest('.custom-dropdown');
-          // Escape closes an open menu and goes no further; on a closed one it is the dialog's.
-          if (dropdown.classList.contains('open')) {
-            e.preventDefault();
-            dropdown.classList.remove('open');
-            trigger.setAttribute('aria-expanded', 'false');
-          }
-        }
-        return;
-      }
-
-      const option = e.target.closest('.custom-dropdown-option');
-      if (option) {
-        const dropdown = option.closest('.custom-dropdown');
-        const options = Array.from(dropdown.querySelectorAll('.custom-dropdown-option'));
-        const currentIndex = options.indexOf(option);
-        let nextIndex = currentIndex;
-
-        if (e.key === 'ArrowDown') nextIndex = (currentIndex + 1) % options.length;
-        else if (e.key === 'ArrowUp')
-          nextIndex = (currentIndex - 1 + options.length) % options.length;
-        else if (e.key === 'Home') nextIndex = 0;
-        else if (e.key === 'End') nextIndex = options.length - 1;
-        else if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          option.click();
-          dropdown.querySelector('.custom-dropdown-trigger')?.focus();
-          return;
-        } else if (e.key === 'Escape' || e.key === 'Tab') {
-          dropdown.classList.remove('open');
-          const dropdownTrigger = dropdown.querySelector('.custom-dropdown-trigger');
-          dropdownTrigger?.setAttribute('aria-expanded', 'false');
-          if (e.key === 'Escape') {
-            e.preventDefault();
-            dropdownTrigger?.focus();
-          }
-          return;
-        } else {
-          return;
-        }
-
-        e.preventDefault();
-        options[nextIndex]?.focus();
-      }
-    };
-    container.addEventListener('keydown', containerKeydownHandler);
+    container.addEventListener('change', containerChangeHandler);
 
     listenersSetUp = true;
   } catch (error) {
@@ -626,25 +470,11 @@ function setupHotkeyEventListenersInternal() {
 // Cleanup function to remove event listeners
 function cleanupHotkeyEventListeners() {
   try {
-    if (activeContainer) {
-      if (containerClickHandler) {
-        activeContainer.removeEventListener('click', containerClickHandler);
-      }
-      if (containerOptionHandler) {
-        activeContainer.removeEventListener('click', containerOptionHandler);
-      }
-      if (containerKeydownHandler) {
-        activeContainer.removeEventListener('keydown', containerKeydownHandler);
-      }
+    if (activeContainer && containerChangeHandler) {
+      activeContainer.removeEventListener('change', containerChangeHandler);
     }
-    containerClickHandler = null;
-    containerOptionHandler = null;
-    containerKeydownHandler = null;
+    containerChangeHandler = null;
     activeContainer = null;
-    if (documentClickHandler) {
-      document.removeEventListener('click', documentClickHandler);
-      documentClickHandler = null;
-    }
     listenersSetUp = false;
   } catch (error) {
     console.error('Error cleaning up hotkey event listeners:', error);

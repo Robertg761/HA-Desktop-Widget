@@ -160,6 +160,15 @@ describe('hotkeys module', () => {
   });
 
   describe('renderHotkeysTab', () => {
+    // Picks an action in an entity's select the way the user does.
+    const chooseAction = (container, entityId, action) => {
+      const select = container.querySelector(
+        `select.hotkey-action-select[data-entity-id="${entityId}"]`
+      );
+      select.value = action;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+
     beforeEach(() => {
       hotkeys.cleanupHotkeyEventListeners();
       const config = getMockConfig();
@@ -195,7 +204,7 @@ describe('hotkeys module', () => {
       document.body.removeChild(searchInput);
     });
 
-    it('supports arrow-key navigation and selection in the action listbox', async () => {
+    it('offers the action as a native select that names itself and shows the saved action', () => {
       const container = document.createElement('div');
       const searchInput = document.createElement('input');
       container.id = 'hotkeys-list';
@@ -203,28 +212,43 @@ describe('hotkeys module', () => {
       searchInput.value = 'living';
       document.body.appendChild(container);
       document.body.appendChild(searchInput);
+      state.CONFIG.globalHotkeys.hotkeys['light.living_room'] = {
+        hotkey: 'Ctrl+Alt+L',
+        action: 'turn_off',
+      };
 
       hotkeys.renderHotkeysTab();
 
-      const trigger = container.querySelector(
-        '[data-entity-id="light.living_room"] .custom-dropdown-trigger'
-      );
-      trigger.focus();
-      trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      const select = container.querySelector('select.hotkey-action-select');
+      expect(select.dataset.entityId).toBe('light.living_room');
+      expect(select.getAttribute('aria-label')).toBe('Hotkey action');
+      expect(select.value).toBe('turn_off');
+      expect([...select.options].map((option) => option.value)).toEqual([
+        'toggle',
+        'turn_on',
+        'turn_off',
+        'brightness_up',
+        'brightness_down',
+      ]);
+      expect(container.querySelector('[role="listbox"], .custom-dropdown')).toBeNull();
+    });
 
-      const focusedOption = document.activeElement;
-      expect(focusedOption?.getAttribute('role')).toBe('option');
-      expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    it('shows the first action when the saved one is not on offer for the entity', () => {
+      const container = document.createElement('div');
+      const searchInput = document.createElement('input');
+      container.id = 'hotkeys-list';
+      searchInput.id = 'hotkey-entity-search';
+      searchInput.value = 'living';
+      document.body.appendChild(container);
+      document.body.appendChild(searchInput);
+      state.CONFIG.globalHotkeys.hotkeys['light.living_room'] = {
+        hotkey: 'Ctrl+Alt+L',
+        action: 'increase_speed',
+      };
 
-      focusedOption.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-      await Promise.resolve();
-      await Promise.resolve();
+      hotkeys.renderHotkeysTab();
 
-      expect(trigger.getAttribute('aria-expanded')).toBe('false');
-      expect(document.activeElement).toBe(trigger);
-      expect(
-        container.querySelector('.custom-dropdown-option.selected')?.getAttribute('aria-selected')
-      ).toBe('true');
+      expect(container.querySelector('select.hotkey-action-select').value).toBe('toggle');
     });
 
     it('restores the persisted action when runtime hotkey registration fails', async () => {
@@ -245,11 +269,7 @@ describe('hotkeys module', () => {
         .mockResolvedValueOnce({ success: true });
 
       hotkeys.renderHotkeysTab();
-      container
-        .querySelector(
-          '[data-entity-id="light.living_room"] .custom-dropdown-option[data-value="turn_on"]'
-        )
-        .click();
+      chooseAction(container, 'light.living_room', 'turn_on');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(2);
@@ -289,11 +309,7 @@ describe('hotkeys module', () => {
       });
 
       hotkeys.renderHotkeysTab();
-      container
-        .querySelector(
-          '[data-entity-id="light.living_room"] .custom-dropdown-option[data-value="turn_on"]'
-        )
-        .click();
+      chooseAction(container, 'light.living_room', 'turn_on');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(2);
@@ -324,9 +340,11 @@ describe('hotkeys module', () => {
         mockElectronAPI.registerHotkeys.mockResolvedValueOnce({ success: true });
 
         hotkeys.renderHotkeysTab();
-        const row = container.querySelector('.custom-dropdown[data-entity-id="light.living_room"]');
-        expect(row.querySelector('.custom-dropdown-value').textContent).toBe('Umschalten');
-        row.querySelector('.custom-dropdown-option[data-value="turn_on"]').click();
+        const select = container.querySelector(
+          'select.hotkey-action-select[data-entity-id="light.living_room"]'
+        );
+        expect(select.selectedOptions[0].textContent).toBe('Umschalten');
+        chooseAction(container, 'light.living_room', 'turn_on');
         await new Promise((resolve) => setTimeout(resolve, 0));
 
         expect(showToast).toHaveBeenCalledWith('Aktion geändert: Einschalten', 'success', 2000);
@@ -359,14 +377,11 @@ describe('hotkeys module', () => {
       expect(container.querySelector('[data-entity-id="script.tv_fast_forward"]')).toBeTruthy();
       expect(container.querySelector('[data-entity-id="button.refresh_router"]')).toBeTruthy();
       expect(container.querySelector('[data-entity-id="input_button.tv_rewind"]')).toBeTruthy();
-      expect(
-        container.querySelector('[data-entity-id="input_button.tv_rewind"] .custom-dropdown-value')
-          ?.textContent
-      ).toBe('Press');
-      expect(
-        container.querySelector('[data-entity-id="script.tv_fast_forward"] .custom-dropdown-value')
-          ?.textContent
-      ).toBe('Run');
+      const shownAction = (entityId) =>
+        container.querySelector(`select[data-entity-id="${entityId}"]`)?.selectedOptions[0]
+          ?.textContent;
+      expect(shownAction('input_button.tv_rewind')).toBe('Press');
+      expect(shownAction('script.tv_fast_forward')).toBe('Run');
 
       document.body.removeChild(container);
       document.body.removeChild(searchInput);
@@ -506,27 +521,23 @@ describe('hotkeys module', () => {
     });
 
     it('keeps the keyboard on the same control when the list is rebuilt', () => {
-      const trigger = document.querySelector('[data-focus-key="hotkey-action:light.hall"]');
-      trigger.focus();
+      const select = document.querySelector('[data-focus-key="hotkey-action:light.hall"]');
+      expect(select.matches('select.hotkey-action-select')).toBe(true);
+      select.focus();
 
       hotkeys.renderHotkeysTab();
 
       const after = document.querySelector('[data-focus-key="hotkey-action:light.hall"]');
-      expect(after).not.toBe(trigger);
+      expect(after).not.toBe(select);
       expect(document.activeElement).toBe(after);
     });
 
-    it('lets Escape close an open action menu without also closing Settings', () => {
-      const trigger = document.querySelector('.custom-dropdown-trigger');
-      const dropdown = trigger.closest('.custom-dropdown');
-      dropdown.classList.add('open');
+    it('leaves Escape on an action select to the browser and the dialog', () => {
+      // An open native list closes itself on Escape before the page sees the key; on a closed
+      // select Escape is the dialog's, so the list must not claim it.
+      const select = document.querySelector('select.hotkey-action-select');
 
-      const open = press(trigger, 'Escape');
-      expect(open.defaultPrevented).toBe(true);
-      expect(dropdown.classList.contains('open')).toBe(false);
-
-      // Closed, Escape is the dialog's: it must not be claimed.
-      expect(press(trigger, 'Escape').defaultPrevented).toBe(false);
+      expect(press(select, 'Escape').defaultPrevented).toBe(false);
     });
   });
 

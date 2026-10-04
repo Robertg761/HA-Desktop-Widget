@@ -37,4 +37,41 @@ describe('helper control policy', () => {
       getHelperActions({ entity_id: 'vacuum.robot', attributes: { supported_features: 8192 } }, {})
     ).toEqual([]);
   });
+  describe('for a vacuum written before START and STOP existed', () => {
+    const services = {
+      vacuum: { start: {}, turn_on: {}, pause: {}, stop: {}, turn_off: {}, return_to_base: {} },
+    };
+    const actionsFor = (features, available = services) =>
+      getHelperActions(
+        { entity_id: 'vacuum.robot', attributes: { supported_features: features } },
+        available
+      );
+
+    it('starts and stops it with turn_on and turn_off', () => {
+      expect(actionsFor(1 | 2)).toEqual([
+        { service: 'turn_on', label: 'Start' },
+        { service: 'turn_off', label: 'Stop' },
+      ]);
+      // Alongside the commands it does have.
+      expect(actionsFor(1 | 2 | 4 | 16).map((action) => action.service)).toEqual([
+        'turn_on',
+        'pause',
+        'turn_off',
+        'return_to_base',
+      ]);
+    });
+
+    it('prefers start and stop, and offers each action once', () => {
+      expect(actionsFor(1 | 2 | 8 | 8192)).toEqual([
+        { service: 'start', label: 'Start' },
+        { service: 'stop', label: 'Stop' },
+      ]);
+    });
+
+    it('still needs the service to exist and the feature to be advertised', () => {
+      expect(actionsFor(1 | 2, { vacuum: { start: {}, stop: {} } })).toEqual([]);
+      expect(actionsFor(2, services)).toEqual([{ service: 'turn_off', label: 'Stop' }]);
+      expect(actionsFor(8192, { vacuum: { turn_on: {} } })).toEqual([]);
+    });
+  });
 });

@@ -89,11 +89,13 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
       'preset mode': '<button class="climate-preset-mode-btn active">Eco</button>',
       'mute toggle': '<button class="media-mute-toggle active">Muted</button>',
       'donate amount': '<button class="donate-amount-chip selected">$5</button>',
-      'dropdown option': '<div class="custom-dropdown-option selected">Option</div>',
       'segmented option': '<button class="segmented-option active">Dark</button>',
       'Settings rail tab': '<button class="tab-link active">Appearance</button>',
       'running timer': '<div class="control-item timer-entity" data-state="active"></div>',
-      'pin power button': '<button class="desktop-pin-light-power" data-active="true"></button>',
+      'light pin power button':
+        '<button class="desktop-pin-power desktop-pin-light-power" data-active="true"></button>',
+      'fan pin power button':
+        '<button class="desktop-pin-power desktop-pin-fan-power" data-active="true"></button>',
       'pin panel button': '<button class="desktop-pin-panel-button" data-active="true"></button>',
       'lit tile':
         '<div id="quick-controls"><div class="control-item" data-active="true"></div></div>',
@@ -101,9 +103,7 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
 
     it.each(Object.entries(SELECTED))('outlines the selected %s in Highlight', (_, html) => {
       render('', html);
-      const element = document.body.querySelector(
-        'button, div.custom-dropdown-option, .control-item'
-      );
+      const element = document.body.querySelector('button, .control-item');
       expect(resolvedValue(element, 'outline', FORCED)).toBe('2px solid Highlight');
       expect(resolvedValue(element, 'outline-offset', FORCED)).toBe('-2px');
       expect(resolvedValue(element, 'outline')).not.toBe('2px solid Highlight');
@@ -213,6 +213,21 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
       );
       expect(forcedRule('.desktop-pin-light-slider::-webkit-slider-runnable-track')).toContain(
         'border: 1px solid ButtonText'
+      );
+    });
+
+    it('draws the other pins sliders as a Highlight fill in an edged track', () => {
+      render('', '<input type="range" class="desktop-pin-panel-slider">');
+      const track = forcedRule('.desktop-pin-panel-slider::-webkit-slider-runnable-track');
+      expect(track).toContain('Highlight var(--range-progress, 0%)');
+      expect(track).toContain('border: 1px solid ButtonText');
+      expect(forcedRule('.desktop-pin-panel-slider::-webkit-slider-thumb')).toContain(
+        'background: Highlight'
+      );
+      // Forced colours drop a background image from a slider unless it opts out, which left
+      // these tracks without their fill.
+      expect(resolvedValue(document.querySelector('input'), 'forced-color-adjust', FORCED)).toBe(
+        'none'
       );
     });
 
@@ -348,8 +363,8 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
       ['a hotkey field', '<input class="hotkey-input" type="text" data-focus data-focus-visible>'],
       ['an alert field', '<input class="alert-input" type="text" data-focus data-focus-visible>'],
       [
-        'a dropdown trigger',
-        '<button class="custom-dropdown-trigger" data-focus data-focus-visible></button>',
+        'a hotkey action select',
+        '<div id="settings-modal"><select class="hotkey-action-select" data-focus-visible></select></div>',
       ],
     ])('keeps a focus outline on %s', (_, html) => {
       render('', html);

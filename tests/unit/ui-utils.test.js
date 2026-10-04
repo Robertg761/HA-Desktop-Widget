@@ -482,6 +482,56 @@ describe('UI Utilities', () => {
       });
     });
 
+    describe('with a colour that came in raw', () => {
+      const rootVar = (name) => document.documentElement.style.getPropertyValue(name);
+
+      afterEach(() => {
+        uiUtils.applyUiPreferences({});
+        uiUtils.applyAccentTheme('original');
+        uiUtils.applyBackgroundTheme('original');
+      });
+
+      // A followed Omarchy palette or a Settings draft is applied as a bare colour, with no theme
+      // key to repaint from, so the light theme's tints were left as the preset's dark ones.
+      it.each([
+        ['accent', '--accent-bg', (hex) => uiUtils.applyAccentThemeFromColor(hex), '#3366cc'],
+        [
+          'background',
+          '--bg-primary',
+          (hex) => uiUtils.applyBackgroundThemeFromColor(hex),
+          '#e8eef7',
+        ],
+      ])(
+        'works the %s tints out again when the Readable preset gives the light theme back',
+        (_, property, applyRaw, color) => {
+          uiUtils.applyUiPreferences({ highContrast: true });
+          uiUtils.applyTheme('light');
+          applyRaw(color);
+          const underPreset = rootVar(property);
+
+          uiUtils.applyUiPreferences({});
+          expect(document.body.classList.contains('theme-light')).toBe(true);
+          const afterPreset = rootVar(property);
+          expect(afterPreset).not.toBe(underPreset);
+
+          // The same colour applied directly under the light theme.
+          applyRaw(color);
+          expect(afterPreset).toBe(rootVar(property));
+        }
+      );
+
+      it('repaints a saved theme by its key rather than by an older raw colour', () => {
+        uiUtils.applyTheme('light');
+        uiUtils.applyAccentThemeFromColor('#3366cc');
+        uiUtils.applyAccentTheme('original');
+        const saved = rootVar('--accent-bg');
+
+        uiUtils.applyUiPreferences({ highContrast: true });
+        uiUtils.applyUiPreferences({});
+        expect(rootVar('--accent-bg')).toBe(saved);
+      });
+    });
+
     it('should apply opaque panels mode', () => {
       uiUtils.applyUiPreferences({ opaquePanels: true });
 

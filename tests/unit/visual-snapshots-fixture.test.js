@@ -124,6 +124,17 @@ describe('visual snapshot scenes', () => {
       'readable-main',
       'readable-light-main',
       'readable-light-popup-climate',
+      'readable-settings-appearance',
+      'readable-settings-general',
+      'readable-edit-mode',
+      'readable-popup-brightness',
+      'readable-popup-climate',
+      'readable-popup-colour',
+      'readable-popup-fan',
+      'readable-pin-light',
+      'readable-pin-climate',
+      'readable-pin-cover',
+      'readable-pin-fan',
       'six-tabs',
       'media-tile',
       'pin-light',
@@ -189,6 +200,15 @@ describe('visual snapshot scenes', () => {
       expect(scene.ui).toMatchObject({ highContrast: true, opaquePanels: true });
     }
     expect(scenes.find((scene) => scene.name === 'readable-light-main').ui.theme).toBe('light');
+  });
+
+  it('puts back every interface setting a scene changes', () => {
+    // The runner merges a scene's interface settings over the app's, so a setting the fixture does
+    // not name keeps the last scene's value: the Readable scenes made every later scene Readable.
+    const base = buildConfig('http://127.0.0.1:1').ui;
+    const changed = new Set(scenes.flatMap((scene) => Object.keys(scene.ui || {})));
+    expect([...changed].filter((key) => !(key in base))).toEqual([]);
+    expect(base).toMatchObject({ highContrast: false, opaquePanels: false });
   });
 
   it('has a light with colour controls for the colour pop-up', () => {

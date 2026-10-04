@@ -1447,6 +1447,91 @@ describe('findShippedPackages', () => {
       expect(shipped.get('electron')).toContain('every package');
     });
 
+    it('follows a dependency to the copy its dependent loads, not to every copy of the name', () => {
+      // app-dep loads its nested js-yaml 4, while a build tool's root js-yaml 3 needs esprima.
+      // Only the first is part of the app. The same goes for a copy the nearest node_modules
+      // above the dependent holds: dev-dep's own helper never reaches the root one.
+      const root = project({
+        'package-lock.json': lockFile({
+          'node_modules/app-dep': { dependencies: { 'js-yaml': '^4.0.0', helper: '^1.0.0' } },
+          'node_modules/app-dep/node_modules/js-yaml': { dependencies: { argparse: '^2.0.0' } },
+          'node_modules/argparse': { dependencies: { 'argparse-dep': '^2.0.0' } },
+          'node_modules/argparse-dep': {},
+          'node_modules/helper': { dependencies: { 'helper-dep': '^1.0.0' } },
+          'node_modules/helper-dep': {},
+          'node_modules/dev-tool': { dependencies: { 'js-yaml': '^3.0.0', helper: '^2.0.0' } },
+          'node_modules/js-yaml': { dependencies: { esprima: '^4.0.0' } },
+          'node_modules/esprima': {},
+          'node_modules/dev-tool/node_modules/helper': { dependencies: { 'dev-helper-dep': '^2' } },
+          'node_modules/dev-helper-dep': {},
+        }),
+      });
+
+      const shipped = findShippedPackages(root, {
+        dependencies: { 'app-dep': '^1.0.0' },
+        devDependencies: { 'dev-tool': '^1.0.0' },
+      });
+
+      expect([...shipped.keys()].sort()).toEqual([
+        'app-dep',
+        'argparse',
+        'argparse-dep',
+        'electron',
+        'helper',
+        'helper-dep',
+        'js-yaml',
+      ]);
+      expect(shipped.get('argparse-dep')).toBe(
+        'needed by app-dep, which is listed under dependencies'
+      );
+    });
+
+    it('follows every copy of a package the app names itself', () => {
+      // Nothing says which copy of a package the app imports or lists, so all of them count.
+      const root = project({
+        'package-lock.json': lockFile({
+          'node_modules/direct': { dependencies: { 'root-leaf': '^1.0.0' } },
+          'node_modules/other/node_modules/direct': { dependencies: { 'nested-leaf': '^1.0.0' } },
+          'node_modules/other': {},
+          'node_modules/root-leaf': {},
+          'node_modules/other/node_modules/nested-leaf': {},
+        }),
+      });
+
+      const shipped = findShippedPackages(root, { dependencies: { direct: '^1.0.0' } });
+
+      expect([...shipped.keys()].sort()).toEqual([
+        'direct',
+        'electron',
+        'nested-leaf',
+        'root-leaf',
+      ]);
+    });
+
+    it('resolves a workspace through its link, and from where the workspace lives', () => {
+      const root = project({
+        'package-lock.json': lockFile({
+          'node_modules/@acme/shared': { link: true, resolved: 'packages/shared' },
+          'packages/shared': { name: '@acme/shared', dependencies: { local: '^1.0.0', up: '^1' } },
+          'packages/shared/node_modules/local': { dependencies: { 'local-dep': '^1.0.0' } },
+          'node_modules/local': { dependencies: { 'wrong-dep': '^1.0.0' } },
+          'node_modules/local-dep': {},
+          'node_modules/wrong-dep': {},
+          'node_modules/up': {},
+        }),
+      });
+
+      const shipped = findShippedPackages(root, { dependencies: { '@acme/shared': '*' } });
+
+      expect([...shipped.keys()].sort()).toEqual([
+        '@acme/shared',
+        'electron',
+        'local',
+        'local-dep',
+        'up',
+      ]);
+    });
+
     it('stops the exception for a package that only a shipped package requires', () => {
       // consumer ships and needs micromatch, which needs braces. npm audit leaves
       // consumer out of its report when its range allows a micromatch without
@@ -1518,6 +1603,18 @@ describe('findShippedPackages', () => {
       expect(needed.length).toBeGreaterThan(0);
       for (const name of needed) {
         expect(shipped.get(name)).toMatch(/^needed by .+, which is (listed under|imported by) /);
+      }
+    });
+
+    it('leaves out the build tools copies of a package the app also loads', () => {
+      // electron-updater loads its own js-yaml 4 and the root fs-extra 10. The root js-yaml 3 and
+      // the fs-extra 9 copies are the build tools', and so are esprima and at-least-node, which
+      // only those copies need.
+      for (const name of ['esprima', 'sprintf-js', 'at-least-node']) {
+        expect(shipped.has(name)).toBe(false);
+      }
+      for (const name of ['js-yaml', 'argparse', 'fs-extra', 'universalify']) {
+        expect(shipped.get(name)).toMatch(/^needed by electron-updater/);
       }
     });
 
