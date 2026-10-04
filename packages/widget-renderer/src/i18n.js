@@ -160,20 +160,6 @@ export function formatNumber(value, options = {}) {
   return formatter.format(number);
 }
 
-// Formats a numeric state string from Home Assistant ("15.60") in the active language while
-// keeping exactly the decimals Home Assistant sent. Non-numeric text and codes with leading
-// zeros ("007") are returned unchanged.
-export function formatNumericState(value) {
-  const text = typeof value === 'number' ? String(value) : typeof value === 'string' ? value : '';
-  const match = /^\s*-?(?:0|[1-9]\d*)(?:\.(\d+))?\s*$/.exec(text);
-  if (!match) return value == null ? '' : String(value);
-  const decimals = Math.min(match[1]?.length || 0, 20);
-  return formatNumber(Number(text), {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  });
-}
-
 export function getLanguageDisplayName(locale, fallback = '') {
   try {
     if (!locale) return fallback || '';

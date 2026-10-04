@@ -235,7 +235,7 @@ export function formatReadingNumber(value, precision, useGrouping = true) {
     signDisplay: 'negative',
   };
   const formatted = formatNumber(value, options);
-  // Rounded to zero although the reading is not: keep two significant digits, down to four decimals.
+  // Rounded to zero although the reading is not: keep two significant digits (down to 0.0001).
   if (value !== 0 && Math.abs(value) >= 1e-4 && Number(value.toFixed(maximum)) === 0) {
     return formatNumber(value, {
       maximumSignificantDigits: 2,
@@ -258,7 +258,7 @@ export function getSensorReading(entity) {
   const measured = isMeasurement(attributes);
   const number = parseNumericState(entity.state);
   if (number === null) return null;
-  // A duration of a minute or more reads in units ("1h 15m"), not as a count of seconds.
+  // A duration of a minute or more reads in units ("1 hr 15 min"), not as a count of seconds.
   if (attributes.device_class === 'duration') {
     const duration = formatDurationReading(number, attributes.unit_of_measurement);
     if (duration) return { value: duration, unit: '', text: duration };
@@ -579,7 +579,7 @@ const DURATION_UNIT_SECONDS = Object.freeze({
 });
 
 /**
- * A duration sensor ("4500" seconds) as "1h 15m": the two largest units, in the language's own
+ * A duration sensor ("4500" seconds) as "1 hr 15 min": the two largest units, in the language's own
  * unit names. Units Home Assistant does not use for durations, and spans under a minute, return
  * null so the caller shows the plain number.
  * @param {number} value
@@ -602,7 +602,7 @@ export function formatDurationReading(value, unit) {
     const amount = Math.floor(remaining / seconds);
     remaining -= amount * seconds;
     if (amount > 0 && parts.length < 2) {
-      parts.push(formatNumber(amount, { style: 'unit', unit: name, unitDisplay: 'narrow' }));
+      parts.push(formatNumber(amount, { style: 'unit', unit: name, unitDisplay: 'short' }));
     }
   });
   try {

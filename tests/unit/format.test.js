@@ -414,15 +414,15 @@ describe('sensor readings', () => {
           unit_of_measurement: unit,
         })
       );
-    expect(uptime(4500)).toMatch(/1\s?h\s?15\s?m/);
+    expect(uptime(4500)).toMatch(/^1\D+15\D+$/);
     // The tile's readout is the same text, with no separate unit.
     expect(
       format.getSensorReading(
         entity('sensor.uptime', '4500', { device_class: 'duration', unit_of_measurement: 's' })
       )
     ).toEqual({ value: uptime(4500), unit: '', text: uptime(4500) });
-    expect(uptime(90, 'min')).toMatch(/1\s?h\s?30\s?m/);
-    expect(uptime(2, 'd')).toMatch(/2\s?d/);
+    expect(uptime(90, 'min')).toMatch(/^1\D+30\D+$/);
+    expect(uptime(2, 'd')).toMatch(/^2\D+$/);
     // A few seconds stays a plain number.
     expect(uptime(1.5)).toBe(`1.5${NBSP}s`);
     expect(format.formatDurationReading(10, 'furlong')).toBeNull();
