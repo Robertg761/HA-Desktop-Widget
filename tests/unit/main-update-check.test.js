@@ -617,7 +617,23 @@ describe('the app name', () => {
     const builder = fs.readFileSync(path.resolve(__dirname, '../../electron-builder.yml'), 'utf8');
 
     expect(builder).toMatch(/^productName: HA Desktop Widget$/m);
-    // A shortcut name of its own made the Start-menu entry differ from the installed app.
-    expect(builder).not.toMatch(/shortcutName:\s*Home Assistant Widget/);
+    // A shortcut name of its own made the Start-menu entry differ from the installed app. With none,
+    // the Desktop and Start menu shortcuts are named for productName, and the installer renames the
+    // ones an older install made.
+    expect(builder).not.toMatch(/^\s*shortcutName:/m);
+  });
+
+  it('is the title the main window has, which the packaged-app scripts look for', () => {
+    const html = fs.readFileSync(path.resolve(__dirname, '../../index.html'), 'utf8');
+    const script = fs.readFileSync(
+      path.resolve(__dirname, '../../scripts/verify-wayland.cjs'),
+      'utf8'
+    );
+
+    expect(html).toContain('<title>HA Desktop Widget</title>');
+    // The packaged-compositor check finds the main window by this title; the old product name
+    // matched no window once index.html was renamed.
+    expect(script).toContain("item.title === 'HA Desktop Widget'");
+    expect(script).not.toContain('Home Assistant Widget');
   });
 });

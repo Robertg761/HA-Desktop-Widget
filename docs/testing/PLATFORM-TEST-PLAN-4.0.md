@@ -353,6 +353,8 @@ Windows 11 22H2 or later (build 22621 or higher). Use the Setup installer for WI
 
 Expected: One name everywhere: "HA Desktop Widget". After an upgrade from 3.x there is no second shortcut with the old name (the installer renames or replaces the old Desktop and Start menu shortcuts), and the taskbar pin still starts the app. The icon looks like a finished app icon, not a hard-edged black square.
 
+Must test on a real 3.11 install, not a clean machine: upgrade a 3.11 install that has a taskbar icon pinned and Desktop and Start menu shortcuts to 4.0, then check that both shortcuts are now named "HA Desktop Widget", the taskbar pin still launches the app, no duplicate shortcut appears on the Desktop or in the Start menu, and a Windows notification (see WIN11-10) shows "HA Desktop Widget" as the app name.
+
 Capture: A screenshot of each place the name appears.
 
 Ref: MP-53, MP-52, MP-25

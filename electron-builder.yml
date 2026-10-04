@@ -84,6 +84,8 @@ nsis:
   allowToChangeInstallationDirectory: false
   createDesktopShortcut: always
   createStartMenuShortcut: true
+  # No shortcutName: the Desktop and Start menu shortcuts are always named for productName, "HA
+  # Desktop Widget", and an install that made them under another name has them renamed on upgrade.
 portable:
   artifactName: '${productName}-${version}-win-${arch}-Portable.${ext}'
 linux:
