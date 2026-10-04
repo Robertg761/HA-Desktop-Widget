@@ -5056,16 +5056,9 @@ function relocalizeOpenSettings({ force = false } = {}) {
       updateCustomEntityIconSummary();
     }
     // Rebuilt rather than relabelled: the player Home Assistant is not reporting right now is an
-    // option too, with the entity id in its label. A choice made but not saved yet stays.
-    const mediaPlayerSelect = document.getElementById('primary-media-player');
-    const pendingMediaPlayer = mediaPlayerSelect?.value;
-    populateMediaPlayerSelect();
-    if (
-      mediaPlayerSelect &&
-      Array.from(mediaPlayerSelect.options).some((option) => option.value === pendingMediaPlayer)
-    ) {
-      mediaPlayerSelect.value = pendingMediaPlayer;
-    }
+    // option too, with the entity id in its label. A choice made but not saved yet stays, even
+    // when that player has gone since it was chosen.
+    populateMediaPlayerSelect(document.getElementById('primary-media-player')?.value);
     if (document.getElementById('entity-alerts-enabled')?.checked) renderAlertsListInline();
     relabelAlertAdvancedOptions();
     relocalizePopupHotkeyText();
@@ -6942,8 +6935,9 @@ async function removeAlert(entityId) {
 }
 
 // The media tile's player is a native select: it brings the keyboard model and the screen reader
-// roles for free, and it looks like the other selects on the page.
-function populateMediaPlayerSelect() {
+// roles for free, and it looks like the other selects on the page. `selected` is the value to show,
+// which is the saved player unless a choice not saved yet has to survive a rebuild.
+function populateMediaPlayerSelect(selected = state.CONFIG.primaryMediaPlayer || '') {
   try {
     const select = document.getElementById('primary-media-player');
     if (!select) {
@@ -6965,16 +6959,17 @@ function populateMediaPlayerSelect() {
         (entity) => new Option(utils.getEntityDisplayName(entity), entity.entity_id)
       ),
     ];
-    const currentValue = state.CONFIG.primaryMediaPlayer || '';
     // A player Home Assistant is not reporting right now (offline, renamed) keeps its place;
-    // without it the select would show "None" and saving would quietly clear the choice.
-    if (currentValue && !mediaPlayers.some((entity) => entity.entity_id === currentValue)) {
-      options.push(
-        new Option(t('Unavailable: {{entityId}}', { entityId: currentValue }), currentValue)
-      );
+    // without it the select would show "None" and saving would quietly clear the choice. That
+    // goes for the saved player and for one picked in this form that has gone since.
+    const saved = state.CONFIG.primaryMediaPlayer || '';
+    for (const entityId of new Set([saved, selected])) {
+      if (entityId && !mediaPlayers.some((entity) => entity.entity_id === entityId)) {
+        options.push(new Option(t('Unavailable: {{entityId}}', { entityId }), entityId));
+      }
     }
     select.replaceChildren(...options);
-    select.value = currentValue;
+    select.value = selected;
 
     // Bound once: the select outlives each opening of Settings.
     if (!select.dataset.bound) {

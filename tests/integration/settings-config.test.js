@@ -6260,6 +6260,44 @@ describe('Settings + Config Integration', () => {
       expect(select.value).toBe('media_player.spotify');
     });
 
+    test('keeps an unsaved media player choice that Home Assistant stops reporting before the language changes', async () => {
+      i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      state.CONFIG.primaryMediaPlayer = 'media_player.bedroom_speaker';
+      await settings.openSettings();
+      const select = document.getElementById('primary-media-player');
+      select.value = 'media_player.spotify';
+      select.dispatchEvent(new Event('change'));
+      delete state.STATES['media_player.spotify'];
+
+      i18n.setLocaleBootstrap({
+        activeLocale: 'de',
+        messages: { 'Unavailable: {{entityId}}': 'Nicht verfügbar: {{entityId}}' },
+      });
+      await Promise.resolve();
+
+      expect(select.value).toBe('media_player.spotify');
+      expect(select.selectedOptions[0].textContent).toBe('Nicht verfügbar: media_player.spotify');
+
+      await settings.saveSettings();
+      expect(state.CONFIG.primaryMediaPlayer).toBe('media_player.spotify');
+    });
+
+    test('keeps the saved player that has gone offered while another is picked, through a language change', async () => {
+      i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      state.CONFIG.primaryMediaPlayer = 'media_player.gone';
+      await settings.openSettings();
+      const select = document.getElementById('primary-media-player');
+      select.value = 'media_player.spotify';
+      select.dispatchEvent(new Event('change'));
+
+      i18n.setLocaleBootstrap({ activeLocale: 'de', messages: GERMAN });
+      await Promise.resolve();
+
+      expect(select.value).toBe('media_player.spotify');
+      // Going back to the saved one is still possible.
+      expect([...select.options].map((option) => option.value)).toContain('media_player.gone');
+    });
+
     test('asks the update UI to re-render its status line after a language change', async () => {
       i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
       const relocalizeUpdateStatus = jest.fn();
