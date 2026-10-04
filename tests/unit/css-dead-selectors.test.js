@@ -10,7 +10,6 @@
 const fs = require('fs');
 const path = require('path');
 const postcss = require('postcss');
-const selectorParser = require('postcss-selector-parser');
 
 const ROOT = path.resolve(__dirname, '../..');
 const STYLESHEETS = ['styles.css', 'dashboard-workflows.css'];
@@ -21,9 +20,45 @@ const SOURCE_FILES = ['index.html', 'renderer.js', 'preload.js', 'main.js'];
 const PRODUCED_ELSEWHERE = {
   // SortableJS gives the clone it drags on touch and pen its default fallbackClass.
   'sortable-fallback': 'SortableJS default',
-  // The calendar dialog's location line arrives with the dashboard data changes (PR 151).
+  // The calendar dialog's location line arrives with the dashboard data changes (PR 151). Delete
+  // this line once that is merged: a name left here would hide the next time it goes dead.
   'calendar-event-location': 'dashboard data changes',
 };
+
+// The classes ('.') and ids ('#') a selector needs its element to carry. A name inside :not(),
+// :is() or :where() does not need its element to exist, and a name inside an attribute selector or
+// a string is a value, not a name. This reads a selector as postcss hands it over (one selector,
+// no commas at the top level) without a selector parser, which only stylelint brings in.
+function classAndIdNames(selector) {
+  const names = [];
+  // Whether each parenthesis opened so far is one of the three that make its names optional.
+  const optional = [];
+  let ignoredDepth = 0;
+  let inAttribute = false;
+  for (let index = 0; index < selector.length; index++) {
+    const char = selector[index];
+    if (char === '\\') {
+      index++;
+    } else if (char === '"' || char === "'") {
+      index = selector.indexOf(char, index + 1);
+      if (index < 0) break;
+    } else if (inAttribute) {
+      inAttribute = char !== ']';
+    } else if (char === '[') {
+      inAttribute = true;
+    } else if (char === '(') {
+      const ignored = /:(not|is|where)$/.test(selector.slice(0, index));
+      optional.push(ignored);
+      if (ignored) ignoredDepth++;
+    } else if (char === ')') {
+      if (optional.pop()) ignoredDepth--;
+    } else if ((char === '.' || char === '#') && !ignoredDepth) {
+      const name = /^(?:[\w-]|\\.)+/.exec(selector.slice(index + 1));
+      if (name) names.push({ type: char, name: name[0].replace(/\\(.)/g, '$1') });
+    }
+  }
+  return names;
+}
 
 function listSources(directory) {
   const found = [];
@@ -75,19 +110,9 @@ describe('stylesheet selectors', () => {
   }
 
   function unproducedNames(selector) {
-    const names = [];
-    selectorParser((selectors) => {
-      selectors.walk((node) => {
-        if (node.type !== 'class' && node.type !== 'id') return;
-        // A name inside :not(), :is() or :where() does not need its element to exist.
-        for (let parent = node.parent; parent; parent = parent.parent) {
-          if (parent.type === 'pseudo' && [':not', ':is', ':where'].includes(parent.value)) return;
-        }
-        if (!isProduced(node.value))
-          names.push(`${node.type === 'class' ? '.' : '#'}${node.value}`);
-      });
-    }).processSync(selector);
-    return names;
+    return classAndIdNames(selector)
+      .filter(({ name }) => !isProduced(name))
+      .map(({ type, name }) => `${type}${name}`);
   }
 
   it.each(STYLESHEETS)('%s has no selector for a class or id nothing produces', (file) => {
@@ -104,6 +129,13 @@ describe('stylesheet selectors', () => {
       }
     });
     expect(dead).toEqual([]);
+  });
+
+  it('reads the names a selector needs and leaves out the optional ones and the values', () => {
+    const read = (selector) => classAndIdNames(selector).map(({ type, name }) => `${type}${name}`);
+    expect(read('.a:not(.b) .c[data-x=".d"] #e > .f:is(.g, .h)')).toEqual(['.a', '.c', '#e', '.f']);
+    expect(read('.a:not(:is(.b)) .c:has(.d)')).toEqual(['.a', '.c', '.d']);
+    expect(read('[data-x="]"] .k, .l\\:m')).toEqual(['.k', '.l:m']);
   });
 
   it('knows a name that is produced from one that is not', () => {
