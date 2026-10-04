@@ -125,8 +125,9 @@ describe('Omarchy bar plugin package', () => {
   // off the bar, and a vertical bar's slot is one glyph wide.
   describe('the bar readout', () => {
     const qml = fs.readFileSync(path.join(pluginDir, 'Widget.qml'), 'utf8');
-    const { clip, graphemes } = vm.runInNewContext(
-      fs.readFileSync(path.join(pluginDir, 'Clip.js'), 'utf8') + '\n({ clip, graphemes })'
+    const { clip, graphemes, UNICODE_VERSION } = vm.runInNewContext(
+      fs.readFileSync(path.join(pluginDir, 'Clip.js'), 'utf8') +
+        '\n({ clip, graphemes, UNICODE_VERSION })'
     );
 
     it('cuts each value and the whole readout short, with the full text in the tooltip', () => {
@@ -241,6 +242,30 @@ describe('Omarchy bar plugin package', () => {
     describe('splits text where Intl.Segmenter does', () => {
       const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' });
       const expected = (text) => Array.from(segmenter.segment(text), (part) => part.segment);
+
+      // Unicode changes the class of code points it already assigned: 17.0 narrowed
+      // Extended_Pictographic by some 670 symbols such as U+2605 and moved U+11A3A, so a Node with
+      // older data (CI's Node 20 can have 15.0 or 16.0, depending on its minor version) splits
+      // those differently from tables printed on 17.0, and not because Clip.js is wrong. The
+      // exhaustive comparison therefore runs only on a Node whose data is at least as new as the
+      // tables'; the cases around it hold on every version.
+      const atLeast = (have, want) => {
+        const [haveMajor, haveMinor] = have.split('.').map(Number);
+        const [wantMajor, wantMinor] = want.split('.').map(Number);
+        return haveMajor !== wantMajor ? haveMajor > wantMajor : haveMinor >= wantMinor;
+      };
+      const itWithCurrentUnicode = atLeast(process.versions.unicode, UNICODE_VERSION)
+        ? it
+        : it.skip;
+
+      it('declares the Unicode version its tables were printed for', () => {
+        expect(UNICODE_VERSION).toMatch(/^\d+\.\d+$/);
+        expect(atLeast('17.0', '16.0')).toBe(true);
+        expect(atLeast('16.0', '17.0')).toBe(false);
+        expect(atLeast('15.1', '15.0')).toBe(true);
+        expect(atLeast('15.0', '15.1')).toBe(false);
+      });
+
       // Unicode 15.1 added the Indic conjunct rule. A Node with older Unicode data splits क्ष, so
       // the checks that need the rule are skipped there.
       const hasConjunctRule = expected('\u0915\u094d\u0937').length === 1;
@@ -282,31 +307,35 @@ describe('Omarchy bar plugin package', () => {
       // Every assigned code point in the planes with text in them, next to a letter, a combining
       // mark, a pictograph and (in the Indic blocks) a consonant and its virama. A code point this
       // Node does not know yet is skipped; it would be an ordinary character to it.
-      it('for every assigned code point, next to a letter, a mark, a pictograph and a consonant', () => {
-        const mismatches = [];
-        const check = (probe, label) => {
-          if (JSON.stringify(graphemes(probe)) !== JSON.stringify(expected(probe))) {
-            mismatches.push(label);
+      itWithCurrentUnicode(
+        'for every assigned code point, next to a letter, a mark, a pictograph and a consonant',
+        () => {
+          const mismatches = [];
+          const check = (probe, label) => {
+            if (JSON.stringify(graphemes(probe)) !== JSON.stringify(expected(probe))) {
+              mismatches.push(label);
+            }
+          };
+          const pictographRanges = (cp) =>
+            (cp >= 0xa9 && cp <= 0x3299) || (cp >= 0x1f000 && cp <= 0x1ffff);
+          for (let cp = 0; cp <= 0xe0fff; cp += 1) {
+            if (cp >= 0xd800 && cp <= 0xdfff) continue;
+            if (cp > 0x3ffff && cp < 0xe0000) continue;
+            const char = String.fromCodePoint(cp);
+            if (/\p{Cn}/u.test(char)) continue;
+            const hex = cp.toString(16);
+            check(`a${char}a`, `U+${hex} between letters`);
+            check(`${char}\u0301`, `U+${hex} before a mark`);
+            if (pictographRanges(cp)) check(`👨\u200d${char}`, `U+${hex} after a joiner`);
+            if (hasConjunctRule && cp >= 0x900 && cp <= 0xdff) {
+              check(`\u0915\u094d${char}`, `U+${hex} after a consonant and its virama`);
+              check(`\u0915${char}\u0915`, `U+${hex} between consonants`);
+            }
           }
-        };
-        const pictographRanges = (cp) =>
-          (cp >= 0xa9 && cp <= 0x3299) || (cp >= 0x1f000 && cp <= 0x1ffff);
-        for (let cp = 0; cp <= 0xe0fff; cp += 1) {
-          if (cp >= 0xd800 && cp <= 0xdfff) continue;
-          if (cp > 0x3ffff && cp < 0xe0000) continue;
-          const char = String.fromCodePoint(cp);
-          if (/\p{Cn}/u.test(char)) continue;
-          const hex = cp.toString(16);
-          check(`a${char}a`, `U+${hex} between letters`);
-          check(`${char}\u0301`, `U+${hex} before a mark`);
-          if (pictographRanges(cp)) check(`👨\u200d${char}`, `U+${hex} after a joiner`);
-          if (hasConjunctRule && cp >= 0x900 && cp <= 0xdff) {
-            check(`\u0915\u094d${char}`, `U+${hex} after a consonant and its virama`);
-            check(`\u0915${char}\u0915`, `U+${hex} between consonants`);
-          }
-        }
-        expect(mismatches).toEqual([]);
-      }, 60000);
+          expect(mismatches).toEqual([]);
+        },
+        60000
+      );
 
       it('for the ranges of Hangul jamo and syllables', () => {
         const jamo = [

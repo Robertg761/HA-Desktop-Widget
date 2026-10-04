@@ -4,8 +4,10 @@
 //
 //   node scripts/grapheme-tables.cjs
 //
-// Paste the output over the four tables in Clip.js when the unit test in omarchy-bar.test.js
-// fails after a Node upgrade. QML's JavaScript engine cannot do this itself: it has neither
+// Paste the output over UNICODE_VERSION and the tables that follow it in Clip.js when the unit
+// test in omarchy-bar.test.js fails after a Node upgrade, then run prettier on the file. The
+// version line comes first because the test only compares the tables with a Node whose Unicode
+// data is at least that new. QML's JavaScript engine cannot do this itself: it has neither
 // Intl.Segmenter nor Unicode property escapes.
 const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' });
 const LAST_CODE_POINT = 0x10ffff;
@@ -80,8 +82,17 @@ function formatTable(name, ranges) {
   return `var ${name} = parseRanges([\n${lines.map((text) => `  '${text}',`).join('\n')}\n]);\n`;
 }
 
+const header = [
+  '// The Unicode version the tables below were printed for. The unit test compares them with',
+  '// Intl.Segmenter only on a Node whose Unicode data is at least this new: Unicode 17 narrowed',
+  '// Extended_Pictographic, so an older Node splits some symbols after a joiner differently.',
+  `var UNICODE_VERSION = '${process.versions.unicode}';`,
+  '',
+].join('\n');
+
 console.log(
-  Object.entries(TABLES)
-    .map(([name, test]) => formatTable(name, rangesWhere(test)))
-    .join('\n')
+  [
+    header,
+    ...Object.entries(TABLES).map(([name, test]) => formatTable(name, rangesWhere(test))),
+  ].join('\n')
 );

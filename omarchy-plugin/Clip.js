@@ -1,4 +1,4 @@
-/* exported clip, graphemes */
+/* exported clip, graphemes, UNICODE_VERSION */
 // Cuts text to a number of characters as a reader counts them: grapheme clusters, so an emoji, a
 // flag, a family of joined emoji or a letter with its accents is kept whole or dropped whole.
 // String.slice() counts UTF-16 code units, so a cut could land between the halves of a surrogate
@@ -8,7 +8,7 @@
 // default grapheme boundaries (UAX #29) are written out here, with the character classes they
 // need as tables. `node scripts/grapheme-tables.cjs` prints the tables below for the Unicode
 // version of the Node it runs on, and tests/unit/omarchy-bar.test.js checks every code point
-// against that Node's own Intl.Segmenter. The Indic conjunct rule (a consonant, a virama and the
+// against the Intl.Segmenter of a Node with at least that Unicode version. The Indic conjunct rule (a consonant, a virama and the
 // next consonant stay together) covers the six scripts Unicode 15.1 introduced it for; the scripts
 // later versions add split after their virama.
 
@@ -25,6 +25,11 @@ function parseRanges(lines) {
     });
   return flat;
 }
+
+// The Unicode version the tables below were printed for. The unit test compares them with
+// Intl.Segmenter only on a Node whose Unicode data is at least this new: Unicode 17 narrowed
+// Extended_Pictographic, so an older Node splits some symbols after a joiner differently.
+var UNICODE_VERSION = '17.0';
 
 var JOINERS = parseRanges([
   '300-36f,483-489,591-5bd,5bf,5c1-5c2,5c4-5c5,5c7,610-61a,64b-65f,670,6d6-6dc,6df-6e4,6e7-6e8,',
