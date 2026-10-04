@@ -43,6 +43,11 @@ function percentOf(progress) {
  */
 function reduceUpdateEvent(previous, event) {
   if (!event || typeof event.status !== 'string') return previous;
+  // A check the app started on its own schedule: nobody asked, so that it began, or that the
+  // network was away, is not something to put in front of the person. What it finds still is.
+  if (event.background && (event.status === 'checking' || event.status === 'error')) {
+    return previous;
+  }
   switch (event.status) {
     case 'checking':
       return { status: 'checking' };

@@ -32,6 +32,42 @@ describe('update state', () => {
       expect(state).toEqual({ status: 'downloaded', version: '4.0.1' });
     });
 
+    it('leaves out the start and the failure of a check the app ran on its own', () => {
+      const downloading = { status: 'downloading', version: '4.0.1', percent: 40 };
+      const none = { status: 'none' };
+
+      // Waking without a network must not leave "Could not reach GitHub" where nobody asked.
+      expect(reduceUpdateEvent(none, { status: 'checking', background: true })).toBe(none);
+      expect(reduceUpdateEvent(none, { status: 'error', error: 'offline', background: true })).toBe(
+        none
+      );
+      // And a download in progress keeps its bar.
+      expect(reduceUpdateEvent(downloading, { status: 'checking', background: true })).toBe(
+        downloading
+      );
+      expect(reduceUpdateEvent(downloading, { status: 'error', background: true })).toBe(
+        downloading
+      );
+    });
+
+    it('still takes what a check the app ran on its own finds', () => {
+      expect(
+        reduceUpdateEvent(idle, {
+          status: 'available',
+          info: { version: '4.0.1' },
+          background: true,
+        })
+      ).toEqual({ status: 'available', version: '4.0.1' });
+      expect(reduceUpdateEvent(idle, { status: 'none', background: true })).toEqual({
+        status: 'none',
+      });
+      // A failure that is not marked, such as a download failing later, is told.
+      expect(reduceUpdateEvent(idle, { status: 'error', error: 'Disk full' })).toEqual({
+        status: 'error',
+        error: 'Disk full',
+      });
+    });
+
     it('keeps a progress figure inside 0 to 100, and ignores one that is not a number', () => {
       const downloading = (percent) =>
         reduceUpdateEvent(idle, { status: 'downloading', progress: { percent } }).percent;

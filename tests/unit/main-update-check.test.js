@@ -478,6 +478,72 @@ describe('the update check in main', () => {
       expect(main.sent[0][1]).toMatchObject({ status: 'manual', version: '4.0.1', reveal: true });
     });
 
+    it("marks the updater's start and failure as background while its own check runs", async () => {
+      const main = loadMain({ selfUpdating: true });
+      main.run('setupAutoUpdates()');
+      let during;
+      main.autoUpdater.checkForUpdatesAndNotify.mockImplementation(async () => {
+        main.listeners['checking-for-update']();
+        main.listeners.error(new Error('getaddrinfo ENOTFOUND github.com'));
+        during = main.sent.map(([, payload]) => payload);
+        throw new Error('offline');
+      });
+
+      await expect(main.run('runScheduledUpdateCheck()')).rejects.toThrow('offline');
+
+      expect(during).toEqual([
+        { status: 'checking', background: true },
+        { status: 'error', error: expect.any(String), background: true },
+      ]);
+      // What follows is not marked: a download that fails later is news.
+      main.sent.length = 0;
+      main.listeners.error(new Error('Disk full'));
+      expect(main.sent[0][1].background).toBeUndefined();
+    });
+
+    it("does not start its own check while someone's is running, and does not mark theirs", async () => {
+      const main = withAuthorizedSender(loadMain({ selfUpdating: true }));
+      main.run('setupAutoUpdates()');
+      let release;
+      main.autoUpdater.checkForUpdates.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            release = () => resolve({ updateInfo: { version: '4.0.1' } });
+          })
+      );
+
+      const manual = main.ipcCheck();
+      await main.run('runScheduledUpdateCheck()');
+      main.listeners.error(new Error('offline'));
+      release();
+      await manual;
+
+      expect(main.autoUpdater.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+      expect(main.sent.at(-1)[1].background).toBeUndefined();
+    });
+
+    it('lets a manual check take over the events of a scheduled one that is still running', async () => {
+      const main = withAuthorizedSender(loadMain({ selfUpdating: true }));
+      main.run('setupAutoUpdates()');
+      let finishScheduled;
+      main.autoUpdater.checkForUpdatesAndNotify.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finishScheduled = resolve;
+          })
+      );
+
+      const scheduled = main.run('runScheduledUpdateCheck()');
+      await main.ipcCheck();
+      main.listeners.error(new Error('offline'));
+      finishScheduled();
+      await scheduled;
+
+      // The person pressed Check while the app's own was running: they see its failure.
+      expect(main.sent.at(-1)[1]).toMatchObject({ status: 'error' });
+      expect(main.sent.at(-1)[1].background).toBeUndefined();
+    });
+
     it('is silent when there is nothing new, or when the lookup fails', async () => {
       const upToDate = loadMain({ selfUpdating: false, releases: [] });
       await upToDate.run('runScheduledUpdateCheck()');

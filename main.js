@@ -10601,6 +10601,10 @@ async function checkForUpdatesForCurrentPackage({ allowPrerelease } = {}) {
   try {
     const autoUpdater = getAutoUpdater();
     configureAutoUpdaterChannel(autoUpdater, allowPrerelease);
+    // Someone is waiting for this one, even when a scheduled check was already running and the
+    // updater hands this call that same check: its events are theirs to see.
+    manualUpdateCheckRunning = true;
+    backgroundUpdateCheckRunning = false;
     const result = await autoUpdater.checkForUpdates();
     // The updater answers null when it is switched off for this installation, and then sends no
     // events either; "checking" would be a promise nothing keeps.
@@ -10613,13 +10617,27 @@ async function checkForUpdatesForCurrentPackage({ allowPrerelease } = {}) {
     return summarizeUpdateCheck(result);
   } catch (e) {
     return { status: 'error', error: describeUpdateError(e) };
+  } finally {
+    manualUpdateCheckRunning = false;
   }
 }
+
+// The updater reports a check the app started on its own schedule exactly as it reports one a
+// person asked for. Nobody is waiting for the first, so its "checking" and "error" are marked
+// `background` and the window leaves them out of the Updates row; otherwise a laptop that woke
+// without a network would show "Could not reach GitHub" there until someone next looked.
+let backgroundUpdateCheckRunning = false;
+let manualUpdateCheckRunning = false;
 
 function sendAutoUpdateToWindow(payload) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('auto-update', payload);
   }
+}
+
+// The two updater events that only mean something to a person who asked for the check.
+function sendUpdaterCheckEvent(payload) {
+  sendAutoUpdateToWindow(backgroundUpdateCheckRunning ? { ...payload, background: true } : payload);
 }
 
 // "Check for Updates" in the tray: the window comes up on the Updates row, which says that a check
@@ -12440,16 +12458,23 @@ async function runScheduledUpdateCheck() {
     // The update that is already downloaded installs on exit; checking again would only fetch it
     // a second time and announce it a second time.
     if (autoUpdateDownloaded) return;
+    // Someone has pressed Check and is watching for the answer; theirs is the check.
+    if (manualUpdateCheckRunning) return;
     const autoUpdater = getAutoUpdater();
     configureAutoUpdaterChannel(autoUpdater);
-    await autoUpdater.checkForUpdatesAndNotify({
-      title: mainT('A new update is ready to install'),
-      // electron-updater fills {version} itself when the download finishes.
-      body: mainT(
-        '{{appName}} version {{version}} has been downloaded and will be automatically installed on exit',
-        { appName: APP_DISPLAY_NAME, version: '{version}' }
-      ),
-    });
+    backgroundUpdateCheckRunning = true;
+    try {
+      await autoUpdater.checkForUpdatesAndNotify({
+        title: mainT('A new update is ready to install'),
+        // electron-updater fills {version} itself when the download finishes.
+        body: mainT(
+          '{{appName}} version {{version}} has been downloaded and will be automatically installed on exit',
+          { appName: APP_DISPLAY_NAME, version: '{version}' }
+        ),
+      });
+    } finally {
+      backgroundUpdateCheckRunning = false;
+    }
     return;
   }
   const result = isPortableBuild() ? await checkPortableUpdate() : await checkManualReleaseUpdate();
@@ -12476,7 +12501,7 @@ function setupAutoUpdates() {
 
       autoUpdater.on('checking-for-update', () => {
         autoUpdateDownloaded = false;
-        sendAutoUpdateToWindow({ status: 'checking' });
+        sendUpdaterCheckEvent({ status: 'checking' });
       });
       autoUpdater.on('update-available', (info) => {
         autoUpdateDownloaded = false;
@@ -12495,7 +12520,7 @@ function setupAutoUpdates() {
       });
       autoUpdater.on('error', (err) => {
         autoUpdateDownloaded = false;
-        sendAutoUpdateToWindow({ status: 'error', error: describeUpdateError(err) });
+        sendUpdaterCheckEvent({ status: 'error', error: describeUpdateError(err) });
       });
     } catch (error) {
       log.error('Auto-update setup failed:', error);
