@@ -11,9 +11,12 @@ const { loadAppStylesheets, resolvedValue, splitTopLevel } = require('../helpers
 
 const STYLESHEET = path.resolve(__dirname, '../../styles.css');
 
-function render(html, { bodyClass = '', dir = 'ltr' } = {}) {
+function render(html, { bodyClass = '', dir = 'ltr', platform = '' } = {}) {
   document.documentElement.setAttribute('dir', dir);
   document.body.className = bodyClass;
+  // applyWindowEffects sets this from the host's platform; a page without one is a plain browser.
+  if (platform) document.body.dataset.platform = platform;
+  else delete document.body.dataset.platform;
   document.body.innerHTML = html;
 }
 
@@ -33,6 +36,16 @@ function rulesInMedia(query) {
   return found;
 }
 
+/** The width the stylesheet gives every scrollbar, from its page-wide `::-webkit-scrollbar` rule. */
+function pageScrollbarWidth() {
+  for (const sheet of document.styleSheets) {
+    for (const rule of sheet.cssRules) {
+      if (rule.selectorText === '::-webkit-scrollbar') return rule.style.width;
+    }
+  }
+  return null;
+}
+
 describe('stylesheet one-offs', () => {
   beforeAll(() => {
     loadAppStylesheets(document);
@@ -41,6 +54,7 @@ describe('stylesheet one-offs', () => {
   afterEach(() => {
     document.documentElement.removeAttribute('dir');
     document.body.className = '';
+    delete document.body.dataset.platform;
     document.body.innerHTML = '';
   });
 
@@ -674,6 +688,30 @@ describe('stylesheet one-offs', () => {
           viewport: { width, height: 600 },
         })
       ).toBe(padding);
+    });
+
+    it.each(['win32', 'linux', 'darwin'])(
+      'gives the gutter back on %s, with no platform asking for less',
+      (platform) => {
+        // macOS included: it is not an overlay-scrollbar platform here (see the next test), so the
+        // gutter is reserved there as much as on Windows, and the end padding must give it back.
+        render(page, { platform });
+        const content = document.querySelector('.widget-content');
+        expect(resolvedValue(content, '--content-gutter')).toBe('9px');
+        expect(resolvedValue(content, 'padding-inline-end')).toBe('max(0px, calc(14px - 9px))');
+      }
+    );
+
+    it('reserves the width of the scrollbar the page draws, which is a classic one on every platform', () => {
+      // Styling ::-webkit-scrollbar turns off the overlay scrollbars macOS would draw, as does the
+      // standard scrollbar-width on the element: either would leave the gutter empty on macOS and
+      // the end padding 9px short of the start. The macOS captures of the visual snapshot job show
+      // both margins at 14px with the gutter given back unconditionally.
+      render(page);
+      const content = document.querySelector('.widget-content');
+      expect(pageScrollbarWidth()).toBe('9px');
+      expect(resolvedValue(content, '--content-gutter')).toBe(pageScrollbarWidth());
+      expect(resolvedValue(content, 'scrollbar-width')).toBeNull();
     });
 
     it('holds no gutter in forced colours, where the system draws a scrollbar of its own width', () => {
