@@ -1027,6 +1027,15 @@ describe('device control and live data regressions', () => {
       expect(empty.hasAttribute('role')).toBe(false);
       expect(empty.getAttribute('aria-hidden')).toBe('true');
 
+      // Another letter that still finds nothing does not say it again.
+      const said = new MutationObserver(() => {});
+      said.observe(region, { childList: true, characterData: true, subtree: true });
+      search.value = 'nothing like this either';
+      search.dispatchEvent(new Event('input'));
+      jest.advanceTimersByTime(150);
+      expect(said.takeRecords()).toHaveLength(0);
+      said.disconnect();
+
       search.value = '';
       search.dispatchEvent(new Event('input'));
       jest.advanceTimersByTime(150);

@@ -10524,7 +10524,8 @@ function setEntityListEmpty(list, message = '') {
     region.setAttribute('role', 'status');
     list.after(region);
   }
-  region.textContent = message;
+  // The same words again (another letter typed, still nothing found) are not said again.
+  if (region.textContent !== message) region.textContent = message;
   if (!message) return;
   const empty = document.createElement('p');
   empty.className = 'entity-selector-empty';
