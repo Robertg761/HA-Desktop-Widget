@@ -257,7 +257,6 @@ describe('settings search', () => {
     for (const [query, id] of [
       ['Sync now', 'profile-sync-now'],
       ['Sync Up', 'profile-sync-push-now'],
-      ['Need Help?', 'profile-sync-help-btn'],
       ['Support this project', 'open-donate-modal-btn'],
     ]) {
       document
@@ -377,6 +376,13 @@ describe('settings search', () => {
       expect(hits.some((title) => /^Ctrl\+/.test(title))).toBe(false);
     });
 
+    test('a caption over the example chips and a help link are not settings', () => {
+      expect(titles(search('suggestions'))).not.toContain('Suggestions');
+      // "Need Help?" opens the docs; the settings it sits among are the results for "sync"
+      expect(titles(search('need help'))).not.toContain('Need Help?');
+      expect(titles(search('sync'))).not.toContain('Need Help?');
+    });
+
     test('finds a page although the stylesheet shows only the current one', () => {
       const style = document.createElement('style');
       style.textContent = '#settings-modal .tab-content:not(.active) { display: none; }';
@@ -431,6 +437,18 @@ describe('settings search', () => {
       );
       expect(empty.textContent).toContain('clear the search');
       expect(status()).toBe('No matching settings');
+    });
+
+    test('the plain status line is for assistive technology only while the empty state is shown', () => {
+      const statusLine = document.getElementById('settings-search-status');
+      search('zzzz');
+      expect(statusLine.classList.contains('sr-only')).toBe(true);
+      // Any other search, and clearing it, brings the line back for the eye
+      search('theme');
+      expect(statusLine.classList.contains('sr-only')).toBe(false);
+      search('zzzz');
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+      expect(statusLine.classList.contains('sr-only')).toBe(false);
     });
   });
 });

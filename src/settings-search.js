@@ -162,7 +162,8 @@ function scoreEntry(entry, words) {
 }
 
 // A zero-hit query leaves the whole page empty, so it says so in the page's own voice instead of a
-// single faint caption. The status line above keeps the plain sentence for assistive technology.
+// single faint caption. The status line above keeps the plain sentence for assistive technology
+// only, so the page does not say the same thing twice.
 function buildEmptyState(query) {
   const box = document.createElement('div');
   box.className = 'no-entities-message settings-search-empty';
@@ -208,6 +209,7 @@ function initializeSettingsSearch(modal) {
     results.replaceChildren();
     results.hidden = true;
     status.textContent = '';
+    status.classList.remove('sr-only');
     modal.classList.remove('settings-searching');
     syncTabSelection(false);
   };
@@ -224,6 +226,7 @@ function initializeSettingsSearch(modal) {
       .map(({ entry }) => entry);
     if (!entries.length) {
       status.textContent = t('No matching settings');
+      status.classList.add('sr-only');
       results.append(buildEmptyState(input.value.trim()));
       return;
     }
@@ -296,6 +299,7 @@ function initializeSettingsSearch(modal) {
     modal.classList.toggle('settings-searching', active);
     syncTabSelection(active);
     status.textContent = '';
+    status.classList.remove('sr-only');
   }
   // Escape and the arrows work from the results too, as they do from the field: Escape backs out of
   // the search (and not out of Settings with every unsaved edit), and the arrows walk the list.
