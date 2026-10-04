@@ -605,6 +605,11 @@ describe('command palette recents', () => {
       requestCode.mockResolvedValueOnce(null);
       await run('Disarm Home alarm');
       expect(requestCode).toHaveBeenCalledTimes(1);
+      // The code dialog says which command it is for, and its button says what it will do.
+      expect(requestCode).toHaveBeenCalledWith(expect.anything(), {
+        title: 'Disarm Home alarm',
+        submitLabel: 'Disarm',
+      });
       expect(websocket.callService).not.toHaveBeenCalled();
     });
     it('sends a requested code only in the service payload and never persists it', async () => {

@@ -1722,5 +1722,7 @@
   "Sky blue": "Sky blue",
   "Update available: v{{version}}. This package cannot update itself; use Download Update to get it from GitHub.": "Update available: v{{version}}. This package cannot update itself; use Download Update to get it from GitHub.",
   "Update available": "Update available",
-  "Update ready to install": "Update ready to install"
+  "Update ready to install": "Update ready to install",
+  "Arm": "Arm",
+  "Disarm": "Disarm"
 }

@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.63",
+  "version": "1.2.64",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1818,6 +1818,8 @@
     "Sky blue": "आसमानी",
     "Update available: v{{version}}. This package cannot update itself; use Download Update to get it from GitHub.": "अपडेट उपलब्ध: v{{version}}। यह पैकेज खुद को अपडेट नहीं कर सकता; GitHub से पाने के लिए “अपडेट डाउनलोड करें” का उपयोग करें।",
     "Update available": "अपडेट उपलब्ध",
-    "Update ready to install": "अपडेट इंस्टॉल के लिए तैयार"
+    "Update ready to install": "अपडेट इंस्टॉल के लिए तैयार",
+    "Arm": "सशस्त्र करें",
+    "Disarm": "निरस्त्र करें"
   }
 }

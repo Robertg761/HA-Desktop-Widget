@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.63",
+  "version": "1.2.64",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1818,6 +1818,8 @@
     "Sky blue": "أزرق سماوي",
     "Update available: v{{version}}. This package cannot update itself; use Download Update to get it from GitHub.": "تحديث متاح: v{{version}}. لا تستطيع هذه الحزمة تحديث نفسها؛ استخدم «تنزيل التحديث» للحصول عليه من GitHub.",
     "Update available": "تحديث متاح",
-    "Update ready to install": "التحديث جاهز للتثبيت"
+    "Update ready to install": "التحديث جاهز للتثبيت",
+    "Arm": "تسليح",
+    "Disarm": "إلغاء تسليح"
   }
 }

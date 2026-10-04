@@ -11004,13 +11004,20 @@ function showHelperControls(entity) {
   refresh();
 }
 
-function requestAlarmCode(entity) {
+/**
+ * Ask for an alarm panel's code in a small dialog; resolves with the code, or null when dismissed.
+ * @param {Object} entity - The alarm panel.
+ * @param {Object} [options]
+ * @param {string} [options.title] - What the dialog is for ("Disarm Home alarm"); the panel's name by default.
+ * @param {string} [options.submitLabel] - The submit button's word ("Disarm"); "Apply" by default.
+ */
+function requestAlarmCode(entity, { title, submitLabel } = {}) {
   return new Promise((resolve) => {
     let code = null;
     let input = null;
     const modal = createEntityDetailModal({
       className: 'alarm-code-modal',
-      title: utils.getEntityDisplayName(entity),
+      title: title || utils.getEntityDisplayName(entity),
       onClose: () => {
         if (input) input.value = '';
         resolve(code);
@@ -11037,10 +11044,16 @@ function requestAlarmCode(entity) {
     const submit = document.createElement('button');
     submit.type = 'submit';
     submit.className = 'btn btn-primary';
-    submit.textContent = t('Apply');
+    submit.textContent = submitLabel || t('Apply');
+    // A way out that says so, beside the one that does the thing; the dialog's X is the same close.
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'btn btn-secondary';
+    cancel.textContent = t('Cancel');
+    cancel.addEventListener('click', () => modal.querySelector('.close-btn').click());
     const actions = document.createElement('div');
     actions.className = 'entity-detail-actions';
-    actions.append(submit);
+    actions.append(cancel, submit);
     form.append(group, actions);
     modal.querySelector('.modal-body').append(form);
     form.onsubmit = (event) => {
