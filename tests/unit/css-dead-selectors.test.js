@@ -20,9 +20,6 @@ const SOURCE_FILES = ['index.html', 'renderer.js', 'preload.js', 'main.js'];
 const PRODUCED_ELSEWHERE = {
   // SortableJS gives the clone it drags on touch and pen its default fallbackClass.
   'sortable-fallback': 'SortableJS default',
-  // The calendar dialog's location line arrives with the dashboard data changes (PR 151). Delete
-  // this line once that is merged: a name left here would hide the next time it goes dead.
-  'calendar-event-location': 'dashboard data changes',
 };
 
 // The classes ('.') and ids ('#') a selector needs its element to carry. A name inside :not(),
