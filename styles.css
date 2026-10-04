@@ -8096,19 +8096,19 @@ body.theme-light:not(.high-contrast)
    an address in an event is meant to be copied. */
 .calendar-event-summary,
 .calendar-event-time,
-.calendar-event-location,
-.calendar-event-description {
-  user-select: text;
-  -webkit-user-select: text;
-  cursor: text;
-}
-
   font-size: var(--font-size-sm);
 }
 
 /* Keep the paragraphs and line breaks of multi-line descriptions. */
 .calendar-event-description {
   white-space: pre-line;
+}
+
+.calendar-event-location,
+.calendar-event-description {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 
 /* Form elements */
@@ -13864,6 +13864,8 @@ body.theme-light
   margin-top: 0;
 }
 
+  font-size: var(--font-size-icon);
+  margin-inline-end: -5px;
 /* --- Specific blocks tidied into the grid --- */
 
 /* A row of a pane is spaced by the pane's own row padding. One inside a disclosure (Test connection
