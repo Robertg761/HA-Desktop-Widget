@@ -6797,7 +6797,7 @@ function openAlertConfigModal(entityId) {
       unavailableHelp.id = 'alert-notify-unavailable-help';
       unavailableHelp.className = 'form-help';
       unavailableHelp.dataset.alertLabelKey =
-        'Only after 30 seconds, and at most once every 15 minutes per device.';
+        'Waits 30 seconds first, and tells you at most once every 15 minutes per device.';
       unavailableText.append(unavailableLabel, unavailableHelp);
       const unavailableSwitch = document.createElement('input');
       unavailableSwitch.type = 'checkbox';

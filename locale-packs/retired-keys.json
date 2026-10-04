@@ -346,5 +346,9 @@
   "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Command, Super (for example <code>Ctrl+Shift+A</code>).": {
     "retiredIn": "4.0.0",
     "reason": "Reworded: the modifier list now includes Win, the key the Windows recorder names"
+  },
+  "Only after 30 seconds, and at most once every 15 minutes per device.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the first wording did not say what happens after 30 seconds"
   }
 }

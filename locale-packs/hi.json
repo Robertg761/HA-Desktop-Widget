@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.58",
+  "version": "1.2.59",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1801,6 +1801,7 @@
     "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).": "कहीं से भी एंटिटी टॉगल या नियंत्रित करें। मॉडिफ़ायर: Ctrl, Alt, Shift, Win, Command, Super (उदाहरण के लिए <code>Ctrl+Shift+A</code>)।",
     "Action chosen: {{action}}. It applies once you record a hotkey.": "कार्रवाई चुनी गई: {{action}}। हॉटकी रिकॉर्ड करते ही यह लागू होगी।",
     "Notify when unavailable or unknown": "अनुपलब्ध या अज्ञात होने पर सूचित करें",
-    "Only after 30 seconds, and at most once every 15 minutes per device.": "केवल 30 सेकंड के बाद, और प्रति डिवाइस 15 मिनट में अधिकतम एक बार।"
+    "Only after 30 seconds, and at most once every 15 minutes per device.": "केवल 30 सेकंड के बाद, और प्रति डिवाइस 15 मिनट में अधिकतम एक बार।",
+    "Waits 30 seconds first, and tells you at most once every 15 minutes per device.": "पहले 30 सेकंड प्रतीक्षा करता है, और प्रति डिवाइस 15 मिनट में अधिकतम एक बार सूचित करता है।"
   }
 }

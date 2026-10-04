@@ -6359,7 +6359,7 @@ describe('Settings + Config Integration', () => {
           const help = document.getElementById(toggle().getAttribute('aria-describedby'));
           expect(help.className).toBe('form-help');
           expect(help.textContent).toBe(
-            'Only after 30 seconds, and at most once every 15 minutes per device.'
+            'Waits 30 seconds first, and tells you at most once every 15 minutes per device.'
           );
         });
 
@@ -6373,7 +6373,7 @@ describe('Settings + Config Integration', () => {
           expect(
             document.getElementById(toggle().getAttribute('aria-describedby')).textContent
           ).toBe(
-            `Only after ${UNAVAILABLE_GRACE_MS / 1000} seconds, and at most once every ${
+            `Waits ${UNAVAILABLE_GRACE_MS / 1000} seconds first, and tells you at most once every ${
               UNAVAILABLE_NOTIFY_INTERVAL_MS / 60000
             } minutes per device.`
           );
