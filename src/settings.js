@@ -2297,6 +2297,9 @@ function updatePrimaryCardActionButtons() {
 let primaryCardPage = 0;
 let primaryCardSearchTimer;
 
+// Rebuilds a paged list the keyboard is working in. The pager buttons and the row controls are
+// replaced by the render, which would send focus to <body>; the control with the same data-*
+// attributes takes it back, and the list keeps its scroll position.
 function preserveListFocus(list, render) {
   const focused = list.contains(document.activeElement) ? document.activeElement : null;
   const attributes = focused
@@ -2305,8 +2308,8 @@ function preserveListFocus(list, render) {
   const scrollTop = list.scrollTop;
   render();
   if (attributes.length) {
-    const replacement = Array.from(list.querySelectorAll('button')).find((button) =>
-      attributes.every(({ name, value }) => button.getAttribute(name) === value)
+    const replacement = Array.from(list.querySelectorAll('button, input')).find((control) =>
+      attributes.every(({ name, value }) => control.getAttribute(name) === value)
     );
     replacement?.focus({ preventScroll: true });
   }
@@ -2443,7 +2446,12 @@ function initPrimaryCardsUI() {
     searchInput.addEventListener('input', () => {
       clearTimeout(primaryCardSearchTimer);
       primaryCardPage = 0;
-      primaryCardSearchTimer = setTimeout(renderPrimaryCardsEntityList, 150);
+      primaryCardSearchTimer = setTimeout(() => {
+        renderPrimaryCardsEntityList();
+        // A new query starts at its first match, not wherever the last list was scrolled to.
+        const list = document.getElementById('primary-cards-list');
+        if (list) list.scrollTop = 0;
+      }, 150);
     });
   }
 
@@ -2606,7 +2614,14 @@ function getCustomEntityIconAnchorEntityId(list) {
   return control?.dataset.customIconInput || control?.dataset.customIconPickerToggle || '';
 }
 
+// Every caller (the pager, the search, a row's buttons, closing a picker) rebuilds the whole page,
+// so each one hands the keyboard back to the control it was on instead of dropping it to <body>.
 function renderCustomEntityIconsList() {
+  const list = document.getElementById('custom-entity-icons-list');
+  if (list) preserveListFocus(list, renderCustomEntityIconRows);
+}
+
+function renderCustomEntityIconRows() {
   const list = document.getElementById('custom-entity-icons-list');
   const searchInput = document.getElementById('custom-entity-icons-search');
   if (!list || !searchInput) return;
@@ -2966,6 +2981,8 @@ function initCustomEntityIconsUI() {
         activeCustomEntityIconPickerEntityId = null;
         customEntityIconPage = 0;
         renderCustomEntityIconsList();
+        const list = document.getElementById('custom-entity-icons-list');
+        if (list) list.scrollTop = 0;
       }, 150);
     });
   }

@@ -1482,8 +1482,22 @@ describe('Settings + Config Integration', () => {
         list.querySelector('[data-primary-page="previous"]').click();
         expect(list.querySelector('[role="status"]').textContent).toBe('Page 1 / 3');
         expect(list.scrollTop).toBe(0);
+
+        // A new query starts at its first match, as a new page does.
+        jest.useFakeTimers();
+        list.scrollTop = 900;
+        const search = document.getElementById('primary-cards-search');
+        search.value = 'sensor.test_01';
+        search.dispatchEvent(new Event('input'));
+        jest.advanceTimersByTime(150);
+        expect(list.querySelector('[data-primary-assign]').dataset.entityId).toBe(
+          'sensor.test_010'
+        );
+        expect(list.scrollTop).toBe(0);
       } finally {
         settings.closeSettings();
+        jest.clearAllTimers();
+        jest.useRealTimers();
       }
     });
 
@@ -2972,6 +2986,164 @@ describe('Settings + Config Integration', () => {
       );
       const summaryAfterResetAll = document.getElementById('custom-entity-icons-summary');
       expect(summaryAfterResetAll.textContent).toContain('No custom icons configured');
+    });
+
+    describe('in a large home', () => {
+      const manyEntities = (count = 121) =>
+        Object.fromEntries(
+          Array.from({ length: count }, (_, index) => {
+            const entity_id = `sensor.test_${String(index).padStart(3, '0')}`;
+            return [
+              entity_id,
+              {
+                entity_id,
+                state: '1',
+                attributes: { friendly_name: `Test ${String(index).padStart(3, '0')}` },
+              },
+            ];
+          })
+        );
+      const iconList = () => document.getElementById('custom-entity-icons-list');
+      const pagerButton = (key) => iconList().querySelector(`[data-primary-page="${key}"]`);
+      const firstRowEntity = () =>
+        iconList().querySelector('[data-custom-icon-input]').dataset.customIconInput;
+
+      test('keeps the keyboard on the pager button when a page of icons is turned', async () => {
+        state.setStates(manyEntities());
+        await openSettingsWithCustomIconsExpanded();
+        expect(iconList().querySelectorAll('.custom-entity-icon-item')).toHaveLength(50);
+        expect(iconList().querySelector('[role="status"]').textContent).toBe('Page 1 / 3');
+
+        // jsdom does not lay out, so give the list a scroll position it keeps.
+        let scrollTop = 0;
+        Object.defineProperty(iconList(), 'scrollTop', {
+          configurable: true,
+          get: () => scrollTop,
+          set: (value) => {
+            scrollTop = value;
+          },
+        });
+
+        try {
+          const next = pagerButton('next');
+          next.focus();
+          scrollTop = 700;
+          next.click();
+
+          // The page was rebuilt, so the button that was pressed is gone; its replacement has focus.
+          expect(next.isConnected).toBe(false);
+          expect(document.activeElement).toBe(pagerButton('next'));
+          expect(iconList().contains(document.activeElement)).toBe(true);
+          expect(iconList().querySelector('[role="status"]').textContent).toBe('Page 2 / 3');
+          expect(firstRowEntity()).toBe('sensor.test_050');
+          // A new page starts at its first row.
+          expect(iconList().scrollTop).toBe(0);
+
+          pagerButton('previous').focus();
+          pagerButton('previous').click();
+          expect(document.activeElement).toBe(pagerButton('previous'));
+          expect(iconList().querySelector('[role="status"]').textContent).toBe('Page 1 / 3');
+          expect(firstRowEntity()).toBe('sensor.test_000');
+
+          // Next, Next, then Next again on the last page: the button that cannot go on still has focus.
+          pagerButton('next').focus();
+          pagerButton('next').click();
+          pagerButton('next').click();
+          expect(iconList().querySelector('[role="status"]').textContent).toBe('Page 3 / 3');
+          expect(pagerButton('next').getAttribute('aria-disabled')).toBe('true');
+          expect(document.activeElement).toBe(pagerButton('next'));
+          pagerButton('next').click();
+          expect(iconList().querySelector('[role="status"]').textContent).toBe('Page 3 / 3');
+          expect(document.activeElement).toBe(pagerButton('next'));
+        } finally {
+          settings.closeSettings();
+        }
+      });
+
+      test('does not take the keyboard when the page is turned from outside the list', async () => {
+        state.setStates(manyEntities());
+        await openSettingsWithCustomIconsExpanded();
+        const search = document.getElementById('custom-entity-icons-search');
+        search.focus();
+
+        pagerButton('next').click();
+
+        expect(iconList().querySelector('[role="status"]').textContent).toBe('Page 2 / 3');
+        expect(document.activeElement).toBe(search);
+        settings.closeSettings();
+      });
+
+      test('starts a new icon search at the top of the list', async () => {
+        state.setStates(manyEntities());
+        await openSettingsWithCustomIconsExpanded();
+        let scrollTop = 0;
+        Object.defineProperty(iconList(), 'scrollTop', {
+          configurable: true,
+          get: () => scrollTop,
+          set: (value) => {
+            scrollTop = value;
+          },
+        });
+        jest.useFakeTimers();
+        try {
+          scrollTop = 900;
+          const search = document.getElementById('custom-entity-icons-search');
+          search.value = 'Test 0';
+          search.dispatchEvent(new Event('input'));
+          jest.advanceTimersByTime(150);
+
+          expect(iconList().querySelectorAll('.custom-entity-icon-item')).toHaveLength(50);
+          expect(iconList().scrollTop).toBe(0);
+        } finally {
+          settings.closeSettings();
+          jest.clearAllTimers();
+          jest.useRealTimers();
+        }
+      });
+    });
+
+    describe('when the open picker closes because focus moved on', () => {
+      // Opening the picker rebuilds the list, so the control to move to is found after that.
+      const openPickerThenMoveFocusTo = (selector) => {
+        rowInput('light.living_room').focus();
+        document.querySelector('[data-custom-icon-picker-toggle="light.living_room"]').click();
+        expect(
+          document.querySelector('[data-custom-icon-picker="light.living_room"]')
+        ).toBeTruthy();
+        const target = document.querySelector(selector);
+        jest.useFakeTimers();
+        try {
+          target.focus();
+          expect(document.activeElement).toBe(target);
+          rowInput('light.living_room').dispatchEvent(new Event('focusout', { bubbles: true }));
+          jest.runOnlyPendingTimers();
+        } finally {
+          jest.useRealTimers();
+        }
+        expect(document.querySelector('[data-custom-icon-picker="light.living_room"]')).toBeFalsy();
+        return target;
+      };
+
+      test('hands the keyboard to the same button in the rebuilt list', async () => {
+        state.CONFIG.customEntityIcons = { 'switch.bedroom': '⚡' };
+        await openSettingsWithCustomIconsExpanded();
+
+        const reset = openPickerThenMoveFocusTo('[data-custom-icon-reset="switch.bedroom"]');
+
+        expect(reset.isConnected).toBe(false);
+        expect(document.activeElement).toBe(
+          document.querySelector('[data-custom-icon-reset="switch.bedroom"]')
+        );
+      });
+
+      test('hands the keyboard to the same field in the rebuilt list', async () => {
+        await openSettingsWithCustomIconsExpanded();
+
+        const field = openPickerThenMoveFocusTo('[data-custom-icon-input="switch.bedroom"]');
+
+        expect(field.isConnected).toBe(false);
+        expect(document.activeElement).toBe(rowInput('switch.bedroom'));
+      });
     });
 
     const flushMicrotasks = async () => {
