@@ -148,13 +148,13 @@ async function showFirstRunWelcome(ctx) {
   await ctx.waitForExpression(`${back}.disabled`, 'the first-run welcome step');
 }
 
-// Settings opens one page at a time; this scrolls the wanted element to the top and opens any
-// disclosure it sits in.
-async function revealInSettings(ctx, selector) {
+// Settings opens one page at a time; this scrolls the wanted element to the top (or wherever `block`
+// puts it) and opens any disclosure it sits in.
+async function revealInSettings(ctx, selector, block = 'start') {
   await ctx.ev(`(() => {
     const element = document.querySelector(${JSON.stringify(selector)});
     element?.closest('details')?.setAttribute('open', '');
-    element?.scrollIntoView({ block: 'start' });
+    element?.scrollIntoView({ block: ${JSON.stringify(block)} });
   })()`);
 }
 
@@ -472,10 +472,13 @@ const scenes = [
   // going off with the first rows.
   {
     name: 'popup-todo-scrolled',
-    config: dialogsPage,
+    config: {
+      customTabs: [{ id: 'default', name: 'Home', entityIds: ['todo.errands'] }],
+      activeTabId: 'default',
+    },
     size: { width: 500, height: 420 },
     setup: async (ctx) => {
-      await ctx.click(tile('todo.shopping'));
+      await ctx.click(tile('todo.errands'));
       await ctx.waitForSelector('.todo-item-row');
       await ctx.ev(`(() => {
         const body = document.querySelector('.todo-modal .modal-body');
@@ -697,7 +700,8 @@ const scenes = [
     name: 'focus-settings-opacity-slider',
     setup: async (ctx) => {
       await openSettingsTab(ctx, 'personalization');
-      await revealInSettings(ctx, '#opacity-slider');
+      // Centred: the rail is 6px high, so at the top edge the ring and the thumb would be clipped.
+      await revealInSettings(ctx, '#opacity-slider', 'center');
       await focusWithKeyboard(ctx, '#opacity-slider');
     },
   },
