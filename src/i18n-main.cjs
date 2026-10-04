@@ -75,6 +75,9 @@ function createLocalizationService(options = {}) {
     getUserDataDir,
     appVersion = '0.0.0',
     getDetectedLocale = () => 'en',
+    // The operating system's region setting. It only shapes how numbers and dates are written;
+    // the display language above still picks the catalog.
+    getSystemLocale = () => '',
     manifestUrl = '',
     // Injectable for tests; main.js supplies Electron's net.fetch.
     fetchImpl = (url, init) => fetch(url, init),
@@ -237,6 +240,7 @@ function createLocalizationService(options = {}) {
     const requestedSetting =
       languageSetting === 'auto' ? 'auto' : normalizeLocaleCode(languageSetting) || 'auto';
     const detectedLocale = normalizeLocaleCode(getDetectedLocale()) || 'en';
+    const systemLocale = normalizeLocaleCode(getSystemLocale()) || '';
     const requestedLocale = getRequestedLocale(languageSetting);
     const candidates = Array.from(
       new Set([requestedLocale, getBaseLocale(requestedLocale), 'en'].filter(Boolean))
@@ -282,6 +286,7 @@ function createLocalizationService(options = {}) {
     return {
       languageSetting: requestedSetting,
       detectedLocale,
+      systemLocale,
       requestedLocale,
       activeLocale,
       fallbackLocale: 'en',

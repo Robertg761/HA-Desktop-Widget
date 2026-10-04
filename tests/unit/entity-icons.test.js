@@ -191,4 +191,14 @@ describe('entity line icons', () => {
     expect(button.querySelector('svg').dataset.icon).toBe('grip-vertical');
     expect(setLineIconContent(null, 'plus')).toBeNull();
   });
+
+  test('has the line icons the Reorganize chips draw with', () => {
+    for (const name of ['pencil', 'copy', 'x', 'pin']) {
+      const host = document.createElement('div');
+      host.innerHTML = lineIconMarkup(name);
+      const icon = host.querySelector('svg');
+      expect(icon.dataset.icon).toBe(name);
+      expect(icon.children.length).toBe(LINE_ICONS[name].length);
+    }
+  });
 });

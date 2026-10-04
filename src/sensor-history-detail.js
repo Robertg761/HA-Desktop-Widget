@@ -1,4 +1,10 @@
-import { formatDateTime, formatNumber, isolateLtr, t } from './i18n.js';
+import {
+  formatClockDateTime,
+  formatReadingNumber,
+  getSensorPrecision,
+  joinUnit,
+} from './format.js';
+import { isolateLtr, t } from './i18n.js';
 
 function summarizeHistory(series) {
   const values = series.map((point) => point.value).filter(Number.isFinite);
@@ -90,14 +96,16 @@ function mountSensorHistoryDetail({ body, modal, entity, websocket, normalize, r
         dates.textContent = '';
         return;
       }
-      const format = (value) => formatNumber(value, { maximumFractionDigits: 2 });
+      // Every figure carries its unit and the precision the headline reading uses, so the summary
+      // cannot read as if only the average had a unit, or give "20.66" beside a "20.7 °C" readout.
       const unit = entity.attributes?.unit_of_measurement;
-      status.textContent =
-        t('Minimum {{min}} · Maximum {{max}} · Sample average {{average}}', {
-          min: format(stats.min),
-          max: format(stats.max),
-          average: format(stats.average),
-        }) + (unit ? ` ${isolateLtr(unit)}` : '');
+      const precision = getSensorPrecision(entity.attributes);
+      const format = (value) => isolateLtr(joinUnit(formatReadingNumber(value, precision), unit));
+      status.textContent = t('Minimum {{min}} · Maximum {{max}} · Sample average {{average}}', {
+        min: format(stats.min),
+        max: format(stats.max),
+        average: format(stats.average),
+      });
       frame.hidden = false;
       render(frame, data.series, { start: data.start, end: data.end });
       // Minutes are precise enough for a history period; seconds only add noise.
@@ -108,7 +116,7 @@ function mountSensorHistoryDetail({ body, modal, entity, websocket, normalize, r
         hour: 'numeric',
         minute: '2-digit',
       };
-      dates.textContent = `${formatDateTime(data.start, period)} – ${formatDateTime(data.end, period)}`;
+      dates.textContent = `${formatClockDateTime(data.start, period)} – ${formatClockDateTime(data.end, period)}`;
       refresh.textContent = t('Refresh');
     } catch (error) {
       console.warn('Sensor history request failed:', error);

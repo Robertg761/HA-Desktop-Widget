@@ -18,6 +18,7 @@ jest.mock('../../src/ui-utils.js', () => ({
 }));
 
 jest.mock('../../src/utils.js', () => ({
+  ...jest.requireActual('../../src/utils.js'),
   getStateDisplayLabel: jest.fn((rawState) => rawState),
   getEntityDisplayName: jest.fn((entity) => {
     if (!entity) return 'Unknown Entity';
@@ -452,7 +453,7 @@ describe('alerts module', () => {
 
         alerts.checkEntityAlerts('sensor.temperature', '21.5');
         expect(showToast).toHaveBeenLastCalledWith(
-          expect.stringMatching(/ist jetzt 21,5$/),
+          expect.stringMatching(/ist jetzt 21,5\u00a0°C$/),
           'info',
           4000
         );

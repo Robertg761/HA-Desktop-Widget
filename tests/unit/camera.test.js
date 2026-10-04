@@ -61,10 +61,9 @@ jest.mock('../../src/utils.js', () => ({
     if (!entity) return 'Unknown Entity';
     return entity.attributes?.friendly_name || entity.entity_id;
   }),
-  getLocalizedStateName: jest.fn((value) => {
-    const text = String(value || '');
-    return text.charAt(0).toUpperCase() + text.slice(1);
-  }),
+  getLocalizedStateName: jest.fn((value) =>
+    jest.requireActual('../../src/format.js').formatStateName(value)
+  ),
 }));
 
 // Mock WebSocket

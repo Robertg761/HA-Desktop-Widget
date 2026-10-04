@@ -188,7 +188,11 @@ describe('tile and device dialog polish', () => {
   });
 
   describe('calendar tile', () => {
+    const nextEvent = (entityId = 'calendar.work') =>
+      tile(entityId).querySelector('.calendar-next-event').textContent;
+
     it('shows All day for an all-day event reported with a midnight start time', () => {
+      jest.setSystemTime(new Date(2026, 8, 24, 8, 0));
       renderTiles([
         entity('calendar.trips', 'off', {
           message: 'Vacation',
@@ -196,9 +200,58 @@ describe('tile and device dialog polish', () => {
           all_day: true,
         }),
       ]);
-      expect(tile('calendar.trips').querySelector('.calendar-next-event').textContent).toBe(
-        'Vacation · All day'
-      );
+      expect(nextEvent('calendar.trips')).toBe('Vacation · All day');
+    });
+
+    it('names the day of an event that is not today, so a time is never mistaken for today', () => {
+      const event = (start, attributes = {}) =>
+        entity('calendar.work', 'off', { message: 'Dentist', start_time: start, ...attributes });
+      jest.setSystemTime(new Date(2026, 8, 20, 9, 0));
+      // Tomorrow, within a week, and further away.
+      renderTiles([event('2026-09-21 22:00:00')]);
+      expect(nextEvent()).toBe('Dentist · Tomorrow 10:00 PM');
+      renderTiles([event('2026-09-24 22:00:00')]);
+      expect(nextEvent()).toBe('Dentist · Thu 10:00 PM');
+      renderTiles([event('2026-10-12 22:00:00')]);
+      expect(nextEvent()).toBe('Dentist · Oct 12, 10:00 PM');
+      // Another year says so.
+      renderTiles([event('2027-01-05 22:00:00')]);
+      expect(nextEvent()).toBe('Dentist · Jan 5, 2027, 10:00 PM');
+      // Today keeps just the time.
+      renderTiles([event('2026-09-20 22:00:00')]);
+      expect(nextEvent()).toBe('Dentist · 10:00 PM');
+    });
+
+    it('shows the date of an all-day event on another day, and All day while it is on', () => {
+      const bins = (state, attributes = {}) =>
+        entity('calendar.work', state, {
+          message: 'Bins',
+          start_time: '2026-09-23 00:00:00',
+          all_day: true,
+          ...attributes,
+        });
+      jest.setSystemTime(new Date(2026, 8, 22, 9, 0));
+      renderTiles([bins('off')]);
+      expect(nextEvent()).toBe('Bins · Tomorrow');
+      jest.setSystemTime(new Date(2026, 8, 18, 9, 0));
+      renderTiles([bins('off')]);
+      expect(nextEvent()).toBe('Bins · Wed');
+      // A multi-day event that started yesterday is still on today.
+      jest.setSystemTime(new Date(2026, 8, 24, 9, 0));
+      renderTiles([bins('on')]);
+      expect(nextEvent()).toBe('Bins · All day');
+    });
+
+    it('writes the day in the active language', () => {
+      i18n.setLocaleBootstrap({ activeLocale: 'de', messages: {} });
+      jest.setSystemTime(new Date(2026, 8, 20, 9, 0));
+      renderTiles([
+        entity('calendar.work', 'off', {
+          message: 'Zahnarzt',
+          start_time: '2026-09-21 22:00:00',
+        }),
+      ]);
+      expect(nextEvent()).toBe('Zahnarzt · Morgen 22:00');
     });
 
     it.each([
@@ -206,10 +259,13 @@ describe('tile and device dialog polish', () => {
       // Just after the spring-forward change, the new offset applies.
       ['America/New_York', '2026-03-08 03:30:00', '2026-03-08T07:30:00Z'],
       ['America/New_York', '2026-03-07 23:30:00', '2026-03-08T04:30:00Z'],
+      // A start time without seconds is still read in Home Assistant's zone.
+      ['Asia/Tokyo', '2026-09-23 20:00', '2026-09-23T11:00:00Z'],
     ])(
       "reads start times in Home Assistant's time zone (%s %s)",
       (timeZone, startTime, instant) => {
         state.setTimeZone(timeZone);
+        jest.setSystemTime(new Date(instant));
         try {
           renderTiles([
             entity('calendar.work', 'on', { message: 'Standup', start_time: startTime }),
@@ -218,9 +274,7 @@ describe('tile and device dialog polish', () => {
             hour: 'numeric',
             minute: '2-digit',
           });
-          expect(tile('calendar.work').querySelector('.calendar-next-event').textContent).toBe(
-            `Standup · ${expected}`
-          );
+          expect(nextEvent()).toBe(`Standup · ${expected}`);
         } finally {
           state.setTimeZone(null);
         }
@@ -229,12 +283,13 @@ describe('tile and device dialog polish', () => {
 
     it('shows timed events without seconds in the active locale', () => {
       const start = '2026-09-23 20:23:50';
+      jest.setSystemTime(new Date(start));
       renderTiles([entity('calendar.work', 'on', { message: 'Standup', start_time: start })]);
       const expected = new Date(start).toLocaleTimeString('en-US', {
         hour: 'numeric',
         minute: '2-digit',
       });
-      const text = tile('calendar.work').querySelector('.calendar-next-event').textContent;
+      const text = nextEvent();
       expect(text).toBe(`Standup · ${expected}`);
       expect(text).not.toMatch(/\d:\d{2}:\d{2}/);
     });
@@ -304,7 +359,9 @@ describe('tile and device dialog polish', () => {
       liveUpdate(entity('lock.front', 'unlocked'));
       liveUpdate(entity('cover.window', 'opening', { current_position: 30 }));
       expect(tile('lock.front').querySelector('.control-state').textContent).toBe('Entriegelt');
-      expect(tile('cover.window').querySelector('.control-state').textContent).toBe('Opening 30%');
+      expect(tile('cover.window').querySelector('.control-state').textContent).toBe(
+        'Opening 30\u00a0%'
+      );
     });
   });
 

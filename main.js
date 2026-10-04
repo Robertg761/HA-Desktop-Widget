@@ -1154,6 +1154,13 @@ const localizationService = createLocalizationService({
       return 'en';
     }
   },
+  getSystemLocale: () => {
+    try {
+      return app.getSystemLocale() || '';
+    } catch {
+      return '';
+    }
+  },
   manifestUrl: getLocalePackManifestSource(),
   // Locale pack downloads only run from IPC handlers, so the app is always ready by the time
   // net.fetch is invoked here.

@@ -108,7 +108,7 @@ describe('tray-entity-icons', () => {
   it('sends no bitmaps on macOS where the label is drawn as a tray title', () => {
     setup({ platform: 'darwin' });
     const payload = buildTrayEntityIconPayload('sensor.battery', { scheme: 'dark' });
-    expect(payload.label).toBe('43 %');
+    expect(payload.label).toBe('43%');
     expect(payload.representations).toEqual([]);
   });
 
@@ -334,7 +334,7 @@ describe('tray-entity-icons', () => {
       messages: require('../../locales/de.json'),
     });
     const payload = buildTrayEntityIconPayload('sensor.room');
-    expect(payload.label).toBe('Büro: 21,4 °C');
+    expect(payload.label).toBe('Büro: 21,4\u00a0°C');
     expect(payload.tooltip).toContain('Büro · Office');
     expect(payload.representations).toEqual([]);
   });

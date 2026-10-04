@@ -1,0 +1,739 @@
+/**
+ * @jest-environment jsdom
+ */
+
+/**
+ * The shared formatter: one set of rules turns numbers, units, percentages, temperatures, dates,
+ * durations and Home Assistant state words into text, in the language and region the user picked.
+ * Tests check the structure of what Intl writes (a gap, a separator, the order of parts) rather
+ * than pin whole strings, so they hold across the ICU data of the Node versions CI runs.
+ */
+const i18n = require('../../src/i18n.js');
+const format = require('../../src/format.js');
+const utils = require('../../src/utils.js');
+const state = require('../../src/state.js');
+
+const NBSP = ' ';
+const NNBSP = ' ';
+// A space that does not break: no-break or narrow no-break, never a plain one.
+const FIXED_SPACE = `[${NBSP}${NNBSP}]`;
+
+function useLocale(locale, extra = {}) {
+  i18n.setLocaleBootstrap({
+    languageSetting: locale,
+    requestedLocale: locale,
+    activeLocale: locale,
+    messages: {},
+    ...extra,
+  });
+}
+
+function setClock(ui) {
+  state.setConfig({ ...(state.CONFIG || {}), ui });
+}
+
+const entity = (entityId, entityState, attributes = {}) => ({
+  entity_id: entityId,
+  state: entityState,
+  attributes,
+});
+
+beforeEach(() => {
+  state.setConfig({ ui: {} });
+  state.setUnitSystem({ temperature: '°C' });
+  useLocale('en');
+});
+
+afterEach(() => {
+  i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+});
+
+describe('the format locale', () => {
+  const bootstrap = (overrides) =>
+    i18n.setLocaleBootstrap({
+      languageSetting: 'auto',
+      detectedLocale: 'en-US',
+      systemLocale: '',
+      requestedLocale: 'en-US',
+      activeLocale: 'en',
+      usingEnglishFallback: false,
+      messages: {},
+      ...overrides,
+    });
+
+  it.each([
+    // Auto: the computer's region, under whichever catalog the language maps to.
+    ['en-GB', { detectedLocale: 'en-GB', requestedLocale: 'en-GB' }, 'en-GB'],
+    ['es-MX', { detectedLocale: 'es-MX', requestedLocale: 'es-MX', activeLocale: 'es' }, 'es-MX'],
+    ['de-CH', { detectedLocale: 'de-CH', requestedLocale: 'de-CH', activeLocale: 'de' }, 'de-CH'],
+    // The system region wins when it is the same language as the display language.
+    ['en-AU', { systemLocale: 'en-AU' }, 'en-AU'],
+    // A different language in the system region does not mix into this language's text.
+    [
+      'de',
+      { detectedLocale: 'de', requestedLocale: 'de', activeLocale: 'de', systemLocale: 'en-GB' },
+      'de',
+    ],
+    // No pack for the computer's language: English text, the computer's own number and date format.
+    [
+      'pt-BR',
+      {
+        detectedLocale: 'pt-BR',
+        requestedLocale: 'pt-BR',
+        activeLocale: 'en',
+        usingEnglishFallback: true,
+      },
+      'pt-BR',
+    ],
+  ])('follows the region for an automatic language: %s', (_name, overrides, expected) => {
+    bootstrap(overrides);
+    expect(i18n.getFormatLocale()).toBe(expected);
+  });
+
+  it('keeps the language the user picked, with a region only when it is the same language', () => {
+    // A chosen language without a region takes the computer's region when the language matches.
+    bootstrap({
+      languageSetting: 'de',
+      requestedLocale: 'de',
+      activeLocale: 'de',
+      detectedLocale: 'en-US',
+      systemLocale: 'de-AT',
+    });
+    expect(i18n.getFormatLocale()).toBe('de-AT');
+    // A region the user chose themselves beats the computer's.
+    bootstrap({
+      languageSetting: 'es-MX',
+      requestedLocale: 'es-MX',
+      activeLocale: 'es',
+      systemLocale: 'es-ES',
+    });
+    expect(i18n.getFormatLocale()).toBe('es-MX');
+    // A chosen language with no pack is shown in English, and formats like it.
+    bootstrap({
+      languageSetting: 'fr',
+      requestedLocale: 'fr',
+      activeLocale: 'en',
+      usingEnglishFallback: true,
+      detectedLocale: 'pt-BR',
+      systemLocale: 'pt-BR',
+    });
+    expect(i18n.getFormatLocale()).toBe('en');
+  });
+
+  it('never hands Intl a malformed tag', () => {
+    bootstrap({
+      detectedLocale: 'not a locale',
+      requestedLocale: 'not a locale',
+      activeLocale: 'en',
+    });
+    expect(i18n.getFormatLocale()).toBe('en');
+    expect(() => i18n.formatDate(new Date(2026, 8, 30))).not.toThrow();
+  });
+
+  it('writes dates, times and numbers in the region, not only the language', () => {
+    const date = new Date(2026, 8, 30, 15, 5);
+    bootstrap({ detectedLocale: 'en-GB', requestedLocale: 'en-GB' });
+    expect(i18n.formatDate(date, { year: 'numeric', month: 'numeric', day: 'numeric' })).toBe(
+      '30/09/2026'
+    );
+    expect(i18n.formatTime(date, { hour: 'numeric', minute: '2-digit' })).toBe('15:05');
+    bootstrap({ detectedLocale: 'en-US', requestedLocale: 'en-US' });
+    expect(i18n.formatDate(date, { year: 'numeric', month: 'numeric', day: 'numeric' })).toBe(
+      '9/30/2026'
+    );
+    expect(i18n.formatNumber(1234.5)).toBe('1,234.5');
+    bootstrap({
+      detectedLocale: 'pt-BR',
+      requestedLocale: 'pt-BR',
+      usingEnglishFallback: true,
+    });
+    expect(i18n.formatNumber(1234.5)).toBe('1.234,5');
+  });
+});
+
+describe('the Time format and Date format settings', () => {
+  const morning = new Date(2026, 8, 30, 7, 31);
+  const evening = new Date(2026, 8, 30, 19, 31);
+
+  it('writes a 12-hour clock without a leading zero and a 24-hour clock with one', () => {
+    setClock({ timeFormat: '12-hour' });
+    const twelve = format.formatClockTime(morning, format.getClockFaceTimeOptions());
+    expect(twelve).toMatch(/^7:31/);
+    expect(twelve).toMatch(/AM/i);
+    setClock({ timeFormat: '24-hour' });
+    expect(format.formatClockTime(morning, format.getClockFaceTimeOptions())).toBe('07:31');
+    expect(format.formatClockTime(evening)).toBe('19:31');
+  });
+
+  it('follows the language when the setting is the default, in 12 and 24 hours', () => {
+    setClock({ timeFormat: 'system' });
+    expect(format.formatClockTime(evening)).toMatch(/7:31/);
+    useLocale('de');
+    expect(format.formatClockTime(evening)).toBe('19:31');
+    // An explicit setting beats the language: a 12-hour German clock, a 24-hour English one.
+    setClock({ timeFormat: '12-hour' });
+    expect(format.formatClockTime(evening)).toMatch(/^7:31/);
+    useLocale('en');
+    setClock({ timeFormat: '24-hour' });
+    expect(format.formatClockTime(evening)).toBe('19:31');
+  });
+
+  it('keeps the old use24HourClock flag working', () => {
+    setClock({ use24HourClock: true });
+    expect(format.formatClockTime(evening)).toBe('19:31');
+  });
+
+  it('carries the setting into dates with a time', () => {
+    setClock({ timeFormat: '24-hour' });
+    expect(
+      format.formatClockDateTime(evening, { dateStyle: 'medium', timeStyle: 'short' })
+    ).toMatch(/19:31/);
+    setClock({ timeFormat: '12-hour' });
+    expect(format.formatClockDateTime(evening)).toMatch(/7:31/);
+  });
+
+  it('offers three date styles, and reads a saved "system" as numeric', () => {
+    const date = new Date(2026, 8, 30);
+    const render = () => i18n.formatDate(date, format.getClockDateOptions());
+    setClock({ dateFormat: 'weekday-short' });
+    expect(render()).toMatch(/Wed/);
+    setClock({ dateFormat: 'long' });
+    expect(render()).toMatch(/Wednesday, September 30, 2026/);
+    setClock({ dateFormat: 'numeric' });
+    expect(render()).toBe('9/30/2026');
+    setClock({ dateFormat: 'system' });
+    expect(format.getClockDateOptions()).toEqual({
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+    });
+    expect(render()).toBe('9/30/2026');
+    useLocale('de');
+    setClock({ dateFormat: 'long' });
+    expect(render()).toMatch(/Mittwoch, 30\. September 2026/);
+  });
+});
+
+describe('units and percentages', () => {
+  it('writes percent and degree units the way the language does', () => {
+    useLocale('en');
+    expect(format.formatPercent(80)).toBe('80%');
+    expect(format.formatMeasurement(21.4, '°C')).toBe('21.4°C');
+    expect(format.formatMeasurement(70.5, '°F')).toBe('70.5°F');
+    expect(format.formatMeasurement(21, '°')).toBe('21°');
+
+    useLocale('de');
+    expect(format.formatPercent(80)).toMatch(new RegExp(`^80${FIXED_SPACE}%$`));
+    expect(format.formatMeasurement(21.4, '°C')).toMatch(new RegExp(`^21,4${FIXED_SPACE}°C$`));
+    // A bare degree sign is never spaced.
+    expect(format.formatMeasurement(21.4, '°')).toBe('21,4°');
+
+    useLocale('fr');
+    expect(format.formatPercent(80)).toMatch(new RegExp(`^80${FIXED_SPACE}%$`));
+    expect(format.formatMeasurement(21.4, '°C')).toMatch(new RegExp(`^21,4${FIXED_SPACE}°C$`));
+
+    useLocale('zh');
+    expect(format.formatPercent(80)).toBe('80%');
+    expect(format.formatMeasurement(21.4, '°C')).toBe('21.4°C');
+
+    useLocale('hi');
+    expect(format.formatPercent(80)).toBe('80%');
+  });
+
+  it('keeps the unit next to the number in a right-to-left language', () => {
+    useLocale('ar');
+    const text = format.formatMeasurement(21.4, '°C');
+    // The number, then the unit as Home Assistant spells it, with nothing but a space between.
+    expect(text).toMatch(/^[\d٠-٩.,٫]+\s?°C$/);
+    expect(format.formatPercent(80)).toMatch(/^[\d٠-٩]+%$/);
+  });
+
+  it('puts a no-break space before every other unit, so a unit never wraps alone', () => {
+    useLocale('en');
+    expect(format.formatMeasurement(1234.5, 'kWh')).toBe(`1,234.5${NBSP}kWh`);
+    expect(format.formatMeasurement(0.31, 'EUR/kWh')).toBe(`0.31${NBSP}EUR/kWh`);
+    useLocale('de');
+    expect(format.formatMeasurement(1234.5, 'W')).toBe(`1.234,5${NBSP}W`);
+    // No unit: the number alone.
+    expect(format.formatMeasurement(5, '')).toBe('5');
+    expect(format.formatMeasurement(5, undefined)).toBe('5');
+  });
+
+  it('formats a temperature in the unit Home Assistant uses, Celsius or Fahrenheit', () => {
+    state.setUnitSystem({ temperature: '°F' });
+    const climate = entity('climate.hall', 'heat', { current_temperature: 70.52, temperature: 72 });
+    expect(utils.getEntityDisplayState(climate)).toBe('70.52°F');
+    state.setUnitSystem({ temperature: '°C' });
+    expect(utils.getEntityDisplayState(climate)).toBe('70.52°C');
+    // The entity's own unit beats the installation's.
+    expect(
+      utils.getEntityDisplayState({
+        ...climate,
+        attributes: { ...climate.attributes, temperature_unit: '°F' },
+      })
+    ).toBe('70.52°F');
+    expect(format.formatTemperature(null, '°C')).toBe('--');
+  });
+});
+
+describe('sensor readings', () => {
+  const sensor = (value, attributes = {}) =>
+    entity('sensor.reading', String(value), { unit_of_measurement: 'W', ...attributes });
+  const text = (value, attributes) => format.getSensorReading(sensor(value, attributes))?.text;
+
+  it('rounds like the tile: one decimal for temperatures, two for everything else', () => {
+    expect(text('21.456', { unit_of_measurement: '°C' })).toBe('21.5°C');
+    expect(text('55.55', { unit_of_measurement: '%' })).toBe('55.6%');
+    expect(text('1234.5678')).toBe(`1,234.57${NBSP}W`);
+    expect(text('7')).toBe(`7${NBSP}W`);
+    expect(text('0.7160215353965759')).toBe(`0.72${NBSP}W`);
+  });
+
+  it('uses the precision the integration suggests', () => {
+    expect(text('21', { unit_of_measurement: '°C', suggested_display_precision: 1 })).toBe(
+      '21.0°C'
+    );
+    expect(text('1234.5678', { suggested_display_precision: 0 })).toBe(`1,235${NBSP}W`);
+  });
+
+  it('never writes "-0", and keeps a value that is small but not zero', () => {
+    expect(text('-0.04', { unit_of_measurement: '°C' })).toBe('-0.04°C');
+    expect(text('0.0045', { unit_of_measurement: 'EUR/kWh' })).toBe(`0.0045${NBSP}EUR/kWh`);
+    expect(text('0', { unit_of_measurement: '°C' })).toBe('0°C');
+    expect(text('-0.0', { unit_of_measurement: '°C' })).toBe('0°C');
+    expect(format.formatReadingNumber(-0.04, { maximum: 1 })).toBe('-0.04');
+    expect(format.formatReadingNumber(-0.4, { maximum: 0 })).toBe('-0.4');
+  });
+
+  it('leaves codes, hex and exponent forms as text', () => {
+    expect(format.getSensorReading(sensor('02134', {}))).toBeNull();
+    expect(format.getSensorReading(sensor('1e3'))).toBeNull();
+    expect(format.getSensorReading(sensor('0x10'))).toBeNull();
+    expect(format.getSensorReading(sensor('on'))).toBeNull();
+    expect(format.getSensorReading(sensor('2026-09-30'))).toBeNull();
+    expect(format.parseNumericState('-0.5')).toBe(-0.5);
+    expect(format.parseNumericState(' 12 ')).toBe(12);
+    expect(format.parseNumericState('1,5')).toBeNull();
+    expect(format.parseNumericState(null)).toBeNull();
+  });
+
+  it('keeps the decimals of a bare number, which may be a version, and never groups it', () => {
+    expect(format.getSensorReading(sensor('3.10', { unit_of_measurement: undefined }))?.text).toBe(
+      '3.10'
+    );
+    expect(format.getSensorReading(sensor('2026', { unit_of_measurement: undefined }))?.text).toBe(
+      '2026'
+    );
+    // A measurement with a state class and no unit does group.
+    expect(
+      format.getSensorReading(
+        sensor('12345', { unit_of_measurement: undefined, state_class: 'total' })
+      )?.text
+    ).toBe('12,345');
+  });
+
+  it('splits the value from the unit for tiles that style them apart', () => {
+    useLocale('de');
+    expect(format.getSensorReading(sensor('1234.5', { unit_of_measurement: '°C' }))).toEqual({
+      value: '1.234,5',
+      unit: '°C',
+      text: expect.stringMatching(new RegExp(`^1\\.234,5${FIXED_SPACE}°C$`)),
+    });
+  });
+
+  it('shows the same text on the tile, the pin and the palette', () => {
+    useLocale('de');
+    const power = sensor('123456.789');
+    expect(utils.getEntityDisplayState(power)).toBe(format.getSensorReading(power).text);
+    expect(utils.getEntityDisplayState(power)).toBe(`123.456,79${NBSP}W`);
+  });
+
+  it('writes a duration sensor as units, not a raw count of seconds', () => {
+    const uptime = (value, unit = 's') =>
+      utils.getEntityDisplayState(
+        entity('sensor.uptime', String(value), {
+          device_class: 'duration',
+          unit_of_measurement: unit,
+        })
+      );
+    expect(uptime(4500)).toMatch(/1\s?h\s?15\s?m/);
+    expect(uptime(90, 'min')).toMatch(/1\s?h\s?30\s?m/);
+    expect(uptime(2, 'd')).toMatch(/2\s?d/);
+    // A few seconds stays a plain number.
+    expect(uptime(1.5)).toBe(`1.5${NBSP}s`);
+    expect(format.formatDurationReading(10, 'furlong')).toBeNull();
+  });
+});
+
+describe('state words', () => {
+  it('reads a binary sensor by its device class', () => {
+    const word = (deviceClass, value) =>
+      utils.getEntityDisplayState(entity('binary_sensor.x', value, { device_class: deviceClass }));
+    expect(word('door', 'on')).toBe('Open');
+    expect(word('door', 'off')).toBe('Closed');
+    expect(word('window', 'on')).toBe('Open');
+    expect(word('garage_door', 'off')).toBe('Closed');
+    expect(word('moisture', 'on')).toBe('Wet');
+    expect(word('moisture', 'off')).toBe('Dry');
+    expect(word('lock', 'on')).toBe('Unlocked');
+    expect(word('lock', 'off')).toBe('Locked');
+    expect(word('connectivity', 'on')).toBe('Connected');
+    // An offline router must not read "Clear", a flat battery must not read "Detected".
+    expect(word('connectivity', 'off')).toBe('Disconnected');
+    expect(word('battery', 'on')).toBe('Low');
+    expect(word('battery', 'off')).toBe('OK');
+    expect(word('plug', 'on')).toBe('Plugged in');
+    expect(word('plug', 'off')).toBe('Unplugged');
+    expect(word('presence', 'on')).toBe('Home');
+    expect(word('presence', 'off')).toBe('Away');
+    expect(word('problem', 'on')).toBe('Problem');
+    expect(word('smoke', 'on')).toBe('Smoke');
+    expect(word('motion', 'off')).toBe('Clear');
+    // No device class, or one without wording: the generic pair.
+    expect(word(undefined, 'on')).toBe('Detected');
+    expect(word(undefined, 'off')).toBe('Clear');
+    expect(word('something_new', 'on')).toBe('Detected');
+    expect(word('door', 'unavailable')).toBe('Unavailable');
+    expect(word('door', 'unknown')).toBe('Unknown');
+  });
+
+  it('translates device class words through the catalog', () => {
+    i18n.setLocaleBootstrap({
+      activeLocale: 'de',
+      messages: { Open: 'Offen', Closed: 'Geschlossen', Disconnected: 'Getrennt' },
+    });
+    const word = (deviceClass, value) =>
+      utils.getEntityDisplayState(entity('binary_sensor.x', value, { device_class: deviceClass }));
+    expect(word('door', 'on')).toBe('Offen');
+    expect(word('door', 'off')).toBe('Geschlossen');
+    expect(word('connectivity', 'off')).toBe('Getrennt');
+  });
+
+  it('has a name for the common states that used to show up as raw text', () => {
+    const word = (id, value) => utils.getEntityDisplayState(entity(id, value));
+    expect(word('sun.sun', 'above_horizon')).toBe('Above horizon');
+    expect(word('sun.sun', 'below_horizon')).toBe('Below horizon');
+    expect(word('alarm_control_panel.home', 'disarming')).toBe('Disarming');
+    expect(word('camera.porch', 'streaming')).toBe('Streaming');
+    expect(word('camera.porch', 'recording')).toBe('Recording');
+    expect(word('alarm_control_panel.home', 'triggered')).toBe('Alarm');
+    i18n.setLocaleBootstrap({
+      activeLocale: 'de',
+      messages: { 'Above horizon': 'Über dem Horizont', Streaming: 'Überträgt' },
+    });
+    expect(word('sun.sun', 'above_horizon')).toBe('Über dem Horizont');
+    expect(word('camera.porch', 'streaming')).toBe('Überträgt');
+  });
+
+  it('humanises a state it has no name for, and keeps free text as written', () => {
+    const word = (id, value, attributes) =>
+      utils.getEntityDisplayState(entity(id, value, attributes));
+    // Unmapped enum states lose their underscores.
+    expect(word('water_heater.tank', 'heat_pump')).toBe('Heat pump');
+    expect(word('vacuum.robot', 'mopping')).toBe('Mopping');
+    // The user's own words are never re-cased or relabelled.
+    expect(word('select.mode', 'heat')).toBe('heat');
+    expect(word('input_select.mode', 'cool')).toBe('cool');
+    expect(word('input_select.phone', 'iPhone')).toBe('iPhone');
+    expect(word('input_text.note', 'auto')).toBe('auto');
+    expect(word('text.label', 'some_value')).toBe('some_value');
+    expect(word('device_tracker.phone', 'iPhone')).toBe('iPhone');
+    // Enum sensors read in words; other text sensors are shown as sent.
+    expect(word('sensor.dishwasher', 'cycle_finished', { device_class: 'enum' })).toBe(
+      'Cycle finished'
+    );
+    expect(word('sensor.note', 'Cycle finished')).toBe('Cycle finished');
+    expect(format.humanizeState('Work')).toBe('Work');
+    expect(format.humanizeState('éco')).toBe('Éco');
+    expect(format.titleCase('éco boost')).toBe('Éco Boost');
+    expect(format.formatStateName('')).toBe('Unknown');
+    expect(format.formatStateName(null)).toBe('Unknown');
+  });
+
+  it('never calls an unavailable or unknown entity by a measurement', () => {
+    expect(
+      utils.getEntityDisplayState(entity('sensor.t', 'unavailable', { unit_of_measurement: '°C' }))
+    ).toBe('Unavailable');
+    expect(
+      utils.getEntityDisplayState(entity('climate.c', 'unknown', { current_temperature: 21 }))
+    ).toBe('Unknown');
+    expect(
+      utils.getEntityDisplayState(entity('number.n', 'unavailable', { unit_of_measurement: '%' }))
+    ).toBe('Unavailable');
+  });
+
+  it('does not call a button or scene that was never used "Unknown"', () => {
+    expect(utils.getEntityDisplayState(entity('button.restart', 'unknown'))).toBe('Ready');
+    expect(utils.getEntityDisplayState(entity('input_button.go', 'unknown'))).toBe('Ready');
+    expect(utils.getEntityDisplayState(entity('scene.movie', 'unknown'))).toBe('Ready');
+    expect(utils.getEntityDisplayState(entity('button.restart', '2026-09-30T08:00:00+00:00'))).toBe(
+      'Ready'
+    );
+    expect(utils.getEntityDisplayState(entity('scene.movie', 'unavailable'))).toBe('Unavailable');
+    expect(utils.getEntityDisplayState(entity('sensor.x', 'unknown'))).toBe('Unknown');
+  });
+});
+
+describe('number helpers', () => {
+  it('formats number, input_number and counter entities with their step and unit', () => {
+    const word = (id, value, attributes) =>
+      utils.getEntityDisplayState(entity(id, value, attributes));
+    expect(word('number.boost', '40.0', { unit_of_measurement: '%', step: 1 })).toBe('40%');
+    expect(word('input_number.offset', '1.5', { unit_of_measurement: '°C', step: 0.5 })).toBe(
+      '1.5°C'
+    );
+    expect(
+      word('input_number.setpoint', '21.500000', { unit_of_measurement: '°C', step: 0.5 })
+    ).toBe('21.5°C');
+    expect(word('input_number.price', '0.2', { step: 0.01 })).toBe('0.20');
+    expect(word('counter.visits', '1234', { step: 1 })).toBe('1,234');
+    // No step: up to three decimals, no padding.
+    expect(word('number.level', '12.3456')).toBe('12.346');
+    // Text stays as sent.
+    expect(word('input_number.odd', 'broken')).toBe('Broken');
+    useLocale('de');
+    expect(word('input_number.offset', '1.5', { unit_of_measurement: '°C', step: 0.5 })).toMatch(
+      new RegExp(`^1,5${FIXED_SPACE}°C$`)
+    );
+  });
+
+  it('shows a thermostat reading of 0 and ignores one that is unknown', () => {
+    const word = (value, attributes) =>
+      utils.getEntityDisplayState(entity('climate.c', value, attributes));
+    expect(word('heat', { current_temperature: 0, temperature: 21 })).toBe('0°C');
+    expect(word('heat', { current_temperature: null, temperature: 0 })).toBe('0°C');
+    expect(word('heat', { current_temperature: '', temperature: 21 })).toBe('21°C');
+    expect(word('heat', { current_temperature: null, temperature: null })).toBe('Heating');
+    expect(word('unknown', { current_temperature: 21 })).toBe('Unknown');
+    expect(word('heat', { current_temperature: -5 })).toBe('-5°C');
+    expect(
+      format.getClimateTemperature(entity('climate.c', 'heat', { current_temperature: true }))
+    ).toBeNull();
+  });
+});
+
+describe('dates, times and relative times', () => {
+  const now = new Date(2026, 8, 30, 15, 0).getTime();
+
+  it('writes a moment as the day and time, or how far away it is', () => {
+    const at = (offsetMs) => new Date(now + offsetMs);
+    const hour = 3600 * 1000;
+    expect(format.formatDayAndTime(at(2 * hour), now)).toMatch(/^Today 5:00/);
+    expect(format.formatDayAndTime(at(-hour * 7), now)).toMatch(/^Today 8:00/);
+    expect(format.formatDayAndTime(at(24 * hour), now)).toMatch(/^Tomorrow 3:00/);
+    expect(format.formatDayAndTime(at(-24 * hour), now)).toMatch(/^Yesterday 3:00/);
+    expect(format.formatDayAndTime(at(3 * 24 * hour), now)).toMatch(/^Sat/);
+    expect(format.formatDayAndTime(at(20 * 24 * hour), now)).toMatch(/^Oct 20/);
+    expect(format.formatDayAndTime(at(-10 * 24 * hour), now)).toMatch(/^Sep 20/);
+    // Another year says so.
+    expect(format.formatDayAndTime(new Date(2027, 0, 5, 9, 0), now)).toMatch(/2027/);
+    // Ahead: how far, not a clock time.
+    expect(format.formatMoment(at(14 * hour), now)).toMatch(/14/);
+    expect(format.formatMoment(at(14 * hour), now)).not.toMatch(/:/);
+    expect(format.formatMoment(at(-2 * hour), now)).toMatch(/^Today 1:00/);
+  });
+
+  it('labels a calendar day for a glance', () => {
+    expect(format.formatDayLabel(new Date(2026, 8, 30), now)).toBe('Today');
+    expect(format.formatDayLabel(new Date(2026, 9, 1), now)).toBe('Tomorrow');
+    expect(format.formatDayLabel(new Date(2026, 9, 4), now)).toBe('Sun');
+    expect(format.formatDayLabel(new Date(2026, 9, 20), now)).toBe('Oct 20');
+    expect(format.formatNearbyDay(new Date(2026, 9, 20), now)).toBeNull();
+    useLocale('de');
+    expect(format.formatDayLabel(new Date(2026, 9, 1), now)).toBe('Morgen');
+  });
+
+  it('shows timestamp and date sensors as dates instead of ISO text', () => {
+    const iso = new Date(Date.now() - 3 * 3600 * 1000).toISOString();
+    const lastBoot = utils.getEntityDisplayState(
+      entity('sensor.last_boot', iso, { device_class: 'timestamp' })
+    );
+    expect(lastBoot).not.toMatch(/T\d{2}:/);
+    expect(lastBoot).toMatch(/\d{1,2}:\d{2}/);
+    const dawn = utils.getEntityDisplayState(
+      entity('sensor.next_dawn', new Date(Date.now() + 5 * 3600 * 1000).toISOString(), {
+        device_class: 'timestamp',
+      })
+    );
+    expect(dawn).not.toMatch(/:/);
+    expect(dawn).toMatch(/5/);
+    // A full date-time with no device class is still a date.
+    expect(
+      utils.getEntityDisplayState(entity('sensor.seen', '2020-09-20T08:12:44+00:00'))
+    ).not.toMatch(/T08:12/);
+    // A sensor of the date class is a day.
+    expect(
+      utils.getEntityDisplayState(entity('sensor.holiday', '2020-12-25', { device_class: 'date' }))
+    ).toBe('Dec 25, 2020');
+    // Text that is not a date stays as sent.
+    expect(
+      utils.getEntityDisplayState(entity('sensor.when', 'sometime', { device_class: 'timestamp' }))
+    ).toBe('sometime');
+  });
+
+  it('shows date, time and datetime entities in the clock setting', () => {
+    setClock({ timeFormat: '24-hour' });
+    expect(utils.getEntityDisplayState(entity('time.alarm', '07:05:00'))).toBe('07:05');
+    setClock({ timeFormat: '12-hour' });
+    expect(utils.getEntityDisplayState(entity('time.alarm', '19:05:00'))).toMatch(/^7:05/);
+    expect(
+      utils.getEntityDisplayState(entity('input_datetime.when', '2020-03-01', { has_time: false }))
+    ).toBe('Mar 1, 2020');
+    expect(utils.getEntityDisplayState(entity('time.alarm', 'soon'))).toBe('soon');
+  });
+
+  it('writes relative times in the language, not from hand-made strings', () => {
+    const ago = (locale, style, value, unit) =>
+      new Intl.RelativeTimeFormat(locale, { numeric: 'auto', style }).format(value, unit);
+    const base = Date.parse('2026-09-30T12:00:00Z');
+    expect(format.formatRelativeTime(base - 15 * 60000, { now: base })).toBe(
+      ago('en', 'short', -15, 'minute')
+    );
+    expect(format.formatRelativeTime(base - 3 * 3600000, { now: base })).toBe(
+      ago('en', 'short', -3, 'hour')
+    );
+    expect(format.formatRelativeTime(base - 2 * 86400000, { now: base })).toBe(
+      ago('en', 'short', -2, 'day')
+    );
+    expect(format.formatRelativeTime(base + 14 * 3600000, { now: base })).toBe(
+      ago('en', 'short', 14, 'hour')
+    );
+    expect(format.formatRelativeTime(base - 20000, { now: base })).toBe('just now');
+    expect(format.formatRelativeTime('nonsense', { now: base })).toBe('');
+    for (const locale of ['de', 'ar', 'hi', 'zh']) {
+      useLocale(locale);
+      expect(format.formatRelativeTime(base - 5 * 60000, { now: base })).toBe(
+        ago(locale, 'short', -5, 'minute')
+      );
+    }
+  });
+});
+
+describe('lists, search and sorting', () => {
+  it('joins labels with the separator each language writes, without an "and"', () => {
+    const items = ['Quick Access and layout', 'Appearance', 'Weather and media'];
+    const separator = (locale) =>
+      new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' })
+        .formatToParts(['a', 'b', 'c'])
+        .find((part) => part.type === 'literal').value;
+    for (const locale of ['en', 'de', 'fr', 'ar', 'zh', 'hi']) {
+      useLocale(locale);
+      expect(format.formatList(items)).toBe(items.join(separator(locale)));
+    }
+    useLocale('en');
+    expect(format.formatList(items)).toBe('Quick Access and layout, Appearance, Weather and media');
+    useLocale('zh');
+    expect(format.formatList(['A', 'B'])).toBe('A、B');
+    expect(format.formatList(['A'])).toBe('A');
+    expect(format.formatList([])).toBe('');
+    expect(format.formatList(null)).toBe('');
+  });
+
+  it('keeps the letters of every script when it prepares text for a search', () => {
+    expect(format.normalizeSearchText('Küche')).toBe('kuche');
+    expect(format.normalizeSearchText('Ünder-Cabinet_Light')).toBe('under cabinet light');
+    expect(format.normalizeSearchText("Anna's  Zimmer")).toBe('annas zimmer');
+    expect(format.normalizeSearchText('客厅 灯')).toBe('客厅 灯');
+    expect(format.normalizeSearchText('غرفة المعيشة')).toBe('غرفة المعيشة');
+    expect(format.normalizeSearchText('لَمْبَة')).toBe('لمبة');
+    expect(format.normalizeSearchText('लिविंग रूम')).toBe(format.normalizeSearchText('लिविंग रूम'));
+    expect(format.normalizeSearchText('लिविंग रूम')).not.toBe('');
+    expect(format.normalizeSearchText('ＡＢＣ')).toBe('abc');
+    expect(format.normalizeSearchText('')).toBe('');
+    expect(format.normalizeSearchText(null)).toBe('');
+  });
+
+  it('scores a Chinese, Arabic or Hindi query against matching names only', () => {
+    expect(utils.getSearchScore('客厅灯', '客厅')).toBe(2);
+    expect(utils.getSearchScore('主卧 客厅灯', '客厅')).toBe(1);
+    expect(utils.getSearchScore('卧室灯', '客厅')).toBe(0);
+    // A non-Latin query used to normalise to nothing and match every entity.
+    expect(utils.getSearchScore('Living Room Light', '客厅')).toBe(0);
+    expect(utils.getSearchScore('غرفة المعيشة', 'غرفة')).toBe(2);
+    expect(utils.getSearchScore('Kitchen', 'غرفة')).toBe(0);
+    expect(utils.getSearchScore('लिविंग रूम लाइट', 'रूम')).toBe(1);
+    expect(utils.getSearchScore('Kitchen', 'रूम')).toBe(0);
+    // Accents do not matter, in either direction.
+    expect(utils.getSearchScore('Küche Licht', 'kuche')).toBe(2);
+    expect(utils.getSearchScore('Kuche Licht', 'Küche')).toBe(2);
+    expect(utils.getSearchScore('Café', 'cafe')).toBe(2);
+    // A query of nothing but punctuation still matches what contains it.
+    expect(utils.getSearchScore('Office +1', '+')).toBe(1);
+    expect(utils.getSearchScore('Office', '+')).toBe(0);
+    // An empty query matches everything, as before.
+    expect(utils.getSearchScore('Anything', '')).toBe(2);
+  });
+
+  it('sorts names in the language, with numbers in natural order', () => {
+    const sort = (names) => [...names].sort(format.compareNames);
+    useLocale('en');
+    expect(sort(['Room 10', 'Room 2', 'room 1'])).toEqual(['room 1', 'Room 2', 'Room 10']);
+    useLocale('de');
+    // "Ärger" sorts with the A names, not after Z as a code-point sort would put it.
+    expect(sort(['Zimmer', 'Ärger', 'Bad', 'Apfel'])).toEqual(['Apfel', 'Ärger', 'Bad', 'Zimmer']);
+    useLocale('sv', { activeLocale: 'sv' });
+    // Swedish puts å after z.
+    expect(sort(['Åsa', 'Zoe', 'Anna'])).toEqual(['Anna', 'Zoe', 'Åsa']);
+    expect(format.compareNames('a', 'A')).toBe(0);
+    expect(format.compareNames(null, 'a')).toBeLessThan(0);
+  });
+});
+
+describe('durations', () => {
+  it('writes a countdown as a clock', () => {
+    expect(format.formatDuration(0)).toBe('0:00');
+    expect(format.formatDuration(4000)).toBe('0:04');
+    expect(format.formatDuration(4 * 60000 + 12000)).toBe('4:12');
+    expect(format.formatDuration(3600000 + 5 * 60000)).toBe('1:05:00');
+    expect(format.formatDuration(-5)).toBe('0:00');
+    expect(format.formatDuration('x')).toBe('0:00');
+  });
+
+  it('reads the unpadded remaining time Home Assistant sends for a paused timer', () => {
+    const paused = (remaining) =>
+      utils.getEntityDisplayState(entity('timer.tea', 'paused', { remaining }));
+    expect(paused('0:04:12')).toBe('Paused 4:12');
+    expect(paused('0:32:00')).toBe('Paused 32:00');
+    expect(paused('1:05:00')).toBe('Paused 1:05:00');
+    expect(paused('0:00:04')).toBe('Paused 0:04');
+    i18n.setLocaleBootstrap({ activeLocale: 'de', messages: { Paused: 'Pausiert' } });
+    expect(paused('0:04:12')).toBe('Pausiert 4:12');
+  });
+});
+
+describe('what counts as a countdown', () => {
+  const sensor = (id, value, attributes = {}) => entity(id, value, attributes);
+
+  it('treats a measurement as a measurement, whatever it is called', () => {
+    const travel = sensor('sensor.commute', '23.4', {
+      unit_of_measurement: 'min',
+      duration: 1404,
+    });
+    expect(utils.isTimerLikeSensor(travel)).toBe(false);
+    expect(utils.getEntityDisplayState(travel)).toBe(`23.4${NBSP}min`);
+    const hours = sensor('sensor.washer_timer_hours', '2.5', { unit_of_measurement: 'h' });
+    expect(utils.isTimerLikeSensor(hours)).toBe(false);
+    expect(utils.getEntityDisplayState(hours)).toBe(`2.5${NBSP}h`);
+    expect(utils.isTimerLikeSensor(sensor('sensor.number_only_timer', '42'))).toBe(false);
+  });
+
+  it('still counts down a kitchen timer', () => {
+    const finishes = new Date(Date.now() + 90 * 1000).toISOString();
+    const kitchen = sensor('sensor.kitchen_timer', finishes);
+    expect(utils.isTimerLikeSensor(kitchen)).toBe(true);
+    expect(utils.getEntityDisplayState(kitchen)).toMatch(/^1:\d{2}$/);
+    expect(utils.isTimerLikeSensor(sensor('sensor.oven', 'on', { finishes_at: finishes }))).toBe(
+      true
+    );
+    expect(
+      utils.getEntityDisplayState(sensor('sensor.oven', 'on', { finishes_at: finishes }))
+    ).toMatch(/^1:\d{2}$/);
+  });
+
+  it('shows a timestamp sensor with no timer hint as a date, not a countdown', () => {
+    const future = new Date(Date.now() + 14 * 3600 * 1000).toISOString();
+    const dawn = sensor('sensor.next_dawn', future, { device_class: 'timestamp' });
+    expect(utils.isTimerLikeSensor(dawn)).toBe(false);
+    expect(utils.getEntityDisplayState(dawn)).toMatch(/14/);
+  });
+});

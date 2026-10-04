@@ -20,14 +20,32 @@ import * as camera from './camera.js';
 import * as uiUtils from './ui-utils.js';
 import {
   formatDate,
-  formatDateTime,
   formatNumber,
-  formatTime,
   getLocaleState,
   isolateLtr,
   t,
   translateDocument,
 } from './i18n.js';
+import {
+  compareNames,
+  formatClockDateTime,
+  formatClockTime,
+  formatDayAndTime,
+  formatDayLabel,
+  formatMeasurement,
+  formatNumberEntityValue,
+  formatPercent,
+  formatReadingNumber,
+  formatStateName,
+  formatTemperature,
+  getClockDateOptions,
+  getClockFaceTimeOptions,
+  getSensorReading,
+  joinUnit,
+  normalizeSearchText,
+  parseNumericState,
+  titleCase,
+} from './format.js';
 import { applyCloseButtonIcons, setIconContent } from './icons.js';
 import {
   getWeatherConditionLabel,
@@ -1001,7 +1019,7 @@ function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
       renameBtn.className = 'qa-tab-btn qa-tab-rename';
       renameBtn.title = t('Rename page');
       renameBtn.setAttribute('aria-label', t('Rename page'));
-      setIconContent(renameBtn, 'edit', { size: 12 });
+      setChipIcon(renameBtn, 'pencil', 12);
       renameBtn.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -1014,7 +1032,7 @@ function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
       duplicateBtn.className = 'qa-tab-btn qa-tab-duplicate';
       duplicateBtn.title = t('Duplicate page');
       duplicateBtn.setAttribute('aria-label', t('Duplicate page'));
-      setIconContent(duplicateBtn, 'copy', { size: 12 });
+      setChipIcon(duplicateBtn, 'copy', 12);
       duplicateBtn.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -1028,7 +1046,7 @@ function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
         deleteBtn.className = 'qa-tab-btn qa-tab-delete';
         deleteBtn.title = t('Delete page');
         deleteBtn.setAttribute('aria-label', t('Delete page'));
-        setIconContent(deleteBtn, 'close', { size: 12 });
+        setChipIcon(deleteBtn, 'x', 12);
         deleteBtn.addEventListener('click', (event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -1275,12 +1293,12 @@ function showAddPageModal({ starter = false } = {}) {
   deviceSearch.placeholder = t('Search devices');
   deviceSearch.setAttribute('aria-label', t('Search devices'));
   const filterDevices = () => {
-    const query = deviceSearch.value.trim().toLocaleLowerCase();
+    const query = normalizeSearchText(deviceSearch.value);
     const labels = [...roomEntities.querySelectorAll('label')];
     labels.forEach((label) => {
-      label.hidden = !`${label.textContent} ${label.querySelector('input').value}`
-        .toLocaleLowerCase()
-        .includes(query);
+      label.hidden = !normalizeSearchText(
+        `${label.textContent} ${label.querySelector('input').value}`
+      ).includes(query);
     });
     // Say so when the search hides every device, and bring the previous hint back after.
     if (labels.length && labels.every((label) => label.hidden)) {
@@ -1361,7 +1379,7 @@ function showAddPageModal({ starter = false } = {}) {
       roomSelect.replaceChildren(new Option(starter ? t('All devices') : t('Empty page'), ''));
       roomEntities.replaceChildren();
       registry.areas
-        .sort((a, b) => a.name.localeCompare(b.name))
+        .sort((a, b) => compareNames(a.name, b.name))
         .forEach((area) => {
           roomSelect.add(new Option(area.name, area.area_id));
         });
@@ -1427,9 +1445,10 @@ function showAddPageModal({ starter = false } = {}) {
       ? t('Choose the entities to include.')
       : t('No available entities in this room.');
     ids.sort((a, b) =>
-      utils
-        .getEntityDisplayName(availableStates[a])
-        .localeCompare(utils.getEntityDisplayName(availableStates[b]))
+      compareNames(
+        utils.getEntityDisplayName(availableStates[a]),
+        utils.getEntityDisplayName(availableStates[b])
+      )
     );
     // Suggest up to eight available devices you can control; sensors and buttons stay optional.
     const defaults = new Set(
@@ -1531,9 +1550,7 @@ function showAddPageModal({ starter = false } = {}) {
       // whether the room is named in English or in the interface language ("Küche", "kuche").
       const names = [input.value, chip.dataset.preset].filter(Boolean).map((name) => name.trim());
       const area = registry?.areas.find((entry) =>
-        names.some(
-          (name) => entry.name.trim().localeCompare(name, undefined, { sensitivity: 'base' }) === 0
-        )
+        names.some((name) => compareNames(entry.name.trim(), name) === 0)
       );
       if (area && roomSelect.value !== area.area_id) {
         const chipName = input.value;
@@ -1814,21 +1831,10 @@ function addVisibleEntityCandidate(target, entityId) {
 }
 
 function isTimerEntityForLiveUpdates(entity) {
-  if (!entity || !entity.entity_id) return false;
-  if (entity.entity_id.startsWith('timer.')) return true;
-  if (!entity.entity_id.startsWith('sensor.')) return false;
-
-  const attributes = entity.attributes || {};
-  if (
-    attributes.finishes_at ||
-    attributes.end_time ||
-    attributes.finish_time ||
-    attributes.duration
-  ) {
-    return true;
-  }
-
-  return entity.entity_id.toLowerCase().includes('timer');
+  return (
+    !!entity?.entity_id &&
+    (entity.entity_id.startsWith('timer.') || isTimerLikeSensorEntity(entity))
+  );
 }
 
 function getDefaultWeatherEntity() {
@@ -1841,7 +1847,7 @@ function getDefaultWeatherEntity() {
   );
   const candidates = availableWeatherEntities.length ? availableWeatherEntities : weatherEntities;
   candidates.sort((a, b) =>
-    utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b))
+    compareNames(utils.getEntityDisplayName(a), utils.getEntityDisplayName(b))
   );
   return candidates[0];
 }
@@ -2188,6 +2194,14 @@ function getQuickAccessTileLabel(item) {
   return name || item.dataset.entityId || '';
 }
 
+// The Reorganize chips (edit, duplicate, remove) draw with the same line icons as the pin beside
+// them, so a tile's three round buttons share one weight and style.
+function setChipIcon(button, name, size) {
+  const icon = setLineIconContent(button, name);
+  icon.setAttribute('width', String(size));
+  icon.setAttribute('height', String(size));
+}
+
 function addButtonsToElement(item) {
   try {
     if (!item || item.dataset.primaryCard === 'true') return;
@@ -2201,7 +2215,7 @@ function addButtonsToElement(item) {
     if (!isPlaceholder && !item.querySelector('.rename-btn')) {
       const renameBtn = document.createElement('button');
       renameBtn.className = 'rename-btn';
-      setIconContent(renameBtn, 'edit', { size: 14 });
+      setChipIcon(renameBtn, 'pencil', 14);
       renameBtn.title = t('Edit Tile Settings');
       renameBtn.setAttribute('draggable', 'false');
       renameBtn.addEventListener(
@@ -2236,7 +2250,7 @@ function addButtonsToElement(item) {
     if (!item.querySelector('.remove-btn')) {
       const removeBtn = document.createElement('button');
       removeBtn.className = 'remove-btn';
-      setIconContent(removeBtn, 'close', { size: 16 });
+      setChipIcon(removeBtn, 'x', 16);
       removeBtn.title = t('Remove from Quick Access');
       removeBtn.setAttribute('draggable', 'false');
       removeBtn.addEventListener(
@@ -2585,7 +2599,13 @@ function showRenameModal(entityId) {
         let changed = false;
         let renamed = false;
 
-        if (newName && newName !== currentName) {
+        const friendlyName = state.STATES[entityId]?.attributes?.friendly_name || entityId;
+        if (nextConfig.customEntityNames?.[entityId] && (!newName || newName === friendlyName)) {
+          // Clearing the field, or typing the Home Assistant name back, hands the tile its own name
+          // again instead of quietly keeping the custom one.
+          delete nextConfig.customEntityNames[entityId];
+          changed = true;
+        } else if (newName && newName !== currentName) {
           if (!nextConfig.customEntityNames) {
             nextConfig.customEntityNames = {};
           }
@@ -3046,12 +3066,11 @@ function isQuickAccessTileActive(entity) {
   }
 }
 
-const QUICK_ACCESS_OPENING_DEVICE_CLASSES = new Set(['door', 'garage_door', 'opening', 'window']);
-
 /**
  * The dim status line under a Quick Access tile's name, for the tiles whose layout does not
  * already render one (sensors, timers, lights, climate, media, todo and calendar do). Action
  * tiles (scenes, buttons, idle scripts) have no lasting state worth a line, so they get ''.
+ * The words come from the shared state formatter, so a tile reads like the palette and the pins.
  * @param {Object} entity - Home Assistant entity state object.
  * @returns {string}
  */
@@ -3060,7 +3079,9 @@ function getQuickAccessTileStateText(entity) {
   const domain = getEntityDomain(entity?.entity_id);
   if (!domain) return '';
   if (entityState === 'unavailable') return t('Unavailable');
-  if (entityState === 'unknown') return t('Unknown');
+  // Home Assistant reports a scene or button as `unknown` until its first use; that is not a fault.
+  if (entityState === 'unknown')
+    return QUICK_ACCESS_ACTIVATE_DOMAINS.has(domain) ? '' : t('Unknown');
 
   switch (domain) {
     case 'scene':
@@ -3069,36 +3090,7 @@ function getQuickAccessTileStateText(entity) {
       return '';
     case 'script':
       return entityState === 'on' ? t('Active') : '';
-    case 'binary_sensor': {
-      const deviceClass = entity.attributes?.device_class;
-      if (QUICK_ACCESS_OPENING_DEVICE_CLASSES.has(deviceClass)) {
-        return entityState === 'on' ? t('Open') : t('Closed');
-      }
-      if (deviceClass === 'moisture') return entityState === 'on' ? t('Wet') : t('Dry');
-      if (deviceClass === 'lock') return entityState === 'on' ? t('Unlocked') : t('Locked');
-      return utils.getEntityDisplayState(entity);
-    }
-    case 'lock':
-      if (entityState === 'locked') return t('Locked');
-      if (entityState === 'unlocked') return t('Unlocked');
-      return utils.getEntityDisplayState(entity);
-    case 'cover':
-      if (entityState === 'open') return t('Open');
-      if (entityState === 'closed') return t('Closed');
-      if (entityState === 'opening') return t('Opening');
-      if (entityState === 'closing') return t('Closing');
-      return utils.getEntityDisplayState(entity);
-    case 'person':
-    case 'device_tracker':
-      if (entityState === 'home') return t('Home');
-      if (entityState === 'not_home') return t('Away');
-      return utils.getEntityDisplayState(entity);
-    case 'camera':
-      if (entityState === 'idle') return t('Idle');
-      return utils.getEntityDisplayState(entity);
     default:
-      if (entityState === 'on') return t('On');
-      if (entityState === 'off') return t('Off');
       return utils.getEntityDisplayState(entity);
   }
 }
@@ -3166,10 +3158,8 @@ function getQuickAccessTileSummaryText(entity) {
     case 'fan':
     case 'lock':
       return getDeviceTileStateText(entity);
-    case 'climate': {
-      const temp = getClimateTileTemperature(entity);
-      return temp !== null ? `${formatNumber(temp)}°` : utils.getEntityDisplayState(entity);
-    }
+    case 'climate':
+      return utils.getEntityDisplayState(entity);
     case 'media_player':
       return getQuickAccessMediaText(entity);
     case 'todo':
@@ -3238,7 +3228,9 @@ function describeQuickAccessTile(entityId) {
     value: getQuickAccessTileSummaryText(entity),
     ...(countdown ? { countdown } : {}),
     icon: getEntityIconDescriptor(entity),
-    available: !unavailable && entity.state !== 'unknown',
+    // A scene or button nobody has pressed yet is `unknown` and works fine.
+    available:
+      !unavailable && (entity.state !== 'unknown' || QUICK_ACCESS_ACTIVATE_DOMAINS.has(domain)),
     missing: false,
     active: isQuickAccessTileActive(entity),
     action,
@@ -3609,7 +3601,8 @@ function parseHomeAssistantDateTime(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
   const timeZone = state.TIME_ZONE;
   if (!match || !timeZone) return new Date(value);
-  const [, year, month, day, hour, minute, second = '0'] = match.map(Number);
+  // Seconds are optional ("2026-10-01 09:30"); a missing group must read as 0, not NaN.
+  const [year, month, day, hour, minute, second] = match.slice(1).map((part) => Number(part ?? 0));
   const wallClock = Date.UTC(year, month - 1, day, hour, minute, second);
   try {
     // Twice, so a time next to a daylight-saving change uses the offset in force at that time.
@@ -3630,7 +3623,12 @@ function parseCalendarDate(value) {
 
 // Event times read in hours and minutes, following the clock's 12/24-hour setting.
 function formatEventTime(date) {
-  return formatTime(date, { hour: 'numeric', minute: '2-digit', ...getClockTimeOptions() });
+  return formatClockTime(date);
+}
+
+// An event's date for a list, with its weekday ("Thu, 10/1/2026").
+function formatEventDate(date) {
+  return formatDate(date, { weekday: 'short', year: 'numeric', month: 'numeric', day: 'numeric' });
 }
 
 function formatDateTimeValue(value, { timeOnly = false } = {}) {
@@ -3638,17 +3636,34 @@ function formatDateTimeValue(value, { timeOnly = false } = {}) {
   if (!dateValue) return '--';
   const date = parseHomeAssistantDateTime(dateValue);
   if (Number.isNaN(date.getTime())) return String(dateValue);
-  return timeOnly ? formatEventTime(date) : `${formatDate(date)} ${formatEventTime(date)}`;
+  return timeOnly ? formatEventTime(date) : `${formatEventDate(date)} ${formatEventTime(date)}`;
 }
 
-function formatCalendarTileStart(startTime, { allDay = false } = {}) {
+// Where a tile's next event falls. Home Assistant's calendar entity reports the next event even
+// when it is days away, so a time alone ("10:00 PM") would read as today: any other day gets its
+// weekday or date in front ("Tomorrow 10:00 PM", "Thu 10:00 PM", "Oct 12, 10:00 PM").
+function formatCalendarTileStart(startTime, { allDay = false, ongoing = false } = {}) {
   const dateValue = getEventDateValue(startTime);
   if (!dateValue) return '';
+  const allDayDate = parseCalendarDate(dateValue);
   // Calendar entities report all-day events as a midnight start_time plus all_day: true.
-  if (allDay || parseCalendarDate(dateValue)) return t('All day');
+  if (allDay || allDayDate) {
+    const day = allDayDate || parseHomeAssistantDateTime(dateValue);
+    // An all-day event that is on now says so; on another day its date is what matters.
+    if (
+      ongoing ||
+      Number.isNaN(day.getTime()) ||
+      day.toDateString() === new Date().toDateString()
+    ) {
+      return t('All day');
+    }
+    return formatDayLabel(day);
+  }
   const date = parseHomeAssistantDateTime(dateValue);
   if (Number.isNaN(date.getTime())) return String(dateValue);
-  return formatEventTime(date);
+  return date.toDateString() === new Date().toDateString()
+    ? formatEventTime(date)
+    : formatDayAndTime(date);
 }
 
 function formatCalendarEventRange(event) {
@@ -3658,8 +3673,8 @@ function formatCalendarEventRange(event) {
     if (endDate) endDate.setDate(endDate.getDate() - 1);
     const dates =
       endDate && endDate > startDate
-        ? `${formatDate(startDate)} - ${formatDate(endDate)}`
-        : formatDate(startDate);
+        ? `${formatEventDate(startDate)} – ${formatEventDate(endDate)}`
+        : formatEventDate(startDate);
     return `${dates} · ${t('All day')}`;
   }
   const startValue = event?.start || event?.start_time;
@@ -3674,28 +3689,12 @@ function formatCalendarEventRange(event) {
   const start = formatDateTimeValue(startValue);
   const end = formatDateTimeValue(endValue, { timeOnly: sameDay });
   if (!end || end === '--') return start;
-  return `${start} - ${end}`;
+  return `${start} – ${end}`;
 }
 
+// Sensors that count down (a kitchen timer), not readings; see isTimerLikeSensor.
 function isTimerLikeSensorEntity(entity) {
-  if (!entity?.entity_id?.startsWith('sensor.')) return false;
-
-  const hasTimerAttributes =
-    entity.attributes &&
-    (entity.attributes.finishes_at ||
-      entity.attributes.end_time ||
-      entity.attributes.finish_time ||
-      entity.attributes.duration);
-  if (hasTimerAttributes) return true;
-
-  if (entity.entity_id.toLowerCase().includes('timer')) return true;
-  if (!entity.state || entity.state === 'unavailable' || entity.state === 'unknown') return false;
-
-  const iso8601Pattern = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?/;
-  if (!iso8601Pattern.test(entity.state)) return false;
-
-  const stateTime = new Date(entity.state).getTime();
-  return !isNaN(stateTime) && stateTime > Date.now();
+  return utils.isTimerLikeSensor(entity);
 }
 
 function isQuickAccessTileValueSizeApplicable(entity) {
@@ -3723,61 +3722,16 @@ function isQuickAccessSensorChartApplicable(entity) {
   return !!getQuickAccessSensorDisplayParts(displayEntity);
 }
 
+// A sensor whose state is a plain number, so it can have a chart and a gauge. Codes with leading
+// zeros ("02134") and forms like "1e3" are text.
 function isFiniteNumericSensorState(entity) {
-  const raw = typeof entity?.state === 'string' ? entity.state.trim() : entity?.state;
-  if (raw === '' || raw == null) return false;
-  const value = Number(raw);
-  return Number.isFinite(value);
+  return parseNumericState(entity?.state) !== null;
 }
 
-function getQuickAccessSensorPrecision(entity) {
-  const attrs = entity?.attributes || {};
-  const deviceClass = attrs.device_class;
-  const unit =
-    typeof attrs.unit_of_measurement === 'string'
-      ? attrs.unit_of_measurement.trim()
-      : attrs.unit_of_measurement;
-
-  if (
-    deviceClass === 'temperature' ||
-    deviceClass === 'humidity' ||
-    unit === '%' ||
-    unit === '°C' ||
-    unit === '°F'
-  ) {
-    return 1;
-  }
-
-  return 2;
-}
-
-function formatQuickAccessSensorNumber(value, precision, useGrouping = true) {
-  return formatNumber(Number(value), { maximumFractionDigits: precision, useGrouping });
-}
-
+// The value, unit and text of a numeric sensor, rounded as the user's locale and the sensor's
+// precision say; see getSensorReading.
 function getQuickAccessSensorDisplayParts(entity) {
-  if (!entity?.entity_id?.startsWith('sensor.') || !isFiniteNumericSensorState(entity)) {
-    return null;
-  }
-
-  const value = Number(entity.state);
-  const precision = getQuickAccessSensorPrecision(entity);
-  const unit =
-    typeof entity.attributes?.unit_of_measurement === 'string'
-      ? entity.attributes.unit_of_measurement.trim()
-      : '';
-  // Unitless values without a state class may be years or codes; don't group them ("2026").
-  const formattedValue = formatQuickAccessSensorNumber(
-    value,
-    precision,
-    Boolean(unit || entity.attributes?.state_class)
-  );
-
-  return {
-    value: formattedValue,
-    unit,
-    text: unit ? `${formattedValue} ${unit}` : formattedValue,
-  };
+  return getSensorReading(entity);
 }
 
 function getSensorHistoryCacheEntry(entityId) {
@@ -4136,6 +4090,9 @@ function createSensorGaugeSvg(entity, series, customRange) {
   svg.setAttribute('data-gauge-min', String(range.min));
   svg.setAttribute('data-gauge-max', String(range.max));
   svg.setAttribute('data-gauge-fraction', fraction.toFixed(3));
+  // The arc runs left to right whatever the language, and text-anchor follows the writing
+  // direction: in a right-to-left page the bound labels would grow into the arc.
+  svg.style.direction = 'ltr';
 
   const track = document.createElementNS(SENSOR_SPARKLINE_SVG_NS, 'path');
   track.setAttribute('class', 'control-sensor-gauge-track');
@@ -4492,6 +4449,12 @@ function buildComparisonGraphPlot(entries) {
   return { svg, crosshair, timeDomain, plotWidth };
 }
 
+// One decimal everywhere a graph shows a reading, so the legend and the hover tooltip agree and a
+// value just below zero is not "-0".
+function formatGraphReading(value, unit) {
+  return joinUnit(formatReadingNumber(value, { maximum: 1 }), unit);
+}
+
 /**
  * Formats a series' current value for the legend.
  *
@@ -4500,8 +4463,7 @@ function buildComparisonGraphPlot(entries) {
  */
 function formatComparisonGraphValue(entry) {
   if (entry.value === null || entry.value === undefined) return t('No data');
-  const rounded = formatNumber(Math.round(entry.value * 10) / 10, { maximumFractionDigits: 1 });
-  return entry.unit ? `${rounded} ${entry.unit}` : rounded;
+  return formatGraphReading(entry.value, entry.unit);
 }
 
 /**
@@ -4584,11 +4546,10 @@ function attachComparisonGraphHover(frame, plot, entries) {
     heading.className = 'comparison-graph-tooltip-time';
     // Hour and minute, with the weekday once the graph reaches back a day or more, so a reading
     // from yesterday does not look like one from today.
-    heading.textContent = formatDateTime(new Date(timestamp), {
+    heading.textContent = formatClockDateTime(new Date(timestamp), {
       ...(spansDays ? { weekday: 'short' } : {}),
       hour: 'numeric',
       minute: '2-digit',
-      ...getClockTimeOptions(),
     });
     tooltip.appendChild(heading);
 
@@ -4610,8 +4571,7 @@ function attachComparisonGraphHover(frame, plot, entries) {
       const value = document.createElement('span');
       value.className = 'comparison-graph-tooltip-value';
       // Rounded as the legend rounds, so the same number is not 21.4567 here and 21.5 there.
-      const sampleValue = formatNumber(sample.value, { maximumFractionDigits: 1 });
-      value.textContent = entry.unit ? `${sampleValue} ${entry.unit}` : sampleValue;
+      value.textContent = formatGraphReading(sample.value, entry.unit);
 
       const name = document.createElement('span');
       name.className = 'comparison-graph-tooltip-name';
@@ -5126,9 +5086,10 @@ function showComparisonGraphModal(graphId) {
         }
 
         if (b.score !== a.score) return b.score - a.score;
-        return utils
-          .getEntityDisplayName(a.entity)
-          .localeCompare(utils.getEntityDisplayName(b.entity));
+        return compareNames(
+          utils.getEntityDisplayName(a.entity),
+          utils.getEntityDisplayName(b.entity)
+        );
       });
 
     // The list is rebuilt after every add and remove, and the sensor just toggled moves. The
@@ -5674,19 +5635,9 @@ function translateInContext(key, fallback) {
   return label === key ? fallback : label;
 }
 
-// A temperature for display ("21,5°C" in German), or "--" when there is no reading.
-function formatTemperatureDisplay(value, unit = '') {
-  return value == null ? '--' : `${formatNumber(value)}${unit}`;
-}
-
-// Capitalized, translated device state ("open" -> "Open"), sharing the tray's state names.
+// Capitalized, translated device state ("open" -> "Open"), from the shared state names.
 function getLocalizedEntityStateLabel(value) {
-  const key = typeof value === 'string' ? value.trim() : '';
-  if (!key) return t('Unknown');
-  const name = trayEntitySupport.STATE_NAMES[key];
-  if (name) return t(name);
-  const text = key.replace(/_/g, ' ');
-  return text.charAt(0).toUpperCase() + text.slice(1);
+  return formatStateName(value);
 }
 
 function getDeviceTileStateText(entity) {
@@ -5695,7 +5646,7 @@ function getDeviceTileStateText(entity) {
   if (domain === 'light') {
     const brightness = Number(attributes.brightness);
     if (entity.state === 'on' && attributes.brightness != null && brightness >= 0) {
-      return `${Math.round((brightness / 255) * 100)}%`;
+      return formatPercent(Math.round((brightness / 255) * 100));
     }
     return getLocalizedEntityStateLabel(entity.state);
   }
@@ -5707,7 +5658,7 @@ function getDeviceTileStateText(entity) {
         ? attributes.percentage
         : null;
   return percent != null && Number.isFinite(Number(percent))
-    ? `${label} ${Math.round(Number(percent))}%`
+    ? `${label} ${formatPercent(Math.round(Number(percent)))}`
     : label;
 }
 
@@ -6013,7 +5964,7 @@ function applyDesktopPinLightVisualState(root, { isOn, brightnessPct }) {
 
   const meterValue = root.querySelector('.desktop-pin-light-meter-value');
   if (meterValue) {
-    meterValue.textContent = `${safePct}%`;
+    meterValue.textContent = formatPercent(safePct);
   }
 
   const brightnessFill = root.querySelector('.desktop-pin-light-brightness-fill');
@@ -6147,7 +6098,7 @@ function createDesktopPinLightControlElement(entity) {
         <div class="desktop-pin-light-brightness-head">
           <div class="desktop-pin-light-brightness-copy">
             <div class="desktop-pin-light-brightness-label">${utils.escapeHtml(t('Brightness'))}</div>
-            <div class="desktop-pin-light-meter-value">${brightnessPct}%</div>
+            <div class="desktop-pin-light-meter-value">${formatPercent(brightnessPct)}</div>
           </div>
         </div>
         <div class="desktop-pin-panel-progress desktop-pin-light-brightness-track">
@@ -6158,7 +6109,7 @@ function createDesktopPinLightControlElement(entity) {
       <div class="desktop-pin-light-presets">
         ${DESKTOP_PIN_LIGHT_PRESETS.map(
           (percent) =>
-            `<button class="desktop-pin-light-preset" type="button" data-brightness="${percent}" aria-label="${escapeHtmlAttribute(t('{{percent}}% brightness', { percent }))}">${percent}%</button>`
+            `<button class="desktop-pin-light-preset" type="button" data-brightness="${percent}" aria-label="${escapeHtmlAttribute(t('{{percent}}% brightness', { percent }))}">${formatPercent(percent)}</button>`
         ).join('')}
       </div>`
           : ''
@@ -6436,10 +6387,10 @@ function applyDesktopPinClimateVisualState(root, climateValue) {
   );
 
   const target = root.querySelector('.desktop-pin-climate-target-value');
-  if (target) target.textContent = formatTemperatureDisplay(targetTemp, unit);
+  if (target) target.textContent = formatTemperature(targetTemp, unit);
 
   const current = root.querySelector('.desktop-pin-climate-current-value');
-  if (current) current.textContent = formatTemperatureDisplay(currentTemp, unit);
+  if (current) current.textContent = formatTemperature(currentTemp, unit);
 
   const compactCurrent = root.querySelector('.desktop-pin-climate-inline-copy');
   if (compactCurrent) {
@@ -6447,13 +6398,13 @@ function applyDesktopPinClimateVisualState(root, climateValue) {
       currentTemp == null
         ? t('No live room temperature')
         : t('Now {{temperature}}', {
-            temperature: isolateLtr(formatTemperatureDisplay(currentTemp, unit)),
+            temperature: isolateLtr(formatTemperature(currentTemp, unit)),
           });
   }
 
   const headerKpi = root.querySelector('.desktop-pin-climate-kpi');
   if (headerKpi) {
-    headerKpi.textContent = formatTemperatureDisplay(targetTemp ?? currentTemp, unit);
+    headerKpi.textContent = formatTemperature(targetTemp ?? currentTemp, unit);
   }
 
   const status = root.querySelector('.desktop-pin-panel-status');
@@ -6494,16 +6445,14 @@ function createDesktopPinClimateControlElement(entity) {
     climateValue.currentTemp == null
       ? t('No live room temperature')
       : t('Now {{temperature}}', {
-          temperature: isolateLtr(
-            formatTemperatureDisplay(climateValue.currentTemp, climateValue.unit)
-          ),
+          temperature: isolateLtr(formatTemperature(climateValue.currentTemp, climateValue.unit)),
         })
   );
   const currentTempText = utils.escapeHtml(
-    formatTemperatureDisplay(climateValue.currentTemp, climateValue.unit)
+    formatTemperature(climateValue.currentTemp, climateValue.unit)
   );
   const targetTempText = utils.escapeHtml(
-    formatTemperatureDisplay(climateValue.targetTemp, climateValue.unit)
+    formatTemperature(climateValue.targetTemp, climateValue.unit)
   );
   root.dataset.layout = renderProfile.layout;
   root.dataset.denseVariant = renderProfile.denseVariant;
@@ -6514,10 +6463,7 @@ function createDesktopPinClimateControlElement(entity) {
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: climateStatus,
         asideMarkup: `<div class="desktop-pin-panel-kpi desktop-pin-climate-kpi">${utils.escapeHtml(
-          formatTemperatureDisplay(
-            climateValue.targetTemp ?? climateValue.currentTemp,
-            climateValue.unit
-          )
+          formatTemperature(climateValue.targetTemp ?? climateValue.currentTemp, climateValue.unit)
         )}</div>`,
       })}
       <div class="desktop-pin-panel-body">
@@ -6581,7 +6527,7 @@ function createDesktopPinClimateControlElement(entity) {
   `;
 
   bindClimateRangeControls(root, entity, getClimateControlCapabilities(entity), (range) => {
-    const text = `${formatNumber(range.low)}–${formatNumber(range.high)}${climateValue.unit}`;
+    const text = `${formatNumber(range.low)}–${formatMeasurement(range.high, climateValue.unit)}`;
     root
       .querySelectorAll('.desktop-pin-climate-target-value, .desktop-pin-climate-kpi')
       .forEach((element) => {
@@ -6697,7 +6643,7 @@ function applyDesktopPinFanVisualState(root, fanValue) {
     String(Math.max(0, Math.min(1, percentage / 100)))
   );
 
-  const kpiText = isOn ? (canSetPercentage ? `${percentage}%` : t('On')) : t('Off');
+  const kpiText = isOn ? (canSetPercentage ? formatPercent(percentage) : t('On')) : t('Off');
   const headerKpi = root.querySelector('.desktop-pin-fan-kpi');
   if (headerKpi) headerKpi.textContent = kpiText;
 
@@ -6763,7 +6709,7 @@ function createDesktopPinFanControlElement(entity) {
   });
   const fanKpiText = fanValue.isOn
     ? capabilities.canSetPercentage
-      ? `${fanValue.percentage}%`
+      ? formatPercent(fanValue.percentage)
       : t('On')
     : t('Off');
   root.dataset.layout = renderProfile.layout;
@@ -6890,7 +6836,7 @@ function applyDesktopPinCoverVisualState(root, coverValue) {
   );
 
   const value = root.querySelector('.desktop-pin-cover-position');
-  if (value) value.textContent = `${coverValue.position}%`;
+  if (value) value.textContent = formatPercent(coverValue.position);
 
   const status = root.querySelector('.desktop-pin-panel-status');
   if (status) status.textContent = getDesktopPinCoverStatusText(coverValue);
@@ -6961,7 +6907,7 @@ function createDesktopPinCoverControlElement(entity) {
         // Without a settable position the status already says all there is to say.
         asideMarkup:
           capabilities.canSetPosition && !renderProfile.showMeter
-            ? `<div class="desktop-pin-panel-kpi desktop-pin-cover-position">${coverValue.position}%</div>`
+            ? `<div class="desktop-pin-panel-kpi desktop-pin-cover-position">${formatPercent(coverValue.position)}</div>`
             : '',
       })}
       <div class="desktop-pin-panel-body">
@@ -6970,7 +6916,7 @@ function createDesktopPinCoverControlElement(entity) {
             ? `
           <div class="desktop-pin-panel-meter">
             <div class="desktop-pin-panel-glyph">${entityIconMarkup(entity)}</div>
-            <div class="desktop-pin-panel-kpi desktop-pin-cover-position">${coverValue.position}%</div>
+            <div class="desktop-pin-panel-kpi desktop-pin-cover-position">${formatPercent(coverValue.position)}</div>
           </div>
         `
             : ''
@@ -7903,27 +7849,6 @@ function getDesktopPinTimerRemainingSeconds(entity) {
 
 const DESKTOP_PIN_TIMER_URGENT_SECONDS = 60;
 
-function getClockTimeOptions() {
-  const timeFormat = state.CONFIG?.ui?.timeFormat;
-  if (timeFormat === '12-hour') return { hour12: true };
-  if (timeFormat === '24-hour' || state.CONFIG?.ui?.use24HourClock) return { hour12: false };
-  return {};
-}
-
-function getClockDateOptions() {
-  switch (state.CONFIG?.ui?.dateFormat) {
-    case 'system':
-      return {};
-    case 'long':
-      return { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-    case 'numeric':
-      return { year: 'numeric', month: 'numeric', day: 'numeric' };
-    case 'weekday-short':
-    default:
-      return { weekday: 'short', month: 'short', day: 'numeric' };
-  }
-}
-
 // The countdown is sized to fill the tile, so a longer readout has to step down a size
 // to keep fitting: "0:22" gets the full treatment, "1:02:45" does not.
 function getDesktopPinTimerReadoutScale(display) {
@@ -7939,8 +7864,7 @@ function getDesktopPinTimerEndsAtLabel(entity) {
   if (remainingSeconds == null || remainingSeconds <= 0) return '';
 
   const endsAt = new Date(Date.now() + remainingSeconds * 1000);
-  const timeOptions = { hour: 'numeric', minute: '2-digit', ...getClockTimeOptions() };
-  return t('Ends {{time}}', { time: formatTime(endsAt, timeOptions) });
+  return t('Ends {{time}}', { time: formatClockTime(endsAt) });
 }
 
 function applyDesktopPinTimerVisualState(root, entity) {
@@ -8163,15 +8087,7 @@ function formatDesktopPinNumericValue(value, entity, options = {}) {
     return utils.getEntityDisplayState(entity);
   }
 
-  const hasFraction = Math.abs(spec.step) > 0 && Math.abs(spec.step) < 1;
-  const fractionDigits = Math.min(2, String(spec.step).split('.')[1]?.length || 1);
-  const formatted = hasFraction
-    ? formatNumber(safeValue, {
-        minimumFractionDigits: fractionDigits,
-        maximumFractionDigits: fractionDigits,
-      })
-    : formatNumber(Math.round(safeValue));
-  return spec.unit ? `${formatted} ${spec.unit}` : formatted;
+  return formatNumberEntityValue(safeValue, entity, { step: spec.step });
 }
 
 function queueDesktopPinNumericValue(entity, nextValue) {
@@ -8528,13 +8444,11 @@ function getDesktopPinWeatherStats(entity) {
   }
   if (attrs.wind_speed != null) {
     const unit = attrs.wind_speed_unit || state.UNIT_SYSTEM?.wind_speed || '';
-    const windSpeed = formatNumber(attrs.wind_speed);
-    stats.push(unit ? `${windSpeed} ${unit}` : windSpeed);
+    stats.push(formatMeasurement(attrs.wind_speed, unit));
   }
   if (attrs.pressure != null && stats.length < 2) {
     const unit = attrs.pressure_unit || state.UNIT_SYSTEM?.pressure || '';
-    const pressure = formatNumber(attrs.pressure);
-    stats.push(unit ? `${pressure} ${unit}` : pressure);
+    stats.push(formatMeasurement(attrs.pressure, unit));
   }
   return stats.slice(0, 2);
 }
@@ -8553,7 +8467,7 @@ function createDesktopPinWeatherControlElement(entity) {
     entity?.attributes?.temperature_unit || state.UNIT_SYSTEM?.temperature || '';
   const temperatureValue =
     temperature != null
-      ? formatTemperatureDisplay(temperature, temperatureUnit)
+      ? formatTemperature(temperature, temperatureUnit)
       : utils.getEntityDisplayState(entity);
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-weather-control'], {
     domain: 'weather',
@@ -8605,7 +8519,7 @@ function updateExistingDesktopPinWeatherControl(root, entity) {
     entity?.attributes?.temperature_unit || state.UNIT_SYSTEM?.temperature || '';
   const temperatureValue =
     temperature != null
-      ? formatTemperatureDisplay(temperature, temperatureUnit)
+      ? formatTemperature(temperature, temperatureUnit)
       : utils.getEntityDisplayState(entity);
 
   syncDesktopPinPanelRootState(root, entity, {
@@ -9132,7 +9046,7 @@ function getCalendarNextEventSummary(entity) {
   const message = entity?.attributes?.message || t('No upcoming event');
   const start = formatCalendarTileStart(
     entity?.attributes?.start_time || entity?.attributes?.start,
-    { allDay: entity?.attributes?.all_day === true }
+    { allDay: entity?.attributes?.all_day === true, ongoing: entity?.state === 'on' }
   );
   return start ? `${message} · ${start}` : message;
 }
@@ -9982,8 +9896,7 @@ function createControlElement(entity, options = {}) {
     } else if (['light', 'cover', 'fan', 'lock'].includes(domain)) {
       stateDisplay = `<div class="control-state">${utils.escapeHtml(getDeviceTileStateText(entity))}</div>`;
     } else if (entity.entity_id.startsWith('climate.')) {
-      const temp = getClimateTileTemperature(entity);
-      stateDisplay = `<div class="control-state">${utils.escapeHtml(temp !== null ? `${formatNumber(temp)}°` : utils.getEntityDisplayState(entity))}</div>`;
+      stateDisplay = `<div class="control-state">${utils.escapeHtml(utils.getEntityDisplayState(entity))}</div>`;
     } else if (entity.entity_id.startsWith('media_player.')) {
       // Media player state will be handled in setupMediaPlayerControls
       stateDisplay = '';
@@ -10359,7 +10272,7 @@ function openEntityRepairModal(staleEntityId) {
   };
 
   const renderCandidates = () => {
-    const query = search.value.trim().toLowerCase();
+    const query = normalizeSearchText(search.value);
     const staleDomain = staleEntityId.split('.')[0];
     const candidates = Object.values(state.STATES || {})
       .filter(
@@ -10367,14 +10280,14 @@ function openEntityRepairModal(staleEntityId) {
           entity?.entity_id &&
           entity.entity_id !== staleEntityId &&
           (!query ||
-            entity.entity_id.toLowerCase().includes(query) ||
-            utils.getEntityDisplayName(entity).toLowerCase().includes(query))
+            normalizeSearchText(entity.entity_id).includes(query) ||
+            normalizeSearchText(utils.getEntityDisplayName(entity)).includes(query))
       )
       .sort((left, right) => {
         const leftSameDomain = left.entity_id.startsWith(`${staleDomain}.`) ? 1 : 0;
         const rightSameDomain = right.entity_id.startsWith(`${staleDomain}.`) ? 1 : 0;
         if (leftSameDomain !== rightSameDomain) return rightSameDomain - leftSameDomain;
-        return utils.getEntityDisplayName(left).localeCompare(utils.getEntityDisplayName(right));
+        return compareNames(utils.getEntityDisplayName(left), utils.getEntityDisplayName(right));
       });
 
     list.replaceChildren();
@@ -10536,11 +10449,7 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
       displayEntity,
       t('Click to toggle, hold for temperature control')
     );
-    if (stateEl) {
-      const temp = getClimateTileTemperature(displayEntity);
-      stateEl.textContent =
-        temp !== null ? `${formatNumber(temp)}°` : utils.getEntityDisplayState(displayEntity);
-    }
+    if (stateEl) stateEl.textContent = utils.getEntityDisplayState(displayEntity);
     return true;
   }
 
@@ -11949,7 +11858,7 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
                   class="media-volume-slider"
                   aria-label="${escapeHtmlAttribute(t('Volume'))}"
                 />
-                <span class="media-volume-value" id="media-volume-value">${initialVolume}%</span>
+                <span class="media-volume-value" id="media-volume-value">${formatPercent(initialVolume)}</span>
               </div>
             `
                 : ''
@@ -12076,7 +11985,7 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
         } else {
           const volume = clampRange(Math.round(Number(attrs.volume_level) * 100), 0, 100);
           volumeSlider.value = String(volume);
-          volumeValue.textContent = `${volume}%`;
+          volumeValue.textContent = formatPercent(volume);
         }
       }
       if (muteToggle) {
@@ -12154,7 +12063,7 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
       volumeSlider.addEventListener('input', (e) => {
         if (!canPerformMediaAction(liveMedia(), 'volume_set')) return;
         const value = clampRange(Math.round(Number(e.target.value)), 0, 100);
-        if (volumeValue) volumeValue.textContent = `${value}%`;
+        if (volumeValue) volumeValue.textContent = formatPercent(value);
         clearTimeout(volumeDebounceTimer);
         volumeDebounceTimer = setTimeout(() => {
           callMediaPlayerService(entity.entity_id, 'volume_set', {
@@ -12906,13 +12815,17 @@ function updateWeatherFromHA() {
       }
     }
 
-    if (tempEl)
-      tempEl.textContent = `${Math.round(weatherEntity.attributes.temperature || 0)}${tempUnit}`;
+    if (tempEl) {
+      tempEl.textContent = formatMeasurement(
+        Math.round(weatherEntity.attributes.temperature || 0),
+        tempUnit
+      );
+    }
     if (conditionEl) conditionEl.textContent = getWeatherConditionLabel(weatherEntity.state);
     if (humidityEl) {
-      humidityEl.textContent = `${formatNumber(weatherEntity.attributes.humidity || 0)}%`;
+      humidityEl.textContent = formatPercent(weatherEntity.attributes.humidity || 0);
     }
-    if (windEl) windEl.textContent = `${formatNumber(windSpeed)} ${windUnit}`;
+    if (windEl) windEl.textContent = formatMeasurement(windSpeed, windUnit);
 
     // Render a deterministic SVG for every Home Assistant weather condition.
     if (iconEl) {
@@ -13002,7 +12915,7 @@ function populateWeatherEntitiesList() {
 
     const weatherEntities = Object.values(state.STATES || {})
       .filter((e) => e.entity_id.startsWith('weather.'))
-      .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)));
+      .sort((a, b) => compareNames(utils.getEntityDisplayName(a), utils.getEntityDisplayName(b)));
 
     // Rebuilding the list after a pick would otherwise drop focus to <body>, out of the dialog.
     const focusedEntityId = list.contains(document.activeElement)
@@ -13031,7 +12944,7 @@ function populateWeatherEntitiesList() {
         const fallbackEntity = Object.values(state.STATES)
           .filter((e) => e.entity_id.startsWith('weather.'))
           .sort((a, b) =>
-            utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b))
+            compareNames(utils.getEntityDisplayName(a), utils.getEntityDisplayName(b))
           )[0];
 
         if (fallbackEntity) {
@@ -13375,9 +13288,9 @@ function updateTimeDisplay() {
     const now = new Date();
     const timeEl = document.getElementById('current-time');
     const dateEl = document.getElementById('current-date');
-    const timeOptions = { hour: '2-digit', minute: '2-digit', ...getClockTimeOptions() };
 
-    if (timeEl) timeEl.textContent = formatTime(now, timeOptions);
+    // A 12-hour clock reads "7:31 AM" like every other time label; a 24-hour one keeps "07:31".
+    if (timeEl) timeEl.textContent = formatClockTime(now, getClockFaceTimeOptions());
     if (dateEl) dateEl.textContent = formatDate(now, getClockDateOptions());
   } catch (error) {
     console.error('Error updating time display:', error);
@@ -13609,7 +13522,7 @@ function showBrightnessSlider(light) {
             <div class="brightness-icon-wrapper">
               <div class="brightness-icon" id="brightness-icon">${lineIconMarkup('lightbulb')}</div>
             </div>
-            <div class="brightness-value-large" id="brightness-value-large">${canSetBrightness ? `${currentBrightness}%` : utils.escapeHtml(t(light.state === 'on' ? 'On' : 'Off'))}</div>
+            <div class="brightness-value-large" id="brightness-value-large">${canSetBrightness ? formatPercent(currentBrightness) : utils.escapeHtml(t(light.state === 'on' ? 'On' : 'Off'))}</div>
             <div class="brightness-label">${utils.escapeHtml(t(canSetBrightness ? 'Brightness' : 'State'))}</div>
             ${
               canSetBrightness
@@ -13750,7 +13663,7 @@ function showBrightnessSlider(light) {
     // Slider behavior with debounce
     if (slider) {
       const applyValue = (value) => {
-        if (valueLarge) valueLarge.textContent = `${value}%`;
+        if (valueLarge) valueLarge.textContent = formatPercent(value);
         updateIconAndAccent(value);
         if (value > 0) lastOnBrightness = value;
         clearTimeout(brightnessDebounceTimer);
@@ -13765,7 +13678,7 @@ function showBrightnessSlider(light) {
           callLightService(service, serviceData, () => {
             lightIsOn = confirmedLightIsOn;
             slider.value = String(confirmedBrightness);
-            if (valueLarge) valueLarge.textContent = `${confirmedBrightness}%`;
+            if (valueLarge) valueLarge.textContent = formatPercent(confirmedBrightness);
             updateIconAndAccent(confirmedBrightness);
             updateTurnButton();
           }).then(({ ok }) => {
@@ -13885,7 +13798,7 @@ function showBrightnessSlider(light) {
           callLightService('turn_off', { entity_id: light.entity_id }, () => {
             lightIsOn = previousLightIsOn;
             if (slider) slider.value = String(previousBrightness);
-            if (valueLarge) valueLarge.textContent = `${previousBrightness}%`;
+            if (valueLarge) valueLarge.textContent = formatPercent(previousBrightness);
             updateIconAndAccent(previousBrightness);
             updateTurnButton();
           }).then(({ ok }) => {
@@ -13899,12 +13812,12 @@ function showBrightnessSlider(light) {
           lightIsOn = true;
           const targetValue = lastOnBrightness > 0 ? lastOnBrightness : 100;
           if (slider) slider.value = String(targetValue);
-          if (valueLarge) valueLarge.textContent = `${targetValue}%`;
+          if (valueLarge) valueLarge.textContent = formatPercent(targetValue);
           updateIconAndAccent(targetValue);
           callLightService('turn_on', { entity_id: light.entity_id }, () => {
             lightIsOn = previousLightIsOn;
             if (slider) slider.value = String(previousBrightness);
-            if (valueLarge) valueLarge.textContent = `${previousBrightness}%`;
+            if (valueLarge) valueLarge.textContent = formatPercent(previousBrightness);
             updateIconAndAccent(previousBrightness);
             updateTurnButton();
           }).then(({ ok }) => {
@@ -13942,7 +13855,7 @@ function showBrightnessSlider(light) {
       if (brightness > 0) lastOnBrightness = brightness;
       if (slider && document.activeElement !== slider) {
         slider.value = String(brightness);
-        if (valueLarge) valueLarge.textContent = `${brightness}%`;
+        if (valueLarge) valueLarge.textContent = formatPercent(brightness);
         updateIconAndAccent(brightness);
       }
       if (
@@ -13980,8 +13893,8 @@ function climateRangeMarkup(capabilities, { pin = false, unit = '' } = {}) {
   const scaleLabels = pin
     ? ''
     : `<span class="climate-slider-labels" aria-hidden="true">
-        <span>${formatNumber(capabilities.minTemp)}${unit}</span>
-        <span>${formatNumber(capabilities.maxTemp)}${unit}</span>
+        <span>${formatMeasurement(capabilities.minTemp, unit)}</span>
+        <span>${formatMeasurement(capabilities.maxTemp, unit)}</span>
       </span>`;
   return ['low', 'high']
     .map((bound) => {
@@ -14138,11 +14051,11 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
             <div class="climate-temp-display${capabilities.canSetRange ? ' is-range' : ''}">
               <div class="climate-current-temp">
                 <div class="climate-temp-label">${utils.escapeHtml(t('Current'))}</div>
-                <div class="climate-temp-value">${currentTemp === null ? '—' : `${formatNumber(currentTemp)}${tempUnit}`}</div>
+                <div class="climate-temp-value">${currentTemp === null ? '—' : formatMeasurement(currentTemp, tempUnit)}</div>
               </div>
               <div class="climate-target-temp">
                 <div class="climate-temp-label">${utils.escapeHtml(t('Target'))}</div>
-                <div class="climate-temp-value-large" id="climate-target-value">${targetTemp === null ? '—' : `${formatNumber(targetTemp)}${tempUnit}`}</div>
+                <div class="climate-temp-value-large" id="climate-target-value">${targetTemp === null ? '—' : formatMeasurement(targetTemp, tempUnit)}</div>
               </div>
             </div>
             ${
@@ -14151,7 +14064,7 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
               <div class="climate-extra-stats">
                 <div class="climate-stat">
                   <div class="climate-temp-label">${utils.escapeHtml(t('Humidity'))}</div>
-                  <div class="climate-temp-value">${currentHumidity}%</div>
+                  <div class="climate-temp-value">${formatPercent(currentHumidity)}</div>
                 </div>
               </div>
             `
@@ -14172,8 +14085,8 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
                 aria-label="${escapeHtmlAttribute(t('Target temperature'))}"
               />
               <div class="climate-slider-labels">
-                <span>${formatNumber(minTemp)}${tempUnit}</span>
-                <span>${formatNumber(maxTemp)}${tempUnit}</span>
+                <span>${formatMeasurement(minTemp, tempUnit)}</span>
+                <span>${formatMeasurement(maxTemp, tempUnit)}</span>
               </div>
             </div>`
                 : ''
@@ -14237,7 +14150,7 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
       climateEntity,
       capabilities,
       (range) => {
-        targetValue.textContent = `${formatNumber(range.low)}–${formatNumber(range.high)}${tempUnit}`;
+        targetValue.textContent = `${formatNumber(range.low)}–${formatMeasurement(range.high, tempUnit)}`;
       }
     );
     const closeBtn = modal.querySelector('#climate-close');
@@ -14265,9 +14178,7 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
       if (!normalizedMode) return t('Mode');
       const knownLabel = CLIMATE_OPTION_LABELS[normalizedMode.toLowerCase()];
       if (knownLabel) return t(knownLabel);
-      return normalizedMode
-        .replace(/[_-]+/g, ' ')
-        .replace(/\b\w/g, (character) => character.toUpperCase());
+      return titleCase(normalizedMode.replace(/[_-]+/g, ' '));
     }
 
     if (modeButtonsContainer) {
@@ -14394,7 +14305,7 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
         }
         if (currentTempValue) {
           currentTempValue.textContent =
-            next.currentTemp === null ? '—' : `${formatNumber(next.currentTemp)}${tempUnit}`;
+            next.currentTemp === null ? '—' : formatMeasurement(next.currentTemp, tempUnit);
         }
         missedLiveUpdate = temperatureCommandsInFlight > 0;
         if (slider && next.targetTemp !== null && !missedLiveUpdate && !temperatureDebounceTimer) {
@@ -14402,7 +14313,7 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
           if (document.activeElement !== slider) {
             slider.value = String(next.targetTemp);
             if (targetValue) {
-              targetValue.textContent = `${formatNumber(next.targetTemp)}${tempUnit}`;
+              targetValue.textContent = formatMeasurement(next.targetTemp, tempUnit);
             }
           }
         }
@@ -14419,7 +14330,7 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
     if (slider) {
       slider.addEventListener('input', (e) => {
         const value = parseFloat(e.target.value);
-        if (targetValue) targetValue.textContent = `${formatNumber(value)}${tempUnit}`;
+        if (targetValue) targetValue.textContent = formatMeasurement(value, tempUnit);
 
         clearTimeout(temperatureDebounceTimer);
         temperatureDebounceTimer = setTimeout(() => {
@@ -14436,7 +14347,7 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
             () => {
               slider.value = String(confirmedTargetTemp);
               if (targetValue) {
-                targetValue.textContent = `${formatNumber(confirmedTargetTemp)}${tempUnit}`;
+                targetValue.textContent = formatMeasurement(confirmedTargetTemp, tempUnit);
               }
             }
           ).then(({ ok }) => {
@@ -14555,7 +14466,7 @@ function showFanControls(fanEntity) {
             <div class="fan-icon-wrapper">
               <div class="fan-icon ${isOn ? 'spinning' : ''}" id="fan-icon">${lineIconMarkup('fan')}</div>
             </div>
-            <div class="fan-speed-value" id="fan-speed-value">${capabilities.canSetPercentage ? `${currentSpeed}%` : utils.escapeHtml(getLocalizedEntityStateLabel(fanEntity.state))}</div>
+            <div class="fan-speed-value" id="fan-speed-value">${capabilities.canSetPercentage ? formatPercent(currentSpeed) : utils.escapeHtml(getLocalizedEntityStateLabel(fanEntity.state))}</div>
             <div class="fan-speed-label">${utils.escapeHtml(capabilities.canSetPercentage ? t('Fan Speed') : t('State'))}</div>
 
             ${
@@ -14666,7 +14577,7 @@ function showFanControls(fanEntity) {
     if (slider) {
       slider.addEventListener('input', (e) => {
         const speed = parseInt(e.target.value, 10);
-        if (speedValue) speedValue.textContent = `${speed}%`;
+        if (speedValue) speedValue.textContent = formatPercent(speed);
         updateIcon(speed);
 
         clearTimeout(speedDebounceTimer);
@@ -14679,7 +14590,7 @@ function showFanControls(fanEntity) {
               : { entity_id: fanEntity.entity_id };
           callFanService(service, serviceData, () => {
             slider.value = String(confirmedSpeed);
-            if (speedValue) speedValue.textContent = `${confirmedSpeed}%`;
+            if (speedValue) speedValue.textContent = formatPercent(confirmedSpeed);
             updateIcon(confirmedSpeed);
           }).then(({ ok }) => {
             if (ok) confirmedSpeed = speed;
@@ -14718,7 +14629,7 @@ function showFanControls(fanEntity) {
       confirmedSpeed = speed;
       if (document.activeElement === slider) return;
       slider.value = String(speed);
-      if (speedValue) speedValue.textContent = `${speed}%`;
+      if (speedValue) speedValue.textContent = formatPercent(speed);
       updateIcon(speed);
     };
     unsubscribe = state.subscribeEntity(fanEntity.entity_id, syncFromEntity);
@@ -14783,7 +14694,7 @@ function showCoverControls(coverEntity) {
                 <div class="cover-overlay" id="cover-overlay" style="height: ${100 - currentPosition}%"></div>
               </div>
             </div>
-            <div class="cover-position-value" id="cover-position-value">${capabilities.canSetPosition ? `${currentPosition}%` : utils.escapeHtml(getLocalizedEntityStateLabel(coverEntity.state))}</div>
+            <div class="cover-position-value" id="cover-position-value">${capabilities.canSetPosition ? formatPercent(currentPosition) : utils.escapeHtml(getLocalizedEntityStateLabel(coverEntity.state))}</div>
             <div class="cover-position-label">${utils.escapeHtml(capabilities.canSetPosition ? t('Position') : t('State'))}</div>
 
             ${
@@ -14894,7 +14805,7 @@ function showCoverControls(coverEntity) {
     if (slider) {
       slider.addEventListener('input', (e) => {
         const position = parseInt(e.target.value, 10);
-        if (positionValue) positionValue.textContent = `${position}%`;
+        if (positionValue) positionValue.textContent = formatPercent(position);
         updateVisual(position);
 
         clearTimeout(positionDebounceTimer);
@@ -14908,7 +14819,7 @@ function showCoverControls(coverEntity) {
             },
             () => {
               slider.value = String(confirmedPosition);
-              if (positionValue) positionValue.textContent = `${confirmedPosition}%`;
+              if (positionValue) positionValue.textContent = formatPercent(confirmedPosition);
               updateVisual(confirmedPosition);
             }
           ).then(({ ok }) => {
@@ -14938,7 +14849,7 @@ function showCoverControls(coverEntity) {
         }
         callCoverService(action, { entity_id: coverEntity.entity_id }, () => {
           if (slider) slider.value = String(previousPosition);
-          if (positionValue) positionValue.textContent = `${previousPosition}%`;
+          if (positionValue) positionValue.textContent = formatPercent(previousPosition);
           updateVisual(previousPosition);
         }).then(({ ok }) => {
           if (!ok) return;
@@ -14973,7 +14884,7 @@ function showCoverControls(coverEntity) {
       confirmedPosition = Math.max(0, Math.min(100, Math.round(position)));
       if (document.activeElement === slider) return;
       slider.value = String(confirmedPosition);
-      if (positionValue) positionValue.textContent = `${confirmedPosition}%`;
+      if (positionValue) positionValue.textContent = formatPercent(confirmedPosition);
       updateVisual(confirmedPosition);
     };
     unsubscribe = state.subscribeEntity(coverEntity.entity_id, syncFromEntity);
@@ -15045,9 +14956,10 @@ function populateQuickControlsList({ resetSearch = true } = {}) {
           if (b.score !== a.score) {
             return b.score - a.score;
           }
-          return utils
-            .getEntityDisplayName(a.entity)
-            .localeCompare(utils.getEntityDisplayName(b.entity));
+          return compareNames(
+            utils.getEntityDisplayName(a.entity),
+            utils.getEntityDisplayName(b.entity)
+          );
         });
 
       const pages = Math.max(1, Math.ceil(scoredEntities.length / pageSize));
@@ -15347,7 +15259,7 @@ function initUpdateUI() {
             if (data.progress) {
               const percent = Math.round(data.progress.percent);
               if (progressFill) progressFill.style.width = `${percent}%`;
-              if (progressText) progressText.textContent = `${percent}%`;
+              if (progressText) progressText.textContent = formatPercent(percent);
             }
             break;
 

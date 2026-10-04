@@ -5,11 +5,11 @@
       "locale": "de",
       "displayName": "Deutsch",
       "englishName": "German",
-      "version": "1.2.56",
+      "version": "1.2.57",
       "minAppVersion": "3.4.1",
       "downloadUrl": "https://raw.githubusercontent.com/Robertg761/HA-Desktop-Widget/main/locale-packs/de.json",
-      "sha256": "7510c50a4fe8a6ccd0c59e1a365bbb60f4a250471ef9ac5c425719cfc707af43",
-      "notes": "German language pack for HA Desktop Widget, including German date and time formats."
+      "sha256": "6489c335cf16b972e09367a97d26f71b79c571b8e13f93fe3d0050ecffacbe1e",
+      "notes": "German language pack for HA Desktop Widget."
     },
     {
       "locale": "zh",
