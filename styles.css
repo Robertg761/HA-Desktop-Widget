@@ -4111,35 +4111,14 @@ body.first-run-active .widget-content > * {
   box-shadow: var(--glow-focus);
 }
 
-.control-item.active {
-  background: linear-gradient(
-    135deg,
-    rgba(var(--accent-rgb), 0.22) 0%,
-    rgba(var(--accent-rgb), 0.08) 100%
-  );
-  color: var(--text-primary);
-  border-color: rgba(var(--accent-rgb), 0.6);
-  box-shadow:
-    0 0 15px rgba(var(--accent-rgb), 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
-}
-
-.control-item.active:hover {
-  border-color: rgba(var(--accent-rgb), 0.8);
-  box-shadow:
-    0 0 20px rgba(var(--accent-rgb), 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.15);
-}
-
-.control-item.active::before {
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
-}
-
-/* Data-state based active styling for consistency */
-.control-item[data-state='on'],
-.control-item[data-state='open'],
-.control-item[data-state='unlocked'],
-.control-item[data-state='home'] {
+/* A pin's tile colours follow its own data-state. Quick
+   Access tiles do not: their lit state is body.active-tile-glow [data-active='true'], so the glow
+   opt-out covers every tile, and a media player that Home Assistant reports as 'on' no longer
+   glows on its own. */
+.desktop-pin-control[data-state='on'],
+.desktop-pin-control[data-state='open'],
+.desktop-pin-control[data-state='unlocked'],
+.desktop-pin-control[data-state='home'] {
   background: linear-gradient(
     135deg,
     rgba(var(--accent-rgb), 0.16) 0%,
@@ -4151,10 +4130,10 @@ body.first-run-active .widget-content > * {
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.control-item[data-state='on']:hover,
-.control-item[data-state='open']:hover,
-.control-item[data-state='unlocked']:hover,
-.control-item[data-state='home']:hover {
+.desktop-pin-control[data-state='on']:hover,
+.desktop-pin-control[data-state='open']:hover,
+.desktop-pin-control[data-state='unlocked']:hover,
+.desktop-pin-control[data-state='home']:hover {
   border-color: rgba(var(--accent-rgb), 0.7);
   box-shadow:
     0 0 20px rgba(var(--accent-rgb), 0.4),
@@ -4162,7 +4141,7 @@ body.first-run-active .widget-content > * {
 }
 
 /* Locked state styling */
-.control-item[data-state='locked'] {
+.desktop-pin-control[data-state='locked'] {
   background: linear-gradient(135deg, rgba(255, 152, 0, 0.16) 0%, rgba(255, 152, 0, 0.05) 100%);
   border-color: rgba(255, 152, 0, 0.45);
   box-shadow:
@@ -4170,7 +4149,7 @@ body.first-run-active .widget-content > * {
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.control-item[data-state='locked']:hover {
+.desktop-pin-control[data-state='locked']:hover {
   border-color: rgba(255, 152, 0, 0.7);
   box-shadow:
     0 0 20px rgba(255, 152, 0, 0.4),
@@ -4178,10 +4157,10 @@ body.first-run-active .widget-content > * {
 }
 
 /* Climate active state */
-.control-item[data-state='heat'],
-.control-item[data-state='cool'],
-.control-item[data-state='heat_cool'],
-.control-item[data-state='auto'] {
+.desktop-pin-control[data-state='heat'],
+.desktop-pin-control[data-state='cool'],
+.desktop-pin-control[data-state='heat_cool'],
+.desktop-pin-control[data-state='auto'] {
   background: linear-gradient(
     135deg,
     rgba(var(--accent-rgb), 0.16) 0%,
@@ -4193,15 +4172,15 @@ body.first-run-active .widget-content > * {
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.control-item[data-state='heat_cool']:hover,
-.control-item[data-state='auto']:hover {
+.desktop-pin-control[data-state='heat_cool']:hover,
+.desktop-pin-control[data-state='auto']:hover {
   border-color: rgba(var(--accent-rgb), 0.7);
   box-shadow:
     0 0 20px rgba(var(--accent-rgb), 0.4),
     inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
-.control-item[data-state='heat'] {
+.desktop-pin-control[data-state='heat'] {
   background: linear-gradient(135deg, rgba(255, 110, 64, 0.16) 0%, rgba(255, 110, 64, 0.05) 100%);
   border-color: rgba(255, 110, 64, 0.45);
   box-shadow:
@@ -4209,14 +4188,14 @@ body.first-run-active .widget-content > * {
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.control-item[data-state='heat']:hover {
+.desktop-pin-control[data-state='heat']:hover {
   border-color: rgba(255, 110, 64, 0.7);
   box-shadow:
     0 0 20px rgba(255, 110, 64, 0.4),
     inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
-.control-item[data-state='cool'] {
+.desktop-pin-control[data-state='cool'] {
   background: linear-gradient(135deg, rgba(3, 169, 244, 0.16) 0%, rgba(3, 169, 244, 0.05) 100%);
   border-color: rgba(3, 169, 244, 0.45);
   box-shadow:
@@ -4224,7 +4203,7 @@ body.first-run-active .widget-content > * {
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.control-item[data-state='cool']:hover {
+.desktop-pin-control[data-state='cool']:hover {
   border-color: rgba(3, 169, 244, 0.7);
   box-shadow:
     0 0 20px rgba(3, 169, 244, 0.4),
@@ -4292,32 +4271,31 @@ body.first-run-active .widget-content > * {
   flex-shrink: 0;
 }
 
-.control-item.active .control-icon,
-.control-item[data-state='on'] .control-icon,
-.control-item[data-state='open'] .control-icon,
-.control-item[data-state='unlocked'] .control-icon,
-.control-item[data-state='home'] .control-icon {
+.desktop-pin-control[data-state='on'] .control-icon,
+.desktop-pin-control[data-state='open'] .control-icon,
+.desktop-pin-control[data-state='unlocked'] .control-icon,
+.desktop-pin-control[data-state='home'] .control-icon {
   filter: drop-shadow(0 0 4px rgba(var(--accent-rgb), 0.75));
   color: var(--accent-text);
 }
 
-.control-item[data-state='locked'] .control-icon {
+.desktop-pin-control[data-state='locked'] .control-icon {
   filter: drop-shadow(0 0 4px rgba(255, 152, 0, 0.6));
   color: #ff9800;
 }
 
-.control-item[data-state='heat'] .control-icon {
+.desktop-pin-control[data-state='heat'] .control-icon {
   filter: drop-shadow(0 0 5px rgba(255, 110, 64, 0.8));
   color: #ff6e40;
 }
 
-.control-item[data-state='cool'] .control-icon {
+.desktop-pin-control[data-state='cool'] .control-icon {
   filter: drop-shadow(0 0 5px rgba(3, 169, 244, 0.8));
   color: #03a9f4;
 }
 
-.control-item[data-state='heat_cool'] .control-icon,
-.control-item[data-state='auto'] .control-icon {
+.desktop-pin-control[data-state='heat_cool'] .control-icon,
+.desktop-pin-control[data-state='auto'] .control-icon {
   filter: drop-shadow(0 0 5px rgba(0, 150, 136, 0.8));
   color: #009688;
 }
@@ -10352,8 +10330,9 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   filter: drop-shadow(0 4px 12px rgba(var(--accent-rgb), 0.6));
 }
 
-/* Media Player State Indicators */
-.media-player-entity[data-state='playing'] {
+/* Media Player State Indicators. Only with the accent glow on: that setting is the one opt-out for
+   a lit tile, and a player Home Assistant calls 'on' no longer glows on its own either. */
+body.active-tile-glow .media-player-entity[data-state='playing'] {
   background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.1), rgba(var(--accent-rgb), 0.05));
   border-color: rgba(var(--accent-rgb), 0.3);
 }
