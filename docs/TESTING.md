@@ -163,6 +163,8 @@ The contrast test loads the real stylesheets into jsdom, runs the real theme and
 
 If two branches both delete lines from the same baseline, Git reports a conflict on neighbouring lines. Keep both deletions. If both lower the same read count, apply both reductions; the test names the number it expects.
 
+`css-dead-selectors.test.js` is a guard without a baseline: it fails when a selector in `styles.css` or `dashboard-workflows.css` needs a class or id that no markup or script names (a name built at run time from a `prefix-${...}` template counts as produced). Delete the rule; if a library or a change that is not in the tree yet produces the name, list it in the test with the reason.
+
 ## Visual snapshots
 
 `npm run snapshots` builds the renderer, starts a mock Home Assistant and drives the real app over the Chrome DevTools Protocol, saving `<os>-<scene>-page.png` (web contents) and `<os>-<scene>-screen.png` (the screen around the window) for every scene in `scripts/visual-snapshots/scenes.cjs`. The Visual snapshots workflow runs it on Windows, Windows 11 ARM, macOS and Linux and uploads the images, so a change can be compared before and after on each OS. Nothing is compared automatically.
