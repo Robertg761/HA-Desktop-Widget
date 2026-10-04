@@ -373,6 +373,11 @@ const SETTING_LABELS_READABLE = `[...document.querySelectorAll('#settings-modal 
 // How a page of tiles is laid out, whatever its names and readings: names on one line across a row,
 // and the sensors' lines clear of their text.
 async function expectTilesLaidOut(ctx) {
+  // A line is drawn when its sensor's history arrives, a round trip after the tile.
+  await ctx.waitForExpression(
+    `!!document.querySelector('#quick-controls .control-sensor-sparkline')`,
+    "a number sensor's line"
+  );
   await ctx.expect(TILE_NAMES_ALIGNED, 'the names in a row start at the same height');
   await ctx.expect(SENSOR_SPARKLINES_CLEAR_OF_TEXT, 'no sparkline runs through a name or reading');
 }
