@@ -8051,6 +8051,7 @@ function startOmarchyBarIntegration() {
         entities: getOmarchyBarEntities(),
         launch: getOmarchyBarLaunchArgv(),
         issue: getOmarchyBarIssue(),
+        customNames: config?.customEntityNames,
       }),
   });
   if (!omarchyBarPublisher) {

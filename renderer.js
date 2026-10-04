@@ -2554,7 +2554,12 @@ window.electronAPI.onHotkeyTriggered(({ entityId, action }) => {
 window.electronAPI.onOmarchyBarEntityAction?.(({ entityId, kind, command, value } = {}) => {
   const resolvedEntityId = utils.resolveEntityId(entityId, state.STATES) || entityId;
   const entity = state.STATES[resolvedEntityId];
-  if (!entity) return;
+  if (!entity) {
+    // A tile for an entity Home Assistant no longer has: the widget came forward for it, so offer
+    // the same repair dialog its own tile for a removed entity opens.
+    if (kind === 'primary') ui.openUnavailableEntityRepair(entityId);
+    return;
+  }
   if (kind === 'set') ui.executeQuickAccessControl(entity, command, value);
   else if (kind === 'controls') ui.openEntityControls(entity);
   else ui.executeEntityPrimaryAction(entity, { source: 'omarchy-bar' });

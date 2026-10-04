@@ -63,7 +63,7 @@ function isOmarchyShellInstalled({ env = process.env, exists = fs.existsSync } =
   }
 }
 
-function normalizeEntityIds(value, limit) {
+function normalizeEntityIds(value, limit = Infinity) {
   if (!Array.isArray(value)) return null;
   const ids = [];
   for (const item of value) {
@@ -93,9 +93,14 @@ function readOmarchyBarEntry(text, pluginId = OMARCHY_BAR_PLUGIN_ID) {
         const id = typeof entry === 'string' ? entry : entry?.id;
         if (id !== pluginId) continue;
         const settings = entry && typeof entry === 'object' ? entry : {};
+        const listed = normalizeEntityIds(settings.entities);
         return {
           present: true,
-          entities: normalizeEntityIds(settings.entities, MAX_PANEL_ENTITIES),
+          entities: listed ? listed.slice(0, MAX_PANEL_ENTITIES) : null,
+          // How many a list longer than the panel holds leaves out, so the panel can say so.
+          ...(listed && listed.length > MAX_PANEL_ENTITIES
+            ? { entitiesOmitted: listed.length - MAX_PANEL_ENTITIES }
+            : {}),
           barEntities: normalizeEntityIds(settings.barEntities, MAX_BAR_ENTITIES),
         };
       }
@@ -108,16 +113,16 @@ function readOmarchyBarEntry(text, pluginId = OMARCHY_BAR_PLUGIN_ID) {
  * The Quick Access pages, in order, as [{ name, ids }]. Older configs only have favoriteEntities,
  * which then reads as a single page.
  */
-function getQuickAccessPages(config = {}) {
+function getQuickAccessPages(config = {}, limit = MAX_PANEL_ENTITIES) {
   const tabs = Array.isArray(config?.customTabs) ? config.customTabs : [];
   const pages = tabs
     .map((tab) => ({
       name: typeof tab?.name === 'string' ? tab.name.trim().slice(0, 60) : '',
-      ids: normalizeEntityIds(tab?.entityIds, MAX_PANEL_ENTITIES) || [],
+      ids: normalizeEntityIds(tab?.entityIds, limit) || [],
     }))
     .filter((page) => page.ids.length);
   if (pages.length) return pages;
-  const favorites = normalizeEntityIds(config?.favoriteEntities, MAX_PANEL_ENTITIES) || [];
+  const favorites = normalizeEntityIds(config?.favoriteEntities, limit) || [];
   return favorites.length ? [{ name: '', ids: favorites }] : [];
 }
 
@@ -151,7 +156,16 @@ function resolveOmarchyBarEntities(entry, config = {}) {
   // The panel list is the distinct tiles; each section still lists its own ids.
   const panel = [...new Set(sections.flatMap((section) => section.ids))];
   const bar = entry?.barEntities || [];
-  return { panel, bar, sections, all: [...new Set([...bar, ...panel])] };
+  // What the limits left out (tiles past the 48th, pages past the 12th), so the panel can say how
+  // many more there are instead of looking complete.
+  const omitted = entry?.entities
+    ? entry.entitiesOmitted || 0
+    : Math.max(
+        0,
+        new Set(getQuickAccessPages(config, Infinity).flatMap((page) => page.ids)).size -
+          panel.length
+      );
+  return { panel, bar, sections, all: [...new Set([...bar, ...panel])], omitted };
 }
 
 function cleanText(value, limit) {
@@ -227,6 +241,9 @@ function cleanTileControls(controls) {
         mode: cleanText(controls.mode, 32),
         current: finiteNumber(controls.current),
         target: finiteNumber(controls.target),
+        // A thermostat in range mode (heat/cool) has two setpoints and no single target.
+        targetLow: finiteNumber(controls.targetLow),
+        targetHigh: finiteNumber(controls.targetHigh),
         min,
         max,
         step: step !== null && step > 0 ? step : 0.5,
@@ -297,10 +314,30 @@ function cleanLineIconSvg(svg) {
   return text;
 }
 
-function describeUnknownTile(entityId) {
+/**
+ * The name to show for a tile before the widget has described it: the custom name when there is
+ * one, otherwise the entity's object id as words ("kitchen_speaker_timers" -> "kitchen speaker
+ * timers"), as the widget's own tile for an entity it cannot find reads.
+ */
+function friendlyEntityName(entityId, customNames = {}) {
+  const custom = cleanText(customNames?.[entityId], 80);
+  if (custom) return custom;
+  const objectId = String(entityId).split('.').slice(1).join('.') || String(entityId);
+  return cleanText(objectId.replace(/_/g, ' '), 80) || entityId;
+}
+
+// The widget's own "box" line icon, for tiles drawn before the widget has sent its icons.
+const FALLBACK_BOX_ICON =
+  '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" ' +
+  'stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ' +
+  'focusable="false"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 ' +
+  '0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.3 7 8.7 5 8.7-5">' +
+  '</path><path d="M12 22V12"></path></svg>';
+
+function describeUnknownTile(entityId, name = entityId) {
   return {
     id: entityId,
-    name: entityId,
+    name,
     state: '',
     value: '',
     icon: { kind: 'line', name: 'box' },
@@ -320,10 +357,13 @@ function buildOmarchyBarStatus({
   entities = { panel: [], bar: [], sections: [] },
   launch = null,
   issue = '',
+  customNames = {},
   now = Date.now(),
 } = {}) {
   const describe = (entityId) => {
-    const tile = tiles.get(entityId) || describeUnknownTile(entityId);
+    const tile =
+      tiles.get(entityId) ||
+      describeUnknownTile(entityId, friendlyEntityName(entityId, customNames));
     // `toggleable` is what plugin 1.0.x reads to make a row clickable.
     return { ...tile, toggleable: tile.action === 'toggle' || tile.action === 'activate' };
   };
@@ -333,6 +373,9 @@ function buildOmarchyBarStatus({
   for (const tile of [...panel, ...bar]) {
     const name = tile.icon?.kind === 'line' ? tile.icon.name : '';
     if (name && icons.has(name)) usedIcons[name] = icons.get(name);
+    // Before the widget's first snapshot nothing has described the tiles, and their placeholder
+    // icon would be drawn as a blank space.
+    else if (name === 'box') usedIcons.box = FALLBACK_BOX_ICON;
   }
   return {
     version: OMARCHY_BAR_STATUS_VERSION,
@@ -347,6 +390,8 @@ function buildOmarchyBarStatus({
       name: section.name,
       ids: section.ids,
     })),
+    // How many more tiles the limits left out of the panel; the panel says so.
+    omitted: Number.isInteger(entities.omitted) && entities.omitted > 0 ? entities.omitted : 0,
     icons: usedIcons,
   };
 }
