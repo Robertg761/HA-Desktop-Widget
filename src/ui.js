@@ -44,7 +44,7 @@ import {
 } from './entity-icons.js';
 import { animateEnter, prefersReducedMotion, pulse, syncSlidingIndicator } from './motion.js';
 import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
-import { buildSparklinePoints } from './sparklines.js';
+import { appendHistoryPoint, buildSparklinePoints, compactHistorySeries } from './sparklines.js';
 import {
   SENSOR_TILE_CHART_OPTIONS,
   buildGaugeArc,
@@ -3904,7 +3904,9 @@ function pruneSensorHistorySeries(series, now = Date.now()) {
   const inWindow = valid.filter((point) => point.timestamp >= cutoff);
   const boundary = valid.filter((point) => point.timestamp < cutoff).pop();
 
-  return boundary ? [boundary, ...inWindow] : inWindow;
+  // What is kept is only ever drawn small, and a sensor that reports every second records 86,400
+  // rows a day.
+  return compactHistorySeries(boundary ? [boundary, ...inWindow] : inWindow);
 }
 
 /**
@@ -4075,7 +4077,11 @@ function appendLiveSensorHistoryValue(entity) {
   const previous = entry.series[entry.series.length - 1];
   if (previous && previous.timestamp === timestamp && previous.value === value) return;
 
-  entry.series = pruneSensorHistorySeries([...entry.series, { value, timestamp }]);
+  entry.series = appendHistoryPoint(
+    entry.series,
+    { value, timestamp },
+    { cutoff: Date.now() - SENSOR_HISTORY_WINDOW_MS }
+  );
 }
 
 function createSensorSparklineSvg(series, { width, height, className }) {
@@ -4829,7 +4835,11 @@ function refreshComparisonGraphTiles(entity) {
     });
     const previous = entry.series[entry.series.length - 1];
     if (!previous || previous.timestamp !== timestamp || previous.value !== value) {
-      entry.series = pruneSensorHistorySeries([...entry.series, { value, timestamp }]);
+      entry.series = appendHistoryPoint(
+        entry.series,
+        { value, timestamp },
+        { cutoff: Date.now() - SENSOR_HISTORY_WINDOW_MS }
+      );
     }
   }
 

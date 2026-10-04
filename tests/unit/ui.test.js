@@ -9095,6 +9095,65 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       document.querySelector('.sensor-detail-modal')?.remove();
     });
 
+    describe('a sensor that reports many times a second', () => {
+      const busySensor = (value) => ({
+        entity_id: 'sensor.mains_power',
+        state: String(value),
+        last_changed: new Date().toISOString(),
+        attributes: {
+          friendly_name: 'Mains power',
+          unit_of_measurement: 'W',
+          state_class: 'measurement',
+        },
+      });
+      const pointsOf = () =>
+        document
+          .querySelector('.control-sensor-sparkline polyline')
+          .getAttribute('points')
+          .split(' ');
+
+      // 130,000 rows in a day is past the ~125,000 where spreading the values into Math.min throws.
+      const seedBusyTile = async (rows) => {
+        const now = Date.now();
+        state.setStates({ 'sensor.mains_power': busySensor(500) });
+        setPages([{ id: 'default', name: 'All', entityIds: ['sensor.mains_power'] }], 'default');
+        mockRequest.mockResolvedValue({
+          success: true,
+          result: {
+            'sensor.mains_power': Array.from({ length: rows }, (_value, index) => ({
+              s: String(400 + (index % 200)),
+              lu: (now - 86000000 + (index * 85000000) / rows) / 1000,
+            })),
+          },
+        });
+        ui.renderActiveTab();
+        for (let i = 0; i < 12; i += 1) await Promise.resolve();
+      };
+
+      it('draws the tile line from 130,000 rows without throwing, and with few points', async () => {
+        const errors = jest.spyOn(console, 'error').mockImplementation(() => {});
+        await seedBusyTile(130000);
+
+        expect(pointsOf().length).toBeLessThanOrEqual(240);
+        expect(pointsOf().length).toBeGreaterThan(20);
+        expect(errors).not.toHaveBeenCalled();
+        errors.mockRestore();
+      });
+
+      it('keeps the line the same size as readings arrive', async () => {
+        await seedBusyTile(20000);
+
+        for (let reading = 0; reading < 5; reading += 1) {
+          const next = busySensor(600 + reading);
+          state.setEntityState(next);
+          ui.updateEntityInUI(next);
+        }
+
+        expect(pointsOf().length).toBeLessThanOrEqual(240);
+        expect(document.querySelector('.control-sensor-value').textContent).toContain('604');
+      });
+    });
+
     it('fetches history for every chart tile on a page in one request', async () => {
       const makeSensor = (entityId, value) => ({
         entity_id: entityId,
