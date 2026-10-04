@@ -79,6 +79,11 @@ const tile = (entityId) => `#quick-controls [data-entity-id="${entityId}"]`;
 
 const openBrightness = (ctx) => ctx.click(tileDetails('light.desk_lamp'));
 const openDetails = (entityId) => (ctx) => ctx.click(tileDetails(entityId));
+// For an entity the scene itself brings (extraStates): its tile is drawn when its state arrives.
+const openArrivedDetails = (entityId) => async (ctx) => {
+  await ctx.waitForSelector(tileDetails(entityId));
+  await ctx.click(tileDetails(entityId));
+};
 const openClimate = (ctx) => ctx.click(tileDetails('climate.living_room'));
 const openColourLight = (ctx) => ctx.click(tileDetails('light.colour_strip'));
 // The page being edited carries its rename, duplicate and delete buttons in the tab strip. However
@@ -825,13 +830,13 @@ const scenes = [
     name: 'popup-light-unavailable',
     config: unavailablePage,
     extraStates: buildUnavailableDevices,
-    setup: openDetails('light.hall'),
+    setup: openArrivedDetails('light.hall'),
   },
   {
     name: 'popup-cover-unavailable',
     config: unavailablePage,
     extraStates: buildUnavailableDevices,
-    setup: openDetails('cover.side_gate'),
+    setup: openArrivedDetails('cover.side_gate'),
   },
   // An entity that is gone dims on a primary card as it does in Quick Access.
   { name: 'primary-unavailable-card', config: { primaryCards: ['fan.bedroom', 'time'] } },
