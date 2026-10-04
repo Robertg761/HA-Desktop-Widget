@@ -297,6 +297,61 @@ function cleanLineIconSvg(svg) {
   return text;
 }
 
+// The words of the bar's panel that the plugin cannot take from a tile, by the id the plugin asks
+// for, with the English text each stands for: that text is the translation key. The plugin has no
+// translations of its own, so the widget sends them in the language it is showing, and the plugin
+// falls back to its own English when the widget predates a string or is not running.
+const OMARCHY_BAR_STRING_SOURCES = Object.freeze({
+  notRunning: 'HA Desktop Widget is not running',
+  keyringLocked: 'Keyring locked. Unlock it, then restart the widget.',
+  connected: 'Connected',
+  signInNeeded: 'Sign-in needed. Open the widget to reconnect.',
+  connecting: 'Connecting...',
+  disconnected: 'Disconnected from Home Assistant. Retrying automatically.',
+  emptyState: 'Add entities to Quick Access in the widget to see them here.',
+  openWidget: 'Open HA Desktop Widget',
+  startWidget: 'Start HA Desktop Widget',
+  openInWidget: 'Open in widget',
+  adjust: 'Adjust',
+  back: 'Back',
+  brightness: 'Brightness',
+  colorTemperature: 'Color Temperature',
+  color: 'Color',
+  fanSpeed: 'Fan Speed',
+  position: 'Position',
+  mode: 'Mode',
+  volume: 'Volume',
+  off: 'Off',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  open: 'Action: Open',
+  stop: 'Stop',
+  close: 'Close',
+  lower: 'Lower',
+  raise: 'Raise',
+  mute: 'Mute',
+  unmute: 'Unmute',
+  now: 'Now {{temperature}}',
+  modeAuto: 'Auto',
+  modeFan: 'Fan',
+  modeDry: 'Dry',
+});
+
+/**
+ * The panel's words in the widget's language. `translate` is mainT; a key it has no translation
+ * for comes back as the key, the English the plugin would show anyway ("Action: Open" is a context
+ * key whose English is the word after the colon).
+ */
+function buildOmarchyBarStrings(translate) {
+  const strings = {};
+  for (const [id, source] of Object.entries(OMARCHY_BAR_STRING_SOURCES)) {
+    const text = String(translate(source) ?? '');
+    strings[id] = text === source ? source.replace(/^Action: /, '') : text;
+  }
+  return strings;
+}
+
 function describeUnknownTile(entityId) {
   return {
     id: entityId,
@@ -320,6 +375,7 @@ function buildOmarchyBarStatus({
   entities = { panel: [], bar: [], sections: [] },
   launch = null,
   issue = '',
+  strings = {},
   now = Date.now(),
 } = {}) {
   const describe = (entityId) => {
@@ -341,6 +397,8 @@ function buildOmarchyBarStatus({
     // Why the widget cannot connect, when it is something the user must fix ('keyring').
     issue: issue || '',
     launch: Array.isArray(launch) && launch.length ? launch : null,
+    // The panel's words in the widget's language (see buildOmarchyBarStrings).
+    strings,
     panel,
     bar,
     sections: (entities.sections || []).map((section) => ({
@@ -662,6 +720,8 @@ module.exports = {
   OMARCHY_BAR_STATUS_VERSION,
   PLUGIN_FILES,
   buildOmarchyBarStatus,
+  buildOmarchyBarStrings,
+  OMARCHY_BAR_STRING_SOURCES,
   createOmarchyBarPublisher,
   cleanLineIconSvg,
   cleanOmarchyBarTile,

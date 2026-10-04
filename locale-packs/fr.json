@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.69",
+  "version": "1.2.70",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1831,6 +1831,17 @@
     "Removed from \"{{page}}\"": "Retiré de « {{page}} »",
     "Show all entities": "Afficher toutes les entités",
     "Restore layout from {{date}}": "Restaurer la mise en page du {{date}}",
-    "Pages: {{pages}} · Tiles: {{tiles}}": "Pages : {{pages}} · Vignettes : {{tiles}}"
+    "Pages: {{pages}} · Tiles: {{tiles}}": "Pages : {{pages}} · Vignettes : {{tiles}}",
+    "HA Desktop Widget is not running": "HA Desktop Widget n'est pas en cours d'exécution",
+    "Keyring locked. Unlock it, then restart the widget.": "Trousseau verrouillé. Déverrouillez-le, puis redémarrez le widget.",
+    "Sign-in needed. Open the widget to reconnect.": "Connexion requise. Ouvrez le widget pour vous reconnecter.",
+    "Add entities to Quick Access in the widget to see them here.": "Ajoutez des entités à l'accès rapide dans le widget pour les voir ici.",
+    "Unmute": "Réactiver le son",
+    "Open in widget": "Ouvrir dans le widget",
+    "Adjust": "Ajuster",
+    "Lower": "Baisser",
+    "Raise": "Augmenter",
+    "Open HA Desktop Widget": "Ouvrir HA Desktop Widget",
+    "Start HA Desktop Widget": "Démarrer HA Desktop Widget"
   }
 }

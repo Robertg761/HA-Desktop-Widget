@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.70",
+  "version": "1.2.71",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1831,6 +1831,17 @@
     "Removed from \"{{page}}\"": "تمت الإزالة من «{{page}}»",
     "Show all entities": "عرض كل الكيانات",
     "Restore layout from {{date}}": "استعادة التخطيط من {{date}}",
-    "Pages: {{pages}} · Tiles: {{tiles}}": "الصفحات: {{pages}} · البطاقات: {{tiles}}"
+    "Pages: {{pages}} · Tiles: {{tiles}}": "الصفحات: {{pages}} · البطاقات: {{tiles}}",
+    "HA Desktop Widget is not running": "HA Desktop Widget لا يعمل",
+    "Keyring locked. Unlock it, then restart the widget.": "سلسلة المفاتيح مقفلة. افتح قفلها ثم أعد تشغيل الأداة.",
+    "Sign-in needed. Open the widget to reconnect.": "تسجيل الدخول مطلوب. افتح الأداة لإعادة الاتصال.",
+    "Add entities to Quick Access in the widget to see them here.": "أضف كيانات إلى الوصول السريع في الأداة لتظهر هنا.",
+    "Unmute": "إلغاء كتم الصوت",
+    "Open in widget": "فتح في الأداة",
+    "Adjust": "ضبط",
+    "Lower": "خفض",
+    "Raise": "رفع",
+    "Open HA Desktop Widget": "فتح HA Desktop Widget",
+    "Start HA Desktop Widget": "تشغيل HA Desktop Widget"
   }
 }

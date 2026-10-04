@@ -154,13 +154,20 @@ Panel {
     return Clip.clip(text, limit)
   }
 
+  // The panel's words come from the widget, in the language it is showing (status.strings). This is
+  // the English they fall back to when the widget is older than the string, or is not running.
+  function word(id, english) {
+    var strings = status ? status.strings : null
+    return strings && typeof strings[id] === "string" && strings[id] !== "" ? strings[id] : english
+  }
+
   function statusLine() {
-    if (!running) return "HA Desktop Widget is not running"
-    if (status.issue === "keyring") return "Keyring locked. Unlock it, then restart the widget."
-    if (status.connection === "connected") return "Connected"
-    if (status.connection === "auth-failed") return "Sign-in needed. Open the widget to reconnect."
-    if (status.connection === "connecting") return "Connecting…"
-    return "Disconnected. Retrying automatically."
+    if (!running) return word("notRunning", "HA Desktop Widget is not running")
+    if (status.issue === "keyring") return word("keyringLocked", "Keyring locked. Unlock it, then restart the widget.")
+    if (status.connection === "connected") return word("connected", "Connected")
+    if (status.connection === "auth-failed") return word("signInNeeded", "Sign-in needed. Open the widget to reconnect.")
+    if (status.connection === "connecting") return word("connecting", "Connecting…")
+    return word("disconnected", "Disconnected. Retrying automatically.")
   }
 
   // Runs the widget's own command line. A running widget receives it through its
@@ -329,7 +336,12 @@ Panel {
   }
 
   function modeLabel(mode) {
-    var labels = { heat_cool: "Auto", fan_only: "Fan", dry: "Dry", off: "Off" }
+    var labels = {
+      heat_cool: word("modeAuto", "Auto"),
+      fan_only: word("modeFan", "Fan"),
+      dry: word("modeDry", "Dry"),
+      off: word("off", "Off")
+    }
     if (labels[mode]) return labels[mode]
     return mode.charAt(0).toUpperCase() + mode.slice(1).replace(/_/g, " ")
   }
@@ -539,7 +551,7 @@ Panel {
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
               iconText: "󰏌"
-              tooltipText: root.running ? "Open HA Desktop Widget" : "Start HA Desktop Widget"
+              tooltipText: root.running ? root.word("openWidget", "Open HA Desktop Widget") : root.word("startWidget", "Start HA Desktop Widget")
               foreground: root.foreground
               fontFamily: root.fontFamily
               onClicked: root.toggleWidget()
@@ -549,7 +561,7 @@ Panel {
           Text {
             visible: !root.showingControls && root.running && root.flatTiles.length === 0
             width: parent.width
-            text: "Add entities to Quick Access in the widget to see them here."
+            text: root.word("emptyState", "Add entities to Quick Access in the widget to see them here.")
             color: root.dimColor
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
@@ -744,7 +756,7 @@ Panel {
       size: Style.space(20)
       fontSize: Style.font.bodySmall
       iconText: "󰘮"
-      tooltipText: "Adjust"
+      tooltipText: root.word("adjust", "Adjust")
       foreground: tileRoot.iconColor
       fontFamily: root.fontFamily
       onClicked: root.adjustTile(tileRoot.tile)
@@ -1039,7 +1051,7 @@ Panel {
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
         iconText: "󰁍"
-        tooltipText: "Back"
+        tooltipText: root.word("back", "Back")
         foreground: root.foreground
         fontFamily: root.fontFamily
         onClicked: root.closeControls()
@@ -1107,7 +1119,7 @@ Panel {
         id: brightnessSlider
         visible: view.ctl && view.ctl.canSetBrightness === true
         width: parent.width
-        label: "BRIGHTNESS"
+        label: root.word("brightness", "Brightness").toUpperCase()
         minimum: 1
         maximum: 100
         value: view.ctl && typeof view.ctl.brightness === "number" ? view.ctl.brightness : 0
@@ -1126,7 +1138,7 @@ Panel {
       ControlSlider {
         visible: view.ctl && view.ctl.colorTemp !== null && view.ctl.colorTemp !== undefined
         width: parent.width
-        label: "COLOR TEMPERATURE"
+        label: root.word("colorTemperature", "Color Temperature").toUpperCase()
         minimum: visible ? view.ctl.colorTemp.min : 2000
         maximum: visible ? view.ctl.colorTemp.max : 6500
         step: 50
@@ -1140,7 +1152,7 @@ Panel {
         width: parent.width
         spacing: Style.space(6)
 
-        SectionLabel { text: "COLOR" }
+        SectionLabel { text: root.word("color", "Color").toUpperCase() }
 
         Row {
           spacing: Style.space(8)
@@ -1181,7 +1193,7 @@ Panel {
       ControlSlider {
         id: speedSlider
         width: parent.width
-        label: "SPEED"
+        label: root.word("fanSpeed", "Fan Speed").toUpperCase()
         value: view.ctl && typeof view.ctl.percentage === "number" ? view.ctl.percentage : 0
         onValueSet: function(v) { root.setControl("percentage", v) }
       }
@@ -1189,10 +1201,10 @@ Panel {
       ChoiceRow {
         width: parent.width
         choices: [
-          { label: "Off", value: 0 },
-          { label: "Low", value: 33 },
-          { label: "Medium", value: 66 },
-          { label: "High", value: 100 }
+          { label: root.word("off", "Off"), value: 0 },
+          { label: root.word("low", "Low"), value: 33 },
+          { label: root.word("medium", "Medium"), value: 66 },
+          { label: root.word("high", "High"), value: 100 }
         ].map(function(choice) {
           choice.active = Math.round(speedSlider.shownValue) === choice.value
           return choice
@@ -1211,7 +1223,7 @@ Panel {
         id: positionSlider
         visible: view.ctl && view.ctl.canSetPosition === true
         width: parent.width
-        label: "POSITION"
+        label: root.word("position", "Position").toUpperCase()
         value: view.ctl && typeof view.ctl.position === "number" ? view.ctl.position : 0
         onValueSet: function(v) { root.setControl("position", v) }
       }
@@ -1219,9 +1231,9 @@ Panel {
       ChoiceRow {
         width: parent.width
         choices: view.kind !== "cover" ? [] : [
-          { label: "Open", icon: "󰁝", command: "open", enabled: view.ctl.canOpen, active: view.ctl.state === "open" },
-          { label: "Stop", icon: "󰓛", command: "stop", enabled: view.ctl.canStop },
-          { label: "Close", icon: "󰁅", command: "close", enabled: view.ctl.canClose, active: view.ctl.state === "closed" }
+          { label: root.word("open", "Open"), icon: "󰁝", command: "open", enabled: view.ctl.canOpen, active: view.ctl.state === "open" },
+          { label: root.word("stop", "Stop"), icon: "󰓛", command: "stop", enabled: view.ctl.canStop },
+          { label: root.word("close", "Close"), icon: "󰁅", command: "close", enabled: view.ctl.canClose, active: view.ctl.state === "closed" }
         ]
         onChosen: function(choice) { root.setControl(choice.command) }
       }
@@ -1244,7 +1256,7 @@ Panel {
           size: Style.space(40)
           bordered: true
           iconText: "󰍴"
-          tooltipText: "Lower"
+          tooltipText: root.word("lower", "Lower")
           foreground: root.foreground
           fontFamily: root.fontFamily
           onClicked: view.stepTemperature(-1)
@@ -1265,7 +1277,7 @@ Panel {
           Text {
             anchors.horizontalCenter: parent.horizontalCenter
             visible: view.kind === "climate" && view.ctl.current !== null
-            text: view.kind === "climate" ? "Now " + root.formatTemperature(view.ctl.current) : ""
+            text: view.kind === "climate" ? root.word("now", "Now {{temperature}}").replace("{{temperature}}", root.formatTemperature(view.ctl.current)) : ""
             color: root.dimColor
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
@@ -1278,7 +1290,7 @@ Panel {
           size: Style.space(40)
           bordered: true
           iconText: "󰐕"
-          tooltipText: "Raise"
+          tooltipText: root.word("raise", "Raise")
           foreground: root.foreground
           fontFamily: root.fontFamily
           onClicked: view.stepTemperature(1)
@@ -1287,7 +1299,7 @@ Panel {
 
       SectionLabel {
         visible: view.kind === "climate" && view.ctl.modes.length > 0
-        text: "MODE"
+        text: root.word("mode", "Mode").toUpperCase()
       }
 
       Flow {
@@ -1369,7 +1381,7 @@ Panel {
           anchors.bottom: parent.bottom
           visible: view.kind === "media" && view.ctl.canMute
           iconText: view.kind === "media" && view.ctl.muted ? "󰖁" : "󰕾"
-          tooltipText: view.kind === "media" && view.ctl.muted ? "Unmute" : "Mute"
+          tooltipText: view.kind === "media" && view.ctl.muted ? root.word("unmute", "Unmute") : root.word("mute", "Mute")
           foreground: root.foreground
           fontFamily: root.fontFamily
           onClicked: root.setControl("mute", !view.ctl.muted)
@@ -1379,7 +1391,7 @@ Panel {
           id: volumeSlider
           visible: view.kind === "media" && view.ctl.canSetVolume
           width: parent.width - (muteButton.visible ? muteButton.width + parent.spacing : 0)
-          label: "VOLUME"
+          label: root.word("volume", "Volume").toUpperCase()
           value: view.kind === "media" && typeof view.ctl.volume === "number" ? view.ctl.volume : 0
           onValueSet: function(v) { root.setControl("volume", v) }
         }
@@ -1389,7 +1401,7 @@ Panel {
     // Everything else the widget's own dialog has.
     KeyButton {
       width: parent.width
-      text: "Open in widget"
+      text: root.word("openInWidget", "Open in widget")
       iconText: "󰏌"
       bordered: true
       foreground: root.foreground

@@ -1728,5 +1728,16 @@
   "Removed from \"{{page}}\"": "Von „{{page}}“ entfernt",
   "Show all entities": "Alle Entitäten anzeigen",
   "Restore layout from {{date}}": "Layout vom {{date}} wiederherstellen",
-  "Pages: {{pages}} · Tiles: {{tiles}}": "Seiten: {{pages}} · Kacheln: {{tiles}}"
+  "Pages: {{pages}} · Tiles: {{tiles}}": "Seiten: {{pages}} · Kacheln: {{tiles}}",
+  "HA Desktop Widget is not running": "HA Desktop Widget läuft nicht",
+  "Keyring locked. Unlock it, then restart the widget.": "Schlüsselbund gesperrt. Entsperre ihn und starte das Widget dann neu.",
+  "Sign-in needed. Open the widget to reconnect.": "Anmeldung nötig. Öffne das Widget, um dich erneut zu verbinden.",
+  "Add entities to Quick Access in the widget to see them here.": "Füge im Widget Entitäten zum Schnellzugriff hinzu, um sie hier zu sehen.",
+  "Unmute": "Stummschaltung aufheben",
+  "Open in widget": "Im Widget öffnen",
+  "Adjust": "Anpassen",
+  "Lower": "Verringern",
+  "Raise": "Erhöhen",
+  "Open HA Desktop Widget": "HA Desktop Widget öffnen",
+  "Start HA Desktop Widget": "HA Desktop Widget starten"
 }

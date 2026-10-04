@@ -58,6 +58,7 @@ const { watchForStatusNotifierWatcher } = require('./src/linux-tray-host.cjs');
 const {
   OMARCHY_BAR_PLUGIN_ID,
   buildOmarchyBarStatus,
+  buildOmarchyBarStrings,
   createOmarchyBarPublisher,
   cleanLineIconSvg,
   cleanOmarchyBarTile,
@@ -1172,6 +1173,7 @@ const localePackRefresher = createLocalePackRefresher({
       if (target && !target.isDestroyed()) target.webContents.send('locale-packs-updated');
     }
     if (tray && !tray.isDestroyed?.()) createTray();
+    omarchyBarPublisher?.update();
   },
   log,
 });
@@ -4756,6 +4758,7 @@ async function applySyncedConfigSideEffects(previous, persistence) {
   if (previous?.ui?.language !== config?.ui?.language && tray) {
     await runPostSaveSideEffect(runtimeWarnings, 'synced tray language', () => createTray());
   }
+  if (previous?.ui?.language !== config?.ui?.language) omarchyBarPublisher?.update();
   await runPostSaveSideEffect(runtimeWarnings, 'synced desktop pin windows', () =>
     syncDesktopPinWindowsWithConfig()
   );
@@ -7783,6 +7786,7 @@ function startOmarchyBarIntegration() {
         entities: getOmarchyBarEntities(),
         launch: getOmarchyBarLaunchArgv(),
         issue: getOmarchyBarIssue(),
+        strings: buildOmarchyBarStrings(mainT),
       }),
   });
   if (!omarchyBarPublisher) {
@@ -8423,6 +8427,7 @@ ipcMain.handle(
     if (prevConfig?.ui?.language !== config?.ui?.language && tray) {
       await runPostSaveSideEffect(runtimeWarnings, 'tray language', () => createTray());
     }
+    if (prevConfig?.ui?.language !== config?.ui?.language) omarchyBarPublisher?.update();
     if (
       prevConfig?.updates?.allowPrerelease !== config?.updates?.allowPrerelease &&
       autoUpdaterInstance

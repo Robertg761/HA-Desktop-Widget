@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.69",
+  "version": "1.2.70",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1831,6 +1831,17 @@
     "Removed from \"{{page}}\"": "Quitado de «{{page}}»",
     "Show all entities": "Mostrar todas las entidades",
     "Restore layout from {{date}}": "Restaurar el diseño del {{date}}",
-    "Pages: {{pages}} · Tiles: {{tiles}}": "Páginas: {{pages}} · Tarjetas: {{tiles}}"
+    "Pages: {{pages}} · Tiles: {{tiles}}": "Páginas: {{pages}} · Tarjetas: {{tiles}}",
+    "HA Desktop Widget is not running": "HA Desktop Widget no se está ejecutando",
+    "Keyring locked. Unlock it, then restart the widget.": "Llavero bloqueado. Desbloquéalo y reinicia el widget.",
+    "Sign-in needed. Open the widget to reconnect.": "Hace falta iniciar sesión. Abre el widget para volver a conectar.",
+    "Add entities to Quick Access in the widget to see them here.": "Añade entidades al acceso rápido en el widget para verlas aquí.",
+    "Unmute": "Dejar de silenciar",
+    "Open in widget": "Abrir en el widget",
+    "Adjust": "Ajustar",
+    "Lower": "Bajar",
+    "Raise": "Subir",
+    "Open HA Desktop Widget": "Abrir HA Desktop Widget",
+    "Start HA Desktop Widget": "Iniciar HA Desktop Widget"
   }
 }

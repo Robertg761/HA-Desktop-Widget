@@ -1728,5 +1728,16 @@
   "Removed from \"{{page}}\"": "Removed from \"{{page}}\"",
   "Show all entities": "Show all entities",
   "Restore layout from {{date}}": "Restore layout from {{date}}",
-  "Pages: {{pages}} · Tiles: {{tiles}}": "Pages: {{pages}} · Tiles: {{tiles}}"
+  "Pages: {{pages}} · Tiles: {{tiles}}": "Pages: {{pages}} · Tiles: {{tiles}}",
+  "HA Desktop Widget is not running": "HA Desktop Widget is not running",
+  "Keyring locked. Unlock it, then restart the widget.": "Keyring locked. Unlock it, then restart the widget.",
+  "Sign-in needed. Open the widget to reconnect.": "Sign-in needed. Open the widget to reconnect.",
+  "Add entities to Quick Access in the widget to see them here.": "Add entities to Quick Access in the widget to see them here.",
+  "Unmute": "Unmute",
+  "Open in widget": "Open in widget",
+  "Adjust": "Adjust",
+  "Lower": "Lower",
+  "Raise": "Raise",
+  "Open HA Desktop Widget": "Open HA Desktop Widget",
+  "Start HA Desktop Widget": "Start HA Desktop Widget"
 }

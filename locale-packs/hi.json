@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.70",
+  "version": "1.2.71",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1831,6 +1831,17 @@
     "Removed from \"{{page}}\"": "\"{{page}}\" से हटाया गया",
     "Show all entities": "सभी एंटिटी दिखाएं",
     "Restore layout from {{date}}": "{{date}} का लेआउट बहाल करें",
-    "Pages: {{pages}} · Tiles: {{tiles}}": "पेज: {{pages}} · टाइल: {{tiles}}"
+    "Pages: {{pages}} · Tiles: {{tiles}}": "पेज: {{pages}} · टाइल: {{tiles}}",
+    "HA Desktop Widget is not running": "HA Desktop Widget नहीं चल रहा है",
+    "Keyring locked. Unlock it, then restart the widget.": "कीरिंग लॉक है। उसे अनलॉक करें, फिर विजेट को पुनः आरंभ करें।",
+    "Sign-in needed. Open the widget to reconnect.": "साइन इन आवश्यक है। फिर से कनेक्ट करने के लिए विजेट खोलें।",
+    "Add entities to Quick Access in the widget to see them here.": "यहाँ देखने के लिए विजेट में क्विक एक्सेस में एंटिटी जोड़ें।",
+    "Unmute": "म्यूट हटाएं",
+    "Open in widget": "विजेट में खोलें",
+    "Adjust": "समायोजित करें",
+    "Lower": "घटाएं",
+    "Raise": "बढ़ाएं",
+    "Open HA Desktop Widget": "HA Desktop Widget खोलें",
+    "Start HA Desktop Widget": "HA Desktop Widget शुरू करें"
   }
 }
