@@ -12962,6 +12962,7 @@ body.software-glass.frosted-glass .modal-content {
 @media (pointer: coarse) {
   .btn,
   .close-btn,
+  .segmented-option,
   .media-tile-btn,
   .control-btn,
   .section-btn {
