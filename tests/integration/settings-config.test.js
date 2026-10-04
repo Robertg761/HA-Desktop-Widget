@@ -6440,16 +6440,20 @@ describe('Settings + Config Integration', () => {
         const savedRule = (entityId) =>
           mockElectronAPI.updateConfig.mock.calls.at(-1)[0].entityAlerts.alerts[entityId];
 
+        // The mock API is made once for the whole file, so what this block swaps in has to be put
+        // back: a reset would leave every test after it with an updateConfig that returns nothing.
+        let defaultUpdateConfig;
         beforeEach(() => {
           state.CONFIG.entityAlerts.alerts['switch.kitchen'] = {
             onStateChange: true,
             notifyOnUnavailable: false,
           };
           settings.renderAlertsListInline();
+          defaultUpdateConfig = mockElectronAPI.updateConfig.getMockImplementation();
           mockElectronAPI.updateConfig.mockClear();
           mockElectronAPI.updateConfig.mockImplementation(async (next) => next);
         });
-        afterEach(() => mockElectronAPI.updateConfig.mockReset());
+        afterEach(() => mockElectronAPI.updateConfig.mockImplementation(defaultUpdateConfig));
 
         test('is on for a rule saved before it existed, with a label and a line of help', async () => {
           await open('light.living_room');
