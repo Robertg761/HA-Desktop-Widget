@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.59",
+  "version": "1.2.57",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget, including German date and time formats.",
   "messages": {
@@ -1801,7 +1801,6 @@
     "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).": "Schalte oder steuere Entitäten von überall aus. Modifikatortasten: Ctrl, Alt, Shift, Win, Command, Super (zum Beispiel <code>Ctrl+Shift+A</code>).",
     "Action chosen: {{action}}. It applies once you record a hotkey.": "Aktion gewählt: {{action}}. Sie gilt, sobald du ein Tastenkürzel aufzeichnest.",
     "Notify when unavailable or unknown": "Benachrichtigen, wenn nicht verfügbar oder unbekannt",
-    "Only after 30 seconds, and at most once every 15 minutes per device.": "Erst nach 30 Sekunden und höchstens alle 15 Minuten pro Gerät.",
     "Waits 30 seconds first, and tells you at most once every 15 minutes per device.": "Wartet zuerst 30 Sekunden und benachrichtigt höchstens alle 15 Minuten pro Gerät."
   }
 }

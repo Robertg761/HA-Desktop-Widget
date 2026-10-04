@@ -61,6 +61,7 @@ import {
   formatNumber,
   getLanguageDisplayName,
   getLocaleState,
+  isolateLtr,
   t,
 } from './i18n.js';
 import {
@@ -1030,9 +1031,13 @@ function persistCustomColorsImmediately() {
 }
 
 // Built-in theme names are English keys in ui-utils; custom color names are the user's own text.
+// A hex code in one ("Custom #AB34CD", the name a color gets when it is saved) is isolated for
+// display, since in an Arabic sentence its '#' would otherwise land beside the wrong end of it. The
+// name itself is left as typed, because the rename field and the comparison with it use that.
 function getThemeDisplayName(theme) {
   if (!theme) return '';
-  return theme.isCustom ? theme.name || '' : t(theme.name || '');
+  if (!theme.isCustom) return t(theme.name || '');
+  return (theme.name || '').replace(/#[0-9a-f]{6}\b/gi, (hex) => isolateLtr(hex));
 }
 
 function getThemeById(themeId) {
@@ -2000,10 +2005,18 @@ function initThemeModeControl() {
   options.forEach((option, index) => {
     option.onclick = () => previewThemeMode(option.dataset.themeMode);
     option.onkeydown = (event) => {
-      const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
-      if (!step) return;
+      if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+      // The segments run right to left in Arabic, so the arrow that points at a neighbour has to
+      // move there; getNextTabIndex swaps the pair in right-to-left text.
+      const next =
+        options[
+          getNextTabIndex(index, options.length, event.key, {
+            direction: getTextDirection(control),
+            orientation: 'both',
+          })
+        ];
+      if (!next) return;
       event.preventDefault();
-      const next = options[(index + step + options.length) % options.length];
       previewThemeMode(next.dataset.themeMode);
       next.focus();
     };
@@ -5070,16 +5083,9 @@ function relocalizeOpenSettings({ force = false } = {}) {
       updateCustomEntityIconSummary();
     }
     // Rebuilt rather than relabelled: the player Home Assistant is not reporting right now is an
-    // option too, with the entity id in its label. A choice made but not saved yet stays.
-    const mediaPlayerSelect = document.getElementById('primary-media-player');
-    const pendingMediaPlayer = mediaPlayerSelect?.value;
-    populateMediaPlayerSelect();
-    if (
-      mediaPlayerSelect &&
-      Array.from(mediaPlayerSelect.options).some((option) => option.value === pendingMediaPlayer)
-    ) {
-      mediaPlayerSelect.value = pendingMediaPlayer;
-    }
+    // option too, with the entity id in its label. A choice made but not saved yet stays, even
+    // when that player has gone since it was chosen.
+    populateMediaPlayerSelect(document.getElementById('primary-media-player')?.value);
     if (document.getElementById('entity-alerts-enabled')?.checked) renderAlertsListInline();
     relabelAlertAdvancedOptions();
     relocalizePopupHotkeyText();
@@ -7004,8 +7010,9 @@ async function removeAlert(entityId) {
 }
 
 // The media tile's player is a native select: it brings the keyboard model and the screen reader
-// roles for free, and it looks like the other selects on the page.
-function populateMediaPlayerSelect() {
+// roles for free, and it looks like the other selects on the page. `selected` is the value to show,
+// which is the saved player unless a choice not saved yet has to survive a rebuild.
+function populateMediaPlayerSelect(selected = state.CONFIG.primaryMediaPlayer || '') {
   try {
     const select = document.getElementById('primary-media-player');
     if (!select) {
@@ -7027,16 +7034,17 @@ function populateMediaPlayerSelect() {
         (entity) => new Option(utils.getEntityDisplayName(entity), entity.entity_id)
       ),
     ];
-    const currentValue = state.CONFIG.primaryMediaPlayer || '';
     // A player Home Assistant is not reporting right now (offline, renamed) keeps its place;
-    // without it the select would show "None" and saving would quietly clear the choice.
-    if (currentValue && !mediaPlayers.some((entity) => entity.entity_id === currentValue)) {
-      options.push(
-        new Option(t('Unavailable: {{entityId}}', { entityId: currentValue }), currentValue)
-      );
+    // without it the select would show "None" and saving would quietly clear the choice. That
+    // goes for the saved player and for one picked in this form that has gone since.
+    const saved = state.CONFIG.primaryMediaPlayer || '';
+    for (const entityId of new Set([saved, selected])) {
+      if (entityId && !mediaPlayers.some((entity) => entity.entity_id === entityId)) {
+        options.push(new Option(t('Unavailable: {{entityId}}', { entityId }), entityId));
+      }
     }
     select.replaceChildren(...options);
-    select.value = currentValue;
+    select.value = selected;
 
     // Bound once: the select outlives each opening of Settings.
     if (!select.dataset.bound) {

@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.59",
+  "version": "1.2.57",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1801,7 +1801,6 @@
     "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).": "Activez ou contrôlez des entités depuis n'importe où. Modificateurs : Ctrl, Alt, Shift, Win, Command, Super (par exemple <code>Ctrl+Shift+A</code>).",
     "Action chosen: {{action}}. It applies once you record a hotkey.": "Action choisie : {{action}}. Elle s'appliquera dès que vous enregistrerez un raccourci.",
     "Notify when unavailable or unknown": "Notifier lorsque l'entité est indisponible ou inconnue",
-    "Only after 30 seconds, and at most once every 15 minutes per device.": "Seulement après 30 secondes, et au plus une fois toutes les 15 minutes par appareil.",
     "Waits 30 seconds first, and tells you at most once every 15 minutes per device.": "Attend d'abord 30 secondes et notifie au plus une fois toutes les 15 minutes par appareil."
   }
 }

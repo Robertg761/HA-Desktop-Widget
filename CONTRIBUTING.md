@@ -69,6 +69,7 @@ Thank you for your interest in contributing to HA Desktop Widget! This document 
 - **Responsive**: Ensure styles work across different screen sizes
 - **Performance**: Avoid expensive CSS properties in animations
 - **Consistency**: Follow the existing design system
+- **Right to left**: Arabic mirrors the whole layout, so write `margin-inline`, `inset-inline-start` and `border-inline-end` rather than left and right. A physical offset that has to follow the reading direction (a switch knob's travel, a hairline's side) multiplies by `var(--inline-sign)`, and a gradient that fills towards where a slider's thumb moves uses `var(--slider-dir)`. Names and values written by Home Assistant go in the `unicode-bidi: plaintext` list at the end of `styles.css`, so an English name in an Arabic row is cut at its end and keeps its punctuation. Tracking and capitals are switched off there for Arabic, Devanagari and CJK, whatever a rule says.
 
 ### Code Organization
 
