@@ -1106,6 +1106,24 @@ function wireToastLayout() {
   }
 }
 
+// A dialog is often filled in after it opens: createEntityDetailModal hands its caller an open,
+// empty dialog, and the caller builds the body and sometimes the footer. A stack that was already
+// up would stay docked where the footer was going to be, over buttons that did not exist when it
+// was placed. So while a dialog is open, whatever is added to or taken out of it re-docks the stack.
+const dialogLayoutWatchers = new WeakMap();
+
+function watchDialogLayout(modal) {
+  if (dialogLayoutWatchers.has(modal) || typeof MutationObserver !== 'function') return;
+  const observer = new MutationObserver(() => layoutToasts());
+  observer.observe(modal, { childList: true, subtree: true });
+  dialogLayoutWatchers.set(modal, observer);
+}
+
+function unwatchDialogLayout(modal) {
+  dialogLayoutWatchers.get(modal)?.disconnect();
+  dialogLayoutWatchers.delete(modal);
+}
+
 // With no dialog open, Escape sends away the newest toast. Errors stay until dismissed, and
 // reaching one by Tab means walking the whole page first.
 function dismissNewestToastForEscape(event) {
@@ -1806,6 +1824,7 @@ function releaseFocusTrap(modal, { restoreFocus = true, restoreNow = false } = {
     focusTrapHandlers.delete(targetModal);
     activeFocusTrapModals.delete(targetModal);
     dialogLayers.delete(targetModal);
+    unwatchDialogLayout(targetModal);
     targetModal.style?.removeProperty('--dialog-depth');
 
     const {
@@ -2035,6 +2054,7 @@ function openDialog(modal, options = {}) {
     modal.style.setProperty('--dialog-depth', inheritedDepth || String(depth));
     trapFocus(modal, { initialFocus, focusFallback, opener: inheritedOpener });
   }
+  watchDialogLayout(modal);
   layoutToasts();
 }
 

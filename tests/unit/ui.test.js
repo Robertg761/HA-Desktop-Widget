@@ -7950,6 +7950,42 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
     });
 
+    it('lifts a showing error toast above the Done and Delete footer the editor adds after it opens', async () => {
+      setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+      state.setConfig({ ...state.CONFIG, comparisonGraphs: [] });
+      ui.renderActiveTab();
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        '<div id="toast-container"><div class="toast error">Could not save</div></div>'
+      );
+      const container = document.getElementById('toast-container');
+      // jsdom has no layout: put the footer where the editor puts it, along the window's bottom edge.
+      const isFooter = (element) => element.classList.contains('modal-footer');
+      const clientRects = jest
+        .spyOn(Element.prototype, 'getClientRects')
+        .mockImplementation(function () {
+          return isFooter(this) ? [{}] : [];
+        });
+      const boundingRect = jest
+        .spyOn(Element.prototype, 'getBoundingClientRect')
+        .mockImplementation(function () {
+          const top = isFooter(this) ? window.innerHeight - 60 : 0;
+          return { top, bottom: top + 40, left: 0, right: 100, width: 100, height: 40 };
+        });
+
+      try {
+        await ui.addComparisonGraphTile();
+        expect(document.querySelector('.comparison-graph-modal-footer')).not.toBeNull();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        // The editor was open and empty when it was first docked against; the footer came after.
+        expect(container.style.bottom).toBe('68px');
+      } finally {
+        clientRects.mockRestore();
+        boundingRect.mockRestore();
+      }
+    });
+
     it('unregisters a comparison graph editor that closes after its graph is deleted', async () => {
       setPages([{ id: 'default', name: 'All', entityIds: [] }]);
       state.setConfig({

@@ -384,6 +384,82 @@ describe('keeping clear of what the toast belongs to', () => {
     expect(container().style.bottom).toBe('128px');
   });
 
+  // The dialog is handed back open and empty, and its caller builds the footer afterwards.
+  const openEmptyDialog = () => {
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.innerHTML = '<div class="modal-content"><div class="modal-body"></div></div>';
+    document.body.appendChild(modal);
+    uiUtils.openDialog(modal);
+    return modal;
+  };
+  const addFooter = (modal, top) => {
+    const bar = document.createElement('div');
+    bar.className = 'modal-footer';
+    setRect(bar, { top, bottom: top + 40 });
+    modal.querySelector('.modal-content').appendChild(bar);
+    return bar;
+  };
+
+  it('moves above a footer that is built after the dialog opened', async () => {
+    uiUtils.showToast('Already up', 'error');
+    const modal = openEmptyDialog();
+    expect(container().style.bottom).toBe('');
+
+    addFooter(modal, window.innerHeight - 60);
+    await jest.advanceTimersByTimeAsync(0);
+
+    expect(container().style.bottom).toBe('68px');
+  });
+
+  it('moves above a footer that replaces the dialog contents', async () => {
+    uiUtils.showToast('Already up', 'error');
+    const modal = openEmptyDialog();
+
+    modal.querySelector('.modal-content').replaceChildren();
+    addFooter(modal, window.innerHeight - 100);
+    await jest.advanceTimersByTimeAsync(0);
+
+    expect(container().style.bottom).toBe('108px');
+  });
+
+  it('comes back down when the footer is taken out of an open dialog', async () => {
+    const modal = footer(window.innerHeight - 60);
+    uiUtils.openDialog(modal);
+    uiUtils.showToast('Over the dialog', 'error');
+    expect(container().style.bottom).toBe('68px');
+
+    modal.querySelector('.modal-footer').remove();
+    await jest.advanceTimersByTimeAsync(0);
+
+    expect(container().style.bottom).toBe('');
+  });
+
+  it('stops watching a dialog once it has closed', async () => {
+    const disconnect = jest.spyOn(MutationObserver.prototype, 'disconnect');
+    try {
+      const modal = openEmptyDialog();
+      expect(disconnect).not.toHaveBeenCalled();
+
+      await uiUtils.closeDialog(modal, { remove: true });
+
+      expect(disconnect).toHaveBeenCalledTimes(1);
+    } finally {
+      disconnect.mockRestore();
+    }
+  });
+
+  it('watches a dialog once, however often it is opened while showing', () => {
+    const observe = jest.spyOn(MutationObserver.prototype, 'observe');
+    try {
+      const modal = openEmptyDialog();
+      uiUtils.openDialog(modal);
+      expect(observe).toHaveBeenCalledTimes(1);
+    } finally {
+      observe.mockRestore();
+    }
+  });
+
   it('ignores the footer of a dialog that is closing', () => {
     const modal = footer(window.innerHeight - 60);
     modal.classList.add('modal-closing');
