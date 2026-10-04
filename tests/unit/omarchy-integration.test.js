@@ -410,6 +410,121 @@ describe('an AppImage on a system that blocks the Chromium sandbox', () => {
     );
   });
 
+  describe('with a launcher that is already there', () => {
+    const marker = 'X-HA-Widget-Launcher=true';
+
+    function setUp(exec, extra = '') {
+      const env = {
+        APPIMAGE: path.join(root, 'widget.AppImage'),
+        XDG_DATA_HOME: path.join(root, 'data'),
+        XDG_DATA_DIRS: path.join(root, 'system'),
+      };
+      fs.writeFileSync(env.APPIMAGE, 'app');
+      const icon = path.join(root, 'icon.png');
+      fs.writeFileSync(icon, 'png');
+      const file = path.join(env.XDG_DATA_HOME, 'applications', `${APP_ID}.desktop`);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(
+        file,
+        `[Desktop Entry]\nType=Application\nExec=${exec(env)}\nTryExec=${env.APPIMAGE}\n${marker}\n${extra}`
+      );
+      const ensure = ({ sandboxDisabled = true, restriction = '1\n' } = {}) =>
+        ensureAppImageDesktopEntry({
+          env,
+          iconPath: icon,
+          sandboxDisabled,
+          fsModule: {
+            ...fs,
+            readFileSync: (target, ...rest) => {
+              if (String(target).endsWith('apparmor_restrict_unprivileged_userns')) {
+                if (restriction === null) throw new Error('ENOENT');
+                return restriction;
+              }
+              return fs.readFileSync(target, ...rest);
+            },
+          },
+        });
+      return { env, file, ensure, read: () => fs.readFileSync(file, 'utf8') };
+    }
+
+    test('adds --no-sandbox to a launcher for this AppImage that was written without it', () => {
+      const { env, ensure, read } = setUp(
+        (e) => `${quoteDesktopExecArg(e.APPIMAGE)} --show`,
+        'Name=HA Desktop Widget\n'
+      );
+      expect(ensure()).toBe(true);
+      expect(read()).toContain(`Exec=${quoteDesktopExecArg(env.APPIMAGE)} --no-sandbox --show\n`);
+      expect(read()).toContain('Name=HA Desktop Widget\n');
+      // Once it carries the flag there is nothing left to change.
+      const written = read();
+      expect(ensure()).toBe(false);
+      expect(read()).toBe(written);
+    });
+
+    test('adds the flag to a launcher with no other arguments, and keeps the ones it has', () => {
+      const bare = setUp((e) => quoteDesktopExecArg(e.APPIMAGE));
+      expect(bare.ensure()).toBe(true);
+      expect(bare.read()).toContain(
+        `Exec=${quoteDesktopExecArg(bare.env.APPIMAGE)} --no-sandbox\n`
+      );
+    });
+
+    test('repairs the path and adds the flag in one write when the launcher names a deleted AppImage', () => {
+      const { env, ensure, read } = setUp(
+        () => `${quoteDesktopExecArg(path.join(root, 'old.AppImage'))} --show`
+      );
+      expect(ensure()).toBe(true);
+      expect(read()).toContain(`Exec=${quoteDesktopExecArg(env.APPIMAGE)} --no-sandbox --show\n`);
+      expect(read()).toContain(`TryExec=${env.APPIMAGE}\n`);
+    });
+
+    test('still repairs only the path when the sandbox is not blocked or not switched off', () => {
+      for (const options of [
+        { restriction: '0\n' },
+        { restriction: null },
+        { sandboxDisabled: false },
+      ]) {
+        const { env, ensure, read } = setUp(
+          () => `${quoteDesktopExecArg(path.join(root, 'old.AppImage'))} --show`
+        );
+        expect(ensure(options)).toBe(true);
+        expect(read()).toContain(`Exec=${quoteDesktopExecArg(env.APPIMAGE)} --show\n`);
+        fs.rmSync(path.join(env.XDG_DATA_HOME), { recursive: true, force: true });
+      }
+    });
+
+    test('leaves a working launcher alone when the sandbox is not blocked', () => {
+      for (const options of [
+        { restriction: '0\n' },
+        { restriction: null },
+        { sandboxDisabled: false },
+      ]) {
+        const { env, ensure, read } = setUp((e) => `${quoteDesktopExecArg(e.APPIMAGE)} --show`);
+        const before = read();
+        expect(ensure(options)).toBe(false);
+        expect(read()).toBe(before);
+        fs.rmSync(path.join(env.XDG_DATA_HOME), { recursive: true, force: true });
+      }
+    });
+
+    test('does not edit a launcher that starts another executable, or one the user wrote', () => {
+      const other = path.join(root, 'other.AppImage');
+      fs.writeFileSync(other, 'app');
+      const elsewhere = setUp(() => `${quoteDesktopExecArg(other)} --show`);
+      const before = elsewhere.read();
+      expect(elsewhere.ensure()).toBe(false);
+      expect(elsewhere.read()).toBe(before);
+
+      const own = setUp((e) => `${quoteDesktopExecArg(e.APPIMAGE)} --show`);
+      fs.writeFileSync(
+        own.file,
+        `[Desktop Entry]\nExec=${quoteDesktopExecArg(own.env.APPIMAGE)}\n`
+      );
+      expect(own.ensure()).toBe(false);
+      expect(own.read()).not.toContain('--no-sandbox');
+    });
+  });
+
   test('reads the AppArmor restriction from /proc', () => {
     const read = (value) => ({
       readFileSync: jest.fn(() => {

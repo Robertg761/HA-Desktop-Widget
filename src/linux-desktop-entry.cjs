@@ -38,15 +38,34 @@ function ensureAppImageDesktopEntry({
     .filter(Boolean)
     .map((dir) => path.join(dir, 'applications', name));
   if (systemEntries.some((file) => fsModule.existsSync(file))) return false;
-  let previous = null;
+  const sandboxFlag =
+    sandboxDisabled && appArmorRestrictsUserNamespaces(fsModule) ? ' --no-sandbox' : '';
   if (fsModule.existsSync(destination)) {
-    previous = fsModule.readFileSync(destination, 'utf8');
+    const previous = fsModule.readFileSync(destination, 'utf8');
     if (!/^X-HA-Widget-Launcher=true$/m.test(previous)) return false;
     const command = parseDesktopExecCommand(previous);
-    if (!command || fsModule.existsSync(command.executable)) return false;
-    const updated = previous
-      .replace(`Exec=${command.rawToken}`, () => `Exec=${buildDesktopExecPrefix(env.APPIMAGE)}`)
-      .replace(/^TryExec=.*$/m, () => `TryExec=${env.APPIMAGE}`);
+    if (!command) return false;
+    const stale = !fsModule.existsSync(command.executable);
+    // A launcher written before the system blocked the sandbox, or by a build that did not know
+    // to keep the flag, dies the same way when it is opened from the menu. It is only fixed when
+    // it starts this AppImage: one that names another executable is not ours to edit.
+    const startsThisAppImage =
+      stale || path.resolve(command.executable) === path.resolve(env.APPIMAGE);
+    const needsSandboxFlag =
+      sandboxFlag !== '' &&
+      startsThisAppImage &&
+      !/(?:^|\s)--no-sandbox(?:\s|$)/.test(command.suffix);
+    if (!stale && !needsSandboxFlag) return false;
+    const token = stale ? buildDesktopExecPrefix(env.APPIMAGE) : command.rawToken;
+    let updated = previous;
+    if (stale) {
+      updated = updated
+        .replace(`Exec=${command.rawToken}`, () => `Exec=${token}`)
+        .replace(/^TryExec=.*$/m, () => `TryExec=${env.APPIMAGE}`);
+    }
+    if (needsSandboxFlag) {
+      updated = updated.replace(`Exec=${token}`, () => `Exec=${token}${sandboxFlag}`);
+    }
     fsModule.writeFileSync(destination, updated, { mode: 0o644 });
     return true;
   }
@@ -54,8 +73,6 @@ function ensureAppImageDesktopEntry({
   fsModule.mkdirSync(path.dirname(icon), { recursive: true });
   fsModule.copyFileSync(iconPath, icon);
   fsModule.mkdirSync(path.dirname(destination), { recursive: true });
-  const sandboxFlag =
-    sandboxDisabled && appArmorRestrictsUserNamespaces(fsModule) ? ' --no-sandbox' : '';
   fsModule.writeFileSync(
     destination,
     `[Desktop Entry]\nType=Application\nName=HA Desktop Widget\nExec=${buildDesktopExecPrefix(env.APPIMAGE)}${sandboxFlag} --show\nIcon=${icon}\nTerminal=false\nCategories=Utility;\nStartupWMClass=${APP_ID}\nX-HA-Widget-Launcher=true\n`,

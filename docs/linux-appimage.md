@@ -13,7 +13,8 @@ Any one of these gets it running:
   `./HA-Desktop-Widget-<version>-linux-x86_64.AppImage --no-sandbox`. When it is started that way on
   a system with the restriction, the launcher the widget writes for itself
   (`~/.local/share/applications/com.github.robertg761.hadesktopwidget.desktop`) keeps the flag, so
-  starting it from the application menu works afterwards.
+  starting it from the application menu works afterwards. A launcher the widget wrote earlier,
+  without the flag, gets it the same way the next time the AppImage is started with `--no-sandbox`.
 - Let the AppImage create the namespace with an AppArmor profile, as Ubuntu does for Chromium and
   Electron packages it ships.
 
