@@ -178,6 +178,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       executeHotkeyAction: jest.fn(),
       handleDesktopPinActionRequest: jest.fn(),
       callMediaTileService: jest.fn(),
+      openEntityControls: jest.fn(),
       getTickTargets: jest.fn(() => ({ hasVisibleTimers: false })),
       switchQuickAccessPage: jest.fn(),
       showAddPageModal: jest.fn(),
@@ -708,6 +709,58 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockElectronAPI.closeWindow).toHaveBeenCalledTimes(1);
     expect(mockElectronAPI.quitApp).not.toHaveBeenCalled();
     expect(mockSettings.closeSettings).not.toHaveBeenCalled();
+  });
+
+  describe('the main window outside the wizard', () => {
+    it("opens the primary media player's controls from the track, which has no volume of its own", async () => {
+      const player = {
+        entity_id: 'media_player.living_room',
+        state: 'playing',
+        attributes: { friendly_name: 'Living room' },
+      };
+      await loadRenderer({
+        config: { ...unconfiguredConfig(), primaryMediaPlayer: 'media_player.living_room' },
+        bodyHtml:
+          '<main class="widget-content"><button id="media-tile-info" type="button"></button></main>',
+      });
+      mockState.STATES = { [player.entity_id]: player };
+      mockState.CONFIG = { ...mockState.CONFIG, primaryMediaPlayer: player.entity_id };
+
+      document.getElementById('media-tile-info').click();
+
+      expect(require('../../src/ui.js').openEntityControls).toHaveBeenCalledWith(player);
+    });
+
+    it('does nothing from the track while the player is not in Home Assistant', async () => {
+      await loadRenderer({
+        config: { ...unconfiguredConfig(), primaryMediaPlayer: 'media_player.gone' },
+        bodyHtml:
+          '<main class="widget-content"><button id="media-tile-info" type="button"></button></main>',
+      });
+      mockState.STATES = {};
+
+      document.getElementById('media-tile-info').click();
+
+      expect(require('../../src/ui.js').openEntityControls).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['darwin', 'Cmd+K'],
+      ['win32', 'Ctrl+K'],
+      ['linux', 'Ctrl+K'],
+    ])('tells %s to press %s for the command palette', async (platform, shortcut) => {
+      await loadRenderer({
+        configureApi(api) {
+          api.platform = platform;
+        },
+        bodyHtml:
+          '<main class="widget-content"></main><div id="command-palette-hint" data-i18n-vars=\'{"shortcut":"Ctrl+K"}\'></div>',
+      });
+
+      expect(
+        JSON.parse(document.getElementById('command-palette-hint').getAttribute('data-i18n-vars'))
+      ).toEqual({ shortcut });
+    });
   });
 
   it('starts fresh installs with an empty URL and the Home Assistant 2026.8 address hint', async () => {

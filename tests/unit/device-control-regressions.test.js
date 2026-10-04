@@ -974,6 +974,19 @@ describe('device control and live data regressions', () => {
       );
     });
 
+    test('the Manage Quick Access pager says "1 entity" for a single match, not "1 entities"', () => {
+      document.body.innerHTML += `<div id="quick-controls-modal"><div id="quick-controls-target-hint"></div>
+        <input id="quick-controls-search"><div id="quick-controls-list"></div></div>`;
+      state.setStates({ 'sensor.only_one': entity('sensor.only_one', '1') });
+      ui.populateQuickControlsList();
+
+      expect(
+        document
+          .getElementById('quick-controls-pagination')
+          .querySelector('.entity-selector-pagination-status').textContent
+      ).toBe('Page 1 of 1 · 1 entity');
+    });
+
     test('the media dialog keeps one Mute label, flips aria-pressed, and says how far a seek jumps', () => {
       state.setServices({
         media_player: { media_seek: {}, volume_mute: {}, media_play_pause: {} },

@@ -87,9 +87,13 @@ const COLOR_TARGETS = {
 };
 // Called at render time so the warning follows the active language.
 const getFrostedGlassUnavailableMessage = () => t('Needs Windows 11 version 22H2 or later.');
-const getWeatherEffectsGlassWarning = () =>
+// While Frosted glass is off the effects are held back, not turned off: the switch keeps its
+// position and the effects return with the glass. The line says which of the two it is.
+const getWeatherEffectsGlassWarning = (effectsOn = false) =>
   isFrostedGlassAvailable(state.CONFIG)
-    ? t('Turn on Frosted glass background before enabling subtle weather effects.')
+    ? effectsOn
+      ? t('Subtle weather effects need Frosted glass, so they are paused.')
+      : t('Turn on Frosted glass background before enabling subtle weather effects.')
     : getFrostedGlassUnavailableMessage();
 const WEATHER_UNAVAILABLE_STATES = new Set(['unknown', 'unavailable']);
 let activeColorTarget = COLOR_TARGETS.accent;
@@ -220,27 +224,27 @@ function syncWeatherEffectsAvailability(options = {}) {
   if (!weatherEffectsEnabled) return true;
 
   const frostedGlassEnabled = !!frostedGlass?.checked;
-  const wasChecked = !!weatherEffectsEnabled.checked;
+  // Where the glass cannot be drawn at all the switch reads off (the saved choice is left alone, as
+  // Save skips a locked switch). Where the person only turned the glass off, it keeps its position.
+  if (!isFrostedGlassAvailable(state.CONFIG)) weatherEffectsEnabled.checked = false;
+  const effectsOn = !!weatherEffectsEnabled.checked;
+  // Locked, not cleared: turning Frosted glass off used to untick this switch, so turning the glass
+  // back on found the person's choice gone.
   weatherEffectsEnabled.disabled = !frostedGlassEnabled;
   weatherEffectsEnabled.setAttribute('aria-disabled', String(!frostedGlassEnabled));
-  weatherEffectsEnabled.title = frostedGlassEnabled ? '' : getWeatherEffectsGlassWarning();
-
-  if (!frostedGlassEnabled) {
-    weatherEffectsEnabled.checked = false;
-  }
+  weatherEffectsEnabled.title = frostedGlassEnabled ? '' : getWeatherEffectsGlassWarning(effectsOn);
 
   if (weatherOverrideGroup) {
-    weatherOverrideGroup.style.display =
-      frostedGlassEnabled && weatherEffectsEnabled.checked ? 'block' : 'none';
+    weatherOverrideGroup.style.display = frostedGlassEnabled && effectsOn ? '' : 'none';
   }
 
   if (warning) {
     warning.classList.toggle('hidden', frostedGlassEnabled);
-    warning.textContent = getWeatherEffectsGlassWarning();
+    warning.textContent = getWeatherEffectsGlassWarning(effectsOn);
   }
 
-  if (!frostedGlassEnabled && showWarning && wasChecked) {
-    showToast(getWeatherEffectsGlassWarning(), 'warning', 3500);
+  if (!frostedGlassEnabled && showWarning && effectsOn) {
+    showToast(getWeatherEffectsGlassWarning(true), 'warning', 3500);
   }
 
   return frostedGlassEnabled;
@@ -3164,7 +3168,11 @@ function reapplySettingsPreviews() {
 }
 
 /**
- * Validate Home Assistant URL format
+ * Validate the Home Assistant URL with the same rules Test connection, the setup wizard and the
+ * connection itself use, so an address one of them accepts is not refused by another. A bare
+ * "homeassistant.local:8123" or "HTTP://ha.local" is fine, and a pasted dashboard address
+ * ("https://ha.example.com/lovelace/0") is reduced to the server, since the socket path is built
+ * from what is saved and Home Assistant is not served from a sub-path.
  * @param {string} url - The URL to validate
  * @returns {object} - { valid: boolean, error: string|null, url: string }
  */
@@ -3999,6 +4007,7 @@ function bindSupportDevelopmentUi() {
 
   const continueBtn = modal.querySelector('#donate-continue-btn');
   openBtn.onclick = () => {
+    resetDonation();
     openDialog(modal, {
       describedBy: 'donate-intro',
       dismiss: closeDonateModal,
@@ -4030,6 +4039,15 @@ function bindSupportDevelopmentUi() {
     chip.classList.toggle('selected', selected);
     chip.setAttribute('aria-pressed', String(selected));
   };
+  // Each visit starts at a one-time $5: the dialog is kept between visits, so without this a
+  // cancelled or failed attempt reopened on Monthly with a rejected amount and no chip chosen.
+  function resetDonation() {
+    const oneTime = modal.querySelector('input[name="donate-frequency"][value="one-time"]');
+    if (oneTime) oneTime.checked = true;
+    if (customInput) customInput.value = '';
+    chips.forEach((chip) => setChipSelected(chip, chip.dataset.amount === '5'));
+    setAmountError('');
+  }
   chips.forEach((chip) => {
     chip.onclick = () => {
       chips.forEach((other) => setChipSelected(other, other === chip));
@@ -4065,7 +4083,9 @@ function bindSupportDevelopmentUi() {
           throw new Error(result.error || 'Failed to open GitHub Sponsors link');
         }
         await closeDonateModal();
-        showToast(t('Thank you for your support!'), 'success', 4000);
+        // Whether anything was donated is for the sponsors page to say, so this only says what
+        // happened here: it reads as neither a payment nor a thank-you for one.
+        showToast(t('Opened GitHub Sponsors in your browser.'), 'info', 3000);
       } catch (error) {
         log.error('Failed to open GitHub Sponsors link:', error);
         showToast(t('Could not open GitHub Sponsors. Please try again.'), 'error', 3500);
@@ -4448,46 +4468,28 @@ function getLanguagePackDisplayName(pack = {}) {
   );
 }
 
-function findLocalePack(locale) {
-  const normalizedLocale = String(locale || '')
-    .trim()
-    .toLowerCase();
-  if (!normalizedLocale) return null;
-  const baseLocale = normalizedLocale.split('-')[0];
-  return (
-    localePackListCache.find((pack) => {
-      const packLocale = String(pack?.locale || '')
-        .trim()
-        .toLowerCase();
-      if (!packLocale) return false;
-      return packLocale === normalizedLocale || packLocale.split('-')[0] === baseLocale;
-    }) || null
-  );
-}
-
+// The card says only what the select does not: how to get more languages while some are still to
+// download, which language Auto means, and when English is standing in for a pack not installed yet.
 function updateLanguageSummaryText() {
-  const currentSummary = document.getElementById('language-current-summary');
+  const downloadHint = document.getElementById('language-select-help');
   const systemSummary = document.getElementById('language-system-summary');
   const fallbackSummary = document.getElementById('language-fallback-summary');
   const languageSelect = document.getElementById('language-select');
   const localeState = getLocaleState();
   const selectedLocale = languageSelect?.value || state.CONFIG?.ui?.language || 'auto';
-  const selectedPack = findLocalePack(selectedLocale);
-  const selectedLabel =
-    selectedLocale === 'auto'
-      ? t('Auto (System Default)')
-      : selectedPack
-        ? getLanguagePackDisplayName(selectedPack)
-        : getLanguageDisplayName(selectedLocale, selectedLocale);
   const detectedLabel = getLanguageDisplayName(
     localeState.detectedLocale,
     localeState.detectedLocale || 'en'
   );
 
-  if (currentSummary) {
-    currentSummary.textContent = t('Selected language: {{language}}', { language: selectedLabel });
-  }
+  // Nothing to say about downloading once every pack is installed, or while there are none to offer.
+  const hasPackToDownload = localePackListCache.some((pack) => !pack.installed);
+  downloadHint?.classList.toggle('hidden', !hasPackToDownload);
+  // The select is described by it only while it is shown: a hidden line is still read out.
+  setDescribedByLine(languageSelect, downloadHint, hasPackToDownload);
   if (systemSummary) {
+    // Only Auto follows the system, so only Auto needs to say what it found.
+    systemSummary.classList.toggle('hidden', selectedLocale !== 'auto');
     systemSummary.textContent = t('System language detected: {{language}}', {
       language: detectedLabel,
     });
@@ -5369,14 +5371,11 @@ async function openSettings(uiHooks) {
 
     const weatherEffectsEnabled = document.getElementById('weather-effects-enabled');
     const weatherOverrideSelect = document.getElementById('weather-override-select');
-    const weatherOverrideGroup = document.getElementById('weather-override-group');
 
+    // The saved choice, whether or not Frosted glass is on: with it off the switch shows the choice
+    // held back, and syncWeatherEffectsAvailability below shows or hides the override beneath it.
     if (weatherEffectsEnabled) {
-      weatherEffectsEnabled.checked =
-        !!state.CONFIG.frostedGlass && !!state.CONFIG.ui?.weatherEffectsEnabled;
-      if (weatherOverrideGroup) {
-        weatherOverrideGroup.style.display = weatherEffectsEnabled.checked ? 'block' : 'none';
-      }
+      weatherEffectsEnabled.checked = !!state.CONFIG.ui?.weatherEffectsEnabled;
     }
     if (weatherOverrideSelect) {
       weatherOverrideSelect.value = state.CONFIG.ui?.weatherOverride || 'auto';
@@ -6112,11 +6111,11 @@ async function persistSettings() {
     const followOmarchy = document.getElementById('follow-omarchy');
     if (followOmarchy && !followOmarchy.disabled)
       nextConfig.ui.followOmarchy = followOmarchy.checked;
-    const frostedGlassEnabled = !!nextConfig.frostedGlass;
-    // A locked Frosted glass switch means the weather switch is locked with it, not turned off.
+    // A locked Frosted glass switch means the weather switch is locked with it, not turned off. With
+    // the glass merely switched off, the effects are paused and the choice is kept for its return.
     if (!frostedGlass?.disabled) {
       nextConfig.ui.weatherEffectsEnabled = weatherEffectsEnabled
-        ? frostedGlassEnabled && !!weatherEffectsEnabled.checked
+        ? !!weatherEffectsEnabled.checked
         : false;
     }
     nextConfig.ui.weatherOverride = weatherOverrideSelect ? weatherOverrideSelect.value : 'auto';
@@ -6687,8 +6686,8 @@ function renderAlertsListInline() {
       let alertType = alertConfig.onNumericThreshold
         ? `${alertConfig.comparison === 'below' ? t('Below threshold') : t('Above threshold')} ${formatNumber(Number(alertConfig.threshold))}`
         : alertConfig.onStateChange
-          ? t('State Change')
-          : t('Specific State');
+          ? t('State change')
+          : t('Specific state');
       if (alertConfig.onSpecificState) {
         alertType += ` (${alertConfig.targetState})`;
       }
@@ -6713,7 +6712,7 @@ function renderAlertsListInline() {
     // Add "Add new alert" button
     const addButton = document.createElement('button');
     addButton.className = 'btn btn-secondary btn-block add-alert-btn';
-    addButton.textContent = `+ ${t('Add New Alert')}`;
+    addButton.textContent = `+ ${t('Add new alert')}`;
     addButton.dataset.focusKey = alertFocusKey('add');
     addButton.onclick = () => openAlertEntityPicker();
     addButton.style.marginTop = '10px';
@@ -6829,6 +6828,21 @@ function populateAlertEntityPicker() {
       searchInput.oninput = null;
       searchInput.value = '';
 
+      // A search with no hits says so inside the list, once, and takes it away as the query changes.
+      const showNoMatch = (show) => {
+        const existing = list.querySelector(':scope > .entity-selector-empty');
+        if (!show) {
+          existing?.remove();
+          return;
+        }
+        if (existing) return;
+        const empty = document.createElement('p');
+        empty.className = 'entity-selector-empty';
+        empty.setAttribute('role', 'status');
+        empty.textContent = t('No matching entities found.');
+        list.appendChild(empty);
+      };
+
       searchInput.oninput = (e) => {
         const query = e.target.value.toLowerCase().trim();
         if (!query) {
@@ -6836,10 +6850,12 @@ function populateAlertEntityPicker() {
           list.querySelectorAll('.entity-item').forEach((item) => {
             item.style.display = 'flex';
           });
+          showNoMatch(false);
           return;
         }
 
         // Score each item and show/hide based on score
+        let shown = 0;
         list.querySelectorAll('.entity-item').forEach((item) => {
           const name = item.querySelector('.entity-name')?.textContent || '';
           const id = item.querySelector('.entity-id')?.textContent || '';
@@ -6850,7 +6866,9 @@ function populateAlertEntityPicker() {
           const totalScore = nameScore + idScore;
 
           item.style.display = totalScore > 0 ? 'flex' : 'none';
+          if (totalScore > 0) shown += 1;
         });
+        showNoMatch(shown === 0);
       };
     }
   } catch (error) {
@@ -6917,8 +6935,8 @@ function openAlertConfigModal(entityId) {
         return input;
       };
       addField('alert-condition', 'Condition', 'select', [
-        ['state-change', 'State Change'],
-        ['specific-state', 'Specific State'],
+        ['state-change', 'State change'],
+        ['specific-state', 'Specific state'],
         ['above', 'Above threshold'],
         ['below', 'Below threshold'],
       ]);
@@ -6967,7 +6985,7 @@ function openAlertConfigModal(entityId) {
     quietEnabled.onchange = syncQuietHours;
     const entity = state.STATES[entityId];
     if (title)
-      title.textContent = t('Configure Alert - {{name}}', {
+      title.textContent = t('Configure alert – {{name}}', {
         name: entity ? utils.getEntityDisplayName(entity) : entityId,
       });
 
@@ -7149,6 +7167,13 @@ function populateMediaPlayerSelect() {
     }
     select.replaceChildren(...options);
     select.value = currentValue;
+    // With no media player to pick and none saved, the select has nothing to offer but "None";
+    // say so instead of leaving a control that looks usable.
+    const nothingToPick = mediaPlayers.length === 0 && !currentValue;
+    select.disabled = nothingToPick;
+    const emptyNote = document.getElementById('primary-media-player-empty');
+    emptyNote?.classList.toggle('hidden', !nothingToPick);
+    setDescribedByLine(select, emptyNote, nothingToPick);
 
     // Bound once: the select outlives each opening of Settings.
     if (!select.dataset.bound) {
@@ -7164,36 +7189,38 @@ function populateMediaPlayerSelect() {
 let isCapturingPopupHotkey = false;
 let popupHotkeyAvailable = null;
 
-// The popup hotkey card's labels depend on the platform's shortcut backend.
+// The popup hotkey card's labels depend on the platform's shortcut backend, and on whether there is
+// one at all: with no way to register a global shortcut the card says so, in place of help about a
+// feature that does nothing here.
 function renderPopupHotkeyModeText() {
   const usesLinuxShortcutBackend = window.electronAPI?.platform === 'linux';
   const modeLabel = document.getElementById('popup-hotkey-mode-label');
   const helpText = document.getElementById('popup-hotkey-help-text');
   const platformNotice = document.getElementById('popup-hotkey-platform-notice');
-  if (usesLinuxShortcutBackend) {
-    if (modeLabel) modeLabel.textContent = t('Popup hotkey');
-    if (helpText) {
-      helpText.textContent = t(
-        'Configure a global hotkey that brings the window to front when pressed.'
-      );
-    }
+  if (modeLabel) modeLabel.textContent = t('Popup hotkey');
+  if (popupHotkeyAvailable === false) {
+    if (helpText) helpText.hidden = true;
     if (platformNotice) {
       platformNotice.hidden = false;
-      platformNotice.textContent = t(
-        'Linux uses the desktop shortcut service for stability. Hold-to-show and hide-on-release are unavailable; press-to-toggle remains supported.'
-      );
+      platformNotice.textContent = t('Popup hotkey feature is not available on this platform.');
     }
-  } else {
-    if (modeLabel) modeLabel.textContent = t('Popup hotkey');
-    if (helpText) {
-      helpText.textContent = t(
-        'Configure a global hotkey that brings the window to front while held down. When released, the window returns to normal z-order.'
-      );
-    }
-    if (platformNotice) {
-      platformNotice.hidden = true;
-      platformNotice.textContent = '';
-    }
+    return;
+  }
+  if (helpText) {
+    helpText.hidden = false;
+    helpText.textContent = usesLinuxShortcutBackend
+      ? t('Configure a global hotkey that brings the window to front when pressed.')
+      : t(
+          'Configure a global hotkey that brings the window to front while held down. When released, the window returns to normal z-order.'
+        );
+  }
+  if (platformNotice) {
+    platformNotice.hidden = !usesLinuxShortcutBackend;
+    platformNotice.textContent = usesLinuxShortcutBackend
+      ? t(
+          'Hold-to-show and hide-on-release are unavailable on Linux; press-to-toggle remains supported.'
+        )
+      : '';
   }
 }
 
@@ -7213,8 +7240,6 @@ function relocalizePopupHotkeyText() {
       input.placeholder = state.CONFIG?.popupHotkey || t('Not set');
     }
   }
-  const notice = document.querySelector('#popup-hotkey-container .unavailable-notice');
-  if (notice) notice.textContent = t('Popup hotkey feature is not available on this platform.');
 }
 
 async function initializePopupHotkey() {
@@ -7226,7 +7251,6 @@ async function initializePopupHotkey() {
     const input = document.getElementById('popup-hotkey-input');
     const setBtn = document.getElementById('popup-hotkey-set-btn');
     const clearBtn = document.getElementById('popup-hotkey-clear-btn');
-    const container = document.getElementById('popup-hotkey-container');
     await refreshDesktopIntegration();
 
     if (!input || !setBtn || !clearBtn) return;
@@ -7235,7 +7259,6 @@ async function initializePopupHotkey() {
     if (!isCapturingPopupHotkey) setBtn.textContent = t('Set hotkey');
 
     if (isAvailable) {
-      container?.querySelector('.unavailable-notice')?.remove();
       input.disabled = false;
       input.value = currentHotkey;
       input.placeholder = currentHotkey || t('Not set');
@@ -7247,7 +7270,8 @@ async function initializePopupHotkey() {
     popupHotkeyAvailable = isAvailable;
     renderPopupHotkeyModeText();
 
-    // If not available, disable the UI and show a message
+    // Without a global shortcut service the card is read-only: the field, the recorder, the
+    // suggestions and both switches go off together, and the card's notice says why.
     if (!isAvailable) {
       input.disabled = true;
       input.value = '';
@@ -7255,16 +7279,13 @@ async function initializePopupHotkey() {
       setBtn.disabled = true;
       clearBtn.disabled = true;
       clearBtn.style.display = 'none';
-
-      // Add a notice message if not already present
-      if (container && !container.querySelector('.unavailable-notice')) {
-        const notice = document.createElement('p');
-        notice.className = 'unavailable-notice';
-        notice.style.color = '#888';
-        notice.style.fontSize = '12px';
-        notice.style.marginTop = '8px';
-        notice.textContent = t('Popup hotkey feature is not available on this platform.');
-        container.appendChild(notice);
+      document.querySelectorAll('.preset-hotkey-btn').forEach((chip) => {
+        chip.disabled = true;
+      });
+      for (const id of ['popup-hotkey-toggle-mode', 'popup-hotkey-hide-on-release']) {
+        const checkbox = document.getElementById(id);
+        if (checkbox) checkbox.disabled = true;
+        document.getElementById(`${id}-label`)?.classList.add('disabled');
       }
       return;
     }

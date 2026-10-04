@@ -476,6 +476,7 @@ function createSettingsModalDOM() {
 
       <label for="primary-media-player">Primary Media Player</label>
       <select id="primary-media-player"></select>
+      <p id="primary-media-player-empty" class="hidden">No media players found in Home Assistant.</p>
 
       <div id="popup-hotkey-container">
         <label id="popup-hotkey-mode-label">Popup hotkey</label>
@@ -1194,8 +1195,9 @@ describe('Settings + Config Integration', () => {
 
       expect(document.getElementById('popup-hotkey-mode-label').textContent).toBe('Popup hotkey');
       expect(document.getElementById('popup-hotkey-platform-notice').hidden).toBe(false);
-      expect(document.getElementById('popup-hotkey-platform-notice').textContent).toContain(
-        'Linux uses the desktop shortcut service'
+      // Not "the desktop shortcut service": X11 registers the key itself, and only Wayland uses one
+      expect(document.getElementById('popup-hotkey-platform-notice').textContent).toBe(
+        'Hold-to-show and hide-on-release are unavailable on Linux; press-to-toggle remains supported.'
       );
       expect(document.getElementById('popup-hotkey-hide-on-release').disabled).toBe(true);
       expect(document.getElementById('popup-hotkey-toggle-mode').disabled).toBe(false);
@@ -1206,6 +1208,28 @@ describe('Settings + Config Integration', () => {
 
       expect(mockElectronAPI.registerPopupHotkey).toHaveBeenCalledWith('Ctrl+Shift+F12');
       expect(document.getElementById('popup-hotkey-input').value).toBe('Ctrl+Shift+F12');
+    });
+
+    test('a platform without a global shortcut service shows a read-only card that says so', async () => {
+      mockElectronAPI.isPopupHotkeyAvailable.mockResolvedValue(false);
+
+      await settings.openSettings();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const notice = document.getElementById('popup-hotkey-platform-notice');
+      expect(notice.hidden).toBe(false);
+      expect(notice.textContent).toBe('Popup hotkey feature is not available on this platform.');
+      // Help about holding the key down would describe a feature that does nothing here
+      expect(document.getElementById('popup-hotkey-help-text').hidden).toBe(true);
+      expect(document.getElementById('popup-hotkey-input').disabled).toBe(true);
+      expect(document.getElementById('popup-hotkey-set-btn').disabled).toBe(true);
+      expect(document.querySelector('.preset-hotkey-btn').disabled).toBe(true);
+      for (const id of ['popup-hotkey-toggle-mode', 'popup-hotkey-hide-on-release']) {
+        expect(document.getElementById(id).disabled).toBe(true);
+        expect(document.getElementById(`${id}-label`).classList.contains('disabled')).toBe(true);
+      }
+      mockElectronAPI.isPopupHotkeyAvailable.mockResolvedValue(true);
     });
 
     test('closing settings cleans up modal and focus trap', () => {
@@ -2362,7 +2386,7 @@ describe('Settings + Config Integration', () => {
       }
     });
 
-    test('disables weather effects control and warning when frosted glass is off', async () => {
+    test('locks the weather effects control when frosted glass is off, and says they are paused', async () => {
       state.CONFIG.frostedGlass = false;
       state.CONFIG.ui.weatherEffectsEnabled = true;
 
@@ -2370,13 +2394,57 @@ describe('Settings + Config Integration', () => {
 
       const weatherEffects = document.getElementById('weather-effects-enabled');
       const warning = document.getElementById('weather-effects-warning');
-      expect(weatherEffects.checked).toBe(false);
+      // The choice is held back, not turned off
+      expect(weatherEffects.checked).toBe(true);
       expect(weatherEffects.disabled).toBe(true);
       expect(warning.classList.contains('hidden')).toBe(false);
-      expect(warning.textContent).toContain('Frosted glass');
+      expect(warning.textContent).toBe(
+        'Subtle weather effects need Frosted glass, so they are paused.'
+      );
     });
 
-    test('does not save weather effects enabled unless frosted glass is enabled', async () => {
+    test('asks for glass first when the effects were never on', async () => {
+      state.CONFIG.frostedGlass = false;
+      state.CONFIG.ui.weatherEffectsEnabled = false;
+
+      await settings.openSettings();
+
+      expect(document.getElementById('weather-effects-warning').textContent).toBe(
+        'Turn on Frosted glass background before enabling subtle weather effects.'
+      );
+    });
+
+    test('turning frosted glass off and on again keeps the weather effects choice', async () => {
+      state.CONFIG.frostedGlass = true;
+      state.CONFIG.ui.weatherEffectsEnabled = true;
+      await settings.openSettings();
+      const glass = document.getElementById('frosted-glass');
+      const weatherEffects = document.getElementById('weather-effects-enabled');
+      expect(weatherEffects.checked).toBe(true);
+
+      glass.checked = false;
+      settings.syncWeatherEffectsAvailability({ showWarning: true });
+
+      expect(weatherEffects.checked).toBe(true);
+      expect(weatherEffects.disabled).toBe(true);
+      // The toast says the effects are paused, not to turn on the glass that was just turned off
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        'Subtle weather effects need Frosted glass, so they are paused.',
+        'warning',
+        expect.any(Number)
+      );
+      // The override beneath it goes with the effects
+      expect(document.getElementById('weather-override-group').style.display).toBe('none');
+
+      glass.checked = true;
+      settings.syncWeatherEffectsAvailability({ showWarning: true });
+
+      expect(weatherEffects.checked).toBe(true);
+      expect(weatherEffects.disabled).toBe(false);
+      expect(document.getElementById('weather-override-group').style.display).toBe('');
+    });
+
+    test('saves the weather effects choice while frosted glass is off, so it returns with the glass', async () => {
       await settings.openSettings();
 
       document.getElementById('frosted-glass').checked = false;
@@ -2385,7 +2453,7 @@ describe('Settings + Config Integration', () => {
       await settings.saveSettings();
 
       expect(state.CONFIG.frostedGlass).toBe(false);
-      expect(state.CONFIG.ui.weatherEffectsEnabled).toBe(false);
+      expect(state.CONFIG.ui.weatherEffectsEnabled).toBe(true);
     });
 
     test('allows weather effects when frosted glass is enabled', async () => {
@@ -6417,6 +6485,520 @@ describe('Settings + Config Integration', () => {
       expect(mockElectronAPI.openExternal).toHaveBeenCalledWith(
         expect.stringContaining('amount=25')
       );
+    });
+  });
+
+  describe('Saving and the connection card', () => {
+    const flushAsync = async () => {
+      for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    };
+    const oauthConnected = (url = 'https://ha.example.test') => {
+      state.CONFIG.homeAssistant = {
+        url,
+        token: 'short-lived-access-token',
+        authMethod: 'oauth',
+        oauthStatus: 'connected',
+      };
+    };
+
+    describe('the Save button', () => {
+      test('a second press while a save is running does nothing, and the button says it is busy', async () => {
+        await settings.openSettings();
+        let finish;
+        window.electronAPI.updateConfig.mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finish = () => resolve(JSON.parse(JSON.stringify(state.CONFIG)));
+            })
+        );
+        const save = document.getElementById('save-settings');
+
+        const first = settings.saveSettings();
+        await flushAsync();
+        const second = settings.saveSettings();
+        await second;
+
+        expect(window.electronAPI.updateConfig).toHaveBeenCalledTimes(1);
+        expect(save.getAttribute('aria-busy')).toBe('true');
+        expect(save.disabled).toBe(true);
+
+        finish();
+        await first;
+
+        expect(save.hasAttribute('aria-busy')).toBe(false);
+        expect(save.disabled).toBe(false);
+        // The next save is its own
+        await settings.openSettings();
+        await settings.saveSettings();
+        expect(window.electronAPI.updateConfig).toHaveBeenCalledTimes(2);
+      });
+
+      test('a save that is refused leaves the button usable again', async () => {
+        await settings.openSettings();
+        document.getElementById('ha-url').value = 'ftp://nope';
+
+        await settings.saveSettings();
+
+        const save = document.getElementById('save-settings');
+        expect(save.disabled).toBe(false);
+        expect(save.hasAttribute('aria-busy')).toBe(false);
+      });
+    });
+
+    describe('the custom icons toast', () => {
+      test('is not shown on a save that left the icons alone', async () => {
+        state.CONFIG.customEntityIcons = { 'light.living_room': '💡' };
+        await settings.openSettings();
+        document.getElementById('density-select').value = 'compact';
+        document
+          .getElementById('density-select')
+          .dispatchEvent(new Event('change', { bubbles: true }));
+
+        await settings.saveSettings();
+
+        expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+          expect.stringContaining('Custom icons saved'),
+          expect.anything(),
+          expect.anything()
+        );
+      });
+
+      test('is shown once the icons were edited', async () => {
+        await openSettingsWithCustomIconsExpanded();
+        const input = document.querySelector('[data-custom-icon-input="light.living_room"]');
+        input.value = '🔥';
+        document.querySelector('[data-custom-icon-apply="light.living_room"]').click();
+
+        await settings.saveSettings();
+
+        expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+          expect.stringContaining('Custom icons saved'),
+          'success',
+          expect.any(Number)
+        );
+      });
+    });
+
+    describe('the restart prompts', () => {
+      const askedToRestart = () =>
+        mockUiUtils.showConfirm.mock.calls.filter(([title]) => title === 'Restart required');
+
+      test('Always on top asks in the themed dialog, and Restart now restarts', async () => {
+        await settings.openSettings();
+        document.getElementById('always-on-top').checked = false;
+        mockUiUtils.showConfirm.mockImplementation(async () => true);
+
+        await settings.saveSettings();
+
+        expect(askedToRestart()).toEqual([
+          [
+            'Restart required',
+            'Changing "Always on top" may require a restart. Restart now?',
+            expect.objectContaining({
+              confirmText: 'Restart now',
+              cancelText: 'Later',
+              confirmClass: 'btn-primary',
+            }),
+          ],
+        ]);
+        expect(window.electronAPI.restartApp).toHaveBeenCalledTimes(1);
+        expect(window.electronAPI.focusWindow).toHaveBeenCalled();
+      });
+
+      test('Later keeps the app running and still hands the focus back', async () => {
+        await settings.openSettings();
+        document.getElementById('always-on-top').checked = false;
+
+        await settings.saveSettings();
+
+        expect(askedToRestart()).toHaveLength(1);
+        expect(window.electronAPI.restartApp).not.toHaveBeenCalled();
+        expect(window.electronAPI.focusWindow).toHaveBeenCalled();
+        // Settings closed and the save went through
+        expect(state.CONFIG.alwaysOnTop).toBe(false);
+        expect(document.getElementById('settings-modal').classList.contains('hidden')).toBe(true);
+      });
+
+      test('leaving or reaching 100% opacity on Linux asks in the themed dialog too', async () => {
+        mockElectronAPI.platform = 'linux';
+        state.CONFIG.opacity = 1;
+        state.CONFIG.desktopCapabilities = { alwaysTransparentWindows: false };
+        await settings.openSettings();
+        document.getElementById('opacity-slider').value = '60';
+        mockUiUtils.showConfirm.mockImplementation(async () => true);
+
+        await settings.saveSettings();
+
+        const [call] = askedToRestart();
+        expect(call[1]).toBe(
+          'Changing opacity between 100% and transparent on Linux requires an app restart. Restart now?'
+        );
+        expect(window.electronAPI.restartApp).toHaveBeenCalledTimes(1);
+      });
+
+      test('never uses the browser confirm, which has no title and says OK in the system language', async () => {
+        window.confirm = jest.fn(() => true);
+        await settings.openSettings();
+        document.getElementById('always-on-top').checked = false;
+
+        await settings.saveSettings();
+
+        expect(window.confirm).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('Home Assistant URL', () => {
+      test('is written back as the address that will be used', async () => {
+        await settings.openSettings();
+        const haUrl = document.getElementById('ha-url');
+        haUrl.value = 'HTTP://Ha.Local:8123/lovelace/0';
+
+        await settings.saveSettings();
+
+        expect(haUrl.value).toBe('http://ha.local:8123');
+      });
+
+      test('Connect with a bad address says so under the field, not in the status line', async () => {
+        await settings.openSettings();
+        document.getElementById('ha-url').value = 'http://';
+
+        document.getElementById('connect-ha-oauth-btn').click();
+        await flushAsync();
+
+        expect(fieldError('ha-url')).toBe('Invalid URL: missing hostname');
+        expect(window.electronAPI.startHomeAssistantOAuth).not.toHaveBeenCalled();
+        expect(document.getElementById('ha-oauth-status').dataset.status).not.toBe('error');
+      });
+
+      test('Connect shows the address it uses', async () => {
+        await settings.openSettings();
+        const haUrl = document.getElementById('ha-url');
+        haUrl.value = 'ha.local:8123';
+        mockElectronAPI.startHomeAssistantOAuth.mockResolvedValueOnce({
+          success: true,
+          config: {
+            ...state.CONFIG,
+            homeAssistant: {
+              url: 'http://ha.local:8123',
+              token: 'x',
+              authMethod: 'oauth',
+              oauthStatus: 'connected',
+            },
+          },
+        });
+
+        document.getElementById('connect-ha-oauth-btn').click();
+        await flushAsync();
+
+        expect(mockElectronAPI.startHomeAssistantOAuth).toHaveBeenCalledWith(
+          'http://ha.local:8123'
+        );
+      });
+
+      test('a status line that said the test passed is cleared when the address or token is edited', async () => {
+        await settings.openSettings();
+        document.getElementById('ha-url').value = 'http://ha.local:8123';
+        document.getElementById('ha-token').value = 'a-token';
+        document.getElementById('test-ha-connection-btn').click();
+        await flushAsync();
+        const status = document.getElementById('test-ha-connection-status');
+        expect(status.dataset.status).toBe('success');
+        expect(status.textContent).toBe(
+          'Token accepted. Home Assistant is reachable. Select Save to keep it.'
+        );
+
+        document.getElementById('ha-token').dispatchEvent(new Event('input', { bubbles: true }));
+
+        expect(status.textContent).toBe('');
+        expect(status.dataset.status).toBe('');
+      });
+    });
+
+    describe('what a failed connection test says', () => {
+      const testAndRead = async (result) => {
+        mockElectronAPI.testHaConnection.mockResolvedValueOnce(result);
+        await settings.openSettings();
+        document.getElementById('ha-url').value = 'https://ha.example.com';
+        document.getElementById('ha-token').value = 'a-token';
+        document.getElementById('test-ha-connection-btn').click();
+        await flushAsync();
+        return document.getElementById('test-ha-connection-status').textContent;
+      };
+
+      test.each([
+        [{ success: false, code: 'unreachable', status: 404 }, 'HTTP 404: check the URL and port.'],
+        [{ success: false, code: 'unreachable', status: 502 }, 'HTTP 502: check the URL and port.'],
+        [
+          { success: false, code: 'unreachable', error: 'net::ERR_CERT_AUTHORITY_INVALID' },
+          'The certificate is not trusted.',
+        ],
+        [
+          { success: false, code: 'unreachable', error: 'Request timed out' },
+          'Timed out. Check the URL and port.',
+        ],
+        [
+          { success: false, code: 'unreachable', error: 'net::ERR_CONNECTION_REFUSED' },
+          'Could not reach Home Assistant at that URL.',
+        ],
+        [
+          { success: false, code: 'auth-failed', status: 401 },
+          'Authentication failed. Check your long-lived access token.',
+        ],
+      ])('%j reads as "%s"', async (result, message) => {
+        expect(await testAndRead(result)).toBe(message);
+      });
+    });
+
+    describe('with browser authorization', () => {
+      test('the token test is off and says why, and stays off after a busy spell', async () => {
+        oauthConnected();
+        await settings.openSettings();
+        const test = document.getElementById('test-ha-connection-btn');
+
+        expect(test.disabled).toBe(true);
+        expect(
+          document.getElementById('legacy-ha-token-oauth-note').classList.contains('hidden')
+        ).toBe(false);
+
+        // Nothing to test, so a click does not run the test
+        test.click();
+        expect(mockElectronAPI.testHaConnection).not.toHaveBeenCalled();
+      });
+
+      test('with no authorization the token test is on and the note is hidden', async () => {
+        await settings.openSettings();
+
+        expect(document.getElementById('test-ha-connection-btn').disabled).toBe(false);
+        expect(
+          document.getElementById('legacy-ha-token-oauth-note').classList.contains('hidden')
+        ).toBe(true);
+      });
+
+      test('an edited address is not silently dropped by Save: it says to reconnect', async () => {
+        oauthConnected();
+        await settings.openSettings();
+        document.getElementById('ha-url').value = 'https://other.example.test';
+
+        await settings.saveSettings();
+
+        expect(fieldError('ha-url')).toMatch(/^Saving does not switch servers\. Select Reconnect/);
+        expect(window.electronAPI.updateConfig).not.toHaveBeenCalled();
+        expect(document.getElementById('settings-modal').classList.contains('hidden')).toBe(false);
+      });
+
+      test('the same address written another way saves as before', async () => {
+        oauthConnected('https://ha.example.test');
+        await settings.openSettings();
+        document.getElementById('ha-url').value = 'HTTPS://ha.example.test/';
+        document.getElementById('always-on-top').checked = false;
+
+        await settings.saveSettings();
+
+        expect(window.electronAPI.updateConfig).toHaveBeenCalled();
+        expect(document.querySelector('[data-field-error-for]')).toBeNull();
+      });
+
+      test('Disconnect asks first, and declining leaves the authorization alone', async () => {
+        oauthConnected();
+        await settings.openSettings();
+        mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+
+        document.getElementById('disconnect-ha-oauth-btn').click();
+        await flushAsync();
+
+        expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
+          'Disconnect',
+          'Disconnect this widget from Home Assistant? You will need to authorize again.',
+          expect.objectContaining({ confirmText: 'Disconnect', confirmClass: 'btn-danger' })
+        );
+        expect(mockElectronAPI.disconnectHomeAssistantOAuth).not.toHaveBeenCalled();
+      });
+
+      test('Disconnect goes ahead once confirmed', async () => {
+        oauthConnected();
+        await settings.openSettings();
+
+        document.getElementById('disconnect-ha-oauth-btn').click();
+        await flushAsync();
+
+        expect(mockElectronAPI.disconnectHomeAssistantOAuth).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('with a legacy token and a connection that is down', () => {
+      const hooks = (status, reason = '') => ({
+        initUpdateUI: jest.fn(),
+        getConnectionState: () => ({ status, reason }),
+      });
+
+      test('opens the token section with the error when the token was rejected', async () => {
+        await settings.openSettings(
+          hooks(
+            'auth-failed',
+            'Authentication failed. Check your long-lived access token in Settings.'
+          )
+        );
+
+        const status = document.getElementById('ha-oauth-status');
+        expect(status.dataset.status).toBe('error');
+        expect(status.textContent).toBe(
+          'Authentication failed. Check your long-lived access token in Settings.'
+        );
+        expect(document.getElementById('legacy-ha-token-settings').open).toBe(true);
+      });
+
+      test('puts the cursor in the token field when the token was rejected', async () => {
+        await settings.openSettings(hooks('auth-failed', 'Home Assistant refused the token.'));
+        // The dialog takes its own focus first, a moment after it opens
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(document.activeElement).toBe(document.getElementById('ha-token'));
+      });
+
+      test('leaves the cursor on the page tab when nothing is wrong with the token', async () => {
+        await settings.openSettings(hooks('connected'));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(document.activeElement).not.toBe(document.getElementById('ha-token'));
+      });
+
+      test('shows the last reason a healthy-looking page would hide while disconnected', async () => {
+        await settings.openSettings(hooks('disconnected', 'Could not reach 192.168.1.5'));
+
+        const status = document.getElementById('ha-oauth-status');
+        expect(status.dataset.status).toBe('error');
+        expect(status.textContent).toBe('Could not reach 192.168.1.5');
+        expect(document.getElementById('legacy-ha-token-settings').open).toBe(false);
+      });
+
+      test('says it as plain advice, not progress, when all is well', async () => {
+        await settings.openSettings(hooks('connected'));
+
+        const status = document.getElementById('ha-oauth-status');
+        expect(status.dataset.status).toBe('');
+        expect(status.textContent).toBe(
+          'Browser authorization is recommended. The legacy token option remains available below.'
+        );
+      });
+
+      test('follows the connection while Settings is open', async () => {
+        let current = { status: 'connected', reason: '' };
+        await settings.openSettings({ initUpdateUI: jest.fn(), getConnectionState: () => current });
+        const status = document.getElementById('ha-oauth-status');
+        expect(status.dataset.status).toBe('');
+
+        current = { status: 'auth-failed', reason: 'Home Assistant refused the token.' };
+        settings.refreshHomeAssistantAuthStatus();
+
+        expect(status.dataset.status).toBe('error');
+        expect(status.textContent).toBe('Home Assistant refused the token.');
+      });
+    });
+
+    describe('the media player select with nothing to pick', () => {
+      test('is off and says why when Home Assistant has no media players', async () => {
+        state.setStates({ 'light.desk': { entity_id: 'light.desk', state: 'on', attributes: {} } });
+        await settings.openSettings();
+
+        const select = document.getElementById('primary-media-player');
+        const note = document.getElementById('primary-media-player-empty');
+        expect(select.disabled).toBe(true);
+        expect(note.classList.contains('hidden')).toBe(false);
+        expect(select.getAttribute('aria-describedby')).toContain('primary-media-player-empty');
+      });
+
+      test('is usable with a media player, and the note goes with it', async () => {
+        await settings.openSettings();
+
+        const select = document.getElementById('primary-media-player');
+        expect(select.disabled).toBe(false);
+        expect(
+          document.getElementById('primary-media-player-empty').classList.contains('hidden')
+        ).toBe(true);
+        expect(select.hasAttribute('aria-describedby')).toBe(false);
+      });
+
+      test('stays usable when a saved player is missing, so it can be changed to None', async () => {
+        state.setStates({});
+        state.CONFIG.primaryMediaPlayer = 'media_player.gone';
+        await settings.openSettings();
+
+        expect(document.getElementById('primary-media-player').disabled).toBe(false);
+      });
+    });
+
+    describe('the donate dialog', () => {
+      const donateMarkup = `<button id="open-donate-modal-btn" type="button"></button>
+        <div id="donate-modal" class="modal hidden">
+          <div class="modal-content">
+            <div class="modal-header"><h2>Support</h2></div>
+            <div class="modal-body">
+              <p id="donate-intro">Thank you</p>
+              <input name="donate-frequency" type="radio" value="one-time" checked />
+              <input name="donate-frequency" type="radio" value="recurring" />
+              <button type="button" class="donate-amount-chip" data-amount="3" aria-pressed="false">$3</button>
+              <button type="button" class="donate-amount-chip selected" data-amount="5" aria-pressed="true">$5</button>
+              <input id="donate-custom-amount" type="number" min="1" max="12000" step="1" />
+              <p id="donate-amount-error" role="alert" hidden></p>
+            </div>
+            <div class="modal-footer"><button id="donate-continue-btn" type="button">Continue</button></div>
+          </div>
+        </div>`;
+      afterEach(() => {
+        document.getElementById('donate-modal')?.remove();
+        document.getElementById('open-donate-modal-btn')?.remove();
+      });
+
+      test('starts every visit at one-time and $5, whatever the last one left', async () => {
+        document.body.insertAdjacentHTML('beforeend', donateMarkup);
+        await settings.openSettings();
+        const open = document.getElementById('open-donate-modal-btn');
+        const modal = document.getElementById('donate-modal');
+        const [oneTime, monthly] = modal.querySelectorAll('input[name="donate-frequency"]');
+        const amount = document.getElementById('donate-custom-amount');
+        const chips = [...modal.querySelectorAll('.donate-amount-chip')];
+
+        // A visit that ends badly: Monthly, a rejected amount, no chip
+        open.click();
+        monthly.checked = true;
+        chips.forEach((chip) => chip.classList.remove('selected'));
+        amount.value = '0';
+        document.getElementById('donate-continue-btn').click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(amount.getAttribute('aria-invalid')).toBe('true');
+        modal.classList.add('hidden');
+
+        open.click();
+
+        expect(oneTime.checked).toBe(true);
+        expect(monthly.checked).toBe(false);
+        expect(amount.value).toBe('');
+        expect(amount.hasAttribute('aria-invalid')).toBe(false);
+        expect(chips.map((chip) => chip.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
+        expect(chips[1].classList.contains('selected')).toBe(true);
+      });
+
+      test('says only that the page was opened, not that anything was donated', async () => {
+        document.body.insertAdjacentHTML('beforeend', donateMarkup);
+        mockElectronAPI.openExternal = jest.fn().mockResolvedValue({ success: true });
+        await settings.openSettings();
+        document.getElementById('open-donate-modal-btn').click();
+        mockUiUtils.showToast.mockClear();
+
+        document.getElementById('donate-continue-btn').click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+          'Opened GitHub Sponsors in your browser.',
+          'info',
+          expect.any(Number)
+        );
+        expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+          'Thank you for your support!',
+          expect.anything(),
+          expect.anything()
+        );
+      });
     });
   });
 

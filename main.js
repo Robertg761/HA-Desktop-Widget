@@ -12412,9 +12412,10 @@ async function checkManualReleaseUpdate() {
     }
     return {
       status: 'manual',
-      message: `${mainT(
-        'This package does not support in-app updates. Open Releases to download the latest build.'
-      )} v${latestVersion}`,
+      message: mainT(
+        'This package does not support in-app updates. Open Releases to download the latest build, v{{version}}.',
+        { version: latestVersion }
+      ),
       version: latestVersion,
       downloadUrl,
     };

@@ -2362,7 +2362,9 @@ window.electronAPI?.onHotkeyRegistrationFailed?.(({ hotkey }) => {
  * confirms; Escape and a click outside decline.
  *
  * @param {string} title - Dialog title.
- * @param {string} message - What is being asked; also the dialog's accessible description.
+ * @param {string|Node} message - What is being asked; also the dialog's accessible description. Text
+ *   is shown as it is, with line breaks kept; a node (a fragment of rows, say) is shown as built, for
+ *   a question with facts to read and one thing to heed.
  * @param {Object} [options] - Wording and behaviour.
  * @param {string} [options.confirmText] - Label of the confirm button.
  * @param {string} [options.cancelText] - Label of the cancel button.
@@ -2396,7 +2398,11 @@ function showConfirm(title, message, options = {}) {
 
       // Set content
       titleEl.textContent = title || t('Confirm Action');
-      messageEl.textContent = message || t('Are you sure?');
+      if (message && typeof message === 'object' && typeof message.nodeType === 'number') {
+        messageEl.replaceChildren(message);
+      } else {
+        messageEl.textContent = message || t('Are you sure?');
+      }
       okBtn.textContent = options.confirmText || t('Confirm');
       cancelBtn.textContent = options.cancelText || t('Cancel');
 

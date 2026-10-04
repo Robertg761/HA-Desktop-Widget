@@ -1787,6 +1787,15 @@ function showConfigRecoveryNotice(recovery) {
   uiUtils.showToast(message, 'error', 20000);
 }
 
+// The palette opens with the platform's own modifier: Cmd+K on macOS, Ctrl+K elsewhere (it takes
+// either, but the tip should name the one a person there would reach for).
+function applyPaletteShortcutHint() {
+  const hint = document.getElementById('command-palette-hint');
+  if (!hint) return;
+  const shortcut = window.electronAPI?.platform === 'darwin' ? 'Cmd+K' : 'Ctrl+K';
+  hint.setAttribute('data-i18n-vars', JSON.stringify({ shortcut }));
+}
+
 // The language the window was last drawn in; null until the first locale is applied.
 let appliedLocale = null;
 async function refreshLocaleBootstrap() {
@@ -1794,6 +1803,7 @@ async function refreshLocaleBootstrap() {
   const bootstrap = await window.electronAPI.getLocaleBootstrap();
   setLocaleBootstrap(bootstrap || {});
   if (!IS_DESKTOP_PIN_MODE) refreshTrayEntityIcons({ force: true });
+  applyPaletteShortcutHint();
   translateDocument(document);
   const locale = bootstrap?.activeLocale || '';
   if (appliedLocale !== null && locale !== appliedLocale) refreshConnectionStatusLanguage();
@@ -3071,7 +3081,7 @@ function wireUI() {
           : true;
         if (weatherOverrideGroup) {
           weatherOverrideGroup.style.display =
-            canEnableWeatherEffects && weatherEffectsToggle.checked ? 'block' : 'none';
+            canEnableWeatherEffects && weatherEffectsToggle.checked ? '' : 'none';
         }
         if (settings.previewWindowEffects) {
           settings.previewWindowEffects();
@@ -3203,6 +3213,15 @@ function wireUI() {
         if (!entity) return;
         const isPlaying = entity.state === 'playing';
         ui.callMediaTileService(isPlaying ? 'pause' : 'play');
+      };
+    }
+
+    // The track opens the player's volume, mute and seek, which the card has no controls for.
+    const mediaTileInfo = document.getElementById('media-tile-info');
+    if (mediaTileInfo) {
+      mediaTileInfo.onclick = () => {
+        const entity = state.STATES?.[state.CONFIG.primaryMediaPlayer];
+        if (entity) ui.openEntityControls(entity);
       };
     }
 
