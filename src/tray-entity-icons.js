@@ -124,9 +124,15 @@ export function setTrayEntityConnectionState(connected, entityIds = null) {
   });
 }
 
-/** The tray sits on the OS shell, so its colors follow the OS scheme rather than the app theme. */
+/**
+ * The tray sits on the OS shell, so its colors follow the OS scheme rather than the app theme.
+ * Main knows it: the page's prefers-color-scheme turns into the app's own choice as soon as the
+ * theme is set to Dark or Light, so it is only the fallback for a main process that cannot say.
+ */
 export function getTrayColorScheme() {
   try {
+    const system = state.CONFIG?.desktopCapabilities?.systemColorScheme;
+    if (system === 'dark' || system === 'light') return system;
     let matches;
     if (colorSchemeQuery) {
       matches = colorSchemeQuery.matches;

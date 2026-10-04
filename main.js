@@ -153,6 +153,9 @@ log.info('App starting...');
 
 const IS_DEV_MODE = process.argv.includes('--dev');
 const IS_SMOKE_TEST_MODE = process.argv.includes('--smoke-test');
+// `npm run dev` and the demos run beside the installed widget on a profile of their own. What they
+// must not share with it is anything outside the profile, like the Omarchy bar's socket and status file.
+const IS_SOURCE_DEV_RUN = IS_DEV_MODE && !app.isPackaged;
 const IS_CLIMATE_DEMO_MODE =
   IS_DEV_MODE && !app.isPackaged && process.argv.includes('--demo-climate');
 const IS_CLIMATE_DEMO_OVERLAY_MODE =
@@ -2058,6 +2061,7 @@ function sanitizeConfigForRenderer(inputConfig) {
     alwaysTransparentWindows: windowsAreAlwaysTransparent(),
     isolatedProfile: IS_ISOLATED_PROFILE,
     nativeGlassSupported: NATIVE_GLASS_SUPPORTED,
+    systemColorScheme: getSystemColorScheme(),
   };
   cloned.configRevision = configSnapshotVersion;
   cloned.secureStoragePending = hasDeferredSecureConfigWork();
@@ -2859,6 +2863,22 @@ function broadcastDesktopPinConfigUpdate() {
   });
 }
 
+/**
+ * Keep a window out of the taskbar and the Alt-Tab list on X11 (and XWayland). Electron makes the
+ * request when the window is created, before it is mapped, and window managers only act on the
+ * request for a mapped window, so KWin and GNOME listed the widget and every pin anyway. Asking
+ * again once the window is shown is what takes effect. Native Wayland has no such request.
+ */
+function keepOutOfTaskbarWhenShown(targetWindow) {
+  if (process.platform !== 'linux' || usesCompositorOwnedPlacement) return;
+  targetWindow.on('show', () => {
+    if (targetWindow.isDestroyed()) return;
+    // A widget minimized because no tray could hold it must stay reachable from the switcher.
+    if (targetWindow === mainWindow && minimizedWithoutTrayHost) return;
+    targetWindow.setSkipTaskbar(true);
+  });
+}
+
 function focusMainWindow({ keepElevated = false } = {}) {
   if (!mainWindow || mainWindow.isDestroyed()) {
     createWindow();
@@ -3330,6 +3350,7 @@ function createDesktopPinWindow(entityId, options = {}) {
   // applyDesktopPinWindowEffects turns both off for the same reason.
 
   const pinWindow = new BrowserWindow(windowOptions);
+  keepOutOfTaskbarWhenShown(pinWindow);
   pinWindow.__desktopPinTransparent = transparencyOptions.transparent;
   hardenRendererNavigation(pinWindow);
   pinWindow.setMenuBarVisibility(false);
@@ -7063,8 +7084,41 @@ function applyHyprlandWidgetBlur(override) {
  * Point nativeTheme at the app's theme so the surfaces the renderer cannot style (context menus,
  * macOS select popups and vibrancy) match it. See resolveNativeThemeSource.
  */
+// The OS's own light or dark setting, which the tray (a part of the OS shell) follows. Once the app
+// pins nativeTheme.themeSource to Dark or Light, nativeTheme.shouldUseDarkColors and the renderer's
+// prefers-color-scheme report the app's choice, not the OS's, so Linux's answer is remembered from
+// the moments the source is still 'system'. Windows keeps the two apart and answers directly.
+let lastSystemColorScheme = null;
+
+function getSystemColorScheme() {
+  try {
+    if (process.platform === 'win32') {
+      return nativeTheme.shouldUseDarkColorsForSystemIntegratedUI ? 'dark' : 'light';
+    }
+    if (nativeTheme.themeSource === 'system') {
+      lastSystemColorScheme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+    }
+  } catch (error) {
+    log.debug('Could not read the system color scheme:', error.message);
+  }
+  return lastSystemColorScheme;
+}
+
+/** Tell the renderer when the OS changes its scheme, so the tray's value icons are redrawn. */
+function watchSystemColorScheme() {
+  let announced = getSystemColorScheme();
+  nativeTheme?.on?.('updated', () => {
+    const current = getSystemColorScheme();
+    if (current === announced) return;
+    announced = current;
+    pushConfigToRenderer();
+  });
+}
+
 function applyNativeThemeSource() {
   const next = resolveNativeThemeSource(config, omarchyThemeWatcher?.get() || null);
+  // Read before the source is pinned, while it still answers for the OS.
+  getSystemColorScheme();
   try {
     if (nativeTheme && nativeTheme.themeSource !== next) nativeTheme.themeSource = next;
   } catch (error) {
@@ -7267,8 +7321,11 @@ function createWindow() {
   const iconPath = getAppIconPath(__dirname);
   const transparencyOptions = getWindowTransparencyOptions(config);
 
-  // Create the browser window. Linux defaults to an opaque native window because
-  // transparent Electron windows are a major compositor performance cost there.
+  // Create the browser window. On Linux it is transparent only when it has to be: a window opacity
+  // below 100% (the default is 95%) or HA_WIDGET_LINUX_TRANSPARENT_WINDOW, since a transparent
+  // Electron window costs the compositor a lot there. That needs a compositing manager; on a bare
+  // X11 window manager the translucent surfaces blend against black, and the workaround is 100%
+  // opacity or the opaque panels setting.
   const visualOptions = getMainWindowVisualOptions({
     platform: process.platform,
     frostedGlass: !!config.frostedGlass,
@@ -7335,6 +7392,7 @@ function createWindow() {
   };
 
   mainWindow = new BrowserWindow(windowOptions);
+  keepOutOfTaskbarWhenShown(mainWindow);
   popupWindowPresenter.syncWorkspaceVisibility(mainWindow);
   // A launch that was asked to stay hidden never shows; every other launch shows at ready-to-go.
   if (!isLayerShellChildProcess && initialLaunchAction !== 'hide') mainWindowReveal.hold();
@@ -7529,7 +7587,21 @@ function getTrayEntityDisplayName(entityId) {
   return typeof customName === 'string' && customName.trim() ? customName.trim() : entityId;
 }
 
+// Windows reports a double-click on a tray icon as click, double-click, click, so a toggle on every
+// click would show the widget and hide it again a moment later. Windows' own double-click time is
+// 500 ms unless the user changed it.
+const TRAY_DOUBLE_CLICK_GUARD_MS = 500;
+let lastTrayToggleAt = Number.NEGATIVE_INFINITY;
+
+function isTrayDoubleClickEcho(now = Date.now()) {
+  if (process.platform !== 'win32') return false;
+  const echo = now - lastTrayToggleAt < TRAY_DOUBLE_CLICK_GUARD_MS;
+  if (!echo) lastTrayToggleAt = now;
+  return echo;
+}
+
 function toggleMainWindowFromTrayEntity({ fromTrayClick = false, trayBounds } = {}) {
+  if (fromTrayClick && isTrayDoubleClickEcho()) return;
   // A tray click may arrive after its focus transfer has already hidden us.
   // Explicit menu commands always act on the current visibility.
   const recentlyHidden = windowAutoHide.consumeTrayDismissal(
@@ -7965,10 +8037,17 @@ function refreshOmarchyBarEntry() {
 
 /**
  * Publish status for the Omarchy 4 bar plugin while the Omarchy shell is installed. An isolated
- * profile stays out of it: it would overwrite the status of the user's real widget.
+ * profile or a run from source stays out of it: it would take over the bar's socket and overwrite
+ * the status of the user's real widget, and delete both when it exits.
  */
 function startOmarchyBarIntegration() {
-  if (process.platform !== 'linux' || IS_SMOKE_TEST_MODE || IS_ISOLATED_PROFILE) return;
+  if (
+    process.platform !== 'linux' ||
+    IS_SMOKE_TEST_MODE ||
+    IS_ISOLATED_PROFILE ||
+    IS_SOURCE_DEV_RUN
+  )
+    return;
   if (!isOmarchyShellInstalled()) return;
   const paths = getOmarchyBarPaths();
   try {
@@ -13219,6 +13298,7 @@ app
       });
     }
     applyNativeThemeSource();
+    watchSystemColorScheme();
     startOmarchyBarIntegration();
     enableDevelopmentClimateDemo();
     startDevLiveReloadWatchers();

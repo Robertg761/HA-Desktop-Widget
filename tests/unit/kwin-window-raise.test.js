@@ -3,10 +3,13 @@
  */
 
 const { EventEmitter } = require('events');
+const os = require('os');
+const path = require('path');
 
 const { buildRaiseScript, createKWinWindowRaiser } = require('../../src/kwin-window-raise.cjs');
 
 const KWIN_SCRIPTING_PATH = '/Scripting';
+const RUNTIME_DIR = path.resolve(path.join(path.sep, 'run', 'user', '1000'));
 
 const silentLog = { info() {}, debug() {}, warn() {}, error() {} };
 
@@ -56,15 +59,17 @@ class FakeKWinBus extends EventEmitter {
 function createRaiser(busOptions = {}, overrides = {}) {
   const bus = new FakeKWinBus(busOptions);
   const writeFile = jest.fn(() => Promise.resolve());
+  const removeFile = jest.fn(() => Promise.resolve());
   const raiser = createKWinWindowRaiser({
     log: overrides.log || silentLog,
     platform: overrides.platform || 'linux',
-    scriptDir: '/tmp',
+    scriptDir: RUNTIME_DIR,
     writeFile,
+    removeFile,
     createBus: () => bus,
     ...overrides.options,
   });
-  return { raiser, bus, writeFile };
+  return { raiser, bus, writeFile, removeFile };
 }
 
 describe('buildRaiseScript', () => {
@@ -92,7 +97,7 @@ describe('createKWinWindowRaiser', () => {
     expect(writeFile).toHaveBeenCalledWith(
       raiser.getScriptFilePath(),
       expect.stringContaining('"HA Desktop Widget"'),
-      'utf8'
+      { encoding: 'utf8', mode: 0o600, flag: 'wx' }
     );
     expect(bus.calls.map((call) => call.member)).toEqual([
       'NameHasOwner',
@@ -103,6 +108,59 @@ describe('createKWinWindowRaiser', () => {
     ]);
     expect(bus.calls[2].body).toEqual([raiser.getScriptFilePath(), raiser.getPluginName()]);
     expect(bus.calls[3].path).toBe(`${KWIN_SCRIPTING_PATH}/Script3`);
+  });
+
+  describe('the temporary script file', () => {
+    it('is private to the user, unguessable, and removed once KWin has run it', async () => {
+      const { raiser, writeFile, removeFile } = createRaiser();
+
+      await raiser.raiseWindowByTitle('HA Desktop Widget');
+
+      const [scriptPath, , options] = writeFile.mock.calls[0];
+      expect(path.dirname(scriptPath)).toBe(path.resolve(RUNTIME_DIR));
+      expect(path.basename(scriptPath)).toMatch(
+        new RegExp(`^${raiser.getPluginName()}-[0-9a-f]{16}\\.js$`)
+      );
+      // Owner-only, and refusing to write through a file or link someone else left there.
+      expect(options).toMatchObject({ mode: 0o600, flag: 'wx' });
+      expect(removeFile).toHaveBeenCalledWith(scriptPath);
+    });
+
+    it('gets a new name every raise', async () => {
+      const { raiser, writeFile } = createRaiser();
+
+      await raiser.raiseWindowByTitle('HA Desktop Widget');
+      await raiser.raiseWindowByTitle('HA Desktop Widget');
+
+      expect(writeFile.mock.calls[0][0]).not.toBe(writeFile.mock.calls[1][0]);
+    });
+
+    it('is removed even when KWin refuses to load it', async () => {
+      const { raiser, writeFile, removeFile } = createRaiser({ loadId: -1 });
+
+      await expect(raiser.raiseWindowByTitle('HA Desktop Widget')).resolves.toBe(false);
+
+      expect(removeFile).toHaveBeenCalledWith(writeFile.mock.calls[0][0]);
+    });
+
+    it('is not left behind by a failure to remove it', async () => {
+      const { raiser } = createRaiser(
+        {},
+        { options: { removeFile: jest.fn(() => Promise.reject(new Error('EACCES'))) } }
+      );
+      await expect(raiser.raiseWindowByTitle('HA Desktop Widget')).resolves.toBe(true);
+    });
+
+    it('goes in the runtime directory, falling back to the temporary directory', () => {
+      const withRuntime = createKWinWindowRaiser({
+        log: silentLog,
+        env: { XDG_RUNTIME_DIR: RUNTIME_DIR },
+      });
+      expect(path.dirname(withRuntime.getScriptFilePath())).toBe(RUNTIME_DIR);
+
+      const withoutRuntime = createKWinWindowRaiser({ log: silentLog, env: {} });
+      expect(path.dirname(withoutRuntime.getScriptFilePath())).toBe(os.tmpdir());
+    });
   });
 
   it('resolves false without touching KWin when the bus name has no owner', async () => {

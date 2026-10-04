@@ -5,7 +5,9 @@ const path = require('path');
 const {
   APP_ID,
   getLaunchAction,
+  getHyprlandSocketCandidates,
   hasIsolatedProfile,
+  hasLiveHyprlandInstance,
   isHyprland,
   isPortalBindingRegistered,
   hyprlandBinding,
@@ -55,6 +57,47 @@ test('Hyprland targets remain registered without a portal-assigned trigger', () 
   expect(hyprlandBinding('Control+Alt+H', 'popup-toggle')).toBe(
     `hl.bind("CTRL + ALT + H", hl.dsp.global("${APP_ID}:popup-toggle"))`
   );
+});
+describe('recognizing a Hyprland session', () => {
+  const env = {
+    XDG_CURRENT_DESKTOP: 'my-custom-session',
+    XDG_RUNTIME_DIR: path.join(path.sep, 'run', 'user', '1000'),
+    HYPRLAND_INSTANCE_SIGNATURE: 'abc123',
+  };
+  const liveSocket = path.join(env.XDG_RUNTIME_DIR, 'hypr', 'abc123', '.socket.sock');
+
+  test('accepts the instance signature when its socket exists, whatever XDG_CURRENT_DESKTOP says', () => {
+    // Layer-shell detection already accepts this; without it the session lost placement, drag,
+    // blur control and the shortcut panel while still running as a desktop layer.
+    expect(isHyprland(env, (candidate) => candidate === liveSocket)).toBe(true);
+  });
+
+  test('does not trust a signature that leaked from another session', () => {
+    expect(isHyprland(env, () => false)).toBe(false);
+    expect(isHyprland({ ...env, HYPRLAND_INSTANCE_SIGNATURE: '' }, () => true)).toBe(false);
+    expect(isHyprland({ XDG_CURRENT_DESKTOP: 'GNOME' }, () => true)).toBe(false);
+  });
+
+  test('looks under the runtime directory first and then /tmp, as older Hyprland did', () => {
+    expect(getHyprlandSocketCandidates(env)).toEqual([
+      liveSocket,
+      path.join('/tmp', 'hypr', 'abc123', '.socket.sock'),
+    ]);
+    expect(getHyprlandSocketCandidates({ ...env, XDG_RUNTIME_DIR: '' })).toEqual([
+      path.join('/tmp', 'hypr', 'abc123', '.socket.sock'),
+    ]);
+    expect(
+      hasLiveHyprlandInstance(env, (candidate) => candidate.startsWith(path.join('/tmp')))
+    ).toBe(true);
+  });
+
+  test('treats a failing probe as no instance', () => {
+    expect(
+      isHyprland(env, () => {
+        throw new Error('EACCES');
+      })
+    ).toBe(false);
+  });
 });
 test.each([
   ['Control+Alt+H', 'CTRL ALT, H'],

@@ -1,4 +1,6 @@
 /* global process */
+const fs = require('fs');
+const path = require('path');
 const { appId: APP_ID } = require('../package.json');
 
 // Portal app ids earlier releases registered. A Hyprland bind names the id
@@ -15,11 +17,45 @@ function hasIsolatedProfile(argv = process.argv) {
   return argv.some((arg) => /^--(?:user-data-dir|isolated-profile)(?:=|$)/.test(arg));
 }
 
-function isHyprland(env = process.env) {
-  return String(env.XDG_CURRENT_DESKTOP || '')
+/**
+ * Where Hyprland's request socket for this session would be. Hyprland >= 0.40 keeps its sockets
+ * under XDG_RUNTIME_DIR; before that they were in /tmp.
+ */
+function getHyprlandSocketCandidates(env = process.env) {
+  const signature = String(env?.HYPRLAND_INSTANCE_SIGNATURE || '').trim();
+  if (!signature) return [];
+  const runtimeDir = String(env?.XDG_RUNTIME_DIR || '').trim();
+  const candidates = [path.join('/tmp', 'hypr', signature, '.socket.sock')];
+  if (runtimeDir) candidates.unshift(path.join(runtimeDir, 'hypr', signature, '.socket.sock'));
+  return candidates;
+}
+
+/**
+ * Whether the Hyprland instance named by HYPRLAND_INSTANCE_SIGNATURE is really running. The
+ * variable alone is not trusted: `systemctl --user import-environment` commonly leaks it into
+ * later sessions on other compositors, so the socket it names has to exist.
+ */
+function hasLiveHyprlandInstance(env = process.env, exists = fs.existsSync) {
+  return getHyprlandSocketCandidates(env).some((candidate) => {
+    try {
+      return !!exists(candidate);
+    } catch {
+      return false;
+    }
+  });
+}
+
+/**
+ * Is this session Hyprland? XDG_CURRENT_DESKTOP says so on a normal login, but it can be
+ * overridden (a custom session script, a launcher), and the layer-shell handoff already accepts the
+ * instance signature, so a session that only the signature identifies would otherwise run as a
+ * desktop layer with no placement, drag, blur control or shortcut panel.
+ */
+function isHyprland(env = process.env, exists = fs.existsSync) {
+  const desktops = String(env.XDG_CURRENT_DESKTOP || '')
     .toLowerCase()
-    .split(':')
-    .includes('hyprland');
+    .split(':');
+  return desktops.includes('hyprland') || hasLiveHyprlandInstance(env, exists);
 }
 
 function isPortalBindingRegistered(binding) {
@@ -127,7 +163,9 @@ module.exports = {
   LEGACY_PORTAL_APP_IDS,
   legacyPortalBindingNotice,
   getLaunchAction,
+  getHyprlandSocketCandidates,
   hasIsolatedProfile,
+  hasLiveHyprlandInstance,
   isHyprland,
   isPortalBindingRegistered,
   hyprlandBinding,

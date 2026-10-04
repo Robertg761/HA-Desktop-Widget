@@ -148,6 +148,7 @@ function loadCreateWindow({
       handleWindowBlur: jest.fn(),
       isElevated: () => false,
     },
+    keepOutOfTaskbarWhenShown: jest.fn(),
     applyWindowOpacity: jest.fn(() => 0.95),
     applyFrostedGlass: jest.fn(),
     wireWindowEffectsRefresh: jest.fn(),
@@ -471,5 +472,67 @@ describe('the title bar minimize button', () => {
     window.emit('minimize', event);
     expect(event.preventDefault).toHaveBeenCalledTimes(1);
     expect(window.hide).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('keeping windows out of the taskbar on X11', () => {
+  function loadKeep({ platform = 'linux', usesCompositorOwnedPlacement = false } = {}) {
+    const context = {
+      process: { platform },
+      usesCompositorOwnedPlacement,
+      mainWindow: null,
+      minimizedWithoutTrayHost: false,
+    };
+    vm.runInNewContext(
+      sliceMain('function keepOutOfTaskbarWhenShown', 'function focusMainWindow('),
+      context
+    );
+    return context;
+  }
+
+  it('asks again each time a mapped window is shown, which is when window managers act on it', () => {
+    const context = loadKeep();
+    const window = new FakeWindow({});
+    context.keepOutOfTaskbarWhenShown(window);
+
+    window.emit('show');
+    window.emit('show');
+    expect(window.setSkipTaskbar).toHaveBeenCalledTimes(2);
+    expect(window.setSkipTaskbar).toHaveBeenLastCalledWith(true);
+  });
+
+  it('leaves a widget that was minimized for lack of a tray in the switcher', () => {
+    const context = loadKeep();
+    const window = new FakeWindow({});
+    context.mainWindow = window;
+    context.keepOutOfTaskbarWhenShown(window);
+
+    context.minimizedWithoutTrayHost = true;
+    window.emit('show');
+    expect(window.setSkipTaskbar).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['win32', false],
+    ['darwin', false],
+    ['linux', true],
+  ])(
+    'does nothing on %s (native Wayland: %s), where it is not needed or not possible',
+    (platform, native) => {
+      const context = loadKeep({ platform, usesCompositorOwnedPlacement: native });
+      const window = new FakeWindow({});
+      context.keepOutOfTaskbarWhenShown(window);
+      window.emit('show');
+      expect(window.setSkipTaskbar).not.toHaveBeenCalled();
+    }
+  );
+
+  it('is wired to the main window and to every pin', () => {
+    expect(mainSource).toMatch(
+      /mainWindow = new BrowserWindow\(windowOptions\);\s*keepOutOfTaskbarWhenShown\(mainWindow\);/
+    );
+    expect(mainSource).toMatch(
+      /const pinWindow = new BrowserWindow\(windowOptions\);\s*keepOutOfTaskbarWhenShown\(pinWindow\);/
+    );
   });
 });
