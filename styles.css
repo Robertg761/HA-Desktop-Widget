@@ -15199,6 +15199,12 @@ body[data-season] .modal-content {
   --season-size: 84px;
 }
 
+/* A dialog's close button takes the last 44px of its header, so the art sits beside it and not
+   behind it. */
+body[data-season] .modal-content::before {
+  inset-inline-end: 48px;
+}
+
 /* Compact tiles are smaller, so their art is too. */
 body.density-compact[data-season] .control-item {
   --season-scale: 0.7;
@@ -15209,6 +15215,15 @@ body[data-season] .control-item:nth-child(3n + 2)::before {
 }
 
 body[data-season] .control-item:nth-child(3n + 1)::before {
+  inset-block: 0 auto;
+  inset-inline: 0 auto;
+}
+
+/* The Controls button sits in a tile's top end corner, and a tile has one wherever it falls in the
+   grid, so its art takes the start corner as it does in the first column. Christmas draws its
+   snow along the whole top edge and Easter draws at the bottom, so neither is in the way. */
+body[data-season]:where(:not([data-season='christmas'], [data-season='easter']))
+  .control-item:has(> .tile-details-button)::before {
   inset-block: 0 auto;
   inset-inline: 0 auto;
 }
@@ -15231,8 +15246,21 @@ body[data-season] .weather-card {
 /* Only Settings has the room: in a short dialog, such as a confirmation, the piece would sit
    behind the message. */
 body[data-season] #settings-modal .modal-content {
+  --season-size: 44px;
   --season-sit: var(--season-dialog-sit);
-  --season-sit-size: 60px;
+  --season-sit-size: 40px;
+}
+
+/* Settings' header is about 50px tall: the piece beside the close button fits inside it instead
+   of hanging down into the page. */
+body[data-season] #settings-modal .modal-content::before {
+  inset-block-start: 3px;
+}
+
+/* The piece sits in the 52px icon rail, below its icons. Across the rail's edge it was dimmed on
+   one side and sharp on the other, and on the page it covers the section labels. */
+body[data-season] #settings-modal .modal-content::after {
+  inset-inline-start: 6px;
 }
 
 body[data-season] .control-item:nth-child(3n + 2):not(.activating)::after,
@@ -15356,6 +15384,7 @@ body[data-season='halloween'] .control-item::before {
 }
 
 body[data-season='halloween'] .control-item:nth-child(3n + 1)::before,
+body[data-season='halloween'] .control-item:has(> .tile-details-button)::before,
 body[data-season='halloween'] .weather-card::before {
   inset-block: 0 auto;
   inset-inline: 0 auto;
@@ -15367,6 +15396,15 @@ body[data-season='halloween'] .modal-content::before {
   inset-block: 0 auto;
   inset-inline: auto 0;
   transform: scaleX(var(--season-dir));
+}
+
+/* The web stays in the dialog's corner, so the close button gets a backing that keeps its strands
+   off the glyph. Settings' web is small and sits in a translucent header, and needs none. */
+body[data-season='halloween']
+  .modal:not(#settings-modal)
+  .modal-header
+  .close-btn:not(:hover, :focus-visible) {
+  background: rgba(var(--window-bg-rgb), 0.8);
 }
 
 /* Lit from inside. */
@@ -15428,7 +15466,7 @@ body[data-season='christmas'] .status-card::before {
 
 body[data-season='christmas'] .modal-content::before {
   inset-block: 8px auto;
-  inset-inline: auto 8px;
+  inset-inline: auto 52px;
   width: 60px;
   height: 46px;
 }
@@ -15589,8 +15627,13 @@ body[data-season='lunar-new-year'] .modal-content::before {
   transform-origin: top center;
 }
 
-body[data-season='lunar-new-year'] .control-item:nth-child(3n + 1)::before {
+body[data-season='lunar-new-year'] .control-item:nth-child(3n + 1)::before,
+body[data-season='lunar-new-year'] .control-item:has(> .tile-details-button)::before {
   inset-inline: 14px auto;
+}
+
+body[data-season='lunar-new-year'] .modal-content::before {
+  inset-inline-end: 56px;
 }
 
 /* Firecrackers hang from the top of the clock card, opposite its lantern. */
