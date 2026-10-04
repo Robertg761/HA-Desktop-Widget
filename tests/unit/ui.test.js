@@ -8069,6 +8069,108 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       closeDialog.mockRestore();
     });
 
+    describe("the comparison graph editor's guidance", () => {
+      const sensors = (count) =>
+        Object.fromEntries(
+          Array.from({ length: count }, (_value, index) => {
+            const id = `sensor.room_${index}`;
+            return [
+              id,
+              {
+                entity_id: id,
+                state: String(20 + index),
+                attributes: { friendly_name: `Room ${index}`, unit_of_measurement: '°C' },
+              },
+            ];
+          })
+        );
+      const openEditor = async (homeSensors) => {
+        setPages([{ id: 'default', name: 'All', entityIds: [] }]);
+        state.setConfig({ ...state.CONFIG, comparisonGraphs: [] });
+        state.setStates(homeSensors);
+        ui.renderActiveTab();
+        await ui.addComparisonGraphTile();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        const modal = document.querySelector('.comparison-graph-modal');
+        return {
+          modal,
+          hint: modal.querySelector('.comparison-graph-hint'),
+          search: modal.querySelector('input[type="text"][aria-label]'),
+          list: modal.querySelector('.entity-selector-list'),
+        };
+      };
+      const addButtons = (list) => [...list.querySelectorAll('.entity-selector-btn.add')];
+
+      afterEach(() => {
+        document.querySelector('.comparison-graph-modal .close-btn')?.click();
+      });
+
+      it('opens on the Graph name field, not on Close', async () => {
+        const { modal } = await openEditor(sensors(3));
+
+        expect(document.activeElement).toBe(
+          modal.querySelector('input[id^="comparison-graph-name-"]')
+        );
+      });
+
+      it('says how many sensors are chosen and what the limit is, not "3 of 7"', async () => {
+        const { hint, list } = await openEditor(sensors(10));
+        expect(hint.textContent).toBe('Up to 7 sensors. Selected: 0.');
+
+        addButtons(list)[0].click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(hint.textContent).toBe('Up to 7 sensors. Selected: 1.');
+      });
+
+      it('says why every Add is disabled once the limit is reached', async () => {
+        const home = sensors(10);
+        const { hint, list } = await openEditor(home);
+        state.setConfig({
+          ...state.CONFIG,
+          comparisonGraphs: [
+            {
+              ...state.CONFIG.comparisonGraphs[0],
+              entityIds: Object.keys(home).slice(0, 7),
+            },
+          ],
+        });
+        // The editor redraws its list on a keystroke in the search field, from the stored graph.
+        const search = document.querySelector('.comparison-graph-modal input[aria-label]');
+        search.value = 'room';
+        search.dispatchEvent(new Event('input', { bubbles: true }));
+
+        expect(hint.textContent).toBe('Maximum reached. Remove a sensor to add another.');
+        expect(addButtons(list).length).toBeGreaterThan(0);
+        expect(addButtons(list).every((button) => button.disabled)).toBe(true);
+      });
+
+      it('says that nothing matches a search, not that the home has no sensors', async () => {
+        const { search, list } = await openEditor(sensors(4));
+
+        search.value = 'garage';
+        search.dispatchEvent(new Event('input', { bubbles: true }));
+
+        expect(list.textContent).toBe('No sensors match "garage"');
+      });
+
+      it('still says there are no numeric sensors in a home that has none', async () => {
+        const { list } = await openEditor({
+          'light.lamp': { entity_id: 'light.lamp', state: 'on', attributes: {} },
+        });
+
+        expect(list.textContent).toBe('No numeric sensors found');
+      });
+
+      it('gives the count line room above the search field', async () => {
+        const { hint } = await openEditor(sensors(2));
+
+        expect(hint.classList.contains('comparison-graph-hint')).toBe(true);
+        expect(hint.classList.contains('form-help')).toBe(true);
+      });
+    });
+
     it('limits a comparison graph name like a page name', async () => {
       setPages([{ id: 'default', name: 'All', entityIds: [] }]);
       state.setConfig({
@@ -9240,6 +9342,30 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(typeof ui.updateMediaSeekBar).toBe('function');
       expect(typeof ui.callMediaTileService).toBe('function');
       expect(typeof ui.updateWeatherEffects).toBe('function');
+    });
+
+    it("no longer offers a clock interval of its own; the renderer's tick is the only one", () => {
+      expect(ui.startTimeTicker).toBeUndefined();
+      expect(ui.stopTimeTicker).toBeUndefined();
+    });
+
+    it('draws a clock card that appears without starting an interval', () => {
+      jest.useFakeTimers();
+      try {
+        document.body.insertAdjacentHTML(
+          'beforeend',
+          '<div id="time-probe"><div id="current-time"></div><div id="current-date"></div></div>'
+        );
+        const before = jest.getTimerCount();
+
+        ui.updateTimeDisplay();
+
+        expect(document.getElementById('current-time').textContent).not.toBe('');
+        expect(jest.getTimerCount()).toBe(before);
+      } finally {
+        document.getElementById('time-probe')?.remove();
+        jest.useRealTimers();
+      }
     });
   });
 

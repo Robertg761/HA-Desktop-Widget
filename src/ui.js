@@ -2054,13 +2054,9 @@ function renderPrimaryCards() {
       updateWeatherFromHA();
     }
     isTimeCardVisible = slotOne === 'time' || slotTwo === 'time';
-    if (isTimeCardVisible) {
-      // Keep time current without relying on a dedicated long-lived interval.
-      stopTimeTicker();
-      updateTimeDisplay();
-    } else {
-      stopTimeTicker();
-    }
+    // The renderer's tick keeps the clock current; this only draws it once for a card that has just
+    // appeared.
+    if (isTimeCardVisible) updateTimeDisplay();
     refreshVisibleEntityCache();
   } catch (error) {
     console.error('[UI] Error rendering primary cards:', error);
@@ -4988,7 +4984,7 @@ function showComparisonGraphModal(graphId) {
   body.appendChild(warning);
 
   const hint = document.createElement('div');
-  hint.className = 'form-help';
+  hint.className = 'form-help comparison-graph-hint';
   body.appendChild(hint);
 
   // The group spaces the field like the others above it.
@@ -5090,10 +5086,15 @@ function showComparisonGraphModal(graphId) {
       );
     }
 
-    hint.textContent = t('{{count}} of {{max}} sensors.', {
-      count: graph.entityIds.length,
-      max: MAX_COMPARISON_GRAPH_SERIES,
-    });
+    // "3 of 7" read as a total of seven sensors in the home; the limit is on the graph. At the
+    // limit every Add is disabled, and the line says why.
+    hint.textContent =
+      graph.entityIds.length >= MAX_COMPARISON_GRAPH_SERIES
+        ? t('Maximum reached. Remove a sensor to add another.')
+        : t('Up to {{max}} sensors. Selected: {{count}}.', {
+            count: graph.entityIds.length,
+            max: MAX_COMPARISON_GRAPH_SERIES,
+          });
   };
 
   const renderList = () => {
@@ -5159,7 +5160,10 @@ function showComparisonGraphModal(graphId) {
       if (!rows.length) {
         const empty = document.createElement('div');
         empty.className = 'no-entities-message';
-        empty.textContent = t('No numeric sensors found');
+        // A search that found nothing is not a home without numeric sensors.
+        empty.textContent = filter
+          ? t('No sensors match "{{query}}"', { query: search.value.trim() })
+          : t('No numeric sensors found');
         list.appendChild(empty);
         return;
       }
@@ -10289,6 +10293,11 @@ function applyUnavailableRepairAffordance(div, entityId, displayName) {
       );
 }
 
+// Rows the repair picker draws, and how long it waits after typing before it searches. The same
+// numbers as Manage Quick Access, which pages 50 at a time and waits 150 ms.
+const REPAIR_PICKER_MAX_ROWS = 50;
+const REPAIR_PICKER_SEARCH_DELAY_MS = 150;
+
 function openEntityRepairModal(staleEntityId) {
   if (typeof staleEntityId !== 'string' || !staleEntityId.trim()) return;
 
@@ -10373,27 +10382,34 @@ function openEntityRepairModal(staleEntityId) {
     }
   };
 
+  // Every entity in the home can be a replacement, and the dialog used to build a row for each one on
+  // every keystroke, sorting by a name it worked out afresh at each comparison. The names are worked
+  // out once, the list shows the first rows, and a search runs once typing pauses.
+  const staleDomain = staleEntityId.split('.')[0];
+  const replacements = Object.values(state.STATES || {})
+    .filter((entity) => entity?.entity_id && entity.entity_id !== staleEntityId)
+    .map((entity) => {
+      const name = utils.getEntityDisplayName(entity);
+      return {
+        entity,
+        name,
+        searchText: `${entity.entity_id}\n${name}`.toLowerCase(),
+        sameDomain: entity.entity_id.startsWith(`${staleDomain}.`),
+      };
+    })
+    .sort((left, right) => {
+      if (left.sameDomain !== right.sameDomain) return left.sameDomain ? -1 : 1;
+      return left.name.localeCompare(right.name);
+    });
+
   const renderCandidates = () => {
     const query = search.value.trim().toLowerCase();
-    const staleDomain = staleEntityId.split('.')[0];
-    const candidates = Object.values(state.STATES || {})
-      .filter(
-        (entity) =>
-          entity?.entity_id &&
-          entity.entity_id !== staleEntityId &&
-          (!query ||
-            entity.entity_id.toLowerCase().includes(query) ||
-            utils.getEntityDisplayName(entity).toLowerCase().includes(query))
-      )
-      .sort((left, right) => {
-        const leftSameDomain = left.entity_id.startsWith(`${staleDomain}.`) ? 1 : 0;
-        const rightSameDomain = right.entity_id.startsWith(`${staleDomain}.`) ? 1 : 0;
-        if (leftSameDomain !== rightSameDomain) return rightSameDomain - leftSameDomain;
-        return utils.getEntityDisplayName(left).localeCompare(utils.getEntityDisplayName(right));
-      });
+    const matches = query
+      ? replacements.filter((candidate) => candidate.searchText.includes(query))
+      : replacements;
 
     list.replaceChildren();
-    if (!candidates.length) {
+    if (!matches.length) {
       const empty = document.createElement('p');
       empty.className = 'entity-selector-empty';
       empty.textContent = t('No matching replacement entities found.');
@@ -10401,7 +10417,7 @@ function openEntityRepairModal(staleEntityId) {
       return;
     }
 
-    candidates.forEach((entity) => {
+    matches.slice(0, REPAIR_PICKER_MAX_ROWS).forEach(({ entity, name: displayName }) => {
       const item = document.createElement('div');
       item.className = 'entity-item';
       const main = document.createElement('div');
@@ -10410,7 +10426,7 @@ function openEntityRepairModal(staleEntityId) {
       info.className = 'entity-item-info';
       const name = document.createElement('span');
       name.className = 'entity-name';
-      name.textContent = utils.getEntityDisplayName(entity);
+      name.textContent = displayName;
       const id = document.createElement('span');
       id.className = 'entity-id';
       id.textContent = entity.entity_id;
@@ -10427,10 +10443,28 @@ function openEntityRepairModal(staleEntityId) {
       item.append(main, button);
       list.appendChild(item);
     });
+
+    if (matches.length > REPAIR_PICKER_MAX_ROWS) {
+      const more = document.createElement('p');
+      more.className = 'entity-selector-empty';
+      more.setAttribute('role', 'status');
+      more.textContent = t(
+        'Showing the first {{shown}} of {{count}} entities. Type to narrow them.',
+        {
+          shown: formatNumber(REPAIR_PICKER_MAX_ROWS),
+          count: formatNumber(matches.length),
+        }
+      );
+      list.appendChild(more);
+    }
   };
 
+  let searchTimer = null;
   closeButton.addEventListener('click', close);
-  search.addEventListener('input', renderCandidates);
+  search.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(renderCandidates, REPAIR_PICKER_SEARCH_DELAY_MS);
+  });
   renderCandidates();
   // The search is the first thing to do here; without it focus would start on the close button.
   uiUtils.openDialog(modal, {
@@ -11062,6 +11096,23 @@ function requestAlarmCode(entity) {
 // never falls back to the opening snapshot.
 const liveTodoEntity = (entity) => state.STATES?.[entity.entity_id] || entity;
 
+// Ticking or adding an item changes the list's count in Home Assistant, which the dialog hears as a
+// state change and would answer with a second read of a list it is already re-reading. The number
+// of changes the person has started and not yet seen the list for is kept per list.
+const todoLocalChanges = new WeakMap();
+
+function startTodoLocalChange(container) {
+  todoLocalChanges.set(container, (todoLocalChanges.get(container) || 0) + 1);
+  let ended = false;
+  return () => {
+    if (ended) return;
+    ended = true;
+    todoLocalChanges.set(container, Math.max(0, (todoLocalChanges.get(container) || 1) - 1));
+  };
+}
+
+const hasTodoLocalChange = (container) => (todoLocalChanges.get(container) || 0) > 0;
+
 function renderTodoItemsInto(container, entity, items, getEntity = () => liveTodoEntity(entity)) {
   if (!container) return;
   container.innerHTML = '';
@@ -11098,6 +11149,7 @@ function renderTodoItemsInto(container, entity, items, getEntity = () => liveTod
         }
         checkbox.disabled = true;
         checkbox.dataset.pending = 'true';
+        const endLocalChange = startTodoLocalChange(container);
         try {
           await websocket.callService('todo', 'update_item', {
             entity_id: entity.entity_id,
@@ -11111,6 +11163,8 @@ function renderTodoItemsInto(container, entity, items, getEntity = () => liveTod
           checkbox.disabled = !getTodoCapabilities(getEntity()).canUpdate;
           checkbox.focus();
           handleServiceError(error, utils.getEntityDisplayName(entity));
+        } finally {
+          endLocalChange();
         }
       });
 
@@ -11133,16 +11187,25 @@ function showDetailMessage(container, text) {
 
 // Reloading replaces the list, so the checkbox or Retry button that started it is gone and focus
 // falls to <body>. `focusUid` (an item uid, or true for the first control) puts it back.
+//
+// "Loading..." is for a list that has nothing in it yet. One that already shows items keeps them
+// (dimmed) until the new ones are ready: replacing the list with a line of text made the dialog
+// collapse and re-centre on every tick, and lost the scroll position of a long list.
 async function loadTodoItemsInto(
   container,
   entity,
   { focusUid = null, getEntity = () => liveTodoEntity(entity) } = {}
 ) {
-  showDetailMessage(container, t('Loading...'));
+  const scroller = container.closest('.modal-body') || container;
+  const scrollTop = scroller.scrollTop;
+  const hadItems = container.querySelector('.todo-items-list') !== null;
+  if (hadItems) container.dataset.refreshing = 'true';
+  else showDetailMessage(container, t('Loading...'));
   try {
     const items = await fetchTodoItems(entity.entity_id, { force: true });
     if (!container.isConnected || container.closest('.modal-closing')) return;
     renderTodoItemsInto(container, getEntity(), items, getEntity);
+    scroller.scrollTop = scrollTop;
   } catch {
     if (!container.isConnected || container.closest('.modal-closing')) return;
     const message = document.createElement('p');
@@ -11156,6 +11219,8 @@ async function loadTodoItemsInto(
       void loadTodoItemsInto(container, entity, { focusUid: true, getEntity });
     };
     container.replaceChildren(message, retry);
+  } finally {
+    delete container.dataset.refreshing;
   }
   if (!focusUid || !container.isConnected) return;
   const active = document.activeElement;
@@ -11223,7 +11288,8 @@ function showTodoDetails(entity) {
       });
       if (current.state !== lastState) {
         lastState = current.state;
-        if (isEntityAvailable(current)) {
+        // The person's own change reads the list again itself, once the service call is done.
+        if (isEntityAvailable(current) && !hasTodoLocalChange(listContainer)) {
           void loadTodoItemsInto(listContainer, current, { getEntity: liveTodo });
         }
       }
@@ -11235,6 +11301,7 @@ function showTodoDetails(entity) {
       const summary = input.value.trim();
       if (!summary) return;
       busy = true;
+      const endLocalChange = startTodoLocalChange(listContainer);
       refreshTodo();
       try {
         await websocket.callService('todo', 'add_item', {
@@ -11246,6 +11313,7 @@ function showTodoDetails(entity) {
       } catch (error) {
         handleServiceError(error, utils.getEntityDisplayName(entity));
       } finally {
+        endLocalChange();
         busy = false;
         refreshTodo();
         if (input.isConnected && !input.disabled) input.focus();
@@ -13415,20 +13483,6 @@ function handleCameraModalClosed(event) {
 
 document.addEventListener('camera-modal-closed', handleCameraModalClosed);
 
-let timeTickerId = null;
-
-function startTimeTicker() {
-  if (timeTickerId) return;
-  updateTimeDisplay();
-  timeTickerId = setInterval(updateTimeDisplay, 1000);
-}
-
-function stopTimeTicker() {
-  if (!timeTickerId) return;
-  clearInterval(timeTickerId);
-  timeTickerId = null;
-}
-
 function updateTimerDisplays() {
   try {
     if (!hasVisibleTimerEntities) return;
@@ -15473,8 +15527,6 @@ export {
   initUpdateUI,
   relocalizeUpdateStatus,
   updateTimeDisplay,
-  startTimeTicker,
-  stopTimeTicker,
   updateTimerDisplays,
   renderPrimaryCards,
   toggleReorganizeMode,

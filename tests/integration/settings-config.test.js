@@ -1245,6 +1245,29 @@ describe('Settings + Config Integration', () => {
       expect(customIconsToggle.getAttribute('aria-expanded')).toBe('false');
     });
 
+    test('opens even if the emoji catalog cannot be loaded', async () => {
+      // A fresh copy of the module, so no earlier test has already loaded (and cached) the catalog.
+      let isolated;
+      jest.isolateModules(() => {
+        jest.doMock('regenerate-unicode-properties/Property_of_Strings/RGI_Emoji.js', () => {
+          throw new Error('chunk failed to load');
+        });
+        isolated = require('../../src/settings.js');
+        require('../../src/state.js').default.setConfig(state.CONFIG);
+      });
+      // The section is expanded, so the list needs the catalog.
+      document.getElementById('custom-entity-icons-section').classList.remove('collapsed');
+      expect(document.getElementById('settings-modal').classList.contains('hidden')).toBe(true);
+
+      try {
+        await isolated.openSettings();
+      } finally {
+        jest.dontMock('regenerate-unicode-properties/Property_of_Strings/RGI_Emoji.js');
+      }
+
+      expect(document.getElementById('settings-modal').classList.contains('hidden')).toBe(false);
+    });
+
     test('toggling personalization sections persists collapse state', async () => {
       jest.useFakeTimers();
       try {
@@ -1972,7 +1995,30 @@ describe('Settings + Config Integration', () => {
       await waitForLanguagePackRefresh();
       expect(list.textContent).toBe('No downloadable language packs are currently available.');
       expect(status.classList.contains('hidden')).toBe(true);
-      expect(window.electronAPI.getLocalePacks).toHaveBeenLastCalledWith(true);
+      // Opening Settings reuses the catalogue main already holds instead of fetching it again.
+      expect(window.electronAPI.getLocalePacks).toHaveBeenLastCalledWith(false);
+    });
+
+    test('opening Settings never forces a fresh download of the catalogue, but a pack action does', async () => {
+      window.electronAPI.getLocalePacks.mockResolvedValue([
+        { locale: 'fr', displayName: 'Français', installed: true, version: '1.0.0' },
+      ]);
+      window.electronAPI.getLocalePacks.mockClear();
+
+      await settings.openSettings();
+      await waitForLanguagePackRefresh();
+      await settings.openSettings();
+      await waitForLanguagePackRefresh();
+
+      expect(window.electronAPI.getLocalePacks.mock.calls.map(([force]) => force)).toEqual([
+        false,
+        false,
+      ]);
+
+      window.electronAPI.getLocalePacks.mockClear();
+      const list = document.getElementById('language-packs-list');
+      await list.onclick({ target: list.querySelector('[data-locale-action="remove"]') });
+      expect(window.electronAPI.getLocalePacks).toHaveBeenCalledWith(true);
     });
 
     test('removal refresh handles an offline catalog without retaining the removed pack', async () => {
@@ -6129,6 +6175,151 @@ describe('Settings + Config Integration', () => {
         const rebuilt = document.querySelector('.edit-alert[data-entity="light.living_room"]');
         expect(rebuilt).not.toBe(edit);
         expect(document.activeElement).toBe(rebuilt);
+      });
+
+      describe('the picker in a home with thousands of entities', () => {
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const manyEntities = (count) => {
+          const entities = { ...state.STATES };
+          for (let index = 0; index < count; index += 1) {
+            const id = `sensor.reading_${String(index).padStart(4, '0')}`;
+            entities[id] = {
+              entity_id: id,
+              state: '1',
+              attributes: { friendly_name: `Reading ${index}` },
+            };
+          }
+          state.setStates(entities);
+        };
+        const openPicker = async () => {
+          document.querySelector('.add-alert-btn').click();
+          await tick();
+          const list = document.getElementById('alert-entity-picker-list');
+          return {
+            list,
+            search: document.getElementById('alert-entity-picker-search'),
+            rows: () => list.querySelectorAll('.entity-item'),
+            hint: () => list.querySelector('.entity-selector-empty'),
+          };
+        };
+        const type = async (search, text) => {
+          search.value = text;
+          search.dispatchEvent(new Event('input', { bubbles: true }));
+          await wait(200);
+        };
+
+        test('draws 100 rows to open, and says how many there are', async () => {
+          manyEntities(3000);
+          const { rows, hint } = await openPicker();
+
+          expect(rows()).toHaveLength(100);
+          expect(hint().textContent).toMatch(
+            /^Showing the first 100 of 3,0\d\d entities\. Type to narrow them\.$/
+          );
+        });
+
+        test('searches once typing has paused', async () => {
+          manyEntities(3000);
+          const { search, rows } = await openPicker();
+
+          search.value = 'reading 12';
+          search.dispatchEvent(new Event('input', { bubbles: true }));
+          search.value = 'reading 129';
+          search.dispatchEvent(new Event('input', { bubbles: true }));
+          // Nothing is redrawn between keystrokes.
+          expect(rows()).toHaveLength(100);
+          await wait(200);
+
+          const names = [...rows()].map((row) => row.querySelector('.entity-name').textContent);
+          expect(names).toHaveLength(11);
+          expect(names.every((name) => name.startsWith('Reading 129'))).toBe(true);
+        });
+
+        test('puts the best matches first, not the first in the alphabet', async () => {
+          state.setStates({
+            ...state.STATES,
+            'light.back_door_light': {
+              entity_id: 'light.back_door_light',
+              state: 'off',
+              attributes: { friendly_name: 'Back door light' },
+            },
+            'switch.door': {
+              entity_id: 'switch.door',
+              state: 'off',
+              attributes: { friendly_name: 'Door' },
+            },
+          });
+          const { search, rows } = await openPicker();
+
+          await type(search, 'door');
+
+          const names = [...rows()].map((row) => row.querySelector('.entity-name').textContent);
+          expect(names.slice(0, 2)).toEqual(['Door', 'Back door light']);
+        });
+
+        test('says so once when nothing matches, and gives the rows back when the search is cleared', async () => {
+          manyEntities(300);
+          const { search, rows, list } = await openPicker();
+
+          await type(search, 'zzzzzz');
+          expect(rows()).toHaveLength(0);
+          expect(list.querySelectorAll('.entity-selector-empty')).toHaveLength(1);
+          expect(list.textContent).toBe('No matching entities found.');
+
+          await type(search, '');
+          expect(rows()).toHaveLength(100);
+          expect(list.textContent).not.toContain('No matching entities found.');
+        });
+
+        test('opens the alert dialog for the row that is picked, from the first page or from a search', async () => {
+          manyEntities(300);
+          const { search, rows } = await openPicker();
+          await type(search, 'reading 0042');
+
+          rows()[0].querySelector('.entity-selector-btn').click();
+          await tick();
+
+          expect(document.getElementById('alert-config-modal').classList.contains('hidden')).toBe(
+            false
+          );
+          expect(document.getElementById('alert-config-title').textContent).toContain('Reading 42');
+        });
+
+        test('marks an entity that already has an alert as one to edit', async () => {
+          manyEntities(300);
+          const { search, rows } = await openPicker();
+          await type(search, 'kitchen');
+
+          const button = rows()[0].querySelector('.entity-selector-btn');
+          expect(button.classList.contains('edit')).toBe(true);
+          expect(button.textContent.trim()).toBe('Edit alert');
+        });
+
+        test('reads each name once, not once per comparison', async () => {
+          let reads = 0;
+          const entities = { ...state.STATES };
+          for (let index = 0; index < 2000; index += 1) {
+            const id = `sensor.counted_${String(index).padStart(4, '0')}`;
+            const name = `Counted ${index}`;
+            entities[id] = {
+              entity_id: id,
+              state: '1',
+              attributes: {
+                get friendly_name() {
+                  reads += 1;
+                  return name;
+                },
+              },
+            };
+          }
+          state.setStates(entities);
+          reads = 0;
+
+          await openPicker();
+
+          // Sorting by a name worked out at each comparison read it tens of thousands of times.
+          expect(reads).toBeLessThanOrEqual(2000 * 2);
+        });
       });
 
       test('puts focus on the Add button when the alert it was removing is gone', async () => {

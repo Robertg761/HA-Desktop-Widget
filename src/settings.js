@@ -5301,7 +5301,10 @@ async function openSettings(uiHooks) {
     syncLanguageSelectOptions();
     renderLanguagePackList();
     updateLanguageSummaryText();
-    refreshLanguagePackListInBackground(true);
+    // Main keeps the catalogue for five minutes, so opening Settings asks for that copy; forcing a
+    // fresh download on every open cost a request each time and showed "Unable to load language
+    // packs" when offline. Downloading or removing a pack still asks for a fresh one.
+    refreshLanguagePackListInBackground(false);
 
     applyProfileSyncConfigToForm();
     bindProfileSyncSettingsUi();
@@ -5441,7 +5444,14 @@ async function openSettings(uiHooks) {
     const customIconSearch = document.getElementById('custom-entity-icons-search');
     if (customIconSearch) customIconSearch.value = '';
     if (shouldRenderCustomIconsList) {
-      await ensureCustomEntityIconChoicesLoaded();
+      // The emoji catalog is a chunk that loads on demand. If it fails to load, the list is drawn
+      // without it and Settings still opens: this used to end in the outer catch, which only logged,
+      // and the dialog never appeared.
+      try {
+        await ensureCustomEntityIconChoicesLoaded();
+      } catch (error) {
+        log.warn('Could not load the emoji catalog for the custom icon list:', error);
+      }
       renderCustomEntityIconsList();
       hydratedPersonalizationSections.add('custom-entity-icons-section');
     } else {
@@ -6590,6 +6600,12 @@ function closeAlertEntityPicker() {
   }
 }
 
+// A home can have thousands of entities, and the picker used to build a row (with an icon) for
+// every one on each open and score every row on each keystroke. It now draws the first rows of a
+// ranked list, and works out the list again a moment after the typing pauses.
+const ALERT_PICKER_MAX_ROWS = 100;
+const ALERT_PICKER_SEARCH_DELAY_MS = 150;
+
 function populateAlertEntityPicker() {
   try {
     const list = document.getElementById('alert-entity-picker-list');
@@ -6597,33 +6613,33 @@ function populateAlertEntityPicker() {
 
     // utils already imported at top
     const alerts = state.CONFIG.entityAlerts?.alerts || {};
-    const entities = Object.values(state.STATES || {})
+    // The name is worked out once per entity: sorting by it asked for it at every comparison.
+    const candidates = Object.values(state.STATES || {})
       .filter((e) => !e.entity_id.startsWith('sun.') && !e.entity_id.startsWith('zone.'))
-      .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)));
+      .map((entity) => ({ entity, name: utils.getEntityDisplayName(entity) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
 
     list.innerHTML = '';
 
-    if (entities.length === 0) {
+    if (candidates.length === 0) {
       list.innerHTML = `<div class="no-entities-message">${utils.escapeHtml(
         t("No entities available. Make sure you're connected to Home Assistant.")
       )}</div>`;
       return;
     }
 
-    entities.forEach((entity) => {
+    const buildRow = ({ entity, name }) => {
       const entityId = entity.entity_id;
       const hasAlert = !!alerts[entityId];
 
       const item = document.createElement('div');
       item.className = 'entity-item';
 
-      const displayName = utils.getEntityDisplayName(entity);
-
       item.innerHTML = `
         <div class="entity-item-main">
           <span class="entity-icon">${entityIconMarkup(entity)}</span>
           <div class="entity-item-info">
-            <span class="entity-name">${utils.escapeHtml(displayName)}</span>
+            <span class="entity-name">${utils.escapeHtml(name)}</span>
             <span class="entity-id">${utils.escapeHtml(entityId)}</span>
           </div>
         </div>
@@ -6643,46 +6659,65 @@ function populateAlertEntityPicker() {
         item.querySelector('.entity-item-main').appendChild(badge);
       }
 
-      list.appendChild(item);
-    });
-
-    // Wire up click handlers
-    list.querySelectorAll('.entity-selector-btn').forEach((btn) => {
-      btn.onclick = () => {
-        const entityId = btn.dataset.entityId;
+      item.querySelector('.entity-selector-btn').onclick = () => {
         closeAlertEntityPicker();
         openAlertConfigModal(entityId);
       };
-    });
+      return item;
+    };
+
+    // The best matches first: a name score and an id score added, as the picker always did.
+    const matchesFor = (query) => {
+      if (!query) return candidates;
+      return candidates
+        .map((candidate) => ({
+          candidate,
+          score:
+            utils.getSearchScore(candidate.name, query) +
+            utils.getSearchScore(candidate.entity.entity_id, query),
+        }))
+        .filter(({ score }) => score > 0)
+        .sort((a, b) => b.score - a.score)
+        .map(({ candidate }) => candidate);
+    };
+
+    const renderRows = (query) => {
+      const matches = matchesFor(query);
+      list.replaceChildren(...matches.slice(0, ALERT_PICKER_MAX_ROWS).map(buildRow));
+      // A search with no hits says so inside the list, once.
+      if (!matches.length) {
+        const empty = document.createElement('p');
+        empty.className = 'entity-selector-empty';
+        empty.setAttribute('role', 'status');
+        empty.textContent = t('No matching entities found.');
+        list.appendChild(empty);
+      } else if (matches.length > ALERT_PICKER_MAX_ROWS) {
+        const more = document.createElement('p');
+        more.className = 'entity-selector-empty';
+        more.setAttribute('role', 'status');
+        more.textContent = t(
+          'Showing the first {{shown}} of {{count}} entities. Type to narrow them.',
+          {
+            shown: formatNumber(ALERT_PICKER_MAX_ROWS),
+            count: formatNumber(matches.length),
+          }
+        );
+        list.appendChild(more);
+      }
+    };
+
+    renderRows('');
 
     // Search functionality
     const searchInput = document.getElementById('alert-entity-picker-search');
     if (searchInput) {
       searchInput.oninput = null;
       searchInput.value = '';
-
+      let searchTimer = null;
       searchInput.oninput = (e) => {
         const query = e.target.value.toLowerCase().trim();
-        if (!query) {
-          // Show all items if search is empty
-          list.querySelectorAll('.entity-item').forEach((item) => {
-            item.style.display = 'flex';
-          });
-          return;
-        }
-
-        // Score each item and show/hide based on score
-        list.querySelectorAll('.entity-item').forEach((item) => {
-          const name = item.querySelector('.entity-name')?.textContent || '';
-          const id = item.querySelector('.entity-id')?.textContent || '';
-
-          // Calculate separate scores for name and ID, then add them
-          const nameScore = utils.getSearchScore(name, query);
-          const idScore = utils.getSearchScore(id, query);
-          const totalScore = nameScore + idScore;
-
-          item.style.display = totalScore > 0 ? 'flex' : 'none';
-        });
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => renderRows(query), ALERT_PICKER_SEARCH_DELAY_MS);
       };
     }
   } catch (error) {
