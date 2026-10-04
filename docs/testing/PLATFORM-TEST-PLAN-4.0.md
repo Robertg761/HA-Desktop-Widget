@@ -426,9 +426,9 @@ Needs: A touch screen or a pen.
 
 1. Open Reorganize Quick Access and drag a tile with a finger or the pen.
 2. Turn Windows Animation effects off (Settings > Accessibility > Visual effects) and drag again.
-3. With only the touch screen (no mouse or trackpad in use), look at the buttons in a dialog and a dialog's close button.
+3. With only the touch screen (no mouse or trackpad in use), look at the buttons in a dialog, a dialog's close button and the Settings, Minimize and X buttons in the title bar.
 
-Expected: The dragged tile follows the finger or pen with no lag, with animation effects on and off, and lands where you drop it. Buttons and close buttons are about 44px square, big enough to hit with a finger.
+Expected: The dragged tile follows the finger or pen with no lag, with animation effects on and off, and lands where you drop it. Buttons and close buttons are about 44px square, big enough to hit with a finger. The title bar is taller to hold its 44px buttons, and the tiles and the rest of the window sit below it without being cut off.
 
 Capture: A recording of the drag and the animation setting.
 

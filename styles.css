@@ -10262,6 +10262,16 @@ body {
   --timer-rgb: 255, 183, 77;
 }
 
+/* Under the Emerald accent every lit tile is green, and under Amber they are amber, so a running or
+   paused timer would only match them. It takes a neighbouring hue and keeps to its own state. */
+body[data-accent='emerald'] .timer-entity:not([data-state='paused']) {
+  --timer-rgb: 77, 208, 225;
+}
+
+body[data-accent='amber'] .timer-entity[data-state='paused'] {
+  --timer-rgb: 176, 190, 197;
+}
+
 .timer-entity[data-state='active'] .control-icon,
 .timer-entity[data-state='paused'] .control-icon {
   color: rgb(var(--timer-rgb));
@@ -11095,9 +11105,10 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   place-items: center;
 }
 
-/* Until a key is pressed the strip holds a quiet ellipsis instead of looking like a missing field. */
+/* Until a key is pressed the strip holds a quiet ellipsis instead of looking like a missing field.
+   The empty alternative keeps it out of what a screen reader reads from the status box. */
 .hotkey-preview-box:empty::before {
-  content: '\2026';
+  content: '\2026' / '';
   color: var(--text-dim);
 }
 
@@ -13149,6 +13160,13 @@ body.theme-light:not(.high-contrast)
   text-align: center;
 }
 
+/* The graph editor's subtitle says what is plotted and then names the sensor. Cut to an ellipsis
+   it lost the id, the part that tells two sensors apart, so it wraps. */
+.comparison-graph-modal .entity-item .entity-id {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .entity-selector-btn.add,
 .entity-selector-btn.edit {
   background: rgba(var(--accent-rgb), 0.14);
@@ -15167,17 +15185,14 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   color: var(--text-dim);
 }
 
-.modal.entity-unavailable :is(.brightness-icon, .fan-icon, .cover-icon) {
-  color: var(--text-faint);
-  background: none;
-  box-shadow: none;
-  animation: none;
-}
-
 /* The note already says why; the big value, its caption, capability notes and the power
-   button (which can't do anything) would only repeat it. */
+   button (which can't do anything) would only repeat it. So would the icon in its circle (or the
+   cover's graphic at the last position it reported), which would stand alone over a gap. */
 .modal.entity-unavailable
   :is(
+    .brightness-icon-wrapper,
+    .fan-icon-wrapper,
+    .cover-visual,
     .brightness-value-large,
     .fan-speed-value,
     .cover-position-value,

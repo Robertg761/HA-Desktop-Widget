@@ -26,7 +26,12 @@
  * few pixels differ from run to run. Everything else comes from the fixture.
  */
 
-const { PAGE_SETS, WINDOW_SIZE, buildLandingLights } = require('./fixture.cjs');
+const {
+  PAGE_SETS,
+  WINDOW_SIZE,
+  buildLandingLights,
+  buildUnavailableDevices,
+} = require('./fixture.cjs');
 
 const NARROW_WINDOW = { width: 340, height: WINDOW_SIZE.height };
 // The size the app opens at (the fixture's window is 60px taller to fit a 768px display), a window
@@ -39,6 +44,19 @@ const FORCED_COLORS = [{ name: 'forced-colors', value: 'active' }];
 // A light contrast theme (Windows High Contrast White): Chromium picks the light palette from the
 // colour scheme.
 const FORCED_COLORS_LIGHT = [...FORCED_COLORS, { name: 'prefers-color-scheme', value: 'light' }];
+// A touch-first machine (a tablet, a touch laptop in tablet mode) has a coarse pointer. Chromium's
+// media emulation cannot set that, so the scene switches the stylesheet's coarse-pointer block on
+// where it stands, which keeps its place in the cascade.
+const useCoarsePointer = (then) => async (ctx) => {
+  await ctx.ev(`(() => {
+    for (const sheet of document.styleSheets) {
+      for (const rule of sheet.cssRules) {
+        if (rule.media?.mediaText.includes('pointer: coarse')) rule.media.mediaText = 'all';
+      }
+    }
+  })()`);
+  if (then) await then(ctx);
+};
 
 // The media tile's track is a button. Its title has to run out of room (so the ellipsis is doing
 // its job), the ellipsis has to be set, and neither the track nor the tile may leave the window.
@@ -267,6 +285,22 @@ async function focusWithKeyboard(ctx, selector) {
 
 // The page whose tiles open the helper, vacuum, to-do, calendar and repair dialogs.
 const dialogsPage = { customTabs: PAGE_SETS.dialogs, activeTabId: 'default' };
+// The page for the unreachable light and cover that buildUnavailableDevices brings.
+const unavailablePage = {
+  customTabs: [{ id: 'gone', name: 'Gone', entityIds: ['light.hall', 'cover.side_gate'] }],
+  activeTabId: 'gone',
+};
+// A running and a paused timer between lit tiles, to see their tints against the accent.
+const timersPage = {
+  customTabs: [
+    {
+      id: 'timers',
+      name: 'Timers',
+      entityIds: ['light.desk_lamp', 'timer.laundry', 'timer.tea', 'climate.living_room'],
+    },
+  ],
+  activeTabId: 'timers',
+};
 // A holiday shows for an hour, long enough for the whole run.
 const holiday = (show) => ({ enabled: true, show, showUntil: Date.now() + 3600000 });
 
@@ -688,6 +722,19 @@ const scenes = [
     name: 'popup-fan-unavailable',
     config: { activeTabId: 'bedroom' },
     setup: openDetails('fan.bedroom'),
+  },
+  // The same for a light and a cover: the banner and the buttons, with no icon or graphic left over.
+  {
+    name: 'popup-light-unavailable',
+    config: unavailablePage,
+    extraStates: buildUnavailableDevices,
+    setup: openDetails('light.hall'),
+  },
+  {
+    name: 'popup-cover-unavailable',
+    config: unavailablePage,
+    extraStates: buildUnavailableDevices,
+    setup: openDetails('cover.side_gate'),
   },
   // An entity that is gone dims on a primary card as it does in Quick Access.
   { name: 'primary-unavailable-card', config: { primaryCards: ['fan.bedroom', 'time'] } },
@@ -1336,6 +1383,14 @@ const scenes = [
 
   // A window dragged narrower than the 500px it opens at.
   { name: 'narrow-main', size: NARROW_WINDOW },
+
+  // A timer takes a hue of its own when the accent is the green or the amber it would wear.
+  { name: 'timer-accent-emerald', ui: { accent: 'emerald' }, config: timersPage },
+  { name: 'timer-accent-amber', ui: { accent: 'amber' }, config: timersPage },
+
+  // A touch-first machine gets 44px targets in the header and in dialogs, and 72px tiles.
+  { name: 'coarse-pointer-main', setup: useCoarsePointer() },
+  { name: 'coarse-pointer-dialog', setup: useCoarsePointer(openBrightness) },
 
   // Windows High Contrast, as Chromium emulates it: a dark contrast theme, then a light one.
   { name: 'forced-colors-main', media: FORCED_COLORS },

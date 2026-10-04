@@ -517,11 +517,53 @@ describe('stylesheet one-offs', () => {
       );
     });
 
-    it('hides the cover position caption when the cover is unavailable', () => {
-      const rule = fs
-        .readFileSync(STYLESHEET, 'utf8')
-        .match(/\.modal\.entity-unavailable\s+:is\(([^)]*)\)\s*\{\s*display: none/s);
-      expect(rule[1]).toContain('.cover-position-label');
+    it.each([
+      ['the cover position caption', '.cover-position-label', 'cover-modal', 'cover-content'],
+      ['the fan icon circle', '.fan-icon-wrapper', 'fan-modal', 'fan-content'],
+      [
+        'the light icon circle',
+        '.brightness-icon-wrapper',
+        'brightness-modal',
+        'brightness-content',
+      ],
+      ['the cover graphic', '.cover-visual', 'cover-modal', 'cover-content'],
+    ])('hides %s when the entity is unavailable', (_, selector, modalClass, contentClass) => {
+      // The note says why, so a caption over nothing or a lone icon over a gap only looks unfinished.
+      const markup = (state) =>
+        `<div class="modal ${modalClass} ${state}"><div class="modal-content"><div class="modal-body"><div class="${contentClass}"><div class="${selector.slice(1)}"></div></div></div></div></div>`;
+      render(markup('entity-unavailable'));
+      expect(resolvedValue(document.querySelector(selector), 'display')).toBe('none');
+      render(markup(''));
+      expect(resolvedValue(document.querySelector(selector), 'display')).not.toBe('none');
+    });
+  });
+
+  describe('the timer tint', () => {
+    const timer = (state) => `<div class="timer-entity" data-state="${state}"></div>`;
+    const tint = (state, accent) => {
+      render(timer(state));
+      if (accent) document.body.dataset.accent = accent;
+      return resolvedValue(document.querySelector('.timer-entity'), '--timer-rgb');
+    };
+
+    afterEach(() => {
+      delete document.body.dataset.accent;
+    });
+
+    it('is green while running and amber while paused', () => {
+      expect(tint('active', 'original')).toBe('129, 199, 132');
+      expect(tint('paused', 'original')).toBe('255, 183, 77');
+    });
+
+    it('leaves the green to the lit tiles under the Emerald accent', () => {
+      expect(tint('active', 'emerald')).toBe('77, 208, 225');
+      // Paused is still amber there: nothing else is.
+      expect(tint('paused', 'emerald')).toBe('255, 183, 77');
+    });
+
+    it('leaves the amber to the lit tiles under the Amber accent', () => {
+      expect(tint('paused', 'amber')).toBe('176, 190, 197');
+      expect(tint('active', 'amber')).toBe('129, 199, 132');
     });
   });
 
@@ -628,6 +670,18 @@ describe('stylesheet one-offs', () => {
       expect(resolvedValue(empty, 'min-height')).toBe('100%');
     });
 
+    it('lets the graph editor wrap the sensor line instead of cutting its id off', () => {
+      render(
+        '<div class="modal comparison-graph-modal"><div class="entity-item"><div class="entity-item-info"><span class="entity-id">Outside temperature · weather.home</span></div></div></div>'
+      );
+      const id = document.querySelector('.entity-id');
+      expect(resolvedValue(id, 'white-space')).toBe('normal');
+      expect(resolvedValue(id, 'overflow-wrap')).toBe('anywhere');
+      // Other lists keep their one line and ellipsis.
+      render('<div class="entity-item"><span class="entity-id">sensor.office_temp</span></div>');
+      expect(resolvedValue(document.querySelector('.entity-id'), 'white-space')).toBe('nowrap');
+    });
+
     it('does not stretch a message that shares the list with rows', () => {
       render(
         '<div class="entity-selector-list"><div class="entity-item"></div><p class="entity-selector-empty">x</p></div>'
@@ -726,7 +780,8 @@ describe('stylesheet one-offs', () => {
 
     it('shows a quiet ellipsis in the empty strip instead of a missing field', () => {
       const css = fs.readFileSync(STYLESHEET, 'utf8');
-      expect(css).toMatch(/\.hotkey-preview-box:empty::before\s*\{\s*content: '\\2026';/);
+      // The empty alternative after the slash keeps the dots out of what a screen reader announces.
+      expect(css).toMatch(/\.hotkey-preview-box:empty::before\s*\{\s*content: '\\2026' \/ '';/);
     });
   });
 
