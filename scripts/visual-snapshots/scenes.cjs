@@ -954,6 +954,20 @@ const scenes = [
     setup: (ctx) => openHotkeysFor(ctx, 'zzzzz', { expectNoMatch: true }),
   },
   { name: 'settings-advanced', setup: (ctx) => openSettingsTab(ctx, 'advanced') },
+  // The profile sync controls, opened by the switch alone: nothing is saved, so no sync starts and
+  // the next scene finds Settings as it was.
+  {
+    name: 'settings-profile-sync',
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'advanced');
+      await ctx.click('#profile-sync-enabled');
+      await ctx.waitForExpression(
+        `!document.getElementById('profile-sync-settings').classList.contains('hidden')`,
+        'the profile sync controls'
+      );
+      await revealInSettings(ctx, '#profile-sync-push-now', 'center');
+    },
+  },
   { name: 'dialog-restore-dashboard', setup: openRestoreDashboard },
   // The language packs on the General page, one row each.
   {
