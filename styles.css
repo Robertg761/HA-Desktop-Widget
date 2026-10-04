@@ -11406,8 +11406,10 @@ label.disabled {
   content: none;
 }
 
-/* Improve error message visibility */
-[role='alert'] {
+/* Improve error message visibility. A toast is a recipe of its own (its error and warning kinds
+   mark the edge); this box has the same specificity and came later, so it won every property and
+   left a translucent red wash that the content under the toast showed through. */
+[role='alert']:not(.toast) {
   color: var(--error-text);
   font-weight: var(--font-weight-medium);
   padding: var(--space-3);

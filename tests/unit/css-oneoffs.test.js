@@ -44,6 +44,28 @@ describe('stylesheet one-offs', () => {
     document.body.innerHTML = '';
   });
 
+  describe('the generic alert box', () => {
+    it.each(['error', 'warning'])('does not restyle a %s toast', (kind) => {
+      // The toast sets role=alert so it is announced at once; the box meant for inline error text
+      // came later with the same specificity and replaced its padding (8px, against the 12px 16px
+      // of a success toast), added a top margin and bolded the text.
+      render(`<div class="toast ${kind}" role="alert">Could not run command.</div>`);
+      const toast = document.querySelector('.toast');
+      expect(resolvedValue(toast, 'padding')).toBe('0.75rem 1rem');
+      expect(resolvedValue(toast, 'font-weight')).toBeNull();
+      expect(resolvedValue(toast, 'margin-top')).toBeNull();
+    });
+
+    it('still boxes inline error text', () => {
+      render('<p role="alert">Unable to load items</p>');
+      const message = document.querySelector('[role="alert"]');
+      expect(resolvedValue(message, 'padding')).toBe('0.5rem');
+      expect(resolvedValue(message, 'border')).toBe(
+        `1px solid ${resolvedValue(message, '--error')}`
+      );
+    });
+  });
+
   describe('reduced motion keeps the waiting indicators moving', () => {
     // The blanket "no animation" rule gives every animation 0.01ms and one iteration. A spinner or a
     // progress bar frozen that way reads as a stalled app, and the bar as a finished one.
