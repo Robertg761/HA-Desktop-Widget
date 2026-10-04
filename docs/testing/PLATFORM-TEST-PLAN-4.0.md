@@ -996,12 +996,13 @@ Ref: RO1-20, RO1-21, MP-64
 
 1. Switch between a light Omarchy theme (Catppuccin Latte, White, Flexoki Light) and a dark one. Read the panel's status text ("Connected", "45%", "Off") next to the tile names.
 2. Set the widget's language to German and open the panel.
+3. With two or more pages in Quick Access, at least two of them never renamed (the first one is called "All"), open the panel in English and in German. Then stop the widget and cut the network once each to read the status line in English.
 
-Expected: Status text is dimmer than tile names but readable on every theme, and "Unavailable" is readable. The panel's own labels follow the widget's language, like the tile names do.
+Expected: Status text is dimmer than tile names but readable on every theme, and "Unavailable" is readable. The panel's own labels follow the widget's language, like the tile names do. Every page has a heading, including the first and the ones nobody renamed ("All", "View 2" in English; "Alle", "Ansicht 2" in German). In English the status line for a lost connection reads "Disconnected. Retrying automatically." and the fan slider is labelled "FAN SPEED".
 
 Capture: A screenshot of the panel on a light and a dark theme, and in German.
 
-Ref: RO1-22, RO1-24
+Ref: RO1-22, RO1-24, RO1-56
 
 ### HYP-12 Bar plugin: controls and edge cases
 
