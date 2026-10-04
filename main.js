@@ -7858,10 +7858,13 @@ function buildTrayContextMenu() {
           const persistence = await saveConfigDurably();
           if (!persistence.success) {
             config.alwaysOnTop = previousValue;
-            menuItem.checked = previousValue;
             applyAlwaysOnTopPreference();
             log.warn(`Failed to save tray always-on-top setting: ${persistence.error}`);
           }
+          // Electron flips the clicked item by the mark it displayed, which a stale menu had wrong,
+          // so after a save or a failed one the item and the next menu show what the setting is.
+          menuItem.checked = !!config.alwaysOnTop;
+          refreshTrayMenu();
         }).catch((error) => {
           log.warn('Failed to apply tray always-on-top setting:', error.message);
         });
