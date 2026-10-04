@@ -13030,6 +13030,7 @@ body.theme-light:not(.high-contrast)
 .climate-mode-btn.active,
 .climate-fan-mode-btn.active,
 .climate-preset-mode-btn.active,
+.brightness-preset-btn.active,
 .fan-preset-btn.active {
   background: rgba(var(--accent-rgb), 0.16);
   border-color: rgba(var(--accent-rgb), 0.42);

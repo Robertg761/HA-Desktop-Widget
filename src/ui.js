@@ -13597,6 +13597,17 @@ function updateTimerDisplays() {
   }
 }
 
+// Marks the preset chip that matches the level now shown (25%, 50%..., Low, Medium...), so a row of
+// presets shows where the slider is and a screen reader hears which one is on.
+function markPresetButtons(buttons, level, dataName) {
+  const shown = Math.round(Number(level));
+  buttons.forEach((button) => {
+    const selected = Number(button.dataset[dataName]) === shown;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+  });
+}
+
 function showBrightnessSlider(light) {
   try {
     const name = utils.escapeHtml(utils.getEntityDisplayName(light));
@@ -13810,6 +13821,7 @@ function showBrightnessSlider(light) {
     // One bulb whose glow follows the level (see .brightness-icon in styles.css); off swaps in
     // the struck-through bulb.
     const updateIconAndAccent = (value) => {
+      markPresetButtons(presetButtons, value, 'preset');
       if (!icon) return;
       const iconName = value === 0 ? 'lightbulb-off' : 'lightbulb';
       if (icon.firstElementChild?.dataset.icon !== iconName) setLineIconContent(icon, iconName);
@@ -14738,6 +14750,7 @@ function showFanControls(fanEntity) {
 
     // Update icon based on speed
     const updateIcon = (speed) => {
+      if (slider) markPresetButtons(presetButtons, speed, 'speed');
       if (!fanIcon) return;
       if (speed > 0) {
         fanIcon.classList.add('spinning');
@@ -14745,6 +14758,8 @@ function showFanControls(fanEntity) {
         fanIcon.classList.remove('spinning');
       }
     };
+
+    if (slider) markPresetButtons(presetButtons, currentSpeed, 'speed');
 
     // Slider behavior with debounce
     if (slider) {

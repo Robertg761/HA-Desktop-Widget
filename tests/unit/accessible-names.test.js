@@ -231,4 +231,68 @@ describe('entity-specific accessible names on row buttons', () => {
       expect(modal.querySelectorAll('.light-color-swatch[aria-pressed="true"]')).toHaveLength(0);
     });
   });
+
+  describe('the preset chips of the light and fan dialogs', () => {
+    const pressed = (modal, selector) =>
+      [...modal.querySelectorAll(selector)]
+        .filter((chip) => chip.getAttribute('aria-pressed') === 'true')
+        .map((chip) => chip.textContent.trim());
+    const open = (entity, selector) => {
+      jest.useFakeTimers();
+      state.setStates({ [entity.entity_id]: entity });
+      ui.openEntityDetailModal(entity);
+      jest.advanceTimersByTime(0);
+      return document.querySelector(selector);
+    };
+    afterEach(() => {
+      document.querySelector('.brightness-modal')?.remove();
+      document.querySelector('.fan-modal')?.remove();
+      jest.useRealTimers();
+    });
+
+    it('mark the brightness the light has, and follow a pick', () => {
+      const modal = open(
+        {
+          entity_id: 'light.desk',
+          state: 'on',
+          attributes: { friendly_name: 'Desk lamp', brightness: 128 },
+        },
+        '.brightness-modal'
+      );
+      const chips = '.brightness-preset-btn';
+
+      expect(pressed(modal, chips)).toEqual(['50%']);
+      expect(modal.querySelectorAll(`${chips}.active`)).toHaveLength(1);
+
+      modal.querySelector('.brightness-preset-btn[data-preset="75"]').click();
+
+      expect(pressed(modal, chips)).toEqual(['75%']);
+      expect(modal.querySelectorAll(`${chips}.active`)).toHaveLength(1);
+      // A level between two presets is none of them.
+      const slider = modal.querySelector('#brightness-slider');
+      slider.value = '60';
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
+      expect(pressed(modal, chips)).toEqual([]);
+      expect(modal.querySelectorAll(`${chips}[aria-pressed="false"]`)).toHaveLength(4);
+    });
+
+    it('mark the fan speed the fan has, and follow a pick', () => {
+      const modal = open(
+        {
+          entity_id: 'fan.office',
+          state: 'on',
+          attributes: { friendly_name: 'Office Fan', percentage: 66, supported_features: 1 },
+        },
+        '.fan-modal'
+      );
+      const chips = '.fan-preset-btn';
+
+      expect(pressed(modal, chips)).toEqual(['Medium']);
+
+      modal.querySelector('.fan-preset-btn[data-speed="100"]').click();
+
+      expect(pressed(modal, chips)).toEqual(['High']);
+      expect(modal.querySelectorAll(`${chips}.active`)).toHaveLength(1);
+    });
+  });
 });
