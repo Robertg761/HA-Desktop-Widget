@@ -30,7 +30,11 @@ import {
   bindTabTooltips,
   syncRovingTabIndex,
 } from './src/tab-navigation.js';
-import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
+import {
+  BASE_RECONNECT_DELAY_MS,
+  MAX_RECONNECT_DELAY_MS,
+  WS_INITIAL_STATES_TIMEOUT_MS,
+} from './src/constants.js';
 import { WeatherEffectsManager } from './src/weather-effects.js';
 import { SeasonalEffectsManager } from './src/seasonal-effects.js';
 import { normalizeQuickAccessConfig } from './src/quick-access-tabs.js';
@@ -2187,7 +2191,13 @@ websocket.on('message', (msg) => {
       resetConnectionToastTracking();
       clearReconnectTimer();
       setDisconnectedStatus(t('Waiting for live Home Assistant data...'));
-      const statesReq = websocket.request({ type: 'get_states' });
+      // The first snapshot is the one request that can legitimately take a long time. Giving up
+      // at the usual 15 s tore the socket down and asked Home Assistant to serialise every entity
+      // again, so a large instance never finished loading.
+      const statesReq = websocket.request(
+        { type: 'get_states' },
+        { timeoutMs: WS_INITIAL_STATES_TIMEOUT_MS }
+      );
       const servicesReq = websocket.request({ type: 'get_services' });
       const areasReq = websocket.request({ type: 'config/area_registry/list' });
       const configReq = websocket.request({ type: 'get_config' });
@@ -2613,12 +2623,13 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
     if (!wizardShown && nowConfigured) {
       if (!configuredRuntimeStarted) {
         startConfiguredRuntime();
-      } else if (
-        !wasConfigured ||
-        wasSecureStoragePending ||
-        previousConnection !== nextConnection
-      ) {
+      } else if (!wasConfigured || previousConnection !== nextConnection) {
         websocket.close();
+        connectWebSocket();
+      } else if (wasSecureStoragePending && !websocket.ws) {
+        // The deferred secure-storage push repeats a connection that is already up (a plaintext
+        // legacy token connects before it arrives), and closing that socket dropped the first
+        // requests and flickered the status. Only a connection that never came up is retried.
         connectWebSocket();
       } else if (previousToken !== (state.CONFIG?.homeAssistant?.token || '') && !websocket.ws) {
         // A refreshed OAuth access token is only needed for the next handshake: an open socket

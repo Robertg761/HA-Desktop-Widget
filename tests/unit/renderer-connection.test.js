@@ -229,6 +229,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       __esModule: true,
       BASE_RECONNECT_DELAY_MS: 1000,
       MAX_RECONNECT_DELAY_MS: 8000,
+      WS_INITIAL_STATES_TIMEOUT_MS: 90000,
     }));
 
     require('../../renderer.js');
@@ -864,6 +865,70 @@ describe('Renderer Home Assistant connection lifecycle', () => {
         true,
         '[de] Real-time updates active.'
       );
+    });
+  });
+
+  describe('the first snapshot of states', () => {
+    it('is given far longer than a usual request, so a large instance is not torn down', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      mockWebsocket.request.mockImplementation(() => {
+        const request = new Promise(() => {});
+        request.id = 10;
+        return request;
+      });
+
+      mockWebsocket.emit('message', { type: 'auth_ok' });
+
+      const call = mockWebsocket.request.mock.calls.find(
+        ([payload]) => payload.type === 'get_states'
+      );
+      expect(call[1]).toEqual({ timeoutMs: 90000 });
+      // Every other request keeps the default.
+      const others = mockWebsocket.request.mock.calls.filter(
+        ([payload]) => payload.type !== 'get_states'
+      );
+      expect(others.length).toBeGreaterThan(0);
+      others.forEach(([, options]) => expect(options).toBeUndefined());
+    });
+  });
+
+  describe('the secure storage push at startup', () => {
+    const pendingConfig = (pending) => ({ ...tokenConfig(), secureStoragePending: pending });
+
+    it('leaves an open connection alone when the push repeats the same sign-in', async () => {
+      await loadRenderer({ config: pendingConfig(true) });
+      connectSuccessfully();
+      expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
+
+      triggerMockEvent('configUpdated', pendingConfig(false));
+      await flushAsync();
+
+      expect(mockWebsocket.close).not.toHaveBeenCalled();
+      expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
+    });
+
+    it('still connects when nothing came up while the storage was pending', async () => {
+      await loadRenderer({ config: pendingConfig(true) });
+      connectSuccessfully();
+      mockWebsocket.connected = false;
+      mockWebsocket.ws = null;
+
+      triggerMockEvent('configUpdated', pendingConfig(false));
+      await flushAsync();
+
+      expect(mockWebsocket.connect).toHaveBeenCalledTimes(2);
+    });
+
+    it('connects once the encrypted token it was waiting for arrives', async () => {
+      const waiting = pendingConfig(true);
+      waiting.homeAssistant.token = '';
+      await loadRenderer({ config: waiting });
+      expect(mockWebsocket.connect).not.toHaveBeenCalled();
+
+      triggerMockEvent('configUpdated', pendingConfig(false));
+      await flushAsync();
+
+      expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
     });
   });
 
