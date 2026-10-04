@@ -346,11 +346,12 @@ Windows 11 22H2 or later (build 22621 or higher). Use the Setup installer for WI
 
 ### WIN11-1 Install, shortcuts and names
 
-1. Install the Setup build. If you have a 3.x install, install over it; otherwise use a clean machine or user.
+1. If you have a 3.x install, pin it to the taskbar first. Install the Setup build over it; otherwise use a clean machine or user.
 2. Look at the Desktop shortcut, the Start menu entry, the entry in Settings > Apps > Installed apps, the tray tooltip and the welcome heading.
 3. Look at the app icon on the Desktop, the Start menu and, while the app runs, the tray.
+4. If you pinned 3.x, click the taskbar pin.
 
-Expected: One name everywhere: "HA Desktop Widget". After an upgrade from 3.x there is no second shortcut with the old name. The icon looks like a finished app icon, not a hard-edged black square.
+Expected: One name everywhere: "HA Desktop Widget". After an upgrade from 3.x there is no second shortcut with the old name (the installer renames or replaces the old Desktop and Start menu shortcuts), and the taskbar pin still starts the app. The icon looks like a finished app icon, not a hard-edged black square.
 
 Capture: A screenshot of each place the name appears.
 
@@ -1429,7 +1430,7 @@ Ref: RO2-12
 
 1. Click Live on a cloud or HLS camera that takes several seconds to start.
 
-Expected: A loading spinner shows over the snapshot you were looking at until video plays; the picture is not blanked first. If no frame arrives within about 20 seconds, the viewer switches to the camera's plain MJPEG picture (or says the preview is unavailable), not a blank pane. The Snapshot and Live buttons are a pair: the one for what you are looking at is filled, and Live keeps its name instead of changing to Stop.
+Expected: A loading spinner shows over the snapshot you were looking at until video plays; the picture is not blanked first. If no frame arrives within about 20 seconds, the viewer switches to the camera's plain MJPEG picture (or says the preview is unavailable), not a blank pane. The Snapshot and Live buttons are a pair: the one for what you are looking at is filled, and Live keeps its name instead of changing to Stop. Pressing Live while it is filled does nothing; Snapshot is the way back to the still picture. Keyboard focus starts on Snapshot, the filled one, when the viewer opens.
 
 Capture: A recording of the first ten seconds.
 
@@ -1440,7 +1441,7 @@ Ref: RO2-13, RO2-26, RO2-22
 1. With a live tile playing, cut the camera's power or network.
 2. Watch the tile for a minute.
 
-Expected: The tile stops saying "Live now" and LIVE within about 20 seconds of the picture freezing (15 seconds of no movement, checked every 5), and shows a snapshot state. It does not hold the last frame labeled live. An MJPEG camera that closes its stream cleanly is treated the same way.
+Expected: The tile stops saying "Live now" and LIVE within about 20 seconds of the picture freezing (15 seconds of no movement, checked every 5), and shows a snapshot state. It does not hold the last frame labeled live. An MJPEG camera that closes its stream cleanly is meant to be treated the same way: the app notices because the picture loads a second time when the stream ends, which was seen through the app's own ha:// handler (what a real Home Assistant uses) but not with a plain multipart web server. If a tile keeps saying live over a frozen MJPEG picture, say so and note the camera and integration.
 
 Capture: A recording and how long the label stayed.
 
@@ -1533,14 +1534,15 @@ Update checks need a build that is older than a published one. The call for test
 1. Install the older build. Start it and wait about a minute for the automatic check. Hide the widget to the tray and use Check for Updates in the tray menu.
 2. Open Settings > Advanced > Application Updates. Press Check for updates. While an update downloads, close Settings and open it again.
 3. When it is ready, press Install update.
-4. After the restart, look at the version in Settings > Advanced.
+4. After the restart, look at the version in Settings > Advanced and press What's new.
 5. Turn off the network and press Check for updates.
+6. With Settings open on Advanced and the network off, let the machine sleep and wake (or leave the widget running for more than six hours).
 
-Expected: A newer build is announced in some visible way, including from the tray menu while the widget is hidden: Check for Updates in the tray brings the widget up on Settings > Advanced, with the update line saying that a check is running and then what it found. The status line reads "Update available" (with the version), then shows the download progress, then "Update v… ready to install". Reopening Settings during the download keeps that state. A system notification, if shown, names "HA Desktop Widget". Install update restarts the app (an AppImage comes back by itself) and the new version is shown. With no network the check ends with a readable error, not an endless "Checking for updates...".
+Expected: A newer build is announced in some visible way, including from the tray menu while the widget is hidden: Check for Updates in the tray brings the widget up on Settings > Advanced, with the update line saying that a check is running and then what it found. The status line reads "Update available" (with the version), then shows the download progress, then "Update v… ready to install". Reopening Settings during the download keeps that state. A system notification, if shown, names "HA Desktop Widget". Install update restarts the app (an AppImage comes back by itself) and the new version is shown. With no network the check ends with a readable error, not an endless "Checking for updates...". What's new opens this version's page on GitHub in your browser. A check the app makes by itself, such as after waking without a network, leaves the update line as it was (no "Checking for updates..." and no error), and does not replace the progress bar of a download that is running.
 
 Capture: Screenshots of each state, the notification, and the log.
 
-Ref: UIC-13, MP-19, MP-47, MP-52, MP-51, MP-01
+Ref: UIC-13, MP-19, MP-47, MP-52, MP-51, MP-01, MP-77
 
 ### UPD-2 macOS, .deb, Arch and Windows Portable (manual updates)
 

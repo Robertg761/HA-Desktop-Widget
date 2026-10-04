@@ -586,9 +586,11 @@ function requestCameraMjpegPreview(record, requestId) {
     failCameraLivePreview(record, requestId, reason);
   };
 
-  // A multipart stream fires load once, when its first picture is complete, and again only when the
-  // stream itself ends. Another load therefore means the camera closed the connection cleanly,
-  // which no error reports, and the picture left behind is not live any more.
+  // Through the app's ha:// handler a multipart stream fires load once, when its first picture is
+  // complete, and again when the stream itself ends. Another load therefore means the camera closed
+  // the connection cleanly, which no error reports, and the picture left behind is not live any
+  // more. This is what was seen through that handler; a plain http multipart server ended in
+  // Electron without a second load, so a stream that dies some other way is not caught here.
   let streamStarted = false;
   target.onload = () => {
     if (record.disposed || record.requestId !== requestId) return;
@@ -1749,13 +1751,12 @@ async function openCamera(cameraId, options = {}) {
       snapshotBtn.onclick = loadSnapshot;
     }
 
+    // The pressed segment of a segmented control does nothing when pressed again; Snapshot is how
+    // the stream is left. (Live used to turn into Stop, which is why it was a toggle.)
     if (liveBtn) {
       liveBtn.onclick = () => {
-        if (isLive || isStartingLive) {
-          loadSnapshot();
-        } else {
-          launchLive();
-        }
+        if (isLive || isStartingLive) return;
+        launchLive();
       };
     }
 
@@ -1788,11 +1789,12 @@ async function openCamera(cameraId, options = {}) {
     }
 
     // Escape and a click outside close the viewer; Tab stays inside it. The viewer is mostly a
-    // picture, so focus starts on Live, the action people come for, not on the Close button.
+    // picture, so focus starts on the mode that is showing, not on the Close button. It is the
+    // pressed segment because a ring on the other one read as "Live is selected".
     openDialog(modal, {
       display: null,
       label: t('{{name}} camera preview', { name: getEntityDisplayName(camera) }),
-      initialFocus: liveBtn || undefined,
+      initialFocus: snapshotBtn || undefined,
       dismiss: closeModal,
     });
 

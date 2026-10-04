@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const { loadAppStylesheets, resolvedValue } = require('../helpers/css-cascade.js');
 
 function render(bodyClass, html) {
@@ -110,6 +112,20 @@ describe('how many blur passes a dialog costs', () => {
         expect(isNone(blurOf(document.getElementById('rail')))).toBe(true);
       }
     );
+  });
+
+  describe('holiday art in the Settings dialog', () => {
+    // The cascade helper does not match pseudo-elements, so this reads the stylesheet itself.
+    const css = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
+
+    it('hangs from the header line instead of lying behind the Close button', () => {
+      // Without the header's blur the corner art is crisp. A grid-placed absolute box is
+      // positioned in its grid area, so the body cell's top corner is under the header.
+      expect(css).toMatch(
+        /body\[data-season\] #settings-modal \.modal-content::before\s*\{\s*grid-area:\s*body;\s*\}/
+      );
+      expect(css).toMatch(/#settings-modal \.modal-content \{[^}]*grid-template:[^;]*'nav body'/);
+    });
   });
 
   describe('edit mode', () => {

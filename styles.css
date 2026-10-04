@@ -7747,6 +7747,13 @@ body.theme-light:not(.high-contrast)
     rgba(var(--settings-modal-bg-rgb), var(--settings-modal-bg-alpha));
 }
 
+/* Without a blur on the header the holiday art in the corner is crisp, and drawn from the dialog's
+   top corner it lay behind the Close button. Placed on the grid cell of the page body, it hangs
+   from the header's line instead, clear of the button whatever the height of the header. */
+body[data-season] #settings-modal .modal-content::before {
+  grid-area: body;
+}
+
 /* The header and the rail sit inside the dialog's own blurred pane, so a blur of their own only
    smeared the holiday art behind them and cut it in half at the line. They are plain panels. */
 #settings-modal .modal-header {
@@ -11404,7 +11411,11 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
 /* A dialog keeps ONE blur in Linux performance mode: its backdrop, at the radius the dialog recipe
    gives it everywhere else. The panel inside it sits within that backdrop's root and can only blur
    the flat scrim, so its own blur (and the one on every chip in it) was a full-size pass for no
-   visible change. The hotkey recorder's scrim is a dialog backdrop too, although it is not a .modal. */
+   visible change. The hotkey recorder's scrim is a dialog backdrop too, although it is not a .modal.
+   What floats over a panel's own content loses nothing: the swatch tooltip is a child of <body>
+   (stripped before as well), the chart tooltip fills with the dialog colour at 96%, and the to-do
+   field's glass is a ::before, which this selector does not reach. The visible change is the
+   backdrop: 24px of blur became 8px, as on every other platform. */
 body.linux-performance-mode,
 body.linux-performance-mode *:not(.modal):not(.hotkey-capture-modal) {
   backdrop-filter: none !important;

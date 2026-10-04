@@ -1550,9 +1550,9 @@ describe('Camera Module', () => {
       const modal = document.querySelector('.camera-modal');
       expect(modal.getAttribute('role')).toBe('dialog');
       expect(modal.getAttribute('aria-modal')).toBe('true');
-      // Focus starts on Live, the action people open the viewer for, and not on Close.
+      // Focus starts on the mode that is showing, the pressed segment, and not on Close.
       await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(document.activeElement).toBe(modal.querySelector('#live-btn'));
+      expect(document.activeElement).toBe(modal.querySelector('#snapshot-btn'));
 
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
@@ -1685,7 +1685,7 @@ describe('Camera Module', () => {
       expect(liveBtn.textContent).toBe('Live');
     });
 
-    it('goes back to Snapshot when the pressed Live button is pressed again', async () => {
+    it('goes back to Snapshot when Snapshot is pressed while the stream runs', async () => {
       mockWebSocketRequest.mockResolvedValue({
         success: false,
       });
@@ -1699,11 +1699,30 @@ describe('Camera Module', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       // Stop live
-      await liveBtn.click();
+      await document.querySelector('#snapshot-btn').click();
 
       expect(liveBtn.getAttribute('aria-pressed')).toBe('false');
       expect(document.querySelector('#snapshot-btn').getAttribute('aria-pressed')).toBe('true');
       expect(document.querySelector('.camera-img').getAttribute('src')).toContain('ha://camera/');
+    });
+
+    it('does nothing when the pressed Live button is pressed again', async () => {
+      mockWebSocketRequest.mockResolvedValue({ success: false });
+      camera.openCamera('camera.front_door');
+      const liveBtn = document.querySelector('#live-btn');
+      const img = document.querySelector('.camera-img');
+      liveBtn.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const streamUrl = img.getAttribute('src');
+      expect(streamUrl).toContain('ha://camera_stream/');
+
+      // In a segmented control the pressed segment is not a switch.
+      liveBtn.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(liveBtn.getAttribute('aria-pressed')).toBe('true');
+      expect(img.getAttribute('src')).toBe(streamUrl);
+      expect(mockWebSocketRequest).toHaveBeenCalledTimes(1);
     });
 
     it('should show camera status and last updated time', () => {
@@ -1986,7 +2005,7 @@ describe('Camera Module', () => {
       const img = document.querySelector('.camera-img');
       expect(img.getAttribute('src')).toContain('ha://camera_stream/');
 
-      liveBtn.click();
+      document.querySelector('#snapshot-btn').click();
 
       expect(img.getAttribute('src')).toBe('ha://camera/camera.front_door?t=1234567890');
       expect(img.getAttribute('src')).not.toContain('camera_stream');
@@ -2011,7 +2030,7 @@ describe('Camera Module', () => {
       expect(video.hasAttribute('src')).toBe(true);
 
       mediaPauseSpy.mockClear();
-      liveBtn.click();
+      document.querySelector('#snapshot-btn').click();
 
       expect(video.hasAttribute('src')).toBe(false);
       expect(video.style.display).toBe('none');
@@ -2043,7 +2062,7 @@ describe('Camera Module', () => {
       expect(mockState.ACTIVE_HLS.size).toBe(0);
     });
 
-    it('should treat a second click during startup as cancellation, not another start', async () => {
+    it('should treat Snapshot pressed during startup as cancellation, and Live pressed again as nothing', async () => {
       let resolveStreamRequest;
       mockWebSocketRequest.mockImplementation(
         () =>
@@ -2056,6 +2075,7 @@ describe('Camera Module', () => {
       const liveBtn = document.querySelector('#live-btn');
       liveBtn.click();
       liveBtn.click();
+      document.querySelector('#snapshot-btn').click();
       resolveStreamRequest({
         success: true,
         result: { url: '/api/hls/master_playlist.m3u8' },
@@ -2084,7 +2104,7 @@ describe('Camera Module', () => {
       const liveBtn = document.querySelector('#live-btn');
       liveBtn.click();
       await Promise.resolve();
-      liveBtn.click();
+      document.querySelector('#snapshot-btn').click();
       rejectStreamRequest(new Error('request cancelled'));
       await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -2343,7 +2363,7 @@ describe('Camera Module', () => {
       mute.click();
       expect(video.muted).toBe(false);
 
-      modal.querySelector('#live-btn').click(); // back to Snapshot
+      modal.querySelector('#snapshot-btn').click(); // back to Snapshot
       expect(mute.hidden).toBe(true);
       modal.querySelector('#live-btn').click();
       await settle();
@@ -2509,6 +2529,29 @@ describe('Camera Module', () => {
         await jest.advanceTimersByTimeAsync(60000);
 
         expect(tile.dataset.cameraPreviewState).toBe('ready');
+      });
+
+      it('does not hold a hidden window against the stream, or back off for it', async () => {
+        const tile = createPreviewTile();
+        const video = await startPlaying(tile);
+        mockHls.mockClear();
+
+        // The window goes to the tray and the video clock stops with it, for far longer than the
+        // stall limit.
+        visibilityState = 'hidden';
+        document.dispatchEvent(new Event('visibilitychange'));
+        setVideoClock(video, { paused: false, currentTime: 10 });
+        await jest.advanceTimersByTimeAsync(120000);
+        expect(tile.dataset.cameraPreviewState).toBe('paused');
+
+        // Coming back starts the stream again at once; a stall counted against it would have
+        // made the tile wait out a backoff first.
+        visibilityState = 'visible';
+        document.dispatchEvent(new Event('visibilitychange'));
+        await jest.advanceTimersByTimeAsync(300);
+        await flushLivePreviewStart();
+        expect(mockHls).toHaveBeenCalledTimes(1);
+        expect(tile.dataset.cameraPreviewState).not.toBe('error');
       });
 
       it('stops watching when the tile is disposed', async () => {

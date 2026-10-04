@@ -6,7 +6,8 @@ const fs = require('fs');
 const path = require('path');
 
 const { loadAppStylesheets, resolvedValue } = require('../helpers/css-cascade.js');
-const { describeUpdateState } = require('../../src/update-status.js');
+const { describeUpdateState, reduceUpdateEvent } = require('../../src/update-status.js');
+const { scenes } = require('../../scripts/visual-snapshots/scenes.cjs');
 
 const html = fs.readFileSync(path.resolve(__dirname, '../../index.html'), 'utf8');
 
@@ -152,4 +153,31 @@ describe('how a check is coloured', () => {
       else expect(colourFor(tone)).not.toEqual(idle);
     });
   });
+});
+
+describe('the update scenes of the visual snapshots', () => {
+  // A scene cannot send the update events or reach the module, so it writes the line itself. These
+  // run the module on the scene's event, so a scene cannot keep showing a wording or a button the
+  // app no longer draws.
+  const updateScenes = scenes.filter((scene) => scene.update);
+
+  it('has a scene for an error, a download, an update ready and a package that updates by hand', () => {
+    expect(updateScenes.map((scene) => scene.update.shown.state)).toEqual(
+      expect.arrayContaining(['error', 'downloading', 'downloaded', 'manual'])
+    );
+  });
+
+  it.each(updateScenes.map((scene) => [scene.name, scene.update]))(
+    '%s shows what the app draws for its event',
+    (_name, { event, shown }) => {
+      const drawn = describeUpdateState(reduceUpdateEvent({ status: 'idle' }, event));
+
+      expect(shown).toEqual({
+        state: drawn.tone,
+        text: drawn.text,
+        ...(drawn.installLabel ? { install: drawn.installLabel } : {}),
+        ...(drawn.progress !== null ? { progress: drawn.progress } : {}),
+      });
+    }
+  );
 });

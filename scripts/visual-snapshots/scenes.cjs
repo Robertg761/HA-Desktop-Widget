@@ -301,6 +301,20 @@ const TILES_HOLD_THEIR_CONTENT = `[...document.querySelectorAll('#quick-controls
     });
 })`;
 const NO_SIDEWAYS_SCROLL = `document.documentElement.scrollWidth <= innerWidth + 1`;
+// The camera viewer's toolbar with its sound toggle: the status text and the buttons lie inside the
+// dialog, do not overlap, and the status text is not cut off.
+const CAMERA_TOOLBAR_FITS = `(() => {
+  const content = document.querySelector('.camera-modal .modal-content');
+  const info = content?.querySelector('.camera-info');
+  const buttons = content?.querySelector('.camera-mode-buttons');
+  if (!info || !buttons) return false;
+  const box = content.getBoundingClientRect();
+  const infoBox = info.getBoundingClientRect();
+  const buttonsBox = buttons.getBoundingClientRect();
+  const overlap = Math.min(infoBox.right, buttonsBox.right) - Math.max(infoBox.left, buttonsBox.left);
+  return [infoBox, buttonsBox].every((part) => part.left >= box.left - 1 && part.right <= box.right + 1) &&
+    overlap <= 1 && [...info.children].every((part) => part.scrollWidth <= part.clientWidth + 1);
+})()`;
 // A lost connection: the panel sits above Quick Access with its buttons in view, the page has not
 // scrolled, and the tiles are dimmed.
 const OFFLINE_PANEL_IN_VIEW = `(() => {
@@ -408,8 +422,10 @@ async function openGraphEditor(ctx) {
 }
 
 // The Updates row of Settings > Advanced as it looks for a given result. The app's update events
-// come from its main process, which a scene cannot send, so this sets the line's text and state
-// the way the update module does (src/update-status.js): what is checked is how each state looks.
+// come from its main process, which a scene cannot send, and the update module is bundled out of
+// the page's reach, so this writes the line the way src/update-status.js draws a state. A scene
+// names the event and what it should leave on screen; tests/unit/update-markup.test.js runs the
+// module on that event and fails if the text, state, button or bar written here differ from it.
 async function showUpdateState(ctx, { state, text, install = null, progress = null }) {
   await openSettingsTab(ctx, 'advanced');
   await ctx.ev(`(() => {
@@ -425,10 +441,34 @@ async function showUpdateState(ctx, { state, text, install = null, progress = nu
     bar.classList.toggle('hidden', ${JSON.stringify(progress)} === null);
     if (${JSON.stringify(progress)} !== null) {
       document.getElementById('progress-fill').style.width = '${progress}%';
-      document.getElementById('progress-text').textContent = '${progress}%';
+      bar.setAttribute('aria-valuenow', '${progress}');
+      // As the app writes it, in the language of the page.
+      document.getElementById('progress-text').textContent = new Intl.NumberFormat(
+        document.documentElement.lang || 'en',
+        { style: 'percent' }
+      ).format(${progress} / 100);
     }
     status.scrollIntoView({ block: 'center' });
   })()`);
+}
+
+const updateScene = (name, event, shown) => ({
+  name,
+  update: { event, shown },
+  setup: (ctx) => showUpdateState(ctx, shown),
+});
+
+// The camera viewer with its sound toggle showing. The toggle appears over an HLS stream and the
+// fixture's camera has none, so the scene shows it to see how the toolbar holds three buttons.
+async function openCameraViewerWithMute(ctx) {
+  await ctx.click(tile('camera.driveway'));
+  await ctx.waitForSelector('.camera-modal #mute-btn');
+  await ctx.ev(`document.getElementById('mute-btn').hidden = false`);
+  // The dialog scales in, and its boxes are only comparable once it has settled.
+  await ctx.waitForExpression(
+    CAMERA_TOOLBAR_FITS,
+    'the status text and the three buttons fit side by side'
+  );
 }
 
 // The command palette with a query that finds the longest row type.
@@ -695,6 +735,20 @@ const scenes = [
       await ctx.waitForSelector('.camera-modal #snapshot-btn');
     },
   },
+  // The sound toggle sits beside the pair: three buttons next to the status text, at the default
+  // width and where the window is narrow and the words long.
+  { name: 'popup-camera-viewer-mute', setup: openCameraViewerWithMute },
+  {
+    name: 'popup-camera-viewer-mute-narrow',
+    size: NARROW_WINDOW,
+    setup: openCameraViewerWithMute,
+  },
+  {
+    name: 'de-popup-camera-viewer-mute-narrow',
+    size: NARROW_WINDOW,
+    ui: { language: 'de' },
+    setup: openCameraViewerWithMute,
+  },
   {
     name: 'popup-camera-viewer-live',
     setup: async (ctx) => {
@@ -804,32 +858,43 @@ const scenes = [
   },
   { name: 'settings-advanced', setup: (ctx) => openSettingsTab(ctx, 'advanced') },
   // What a check can find, each in its own colour instead of the idle grey.
-  {
-    name: 'settings-advanced-update-error',
-    setup: (ctx) =>
-      showUpdateState(ctx, {
-        state: 'error',
-        text: 'Error: Could not reach GitHub to check for updates. Check your internet connection.',
-      }),
-  },
-  {
-    name: 'settings-advanced-update-found',
-    setup: (ctx) =>
-      showUpdateState(ctx, {
-        state: 'downloading',
-        text: 'Downloading update...',
-        progress: 42,
-      }),
-  },
-  {
-    name: 'settings-advanced-update-ready',
-    setup: (ctx) =>
-      showUpdateState(ctx, {
-        state: 'downloaded',
-        text: 'Update v4.0.1 ready to install',
-        install: 'Install update',
-      }),
-  },
+  updateScene(
+    'settings-advanced-update-error',
+    {
+      status: 'error',
+      error: 'Could not reach GitHub to check for updates. Check your internet connection.',
+    },
+    {
+      state: 'error',
+      text: 'Error: Could not reach GitHub to check for updates. Check your internet connection.',
+    }
+  ),
+  updateScene(
+    'settings-advanced-update-downloading',
+    { status: 'downloading', progress: { percent: 42 } },
+    { state: 'downloading', text: 'Downloading update...', progress: 42 }
+  ),
+  updateScene(
+    'settings-advanced-update-ready',
+    { status: 'downloaded', info: { version: '4.0.1' } },
+    { state: 'downloaded', text: 'Update v4.0.1 ready to install', install: 'Install update' }
+  ),
+  // A package that cannot update itself: the line names the button, which opens the release page.
+  updateScene(
+    'settings-advanced-update-manual',
+    {
+      status: 'manual',
+      message:
+        'This package does not support in-app updates. Open Releases to download the latest build, v4.0.1.',
+      version: '4.0.1',
+      downloadUrl: 'https://github.com/Robertg761/HA-Desktop-Widget/releases/tag/v4.0.1',
+    },
+    {
+      state: 'manual',
+      text: 'This package does not support in-app updates. Open Releases to download the latest build, v4.0.1.',
+      install: 'Download Update',
+    }
+  ),
   {
     name: 'settings-custom-color',
     setup: async (ctx) => {
