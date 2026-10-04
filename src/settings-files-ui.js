@@ -38,7 +38,7 @@ function buildImportSummary({ fileName, sections, pages, entityCount, unavailabl
   const warning = document.createElement('p');
   warning.className = 'confirm-callout';
   warning.textContent = t(
-    'Import applies immediately and replaces unsaved Settings edits. Your current saved settings are backed up first. Connection details, desktop pins, shortcuts and profile sync stay on this computer. Imported settings follow your existing sync scope.'
+    'Import applies immediately and replaces unsaved Settings edits. Your current saved settings are backed up first. Connection details, desktop pins, hotkeys and profile sync stay on this computer. Imported settings follow your existing sync scope.'
   );
   const facts = document.createElement('dl');
   facts.className = 'confirm-facts';
