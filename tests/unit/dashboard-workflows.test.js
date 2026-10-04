@@ -122,7 +122,7 @@ describe('first page starter', () => {
     expect(pickStarterArea([], entities, [], states)).toBe('');
   });
 
-  it('counts the controllable domains a home really has', () => {
+  it('suggests the devices and appliances a home has, but not what acts with one click', () => {
     const ids = [
       'lock.front_door',
       'scene.movie',
@@ -134,7 +134,35 @@ describe('first page starter', () => {
       'binary_sensor.door',
       'button.restart',
     ];
-    expect(defaultPageEntityIds(ids, [], on(...ids))).toEqual(ids.slice(0, 6));
+    // Unticked but still listed: the Add Page dialog lists every id and ticks only these.
+    expect(defaultPageEntityIds(ids, [], on(...ids))).toEqual([
+      'vacuum.robot',
+      'humidifier.bedroom',
+      'water_heater.tank',
+    ]);
+  });
+
+  it('fills a page of eight with devices before appliances', () => {
+    const ids = [
+      'vacuum.aaa_robot',
+      ...Array.from({ length: 8 }, (_, index) => `light.l${index}`),
+      'humidifier.bedroom',
+    ];
+    expect(defaultPageEntityIds(ids, [], on(...ids), 8)).toEqual(ids.slice(1, 9));
+    // With room to spare the appliances come after the devices.
+    expect(defaultPageEntityIds(ids, [], on(...ids), 10)).toEqual([
+      ...ids.slice(1, 9),
+      'vacuum.aaa_robot',
+      'humidifier.bedroom',
+    ]);
+  });
+
+  it('does not start a first page in a room whose only controls act with one click', () => {
+    const entities = [entity('lock.hall_door', 'hall'), entity('script.hall_scene', 'hall')];
+    const areas = [{ area_id: 'hall', name: 'Hall' }];
+    expect(pickStarterArea(areas, entities, [], on('lock.hall_door', 'script.hall_scene'))).toBe(
+      ''
+    );
   });
 
   it('leaves out device settings and what is not ready, and keeps state-only entities', () => {
