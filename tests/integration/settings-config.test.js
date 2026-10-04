@@ -123,13 +123,13 @@ let mockElectronAPI;
 beforeAll(() => {
   mockElectronAPI = createMockElectronAPI();
   window.electronAPI = mockElectronAPI;
-
-  // Mock window.confirm for jsdom
-  window.confirm = jest.fn().mockReturnValue(false); // Default to false (don't restart)
 });
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // Every dialog but the restart prompt agrees by default; "Later" is the answer that leaves the
+  // run going, so a save that changes Always on top does not restart the test.
+  mockUiUtils.showConfirm.mockImplementation(async (title) => title !== 'Restart required');
   resetMockElectronAPI();
   mockElectronAPI.platform = 'test';
   mockCustomThemes = [];
@@ -188,6 +188,19 @@ afterEach(() => {
 });
 
 /**
+ * What a person sees under a field Save refused: the message beside it, the field marked invalid and
+ * pointing at the message.
+ */
+function fieldError(id) {
+  const field = document.getElementById(id);
+  const node = document.querySelector(`[data-field-error-for="${id}"]`);
+  if (!node) return null;
+  expect(field.getAttribute('aria-invalid')).toBe('true');
+  expect(field.getAttribute('aria-describedby').split(' ')).toContain(node.id);
+  return node.textContent;
+}
+
+/**
  * Helper function to create the settings modal DOM structure
  */
 function createSettingsModalDOM() {
@@ -211,6 +224,7 @@ function createSettingsModalDOM() {
       <details id="legacy-ha-token-settings">
       <label for="ha-token">Access Token</label>
       <input type="password" id="ha-token" />
+      <p id="legacy-ha-token-oauth-note" class="hidden">Browser authorization is active.</p>
       <button type="button" id="test-ha-connection-btn">Test legacy token</button>
       <div id="test-ha-connection-status" class="hidden"></div>
       </details>
@@ -2206,17 +2220,15 @@ describe('Settings + Config Integration', () => {
     test('URL validation prevents invalid save', async () => {
       await settings.openSettings();
 
-      // Set invalid URL (no protocol)
-      document.getElementById('ha-url').value = 'homeassistant.local:8123';
+      // A scheme this app does not speak
+      document.getElementById('ha-url').value = 'ftp://homeassistant.local:8123';
 
       await settings.saveSettings();
 
-      // Verify error toast shown
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-        expect.stringContaining('http://'),
-        'error',
-        expect.any(Number)
-      );
+      // The message is under the field, not in a toast that is gone in seconds
+      expect(fieldError('ha-url')).toBe('URL must start with http:// or https://');
+      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(document.getElementById('ha-url'));
 
       // Verify config NOT updated
       expect(state.CONFIG.homeAssistant.url).toBe('http://homeassistant.local:8123'); // Original value
@@ -2227,6 +2239,46 @@ describe('Settings + Config Integration', () => {
       expect(modal.classList.contains('hidden')).toBe(false);
     });
 
+    test('an address Test connection accepts is accepted by Save, as the server alone', async () => {
+      // A bare host and port, an upper-case scheme and a pasted dashboard address all reach the
+      // same server; Test and the setup wizard take them, so Save must too.
+      for (const [typed, saved] of [
+        ['homeassistant.local:8123', 'http://homeassistant.local:8123'],
+        ['HTTP://ha.local:8123/', 'http://ha.local:8123'],
+        ['https://ha.example.com/lovelace/0', 'https://ha.example.com'],
+      ]) {
+        window.electronAPI.updateConfig.mockClear();
+        await settings.openSettings();
+        document.getElementById('ha-url').value = typed;
+
+        await settings.saveSettings();
+
+        expect(window.electronAPI.updateConfig).toHaveBeenCalledWith(
+          expect.objectContaining({
+            homeAssistant: expect.objectContaining({ url: saved }),
+          })
+        );
+        expect(state.CONFIG.homeAssistant.url).toBe(saved);
+      }
+    });
+
+    test('a URL with no host names the problem under the field and clears it on typing', async () => {
+      await settings.openSettings();
+      const haUrl = document.getElementById('ha-url');
+      haUrl.value = 'http://';
+
+      await settings.saveSettings();
+
+      expect(fieldError('ha-url')).toBe('Invalid URL: missing hostname');
+
+      haUrl.value = 'http://ha.local';
+      haUrl.dispatchEvent(new Event('input'));
+
+      expect(document.querySelector('[data-field-error-for="ha-url"]')).toBeNull();
+      expect(haUrl.hasAttribute('aria-invalid')).toBe(false);
+      expect(haUrl.hasAttribute('aria-describedby')).toBe(false);
+    });
+
     test('empty URL validation', async () => {
       await openSettingsWithCustomIconsExpanded();
 
@@ -2235,12 +2287,7 @@ describe('Settings + Config Integration', () => {
 
       await settings.saveSettings();
 
-      // Verify error toast
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-        expect.stringContaining('empty'),
-        'error',
-        expect.any(Number)
-      );
+      expect(fieldError('ha-url')).toBe('Home Assistant URL cannot be empty');
 
       // Verify config NOT updated
       expect(window.electronAPI.updateConfig).not.toHaveBeenCalled();
@@ -2263,10 +2310,8 @@ describe('Settings + Config Integration', () => {
       expect(window.electronAPI.updateConfig).not.toHaveBeenCalled();
       expect(window.electronAPI.setLoginItemSettings).not.toHaveBeenCalled();
       expect(window.electronAPI.setOpacity).not.toHaveBeenCalled();
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-        'Choose a sync folder before enabling profile sync.',
-        'error',
-        3200
+      expect(fieldError('profile-sync-folder-path')).toBe(
+        'Choose a sync folder before enabling profile sync.'
       );
     });
 
@@ -4772,11 +4817,11 @@ describe('Settings + Config Integration', () => {
       document.getElementById('profile-sync-enabled').checked = true;
       await settings.saveSettings();
 
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-        'Choose a sync folder before enabling profile sync.',
-        'error',
-        expect.any(Number)
+      expect(fieldError('profile-sync-folder-path')).toBe(
+        'Choose a sync folder before enabling profile sync.'
       );
+      // The path field is read-only, so the person is taken to the button that fills it.
+      expect(document.activeElement).toBe(document.getElementById('profile-sync-choose-folder'));
       expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
     });
 
@@ -4790,10 +4835,8 @@ describe('Settings + Config Integration', () => {
       document.getElementById('profile-sync-passphrase').value = 'short';
       await settings.saveSettings();
 
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-        'Passphrase must be at least 8 characters long',
-        'error',
-        expect.any(Number)
+      expect(fieldError('profile-sync-passphrase')).toBe(
+        'Passphrase must be at least 8 characters long'
       );
       expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
       expect(mockElectronAPI.setProfileSyncPassphrase).not.toHaveBeenCalled();
@@ -5258,7 +5301,7 @@ describe('Settings + Config Integration', () => {
         mockElectronAPI.updateConfig.mockClear();
         await settings.saveSettings();
 
-        expect(lastToast()).toEqual(['The passphrases do not match.', 'error', expect.any(Number)]);
+        expect(fieldError('profile-sync-passphrase-confirm')).toBe('The passphrases do not match.');
         expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
         expect(document.activeElement).toBe(
           document.getElementById('profile-sync-passphrase-confirm')
@@ -5296,7 +5339,7 @@ describe('Settings + Config Integration', () => {
         mockElectronAPI.updateConfig.mockClear();
         await settings.saveSettings();
 
-        expect(lastToast()).toEqual(['The passphrases do not match.', 'error', expect.any(Number)]);
+        expect(fieldError('profile-sync-passphrase-confirm')).toBe('The passphrases do not match.');
         expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
       });
 
@@ -5319,7 +5362,7 @@ describe('Settings + Config Integration', () => {
         mockElectronAPI.updateConfig.mockClear();
         await settings.saveSettings();
 
-        expect(lastToast()).toEqual(['The passphrases do not match.', 'error', expect.any(Number)]);
+        expect(fieldError('profile-sync-passphrase-confirm')).toBe('The passphrases do not match.');
         expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
 
         input.value = '';
@@ -5368,7 +5411,7 @@ describe('Settings + Config Integration', () => {
 
         await settings.saveSettings();
 
-        expect(lastToast()[0]).toBe(
+        expect(fieldError('profile-sync-passphrase')).toBe(
           'Enter the current remote passphrase before disabling encrypted sync.'
         );
         expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();

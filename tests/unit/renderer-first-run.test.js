@@ -718,6 +718,11 @@ describe('Renderer first-run Home Assistant authorization', () => {
 
     expect(input.value).toBe('');
     expect(input.placeholder).toBe('http://homeassistant.local');
+    // An address is not prose: no spelling underline, no capital, no autofill, a URL keyboard
+    expect(input.getAttribute('spellcheck')).toBe('false');
+    expect(input.getAttribute('autocapitalize')).toBe('off');
+    expect(input.getAttribute('autocomplete')).toBe('off');
+    expect(input.getAttribute('inputmode')).toBe('url');
   });
 
   it('authorizes a fresh Home Assistant 2026.8 install without adding the legacy port', async () => {

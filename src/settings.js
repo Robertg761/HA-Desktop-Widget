@@ -1,6 +1,9 @@
 import { applyDesktopAppearance } from './desktop-appearance.js';
 import { initializeSettingsSearch } from './settings-search.js';
 import { initializeSettingsFiles } from './settings-files-ui.js';
+import { clearFieldError, clearFieldErrors, showFieldError } from './field-errors.js';
+import { paginate, renderListPager } from './list-pager.js';
+import { linkSettingsHelpText, setDescribedByLine } from './settings-help-links.js';
 import state from './state.js';
 import log from './logger.js';
 import websocket from './websocket.js';
@@ -3113,33 +3116,20 @@ function reapplySettingsPreviews() {
  * @returns {object} - { valid: boolean, error: string|null, url: string }
  */
 function validateHomeAssistantUrl(url) {
-  if (!url || url.trim() === '') {
+  const trimmedUrl = typeof url === 'string' ? url.trim() : '';
+  if (!trimmedUrl) {
     return { valid: false, error: t('Home Assistant URL cannot be empty'), url: null };
   }
+  const normalizedUrl = normalizeBaseUrl(trimmedUrl);
+  if (normalizedUrl) return { valid: true, error: null, url: normalizedUrl };
 
-  const trimmedUrl = url.trim();
-
-  // Check if URL starts with http:// or https://
-  if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
+  if (/^https?:\/*$/i.test(trimmedUrl)) {
+    return { valid: false, error: t('Invalid URL: missing hostname'), url: null };
+  }
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmedUrl) && !/^https?:\/\//i.test(trimmedUrl)) {
     return { valid: false, error: t('URL must start with http:// or https://'), url: null };
   }
-
-  // Try to parse as URL
-  try {
-    const urlObj = new URL(trimmedUrl);
-
-    // Validate it has a hostname
-    if (!urlObj.hostname) {
-      return { valid: false, error: t('Invalid URL: missing hostname'), url: null };
-    }
-
-    // Remove trailing slash for consistency
-    const normalizedUrl = trimmedUrl.replace(/\/$/, '');
-
-    return { valid: true, error: null, url: normalizedUrl };
-  } catch {
-    return { valid: false, error: t('Invalid URL format'), url: null };
-  }
+  return { valid: false, error: t('Invalid URL format'), url: null };
 }
 
 function getDefaultProfileSyncConfig() {
@@ -3658,6 +3648,8 @@ function setProfileSyncFolderField(folder) {
   if (!input) return;
   input.value = folder;
   input.title = folder;
+  // A folder was chosen, so "choose a sync folder" no longer applies.
+  if (folder) clearFieldError(input);
 }
 
 /**
@@ -5215,6 +5207,14 @@ async function openSettings(uiHooks) {
       );
     }
 
+    // An error from an earlier Save would otherwise greet the next visit.
+    clearFieldErrors(modal);
+    // The markup is static, so its help lines are tied to their controls once.
+    if (!modal.dataset.helpLinked) {
+      linkSettingsHelpText(modal);
+      modal.dataset.helpLinked = 'true';
+    }
+
     // Populate fields
     const haUrl = document.getElementById('ha-url');
     const haToken = document.getElementById('ha-token');
@@ -5447,10 +5447,27 @@ async function openSettings(uiHooks) {
 
     // Focus starts on the page the user is on, not on the header's Close button, where a stray Enter
     // or Space would discard every unsaved edit. Only Escape and the buttons close Settings: a
-    // click that misses a control must not throw away a form this large.
+    // click that misses a control must not throw away a form this large. The one exception is the
+    // red connection panel's "Open Settings" with a rejected token: the token field is what to fix,
+    // and it is open on screen, so the cursor goes there.
+    const tokenRejected =
+      state.CONFIG.homeAssistant?.authMethod !== 'oauth' &&
+      getLiveConnectionState().status === 'auth-failed';
     openDialog(modal, {
-      initialFocus: () =>
-        modal.querySelector('.tab-link.active') || document.getElementById('settings-search'),
+      initialFocus: () => {
+        const token = document.getElementById('ha-token');
+        if (
+          tokenRejected &&
+          token &&
+          !token.disabled &&
+          !token.closest('.tab-content:not(.active)')
+        ) {
+          return token;
+        }
+        return (
+          modal.querySelector('.tab-link.active') || document.getElementById('settings-search')
+        );
+      },
       dismiss: () => closeSettings(),
       dismissOnBackdrop: false,
     });
@@ -5528,11 +5545,14 @@ function closeSettings() {
   }
 }
 
+// Says what the test found, as far as the main process could tell. A wrong port, a proxy that is
+// down and a certificate Chromium refuses each have a different fix, so they are not all
+// "could not reach".
 function getConnectionTestMessage(resultOrError) {
   if (resultOrError?.success) {
     return {
       type: 'success',
-      text: t('Connection test succeeded. Home Assistant is reachable.'),
+      text: t('Token accepted. Home Assistant is reachable. Select Save to keep it.'),
     };
   }
 
@@ -5540,14 +5560,25 @@ function getConnectionTestMessage(resultOrError) {
   if (code === 'invalid-url') {
     return {
       type: 'error',
-      text: t('Enter a valid Home Assistant URL and token before testing.'),
+      text: t('Enter a valid Home Assistant URL and long-lived access token before testing.'),
     };
   }
   if (code === 'auth-failed') {
     return {
       type: 'error',
-      text: t('Authentication failed. Check your Long-Lived Access Token.'),
+      text: t('Authentication failed. Check your long-lived access token.'),
     };
+  }
+  const status = Number(resultOrError?.status || 0);
+  const detail = String(resultOrError?.error || resultOrError?.message || '');
+  if (status >= 400) {
+    return { type: 'error', text: t('HTTP {{status}}: check the URL and port.', { status }) };
+  }
+  if (/cert|ssl|tls/i.test(detail)) {
+    return { type: 'error', text: t('The certificate is not trusted.') };
+  }
+  if (/timed? ?out/i.test(detail)) {
+    return { type: 'error', text: t('Timed out. Check the URL and port.') };
   }
   return {
     type: 'error',
@@ -5562,7 +5593,8 @@ function setSettingsConnectionTestStatus(message = '', type = '') {
 function setSettingsConnectionTestBusy(isBusy) {
   const button = document.getElementById('test-ha-connection-btn');
   if (button) {
-    button.disabled = !!isBusy;
+    // With browser authorization active the token field is unused, and testing it can only fail.
+    button.disabled = !!isBusy || (state.CONFIG?.homeAssistant || {}).authMethod === 'oauth';
     button.setAttribute('aria-busy', isBusy ? 'true' : 'false');
   }
   setConnectionStatusBusy(document.getElementById('test-ha-connection-status'), isBusy);
@@ -5594,11 +5626,14 @@ function setHomeAssistantOAuthBusy(isBusy, { cancellable = false } = {}) {
 let renderedHomeAssistantAuthState = '';
 
 function getHomeAssistantAuthState(homeAssistant) {
+  const connection = getLiveConnectionState();
   return JSON.stringify([
     homeAssistant.authMethod || '',
     homeAssistant.oauthStatus || '',
     homeAssistant.oauthLastError || '',
     homeAssistant.oauthLastErrorCode || '',
+    connection.status || '',
+    connection.reason || '',
   ]);
 }
 
@@ -5628,13 +5663,21 @@ function updateHomeAssistantConnectButton() {
         : t('Reconnect with Home Assistant');
 }
 
+// What the main window knows about the live connection, when it opened Settings: the red panel's
+// "Open Settings" lands here, and the page must not look healthy while that panel is up.
+function getLiveConnectionState() {
+  return settingsUiHooks?.getConnectionState?.() || { status: '', reason: '' };
+}
+
 function updateHomeAssistantAuthUi() {
   const homeAssistant = state.CONFIG?.homeAssistant || {};
   const usesOAuth = homeAssistant.authMethod === 'oauth';
   renderedHomeAssistantAuthState = getHomeAssistantAuthState(homeAssistant);
   const disconnectButton = document.getElementById('disconnect-ha-oauth-btn');
   const tokenInput = document.getElementById('ha-token');
+  const testButton = document.getElementById('test-ha-connection-btn');
   const legacySettings = document.getElementById('legacy-ha-token-settings');
+  const oauthNote = document.getElementById('legacy-ha-token-oauth-note');
 
   updateHomeAssistantConnectButton();
   disconnectButton?.classList.toggle('hidden', !usesOAuth);
@@ -5642,13 +5685,31 @@ function updateHomeAssistantAuthUi() {
     tokenInput.disabled = usesOAuth;
     if (usesOAuth) tokenInput.value = '';
   }
+  // Testing needs a token, and an OAuth setup has none to type: say why instead of leaving a
+  // button that can only fail beside a dead field.
+  if (testButton) testButton.disabled = usesOAuth;
+  oauthNote?.classList.toggle('hidden', !usesOAuth);
   if (legacySettings && usesOAuth) legacySettings.open = false;
 
   if (!usesOAuth) {
-    setHomeAssistantOAuthStatus(
-      t('Browser authorization is recommended. The legacy token option remains available below.'),
-      'pending'
-    );
+    const connection = getLiveConnectionState();
+    if (connection.status === 'auth-failed') {
+      // The saved token was refused: the field to fix it is under "advanced", so open that.
+      setHomeAssistantOAuthStatus(
+        connection.reason ||
+          t('Authentication failed. Check your long-lived access token in Settings.'),
+        'error'
+      );
+      if (legacySettings) legacySettings.open = true;
+    } else if (connection.status === 'disconnected' && connection.reason) {
+      setHomeAssistantOAuthStatus(connection.reason, 'error');
+    } else {
+      // Standing advice, not progress: plain help text, not the accent-coloured pending line.
+      setHomeAssistantOAuthStatus(
+        t('Browser authorization is recommended. The legacy token option remains available below.'),
+        ''
+      );
+    }
   } else if (homeAssistant.oauthStatus === 'connected') {
     setHomeAssistantOAuthStatus(t('Connected with Home Assistant authorization.'), 'success');
   } else if (homeAssistant.oauthStatus === 'restoring') {
@@ -5697,9 +5758,11 @@ async function startHomeAssistantOAuthFromSettings() {
   const haUrl = document.getElementById('ha-url');
   const validation = validateHomeAssistantUrl(haUrl?.value || '');
   if (!validation.valid) {
-    setHomeAssistantOAuthStatus(validation.error, 'error');
+    showFieldError(haUrl, validation.error);
     return;
   }
+  // Show the address that will be used (a bare host gains its scheme, a dashboard path goes).
+  if (haUrl) haUrl.value = validation.url;
   setHomeAssistantOAuthBusy(true, { cancellable: true });
   setHomeAssistantOAuthStatus(t('Opening Home Assistant for authorization...'), 'pending');
   try {
@@ -5740,6 +5803,14 @@ async function cancelHomeAssistantOAuthFromSettings() {
 }
 
 async function disconnectHomeAssistantOAuthFromSettings() {
+  // The widget stops talking to Home Assistant and has to be authorized again, so a stray click
+  // should not do it.
+  const confirmed = await showConfirm(
+    t('Disconnect'),
+    t('Disconnect this widget from Home Assistant? You will need to authorize again.'),
+    { confirmText: t('Disconnect'), confirmClass: 'btn-danger' }
+  );
+  if (!confirmed) return;
   setHomeAssistantOAuthBusy(true);
   try {
     const result = await window.electronAPI.disconnectHomeAssistantOAuth();
@@ -5824,7 +5895,33 @@ function bindConnectionTestUi() {
   button.addEventListener('click', () => {
     void runSettingsConnectionTest();
   });
+  // A result describes the address and token that were tested. Once either is edited it describes
+  // something else, and a green line beside a changed field would be a claim nobody checked.
+  ['ha-url', 'ha-token'].forEach((id) =>
+    document
+      .getElementById(id)
+      ?.addEventListener('input', () => setSettingsConnectionTestStatus('', ''))
+  );
   button.dataset.initialized = 'true';
+}
+
+// A second Save while one is running (a double click, or Enter held down) would write the config
+// twice and raise every restart and sync prompt twice. Only the first call does the work.
+let settingsSaveInFlight = false;
+
+async function saveSettings() {
+  if (settingsSaveInFlight) return;
+  settingsSaveInFlight = true;
+  const saveButton = document.getElementById('save-settings');
+  saveButton?.setAttribute('aria-busy', 'true');
+  const reenableSaveButton = disableControlsKeepingFocus([saveButton]);
+  try {
+    await persistSettings();
+  } finally {
+    settingsSaveInFlight = false;
+    saveButton?.removeAttribute('aria-busy');
+    reenableSaveButton();
+  }
 }
 
 /**
@@ -5836,7 +5933,7 @@ function bindConnectionTestUi() {
  * and reconnects to Home Assistant only if connection settings changed. May prompt the user to restart the app when
  * toggling Always on Top. Errors are logged and reported via toasts where validation fails.
  */
-async function saveSettings() {
+async function persistSettings() {
   let configPersisted = false;
   let syncFileCopiedThisSave = false;
   try {
@@ -5883,16 +5980,32 @@ async function saveSettings() {
     // Connect/Disconnect. Saving unrelated settings must not echo access tokens.
     if (usesOAuth) {
       nextConfig.homeAssistant = { ...currentConfig.homeAssistant };
-    } else if (haUrl && haUrl.value.trim()) {
+      // The address of an authorized setup is changed by authorizing again, not by Save. Saving
+      // would drop the edit and close Settings as if it had been kept.
+      const typedUrl = haUrl ? validateHomeAssistantUrl(haUrl.value) : null;
+      const savedUrl = normalizeBaseUrl(currentConfig.homeAssistant?.url || '');
+      if (typedUrl && savedUrl && !typedUrl.valid) {
+        showFieldError(haUrl, typedUrl.error);
+        return;
+      }
+      if (typedUrl && savedUrl && typedUrl.url !== savedUrl) {
+        showFieldError(
+          haUrl,
+          t(
+            'Saving does not switch servers. Select Reconnect with Home Assistant to use this address, or restore the saved one.'
+          )
+        );
+        return;
+      }
+    } else if (haUrl) {
       const validation = validateHomeAssistantUrl(haUrl.value);
       if (!validation.valid) {
-        showToast(validation.error, 'error', 4000);
-        return; // Don't save if URL is invalid
+        // Settings has many pages, and this is rarely the one Save was pressed from.
+        showFieldError(haUrl, validation.error);
+        return;
       }
       nextConfig.homeAssistant.url = validation.url;
-    } else if (haUrl && !haUrl.value.trim()) {
-      showToast(t('Home Assistant URL cannot be empty'), 'error', 3000);
-      return;
+      haUrl.value = validation.url;
     }
 
     if (haToken && !usesOAuth) {
@@ -6019,8 +6132,10 @@ async function saveSettings() {
       prevProfileSync.enabled !== true &&
       !nextProfileSync.cloudFilePath
     ) {
-      showToast(t('Choose a sync folder before enabling profile sync.'), 'error', 3200);
-      revealProfileSyncField(document.getElementById('profile-sync-choose-folder'));
+      showProfileSyncFieldError(
+        profileSyncFolderPath,
+        t('Choose a sync folder before enabling profile sync.')
+      );
       return;
     }
 
@@ -6033,14 +6148,12 @@ async function saveSettings() {
       typedPassphrase &&
       typedPassphrase.length < PROFILE_SYNC_MIN_PASSPHRASE_LENGTH
     ) {
-      showToast(
+      showProfileSyncFieldError(
+        profileSyncPassphrase,
         t('Passphrase must be at least {{count}} characters long', {
           count: PROFILE_SYNC_MIN_PASSPHRASE_LENGTH,
-        }),
-        'error',
-        3400
+        })
       );
-      revealProfileSyncField(profileSyncPassphrase);
       return;
     }
     const passphraseConfirm = document.getElementById('profile-sync-passphrase-confirm');
@@ -6056,8 +6169,7 @@ async function saveSettings() {
       confirmShown &&
       passphraseConfirm.value.trim() !== typedPassphrase
     ) {
-      showToast(t('The passphrases do not match.'), 'error', 3400);
-      revealProfileSyncField(passphraseConfirm);
+      showProfileSyncFieldError(passphraseConfirm, t('The passphrases do not match.'));
       return;
     }
 
@@ -6178,26 +6290,22 @@ async function saveSettings() {
       !hasSavedPassphrase &&
       profileSyncStatusCache?.remoteEncrypted !== false
     ) {
-      showToast(
-        t('Enter the current remote passphrase before disabling encrypted sync.'),
-        'error',
-        3400
+      showProfileSyncFieldError(
+        profileSyncPassphrase,
+        t('Enter the current remote passphrase before disabling encrypted sync.')
       );
-      revealProfileSyncField(profileSyncPassphrase);
       return;
     }
 
     if (nextProfileSync.enabled && nextProfileSync.encryptionEnabled) {
       const canReuseSavedPassphrase = hasSavedPassphrase && !removingRememberedPassphrase;
       if (!typedPassphrase && !canReuseSavedPassphrase) {
-        showToast(
+        showProfileSyncFieldError(
+          profileSyncPassphrase,
           t(
             'Enter a passphrase or use an existing saved passphrase before enabling encrypted sync.'
-          ),
-          'error',
-          3400
+          )
         );
-        revealProfileSyncField(profileSyncPassphrase);
         return;
       }
 
@@ -6220,6 +6328,9 @@ async function saveSettings() {
     keepNewerSyncedSettings(nextConfig, settingsFormBaseConfig, state.CONFIG, settingsTouchedKeys);
     // Tells main which values are deliberate, so its stale-echo guard keeps them.
     nextConfig.profileSyncTouchedKeys = [...settingsTouchedKeys];
+    // Read before the touched keys are cleared below: the icons toast is about this save's edits,
+    // not about whether any custom icon exists.
+    const customIconsEdited = settingsTouchedKeys.has('customEntityIcons');
     const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
     applyPersistedConfigResponse(updatedConfig);
     configPersisted = true;
@@ -6317,7 +6428,7 @@ async function saveSettings() {
       }
     }
 
-    if (Object.keys(state.CONFIG.customEntityIcons || {}).length > 0) {
+    if (customIconsEdited) {
       showToast(
         t('Custom icons saved. Icons apply to entities already shown in your tabs/tiles.'),
         'success',
@@ -6376,41 +6487,47 @@ async function saveSettings() {
       !state.CONFIG.desktopCapabilities?.alwaysTransparentWindows &&
       ((prevOpacity === 1 && nextOpacity < 1) || (prevOpacity < 1 && nextOpacity === 1));
 
+    // The themed dialog, not the browser's: that one has no title, says OK and Cancel in the system
+    // language (Cancel reads as "do not save", not "later"), and under the Linux layer shell it can
+    // open behind the widget while the page waits on it.
+    const askToRestart = (message) =>
+      showConfirm(t('Restart required'), message, {
+        confirmText: t('Restart now'),
+        cancelText: t('Later'),
+        confirmClass: 'btn-primary',
+      });
+
     if (opacityNeedsRestart) {
-      if (
-        confirm(
-          t(
-            'Changing opacity between 100% and transparent on Linux requires an app restart. Restart now?'
-          )
+      const restartForOpacity = await askToRestart(
+        t(
+          'Changing opacity between 100% and transparent on Linux requires an app restart. Restart now?'
         )
-      ) {
-        await window.electronAPI
-          .focusWindow()
-          .catch((err) => log.error('Failed to refocus window:', err));
-        await window.electronAPI.restartApp();
-        return;
-      }
+      );
       await window.electronAPI
         .focusWindow()
         .catch((err) => log.error('Failed to refocus window:', err));
+      if (restartForOpacity) {
+        await window.electronAPI.restartApp();
+        return;
+      }
     }
 
     if (prevAlwaysOnTop !== state.CONFIG.alwaysOnTop) {
       const res = await window.electronAPI.setAlwaysOnTop(state.CONFIG.alwaysOnTop);
       const windowState = await window.electronAPI.getWindowState();
       if (!res?.applied || windowState?.alwaysOnTop !== state.CONFIG.alwaysOnTop) {
-        if (confirm(t('Changing "Always on top" may require a restart. Restart now?'))) {
-          // Force window to regain focus after confirm dialog (Windows focus bug workaround)
-          await window.electronAPI
-            .focusWindow()
-            .catch((err) => log.error('Failed to refocus window:', err));
-          await window.electronAPI.restartApp();
-          return;
-        }
-        // Force window to regain focus even if user cancelled (Windows focus bug workaround)
+        const restartForAlwaysOnTop = await askToRestart(
+          t('Changing "Always on top" may require a restart. Restart now?')
+        );
+        // Force window to regain focus after the dialog, whatever was chosen (Windows focus bug
+        // workaround)
         await window.electronAPI
           .focusWindow()
           .catch((err) => log.error('Failed to refocus window:', err));
+        if (restartForAlwaysOnTop) {
+          await window.electronAPI.restartApp();
+          return;
+        }
       }
     }
 
@@ -7482,11 +7599,20 @@ function handleProfileSyncStatusUpdate(status) {
   updateProfileSyncStatusUi(status);
 }
 
-/** Shows the Advanced page and puts the cursor on a sync field that needs fixing. */
-function revealProfileSyncField(field) {
-  document.querySelector('.modal-tabs .tab-link[data-tab="advanced"]')?.click();
-  field?.focus?.();
-  field?.scrollIntoView?.({ block: 'center' });
+/**
+ * Says what is wrong with a sync field, under it, and puts the cursor there: on the field, or on the
+ * Choose Folder button for the read-only path.
+ */
+function showProfileSyncFieldError(field, message) {
+  showFieldError(field, message, {
+    anchor: field?.closest(
+      '.profile-sync-file-row, .profile-sync-passphrase-row, .profile-sync-passphrase-confirm'
+    ),
+    focusTarget:
+      field?.id === 'profile-sync-folder-path'
+        ? document.getElementById('profile-sync-choose-folder')
+        : null,
+  });
 }
 
 /** Brings the person to the part of Advanced that asks something of them. */

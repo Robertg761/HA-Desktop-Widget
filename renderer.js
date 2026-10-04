@@ -286,6 +286,7 @@ function setDisconnectedStatus(detailMessage = '') {
   const normalizedDetail = typeof detailMessage === 'string' ? detailMessage.trim() : '';
   if (normalizedDetail) {
     lastDisconnectReason = normalizedDetail;
+    settings.refreshHomeAssistantAuthStatus?.();
   }
   uiUtils.setStatus(
     false,
@@ -343,7 +344,7 @@ function getAuthFailureMessage(oauth = usesOAuth()) {
     ? t(
         'Home Assistant rejected the authorization for this app. Reconnect with Home Assistant to continue.'
       )
-    : t('Authentication failed. Please check your Home Assistant token in Settings.');
+    : t('Authentication failed. Check your long-lived access token in Settings.');
 }
 
 function getOAuthReauthRequiredStatus() {
@@ -612,6 +613,8 @@ function getSettingsUiHooks() {
     updateMediaTile: ui.updateMediaTile,
     renderPrimaryCards: ui.renderPrimaryCards,
     updateWeatherEffects: ui.updateWeatherEffects,
+    // What the red connection panel is saying, so Settings does not look healthy beside it.
+    getConnectionState: () => ({ status: mainConnectionState, reason: lastDisconnectReason }),
     refreshLocale: async () => {
       await refreshLocaleBootstrap();
       renderCurrentMode();
@@ -923,6 +926,8 @@ function retryConnection() {
 }
 
 function renderMainWidgetState() {
+  // An open Settings page shows the same connection problem as the panel, so it follows it.
+  settings.refreshHomeAssistantAuthStatus?.();
   // Tiles keep showing what Home Assistant last said while it cannot be reached; the page dims
   // them so a lamp that has since been switched off, or a timer that stopped, does not look live.
   // Connecting counts: every retry and the wait for the first state snapshot after login still
@@ -1224,6 +1229,10 @@ function renderWizardStep() {
     input.id = 'first-run-ha-url';
     input.type = 'text';
     input.placeholder = t('http://homeassistant.local');
+    input.setAttribute('spellcheck', 'false');
+    input.setAttribute('autocapitalize', 'off');
+    input.setAttribute('autocomplete', 'off');
+    input.setAttribute('inputmode', 'url');
     input.value =
       firstRunWizard.urlInput?.value || normalizeBaseUrl(state.CONFIG?.homeAssistant?.url) || '';
     input.addEventListener('input', () => {

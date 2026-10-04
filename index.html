@@ -661,6 +661,7 @@
                     spellcheck="false"
                     autocapitalize="off"
                     autocomplete="off"
+                    inputmode="url"
                     placeholder="http://homeassistant.local"
                     data-i18n-placeholder="http://homeassistant.local"
                   />
@@ -702,7 +703,9 @@
                   </summary>
                   <div class="settings-details-body">
                     <div class="form-group">
-                      <label for="ha-token" data-i18n="Access token">Access token</label>
+                      <label for="ha-token" data-i18n="Long-lived access token"
+                        >Long-lived access token</label
+                      >
                       <input
                         type="password"
                         id="ha-token"
@@ -710,14 +713,22 @@
                         data-i18n-placeholder="Your long-lived access token"
                       />
                     </div>
+                    <p
+                      id="legacy-ha-token-oauth-note"
+                      class="form-help hidden"
+                      data-i18n="Browser authorization is active. Disconnect it to use a long-lived access token instead."
+                    >
+                      Browser authorization is active. Disconnect it to use a long-lived access
+                      token instead.
+                    </p>
                     <div class="connection-test-row">
                       <button
                         type="button"
                         id="test-ha-connection-btn"
                         class="btn btn-secondary"
-                        data-i18n="Test legacy token"
+                        data-i18n="Test long-lived access token"
                       >
-                        Test legacy token
+                        Test long-lived access token
                       </button>
                     </div>
                     <div
