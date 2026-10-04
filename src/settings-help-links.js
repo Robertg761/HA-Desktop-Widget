@@ -35,19 +35,30 @@ function controlsOf(group) {
  * @param {ParentNode} root - The container to walk, normally the Settings dialog.
  */
 function linkSettingsHelpText(root) {
+  const takenIds = new Set([...root.querySelectorAll('[id]')].map((node) => node.id));
   root.querySelectorAll('.form-group').forEach((group) => {
     const controls = controlsOf(group);
     if (controls.length !== 1) return;
     const [control] = controls;
-    const lines = directHelpLines(group).filter(
+    const allLines = directHelpLines(group);
+    const lines = allLines.filter(
       (line) => !line.matches('[aria-live], [hidden], .hidden, [data-no-describe]')
     );
     if (!lines.length) return;
 
     const described = new Set((control.getAttribute('aria-describedby') || '').split(/\s+/));
-    lines.forEach((line, index) => {
-      // Named after the control, so an id is the same on every platform and every run.
-      if (!line.id) line.id = `${control.id || 'setting'}-help${index ? `-${index + 1}` : ''}`;
+    lines.forEach((line) => {
+      // Named after the control and the line's place in the row (counting the skipped lines, which
+      // may carry an id of their own), so an id is the same on every platform and every run.
+      if (!line.id) {
+        const place = allLines.indexOf(line);
+        const base = `${control.id || 'setting'}-help${place ? `-${place + 1}` : ''}`;
+        let id = base;
+        // An id is never given twice: getElementById would return the wrong line.
+        for (let n = 2; takenIds.has(id); n += 1) id = `${base}-${n}`;
+        takenIds.add(id);
+        line.id = id;
+      }
       described.add(line.id);
     });
     described.delete('');

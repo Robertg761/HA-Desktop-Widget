@@ -208,6 +208,33 @@ describe('index.html', () => {
       expect(byId('ui-scale-select').getAttribute('aria-describedby')).toBe('ui-scale-select-help');
     });
 
+    test('no id appears twice once the help lines have been named', () => {
+      linkSettingsHelpText(byId('settings-modal'));
+      const ids = [...document.querySelectorAll('[id]')].map((node) => node.id);
+      expect(ids.filter((id, index) => ids.indexOf(id) !== index)).toEqual([]);
+    });
+
+    test('the language select is described by its own note, not by the download hint', () => {
+      // The download hint is skipped (data-no-describe), so the line after it is the first to be
+      // named, and it must not take the id the hint already has
+      linkSettingsHelpText(byId('settings-modal'));
+      const select = byId('language-select');
+      const [described, ...rest] = select.getAttribute('aria-describedby').split(' ');
+      expect(rest).toEqual([]);
+      expect(described).not.toBe('language-select-help');
+      expect(byId(described).textContent.trim()).toBe('Language changes take effect immediately.');
+
+      // Showing and hiding the hint adds and removes only the hint
+      const hint = byId('language-select-help');
+      setDescribedByLine(select, hint, true);
+      expect(select.getAttribute('aria-describedby').split(' ')).toEqual([
+        described,
+        'language-select-help',
+      ]);
+      setDescribedByLine(select, hint, false);
+      expect(select.getAttribute('aria-describedby')).toBe(described);
+    });
+
     test('a line is added to a description while it is shown and taken off when it is hidden', () => {
       const select = byId('language-select');
       const hint = byId('language-select-help');
