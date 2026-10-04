@@ -493,6 +493,8 @@ async function main() {
       try {
         // A scene that keeps its toast for the picture must not leave it for the next scene.
         await cdp.evaluate(REMOVE_TOASTS);
+        // Whatever the scene did to the page itself, which nothing here knows how to put back.
+        if (scene.teardown) await scene.teardown(ctx);
         if (sceneStates.length) {
           server.changeStates({ remove: sceneStates.map((entity) => entity.entity_id) });
         }

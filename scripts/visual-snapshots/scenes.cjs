@@ -14,6 +14,8 @@
  *            before the scene and takes them away afterwards (see buildLandingLights)
  *   setup    async (ctx) that drives the UI; may return { capture } to photograph another
  *            window (a desktop pin) instead of the main one
+ *   teardown async (ctx) run after the capture, to undo what setup did to the page itself (the
+ *            runner puts back settings, dialogs, media and the window size on its own)
  *   pin      the entity a pin scene pins (only a label for the tests, which check that every
  *            desktop pin family has a scene)
  *   keepToasts  leave the toasts the setup raised on screen for the capture (they are cleared
@@ -46,17 +48,36 @@ const FORCED_COLORS = [{ name: 'forced-colors', value: 'active' }];
 const FORCED_COLORS_LIGHT = [...FORCED_COLORS, { name: 'prefers-color-scheme', value: 'light' }];
 // A touch-first machine (a tablet, a touch laptop in tablet mode) has a coarse pointer. Chromium's
 // media emulation cannot set that, so the scene switches the stylesheet's coarse-pointer block on
-// where it stands, which keeps its place in the cascade.
-const useCoarsePointer = (then) => async (ctx) => {
-  await ctx.ev(`(() => {
-    for (const sheet of document.styleSheets) {
-      for (const rule of sheet.cssRules) {
-        if (rule.media?.mediaText.includes('pointer: coarse')) rule.media.mediaText = 'all';
+// where it stands, which keeps its place in the cascade, and teardown puts the query back.
+const COARSE_QUERY = '(pointer: coarse)';
+const SWITCH_COARSE_POINTER_BLOCK_ON = `(() => {
+  window.coarsePointerRules = [];
+  for (const sheet of document.styleSheets) {
+    for (const rule of sheet.cssRules) {
+      if (rule.media?.mediaText === ${JSON.stringify(COARSE_QUERY)}) {
+        window.coarsePointerRules.push(rule);
+        rule.media.mediaText = 'all';
       }
     }
-  })()`);
-  if (then) await then(ctx);
-};
+  }
+  return window.coarsePointerRules.length;
+})()`;
+const SWITCH_COARSE_POINTER_BLOCK_OFF = `(() => {
+  for (const rule of window.coarsePointerRules || []) {
+    rule.media.mediaText = ${JSON.stringify(COARSE_QUERY)};
+  }
+  delete window.coarsePointerRules;
+})()`;
+const coarsePointer = (name, then) => ({
+  name,
+  setup: async (ctx) => {
+    if (!(await ctx.ev(SWITCH_COARSE_POINTER_BLOCK_ON))) {
+      throw new Error('The stylesheet has no coarse-pointer block to switch on');
+    }
+    if (then) await then(ctx);
+  },
+  teardown: (ctx) => ctx.ev(SWITCH_COARSE_POINTER_BLOCK_OFF),
+});
 
 // The media tile's track is a button. Its title has to run out of room (so the ellipsis is doing
 // its job), the ellipsis has to be set, and neither the track nor the tile may leave the window.
@@ -1558,8 +1579,8 @@ const scenes = [
   { name: 'timer-accent-amber', ui: { accent: 'amber' }, config: timersPage },
 
   // A touch-first machine gets 44px targets in the header and in dialogs, and 72px tiles.
-  { name: 'coarse-pointer-main', setup: useCoarsePointer() },
-  { name: 'coarse-pointer-dialog', setup: useCoarsePointer(openBrightness) },
+  coarsePointer('coarse-pointer-main'),
+  coarsePointer('coarse-pointer-dialog', openBrightness),
 
   // Windows High Contrast, as Chromium emulates it: a dark contrast theme, then a light one.
   { name: 'forced-colors-main', media: FORCED_COLORS },
