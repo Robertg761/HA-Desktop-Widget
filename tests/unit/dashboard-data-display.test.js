@@ -250,6 +250,65 @@ describe('dashboard data display', () => {
       expect(tile('lock.door').dataset.readonly).toBeUndefined();
     });
 
+    describe('valves, humidifiers and sirens', () => {
+      it.each([
+        ['siren.hall', 'off', ['siren', 'turn_on']],
+        ['siren.hall', 'on', ['siren', 'turn_off']],
+        ['humidifier.bedroom', 'off', ['humidifier', 'turn_on']],
+        ['humidifier.bedroom', 'on', ['humidifier', 'turn_off']],
+        ['valve.garden', 'closed', ['valve', 'open_valve']],
+        ['valve.garden', 'open', ['valve', 'close_valve']],
+        ['valve.garden', 'opening', ['valve', 'close_valve']],
+      ])('toggles %s when %s from its tile', async (id, value, [domain, service]) => {
+        renderTiles([entity(id, value)]);
+        expect(tile(id).dataset.readonly).toBeUndefined();
+        tile(id).click();
+        await flush();
+        expect(mockCallService).toHaveBeenCalledWith(domain, service, { entity_id: id });
+      });
+
+      it('lights a valve that is open, and a siren or humidifier that is on', () => {
+        renderTiles([
+          entity('valve.open', 'open'),
+          entity('valve.shut', 'closed'),
+          entity('siren.on', 'on'),
+          entity('humidifier.off', 'off'),
+        ]);
+        expect(tile('valve.open').dataset.active).toBe('true');
+        expect(tile('valve.shut').dataset.active).toBeUndefined();
+        expect(tile('siren.on').dataset.active).toBe('true');
+        expect(tile('humidifier.off').dataset.active).toBeUndefined();
+      });
+
+      it('leaves a valve alone that cannot move the way the toggle would send it', async () => {
+        // ValveEntityFeature: OPEN is 1, CLOSE is 2.
+        renderTiles([
+          entity('valve.open_only', 'open', { supported_features: 1 }),
+          entity('valve.close_only', 'closed', { supported_features: 2 }),
+          entity('valve.both', 'closed', { supported_features: 3 }),
+        ]);
+        tile('valve.open_only').click();
+        tile('valve.close_only').click();
+        await flush();
+        expect(mockCallService).not.toHaveBeenCalled();
+        tile('valve.both').click();
+        await flush();
+        expect(mockCallService).toHaveBeenCalledWith('valve', 'open_valve', {
+          entity_id: 'valve.both',
+        });
+      });
+
+      it('is what a toggle hotkey does to them too', async () => {
+        ui.executeHotkeyAction(entity('siren.hall', 'off'), 'toggle');
+        ui.executeHotkeyAction(entity('valve.garden', 'open'), 'toggle');
+        await flush();
+        expect(mockCallService.mock.calls).toEqual([
+          ['siren', 'turn_on', { entity_id: 'siren.hall' }],
+          ['valve', 'close_valve', { entity_id: 'valve.garden' }],
+        ]);
+      });
+    });
+
     describe('unlocking from a tile', () => {
       const lock = (value) => entity('lock.door', value, { friendly_name: 'Back door' });
 

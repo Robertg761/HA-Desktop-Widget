@@ -125,7 +125,14 @@ let isReorganizeMode = false;
 let quickAccessOrderChanged = false;
 // Track all active long-press timers to cancel them when mode changes
 const activePressTimers = new Set();
-const ON_OFF_TOGGLE_DOMAINS = new Set(['light', 'switch', 'fan', 'input_boolean']);
+const ON_OFF_TOGGLE_DOMAINS = new Set([
+  'light',
+  'switch',
+  'fan',
+  'input_boolean',
+  'humidifier',
+  'siren',
+]);
 const desiredStateByEntity = new Map();
 const inFlightByEntity = new Map();
 const lastRequestedStateByEntity = new Map();
@@ -3064,6 +3071,7 @@ function isQuickAccessTileActive(entity) {
     case 'water_heater':
       return entityState !== 'off';
     case 'cover':
+    case 'valve':
       return entityState === 'open' || entityState === 'opening';
     case 'vacuum':
       return entityState === 'cleaning' || entityState === 'returning';
@@ -3160,12 +3168,15 @@ function getQuickAccessTileStateText(entity) {
 const QUICK_ACCESS_TOGGLE_DOMAINS = new Set([
   'cover',
   'fan',
+  'humidifier',
   'input_boolean',
   'light',
   'lock',
   'media_player',
+  'siren',
   'switch',
   'timer',
+  'valve',
 ]);
 const QUICK_ACCESS_ACTIVATE_DOMAINS = new Set(['button', 'input_button', 'scene', 'script']);
 const QUICK_ACCESS_HELPER_DOMAINS = new Set([
@@ -12997,11 +13008,23 @@ function toggleEntity(entity, { confirmUnlock = false } = {}) {
       case 'switch':
       case 'fan':
       case 'input_boolean':
+      case 'humidifier':
+      case 'siren':
         queueOnOffToggle(entity);
         return;
       case 'automation':
         service = 'toggle';
         break;
+      case 'valve': {
+        // Home Assistant's ValveEntityFeature: OPEN is 1 and CLOSE is 2. A valve that reports no
+        // features is tried anyway, like a cover; one that cannot do the other way is left alone.
+        const features = Number(entity.attributes?.supported_features);
+        const shouldClose = entity.state === 'open' || entity.state === 'opening';
+        const flag = shouldClose ? 2 : 1;
+        if (Number.isFinite(features) && (features & flag) !== flag) return;
+        service = shouldClose ? 'close_valve' : 'open_valve';
+        break;
+      }
       case 'lock':
         if (entity.state === 'locked' && confirmUnlock) {
           void confirmThenUnlock(entity);
