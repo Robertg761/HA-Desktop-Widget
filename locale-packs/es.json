@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.59",
+  "version": "1.2.60",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1793,6 +1793,24 @@
     "Connection, window behavior and language.": "Conexión, comportamiento de la ventana e idioma.",
     "Theme, colors, glass and readability.": "Tema, colores, cristal y legibilidad.",
     "Tints Quick Access tiles with your accent color while their light, switch, fan or player is running. Sensors and cameras are unaffected.": "Tiñe las tarjetas de acceso rápido con tu color de acento mientras su luz, interruptor, ventilador o reproductor está en marcha. Los sensores y las cámaras no se ven afectados.",
-    "Entities": "Entidades"
+    "Entities": "Entidades",
+    "Add {{name}}": "Añadir {{name}}",
+    "Remove {{name}}": "Eliminar {{name}}",
+    "Use {{name}}": "Usar {{name}}",
+    "Dismiss {{title}}": "Descartar {{title}}",
+    "Dismiss all": "Descartar todas",
+    "Dismiss all notifications?": "¿Descartar todas las notificaciones?",
+    "This clears {{count}} notifications in Home Assistant, on every device.": "Se descartarán {{count}} notificaciones en Home Assistant, en todos los dispositivos.",
+    "{{count}} notifications": "{{count}} notificaciones",
+    "Could not dismiss notifications": "No se pudieron descartar las notificaciones",
+    "Edit alert for {{name}}": "Editar alerta de {{name}}",
+    "Add alert for {{name}}": "Añadir alerta para {{name}}",
+    "Above {{value}}": "Por encima de {{value}}",
+    "Below {{value}}": "Por debajo de {{value}}",
+    "When state is {{state}}": "Cuando el estado sea {{state}}",
+    "Only notify if the condition lasts this long. 0 = immediately.": "Notificar solo si la condición dura este tiempo. 0 = de inmediato.",
+    "Wait at least this long between notifications. 0 = no limit.": "Espera al menos este tiempo entre notificaciones. 0 = sin límite.",
+    "Currently {{value}}": "Ahora {{value}}",
+    "In {{unit}}": "En {{unit}}"
   }
 }

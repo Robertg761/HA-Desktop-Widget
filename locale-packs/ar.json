@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.60",
+  "version": "1.2.61",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1793,6 +1793,24 @@
     "Connection, window behavior and language.": "الاتصال وسلوك النافذة واللغة.",
     "Theme, colors, glass and readability.": "السمة والألوان والزجاج وسهولة القراءة.",
     "Tints Quick Access tiles with your accent color while their light, switch, fan or player is running. Sensors and cameras are unaffected.": "يلوّن بطاقات الوصول السريع بلون التمييز الخاص بك أثناء تشغيل الإضاءة أو المفتاح أو المروحة أو المشغّل التابع لها. ولا يؤثر ذلك على المستشعرات والكاميرات.",
-    "Entities": "الكيانات"
+    "Entities": "الكيانات",
+    "Add {{name}}": "إضافة {{name}}",
+    "Remove {{name}}": "إزالة {{name}}",
+    "Use {{name}}": "استخدام {{name}}",
+    "Dismiss {{title}}": "تجاهل {{title}}",
+    "Dismiss all": "تجاهل الكل",
+    "Dismiss all notifications?": "هل تريد تجاهل كل الإشعارات؟",
+    "This clears {{count}} notifications in Home Assistant, on every device.": "سيؤدي هذا إلى تجاهل {{count}} من الإشعارات في Home Assistant على كل الأجهزة.",
+    "{{count}} notifications": "{{count}} إشعارات",
+    "Could not dismiss notifications": "تعذّر تجاهل الإشعارات",
+    "Edit alert for {{name}}": "تعديل التنبيه لـ {{name}}",
+    "Add alert for {{name}}": "إضافة تنبيه لـ {{name}}",
+    "Above {{value}}": "أعلى من {{value}}",
+    "Below {{value}}": "أقل من {{value}}",
+    "When state is {{state}}": "عندما تكون الحالة {{state}}",
+    "Only notify if the condition lasts this long. 0 = immediately.": "أرسل إشعارًا فقط إذا استمر الشرط بهذه المدة. 0 = فورًا.",
+    "Wait at least this long between notifications. 0 = no limit.": "انتظر هذه المدة على الأقل بين الإشعارات. 0 = بلا حد.",
+    "Currently {{value}}": "القيمة الحالية {{value}}",
+    "In {{unit}}": "بوحدة {{unit}}"
   }
 }

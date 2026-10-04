@@ -282,6 +282,18 @@
   margin: 0;
 }
 
+/* What a number means, under its field. */
+.alert-advanced-options label .alert-field-help {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs-plus);
+  line-height: 1.4;
+}
+
+.alert-advanced-options label .alert-field-help:empty {
+  display: none;
+}
+
 /* The target state field comes from the older alert markup; match the fields around it. */
 .alert-advanced-options > .form-group {
   margin: 0;

@@ -10406,6 +10406,11 @@ function openEntityRepairModal(staleEntityId) {
       button.className = 'entity-selector-btn add';
       button.dataset.entityId = entity.entity_id;
       button.textContent = t('Use');
+      // A column of identical "Use" buttons says nothing; the entity's name does.
+      button.setAttribute(
+        'aria-label',
+        t('Use {{name}}', { name: utils.getEntityDisplayName(entity) })
+      );
       button.addEventListener('click', () => {
         void persistReplacement(entity.entity_id);
       });
@@ -15127,6 +15132,16 @@ function populateQuickControlsList({ resetSearch = true } = {}) {
           : isInActiveView
             ? t('Remove')
             : t('Add');
+        // Fifty rows of "Add" and "Remove" tell a screen reader nothing without the entity's name.
+        const rowName = utils.getEntityDisplayName(entity);
+        if (!isOverlayDemo) {
+          button.setAttribute(
+            'aria-label',
+            isInActiveView
+              ? t('Remove {{name}}', { name: rowName })
+              : t('Add {{name}}', { name: rowName })
+          );
+        }
         button.disabled = isOverlayDemo;
         button.onclick = isOverlayDemo ? null : () => toggleQuickAccess(entity.entity_id);
 

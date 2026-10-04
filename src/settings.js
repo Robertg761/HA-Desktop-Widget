@@ -2361,6 +2361,11 @@ function renderPrimaryCardsEntityRows() {
         <button class="${cardTwoClass}" type="button" data-primary-assign="1" data-entity-id="${entityIdAttr}" ${cardTwoDisabled}>${cardTwoLabel}</button>
       </div>
     `;
+      // Two buttons per entity, and a screen reader hears "Set Card 1" a hundred times; the group
+      // says which entity they are for.
+      const actionGroup = item.querySelector('.primary-cards-list-actions');
+      actionGroup.setAttribute('role', 'group');
+      actionGroup.setAttribute('aria-label', utils.getEntityDisplayName(entity));
 
       list.appendChild(item);
     });
@@ -2724,6 +2729,9 @@ function renderCustomEntityIconsList() {
     resetBtn.dataset.customIconReset = entityId;
     actions.appendChild(resetBtn);
 
+    // Search, Apply and Reset repeat for every entity; the group says which one they belong to.
+    actions.setAttribute('role', 'group');
+    actions.setAttribute('aria-label', name.textContent);
     controls.appendChild(actions);
 
     if (isPickerOpen) {
@@ -6516,13 +6524,19 @@ function renderAlertsListInline() {
       alertItem.className = 'alert-item';
 
       const alertConfig = alerts[entityId];
+      // "Above 25 °C", not "Above threshold 25": the reading's unit says what the number is, and a
+      // template lets a language put the number where its grammar wants it.
+      const unit = entity?.attributes?.unit_of_measurement;
+      const thresholdText = `${formatNumber(Number(alertConfig.threshold))}${unit ? ` ${unit}` : ''}`;
       let alertType = alertConfig.onNumericThreshold
-        ? `${alertConfig.comparison === 'below' ? t('Below threshold') : t('Above threshold')} ${formatNumber(Number(alertConfig.threshold))}`
+        ? alertConfig.comparison === 'below'
+          ? t('Below {{value}}', { value: thresholdText })
+          : t('Above {{value}}', { value: thresholdText })
         : alertConfig.onStateChange
           ? t('State Change')
           : t('Specific State');
       if (alertConfig.onSpecificState) {
-        alertType += ` (${alertConfig.targetState})`;
+        alertType = t('When state is {{state}}', { state: alertConfig.targetState });
       }
 
       alertItem.innerHTML = `
@@ -6538,6 +6552,11 @@ function renderAlertsListInline() {
           <button class="btn btn-sm btn-danger remove-alert" data-entity="${utils.escapeHtmlAttribute(entityId)}" data-focus-key="${utils.escapeHtmlAttribute(alertFocusKey('remove', entityId))}">${utils.escapeHtml(t('Remove'))}</button>
         </div>
       `;
+
+      // Edit and Remove repeat for every alert; the group is named for the entity they are about.
+      const alertActions = alertItem.querySelector('.alert-actions');
+      alertActions.setAttribute('role', 'group');
+      alertActions.setAttribute('aria-label', alertItem.querySelector('.alert-name').textContent);
 
       alertsList.appendChild(alertItem);
     });
@@ -6632,6 +6651,15 @@ function populateAlertEntityPicker() {
         </button>
       `;
 
+      item
+        .querySelector('.entity-selector-btn')
+        .setAttribute(
+          'aria-label',
+          hasAlert
+            ? t('Edit alert for {{name}}', { name: displayName })
+            : t('Add alert for {{name}}', { name: displayName })
+        );
+
       // Add badge if alert exists
       if (hasAlert) {
         const badge = document.createElement('span');
@@ -6691,6 +6719,45 @@ function populateAlertEntityPicker() {
 }
 
 let currentAlertEntity = null;
+
+// What the three numbers of the alert dialog mean, under each: the unit and current reading of the
+// threshold (filled when the dialog opens), and what 0 does for the duration and the cooldown. The
+// help sits in the field's label so it takes the field's grid cell; the input is named by the label's
+// own text and described by the help.
+function addAlertFieldHelp(group) {
+  [
+    ['alert-threshold', ''],
+    ['alert-duration', 'Only notify if the condition lasts this long. 0 = immediately.'],
+    ['alert-cooldown', 'Wait at least this long between notifications. 0 = no limit.'],
+  ].forEach(([fieldId, helpKey]) => {
+    const input = group.querySelector(`#${fieldId}`);
+    const label = input?.closest('label');
+    const labelText = label?.querySelector('[data-alert-label-key]');
+    if (!input || !label || !labelText) return;
+    labelText.id = `${fieldId}-label`;
+    const help = document.createElement('span');
+    help.id = `${fieldId}-help`;
+    help.className = 'form-help alert-field-help';
+    if (helpKey) help.dataset.alertLabelKey = helpKey;
+    label.append(help);
+    input.setAttribute('aria-labelledby', labelText.id);
+    input.setAttribute('aria-describedby', help.id);
+  });
+}
+
+// "Currently 21.5 °C" under the threshold, so the number to type is in the unit of the reading it is
+// compared with. A sensor that has no number to show leaves it empty.
+function updateAlertThresholdHelp(modal, entity) {
+  const help = modal.querySelector('#alert-threshold-help');
+  if (!help) return;
+  const reading = entity ? Number.parseFloat(entity.state) : Number.NaN;
+  const unit = entity?.attributes?.unit_of_measurement;
+  help.textContent = Number.isFinite(reading)
+    ? t('Currently {{value}}', { value: `${formatNumber(reading)}${unit ? ` ${unit}` : ''}` })
+    : unit
+      ? t('In {{unit}}', { unit })
+      : '';
+}
 
 function relabelAlertAdvancedOptions(root = document) {
   root.querySelectorAll('#alert-advanced-options [data-alert-label-key]').forEach((node) => {
@@ -6764,6 +6831,7 @@ function openAlertConfigModal(entityId) {
       addField('alert-quiet-enabled', 'Enable quiet hours', 'checkbox');
       addField('alert-quiet-start', 'Quiet hours start, local time', 'time');
       addField('alert-quiet-end', 'Quiet hours end, local time', 'time');
+      addAlertFieldHelp(group);
       modal.querySelector('.modal-body').append(group);
     }
     relabelAlertAdvancedOptions(modal);
@@ -6776,6 +6844,7 @@ function openAlertConfigModal(entityId) {
         : 'state-change';
     targetStateInput.value = alertConfig?.targetState || '';
     modal.querySelector('#alert-threshold').value = alertConfig?.threshold ?? '';
+    updateAlertThresholdHelp(modal, state.STATES[entityId]);
     modal.querySelector('#alert-duration').value = alertConfig?.durationSeconds || 0;
     modal.querySelector('#alert-cooldown').value = alertConfig?.cooldownSeconds || 0;
     modal.querySelector('#alert-quiet-enabled').checked = !!alertConfig?.quietHours?.enabled;

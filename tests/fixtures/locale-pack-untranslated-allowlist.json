@@ -136,7 +136,8 @@
     "Version",
     "Vibration",
     "Violet",
-    "Volume"
+    "Volume",
+    "{{count}} notifications"
   ],
   "hi": ["DevTools", "Home Assistant URL", "Home Assistant URL:"],
   "zh": []

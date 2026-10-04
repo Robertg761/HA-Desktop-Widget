@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.59",
+  "version": "1.2.60",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1793,6 +1793,24 @@
     "Connection, window behavior and language.": "Connexion, comportement de la fenêtre et langue.",
     "Theme, colors, glass and readability.": "Thème, couleurs, verre et lisibilité.",
     "Tints Quick Access tiles with your accent color while their light, switch, fan or player is running. Sensors and cameras are unaffected.": "Teinte les vignettes d'accès rapide avec votre couleur d'accentuation lorsque leur lumière, interrupteur, ventilateur ou lecteur est actif. Les capteurs et les caméras ne sont pas concernés.",
-    "Entities": "Entités"
+    "Entities": "Entités",
+    "Add {{name}}": "Ajouter {{name}}",
+    "Remove {{name}}": "Supprimer {{name}}",
+    "Use {{name}}": "Utiliser {{name}}",
+    "Dismiss {{title}}": "Ignorer {{title}}",
+    "Dismiss all": "Tout ignorer",
+    "Dismiss all notifications?": "Ignorer toutes les notifications ?",
+    "This clears {{count}} notifications in Home Assistant, on every device.": "Cela ignore {{count}} notifications dans Home Assistant, sur tous les appareils.",
+    "{{count}} notifications": "{{count}} notifications",
+    "Could not dismiss notifications": "Impossible d'ignorer les notifications",
+    "Edit alert for {{name}}": "Modifier l'alerte de {{name}}",
+    "Add alert for {{name}}": "Ajouter une alerte pour {{name}}",
+    "Above {{value}}": "Au-dessus de {{value}}",
+    "Below {{value}}": "En dessous de {{value}}",
+    "When state is {{state}}": "Quand l'état est {{state}}",
+    "Only notify if the condition lasts this long. 0 = immediately.": "Ne notifier que si la condition dure aussi longtemps. 0 = immédiatement.",
+    "Wait at least this long between notifications. 0 = no limit.": "Attendre au moins ce délai entre deux notifications. 0 = aucune limite.",
+    "Currently {{value}}": "Actuellement {{value}}",
+    "In {{unit}}": "En {{unit}}"
   }
 }

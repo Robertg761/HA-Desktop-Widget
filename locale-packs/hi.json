@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.60",
+  "version": "1.2.61",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1793,6 +1793,24 @@
     "Connection, window behavior and language.": "कनेक्शन, विंडो व्यवहार और भाषा।",
     "Theme, colors, glass and readability.": "थीम, रंग, ग्लास और पठनीयता।",
     "Tints Quick Access tiles with your accent color while their light, switch, fan or player is running. Sensors and cameras are unaffected.": "जब किसी टाइल की लाइट, स्विच, पंखा या प्लेयर चल रहा हो, तो उसे आपके एक्सेंट रंग से रंग देता है। सेंसर और कैमरे इससे प्रभावित नहीं होते।",
-    "Entities": "एंटिटी"
+    "Entities": "एंटिटी",
+    "Add {{name}}": "{{name}} जोड़ें",
+    "Remove {{name}}": "{{name}} हटाएं",
+    "Use {{name}}": "{{name}} उपयोग करें",
+    "Dismiss {{title}}": "{{title}} खारिज करें",
+    "Dismiss all": "सभी खारिज करें",
+    "Dismiss all notifications?": "सभी सूचनाएं खारिज करें?",
+    "This clears {{count}} notifications in Home Assistant, on every device.": "इससे Home Assistant में {{count}} सूचनाएं सभी डिवाइस पर खारिज हो जाएंगी।",
+    "{{count}} notifications": "{{count}} सूचनाएं",
+    "Could not dismiss notifications": "सूचनाएं खारिज नहीं की जा सकीं",
+    "Edit alert for {{name}}": "अलर्ट संपादित करें: {{name}}",
+    "Add alert for {{name}}": "अलर्ट जोड़ें: {{name}}",
+    "Above {{value}}": "{{value}} से ऊपर",
+    "Below {{value}}": "{{value}} से नीचे",
+    "When state is {{state}}": "जब स्थिति {{state}} हो",
+    "Only notify if the condition lasts this long. 0 = immediately.": "तभी सूचना दें जब शर्त इतनी देर तक बनी रहे। 0 = तुरंत।",
+    "Wait at least this long between notifications. 0 = no limit.": "सूचनाओं के बीच कम से कम इतना इंतज़ार करें। 0 = कोई सीमा नहीं।",
+    "Currently {{value}}": "अभी {{value}}",
+    "In {{unit}}": "{{unit}} में"
   }
 }

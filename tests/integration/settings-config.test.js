@@ -1379,6 +1379,36 @@ describe('Settings + Config Integration', () => {
       }
     });
 
+    test('groups the two Set Card buttons of a row under the name of its entity', async () => {
+      state.setStates({
+        'sensor.kitchen_temp': {
+          entity_id: 'sensor.kitchen_temp',
+          state: '20',
+          attributes: { friendly_name: 'Kitchen temperature' },
+        },
+        'sensor.hall_temp': {
+          entity_id: 'sensor.hall_temp',
+          state: '19',
+          attributes: { friendly_name: 'Hall temperature' },
+        },
+      });
+      await settings.openSettings();
+      document.getElementById('primary-cards-toggle').click();
+
+      const groups = [
+        ...document.querySelectorAll(
+          '#primary-cards-list .primary-cards-list-actions[role="group"]'
+        ),
+      ];
+
+      expect(groups.map((group) => group.getAttribute('aria-label')).sort()).toEqual([
+        'Hall temperature',
+        'Kitchen temperature',
+      ]);
+      expect(groups.every((group) => group.querySelectorAll('button').length === 2)).toBe(true);
+      settings.closeSettings();
+    });
+
     test('starts each primary-card page at its top but keeps the scroll position on assignment', async () => {
       const entities = Object.fromEntries(
         Array.from({ length: 121 }, (_, index) => {
@@ -5735,6 +5765,107 @@ describe('Settings + Config Integration', () => {
       document.getElementById('inline-alerts-list').remove();
     });
 
+    describe('what the alert lists and the dialog say about numbers and buttons', () => {
+      const temperatureAlert = (extra = {}) => ({
+        onNumericThreshold: true,
+        comparison: 'above',
+        threshold: 25,
+        ...extra,
+      });
+      const renderRow = (entityId, alert) => {
+        document.body.insertAdjacentHTML('beforeend', '<div id="inline-alerts-list"></div>');
+        state.STATES[entityId] = state.STATES[entityId] || {
+          entity_id: entityId,
+          state: '21.5',
+          attributes: { friendly_name: 'Office temperature', unit_of_measurement: '°C' },
+        };
+        state.CONFIG.entityAlerts = { enabled: true, alerts: { [entityId]: alert } };
+        settings.renderAlertsListInline();
+        return document.querySelector('#inline-alerts-list .alert-item');
+      };
+      afterEach(() => document.getElementById('inline-alerts-list')?.remove());
+
+      test('a threshold rule reads "Above 25 °C", with the entity unit', () => {
+        const row = renderRow('sensor.office_temperature', temperatureAlert());
+        expect(row.querySelector('.alert-type').textContent).toBe('Above 25 °C');
+      });
+
+      test('a below rule, and a unitless sensor, read without a dangling "threshold"', () => {
+        state.STATES['sensor.counter'] = {
+          entity_id: 'sensor.counter',
+          state: '4',
+          attributes: { friendly_name: 'Counter' },
+        };
+        const row = renderRow('sensor.counter', temperatureAlert({ comparison: 'below' }));
+        expect(row.querySelector('.alert-type').textContent).toBe('Below 25');
+        delete state.STATES['sensor.counter'];
+      });
+
+      test('a rule for one state names it in a sentence', () => {
+        const row = renderRow('sensor.office_temperature', {
+          onSpecificState: true,
+          targetState: 'unavailable',
+        });
+        expect(row.querySelector('.alert-type').textContent).toBe('When state is unavailable');
+      });
+
+      test('Edit and Remove are grouped under the name of the entity they are for', () => {
+        const row = renderRow('sensor.office_temperature', temperatureAlert());
+        const group = row.querySelector('.alert-actions');
+        expect(group.getAttribute('role')).toBe('group');
+        expect(group.getAttribute('aria-label')).toBe(row.querySelector('.alert-name').textContent);
+        expect(group.getAttribute('aria-label')).not.toBe('');
+      });
+
+      test('the dialog says what the duration and the cooldown mean, and what 0 does', () => {
+        settings.openAlertConfigModal('sensor.office_temperature');
+
+        const help = (id) => document.getElementById(`${id}-help`);
+        expect(help('alert-duration').textContent).toBe(
+          'Only notify if the condition lasts this long. 0 = immediately.'
+        );
+        expect(help('alert-cooldown').textContent).toBe(
+          'Wait at least this long between notifications. 0 = no limit.'
+        );
+        for (const id of ['alert-duration', 'alert-cooldown', 'alert-threshold']) {
+          const input = document.getElementById(id);
+          expect(input.getAttribute('aria-describedby')).toBe(`${id}-help`);
+          // The name stays the label's own words; the help is only the description.
+          expect(document.getElementById(input.getAttribute('aria-labelledby')).textContent).toBe(
+            input.closest('label').querySelector('[data-alert-label-key]').textContent
+          );
+        }
+      });
+
+      test('the threshold shows the current reading in the sensor unit', () => {
+        state.STATES['sensor.office_temperature'] = {
+          entity_id: 'sensor.office_temperature',
+          state: '21.5',
+          attributes: { friendly_name: 'Office temperature', unit_of_measurement: '°C' },
+        };
+
+        settings.openAlertConfigModal('sensor.office_temperature');
+
+        expect(document.getElementById('alert-threshold-help').textContent).toBe(
+          'Currently 21.5 °C'
+        );
+      });
+
+      test('a sensor with no number yet still names the unit, and one without either says nothing', () => {
+        state.STATES['sensor.office_temperature'] = {
+          entity_id: 'sensor.office_temperature',
+          state: 'unavailable',
+          attributes: { friendly_name: 'Office temperature', unit_of_measurement: '°C' },
+        };
+        settings.openAlertConfigModal('sensor.office_temperature');
+        expect(document.getElementById('alert-threshold-help').textContent).toBe('In °C');
+
+        state.STATES['sensor.office_temperature'].attributes = {};
+        settings.openAlertConfigModal('sensor.office_temperature');
+        expect(document.getElementById('alert-threshold-help').textContent).toBe('');
+      });
+    });
+
     test('quiet hour times follow the quiet hours toggle', () => {
       settings.openAlertConfigModal('sensor.office_temperature');
 
@@ -6106,6 +6237,27 @@ describe('Settings + Config Integration', () => {
         expect(picker.classList.contains('hidden')).toBe(false);
         picker.click();
         expect(picker.classList.contains('hidden')).toBe(true);
+      });
+
+      test('names the picker buttons for the entity they add an alert to', () => {
+        document.querySelector('.add-alert-btn').click();
+
+        const add = document.querySelector(
+          '#alert-entity-picker-list .entity-selector-btn[data-entity-id="switch.kitchen"]'
+        );
+        expect(add.getAttribute('aria-label')).toBe('Edit alert for Kitchen');
+        const names = [
+          ...document.querySelectorAll('#alert-entity-picker-list .entity-selector-btn'),
+        ].map((button) => button.getAttribute('aria-label'));
+        expect(new Set(names).size).toBe(names.length);
+        for (const button of document.querySelectorAll(
+          '#alert-entity-picker-list .entity-selector-btn'
+        )) {
+          // The visible "Add alert" or "Edit alert" starts the name, so voice control can say it.
+          expect(button.getAttribute('aria-label').startsWith(button.textContent.trim())).toBe(
+            true
+          );
+        }
       });
 
       test('starts the picker on its search field, not on Close', async () => {

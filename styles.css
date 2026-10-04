@@ -7839,6 +7839,21 @@ body.theme-light:not(.high-contrast)
   gap: var(--space-3);
 }
 
+/* The size of a long list and the one way to clear it, in the dialog's footer below the rows. */
+.persistent-notifications-toolbar {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.persistent-notifications-toolbar.hidden {
+  display: none;
+}
+
+.persistent-notifications-summary {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
 .persistent-notification-item {
   display: flex;
   align-items: flex-start;
