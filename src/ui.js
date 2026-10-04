@@ -9951,7 +9951,8 @@ function createControlElement(entity, options = {}) {
     }
 
     const name = utils.escapeHtml(utils.getEntityDisplayName(entity));
-    const state = utils.escapeHtml(utils.getEntityDisplayState(entity));
+    // Not `state`: that is the shared state module, which the click handlers above read.
+    const stateLabel = utils.escapeHtml(utils.getEntityDisplayState(entity));
 
     let stateDisplay = '';
     if (domain === 'sensor' && !isTimerSensor) {
@@ -9972,11 +9973,11 @@ function createControlElement(entity, options = {}) {
       `;
       } else {
         div.classList.add('sensor-entity');
-        stateDisplay = `<div class="control-state">${state}</div>`;
+        stateDisplay = `<div class="control-state">${stateLabel}</div>`;
       }
     } else if (isTimer) {
       const timerDisplay = utils.escapeHtml(
-        utils.getTimerDisplay ? utils.getTimerDisplay(entity) : state
+        utils.getTimerDisplay ? utils.getTimerDisplay(entity) : stateLabel
       );
       stateDisplay = `<div class="control-state timer-countdown">${timerDisplay}</div>`;
     } else if (['light', 'cover', 'fan', 'lock'].includes(domain)) {
