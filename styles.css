@@ -12128,8 +12128,9 @@ body.large-interface .tile-details-button {
   height: 28px;
 }
 
-/* The height cap is the one on .modal-content, the same at every text size. Only the Settings
-   dialog, which fills the window otherwise, keeps a margin at enlarged text. */
+/* The height cap is the one on .modal-content, the same at every text size. Settings fills the
+   window at any text size: with a margin it was framed at 115% and more by a band of scrim and the
+   dashboard's ghost around a panel with square corners. */
 body.large-interface .modal-content,
 body.large-interface #settings-modal .modal-content {
   max-width: calc(100vw - 16px);
@@ -12138,7 +12139,8 @@ body.large-interface #settings-modal .modal-content {
 }
 
 body.large-interface #settings-modal .modal-content {
-  max-height: calc(100vh - 16px);
+  max-width: 100vw;
+  max-height: 100vh;
 }
 
 body.large-interface .modal-body {

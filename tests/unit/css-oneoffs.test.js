@@ -226,6 +226,26 @@ describe('stylesheet one-offs', () => {
     });
   });
 
+  describe('Settings at larger text sizes', () => {
+    it('fills the window, with no margin of scrim around it', () => {
+      render('<div id="settings-modal" class="modal"><div class="modal-content"></div></div>', {
+        bodyClass: 'large-interface',
+      });
+      const content = document.querySelector('.modal-content');
+      expect(resolvedValue(content, 'max-width')).toBe('100vw');
+      expect(resolvedValue(content, 'max-height')).toBe('100vh');
+    });
+
+    it('still leaves the other dialogs their margin', () => {
+      render('<div class="modal"><div class="modal-content"></div></div>', {
+        bodyClass: 'large-interface',
+      });
+      expect(resolvedValue(document.querySelector('.modal-content'), 'max-width')).toBe(
+        'calc(100vw - 16px)'
+      );
+    });
+  });
+
   describe('reduced motion keeps the waiting indicators moving', () => {
     // The blanket "no animation" rule gives every animation 0.01ms and one iteration. A spinner or a
     // progress bar frozen that way reads as a stalled app, and the bar as a finished one.
