@@ -35,6 +35,7 @@ import { WeatherEffectsManager } from './src/weather-effects.js';
 import { SeasonalEffectsManager } from './src/seasonal-effects.js';
 import { normalizeQuickAccessConfig } from './src/quick-access-tabs.js';
 import { normalizeComparisonGraphsConfig } from './src/comparison-graphs.js';
+import { rememberDashboard } from './src/dashboard-history.js';
 import {
   handleTrayEntityStateChange,
   initTrayEntityIcons,
@@ -1527,10 +1528,17 @@ function maybeShowFirstRunWizard() {
 async function executeDesktopCompanionCommand({ action, payload }) {
   if (action === 'apply_profile') {
     const patch = buildConfigPatchFromApplyPayload(payload, state.CONFIG);
+    const previousConfig = JSON.parse(JSON.stringify(state.CONFIG || {}));
     const result = await window.electronAPI.updateConfig(patch);
     if (result?.success === false) {
       throw new Error(result?.error || 'Profile could not be saved on this desktop');
     }
+    // A profile can replace every page, span, name and icon. Keep the layout it replaced, as a
+    // save from Settings does, so Undo and Restore dashboard can bring it back.
+    rememberDashboard(
+      previousConfig,
+      result?.homeAssistant ? result : { ...previousConfig, ...patch }
+    );
     const mainState = await window.electronAPI.getDesktopCompanionState();
     return {
       ...mainState,

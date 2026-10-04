@@ -1,0 +1,263 @@
+/**
+ * @jest-environment jsdom
+ */
+
+// Small renderer.js behaviours that need the whole renderer loaded: what a Home Assistant profile
+// leaves behind.
+
+const EventEmitter = require('events');
+const { createMockElectronAPI, resetMockElectronAPI } = require('../mocks/electron.js');
+
+describe('Renderer one-off behaviours', () => {
+  let mockElectronAPI;
+  let mockState;
+  let mockUiUtils;
+  let mockUi;
+  let companionOptions;
+
+  const baseConfig = (overrides = {}) => ({
+    homeAssistant: { url: 'http://ha.local:8123', token: 'valid-token' },
+    favoriteEntities: [],
+    customTabs: [{ id: 'home', name: 'Home', entityIds: ['light.desk'] }],
+    activeTabId: 'home',
+    entityAlerts: { enabled: false, alerts: {} },
+    globalHotkeys: { enabled: false, hotkeys: {} },
+    ui: { theme: 'auto', enableInteractionDebugLogs: false },
+    ...overrides,
+  });
+
+  const flushAsync = async () => {
+    for (let index = 0; index < 8; index += 1) await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  };
+
+  const loadRenderer = async ({ config = baseConfig(), bodyHtml = '' } = {}) => {
+    jest.resetModules();
+    resetMockElectronAPI();
+    localStorage.clear();
+    document.body.innerHTML = `<main class="widget-content"></main>${bodyHtml}`;
+    document.body.className = '';
+    window.history.replaceState({}, '', 'http://localhost/');
+
+    mockElectronAPI = createMockElectronAPI();
+    mockElectronAPI.getConfig.mockResolvedValue(config);
+    window.electronAPI = mockElectronAPI;
+
+    mockState = {
+      CONFIG: {},
+      STATES: {},
+      setConfig(nextConfig) {
+        this.CONFIG = nextConfig;
+      },
+      setStates(nextStates) {
+        this.STATES = nextStates;
+      },
+      setEntityState(entity) {
+        this.STATES[entity.entity_id] = entity;
+      },
+      deleteEntityState(entityId) {
+        return delete this.STATES[entityId];
+      },
+      setServices: jest.fn(),
+      setAreas: jest.fn(),
+      setUnitSystem: jest.fn(),
+    };
+    const websocket = new EventEmitter();
+    websocket.connect = jest.fn();
+    websocket.request = jest.fn(() => ({ id: 1, catch: jest.fn() }));
+    websocket.callService = jest.fn();
+    websocket.close = jest.fn();
+    websocket.ws = null;
+
+    jest.doMock('../../src/logger.js', () => ({
+      __esModule: true,
+      default: {
+        errorHandler: { startCatching: jest.fn() },
+        transports: { console: {} },
+        info: jest.fn(),
+        debug: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+      },
+    }));
+    jest.doMock('../../src/state.js', () => ({ __esModule: true, default: mockState }));
+    jest.doMock('../../src/websocket.js', () => ({ __esModule: true, default: websocket }));
+    jest.doMock('../../src/hotkeys.js', () => ({
+      __esModule: true,
+      initializeHotkeys: jest.fn(),
+      setupHotkeyEventListeners: jest.fn(),
+      renderHotkeysTab: jest.fn(),
+    }));
+    jest.doMock('../../src/alerts.js', () => ({
+      __esModule: true,
+      initializeEntityAlerts: jest.fn(),
+      checkEntityAlerts: jest.fn(),
+    }));
+    jest.doMock('../../src/notifications.js', () => ({
+      __esModule: true,
+      initializePersistentNotifications: jest.fn(),
+    }));
+    jest.doMock('../../src/desktop-companion-client.js', () => ({
+      __esModule: true,
+      DesktopCompanionClient: jest.fn(function DesktopCompanionClient(options) {
+        companionOptions = options;
+        this.start = jest.fn();
+        this.stop = jest.fn();
+        this.reportState = jest.fn();
+        this.reportConfigSnapshot = jest.fn();
+      }),
+    }));
+    mockUi = {
+      initUpdateUI: jest.fn(),
+      renderActiveTab: jest.fn(),
+      ensureEntityCacheScope: jest.fn(),
+      updateMediaTile: jest.fn(),
+      renderPrimaryCards: jest.fn(),
+      toggleReorganizeMode: jest.fn(),
+      populateQuickControlsList: jest.fn(),
+      isEntityVisible: jest.fn(() => false),
+      updateEntityInUI: jest.fn(),
+      updateWeatherFromHA: jest.fn(),
+      populateWeatherEntitiesList: jest.fn(),
+      selectWeatherEntity: jest.fn(),
+      updateTimeDisplay: jest.fn(),
+      updateTimerDisplays: jest.fn(),
+      updateMediaSeekBar: jest.fn(),
+      refreshVisibleEntityCache: jest.fn(),
+      executeHotkeyAction: jest.fn(),
+      handleDesktopPinActionRequest: jest.fn(),
+      callMediaTileService: jest.fn(),
+      getTickTargets: jest.fn(() => ({ hasVisibleTimers: false })),
+      switchQuickAccessPage: jest.fn(),
+      showAddPageModal: jest.fn(),
+    };
+    jest.doMock('../../src/ui.js', () => mockUi);
+    jest.doMock('../../src/settings.js', () => ({
+      __esModule: true,
+      openSettings: jest.fn(),
+      closeSettings: jest.fn(),
+      saveSettings: jest.fn(),
+      renderAlertsListInline: jest.fn(),
+      reapplySettingsPreviews: jest.fn(),
+      handleProfileSyncStatusUpdate: jest.fn(),
+      profileSyncNeedsAttention: jest.fn(() => false),
+    }));
+    mockUiUtils = {
+      __esModule: true,
+      showLoading: jest.fn(),
+      showToast: jest.fn(),
+      setStatus: jest.fn(),
+      initializeConnectionStatusTooltip: jest.fn(),
+      applyTheme: jest.fn(),
+      setCustomThemes: jest.fn(),
+      applyAccentTheme: jest.fn(),
+      applyBackgroundTheme: jest.fn(),
+      applyUiPreferences: jest.fn(),
+      suspendSeasonalColors: jest.fn(),
+      applyWindowEffects: jest.fn(),
+      ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
+    };
+    jest.doMock('../../src/ui-utils.js', () => mockUiUtils);
+    jest.doMock('../../src/utils.js', () => ({
+      getEntityDisplayName: (entity) => entity.attributes?.friendly_name || entity.entity_id,
+      __esModule: true,
+      reconcileConfigEntityIds: jest.fn((nextConfig) => ({ changed: false, config: nextConfig })),
+      resolveEntityId: jest.fn((entityId) => entityId),
+    }));
+    jest.doMock('../../src/i18n.js', () => ({
+      __esModule: true,
+      setLocaleBootstrap: jest.fn(),
+      t: jest.fn((key) => key),
+      translateDocument: jest.fn(),
+    }));
+    jest.doMock('../../src/icons.js', () => ({
+      __esModule: true,
+      setIconContent: jest.fn(),
+      applyCloseButtonIcons: jest.fn(),
+    }));
+    jest.doMock('../../src/constants.js', () => ({
+      __esModule: true,
+      BASE_RECONNECT_DELAY_MS: 1000,
+      MAX_RECONNECT_DELAY_MS: 8000,
+    }));
+
+    require('../../renderer.js');
+    window.dispatchEvent(new Event('DOMContentLoaded'));
+    await flushAsync();
+  };
+
+  afterEach(() => {
+    jest.resetModules();
+    delete window.electronAPI;
+    document.body.innerHTML = '';
+    localStorage.clear();
+  });
+
+  describe('apply_profile from Home Assistant', () => {
+    const profilePayload = (customTabs) => ({
+      schema_version: 1,
+      profile_id: 'profile-1',
+      revision: 3,
+      profile: { customTabs, activeTabId: customTabs[0].id },
+    });
+
+    it('keeps the layout it replaces so Undo can bring it back', async () => {
+      const { readDashboardHistory } = require('../../src/dashboard-history.js');
+      await loadRenderer();
+      expect(companionOptions).toBeDefined();
+      const replaced = baseConfig();
+      const applied = [{ id: 'kitchen', name: 'Kitchen', entityIds: ['light.kitchen'] }];
+      mockElectronAPI.updateConfig.mockImplementation(async (patch) => ({
+        ...replaced,
+        ...patch,
+        success: true,
+      }));
+
+      const result = await companionOptions.executeCommand({
+        action: 'apply_profile',
+        payload: profilePayload(applied),
+      });
+
+      expect(result).toMatchObject({ active_profile_id: 'profile-1', profile_revision: 3 });
+      const history = readDashboardHistory(replaced);
+      expect(history).toHaveLength(1);
+      expect(history[0].layout.customTabs).toEqual(replaced.customTabs);
+      expect(history[0].activeTabId).toBe('home');
+    });
+
+    it('remembers the layout even when the save reports no config back', async () => {
+      const { readDashboardHistory } = require('../../src/dashboard-history.js');
+      await loadRenderer();
+      mockElectronAPI.updateConfig.mockResolvedValue({ success: true });
+
+      await companionOptions.executeCommand({
+        action: 'apply_profile',
+        payload: profilePayload([{ id: 'kitchen', name: 'Kitchen', entityIds: [] }]),
+      });
+
+      const history = readDashboardHistory(baseConfig());
+      expect(history).toHaveLength(1);
+      expect(history[0].layout.customTabs[0].id).toBe('home');
+    });
+
+    it('adds nothing when the profile changes no page, and nothing when the save fails', async () => {
+      const { readDashboardHistory } = require('../../src/dashboard-history.js');
+      await loadRenderer();
+      mockElectronAPI.updateConfig.mockResolvedValue({ success: true });
+      await companionOptions.executeCommand({
+        action: 'apply_profile',
+        payload: profilePayload(baseConfig().customTabs),
+      });
+      expect(readDashboardHistory(baseConfig())).toHaveLength(0);
+
+      mockElectronAPI.updateConfig.mockResolvedValue({ success: false, error: 'disk full' });
+      await expect(
+        companionOptions.executeCommand({
+          action: 'apply_profile',
+          payload: profilePayload([{ id: 'kitchen', name: 'Kitchen', entityIds: [] }]),
+        })
+      ).rejects.toThrow('disk full');
+      expect(readDashboardHistory(baseConfig())).toHaveLength(0);
+    });
+  });
+});
