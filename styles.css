@@ -11039,24 +11039,31 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   margin-bottom: 2px;
 }
 
-.alert-type {
-  color: var(--accent-text);
-  font-weight: 500;
-  background: var(--accent-bg);
+/* The chips beside an alert's name are one shape. An inline-block keeps a chip whole when the row
+   wraps ("Above threshold 25" no longer breaks across two lines); a very long target state still
+   breaks inside the chip rather than pushing the buttons out. */
+.alert-type,
+.alert-missing {
+  display: inline-block;
+  max-width: 100%;
   padding: 2px 6px;
   border-radius: var(--radius-sm);
   font-size: var(--font-size-sm);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.alert-type {
+  color: var(--accent-text);
+  background: var(--accent-bg);
 }
 
 /* An alert whose entity Home Assistant does not list: the row keeps the entity id so it can still
-   be edited or removed, and says why it has no name or icon. */
+   be edited or removed, and says why it has no name or icon. A muted chip of the same shape as the
+   type chip, so the two read as a pair. */
 .alert-missing {
-  margin-inline-start: 6px;
-  padding: 2px 6px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
   color: var(--text-secondary);
-  font-size: var(--font-size-sm);
+  background: color-mix(in srgb, var(--text-primary) 14%, transparent);
 }
 
 .alert-actions {
