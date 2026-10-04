@@ -11188,9 +11188,13 @@ function startOnHeading(modal, focusSelector = null) {
 // after this call can name a better first stop with `data-initial-focus`.
 function activateAccessibleDialogModal(
   modal,
-  { titleIdPrefix = 'dialog-title', dismiss, initialFocus, replaces = null } = {}
+  { titleIdPrefix = 'dialog-title', dismiss, initialFocus, replaces = null, entityId = '' } = {}
 ) {
   if (!modal) return;
+  // openEntityControls finds the open dialog for an entity by this tag, so a dialog that is rebuilt
+  // in place (it gains a control) must carry it too, or asking for the entity again would open a
+  // second dialog beside the rebuilt one.
+  if (entityId) modal.dataset.dialogEntityId = entityId;
   dialogModalIdCounter += 1;
   const titleElement = modal.querySelector('h1, h2, h3');
   if (titleElement && !titleElement.id) {
@@ -12648,6 +12652,7 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
       dismiss: () => closeModal(),
       initialFocus: startOnHeading(modal, focusSelector),
       replaces,
+      entityId: entity.entity_id,
     });
 
     // Set SVG icons for media controls
@@ -14538,6 +14543,7 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
       dismiss: () => closeModal(),
       initialFocus: startOnHeading(modal, focusSelector),
       replaces,
+      entityId: light.entity_id,
     });
 
     const slider = modal.querySelector('#brightness-slider');
@@ -15158,6 +15164,7 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
       dismiss: () => closeModal(),
       initialFocus: startOnHeading(modal, focusSelector),
       replaces,
+      entityId: climateEntity.entity_id,
     });
 
     const slider = modal.querySelector('#climate-slider');
@@ -15591,6 +15598,7 @@ function showFanControls(fanEntity, { replaces = null, focusSelector = null } = 
       dismiss: () => closeModal(),
       initialFocus: startOnHeading(modal, focusSelector),
       replaces,
+      entityId: fanEntity.entity_id,
     });
     showUnavailableDialogState(modal, fanEntity);
 
@@ -15876,6 +15884,7 @@ function showCoverControls(coverEntity, { replaces = null, focusSelector = null 
       dismiss: () => closeModal(),
       initialFocus: startOnHeading(modal, focusSelector),
       replaces,
+      entityId: coverEntity.entity_id,
     });
     showUnavailableDialogState(modal, coverEntity);
 

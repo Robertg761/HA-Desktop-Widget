@@ -1486,6 +1486,70 @@ describe('dashboard data display', () => {
       expect(document.querySelectorAll('#brightness-slider')).toHaveLength(1);
     });
 
+    // A dialog that follows live state is rebuilt in place when its entity gains a control; the
+    // rebuilt one is still the open dialog, so asking for the entity again must not stack another.
+    it.each([
+      [
+        'light',
+        '.brightness-modal',
+        entity('light.desk', 'unavailable'),
+        entity('light.desk', 'on', { supported_color_modes: ['brightness'], brightness: 128 }),
+      ],
+      [
+        'cover',
+        '.cover-modal',
+        entity('cover.garage', 'unavailable'),
+        entity('cover.garage', 'open', { current_position: 40, supported_features: 15 }),
+      ],
+      [
+        'fan',
+        '.fan-modal',
+        entity('fan.office', 'on', { supported_features: 0 }),
+        entity('fan.office', 'on', { supported_features: 1, percentage: 50 }),
+      ],
+      [
+        'climate',
+        '.climate-modal',
+        entity('climate.hall', 'auto', {
+          temperature: 21,
+          hvac_modes: ['off', 'auto'],
+          min_temp: 7,
+          max_temp: 30,
+          supported_features: 1,
+        }),
+        entity('climate.hall', 'auto', {
+          temperature: 21,
+          current_humidity: 40,
+          hvac_modes: ['off', 'auto'],
+          min_temp: 7,
+          max_temp: 30,
+          supported_features: 1,
+        }),
+      ],
+      [
+        'media player',
+        '.media-modal',
+        entity('media_player.den', 'playing', { friendly_name: 'Den', supported_features: 0 }),
+        entity('media_player.den', 'playing', { friendly_name: 'Den', supported_features: 152463 }),
+      ],
+    ])(
+      'finds the %s dialog again after it was rebuilt in place',
+      (_name, selector, before, after) => {
+        state.setStates({ [before.entity_id]: before });
+        ui.openEntityControls(before);
+        const opened = document.querySelector(selector);
+        state.setEntityState(after);
+        const rebuilt = document.querySelector(selector);
+        expect(rebuilt).not.toBe(opened);
+        expect(rebuilt.dataset.dialogEntityId).toBe(before.entity_id);
+
+        ui.openEntityControls(after);
+
+        expect(document.querySelectorAll(selector)).toHaveLength(1);
+        expect(document.querySelectorAll('.modal')).toHaveLength(1);
+      }
+    );
+
     it('still opens a different entity beside it', () => {
       const lamp = entity('light.desk', 'on', { supported_color_modes: ['brightness'] });
       const fan = entity('fan.office', 'on', { supported_features: 1 });
