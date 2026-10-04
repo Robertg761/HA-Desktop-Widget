@@ -2652,7 +2652,7 @@ describe('Settings + Config Integration', () => {
       expect(state.CONFIG.customEntityIcons).toEqual({});
     });
 
-    describe('searching for something that is not there', () => {
+    describe('searching by word', () => {
       // The catalog is imported on first use, so wait for the picker to stop saying it is loading.
       const type = async (query) => {
         const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
@@ -2700,13 +2700,42 @@ describe('Settings + Config Integration', () => {
       });
 
       test('does not match a word to an icon whose keyword is merely inside it', async () => {
-        // "coffee" found the cross mark and "television" the check mark, through a keyword that
-        // was a piece of the query. A query with no keyword of its own finds nothing.
+        // "offline" found the cross mark and "synchronize" the check mark, through a keyword that was
+        // a piece of the query. A query with no keyword of its own finds nothing.
         await openSettingsWithCustomIconsExpanded();
-        for (const query of ['coffee', 'television']) {
+        for (const query of ['offline', 'synchronize']) {
           const picker = await type(query);
           expect(picker.querySelectorAll('.custom-entity-icon-choice')).toHaveLength(0);
         }
+      });
+
+      test.each([
+        ['tv', '📺'],
+        ['television', '📺'],
+        ['car', '🚗'],
+        ['garage', '🚗'],
+        ['garage', '🏠'],
+        ['dog', '🐶'],
+        ['dogs', '🐶'],
+        ['cat', '🐱'],
+        ['thermostat', '🌡️'],
+        ['washer', '🧺'],
+        ['washing machine', '🧺'],
+        ['fridge', '🧊'],
+        ['router', '🛜'],
+        ['doorbell', '🔔'],
+        ['speaker', '🔊'],
+        // Accents fold away, composed or not, like in every other search.
+        ['ca\u0301r', '🚗'],
+      ])('finds an icon for the device word "%s"', async (query, icon) => {
+        const picker = await search(query);
+        const found = [...picker.querySelectorAll('.custom-entity-icon-choice')].map(
+          (button) => button.dataset.customIconChoice
+        );
+        expect(found).toContain(icon);
+        // A word narrows the catalog to a handful of icons, not a scrollable page of them.
+        expect(found.length).toBeLessThan(40);
+        expect(picker.querySelector('.custom-entity-icon-picker-empty')).toBeNull();
       });
     });
 

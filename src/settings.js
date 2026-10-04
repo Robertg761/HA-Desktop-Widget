@@ -52,6 +52,7 @@ import {
 } from './i18n.js';
 import {
   compareNames,
+  foldSearchMarks,
   formatClockDateTime,
   formatClockTime,
   formatList,
@@ -341,7 +342,7 @@ const CUSTOM_ENTITY_ICON_SEARCH_ALIASES = {
   '💡': ['light', 'lamp', 'bulb'],
   '🔌': ['plug', 'socket', 'power'],
   '💨': ['fan', 'wind', 'air'],
-  '🌡️': ['temperature', 'thermometer', 'temp'],
+  '🌡️': ['temperature', 'thermometer', 'temp', 'thermostat', 'climate', 'hvac'],
   '💧': ['humidity', 'water', 'moisture'],
   '🔋': ['battery', 'charge', 'power'],
   '⚡': ['energy', 'electric', 'power'],
@@ -356,7 +357,7 @@ const CUSTOM_ENTITY_ICON_SEARCH_ALIASES = {
   '📷': ['camera', 'snapshot'],
   '🔒': ['lock', 'locked', 'secure'],
   '🔓': ['unlock', 'unlocked', 'open'],
-  '🏠': ['home', 'house'],
+  '🏠': ['home', 'house', 'garage'],
   '✈️': ['away', 'travel', 'vacation'],
   '⏲️': ['timer', 'countdown', 'clock'],
   '🛡️': ['security', 'shield', 'alarm'],
@@ -372,6 +373,37 @@ const CUSTOM_ENTITY_ICON_SEARCH_ALIASES = {
   '🛏️': ['bedroom', 'bed', 'sleep'],
   '🍳': ['kitchen', 'cook', 'food'],
   '🚿': ['bathroom', 'shower'],
+  // Devices Home Assistant users name their entities after. The emoji catalog carries no words of
+  // its own, so a search for these finds nothing without them.
+  '📺': ['tv', 'television', 'screen'],
+  '🖥️': ['computer', 'desktop', 'monitor', 'pc', 'screen'],
+  '💻': ['computer', 'laptop', 'pc'],
+  '🚗': ['car', 'garage', 'vehicle', 'auto'],
+  '🚙': ['car', 'suv', 'vehicle'],
+  '🐶': ['dog', 'puppy', 'pet'],
+  '🐕': ['dog', 'pet'],
+  '🐱': ['cat', 'kitten', 'pet'],
+  '🐈': ['cat', 'pet'],
+  '🧺': ['laundry', 'washer', 'washing machine', 'dryer'],
+  '🫧': ['washer', 'washing machine', 'dishwasher', 'bubbles'],
+  '🧼': ['soap', 'wash', 'washer', 'dishwasher'],
+  '🧊': ['fridge', 'refrigerator', 'freezer', 'ice'],
+  '📡': ['router', 'antenna', 'satellite'],
+  '🛜': ['wifi', 'router', 'wireless', 'network'],
+  '📶': ['wifi', 'signal', 'network', 'router'],
+  '🌐': ['network', 'internet', 'router'],
+  '🔔': ['doorbell', 'bell', 'chime', 'notification'],
+  '🛎️': ['doorbell', 'bell'],
+  '🔊': ['speaker', 'sound', 'volume', 'audio'],
+  '🔉': ['speaker', 'sound', 'volume'],
+  '☕': ['coffee', 'tea', 'kettle', 'mug'],
+  '🖨️': ['printer'],
+  '📱': ['phone', 'mobile'],
+  '🚨': ['alarm', 'siren', 'smoke'],
+  '🧯': ['smoke', 'fire extinguisher'],
+  '🪴': ['plant', 'garden'],
+  '📬': ['mailbox', 'mail', 'post'],
+  '📦': ['package', 'parcel', 'delivery'],
 };
 const PROFILE_SYNC_DEFAULT_FILE_NAME = 'ha-widget-profile-sync.json';
 // Main enforces the same minimum (PROFILE_SYNC_MIN_PASSPHRASE_LENGTH in main.js); checking it
@@ -676,14 +708,15 @@ function getIconCodepointTerms(icon) {
   return [...perCodepoint, codepoints.join('-')];
 }
 
-// Letters and numbers of every script stay in a search token; only punctuation is dropped. An
-// ASCII-only filter made a Chinese, Arabic or accented query vanish, and an empty query matches
-// every icon.
+// Letters, numbers and the combining marks inside words stay in a search token, in every script;
+// only punctuation is dropped. An ASCII-only filter made a Chinese, Arabic or accented query
+// vanish, and an empty query matches every icon. Accents fold away like in every other search, but
+// Hindi vowel signs do not: "कुत्ता" stays one word.
 function normalizeEmojiSearchToken(term) {
-  return String(term || '')
+  return foldSearchMarks(term)
     .toLowerCase()
     .trim()
-    .replace(/[^\p{L}\p{N}+#_-]+/gu, '');
+    .replace(/[^\p{L}\p{M}\p{N}+#_-]+/gu, '');
 }
 
 function stemEmojiSearchToken(term) {
