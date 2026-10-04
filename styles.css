@@ -14200,18 +14200,18 @@ body.theme-light
 
 /* What the check found is told in colour as well as words: a failure is not the idle line, and an
    update waiting is not the same grey as "ready to check". */
-.update-status[data-state='error'] {
+#settings-modal .update-status[data-state='error'] {
   color: var(--error-text);
 }
 
-.update-status[data-state='up-to-date'],
-.update-status[data-state='downloaded'] {
+#settings-modal .update-status[data-state='up-to-date'],
+#settings-modal .update-status[data-state='downloaded'] {
   color: var(--success-text);
 }
 
-.update-status[data-state='available'],
-.update-status[data-state='downloading'],
-.update-status[data-state='manual'] {
+#settings-modal .update-status[data-state='available'],
+#settings-modal .update-status[data-state='downloading'],
+#settings-modal .update-status[data-state='manual'] {
   color: var(--accent-text);
 }
 

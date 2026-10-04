@@ -105,7 +105,8 @@ describe('how a check is coloured', () => {
 
   const colourFor = (tone, theme = '') => {
     document.body.className = theme;
-    document.body.innerHTML = `<p class="form-help update-status" data-state="${tone}" id="line"></p>`;
+    // As the line sits in Settings, under #settings-modal .form-help, which sets its own colour.
+    document.body.innerHTML = `<div id="settings-modal"><p class="form-help update-status" data-state="${tone}" id="line"></p></div>`;
     return resolvedValue(document.getElementById('line'), 'color');
   };
 
