@@ -8430,7 +8430,10 @@ body.theme-light:not(.high-contrast)
 /* Accent theme picker */
 .accent-theme-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
+  /* The ten presets make two rows of five; as many 52px cells as fit left six and four at the
+     default width (seven and three, or eight and two, at others). Custom colours wrap in fives. */
+  grid-template-columns: repeat(5, minmax(0, 52px));
+  justify-content: space-between;
   gap: var(--space-3);
   margin-top: var(--space-3);
 }
@@ -8789,8 +8792,7 @@ body.theme-light:not(.high-contrast)
 }
 
 /* Explicitly keep key accent actions on the same visual recipe. */
-#save-settings.btn-primary,
-#save-custom-color-btn.btn-primary {
+#save-settings.btn-primary {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   box-shadow: none;
@@ -9231,6 +9233,8 @@ body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
   width: 100%;
   height: 6px;
   background: var(--surface-2);
+  /* A pack's name sits under the 14px disclosure that lists it; it inherited the dialog's 16px. */
+  font-size: var(--font-size-base);
   border-radius: var(--radius-sm);
   overflow: hidden;
   border: 1px solid var(--border-color);
@@ -11094,7 +11098,11 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
 
 .form-help code {
   background: var(--surface-2);
-  padding: 2px 4px;
+  /* No vertical padding, so the chip does not raise the line, and a hair of side padding, so the
+     bracket after it ('Ctrl+Shift+A )') is not pushed away from the text. */
+  padding: 0 3px;
+  margin-inline: 1px;
+  line-height: inherit;
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
@@ -11120,6 +11128,12 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
   display: flex;
   flex-direction: column;
   gap: 12px;
+/* --surface-2 is white at 85% in the light theme, the card the chip sits on, so there it showed as
+   plain text. */
+body.theme-light .form-help code {
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+
 }
 
 .radio-option {
@@ -13834,11 +13848,6 @@ body.theme-light
   margin-top: 0;
 }
 
-/* The legacy token disclosure keeps its own style but sits in a row now. */
-#settings-modal #legacy-ha-token-settings > summary {
-  font-size: var(--font-size-sm);
-}
-
 /* --- Specific blocks tidied into the grid --- */
 
 /* A row of a pane is spaced by the pane's own row padding. One inside a disclosure (Test connection
@@ -13847,7 +13856,11 @@ body.theme-light
   margin-top: 0;
 }
 
+/* The same size and place as the border chevron the <details> rows draw (about 7x13px, 4px in from
+   the edge): the 16px icon drew a chevron of 5x9px two pixels further out. */
 #settings-modal .settings-group-body > .connection-test-row {
+  font-size: var(--font-size-icon);
+  margin-inline-end: -5px;
   padding-top: 0;
 }
 
@@ -14132,7 +14145,7 @@ body.theme-light
 }
 
 #settings-modal .profile-sync-error {
-  color: var(--danger-text);
+  color: var(--error-text);
 }
 
 #settings-modal .profile-sync-error:empty {

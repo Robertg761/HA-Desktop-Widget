@@ -246,6 +246,56 @@ describe('stylesheet one-offs', () => {
     });
   });
 
+  describe('Settings controls', () => {
+    it('sets a language pack name in the 14px of the disclosure that lists it', () => {
+      render('<div id="settings-modal"><div class="language-pack-name">Deutsch</div></div>');
+      expect(resolvedValue(document.querySelector('.language-pack-name'), 'font-size')).toBe(
+        '0.875rem'
+      );
+    });
+
+    it('draws the legacy token disclosure like the other disclosures', () => {
+      render(`<div id="settings-modal"><details id="legacy-ha-token-settings" class="settings-details settings-disclosure"><summary>Legacy access token</summary></details>
+        <details class="settings-details settings-disclosure"><summary>Offline language packs</summary></details></div>`);
+      const [legacy, other] = [...document.querySelectorAll('summary')];
+      expect(resolvedValue(legacy, 'font-size')).toBe(resolvedValue(other, 'font-size'));
+    });
+
+    it('sizes the section toggle chevron to the details chevron beside it', () => {
+      render(
+        '<div id="settings-modal"><div class="settings-disclosure-section"><button class="section-toggle"><svg class="section-toggle-icon"></svg></button></div></div>'
+      );
+      const icon = document.querySelector('.section-toggle-icon');
+      expect(resolvedValue(icon, 'font-size')).toBe('1.375rem');
+      expect(resolvedValue(icon, 'margin-inline-end')).toBe('-5px');
+    });
+
+    it('lays the ten accent presets out as two rows of five', () => {
+      render(
+        '<div id="settings-modal"><div id="theme-options" class="accent-theme-grid"></div></div>'
+      );
+      expect(
+        resolvedValue(document.querySelector('.accent-theme-grid'), 'grid-template-columns')
+      ).toBe('repeat(5, minmax(0, 52px))');
+    });
+
+    it('offers Save Custom Color as the secondary action beside the page Save', () => {
+      const html = fs.readFileSync(path.resolve(__dirname, '../../index.html'), 'utf8');
+      const button = html.match(/<button[^>]*id="save-custom-color-btn"[^>]*>/s)[0];
+      expect(button).toMatch(/class="btn btn-secondary"/);
+      expect(button).not.toMatch(/btn-primary/);
+    });
+
+    it('closes the bracket after an inline code chip without a gap, and shows the chip on light', () => {
+      render('<p class="form-help">Press <code>Ctrl+Shift+A</code>)</p>', {
+        bodyClass: 'theme-light',
+      });
+      const chip = document.querySelector('code');
+      expect(resolvedValue(chip, 'padding')).toBe('0 3px');
+      expect(resolvedValue(chip, 'background')).not.toBe(resolvedValue(chip, '--surface-2'));
+    });
+  });
+
   describe('reduced motion keeps the waiting indicators moving', () => {
     // The blanket "no animation" rule gives every animation 0.01ms and one iteration. A spinner or a
     // progress bar frozen that way reads as a stalled app, and the bar as a finished one.
