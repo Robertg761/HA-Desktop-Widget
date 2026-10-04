@@ -679,15 +679,20 @@ export function formatList(items) {
 // --- Search and sorting ----------------------------------------------------------------------
 
 /**
- * Compatibility-folds text and drops the marks a search should ignore: Latin accents and Arabic
- * vowel marks. Every other combining mark stays, because Hindi vowel signs and the virama are part
- * of the word ("कुत्ता" must not become "कतत").
+ * Compatibility-folds text and drops the marks a search should ignore: Latin accents, Arabic vowel
+ * marks and the dot of Turkish "i". Every other combining mark stays, because Hindi vowel signs
+ * and the virama are part of the word ("कुत्ता" must not become "कतत").
+ *
+ * The dotless "ı" is a letter of its own that no decomposition reaches, and lower-casing without a
+ * locale turns "I" into "i" ("IŞIK" -> "isik") while a Turkish query keeps "ışık" -> "ısık". It
+ * folds to "i" like an accent does, so either spelling, or plain "isik", finds the word.
  * @param {unknown} value
  */
 export function foldSearchMarks(value) {
   return String(value ?? '')
     .normalize('NFKD')
-    .replace(/[\u0300-\u036f\u064b-\u065f\u0670]/g, '');
+    .replace(/[\u0300-\u036f\u064b-\u065f\u0670]/g, '')
+    .replace(/\u0131/g, 'i');
 }
 
 /**

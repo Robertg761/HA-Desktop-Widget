@@ -858,6 +858,20 @@ describe('lists, search and sorting', () => {
     expect(format.normalizeSearchText(null)).toBe('');
   });
 
+  it('finds a Turkish word whichever way the dotted and dotless i are typed', () => {
+    // Lower-casing without a locale gives "IŞIK" -> "isik" but "ışık" -> "ısık": every spelling
+    // folds to the same text, in every interface language, so a Turkish name is not missed.
+    for (const spelling of ['IŞIK', 'Işık', 'ışık', 'işik', 'isik', 'ISIK']) {
+      expect(format.normalizeSearchText(spelling)).toBe('isik');
+    }
+    expect(format.normalizeSearchText('İstanbul')).toBe(format.normalizeSearchText('ISTANBUL'));
+    expect(format.normalizeSearchText('Işık Lambası')).toBe('isik lambasi');
+    expect(utils.getSearchScore('Yatak Odası IŞIK', 'ışık')).toBeGreaterThan(0);
+    expect(utils.getSearchScore('ışık', 'IŞIK')).toBeGreaterThan(0);
+    useLocale('tr');
+    expect(utils.getSearchScore('IŞIK', 'ışık')).toBeGreaterThan(0);
+  });
+
   it('folds accents and Arabic vowel marks but keeps the marks inside a Hindi word', () => {
     expect(format.foldSearchMarks('Cafe\u0301')).toBe('Cafe');
     expect(format.foldSearchMarks('لَمْبَة')).toBe('لمبة');
