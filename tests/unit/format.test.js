@@ -472,6 +472,22 @@ describe('sensor readings', () => {
     expect(uptime(1.5)).toBe(`1.5${NBSP}s`);
     expect(format.formatDurationReading(10, 'furlong')).toBeNull();
   });
+
+  it('joins the units of a duration with a space, never the "and" Arabic and Urdu write', () => {
+    for (const locale of ['ar', 'ur']) {
+      useLocale(locale);
+      const unit = (amount, name) =>
+        new Intl.NumberFormat(locale, { style: 'unit', unit: name, unitDisplay: 'short' }).format(
+          amount
+        );
+      expect(format.formatDurationReading(4500, 's')).toBe(
+        `${unit(1, 'hour')} ${unit(15, 'minute')}`
+      );
+      expect(format.formatDurationReading(-4500, 's')).toBe(
+        `-${unit(1, 'hour')} ${unit(15, 'minute')}`
+      );
+    }
+  });
 });
 
 describe('state words', () => {

@@ -619,9 +619,12 @@ export function formatDurationReading(value, unit) {
     }
   });
   try {
-    const joined = new Intl.ListFormat(getFormatLocale(), { type: 'unit', style: 'narrow' }).format(
-      parts
-    );
+    // Arabic and Urdu join even narrow units with an "and" ("1 س و15 د"), which a glanceable readout
+    // does not want and which sits glued to the next number: a gap that holds a word becomes a space.
+    const joined = new Intl.ListFormat(getFormatLocale(), { type: 'unit', style: 'narrow' })
+      .formatToParts(parts)
+      .map((part) => (part.type === 'literal' && /\p{L}/u.test(part.value) ? ' ' : part.value))
+      .join('');
     return value < 0 ? `-${joined}` : joined;
   } catch {
     return parts.join(' ');
