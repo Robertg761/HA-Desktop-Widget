@@ -3,6 +3,8 @@
  */
 
 const {
+  UNAVAILABLE_GRACE_MS,
+  UNAVAILABLE_NOTIFY_INTERVAL_MS,
   createAlertEvaluator,
   getAlertStateSuggestions,
   matchesAlert,
@@ -170,30 +172,286 @@ describe('alert evaluator and the states no reading comes with', () => {
   });
 
   describe('a State Change rule', () => {
+    const toAndFrom = () => notify.mock.calls.map(([, from, to]) => [from, to]);
+    const minutes = (count) => count * 60 * 1000;
+
     beforeEach(() => {
       build({ onStateChange: true });
       evaluator.reset(states('sensor.door', 'on'));
     });
 
-    it('tells about going offline and about coming back, not only the second', () => {
-      evaluator.check('sensor.door', 'unavailable');
-      evaluator.check('sensor.door', 'on');
-      expect(notify.mock.calls.map(([, from, to]) => [from, to])).toEqual([
-        ['on', 'unavailable'],
-        ['unavailable', 'on'],
-      ]);
+    it('tells about a change between two readings at once', () => {
+      evaluator.check('sensor.door', 'off');
+      expect(toAndFrom()).toEqual([['on', 'off']]);
     });
 
     it('does not tell about a state that did not change, or a reconnect snapshot', () => {
       evaluator.check('sensor.door', 'on');
       evaluator.suspend();
       evaluator.reconcile(states('sensor.door', 'unavailable'));
+      jest.advanceTimersByTime(minutes(5));
       expect(notify).not.toHaveBeenCalled();
       // The snapshot is the new baseline: only a later change counts.
       evaluator.check('sensor.door', 'unavailable');
+      jest.advanceTimersByTime(minutes(5));
       expect(notify).not.toHaveBeenCalled();
+      // It came back as what it was before the outage, which is no change at all.
       evaluator.check('sensor.door', 'on');
+      expect(notify).not.toHaveBeenCalled();
+      evaluator.check('sensor.door', 'off');
+      expect(toAndFrom()).toEqual([['on', 'off']]);
+    });
+
+    describe('going unavailable or unknown', () => {
+      it('is told only once the entity has stayed offline for the grace period', () => {
+        evaluator.check('sensor.door', 'unavailable');
+        jest.advanceTimersByTime(UNAVAILABLE_GRACE_MS - 1);
+        expect(notify).not.toHaveBeenCalled();
+        jest.advanceTimersByTime(1);
+        expect(toAndFrom()).toEqual([['on', 'unavailable']]);
+        // A long outage is one piece of news, however long it lasts.
+        jest.advanceTimersByTime(minutes(60));
+        expect(notify).toHaveBeenCalledTimes(1);
+      });
+
+      it('never tells about a blip that recovers within the grace period', () => {
+        for (let blip = 0; blip < 5; blip += 1) {
+          evaluator.check('sensor.door', blip % 2 ? 'unknown' : 'unavailable');
+          jest.advanceTimersByTime(UNAVAILABLE_GRACE_MS - 1);
+          evaluator.check('sensor.door', 'on');
+        }
+        jest.advanceTimersByTime(minutes(60));
+        expect(notify).not.toHaveBeenCalled();
+      });
+
+      it('counts unavailable and unknown as one outage, timed from its start', () => {
+        evaluator.check('sensor.door', 'unavailable');
+        jest.advanceTimersByTime(10 * 1000);
+        evaluator.check('sensor.door', 'unknown');
+        jest.advanceTimersByTime(UNAVAILABLE_GRACE_MS - 10 * 1000);
+        expect(toAndFrom()).toEqual([['on', 'unknown']]);
+        evaluator.check('sensor.door', 'unavailable');
+        jest.advanceTimersByTime(minutes(60));
+        expect(notify).toHaveBeenCalledTimes(1);
+      });
+
+      it('waits for the rule’s own duration when that is longer than the grace period', () => {
+        build({ onStateChange: true, durationSeconds: 120 });
+        evaluator.reset(states('sensor.door', 'on'));
+        evaluator.check('sensor.door', 'unavailable');
+        jest.advanceTimersByTime(minutes(2) - 1);
+        expect(notify).not.toHaveBeenCalled();
+        jest.advanceTimersByTime(1);
+        expect(notify).toHaveBeenCalledTimes(1);
+      });
+
+      describe('at most one outage per entity in fifteen minutes', () => {
+        const outage = (lastsMs) => {
+          evaluator.check('sensor.door', 'unavailable');
+          jest.advanceTimersByTime(lastsMs);
+          evaluator.check('sensor.door', 'on');
+        };
+
+        it('tells about the first of several outages that each outlast the grace period', () => {
+          // Told 30 seconds in; the device then drops out again and again.
+          outage(UNAVAILABLE_GRACE_MS);
+          expect(notify).toHaveBeenCalledTimes(1);
+          jest.advanceTimersByTime(minutes(2));
+          outage(minutes(2));
+          jest.advanceTimersByTime(minutes(3));
+          outage(minutes(5));
+          jest.advanceTimersByTime(minutes(1));
+          outage(minutes(1));
+          expect(notify).toHaveBeenCalledTimes(1);
+        });
+
+        it('counts the fifteen minutes from the notification, and no longer holds after them', () => {
+          outage(UNAVAILABLE_GRACE_MS);
+          // An outage that would be told about 1 ms short of fifteen minutes after that
+          // notification is held back...
+          jest.advanceTimersByTime(UNAVAILABLE_NOTIFY_INTERVAL_MS - UNAVAILABLE_GRACE_MS - 1);
+          outage(UNAVAILABLE_GRACE_MS);
+          expect(notify).toHaveBeenCalledTimes(1);
+          // ...and the next one is not, being past the fifteen minutes when it is told.
+          outage(UNAVAILABLE_GRACE_MS);
+          expect(toAndFrom()).toEqual([
+            ['on', 'unavailable'],
+            ['on', 'unavailable'],
+          ]);
+        });
+      });
+
+      it('does not count an outage nobody was told about against the fifteen minutes', () => {
+        evaluator.check('sensor.door', 'unavailable');
+        jest.advanceTimersByTime(UNAVAILABLE_GRACE_MS - 1);
+        evaluator.check('sensor.door', 'on');
+        evaluator.check('sensor.door', 'unavailable');
+        jest.advanceTimersByTime(UNAVAILABLE_GRACE_MS);
+        expect(notify).toHaveBeenCalledTimes(1);
+      });
+
+      it('keeps the rule’s own cooldown, which an outage notification also starts', () => {
+        build({ onStateChange: true, cooldownSeconds: 3600 });
+        evaluator.reset(states('sensor.door', 'on'));
+        evaluator.check('sensor.door', 'unavailable');
+        jest.advanceTimersByTime(UNAVAILABLE_GRACE_MS);
+        expect(notify).toHaveBeenCalledTimes(1);
+
+        // The device comes back as something else, well inside the rule's hour.
+        evaluator.check('sensor.door', 'off');
+        expect(notify).toHaveBeenCalledTimes(1);
+
+        // Fifteen minutes on, the outage limit is over, but the rule's cooldown is not.
+        jest.advanceTimersByTime(UNAVAILABLE_NOTIFY_INTERVAL_MS);
+        evaluator.check('sensor.door', 'unavailable');
+        jest.advanceTimersByTime(UNAVAILABLE_GRACE_MS);
+        expect(notify).toHaveBeenCalledTimes(1);
+
+        jest.advanceTimersByTime(minutes(60));
+        evaluator.check('sensor.door', 'off');
+        evaluator.check('sensor.door', 'unknown');
+        jest.advanceTimersByTime(UNAVAILABLE_GRACE_MS);
+        expect(notify).toHaveBeenCalledTimes(2);
+      });
+
+      it('keeps quiet hours', () => {
+        jest.setSystemTime(new Date(2026, 9, 4, 23, 0, 0));
+        build({
+          onStateChange: true,
+          quietHours: { enabled: true, start: '22:00', end: '07:00' },
+        });
+        evaluator.reset(states('sensor.door', 'on'));
+        evaluator.check('sensor.door', 'unavailable');
+        jest.advanceTimersByTime(UNAVAILABLE_GRACE_MS);
+        expect(notify).not.toHaveBeenCalled();
+      });
+
+      it('starts the wait over after a reconnect when the entity is still offline', () => {
+        evaluator.check('sensor.door', 'unavailable');
+        jest.advanceTimersByTime(10 * 1000);
+        evaluator.suspend();
+        jest.advanceTimersByTime(minutes(5));
+        expect(notify).not.toHaveBeenCalled();
+        evaluator.reconcile(states('sensor.door', 'unknown'));
+        jest.advanceTimersByTime(UNAVAILABLE_GRACE_MS - 1);
+        expect(notify).not.toHaveBeenCalled();
+        jest.advanceTimersByTime(1);
+        expect(toAndFrom()).toEqual([['on', 'unknown']]);
+      });
+
+      it('drops the wait when the reconnect snapshot says it came back', () => {
+        evaluator.check('sensor.door', 'unavailable');
+        evaluator.suspend();
+        evaluator.reconcile(states('sensor.door', 'on'));
+        jest.advanceTimersByTime(minutes(5));
+        expect(notify).not.toHaveBeenCalled();
+      });
+
+      it('does not repeat itself when the reconnect snapshot still says offline', () => {
+        evaluator.check('sensor.door', 'unavailable');
+        jest.advanceTimersByTime(UNAVAILABLE_GRACE_MS);
+        evaluator.suspend();
+        evaluator.reconcile(states('sensor.door', 'unavailable'));
+        jest.advanceTimersByTime(minutes(60));
+        expect(notify).toHaveBeenCalledTimes(1);
+      });
+
+      it('has nothing to say about an entity first seen offline', () => {
+        evaluator.reset(states('sensor.door', 'unavailable'));
+        jest.advanceTimersByTime(minutes(5));
+        expect(notify).not.toHaveBeenCalled();
+        // Nothing is known about what it was, so coming back is not a change either.
+        evaluator.check('sensor.door', 'on');
+        expect(notify).not.toHaveBeenCalled();
+        evaluator.check('sensor.door', 'off');
+        expect(toAndFrom()).toEqual([['on', 'off']]);
+      });
+    });
+
+    describe('coming back from unavailable or unknown', () => {
+      it('is not news when the entity is what it was before', () => {
+        evaluator.check('sensor.door', 'unavailable');
+        jest.advanceTimersByTime(UNAVAILABLE_GRACE_MS);
+        evaluator.check('sensor.door', 'on');
+        expect(toAndFrom()).toEqual([['on', 'unavailable']]);
+      });
+
+      it('is news when the entity came back as something else, said as that change', () => {
+        evaluator.check('sensor.door', 'unavailable');
+        jest.advanceTimersByTime(UNAVAILABLE_GRACE_MS);
+        evaluator.check('sensor.door', 'off');
+        expect(toAndFrom()).toEqual([
+          ['on', 'unavailable'],
+          ['on', 'off'],
+        ]);
+      });
+
+      it('is news even inside the grace period, when the entity came back as something else', () => {
+        evaluator.check('sensor.door', 'unavailable');
+        jest.advanceTimersByTime(UNAVAILABLE_GRACE_MS / 2);
+        evaluator.check('sensor.door', 'off');
+        jest.advanceTimersByTime(minutes(5));
+        expect(toAndFrom()).toEqual([['on', 'off']]);
+      });
+    });
+
+    describe('with notifications for it switched off', () => {
+      beforeEach(() => {
+        build({ onStateChange: true, notifyOnUnavailable: false });
+        evaluator.reset(states('sensor.door', 'on'));
+      });
+
+      it('says nothing about going unavailable or unknown, however long it lasts', () => {
+        evaluator.check('sensor.door', 'unavailable');
+        jest.advanceTimersByTime(minutes(60));
+        evaluator.check('sensor.door', 'unknown');
+        jest.advanceTimersByTime(minutes(60));
+        evaluator.check('sensor.door', 'on');
+        jest.advanceTimersByTime(minutes(60));
+        expect(notify).not.toHaveBeenCalled();
+      });
+
+      it('still tells about every other change', () => {
+        evaluator.check('sensor.door', 'off');
+        evaluator.check('sensor.door', 'on');
+        expect(toAndFrom()).toEqual([
+          ['on', 'off'],
+          ['off', 'on'],
+        ]);
+      });
+
+      it('still tells when the entity comes back as something else', () => {
+        evaluator.check('sensor.door', 'unavailable');
+        jest.advanceTimersByTime(minutes(5));
+        evaluator.check('sensor.door', 'off');
+        expect(toAndFrom()).toEqual([['on', 'off']]);
+      });
+    });
+
+    it('tells about going offline when the rule saved before the switch existed has no setting', () => {
+      // Rules saved by earlier versions have no notifyOnUnavailable, and an explicit true is the same.
+      for (const rule of [
+        { onStateChange: true },
+        { onStateChange: true, notifyOnUnavailable: true },
+      ]) {
+        build(rule);
+        evaluator.reset(states('sensor.door', 'on'));
+        evaluator.check('sensor.door', 'unavailable');
+        jest.advanceTimersByTime(UNAVAILABLE_GRACE_MS);
+        expect(toAndFrom()).toEqual([['on', 'unavailable']]);
+      }
+    });
+  });
+
+  describe('the switch for unavailable and unknown, on a rule that names the state', () => {
+    it('is for State Change rules: a Specific State rule for unavailable is not held back', () => {
+      build({ onSpecificState: true, targetState: 'unavailable', notifyOnUnavailable: false });
+      evaluator.reset(states('sensor.door', 'on'));
+      evaluator.check('sensor.door', 'unavailable');
       expect(notify).toHaveBeenCalledTimes(1);
+      evaluator.check('sensor.door', 'on');
+      evaluator.check('sensor.door', 'unavailable');
+      expect(notify).toHaveBeenCalledTimes(2);
     });
   });
 });

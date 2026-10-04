@@ -79,6 +79,18 @@ function getAlertStateSuggestions(entity) {
 // rules ignore them, unless the rule names that very state ("tell me when it goes offline").
 const NO_READING_STATES = new Set(['unknown', 'unavailable']);
 
+// A State Change rule also tells about an entity that goes unavailable or unknown (unless its
+// "Notify when unavailable" switch is off). A device that drops off Wi-Fi and returns, over and over,
+// would turn that into spam, so two limits apply on top of the rule's own duration and cooldown:
+// the entity must stay without a reading this long before anyone is told, and one entity is told
+// about at most once per interval, however often it goes and comes back. The Alerts dialog says
+// both in its help text.
+const UNAVAILABLE_GRACE_MS = 30 * 1000;
+const UNAVAILABLE_NOTIFY_INTERVAL_MS = 15 * 60 * 1000;
+
+const hasReading = (value) =>
+  value !== null && value !== undefined && !NO_READING_STATES.has(value);
+
 function isUsableState(rule, value) {
   if (value === null || value === undefined) return false;
   if (!NO_READING_STATES.has(value)) return true;
@@ -112,6 +124,9 @@ function createAlertEvaluator({ getConfig, notify, now = () => Date.now() }) {
   let enabled;
   const makeRecord = (id, entity) => ({
     previous: entity?.state,
+    // The last real reading, for a State Change rule to judge an entity that comes back from an
+    // outage: it is only a change if it came back as something else.
+    lastReal: hasReading(entity?.state) ? entity.state : undefined,
     matched: false,
     signature: JSON.stringify(getConfig()?.alerts?.[id]),
   });
@@ -149,15 +164,25 @@ function createAlertEvaluator({ getConfig, notify, now = () => Date.now() }) {
     // The reconnect snapshot arrives without state_changed events, so a condition that is still
     // true has to be re-armed here or its duration timer would never restart.
     records.forEach((record, id) => {
+      const value = states[id]?.state;
+      const rule = getConfig()?.alerts?.[id];
       if (record.resume) {
         delete record.resume;
-        if (states[id]) check(id, states[id].state);
+        // Only an outage's waiting period can be pending while the entity has no reading. It starts
+        // over, so an entity that stays offline through a reconnect is still told about.
+        if (
+          rule?.onStateChange &&
+          NO_READING_STATES.has(record.previous) &&
+          NO_READING_STATES.has(value)
+        ) {
+          record.previous = value;
+          record.matched = true;
+          arm(id, record, rule, record.lastReal, true);
+        } else if (states[id]) check(id, value);
         return;
       }
       // A fresh snapshot may end a condition while disconnected. Keep cooldowns and already
       // notified matches that still hold, but take the snapshot as the new change baseline.
-      const value = states[id]?.state;
-      const rule = getConfig()?.alerts?.[id];
       const valid = isUsableState(rule, value);
       if (
         !valid ||
@@ -168,7 +193,34 @@ function createAlertEvaluator({ getConfig, notify, now = () => Date.now() }) {
         record.matched = false;
       }
       record.previous = value;
+      if (hasReading(value)) record.lastReal = value;
     });
+  };
+  // Tells about `rule` once its waiting period is over, unless quiet hours or a cooldown say no.
+  // `outage` is news of an entity gone offline, which has a waiting period and a limit of its own.
+  const arm = (id, record, rule, previous, outage = false) => {
+    const signature = JSON.stringify(rule);
+    const fire = () => {
+      record.timer = null;
+      const current = getConfig();
+      if (!current?.enabled || signature !== JSON.stringify(current.alerts?.[id])) return;
+      const cooldown = Math.max(0, Number(rule.cooldownSeconds) || 0) * 1000;
+      if (
+        inQuietHours(rule.quietHours, new Date(now())) ||
+        (record.lastNotified !== undefined && now() - record.lastNotified < cooldown) ||
+        (outage &&
+          record.lastOutageNotified !== undefined &&
+          now() - record.lastOutageNotified < UNAVAILABLE_NOTIFY_INTERVAL_MS)
+      )
+        return;
+      record.lastNotified = now();
+      if (outage) record.lastOutageNotified = record.lastNotified;
+      notify(id, previous, record.previous, rule);
+    };
+    let delay = Math.min(86400, Math.max(0, Number(rule.durationSeconds) || 0)) * 1000;
+    if (outage) delay = Math.max(delay, UNAVAILABLE_GRACE_MS);
+    if (delay) record.timer = setTimeout(fire, delay);
+    else fire();
   };
   const check = (id, value) => {
     const config = getConfig();
@@ -179,11 +231,26 @@ function createAlertEvaluator({ getConfig, notify, now = () => Date.now() }) {
       clearTimeout(record.timer);
       return;
     }
-    const previous = record.previous;
+    let previous = record.previous;
     record.previous = value;
+    const offline = !!rule.onStateChange && NO_READING_STATES.has(value);
+    if (rule.onStateChange && NO_READING_STATES.has(previous)) {
+      // Unavailable to unknown, or back, is the same outage: its waiting period, or the news
+      // already given, stands.
+      if (offline) return;
+      // Back from an outage. News of it that was still waiting is moot, and the entity is judged
+      // against the last real reading: a lamp that was on and is on again has not changed.
+      clearTimeout(record.timer);
+      record.timer = null;
+      record.matched = false;
+      previous = record.lastReal;
+    }
+    if (hasReading(value)) record.lastReal = value;
     const changed = previous !== undefined && previous !== value;
     const valid = isUsableState(rule, value);
-    const matched = valid && (rule.onStateChange ? changed : matchesAlert(rule, value));
+    const silenced = offline && rule.notifyOnUnavailable === false;
+    const matched =
+      valid && !silenced && (rule.onStateChange ? changed : matchesAlert(rule, value));
     if (rule.onStateChange ? changed || !valid : !matched) {
       clearTimeout(record.timer);
       record.timer = null;
@@ -191,28 +258,14 @@ function createAlertEvaluator({ getConfig, notify, now = () => Date.now() }) {
     }
     if (!matched || record.matched) return;
     record.matched = true;
-    const signature = JSON.stringify(rule);
-    const fire = () => {
-      record.timer = null;
-      const current = getConfig();
-      if (!current?.enabled || signature !== JSON.stringify(current.alerts?.[id])) return;
-      const cooldown = Math.max(0, Number(rule.cooldownSeconds) || 0) * 1000;
-      if (
-        inQuietHours(rule.quietHours, new Date(now())) ||
-        (record.lastNotified !== undefined && now() - record.lastNotified < cooldown)
-      )
-        return;
-      record.lastNotified = now();
-      notify(id, previous, record.previous, rule);
-    };
-    const delay = Math.min(86400, Math.max(0, Number(rule.durationSeconds) || 0)) * 1000;
-    if (delay) record.timer = setTimeout(fire, delay);
-    else fire();
+    arm(id, record, rule, previous, offline);
   };
   return { check, reset, reconcile, suspend };
 }
 
 export {
+  UNAVAILABLE_GRACE_MS,
+  UNAVAILABLE_NOTIFY_INTERVAL_MS,
   inQuietHours,
   matchesAlert,
   normalizeAlertState,

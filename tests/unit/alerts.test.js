@@ -448,6 +448,70 @@ describe('alerts module', () => {
       });
     });
 
+    describe('onStateChange alerts for an entity that goes unavailable', () => {
+      const { UNAVAILABLE_GRACE_MS } = require('../../src/alert-rules.js');
+      beforeEach(() => jest.useFakeTimers());
+      afterEach(() => {
+        alerts.resetEntityAlerts();
+        jest.useRealTimers();
+      });
+
+      it('tells about it after the grace period when the rule has no setting for it', () => {
+        // A rule saved before the setting existed.
+        mockState.CONFIG.entityAlerts.alerts['light.living_room'] = { onStateChange: true };
+        alerts.initializeEntityAlerts();
+
+        alerts.checkEntityAlerts('light.living_room', 'unavailable');
+        jest.advanceTimersByTime(UNAVAILABLE_GRACE_MS - 1);
+        expect(showToast).not.toHaveBeenCalled();
+        jest.advanceTimersByTime(1);
+
+        expect(showToast).toHaveBeenCalledWith(
+          'Living Room Light changed from On to Unavailable',
+          'info',
+          4000
+        );
+        expect(global.Notification.lastNotification.options.body).toBe(
+          'Living Room Light changed from On to Unavailable'
+        );
+      });
+
+      it('says nothing about it when the rule turns that off, but still about other changes', () => {
+        mockState.CONFIG.entityAlerts.alerts['light.living_room'] = {
+          onStateChange: true,
+          notifyOnUnavailable: false,
+        };
+        alerts.initializeEntityAlerts();
+
+        alerts.checkEntityAlerts('light.living_room', 'unavailable');
+        alerts.checkEntityAlerts('light.living_room', 'unknown');
+        jest.advanceTimersByTime(60 * 60 * 1000);
+        alerts.checkEntityAlerts('light.living_room', 'on');
+        expect(showToast).not.toHaveBeenCalled();
+
+        alerts.checkEntityAlerts('light.living_room', 'off');
+        expect(showToast).toHaveBeenCalledTimes(1);
+        expect(showToast).toHaveBeenCalledWith(
+          expect.stringContaining('from On to Off'),
+          'info',
+          4000
+        );
+      });
+
+      it('does not notify for a blip that comes back within the grace period', () => {
+        mockState.CONFIG.entityAlerts.alerts['light.living_room'] = { onStateChange: true };
+        alerts.initializeEntityAlerts();
+
+        alerts.checkEntityAlerts('light.living_room', 'unavailable');
+        jest.advanceTimersByTime(UNAVAILABLE_GRACE_MS - 1);
+        alerts.checkEntityAlerts('light.living_room', 'on');
+        jest.advanceTimersByTime(60 * 60 * 1000);
+
+        expect(showToast).not.toHaveBeenCalled();
+        expect(global.Notification.lastNotification).toBeNull();
+      });
+    });
+
     describe('translated alert messages', () => {
       const i18n = require('../../src/i18n.js');
       afterEach(() => i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} }));
