@@ -1654,6 +1654,8 @@ const scenes = [
     ui: { language: 'de' },
     setup: (ctx) => openPaletteFor(ctx, 'a'),
   },
+  // An entity Home Assistant cannot reach is dimmed in the results as it is on its tile.
+  { name: 'palette-unavailable', setup: (ctx) => openPaletteFor(ctx, 'bedroom') },
   // Home Assistant goes away with a full page of tiles: the panel is above them without a scroll,
   // and they are dimmed.
   { name: 'layout-offline', size: DEFAULT_SIZE, config: edgePage, setup: showOffline },
