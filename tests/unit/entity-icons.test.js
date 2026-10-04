@@ -69,6 +69,17 @@ describe('entity line icons', () => {
       getEntityLineIconName(entity('sensor.office', '21', { device_class: 'temperature' }))
     ).toBe('thermometer');
     expect(getEntityLineIconName(entity('sensor.oven_timer', '0:10:00'))).toBe('timer');
+    // A reading with a unit is not a countdown, however it is named or what it carries.
+    expect(
+      getEntityLineIconName(
+        entity('sensor.commute', '23.4', { unit_of_measurement: 'min', duration: 1404 })
+      )
+    ).not.toBe('timer');
+    expect(
+      getEntityLineIconName(
+        entity('sensor.washer_timer_hours', '2.5', { unit_of_measurement: 'h' })
+      )
+    ).not.toBe('timer');
     expect(getEntityLineIconName(entity('made_up.thing'))).toBe('box');
     expect(getEntityLineIconName(null)).toBe('box');
   });
