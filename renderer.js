@@ -50,7 +50,7 @@ import {
   buildProfileDocumentFromConfig,
 } from './src/profile-schema.js';
 import { createElectronHost } from '@hadw/renderer/electron-host.js';
-import { setRendererHost, getRendererHost } from '@hadw/renderer/host.js';
+import { setRendererHost, getRendererHost, hasRendererHost } from '@hadw/renderer/host.js';
 import {
   installClimateDemo,
   isClimateDemoConfig,
@@ -71,8 +71,9 @@ import {
   setConnectionStatusBusy,
 } from './src/connection-status.js';
 
-// Shared renderer modules reach the desktop surface only through this host.
-if (window.electronAPI) {
+// Shared renderer modules reach the desktop surface only through this host. The panel preview
+// injects its own before it boots this file; it must not be replaced by one that says Electron.
+if (window.electronAPI && !hasRendererHost()) {
   setRendererHost(createElectronHost(window.electronAPI));
 }
 

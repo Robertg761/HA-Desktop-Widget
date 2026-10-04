@@ -18,6 +18,17 @@ describe('renderer host seam', () => {
     expect(getRendererHost()).not.toBe(host);
   });
 
+  test("reports whether a host was injected, so the app does not replace the preview's", () => {
+    const { setRendererHost, hasRendererHost } = require('@hadw/renderer/host.js');
+    window.electronAPI = { updateConfig: jest.fn() };
+    // The ambient fallback is not an injection.
+    expect(hasRendererHost()).toBe(false);
+    setRendererHost({ capabilities: { isPreview: true } });
+    expect(hasRendererHost()).toBe(true);
+    setRendererHost(null);
+    expect(hasRendererHost()).toBe(false);
+  });
+
   test('ambient fallback wraps the current window.electronAPI at call time', async () => {
     const { getRendererHost } = require('@hadw/renderer/host.js');
     const first = { updateConfig: jest.fn(async () => ({ success: true, config: {} })) };
