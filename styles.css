@@ -734,30 +734,6 @@ body.frosted-glass .widget-content {
   -webkit-backdrop-filter: none;
 }
 
-body.linux-performance-mode,
-body.linux-performance-mode .widget-header,
-body.linux-performance-mode .widget-content,
-body.linux-performance-mode .desktop-pin-shell,
-body.linux-performance-mode .loading-overlay,
-body.linux-performance-mode .status-card,
-body.linux-performance-mode .media-tile,
-body.linux-performance-mode .control-item,
-body.linux-performance-mode .btn,
-body.linux-performance-mode .close-btn,
-body.linux-performance-mode .form-group input,
-body.linux-performance-mode .form-group select,
-body.linux-performance-mode .form-group textarea,
-body.linux-performance-mode .desktop-pin-panel-button,
-body.linux-performance-mode .desktop-pin-power,
-body.linux-performance-mode .desktop-pin-control,
-body.linux-performance-mode .desktop-pin-action-primary,
-body.linux-performance-mode .desktop-pin-quick-toggle,
-body.linux-performance-mode .remove-btn,
-body.linux-performance-mode .rename-btn {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
 body.linux-performance-mode {
   --bg-blur: 0px;
   --glass-blur-strong: 0px;
@@ -971,10 +947,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content .control-item {
   cursor: move;
 }
 
-body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-actions {
-  display: none;
-}
-
 /* The corner marks that start a resize sit over the first letter of a name, so the header steps in
    while the pin is edited. */
 body.desktop-pin-mode.desktop-pin-edit-mode
@@ -1055,15 +1027,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
     .desktop-pin-placement-notice {
     display: none;
   }
-}
-
-.desktop-pin-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  -webkit-app-region: no-drag;
-  flex-wrap: wrap;
-  justify-content: flex-end;
 }
 
 .desktop-pin-action {
@@ -10793,47 +10756,6 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
 #settings-modal .tab-link:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
-}
-
-@media (width <= 760px) {
-  #settings-modal .modal-content {
-    width: 100%;
-    max-width: 100vw;
-    height: 100vh;
-    max-height: 100vh;
-    min-height: 100vh;
-    border-radius: 0;
-    border: none;
-    box-shadow: none;
-    grid-template:
-      'header' auto
-      'nav' auto
-      'body' minmax(0, 1fr)
-      'footer' auto
-      / minmax(0, 1fr);
-  }
-
-  #settings-modal .modal-tabs {
-    flex-direction: row;
-    gap: var(--space-1);
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: var(--space-2) var(--space-3);
-    border-inline-end: none;
-    border-bottom: 1px solid var(--border-color);
-  }
-
-  #settings-modal .tab-link {
-    width: auto;
-    min-width: max-content;
-    min-height: 28px;
-    padding: var(--space-1) var(--space-3);
-    justify-content: center;
-  }
-
-  #settings-modal .modal-body {
-    padding: var(--space-3) var(--space-4);
-  }
 }
 
 .tab-content {
