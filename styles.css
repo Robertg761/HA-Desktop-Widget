@@ -11216,6 +11216,22 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
 }
 
 /* The OS asked for more contrast (macOS Increase contrast, GNOME and KDE high-contrast settings).
+  /* An indicator that says something is still happening is not decoration: frozen, the ring, the
+     connecting icon and the waiting bar read as a stalled app (the bar as a finished one). These
+     keep turning, slowly. Both rules are !important, so their classes decide over the * above. */
+  .spinner,
+  [aria-busy='true']::after,
+  #settings-modal .profile-sync-status[data-busy='true']::before,
+  .status-message.is-connecting .status-message-icon svg {
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
+  }
+
+  .connection-progress-bar {
+    animation-duration: 1.8s !important;
+    animation-iteration-count: infinite !important;
+  }
+
    "more" is the value the query knows; "high" never matched. A Windows contrast theme reports it
    too, but forced colours already redraw every border there. The borders are declared on the body
    and on the light theme, which declares its own, since :root loses to both. */

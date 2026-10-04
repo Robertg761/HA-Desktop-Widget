@@ -6,8 +6,9 @@
  * on an element using specificity, !important, source order, simple width/height media queries,
  * inheritance for colours and custom properties, inline styles, var() fallbacks and srgb
  * color-mix(). Interaction states are modelled with attributes: give the element
- * `data-focus-visible`, `data-focus` or `data-hover`. Pass `forcedColors: true` or
- * `prefersContrast: 'more'` in the options to apply those media blocks.
+ * `data-focus-visible`, `data-focus` or `data-hover`. Pass `forcedColors: true`,
+ * `prefersContrast: 'more'`, `pointer: 'coarse'` or `reducedMotion: true` (or `false`, for the
+ * no-preference blocks) in the options to apply those media blocks.
  */
 const fs = require('fs');
 const path = require('path');
@@ -195,12 +196,21 @@ function selectorMatches(element, selector) {
   });
 }
 
-function mediaMatches(mediaText, viewport, { forcedColors = false, prefersContrast } = {}) {
+function mediaMatches(
+  mediaText,
+  viewport,
+  { forcedColors = false, prefersContrast, reducedMotion, pointer } = {}
+) {
   return splitTopLevel(mediaText).some((query) =>
     query.split(/\band\b/).every((condition) => {
       const feature = condition.trim().replace(/^\(|\)$/g, '');
       if (feature === 'forced-colors: active') return forcedColors;
       if (feature === 'forced-colors: none') return !forcedColors;
+      if (feature === 'pointer: coarse') return pointer === 'coarse';
+      if (feature === 'pointer: fine') return pointer === 'fine';
+      // Neither block applies unless a test says which one it is in.
+      if (feature === 'prefers-reduced-motion: reduce') return reducedMotion === true;
+      if (feature === 'prefers-reduced-motion: no-preference') return reducedMotion === false;
       if (/^prefers-contrast:/.test(feature)) {
         return feature.split(':')[1].trim() === (prefersContrast || 'no-preference');
       }
@@ -255,10 +265,16 @@ function collectDeclarations(document, property, viewport, features) {
 function cascadedDeclaration(
   element,
   property,
-  { viewport = { width: 500, height: 600 }, forcedColors, prefersContrast } = {}
+  {
+    viewport = { width: 500, height: 600 },
+    forcedColors,
+    prefersContrast,
+    reducedMotion,
+    pointer,
+  } = {}
 ) {
   let winner = null;
-  const features = { forcedColors, prefersContrast };
+  const features = { forcedColors, prefersContrast, reducedMotion, pointer };
   for (const declaration of collectDeclarations(
     element.ownerDocument,
     property,
