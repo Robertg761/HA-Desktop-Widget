@@ -415,6 +415,110 @@ describe('hotkeys module', () => {
 
       consoleError.mockRestore();
     });
+
+    describe('in a large home', () => {
+      let container;
+      let searchInput;
+      beforeEach(() => {
+        container = document.createElement('div');
+        container.id = 'hotkeys-list';
+        searchInput = document.createElement('input');
+        searchInput.id = 'hotkey-entity-search';
+        document.body.append(container, searchInput);
+        const states = {};
+        for (let i = 0; i < 130; i += 1) {
+          const entityId = `light.lamp_${String(i).padStart(3, '0')}`;
+          states[entityId] = {
+            entity_id: entityId,
+            state: 'off',
+            attributes: { friendly_name: `Lamp ${String(i).padStart(3, '0')}` },
+          };
+        }
+        state.setStates(states);
+      });
+      const rows = () => container.querySelectorAll('.hotkey-item');
+      const pager = (key) => container.querySelector(`[data-primary-page="${key}"]`);
+
+      it('builds one page of rows and a pager, not a row for every entity', () => {
+        hotkeys.renderHotkeysTab();
+
+        expect(rows()).toHaveLength(50);
+        expect(
+          container.querySelector('.primary-cards-pagination [role="status"]').textContent
+        ).toBe('Page 1 / 3');
+        expect(pager('previous').getAttribute('aria-disabled')).toBe('true');
+
+        pager('next').click();
+
+        expect(rows()).toHaveLength(50);
+        expect(rows()[0].querySelector('.hotkey-input').dataset.entityId).toBe('light.lamp_050');
+        expect(container.querySelector('[role="status"]').textContent).toBe('Page 2 / 3');
+      });
+
+      it('starts a new search on its first page', () => {
+        hotkeys.renderHotkeysTab();
+        pager('next').click();
+        pager('next').click();
+        expect(container.querySelector('[role="status"]').textContent).toBe('Page 3 / 3');
+
+        searchInput.value = 'lamp 1';
+        hotkeys.renderHotkeysTab();
+
+        expect(rows()[0].querySelector('.hotkey-input').dataset.entityId).toBe('light.lamp_100');
+      });
+
+      it('lets the keyboard stay on the pager button after a page is turned', () => {
+        hotkeys.renderHotkeysTab();
+        pager('next').focus();
+        pager('next').click();
+
+        expect(document.activeElement).toBe(pager('next'));
+      });
+
+      it('waits for a pause in typing before rebuilding the list', () => {
+        jest.useFakeTimers();
+        try {
+          hotkeys.renderHotkeysTab();
+          const firstRow = rows()[0];
+
+          searchInput.value = 'lamp 1';
+          hotkeys.scheduleHotkeysTabRender();
+          searchInput.value = 'lamp 12';
+          hotkeys.scheduleHotkeysTabRender();
+          expect(rows()[0]).toBe(firstRow);
+
+          jest.advanceTimersByTime(200);
+
+          expect(rows()[0]).not.toBe(firstRow);
+          expect(rows()).toHaveLength(10);
+        } finally {
+          jest.useRealTimers();
+        }
+      });
+
+      it('drops a pending search, and goes back to the first page, when Settings closes', () => {
+        jest.useFakeTimers();
+        try {
+          hotkeys.renderHotkeysTab();
+          pager('next').click();
+          const secondPageRow = rows()[0];
+
+          searchInput.value = 'lamp 1';
+          hotkeys.scheduleHotkeysTabRender();
+          hotkeys.cleanupHotkeyEventListeners();
+          jest.advanceTimersByTime(200);
+
+          // Nothing was rebuilt for a dialog that had gone
+          expect(rows()[0]).toBe(secondPageRow);
+
+          searchInput.value = '';
+          hotkeys.renderHotkeysTab();
+          expect(rows()[0].querySelector('.hotkey-input').dataset.entityId).toBe('light.lamp_000');
+        } finally {
+          jest.useRealTimers();
+        }
+      });
+    });
   });
 
   describe('captureHotkey', () => {

@@ -39,7 +39,6 @@ const GERMAN = {
   'View {{index}}': 'Ansicht {{index}}',
   'New View': 'Neue Ansicht',
   'just now': 'gerade eben',
-  '{{count}}m ago': 'vor {{count}} Min.',
 };
 
 function useGerman() {
@@ -58,9 +57,10 @@ describe('entity display state in the active language', () => {
       state: '15.6',
       attributes: { unit_of_measurement: '°C' },
     };
-    expect(utils.getEntityDisplayState(sensor)).toBe('15,6 °C');
-    // Home Assistant's own precision is kept, trailing zero included.
-    expect(utils.getEntityDisplayState({ ...sensor, state: '15.60' })).toBe('15,60 °C');
+    // German writes the unit after a no-break space, so it never wraps onto its own line.
+    expect(utils.getEntityDisplayState(sensor)).toBe('15,6\u00a0°C');
+    // Temperatures read at one decimal, like the tile, whatever precision Home Assistant sent.
+    expect(utils.getEntityDisplayState({ ...sensor, state: '15.60' })).toBe('15,6\u00a0°C');
   });
 
   it('translates binary sensors, scenes, known raw states and climate temperatures', () => {
@@ -82,7 +82,7 @@ describe('entity display state in the active language', () => {
         state: 'heat',
         attributes: { current_temperature: 21.5 },
       })
-    ).toBe('21,5°');
+    ).toBe('21,5\u00a0°C');
     expect(utils.getEntityDisplayState(null)).toBe('Unbekannt');
   });
 
@@ -135,7 +135,7 @@ describe('weather states and newer domains', () => {
     expect(utils.getEntityDisplayState(weather('partlycloudy'))).toBe('Teilweise bewölkt');
     expect(utils.getEntityDisplayState(weather('unavailable'))).toBe('Nicht verfügbar');
     // A condition id the widget does not know stays readable.
-    expect(utils.getEntityDisplayState(weather('volcanic_ash'))).toBe('Volcanic_ash');
+    expect(utils.getEntityDisplayState(weather('volcanic_ash'))).toBe('Volcanic ash');
   });
 
   it('names the newer Home Assistant domains, with a translation in every pack', () => {
@@ -225,13 +225,13 @@ describe('English display changes from the shared state names', () => {
       state,
       attributes,
     });
-    // Measurements get the locale's grouping; Home Assistant's decimals are kept.
-    expect(utils.getEntityDisplayState(sensor('12345'))).toBe('12,345 W');
-    expect(utils.getEntityDisplayState(sensor('-0.50'))).toBe('-0.50 W');
-    expect(utils.getEntityDisplayState(sensor('1e3'))).toBe('1e3 W');
+    // Measurements get the locale's grouping and a no-break space before the unit.
+    expect(utils.getEntityDisplayState(sensor('12345'))).toBe('12,345\u00a0W');
+    expect(utils.getEntityDisplayState(sensor('-0.50'))).toBe('-0.5\u00a0W');
+    expect(utils.getEntityDisplayState(sensor('1e3'))).toBe('1e3\u00a0W');
     expect(utils.getEntityDisplayState(sensor('12345', { state_class: 'total' }))).toBe('12,345');
     // Codes and unitless values stay as Home Assistant sent them, as in its own frontend.
-    expect(utils.getEntityDisplayState(sensor('007'))).toBe('007 W');
+    expect(utils.getEntityDisplayState(sensor('007'))).toBe('007\u00a0W');
     expect(utils.getEntityDisplayState(sensor('2026', {}))).toBe('2026');
     expect(utils.getEntityDisplayState(sensor('01234', {}))).toBe('01234');
     expect(
@@ -240,7 +240,7 @@ describe('English display changes from the shared state names', () => {
         state: 'heat',
         attributes: { current_temperature: 21.12345 },
       })
-    ).toBe('21.123°');
+    ).toBe('21.12°C');
   });
 
   it('names raw states the way the camera dialog status now shows them', () => {
@@ -339,7 +339,9 @@ describe('other shared labels in the active language', () => {
     useGerman();
     const now = Date.parse('2026-07-06T12:00:00Z');
     expect(formatRelativeTime('2026-07-06T12:00:00Z', now)).toBe('gerade eben');
-    expect(formatRelativeTime('2026-07-06T11:45:00Z', now)).toBe('vor 15 Min.');
+    expect(formatRelativeTime('2026-07-06T11:45:00Z', now)).toBe(
+      new Intl.RelativeTimeFormat('de', { numeric: 'auto', style: 'short' }).format(-15, 'minute')
+    );
   });
 });
 
@@ -365,10 +367,8 @@ describe('sensor history summary in the active language', () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
     const summary = body.querySelector('.sensor-history-summary').textContent;
-    expect(summary).toContain('1,5');
-    expect(summary).toContain('2,25');
-    expect(summary).toContain('1,88');
-    expect(summary).not.toContain('1.5');
+    // Every figure has the unit, at the one decimal a temperature reads with.
+    expect(summary).toBe('Minimum 1,5\u00a0°C · Maximum 2,3\u00a0°C · Sample average 1,9\u00a0°C');
     modal.remove();
   });
 });
@@ -383,7 +383,7 @@ describe('left-to-right values in right-to-left languages', () => {
     expect(i18n.isolateLtr('')).toBe('');
   });
 
-  it('keeps the unit after the sensor history average in Arabic', async () => {
+  it('keeps the unit next to every sensor history figure in Arabic', async () => {
     i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: {} });
     const modal = document.createElement('div');
     const body = document.createElement('div');
@@ -399,7 +399,9 @@ describe('left-to-right values in right-to-left languages', () => {
       render: jest.fn(),
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(body.querySelector('.sensor-history-summary').textContent).toMatch(/\u2066°C\u2069$/);
+    // Each figure is isolated with its own unit, so none of them is reordered in the sentence.
+    const summary = body.querySelector('.sensor-history-summary').textContent;
+    expect(summary.match(/\u2066[^\u2069]*°C\u2069/g)).toHaveLength(3);
     modal.remove();
   });
 });

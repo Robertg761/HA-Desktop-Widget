@@ -1,4 +1,5 @@
 const { getClimateControlCapabilities } = require('./climate-controls.cjs');
+const { isTimerLikeSensor } = require('../packages/widget-renderer/src/timer-sensors.cjs');
 
 const DESKTOP_PIN_SUPPORTED_FAMILIES = new Set([
   'light',
@@ -190,33 +191,9 @@ function getDesktopPinDomain(entityOrEntityId = '') {
   return domain;
 }
 
-function isIsoFutureTimestamp(value) {
-  const stateValue = typeof value === 'string' ? value.trim() : '';
-  if (!stateValue || stateValue === 'unavailable' || stateValue === 'unknown') {
-    return false;
-  }
-
-  const iso8601Pattern = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?/;
-  if (!iso8601Pattern.test(stateValue)) {
-    return false;
-  }
-
-  const stateTime = new Date(stateValue).getTime();
-  return !Number.isNaN(stateTime) && stateTime > Date.now();
-}
-
+// One rule for every surface; see isTimerLikeSensor.
 function isTimerSensorEntity(entity) {
-  if (!entity?.entity_id?.startsWith('sensor.')) return false;
-
-  const attrs = entity.attributes || {};
-  return !!(
-    attrs.finishes_at ||
-    attrs.end_time ||
-    attrs.finish_time ||
-    attrs.duration ||
-    entity.entity_id.toLowerCase().includes('timer') ||
-    isIsoFutureTimestamp(entity.state)
-  );
+  return isTimerLikeSensor(entity);
 }
 
 function isTimerLikeEntity(entity) {

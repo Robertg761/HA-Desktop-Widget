@@ -293,6 +293,7 @@ function setDisconnectedStatus(detailMessage = '') {
   const normalizedDetail = typeof detailMessage === 'string' ? detailMessage.trim() : '';
   if (normalizedDetail) {
     lastDisconnectReason = normalizedDetail;
+    settings.refreshHomeAssistantAuthStatus?.();
   }
   uiUtils.setStatus(
     false,
@@ -350,7 +351,7 @@ function getAuthFailureMessage(oauth = usesOAuth()) {
     ? t(
         'Home Assistant rejected the authorization for this app. Reconnect with Home Assistant to continue.'
       )
-    : t('Authentication failed. Please check your Home Assistant token in Settings.');
+    : t('Authentication failed. Check your long-lived access token in Settings.');
 }
 
 function getOAuthReauthRequiredStatus() {
@@ -645,6 +646,8 @@ function getSettingsUiHooks() {
     updateMediaTile: ui.updateMediaTile,
     renderPrimaryCards: ui.renderPrimaryCards,
     updateWeatherEffects: ui.updateWeatherEffects,
+    // What the red connection panel is saying, so Settings does not look healthy beside it.
+    getConnectionState: () => ({ status: mainConnectionState, reason: lastDisconnectReason }),
     refreshLocale: async () => {
       await refreshLocaleBootstrap();
       renderCurrentMode();
@@ -956,6 +959,8 @@ function retryConnection() {
 }
 
 function renderMainWidgetState() {
+  // An open Settings page shows the same connection problem as the panel, so it follows it.
+  settings.refreshHomeAssistantAuthStatus?.();
   // Tiles keep showing what Home Assistant last said while it cannot be reached; the page dims
   // them so a lamp that has since been switched off, or a timer that stopped, does not look live.
   // Connecting counts: every retry and the wait for the first state snapshot after login still
@@ -1266,6 +1271,10 @@ function renderWizardStep() {
     input.id = 'first-run-ha-url';
     input.type = 'text';
     input.placeholder = t('http://homeassistant.local');
+    input.setAttribute('spellcheck', 'false');
+    input.setAttribute('autocapitalize', 'off');
+    input.setAttribute('autocomplete', 'off');
+    input.setAttribute('inputmode', 'url');
     input.value =
       firstRunWizard.urlInput?.value || normalizeBaseUrl(state.CONFIG?.homeAssistant?.url) || '';
     input.addEventListener('input', () => {
@@ -1843,6 +1852,15 @@ function showConfigRecoveryNotice(recovery) {
   uiUtils.showToast(message, 'error', 20000);
 }
 
+// The palette opens with the platform's own modifier: Cmd+K on macOS, Ctrl+K elsewhere (it takes
+// either, but the tip should name the one a person there would reach for).
+function applyPaletteShortcutHint() {
+  const hint = document.getElementById('command-palette-hint');
+  if (!hint) return;
+  const shortcut = window.electronAPI?.platform === 'darwin' ? 'Cmd+K' : 'Ctrl+K';
+  hint.setAttribute('data-i18n-vars', JSON.stringify({ shortcut }));
+}
+
 // The language the window was last drawn in; null until the first locale is applied.
 let appliedLocale = null;
 async function refreshLocaleBootstrap() {
@@ -1850,6 +1868,7 @@ async function refreshLocaleBootstrap() {
   const bootstrap = await window.electronAPI.getLocaleBootstrap();
   setLocaleBootstrap(bootstrap || {});
   if (!IS_DESKTOP_PIN_MODE) refreshTrayEntityIcons({ force: true });
+  applyPaletteShortcutHint();
   translateDocument(document);
   const locale = bootstrap?.activeLocale || '';
   if (appliedLocale !== null && locale !== appliedLocale) refreshConnectionStatusLanguage();
@@ -3127,7 +3146,7 @@ function wireUI() {
           : true;
         if (weatherOverrideGroup) {
           weatherOverrideGroup.style.display =
-            canEnableWeatherEffects && weatherEffectsToggle.checked ? 'block' : 'none';
+            canEnableWeatherEffects && weatherEffectsToggle.checked ? '' : 'none';
         }
         if (settings.previewWindowEffects) {
           settings.previewWindowEffects();
@@ -3259,6 +3278,15 @@ function wireUI() {
         if (!entity) return;
         const isPlaying = entity.state === 'playing';
         ui.callMediaTileService(isPlaying ? 'pause' : 'play');
+      };
+    }
+
+    // The track opens the player's volume, mute and seek, which the card has no controls for.
+    const mediaTileInfo = document.getElementById('media-tile-info');
+    if (mediaTileInfo) {
+      mediaTileInfo.onclick = () => {
+        const entity = state.STATES?.[state.CONFIG.primaryMediaPlayer];
+        if (entity) ui.openEntityControls(entity);
       };
     }
 
@@ -3398,7 +3426,7 @@ function wireUI() {
 
     const hotkeySearch = document.getElementById('hotkey-entity-search');
     if (hotkeySearch) {
-      hotkeySearch.addEventListener('input', hotkeys.renderHotkeysTab);
+      hotkeySearch.addEventListener('input', hotkeys.scheduleHotkeysTabRender);
     }
 
     // Add click handler to widget content to bring window to focus

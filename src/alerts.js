@@ -1,18 +1,41 @@
 import state from './state.js';
 import { createAlertEvaluator } from './alert-rules.js';
 import { showToast } from './ui-utils.js';
-import { getEntityDisplayName, getEntityIcon } from './utils.js';
-import { formatNumericState, t } from './i18n.js';
+import {
+  getEntityDisplayName,
+  getEntityDisplayState,
+  getEntityIcon,
+  isTimerLikeSensor,
+} from './utils.js';
+import { formatStateName } from './format.js';
+import { t } from './i18n.js';
 import { getConnectionIdentity } from './connection.js';
-import trayEntitySupport from './tray-entities.cjs';
 
-// Raw Home Assistant states ("on", "not_home") shown with the same translated names as the
-// tiles and tray; numeric states keep their decimals in the active locale's format.
-function formatAlertState(value) {
-  const key = typeof value === 'string' ? value.trim() : '';
-  if (!key) return t('Unknown');
-  const name = trayEntitySupport.STATE_NAMES[key];
-  return name ? t(name) : formatNumericState(key);
+// The attributes that decide how a state reads (its unit, precision and kind). The rest, such as a
+// light's brightness, describe the entity now rather than the state the alert is about.
+const ALERT_STATE_ATTRIBUTES = [
+  'device_class',
+  'has_time',
+  'state_class',
+  'step',
+  'suggested_display_precision',
+  'temperature_unit',
+  'unit_of_measurement',
+];
+
+// A raw Home Assistant state as the tiles and the palette show it: translated names ("Open",
+// "Away"), numbers in the user's format at the sensor's precision, with their unit.
+function formatAlertState(entityId, value) {
+  const entity = state.STATES?.[entityId];
+  // A timer's state is its run state; the countdown belongs to the entity as it is now.
+  if (!entity || entityId.startsWith('timer.') || isTimerLikeSensor(entity)) {
+    return formatStateName(value);
+  }
+  const attributes = {};
+  ALERT_STATE_ATTRIBUTES.forEach((name) => {
+    if (entity.attributes?.[name] !== undefined) attributes[name] = entity.attributes[name];
+  });
+  return getEntityDisplayState({ ...entity, state: value, attributes });
 }
 
 const evaluator = createAlertEvaluator({
@@ -22,10 +45,10 @@ const evaluator = createAlertEvaluator({
     const message = rule.onStateChange
       ? t('{{name}} changed from {{previousState}} to {{newState}}', {
           name,
-          previousState: formatAlertState(previousState),
-          newState: formatAlertState(newState),
+          previousState: formatAlertState(entityId, previousState),
+          newState: formatAlertState(entityId, newState),
         })
-      : t('{{name}} is now {{newState}}', { name, newState: formatAlertState(newState) });
+      : t('{{name}} is now {{newState}}', { name, newState: formatAlertState(entityId, newState) });
     showEntityAlert(message, entityId);
   },
 });

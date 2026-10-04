@@ -5,6 +5,7 @@ const { isRtlLocale } = rtlLocales;
 let localeState = {
   languageSetting: 'auto',
   detectedLocale: 'en',
+  systemLocale: '',
   requestedLocale: 'en',
   activeLocale: 'en',
   fallbackLocale: 'en',
@@ -14,6 +15,9 @@ let localeState = {
   messages: {},
   installedPacks: [],
 };
+
+// Resolved once per bootstrap (see getFormatLocale); every formatted value asks for it.
+let formatLocale = null;
 
 const TEMPLATE_TOKEN_PATTERN = /\{\{\s*([\w.]+)\s*\}\}/g;
 
@@ -26,6 +30,7 @@ function formatTemplate(template, vars = {}) {
 }
 
 export function setLocaleBootstrap(bootstrap = {}) {
+  formatLocale = null;
   localeState = {
     ...localeState,
     ...bootstrap,
@@ -59,31 +64,87 @@ export function t(key, vars = {}) {
   return formatTemplate(template, vars);
 }
 
+function getBaseLanguage(locale) {
+  return String(locale || '')
+    .split(/[-_]/)[0]
+    .toLowerCase();
+}
+
+function hasRegion(locale) {
+  return /^[A-Za-z]{2,3}[-_](?:[A-Za-z]{2}|\d{3})\b/.test(String(locale || ''));
+}
+
+function isValidLocaleTag(locale) {
+  try {
+    return !!locale && Intl.getCanonicalLocales(locale).length === 1;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The locale numbers, dates, times, units and sort order follow. It is the language the text is
+ * in, with the region of the computer (en-GB, de-CH, es-MX) when that is the same language, so a
+ * British user reads "30/09/2026" and a Mexican one "1,234.5" under the same English or Spanish
+ * catalog. The catalog locale (activeLocale) is only a language: an English-fallback user whose
+ * computer is set to pt-BR, with no Portuguese pack, still gets Brazilian formats.
+ * @returns {string} A BCP 47 tag that Intl accepts.
+ */
+export function getFormatLocale() {
+  if (!formatLocale) formatLocale = resolveFormatLocale();
+  return formatLocale;
+}
+
+function resolveFormatLocale() {
+  const { languageSetting, activeLocale, requestedLocale, detectedLocale, systemLocale } =
+    localeState;
+  const active = activeLocale || 'en';
+  const activeLanguage = getBaseLanguage(active);
+  const isAuto = languageSetting === 'auto';
+  // For an explicit language, a region the user chose (es-MX) beats the computer's.
+  const candidates = isAuto
+    ? [systemLocale, detectedLocale]
+    : [hasRegion(requestedLocale) ? requestedLocale : '', systemLocale, requestedLocale];
+  const sameLanguage = candidates.find(
+    (candidate) => getBaseLanguage(candidate) === activeLanguage && isValidLocaleTag(candidate)
+  );
+  if (sameLanguage) return sameLanguage;
+  if (isAuto && localeState.usingEnglishFallback) {
+    const own =
+      getBaseLanguage(systemLocale) === getBaseLanguage(detectedLocale)
+        ? systemLocale
+        : detectedLocale;
+    if (isValidLocaleTag(own)) return own;
+  }
+  return isValidLocaleTag(active) ? active : 'en';
+}
+
 export function formatDate(date, options = {}) {
   const value = date instanceof Date ? date : new Date(date);
-  return value.toLocaleDateString(localeState.activeLocale || undefined, options);
+  return value.toLocaleDateString(getFormatLocale(), options);
 }
 
 export function formatTime(date, options = {}) {
   const value = date instanceof Date ? date : new Date(date);
-  return value.toLocaleTimeString(localeState.activeLocale || undefined, options);
+  return value.toLocaleTimeString(getFormatLocale(), options);
 }
 
 export function formatDateTime(date, options = {}) {
   const value = date instanceof Date ? date : new Date(date);
-  return value.toLocaleString(localeState.activeLocale || undefined, options);
+  return value.toLocaleString(getFormatLocale(), options);
 }
 
 const numberFormatCache = new Map();
 
-// Formats a number for display in the active language ("15,6" in German). Inputs, slider values
-// and anything sent to Home Assistant keep plain machine numbers; only use this for visible text.
+// Formats a number for display in the user's number format ("15,6" in German). Inputs, slider
+// values and anything sent to Home Assistant keep plain machine numbers; only use this for
+// visible text.
 export function formatNumber(value, options = {}) {
   const number = typeof value === 'number' ? value : Number(value);
   if (value == null || value === '' || !Number.isFinite(number)) {
     return value == null ? '' : String(value);
   }
-  const locale = localeState.activeLocale || 'en';
+  const locale = getFormatLocale();
   const cacheKey = `${locale}|${JSON.stringify(options)}`;
   let formatter = numberFormatCache.get(cacheKey);
   if (!formatter) {
@@ -95,20 +156,6 @@ export function formatNumber(value, options = {}) {
     numberFormatCache.set(cacheKey, formatter);
   }
   return formatter.format(number);
-}
-
-// Formats a numeric state string from Home Assistant ("15.60") in the active language while
-// keeping exactly the decimals Home Assistant sent. Non-numeric text and codes with leading
-// zeros ("007") are returned unchanged.
-export function formatNumericState(value) {
-  const text = typeof value === 'number' ? String(value) : typeof value === 'string' ? value : '';
-  const match = /^\s*-?(?:0|[1-9]\d*)(?:\.(\d+))?\s*$/.exec(text);
-  if (!match) return value == null ? '' : String(value);
-  const decimals = Math.min(match[1]?.length || 0, 20);
-  return formatNumber(Number(text), {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  });
 }
 
 export function getLanguageDisplayName(locale, fallback = '') {

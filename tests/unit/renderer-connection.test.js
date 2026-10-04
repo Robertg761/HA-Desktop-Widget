@@ -346,7 +346,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
 
       expect(mockElectronAPI.refreshHomeAssistantOAuth).not.toHaveBeenCalled();
       expect(panelText()).toContain(
-        'Authentication failed. Please check your Home Assistant token in Settings.'
+        'Authentication failed. Check your long-lived access token in Settings.'
       );
     });
 
