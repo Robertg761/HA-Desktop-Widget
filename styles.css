@@ -15263,9 +15263,18 @@ body[data-season] #settings-modal .modal-content::before {
 }
 
 /* The piece sits in the 52px icon rail, below its icons. Across the rail's edge it was dimmed on
-   one side and sharp on the other, and on the page it covers the section labels. */
+   one side and sharp on the other, and on the page it covers the section labels. The rail blurs
+   what is behind it, so the piece is drawn above the rail instead, out of the way of the pointer. */
 body[data-season] #settings-modal .modal-content::after {
   inset-inline-start: 6px;
+  z-index: 1;
+}
+
+/* In a short window the rail's icons reach the bottom, where the piece would cover them. */
+@media (max-height: 420px) {
+  body[data-season] #settings-modal .modal-content::after {
+    display: none;
+  }
 }
 
 body[data-season] .control-item:nth-child(3n + 2):not(.activating)::after,

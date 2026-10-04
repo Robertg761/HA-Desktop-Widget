@@ -83,6 +83,8 @@ describe('holiday art beside controls', () => {
     // 6px in and 40px wide leaves the piece inside the 52px rail, clear of the page.
     expect(declared(settings, '--season-sit-size')).toBe('40px');
     expect(declared(`${settings}::after`, 'inset-inline-start')).toBe('6px');
+    // The rail blurs what is behind it, so the piece is drawn above the rail.
+    expect(declared(`${settings}::after`, 'z-index')).toBe('1');
   });
 
   it("gives the weather card the clock card's piece where it has none of its own", () => {
