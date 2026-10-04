@@ -321,6 +321,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.querySelector('.room-dashboard-preview').textContent).toContain(
         'Room Temp — 21'
       );
+      // Only the count is a live region: the rows under it are rebuilt on every toggle, and would
+      // be read out again each time if the whole preview were one.
+      const preview = document.querySelector('.room-dashboard-preview');
+      expect(preview.hasAttribute('aria-live')).toBe(false);
+      expect(preview.querySelectorAll('[role="status"]')).toHaveLength(1);
+      expect(preview.querySelector('[role="status"]').textContent).toBe('Page preview: 2 entities');
       const search = document.querySelector('.room-device-search');
       search.value = 'desk';
       search.dispatchEvent(new Event('input'));

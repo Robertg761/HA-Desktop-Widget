@@ -1300,7 +1300,10 @@ function showAddPageModal({ starter = false } = {}) {
   let availableStates = state.STATES;
   const preview = document.createElement('div');
   preview.className = 'room-dashboard-preview';
-  preview.setAttribute('aria-live', 'polite');
+  // Only the count is announced. The rows under it are rebuilt on every toggle, and a live region
+  // around them read up to ten of them out again each time.
+  const title = document.createElement('p');
+  title.setAttribute('role', 'status');
   roomGroup.appendChild(preview);
   const updatePreview = () => {
     const selected = [...roomEntities.querySelectorAll('input:checked')];

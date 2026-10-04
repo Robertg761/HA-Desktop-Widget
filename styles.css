@@ -397,6 +397,15 @@ html {
   /* ============================================
      Z-INDEX SCALE
      ============================================ */
+  /* ============================================
+     DIALOG WIDTH
+     ============================================ */
+
+  /* A dialog that shows a thing's details or a short form (entity details, the media player, Add
+     page, diagnostics, Support). Most of them were 420 to 460px in the default 500px window,
+     depending on which cap their own rule lost to. */
+  --dialog-width: min(450px, 90vw);
+
 
   /* Anything painted at window scale stacks here. Values below 100 are left as
      raw integers on purpose: those are local stacking order inside a single
@@ -7887,7 +7896,8 @@ body.theme-light:not(.high-contrast)
 }
 
 .entity-detail-modal-content {
-  width: min(520px, 92vw);
+  width: var(--dialog-width);
+  max-width: var(--dialog-width);
 }
 
 .entity-detail-empty {
@@ -7897,6 +7907,7 @@ body.theme-light:not(.high-contrast)
 }
 
 /* The line that introduces a dialog's content: the repair explanation, the calendar's date window,
+  font-size: var(--font-size-base);
    a helper's current value. */
 .modal-lead {
   margin: 0 0 var(--space-4);
@@ -8019,9 +8030,12 @@ body.theme-light:not(.high-contrast)
   display: grid;
   gap: 8px;
 }
+/* The window and its dialogs inherit 16px, which is the dialog title's size, so 'Milk' read as big as
+   'Shopping list' and bigger than the 14px Add item field above it. */
 
 .todo-item-row,
 .calendar-event-row {
+  font-size: var(--font-size-base);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.045);
@@ -8108,6 +8122,12 @@ body.theme-light:not(.high-contrast)
   display: block;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
+/* The last field of a dialog needs no margin of its own: the body's padding already closes the
+   dialog, and the two together left 32px under it against 16px above the first one. */
+.modal-body > .form-group:last-child {
+  margin-bottom: 0;
+}
+
   color: var(--text-primary);
   margin-bottom: var(--space-2);
   letter-spacing: 0.01em;
@@ -9837,11 +9857,6 @@ body {
   flex-wrap: wrap;
 }
 
-/* The last field needs no margin of its own: the body's padding already closes the dialog. */
-.rename-modal .modal-body > .form-group:last-child {
-  margin-bottom: 0;
-}
-
 /* Responsive adjustments */
 @media (max-width: 420px) {
   .widget-content {
@@ -10397,8 +10412,8 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
 
 /* Media Detail Modal */
 .media-modal .modal-content {
-  max-width: 460px;
-  width: 90vw;
+  width: var(--dialog-width);
+  max-width: var(--dialog-width);
 }
 
 .media-detail-info {
@@ -11651,7 +11666,8 @@ label.disabled {
 .donate-modal-content {
   display: flex;
   flex-direction: column;
-  max-width: 420px;
+  width: var(--dialog-width);
+  max-width: var(--dialog-width);
   min-width: min(320px, 85vw);
 }
 

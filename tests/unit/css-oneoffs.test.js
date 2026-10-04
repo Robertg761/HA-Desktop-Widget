@@ -296,6 +296,75 @@ describe('stylesheet one-offs', () => {
     });
   });
 
+  describe('dialogs', () => {
+    // A dialog that shows a thing's details or a short form: it was 420 to 460px in the default
+    // window, depending on which cap its own rule lost to.
+    it.each([
+      [
+        'entity detail',
+        '<div class="modal"><div class="modal-content entity-detail-modal-content"></div></div>',
+      ],
+      ['media player', '<div class="modal media-modal"><div class="modal-content"></div></div>'],
+      [
+        'Support',
+        '<div class="modal"><div class="modal-content donate-modal-content"></div></div>',
+      ],
+      [
+        'diagnostics',
+        '<div class="modal dashboard-tools-modal"><div class="modal-content"></div></div>',
+      ],
+      ['Add page', '<div class="modal add-page-modal"><div class="modal-content"></div></div>'],
+    ])('gives the %s dialog the shared detail width', (_, html) => {
+      render(html);
+      const content = document.querySelector('.modal-content');
+      const width = resolvedValue(content, '--dialog-width');
+      expect(width).toBe('min(450px, 90vw)');
+      expect(resolvedValue(content, 'width')).toBe(width);
+      expect(resolvedValue(content, 'max-width')).toBe(width);
+    });
+
+    it('pads the diagnostics and Add page bodies by the 16px the header and footer use', () => {
+      render(
+        '<div class="modal dashboard-tools-modal"><div class="modal-content"><div class="modal-body"></div></div></div>',
+        {}
+      );
+      expect(resolvedValue(document.querySelector('.modal-body'), 'padding')).toBe('1rem');
+    });
+
+    it('closes a dialog with its body padding, not with the last field and the padding', () => {
+      render(
+        '<div class="modal"><div class="modal-content"><div class="modal-body"><div class="form-group" id="first"></div><div class="form-group" id="last"></div></div></div></div>'
+      );
+      expect(resolvedValue(document.querySelector('#first'), 'margin-bottom')).toBe('1rem');
+      expect(resolvedValue(document.querySelector('#last'), 'margin-bottom')).toBe('0');
+    });
+
+    it('sets the to-do and calendar rows below the dialog title', () => {
+      render(
+        '<div class="modal"><div class="modal-content"><div class="modal-body"><div class="todo-items-list"><div class="todo-item-row"><span class="todo-item-summary">Milk</span></div></div><div class="calendar-events-list"><div class="calendar-event-row"><div class="calendar-event-summary">Dentist</div></div></div><p class="entity-detail-empty">Loading</p></div></div></div>'
+      );
+      for (const selector of [
+        '.todo-item-summary',
+        '.calendar-event-summary',
+        '.entity-detail-empty',
+      ]) {
+        expect(resolvedValue(document.querySelector(selector), 'font-size')).toBe('0.875rem');
+      }
+    });
+
+    it('sets the Add page preview in the form’s 12px, not the dialog’s 16px', () => {
+      render(
+        '<div class="room-dashboard-preview"><p>Page preview: 2 entities</p><div class="room-preview-tile">Lamp</div></div>'
+      );
+      expect(
+        resolvedValue(document.querySelector('.room-dashboard-preview > p'), 'font-size')
+      ).toBe('0.75rem');
+      expect(resolvedValue(document.querySelector('.room-preview-tile'), 'font-size')).toBe(
+        '0.75rem'
+      );
+    });
+  });
+
   describe('reduced motion keeps the waiting indicators moving', () => {
     // The blanket "no animation" rule gives every animation 0.01ms and one iteration. A spinner or a
     // progress bar frozen that way reads as a stalled app, and the bar as a finished one.

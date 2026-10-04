@@ -1,13 +1,15 @@
 /* Shared spacing and controls for the dashboard workflows. */
 .dashboard-tools-modal .modal-content,
 .add-page-modal .modal-content {
-  width: min(480px, calc(100vw - 24px));
+  width: var(--dialog-width);
+  max-width: var(--dialog-width);
 }
 
+/* The header and footer pad by --space-5, so the fields start where the title does. */
 .dashboard-tools-modal .modal-body,
 .add-page-modal .modal-body {
   min-height: 0;
-  padding: 20px;
+  padding: var(--space-5);
 }
 
 .workflow-description {
@@ -334,11 +336,6 @@ body:not(.theme-light) .alert-advanced-options input[type='time'] {
 }
 
 @media (max-width: 380px) {
-  .dashboard-tools-modal .modal-body,
-  .add-page-modal .modal-body {
-    padding: 16px;
-  }
-
   .alert-advanced-options,
   .room-dashboard {
     grid-template-columns: minmax(0, 1fr);
@@ -387,13 +384,17 @@ body:not(.theme-light) .alert-advanced-options input[type='time'] {
   grid-column: 1 / -1;
 }
 
+/* The preview inherited the dialog's 16px, louder than the form it previews. */
 .room-device-search[hidden] {
   display: none;
 }
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
 
 /* Search hides rows with the hidden attribute. `.form-group label:has(input[type='checkbox'])` in
    styles.css sets display: flex at higher specificity, so this rule has to outrank it. */
 .room-dashboard .room-entity-list > label[hidden] {
+  font-size: var(--font-size-sm);
   display: none;
 }
 
