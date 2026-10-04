@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.61",
+  "version": "1.2.62",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1815,6 +1815,9 @@
     "{{label}} {{name}}": "{{label}} {{name}}",
     "Yellow": "Amarillo",
     "White": "Blanco",
-    "Sky blue": "Azul cielo"
+    "Sky blue": "Azul cielo",
+    "Update available: v{{version}}. This package cannot update itself; use Download Update to get it from GitHub.": "Actualización disponible: v{{version}}. Este paquete no puede actualizarse solo; usa «Descargar actualización» para obtenerla de GitHub.",
+    "Update available": "Actualización disponible",
+    "Update ready to install": "Actualización lista para instalar"
   }
 }

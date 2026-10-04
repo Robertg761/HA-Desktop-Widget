@@ -350,5 +350,13 @@
   "Entity Shortcuts": {
     "retiredIn": "4.0.0",
     "reason": "The group's caption translated like its only row, Entity hotkeys, in most languages; it is now just Entities"
+  },
+  "This package does not support in-app updates. Open Releases to download the latest build.": {
+    "retiredIn": "4.0.0",
+    "reason": "The manual-update status names an update and the button that gets it, with the version inside the sentence"
+  },
+  "Install Update": {
+    "retiredIn": "4.0.0",
+    "reason": "The Settings button reads Install update, like the update panel that sets it"
   }
 }

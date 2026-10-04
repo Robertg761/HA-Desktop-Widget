@@ -116,7 +116,6 @@
   "Loading...": "Loading...",
   "Checking for updates...": "Checking for updates...",
   "Check for Updates": "Check for Updates",
-  "Install Update": "Install Update",
   "Receive beta updates": "Receive beta updates",
   "Opt in to GitHub prerelease builds for testing. Stable users will not receive these builds.": "Opt in to GitHub prerelease builds for testing. Stable users will not receive these builds.",
   "Show/Hide": "Show/Hide",
@@ -339,7 +338,6 @@
   "Auto-updates only work in packaged builds": "Auto-updates only work in packaged builds",
   "Download Portable Update": "Download Portable Update",
   "Download Update": "Download Update",
-  "This package does not support in-app updates. Open Releases to download the latest build.": "This package does not support in-app updates. Open Releases to download the latest build.",
   "Downloading update...": "Downloading update...",
   "Ready to check for updates": "Ready to check for updates",
   "Update available: v{{version}}": "Update available: v{{version}}",
@@ -1721,5 +1719,8 @@
   "{{label}} {{name}}": "{{label}} {{name}}",
   "Yellow": "Yellow",
   "White": "White",
-  "Sky blue": "Sky blue"
+  "Sky blue": "Sky blue",
+  "Update available: v{{version}}. This package cannot update itself; use Download Update to get it from GitHub.": "Update available: v{{version}}. This package cannot update itself; use Download Update to get it from GitHub.",
+  "Update available": "Update available",
+  "Update ready to install": "Update ready to install"
 }

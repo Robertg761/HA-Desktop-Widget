@@ -15225,9 +15225,17 @@ function toggleQuickAccess(entityId) {
 let updateStatusRender = null;
 
 // Re-renders the Settings update status line in the current language.
+// What the install/download button says right now, kept as a function so a language change can say
+// it again: it is "Install update", "Download update" or "Download portable update" by state.
+let installUpdateLabelRender = () => t('Install update');
+
 function relocalizeUpdateStatus() {
   const updateStatusText = document.getElementById('update-status-text');
   if (updateStatusText && updateStatusRender) updateStatusText.textContent = updateStatusRender();
+  const checkUpdatesLabel = document.getElementById('check-updates-text');
+  if (checkUpdatesLabel) checkUpdatesLabel.textContent = t('Check for updates');
+  const installUpdateLabel = document.getElementById('install-update-text');
+  if (installUpdateLabel) installUpdateLabel.textContent = installUpdateLabelRender();
 }
 
 function initUpdateUI() {
@@ -15241,11 +15249,14 @@ function initUpdateUI() {
       currentVersionEl.textContent = version;
     }
 
-    // The button labels are owned here (ids on the i18n guardrail's dynamic list).
-    const checkUpdatesLabel = document.getElementById('check-updates-text');
-    if (checkUpdatesLabel) checkUpdatesLabel.textContent = t('Check for updates');
-    const installUpdateLabel = document.getElementById('install-update-text');
-    if (installUpdateLabel) installUpdateLabel.textContent = t('Install update');
+    // The button labels are owned here (ids on the i18n guardrail's dynamic list), and written into
+    // their spans: setting the button's own text would replace the span, and with it the label that
+    // a language change translates again.
+    const setInstallUpdateLabel = (render) => {
+      installUpdateLabelRender = render;
+      relocalizeUpdateStatus();
+    };
+    setInstallUpdateLabel(() => t('Install update'));
 
     // Wire up check for updates button
     const checkUpdatesBtn = document.getElementById('check-updates-btn');
@@ -15297,8 +15308,9 @@ function initUpdateUI() {
             setCheckUpdatesDisabled(false);
             if (installUpdateBtn) {
               if (portableDownloadUrl) {
-                installUpdateBtn.textContent =
-                  result.status === 'manual' ? t('Download Update') : t('Download Portable Update');
+                setInstallUpdateLabel(() =>
+                  result.status === 'manual' ? t('Download Update') : t('Download Portable Update')
+                );
                 installUpdateBtn.classList.remove('hidden');
               } else {
                 installUpdateBtn.classList.add('hidden');
@@ -15364,7 +15376,9 @@ function initUpdateUI() {
           case 'available':
             portableDownloadUrl = null;
             showUpdateStatus(() =>
-              t('Update available: v{{version}}', { version: data.info?.version || 'unknown' })
+              data.info?.version
+                ? t('Update available: v{{version}}', { version: data.info.version })
+                : t('Update available')
             );
             setCheckUpdatesDisabled(false);
             if (updateProgress) updateProgress.classList.remove('hidden');
@@ -15393,13 +15407,13 @@ function initUpdateUI() {
           case 'downloaded':
             portableDownloadUrl = null;
             showUpdateStatus(() =>
-              t('Update v{{version}} ready to install', {
-                version: data.info?.version || 'unknown',
-              })
+              data.info?.version
+                ? t('Update v{{version}} ready to install', { version: data.info.version })
+                : t('Update ready to install')
             );
             setCheckUpdatesDisabled(false);
             if (installUpdateBtn) {
-              installUpdateBtn.textContent = t('Install update');
+              setInstallUpdateLabel(() => t('Install update'));
               installUpdateBtn.classList.remove('hidden');
             }
             if (updateProgress) updateProgress.classList.add('hidden');
@@ -15426,8 +15440,9 @@ function initUpdateUI() {
             setCheckUpdatesDisabled(false);
             if (installUpdateBtn) {
               if (portableDownloadUrl) {
-                installUpdateBtn.textContent =
-                  data.status === 'manual' ? t('Download Update') : t('Download Portable Update');
+                setInstallUpdateLabel(() =>
+                  data.status === 'manual' ? t('Download Update') : t('Download Portable Update')
+                );
                 installUpdateBtn.classList.remove('hidden');
               } else {
                 installUpdateBtn.classList.add('hidden');

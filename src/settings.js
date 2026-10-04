@@ -5005,15 +5005,6 @@ function isSettingsModalOpen() {
   return !!modal && !modal.classList.contains('hidden') && modal.style.display !== 'none';
 }
 
-function renderUpdateButtonLabels() {
-  // The update buttons' labels live in spans the update UI owns, so they are translated here
-  // rather than with data-i18n.
-  const checkUpdatesText = document.getElementById('check-updates-text');
-  if (checkUpdatesText) checkUpdatesText.textContent = t('Check for Updates');
-  const installUpdateText = document.getElementById('install-update-text');
-  if (installUpdateText) installUpdateText.textContent = t('Install Update');
-}
-
 function getSettingsLocaleSignature() {
   const { activeLocale, usingEnglishFallback, messages } = getLocaleState();
   return `${activeLocale}|${!!usingEnglishFallback}|${Object.keys(messages || {}).length}`;
@@ -5056,7 +5047,6 @@ function relocalizeOpenSettings({ force = false } = {}) {
     updateLanguageSummaryText();
     if (profileSyncStatusCache) updateProfileSyncStatusUi(profileSyncStatusCache);
     renderProfileSyncBackups();
-    renderUpdateButtonLabels();
     settingsUiHooks?.relocalizeUpdateStatus?.();
     syncFrostedGlassAvailability();
     syncWeatherEffectsAvailability();
@@ -5394,8 +5384,6 @@ async function openSettings(uiHooks) {
         renderAlertsListInline();
       }
     }
-
-    renderUpdateButtonLabels();
 
     // Call UI hooks passed from renderer.js
     if (uiHooks) {

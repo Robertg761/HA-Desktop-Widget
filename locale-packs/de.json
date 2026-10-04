@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.61",
+  "version": "1.2.62",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget, including German date and time formats.",
   "messages": {
@@ -1815,6 +1815,9 @@
     "{{label}} {{name}}": "{{label}} {{name}}",
     "Yellow": "Gelb",
     "White": "Weiß",
-    "Sky blue": "Himmelblau"
+    "Sky blue": "Himmelblau",
+    "Update available: v{{version}}. This package cannot update itself; use Download Update to get it from GitHub.": "Update verfügbar: v{{version}}. Dieses Paket kann sich nicht selbst aktualisieren; lade es mit „Update herunterladen“ von GitHub herunter.",
+    "Update available": "Update verfügbar",
+    "Update ready to install": "Update bereit zur Installation"
   }
 }

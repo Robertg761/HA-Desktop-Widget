@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.61",
+  "version": "1.2.62",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1815,6 +1815,9 @@
     "{{label}} {{name}}": "{{label}} {{name}}",
     "Yellow": "Jaune",
     "White": "Blanc",
-    "Sky blue": "Bleu ciel"
+    "Sky blue": "Bleu ciel",
+    "Update available: v{{version}}. This package cannot update itself; use Download Update to get it from GitHub.": "Mise à jour disponible : v{{version}}. Ce paquet ne peut pas se mettre à jour seul ; utilisez « Télécharger la mise à jour » pour l'obtenir depuis GitHub.",
+    "Update available": "Mise à jour disponible",
+    "Update ready to install": "Mise à jour prête à être installée"
   }
 }
