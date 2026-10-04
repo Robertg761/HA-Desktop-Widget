@@ -502,14 +502,16 @@ const FORMAT_SIZE = { width: 520, height: 1040 };
 // The list of entities is shown only while the Entity hotkeys switch is on, so every scene that
 // photographs it turns the switch on.
 const hotkeysOn = { globalHotkeys: { enabled: true, hotkeys: {} } };
-// Hotkeys for two rows, so the Hotkeys scenes show a row with a hotkey beside one without.
+// Hotkeys for two rows, so the Hotkeys scenes show a row with a hotkey beside one without. The list
+// is in name order, so the second is a row that sits among the first few the "light" search shows
+// (the Colour strip comes before the Desk lamp, whose hotkey fell below the fold).
 const hotkeyPage = {
   ...edgePage,
   globalHotkeys: {
     enabled: true,
     hotkeys: {
       'light.hallway_ceiling_long': { hotkey: 'Ctrl+Shift+Space', action: 'toggle' },
-      'light.desk_lamp': { hotkey: 'Ctrl+Alt+L', action: 'toggle' },
+      'light.colour_strip': { hotkey: 'Ctrl+Alt+L', action: 'toggle' },
     },
   },
 };
