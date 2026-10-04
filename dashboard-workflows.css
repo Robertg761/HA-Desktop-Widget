@@ -257,14 +257,19 @@
   gap: 16px;
 }
 
+/* The alert dialog's field labels take the shared form label colour, as the entity picker's do: they
+   were the one set in the secondary colour. */
 .alert-advanced-options label,
 .sensor-history-controls label {
   display: grid;
   gap: 8px;
   margin: 0;
-  color: var(--text-secondary);
   font-size: var(--font-size-sm);
   line-height: 1.5;
+}
+
+.sensor-history-controls label {
+  color: var(--text-secondary);
 }
 
 /* Two fields side by side line up at the bottom when one label wraps to a second line. */
@@ -279,6 +284,8 @@
   grid-column: 1 / -1;
 }
 
+/* A switch row is a heading for the fields under it, so its label is a step larger than theirs
+   (the shared checkbox-label rule sets it; written here so it is not left to that). */
 .alert-advanced-options .workflow-checkbox {
   display: flex;
   justify-content: space-between;
@@ -286,6 +293,7 @@
   padding-top: 16px;
   border-top: 1px solid var(--border-color);
   color: var(--text-primary);
+  font-size: var(--font-size-base);
 }
 
 /* The toggle switch from styles.css carries a trailing margin meant for leading checkboxes. */
@@ -303,7 +311,7 @@
 
 .alert-advanced-options > .form-group > label {
   margin-bottom: 8px;
-  color: inherit;
+  color: var(--text-primary);
   font-weight: inherit;
   letter-spacing: normal;
 }

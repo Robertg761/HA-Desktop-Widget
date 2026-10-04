@@ -603,6 +603,37 @@ describe('stylesheet one-offs', () => {
     });
   });
 
+  describe('the alert dialog’s labels', () => {
+    const dialog = `<div class="modal" id="alert-config-modal"><div class="modal-body">
+      <div class="form-group alert-advanced-options">
+        <label id="field"><span>Threshold</span><input type="number" /></label>
+        <label id="switch" class="workflow-checkbox"><span>Enable quiet hours</span><input type="checkbox" /></label>
+        <div class="form-group" id="target"><label id="state">Target state</label></div>
+      </div>
+      <div class="sensor-history-controls"><label id="history">Period</label></div>
+    </div></div>`;
+
+    it('takes the shared form label colour, like the entity picker’s labels', () => {
+      render(dialog);
+      const shared = resolvedValue(document.body, '--text-primary');
+      expect(resolvedValue(document.querySelector('#field'), 'color')).toBe(shared);
+      expect(resolvedValue(document.querySelector('#state'), 'color')).toBe(shared);
+    });
+
+    it('sets a switch row a step larger than the fields under it, on purpose', () => {
+      render(dialog);
+      expect(resolvedValue(document.querySelector('#switch'), 'font-size')).toBe('0.875rem');
+      expect(resolvedValue(document.querySelector('#field'), 'font-size')).toBe('0.75rem');
+    });
+
+    it('leaves the history dialog’s labels in the secondary colour', () => {
+      render(dialog);
+      expect(resolvedValue(document.querySelector('#history'), 'color')).toBe(
+        resolvedValue(document.body, '--text-secondary')
+      );
+    });
+  });
+
   describe('reduced motion keeps the waiting indicators moving', () => {
     // The blanket "no animation" rule gives every animation 0.01ms and one iteration. A spinner or a
     // progress bar frozen that way reads as a stalled app, and the bar as a finished one.
