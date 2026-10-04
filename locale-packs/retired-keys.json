@@ -323,6 +323,54 @@
     "retiredIn": "4.0.0",
     "reason": "Shortened before release: the first wording wrapped to three lines at 500px and four at 340px, over the bottom tile row"
   },
+  "{{count}}m ago": {
+    "retiredIn": "4.0.0",
+    "reason": "Notification ages now use the language's own relative time format"
+  },
+  "{{count}}h ago": {
+    "retiredIn": "4.0.0",
+    "reason": "Notification ages now use the language's own relative time format"
+  },
+  "{{count}}d ago": {
+    "retiredIn": "4.0.0",
+    "reason": "Notification ages now use the language's own relative time format"
+  },
+  "Showing {{shown}} of {{total}} icons for \"{{query}}\".": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded with curly quotes around the search: Showing {{shown}} of {{total}} icons for “{{query}}”."
+  },
+  "No matching icons found.": {
+    "retiredIn": "4.0.0",
+    "reason": "Replaced by one line that names the search and suggests what to try: No icons match “{{query}}”. Try a simpler word, or paste an emoji."
+  },
+  "This computer and the sync file have different settings for {{sections}}. Keep this computer’s and upload them, or replace them with the file’s. Either way, the replaced settings are backed up.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to say \"this computer’s settings\" and \"the sync file’s\" in full, matching the renamed buttons"
+  },
+  "This computer and the sync file have different settings. Keep this computer’s and upload them, or replace them with the file’s. Either way, the replaced settings are backed up.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to say \"this computer’s settings\" and \"the sync file’s\" in full, matching the renamed buttons"
+  },
+  "The sync file's {{sections}} settings are damaged. Keep this computer's to repair them; the damaged copy is backed up first.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to say \"this computer’s settings\", matching the renamed buttons"
+  },
+  "Keep Local (Upload)": {
+    "retiredIn": "4.0.0",
+    "reason": "Button renamed to This computer (upload)"
+  },
+  "Use Remote (Download)": {
+    "retiredIn": "4.0.0",
+    "reason": "Button renamed to Sync file (download)"
+  },
+  "Unavailable entities on this connection: {{count}}.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to Entities not found on this connection: {{count}}. so they are not confused with entities that are unavailable"
+  },
+  "System default": {
+    "retiredIn": "4.0.0",
+    "reason": "Time format reads Automatic: Electron cannot read the operating system's 12/24-hour switch, so the option follows the language and region"
+  },
   "Global hotkeys enabled": {
     "retiredIn": "4.0.0",
     "reason": "Reworded: the switch is labelled Entity hotkeys, and the popup hotkey is not part of it"

@@ -299,6 +299,8 @@ const withPage = (set, activeTabId = 'default') => ({
   activeTabId,
 });
 const edgePage = withPage('edge');
+const formatsPage = withPage('formats');
+const FORMAT_SIZE = { width: 520, height: 1040 };
 // Hotkeys for two rows, so the Hotkeys scenes show a row with a hotkey beside one without.
 const hotkeyPage = {
   ...edgePage,
@@ -1743,6 +1745,20 @@ const scenes = [
     size: DEFAULT_SIZE,
     ui: { language: 'de' },
     setup: (ctx) => openPaletteFor(ctx, 'a'),
+  },
+  // Readings and states written in each language: precision and unit spacing, device class words,
+  // timestamps, a duration, a paused timer and the next calendar events. A taller window shows them all.
+  ...[undefined, 'de', 'ar'].map((language) => ({
+    name: language ? `format-main-${language}` : 'format-main',
+    size: FORMAT_SIZE,
+    ui: language ? { language } : {},
+    config: formatsPage,
+  })),
+  {
+    name: 'format-palette-fr',
+    size: FORMAT_SIZE,
+    ui: { language: 'fr' },
+    setup: (ctx) => openPaletteFor(ctx, 'temp'),
   },
   // Home Assistant goes away with a full page of tiles: the panel is above them without a scroll,
   // and they are dimmed.

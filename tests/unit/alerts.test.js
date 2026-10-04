@@ -18,6 +18,7 @@ jest.mock('../../src/ui-utils.js', () => ({
 }));
 
 jest.mock('../../src/utils.js', () => ({
+  ...jest.requireActual('../../src/utils.js'),
   getStateDisplayLabel: jest.fn((rawState) => rawState),
   getEntityDisplayName: jest.fn((entity) => {
     if (!entity) return 'Unknown Entity';
@@ -512,6 +513,89 @@ describe('alerts module', () => {
       });
     });
 
+    describe('alert messages read like the tiles', () => {
+      it('rounds a numeric reading to its sensor precision and adds its unit', () => {
+        mockState.STATES['sensor.load'] = {
+          entity_id: 'sensor.load',
+          state: '0.7160215353965759',
+          attributes: { friendly_name: 'Load', unit_of_measurement: 'kW' },
+        };
+        mockState.CONFIG.entityAlerts.alerts['sensor.load'] = {
+          onNumericThreshold: true,
+          threshold: 0.5,
+        };
+        alerts.initializeEntityAlerts();
+
+        alerts.checkEntityAlerts('sensor.load', '0.7160215353965759');
+        expect(showToast).toHaveBeenLastCalledWith('Load is now 0.72\u00a0kW', 'info', 4000);
+
+        mockState.STATES['sensor.garage'] = {
+          entity_id: 'sensor.garage',
+          state: '31.43',
+          attributes: {
+            friendly_name: 'Garage temperature',
+            unit_of_measurement: '°C',
+            device_class: 'temperature',
+          },
+        };
+        mockState.CONFIG.entityAlerts.alerts['sensor.garage'] = {
+          onNumericThreshold: true,
+          threshold: 30,
+        };
+        alerts.initializeEntityAlerts();
+        alerts.checkEntityAlerts('sensor.garage', '31.43');
+        expect(showToast).toHaveBeenLastCalledWith(
+          'Garage temperature is now 31.4°C',
+          'info',
+          4000
+        );
+      });
+
+      it('uses device class words and names for states that used to show raw', () => {
+        mockState.STATES['binary_sensor.door'] = {
+          entity_id: 'binary_sensor.door',
+          state: 'on',
+          attributes: { friendly_name: 'Front door', device_class: 'door' },
+        };
+        mockState.STATES['sun.sun'] = {
+          entity_id: 'sun.sun',
+          state: 'below_horizon',
+          attributes: { friendly_name: 'Sun' },
+        };
+        mockState.CONFIG.entityAlerts.alerts['binary_sensor.door'] = { onStateChange: true };
+        mockState.CONFIG.entityAlerts.alerts['sun.sun'] = { onStateChange: true };
+        alerts.initializeEntityAlerts();
+
+        alerts.checkEntityAlerts('binary_sensor.door', 'off');
+        alerts.checkEntityAlerts('binary_sensor.door', 'on');
+        expect(showToast).toHaveBeenLastCalledWith(
+          'Front door changed from Closed to Open',
+          'info',
+          4000
+        );
+        alerts.checkEntityAlerts('sun.sun', 'above_horizon');
+        alerts.checkEntityAlerts('sun.sun', 'below_horizon');
+        expect(showToast).toHaveBeenLastCalledWith(
+          'Sun changed from Above horizon to Below horizon',
+          'info',
+          4000
+        );
+      });
+
+      it('does not turn a light alert into its brightness', () => {
+        mockState.STATES['light.lamp'] = {
+          entity_id: 'light.lamp',
+          state: 'on',
+          attributes: { friendly_name: 'Lamp', brightness: 128 },
+        };
+        mockState.CONFIG.entityAlerts.alerts['light.lamp'] = { onStateChange: true };
+        alerts.initializeEntityAlerts();
+        alerts.checkEntityAlerts('light.lamp', 'off');
+        alerts.checkEntityAlerts('light.lamp', 'on');
+        expect(showToast).toHaveBeenLastCalledWith('Lamp changed from Off to On', 'info', 4000);
+      });
+    });
+
     describe('translated alert messages', () => {
       const i18n = require('../../src/i18n.js');
       afterEach(() => i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} }));
@@ -545,7 +629,7 @@ describe('alerts module', () => {
 
         alerts.checkEntityAlerts('sensor.temperature', '21.5');
         expect(showToast).toHaveBeenLastCalledWith(
-          expect.stringMatching(/ist jetzt 21,5$/),
+          expect.stringMatching(/ist jetzt 21,5\u00a0°C$/),
           'info',
           4000
         );

@@ -57,13 +57,22 @@ import {
 } from './primary-cards.js';
 import {
   formatDate,
-  formatDateTime,
   formatNumber,
+  getFormatLocale,
   getLanguageDisplayName,
   getLocaleState,
   isolateLtr,
   t,
 } from './i18n.js';
+import {
+  compareNames,
+  foldSearchMarks,
+  formatClockDateTime,
+  formatClockTime,
+  formatList,
+  formatPercent,
+  getClockFaceTimeOptions,
+} from './format.js';
 import {
   SHOW_DURATION_MS,
   findActiveHoliday,
@@ -265,7 +274,7 @@ function isAvailableWeatherEntity(entity) {
 function getAvailableWeatherEntities() {
   return Object.values(state.STATES || {})
     .filter(isAvailableWeatherEntity)
-    .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)));
+    .sort((a, b) => compareNames(utils.getEntityDisplayName(a), utils.getEntityDisplayName(b)));
 }
 
 // Desktop layer mode keeps the widget behind normal windows, so it has no use for being on top or
@@ -347,7 +356,7 @@ const CUSTOM_ENTITY_ICON_SEARCH_ALIASES = {
   '💡': ['light', 'lamp', 'bulb'],
   '🔌': ['plug', 'socket', 'power'],
   '💨': ['fan', 'wind', 'air'],
-  '🌡️': ['temperature', 'thermometer', 'temp'],
+  '🌡️': ['temperature', 'thermometer', 'temp', 'thermostat', 'climate', 'hvac'],
   '💧': ['humidity', 'water', 'moisture'],
   '🔋': ['battery', 'charge', 'power'],
   '⚡': ['energy', 'electric', 'power'],
@@ -362,7 +371,7 @@ const CUSTOM_ENTITY_ICON_SEARCH_ALIASES = {
   '📷': ['camera', 'snapshot'],
   '🔒': ['lock', 'locked', 'secure'],
   '🔓': ['unlock', 'unlocked', 'open'],
-  '🏠': ['home', 'house'],
+  '🏠': ['home', 'house', 'garage'],
   '✈️': ['away', 'travel', 'vacation'],
   '⏲️': ['timer', 'countdown', 'clock'],
   '🛡️': ['security', 'shield', 'alarm'],
@@ -378,6 +387,37 @@ const CUSTOM_ENTITY_ICON_SEARCH_ALIASES = {
   '🛏️': ['bedroom', 'bed', 'sleep'],
   '🍳': ['kitchen', 'cook', 'food'],
   '🚿': ['bathroom', 'shower'],
+  // Devices Home Assistant users name their entities after. The emoji catalog carries no words of
+  // its own, so a search for these finds nothing without them.
+  '📺': ['tv', 'television', 'screen'],
+  '🖥️': ['computer', 'desktop', 'monitor', 'pc', 'screen'],
+  '💻': ['computer', 'laptop', 'pc'],
+  '🚗': ['car', 'garage', 'vehicle', 'auto'],
+  '🚙': ['car', 'suv', 'vehicle'],
+  '🐶': ['dog', 'puppy', 'pet'],
+  '🐕': ['dog', 'pet'],
+  '🐱': ['cat', 'kitten', 'pet'],
+  '🐈': ['cat', 'pet'],
+  '🧺': ['laundry', 'washer', 'washing machine', 'dryer'],
+  '🫧': ['washer', 'washing machine', 'dishwasher', 'bubbles'],
+  '🧼': ['soap', 'wash', 'washer', 'dishwasher'],
+  '🧊': ['fridge', 'refrigerator', 'freezer', 'ice'],
+  '📡': ['router', 'antenna', 'satellite'],
+  '🛜': ['wifi', 'router', 'wireless', 'network'],
+  '📶': ['wifi', 'signal', 'network', 'router'],
+  '🌐': ['network', 'internet', 'router'],
+  '🔔': ['doorbell', 'bell', 'chime', 'notification'],
+  '🛎️': ['doorbell', 'bell'],
+  '🔊': ['speaker', 'sound', 'volume', 'audio'],
+  '🔉': ['speaker', 'sound', 'volume'],
+  '☕': ['coffee', 'tea', 'kettle', 'mug'],
+  '🖨️': ['printer'],
+  '📱': ['phone', 'mobile'],
+  '🚨': ['alarm', 'siren', 'smoke'],
+  '🧯': ['smoke', 'fire extinguisher'],
+  '🪴': ['plant', 'garden'],
+  '📬': ['mailbox', 'mail', 'post'],
+  '📦': ['package', 'parcel', 'delivery'],
 };
 const PROFILE_SYNC_DEFAULT_FILE_NAME = 'ha-widget-profile-sync.json';
 // Main enforces the same minimum (PROFILE_SYNC_MIN_PASSPHRASE_LENGTH in main.js); checking it
@@ -682,11 +722,15 @@ function getIconCodepointTerms(icon) {
   return [...perCodepoint, codepoints.join('-')];
 }
 
+// Letters, numbers and the combining marks inside words stay in a search token, in every script;
+// only punctuation is dropped. An ASCII-only filter made a Chinese, Arabic or accented query
+// vanish, and an empty query matches every icon. Accents fold away like in every other search, but
+// Hindi vowel signs do not: "कुत्ता" stays one word.
 function normalizeEmojiSearchToken(term) {
-  return String(term || '')
+  return foldSearchMarks(term)
     .toLowerCase()
     .trim()
-    .replace(/[^a-z0-9+#_-]+/g, '');
+    .replace(/[^\p{L}\p{M}\p{N}+#_-]+/gu, '');
 }
 
 function stemEmojiSearchToken(term) {
@@ -744,7 +788,8 @@ function isNearMatchByEditDistance(left, right) {
   if (!a || !b) return false;
 
   if (a === b) return true;
-  if (a.includes(b) || b.includes(a)) return true;
+  // A short word inside a long one ("tv" in "activity") is not a near match.
+  if (a.includes(b)) return true;
 
   const maxDistance = a.length <= 4 || b.length <= 4 ? 1 : 2;
   if (Math.abs(a.length - b.length) > maxDistance) return false;
@@ -775,7 +820,8 @@ function choiceMatchesAlternativeGroup(choice, alternatives, allowFuzzy = false)
   return alternatives.some((term) =>
     choice.searchTerms.some((choiceTerm) => {
       if (choiceTerm.includes(term)) return true;
-      return allowFuzzy ? isNearMatchByEditDistance(choiceTerm, term) : false;
+      // Short words are too close to everything for an edit distance to mean anything.
+      return allowFuzzy && term.length >= 4 ? isNearMatchByEditDistance(choiceTerm, term) : false;
     })
   );
 }
@@ -913,13 +959,19 @@ function getFilteredCustomEntityIconChoices(filterValue = '') {
   if (!rawFilter) return choices;
 
   const alternativeGroups = buildEmojiSearchAlternativeGroups(rawFilter);
-  if (!alternativeGroups.length) return choices;
 
+  // The text as typed is checked first, so a pasted emoji finds itself even though it has no
+  // letters to make a keyword of.
   const strictMatches = choices.filter((choice) => {
     if (choice.searchText.includes(rawFilter)) return true;
-    return alternativeGroups.every((group) => choiceMatchesAlternativeGroup(choice, group, false));
+    return (
+      alternativeGroups.length > 0 &&
+      alternativeGroups.every((group) => choiceMatchesAlternativeGroup(choice, group, false))
+    );
   });
   if (strictMatches.length) return strictMatches;
+  // A query with nothing to search by matches nothing, not everything.
+  if (!alternativeGroups.length) return [];
 
   // Fallback: fuzzy category search when exact tokens miss.
   return choices.filter((choice) =>
@@ -2255,9 +2307,10 @@ function getPrimaryCardEntityOptions(filter = '') {
     .filter((item) => item.score > 0)
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
-      return utils
-        .getEntityDisplayName(a.entity)
-        .localeCompare(utils.getEntityDisplayName(b.entity));
+      return compareNames(
+        utils.getEntityDisplayName(a.entity),
+        utils.getEntityDisplayName(b.entity)
+      );
     });
 }
 
@@ -2539,6 +2592,19 @@ function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '
   const filteredChoices = getFilteredCustomEntityIconChoices(filterValue);
   pickerEl.innerHTML = '';
 
+  // Nothing matched: one line that says so and what to try, not a count of zero above a second line.
+  if (!filteredChoices.length) {
+    const emptyState = document.createElement('div');
+    emptyState.className = 'custom-entity-icon-picker-empty';
+    emptyState.setAttribute('role', 'status');
+    emptyState.textContent = t(
+      'No icons match “{{query}}”. Try a simpler word, or paste an emoji.',
+      { query: filterValue }
+    );
+    pickerEl.appendChild(emptyState);
+    return;
+  }
+
   const shownChoices = filteredChoices.slice(0, CUSTOM_ENTITY_ICON_PICKER_LIMIT);
   const summary = document.createElement('div');
   summary.className = 'custom-entity-icon-picker-meta';
@@ -2548,26 +2614,18 @@ function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '
     summary.textContent = t(
       'Showing the first {{shown}} of {{count}} icons. Type to narrow them.',
       {
-        shown: shownChoices.length,
-        count: filteredChoices.length,
+        shown: formatNumber(shownChoices.length),
+        count: formatNumber(filteredChoices.length),
       }
     );
   } else {
-    summary.textContent = t('Showing {{shown}} of {{total}} icons for "{{query}}".', {
-      shown: filteredChoices.length,
-      total: choices.length,
+    summary.textContent = t('Showing {{shown}} of {{total}} icons for “{{query}}”.', {
+      shown: formatNumber(filteredChoices.length),
+      total: formatNumber(choices.length),
       query: filterValue,
     });
   }
   pickerEl.appendChild(summary);
-
-  if (!filteredChoices.length) {
-    const emptyState = document.createElement('div');
-    emptyState.className = 'custom-entity-icon-picker-empty';
-    emptyState.textContent = t('No matching icons found.');
-    pickerEl.appendChild(emptyState);
-    return;
-  }
 
   const grid = document.createElement('div');
   grid.className = 'custom-entity-icon-picker-grid';
@@ -2975,7 +3033,10 @@ function updateOpacityReadout() {
   const readout = document.getElementById('opacity-value');
   if (!slider || !readout) return;
   const opacity = sliderValueToOpacity(parseInt(slider.value, 10) || 90, state.CONFIG?.opacity);
-  readout.textContent = `${Math.round(opacity * 100)}%`;
+  const text = formatPercent(Math.round(opacity * 100));
+  readout.textContent = text;
+  // The thumb's position (1 to 100) is not the opacity; a screen reader announces the percentage.
+  slider.setAttribute('aria-valuetext', text);
 }
 
 /**
@@ -3300,7 +3361,7 @@ function formatProfileSyncTimestamp(isoString) {
   if (!isoString) return t('never');
   const value = Date.parse(isoString);
   if (Number.isNaN(value)) return t('never');
-  return formatDateTime(value, { dateStyle: 'medium', timeStyle: 'short' });
+  return formatClockDateTime(value);
 }
 
 const PROFILE_SYNC_SECTION_LABEL_KEYS = {
@@ -3311,12 +3372,12 @@ const PROFILE_SYNC_SECTION_LABEL_KEYS = {
 };
 
 function formatProfileSyncSectionList(sectionKeys = []) {
-  return sectionKeys
+  const labels = sectionKeys
     .map((key) =>
       PROFILE_SYNC_SECTION_LABEL_KEYS[key] ? t(PROFILE_SYNC_SECTION_LABEL_KEYS[key]) : ''
     )
-    .filter(Boolean)
-    .join(', ');
+    .filter(Boolean);
+  return formatList(labels);
 }
 
 /**
@@ -3476,25 +3537,25 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
       // The file's copy is unreadable, so only this computer's can be kept.
       if (resolutionHelp) {
         resolutionHelp.textContent = t(
-          "The sync file's {{sections}} settings are damaged. Keep this computer's to repair them; the damaged copy is backed up first.",
+          "The sync file's {{sections}} settings are damaged. Keep this computer's settings to repair them; the damaged copy is backed up first.",
           { sections: formatProfileSyncSectionList(status.damagedConflictSections) }
         );
       }
-      if (uploadButton) uploadButton.textContent = t('Keep Local (Upload)');
+      if (uploadButton) uploadButton.textContent = t('This computer (upload)');
       if (remoteButton) remoteButton.classList.add('hidden');
     } else {
       if (resolutionHelp) {
         const sections = formatProfileSyncSectionList(status.conflictSections);
         resolutionHelp.textContent = sections
           ? t(
-              'This computer and the sync file have different settings for {{sections}}. Keep this computer’s and upload them, or replace them with the file’s. Either way, the replaced settings are backed up.',
+              'This computer and the sync file have different settings for {{sections}}. Keep this computer’s settings and upload them, or replace them with the sync file’s. Either way, the replaced settings are backed up.',
               { sections }
             )
           : t(
-              'This computer and the sync file have different settings. Keep this computer’s and upload them, or replace them with the file’s. Either way, the replaced settings are backed up.'
+              'This computer and the sync file have different settings. Keep this computer’s settings and upload them, or replace them with the sync file’s. Either way, the replaced settings are backed up.'
             );
       }
-      if (uploadButton) uploadButton.textContent = t('Keep Local (Upload)');
+      if (uploadButton) uploadButton.textContent = t('This computer (upload)');
       if (remoteButton) remoteButton.classList.remove('hidden');
     }
   }
@@ -4558,7 +4619,7 @@ function renderLanguagePackList() {
     meta.className = 'language-pack-meta';
     const stateLabel = pack.installed ? t('Installed') : t('Available');
     const versionLabel = pack.version ? `v${pack.version}` : '';
-    const downloadedLabel = pack.downloadedAt ? ` • ${formatDateTime(pack.downloadedAt)}` : '';
+    const downloadedLabel = pack.downloadedAt ? ` • ${formatClockDateTime(pack.downloadedAt)}` : '';
     meta.textContent = `${stateLabel}${versionLabel ? ` • ${versionLabel}` : ''}${downloadedLabel}`;
 
     info.appendChild(name);
@@ -4740,14 +4801,19 @@ function formatSeasonalDate(date) {
   return formatDate(date, { month: 'short', day: 'numeric' });
 }
 
-// "Dec 1 – 26" rather than "Dec 1 – Dec 26", in the order the language writes ranges.
+// "Dec 1 – 26" rather than "Dec 1 – Dec 26", in the order the language writes ranges. A range over
+// New Year stays "Dec 27 – Jan 2": the date formatter would add both years to it, which no other
+// holiday row has.
 function formatSeasonalRange(range) {
   try {
-    const formatter = new Intl.DateTimeFormat(getLocaleState().activeLocale || undefined, {
+    const formatter = new Intl.DateTimeFormat(getFormatLocale(), {
       month: 'short',
       day: 'numeric',
     });
-    if (typeof formatter.formatRange === 'function') {
+    if (
+      typeof formatter.formatRange === 'function' &&
+      range.start.getFullYear() === range.end.getFullYear()
+    ) {
       return formatter.formatRange(range.start, range.end);
     }
   } catch {
@@ -4792,10 +4858,9 @@ function syncSeasonalControls(ui) {
   if (enabled && settings.show !== 'auto') {
     message = t('Showing {{holiday}} until {{time}}.', {
       holiday: t(getHolidayById(settings.show).name),
-      time: formatDateTime(new Date(settings.showUntil), {
+      time: formatClockDateTime(new Date(settings.showUntil), {
         weekday: 'short',
-        hour: 'numeric',
-        minute: '2-digit',
+        ...getClockFaceTimeOptions(),
       }),
     });
   } else if (enabled) {
@@ -5066,6 +5131,8 @@ function relocalizeOpenSettings({ force = false } = {}) {
     settingsUiHooks?.relocalizeUpdateStatus?.();
     syncFrostedGlassAvailability();
     syncWeatherEffectsAvailability();
+    // The holiday dates and the status line under them are written in the language too.
+    syncSeasonalControls(getAppearanceFromInputs());
     if (hasDraftColorPreview || isCustomEditorActive) {
       // Rebuilding the swatches would reset the custom color draft; relabel only.
       updateThemeOptionsLabel();
@@ -5430,10 +5497,12 @@ async function openSettings(uiHooks) {
     }
     const dateFormat = document.getElementById('date-format');
     if (dateFormat) {
-      dateFormat.value = ['system', 'weekday-short', 'long', 'numeric'].includes(
-        state.CONFIG?.ui?.dateFormat
-      )
-        ? state.CONFIG.ui.dateFormat
+      // "System default" wrote exactly what "Numeric date" does, so it is no longer offered and a
+      // setting saved with it reads as Numeric date.
+      const savedDateFormat =
+        state.CONFIG?.ui?.dateFormat === 'system' ? 'numeric' : state.CONFIG?.ui?.dateFormat;
+      dateFormat.value = ['weekday-short', 'long', 'numeric'].includes(savedDateFormat)
+        ? savedDateFormat
         : 'weekday-short';
     }
     setPendingPrimaryCards(state.CONFIG?.primaryCards || PRIMARY_CARD_DEFAULTS, {
@@ -6138,7 +6207,7 @@ async function saveSettings() {
         if (copyResult?.status === 'destination_exists') {
           // Whatever is there is probably another computer's file, so it is never replaced
           // with a copy. Switching to it compares the two sides' settings first, and the
-          // choice panel offers Keep Local (with the replaced settings backed up).
+          // choice panel offers This computer (with the replaced settings backed up).
           usedExistingFile = await showConfirm(
             t('Sync File Already Exists'),
             t(
@@ -6615,7 +6684,7 @@ function populateAlertEntityPicker() {
     const alerts = state.CONFIG.entityAlerts?.alerts || {};
     const entities = Object.values(state.STATES || {})
       .filter((e) => !e.entity_id.startsWith('sun.') && !e.entity_id.startsWith('zone.'))
-      .sort((a, b) => utils.getEntityDisplayName(a).localeCompare(utils.getEntityDisplayName(b)));
+      .sort((a, b) => compareNames(utils.getEntityDisplayName(a), utils.getEntityDisplayName(b)));
 
     list.innerHTML = '';
 
@@ -6724,6 +6793,37 @@ function populateAlertStateSuggestions(entity) {
   );
 }
 
+const ALERT_TIME_STEP_MINUTES = 15;
+
+// Quiet hours are picked from a list of times written in the Time format setting and the app's
+// language. A native time field follows the browser's own locale instead, so a German dialog
+// showed "10:00 PM". The stored value stays "HH:MM"; a value off the 15-minute grid (set by an
+// older version) is kept as an extra choice rather than silently rounded.
+function populateAlertTimeOptions(select, value) {
+  const times = [];
+  for (let minutes = 0; minutes < 24 * 60; minutes += ALERT_TIME_STEP_MINUTES) {
+    times.push(minutes);
+  }
+  const match = /^(\d{2}):(\d{2})$/.exec(value || '');
+  const selected = match ? Number(match[1]) * 60 + Number(match[2]) : null;
+  if (selected !== null && !times.includes(selected)) {
+    times.push(selected);
+    times.sort((a, b) => a - b);
+  }
+  select.replaceChildren(
+    ...times.map((minutes) => {
+      const hours = Math.floor(minutes / 60);
+      const rest = minutes % 60;
+      const pad = (number) => String(number).padStart(2, '0');
+      return new Option(
+        formatClockTime(new Date(1970, 0, 1, hours, rest)),
+        `${pad(hours)}:${pad(rest)}`
+      );
+    })
+  );
+  select.value = match ? value : '';
+}
+
 function openAlertConfigModal(entityId) {
   try {
     if (!entityId) {
@@ -6755,7 +6855,9 @@ function openAlertConfigModal(entityId) {
         text.dataset.alertLabelKey = labelText;
         label.append(text);
         if (type === 'checkbox') label.className = 'workflow-checkbox';
-        const input = document.createElement(type === 'select' ? 'select' : 'input');
+        const input = document.createElement(
+          type === 'select' || type === 'time' ? 'select' : 'input'
+        );
         input.id = id;
         if (type !== 'checkbox') input.className = 'form-control';
         if (type === 'select')
@@ -6764,7 +6866,8 @@ function openAlertConfigModal(entityId) {
             option.dataset.alertLabelKey = key;
             input.add(option);
           });
-        else input.type = type;
+        // A time field is a select that populateAlertTimeOptions fills each time the dialog opens.
+        else if (type !== 'time') input.type = type;
         if (type === 'number') {
           input.min = '0';
           input.max = '86400';
@@ -6833,8 +6936,14 @@ function openAlertConfigModal(entityId) {
     modal.querySelector('#alert-notify-unavailable').checked =
       alertConfig?.notifyOnUnavailable !== false;
     modal.querySelector('#alert-quiet-enabled').checked = !!alertConfig?.quietHours?.enabled;
-    modal.querySelector('#alert-quiet-start').value = alertConfig?.quietHours?.start || '22:00';
-    modal.querySelector('#alert-quiet-end').value = alertConfig?.quietHours?.end || '07:00';
+    populateAlertTimeOptions(
+      modal.querySelector('#alert-quiet-start'),
+      alertConfig?.quietHours?.start || '22:00'
+    );
+    populateAlertTimeOptions(
+      modal.querySelector('#alert-quiet-end'),
+      alertConfig?.quietHours?.end || '07:00'
+    );
     const syncCondition = () => {
       stateChangeRadio.checked = condition.value === 'state-change';
       specificStateRadio.checked = condition.value === 'specific-state';
@@ -7023,9 +7132,7 @@ function populateMediaPlayerSelect(selected = state.CONFIG.primaryMediaPlayer ||
     const mediaPlayers = Object.values(state.STATES || {})
       .filter((entity) => entity.entity_id.startsWith('media_player.'))
       .sort((a, b) => {
-        const nameA = utils.getEntityDisplayName(a).toLowerCase();
-        const nameB = utils.getEntityDisplayName(b).toLowerCase();
-        return nameA.localeCompare(nameB);
+        return compareNames(utils.getEntityDisplayName(a), utils.getEntityDisplayName(b));
       });
 
     const options = [
@@ -7679,7 +7786,7 @@ async function refreshDesktopIntegration() {
         id: info.lastActivation.id,
         time: Number.isNaN(activationTime)
           ? info.lastActivation.at
-          : formatDateTime(activationTime),
+          : formatClockDateTime(activationTime),
       })
     : t('No shortcut received yet. Press a configured shortcut, then refresh.');
   // A bind still written for a retired app id keeps working, but only the

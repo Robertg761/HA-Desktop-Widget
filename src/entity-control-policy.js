@@ -1,5 +1,5 @@
 import desktopPinSupport from './desktop-pin-support.cjs';
-import { toFiniteNumber } from './comparison-graphs.js';
+import { getClimateTemperature } from './format.js';
 
 // Only `unavailable` blocks commands. Home Assistant also reports `unknown` for entities that can
 // still act, such as a button or scene never pressed and assumed-state lights, so `unknown` stays
@@ -37,13 +37,9 @@ function getTodoCapabilities(entity) {
   };
 }
 
+// The reading a thermostat tile and every other surface show; see getClimateTemperature.
 function getClimateTileTemperature(entity) {
-  // An `unknown` thermostat's temperature attributes may be stale, so show none.
-  if (!isEntityAvailable(entity) || entity.state === 'unknown') return null;
-  return (
-    toFiniteNumber(entity.attributes?.current_temperature) ??
-    toFiniteNumber(entity.attributes?.temperature)
-  );
+  return getClimateTemperature(entity);
 }
 
 export { isEntityAvailable, canPerformMediaAction, getTodoCapabilities, getClimateTileTemperature };

@@ -279,6 +279,8 @@ function createSettingsModalDOM() {
           </select>
         </div>
         <fieldset class="seasonal-option">
+          <input type="checkbox" data-holiday="new-year" />
+          <span data-holiday-dates="new-year"></span>
           <input type="checkbox" data-holiday="halloween" />
           <span data-holiday-dates="halloween"></span>
           <input type="checkbox" data-holiday="christmas" />
@@ -439,7 +441,6 @@ function createSettingsModalDOM() {
                 <option value="24-hour">24-hour</option>
               </select>
               <select id="date-format">
-                <option value="system">System default</option>
                 <option value="weekday-short">Weekday, short date</option>
                 <option value="long">Long date</option>
                 <option value="numeric">Numeric date</option>
@@ -1668,6 +1669,11 @@ describe('Settings + Config Integration', () => {
       slider.value = '100';
       settings.updateOpacityReadout();
       expect(readout.textContent).toBe('100%');
+      // A screen reader announces the percentage, not the slider's position of 100.
+      expect(slider.getAttribute('aria-valuetext')).toBe('100%');
+      slider.value = '1';
+      settings.updateOpacityReadout();
+      expect(slider.getAttribute('aria-valuetext')).toBe('50%');
       settings.closeSettings();
     });
 
@@ -1771,6 +1777,17 @@ describe('Settings + Config Integration', () => {
           }),
         })
       );
+    });
+
+    test('reads a date format saved as "System default", which was Numeric date, as Numeric date', async () => {
+      state.CONFIG.ui.dateFormat = 'system';
+      await settings.openSettings();
+
+      expect(document.getElementById('date-format').value).toBe('numeric');
+      const offered = [...document.querySelectorAll('#date-format option')].map(
+        (option) => option.value
+      );
+      expect(offered).not.toContain('system');
     });
 
     test('leaves a profile that never chose 24-hour on the locale default', async () => {
@@ -1934,6 +1951,28 @@ describe('Settings + Config Integration', () => {
       expect(document.getElementById('language-packs-list').textContent).toContain('Installed');
       expect(document.querySelector('#language-select option[value="fr"]').disabled).toBe(false);
       expect(document.querySelector('[data-locale-action="remove"]').dataset.locale).toBe('fr');
+    });
+
+    test('shows when a language pack was installed to the minute, in the Time format', async () => {
+      window.electronAPI.getLocalePacks.mockResolvedValueOnce([
+        {
+          locale: 'fr',
+          displayName: 'Français',
+          version: '1.0.0',
+          latestVersion: '1.0.0',
+          installed: true,
+          downloadedAt: '2026-10-01T12:24:14.000Z',
+        },
+      ]);
+      state.CONFIG.ui = { ...state.CONFIG.ui, timeFormat: '24-hour' };
+      await settings.openSettings();
+      await waitForLanguagePackRefresh();
+      const meta = document.querySelector('.language-pack-meta').textContent;
+      // A date and a time of day, like the sync timestamps, without the seconds.
+      expect(meta).toMatch(/Oct [12], 2026/);
+      expect(meta).toMatch(/\b\d{2}:\d{2}\b(?!:)/);
+      expect(meta).not.toMatch(/\d{2}:\d{2}:\d{2}/);
+      expect(meta).not.toMatch(/[AP]M/);
     });
 
     test('names the language on every language pack button', async () => {
@@ -2526,7 +2565,7 @@ describe('Settings + Config Integration', () => {
       expect(allChoices).toHaveLength(120);
       const summary = picker.querySelector('.custom-entity-icon-picker-meta');
       expect(summary.textContent).toMatch(
-        /^Showing the first 120 of 3\d{3} icons\. Type to narrow them\.$/
+        /^Showing the first 120 of 3,\d{3} icons\. Type to narrow them\.$/
       );
       // The count is announced as it narrows.
       expect(summary.getAttribute('aria-live')).toBe('polite');
@@ -2684,6 +2723,93 @@ describe('Settings + Config Integration', () => {
       expect(state.CONFIG.customEntityIcons).toEqual({});
     });
 
+    describe('searching by word', () => {
+      // The catalog is imported on first use, so wait for the picker to stop saying it is loading.
+      const type = async (query) => {
+        const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
+        iconInput.value = query;
+        iconInput.dispatchEvent(new Event('input', { bubbles: true }));
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          const picker = document.querySelector('[data-custom-icon-picker="light.living_room"]');
+          if (picker && !picker.textContent.includes('Loading icon catalog')) return picker;
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        throw new Error('The icon catalog did not load.');
+      };
+      const search = async (query) => {
+        await openSettingsWithCustomIconsExpanded();
+        return type(query);
+      };
+
+      test('says so in one line, with something to try, and lists no icons', async () => {
+        const picker = await search('zzzzqq');
+        expect(picker.querySelectorAll('.custom-entity-icon-choice')).toHaveLength(0);
+        // The count is not repeated above a second "nothing found" line.
+        expect(picker.querySelector('.custom-entity-icon-picker-meta')).toBeNull();
+        expect(picker.querySelector('.custom-entity-icon-picker-empty').textContent).toBe(
+          'No icons match “zzzzqq”. Try a simpler word, or paste an emoji.'
+        );
+      });
+
+      test('does not list every icon for a word it has no letters to search by', async () => {
+        // The old ASCII-only filter dropped all of a Chinese or Arabic query and showed everything.
+        await openSettingsWithCustomIconsExpanded();
+        for (const query of ['客厅', 'غرفة', 'Küche']) {
+          const picker = await type(query);
+          expect(picker.querySelectorAll('.custom-entity-icon-choice')).toHaveLength(0);
+          expect(picker.querySelector('.custom-entity-icon-picker-empty')).toBeTruthy();
+        }
+      });
+
+      test('finds a pasted emoji by the emoji itself', async () => {
+        const picker = await search('🌲');
+        const found = [...picker.querySelectorAll('.custom-entity-icon-choice')].map(
+          (button) => button.dataset.customIconChoice
+        );
+        expect(found).toContain('🌲');
+        expect(found.length).toBeLessThan(10);
+      });
+
+      test('does not match a word to an icon whose keyword is merely inside it', async () => {
+        // "offline" found the cross mark and "synchronize" the check mark, through a keyword that was
+        // a piece of the query. A query with no keyword of its own finds nothing.
+        await openSettingsWithCustomIconsExpanded();
+        for (const query of ['offline', 'synchronize']) {
+          const picker = await type(query);
+          expect(picker.querySelectorAll('.custom-entity-icon-choice')).toHaveLength(0);
+        }
+      });
+
+      test.each([
+        ['tv', '📺'],
+        ['television', '📺'],
+        ['car', '🚗'],
+        ['garage', '🚗'],
+        ['garage', '🏠'],
+        ['dog', '🐶'],
+        ['dogs', '🐶'],
+        ['cat', '🐱'],
+        ['thermostat', '🌡️'],
+        ['washer', '🧺'],
+        ['washing machine', '🧺'],
+        ['fridge', '🧊'],
+        ['router', '🛜'],
+        ['doorbell', '🔔'],
+        ['speaker', '🔊'],
+        // Accents fold away, composed or not, like in every other search.
+        ['ca\u0301r', '🚗'],
+      ])('finds an icon for the device word "%s"', async (query, icon) => {
+        const picker = await search(query);
+        const found = [...picker.querySelectorAll('.custom-entity-icon-choice')].map(
+          (button) => button.dataset.customIconChoice
+        );
+        expect(found).toContain(icon);
+        // A word narrows the catalog to a handful of icons, not a scrollable page of them.
+        expect(found.length).toBeLessThan(40);
+        expect(picker.querySelector('.custom-entity-icon-picker-empty')).toBeNull();
+      });
+    });
+
     test('should match natural language keywords like tree', async () => {
       // Arrange
       await openSettingsWithCustomIconsExpanded();
@@ -2720,10 +2846,10 @@ describe('Settings + Config Integration', () => {
         '[data-custom-icon-picker="light.living_room"] .custom-entity-icon-picker-meta'
       );
       expect(ratSummary).toBeTruthy();
-      expect(ratSummary.textContent).toMatch(/Showing \d+ of \d+ icons for "rat"\./);
+      expect(ratSummary.textContent).toMatch(/Showing \d+ of [\d,]+ icons for “rat”\./);
       const [, ratShown, ratTotal] =
-        ratSummary.textContent.match(/Showing (\d+) of (\d+) icons for "rat"\./) || [];
-      expect(Number(ratShown)).toBeLessThan(Number(ratTotal));
+        ratSummary.textContent.match(/Showing ([\d,]+) of ([\d,]+) icons for “rat”\./) || [];
+      expect(Number(ratShown.replace(/,/g, ''))).toBeLessThan(Number(ratTotal.replace(/,/g, '')));
 
       // Act
       iconInput.value = 'mouse';
@@ -3644,6 +3770,58 @@ describe('Settings + Config Integration', () => {
       await settings.saveSettings();
 
       expect(state.CONFIG.ui.seasonal).toEqual({ colors: true, holidays: {}, show: 'auto' });
+    });
+
+    test('writes the New Year range without years, like every other holiday', async () => {
+      const i18n = require('../../src/i18n.js');
+      try {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+        await settings.openSettings();
+        const text = () => document.querySelector('[data-holiday-dates="new-year"]').textContent;
+        // Across the turn of the year a date range would add both years ("Dec 27, 2026 – Jan 2, 2027").
+        expect(text()).toMatch(/^Dec \d{1,2}\s*–\s*Jan \d{1,2}$/);
+        expect(document.querySelector('[data-holiday-dates="halloween"]').textContent).toMatch(
+          /^Oct 1\s*–\s*31$/
+        );
+
+        i18n.setLocaleBootstrap({ activeLocale: 'de', messages: {} });
+        await Promise.resolve();
+        expect(text()).not.toMatch(/\d{4}/);
+        expect(text()).toMatch(/Dez/);
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
+    });
+
+    test('writes the holiday dates and the status line in the new language while Settings is open', async () => {
+      const i18n = require('../../src/i18n.js');
+      try {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+        await settings.openSettings();
+        const show = document.getElementById('seasonal-show');
+        show.value = 'halloween';
+        change(show);
+        const dates = document.querySelector('[data-holiday-dates="halloween"]');
+        const status = document.getElementById('seasonal-status');
+        expect(dates.textContent).toMatch(/Oct/);
+        expect(status.textContent).toMatch(/^Showing Halloween until /);
+
+        i18n.setLocaleBootstrap({
+          activeLocale: 'de',
+          messages: {
+            'Showing {{holiday}} until {{time}}.': 'Zeige {{holiday}} bis {{time}}.',
+            Halloween: 'Halloween',
+          },
+        });
+        // The locale observer runs as a microtask after <html lang> changes.
+        await Promise.resolve();
+
+        expect(dates.textContent).toMatch(/Okt/);
+        expect(dates.textContent).not.toMatch(/Oct/);
+        expect(status.textContent).toMatch(/^Zeige Halloween bis /);
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
     });
 
     test('previews choices live and saves them, including holidays switched off', async () => {
@@ -5779,6 +5957,43 @@ describe('Settings + Config Integration', () => {
       toggle.dispatchEvent(new Event('change'));
       expect(start.disabled).toBe(false);
       expect(end.disabled).toBe(false);
+    });
+
+    test('quiet hour times are listed in the Time format setting, not the browser locale', () => {
+      const labels = (select) => [...select.options].map((option) => option.textContent);
+      state.CONFIG.ui = { ...state.CONFIG.ui, timeFormat: '24-hour' };
+      settings.openAlertConfigModal('sensor.office_temperature');
+      const start = document.getElementById('alert-quiet-start');
+      const end = document.getElementById('alert-quiet-end');
+      expect(start.tagName).toBe('SELECT');
+      // Every quarter hour, stored as HH:MM whatever the label looks like.
+      expect(start.options).toHaveLength(96);
+      expect(start.options[0].value).toBe('00:00');
+      expect(start.options[91].value).toBe('22:45');
+      expect(start.value).toBe('22:00');
+      expect(end.value).toBe('07:00');
+      expect(labels(start)[88]).toBe('22:00');
+
+      state.CONFIG.ui = { ...state.CONFIG.ui, timeFormat: '12-hour' };
+      settings.openAlertConfigModal('sensor.office_temperature');
+      expect(labels(start)[88]).toMatch(/^10:00\s?PM$/i);
+      expect(start.value).toBe('22:00');
+    });
+
+    test('keeps a quiet hour time that is off the quarter-hour list instead of rounding it', () => {
+      state.CONFIG.entityAlerts = {
+        enabled: true,
+        alerts: {
+          'sensor.office_temperature': {
+            quietHours: { enabled: true, start: '22:07', end: '06:45' },
+          },
+        },
+      };
+      settings.openAlertConfigModal('sensor.office_temperature');
+      const start = document.getElementById('alert-quiet-start');
+      expect(start.value).toBe('22:07');
+      expect(start.options).toHaveLength(97);
+      expect(document.getElementById('alert-quiet-end').value).toBe('06:45');
     });
 
     test('saves on Enter in a single-line field, but not on a switch', async () => {

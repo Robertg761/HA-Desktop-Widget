@@ -57,6 +57,48 @@ describe('main localization service', () => {
     expect(bootstrap.messages.Hello).toBe('Hallo');
   });
 
+  it('passes the operating system region on for number and date formats, without choosing the catalog by it', () => {
+    fs.writeFileSync(
+      path.join(bundledDir, 'de.json'),
+      JSON.stringify({ Hello: 'Hallo', 'Selected language: {{language}}': 'Sprache: {{language}}' })
+    );
+    const service = createLocalizationService({
+      bundledDir,
+      getUserDataDir: () => userDataDir,
+      appVersion: '1.0.0',
+      // A German display language on a computer whose region setting is Swiss German.
+      getDetectedLocale: () => 'de',
+      getSystemLocale: () => 'de_CH',
+      manifestUrl: 'https://example.test/manifest.json',
+    });
+
+    const bootstrap = service.getLocaleBootstrap('auto');
+
+    expect(bootstrap.activeLocale).toBe('de');
+    expect(bootstrap.systemLocale).toBe('de-CH');
+    // An explicit language keeps the system region available too, so the renderer can pair them.
+    expect(service.getLocaleBootstrap('de').systemLocale).toBe('de-CH');
+  });
+
+  it('has no system region when the operating system does not report one', () => {
+    const service = createLocalizationService({
+      bundledDir,
+      getUserDataDir: () => userDataDir,
+      appVersion: '1.0.0',
+      getDetectedLocale: () => 'en-US',
+      getSystemLocale: () => 'not a locale',
+      manifestUrl: 'https://example.test/manifest.json',
+    });
+    expect(service.getLocaleBootstrap('auto').systemLocale).toBe('');
+    const withoutOption = createLocalizationService({
+      bundledDir,
+      getUserDataDir: () => userDataDir,
+      appVersion: '1.0.0',
+      manifestUrl: 'https://example.test/manifest.json',
+    });
+    expect(withoutOption.getLocaleBootstrap('auto').systemLocale).toBe('');
+  });
+
   it('uses downloaded German updates and restores bundled German after removal', () => {
     fs.writeFileSync(
       path.join(bundledDir, 'de.json'),

@@ -37,7 +37,7 @@ describe('settings file controls', () => {
     await flush();
     expect(showConfirm).toHaveBeenCalledWith(
       'Import settings',
-      expect.stringContaining('Unavailable entities on this connection: 1'),
+      expect.stringContaining('Entities not found on this connection: 1'),
       expect.any(Object)
     );
     expect(api.applySettingsImport).toHaveBeenCalledWith('selected');
@@ -131,7 +131,7 @@ describe('settings file controls', () => {
     await flush();
     const message = showConfirm.mock.calls[0][1];
     expect(message).toContain(`${'x'.repeat(39)}…, Page 2`);
-    expect(message).toContain('Page 8, … (+5)');
+    expect(message).toContain('Page 8 … (+5)');
     expect(message).not.toContain('x'.repeat(41));
     expect(message).not.toContain('Page 9');
   });

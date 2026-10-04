@@ -12,6 +12,7 @@ import {
 import websocket from './websocket.js';
 import { closeDialog, openDialog, showToast } from './ui-utils.js';
 import { formatNumber, t } from './i18n.js';
+import { compareNames, normalizeSearchText } from './format.js';
 import { renderEntityIcon, setLineIconContent } from './entity-icons.js';
 import { applyCloseButtonIcons } from './icons.js';
 import { getActiveQuickAccessTab } from './quick-access-tabs.js';
@@ -44,16 +45,9 @@ const QUERY_ONLY_SERVICES = new Set(['unlock', 'alarm_disarm']);
 // Devices whose result row has no safe default action; Enter looks for their explicit command.
 const COMMAND_ONLY_DOMAINS = new Set(['lock', 'alarm_control_panel']);
 
+// The same text rules as every other search, keeping dots so an entity id still reads as one.
 function normalizeSearchValue(value) {
-  return String(value ?? '')
-    .normalize('NFKD')
-    .toLowerCase()
-    .replace(/\p{M}+/gu, '')
-    .replace(/['’`]/g, '')
-    .replace(/[_-]/g, ' ')
-    .replace(/[^\p{L}\p{N}\s.]/gu, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return normalizeSearchText(value, { keepDots: true });
 }
 
 // Fuzzy (in-order, gaps allowed) matching only helps with an abbreviation of a real word. With one
@@ -137,7 +131,7 @@ function rankCommandPaletteEntities(entities, query, options = {}) {
     .filter((item) => item.score > 0)
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
-      return a.displayName.localeCompare(b.displayName);
+      return compareNames(a.displayName, b.displayName);
     });
 }
 

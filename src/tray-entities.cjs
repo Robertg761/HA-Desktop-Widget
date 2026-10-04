@@ -6,8 +6,13 @@
  * canvas and the live state map). Main owns the Tray objects and only accepts sanitized payloads.
  */
 
-// Kept dependency-free on purpose: this module is shared by main (CommonJS) and the Vite-built
-// renderer, and source-level `require` calls are not rewritten by the renderer bundle.
+// Shared by main (CommonJS) and the Vite-built renderer, so it needs no packages: the only file it
+// requires is plain data (the state names), which both the bundle and Node can load.
+const {
+  STATE_NAMES,
+  BINARY_STATE_NAMES,
+} = require('../packages/widget-renderer/src/ha-state-names.cjs');
+
 const ENTITY_ID_PATTERN = /^[a-z0-9_]+\.[a-z0-9_]+$/i;
 
 function normalizeEntityId(value) {
@@ -154,54 +159,6 @@ const BINARY_SENSOR_LABELS = Object.freeze({
   update: ['UPD', 'OK'],
 });
 
-const STATE_NAMES = Object.freeze({
-  on: 'On',
-  off: 'Off',
-  home: 'Home',
-  not_home: 'Away',
-  open: 'Open',
-  opening: 'Opening',
-  closed: 'Closed',
-  closing: 'Closing',
-  stopped: 'Stopped',
-  locked: 'Locked',
-  unlocked: 'Unlocked',
-  locking: 'Locking',
-  unlocking: 'Unlocking',
-  jammed: 'Jammed',
-  playing: 'Playing',
-  paused: 'Paused',
-  idle: 'Idle',
-  standby: 'Standby',
-  buffering: 'Buffering',
-  active: 'Active',
-  cleaning: 'Cleaning',
-  docked: 'Docked',
-  returning: 'Returning',
-  error: 'Error',
-  heat: 'Heating',
-  cool: 'Cooling',
-  heat_cool: 'Automatic',
-  auto: 'Automatic',
-  dry: 'Drying',
-  fan_only: 'Fan',
-  disarmed: 'Disarmed',
-  armed_home: 'Armed at home',
-  armed_away: 'Armed away',
-  armed_night: 'Armed at night',
-  armed_vacation: 'Armed on vacation',
-  armed_custom_bypass: 'Armed',
-  arming: 'Arming',
-  pending: 'Pending',
-  triggered: 'Alarm',
-  charging: 'Charging',
-  discharging: 'Discharging',
-  not_charging: 'Not charging',
-  full: 'Full',
-  running: 'Running',
-  unavailable: 'Unavailable',
-  unknown: 'Unknown',
-});
 const COMPACT_STATE_NAMES = new Set([
   'On',
   'Off',
@@ -220,37 +177,6 @@ const COMPACT_STATE_NAMES = new Set([
   'Arming',
   'Disarmed',
 ]);
-
-const BINARY_STATE_NAMES = Object.freeze({
-  door: ['Open', 'Closed'],
-  window: ['Open', 'Closed'],
-  garage_door: ['Open', 'Closed'],
-  opening: ['Open', 'Closed'],
-  lock: ['Unlocked', 'Locked'],
-  motion: ['Motion', 'Clear'],
-  moving: ['Moving', 'Still'],
-  occupancy: ['Occupied', 'Clear'],
-  presence: ['Home', 'Away'],
-  moisture: ['Wet', 'Dry'],
-  smoke: ['Smoke', 'Clear'],
-  gas: ['Gas', 'Clear'],
-  carbon_monoxide: ['Carbon monoxide', 'Clear'],
-  problem: ['Problem', 'OK'],
-  safety: ['Unsafe', 'Safe'],
-  battery: ['Low', 'OK'],
-  battery_charging: ['Charging', 'Idle'],
-  connectivity: ['Connected', 'Disconnected'],
-  plug: ['Plugged in', 'Unplugged'],
-  power: ['On', 'Off'],
-  running: ['Running', 'Idle'],
-  cold: ['Cold', 'OK'],
-  heat: ['Hot', 'OK'],
-  light: ['Light', 'Dark'],
-  sound: ['Sound', 'Clear'],
-  vibration: ['Vibration', 'Clear'],
-  tamper: ['Tampered', 'OK'],
-  update: ['Update', 'OK'],
-});
 
 function normalizeTrayEntityOptions(value) {
   const source = isPlainObject(value) ? value : {};
@@ -459,7 +385,9 @@ function buildTrayEntityPresentation(entity, options = {}) {
   };
   const stateCandidates = (key) => {
     if (!translate) return buildStateLabelCandidates(key);
-    return localizedCandidates(STATE_NAMES[key] || String(key || '?').replace(/_/g, ' '));
+    // A state with no name keeps its own words and capitals ("Cycle finished"), not the lowercased key.
+    const ownWords = typeof rawState === 'string' && rawState ? rawState : key;
+    return localizedCandidates(STATE_NAMES[key] || String(ownWords || '?').replace(/_/g, ' '));
   };
   const numericCandidates = (value, numericUnit) => {
     const labels = buildNumericLabelCandidates(value, numericUnit);
@@ -574,17 +502,27 @@ function buildTrayEntityPresentation(entity, options = {}) {
     .filter((text, index, list) => text && list.indexOf(text) === index);
   if (!candidates.length) candidates = ['?'];
 
-  const displayState =
+  // The renderer passes the same text the tiles show, so a tooltip and a macOS title read like them.
+  const givenDisplayState =
     typeof options.displayState === 'string' && options.displayState.trim()
       ? options.displayState.trim()
-      : valueText ||
-        (rawState == null ? 'unavailable' : `${rawState}${unit ? ` ${unit.trim()}` : ''}`);
+      : '';
+  const displayState =
+    givenDisplayState ||
+    valueText ||
+    (rawState == null ? 'unavailable' : `${rawState}${unit ? ` ${unit.trim()}` : ''}`);
   const tooltip = truncateText(
     sanitizeTooltipText(`${displayName}: ${displayState}`),
     TRAY_ENTITY_TOOLTIP_MAX_LENGTH
   );
 
-  return { entityId, candidates, tooltip, accent, valueText: valueText || displayState };
+  return {
+    entityId,
+    candidates,
+    tooltip,
+    accent,
+    valueText: givenDisplayState || valueText || displayState,
+  };
 }
 
 /**
