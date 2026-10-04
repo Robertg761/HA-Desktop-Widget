@@ -163,6 +163,13 @@ describe('the Time format and Date format settings', () => {
     setClock({ timeFormat: '24-hour' });
     expect(format.formatClockTime(morning, format.getClockFaceTimeOptions())).toBe('07:31');
     expect(format.formatClockTime(evening)).toBe('19:31');
+    // Every time label follows the same rule as the large clock, so 7:31 is not "7:31" in one place
+    // and "07:31" in another.
+    expect(format.formatClockTime(morning)).toBe('07:31');
+    expect(format.formatDayAndTime(morning, morning.getTime())).toBe('Today 07:31');
+    setClock({ timeFormat: '12-hour' });
+    expect(format.formatClockTime(morning)).toMatch(/^7:31/);
+    expect(format.formatDayAndTime(morning, morning.getTime())).toMatch(/^Today 7:31/);
   });
 
   it('follows the language when the setting is the default, in 12 and 24 hours', () => {
@@ -211,6 +218,57 @@ describe('the Time format and Date format settings', () => {
     useLocale('de');
     setClock({ dateFormat: 'long' });
     expect(render()).toMatch(/Mittwoch, 30\. September 2026/);
+  });
+});
+
+describe.each(['en', 'de', 'fr', 'ar', 'hi', 'zh'])('written in %s', (locale) => {
+  const evening = new Date(2026, 9, 4, 19, 31);
+  const intlTime = (hour12) =>
+    new Date(evening).toLocaleTimeString(locale, {
+      hour: hour12 ? 'numeric' : '2-digit',
+      minute: '2-digit',
+      hour12,
+    });
+
+  beforeEach(() => useLocale(locale));
+
+  it.each([
+    ['metric', '°C'],
+    ['imperial', '°F'],
+  ])('keeps the %s temperature unit as Home Assistant sends it', (_system, unit) => {
+    state.setUnitSystem({ temperature: unit });
+    const climate = entity('climate.hall', 'heat', { current_temperature: 21.5 });
+    const text = utils.getEntityDisplayState(climate);
+    expect(text).toContain(unit);
+    // The number comes first and the unit follows, with no breaking space between them.
+    expect(text.indexOf(unit)).toBeGreaterThan(0);
+    expect(text).not.toMatch(/ °/);
+    expect(format.formatMeasurement(70.5, unit)).toContain(unit);
+  });
+
+  it('follows the Time format setting in both directions', () => {
+    setClock({ timeFormat: '12-hour' });
+    expect(format.formatClockTime(evening)).toBe(intlTime(true));
+    setClock({ timeFormat: '24-hour' });
+    expect(format.formatClockTime(evening)).toBe(intlTime(false));
+  });
+
+  it('offers three different date styles', () => {
+    const writes = ['weekday-short', 'long', 'numeric'].map((dateFormat) => {
+      setClock({ dateFormat });
+      return i18n.formatDate(evening, format.getClockDateOptions());
+    });
+    expect(new Set(writes).size).toBe(3);
+    // The long form names the month, the numeric one does not.
+    expect(writes[2]).toMatch(/\p{Nd}/u);
+  });
+
+  it("writes a percentage and a number with the language's separators", () => {
+    const expected = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(1234.5);
+    expect(format.formatPercent(1234.5)).toContain(expected);
+    expect(format.formatMeasurement(1234.5, 'W')).toContain(
+      new Intl.NumberFormat(locale).format(1234.5)
+    );
   });
 });
 
@@ -357,6 +415,12 @@ describe('sensor readings', () => {
         })
       );
     expect(uptime(4500)).toMatch(/1\s?h\s?15\s?m/);
+    // The tile's readout is the same text, with no separate unit.
+    expect(
+      format.getSensorReading(
+        entity('sensor.uptime', '4500', { device_class: 'duration', unit_of_measurement: 's' })
+      )
+    ).toEqual({ value: uptime(4500), unit: '', text: uptime(4500) });
     expect(uptime(90, 'min')).toMatch(/1\s?h\s?30\s?m/);
     expect(uptime(2, 'd')).toMatch(/2\s?d/);
     // A few seconds stays a plain number.

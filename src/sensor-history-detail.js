@@ -1,6 +1,7 @@
 import {
   formatClockDateTime,
   formatReadingNumber,
+  getClockFaceTimeOptions,
   getSensorPrecision,
   joinUnit,
 } from './format.js';
@@ -113,8 +114,7 @@ function mountSensorHistoryDetail({ body, modal, entity, websocket, normalize, r
         year: 'numeric',
         month: 'numeric',
         day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
+        ...getClockFaceTimeOptions(),
       };
       dates.textContent = `${formatClockDateTime(data.start, period)} – ${formatClockDateTime(data.end, period)}`;
       refresh.textContent = t('Refresh');

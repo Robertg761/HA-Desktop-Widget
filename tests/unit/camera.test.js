@@ -1684,6 +1684,21 @@ describe('Camera Module', () => {
       expect(cameraInfo.querySelector('.camera-info-updated').textContent).toMatch(/^Updated /);
     });
 
+    it.each([
+      ['12-hour', /\b(?:[1-9]|1[0-2]):\d{2}\s?[AP]M/i],
+      ['24-hour', /\b(?:[01]\d|2[0-3]):\d{2}\b(?!\s?[AP]M)/i],
+    ])('writes when the frame was updated in the %s time format', (timeFormat, pattern) => {
+      const packageState = require('../../packages/widget-renderer/src/state.js');
+      try {
+        packageState.setConfig({ ui: { timeFormat } });
+        camera.openCamera('camera.front_door');
+        const text = document.querySelector('.camera-modal .camera-info-updated').textContent;
+        expect(text).toMatch(pattern);
+      } finally {
+        packageState.setConfig({ ui: {} });
+      }
+    });
+
     it('shows a message in the viewer instead of a broken image when a frame fails', async () => {
       await camera.openCamera('camera.front_door');
       const modal = document.querySelector('.camera-modal');

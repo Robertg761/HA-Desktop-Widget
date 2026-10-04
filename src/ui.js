@@ -4548,8 +4548,7 @@ function attachComparisonGraphHover(frame, plot, entries) {
     // from yesterday does not look like one from today.
     heading.textContent = formatClockDateTime(new Date(timestamp), {
       ...(spansDays ? { weekday: 'short' } : {}),
-      hour: 'numeric',
-      minute: '2-digit',
+      ...getClockFaceTimeOptions(),
     });
     tooltip.appendChild(heading);
 

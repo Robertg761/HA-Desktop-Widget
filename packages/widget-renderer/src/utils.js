@@ -5,7 +5,6 @@ import {
   formatBinarySensorState,
   formatDateState,
   formatDuration,
-  formatDurationReading,
   formatNumberEntityValue,
   formatPercent,
   formatStateName,
@@ -426,11 +425,6 @@ function getEntityDisplayState(entity) {
         const deviceClass = attributes.device_class;
         if (deviceClass === 'timestamp' || deviceClass === 'date') {
           return formatDateState(rawState, { dateOnly: deviceClass === 'date' });
-        }
-        const number = parseNumericState(rawState);
-        if (deviceClass === 'duration' && number !== null) {
-          const duration = formatDurationReading(number, attributes.unit_of_measurement);
-          if (duration) return duration;
         }
         const reading = getSensorReading(entity);
         if (reading) return reading.text;

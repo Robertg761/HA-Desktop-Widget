@@ -4328,6 +4328,51 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(sensorTile.querySelector('.control-sensor-unit').textContent).toBe('%');
     });
 
+    it.each([
+      ['02134', 'a code with a leading zero'],
+      ['1e3', 'an exponent'],
+      ['0x10', 'a hex number'],
+    ])('shows %s (%s) as text, with no readout or chart', (reading) => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.zip'];
+      state.setConfig(config);
+      state.setStates({
+        'sensor.zip': {
+          entity_id: 'sensor.zip',
+          state: reading,
+          attributes: { friendly_name: 'Zip code' },
+        },
+      });
+
+      ui.renderActiveTab();
+
+      const tile = document.querySelector('.control-item[data-entity-id="sensor.zip"]');
+      expect(tile.classList.contains('sensor-numeric-entity')).toBe(false);
+      expect(tile.querySelector('.control-state').textContent).toBe(reading);
+    });
+
+    it('keeps a value just below zero from reading "-0"', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.cold_room'];
+      state.setConfig(config);
+      state.setStates({
+        'sensor.cold_room': {
+          entity_id: 'sensor.cold_room',
+          state: '-0.04',
+          attributes: {
+            friendly_name: 'Cold room',
+            unit_of_measurement: '°C',
+            device_class: 'temperature',
+          },
+        },
+      });
+
+      ui.renderActiveTab();
+
+      const tile = document.querySelector('.control-item[data-entity-id="sensor.cold_room"]');
+      expect(tile.querySelector('.control-sensor-value').textContent).toBe('-0.04');
+    });
+
     it('caps other quick access numeric sensor readouts at two decimals', () => {
       const config = state.CONFIG;
       config.favoriteEntities = ['sensor.office_power'];
@@ -9249,6 +9294,66 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       } finally {
         jest.useRealTimers();
       }
+    });
+
+    it.each([
+      ['scene.movie', 'scene'],
+      ['button.restart', 'button'],
+      ['input_button.go', 'input_button'],
+      ['script.goodnight', 'script'],
+    ])('does not report a never-used %s as unknown or unavailable', (entityId) => {
+      state.setStates({ [entityId]: { entity_id: entityId, state: 'unknown', attributes: {} } });
+      const tile = ui.describeQuickAccessTile(entityId);
+      // Home Assistant says `unknown` until the first press; the bar must not dim it.
+      expect(tile.available).toBe(true);
+      expect(tile.value).not.toBe('Unknown');
+      state.setStates({
+        [entityId]: { entity_id: entityId, state: 'unavailable', attributes: {} },
+      });
+      expect(ui.describeQuickAccessTile(entityId).available).toBe(false);
+      expect(ui.describeQuickAccessTile(entityId).value).toBe('Unavailable');
+    });
+
+    it('still reports an unknown sensor as unknown and unavailable-looking', () => {
+      state.setStates({
+        'sensor.flaky': { entity_id: 'sensor.flaky', state: 'unknown', attributes: {} },
+      });
+      const tile = ui.describeQuickAccessTile('sensor.flaky');
+      expect(tile.available).toBe(false);
+      expect(tile.value).toBe('Unknown');
+    });
+
+    it('words a tile the way the palette and the pin do', () => {
+      state.setStates({
+        'binary_sensor.router': {
+          entity_id: 'binary_sensor.router',
+          state: 'off',
+          attributes: { device_class: 'connectivity' },
+        },
+        'binary_sensor.door': {
+          entity_id: 'binary_sensor.door',
+          state: 'off',
+          attributes: { device_class: 'door' },
+        },
+        'sun.sun': { entity_id: 'sun.sun', state: 'below_horizon', attributes: {} },
+        'input_number.offset': {
+          entity_id: 'input_number.offset',
+          state: '1.5',
+          attributes: { unit_of_measurement: '°C', step: 0.5 },
+        },
+        'sensor.travel': {
+          entity_id: 'sensor.travel',
+          state: '23.4',
+          attributes: { unit_of_measurement: 'min', duration: 1404 },
+        },
+      });
+      const value = (id) => ui.describeQuickAccessTile(id).value;
+      expect(value('binary_sensor.router')).toBe('Disconnected');
+      expect(value('binary_sensor.door')).toBe('Closed');
+      expect(value('sun.sun')).toBe('Below horizon');
+      expect(value('input_number.offset')).toBe('1.5°C');
+      // A travel time is a reading with a unit, not a countdown.
+      expect(value('sensor.travel')).toBe('23.4\u00a0min');
     });
 
     it('anchors remaining-only timers to their state update across republication', () => {

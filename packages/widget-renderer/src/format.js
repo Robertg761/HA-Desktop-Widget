@@ -56,22 +56,8 @@ export function getClockDateOptions() {
 }
 
 /**
- * A time of day ("7:31 AM", "07:31") in the user's 12/24-hour setting.
- * @param {Date|number|string} date
- * @param {Intl.DateTimeFormatOptions} [options] - Replaces the default hour and minute.
- */
-export function formatClockTime(date, options = { hour: 'numeric', minute: '2-digit' }) {
-  return formatTime(date, { ...options, ...getClockTimeOptions() });
-}
-
-/** A date with a time of day, in the user's 12/24-hour setting. */
-export function formatClockDateTime(date, options = { dateStyle: 'medium', timeStyle: 'short' }) {
-  return formatDateTime(date, { ...options, ...getClockTimeOptions() });
-}
-
-/**
- * Hour and minute options for the large clock. A 12-hour clock drops the leading zero ("7:31 AM",
- * like every other time label) while a 24-hour clock keeps it ("07:31").
+ * Hour and minute options for a time of day. A 12-hour clock drops the leading zero ("7:31 AM")
+ * while a 24-hour clock keeps it ("07:31"), so every time label and the large clock agree.
  * @returns {Intl.DateTimeFormatOptions}
  */
 export function getClockFaceTimeOptions() {
@@ -86,6 +72,20 @@ export function getClockFaceTimeOptions() {
     // Keep the 24-hour digits.
   }
   return { hour: hour12 ? 'numeric' : '2-digit', minute: '2-digit', ...clock };
+}
+
+/**
+ * A time of day ("7:31 AM", "07:31") in the user's 12/24-hour setting.
+ * @param {Date|number|string} date
+ * @param {Intl.DateTimeFormatOptions} [options] - Replaces the default hour and minute.
+ */
+export function formatClockTime(date, options = getClockFaceTimeOptions()) {
+  return formatTime(date, { ...options, ...getClockTimeOptions() });
+}
+
+/** A date with a time of day, in the user's 12/24-hour setting. */
+export function formatClockDateTime(date, options = { dateStyle: 'medium', timeStyle: 'short' }) {
+  return formatDateTime(date, { ...options, ...getClockTimeOptions() });
 }
 
 // --- Numbers and units -----------------------------------------------------------------------
@@ -258,6 +258,11 @@ export function getSensorReading(entity) {
   const measured = isMeasurement(attributes);
   const number = parseNumericState(entity.state);
   if (number === null) return null;
+  // A duration of a minute or more reads in units ("1h 15m"), not as a count of seconds.
+  if (attributes.device_class === 'duration') {
+    const duration = formatDurationReading(number, attributes.unit_of_measurement);
+    if (duration) return { value: duration, unit: '', text: duration };
+  }
   const unit =
     typeof attributes.unit_of_measurement === 'string' ? attributes.unit_of_measurement.trim() : '';
   let precision = getSensorPrecision(attributes);
@@ -503,8 +508,7 @@ export function formatDayAndTime(date, now = Date.now()) {
   if (nearby) return `${nearby} ${formatClockTime(date)}`;
   return formatClockDateTime(date, {
     ...getDayOptions(date, now),
-    hour: 'numeric',
-    minute: '2-digit',
+    ...getClockFaceTimeOptions(),
   });
 }
 
