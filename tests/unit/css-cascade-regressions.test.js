@@ -535,6 +535,16 @@ describe('stylesheet cascade regressions', () => {
     });
   });
 
+  describe('a button the markup hides', () => {
+    // The shared button sets display, which beats the hidden attribute, so the confirmation
+    // dialog showed an empty third button between Cancel and the action whenever it asked two.
+    it('stays out of the row', () => {
+      render('', '<div class="modal-footer"><button class="btn" id="alt" hidden></button></div>');
+
+      expect(resolvedValue(document.getElementById('alt'), 'display')).toBe('none');
+    });
+  });
+
   describe('the to-do add field', () => {
     // The field scrolled away with the first rows of a long list. A sticky box is held at the
     // scroll container's content edge, so it needs the container's padding as a negative top.

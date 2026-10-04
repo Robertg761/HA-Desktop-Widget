@@ -8691,7 +8691,9 @@ body.theme-light:not(.high-contrast)
 }
 
 /* Scoped to beat the settings modal's own :focus-visible border, so a rejected value stays red
-   while the field has focus too. */
+   while the field has focus too. The attribute is written twice on purpose: that raises the
+   selector's specificity to match `input[type='text']:focus-visible` (an :is() counts only as its
+   strongest argument), and this rule comes later. */
 #settings-modal :is(input, select, textarea)[aria-invalid='true'][aria-invalid='true'] {
   border-color: var(--error);
 }
@@ -8753,6 +8755,11 @@ body.theme-light:not(.high-contrast)
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
+}
+
+/* display above would otherwise win over the hidden attribute, and an empty button would show. */
+.btn[hidden] {
+  display: none;
 }
 
 .btn:hover {
