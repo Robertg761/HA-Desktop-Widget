@@ -648,24 +648,62 @@ describe('DesktopCompanionClient session retries', () => {
     client.stop();
   });
 
-  test('waits longer after each failure, up to five minutes', async () => {
-    jest.useFakeTimers();
-    const { client, websocket } = createFlakyClient(Infinity);
+  // How long each retry of a session that keeps failing waited, in milliseconds.
+  async function waitsBetweenAttempts(client, websocket, count) {
     client.start();
     await flush();
-
     const waits = [];
-    for (let attempt = 0; attempt < 5; attempt += 1) {
+    for (let attempt = 0; attempt < count; attempt += 1) {
       const before = infoRequests(websocket).length;
       let waited = 0;
-      while (infoRequests(websocket).length === before && waited < 10 * 60_000) {
+      while (infoRequests(websocket).length === before && waited < 40 * 60_000) {
         await jest.advanceTimersByTimeAsync(1000);
         waited += 1000;
       }
       waits.push(waited);
     }
+    client.stop();
+    return waits;
+  }
 
-    expect(waits).toEqual([15_000, 60_000, 300_000, 300_000, 300_000]);
+  test('waits longer after each failure, up to five minutes', async () => {
+    jest.useFakeTimers();
+    const { client, websocket } = createFlakyClient(Infinity, () => ({
+      code: 'other',
+      message: 'Unsupported protocol',
+    }));
+
+    expect(await waitsBetweenAttempts(client, websocket, 5)).toEqual([
+      15_000, 60_000, 300_000, 300_000, 300_000,
+    ]);
+  });
+
+  test('asks every half hour once the waits are over when the integration is not installed', async () => {
+    jest.useFakeTimers();
+    const { client, websocket } = createFlakyClient(Infinity);
+
+    // Most people never install the integration; five-minute asks would go on for as long as the
+    // app runs. The first three waits stay short for an integration that is still loading.
+    expect(await waitsBetweenAttempts(client, websocket, 5)).toEqual([
+      15_000, 60_000, 300_000, 1_800_000, 1_800_000,
+    ]);
+  });
+
+  test('registers when the integration turns up after the waits are over', async () => {
+    jest.useFakeTimers();
+    const { client, websocket } = createFlakyClient(4);
+    client.start();
+    await flush();
+    await jest.advanceTimersByTimeAsync(15_000 + 60_000 + 300_000);
+    await flush();
+    expect(registrations(websocket)).toHaveLength(0);
+
+    await jest.advanceTimersByTimeAsync(29 * 60_000);
+    expect(registrations(websocket)).toHaveLength(0);
+    await jest.advanceTimersByTimeAsync(60_000);
+    await flush();
+
+    expect(registrations(websocket)).toHaveLength(1);
     client.stop();
   });
 

@@ -7,6 +7,10 @@ const HEARTBEAT_INTERVAL_MS = 60 * 1000;
 // registered its commands, and without a retry the desktop stayed unregistered until the socket
 // dropped again.
 const SESSION_RETRY_DELAYS_MS = Object.freeze([15 * 1000, 60 * 1000, 5 * 60 * 1000]);
+// Most people never install the integration, and for them Home Assistant answers unknown_command
+// however long it waits. Once the waits above have run out, such a session is looked at this
+// rarely: it only has to catch an integration installed while the app runs.
+const INTEGRATION_MISSING_RETRY_MS = 30 * 60 * 1000;
 // After Home Assistant refuses a layout, the next try waits this long, doubling, up to the cap.
 const SNAPSHOT_REJECTION_BACKOFF_MS = 2 * 60 * 1000;
 const SNAPSHOT_REJECTION_MAX_BACKOFF_MS = 30 * 60 * 1000;
@@ -62,6 +66,7 @@ class DesktopCompanionClient {
     executeCommand,
     heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS,
     sessionRetryDelaysMs = SESSION_RETRY_DELAYS_MS,
+    integrationMissingRetryMs = INTEGRATION_MISSING_RETRY_MS,
     logger = log,
   }) {
     this.websocket = websocket;
@@ -72,6 +77,7 @@ class DesktopCompanionClient {
     this.executeCommand = executeCommand;
     this.heartbeatIntervalMs = heartbeatIntervalMs;
     this.sessionRetryDelaysMs = sessionRetryDelaysMs;
+    this.integrationMissingRetryMs = integrationMissingRetryMs;
     this.log = logger;
     this.started = false;
     // Set when Home Assistant does not know the companion commands; cleared on each new session so
@@ -147,11 +153,16 @@ class DesktopCompanionClient {
 
   // Tries the session again after a wait that grows to a few minutes. Tied to the session that
   // failed: a socket that closed or authenticated again in the meantime starts its own.
-  scheduleSessionRetry(generation) {
+  scheduleSessionRetry(generation, { integrationMissing = false } = {}) {
     if (!this.started || generation !== this.generation) return;
     this.clearSessionRetry();
     const delays = this.sessionRetryDelaysMs;
-    const delay = delays[Math.min(this.sessionRetryAttempt, delays.length - 1)];
+    // The integration may still be loading, so it gets the same short waits as any other failure
+    // first; a session that stays "unknown command" past them is retried far less often.
+    const delay =
+      integrationMissing && this.sessionRetryAttempt >= delays.length
+        ? this.integrationMissingRetryMs
+        : delays[Math.min(this.sessionRetryAttempt, delays.length - 1)];
     this.sessionRetryAttempt += 1;
     this.sessionRetryTimer = setTimeout(() => {
       this.sessionRetryTimer = null;
@@ -256,7 +267,8 @@ class DesktopCompanionClient {
       return true;
     } catch (error) {
       if (this.started && generation === this.generation) {
-        if (isUnknownCommand(error)) {
+        const integrationMissing = isUnknownCommand(error);
+        if (integrationMissing) {
           this.noteIntegrationMissing();
         } else {
           // The same refusal on every retry would fill the log; say it again only if it changes.
@@ -266,7 +278,7 @@ class DesktopCompanionClient {
           }
           this.lastSessionFailure = reason;
         }
-        this.scheduleSessionRetry(generation);
+        this.scheduleSessionRetry(generation, { integrationMissing });
       }
       return false;
     }
