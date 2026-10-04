@@ -92,26 +92,9 @@ const mockUiUtils = {
   getAccentThemes: jest.fn(() => [...BASE_THEMES, ...mockCustomThemes]),
   // The window a Background choice gives: the untinted base for null, a tinted one otherwise.
   getBackgroundWindowColor: jest.fn((color = null) => (color === null ? '#12161e' : '#222c3c')),
-  trapFocus: jest.fn(),
-  releaseFocusTrap: jest.fn(),
-  // Mirrors the real shared modal helpers: class-based visibility plus the inline display the
-  // legacy call sites still assert on.
-  closeModal: jest.fn((modal, { releaseFocus = false } = {}) => {
-    if (modal) {
-      modal.classList.remove('modal-closing');
-      modal.classList.add('hidden');
-      if (modal.style.display) modal.style.display = 'none';
-      if (releaseFocus) mockUiUtils.releaseFocusTrap(modal);
-    }
-    return Promise.resolve();
-  }),
-  openModal: jest.fn((modal, { display = 'flex' } = {}) => {
-    if (!modal) return;
-    modal.classList.remove('modal-closing');
-    modal.classList.remove('hidden');
-    if (display) modal.style.display = display;
-    else modal.style.removeProperty('display');
-  }),
+  // The real dialog layer: class-based visibility plus the inline display, the focus trap and
+  // Escape, so these tests see what a person opening and closing Settings gets.
+  ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
   showToast: jest.fn(),
   showConfirm: jest.fn().mockResolvedValue(true),
   copyTextToClipboard: jest.fn().mockResolvedValue(true),
@@ -410,7 +393,6 @@ function createSettingsModalDOM() {
             <input id="custom-color-hex" type="text" aria-describedby="custom-color-hex-error" />
             <button type="button" id="save-custom-color-btn">Save Custom Color</button>
             <div id="custom-color-hex-error" class="hidden"></div>
-            <div id="custom-editor-save-lock-hint" class="hidden"></div>
             <div id="custom-theme-management" class="hidden">
               <input id="custom-color-name-input" type="text" />
               <button type="button" id="rename-custom-color-btn">Rename</button>
@@ -612,7 +594,15 @@ describe('Settings + Config Integration', () => {
       expect(alwaysOnTop.checked).toBe(true);
       expect(parseInt(opacitySlider.value)).toBeGreaterThan(0);
 
-      expect(mockUiUtils.trapFocus).toHaveBeenCalledWith(modal);
+      // Settings is a dialog, named by its heading, and focus lands inside it and not on Close.
+      expect(modal.getAttribute('role')).toBe('dialog');
+      expect(modal.getAttribute('aria-modal')).toBe('true');
+      expect(document.getElementById(modal.getAttribute('aria-labelledby')).textContent).toBe(
+        'Settings'
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(document.activeElement.id).not.toBe('close-settings');
+      expect(modal.contains(document.activeElement)).toBe(true);
       expect(mockUiHooks.initUpdateUI).toHaveBeenCalled();
     });
 
@@ -1051,8 +1041,25 @@ describe('Settings + Config Integration', () => {
       expect(status.lastElementChild.className).toBe('connection-progress');
 
       connectionStatus.renderConnectionStatus(status, '', '');
-      expect(status.classList.contains('hidden')).toBe(true);
+      // Emptied, not removed: a live region that stays in the page announces the next message.
+      expect(status.classList.contains('hidden')).toBe(false);
+      expect(status.classList.contains('connection-status-empty')).toBe(true);
       expect(status.querySelector('.connection-progress')).toBeNull();
+    });
+
+    test('keeps the status line in the page and raises an error as an alert', async () => {
+      await settings.openSettings();
+      const status = document.getElementById('ha-oauth-status');
+
+      connectionStatus.renderConnectionStatus(status, 'Could not reach Home Assistant.', 'error');
+      expect(status.getAttribute('role')).toBe('alert');
+      // An explicit aria-live outranks the role's own, so the two have to agree.
+      expect(status.getAttribute('aria-live')).toBe('assertive');
+      expect(status.classList.contains('connection-status-empty')).toBe(false);
+
+      connectionStatus.renderConnectionStatus(status, 'Connected.', 'success');
+      expect(status.getAttribute('role')).toBe('status');
+      expect(status.getAttribute('aria-live')).toBe('polite');
     });
 
     test('discovers available weather entities and selects the saved source', async () => {
@@ -1179,7 +1186,6 @@ describe('Settings + Config Integration', () => {
 
       expect(modal.classList.contains('hidden')).toBe(true);
       expect(modal.style.display).toBe('none');
-      expect(mockUiUtils.releaseFocusTrap).toHaveBeenCalledWith(modal);
       expect(mockHotkeys.cleanupHotkeyEventListeners).toHaveBeenCalled();
     });
 
@@ -2439,7 +2445,7 @@ describe('Settings + Config Integration', () => {
       expect(window.electronAPI.updateConfig).not.toHaveBeenCalled();
     });
 
-    test('should show the full emoji catalog in the picker', async () => {
+    test('should show the first icons and ask for a query to narrow the rest', async () => {
       // Arrange
       await openSettingsWithCustomIconsExpanded();
       const chooseBtn = document.querySelector(
@@ -2450,35 +2456,87 @@ describe('Settings + Config Integration', () => {
       // Act
       chooseBtn.click();
 
-      // Assert
-      const allChoices = document.querySelectorAll(
-        '[data-custom-icon-choice-entity="light.living_room"]'
+      // Assert: nearly four thousand buttons are slow to build and a mile to scroll
+      const picker = document.querySelector('[data-custom-icon-picker="light.living_room"]');
+      const allChoices = picker.querySelectorAll('.custom-entity-icon-choice');
+      expect(allChoices).toHaveLength(120);
+      const summary = picker.querySelector('.custom-entity-icon-picker-meta');
+      expect(summary.textContent).toMatch(
+        /^Showing the first 120 of 3\d{3} icons\. Type to narrow them\.$/
       );
-      const renderedIcons = new Set(
-        Array.from(allChoices, (choice) => choice.dataset.customIconChoice)
-      );
-      expect(allChoices.length).toBeGreaterThanOrEqual(3953);
-      ['1️⃣', '🇨🇦', '🏳️‍🌈', '👨‍👩‍👧‍👦', '👩🏽‍💻', '🫷🏽'].forEach((emoji) => {
-        expect(renderedIcons).toContain(emoji);
-      });
+      // The count is announced as it narrows.
+      expect(summary.getAttribute('aria-live')).toBe('polite');
     });
 
-    test('should open picker with all icons when icon input is focused', async () => {
+    test('should make the icon grid one Tab stop that the arrow keys move through', async () => {
+      await openSettingsWithCustomIconsExpanded();
+      document.querySelector('[data-custom-icon-picker-toggle="light.living_room"]').click();
+      const grid = document.querySelector('.custom-entity-icon-picker-grid');
+      const choices = [...grid.querySelectorAll('.custom-entity-icon-choice')];
+      const press = (target, key) => {
+        const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+        target.dispatchEvent(event);
+        return event;
+      };
+
+      // A listbox needs option children; these are buttons in a group.
+      expect(grid.getAttribute('role')).toBe('group');
+      expect(choices.filter((choice) => choice.tabIndex === 0)).toEqual([choices[0]]);
+
+      choices[0].focus();
+      expect(press(choices[0], 'ArrowRight').defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(choices[1]);
+      expect(choices.filter((choice) => choice.tabIndex === 0)).toEqual([choices[1]]);
+      press(choices[1], 'End');
+      expect(document.activeElement).toBe(choices.at(-1));
+      press(choices.at(-1), 'Home');
+      expect(document.activeElement).toBe(choices[0]);
+      press(choices[0], 'ArrowLeft');
+      expect(document.activeElement).toBe(choices[0]);
+    });
+
+    test('should not open the picker just because its field was focused', async () => {
       // Arrange
       await openSettingsWithCustomIconsExpanded();
       const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
       expect(iconInput).toBeTruthy();
 
-      // Act
+      // Act: tabbing down the list used to open a four-thousand-button grid on every row
+      iconInput.focus();
       iconInput.dispatchEvent(new Event('focusin', { bubbles: true }));
 
       // Assert
-      const picker = document.querySelector('[data-custom-icon-picker="light.living_room"]');
-      const pickerMeta = picker.querySelector('.custom-entity-icon-picker-meta');
-      const list = document.getElementById('custom-entity-icons-list');
-      expect(picker).toBeTruthy();
-      expect(pickerMeta.textContent).toContain('Showing all');
-      expect(list.classList.contains('custom-entity-icons-list-expanded')).toBe(true);
+      expect(document.querySelector('[data-custom-icon-picker="light.living_room"]')).toBeNull();
+    });
+
+    test('should open the picker when a query is typed, and close it with Escape without leaving Settings', async () => {
+      // Arrange
+      await openSettingsWithCustomIconsExpanded();
+      const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
+      iconInput.focus();
+      iconInput.value = 'star';
+      iconInput.dispatchEvent(new Event('input', { bubbles: true }));
+      expect(document.querySelector('[data-custom-icon-picker="light.living_room"]')).toBeTruthy();
+      const pageEscape = jest.fn();
+      document.addEventListener('keydown', pageEscape);
+
+      // Act
+      const escape = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      });
+      document.querySelector('[data-custom-icon-input="light.living_room"]').dispatchEvent(escape);
+
+      // Assert: the grid closes, Settings and its unsaved edits stay, focus stays in the field
+      expect(escape.defaultPrevented).toBe(true);
+      expect(pageEscape).not.toHaveBeenCalled();
+      document.removeEventListener('keydown', pageEscape);
+      expect(document.querySelector('[data-custom-icon-picker="light.living_room"]')).toBeNull();
+      expect(document.getElementById('settings-modal').classList.contains('hidden')).toBe(false);
+      expect(document.activeElement).toBe(
+        document.querySelector('[data-custom-icon-input="light.living_room"]')
+      );
     });
 
     test('should close picker when focus leaves the icon input row', async () => {
@@ -2488,13 +2546,15 @@ describe('Settings + Config Integration', () => {
       const saveBtn = document.getElementById('save-settings');
       expect(iconInput).toBeTruthy();
       expect(saveBtn).toBeTruthy();
-      iconInput.dispatchEvent(new Event('focusin', { bubbles: true }));
+      document.querySelector('[data-custom-icon-picker-toggle="light.living_room"]').click();
       expect(document.querySelector('[data-custom-icon-picker="light.living_room"]')).toBeTruthy();
 
       jest.useFakeTimers();
       try {
         // Act
-        iconInput.dispatchEvent(new Event('focusout', { bubbles: true }));
+        document
+          .querySelector('[data-custom-icon-input="light.living_room"]')
+          .dispatchEvent(new Event('focusout', { bubbles: true }));
         saveBtn.focus();
         jest.runOnlyPendingTimers();
 
@@ -2611,6 +2671,9 @@ describe('Settings + Config Integration', () => {
 
       // Act
       chooseBtn.click();
+      const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
+      iconInput.value = 'star';
+      iconInput.dispatchEvent(new Event('input', { bubbles: true }));
       const iconChoiceBtn = document.querySelector(
         '[data-custom-icon-choice="⭐"][data-custom-icon-choice-entity="light.living_room"]'
       );
@@ -2625,6 +2688,10 @@ describe('Settings + Config Integration', () => {
       const preview = row.querySelector('.custom-entity-icon-preview');
       expect(preview.textContent).toBe('⭐');
       expect(state.CONFIG.customEntityIcons).toEqual({});
+      // The grid closed with the choice, and the keyboard goes on from the row's field.
+      expect(document.activeElement).toBe(
+        document.querySelector('[data-custom-icon-input="light.living_room"]')
+      );
     });
 
     test('should reject invalid icon values that are not a single grapheme', async () => {
@@ -2998,102 +3065,22 @@ describe('Settings + Config Integration', () => {
       ).toHaveLength(0);
     });
 
-    test('should disable main settings save while custom editor is active', async () => {
-      // Arrange
-      await settings.openSettings();
-      const mainSave = document.getElementById('save-settings');
-      const lockHint = document.getElementById('custom-editor-save-lock-hint');
-      const hexInput = document.getElementById('custom-color-hex');
-
-      // Act
-      hexInput.focus();
-
-      // Assert
-      expect(mainSave.disabled).toBe(true);
-      expect(lockHint.classList.contains('hidden')).toBe(false);
-    });
-
-    test('should unlock main settings save when focus moves outside custom editor', async () => {
-      // Arrange
-      await settings.openSettings();
-      const mainSave = document.getElementById('save-settings');
-      const lockHint = document.getElementById('custom-editor-save-lock-hint');
-      const hexInput = document.getElementById('custom-color-hex');
-      const haUrl = document.getElementById('ha-url');
-      hexInput.focus();
-      expect(mainSave.disabled).toBe(true);
-
-      // Act
-      haUrl.focus();
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
-      // Assert
-      expect(mainSave.disabled).toBe(false);
-      expect(lockHint.classList.contains('hidden')).toBe(true);
-    });
-
-    test('should unlock main settings save when Save Custom Color is clicked', async () => {
+    test('should keep main settings save available while custom editor is active', async () => {
       // Arrange
       await settings.openSettings();
       const mainSave = document.getElementById('save-settings');
       const hexInput = document.getElementById('custom-color-hex');
-      const saveCustomBtn = document.getElementById('save-custom-color-btn');
-      hexInput.focus();
-      expect(mainSave.disabled).toBe(true);
 
       // Act
-      hexInput.value = '#88AA11';
+      hexInput.focus();
+      hexInput.value = '#13579B';
       hexInput.dispatchEvent(new Event('input', { bubbles: true }));
-      saveCustomBtn.click();
 
-      // Assert
+      // Assert: a Save that went disabled when a field took focus swallowed a quick first click.
+      // The unsaved colour is dealt with when Save is clicked, by the prompt.
       expect(mainSave.disabled).toBe(false);
-    });
-
-    test('should unlock main settings save when rename and remove actions run', async () => {
-      // Arrange
-      await settings.openSettings();
-      const mainSave = document.getElementById('save-settings');
-      const hexInput = document.getElementById('custom-color-hex');
-      const saveCustomBtn = document.getElementById('save-custom-color-btn');
-      const renameInput = document.getElementById('custom-color-name-input');
-      const renameBtn = document.getElementById('rename-custom-color-btn');
-      const removeBtn = document.getElementById('remove-custom-color-btn');
-
-      hexInput.value = '#9A7722';
-      hexInput.dispatchEvent(new Event('input', { bubbles: true }));
-      saveCustomBtn.click();
-
-      // Act
-      renameInput.focus();
-      renameInput.value = 'Renamed Custom';
-      renameBtn.click();
-
-      removeBtn.focus();
-      removeBtn.click();
-      // Removing asks first; the lock lifts once the confirmation has been answered.
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
-      // Assert
-      expect(mainSave.disabled).toBe(false);
-    });
-
-    test('should reset main save lock state when settings closes', async () => {
-      // Arrange
-      await settings.openSettings();
-      const mainSave = document.getElementById('save-settings');
-      const hexInput = document.getElementById('custom-color-hex');
-      const lockHint = document.getElementById('custom-editor-save-lock-hint');
-      hexInput.focus();
-      expect(mainSave.disabled).toBe(true);
-
-      // Act
-      settings.closeSettings();
-      await settings.openSettings();
-
-      // Assert
-      expect(mainSave.disabled).toBe(false);
-      expect(lockHint.classList.contains('hidden')).toBe(true);
+      expect(mainSave.hasAttribute('aria-disabled')).toBe(false);
+      expect(document.getElementById('custom-editor-save-lock-hint')).toBeNull();
     });
 
     test('should persist a saved custom color in config', async () => {
@@ -3129,13 +3116,15 @@ describe('Settings + Config Integration', () => {
       hexInput.dispatchEvent(new Event('input', { bubbles: true }));
       await settings.saveSettings();
 
-      // Assert
+      // Assert: three ways out, and the safe one (save the colour) is where focus starts
       expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
         expect.stringContaining('Unsaved Custom Color Changes'),
         expect.stringContaining('unsaved custom color edits'),
         expect.objectContaining({
           confirmText: 'Save and Continue',
-          cancelText: 'Continue Without Saving',
+          alternateText: 'Discard color edits',
+          cancelText: 'Keep editing',
+          confirmFirst: true,
         })
       );
       expect(state.CONFIG.ui.customColors).toEqual(
@@ -3143,9 +3132,9 @@ describe('Settings + Config Integration', () => {
       );
     });
 
-    test('should prompt for unsaved custom color draft and continue without saving when declined', async () => {
+    test('should drop the unsaved custom color draft and save the rest when it is discarded', async () => {
       // Arrange
-      mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+      mockUiUtils.showConfirm.mockResolvedValueOnce('alternate');
       await settings.openSettings();
       const hexInput = document.getElementById('custom-color-hex');
 
@@ -3156,6 +3145,27 @@ describe('Settings + Config Integration', () => {
 
       // Assert
       expect(mockUiUtils.showConfirm).toHaveBeenCalled();
+      expect(state.CONFIG.ui.customColors).toHaveLength(0);
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalled();
+    });
+
+    test('should keep Settings open with the draft when the prompt is dismissed or cancelled', async () => {
+      // Arrange: Escape, a click outside and Cancel all resolve false
+      mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+      await settings.openSettings();
+      const hexInput = document.getElementById('custom-color-hex');
+      hexInput.value = '#2468AC';
+      hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+      mockElectronAPI.updateConfig.mockClear();
+
+      // Act
+      await settings.saveSettings();
+
+      // Assert: nothing was saved, the form is still open and the draft is still in the field
+      expect(mockUiUtils.showConfirm).toHaveBeenCalled();
+      expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+      expect(document.getElementById('settings-modal').classList.contains('hidden')).toBe(false);
+      expect(hexInput.value).toBe('#2468AC');
       expect(state.CONFIG.ui.customColors).toHaveLength(0);
     });
 
@@ -5649,7 +5659,7 @@ describe('Settings + Config Integration', () => {
       press(document.getElementById('alert-duration'));
       await Promise.resolve();
       expect(mockUiUtils.showToast).toHaveBeenCalledTimes(1);
-      expect(modal.dataset.enterSaves).toBe('true');
+      expect(modal.getAttribute('role')).toBe('dialog');
     });
 
     test('rejects out-of-range durations with a toast instead of a native bubble', async () => {
@@ -5668,10 +5678,405 @@ describe('Settings + Config Integration', () => {
     });
   });
 
+  describe('Keyboard and focus in Settings', () => {
+    const press = (target, key, init = {}) => {
+      const event = new KeyboardEvent('keydown', {
+        key,
+        bubbles: true,
+        cancelable: true,
+        ...init,
+      });
+      target.dispatchEvent(event);
+      return event;
+    };
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    describe('the dialog itself', () => {
+      test('closes on Escape like Cancel, but not on a click that misses a control', async () => {
+        await settings.openSettings();
+        const modal = document.getElementById('settings-modal');
+
+        modal.click();
+        expect(modal.classList.contains('hidden')).toBe(false);
+
+        expect(press(document.getElementById('ha-url'), 'Escape').defaultPrevented).toBe(true);
+        expect(modal.classList.contains('hidden')).toBe(true);
+      });
+
+      test('leaves Escape to a control that used it, such as an open dropdown or picker', async () => {
+        await settings.openSettings();
+        const modal = document.getElementById('settings-modal');
+        const field = document.getElementById('ha-url');
+        field.addEventListener('keydown', (event) => event.preventDefault());
+
+        press(field, 'Escape');
+
+        expect(modal.classList.contains('hidden')).toBe(false);
+      });
+
+      test('collapsed sections are inert, so Tab and screen readers skip what is not shown', async () => {
+        await settings.openSettings();
+        const section = document.getElementById('color-themes-section');
+        const body = section.querySelector('.section-body');
+
+        expect(section.classList.contains('collapsed')).toBe(true);
+        expect(body.inert).toBe(true);
+
+        document.getElementById('color-themes-toggle').click();
+        expect(section.classList.contains('collapsed')).toBe(false);
+        expect(body.inert).toBe(false);
+
+        document.getElementById('color-themes-toggle').click();
+        expect(body.inert).toBe(true);
+      });
+    });
+
+    describe('the colour swatches', () => {
+      const swatches = () => [...document.querySelectorAll('#theme-options .color-theme-option')];
+
+      test('are one Tab stop, on the chosen swatch', async () => {
+        await settings.openSettings();
+
+        const stops = swatches().filter((swatch) => swatch.tabIndex === 0);
+        expect(swatches().length).toBeGreaterThan(2);
+        expect(stops).toHaveLength(1);
+        expect(stops[0].getAttribute('aria-checked')).toBe('true');
+      });
+
+      test('answer the arrows, Home and End by choosing and focusing the neighbour', async () => {
+        await settings.openSettings();
+        const [first, second] = swatches();
+        first.focus();
+
+        expect(press(first, 'ArrowRight').defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(second);
+        expect(second.getAttribute('aria-checked')).toBe('true');
+        expect(first.getAttribute('aria-checked')).toBe('false');
+        expect(second.tabIndex).toBe(0);
+        expect(first.tabIndex).toBe(-1);
+
+        press(second, 'End');
+        expect(document.activeElement).toBe(swatches().at(-1));
+        press(swatches().at(-1), 'Home');
+        expect(document.activeElement).toBe(swatches()[0]);
+        // Along the row the arrows wrap, and the vertical ones do the same.
+        press(swatches()[0], 'ArrowLeft');
+        expect(document.activeElement).toBe(swatches().at(-1));
+        press(swatches().at(-1), 'ArrowDown');
+        expect(document.activeElement).toBe(swatches()[0]);
+      });
+
+      test('leave a key with a modifier alone, so shortcuts keep working', async () => {
+        await settings.openSettings();
+        const [first] = swatches();
+        first.focus();
+
+        expect(press(first, 'ArrowRight', { ctrlKey: true }).defaultPrevented).toBe(false);
+        expect(document.activeElement).toBe(first);
+      });
+    });
+
+    describe('the popup hotkey recorder', () => {
+      // A recording left on would listen on the document for every test after it.
+      afterEach(() => settings.closeSettings());
+      const recorder = () => ({
+        input: document.getElementById('popup-hotkey-input'),
+        setBtn: document.getElementById('popup-hotkey-set-btn'),
+        clearBtn: document.getElementById('popup-hotkey-clear-btn'),
+        preset: document.querySelector('.preset-hotkey-btn'),
+      });
+      const open = async () => {
+        mockElectronAPI.isPopupHotkeyAvailable.mockResolvedValue(true);
+        await settings.openSettings();
+        // The card wires itself up a moment after the dialog opens.
+        await tick();
+        await tick();
+        const parts = recorder();
+        parts.setBtn.click();
+        return parts;
+      };
+
+      test('says how to stop, and keeps the footer Cancel from being the only one', async () => {
+        const { input, setBtn, preset } = await open();
+
+        expect(input.value).toBe('Press keys... (Esc to cancel)');
+        // The footer's Cancel throws away the whole form; this one only ends the recording.
+        expect(setBtn.textContent).toBe('Stop recording');
+        expect(preset.disabled).toBe(true);
+      });
+
+      test('Escape ends the recording instead of being offered as the hotkey', async () => {
+        const { input, setBtn, preset } = await open();
+        mockElectronAPI.registerPopupHotkey.mockClear();
+        mockUiUtils.showToast.mockClear();
+
+        const event = press(document.body, 'Escape');
+        await tick();
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(mockElectronAPI.registerPopupHotkey).not.toHaveBeenCalled();
+        expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+        expect(setBtn.textContent).toBe('Set hotkey');
+        expect(preset.disabled).toBe(false);
+        expect(input.value).toBe(state.CONFIG.popupHotkey || '');
+        // And Settings is still open: the key was the recorder's.
+        expect(document.getElementById('settings-modal').classList.contains('hidden')).toBe(false);
+      });
+
+      test('Tab leaves the field and ends the recording, and is not swallowed', async () => {
+        const { setBtn } = await open();
+
+        const event = press(recorder().input, 'Tab');
+
+        expect(event.defaultPrevented).toBe(false);
+        expect(setBtn.textContent).toBe('Set hotkey');
+      });
+
+      test('stops listening when Settings closes, so the next key anywhere is not swallowed or registered', async () => {
+        await open();
+        mockElectronAPI.registerPopupHotkey.mockClear();
+
+        settings.closeSettings();
+        const event = press(document.body, 'k', { ctrlKey: true });
+        await tick();
+
+        expect(event.defaultPrevented).toBe(false);
+        expect(mockElectronAPI.registerPopupHotkey).not.toHaveBeenCalled();
+      });
+
+      test('stops when the field loses focus to the page, or the window loses focus', async () => {
+        const first = await open();
+        first.input.dispatchEvent(new FocusEvent('blur', { relatedTarget: null }));
+        expect(first.setBtn.textContent).toBe('Set hotkey');
+
+        const second = recorder();
+        second.setBtn.click();
+        expect(second.setBtn.textContent).toBe('Stop recording');
+        window.dispatchEvent(new Event('blur'));
+        expect(second.setBtn.textContent).toBe('Set hotkey');
+      });
+
+      test('pressing Stop recording ends it once, and does not start another', async () => {
+        const { input, setBtn } = await open();
+
+        // The button takes focus from the field first, then its click arrives.
+        input.dispatchEvent(new FocusEvent('blur', { relatedTarget: setBtn }));
+        expect(setBtn.textContent).toBe('Stop recording');
+        setBtn.click();
+
+        expect(setBtn.textContent).toBe('Set hotkey');
+        expect(input.value).toBe(state.CONFIG.popupHotkey || '');
+      });
+
+      test('a suggestion chip or Clear ends a recording that is somehow still on', async () => {
+        const parts = await open();
+        parts.preset.disabled = false;
+        mockElectronAPI.registerPopupHotkey.mockResolvedValue({ success: true });
+
+        parts.preset.click();
+        await tick();
+
+        expect(parts.setBtn.textContent).toBe('Set hotkey');
+        expect(mockElectronAPI.registerPopupHotkey).toHaveBeenCalledWith(
+          parts.preset.dataset.hotkey
+        );
+        const event = press(document.body, 'k', { ctrlKey: true });
+        expect(event.defaultPrevented).toBe(false);
+      });
+    });
+
+    describe('switches that disable themselves while they save', () => {
+      test('keep keyboard focus through a change, instead of dropping it to the page', async () => {
+        mockElectronAPI.isPopupHotkeyAvailable.mockResolvedValue(true);
+        await settings.openSettings();
+        await tick();
+        await tick();
+        const toggle = document.getElementById('popup-hotkey-toggle-mode');
+        toggle.focus();
+        let release;
+        mockElectronAPI.updateConfig.mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              release = () => resolve({ ...state.CONFIG, popupHotkeyToggleMode: true });
+            })
+        );
+
+        toggle.checked = true;
+        toggle.dispatchEvent(new Event('change', { bubbles: true }));
+        expect(toggle.disabled).toBe(true);
+        // The browser blurs a control the moment it is disabled.
+        toggle.blur();
+        release();
+        await tick();
+        await tick();
+
+        expect(toggle.disabled).toBe(false);
+        expect(document.activeElement).toBe(toggle);
+      });
+    });
+
+    describe('the alerts list', () => {
+      beforeEach(() => {
+        document.body.insertAdjacentHTML(
+          'beforeend',
+          `<div id="alert-config-modal" class="modal hidden" style="display: none">
+            <div class="modal-content">
+              <div class="modal-header"><h2 id="alert-config-title">Configure Alert</h2></div>
+              <div class="modal-body">
+                <div class="form-group"><div class="alert-type-options">
+                  <input type="radio" name="alert-type" value="state-change" checked />
+                  <input type="radio" name="alert-type" value="specific-state" />
+                </div></div>
+                <div class="form-group" id="specific-state-group" style="display: none">
+                  <input type="text" id="target-state-input" />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="alert-entity-picker-modal" class="modal hidden" style="display: none">
+            <div class="modal-content">
+              <div class="modal-header"><h2>Add Alert</h2></div>
+              <div class="modal-body">
+                <input id="alert-entity-picker-search" />
+                <div id="alert-entity-picker-list"></div>
+              </div>
+            </div>
+          </div>`
+        );
+        state.CONFIG.entityAlerts = {
+          enabled: true,
+          alerts: {
+            'light.living_room': { onStateChange: true, targetState: '' },
+            'switch.kitchen': { onStateChange: true, targetState: '' },
+          },
+        };
+        state.setStates({
+          ...state.STATES,
+          'switch.kitchen': {
+            entity_id: 'switch.kitchen',
+            state: 'off',
+            attributes: { friendly_name: 'Kitchen' },
+          },
+        });
+        document.getElementById('alerts-section').style.display = 'block';
+        settings.renderAlertsListInline();
+      });
+
+      test('opens its dialogs from the list and closes them with Escape or the backdrop', async () => {
+        const edit = document.querySelector('.edit-alert[data-entity="light.living_room"]');
+        edit.focus();
+        edit.click();
+        await tick();
+        const config = document.getElementById('alert-config-modal');
+        expect(config.getAttribute('role')).toBe('dialog');
+        expect(config.classList.contains('hidden')).toBe(false);
+
+        press(document.activeElement, 'Escape');
+        expect(config.classList.contains('hidden')).toBe(true);
+        await tick();
+        expect(document.activeElement).toBe(edit);
+
+        document.querySelector('.add-alert-btn').click();
+        const picker = document.getElementById('alert-entity-picker-modal');
+        expect(picker.classList.contains('hidden')).toBe(false);
+        picker.click();
+        expect(picker.classList.contains('hidden')).toBe(true);
+      });
+
+      test('starts the picker on its search field, not on Close', async () => {
+        document.querySelector('.add-alert-btn').click();
+        await tick();
+
+        expect(document.activeElement.id).toBe('alert-entity-picker-search');
+      });
+
+      test('gives focus back to the Edit button that was rebuilt while the dialog was open', async () => {
+        const edit = document.querySelector('.edit-alert[data-entity="light.living_room"]');
+        edit.focus();
+        edit.click();
+        await tick();
+
+        // Saving rebuilds the whole list, replacing every button in it.
+        settings.renderAlertsListInline();
+        settings.closeAlertConfigModal();
+        await tick();
+
+        const rebuilt = document.querySelector('.edit-alert[data-entity="light.living_room"]');
+        expect(rebuilt).not.toBe(edit);
+        expect(document.activeElement).toBe(rebuilt);
+      });
+
+      test('puts focus on the Add button when the alert it was removing is gone', async () => {
+        const remove = document.querySelector('.remove-alert[data-entity="switch.kitchen"]');
+        remove.focus();
+        mockUiUtils.showConfirm.mockResolvedValueOnce(true);
+        mockElectronAPI.updateConfig.mockImplementationOnce(async (next) => next);
+
+        remove.click();
+        await tick();
+        await tick();
+
+        // The Remove button went with the row, so the confirmation is told where focus goes instead.
+        const [, , options] = mockUiUtils.showConfirm.mock.calls.at(-1);
+        expect(document.querySelector('.remove-alert[data-entity="switch.kitchen"]')).toBeNull();
+        expect(options.focusFallback()).toBe(document.querySelector('.add-alert-btn'));
+      });
+    });
+  });
+
   describe('Support Development dialog', () => {
     afterEach(() => {
       document.getElementById('donate-modal')?.remove();
       document.getElementById('open-donate-modal-btn')?.remove();
+    });
+
+    test('says a bad amount under the field, marks the field, and clears it when the amount changes', async () => {
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        `<button id="open-donate-modal-btn" type="button"></button>
+        <div id="donate-modal" class="modal hidden">
+          <div class="modal-content">
+            <div class="modal-header"><h2>Support</h2></div>
+            <div class="modal-body">
+              <p id="donate-intro">Thank you</p>
+              <input name="donate-frequency" type="radio" value="one-time" checked />
+              <button type="button" class="donate-amount-chip selected" data-amount="5" aria-pressed="true">$5</button>
+              <input id="donate-custom-amount" type="number" min="1" max="12000" step="1" />
+              <p id="donate-amount-error" role="alert" hidden></p>
+            </div>
+            <div class="modal-footer"><button id="donate-continue-btn" type="button">Continue</button></div>
+          </div>
+        </div>`
+      );
+      mockElectronAPI.openExternal = jest.fn().mockResolvedValue({ success: true });
+      await settings.openSettings();
+      document.getElementById('open-donate-modal-btn').click();
+      // The dialog takes its own focus first; then the person works in it.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const modal = document.getElementById('donate-modal');
+      const amount = document.getElementById('donate-custom-amount');
+      const error = document.getElementById('donate-amount-error');
+      mockUiUtils.showToast.mockClear();
+
+      expect(modal.getAttribute('aria-describedby')).toBe('donate-intro');
+      amount.value = '0.5';
+      document.getElementById('donate-continue-btn').click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // A persistent message tied to the field, not a toast that lands on the help text.
+      expect(error.hidden).toBe(false);
+      expect(error.textContent).toBe('Please enter a whole dollar amount between $1 and $12,000.');
+      expect(amount.getAttribute('aria-invalid')).toBe('true');
+      expect(amount.getAttribute('aria-describedby')).toBe('donate-amount-error');
+      expect(document.activeElement).toBe(amount);
+      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(mockElectronAPI.openExternal).not.toHaveBeenCalled();
+
+      amount.value = '10';
+      amount.dispatchEvent(new Event('input', { bubbles: true }));
+      expect(error.hidden).toBe(true);
+      expect(amount.hasAttribute('aria-invalid')).toBe(false);
+      expect(amount.hasAttribute('aria-describedby')).toBe(false);
     });
 
     test('continues on Enter in the custom amount field', async () => {
@@ -5686,6 +6091,7 @@ describe('Settings + Config Integration', () => {
       );
       mockElectronAPI.openExternal = jest.fn().mockResolvedValue({ success: true });
       await settings.openSettings();
+      document.getElementById('open-donate-modal-btn').click();
 
       const amount = document.getElementById('donate-custom-amount');
       amount.value = '25';

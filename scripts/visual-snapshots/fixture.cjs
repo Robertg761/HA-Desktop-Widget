@@ -233,6 +233,9 @@ function buildStates(now = new Date()) {
       max_color_temp_kelvin: 6500,
     }),
     entity('switch.coffee_maker', 'off', { friendly_name: 'Coffee maker' }),
+    // On no page. The mock server refuses every service call for it, so a scene that runs its
+    // command from the command palette gets the "could not run command" error toast.
+    entity('light.unreachable', 'on', { friendly_name: 'Unreachable lamp' }),
     entity('sensor.office_temp', '21.4', {
       friendly_name: 'Office temp',
       unit_of_measurement: '°C',
@@ -354,6 +357,8 @@ function buildStates(now = new Date()) {
     }),
     // Create and update items (TodoListEntityFeature bits 1 and 4).
     entity('todo.shopping', '3', { friendly_name: 'Shopping list', supported_features: 5 }),
+    // On no page: a list long enough to scroll in a dialog, for the scene that holds the add field.
+    entity('todo.errands', '10', { friendly_name: 'Errands', supported_features: 5 }),
     entity('calendar.family', 'off', {
       friendly_name: 'Family calendar',
       message: 'Dentist',
@@ -535,17 +540,37 @@ function buildServices() {
  */
 function buildServiceResponses(now = new Date()) {
   const at = (hours) => new Date(now.getTime() + hours * 3600000).toISOString();
+  const shopping = [
+    { uid: 'milk', summary: 'Oat milk', status: 'needs_action' },
+    { uid: 'bread', summary: 'Sourdough bread', status: 'needs_action' },
+    { uid: 'coffee', summary: 'Coffee beans', status: 'needs_action' },
+    { uid: 'soap', summary: 'Dish soap', status: 'completed' },
+  ];
+  const errands = [
+    'Post the parcel',
+    'Collect the dry cleaning',
+    'Book the car in for a service',
+    'Return the library books',
+    'Pick up the prescription',
+    'Renew the parking permit',
+    'Buy a birthday card',
+    'Drop the bottles at the recycling point',
+    'Order the replacement filter',
+    'Water the plants next door',
+  ].map((summary, index) => ({
+    uid: `errand-${index}`,
+    summary,
+    status: index === 3 ? 'completed' : 'needs_action',
+  }));
   return {
-    'todo.get_items': (message) => ({
-      [message.service_data?.entity_id || 'todo.shopping']: {
-        items: [
-          { uid: 'milk', summary: 'Oat milk', status: 'needs_action' },
-          { uid: 'bread', summary: 'Sourdough bread', status: 'needs_action' },
-          { uid: 'coffee', summary: 'Coffee beans', status: 'needs_action' },
-          { uid: 'soap', summary: 'Dish soap', status: 'completed' },
-        ],
-      },
-    }),
+    'todo.get_items': (message) => {
+      const entityId = message.service_data?.entity_id || 'todo.shopping';
+      return {
+        [entityId]: {
+          items: entityId === 'todo.errands' ? errands : shopping,
+        },
+      };
+    },
     'calendar.get_events': (message) => ({
       [message.service_data?.entity_id || 'calendar.family']: {
         events: [
@@ -596,7 +621,11 @@ function buildConfig(haUrl) {
   };
 }
 
+// Entities whose service calls the mock Home Assistant answers with an error.
+const FAILING_ENTITIES = ['light.unreachable'];
+
 module.exports = {
+  FAILING_ENTITIES,
   PAGE_SETS,
   RESETTABLE_SETTINGS,
   TOKEN,

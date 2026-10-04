@@ -7,6 +7,7 @@ const path = require('path');
 const {
   bindTabListKeyboard,
   bindTabListOrientation,
+  bindTabTooltips,
   getNextTabIndex,
   getTextDirection,
   syncRovingTabIndex,
@@ -172,6 +173,69 @@ describe('bindTabListOrientation', () => {
     flexDirection = 'column';
     window.dispatchEvent(new Event('resize'));
     expect(rail.getAttribute('aria-orientation')).toBe('vertical');
+  });
+});
+
+describe('bindTabTooltips', () => {
+  let rail;
+  let host;
+  const bubble = () => host.querySelector('.tab-tooltip');
+
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <div class="modal-content" id="host">
+        <div role="tablist" aria-orientation="vertical" id="rail">
+          <button role="tab" class="tab-link" id="t1"><span class="tab-link-label"> General </span></button>
+          <button role="tab" class="tab-link" id="t2"><span class="tab-link-label">Appearance</span></button>
+          <button role="tab" class="tab-link" id="t3"><span class="tab-link-icon"></span></button>
+        </div>
+      </div>`;
+    rail = document.getElementById('rail');
+    host = document.getElementById('host');
+    bindTabTooltips(rail, '.tab-link');
+  });
+
+  it('names the tab under the pointer, beside the rail, and hides it when the pointer leaves', () => {
+    const tab = document.getElementById('t2');
+    tab.dispatchEvent(new Event('pointerover', { bubbles: true }));
+    expect(bubble().textContent).toBe('Appearance');
+    expect(bubble().classList.contains('visible')).toBe(true);
+    // It labels a control that already has its name, so a screen reader would hear it twice.
+    expect(bubble().getAttribute('aria-hidden')).toBe('true');
+
+    tab.dispatchEvent(new Event('pointerout', { bubbles: true }));
+    expect(bubble().classList.contains('visible')).toBe(false);
+  });
+
+  it('shows the label on keyboard focus too, and trims the text', () => {
+    document.getElementById('t1').dispatchEvent(new Event('focusin', { bubbles: true }));
+    expect(bubble().textContent).toBe('General');
+    rail.dispatchEvent(new Event('focusout'));
+    expect(bubble().classList.contains('visible')).toBe(false);
+  });
+
+  it('hides when a page is chosen or the rail scrolls, since the tab has moved off its label', () => {
+    for (const eventName of ['click', 'scroll']) {
+      document.getElementById('t1').dispatchEvent(new Event('focusin', { bubbles: true }));
+      expect(bubble().classList.contains('visible')).toBe(true);
+      rail.dispatchEvent(new Event(eventName));
+      expect(bubble().classList.contains('visible')).toBe(false);
+    }
+  });
+
+  it('says nothing for a tab with no label, and creates one bubble however often it is shown', () => {
+    document.getElementById('t3').dispatchEvent(new Event('pointerover', { bubbles: true }));
+    expect(bubble()).toBeNull();
+    for (const id of ['t1', 't2', 't1']) {
+      document.getElementById(id).dispatchEvent(new Event('pointerover', { bubbles: true }));
+    }
+    expect(host.querySelectorAll('.tab-tooltip')).toHaveLength(1);
+  });
+
+  it('binds a list once', () => {
+    bindTabTooltips(rail, '.tab-link');
+    document.getElementById('t1').dispatchEvent(new Event('pointerover', { bubbles: true }));
+    expect(host.querySelectorAll('.tab-tooltip')).toHaveLength(1);
   });
 });
 

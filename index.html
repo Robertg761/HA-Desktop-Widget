@@ -441,8 +441,6 @@
             id="settings-tab-general"
             aria-controls="general-tab"
             data-tab="general"
-            title="General"
-            data-i18n-title="General"
           >
             <svg
               class="tab-link-icon"
@@ -472,8 +470,6 @@
             aria-controls="personalization-tab"
             tabindex="-1"
             data-tab="personalization"
-            title="Appearance"
-            data-i18n-title="Appearance"
           >
             <svg
               class="tab-link-icon"
@@ -506,8 +502,6 @@
             aria-controls="dashboard-tab"
             tabindex="-1"
             data-tab="dashboard"
-            title="Dashboard"
-            data-i18n-title="Dashboard"
           >
             <svg
               class="tab-link-icon"
@@ -537,8 +531,6 @@
             aria-controls="hotkeys-tab"
             tabindex="-1"
             data-tab="hotkeys"
-            title="Hotkeys"
-            data-i18n-title="Hotkeys"
           >
             <svg
               class="tab-link-icon"
@@ -573,8 +565,6 @@
             aria-controls="alerts-tab"
             tabindex="-1"
             data-tab="alerts"
-            title="Alerts"
-            data-i18n-title="Alerts"
           >
             <svg
               class="tab-link-icon"
@@ -604,8 +594,6 @@
             aria-controls="advanced-tab"
             tabindex="-1"
             data-tab="advanced"
-            title="Advanced"
-            data-i18n-title="Advanced"
           >
             <svg
               class="tab-link-icon"
@@ -641,7 +629,12 @@
             />
             <p id="settings-search-status" class="form-help" role="status"></p>
           </div>
-          <div id="settings-search-results" hidden></div>
+          <div
+            id="settings-search-results"
+            role="region"
+            aria-labelledby="settings-search-status"
+            hidden
+          ></div>
           <div
             id="general-tab"
             class="tab-content active"
@@ -672,12 +665,7 @@
                     data-i18n-placeholder="http://homeassistant.local"
                   />
                 </div>
-                <div
-                  id="ha-oauth-status"
-                  class="connection-test-status"
-                  role="status"
-                  aria-live="polite"
-                ></div>
+                <div id="ha-oauth-status" class="connection-test-status" role="status"></div>
                 <p
                   id="secure-storage-notice"
                   class="form-help form-warning hidden"
@@ -736,7 +724,6 @@
                       id="test-ha-connection-status"
                       class="connection-test-status"
                       role="status"
-                      aria-live="polite"
                     ></div>
                   </div>
                 </details>
@@ -1010,6 +997,27 @@
                         </div>
                         <div class="custom-color-field">
                           <label
+                            for="custom-color-hex"
+                            class="custom-color-field-label"
+                            data-i18n="Hex"
+                            >Hex</label
+                          >
+                          <input
+                            id="custom-color-hex"
+                            spellcheck="false"
+                            autocapitalize="off"
+                            autocomplete="off"
+                            type="text"
+                            maxlength="7"
+                            placeholder="#RRGGBB"
+                            data-i18n-placeholder="#RRGGBB"
+                            aria-label="Hex color"
+                            data-i18n-aria-label="Hex color"
+                            aria-describedby="custom-color-hex-error"
+                          />
+                        </div>
+                        <div class="custom-color-field">
+                          <label
                             for="custom-color-r"
                             class="custom-color-field-label"
                             data-i18n="Red (R)"
@@ -1059,27 +1067,6 @@
                             inputmode="numeric"
                           />
                         </div>
-                        <div class="custom-color-field">
-                          <label
-                            for="custom-color-hex"
-                            class="custom-color-field-label"
-                            data-i18n="Hex"
-                            >Hex</label
-                          >
-                          <input
-                            id="custom-color-hex"
-                            spellcheck="false"
-                            autocapitalize="off"
-                            autocomplete="off"
-                            type="text"
-                            maxlength="7"
-                            placeholder="#RRGGBB"
-                            data-i18n-placeholder="#RRGGBB"
-                            aria-label="Hex color"
-                            data-i18n-aria-label="Hex color"
-                            aria-describedby="custom-color-hex-error"
-                          />
-                        </div>
                         <div class="custom-color-action">
                           <span
                             class="custom-color-field-label"
@@ -1103,14 +1090,6 @@
                         data-i18n="Use 3 or 6 hex digits, for example #2E9BD6"
                       >
                         Use 3 or 6 hex digits, for example #2E9BD6
-                      </div>
-                      <div
-                        id="custom-editor-save-lock-hint"
-                        class="form-help custom-editor-save-lock-hint hidden"
-                        data-i18n="Main Save is temporarily disabled while editing custom color. Click outside these fields to continue."
-                      >
-                        Main Save is temporarily disabled while editing custom color. Click outside
-                        these fields to continue.
                       </div>
                     </div>
                     <div
@@ -2751,9 +2730,10 @@
     <div
       id="confirm-modal"
       class="modal hidden"
-      role="dialog"
+      role="alertdialog"
       aria-modal="true"
       aria-labelledby="confirm-title"
+      aria-describedby="confirm-message"
     >
       <div class="modal-content confirm-modal-content">
         <div class="modal-header">
@@ -2771,6 +2751,12 @@
           >
             Cancel
           </button>
+          <button
+            type="button"
+            id="confirm-alternate-btn"
+            class="btn btn-secondary"
+            hidden
+          ></button>
           <button type="button" id="confirm-ok-btn" class="btn btn-danger" data-i18n="Remove">
             Remove
           </button>
@@ -2801,6 +2787,7 @@
         </div>
         <div class="modal-body">
           <p
+            id="donate-intro"
             class="help-text"
             data-i18n="Thank you for considering a donation! Pick an amount below and checkout opens on GitHub Sponsors with everything pre-filled."
           >
@@ -2823,8 +2810,10 @@
             </label>
           </div>
           <div class="form-group">
-            <label for="donate-custom-amount" data-i18n="Amount (USD)">Amount (USD)</label>
-            <div class="donate-amount-grid">
+            <label id="donate-amount-label" for="donate-custom-amount" data-i18n="Amount (USD)"
+              >Amount (USD)</label
+            >
+            <div class="donate-amount-grid" role="group" aria-labelledby="donate-amount-label">
               <button type="button" class="donate-amount-chip" data-amount="3" aria-pressed="false">
                 $3
               </button>
@@ -2862,6 +2851,12 @@
               placeholder="Custom amount"
               data-i18n-placeholder="Custom amount"
             />
+            <p
+              id="donate-amount-error"
+              class="form-help donate-amount-error"
+              role="alert"
+              hidden
+            ></p>
           </div>
           <p
             class="help-text donate-secure-note"
@@ -3119,6 +3114,10 @@
       <div class="spinner"></div>
       <p data-i18n="Connecting to Home Assistant...">Connecting to Home Assistant...</p>
     </div>
+
+    <!-- Says when the connection panel reports a new problem; the panel itself is not a live
+         region, because it is redrawn on every retry and would be read out on every retry. -->
+    <div id="widget-state-live" class="sr-only" role="status" aria-atomic="true"></div>
 
     <!-- Toast notifications -->
     <!-- aria-atomic="false" so a new toast is announced on its own instead of re-reading the

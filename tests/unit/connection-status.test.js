@@ -17,6 +17,7 @@ const {
   describeHomeAssistantOAuthFailure,
   describeHomeAssistantOAuthReauthReason,
   describeHomeAssistantOAuthRefreshError,
+  renderConnectionStatus,
 } = require('../../src/connection-status.js');
 
 // Every failure code src/ha-oauth.cjs can hand to the renderer.
@@ -121,5 +122,48 @@ describe('Home Assistant authorization failure messages', () => {
         '[fr] Home Assistant is offline. Authorization will retry automatically.'
       );
     });
+  });
+});
+
+describe('connection status live region', () => {
+  const makeStatus = () => {
+    // The markup gives these lines role="status" and nothing else.
+    document.body.innerHTML = '<div id="status" role="status"></div>';
+    return document.getElementById('status');
+  };
+
+  it('announces an error assertively and everything else politely', () => {
+    const status = makeStatus();
+
+    renderConnectionStatus(status, 'Could not reach Home Assistant.', 'error');
+    expect(status.getAttribute('role')).toBe('alert');
+    expect(status.getAttribute('aria-live')).toBe('assertive');
+
+    renderConnectionStatus(status, 'Connected.', 'success');
+    expect(status.getAttribute('role')).toBe('status');
+    expect(status.getAttribute('aria-live')).toBe('polite');
+
+    renderConnectionStatus(status, 'Waiting for Home Assistant...', 'pending');
+    expect(status.getAttribute('role')).toBe('status');
+    expect(status.getAttribute('aria-live')).toBe('polite');
+  });
+
+  it('does not leave a stale politeness behind when an error is cleared', () => {
+    const status = makeStatus();
+    renderConnectionStatus(status, 'Could not reach Home Assistant.', 'error');
+    renderConnectionStatus(status, '', '');
+
+    expect(status.getAttribute('role')).toBe('status');
+    expect(status.getAttribute('aria-live')).toBe('polite');
+    expect(status.textContent).toBe('');
+  });
+
+  it('is not pinned to polite by the markup that hosts it', () => {
+    const html = fs.readFileSync(path.resolve(__dirname, '../../index.html'), 'utf8');
+    for (const id of ['ha-oauth-status', 'test-ha-connection-status']) {
+      const element = html.match(new RegExp(`<div[^>]*id="${id}"[^>]*>`))[0];
+      expect(element).toContain('role="status"');
+      expect(element).not.toContain('aria-live');
+    }
   });
 });

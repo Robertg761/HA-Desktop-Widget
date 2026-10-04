@@ -160,16 +160,19 @@ describe('command palette fuzzy scoring', () => {
       openCommandPalette();
 
       const input = document.querySelector('.command-palette-input');
+      const close = document.querySelector('.command-palette-close');
       const resultRows = document.querySelectorAll('.command-palette-result');
-      const lastResult = resultRows[resultRows.length - 1];
       expect(document.activeElement).toBe(input);
+      // The rows are reached with the arrows, not Tab: twenty Tab stops would stand between the
+      // search field and the Close button.
+      resultRows.forEach((row) => expect(row.tabIndex).toBe(-1));
 
       input.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true })
       );
-      expect(document.activeElement).toBe(lastResult);
+      expect(document.activeElement).toBe(close);
 
-      lastResult.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+      close.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
       expect(document.activeElement).toBe(input);
 
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
@@ -200,13 +203,10 @@ describe('command palette over another dialog', () => {
     settings.innerHTML = '<div class="modal-content"><button>Save</button></div>';
     document.body.appendChild(settings);
     const settingsEscape = jest.fn();
-    settings.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') settingsEscape();
-    });
 
     try {
       document.activeElement?.blur();
-      uiUtils.trapFocus(settings, { initialFocus: false });
+      uiUtils.openDialog(settings, { initialFocus: false, dismiss: settingsEscape });
       palette.openCommandPalette();
       const overlay = document.querySelector('.command-palette-overlay:not(.hidden)');
       expect(overlay).toBeTruthy();
@@ -225,7 +225,7 @@ describe('command palette over another dialog', () => {
       expect(settingsEscape).toHaveBeenCalledTimes(1);
     } finally {
       global.requestAnimationFrame = originalRequestAnimationFrame;
-      uiUtils.releaseFocusTrap(settings);
+      uiUtils.closeDialog(settings, { remove: true });
       document.querySelectorAll('.command-palette-overlay').forEach((node) => node.remove());
       settings.remove();
     }
@@ -341,6 +341,136 @@ describe('command palette recents', () => {
       pointerAt(rows()[1], 44, 41);
       expect(highlightedName()).not.toBe(first);
       expect(rows()[1].classList).toContain('highlighted');
+    });
+  });
+
+  describe('keyboard and focus', () => {
+    const press = (target, key, init = {}) => {
+      const event = new KeyboardEvent('keydown', {
+        key,
+        bubbles: true,
+        cancelable: true,
+        ...init,
+      });
+      target.dispatchEvent(event);
+      return event;
+    };
+    const lampStates = (paletteState) =>
+      paletteState.setStates({
+        'light.bed_light': bedLight('off'),
+        'light.desk': { entity_id: 'light.desk', state: 'off', attributes: {} },
+      });
+    const overlay = () => document.querySelector('.command-palette-overlay');
+
+    it('is a named dialog, whose rows are not Tab stops', () => {
+      const { palette, paletteState } = load();
+      lampStates(paletteState);
+      palette.openCommandPalette();
+
+      expect(overlay().getAttribute('role')).toBe('dialog');
+      expect(overlay().getAttribute('aria-modal')).toBe('true');
+      expect(overlay().getAttribute('aria-label')).toBe('Command palette');
+      // The panel inside it is not a second dialog.
+      expect(overlay().querySelector('.command-palette-panel').hasAttribute('role')).toBe(false);
+      const rows = [...document.querySelectorAll('.command-palette-result')];
+      expect(rows.length).toBeGreaterThan(1);
+      rows.forEach((row) => expect(row.tabIndex).toBe(-1));
+    });
+
+    it('runs the highlighted row on Enter in the field, and not a command on the Close button', async () => {
+      const { palette, paletteState } = load();
+      lampStates(paletteState);
+      const websocket = require('../../src/websocket.js').default;
+      palette.openCommandPalette();
+      const input = document.querySelector('.command-palette-input');
+      input.value = 'turn on bed';
+      input.dispatchEvent(new Event('input'));
+      const close = document.querySelector('.command-palette-close');
+
+      // Enter on Close is Close's own click: it must not also run the command under the highlight.
+      const onClose = press(close, 'Enter');
+      expect(onClose.defaultPrevented).toBe(false);
+      expect(websocket.callService).not.toHaveBeenCalled();
+
+      press(input, 'Enter');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(websocket.callService).toHaveBeenCalledWith(
+        'light',
+        'turn_on',
+        expect.objectContaining({ entity_id: 'light.bed_light' })
+      );
+    });
+
+    it('moves the highlight with focus, so Enter runs the row that was focused', () => {
+      const { palette, paletteState } = load();
+      lampStates(paletteState);
+      palette.openCommandPalette();
+      const rows = [...document.querySelectorAll('.command-palette-result')];
+
+      rows[2].focus();
+
+      expect(rows[2].classList).toContain('highlighted');
+      expect(rows[0].classList).not.toContain('highlighted');
+    });
+
+    it('closes on Escape and on a click on its backdrop', () => {
+      const { palette, paletteState } = load();
+      lampStates(paletteState);
+      palette.openCommandPalette();
+      const input = document.querySelector('.command-palette-input');
+      expect(press(input, 'Escape').defaultPrevented).toBe(true);
+      expect(overlay().classList).toContain('hidden');
+
+      palette.openCommandPalette();
+      overlay().querySelector('.command-palette-panel').click();
+      expect(overlay().classList).not.toContain('hidden');
+      overlay().click();
+      expect(overlay().classList).toContain('hidden');
+    });
+
+    it('returns focus to the tile it was opened from, even if that tile was rebuilt meanwhile', () => {
+      const { palette, paletteState } = load();
+      lampStates(paletteState);
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        `<div id="quick-controls"><div class="control-item" data-entity-id="light.bed_light">
+          <button class="tile-primary-button">Bed</button></div></div>`
+      );
+      const grid = document.getElementById('quick-controls');
+      grid.querySelector('.tile-primary-button').focus();
+      palette.openCommandPalette();
+
+      // The entity changed while the palette was open, so its tile was replaced.
+      grid.replaceChildren(grid.firstElementChild.cloneNode(true));
+      palette.closeCommandPalette();
+
+      expect(document.activeElement).toBe(grid.querySelector('.tile-primary-button'));
+    });
+
+    it('stays shut behind the first-run wizard and the connecting screen', () => {
+      const { palette } = load();
+      palette.initializeCommandPalette();
+      const ctrlK = () => {
+        const event = new KeyboardEvent('keydown', {
+          key: 'k',
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true,
+        });
+        document.dispatchEvent(event);
+        return event;
+      };
+
+      document.body.classList.add('first-run-active');
+      expect(ctrlK().defaultPrevented).toBe(false);
+      expect(document.querySelector('.command-palette-overlay')).toBeNull();
+      document.body.classList.remove('first-run-active');
+
+      document.body.insertAdjacentHTML('beforeend', '<div id="loading-overlay"></div>');
+      expect(ctrlK().defaultPrevented).toBe(false);
+      document.getElementById('loading-overlay').classList.add('hidden');
+      expect(ctrlK().defaultPrevented).toBe(true);
+      expect(document.querySelector('.command-palette-overlay')).not.toBeNull();
     });
   });
 

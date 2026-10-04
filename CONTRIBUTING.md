@@ -76,6 +76,13 @@ Thank you for your interest in contributing to HA Desktop Widget! This document 
 - **Modularity**: Break large functions into smaller, focused functions
 - **Error Handling**: Always include proper error handling and user feedback
 
+### Dialogs, Focus and Toasts
+
+- **Dialogs**: Open every dialog with `openDialog()` and close it with `closeDialog()` from `src/ui-utils.js`. They give you the role, focus trap, Escape and Enter handling, backdrop dismissal, stacking over other dialogs and focus return to whatever opened it. Do not add your own keydown or backdrop listener to a dialog.
+- **Initial focus**: A dialog starts on its first control, not on the header's Close button. Use `initialFocus` (or `data-initial-focus`) for a different start, and `focusFallback` when the opener may be gone by the time the dialog closes.
+- **Rebuilding the UI**: Wrap a re-render in `renderKeepingFocus()` and give controls a `data-focus-key` so focus survives it. Use `disableControlsKeepingFocus()` instead of setting `disabled` on a control that has focus.
+- **Toasts**: Use `showToast()`. Errors stay until dismissed, repeats are folded into one toast, and a toast raised by a surface can be cleared with its `source` option and `dismissToasts()`.
+
 ### Language Packs
 
 User-visible text goes through `t()` or `data-i18n`, and every new or changed string lives in `locales/en.json`, in each downloadable pack in `locale-packs/` (`ar`, `de`, `es`, `fr`, `hi`, `zh`) and in the bundled `locales/de.json`. A changed pack also needs a higher patch `version`, and `locale-packs/manifest.json` needs that version and the SHA-256 of the exact file bytes. `scripts/locale-packs.cjs` does the bookkeeping:
