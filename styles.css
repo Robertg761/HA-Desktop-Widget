@@ -11052,7 +11052,6 @@ body.theme-light:not(.high-contrast) :is(.media-artist, .media-album) {
 
 .inline-alerts-container {
   margin-top: 16px;
-  padding: 4px;
 }
 
 .alert-badge {
@@ -11680,6 +11679,12 @@ label.disabled {
   background: var(--surface-2);
   color: var(--text-primary);
   cursor: pointer;
+/* The intro leads the other groups, which sit 16px apart; its base margin left the frequency control
+   8px under it. */
+.donate-modal-content .modal-body > .help-text:first-child {
+  margin-bottom: var(--space-5);
+}
+
   transition:
     background-color var(--transition-base),
     border-color var(--transition-base);
@@ -13641,6 +13646,9 @@ body.theme-light
   margin-inline-end: 10px;
 }
 
+  /* A .help-text brings 8px under it from its base rule, which left the last line of some rows
+     7px lower than the rest and made the 1px gap between the Language card's paragraphs 8px. */
+  margin-bottom: 0;
 :is(#settings-modal, #alert-config-modal, .rename-modal) .form-group input[type='checkbox']::after {
   top: 3px;
   inset-inline-start: 3px;
@@ -15819,7 +15827,10 @@ body[data-season='thanksgiving'] .control-item {
   float: inline-start;
   width: 100%;
   margin-bottom: 4px;
-  padding: 0;
+  /* A row of the pane, so it keeps the row padding (the pane's own rule has the same weight and
+     this one came later, which left the legend against the divider and the last holiday against the
+     card's edge). */
+  padding: 12px 0;
 }
 
 #settings-modal .seasonal-holiday-option {

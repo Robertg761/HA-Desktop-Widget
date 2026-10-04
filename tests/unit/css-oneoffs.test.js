@@ -187,6 +187,45 @@ describe('stylesheet one-offs', () => {
     });
   });
 
+  describe('Settings and Support spacing', () => {
+    it('leaves no margin under a Settings help line, so the last line sits level with its siblings', () => {
+      render(
+        '<div id="settings-modal"><div class="setting-text"><p class="help-text">Takes effect.</p><p class="form-help">More.</p></div></div>'
+      );
+      for (const help of document.querySelectorAll('#settings-modal p')) {
+        expect(resolvedValue(help, 'margin-bottom')).toBe('0');
+      }
+    });
+
+    it('keeps the base help text margin outside Settings', () => {
+      render('<p class="help-text">Elsewhere</p>');
+      expect(resolvedValue(document.querySelector('.help-text'), 'margin')).toBe('4px 0 8px 0');
+    });
+
+    it('sets the Support intro 16px above the frequency control', () => {
+      render(
+        '<div class="modal"><div class="modal-content donate-modal-content"><div class="modal-body"><p id="donate-intro" class="help-text">Thanks</p><div class="form-group"></div></div></div></div>'
+      );
+      expect(resolvedValue(document.querySelector('#donate-intro'), 'margin-bottom')).toBe('1rem');
+    });
+
+    it('keeps the holiday list a row of its pane, with the 12px of padding every row has', () => {
+      render(
+        '<div id="settings-modal"><div class="settings-group-body"><fieldset class="seasonal-holiday-list"><legend>Holidays</legend></fieldset></div></div>'
+      );
+      expect(resolvedValue(document.querySelector('.seasonal-holiday-list'), 'padding')).toBe(
+        '12px 0'
+      );
+    });
+
+    it('does not inset the alerts list from the card by padding of its own', () => {
+      render('<div class="inline-alerts-container"></div>');
+      expect(resolvedValue(document.querySelector('.inline-alerts-container'), 'padding')).toBe(
+        '0'
+      );
+    });
+  });
+
   describe('reduced motion keeps the waiting indicators moving', () => {
     // The blanket "no animation" rule gives every animation 0.01ms and one iteration. A spinner or a
     // progress bar frozen that way reads as a stalled app, and the bar as a finished one.
