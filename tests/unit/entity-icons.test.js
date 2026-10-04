@@ -193,6 +193,26 @@ describe('entity line icons', () => {
   });
 
   describe('locks and alarm panels', () => {
+    test('draws the window as a framed four-pane window on a sill, and the open one with a sash swung out', () => {
+      const parts = (name) =>
+        LINE_ICONS[name].map(([tag, attributes]) => [tag, attributes.d || '']);
+      const closed = parts('window-closed');
+      const open = parts('window-open');
+      // The frame and the sill are shared, so the two read as one window in two states.
+      const sill = ['path', 'M2 21h20'];
+      expect(closed).toContainEqual(sill);
+      expect(open).toContainEqual(sill);
+      expect(closed.filter(([tag]) => tag === 'rect')).toHaveLength(1);
+      // Shut: a mullion and a transom cut the frame into four. Open: the sash is a slanted shape
+      // (it has diagonal edges, which a pane in the frame has not), and only the right pane keeps
+      // its transom.
+      expect(closed).toContainEqual(['path', 'M12 3v15']);
+      expect(closed).toContainEqual(['path', 'M4 10.5h16']);
+      expect(open.some(([, d]) => /^m12 3-6 2v11l6 2$/.test(d))).toBe(true);
+      expect(open).toContainEqual(['path', 'M12 10.5h8']);
+      expect(open).not.toContainEqual(['path', 'M4 10.5h16']);
+    });
+
     test.each([
       ['locked', 'lock'],
       ['locking', 'lock'],

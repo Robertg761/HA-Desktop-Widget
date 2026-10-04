@@ -602,17 +602,20 @@ const LINE_ICONS = {
     ['path', { d: 'M4 13H2' }],
     ['path', { d: 'M6.34 7.34 4.93 5.93' }],
   ],
-  // A window as a framed pane, closed and with its sash swung open: not the software window the
-  // door-open and door-closed pair sits beside.
+  // A window: a frame on a sill, four panes when it is shut, and with one sash swung open, drawn at
+  // an angle, when it is not. Not the software window the door-open and door-closed pair sits beside.
   'window-closed': [
-    ['rect', { width: '18', height: '18', x: '3', y: '3', rx: '2' }],
-    ['path', { d: 'M12 3v18' }],
-    ['path', { d: 'M3 12h18' }],
+    ['rect', { x: '4', y: '3', width: '16', height: '15', rx: '2' }],
+    ['path', { d: 'M12 3v15' }],
+    ['path', { d: 'M4 10.5h16' }],
+    ['path', { d: 'M2 21h20' }],
   ],
   'window-open': [
-    ['rect', { width: '18', height: '18', x: '3', y: '3', rx: '2' }],
-    ['path', { d: 'M8 8.5 17 6v12l-9-2.5z' }],
-    ['path', { d: 'M8 12h9' }],
+    ['rect', { x: '4', y: '3', width: '16', height: '15', rx: '2' }],
+    ['path', { d: 'M12 3v15' }],
+    ['path', { d: 'M12 10.5h8' }],
+    ['path', { d: 'm12 3-6 2v11l6 2' }],
+    ['path', { d: 'M2 21h20' }],
   ],
   // The battery body with a bar for each third left.
   'battery-low': [
