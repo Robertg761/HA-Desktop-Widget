@@ -3185,6 +3185,37 @@ function getAlarmPanelHint(entity) {
 // Tiles that carry the adjust button (openEntityControls).
 const QUICK_ACCESS_CONTROLS_DOMAINS = new Set(['climate', 'cover', 'fan', 'light', 'media_player']);
 
+// What a media player says in place of a title it does not have. The player's state decides:
+// "Ready" for an offline speaker or a TV playing an input with no metadata was wrong twice over.
+function getMediaFallbackText(entity, { idleText = t('No media') } = {}) {
+  switch (entity?.state) {
+    case 'unavailable':
+      return t('Unavailable');
+    case 'unknown':
+      return t('Unknown');
+    case 'off':
+    case 'idle':
+    case 'standby':
+      return idleText;
+    case 'playing':
+      return t('Playing');
+    case 'paused':
+      return t('Paused');
+    default:
+      return t('Ready');
+  }
+}
+
+// The picture a player advertises. media_content_id is not one: it names the track or stream (a
+// Spotify URI, a radio address), and fetching it as an image would send Home Assistant's token to
+// whatever it points at.
+function getMediaArtworkSource(entity) {
+  const attributes = entity?.attributes || {};
+  return (
+    attributes.entity_picture || attributes.entity_picture_local || attributes.media_image_url || ''
+  );
+}
+
 function getQuickAccessMediaText(entity) {
   const attributes = entity?.attributes || {};
   if (attributes.media_title) {
@@ -3192,7 +3223,7 @@ function getQuickAccessMediaText(entity) {
       .filter(Boolean)
       .join(' · ');
   }
-  return entity?.state === 'off' || entity?.state === 'idle' ? t('No media') : t('Ready');
+  return getMediaFallbackText(entity);
 }
 
 /**
@@ -11775,10 +11806,8 @@ function setupMediaPlayerControls(div, entity) {
         ${mediaArtist ? mediaLine('media-artist', mediaArtist) : ''}
         ${mediaAlbum && !mediaArtist ? mediaLine('media-album', mediaAlbum) : ''}
       </div>`;
-    } else if (isOff) {
-      mediaInfo = `<div class="media-info"><div class="media-title">${utils.escapeHtml(t('No media'))}</div></div>`;
     } else {
-      mediaInfo = `<div class="media-info"><div class="media-title">${utils.escapeHtml(t('Ready'))}</div></div>`;
+      mediaInfo = `<div class="media-info"><div class="media-title">${utils.escapeHtml(getMediaFallbackText(entity))}</div></div>`;
     }
 
     // Update the control info section (no inline controls; whole tile toggles)
@@ -11801,14 +11830,11 @@ function setupMediaPlayerControls(div, entity) {
         controlIcon.dataset.defaultIcon = controlIcon.innerHTML;
       }
 
-      const artworkUrl =
-        entity.attributes?.entity_picture ||
-        entity.attributes?.media_image_url ||
-        entity.attributes?.media_content_id;
+      const artworkUrl = getMediaArtworkSource(entity);
 
       // Show artwork when media info is present (playing or paused with media loaded)
-      // Only hide when idle/off or no media info available
-      const hasMediaInfo = mediaTitle && !isOff;
+      // Only hide when idle/off, unavailable or no media info available
+      const hasMediaInfo = mediaTitle && !isOff && entity.state !== 'unavailable';
       const normalizedArtworkTarget = normalizeMediaArtworkTarget(artworkUrl);
       if (hasMediaInfo && normalizedArtworkTarget) {
         // Keep HA-relative paths relative. The main-process protocol uses that boundary to decide
@@ -11831,15 +11857,18 @@ function setupMediaPlayerControls(div, entity) {
         const retryAt = failedMediaArtworkRetryAtByUrl.get(retryKey) || 0;
         const skipForRecentFailure = retryAt > now;
 
+        // The proxy URL carries a 30 s cache bucket, so it changes without the picture doing so.
+        // The picture is the same while its target is, and replacing it would blank it.
         const existingImg = controlIcon.querySelector('.media-player-artwork');
-        const existingSrc = existingImg ? existingImg.getAttribute('src') : null;
+        const existingTarget = existingImg ? existingImg.dataset.artworkTarget : null;
         if (
           !skipForRecentFailure &&
-          (existingSrc !== proxyUrl || !controlIcon.classList.contains('has-artwork'))
+          (existingTarget !== urlToEncode || !controlIcon.classList.contains('has-artwork'))
         ) {
           // Replace icon with album art image only when the source changed.
           const img = document.createElement('img');
           img.src = proxyUrl;
+          img.dataset.artworkTarget = urlToEncode;
           img.alt = t('Album art');
           img.className = 'media-player-artwork';
           img.onload = function () {
@@ -11860,7 +11889,7 @@ function setupMediaPlayerControls(div, entity) {
         } else if (
           skipForRecentFailure &&
           controlIcon.classList.contains('has-artwork') &&
-          existingSrc !== proxyUrl &&
+          existingTarget !== urlToEncode &&
           controlIcon.dataset.defaultIcon
         ) {
           // Avoid rapid fallback/restore churn while an artwork URL is failing repeatedly.
@@ -12138,8 +12167,10 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
     ensureEntityCacheScope();
     const renderedControls = getMediaDetailControls(entity);
     const name = utils.escapeHtml(utils.getEntityDisplayName(entity));
-    const mediaTitle = utils.escapeHtml(entity.attributes?.media_title || '');
-    const mediaArtist = utils.escapeHtml(entity.attributes?.media_artist || '');
+    const rawMediaTitle = entity.attributes?.media_title || '';
+    const rawMediaArtist = entity.attributes?.media_artist || '';
+    const mediaTitle = utils.escapeHtml(rawMediaTitle);
+    const mediaArtist = utils.escapeHtml(rawMediaArtist);
     const initialTimeline = getMediaTimeline(entity);
     const mediaCapabilities = getDesktopPinCapabilities(entity);
     const supportsSeek = canSeekMedia(entity);
@@ -12177,6 +12208,7 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
                   id="media-volume-slider"
                   class="media-volume-slider"
                   aria-label="${escapeHtmlAttribute(t('Volume'))}"
+                  aria-valuetext="${initialVolume}%"
                 />
                 <span class="media-volume-value" id="media-volume-value">${initialVolume}%</span>
               </div>
@@ -12211,17 +12243,22 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
         </div>
         <div class="modal-body">
           <div class="media-detail-info">
-            <div class="media-detail-title">${mediaTitle || '—'}</div>
-            <div class="media-detail-artist" ${mediaArtist ? '' : 'hidden'}>${mediaArtist}</div>
+            <div class="media-detail-artwork" hidden></div>
+            <div class="media-detail-text">
+              <div class="media-detail-title" title="${escapeHtmlAttribute(rawMediaTitle)}">${mediaTitle || '—'}</div>
+              <div class="media-detail-artist" title="${escapeHtmlAttribute(rawMediaArtist)}" ${mediaArtist ? '' : 'hidden'}>${mediaArtist}</div>
+              <div class="media-detail-caption"></div>
+            </div>
           </div>
           <div class="media-progress">
             <div class="media-time-row">
               <span id="media-current">${fmt(initialTimeline.currentPosition)}</span>
               <span id="media-total">${initialTimeline.duration ? fmt(initialTimeline.duration) : '--:--'}</span>
             </div>
-            <div class="media-progress-track">
+            <div class="media-progress-track" role="progressbar" aria-labelledby="media-progress-label" aria-valuemin="0" aria-valuemax="100">
               <div class="media-progress-fill" id="media-progress-fill" style="width: 0%"></div>
             </div>
+            <span class="sr-only" id="media-progress-label">${utils.escapeHtml(t('Position'))}</span>
           </div>
           ${volumeControlsMarkup}
           <div class="media-detail-controls">
@@ -12274,6 +12311,7 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
     const progressFill = modal.querySelector('#media-progress-fill');
     const curEl = modal.querySelector('#media-current');
     const totalEl = modal.querySelector('#media-total');
+    const progressTrack = modal.querySelector('.media-progress-track');
     const volumeSlider = modal.querySelector('#media-volume-slider');
     const volumeValue = modal.querySelector('#media-volume-value');
     const muteToggle = modal.querySelector('#media-mute-toggle');
@@ -12295,10 +12333,13 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
 
     const getLiveTimeline = () => getMediaTimeline(liveMedia());
 
+    // Focus stays on a slider after a drag, so it cannot be the test for "being adjusted": the
+    // volume the player settled on would never show.
+    const isVolumeHeld = trackSliderGrip(volumeSlider, () => updateVolumeControls());
     const updateVolumeControls = () => {
       const currentEntity = liveMedia();
       const attrs = currentEntity.attributes || {};
-      if (volumeSlider && volumeValue && document.activeElement !== volumeSlider) {
+      if (volumeSlider && volumeValue && !isVolumeHeld()) {
         // An off player reports no volume; show that instead of a made-up 0%.
         if (attrs.volume_level == null || !Number.isFinite(Number(attrs.volume_level))) {
           volumeValue.textContent = '—';
@@ -12306,6 +12347,7 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
           const volume = clampRange(Math.round(Number(attrs.volume_level) * 100), 0, 100);
           volumeSlider.value = String(volume);
           volumeValue.textContent = `${volume}%`;
+          volumeSlider.setAttribute('aria-valuetext', `${volume}%`);
         }
       }
       if (muteToggle) {
@@ -12326,6 +12368,7 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
             ? Math.max(0, Math.min(100, (timeline.currentPosition / timeline.duration) * 100))
             : 0;
         progressFill.style.width = pct + '%';
+        progressTrack?.setAttribute('aria-valuenow', String(Math.round(pct)));
       }
     };
     const syncProgressTimer = () => {
@@ -12384,6 +12427,7 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
         if (!canPerformMediaAction(liveMedia(), 'volume_set')) return;
         const value = clampRange(Math.round(Number(e.target.value)), 0, 100);
         if (volumeValue) volumeValue.textContent = `${value}%`;
+        volumeSlider.setAttribute('aria-valuetext', `${value}%`);
         clearTimeout(volumeDebounceTimer);
         volumeDebounceTimer = setTimeout(() => {
           callMediaPlayerService(entity.entity_id, 'volume_set', {
@@ -12405,13 +12449,49 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
       });
     }
 
+    const artworkBox = modal.querySelector('.media-detail-artwork');
+    const captionEl = modal.querySelector('.media-detail-caption');
+    // The picture follows the player's artwork target, so a state change that leaves it alone
+    // does not redraw it.
+    const renderArtwork = (currentEntity) => {
+      const target =
+        currentEntity.state === 'unavailable'
+          ? null
+          : normalizeMediaArtworkTarget(getMediaArtworkSource(currentEntity));
+      if ((artworkBox.dataset.artworkTarget || '') === (target || '')) return;
+      artworkBox.dataset.artworkTarget = target || '';
+      artworkBox.replaceChildren();
+      artworkBox.hidden = !target;
+      if (!target) return;
+      const img = document.createElement('img');
+      img.alt = t('Album art');
+      img.src = buildMediaArtworkProxyUrl(target);
+      img.onerror = () => {
+        artworkBox.replaceChildren();
+        artworkBox.hidden = true;
+      };
+      artworkBox.appendChild(img);
+    };
+
     const renderMedia = () => {
       const currentEntity = liveMedia();
       const attrs = currentEntity.attributes || {};
-      modal.querySelector('.media-detail-title').textContent = attrs.media_title || '—';
+      const titleText = attrs.media_title || '—';
+      const titleEl = modal.querySelector('.media-detail-title');
+      titleEl.textContent = titleText;
+      titleEl.title = attrs.media_title || '';
       const artist = modal.querySelector('.media-detail-artist');
       artist.textContent = attrs.media_artist || '';
+      artist.title = attrs.media_artist || '';
       artist.hidden = !attrs.media_artist;
+      // Where it is playing: the state, then the app or input the player names.
+      captionEl.textContent = [
+        utils.getEntityDisplayState(currentEntity),
+        attrs.app_name || attrs.source,
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      renderArtwork(currentEntity);
       showUnavailableDialogState(modal, currentEntity);
       for (const control of modal.querySelectorAll('[data-action]')) {
         const action =
@@ -13491,31 +13571,28 @@ function updateMediaTile() {
       }
     }
 
-    // Try multiple artwork sources (smart speakers might use different attributes)
-    let artworkUrl =
-      entity.attributes?.entity_picture ||
-      entity.attributes?.media_image_url ||
-      entity.attributes?.media_content_id;
-
-    // Some media players provide thumbnail or image_url
-    if (!artworkUrl && entity.attributes?.media_album_name) {
-      // If we have album info but no artwork, entity_picture might update later
-      artworkUrl = entity.attributes?.entity_picture;
-    }
+    // An offline player has no picture to show, whatever it last advertised.
+    const artworkTarget =
+      entity.state === 'unavailable'
+        ? null
+        : normalizeMediaArtworkTarget(getMediaArtworkSource(entity));
 
     // Update media info
     const titleEl = document.getElementById('media-tile-title');
     const artistEl = document.getElementById('media-tile-artist');
-    const mediaTitle = entity.attributes?.media_title || t('No media playing');
+    const mediaTitle =
+      entity.attributes?.media_title ||
+      getMediaFallbackText(entity, { idleText: t('No media playing') });
     const mediaArtist = entity.attributes?.media_artist || '';
     const isPlaying = entity.state === 'playing';
-    const proxyUrl = buildMediaArtworkProxyUrl(artworkUrl);
+    // The signature follows the picture's target, not its proxy URL: that carries a 30 s cache
+    // bucket, and the next volume change after each bucket would redraw the same picture.
     const nextSignature = JSON.stringify({
       entityId: entity.entity_id,
       state: entity.state || '',
       title: mediaTitle,
       artist: mediaArtist,
-      artwork: proxyUrl || '',
+      artwork: artworkTarget || '',
     });
 
     if (nextSignature !== lastMediaTileRenderSignature) {
@@ -13531,23 +13608,31 @@ function updateMediaTile() {
         playBtn.classList.toggle('playing', isPlaying);
       }
 
-      // Update artwork only when the source actually changes.
+      // Update artwork only when the picture actually changes.
       const artworkContainer = document.getElementById('media-tile-artwork');
       if (artworkContainer) {
-        if (proxyUrl) {
+        const retryKey = artworkTarget ? utils.base64Encode(artworkTarget) : '';
+        const now = Date.now();
+        pruneExpiredArtworkRetryEntries(now);
+        // A picture that failed is not asked for again at every state change.
+        if (artworkTarget && (failedMediaArtworkRetryAtByUrl.get(retryKey) || 0) <= now) {
           const existingImg = artworkContainer.querySelector('img');
-          const existingSrc = existingImg?.getAttribute('src') || '';
-          if (!existingImg || existingSrc !== proxyUrl || lastMediaTileArtworkSrc !== proxyUrl) {
+          if (!existingImg || lastMediaTileArtworkSrc !== artworkTarget) {
             const img = document.createElement('img');
-            img.src = proxyUrl;
+            img.src = buildMediaArtworkProxyUrl(artworkTarget);
             img.alt = t('Album art');
+            img.onload = () => failedMediaArtworkRetryAtByUrl.delete(retryKey);
             img.onerror = function () {
+              failedMediaArtworkRetryAtByUrl.set(
+                retryKey,
+                Date.now() + MEDIA_ARTWORK_RETRY_DELAY_MS
+              );
               this.parentElement.innerHTML = `<div class="media-tile-artwork-placeholder">${lineIconMarkup('music')}</div>`;
               lastMediaTileArtworkSrc = '';
             };
             artworkContainer.innerHTML = '';
             artworkContainer.appendChild(img);
-            lastMediaTileArtworkSrc = proxyUrl;
+            lastMediaTileArtworkSrc = artworkTarget;
           }
         } else if (lastMediaTileArtworkSrc !== '') {
           artworkContainer.innerHTML = `<div class="media-tile-artwork-placeholder">${lineIconMarkup('music')}</div>`;
@@ -13558,41 +13643,64 @@ function updateMediaTile() {
 
     // Keep seek bar updates separate from metadata/artwork render signature.
     updateMediaSeekBar(entity);
+    bindPrimaryMediaCardControls(tile, entity);
     refreshVisibleEntityCache();
   } catch (error) {
     console.error('Error updating media tile:', error);
   }
 }
 
+// The artwork and the title open the player's dialog, where volume, mute and seeking live; the
+// card itself only has previous, play and next. The title is a button for the keyboard, named for
+// the player it opens.
+function bindPrimaryMediaCardControls(tile, entity) {
+  const name = utils.getEntityDisplayName(entity);
+  const label = t('Controls for {{name}}', { name });
+  const artwork = tile.querySelector('.media-tile-artwork');
+  const info = tile.querySelector('.media-tile-info');
+  if (info) {
+    info.setAttribute('role', 'button');
+    info.tabIndex = 0;
+    info.setAttribute('aria-label', label);
+  }
+  if (artwork) artwork.title = label;
+  if (tile.dataset.opensControls === 'true') return;
+  tile.dataset.opensControls = 'true';
+  const open = () => {
+    const player = state.STATES?.[state.CONFIG?.primaryMediaPlayer];
+    if (player) openEntityControls(player);
+  };
+  artwork?.addEventListener('click', open);
+  info?.addEventListener('click', open);
+  info?.addEventListener('keydown', (event) => {
+    if ((event.key !== 'Enter' && event.key !== ' ') || event.ctrlKey || event.metaKey) return;
+    event.preventDefault();
+    open();
+  });
+}
+
 function updateMediaSeekBar(entity) {
   try {
     if (!entity) return;
 
+    const seek = document.querySelector('#media-tile .media-tile-seek');
     const seekFill = document.getElementById('media-tile-seek-fill');
     const timeCurrent = document.getElementById('media-tile-time-current');
     const timeTotal = document.getElementById('media-tile-time-total');
     const { duration, currentPosition } = getMediaTimeline(entity);
 
-    // Format time as mm:ss or h:mm:ss when hours are present
-    const formatTime = (seconds) => {
-      const totalSeconds = Math.max(0, Math.floor(seconds));
-      const hours = Math.floor(totalSeconds / 3600);
-      const mins = Math.floor((totalSeconds % 3600) / 60);
-      const secs = totalSeconds % 60;
-      const minPart = hours > 0 ? mins.toString().padStart(2, '0') : mins.toString();
-      const secPart = secs.toString().padStart(2, '0');
-      return hours > 0 ? `${hours}:${minPart}:${secPart}` : `${minPart}:${secPart}`;
-    };
+    // A radio stream, an idle player or a TV input has no length to measure against, and an empty
+    // "0:00 ▬ 0:00" row says nothing. It stays in the layout, hidden, so the controls do not move.
+    if (seek) seek.dataset.empty = duration > 0 ? 'false' : 'true';
 
-    // Update UI
-    if (timeCurrent) timeCurrent.textContent = formatTime(currentPosition);
-    if (timeTotal) timeTotal.textContent = duration > 0 ? formatTime(duration) : '0:00';
+    const format = (seconds) => utils.formatDuration(Math.max(0, Math.floor(seconds)) * 1000);
+    if (timeCurrent) timeCurrent.textContent = format(currentPosition);
+    if (timeTotal) timeTotal.textContent = duration > 0 ? format(duration) : '--:--';
 
-    if (seekFill && duration > 0) {
-      const percentage = Math.max(0, Math.min(100, (currentPosition / duration) * 100));
+    if (seekFill) {
+      const percentage =
+        duration > 0 ? Math.max(0, Math.min(100, (currentPosition / duration) * 100)) : 0;
       seekFill.style.width = `${percentage}%`;
-    } else if (seekFill) {
-      seekFill.style.width = '0%';
     }
   } catch (error) {
     console.error('Error updating seek bar:', error);

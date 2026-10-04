@@ -2781,7 +2781,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
 
     /**
-     * Ensures missing timeline values always fall back to 0:00 and 0% seek width.
+     * Ensures missing timeline values fall back to a 0:00 position, no total and 0% seek width.
      */
     it.each([
       ['null', null, null],
@@ -2808,7 +2808,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         const seekFill = document.getElementById('media-tile-seek-fill');
 
         expect(currentTime.textContent).toBe('0:00');
-        expect(totalTime.textContent).toBe('0:00');
+        expect(totalTime.textContent).toBe('--:--');
         expect(seekFill.style.width).toBe('0%');
       }
     );
@@ -2831,7 +2831,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const totalTime = document.getElementById('media-tile-time-total');
       const seekFill = document.getElementById('media-tile-seek-fill');
       expect(currentTime.textContent).toBe('0:00');
-      expect(totalTime.textContent).toBe('0:00');
+      expect(totalTime.textContent).toBe('--:--');
       expect(seekFill.style.width).toBe('0%');
     });
 
@@ -2846,7 +2846,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const totalTime = document.getElementById('media-tile-time-total');
       const seekFill = document.getElementById('media-tile-seek-fill');
       expect(currentTime.textContent).toBe('0:00');
-      expect(totalTime.textContent).toBe('0:00');
+      expect(totalTime.textContent).toBe('--:--');
       expect(seekFill.style.width).toBe('0%');
     });
 
@@ -2878,7 +2878,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         const seekFill = document.getElementById('media-tile-seek-fill');
 
         expect(currentTime.textContent).toBe('1:05:30');
-        expect(totalTime.textContent).toBe('0:00');
+        expect(totalTime.textContent).toBe('--:--');
         expect(seekFill.style.width).toBe('0%');
       }
     );
@@ -2901,7 +2901,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         const totalTime = document.getElementById('media-tile-time-total');
         const seekFill = document.getElementById('media-tile-seek-fill');
         expect(currentTime.textContent).toBe('1:10');
-        expect(totalTime.textContent).toBe('0:00');
+        expect(totalTime.textContent).toBe('--:--');
         expect(seekFill.style.width).toBe('0%');
       } finally {
         nowSpy.mockRestore();

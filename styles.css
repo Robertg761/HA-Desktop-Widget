@@ -3401,6 +3401,18 @@ body.first-run-active .widget-content > * {
   transform: scale(1.08);
 }
 
+/* The artwork and the title open the player's controls dialog. */
+.media-tile-artwork,
+.media-tile-info {
+  cursor: pointer;
+}
+
+.media-tile-info:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
 .media-tile-artwork-placeholder {
   display: flex;
   font-size: var(--font-size-icon);
@@ -3461,6 +3473,11 @@ body.first-run-active .widget-content > * {
   width: 100%;
   grid-column: 2;
   justify-self: stretch;
+}
+
+/* No length to show (radio, an idle player): hidden rather than removed, so the controls stay put. */
+.media-tile-seek[data-empty='true'] {
+  visibility: hidden;
 }
 
 /* A time takes the width of its own text, so a long one never runs under the bar. */
@@ -10543,24 +10560,79 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
 }
 
 .media-detail-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 12px;
 }
 
+.media-detail-artwork {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+}
+
+.media-detail-artwork[hidden] {
+  display: none;
+}
+
+.media-detail-artwork img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.media-detail-text {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The dialog is where the whole title is read, so it wraps (the tooltip carries it all) instead of
+   stopping at the first line the way the tile does. A track named "Artist - Song (Remastered
+   2011) [Official Video]" took more than the 45 characters a line held. */
 .media-detail-title {
   font-size: var(--font-size-md);
   font-weight: 600;
   color: var(--text-color);
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
 }
 
 .media-detail-artist {
   font-size: var(--font-size-base);
   color: var(--muted-text);
-  white-space: nowrap;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.media-detail-artist[hidden] {
+  display: none;
+}
+
+.media-detail-caption {
+  margin-top: 2px;
+  font-size: var(--font-size-sm);
+  color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.media-detail-caption:empty {
+  display: none;
 }
 
 .media-progress {
