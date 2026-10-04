@@ -35,9 +35,9 @@ Folder sync keeps the active page local. A companion profile or explicit compani
 
 ## Connection and credential recovery
 
-New connections use Home Assistant browser authorization. Existing long-lived tokens remain supported through the advanced connection option. The app encrypts saved credentials with the operating system's secure storage when available. An existing plaintext token is encrypted on save; if encryption is unavailable, the token can work for the current session but is omitted from the saved configuration.
+New connections use Home Assistant browser authorization. Existing long-lived tokens remain supported through **Legacy access token (advanced)** under Settings → General. The app encrypts saved credentials with the operating system's secure storage when available. An existing plaintext token is encrypted on save; if encryption is unavailable, the token can work for the current session but is omitted from the saved configuration.
 
-If the app asks you to authorize again or re-enter a token after an upgrade, open Settings → General and reconnect. Use Advanced connection options for a long-lived token. Check the Home Assistant URL, network reachability, and whether the authorization or token was revoked. On Linux, check that the session's keyring is available if credentials cannot persist across restarts.
+If the app asks you to authorize again or re-enter a token after an upgrade, open Settings → General and reconnect. Use **Legacy access token (advanced)** in the same page for a long-lived token. Check the Home Assistant URL, network reachability, and whether the authorization or token was revoked. On Linux, check that the session's keyring is available if credentials cannot persist across restarts.
 
 Encrypted credentials are tied to the OS account and its secure storage. Copying `config.json` to another computer does not transfer a working login. A changed keyring or unavailable secure storage can require recovery again; re-entering a token is not a guarantee that the issue cannot recur.
 
@@ -49,8 +49,13 @@ Quit 4.0 on every participating computer and pause the folder provider before re
 
 There is no automatic conversion of a version 3 sync file back to the 3.x format. New 4.0 settings may be ignored by 3.x, and OS-encrypted credentials may still require a new login. Recovery backups created in 4.0 are intended for 4.0's restore flow.
 
-## Release scope and verification
+## What looks or behaves differently
 
-Stable 4.0 keeps the regular tray. Live tray tiles remain enabled only in numbered beta builds, matching the existing feature gate. Hosted Cloud Sync login, subscriptions, and account deletion are not desktop 4.0 features. Free folder Profile Sync remains available.
+- **Closing hides the widget.** The title-bar X, Ctrl+W (Cmd+W on macOS) and Alt+F4 hide the widget to the system tray and it keeps running; in 3.x the X quit it. Choose Quit from the tray menu (or the app menu on macOS) to exit.
+- **Offline devices can notify you.** A State Change alert now also tells you when its entity has been unavailable or unknown for 30 seconds, at most once every 15 minutes for each entity. Turn off **Notify when unavailable or unknown** on an alert to keep the old behavior.
+- **Windows without frosted glass draws a solid panel.** Frosted glass needs Windows 11 version 22H2 or later; Windows 10 and older Windows 11 builds show the solid panel instead of a thin tint.
+- **The product name is HA Desktop Widget everywhere**, including the window, the installer, the Windows shortcuts and notifications.
 
-Before tagging, complete real Home Assistant, two-computer sync, native shortcut/pin/tray, installer, and update checks in the [feature audit](FEATURE-AUDIT-4.0.md#required-native-and-integration-checks) and [desktop pin checklist](DESKTOP_PIN_QA.md). Automated tests and an isolated Linux startup do not replace those checks.
+## What 4.0 does not include
+
+Stable 4.0 keeps the regular tray. Live tray values remain available only in numbered beta builds. Hosted Cloud Sync login, subscriptions, and account deletion are not desktop app features. Free folder Profile Sync remains available.
