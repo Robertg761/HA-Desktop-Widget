@@ -50,41 +50,18 @@ mac:
     # runtime, after the Dock has already drawn (and bounced) the icon at every launch.
     LSUIElement: true
   x64ArchFiles: '**/uiohook-napi/prebuilds/darwin-*/uiohook-napi.node'
-  # A platform `files` list REPLACES the top-level one for the app's own files (builder-debug.yml
-  # shows `**/*` plus only this list's exclusions when it holds nothing else), so a list of
-  # exclusions alone packs the whole repository: tests, docs, the website, vendored sources. This
-  # one therefore repeats the top-level allowlist (tests/unit/electron-builder-config.test.js keeps
-  # the two in step) and adds the exclusions below. The top-level list still applies to
-  # node_modules, which is why its `!node_modules/usocket` entry is not repeated here.
-  #
   # dbus-next and its exclusive transitive dependency subtree (per package-lock.json:
   # event-stream and its stream helpers, xml2js/xmlbuilder, long, jsbi, hexy,
   # @nornagon/put). It is only required lazily by src/portal-global-shortcuts.cjs on
   # Linux Wayland, so mac/win packages strip it (win reuses this list via the YAML
-  # alias below). Do NOT hoist the exclusions into the top-level `files` list: they
-  # would strip dbus-next from Linux builds too and break portal global shortcuts at
-  # runtime. When upgrading dbus-next, re-derive this list from package-lock.json. The alias
-  # makes mac.files and win.files one shared array instance; do not reuse the anchor under
-  # top-level files/extraFiles/extraResources — app-builder-lib normalizes those in place,
+  # alias below). Do NOT hoist these into the top-level `files` list: top-level and
+  # per-platform lists are additive, so that would strip dbus-next from Linux builds
+  # too and break portal global shortcuts at runtime. When upgrading dbus-next,
+  # re-derive this list from package-lock.json. The alias makes mac.files and
+  # win.files one shared array instance; do not reuse the anchor under top-level
+  # files/extraFiles/extraResources — app-builder-lib normalizes those in place,
   # which would corrupt the shared list for the platform sections.
-  files: &platformFiles
-    - index.html
-    - fonts/**/*
-    - locales/**/*
-    - main.js
-    - profile-sync-core.js
-    - src/**/*
-    - packages/widget-renderer/**/*
-    - dist-preload/**/*
-    - dist-renderer/**/*
-    - styles.css
-    - dashboard-workflows.css
-    - build/icon.ico
-    - build/icon.png
-    - build/icons/512x512.png
-    - build/trayTemplate.png
-    - build/trayTemplate@2x.png
-    - package.json
+  files: &dbusNextExcludes
     - '!node_modules/dbus-next/**/*'
     - '!node_modules/event-stream/**/*'
     - '!node_modules/hexy/**/*'
@@ -102,7 +79,7 @@ mac:
     - '!node_modules/stream-combiner/**/*'
 win:
   icon: build/icon.ico
-  files: *platformFiles
+  files: *dbusNextExcludes
   target:
     - target: nsis
       arch: [x64]

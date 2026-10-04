@@ -77,17 +77,48 @@ function readPng(file) {
 const positives = (list) => list.filter((entry) => !entry.startsWith('!'));
 const negatives = (list) => list.filter((entry) => entry.startsWith('!'));
 
+/**
+ * The patterns electron-builder ends up matching the app's own files against on a platform, as its
+ * own code builds them from the top-level and the platform `files`.
+ */
+function effectivePatterns(platform) {
+  const { getMainFileMatchers } = require('app-builder-lib/out/fileMatcher');
+  const logger = { isEnabled: false, add() {} };
+  const packager = {
+    info: {
+      debugLogger: logger,
+      projectDir: root,
+      buildResourcesDir: 'build',
+      config,
+      isPrepackedAppAsar: false,
+    },
+  };
+  return getMainFileMatchers(
+    root,
+    path.join(root, 'dist', 'app'),
+    (value) => value,
+    config[platform],
+    packager,
+    path.join(root, 'dist'),
+    false
+  )[0].patterns;
+}
+
 describe('what the Windows and macOS packages contain', () => {
-  // A platform list replaces the top-level one for the app's own files, so one made only of
-  // exclusions packs the whole repository: tests, internal docs, the website, vendored sources.
-  it('names the app files itself instead of leaving them to a list of exclusions', () => {
-    expect(positives(config.mac.files).length).toBeGreaterThan(0);
-    expect(positives(config.win.files).length).toBeGreaterThan(0);
+  // The top-level and the platform `files` are added to one list, so the platform lists hold only
+  // exclusions and the top-level allowlist decides what the app's own files are. A list made of
+  // exclusions alone would pack everything (tests, internal docs, the website, vendored sources);
+  // it is the allowlist beside it that stops that, so it must stay.
+  it.each(['linux', 'mac', 'win'])('packs only an allowlist of files on %s', (platform) => {
+    const patterns = effectivePatterns(platform);
+    expect(patterns).not.toContain('**/*');
+    for (const entry of positives(config.files)) expect(patterns).toContain(entry);
   });
 
-  it('packs the same files the top-level allowlist does, on every platform', () => {
-    expect(positives(config.mac.files)).toEqual(positives(config.files));
-    expect(positives(config.win.files)).toEqual(positives(config.files));
+  it('keeps the platform lists to exclusions, which the top-level allowlist already bounds', () => {
+    expect(positives(config.files).length).toBeGreaterThan(0);
+    expect(positives(config.mac.files)).toEqual([]);
+    expect(positives(config.win.files)).toEqual([]);
   });
 
   it('shares one list between macOS and Windows', () => {
@@ -97,12 +128,14 @@ describe('what the Windows and macOS packages contain', () => {
   it('strips the Linux-only D-Bus library from both, and only from them', () => {
     for (const platform of ['mac', 'win']) {
       expect(negatives(config[platform].files)).toContain('!node_modules/dbus-next/**/*');
+      expect(effectivePatterns(platform)).toContain('!node_modules/dbus-next/**/*');
     }
     expect(negatives(config.files).some((entry) => entry.includes('dbus-next'))).toBe(false);
+    expect(effectivePatterns('linux')).not.toContain('!node_modules/dbus-next/**/*');
   });
 
   it('lists nothing from the repository that is not an app file', () => {
-    const wanted = positives(config.mac.files).map((entry) => entry.split('/')[0]);
+    const wanted = positives(config.files).map((entry) => entry.split('/')[0]);
     for (const folder of ['tests', 'docs', 'website', 'vendor', 'scripts', 'development']) {
       expect(wanted).not.toContain(folder);
     }
@@ -116,7 +149,6 @@ describe('what the Windows and macOS packages contain', () => {
         .split(path.sep)
         .join('/');
       expect(config.files).toContain(relative);
-      expect(config.mac.files).toContain(relative);
     }
   });
 
