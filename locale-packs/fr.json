@@ -1924,6 +1924,9 @@
     "Start HA Desktop Widget": "Démarrer HA Desktop Widget",
     "Home Assistant notifications": "Notifications Home Assistant",
     "Also show the notifications Home Assistant adds as desktop notifications. They stay in the bell either way.": "Affichez aussi les notifications ajoutées par Home Assistant comme notifications du bureau. Elles restent dans la cloche dans les deux cas.",
-    "Disconnected. Retrying automatically.": "Déconnecté. Nouvelle tentative automatique."
+    "Disconnected. Retrying automatically.": "Déconnecté. Nouvelle tentative automatique.",
+    "All entities": "Toutes les entités",
+    "Rooms are unavailable. Choose from your entities instead.": "Les pièces ne sont pas disponibles. Choisissez parmi vos entités.",
+    "No rooms are set up in Home Assistant yet. Choose from your entities instead.": "Aucune pièce n'est encore configurée dans Home Assistant. Choisissez parmi vos entités."
   }
 }

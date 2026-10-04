@@ -352,7 +352,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.querySelector('.room-show-all').hidden).toBe(true);
     });
 
-    it('falls back to devices for non-admins, previews selection, and saves additively', async () => {
+    it('falls back to the entities for non-admins, previews selection, and saves additively', async () => {
       state.setConfig({
         ...state.CONFIG,
         customTabs: [{ id: 'existing', name: 'Existing', entityIds: ['light.kept'] }],
@@ -381,8 +381,15 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         'Desk lamp — On'
       );
       expect(document.querySelector('.room-dashboard [role="status"]').textContent).toBe(
-        'Rooms are unavailable. Choose from your devices instead.'
+        'Rooms are unavailable. Choose from your entities instead.'
       );
+      // One noun for what the list holds: the option, the search and the status all say entities.
+      expect(document.querySelector('#add-page-room option[value=""]').textContent).toBe(
+        'All entities'
+      );
+      const searchBox = document.querySelector('.room-device-search');
+      expect(searchBox.placeholder).toBe('Search entities');
+      expect(searchBox.getAttribute('aria-label')).toBe('Search entities');
       const sensor = document.querySelector('input[value="sensor.temperature"]');
       sensor.click();
       expect(document.querySelector('.room-dashboard-preview').textContent).toContain(
@@ -577,7 +584,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ui.showAddPageModal({ starter: true });
       await flush();
       expect(document.querySelector('.room-dashboard [role="status"]').textContent).toBe(
-        'No rooms are set up in Home Assistant yet. Choose from your devices instead.'
+        'No rooms are set up in Home Assistant yet. Choose from your entities instead.'
       );
     });
 
@@ -601,7 +608,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
       expect(document.querySelector('#add-page-modal')).toBeNull();
     });
-    it('excludes hidden and disabled devices from All devices and its defaults', async () => {
+    it('excludes hidden and disabled devices from All entities and its defaults', async () => {
       const states = [
         ...entities,
         { entity_id: 'light.hidden', state: 'on', attributes: {} },

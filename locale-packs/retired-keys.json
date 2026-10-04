@@ -578,5 +578,21 @@
   "This package does not support in-app updates. Open Releases to download the latest build, v{{version}}.": {
     "retiredIn": "4.0.0",
     "reason": "The manual-update status names an update and the button that gets it, with the version inside the sentence"
+  },
+  "All devices": {
+    "retiredIn": "4.0.0",
+    "reason": "The starter page list says entities, as the rest of the dialog does"
+  },
+  "Search devices": {
+    "retiredIn": "4.0.0",
+    "reason": "The starter page list says entities, as the rest of the dialog does"
+  },
+  "Rooms are unavailable. Choose from your devices instead.": {
+    "retiredIn": "4.0.0",
+    "reason": "The starter page list says entities, as the rest of the dialog does"
+  },
+  "No rooms are set up in Home Assistant yet. Choose from your devices instead.": {
+    "retiredIn": "4.0.0",
+    "reason": "The starter page list says entities, as the rest of the dialog does"
   }
 }

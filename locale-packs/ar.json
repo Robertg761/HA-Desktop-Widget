@@ -1924,6 +1924,9 @@
     "Start HA Desktop Widget": "تشغيل HA Desktop Widget",
     "Home Assistant notifications": "إشعارات Home Assistant",
     "Also show the notifications Home Assistant adds as desktop notifications. They stay in the bell either way.": "اعرض الإشعارات التي يضيفها Home Assistant كإشعارات سطح المكتب أيضًا. وتبقى في الجرس في الحالتين.",
-    "Disconnected. Retrying automatically.": "انقطع الاتصال. ستتم إعادة المحاولة تلقائيًا."
+    "Disconnected. Retrying automatically.": "انقطع الاتصال. ستتم إعادة المحاولة تلقائيًا.",
+    "All entities": "جميع الكيانات",
+    "Rooms are unavailable. Choose from your entities instead.": "الغرف غير متاحة. اختر من كياناتك بدلاً من ذلك.",
+    "No rooms are set up in Home Assistant yet. Choose from your entities instead.": "لا توجد غرف معدّة في Home Assistant بعد. اختر من كياناتك بدلاً من ذلك."
   }
 }

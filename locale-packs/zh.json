@@ -1924,6 +1924,9 @@
     "Start HA Desktop Widget": "启动 HA Desktop Widget",
     "Home Assistant notifications": "Home Assistant 通知",
     "Also show the notifications Home Assistant adds as desktop notifications. They stay in the bell either way.": "同时将 Home Assistant 添加的通知显示为桌面通知。无论如何它们都会保留在铃铛中。",
-    "Disconnected. Retrying automatically.": "已断开连接。正在自动重试。"
+    "Disconnected. Retrying automatically.": "已断开连接。正在自动重试。",
+    "All entities": "所有实体",
+    "Rooms are unavailable. Choose from your entities instead.": "房间不可用。请从实体中选择。",
+    "No rooms are set up in Home Assistant yet. Choose from your entities instead.": "Home Assistant 中尚未设置房间。请从实体中选择。"
   }
 }

@@ -608,14 +608,11 @@
   "Failed to save readability settings": "Lesbarkeitseinstellungen konnten nicht gespeichert werden",
   "Controls": "Steuerung",
   "Controls for {{name}}": "Steuerung für {{name}}",
-  "All devices": "Alle Geräte",
   "And {{count}} more devices": "Und {{count}} weitere Geräte",
   "Choose rooms and devices": "Räume und Geräte auswählen",
   "Connecting to Home Assistant…": "Verbindung zu Home Assistant wird hergestellt…",
   "My devices": "Meine Geräte",
   "Page preview: {{count}} devices": "Seitenvorschau: {{count}} Geräte",
-  "Rooms are unavailable. Choose from your devices instead.": "Räume sind nicht verfügbar. Wähle stattdessen aus deinen Geräten aus.",
-  "Search devices": "Geräte suchen",
   "Skip for now": "Vorerst überspringen",
   "Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.": "Deine Verbindung ist gespeichert. Sieh dir die Vorschau eines Raums an oder wähle Geräte aus, um deine erste Seite zu erstellen. Du kannst dies auch später über das leere Dashboard tun.",
   "Home Assistant rejected the authorization for this app. Reconnect with Home Assistant to continue.": "Home Assistant hat die Autorisierung für diese App abgelehnt. Verbinde dich erneut mit Home Assistant, um fortzufahren.",
@@ -908,7 +905,6 @@
   "Page preview: {{count}} entities": "Seitenvorschau: {{count}} Entitäten",
   "And 1 more entity": "Und 1 weitere Entität",
   "And {{count}} more entities": "Und {{count}} weitere Entitäten",
-  "No rooms are set up in Home Assistant yet. Choose from your devices instead.": "In Home Assistant sind noch keine Räume eingerichtet. Wähle stattdessen aus deinen Geräten aus.",
   "Current time": "Aktuelle Uhrzeit",
   "Save & Exit Reorganize Mode (ESC)": "Speichern & Neu-Anordnen beenden (ESC)",
   "Remove from Quick Access": "Aus Schnellzugriff entfernen",
@@ -1773,5 +1769,8 @@
   "Start HA Desktop Widget": "HA Desktop Widget starten",
   "Home Assistant notifications": "Home-Assistant-Benachrichtigungen",
   "Also show the notifications Home Assistant adds as desktop notifications. They stay in the bell either way.": "Zeige die Benachrichtigungen, die Home Assistant hinzufügt, auch als Desktop-Benachrichtigungen. In der Glocke bleiben sie in jedem Fall.",
-  "Disconnected. Retrying automatically.": "Verbindung getrennt. Wird automatisch wiederholt."
+  "Disconnected. Retrying automatically.": "Verbindung getrennt. Wird automatisch wiederholt.",
+  "All entities": "Alle Entitäten",
+  "Rooms are unavailable. Choose from your entities instead.": "Räume sind nicht verfügbar. Wähle stattdessen aus deinen Entitäten aus.",
+  "No rooms are set up in Home Assistant yet. Choose from your entities instead.": "In Home Assistant sind noch keine Räume eingerichtet. Wähle stattdessen aus deinen Entitäten aus."
 }

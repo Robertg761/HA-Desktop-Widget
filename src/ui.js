@@ -1320,8 +1320,8 @@ function showAddPageModal({ starter = false } = {}) {
   const deviceSearch = document.createElement('input');
   deviceSearch.type = 'search';
   deviceSearch.className = 'form-control room-device-search';
-  deviceSearch.placeholder = t('Search devices');
-  deviceSearch.setAttribute('aria-label', t('Search devices'));
+  deviceSearch.placeholder = t('Search entities');
+  deviceSearch.setAttribute('aria-label', t('Search entities'));
   const filterDevices = () => {
     const query = normalizeSearchText(deviceSearch.value);
     const labels = [...roomEntities.querySelectorAll('label')];
@@ -1430,7 +1430,7 @@ function showAddPageModal({ starter = false } = {}) {
       }
       if (!modal.isConnected) return;
       if (!starter) availableStates = state.STATES;
-      roomSelect.replaceChildren(new Option(starter ? t('All devices') : t('Empty page'), ''));
+      roomSelect.replaceChildren(new Option(starter ? t('All entities') : t('Empty page'), ''));
       roomEntities.replaceChildren();
       registry.areas
         .sort((a, b) => compareNames(a.name, b.name))
@@ -1448,10 +1448,10 @@ function showAddPageModal({ starter = false } = {}) {
           )?.area_id || '';
         roomSelect.onchange();
         if (registryUnavailable) {
-          roomStatus.textContent = t('Rooms are unavailable. Choose from your devices instead.');
+          roomStatus.textContent = t('Rooms are unavailable. Choose from your entities instead.');
         } else if (!registry.areas.length) {
           roomStatus.textContent = t(
-            'No rooms are set up in Home Assistant yet. Choose from your devices instead.'
+            'No rooms are set up in Home Assistant yet. Choose from your entities instead.'
           );
         }
         saveBtn.disabled = false;
