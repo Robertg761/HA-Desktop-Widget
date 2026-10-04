@@ -246,7 +246,13 @@ function buildProfileDocumentFromConfig(config) {
   for (const key of PROFILE_SECTION_KEYS) {
     if (key in source) document[key] = source[key];
   }
-  return normalizeProfileDocument(document);
+  const profile = normalizeProfileDocument(document);
+  // The document goes to Home Assistant. An unnamed page leaves with the name of today's language,
+  // and without the marker the app keeps it by, which Home Assistant has no use for.
+  if (Array.isArray(profile.customTabs)) {
+    profile.customTabs = profile.customTabs.map(({ nameIsDefault: _unnamed, ...page }) => page);
+  }
+  return profile;
 }
 
 export {

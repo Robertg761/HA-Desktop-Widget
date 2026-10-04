@@ -340,6 +340,7 @@ const profileSyncCore = require('./profile-sync-core.js');
 const { createLocalizationService } = require('./src/i18n-main.cjs');
 const { createLocalePackRefresher } = require('./src/locale-pack-refresh.cjs');
 const { revealFile } = require('./src/reveal-file.cjs');
+const { toStoredPages } = require('./src/page-names.cjs');
 const { fetchChecked } = require('./src/net-fetch.cjs');
 const {
   normalizeEntityId,
@@ -8202,8 +8203,9 @@ ipcMain.handle(
       : null;
     delete newConfig.configBaseRevision;
     pruneConfig(newConfig);
+    // A page nobody named is stored unnamed; the renderer fills in the name of the language it is in.
     const customTabs = Array.isArray(newConfig.customTabs)
-      ? newConfig.customTabs
+      ? toStoredPages(newConfig.customTabs)
       : Array.isArray(config.customTabs)
         ? config.customTabs
         : { ...(config.customTabs || {}), ...(newConfig.customTabs || {}) };

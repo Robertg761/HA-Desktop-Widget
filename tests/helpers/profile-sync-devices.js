@@ -18,6 +18,7 @@ const profileSyncCore = require('../../profile-sync-core.js');
 const { requireExistingSyncParentDirectory } = require('../../src/cloud-sync-path.cjs');
 const rewriteTransaction = require('../../src/profile-sync-rewrite-transaction.cjs');
 const { formatTemplate } = require('../../src/i18n-main.cjs');
+const { toStoredPages } = require('../../src/page-names.cjs');
 const {
   createSettingsFileController,
   settingsFileErrorCode,
@@ -194,6 +195,7 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
       safeStorage,
       mainT: (key, vars) => formatTemplate(key, vars),
       isPlainObject: (value) => !!value && typeof value === 'object' && !Array.isArray(value),
+      toStoredPages,
       // The real check: path.relative alone calls a path on another Windows drive inside.
       isPathInsideDirectory,
       preservedEncryptedTokenForRecovery: null,

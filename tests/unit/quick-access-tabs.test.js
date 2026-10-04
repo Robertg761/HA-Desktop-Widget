@@ -20,6 +20,7 @@ describe('quick-access-tabs helpers', () => {
       {
         id: 'default',
         name: 'All',
+        nameIsDefault: true,
         entityIds: ['light.kitchen', 'switch.fan'],
       },
     ]);
@@ -59,7 +60,7 @@ describe('quick-access-tabs helpers', () => {
 
     const deleted = deleteQuickAccessView(renamed, 'bedroom');
     expect(deleted.customTabs).toEqual([
-      { id: 'default', name: 'All', entityIds: ['light.kitchen'] },
+      { id: 'default', name: 'All', nameIsDefault: true, entityIds: ['light.kitchen'] },
     ]);
     expect(deleted.activeTabId).toBe('default');
 
