@@ -1347,17 +1347,24 @@ function showAddPageModal({ starter = false } = {}) {
   let availableStates = state.STATES;
   const preview = document.createElement('div');
   preview.className = 'room-dashboard-preview';
-  preview.setAttribute('aria-live', 'polite');
+  // Only the count is announced. The rows under it are rebuilt on every toggle, and a live region
+  // around them read up to ten of them out again each time. The count stays in the page for the
+  // dialog's whole life, so its text changes in place: a live region that is inserted together
+  // with its text is announced unreliably.
+  const title = document.createElement('p');
+  title.setAttribute('role', 'status');
+  preview.appendChild(title);
+  const clearPreviewRows = () => {
+    while (preview.lastChild !== title) preview.lastChild.remove();
+  };
   roomGroup.appendChild(preview);
   const updatePreview = () => {
     const selected = [...roomEntities.querySelectorAll('input:checked')];
-    preview.replaceChildren();
-    const title = document.createElement('p');
     title.textContent =
       selected.length === 1
         ? t('Page preview: 1 entity')
         : t('Page preview: {{count}} entities', { count: selected.length });
-    preview.appendChild(title);
+    clearPreviewRows();
     selected.slice(0, 8).forEach(({ value }) => {
       const tile = document.createElement('div');
       tile.className = 'room-preview-tile';
@@ -1454,7 +1461,8 @@ function showAddPageModal({ starter = false } = {}) {
     // Starter mode owns its explicit get_states snapshot instead.
     if (!starter) availableStates = state.STATES;
     roomEntities.replaceChildren();
-    preview.replaceChildren();
+    title.textContent = '';
+    clearPreviewRows();
     statusBeforeNoMatches = null;
     if ((!roomSelect.value && !starter) || !registry) {
       roomStatus.textContent = '';
@@ -10525,6 +10533,28 @@ function applyUnavailableRepairAffordance(div, entityId, displayName) {
       );
 }
 
+// Says a list has nothing to show, to screen readers as well as on screen. The words go into a
+// live region that has been in the page since the list was first drawn: one inserted together with
+// its text is announced unreliably, and a search would insert a new one each time it found
+// nothing. The drawn copy is hidden from them so nothing is read twice. An empty message clears it.
+function setEntityListEmpty(list, message = '') {
+  let region = list.parentElement.querySelector(':scope > .entity-selector-status');
+  if (!region) {
+    region = document.createElement('div');
+    region.className = 'entity-selector-status sr-only';
+    region.setAttribute('role', 'status');
+    list.after(region);
+  }
+  // The same words again (another letter typed, still nothing found) are not said again.
+  if (region.textContent !== message) region.textContent = message;
+  if (!message) return;
+  const empty = document.createElement('p');
+  empty.className = 'entity-selector-empty';
+  empty.setAttribute('aria-hidden', 'true');
+  empty.textContent = message;
+  list.appendChild(empty);
+}
+
 /**
  * Offer to repair an entity that is gone from Home Assistant, from somewhere other than its tile
  * (the Omarchy bar's panel). Nothing to repair against until Home Assistant has delivered its
@@ -10653,13 +10683,8 @@ function openEntityRepairModal(staleEntityId) {
       : replacements;
 
     list.replaceChildren();
-    if (!matches.length) {
-      const empty = document.createElement('p');
-      empty.className = 'entity-selector-empty';
-      empty.textContent = t('No matching replacement entities found.');
-      list.appendChild(empty);
-      return;
-    }
+    setEntityListEmpty(list, matches.length ? '' : t('No matching replacement entities found.'));
+    if (!matches.length) return;
 
     matches.slice(0, REPAIR_PICKER_MAX_ROWS).forEach(({ entity, name: displayName }) => {
       const item = document.createElement('div');
@@ -15970,13 +15995,8 @@ function populateQuickControlsList({ resetSearch = true } = {}) {
       };
       pager.hidden = scoredEntities.length <= pageSize;
       list.innerHTML = '';
-      if (!scoredEntities.length) {
-        const empty = document.createElement('p');
-        empty.className = 'entity-selector-empty';
-        empty.textContent = t('No matching entities');
-        list.appendChild(empty);
-        return;
-      }
+      setEntityListEmpty(list, scoredEntities.length ? '' : t('No matching entities'));
+      if (!scoredEntities.length) return;
 
       scoredEntities.slice(page * pageSize, (page + 1) * pageSize).forEach(({ entity }) => {
         const item = document.createElement('div');

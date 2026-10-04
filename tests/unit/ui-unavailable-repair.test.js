@@ -182,10 +182,25 @@ describe('unavailable Quick Access tile repair affordance', () => {
     expect(modal.getAttribute('role')).toBe('dialog');
     expect(modal.getAttribute('aria-describedby')).toBe(modal.querySelector('.modal-lead').id);
 
+    // The live region for "nothing matches" is in the dialog before a search needs it.
+    const status = modal.querySelector('.entity-selector-status');
+    expect(status.getAttribute('role')).toBe('status');
+    expect(status.textContent).toBe('');
+
     search.value = 'no such entity';
     search.dispatchEvent(new Event('input'));
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(modal.querySelector('.entity-selector-empty').textContent).toMatch(/No matching/);
+    expect(modal.querySelector('.entity-selector-status')).toBe(status);
+    expect(status.textContent).toBe('No matching replacement entities found.');
+    expect(modal.querySelector('.entity-selector-empty').getAttribute('aria-hidden')).toBe('true');
+
+    search.value = '';
+    search.dispatchEvent(new Event('input'));
+    // The search runs once typing pauses, clearing it included.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(modal.querySelector('.entity-selector-empty')).toBeNull();
+    expect(status.textContent).toBe('');
   });
 
   describe('with a large home', () => {

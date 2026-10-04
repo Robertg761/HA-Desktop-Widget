@@ -522,6 +522,9 @@ function publishOmarchyBarTiles({ force = false } = {}) {
 
 function flushPendingStateChangedEntities() {
   cancelPendingStateChangedFlush();
+  // Whether anything visible counts down is decided inside ui.updateEntityInUI, from the entity it
+  // is given, so it is read on both sides of the updates below.
+  const hadVisibleTimers = hasVisibleTimersToTick();
   const changedEntityIds = Array.from(pendingStateChangedEntities.keys());
   const changes = Array.from(pendingStateChangedEntities.values());
   pendingStateChangedEntities.clear();
@@ -585,12 +588,22 @@ function flushPendingStateChangedEntities() {
     }
   }
 
-  // The tick only needs a look when what it runs for may have changed: a redraw, or the player
-  // whose seek bar it moves. Timers and the clock keep their own cadence.
+  // The tick only needs a look when what it runs for may have changed: a redraw, the player whose
+  // seek bar it moves, or whether a visible entity now counts down (a sensor that gains a finish
+  // time, or loses it). A running countdown and the clock keep their own cadence, but with nothing
+  // counting down before, the tick would not look for this one until its idle poll.
   const primaryMediaPlayer = state.CONFIG?.primaryMediaPlayer;
-  if (redrawn || (primaryMediaPlayer && changedEntityIds.includes(primaryMediaPlayer))) {
+  if (
+    redrawn ||
+    (primaryMediaPlayer && changedEntityIds.includes(primaryMediaPlayer)) ||
+    hasVisibleTimersToTick() !== hadVisibleTimers
+  ) {
     nudgeUiTickScheduler();
   }
+}
+
+function hasVisibleTimersToTick() {
+  return Boolean(ui.getTickTargets?.()?.hasVisibleTimers);
 }
 
 function cancelPendingStateChangedFlush() {
@@ -625,6 +638,10 @@ function scheduleStateChangedFlush() {
 function queueStateChangedEntity(entity, { local = false } = {}) {
   if (!entity?.entity_id) return;
   state.setEntityState(entity);
+  // Home Assistant has spoken for it, so a reconnect that leaves it out again starts a new omission
+  // with a fresh grace. The check below only looks a minute after a reconnect, which a connection
+  // that keeps dropping never reaches, and the 15 minutes would run on from the first omission.
+  if (!local) favoriteStalePreservation.delete(entity.entity_id);
   // Hidden dashboard flushes are throttled; tray updates must follow the live event itself.
   if (!IS_DESKTOP_PIN_MODE && document.hidden) handleTrayEntityStateChange(entity.entity_id);
   pendingStateChangedEntities.set(entity.entity_id, {
@@ -664,8 +681,13 @@ function markStaleFavoritesUnavailable() {
   staleFavoriteTimerId = null;
   favoriteStalePreservation.forEach((record, entityId) => {
     const entity = state.STATES?.[entityId];
-    // Any event since the reconnect replaced the object: Home Assistant has spoken for it.
-    if (!entity || entity !== record.entity || entity.state === 'unavailable') return;
+    // Any event since the reconnect replaced the object: Home Assistant has spoken for it, so there
+    // is nothing left to track.
+    if (!entity || entity !== record.entity) {
+      favoriteStalePreservation.delete(entityId);
+      return;
+    }
+    if (entity.state === 'unavailable') return;
     record.entity = { ...entity, state: 'unavailable' };
     queueStateChangedEntity(record.entity, { local: true });
   });

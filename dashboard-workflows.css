@@ -1,13 +1,15 @@
 /* Shared spacing and controls for the dashboard workflows. */
 .dashboard-tools-modal .modal-content,
 .add-page-modal .modal-content {
-  width: min(480px, calc(100vw - 24px));
+  width: var(--dialog-width);
+  max-width: var(--dialog-width);
 }
 
+/* The header and footer pad by --space-5, so the fields start where the title does. */
 .dashboard-tools-modal .modal-body,
 .add-page-modal .modal-body {
   min-height: 0;
-  padding: 20px;
+  padding: var(--space-5);
 }
 
 .workflow-description {
@@ -179,18 +181,27 @@
   background: var(--glass-surface);
 }
 
+/* The dot says what the header's dot says, in the same colours: the accent is whatever the person
+   picked (a Connected in rose), and a grey Disconnected never flagged the outage. */
 .diagnostics-status::before {
   content: '';
   width: 8px;
   height: 8px;
   flex-shrink: 0;
   border-radius: 50%;
-  background: var(--text-secondary);
+  background: var(--connection-bad);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--connection-bad) 20%, transparent);
 }
 
 .diagnostics-status[data-connected='true']::before {
-  background: var(--accent);
-  box-shadow: 0 0 0 4px var(--accent-bg);
+  background: var(--connection-ok);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--connection-ok) 20%, transparent);
+}
+
+/* Chromium's default grip is a bright diagonal on the rounded corner; the border already says the
+   box can be resized. */
+.diagnostics-report::-webkit-resizer {
+  background: transparent;
 }
 
 .diagnostics-report {
@@ -246,14 +257,19 @@
   gap: 16px;
 }
 
+/* The alert dialog's field labels take the shared form label colour, as the entity picker's do: they
+   were the one set in the secondary colour. */
 .alert-advanced-options label,
 .sensor-history-controls label {
   display: grid;
   gap: 8px;
   margin: 0;
-  color: var(--text-secondary);
   font-size: var(--font-size-sm);
   line-height: 1.5;
+}
+
+.sensor-history-controls label {
+  color: var(--text-secondary);
 }
 
 /* Two fields side by side line up at the bottom when one label wraps to a second line. */
@@ -268,6 +284,8 @@
   grid-column: 1 / -1;
 }
 
+/* A switch row is a heading for the fields under it, so its label is a step larger than theirs
+   (the shared checkbox-label rule sets it; written here so it is not left to that). */
 .alert-advanced-options .workflow-checkbox {
   display: flex;
   justify-content: space-between;
@@ -275,6 +293,7 @@
   padding-top: 16px;
   border-top: 1px solid var(--border-color);
   color: var(--text-primary);
+  font-size: var(--font-size-base);
 }
 
 /* The toggle switch from styles.css carries a trailing margin meant for leading checkboxes. */
@@ -324,7 +343,7 @@
 
 .alert-advanced-options > .form-group > label {
   margin-bottom: 8px;
-  color: inherit;
+  color: var(--text-primary);
   font-weight: inherit;
   letter-spacing: normal;
 }
@@ -363,11 +382,6 @@
 }
 
 @media (max-width: 380px) {
-  .dashboard-tools-modal .modal-body,
-  .add-page-modal .modal-body {
-    padding: 16px;
-  }
-
   .alert-advanced-options,
   .room-dashboard {
     grid-template-columns: minmax(0, 1fr);
@@ -399,13 +413,17 @@
   gap: 8px;
 }
 
+/* The preview inherited the dialog's 16px, louder than the form it previews. */
 .room-dashboard-preview > p {
   grid-column: 1 / -1;
   margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
 }
 
 .room-preview-tile {
   padding: 12px;
+  font-size: var(--font-size-sm);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   overflow-wrap: anywhere;

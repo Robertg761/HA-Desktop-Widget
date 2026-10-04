@@ -7890,6 +7890,11 @@ function setPopupHotkeyControlsRecording(recording) {
   document.querySelectorAll('.preset-hotkey-btn, #popup-hotkey-clear-btn').forEach((control) => {
     control.disabled = recording;
   });
+  // The field's value is an instruction while it listens, and the stylesheet sets it as text, not
+  // as the code a hotkey is set in. The entity rows' fields are marked the same way.
+  const field = document.getElementById('popup-hotkey-input');
+  if (recording) field?.setAttribute('data-recording', 'true');
+  else field?.removeAttribute('data-recording');
 }
 
 function startCapturingPopupHotkey() {

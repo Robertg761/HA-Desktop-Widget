@@ -14,6 +14,8 @@
  *            before the scene and takes them away afterwards (see buildLandingLights)
  *   setup    async (ctx) that drives the UI; may return { capture } to photograph another
  *            window (a desktop pin) instead of the main one
+ *   teardown async (ctx) run after the capture, to undo what setup did to the page itself (the
+ *            runner puts back settings, dialogs, media and the window size on its own)
  *   pin      the entity a pin scene pins (only a label for the tests, which check that every
  *            desktop pin family has a scene)
  *   keepToasts  leave the toasts the setup raised on screen for the capture (they are cleared
@@ -26,7 +28,12 @@
  * few pixels differ from run to run. Everything else comes from the fixture.
  */
 
-const { PAGE_SETS, WINDOW_SIZE, buildLandingLights } = require('./fixture.cjs');
+const {
+  PAGE_SETS,
+  WINDOW_SIZE,
+  buildLandingLights,
+  buildUnavailableDevices,
+} = require('./fixture.cjs');
 
 const NARROW_WINDOW = { width: 340, height: WINDOW_SIZE.height };
 // The size the app opens at (the fixture's window is 60px taller to fit a 768px display), a window
@@ -39,6 +46,38 @@ const FORCED_COLORS = [{ name: 'forced-colors', value: 'active' }];
 // A light contrast theme (Windows High Contrast White): Chromium picks the light palette from the
 // colour scheme.
 const FORCED_COLORS_LIGHT = [...FORCED_COLORS, { name: 'prefers-color-scheme', value: 'light' }];
+// A touch-first machine (a tablet, a touch laptop in tablet mode) has a coarse pointer. Chromium's
+// media emulation cannot set that, so the scene switches the stylesheet's coarse-pointer block on
+// where it stands, which keeps its place in the cascade, and teardown puts the query back.
+const COARSE_QUERY = '(pointer: coarse)';
+const SWITCH_COARSE_POINTER_BLOCK_ON = `(() => {
+  window.coarsePointerRules = [];
+  for (const sheet of document.styleSheets) {
+    for (const rule of sheet.cssRules) {
+      if (rule.media?.mediaText === ${JSON.stringify(COARSE_QUERY)}) {
+        window.coarsePointerRules.push(rule);
+        rule.media.mediaText = 'all';
+      }
+    }
+  }
+  return window.coarsePointerRules.length;
+})()`;
+const SWITCH_COARSE_POINTER_BLOCK_OFF = `(() => {
+  for (const rule of window.coarsePointerRules || []) {
+    rule.media.mediaText = ${JSON.stringify(COARSE_QUERY)};
+  }
+  delete window.coarsePointerRules;
+})()`;
+const coarsePointer = (name, then) => ({
+  name,
+  setup: async (ctx) => {
+    if (!(await ctx.ev(SWITCH_COARSE_POINTER_BLOCK_ON))) {
+      throw new Error('The stylesheet has no coarse-pointer block to switch on');
+    }
+    if (then) await then(ctx);
+  },
+  teardown: (ctx) => ctx.ev(SWITCH_COARSE_POINTER_BLOCK_OFF),
+});
 
 // The media tile's track is a button. Its title has to run out of room (so the ellipsis is doing
 // its job), the ellipsis has to be set, and neither the track nor the tile may leave the window.
@@ -61,6 +100,11 @@ const tile = (entityId) => `#quick-controls [data-entity-id="${entityId}"]`;
 
 const openBrightness = (ctx) => ctx.click(tileDetails('light.desk_lamp'));
 const openDetails = (entityId) => (ctx) => ctx.click(tileDetails(entityId));
+// For an entity the scene itself brings (extraStates): its tile is drawn when its state arrives.
+const openArrivedDetails = (entityId) => async (ctx) => {
+  await ctx.waitForSelector(tileDetails(entityId));
+  await ctx.click(tileDetails(entityId));
+};
 const openClimate = (ctx) => ctx.click(tileDetails('climate.living_room'));
 const openColourLight = (ctx) => ctx.click(tileDetails('light.colour_strip'));
 // The page being edited carries its rename, duplicate and delete buttons in the tab strip. However
@@ -315,6 +359,22 @@ async function focusWithKeyboard(ctx, selector) {
 
 // The page whose tiles open the helper, vacuum, to-do, calendar and repair dialogs.
 const dialogsPage = { customTabs: PAGE_SETS.dialogs, activeTabId: 'default' };
+// The page for the unreachable light and cover that buildUnavailableDevices brings.
+const unavailablePage = {
+  customTabs: [{ id: 'gone', name: 'Gone', entityIds: ['light.hall', 'cover.side_gate'] }],
+  activeTabId: 'gone',
+};
+// A running and a paused timer between lit tiles, to see their tints against the accent.
+const timersPage = {
+  customTabs: [
+    {
+      id: 'timers',
+      name: 'Timers',
+      entityIds: ['light.desk_lamp', 'timer.laundry', 'timer.tea', 'climate.living_room'],
+    },
+  ],
+  activeTabId: 'timers',
+};
 // A holiday shows for an hour, long enough for the whole run.
 const holiday = (show) => ({ enabled: true, show, showUntil: Date.now() + 3600000 });
 
@@ -753,6 +813,20 @@ const scenes = [
   { name: 'settings', setup: (ctx) => openSettingsTab(ctx, 'general') },
   { name: 'settings-appearance', setup: (ctx) => openSettingsTab(ctx, 'personalization') },
   { name: 'dialog-manage-quick-access', setup: (ctx) => ctx.click('#manage-quick-controls-btn') },
+  // A search that finds nothing: the message sits in the middle of a list that keeps its height.
+  {
+    name: 'dialog-manage-quick-access-nomatch',
+    setup: async (ctx) => {
+      await ctx.click('#manage-quick-controls-btn');
+      await ctx.waitForSelector('#quick-controls-search');
+      await ctx.ev(`(() => {
+        const input = document.getElementById('quick-controls-search');
+        input.value = 'zzzz';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      })()`);
+      await ctx.waitForSelector('#quick-controls-list .entity-selector-empty');
+    },
+  },
   { name: 'popup-alarm-code', config: sixPages('default'), setup: openAlarmCodeDialog },
 
   // The dialogs the dialogs page opens, each built by the app rather than by index.html.
@@ -863,6 +937,27 @@ const scenes = [
     setup: openDetails('light.color_strip'),
   },
   { name: 'popup-fan', config: dialogsPage, setup: openDetails('fan.office') },
+  // A fan Home Assistant cannot reach says so and shows nothing to adjust.
+  {
+    name: 'popup-fan-unavailable',
+    config: { activeTabId: 'bedroom' },
+    setup: openDetails('fan.bedroom'),
+  },
+  // The same for a light and a cover: the banner and the buttons, with no icon or graphic left over.
+  {
+    name: 'popup-light-unavailable',
+    config: unavailablePage,
+    extraStates: buildUnavailableDevices,
+    setup: openArrivedDetails('light.hall'),
+  },
+  {
+    name: 'popup-cover-unavailable',
+    config: unavailablePage,
+    extraStates: buildUnavailableDevices,
+    setup: openArrivedDetails('cover.side_gate'),
+  },
+  // An entity that is gone dims on a primary card as it does in Quick Access.
+  { name: 'primary-unavailable-card', config: { primaryCards: ['fan.bedroom', 'time'] } },
   { name: 'popup-cover', config: dialogsPage, setup: openDetails('cover.garage') },
   {
     name: 'popup-media',
@@ -1614,6 +1709,14 @@ const scenes = [
   // A window dragged narrower than the 500px it opens at.
   { name: 'narrow-main', size: NARROW_WINDOW },
 
+  // A timer takes a hue of its own when the accent is the green or the amber it would wear.
+  { name: 'timer-accent-emerald', ui: { accent: 'emerald' }, config: timersPage },
+  { name: 'timer-accent-amber', ui: { accent: 'amber' }, config: timersPage },
+
+  // A touch-first machine gets 44px targets in the header and in dialogs, and 72px tiles.
+  coarsePointer('coarse-pointer-main'),
+  coarsePointer('coarse-pointer-dialog', openBrightness),
+
   // Windows High Contrast, as Chromium emulates it: a dark contrast theme, then a light one.
   { name: 'forced-colors-main', media: FORCED_COLORS },
   { name: 'forced-colors-popup', media: FORCED_COLORS, setup: openBrightness },
@@ -2287,6 +2390,8 @@ const scenes = [
     ui: { language: 'de' },
     setup: (ctx) => openPaletteFor(ctx, 'a'),
   },
+  // An entity Home Assistant cannot reach is dimmed in the results as it is on its tile.
+  { name: 'palette-unavailable', setup: (ctx) => openPaletteFor(ctx, 'bedroom') },
   // Readings and states written in each language: precision and unit spacing, device class words,
   // timestamps, a duration, a paused timer and the next calendar events. A taller window shows them all.
   ...[undefined, 'de', 'ar'].map((language) => ({

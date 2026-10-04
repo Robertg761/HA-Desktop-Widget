@@ -258,6 +258,7 @@ Open each Settings page at the default window size. Note anything that looks wro
 - The header at 100% display scale: the Settings, Minimize and X glyphs look equally strong. The weather card's wind icon shows separate strokes, not a blob.
 - Page tabs, the Add page button, preset chips and the climate, fan and cover buttons use the same typeface as the text around them.
 - Add a person, a button, an input_button and a binary sensor: their icons are distinct and make sense.
+- Set Text size to 150% and open Settings: it fills the window edge to edge, with no band of the dashboard around it. Back at 100%, scroll the main window with more tiles than fit, then switch to a short page: the tiles do not shift sideways.
 
 Expected: As listed. These are polish items; report each difference you see.
 
@@ -431,12 +432,13 @@ Needs: A touch screen or a pen.
 
 1. Open Reorganize Quick Access and drag a tile with a finger or the pen.
 2. Turn Windows Animation effects off (Settings > Accessibility > Visual effects) and drag again.
+3. With only the touch screen (no mouse or trackpad in use), look at the buttons in a dialog, a dialog's close button and the Settings, Minimize and X buttons in the title bar.
 
-Expected: The dragged tile follows the finger or pen with no lag, with animation effects on and off, and lands where you drop it.
+Expected: The dragged tile follows the finger or pen with no lag, with animation effects on and off, and lands where you drop it. Buttons and close buttons are about 44px square, big enough to hit with a finger, and so are the title bar's. The title bar is taller to hold them, and the tiles below it scroll inside the window instead of being cut off at the bottom.
 
 Capture: A recording of the drag and the animation setting.
 
-Ref: CSSB2-23
+Ref: CSSB2-23, CSSC1-42
 
 ### WIN11-8 Popup hotkey and recorder
 
@@ -1127,12 +1129,13 @@ Ref: RO2-47, UIB-09, CSSC1-22
 
 1. Turn on the system's reduce-motion setting (Windows: Animation effects off; macOS: Reduce motion). Open Settings, a light's controls and the command palette.
 2. Turn on the system's increased-contrast setting if it has one (macOS: Increase contrast), without a forced-colors theme.
+3. With reduce motion still on, start Connect with Home Assistant in Settings (stop before approving in the browser), and open a camera that is slow to load.
 
-Expected: Dialogs still blur what is behind them as without reduced motion; only the movement stops. With increased contrast, tiles and panels have visibly stronger borders.
+Expected: Dialogs still blur what is behind them as without reduced motion; only the movement stops. With increased contrast, tiles and panels have visibly stronger borders. The waiting bar under Connect with Home Assistant fades in and out and never rests as a full bar that looks finished, and the loading rings and the Connecting icon keep turning (slowly) while the app waits.
 
 Capture: A screenshot of a dialog with and without the setting.
 
-Ref: CSSC1-16, CSSC1-22
+Ref: CSSC1-16, CSSC1-22, CSSC1-13
 
 ### A11Y-5 Orca on Linux
 
