@@ -314,6 +314,11 @@ function getAlarmActions(entity, name) {
     .concat(entity.state !== 'disarmed' ? [['alarm_disarm', t('Disarm {{name}}', { name })]] : []);
 }
 
+// Whether the palette lists a command (turn on, run, lock) for the entity.
+function hasCommandFor(entityId) {
+  return (paletteCommands || []).some((item) => item.entity?.entity_id === entityId);
+}
+
 function redirectToExplicitCommand(selected) {
   const entityId = selected.entity.entity_id;
   const commandIndex = results.findIndex(
@@ -325,8 +330,7 @@ function redirectToExplicitCommand(selected) {
     return;
   }
   const name = utils.getEntityDisplayName(selected.entity);
-  const hasCommand = (paletteCommands || []).some((item) => item.entity?.entity_id === entityId);
-  hint.textContent = hasCommand
+  hint.textContent = hasCommandFor(entityId)
     ? getEntityDomain(entityId) === 'alarm_control_panel'
       ? t('To control {{name}}, type "arm" or "disarm".', { name })
       : t('To control {{name}}, type "lock" or "unlock".', { name })
@@ -345,9 +349,11 @@ async function executeHighlightedResult() {
     redirectToExplicitCommand(selected);
     return;
   }
+  // Read before closing, which drops the commands.
+  const hasCommand = hasCommandFor(selected.entity?.entity_id);
   closeCommandPalette();
   if (!selected.service && !selected.tabId) {
-    openEntityDetailModal(selected.entity, { source: 'command-palette' });
+    openEntityDetailModal(selected.entity, { source: 'command-palette', hasCommand });
     return;
   }
   executing = true;

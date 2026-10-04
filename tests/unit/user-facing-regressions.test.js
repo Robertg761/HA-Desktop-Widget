@@ -402,20 +402,40 @@ describe('User-facing audit regressions', () => {
 
   it.each([
     ['switch.outlet', 'off'],
-    ['button.restart', 'unknown'],
-    ['timer.laundry', 'idle'],
-    ['automation.lights', 'on'],
+    ['input_boolean.guest_mode', 'on'],
   ])(
-    'says what %s is now, and changes nothing, for a plain palette result without controls',
+    'says what %s is now, and changes nothing, when the palette lists a command for it',
     async (entityId, entityState) => {
       const target = entity(entityId, entityState);
       state.setStates({ [entityId]: target });
-      ui.openEntityDetailModal(target, { source: 'command-palette' });
+      ui.openEntityDetailModal(target, { source: 'command-palette', hasCommand: true });
       await jest.advanceTimersByTimeAsync(0);
-      // Enter on a search result is not a command, so no machine switches and no button is pressed;
-      // the palette's explicit commands are what act.
+      // Enter on a search result is not a command, so no machine switches; the row beside it
+      // ("Turn on ...") is what acts.
       expect(mockCallService).not.toHaveBeenCalled();
       expect(uiUtils.showToast).toHaveBeenCalledWith(expect.stringContaining(': '), 'info', 3000);
+    }
+  );
+
+  it.each([
+    ['button.restart', 'unknown', ['button', 'press']],
+    ['input_button.doorbell', 'unknown', ['input_button', 'press']],
+    ['timer.laundry', 'idle', ['timer', 'start']],
+    ['automation.lights', 'on', ['automation', 'toggle']],
+  ])(
+    'still runs the action of %s, which the palette lists no command for',
+    async (entityId, entityState, [domain, service]) => {
+      const target = entity(entityId, entityState);
+      state.setStates({ [entityId]: target });
+      ui.openEntityDetailModal(target, { source: 'command-palette', hasCommand: false });
+      await jest.advanceTimersByTimeAsync(0);
+      // Nothing else in the palette reaches these, so the result is their command.
+      expect(mockCallService).toHaveBeenCalledWith(domain, service, { entity_id: entityId });
+      expect(uiUtils.showToast).not.toHaveBeenCalledWith(
+        expect.stringContaining(': '),
+        'info',
+        3000
+      );
     }
   );
 

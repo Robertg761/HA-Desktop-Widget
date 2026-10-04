@@ -13246,20 +13246,19 @@ function openEntityControlsDialog(liveEntity) {
   }
 }
 
-// The command palette opens an entity's controls when it has any. A result with none says what the
-// entity is now and changes nothing: only an explicit command (turn on, run, lock) acts, so a
-// stray Enter never switches a machine or presses a button unseen. Locks and alarm panels get
-// neither, since the palette offers named commands for those.
+// The command palette opens an entity's controls when it has any. A result with none, for an entity
+// the palette lists an explicit command for (turn on, run, lock), says what the entity is now and
+// changes nothing: the command acts, so a stray Enter never switches a machine unseen. Locks and
+// alarm panels get neither, since the palette offers named commands for those. An entity the
+// palette has no command for (a button, a timer) still runs its own action, as it always has: the
+// result is the only way to reach it from there.
 function openEntityDetailModal(entity, options = {}) {
   try {
     if (openEntityControls(entity)) return;
     const liveEntity = state.STATES?.[entity?.entity_id] || entity;
     if (['lock', 'alarm_control_panel'].includes(getEntityDomain(liveEntity?.entity_id))) return;
     if (!liveEntity?.entity_id) return;
-    if (options.source === 'command-palette') {
-      // A search result is not a command: Enter on "Coffee maker" must not switch the machine,
-      // press a button or start a timer with no sign it did. The palette offers explicit commands
-      // for what it runs, so this row only says what the entity is now.
+    if (options.source === 'command-palette' && options.hasCommand) {
       uiUtils.showToast(
         t('{{name}}: {{state}}', {
           name: utils.getEntityDisplayName(liveEntity),

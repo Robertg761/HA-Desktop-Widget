@@ -179,9 +179,60 @@ describe('command palette fuzzy scoring', () => {
       expect(document.activeElement).toBe(launcher);
       expect(openEntityDetailModal).toHaveBeenCalledWith(
         expect.objectContaining({ entity_id: expect.any(String) }),
-        { source: 'command-palette' }
+        // This session has not loaded any services, so the palette lists no command for either.
+        { source: 'command-palette', hasCommand: false }
       );
     } finally {
+      global.requestAnimationFrame = originalRequestAnimationFrame;
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+});
+
+describe('command palette results that open an entity', () => {
+  const rowFor = (name) =>
+    [...document.querySelectorAll('.command-palette-result')].find(
+      (row) => row.querySelector('.command-palette-result-name').textContent === name
+    );
+
+  it('tell the dialog whether the palette also lists a command for that entity', () => {
+    const originalRequestAnimationFrame = global.requestAnimationFrame;
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    global.requestAnimationFrame = (callback) => callback();
+    HTMLElement.prototype.scrollIntoView = jest.fn();
+    try {
+      // A switch has Turn on and Turn off; a button has no row of its own, so its result is the
+      // only way to press it from here.
+      state.setServices({ switch: { turn_on: {}, turn_off: {} } });
+      state.setStates({
+        'switch.kettle': {
+          entity_id: 'switch.kettle',
+          state: 'off',
+          attributes: { friendly_name: 'Kettle' },
+        },
+        'button.doorbell': {
+          entity_id: 'button.doorbell',
+          state: 'unknown',
+          attributes: { friendly_name: 'Doorbell' },
+        },
+      });
+      openEntityDetailModal.mockClear();
+
+      openCommandPalette();
+      rowFor('Kettle').click();
+      expect(openEntityDetailModal).toHaveBeenLastCalledWith(
+        expect.objectContaining({ entity_id: 'switch.kettle' }),
+        { source: 'command-palette', hasCommand: true }
+      );
+
+      openCommandPalette();
+      rowFor('Doorbell').click();
+      expect(openEntityDetailModal).toHaveBeenLastCalledWith(
+        expect.objectContaining({ entity_id: 'button.doorbell' }),
+        { source: 'command-palette', hasCommand: false }
+      );
+    } finally {
+      state.setServices({});
       global.requestAnimationFrame = originalRequestAnimationFrame;
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
     }
