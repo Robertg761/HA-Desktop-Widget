@@ -509,6 +509,11 @@ describe('an AppImage on a system that blocks the Chromium sandbox', () => {
 
     test('edits the Exec line, not a TryExec line listed ahead of it', () => {
       const { env, file, ensure, read } = setUp(() => '');
+      // Launchers are Linux files, where a path has no backslashes. On Windows the temporary
+      // folder does, and in an unquoted Exec value a backslash starts an escape, so this test
+      // writes its paths with forward slashes (which Windows also accepts).
+      const posix = (target) => target.split(path.sep).join('/');
+      env.APPIMAGE = posix(env.APPIMAGE);
       const write = (exec) =>
         fs.writeFileSync(
           file,
@@ -520,7 +525,7 @@ describe('an AppImage on a system that blocks the Chromium sandbox', () => {
       expect(read()).toContain(`\nTryExec=${env.APPIMAGE}\n`);
       expect(read()).toContain(`\nExec=${env.APPIMAGE} --no-sandbox --show\n`);
 
-      const gone = path.join(root, 'old.AppImage');
+      const gone = posix(path.join(root, 'old.AppImage'));
       write(gone);
       expect(ensure()).toBe(true);
       expect(read()).toContain(`\nTryExec=${env.APPIMAGE}\n`);
