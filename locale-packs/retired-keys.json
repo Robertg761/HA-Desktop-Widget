@@ -434,5 +434,13 @@
   "Unavailable entities on this connection: {{count}}.": {
     "retiredIn": "4.0.0",
     "reason": "The settings import confirmation is label and value rows"
+  },
+  "Save your pages, appearance, alerts, weather and media choices in a file. Connection details, desktop pins, shortcuts and profile sync stay on this computer.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to call them hotkeys, as the rest of the app does"
+  },
+  "Import applies immediately and replaces unsaved Settings edits. Your current saved settings are backed up first. Connection details, desktop pins, shortcuts and profile sync stay on this computer. Imported settings follow your existing sync scope.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to call them hotkeys, as the rest of the app does"
   }
 }
