@@ -12,6 +12,7 @@ const {
   getDesktopPinWindowBounds,
 } = require('../../src/desktop-pin-bounds.js');
 const { getMainWindowMinimumSize } = require('../../src/layer-shell.cjs');
+const { boundsVisibleOnAnyWorkArea } = require('../../src/window-placement.cjs');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
@@ -54,6 +55,14 @@ class FakeWindow extends EventEmitter {
 
   isDestroyed() {
     return false;
+  }
+
+  isMaximized() {
+    return !!this.maximized;
+  }
+
+  isFullScreen() {
+    return !!this.fullScreen;
   }
 }
 
@@ -185,6 +194,27 @@ describe('main window bounds on Linux', () => {
     expect(context.config.windowSize).toEqual({ width: 640, height: 720 });
   });
 
+  it('does not save the size a maximized or full-screen window has', () => {
+    const { context, mainWindow } = loadMainWindowRuntime('linux');
+    mainWindow.maximized = true;
+    mainWindow.setBounds({ x: 0, y: 0, width: 1920, height: 1080 });
+    jest.advanceTimersByTime(1000);
+    expect(context.saveConfig).not.toHaveBeenCalled();
+    expect(context.config.windowSize).toEqual({ width: 500, height: 600 });
+
+    mainWindow.maximized = false;
+    mainWindow.fullScreen = true;
+    mainWindow.setBounds({ x: 0, y: 0, width: 1920, height: 1080 });
+    jest.advanceTimersByTime(1000);
+    expect(context.saveConfig).not.toHaveBeenCalled();
+
+    // The user's own resize afterwards is saved as usual.
+    mainWindow.fullScreen = false;
+    mainWindow.setBounds({ x: 100, y: 100, width: 520, height: 640 });
+    jest.advanceTimersByTime(400);
+    expect(context.config.windowSize).toEqual({ width: 520, height: 640 });
+  });
+
   it('leaves layer-shell placement to the layer drag path', () => {
     const { mainWindow } = loadMainWindowRuntime('linux', { isLayerShellChildProcess: true });
     expect(mainWindow.eventNames()).toEqual([]);
@@ -219,7 +249,9 @@ describe('desktop pin bounds on Linux', () => {
       electronScreen: {
         getPrimaryDisplay: () => ({ workArea }),
         getDisplayMatching: () => ({ workArea }),
+        getAllDisplays: () => [{ workArea }],
       },
+      boundsVisibleOnAnyWorkArea,
       desktopPinContentMinBounds: new Map(),
       desktopPinWindows: new Map(),
       latestEntityStates: new Map(),
@@ -325,6 +357,55 @@ describe('desktop pin bounds on Linux', () => {
       jest.advanceTimersByTime(1000);
       expect(context.saveConfig).not.toHaveBeenCalled();
     }
+  });
+
+  it('snaps a pin dropped past the screen edge back inside when its position is saved', () => {
+    const { context, pinWindow } = loadPinRuntime();
+    pinWindow.setPosition(1250, 300);
+    jest.advanceTimersByTime(180);
+
+    // The saved bounds are held to the work area, and so is the window, at once.
+    expect(context.config.desktopPins['light.office']).toMatchObject({ x: 1112, y: 300 });
+    expect(pinWindow.getBounds()).toMatchObject({ x: 1112, y: 300 });
+  });
+
+  it('puts a pin back where it is saved after a window manager moved it outside Reorganize', () => {
+    const { context, pinWindow } = loadPinRuntime({ editMode: false });
+    pinWindow.setPosition(400, 300);
+
+    // Not at once: a window manager drag is still in progress.
+    jest.advanceTimersByTime(249);
+    expect(pinWindow.getBounds()).toMatchObject({ x: 400, y: 300 });
+    jest.advanceTimersByTime(1);
+    expect(pinWindow.getBounds()).toMatchObject({ x: 200, y: 120 });
+    // The move was not the user's choice, so nothing is saved.
+    expect(context.saveConfig).not.toHaveBeenCalled();
+    expect(context.config.desktopPins['light.office']).toMatchObject({ x: 200, y: 120 });
+  });
+
+  it('does not snap a pin back once Reorganize starts', () => {
+    const { context, pinWindow } = loadPinRuntime({ editMode: false });
+    pinWindow.setPosition(400, 300);
+    context.desktopPinEditMode = true;
+    jest.advanceTimersByTime(1000);
+    expect(pinWindow.getBounds()).toMatchObject({ x: 400, y: 300 });
+  });
+
+  it('stops chasing a pin that a window manager will not leave on its saved spot', () => {
+    const { pinWindow } = loadPinRuntime({ editMode: false });
+    // A window manager that never leaves a window where it was asked to put it, and reports the
+    // move a moment later, after the app has stopped applying its own bounds.
+    let drift = 0;
+    pinWindow.setBounds = jest.fn((next) => {
+      pinWindow.bounds = { ...pinWindow.bounds, ...next, x: next.x + 40 + (drift += 7) };
+      setTimeout(() => pinWindow.emit('move'), 10);
+    });
+    pinWindow.setPosition(400, 300);
+
+    jest.advanceTimersByTime(250 * 10);
+
+    // The first move plus three corrections, not a loop that never ends.
+    expect(pinWindow.setBounds.mock.calls.length).toBeLessThanOrEqual(4);
   });
 
   it.each(['darwin', 'win32'])('still saves pin moves only on moved on %s', (platform) => {

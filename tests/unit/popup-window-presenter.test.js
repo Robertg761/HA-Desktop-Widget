@@ -237,14 +237,17 @@ describe('popup window presenter', () => {
     });
   });
 
-  test('leaves the position alone when it already matches and when it is off-screen', () => {
+  test('leaves the position alone when it already matches', () => {
     const onScreenWindow = createWindowMock();
     const { presenter } = createPresenter();
     presenter.showAboveFullScreen(onScreenWindow);
     expect(onScreenWindow.setBounds).not.toHaveBeenCalled();
+  });
 
+  test('brings the widget onto a connected display when its remembered display is gone', () => {
     const offScreenWindow = createWindowMock();
-    offScreenWindow.state.bounds = { x: 10, y: 10, width: 480, height: 640 };
+    // Where the window system left a hidden window when its monitor was unplugged.
+    offScreenWindow.state.bounds = { x: 4000, y: 1800, width: 480, height: 640 };
     const { presenter: offScreenPresenter, log } = createPresenter({
       config: {
         alwaysOnTop: false,
@@ -253,7 +256,13 @@ describe('popup window presenter', () => {
       },
     });
     offScreenPresenter.showAboveFullScreen(offScreenWindow);
-    expect(offScreenWindow.setBounds).not.toHaveBeenCalled();
+    // Shown on the nearest work area (1920x1040), not left on no screen at all.
+    expect(offScreenWindow.setBounds).toHaveBeenCalledWith({
+      x: 1440,
+      y: 400,
+      width: 480,
+      height: 640,
+    });
     expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('off-screen'));
   });
 
@@ -403,6 +412,63 @@ describe('popup window presenter', () => {
     const { presenter: linuxPresenter } = createPresenter({ platform: 'linux' });
     linuxPresenter.showAboveFullScreen(linuxWindow);
     expect(linuxWindow.setVisibleOnAllWorkspaces).not.toHaveBeenCalled();
+  });
+
+  describe('macOS Spaces', () => {
+    const restingOptions = { visibleOnFullScreen: false, skipTransformProcessType: true };
+
+    test('an always-on-top widget follows the user across Spaces, but not onto full-screen ones', () => {
+      const macWindow = createWindowMock();
+      const { presenter } = createPresenter({
+        platform: 'darwin',
+        config: { alwaysOnTop: true },
+      });
+
+      expect(presenter.syncWorkspaceVisibility(macWindow)).toBe(true);
+      expect(macWindow.setVisibleOnAllWorkspaces).toHaveBeenLastCalledWith(true, restingOptions);
+    });
+
+    test('stays on its own Space when always on top is off', () => {
+      const macWindow = createWindowMock();
+      const { presenter, config } = createPresenter({
+        platform: 'darwin',
+        config: { alwaysOnTop: false },
+      });
+
+      presenter.syncWorkspaceVisibility(macWindow);
+      expect(macWindow.setVisibleOnAllWorkspaces).toHaveBeenLastCalledWith(false, restingOptions);
+
+      config.alwaysOnTop = true;
+      presenter.syncWorkspaceVisibility(macWindow);
+      expect(macWindow.setVisibleOnAllWorkspaces).toHaveBeenLastCalledWith(true, restingOptions);
+    });
+
+    test('a popup raise joins full-screen Spaces and gives them back, keeping all Spaces', () => {
+      const macWindow = createWindowMock();
+      const { presenter } = createPresenter({ platform: 'darwin', config: { alwaysOnTop: true } });
+
+      presenter.showAboveFullScreen(macWindow);
+      expect(macWindow.setVisibleOnAllWorkspaces).toHaveBeenLastCalledWith(
+        true,
+        expect.objectContaining({ visibleOnFullScreen: true })
+      );
+      // The setting changing mid-raise waits for the raise to end.
+      expect(presenter.syncWorkspaceVisibility(macWindow)).toBe(false);
+
+      presenter.hidePopup(macWindow);
+      expect(macWindow.setVisibleOnAllWorkspaces).toHaveBeenLastCalledWith(true, restingOptions);
+    });
+
+    test('does nothing off macOS', () => {
+      const linuxWindow = createWindowMock();
+      const { presenter } = createPresenter({
+        platform: 'linux',
+        config: { alwaysOnTop: true },
+      });
+
+      expect(presenter.syncWorkspaceVisibility(linuxWindow)).toBe(false);
+      expect(linuxWindow.setVisibleOnAllWorkspaces).not.toHaveBeenCalled();
+    });
   });
 
   test('falls back to a plain raise when the level argument is rejected', () => {

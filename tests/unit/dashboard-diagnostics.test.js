@@ -69,6 +69,27 @@ test('diagnostics name the operating system and its version from the main proces
   delete window.electronAPI;
 });
 
+test('diagnostics count a reconnect only when the connection was lost, not when it was reopened on purpose', () => {
+  jest.resetModules();
+  const {
+    initializeDashboardTools: initialize,
+    diagnosticsReport: report,
+  } = require('../../src/dashboard-tools.js');
+  const currentSocket = require('../../src/websocket.js').default;
+  initialize();
+
+  currentSocket.emit('message', { type: 'auth_ok' });
+  // New settings close the socket on purpose and connect again: no outage, no reconnect.
+  currentSocket.emit('close', { intentional: true });
+  currentSocket.emit('message', { type: 'auth_ok' });
+  expect(report().reconnects).toBe(0);
+
+  currentSocket.emit('close', { intentional: false });
+  currentSocket.emit('message', { type: 'auth_ok' });
+  expect(report().reconnects).toBe(1);
+  currentSocket.removeAllListeners();
+});
+
 test('diagnostics tell a timed-out connection from a closed one', () => {
   jest.resetModules();
   const {

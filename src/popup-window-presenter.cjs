@@ -1,6 +1,6 @@
 /* global clearTimeout, console, process, setTimeout */
 
-const { boundsVisibleOnAnyWorkArea } = require('./window-placement.cjs');
+const { boundsVisibleOnAnyWorkArea, clampPositionToWorkAreas } = require('./window-placement.cjs');
 
 // Raising the widget with a plain setAlwaysOnTop(true) is not enough to clear a
 // full-screen video: players run at Electron's default 'floating' level and re-raise
@@ -145,12 +145,31 @@ function createPopupWindowPresenter(options = {}) {
   // draw over it when it is allowed onto full-screen Spaces. Skipping the process-type
   // transform keeps the flag change from turning the widget back into a regular app,
   // which would bring back the Dock icon that app.dock.hide() removed.
+  //
+  // Outside a raise the widget follows the user across Spaces when "Always on top" is on: a
+  // floating desktop widget that stays behind on the Space it was opened in is not on top of
+  // anything the user is looking at. It never joins other apps' full-screen Spaces then.
   function setFullScreenVisibility(targetWindow, visible) {
     if (platform !== 'darwin') return;
-    safeCall(targetWindow, 'setVisibleOnAllWorkspaces', visible, {
-      visibleOnFullScreen: visible,
-      skipTransformProcessType: true,
-    });
+    safeCall(
+      targetWindow,
+      'setVisibleOnAllWorkspaces',
+      visible || !!(getConfig() || {}).alwaysOnTop,
+      {
+        visibleOnFullScreen: visible,
+        skipTransformProcessType: true,
+      }
+    );
+  }
+
+  /**
+   * Apply the resting Spaces behaviour to a window that is not being raised: on creation, and
+   * when "Always on top" changes. A raise in flight ends by applying it itself.
+   */
+  function syncWorkspaceVisibility(targetWindow) {
+    if (elevated || !isUsableWindow(targetWindow)) return false;
+    setFullScreenVisibility(targetWindow, false);
+    return platform === 'darwin';
   }
 
   function getWindowBounds(targetWindow) {
@@ -181,10 +200,13 @@ function createPopupWindowPresenter(options = {}) {
 
     const intendedBounds = { x, y, width: liveBounds.width, height: liveBounds.height };
     if (!boundsVisibleOnAnyWorkArea(intendedBounds, workAreas)) {
+      // The display the widget was last on is gone (undocked, unplugged, a KVM not yet attached).
+      // Showing it where it was would put it on no screen at all, so bring it to the nearest one.
+      const relocated = clampPositionToWorkAreas(intendedBounds, workAreas);
       log.warn?.(
-        `Remembered popup position ${x},${y} is off-screen; leaving the window where the compositor placed it`
+        `Remembered popup position ${x},${y} is off-screen; moving the window to ${relocated.x},${relocated.y}`
       );
-      return null;
+      return relocated;
     }
 
     return { x, y };
@@ -343,6 +365,7 @@ function createPopupWindowPresenter(options = {}) {
     handleWindowHidden,
     handleWindowBlur,
     cancelPendingRaises,
+    syncWorkspaceVisibility,
     isElevated: () => elevated,
   };
 }
