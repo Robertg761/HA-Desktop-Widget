@@ -325,6 +325,7 @@ function createMockElectronAPI() {
     setEntityAlert: jest.fn((_entityId, _alertConfig) => Promise.resolve()),
     removeEntityAlert: jest.fn((_entityId) => Promise.resolve()),
     toggleAlerts: jest.fn((_enabled) => Promise.resolve({ success: true })),
+    setPersistentNotificationToasts: jest.fn((_enabled) => Promise.resolve({ success: true })),
 
     // Update Operations
     checkForUpdates: jest.fn(() => Promise.resolve({ updateAvailable: false })),

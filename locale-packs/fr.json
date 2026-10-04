@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.70",
+  "version": "1.2.71",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1842,6 +1842,8 @@
     "Lower": "Baisser",
     "Raise": "Augmenter",
     "Open HA Desktop Widget": "Ouvrir HA Desktop Widget",
-    "Start HA Desktop Widget": "Démarrer HA Desktop Widget"
+    "Start HA Desktop Widget": "Démarrer HA Desktop Widget",
+    "Home Assistant notifications": "Notifications Home Assistant",
+    "Also show the notifications Home Assistant adds as desktop notifications. They stay in the bell either way.": "Affichez aussi les notifications ajoutées par Home Assistant comme notifications du bureau. Elles restent dans la cloche dans les deux cas."
   }
 }

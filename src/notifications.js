@@ -1,4 +1,5 @@
 import websocket from './websocket.js';
+import state from './state.js';
 import { t } from './i18n.js';
 import { closeDialog, openDialog, renderKeepingFocus, showConfirm, showToast } from './ui-utils.js';
 
@@ -90,6 +91,9 @@ function getSortedNotifications() {
 
 function showPersistentDesktopNotification(notification) {
   try {
+    // Home Assistant's own notifications can be kept out of the desktop's notification area; they
+    // still arrive in the bell's list. This is not the entity alerts switch, and works with it off.
+    if (state.CONFIG?.entityAlerts?.persistentNotifications === false) return;
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
     const title = notification.title || DEFAULT_NOTIFICATION_TITLE;
     const desktopNotification = new Notification(title, {

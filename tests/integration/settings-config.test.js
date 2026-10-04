@@ -294,6 +294,10 @@ function createSettingsModalDOM() {
         <input type="checkbox" id="entity-alerts-enabled" />
         Enable Entity Alerts
       </label>
+      <label for="persistent-notification-toasts">
+        <input type="checkbox" id="persistent-notification-toasts" checked />
+        Home Assistant notifications
+      </label>
       <div id="alerts-section" style="display: none;">
         <div id="inline-alerts-list"></div>
       </div>
@@ -5934,6 +5938,22 @@ describe('Settings + Config Integration', () => {
         settings.openAlertConfigModal('sensor.office_temperature');
         expect(document.getElementById('alert-threshold-help').textContent).toBe('');
       });
+    });
+
+    test('shows the Home Assistant notifications switch on unless it was turned off', async () => {
+      const switchEl = () => document.getElementById('persistent-notification-toasts');
+      state.CONFIG.entityAlerts = { enabled: false, alerts: {} };
+      await settings.openSettings();
+      // A config from before the switch has no value for it: on.
+      expect(switchEl().checked).toBe(true);
+      settings.closeSettings();
+
+      state.CONFIG.entityAlerts = { enabled: false, persistentNotifications: false, alerts: {} };
+      await settings.openSettings();
+      expect(switchEl().checked).toBe(false);
+      // It does not depend on the entity alerts switch beside it.
+      expect(document.getElementById('entity-alerts-enabled').checked).toBe(false);
+      settings.closeSettings();
     });
 
     test('quiet hour times follow the quiet hours toggle', () => {

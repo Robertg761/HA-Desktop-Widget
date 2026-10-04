@@ -432,6 +432,72 @@ describe('persistent notification helpers', () => {
     expect(modal.classList.contains('hidden')).toBe(false);
   });
 
+  describe('desktop notifications for Home Assistant notifications', () => {
+    // A fresh module for each: it keeps the notifications it has been told about.
+    beforeEach(() => jest.resetModules());
+    const arrive = () => {
+      const {
+        initializePersistentNotifications: initialize,
+      } = require('../../src/notifications.js');
+      document.body.innerHTML = `
+        <button id="persistent-notifications-btn"></button>
+        <span id="persistent-notifications-count"></span>
+        <div id="persistent-notifications-modal" class="modal hidden">
+          <div id="persistent-notifications-list"></div>
+          <div id="persistent-notifications-empty"></div>
+        </div>`;
+      const created = [];
+      global.Notification = class {
+        constructor(title) {
+          created.push(title);
+        }
+      };
+      global.Notification.permission = 'granted';
+      window.electronAPI = { showWindow: jest.fn(() => Promise.resolve()) };
+      const websocket = require('../../src/websocket.js').default;
+      initialize();
+      const handler = websocket.subscribeMessage.mock.calls.at(-1)[1];
+      handler({
+        type: 'added',
+        notifications: {
+          update: {
+            notification_id: 'update',
+            title: 'Update ready',
+            message: 'Core 2026.10',
+            created_at: '2026-07-06T10:00:00Z',
+          },
+        },
+      });
+      return created;
+    };
+    const setConfig = (entityAlerts) => {
+      require('../../src/state.js').default.setConfig({ entityAlerts });
+    };
+    afterEach(() => require('../../src/state.js').default.setConfig({}));
+
+    it('show unless the switch for them is off', () => {
+      setConfig({ enabled: false, alerts: {} });
+      expect(arrive()).toEqual(['Update ready']);
+    });
+
+    it('stay out of the desktop when the switch is off, whether or not entity alerts are on', () => {
+      setConfig({ enabled: true, persistentNotifications: false, alerts: {} });
+      expect(arrive()).toEqual([]);
+      setConfig({ enabled: false, persistentNotifications: false, alerts: {} });
+      expect(arrive()).toEqual([]);
+    });
+
+    it('still reach the bell and its list when the desktop does not get them', () => {
+      setConfig({ enabled: true, persistentNotifications: false, alerts: {} });
+      arrive();
+
+      expect(document.getElementById('persistent-notifications-count').textContent).toBe('1');
+      expect(document.getElementById('persistent-notifications-btn').classList).not.toContain(
+        'hidden'
+      );
+    });
+  });
+
   it('describes the bell by its count, which its fixed label would otherwise hide', () => {
     // An aria-label replaces the button's content as its name, so a screen reader never reached the
     // number. The count is the button's description instead, which costs no translated string.

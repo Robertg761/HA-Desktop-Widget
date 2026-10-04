@@ -5275,6 +5275,8 @@ function loadConfig(options = {}) {
     },
     entityAlerts: {
       enabled: false,
+      // persistentNotifications (desktop notifications for Home Assistant's own) is absent until
+      // someone turns it off; absent means on.
       alerts: {}, // entityId -> alert configuration
     },
     ui: {
@@ -11161,6 +11163,28 @@ ipcMain.handle(
       };
     }
     setupEntityAlerts();
+    return { success: true };
+  })
+);
+
+// Whether Home Assistant's own notifications also show as desktop notifications. They are not entity
+// alerts, so this has its own switch, which works with entity alerts off.
+ipcMain.handle(
+  'set-persistent-notification-toasts',
+  serializeConfigMutationHandler(async (event, enabled) => {
+    const sender = authorizeIpcSender(event, 'set-persistent-notification-toasts');
+    if (!sender) return rejectUnauthorizedIpc('set-persistent-notification-toasts');
+    const previous = config.entityAlerts.persistentNotifications !== false;
+    config.entityAlerts.persistentNotifications = !!enabled;
+    const persistence = await saveConfigDurably();
+    if (!persistence.success) {
+      config.entityAlerts.persistentNotifications = previous;
+      return {
+        success: false,
+        error: mainT('Failed to save alert setting: {{error}}', { error: persistence.error }),
+      };
+    }
+    pushConfigToRenderer();
     return { success: true };
   })
 );

@@ -212,6 +212,8 @@ function createElectronApi(ipcRenderer, platform) {
     setEntityAlert: (entityId, alertConfig) => invoke('set-entity-alert', entityId, alertConfig),
     removeEntityAlert: (entityId) => invoke('remove-entity-alert', entityId),
     toggleAlerts: (enabled) => invoke('toggle-alerts', enabled),
+    setPersistentNotificationToasts: (enabled) =>
+      invoke('set-persistent-notification-toasts', enabled),
 
     checkForUpdates: () => invoke('check-for-updates'),
     quitAndInstall: () => invoke('quit-and-install'),

@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.71",
+  "version": "1.2.72",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1842,6 +1842,8 @@
     "Lower": "घटाएं",
     "Raise": "बढ़ाएं",
     "Open HA Desktop Widget": "HA Desktop Widget खोलें",
-    "Start HA Desktop Widget": "HA Desktop Widget शुरू करें"
+    "Start HA Desktop Widget": "HA Desktop Widget शुरू करें",
+    "Home Assistant notifications": "Home Assistant सूचनाएं",
+    "Also show the notifications Home Assistant adds as desktop notifications. They stay in the bell either way.": "Home Assistant जो सूचनाएं जोड़ता है, उन्हें डेस्कटॉप सूचनाओं के रूप में भी दिखाएं। वे दोनों स्थितियों में घंटी में बनी रहती हैं।"
   }
 }

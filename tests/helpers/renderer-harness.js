@@ -254,6 +254,12 @@ function createRendererHarness() {
 
       require('../../renderer.js');
       window.dispatchEvent(new Event('DOMContentLoaded'));
+      // The renderer tells main it is ready when init() is done; until then the panel, the toasts
+      // and the status are still being drawn, and a slow machine takes longer than a few ticks.
+      const deadline = Date.now() + 3000;
+      while (!electronAPI.signalRendererReady.mock.calls.length && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
       await flushAsync();
       Object.assign(harness, {
         electronAPI,

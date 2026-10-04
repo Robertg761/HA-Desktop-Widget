@@ -3456,6 +3456,36 @@ function wireUI() {
       };
     }
 
+    // Home Assistant's own notifications on the desktop; its own switch, which entity alerts being
+    // off does not turn off. Applies at once, like the entity alerts switch beside it.
+    const persistentNotificationToasts = document.getElementById('persistent-notification-toasts');
+    if (persistentNotificationToasts) {
+      persistentNotificationToasts.onchange = async (e) => {
+        const requested = !!e.target.checked;
+        const previous = state.CONFIG.entityAlerts?.persistentNotifications !== false;
+        const hadFocus = document.activeElement === e.target;
+        e.target.disabled = true;
+        try {
+          const result = await window.electronAPI.setPersistentNotificationToasts(requested);
+          if (result?.success) {
+            state.CONFIG.entityAlerts = {
+              ...(state.CONFIG.entityAlerts || { enabled: false, alerts: {} }),
+              persistentNotifications: requested,
+            };
+          } else {
+            e.target.checked = previous;
+            uiUtils.showToast(result?.error || t('Error toggling alerts'), 'error', 3000);
+          }
+        } catch (error) {
+          log.error('Failed to save the Home Assistant notifications setting:', error);
+          e.target.checked = previous;
+          uiUtils.showToast(t('Error toggling alerts'), 'error', 2000);
+        } finally {
+          reenableSettingsToggle(e.target, hadFocus);
+        }
+      };
+    }
+
     document.querySelectorAll('.modal-tabs .tab-link').forEach((button) => {
       button.addEventListener('click', () => {
         const tab = button.dataset.tab;

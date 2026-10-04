@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.71",
+  "version": "1.2.72",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1842,6 +1842,8 @@
     "Lower": "خفض",
     "Raise": "رفع",
     "Open HA Desktop Widget": "فتح HA Desktop Widget",
-    "Start HA Desktop Widget": "تشغيل HA Desktop Widget"
+    "Start HA Desktop Widget": "تشغيل HA Desktop Widget",
+    "Home Assistant notifications": "إشعارات Home Assistant",
+    "Also show the notifications Home Assistant adds as desktop notifications. They stay in the bell either way.": "اعرض الإشعارات التي يضيفها Home Assistant كإشعارات سطح المكتب أيضًا. وتبقى في الجرس في الحالتين."
   }
 }

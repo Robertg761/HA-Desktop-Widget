@@ -11,6 +11,17 @@ describe('the connection panel on the dashboard', () => {
 
   afterEach(() => harness.cleanup());
 
+  // The "Retrying..." moment is 700 ms of real time; wait for what follows it, not for a fixed time.
+  const until = async (done, timeoutMs = 3000) => {
+    const deadline = Date.now() + timeoutMs;
+    while (!done() && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  };
+  const retryOver = () =>
+    !document.querySelector('.widget-state-copy + .widget-state-details .connection-progress') &&
+    !harness.findButton('Retrying...');
+
   const failAttempt = (error = new Error('Could not establish WebSocket connection')) => {
     harness.websocket.emit('error', error);
     harness.websocket.emit('close', { intentional: false });
@@ -138,7 +149,7 @@ describe('the connection panel on the dashboard', () => {
       button.click();
       expect(harness.websocket.connect.mock.calls.length).toBe(connectsBefore + 1);
 
-      await new Promise((resolve) => setTimeout(resolve, 760));
+      await until(retryOver);
 
       expect(title()).toBe('Home Assistant is disconnected');
       expect(harness.findButton('Retry').getAttribute('aria-disabled')).toBeNull();
@@ -158,7 +169,7 @@ describe('the connection panel on the dashboard', () => {
       failAttempt();
       expect(document.activeElement.textContent).toBe('Retrying...');
 
-      await new Promise((resolve) => setTimeout(resolve, 760));
+      await until(retryOver);
       expect(document.activeElement.textContent).toBe('Retry');
     });
 
@@ -168,7 +179,7 @@ describe('the connection panel on the dashboard', () => {
       retry().click();
       harness.websocket.emit('connect-attempt');
       failAttempt();
-      await new Promise((resolve) => setTimeout(resolve, 760));
+      await until(retryOver);
       await new Promise((resolve) => setTimeout(resolve, 80));
 
       expect(document.getElementById('widget-state-live').textContent).toMatch(
@@ -182,7 +193,7 @@ describe('the connection panel on the dashboard', () => {
       retry().click();
       harness.websocket.emit('connect-attempt');
       failAttempt();
-      await new Promise((resolve) => setTimeout(resolve, 760));
+      await until(retryOver);
       expect(document.querySelector('.widget-state-note')).not.toBeNull();
 
       let requestId = 10;

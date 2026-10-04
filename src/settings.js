@@ -5375,6 +5375,13 @@ async function openSettings(uiHooks) {
       }
     }
 
+    // On unless it was turned off: a config from before the switch has no value for it.
+    const persistentNotificationToasts = document.getElementById('persistent-notification-toasts');
+    if (persistentNotificationToasts) {
+      persistentNotificationToasts.checked =
+        state.CONFIG.entityAlerts?.persistentNotifications !== false;
+    }
+
     const entityAlertsEnabled = document.getElementById('entity-alerts-enabled');
     if (entityAlertsEnabled) {
       entityAlertsEnabled.checked = !!(
