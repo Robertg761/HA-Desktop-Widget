@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.60",
+  "version": "1.2.61",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1861,6 +1861,16 @@
     "Action chosen: {{action}}. It applies once you record a hotkey.": "Action choisie : {{action}}. Elle s'appliquera dès que vous enregistrerez un raccourci.",
     "Notify when unavailable or unknown": "Notifier lorsque l'entité est indisponible ou inconnue",
     "Waits 30 seconds first, and tells you at most once every 15 minutes per device.": "Attend d'abord 30 secondes et notifie au plus une fois toutes les 15 minutes par appareil.",
+    "Display name": "Nom affiché",
+    "Value font size": "Taille du texte de la valeur",
+    "Chart": "Graphique",
+    "Gauge range": "Plage de la jauge",
+    "Page name": "Nom de la page",
+    "Quick picks": "Suggestions",
+    "Click to configure weather": "Cliquez pour configurer la météo",
+    "Activated {{name}}": "{{name}} exécuté",
+    "Range {{min}} to {{max}}, step {{step}}": "Plage de {{min}} à {{max}}, pas de {{step}}",
+    "Use the command palette to control {{name}}": "Utilisez la palette de commandes pour contrôler {{name}}",
     "Waiting for you to approve HA Desktop Widget in your browser. If it did not open, choose Cancel, then Connect again.": "En attente de votre approbation de HA Desktop Widget dans votre navigateur. S'il ne s'est pas ouvert, choisissez Annuler, puis Se connecter à nouveau."
   }
 }

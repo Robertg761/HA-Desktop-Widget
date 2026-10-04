@@ -304,6 +304,10 @@ function renderWeatherIcon(container, condition, options = {}) {
 function getWeatherConditionLabel(condition) {
   const raw = String(condition || '').trim();
   if (!raw) return '--';
+  // An entity that is offline reports one of these, not a condition; saying it in the user's
+  // language beats the raw lowercase state.
+  if (raw.toLowerCase() === 'unavailable') return t('Unavailable');
+  if (raw.toLowerCase() === 'unknown') return t('Unknown');
   const normalizedCondition = normalizeWeatherCondition(raw);
   if (normalizedCondition === 'unknown') return raw;
   return t(WEATHER_LABELS[normalizedCondition]);

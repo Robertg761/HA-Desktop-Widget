@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.61",
+  "version": "1.2.62",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1861,6 +1861,16 @@
     "Action chosen: {{action}}. It applies once you record a hotkey.": "تم اختيار الإجراء: {{action}}. سيُطبَّق عند تسجيل اختصار.",
     "Notify when unavailable or unknown": "الإشعار عندما يصبح الكيان غير متاح أو غير معروف",
     "Waits 30 seconds first, and tells you at most once every 15 minutes per device.": "ينتظر 30 ثانية أولًا، ويرسل إشعارًا مرة واحدة على الأكثر كل 15 دقيقة لكل جهاز.",
+    "Display name": "الاسم المعروض",
+    "Value font size": "حجم خط القيمة",
+    "Chart": "الرسم البياني",
+    "Gauge range": "نطاق المقياس",
+    "Page name": "اسم الصفحة",
+    "Quick picks": "اختيارات سريعة",
+    "Click to configure weather": "انقر لتكوين الطقس",
+    "Activated {{name}}": "تم تنفيذ {{name}}",
+    "Range {{min}} to {{max}}, step {{step}}": "النطاق من {{min}} إلى {{max}}، بخطوة {{step}}",
+    "Use the command palette to control {{name}}": "استخدم لوحة الأوامر للتحكم في {{name}}",
     "Waiting for you to approve HA Desktop Widget in your browser. If it did not open, choose Cancel, then Connect again.": "في انتظار موافقتك على HA Desktop Widget في متصفحك. إذا لم يُفتح المتصفح، اختر إلغاء ثم اتصال مرة أخرى."
   }
 }

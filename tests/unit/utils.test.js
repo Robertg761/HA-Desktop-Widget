@@ -340,6 +340,37 @@ describe('Utils Module', () => {
     });
   });
 
+  describe('brightnessToPercent', () => {
+    it('reads the dimmest a light can be as 1%, not the 0% that reads as off', () => {
+      expect(utils.brightnessToPercent(1)).toBe(1);
+      expect(utils.brightnessToPercent(2)).toBe(1);
+    });
+
+    it('rounds the rest and caps at 100', () => {
+      expect(utils.brightnessToPercent(128)).toBe(50);
+      expect(utils.brightnessToPercent(255)).toBe(100);
+      expect(utils.brightnessToPercent(300)).toBe(100);
+    });
+
+    it('is 0 for no brightness at all', () => {
+      expect(utils.brightnessToPercent(0)).toBe(0);
+      expect(utils.brightnessToPercent(undefined)).toBe(0);
+      expect(utils.brightnessToPercent(null)).toBe(0);
+      expect(utils.brightnessToPercent('abc')).toBe(0);
+      expect(utils.brightnessToPercent(-5)).toBe(0);
+    });
+
+    it('is what the tile text says for a light on at brightness 1', () => {
+      expect(
+        utils.getEntityDisplayState({
+          entity_id: 'light.night',
+          state: 'on',
+          attributes: { brightness: 1 },
+        })
+      ).toBe('1%');
+    });
+  });
+
   describe('formatDuration', () => {
     test('should format zero duration', () => {
       expect(utils.formatDuration(0)).toBe('0:00');

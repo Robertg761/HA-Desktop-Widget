@@ -32,6 +32,7 @@ import {
 } from './src/tab-navigation.js';
 import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
 import { WeatherEffectsManager } from './src/weather-effects.js';
+import { bindWeatherCardPicker } from './src/weather-card.js';
 import { SeasonalEffectsManager } from './src/seasonal-effects.js';
 import { normalizeQuickAccessConfig } from './src/quick-access-tabs.js';
 import { normalizeComparisonGraphsConfig } from './src/comparison-graphs.js';
@@ -3237,27 +3238,10 @@ function wireUI() {
     };
     statusCards.forEach((card) => {
       if (!card) return;
-      let pressTimer = null;
-      const isWeatherCard = () =>
-        card.dataset.primaryType === 'weather' || card.classList.contains('weather-card');
-      const startPress = () => {
-        if (!isWeatherCard()) return;
-        pressTimer = setTimeout(openWeatherPicker, 500);
-      };
-      const cancelPress = () => {
-        clearTimeout(pressTimer);
-      };
-      card.addEventListener('mousedown', startPress);
-      card.addEventListener('mouseup', cancelPress);
-      card.addEventListener('mouseleave', cancelPress);
-      card.addEventListener('keydown', (event) => {
-        if (event.target !== card || !isWeatherCard()) return;
-        const opensPicker =
-          ['Enter', ' ', 'ContextMenu'].includes(event.key) ||
-          (event.key === 'F10' && event.shiftKey);
-        if (!opensPicker || event.ctrlKey || event.metaKey || event.altKey) return;
-        event.preventDefault();
-        openWeatherPicker();
+      bindWeatherCardPicker(card, {
+        isWeatherCard: () =>
+          card.dataset.primaryType === 'weather' || card.classList.contains('weather-card'),
+        openPicker: openWeatherPicker,
       });
     });
 
