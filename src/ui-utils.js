@@ -952,6 +952,9 @@ const TOAST_SURFACE_AVOID_SELECTOR = [
   '.widget-state-panel .widget-state-actions',
 ].join(', ');
 
+// While one of these is on screen Escape is not for the toasts: it ends a mode.
+const TOAST_ESCAPE_YIELD_SELECTOR = '#quick-controls.reorganize-mode';
+
 // Timing per toast: how long is left, whether the pointer or focus is on it, and the live timer.
 const toastTiming = new WeakMap();
 
@@ -1133,6 +1136,12 @@ function unwatchDialogLayout(modal) {
 // With no dialog open, Escape sends away the newest toast. Errors stay until dismissed, and
 // reaching one by Tab means walking the whole page first.
 function dismissNewestToastForEscape(event) {
+  // Reorganizing Quick Access ends on Escape (its notice says "Esc to finish"), and that mode's
+  // handler can sit before or after this one on the document. A toast that took the key first,
+  // the notice itself included, would make the shortcut need a second press. This is only reached
+  // with no dialog open and the key not used yet, the two tests the mode applies before it takes
+  // the key, so yielding here never leaves Escape with nobody to answer it.
+  if (document.querySelector(TOAST_ESCAPE_YIELD_SELECTOR)) return;
   const container = document.getElementById('toast-container');
   const newest = getLiveToasts(container).pop();
   if (!newest) return;

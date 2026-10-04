@@ -1,3 +1,7 @@
+import rtlLocales from './rtl-locales.cjs';
+
+const { isRtlLocale } = rtlLocales;
+
 let localeState = {
   languageSetting: 'auto',
   detectedLocale: 'en',
@@ -11,7 +15,6 @@ let localeState = {
   installedPacks: [],
 };
 
-const RTL_LANGUAGE_CODES = new Set(['ar', 'fa', 'he', 'ur']);
 const TEMPLATE_TOKEN_PATTERN = /\{\{\s*([\w.]+)\s*\}\}/g;
 
 function formatTemplate(template, vars = {}) {
@@ -35,11 +38,7 @@ export function setLocaleBootstrap(bootstrap = {}) {
       : localeState.installedPacks,
   };
   document.documentElement.lang = localeState.activeLocale || 'en';
-  document.documentElement.dir = RTL_LANGUAGE_CODES.has(
-    (localeState.activeLocale || 'en').split('-')[0]
-  )
-    ? 'rtl'
-    : 'ltr';
+  document.documentElement.dir = isRtlLocale(localeState.activeLocale) ? 'rtl' : 'ltr';
   return localeState;
 }
 
@@ -52,8 +51,7 @@ export function getLocaleState() {
 // and only added while a right-to-left language is active.
 export function isolateLtr(text) {
   const value = text == null ? '' : String(text);
-  const isRtl = RTL_LANGUAGE_CODES.has((localeState.activeLocale || 'en').split('-')[0]);
-  return value && isRtl ? `\u2066${value}\u2069` : value;
+  return value && isRtlLocale(localeState.activeLocale) ? `\u2066${value}\u2069` : value;
 }
 
 export function t(key, vars = {}) {

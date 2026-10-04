@@ -25,10 +25,10 @@
       "locale": "hi",
       "displayName": "हिन्दी",
       "englishName": "Hindi",
-      "version": "1.2.57",
+      "version": "1.2.58",
       "minAppVersion": "3.4.1",
       "downloadUrl": "https://raw.githubusercontent.com/Robertg761/HA-Desktop-Widget/main/locale-packs/hi.json",
-      "sha256": "53e85c13a859e108f1824264c5c4498a52a822afa24b11d6d4be882cc7c71e14",
+      "sha256": "750438120369066fa58287f5f6a104352fdcc6206515366d796c9ef8468a99a8",
       "notes": "Hindi language pack for HA Desktop Widget."
     },
     {
@@ -55,10 +55,10 @@
       "locale": "ar",
       "displayName": "العربية",
       "englishName": "Arabic",
-      "version": "1.2.57",
+      "version": "1.2.58",
       "minAppVersion": "3.4.1",
       "downloadUrl": "https://raw.githubusercontent.com/Robertg761/HA-Desktop-Widget/main/locale-packs/ar.json",
-      "sha256": "fee34e2618e2391c28a4c487676caae097d26942bec10d103f146ac3e5e8c84b",
+      "sha256": "fa158a2c81e8152bd6df6344764f478ae8ffe1a8f5b396683519ebb3ac1971a8",
       "notes": "Arabic language pack for HA Desktop Widget."
     }
   ]

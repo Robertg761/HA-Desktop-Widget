@@ -861,7 +861,8 @@ html.desktop-pin-mode body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 12px 8px 14px;
+  padding-block: 8px;
+  padding-inline: 14px 12px;
   background: var(--glass-elevated);
   border-bottom: 1px solid var(--tile-border);
   backdrop-filter: blur(var(--blur-xl)) saturate(180%);
@@ -2696,7 +2697,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 .desktop-pin-timer-progress-fill {
   height: 100%;
   background: linear-gradient(
-    90deg,
+    var(--slider-dir),
     rgba(var(--desktop-pin-tint-rgb), 0.55),
     rgba(var(--desktop-pin-tint-rgb), 1)
   );
@@ -2706,7 +2707,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 .desktop-pin-timer-control[data-state='paused'] .desktop-pin-timer-progress-fill {
   background: linear-gradient(
-    90deg,
+    var(--slider-dir),
     rgba(var(--desktop-pin-ink-rgb), 0.24),
     rgba(var(--desktop-pin-ink-rgb), 0.42)
   );
@@ -4885,7 +4886,11 @@ body.theme-light:not(.high-contrast) .weather-glyph {
   white-space: nowrap;
   max-width: 100%;
   box-sizing: border-box;
-  padding: 0 4px;
+  /* The line is one em tall so the clock stays compact, but the clipping box cut the tails off an
+     Arabic or Hindi AM/PM marker, and a Spanish "p. m.". The padding gives them room and the
+     negative margin hands it back, so the card does not grow. */
+  padding: 0.2em 4px;
+  margin-block: -0.2em;
 }
 
 .status-card.time-card .date-display {
@@ -7029,6 +7034,10 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   font-weight: var(--font-weight-semibold);
   letter-spacing: -0.03em;
   line-height: 1;
+  /* A line as tall as the text clipped the tail of a comma in a grouped number; the padding makes
+     room for it and the margin takes the room back out of the layout. */
+  padding-block: 0.1em;
+  margin-block: -0.1em;
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-sensor-unit {
@@ -8241,8 +8250,7 @@ body.theme-light:not(.high-contrast)
   content: '';
   position: absolute;
   top: 2px;
-  /* Physical on purpose: right-to-left pages mirror the whole switch (see RIGHT-TO-LEFT). */
-  left: 2px;
+  inset-inline-start: 2px;
   width: 14px;
   height: 14px;
   border-radius: 50%;
@@ -8262,7 +8270,7 @@ body.theme-light:not(.high-contrast)
 }
 
 .form-group input[type='checkbox']:checked::after {
-  transform: translateX(18px);
+  transform: translateX(calc(18px * var(--inline-sign)));
   background: var(--accent);
   box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.5);
 }
@@ -8378,8 +8386,7 @@ body.theme-light:not(.high-contrast)
 .color-target-option {
   min-width: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: flex-start;
   gap: var(--space-3);
   min-height: 72px;
   padding: var(--space-3);
@@ -8387,7 +8394,7 @@ body.theme-light:not(.high-contrast)
   border-radius: var(--radius-lg);
   background: var(--glass-surface);
   color: var(--text-primary);
-  text-align: center;
+  text-align: start;
   font-family: inherit;
   cursor: pointer;
   transition: var(--transition-base);
@@ -8411,9 +8418,7 @@ body.theme-light:not(.high-contrast)
   background:
     linear-gradient(135deg, rgba(var(--accent-rgb), 0.16), rgba(var(--accent-rgb), 0.05)),
     var(--glass-elevated);
-  box-shadow:
-    0 0 0 1px rgba(var(--accent-rgb), 0.45),
-    0 12px 28px rgba(var(--accent-rgb), 0.2);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.45);
 }
 
 .color-target-swatch {
@@ -8447,8 +8452,8 @@ body.theme-light:not(.high-contrast)
   min-width: 0;
   flex-direction: column;
   gap: 3px;
-  align-items: center;
-  text-align: center;
+  align-items: flex-start;
+  text-align: start;
 }
 
 .color-target-name {
@@ -8461,6 +8466,7 @@ body.theme-light:not(.high-contrast)
   color: var(--text-secondary);
   font-size: var(--font-size-xs-plus);
   line-height: 1.35;
+  text-wrap: balance;
 }
 
 /* Accent theme picker */
@@ -8963,6 +8969,9 @@ body.theme-light:not(.high-contrast)
   border-radius: var(--radius-full);
   background: rgba(var(--accent-rgb), 0.16);
   overflow: hidden;
+  /* The sweep is drawn with physical offsets from the left edge, so the track reads left to right
+     in every language; in a right-to-left page the bar would start in the middle of it. */
+  direction: ltr;
 }
 
 .connection-progress-bar {
@@ -9278,7 +9287,7 @@ body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--success), var(--accent));
+  background: linear-gradient(var(--slider-dir), var(--success), var(--accent));
   width: 0%;
   transition: width var(--transition-slow);
 }
@@ -12667,10 +12676,14 @@ body.theme-light:not(.high-contrast) .cover-overlay {
   /* The way a track fills, towards the end the thumb moves to. Chromium mirrors a range input in
      right-to-left, so the gradient has to turn with it. */
   --slider-dir: to right;
+  /* +1 or -1, for the few things drawn with a physical offset that has to follow the reading
+     direction: a switch knob's travel, a hairline's side. A multiplier needs no rule per side. */
+  --inline-sign: 1;
 }
 
 [dir='rtl'] {
   --slider-dir: to left;
+  --inline-sign: -1;
 }
 
 .brightness-slider,
@@ -13176,7 +13189,7 @@ body.opaque-panels #settings-modal .modal-header {
   overflow-x: hidden;
   overflow-y: auto;
   padding: 10px 6px;
-  border-right: 1px solid var(--tile-border);
+  border-inline-end: 1px solid var(--tile-border);
   border-bottom: none;
   background: transparent;
   backdrop-filter: none;
@@ -13691,7 +13704,7 @@ body.theme-light
 
 :is(#settings-modal, #alert-config-modal, .rename-modal) .form-group input[type='checkbox']::after {
   top: 3px;
-  left: 3px;
+  inset-inline-start: 3px;
   width: 16px;
   height: 16px;
   background: #fff;
@@ -13717,7 +13730,7 @@ body.theme-light
 :is(#settings-modal, #alert-config-modal, .rename-modal)
   .form-group
   input[type='checkbox']:checked::after {
-  transform: translateX(16px);
+  transform: translateX(calc(16px * var(--inline-sign)));
   background: #fff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
@@ -14361,8 +14374,9 @@ body.theme-light:not(.high-contrast) :is(#quick-controls .control-item, .status-
   background: transparent;
 }
 
+/* The hairline sits on the side the first card is on, which a right-to-left page swaps. */
 .status-grid:not(.single-card):not(.primary-cards-hidden) > .status-card + .status-card {
-  box-shadow: inset 1px 0 0 var(--tile-border);
+  box-shadow: inset calc(1px * var(--inline-sign)) 0 0 var(--tile-border);
 }
 
 .status-grid:not(.single-card):not(.primary-cards-hidden) > .status-card:hover {
@@ -14399,7 +14413,7 @@ body.theme-light:not(.high-contrast) :is(#quick-controls .control-item, .status-
 .status-grid:not(.single-card):not(.primary-cards-hidden)
   > .status-card
   + .status-card:focus-visible {
-  box-shadow: inset 1px 0 0 var(--tile-border);
+  box-shadow: inset calc(1px * var(--inline-sign)) 0 0 var(--tile-border);
 }
 
 @media (max-width: 420px) {
@@ -15894,7 +15908,7 @@ body[data-season='thanksgiving'] .control-item {
 }
 
 #settings-modal .seasonal-holiday-list > legend {
-  float: left;
+  float: inline-start;
   width: 100%;
   margin-bottom: 4px;
   padding: 0;
@@ -15946,12 +15960,6 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
 /* ==========================================================================
    RIGHT-TO-LEFT AND FORCED COLOURS
    ========================================================================== */
-
-/* Switches slide their knob with a physical translateX; mirroring the whole control keeps
-   "on" at the reading end in Arabic without duplicating every knob rule. */
-[dir='rtl'] .form-group input[type='checkbox'] {
-  transform: scaleX(-1);
-}
 
 /* Readings and their units are handled with the other right-to-left text rules at the end. */
 
@@ -16291,17 +16299,79 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
     .media-title,
     .media-detail-title,
     .media-detail-artist,
+    .media-tile-title,
+    .media-tile-artist,
+    .media-artist,
+    .media-album,
     .sensor-detail-value,
     .desktop-pin-panel-name,
     .desktop-pin-light-name,
+    .desktop-pin-light-status,
+    .desktop-pin-scene-name,
     .desktop-pin-panel-kpi,
     .desktop-pin-panel-value,
     .desktop-pin-panel-slider-label,
     .desktop-pin-media-title,
     .desktop-pin-media-artist,
-    .desktop-pin-climate-target-value
+    .desktop-pin-climate-target-value,
+    .entity-item .entity-name,
+    .entity-item .entity-id,
+    .hotkey-item .entity-name,
+    .quick-access-tab-label,
+    .persistent-notification-title,
+    .persistent-notification-message,
+    .toast-message,
+    .modal-header h2,
+    .todo-item-summary,
+    .calendar-event-summary,
+    .calendar-event-description,
+    .calendar-next-event,
+    .command-palette-result-name,
+    .command-palette-result-state
   ) {
   unicode-bidi: plaintext;
+}
+
+/* A name that fills its row starts at the reading edge, whichever script it is in. Left to the
+   plaintext above, an English name in an Arabic row would start at the far left, away from the
+   icon, while the Arabic names beside it start at the right. text-align: match-parent would say
+   that in one word, but Chromium does not implement it, so the edge is spelled out. */
+[dir='rtl']
+  :is(
+    .media-tile-title,
+    .media-tile-artist,
+    .entity-item .entity-name,
+    .entity-item .entity-id,
+    .persistent-notification-title,
+    .persistent-notification-message,
+    .todo-item-summary,
+    .calendar-event-summary,
+    .calendar-event-description,
+    .command-palette-result-name
+  ) {
+  text-align: right;
+}
+
+/* A name that is cut after two lines (the hotkey rows' and the pins') cannot be aligned with
+   text-align: Chromium draws the ellipsis after the aligned text, outside the box, whenever the
+   last line is short, and the name looks cut for no reason. It is as wide as its text instead,
+   which sits the box, and so the name, at the reading edge. The hotkey row's name gives up its
+   full-row basis; the controls under it keep theirs, so they still wrap below it. */
+[dir='rtl']
+  :is(
+    .desktop-pin-light-name,
+    .desktop-pin-panel-name,
+    .desktop-pin-media-title,
+    .desktop-pin-media-artist
+  ) {
+  width: fit-content;
+  max-width: 100%;
+}
+
+[dir='rtl'] .hotkey-item .entity-name {
+  flex-grow: 0;
+  flex-basis: auto;
+  max-width: 100%;
 }
 
 /* The brightness fill grows from the right, like the mirrored slider's thumb. */
@@ -16333,13 +16403,78 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   direction: ltr;
 }
 
-/* Names in the command palette keep the row's alignment while cutting at their own end. */
-[dir='rtl'] .command-palette-result-name {
-  unicode-bidi: plaintext;
-  text-align: match-parent;
+/* Addresses, colour codes, bindings and Home Assistant's own diagnostic report are left-to-right
+   text whichever language the page is in: in a right-to-left field a trailing "/" or "#" jumps to
+   the other end. The field's own alignment follows its direction, so a URL starts at the left. The
+   token and folder fields show a translated hint while empty, which stays right to left. */
+[dir='rtl']
+  :is(
+    #ha-url,
+    #custom-color-hex,
+    #desktop-bindings,
+    .diagnostics-report,
+    :is(#ha-token, #profile-sync-folder-path):not(:placeholder-shown)
+  ) {
+  direction: ltr;
 }
 
-/* A closed disclosure points towards the text, which runs leftwards. */
-[dir='rtl'] .settings-details:not([open]) > summary::before {
+/* The hotkey fields hold a shortcut ("Ctrl+Shift+/", left to right) at one moment and a translated
+   sentence at another: the popup field's "Press keys... (Esc to cancel)" while it records, and the
+   "None" or "Not set" hint while it is empty. Forcing either direction scrambles the other, so the
+   field takes its direction from its text. A hint is a placeholder, which does not follow the
+   field's own unicode-bidi, so that is set as well. */
+[dir='rtl'] :is(#popup-hotkey-input, .hotkey-input),
+[dir='rtl'] :is(#popup-hotkey-input, .hotkey-input)::placeholder {
+  unicode-bidi: plaintext;
+}
+
+/* A turning arrow points the way the page reads. The undo of the dashboard history is the only
+   directional glyph drawn; media transport keeps its direction (above). It is the icon that turns,
+   not the button, whose hover and press moves are transforms of their own. */
+[dir='rtl'] :is(#undo-dashboard-btn, .dashboard-restore-arrow) svg {
+  transform: scaleX(-1);
+}
+
+/* A disclosure's chevron points to where its text runs on, which is leftwards here while it is
+   closed. Open, it points down in either direction. */
+[dir='rtl'] #settings-modal .settings-disclosure:not([open]) > summary::after {
   transform: rotate(135deg);
+}
+
+[dir='rtl'] #settings-modal .settings-disclosure-section.collapsed .section-toggle-icon {
+  transform: scaleX(-1);
+}
+
+/* Scripts that the Latin typography here is wrong for: tracked, upper-case small labels split the
+   strokes that join Arabic letters and the headline bar of Devanagari, and CJK has no upper case,
+   so the labels are set as they are written. The marks of these scripts also reach further above
+   and below the line than Latin letters do, so text that is clipped to its box at a line height
+   set for Latin (tile names and states, list rows, notification titles) is given room, as the
+   pins' names already are. The shipped packs are ar, hi and zh; the other codes share a script
+   with them. !important because some seventy rules set a tracking, in selectors of every weight,
+   and the tile and density rules set a tight line height in selectors of every weight too: a line
+   height for these scripts on a particular tile belongs in the list below, not in a rule of its
+   own. Chromium (150, in Electron 43) does not accept a list in :lang() and drops the whole rule,
+   so each language has its own. */
+:is(:lang(ar), :lang(fa), :lang(ur), :lang(hi), :lang(mr), :lang(ne), :lang(zh), :lang(ja)) *,
+:is(:lang(ar), :lang(fa), :lang(ur), :lang(hi), :lang(mr), :lang(ne), :lang(zh), :lang(ja))
+  *::before,
+:is(:lang(ar), :lang(fa), :lang(ur), :lang(hi), :lang(mr), :lang(ne), :lang(zh), :lang(ja))
+  *::after {
+  letter-spacing: normal !important;
+  text-transform: none !important;
+}
+
+:is(:lang(ar), :lang(fa), :lang(ur), :lang(hi), :lang(mr), :lang(ne), :lang(zh), :lang(ja))
+  :is(
+    .control-name,
+    .control-state,
+    .calendar-next-event,
+    .media-artist,
+    .media-album,
+    .entity-name,
+    .persistent-notification-title,
+    .persistent-notification-time
+  ) {
+  line-height: 1.4 !important;
 }
