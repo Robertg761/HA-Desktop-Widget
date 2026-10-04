@@ -345,7 +345,7 @@ const OMARCHY_BAR_STRING_SOURCES = Object.freeze({
   connected: 'Connected',
   signInNeeded: 'Sign-in needed. Open the widget to reconnect.',
   connecting: 'Connecting...',
-  disconnected: 'Disconnected from Home Assistant. Retrying automatically.',
+  disconnected: 'Disconnected. Retrying automatically.',
   emptyState: 'Add entities to Quick Access in the widget to see them here.',
   openWidget: 'Open HA Desktop Widget',
   startWidget: 'Start HA Desktop Widget',

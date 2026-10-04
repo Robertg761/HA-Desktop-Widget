@@ -1772,5 +1772,6 @@
   "Open HA Desktop Widget": "Open HA Desktop Widget",
   "Start HA Desktop Widget": "Start HA Desktop Widget",
   "Home Assistant notifications": "Home Assistant notifications",
-  "Also show the notifications Home Assistant adds as desktop notifications. They stay in the bell either way.": "Also show the notifications Home Assistant adds as desktop notifications. They stay in the bell either way."
+  "Also show the notifications Home Assistant adds as desktop notifications. They stay in the bell either way.": "Also show the notifications Home Assistant adds as desktop notifications. They stay in the bell either way.",
+  "Disconnected. Retrying automatically.": "Disconnected. Retrying automatically."
 }

@@ -1923,6 +1923,7 @@
     "Open HA Desktop Widget": "HA Desktop Widget öffnen",
     "Start HA Desktop Widget": "HA Desktop Widget starten",
     "Home Assistant notifications": "Home-Assistant-Benachrichtigungen",
-    "Also show the notifications Home Assistant adds as desktop notifications. They stay in the bell either way.": "Zeige die Benachrichtigungen, die Home Assistant hinzufügt, auch als Desktop-Benachrichtigungen. In der Glocke bleiben sie in jedem Fall."
+    "Also show the notifications Home Assistant adds as desktop notifications. They stay in the bell either way.": "Zeige die Benachrichtigungen, die Home Assistant hinzufügt, auch als Desktop-Benachrichtigungen. In der Glocke bleiben sie in jedem Fall.",
+    "Disconnected. Retrying automatically.": "Verbindung getrennt. Wird automatisch wiederholt."
   }
 }

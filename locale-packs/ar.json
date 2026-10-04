@@ -1923,6 +1923,7 @@
     "Open HA Desktop Widget": "فتح HA Desktop Widget",
     "Start HA Desktop Widget": "تشغيل HA Desktop Widget",
     "Home Assistant notifications": "إشعارات Home Assistant",
-    "Also show the notifications Home Assistant adds as desktop notifications. They stay in the bell either way.": "اعرض الإشعارات التي يضيفها Home Assistant كإشعارات سطح المكتب أيضًا. وتبقى في الجرس في الحالتين."
+    "Also show the notifications Home Assistant adds as desktop notifications. They stay in the bell either way.": "اعرض الإشعارات التي يضيفها Home Assistant كإشعارات سطح المكتب أيضًا. وتبقى في الجرس في الحالتين.",
+    "Disconnected. Retrying automatically.": "انقطع الاتصال. ستتم إعادة المحاولة تلقائيًا."
   }
 }

@@ -1923,6 +1923,7 @@
     "Open HA Desktop Widget": "Abrir HA Desktop Widget",
     "Start HA Desktop Widget": "Iniciar HA Desktop Widget",
     "Home Assistant notifications": "Notificaciones de Home Assistant",
-    "Also show the notifications Home Assistant adds as desktop notifications. They stay in the bell either way.": "Muestra también como notificaciones del escritorio las que añade Home Assistant. En la campana se quedan en cualquier caso."
+    "Also show the notifications Home Assistant adds as desktop notifications. They stay in the bell either way.": "Muestra también como notificaciones del escritorio las que añade Home Assistant. En la campana se quedan en cualquier caso.",
+    "Disconnected. Retrying automatically.": "Desconectado. Reintentando automáticamente."
   }
 }

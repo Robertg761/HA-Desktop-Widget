@@ -166,7 +166,7 @@ Panel {
     if (status.issue === "keyring") return word("keyringLocked", "Keyring locked. Unlock it, then restart the widget.")
     if (status.connection === "connected") return word("connected", "Connected")
     if (status.connection === "auth-failed") return word("signInNeeded", "Sign-in needed. Open the widget to reconnect.")
-    if (status.connection === "connecting") return word("connecting", "Connecting…")
+    if (status.connection === "connecting") return word("connecting", "Connecting...")
     return word("disconnected", "Disconnected. Retrying automatically.")
   }
 

@@ -53,7 +53,10 @@ describe('the words the widget sends to the Omarchy bar panel', () => {
 });
 
 describe('the plugin panel', () => {
-  const uses = [...qml.matchAll(/root\.word\("(\w+)", "((?:[^"\\]|\\.)*)"\)(\.toUpperCase\(\))?/g)];
+  // Both `root.word(` and the bare `word(` of the functions inside the root item.
+  const uses = [
+    ...qml.matchAll(/(?:root\.)?word\("(\w+)", "((?:[^"\\]|\\.)*)"\)(\.toUpperCase\(\))?/g),
+  ];
 
   it('asks for words the widget sends', () => {
     expect(uses.length).toBeGreaterThan(20);
@@ -65,8 +68,7 @@ describe('the plugin panel', () => {
   it('falls back to the English the widget sends, so an older widget looks the same', () => {
     for (const [, id, fallback] of uses) {
       const source = OMARCHY_BAR_STRING_SOURCES[id].replace(/^Action: /, '');
-      // The panel writes "Connecting…" with one ellipsis character where the catalog has three dots.
-      expect(fallback.replace('…', '...')).toBe(source);
+      expect(fallback).toBe(source);
     }
   });
 
