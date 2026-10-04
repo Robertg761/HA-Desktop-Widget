@@ -1311,8 +1311,10 @@ kbd {
   .tile.t-wide { grid-column: span 6; }
   .tile { grid-column: span 3; }
   .tile.t-half { grid-column: span 3; }
-  /* Two tiles to a row leave one over, so the second tile and the last one take a whole row. */
-  .bento > .tile:nth-child(2), .bento > .tile:last-child { grid-column: span 6; }
+  /* The homepage bento is a wide tile and six more: the second and the last take a whole row, so
+     the pairs between them stay even. Other bentos (the companion page has four half-width tiles)
+     pair up as they are, so this is not written for every .bento. */
+  .bento-home > .tile:nth-child(2), .bento-home > .tile:last-child { grid-column: span 6; }
 }
 
 /* The brand, the four links and the buttons need about 790px at full spacing. Just above the
@@ -1375,7 +1377,7 @@ kbd {
   .section { padding-top: 88px; }
   .section-head { margin-bottom: 32px; }
   .bento, .steps, .shots { grid-template-columns: 1fr; }
-  .tile, .tile.t-wide, .tile.t-half, .bento > .tile:nth-child(2), .bento > .tile:last-child { grid-column: auto; }
+  .tile, .tile.t-wide, .tile.t-half, .bento-home > .tile:nth-child(2), .bento-home > .tile:last-child { grid-column: auto; }
   .tile.t-wide { grid-template-columns: 1fr; }
   .tile, .steps li { padding: 22px; }
   .shots { max-width: 420px; margin: 0 auto; }
