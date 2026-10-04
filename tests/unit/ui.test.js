@@ -7341,13 +7341,16 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
 
       const mappings = [
-        { haState: 'clear-night', expected: 'sunny' },
+        // The sun scene is a day sky: a clear night, an offline entity and a state nobody knows get
+        // no effect, not a warm glow.
+        { haState: 'clear-night', expected: null },
         { haState: 'sunny', expected: 'sunny' },
         { haState: 'stable', expected: 'sunny' },
         { haState: 'pouring', expected: 'rainy' },
         { haState: 'rainy', expected: 'rainy' },
         { haState: 'drizzle', expected: 'rainy' },
         { haState: 'snowy', expected: 'snowy' },
+        { haState: 'snowy-rainy', expected: 'snowy' },
         { haState: 'hail', expected: 'snowy' },
         { haState: 'sleet', expected: 'snowy' },
         { haState: 'cloudy', expected: 'cloudy' },
@@ -7360,7 +7363,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         { haState: 'exceptional', expected: 'cloudy' },
         { haState: 'lightning', expected: 'stormy' },
         { haState: 'lightning-rainy', expected: 'stormy' },
-        { haState: 'unknown-weird-state', expected: 'sunny' },
+        { haState: 'unavailable', expected: null },
+        { haState: 'unknown', expected: null },
+        { haState: 'unknown-weird-state', expected: null },
       ];
 
       for (const { haState, expected } of mappings) {

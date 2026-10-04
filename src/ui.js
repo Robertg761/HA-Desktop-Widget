@@ -2006,7 +2006,7 @@ function renderPrimaryCard(cardEl, selection, slotIndex) {
   if (selection === 'weather') {
     cardEl.dataset.primaryType = 'weather';
     cardEl.classList.add('weather-card');
-    cardEl.title = t('Long-press to configure weather');
+    cardEl.title = t('Click to configure weather');
     cardEl.innerHTML = weatherCardTemplate || '';
     // Keyboard users open the weather picker with Enter, Space, Shift+Enter or the menu key.
     cardEl.tabIndex = 0;
@@ -13068,6 +13068,14 @@ function executeHotkeyAction(entity, action) {
 }
 
 // --- Weather ---
+// A reading Home Assistant did not send is missing, not zero: an offline integration clears the
+// attributes, and some never report humidity or wind.
+function readWeatherNumber(value) {
+  if (value == null || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 function updateWeatherFromHA() {
   try {
     const selectedWeatherEntityId = resolveSelectedWeatherEntityId();
@@ -13083,14 +13091,19 @@ function updateWeatherFromHA() {
     // Use Home Assistant's global unit system (from config)
     const tempUnit = state.UNIT_SYSTEM?.temperature || '°C';
 
+    const temperature = readWeatherNumber(weatherEntity.attributes.temperature);
+    const humidity = readWeatherNumber(weatherEntity.attributes.humidity);
+
     // Handle wind speed: trust entity's unit if provided, otherwise use HA system units
-    let windSpeed = weatherEntity.attributes.wind_speed || 0;
+    let windSpeed = readWeatherNumber(weatherEntity.attributes.wind_speed);
     let windUnit;
 
     // Check if weather entity specifies its own wind_speed_unit (OpenWeatherMap and others do)
     const entityWindUnit = weatherEntity.attributes.wind_speed_unit;
 
-    if (entityWindUnit) {
+    if (windSpeed === null) {
+      windUnit = '';
+    } else if (entityWindUnit) {
       // Entity provides its own unit - use it as-is
       windSpeed = Math.round(windSpeed);
       windUnit = entityWindUnit;
@@ -13110,13 +13123,16 @@ function updateWeatherFromHA() {
       }
     }
 
-    if (tempEl)
-      tempEl.textContent = `${Math.round(weatherEntity.attributes.temperature || 0)}${tempUnit}`;
+    if (tempEl) {
+      tempEl.textContent = temperature === null ? '--°' : `${Math.round(temperature)}${tempUnit}`;
+    }
     if (conditionEl) conditionEl.textContent = getWeatherConditionLabel(weatherEntity.state);
     if (humidityEl) {
-      humidityEl.textContent = `${formatNumber(weatherEntity.attributes.humidity || 0)}%`;
+      humidityEl.textContent = humidity === null ? '--' : `${formatNumber(humidity)}%`;
     }
-    if (windEl) windEl.textContent = `${formatNumber(windSpeed)} ${windUnit}`;
+    if (windEl) {
+      windEl.textContent = windSpeed === null ? '--' : `${formatNumber(windSpeed)} ${windUnit}`;
+    }
 
     // Render a deterministic SVG for every Home Assistant weather condition.
     if (iconEl) {
@@ -13136,10 +13152,11 @@ function getWeatherEffectForState(condition) {
   const cond = condition.toLowerCase();
   if (cond.includes('storm') || cond.includes('thunder') || cond.includes('lightning')) {
     return 'stormy';
+  } else if (cond.includes('snow') || cond.includes('hail') || cond.includes('sleet')) {
+    // Before rain: 'snowy-rainy' is snow with rain in it.
+    return 'snowy';
   } else if (cond.includes('rain') || cond.includes('drizzle') || cond.includes('pouring')) {
     return 'rainy';
-  } else if (cond.includes('snow') || cond.includes('hail') || cond.includes('sleet')) {
-    return 'snowy';
   } else if (
     cond.includes('cloud') ||
     cond.includes('fog') ||
@@ -13154,10 +13171,14 @@ function getWeatherEffectForState(condition) {
     cond.includes('exceptional')
   ) {
     return 'cloudy';
+  } else if (cond.includes('night')) {
+    // The sun scene is a day sky. A clear night, an offline entity and a state the widget does not
+    // know (below) have no effect rather than a warm glow.
+    return null;
   } else if (cond.includes('sun') || cond.includes('clear') || cond.includes('stable')) {
     return 'sunny';
   }
-  return 'sunny';
+  return null;
 }
 
 function updateWeatherEffects(previewEnabled, previewOverride) {
@@ -15682,6 +15703,7 @@ export {
   executeQuickAccessControl,
   openEntityDetailModal,
   getEntityDomain,
+  getWeatherEffectForState,
   handleDesktopPinActionRequest,
   renderDesktopPinnedTile,
   getDesktopPinTickTargets,

@@ -4552,6 +4552,8 @@ body.first-run-active .widget-content > * {
 
 .status-card.weather-card {
   justify-content: center;
+  /* A click opens the weather picker (a long press still does). */
+  cursor: pointer;
 }
 
 .status-card.weather-card .weather-content {
