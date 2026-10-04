@@ -366,5 +366,9 @@
   "Unavailable entities on this connection: {{count}}.": {
     "retiredIn": "4.0.0",
     "reason": "Reworded to Entities not found on this connection: {{count}}. so they are not confused with entities that are unavailable"
+  },
+  "System default": {
+    "retiredIn": "4.0.0",
+    "reason": "Time format reads Automatic: Electron cannot read the operating system's 12/24-hour switch, so the option follows the language and region"
   }
 }
