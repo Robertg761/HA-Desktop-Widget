@@ -510,7 +510,14 @@ describe('Camera Module', () => {
       expect(tile.dataset.cameraPreviewSource).toBe('video');
       expect(status.textContent).toBe('Live now');
 
-      jest.advanceTimersByTime(60000);
+      // A minute of a video that plays: its clock moves, as a paused or frozen one does not.
+      let seconds = 0;
+      Object.defineProperty(video, 'paused', { configurable: true, value: false });
+      Object.defineProperty(video, 'currentTime', { configurable: true, get: () => seconds });
+      for (let step = 0; step < 12; step += 1) {
+        seconds += 5;
+        jest.advanceTimersByTime(5000);
+      }
       expect(mockHls).toHaveBeenCalledTimes(1);
       expect(mockHlsInstance.destroy).not.toHaveBeenCalled();
     });
@@ -2542,14 +2549,36 @@ describe('Camera Module', () => {
         expect(mockHlsInstance.destroy).not.toHaveBeenCalled();
       });
 
-      it('does not count a paused video as a stalled stream', async () => {
+      it('stops saying Live now over a video left paused in a visible window', async () => {
+        // Autoplay was refused, or the stream ended: either way the frame has stopped for good.
         const tile = createPreviewTile();
         const video = await startPlaying(tile);
         setVideoClock(video, { paused: true, currentTime: 10 });
 
-        await jest.advanceTimersByTimeAsync(60000);
+        await jest.advanceTimersByTimeAsync(10000);
+        expect(tile.dataset.cameraPreviewState).toBe('ready');
+        await jest.advanceTimersByTimeAsync(5000);
+
+        expect(tile.dataset.cameraPreviewState).not.toBe('ready');
+        expect(mockHlsInstance.destroy).toHaveBeenCalledTimes(1);
+        expect(pendingImage(tile).getAttribute('src')).toMatch(/^ha:\/\/camera\//);
+        pendingImage(tile).onload();
+        expect(badgeLabel(tile)).toBe('Snapshot');
+      });
+
+      it('keeps saying Live now when the video pauses briefly and plays again', async () => {
+        const tile = createPreviewTile();
+        const video = await startPlaying(tile);
+
+        setVideoClock(video, { paused: true, currentTime: 10 });
+        await jest.advanceTimersByTimeAsync(10000);
+        setVideoClock(video, { paused: false, currentTime: 20 });
+        await jest.advanceTimersByTimeAsync(5000);
+        setVideoClock(video, { paused: false, currentTime: 25 });
+        await jest.advanceTimersByTimeAsync(5000);
 
         expect(tile.dataset.cameraPreviewState).toBe('ready');
+        expect(mockHlsInstance.destroy).not.toHaveBeenCalled();
       });
 
       it('does not hold a hidden window against the stream, or back off for it', async () => {
