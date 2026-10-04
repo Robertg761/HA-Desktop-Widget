@@ -202,6 +202,15 @@ describe('visual snapshot scenes', () => {
     expect(scenes.find((scene) => scene.name === 'readable-light-main').ui.theme).toBe('light');
   });
 
+  it('puts back every interface setting a scene changes', () => {
+    // The runner merges a scene's interface settings over the app's, so a setting the fixture does
+    // not name keeps the last scene's value: the Readable scenes made every later scene Readable.
+    const base = buildConfig('http://127.0.0.1:1').ui;
+    const changed = new Set(scenes.flatMap((scene) => Object.keys(scene.ui || {})));
+    expect([...changed].filter((key) => !(key in base))).toEqual([]);
+    expect(base).toMatchObject({ highContrast: false, opaquePanels: false });
+  });
+
   it('has a light with colour controls for the colour pop-up', () => {
     const colourStrip = buildStates().find((state) => state.entity_id === 'light.colour_strip');
     expect(colourStrip.attributes.supported_color_modes).toEqual(

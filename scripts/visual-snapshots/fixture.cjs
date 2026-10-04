@@ -610,6 +610,10 @@ function buildConfig(haUrl) {
       // Reset by every scene: the runner merges a scene's settings over the app's, so a scene that
       // enlarges the interface would otherwise leave it enlarged for the ones after it.
       scale: 1,
+      // The Readable preset is the same: its scenes come before the pins, the layout scenes and
+      // the first-run wizard, which all rendered in it until each scene put these back.
+      highContrast: false,
+      opaquePanels: false,
       dateFormat: 'system',
       activeTileGlow: true,
       // On by default, taking the theme from an installed Omarchy (so a developer's machine
