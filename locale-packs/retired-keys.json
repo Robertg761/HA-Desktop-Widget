@@ -322,5 +322,117 @@
   "Reorganize mode on. Drag, select or press Alt+arrow keys to reorder. Use the buttons on a tile to pin, rename or remove it. Press Esc to finish.": {
     "retiredIn": "4.0.0",
     "reason": "Shortened before release: the first wording wrapped to three lines at 500px and four at 340px, over the bottom tile row"
+  },
+  "Access token": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to call the credential a long-lived access token everywhere"
+  },
+  "Test legacy token": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to call the credential a long-lived access token everywhere"
+  },
+  "Authentication failed. Check your Long-Lived Access Token.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to call the credential a long-lived access token everywhere"
+  },
+  "Enter a valid Home Assistant URL and token before testing.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to call the credential a long-lived access token everywhere"
+  },
+  "Authentication failed. Please check your Home Assistant token in Settings.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to call the credential a long-lived access token everywhere"
+  },
+  "Connection test succeeded. Home Assistant is reachable.": {
+    "retiredIn": "4.0.0",
+    "reason": "Replaced by a message that says the token was accepted and that Save is still needed"
+  },
+  "Clicking another window or switching apps hides the widget. Reopen it from the tray or with your popup hotkey. Desktop pins and Linux desktop-layer mode stay visible.": {
+    "retiredIn": "4.0.0",
+    "reason": "Shortened: the Linux layer-mode clause is explained by the disabled switch's tooltip"
+  },
+  "Linux uses the desktop shortcut service for stability. Hold-to-show and hide-on-release are unavailable; press-to-toggle remains supported.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: X11 registers the shortcut itself, so the text no longer names a shortcut service"
+  },
+  "Tip: press Ctrl+K anywhere to search entities, run commands, and switch pages.": {
+    "retiredIn": "4.0.0",
+    "reason": "The tip names the platform's own shortcut through a placeholder"
+  },
+  "State Change": {
+    "retiredIn": "4.0.0",
+    "reason": "Sentence case for the alert condition and dialog title"
+  },
+  "Specific State": {
+    "retiredIn": "4.0.0",
+    "reason": "Sentence case for the alert condition and dialog title"
+  },
+  "Add New Alert": {
+    "retiredIn": "4.0.0",
+    "reason": "Sentence case for the alert condition and dialog title"
+  },
+  "Configure Alert - {{name}}": {
+    "retiredIn": "4.0.0",
+    "reason": "Sentence case for the alert condition and dialog title"
+  },
+  "Manually override the weather effect for testing": {
+    "retiredIn": "4.0.0",
+    "reason": "The weather override is a real setting, not a test switch"
+  },
+  "Shown in the media bar under the top cards.": {
+    "retiredIn": "4.0.0",
+    "reason": "One name for the media tile"
+  },
+  "Thank you for your support!": {
+    "retiredIn": "4.0.0",
+    "reason": "A neutral toast: opening the sponsors page is not a donation"
+  },
+  "Selected language: {{language}}": {
+    "retiredIn": "4.0.0",
+    "reason": "The select already shows the chosen language"
+  },
+  "Profile sync": {
+    "retiredIn": "4.0.0",
+    "reason": "The row is an action phrase, so it no longer repeats the Profile Syncing caption"
+  },
+  "Search icons or paste icon": {
+    "retiredIn": "4.0.0",
+    "reason": "One term (emoji) for custom icons"
+  },
+  "Custom icon must be a single emoji or glyph.": {
+    "retiredIn": "4.0.0",
+    "reason": "One term (emoji) for custom icons"
+  },
+  "Type keywords in each row to search the full emoji picker, or paste one emoji/glyph and click Apply.": {
+    "retiredIn": "4.0.0",
+    "reason": "One term (emoji) for custom icons"
+  },
+  "Opt in to GitHub prerelease builds for testing. Stable users will not receive these builds.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded beta-builds and hotkey-release help"
+  },
+  "Hide the window when you let go of the hotkey, instead of only sending it back.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded beta-builds and hotkey-release help"
+  },
+  "This package does not support in-app updates. Open Releases to download the latest build.": {
+    "retiredIn": "4.0.0",
+    "reason": "The version is a placeholder now"
+  },
+  "File: {{name}}": {
+    "retiredIn": "4.0.0",
+    "reason": "The settings import confirmation is label and value rows"
+  },
+  "Changes: {{sections}}": {
+    "retiredIn": "4.0.0",
+    "reason": "The settings import confirmation is label and value rows"
+  },
+  "Pages: {{pages}}. Referenced entities: {{count}}.": {
+    "retiredIn": "4.0.0",
+    "reason": "The settings import confirmation is label and value rows"
+  },
+  "Unavailable entities on this connection: {{count}}.": {
+    "retiredIn": "4.0.0",
+    "reason": "The settings import confirmation is label and value rows"
   }
 }
