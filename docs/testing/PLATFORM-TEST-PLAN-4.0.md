@@ -793,9 +793,9 @@ Ref: MP-37
 Needs: A native Wayland session on Plasma. Start the app with `HA_WIDGET_LINUX_NATIVE_WAYLAND=1`; the raise path is only used there.
 
 1. Set a popup hotkey. Hide the widget behind another window and raise it with the hotkey a few times.
-2. Run `ls -l /tmp/ha-widget-raise-*.js`.
+2. Run `ls -l "$XDG_RUNTIME_DIR"/ha-widget-raise-*.js /tmp/ha-widget-raise-*.js` while the widget is raising, and again afterwards.
 
-Expected: No `ha-widget-raise-*.js` script is left in `/tmp` after the widget raises.
+Expected: No `ha-widget-raise-*.js` script is left in `/tmp` or in the runtime directory after the widget raises. While one exists it is in `$XDG_RUNTIME_DIR` (not `/tmp`), has a random name and is readable by you only (`-rw-------`).
 
 Capture: The listing.
 
@@ -822,9 +822,9 @@ Ubuntu 24.04 and later restrict unprivileged user namespaces, which affects the 
 2. Double-click it, then run it from a terminal.
 3. Run `cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns`.
 
-Expected: The widget window appears. If it cannot start, the failure is explained to the user, not a silent exit.
+Expected: The widget window appears. With the value from step 3 at 1, a double-clicked AppImage cannot start ("No usable sandbox"): that happens before the app's own code runs, so it cannot explain itself. The `.deb` is not affected, and [Running the AppImage on systems that block the Chromium sandbox](../linux-appimage.md) describes the ways around it. After the AppImage has been started once with `--no-sandbox`, the launcher it writes in `~/.local/share/applications` carries the flag, so starting it from the app grid works.
 
-Capture: The terminal output, in particular any "No usable sandbox" message, and the value from step 3.
+Capture: The terminal output, in particular any "No usable sandbox" message, the value from step 3, and the `Exec=` line of `~/.local/share/applications/com.github.robertg761.hadesktopwidget.desktop` if it exists.
 
 Ref: MP-06
 

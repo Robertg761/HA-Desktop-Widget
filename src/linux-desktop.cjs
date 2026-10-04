@@ -58,6 +58,17 @@ function isHyprland(env = process.env, exists = fs.existsSync) {
   return desktops.includes('hyprland') || hasLiveHyprlandInstance(env, exists);
 }
 
+/**
+ * Is this a GNOME session (X11 or Wayland)? GNOME has not drawn the legacy XEmbed tray since 3.26,
+ * so without a StatusNotifier host (Ubuntu ships one; stock GNOME does not) there is no tray at all.
+ */
+function isGnome(env = process.env) {
+  return String(env.XDG_CURRENT_DESKTOP || '')
+    .toLowerCase()
+    .split(':')
+    .includes('gnome');
+}
+
 function isPortalBindingRegistered(binding) {
   return !!binding && (!!binding.trigger || binding.requiresCompositorBinding === true);
 }
@@ -166,6 +177,7 @@ module.exports = {
   getHyprlandSocketCandidates,
   hasIsolatedProfile,
   hasLiveHyprlandInstance,
+  isGnome,
   isHyprland,
   isPortalBindingRegistered,
   hyprlandBinding,

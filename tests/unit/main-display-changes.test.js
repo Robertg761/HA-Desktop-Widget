@@ -192,6 +192,7 @@ describe('the widget after the monitors change', () => {
       },
       desktopPinWindows: new Map([['light.desk', pinWindow]]),
       applyDesktopPinBoundsToWindowIfMoved: jest.fn(),
+      refreshTrayIconForDisplayScale: jest.fn(),
       getMainWindowMinimumSizeForConfig: () => ({ width: 320, height: 360 }),
       runBackgroundConfigMutation: jest.fn((mutation) => mutation()),
       saveConfig: jest.fn(),

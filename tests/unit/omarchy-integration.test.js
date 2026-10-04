@@ -8,6 +8,7 @@ const {
   getHyprlandSocketCandidates,
   hasIsolatedProfile,
   hasLiveHyprlandInstance,
+  isGnome,
   isHyprland,
   isPortalBindingRegistered,
   hyprlandBinding,
@@ -22,6 +23,7 @@ const {
 } = require('../../src/layer-placement.cjs');
 const { parseOmarchyColors, createOmarchyThemeWatcher } = require('../../src/omarchy-theme.cjs');
 const {
+  appArmorRestrictsUserNamespaces,
   ensureAppImageDesktopEntry,
   repairStaleAppImageLaunchers,
 } = require('../../src/linux-desktop-entry.cjs');
@@ -57,6 +59,13 @@ test('Hyprland targets remain registered without a portal-assigned trigger', () 
   expect(hyprlandBinding('Control+Alt+H', 'popup-toggle')).toBe(
     `hl.bind("CTRL + ALT + H", hl.dsp.global("${APP_ID}:popup-toggle"))`
   );
+});
+test('recognizes a GNOME session, including a prefixed one', () => {
+  expect(isGnome({ XDG_CURRENT_DESKTOP: 'GNOME' })).toBe(true);
+  expect(isGnome({ XDG_CURRENT_DESKTOP: 'ubuntu:GNOME' })).toBe(true);
+  expect(isGnome({ XDG_CURRENT_DESKTOP: 'KDE' })).toBe(false);
+  expect(isGnome({ XDG_CURRENT_DESKTOP: 'X-Cinnamon' })).toBe(false);
+  expect(isGnome({})).toBe(false);
 });
 describe('recognizing a Hyprland session', () => {
   const env = {
@@ -349,6 +358,69 @@ test('AppImage launcher supplies canonical portal identity and repairs only its 
   expect(ensureAppImageDesktopEntry({ env: next, iconPath: icon })).toBe(true);
   fs.writeFileSync(file, '[Desktop Entry]\nExec=/custom/widget\n');
   expect(ensureAppImageDesktopEntry({ env, iconPath: icon })).toBe(false);
+});
+describe('an AppImage on a system that blocks the Chromium sandbox', () => {
+  function writeLauncher({ sandboxDisabled, restriction }) {
+    const env = {
+      APPIMAGE: path.join(root, 'widget.AppImage'),
+      XDG_DATA_HOME: path.join(root, 'data'),
+      XDG_DATA_DIRS: path.join(root, 'system'),
+    };
+    const icon = path.join(root, 'icon.png');
+    fs.writeFileSync(icon, 'png');
+    const real = fs;
+    const fsModule = {
+      ...real,
+      existsSync: (file) => real.existsSync(file),
+      readFileSync: (file, ...rest) => {
+        if (String(file).endsWith('apparmor_restrict_unprivileged_userns')) {
+          if (restriction === undefined) throw new Error('ENOENT');
+          return restriction;
+        }
+        return real.readFileSync(file, ...rest);
+      },
+    };
+    expect(ensureAppImageDesktopEntry({ env, iconPath: icon, fsModule, sandboxDisabled })).toBe(
+      true
+    );
+    return real.readFileSync(
+      path.join(env.XDG_DATA_HOME, 'applications', `${APP_ID}.desktop`),
+      'utf8'
+    );
+  }
+
+  test('keeps --no-sandbox in the launcher it writes, since the user needed it to start', () => {
+    expect(writeLauncher({ sandboxDisabled: true, restriction: '1\n' })).toContain(
+      ' --no-sandbox --show'
+    );
+  });
+
+  test('leaves the sandbox on when the app runs with it', () => {
+    expect(writeLauncher({ sandboxDisabled: false, restriction: '1\n' })).not.toContain(
+      '--no-sandbox'
+    );
+  });
+
+  test('does not switch it off for a user who passed the flag on a system that allows the sandbox', () => {
+    expect(writeLauncher({ sandboxDisabled: true, restriction: '0\n' })).not.toContain(
+      '--no-sandbox'
+    );
+    expect(writeLauncher({ sandboxDisabled: true, restriction: undefined })).not.toContain(
+      '--no-sandbox'
+    );
+  });
+
+  test('reads the AppArmor restriction from /proc', () => {
+    const read = (value) => ({
+      readFileSync: jest.fn(() => {
+        if (value === null) throw new Error('ENOENT');
+        return value;
+      }),
+    });
+    expect(appArmorRestrictsUserNamespaces(read('1\n'))).toBe(true);
+    expect(appArmorRestrictsUserNamespaces(read('0\n'))).toBe(false);
+    expect(appArmorRestrictsUserNamespaces(read(null))).toBe(false);
+  });
 });
 test('an installed package supplies its desktop entry without user overrides', () => {
   const env = {

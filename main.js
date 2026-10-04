@@ -36,6 +36,7 @@ const {
 const {
   getLaunchAction,
   hasIsolatedProfile,
+  isGnome,
   isHyprland,
   isPortalBindingRegistered,
   hyprlandBinding,
@@ -362,10 +363,12 @@ const {
   sanitizeDesktopPinSupportInfo,
 } = require('./src/desktop-pin-support.cjs');
 const {
+  getTrayIconSizeForPlatform,
   normalizeEntityId: normalizeTrayEntityId,
   normalizeTrayEntitiesConfig,
   sanitizeTrayEntityIconPayload,
 } = require('./src/tray-entities.cjs');
+const { loadTrayIcon } = require('./src/tray-icon.cjs');
 const {
   createDesktopPinConnectionState,
   createDesktopPinRendererConfig,
@@ -5197,18 +5200,15 @@ function updateLocalProfileSyncTracking({ allowDebouncedPush = true } = {}) {
 }
 
 /**
- * Selects and returns an appropriate tray icon image for the current platform.
+ * Selects and returns an appropriate tray icon image for the current platform (see
+ * src/tray-icon.cjs for what that is on each).
  *
- * Searches common resource locations (including packaged resources when available) for platform-preferred icon files,
- * resizes the found image to the platform's tray size (16px on Windows, 24px otherwise), and returns a fallback generated
- * placeholder image if no icon is found.
- * @returns {Electron.NativeImage} The resolved and appropriately sized tray icon image.
+ * Searches common resource locations (including packaged resources when available) for the icon
+ * artwork, and returns a generated placeholder image if none is found.
+ * @returns {Electron.NativeImage} The resolved tray icon image.
  */
 function resolveTrayIcon() {
   log.debug('Resolving tray icon');
-  const preferIco = process.platform === 'win32';
-  const traySize = preferIco ? 16 : 24;
-  const names = preferIco ? ['icon.ico', 'icon.png'] : ['icon.png', 'icon.ico'];
   const searchRoots = [path.join(__dirname, 'build'), __dirname];
 
   if (app && app.isPackaged) {
@@ -5220,57 +5220,22 @@ function resolveTrayIcon() {
     }
   }
 
-  const ensureTraySize = (image) => {
-    if (!image || image.isEmpty()) return image;
-    const { width, height } = image.getSize();
-    if (width === traySize && height === traySize) return image;
-    return image.resize({ width: traySize, height: traySize });
-  };
-
-  // Only a Windows executable carries an embedded icon. On Linux and macOS this reads the whole
-  // Electron binary (over 200 MB) as an image, stalls the main thread for about 100 ms and still
-  // comes back empty.
-  if (preferIco) {
-    try {
-      const exePath = app?.getPath ? app.getPath('exe') : process.execPath;
-      if (exePath && fs.existsSync(exePath)) {
-        const exeImage = nativeImage.createFromPath(exePath);
-        if (exeImage && !exeImage.isEmpty()) {
-          return ensureTraySize(exeImage);
-        }
-      }
-    } catch (error) {
-      log.warn('Unable to load tray icon from executable:', error.message);
-    }
+  let scaleFactor = 1;
+  try {
+    scaleFactor = electronScreen.getPrimaryDisplay()?.scaleFactor || 1;
+  } catch (error) {
+    log.debug('Could not read the display scale for the tray icon:', error.message);
   }
-
-  const candidates = [];
-  names.forEach((name) => {
-    searchRoots.forEach((root) => {
-      if (!root) return;
-      candidates.push(path.join(root, name));
-      candidates.push(path.join(root, 'icons', name));
-    });
-  });
-
-  for (const candidate of candidates) {
-    try {
-      if (!candidate || !fs.existsSync(candidate)) continue;
-      const image = nativeImage.createFromPath(candidate);
-      if (image && !image.isEmpty()) {
-        return ensureTraySize(image);
-      }
-    } catch (error) {
-      log.warn('Failed to load tray icon', candidate, error.message);
-    }
-  }
+  const icon = loadTrayIcon({ searchRoots, nativeImage, scaleFactor, log });
+  if (icon) return icon;
 
   log.info('Tray icon not found. Using generated fallback icon.');
+  const fallbackSize = getTrayIconSizeForPlatform(process.platform);
   return nativeImage
     .createFromDataURL(
       'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAPCAYAAADJViUEAAAAGElEQVQ4T2NkwAT/Gf4zjIGBoRAjGAgjGAgADt4C24gldLoAAAAASUVORK5CYII='
     )
-    .resize({ width: traySize, height: traySize });
+    .resize({ width: fallbackSize, height: fallbackSize });
 }
 
 /**
@@ -7295,6 +7260,7 @@ function watchDisplayChanges() {
         } catch (error) {
           log.warn('Failed to recover windows after a display change:', error.message);
         }
+        refreshTrayIconForDisplayScale();
       }, DISPLAY_CHANGE_RECOVERY_DELAY_MS);
     });
   });
@@ -8217,6 +8183,19 @@ function startTrayHostWatch() {
   });
 }
 
+/**
+ * The notification-area icon is drawn at exactly the size Windows shows it for the display's
+ * scaling, so it is drawn again when that scaling changes (a new monitor, a DPI setting).
+ */
+function refreshTrayIconForDisplayScale() {
+  if (process.platform !== 'win32' || isQuitting || !tray || tray.isDestroyed?.()) return;
+  try {
+    tray.setImage(resolveTrayIcon());
+  } catch (error) {
+    log.debug('Could not refresh the tray icon after a display change:', error.message);
+  }
+}
+
 /** Rebuild the tray menu so its check marks and labels follow the current settings. */
 function refreshTrayMenu() {
   if (tray && !tray.isDestroyed?.() && !isQuitting) createTray();
@@ -8271,7 +8250,9 @@ function schedulePostWindowStartupTasks() {
       log.warn('Tray startup initialization failed:', error.message);
       finishSmokeTest(false, `Tray startup initialization failed: ${error.message}`);
     }
-    if (process.platform === 'linux' && waylandSession && !IS_SMOKE_TEST_MODE) {
+    // A Wayland bar can start after the widget, and GNOME on Xorg has no tray without a
+    // StatusNotifier host, so both want to know when one shows up (or that none will).
+    if (process.platform === 'linux' && (waylandSession || isGnome()) && !IS_SMOKE_TEST_MODE) {
       startTrayHostWatch();
     }
 
@@ -13213,7 +13194,7 @@ app
       !IS_ISOLATED_PROFILE
     ) {
       try {
-        ensureAppImageDesktopEntry({ iconPath: path.join(__dirname, 'build/icon.png') });
+        ensureAppImageDesktopEntry({ iconPath: getAppIconPath(__dirname) });
       } catch (error) {
         log.warn('Could not create the AppImage launcher:', error?.message || error);
       }

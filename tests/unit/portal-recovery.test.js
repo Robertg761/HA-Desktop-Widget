@@ -89,6 +89,7 @@ test('startup repairs continue after each independent operation fails', () => {
       process: { env: {} },
       log: { info: jest.fn(), warn: jest.fn() },
       getLinuxStartupExecutablePath: () => '/widget',
+      getAppIconPath: () => '/app/build/icons/512x512.png',
     };
     names.forEach((name) => {
       context[name] = jest.fn(() => {

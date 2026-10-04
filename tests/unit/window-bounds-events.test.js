@@ -278,6 +278,7 @@ describe('desktop pin bounds on Linux', () => {
       getAppIconPath: () => 'icon.png',
       getWindowTransparencyOptions: () => ({ transparent: true, backgroundColor: '#00000000' }),
       hardenRendererNavigation: jest.fn(),
+      keepOutOfTaskbarWhenShown: jest.fn(),
       placeLayerWindow: jest.fn(),
       applyWindowOpacity: jest.fn(),
       applyDesktopPinWindowShape: jest.fn(),

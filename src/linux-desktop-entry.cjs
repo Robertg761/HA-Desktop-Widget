@@ -5,6 +5,20 @@ const path = require('path');
 const { APP_ID } = require('./linux-desktop.cjs');
 const { buildDesktopExecPrefix, parseDesktopExecCommand } = require('./linux-startup.cjs');
 
+const APPARMOR_USERNS_RESTRICTION = '/proc/sys/kernel/apparmor_restrict_unprivileged_userns';
+
+// Ubuntu 23.10 and later stop an unprivileged process from creating the user namespace Chromium's
+// sandbox needs, and an AppImage (unlike the .deb, whose chrome-sandbox is setuid) cannot get
+// around that, so it dies at start with "No usable sandbox". Whoever got it running did so with
+// --no-sandbox, and a launcher written without it would die the same way next time.
+function appArmorRestrictsUserNamespaces(fsModule = fs) {
+  try {
+    return String(fsModule.readFileSync(APPARMOR_USERNS_RESTRICTION, 'utf8')).trim() === '1';
+  } catch {
+    return false;
+  }
+}
+
 // AppImages need a desktop identity for the host portal registry. Package-owned
 // entries and user launchers take precedence over this fallback.
 function ensureAppImageDesktopEntry({
@@ -12,6 +26,8 @@ function ensureAppImageDesktopEntry({
   home = os.homedir(),
   iconPath,
   fsModule = fs,
+  // Whether this process runs without Chromium's sandbox, because it was started with --no-sandbox.
+  sandboxDisabled = process.argv.includes('--no-sandbox'),
 } = {}) {
   if (!env.APPIMAGE || !path.isAbsolute(env.APPIMAGE)) return false;
   const data = env.XDG_DATA_HOME || path.join(home, '.local/share');
@@ -38,9 +54,11 @@ function ensureAppImageDesktopEntry({
   fsModule.mkdirSync(path.dirname(icon), { recursive: true });
   fsModule.copyFileSync(iconPath, icon);
   fsModule.mkdirSync(path.dirname(destination), { recursive: true });
+  const sandboxFlag =
+    sandboxDisabled && appArmorRestrictsUserNamespaces(fsModule) ? ' --no-sandbox' : '';
   fsModule.writeFileSync(
     destination,
-    `[Desktop Entry]\nType=Application\nName=HA Desktop Widget\nExec=${buildDesktopExecPrefix(env.APPIMAGE)} --show\nIcon=${icon}\nTerminal=false\nCategories=Utility;\nStartupWMClass=${APP_ID}\nX-HA-Widget-Launcher=true\n`,
+    `[Desktop Entry]\nType=Application\nName=HA Desktop Widget\nExec=${buildDesktopExecPrefix(env.APPIMAGE)}${sandboxFlag} --show\nIcon=${icon}\nTerminal=false\nCategories=Utility;\nStartupWMClass=${APP_ID}\nX-HA-Widget-Launcher=true\n`,
     { flag: 'wx', mode: 0o644 }
   );
   return true;
@@ -105,4 +123,8 @@ function repairStaleAppImageLaunchers({
   return repaired;
 }
 
-module.exports = { ensureAppImageDesktopEntry, repairStaleAppImageLaunchers };
+module.exports = {
+  appArmorRestrictsUserNamespaces,
+  ensureAppImageDesktopEntry,
+  repairStaleAppImageLaunchers,
+};
