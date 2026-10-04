@@ -215,6 +215,48 @@ describe('dismissing', () => {
     expect(messages()).toEqual(['older']);
   });
 
+  it('leaves Escape to Reorganize mode while it is on, whichever handler comes first on the page', () => {
+    document.body.insertAdjacentHTML('beforeend', '<div id="quick-controls"></div>');
+    const quickControls = document.getElementById('quick-controls');
+    // The first toast of a session installs the manager's Escape handler, so the mode's own
+    // handler, added when it starts, comes after it: the order in which the manager used to win.
+    const notice = uiUtils.showToast('Reorganize mode on', 'info', 4500, { passive: true });
+    const error = uiUtils.showToast('Could not save', 'error');
+    const endMode = jest.fn((event) => {
+      if (event.defaultPrevented) return;
+      event.preventDefault();
+      quickControls.classList.remove('reorganize-mode');
+    });
+    quickControls.classList.add('reorganize-mode');
+    document.addEventListener('keydown', endMode);
+    const escape = () => {
+      const event = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      });
+      document.body.dispatchEvent(event);
+      return event;
+    };
+
+    try {
+      escape();
+      jest.advanceTimersByTime(300);
+      // One press ended the mode, and neither toast went.
+      expect(endMode).toHaveBeenCalledTimes(1);
+      expect(quickControls.classList.contains('reorganize-mode')).toBe(false);
+      expect(notice.isConnected && error.isConnected).toBe(true);
+
+      // With the mode over, the same key sends the newest toast away again.
+      escape();
+      jest.advanceTimersByTime(300);
+      expect(error.isConnected).toBe(false);
+      expect(notice.isConnected).toBe(true);
+    } finally {
+      document.removeEventListener('keydown', endMode);
+    }
+  });
+
   it('leaves Escape to an open dialog, which closes before any toast does', () => {
     const modal = document.createElement('div');
     modal.className = 'modal';

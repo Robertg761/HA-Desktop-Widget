@@ -25,6 +25,20 @@ const RESETTABLE_SETTINGS = [
   'quickAccessTileOptions',
 ];
 
+// Settings reopens on the page and scroll position it was closed on, so a scene that opens it
+// without choosing a page would photograph whichever page the scene before it ended on. The runner
+// evaluates this after every scene to put it back on its first page at the top. It has to run while
+// Settings is still open, because a closed dialog has no layout and ignores a scroll position set
+// on it. It goes through the tab button, which is what the app itself listens to, but only when
+// another page is showing: the click replays the page's entrance animation, and most scenes never
+// open Settings at all. The scroll is set either way, as the click is skipped on General.
+const RESET_SETTINGS_VIEW = `(() => {
+  const general = document.querySelector('#settings-modal .tab-link[data-tab="general"]');
+  if (general && !general.classList.contains('active')) general.click();
+  const body = document.querySelector('#settings-modal .modal-body');
+  if (body) body.scrollTop = 0;
+})()`;
+
 // Where the main window opens. The default (100, 100) puts a 660px window under the taskbar on a
 // 768px display; y=20 keeps all of it on screen. Pins are placed by the app, off to the side.
 const WINDOW_SIZE = { width: 500, height: 660 };
@@ -631,6 +645,7 @@ const FAILING_ENTITIES = ['light.unreachable'];
 module.exports = {
   FAILING_ENTITIES,
   PAGE_SETS,
+  RESET_SETTINGS_VIEW,
   RESETTABLE_SETTINGS,
   TOKEN,
   WINDOW_POSITION,
