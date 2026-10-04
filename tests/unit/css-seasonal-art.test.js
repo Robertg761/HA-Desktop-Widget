@@ -80,6 +80,10 @@ describe('holiday art beside controls', () => {
     const settings = 'body[data-season] #settings-modal .modal-content';
     expect(declared(settings, '--season-size')).toBe('44px');
     expect(declared(`${settings}::before`, 'inset-block-start')).toBe('3px');
+    // The header has no background, so its backdrop blur would only smudge the art behind it.
+    expect(declared('body[data-season] #settings-modal .modal-header', 'backdrop-filter')).toBe(
+      'none'
+    );
     // 6px in and 40px wide leaves the piece inside the 52px rail, clear of the page.
     expect(declared(settings, '--season-sit-size')).toBe('40px');
     expect(declared(`${settings}::after`, 'inset-inline-start')).toBe('6px');
@@ -94,7 +98,11 @@ describe('holiday art beside controls', () => {
   });
 
   it('keeps the title hat on the cap line and the clock spider clear of the time', () => {
-    expect(declared('body[data-season] .drag-area::before', 'top')).toBe('-10px');
+    expect(declared('body[data-season] .drag-area::before', 'top')).toBe(
+      'calc(-10px - var(--season-hat-lift, 0px))'
+    );
+    // The bunny ears are the one hat that still touched the H, so they sit a pixel higher.
+    expect(declared("body[data-season='easter']", '--season-hat-lift')).toBe('1px');
     expect(declared('body[data-season] .drag-area::before', 'width')).toBe('18px');
     expect(declared('body[data-season] .drag-area::before', 'height')).toBe('14px');
     expect(declared('body[data-season] .drag-area::before', 'transform')).toContain('-6deg');

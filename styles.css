@@ -15413,6 +15413,13 @@ body[data-season] #settings-modal .modal-content::before {
   inset-block-start: 3px;
 }
 
+/* The header has no background of its own, so the only thing its backdrop blur still acts on is
+   this piece, which it smudged to a faint patch. */
+body[data-season] #settings-modal .modal-header {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 /* The piece sits in the 52px icon rail, below its icons. Across the rail's edge it was dimmed on
    one side and sharp on the other, and on the page it covers the section labels. The rail blurs
    what is behind it, so the piece is drawn above the rail instead, out of the way of the pointer. */
@@ -15473,7 +15480,7 @@ body[data-season] .drag-area {
 body[data-season] .drag-area::before {
   content: '';
   position: absolute;
-  top: -10px;
+  top: calc(-10px - var(--season-hat-lift, 0px));
   inset-inline-start: 17px;
   width: 18px;
   height: 14px;
@@ -15722,6 +15729,8 @@ body[data-season='easter'] {
   --season-dialog-sit: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 34'%3E%3Cg stroke='%23d4d4d8' stroke-width='0.7' fill='%23f8fafc'%3E%3Cellipse cx='13' cy='10' rx='3.4' ry='9' transform='rotate(-10 13 10)'/%3E%3Cellipse cx='23' cy='10' rx='3.4' ry='9' transform='rotate(10 23 10)'/%3E%3Cellipse cx='18' cy='25' rx='11' ry='9'/%3E%3C/g%3E %3Cellipse cx='13' cy='10' rx='1.5' ry='6.5' fill='%23f9a8d4' transform='rotate(-10 13 10)'/%3E%3Cellipse cx='23' cy='10' rx='1.5' ry='6.5' fill='%23f9a8d4' transform='rotate(10 23 10)'/%3E %3Ccircle cx='14' cy='23' r='1.3' fill='%231f2937'/%3E%3Ccircle cx='22' cy='23' r='1.3' fill='%231f2937'/%3E%3Cellipse cx='18' cy='26.2' rx='1.4' ry='1' fill='%23f472b6'/%3E %3Cpath d='M12 27 L6 26 M12 28.5 L6.5 29.5 M24 27 L30 26 M24 28.5 L29.5 29.5' stroke='%23a1a1aa' stroke-width='0.5'/%3E %3Cellipse cx='11' cy='27' rx='1.8' ry='1' fill='%23fbcfe8'/%3E%3Cellipse cx='25' cy='27' rx='1.8' ry='1' fill='%23fbcfe8'/%3E%3C/svg%3E");
   --season-hat: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 22'%3E%3Cg stroke='%23d4d4d8' stroke-width='0.7'%3E%3Cellipse cx='8' cy='11' rx='3.6' ry='10' fill='%23f8fafc' transform='rotate(-14 8 11)'/%3E%3Cellipse cx='16' cy='11' rx='3.6' ry='10' fill='%23f8fafc' transform='rotate(12 16 11)'/%3E%3C/g%3E %3Cellipse cx='8' cy='11.5' rx='1.6' ry='7' fill='%23f9a8d4' transform='rotate(-14 8 11)'/%3E%3Cellipse cx='16' cy='11.5' rx='1.6' ry='7' fill='%23f9a8d4' transform='rotate(12 16 11)'/%3E%3C/svg%3E");
   --season-hat-tilt: -4deg;
+  /* The ears' tips reach the foot of the box, which is the cap line of the title. */
+  --season-hat-lift: 1px;
   --season-title-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 28'%3E %3Cdefs%3E%3CclipPath id='e'%3E%3Cpath d='M12 1 C17.5 1 21 10 21 16 C21 22 17 27 12 27 C7 27 3 22 3 16 C3 10 6.5 1 12 1Z'/%3E%3C/clipPath%3E%3C/defs%3E %3Cpath d='M12 1 C17.5 1 21 10 21 16 C21 22 17 27 12 27 C7 27 3 22 3 16 C3 10 6.5 1 12 1Z' fill='%23c4b5fd'/%3E %3Cg clip-path='url(%23e)'%3E%3Cpath d='M0 12 L4 9 L8 12 L12 9 L16 12 L20 9 L24 12 V15 L20 12 L16 15 L12 12 L8 15 L4 12 L0 15Z' fill='%23fde68a'/%3E %3Crect x='0' y='19' width='24' height='3' fill='%23f9a8d4'/%3E %3Cg fill='%23fff' opacity='0.8'%3E%3Ccircle cx='8' cy='6' r='1.2'/%3E%3Ccircle cx='15' cy='5' r='1.2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
   --season-label-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 26'%3E%3Ccircle cx='12' cy='10' r='6.2' fill='%23fde047'/%3E%3Cpath d='M9 5 Q10 2 12 4 Q13 1.5 14.5 4.5' stroke='%23facc15' stroke-width='1' fill='none'/%3E %3Ccircle cx='10' cy='9' r='0.9' fill='%231f2937'/%3E%3Ccircle cx='14' cy='9' r='0.9' fill='%231f2937'/%3E%3Cpath d='M11 11 L13 11 L12 13Z' fill='%23fb923c'/%3E %3Cpath d='M3.5 13.5 L6.5 16.5 L9.5 13.5 L12.5 16.5 L15.5 13.5 L18.5 16.5 L20.5 13.5 Q21 25 12 25 Q3 25 3.5 13.5Z' fill='%23f5f5f4' stroke='%23d6d3d1' stroke-width='0.7'/%3E%3C/svg%3E");
   --season-garland: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 13'%3E%3Cpath d='M0 1.5 Q32 5 64 1.5' stroke='%23a1a1aa' stroke-width='0.8' fill='none'/%3E %3Cpath d='M2 2 L14 2.8 L8 12Z' fill='%23f9a8d4'/%3E%3Cpath d='M18 3.2 L30 3.5 L24 12.5Z' fill='%23fde68a'/%3E%3Cpath d='M34 3.5 L46 3.2 L40 12.5Z' fill='%23a7f3d0'/%3E%3Cpath d='M50 2.8 L62 2 L56 12Z' fill='%23c4b5fd'/%3E%3C/svg%3E");
@@ -15792,13 +15801,14 @@ body[data-season='lunar-new-year'] .modal-content::before {
   transform-origin: top center;
 }
 
+/* A dialog's lantern hangs beside the close button, not in the tiles' 14px from the edge. */
+body[data-season='lunar-new-year'] .modal-content::before {
+  inset-inline-end: 56px;
+}
+
 body[data-season='lunar-new-year'] .control-item:nth-child(3n + 1)::before,
 body[data-season='lunar-new-year'] .control-item:has(> .tile-details-button)::before {
   inset-inline: 14px auto;
-}
-
-body[data-season='lunar-new-year'] .modal-content::before {
-  inset-inline-end: 56px;
 }
 
 /* Firecrackers hang from the top of the clock card, opposite its lantern. */
