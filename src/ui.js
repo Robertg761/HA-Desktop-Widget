@@ -6086,6 +6086,8 @@ function applyDesktopPinLightVisualState(root, { isOn, brightnessPct }) {
   if (slider && slider.value !== String(safePct)) {
     slider.value = String(safePct);
   }
+  // A screen reader says what the slider reads, with its unit, not the bare number.
+  slider?.setAttribute('aria-valuetext', `${safePct}%`);
 }
 
 function updateExistingDesktopPinLightControl(root, entity) {
@@ -6513,6 +6515,7 @@ function applyDesktopPinClimateVisualState(root, climateValue) {
   if (slider && slider.value !== String(targetTemp)) {
     slider.value = String(targetTemp);
   }
+  slider?.setAttribute('aria-valuetext', formatTemperatureDisplay(targetTemp, unit));
 
   root.querySelectorAll('.desktop-pin-climate-mode').forEach((button) => {
     // Mode buttons carry their mode in data-action (see createDesktopPinButtonMarkup).
@@ -6768,6 +6771,7 @@ function applyDesktopPinFanVisualState(root, fanValue) {
   if (slider && slider.value !== String(percentage)) {
     slider.value = String(percentage);
   }
+  slider?.setAttribute('aria-valuetext', `${percentage}%`);
 
   const power = root.querySelector('.desktop-pin-fan-power');
   if (power) setDesktopPinPowerButtonState(power, isOn);
@@ -6946,6 +6950,7 @@ function applyDesktopPinCoverVisualState(root, coverValue) {
   if (slider && slider.value !== String(coverValue.position)) {
     slider.value = String(coverValue.position);
   }
+  slider?.setAttribute('aria-valuetext', `${coverValue.position}%`);
 
   const sheet = root.querySelector('.desktop-pin-cover-shade');
   if (sheet) {
@@ -8292,6 +8297,10 @@ function createDesktopPinNumericControlElement(entity) {
 
   const slider = root.querySelector('.desktop-pin-numeric-slider');
   if (slider) {
+    slider.setAttribute(
+      'aria-valuetext',
+      formatDesktopPinNumericValue(spec.value, entity, { spec })
+    );
     bindDesktopPinSlider(slider, {
       entityId: entity.entity_id,
       getImmediateValue: (target) => Number(target?.value),
@@ -8301,6 +8310,7 @@ function createDesktopPinNumericControlElement(entity) {
         const value = root.querySelector('.desktop-pin-panel-value');
         if (kpi) kpi.textContent = formatted;
         if (value) value.textContent = formatted;
+        slider.setAttribute('aria-valuetext', formatted);
       },
       queueValue: (nextValue) => queueDesktopPinNumericValue(entity, nextValue),
       releaseDelayMs: 360,
@@ -8364,6 +8374,7 @@ function updateExistingDesktopPinNumericControl(root, entity) {
     slider.max = String(spec.max);
     slider.step = String(spec.step);
     slider.value = String(spec.value);
+    slider.setAttribute('aria-valuetext', formattedValue);
   }
 
   return true;

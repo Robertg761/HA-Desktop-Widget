@@ -6108,6 +6108,60 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(control?.querySelector('.desktop-pin-fan-preset[data-speed="33"]')).toBeNull();
     });
 
+    it('gives each pinned slider a spoken value with its unit, kept current as it moves', () => {
+      state.setStates({
+        'climate.thermostat': {
+          ...sampleStates['climate.thermostat'],
+          attributes: {
+            ...sampleStates['climate.thermostat'].attributes,
+            min_temp: 10,
+            max_temp: 30,
+            temperature: 21,
+            target_temp_step: 0.5,
+          },
+        },
+        'cover.blinds': {
+          entity_id: 'cover.blinds',
+          state: 'open',
+          attributes: {
+            friendly_name: 'Living Room Blinds',
+            current_position: 55,
+            supported_features: 15,
+          },
+        },
+      });
+
+      ui.renderDesktopPinnedTile('climate.thermostat', state.STATES['climate.thermostat']);
+      const climate = document.querySelector('#desktop-pin-content .desktop-pin-climate-slider');
+      expect(climate.getAttribute('aria-valuetext')).toMatch(/^21(?:[.,]0)?\s?°/);
+      climate.value = '22.5';
+      climate.dispatchEvent(new Event('input', { bubbles: true }));
+      expect(climate.getAttribute('aria-valuetext')).toMatch(/^22[.,]5\s?°/);
+
+      ui.renderDesktopPinnedTile('cover.blinds', state.STATES['cover.blinds']);
+      const cover = document.querySelector('#desktop-pin-content .desktop-pin-cover-slider');
+      expect(cover.getAttribute('aria-valuetext')).toBe('55%');
+      cover.value = '80';
+      cover.dispatchEvent(new Event('input', { bubbles: true }));
+      expect(cover.getAttribute('aria-valuetext')).toBe('80%');
+
+      // A new reading from Home Assistant moves the text with the thumb.
+      const shade = {
+        entity_id: 'cover.shade',
+        state: 'open',
+        attributes: { friendly_name: 'Shade', current_position: 35, supported_features: 15 },
+      };
+      state.setStates({ 'cover.shade': shade });
+      ui.renderDesktopPinnedTile('cover.shade', shade);
+      const shadeSlider = () =>
+        document.querySelector('#desktop-pin-content .desktop-pin-cover-slider');
+      expect(shadeSlider().getAttribute('aria-valuetext')).toBe('35%');
+      const moved = { ...shade, attributes: { ...shade.attributes, current_position: 20 } };
+      state.setStates({ 'cover.shade': moved });
+      ui.renderDesktopPinnedTile('cover.shade', moved);
+      expect(shadeSlider().getAttribute('aria-valuetext')).toBe('20%');
+    });
+
     it('renders compact cover controls and sends cover actions', () => {
       state.setStates({
         'cover.blinds': {
