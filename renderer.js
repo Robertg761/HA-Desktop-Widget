@@ -625,6 +625,10 @@ function scheduleStateChangedFlush() {
 function queueStateChangedEntity(entity, { local = false } = {}) {
   if (!entity?.entity_id) return;
   state.setEntityState(entity);
+  // Home Assistant has spoken for it, so a reconnect that leaves it out again starts a new omission
+  // with a fresh grace. The check below only looks a minute after a reconnect, which a connection
+  // that keeps dropping never reaches, and the 15 minutes would run on from the first omission.
+  if (!local) favoriteStalePreservation.delete(entity.entity_id);
   // Hidden dashboard flushes are throttled; tray updates must follow the live event itself.
   if (!IS_DESKTOP_PIN_MODE && document.hidden) handleTrayEntityStateChange(entity.entity_id);
   pendingStateChangedEntities.set(entity.entity_id, {
@@ -664,8 +668,13 @@ function markStaleFavoritesUnavailable() {
   staleFavoriteTimerId = null;
   favoriteStalePreservation.forEach((record, entityId) => {
     const entity = state.STATES?.[entityId];
-    // Any event since the reconnect replaced the object: Home Assistant has spoken for it.
-    if (!entity || entity !== record.entity || entity.state === 'unavailable') return;
+    // Any event since the reconnect replaced the object: Home Assistant has spoken for it, so there
+    // is nothing left to track.
+    if (!entity || entity !== record.entity) {
+      favoriteStalePreservation.delete(entityId);
+      return;
+    }
+    if (entity.state === 'unavailable') return;
     record.entity = { ...entity, state: 'unavailable' };
     queueStateChangedEntity(record.entity, { local: true });
   });
