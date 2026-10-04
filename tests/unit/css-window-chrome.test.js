@@ -43,6 +43,22 @@ describe('the title bar as a drag handle', () => {
     expect(region('.connection-indicator')).toBe('no-drag');
   });
 
+  // Electron ignores what is painted over a drag region, so a control of a dialog in the top 41px
+  // (outside the header buttons, which are no-drag themselves) would start a window drag instead
+  // of being clicked.
+  it.each([
+    ['a dialog', '<div class="modal"><div class="modal-content"></div></div>', '.modal-content'],
+    [
+      'the command palette',
+      '<div class="command-palette-overlay"><div class="command-palette-panel"></div></div>',
+      '.command-palette-panel',
+    ],
+    ['a toast', '<div class="toast-container"><div class="toast"></div></div>', '.toast'],
+  ])('keeps %s clickable where it covers the bar', (name, overlay, panel) => {
+    render('', HEADER + overlay);
+    expect(region(panel)).toBe('no-drag');
+  });
+
   it('hands the drag to the app on a desktop layer, which the compositor cannot move', () => {
     render('layer-drag-enabled', HEADER);
     expect(region('.widget-header')).toBe('no-drag');
@@ -71,6 +87,17 @@ describe('the notice that the desktop places a tile', () => {
     expect(value('right')).toBe('12px');
     expect(value('transform')).toBeUndefined();
     expect(value('display')).toBe('block');
+  });
+});
+
+describe('the notice in a small pin', () => {
+  // At the default 168x148 it wrapped to four lines over the slider and the preset buttons.
+  it('is left out below the width where it takes two lines', () => {
+    const hidden = stylesheet.match(
+      /@media \(max-width: (\d+)px\), \(max-height: (\d+)px\) \{\s*body\.desktop-pin-mode\.desktop-pin-edit-mode\.desktop-pin-compositor-placement\s*\.desktop-pin-placement-notice \{\s*display: none;/
+    );
+    expect(hidden).not.toBeNull();
+    expect(Number(hidden[1])).toBeGreaterThanOrEqual(239);
   });
 });
 

@@ -875,6 +875,16 @@ html.desktop-pin-mode body {
   -webkit-app-region: drag;
 }
 
+/* Electron builds the drag regions from each element's own declaration and ignores what is painted
+   on top of it, so a dialog, the palette or a toast that reaches the top 41px would hand its
+   clicks there to the window drag. Their panels opt out; the dimmed strip around them still moves
+   the window, as the title bar behind a dialog does. */
+.modal-content,
+.command-palette-panel,
+.toast {
+  -webkit-app-region: no-drag;
+}
+
 .desktop-pin-shell {
   --desktop-pin-ui-font: 'Inter', 'Segoe UI', sans-serif;
   --desktop-pin-display-font: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
@@ -1040,7 +1050,9 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   pointer-events: none;
 }
 
-@media (max-width: 160px), (max-height: 120px) {
+/* The notice is a block of text over the tile's bottom row: two lines from 240px wide, four in the
+   default 168px pin, where it covered the brightness slider and the preset buttons. */
+@media (max-width: 239px), (max-height: 120px) {
   body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
     .desktop-pin-placement-notice {
     display: none;
