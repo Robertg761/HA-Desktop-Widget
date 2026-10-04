@@ -1240,6 +1240,24 @@ const scenes = [
     name: 'easter-light',
     ui: { theme: 'light', seasonal: holiday('easter') },
   },
+  // Where holiday art meets controls: the cobweb behind a dialog's close button, the egg and the
+  // bunny in the Settings header and rail, and the pumpkins under a tile row that reaches the
+  // bottom of a window as short as the app opens at.
+  {
+    name: 'halloween-popup',
+    ui: { seasonal: holiday('halloween') },
+    setup: openBrightness,
+  },
+  {
+    name: 'easter-settings',
+    ui: { seasonal: holiday('easter') },
+    setup: (ctx) => openSettingsTab(ctx, 'general'),
+  },
+  {
+    name: 'thanksgiving-short',
+    ui: { seasonal: holiday('thanksgiving') },
+    size: DEFAULT_SIZE,
+  },
 
   // Colour contrast of text and status colours, dark and light, with four accents.
   ...contrastScenes('main', () => ({})),
