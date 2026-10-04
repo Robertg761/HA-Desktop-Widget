@@ -12809,10 +12809,21 @@ async function checkPortableUpdate({ allowPrerelease } = {}) {
 }
 
 // Tells the person, once per version, about a release this package cannot install itself.
+const updateAnnouncementFile = () => path.join(userDataPath, 'update-announcement.json');
 const updateAnnouncer = createUpdateAnnouncer({
   Notification: ElectronNotification,
   translate: (key, vars) => mainT(key, vars),
   log,
+  // Kept on this computer only, beside the config: another computer has its own notice to show.
+  store: {
+    // No file yet is the normal first run, not something to warn about.
+    read: () =>
+      fs.existsSync(updateAnnouncementFile())
+        ? JSON.parse(fs.readFileSync(updateAnnouncementFile(), 'utf8'))?.version || null
+        : null,
+    write: (version) =>
+      fs.writeFileSync(updateAnnouncementFile(), JSON.stringify({ version }), { mode: 0o600 }),
+  },
   // The notification says to open Settings > Advanced; clicking it does.
   onClick: () => {
     showMainWindowFromTray();

@@ -123,8 +123,22 @@ class UpdateCheckScheduler {
  * macOS, the Linux packages other than AppImage and the Windows Portable build are never updated
  * from inside the app, so without this they only learn of a release by pressing Check in Settings.
  */
-function createUpdateAnnouncer({ Notification, translate, onClick, log = console }) {
+function createUpdateAnnouncer({ Notification, translate, onClick, log = console, store = null }) {
   const announced = new Set();
+  // The check runs after every launch, so the version told about last is kept on disk: without
+  // it every restart would show the same notification again. It is read at the first check,
+  // not when the app starts.
+  let storeRead = false;
+  const readStore = () => {
+    if (storeRead) return;
+    storeRead = true;
+    try {
+      const stored = store?.read?.();
+      if (typeof stored === 'string' && stored) announced.add(stored);
+    } catch (error) {
+      log.warn('Could not read the last announced update:', error?.message || error);
+    }
+  };
   return {
     /**
      * @param {{version?: string, status?: string}} result - A 'manual' or 'portable' check result.
@@ -132,7 +146,9 @@ function createUpdateAnnouncer({ Notification, translate, onClick, log = console
      */
     announce(result) {
       const version = typeof result?.version === 'string' ? result.version : '';
-      if (!version || announced.has(version)) return false;
+      if (!version) return false;
+      readStore();
+      if (announced.has(version)) return false;
       if (typeof Notification !== 'function' || !Notification.isSupported?.()) return false;
       announced.add(version);
       try {
@@ -147,6 +163,11 @@ function createUpdateAnnouncer({ Notification, translate, onClick, log = console
         });
         notification.on?.('click', () => onClick?.(result));
         notification.show();
+        try {
+          store?.write?.(version);
+        } catch (error) {
+          log.warn('Could not remember the announced update:', error?.message || error);
+        }
         return true;
       } catch (error) {
         log.warn('Could not show the update notification:', error?.message || error);

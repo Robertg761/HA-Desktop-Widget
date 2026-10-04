@@ -179,7 +179,7 @@ describe('UpdateCheckScheduler', () => {
 });
 
 describe('createUpdateAnnouncer', () => {
-  const setup = ({ supported = true } = {}) => {
+  const setup = ({ supported = true, store = null } = {}) => {
     const shown = [];
     class FakeNotification {
       constructor(options) {
@@ -206,9 +206,40 @@ describe('createUpdateAnnouncer', () => {
       translate,
       onClick,
       log: { warn: jest.fn() },
+      store,
     });
     return { announcer, shown, onClick };
   };
+
+  it('remembers the announced version across restarts', () => {
+    let saved = null;
+    const store = { read: () => saved, write: (version) => (saved = version) };
+
+    expect(setup({ store }).announcer.announce({ status: 'manual', version: '4.0.1' })).toBe(true);
+    expect(saved).toBe('4.0.1');
+
+    // A new launch reads it back and stays quiet about the same version, but not a newer one.
+    const relaunched = setup({ store });
+    expect(relaunched.announcer.announce({ status: 'manual', version: '4.0.1' })).toBe(false);
+    expect(relaunched.shown).toHaveLength(0);
+    expect(relaunched.announcer.announce({ status: 'manual', version: '4.0.2' })).toBe(true);
+    expect(saved).toBe('4.0.2');
+  });
+
+  it('still announces when the stored version cannot be read or written', () => {
+    const store = {
+      read: () => {
+        throw new Error('ENOENT');
+      },
+      write: () => {
+        throw new Error('EROFS');
+      },
+    };
+    const { announcer, shown } = setup({ store });
+
+    expect(announcer.announce({ status: 'manual', version: '4.0.1' })).toBe(true);
+    expect(shown).toHaveLength(1);
+  });
 
   it('tells once per version that a release is out', () => {
     const { announcer, shown } = setup();
