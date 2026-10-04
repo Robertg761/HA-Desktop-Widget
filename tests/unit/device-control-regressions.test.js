@@ -987,6 +987,41 @@ describe('device control and live data regressions', () => {
       ).toBe('Page 1 of 1 · 1 entity');
     });
 
+    test('a Manage Quick Access search that finds nothing is said in a live region that was already there', () => {
+      document.body.innerHTML += `<div id="quick-controls-modal"><div id="quick-controls-target-hint"></div>
+        <input id="quick-controls-search"><div id="quick-controls-list"></div></div>`;
+      state.setStates({ 'sensor.only_one': entity('sensor.only_one', '1') });
+      ui.populateQuickControlsList();
+
+      // The region is in the page before there is anything to say; one inserted with its text is
+      // announced unreliably.
+      const region = document.querySelector('#quick-controls-modal > .entity-selector-status');
+      expect(region.getAttribute('role')).toBe('status');
+      expect(region.textContent).toBe('');
+
+      const search = document.getElementById('quick-controls-search');
+      search.value = 'nothing like this';
+      search.dispatchEvent(new Event('input'));
+      jest.advanceTimersByTime(150);
+      expect(document.querySelector('#quick-controls-modal > .entity-selector-status')).toBe(
+        region
+      );
+      expect(region.textContent).toBe('No matching entities');
+      // The drawn copy stays out of the accessibility tree, so the message is not read twice.
+      const empty = document.querySelector('#quick-controls-list .entity-selector-empty');
+      expect(empty.textContent).toBe('No matching entities');
+      expect(empty.hasAttribute('role')).toBe(false);
+      expect(empty.getAttribute('aria-hidden')).toBe('true');
+
+      search.value = '';
+      search.dispatchEvent(new Event('input'));
+      jest.advanceTimersByTime(150);
+      expect(
+        document.querySelectorAll('#quick-controls-modal > .entity-selector-status')
+      ).toHaveLength(1);
+      expect(region.textContent).toBe('');
+    });
+
     test('the media dialog keeps one Mute label, flips aria-pressed, and says how far a seek jumps', () => {
       state.setServices({
         media_player: { media_seek: {}, volume_mute: {}, media_play_pause: {} },

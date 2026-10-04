@@ -182,9 +182,22 @@ describe('unavailable Quick Access tile repair affordance', () => {
     expect(modal.getAttribute('role')).toBe('dialog');
     expect(modal.getAttribute('aria-describedby')).toBe(modal.querySelector('.modal-lead').id);
 
+    // The live region for "nothing matches" is in the dialog before a search needs it.
+    const status = modal.querySelector('.entity-selector-status');
+    expect(status.getAttribute('role')).toBe('status');
+    expect(status.textContent).toBe('');
+
     search.value = 'no such entity';
     search.dispatchEvent(new Event('input'));
     expect(modal.querySelector('.entity-selector-empty').textContent).toMatch(/No matching/);
+    expect(modal.querySelector('.entity-selector-status')).toBe(status);
+    expect(status.textContent).toBe('No matching replacement entities found.');
+    expect(modal.querySelector('.entity-selector-empty').getAttribute('aria-hidden')).toBe('true');
+
+    search.value = '';
+    search.dispatchEvent(new Event('input'));
+    expect(modal.querySelector('.entity-selector-empty')).toBeNull();
+    expect(status.textContent).toBe('');
   });
 
   it('closes with Escape or the backdrop and returns focus to the tile it was opened from', async () => {

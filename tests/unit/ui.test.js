@@ -316,17 +316,27 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(document.querySelector('.room-dashboard [role="status"]').textContent).toBe(
         'Rooms are unavailable. Choose from your devices instead.'
       );
+      const preview = document.querySelector('.room-dashboard-preview');
+      const count = preview.querySelector('[role="status"]');
+      expect(count.textContent).toBe('Page preview: 1 entity');
       const sensor = document.querySelector('input[value="sensor.temperature"]');
+      const changes = new MutationObserver(() => {});
+      changes.observe(preview, { childList: true });
       sensor.click();
+      const removed = changes.takeRecords().flatMap((record) => [...record.removedNodes]);
+      changes.disconnect();
       expect(document.querySelector('.room-dashboard-preview').textContent).toContain(
         'Room Temp — 21'
       );
       // Only the count is a live region: the rows under it are rebuilt on every toggle, and would
       // be read out again each time if the whole preview were one.
-      const preview = document.querySelector('.room-dashboard-preview');
       expect(preview.hasAttribute('aria-live')).toBe(false);
       expect(preview.querySelectorAll('[role="status"]')).toHaveLength(1);
-      expect(preview.querySelector('[role="status"]').textContent).toBe('Page preview: 2 entities');
+      // It is the same node, changed in place and never taken out. A live region that is removed
+      // and put back is announced unreliably, so the update would be missed.
+      expect(preview.querySelector('[role="status"]')).toBe(count);
+      expect(removed).not.toContain(count);
+      expect(count.textContent).toBe('Page preview: 2 entities');
       const search = document.querySelector('.room-device-search');
       search.value = 'desk';
       search.dispatchEvent(new Event('input'));
