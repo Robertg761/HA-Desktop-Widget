@@ -379,7 +379,8 @@ const TILE_NAMES_ALIGNED = `(() => {
 })()`;
 const NO_SIDEWAYS_SCROLL = `document.documentElement.scrollWidth <= innerWidth + 1`;
 // The camera viewer's toolbar with its sound toggle: the status text and the buttons lie inside the
-// dialog, do not overlap, and the status text is not cut off.
+// dialog, do not overlap (side by side, or the buttons wrapped under the text), and the status
+// text is not cut off.
 const CAMERA_TOOLBAR_FITS = `(() => {
   const content = document.querySelector('.camera-modal .modal-content');
   const info = content?.querySelector('.camera-info');
@@ -388,9 +389,10 @@ const CAMERA_TOOLBAR_FITS = `(() => {
   const box = content.getBoundingClientRect();
   const infoBox = info.getBoundingClientRect();
   const buttonsBox = buttons.getBoundingClientRect();
-  const overlap = Math.min(infoBox.right, buttonsBox.right) - Math.max(infoBox.left, buttonsBox.left);
+  const sideways = Math.min(infoBox.right, buttonsBox.right) - Math.max(infoBox.left, buttonsBox.left);
+  const upright = Math.min(infoBox.bottom, buttonsBox.bottom) - Math.max(infoBox.top, buttonsBox.top);
   return [infoBox, buttonsBox].every((part) => part.left >= box.left - 1 && part.right <= box.right + 1) &&
-    overlap <= 1 && [...info.children].every((part) => part.scrollWidth <= part.clientWidth + 1);
+    (sideways <= 1 || upright <= 1) && [...info.children].every((part) => part.scrollWidth <= part.clientWidth + 1);
 })()`;
 // A lost connection: the panel sits above Quick Access with its buttons in view, the page has not
 // scrolled, and the tiles are dimmed.

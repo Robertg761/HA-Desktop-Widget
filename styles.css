@@ -15261,9 +15261,10 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
 
 .camera-modal .camera-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
+  gap: var(--space-2) var(--space-3);
   margin-top: var(--space-3);
 }
 
@@ -15288,11 +15289,18 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   font-size: var(--font-size-xs-plus);
 }
 
+/* The sound toggle and the pair of modes take their own width, and the status text gives way to
+   them: when the window is narrow or the words are long (Stummschalten, Schnappschuss) they wrap
+   under it instead of squeezing it away, and among themselves rather than past the dialog's edge. */
 .camera-mode-buttons {
   display: flex;
-  flex: none;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  max-width: 100%;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--space-2);
+  margin-inline-start: auto;
 }
 
 .camera-mode-buttons .camera-mute-toggle[hidden] {

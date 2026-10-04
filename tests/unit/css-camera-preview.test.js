@@ -73,3 +73,48 @@ describe('the expanded camera preview', () => {
     });
   });
 });
+
+describe('the camera viewer toolbar', () => {
+  beforeAll(() => {
+    loadAppStylesheets(document);
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  const toolbar = () => {
+    render(`
+      <div class="modal camera-modal"><div class="modal-content"><div class="modal-body">
+        <div class="camera-toolbar" id="toolbar">
+          <p class="camera-info" id="info"></p>
+          <div class="camera-mode-buttons" id="buttons"></div>
+        </div>
+      </div></div></div>`);
+    return {
+      toolbar: document.getElementById('toolbar'),
+      info: document.getElementById('info'),
+      buttons: document.getElementById('buttons'),
+    };
+  };
+
+  it('moves the buttons under the status text when both do not fit, instead of squeezing it', () => {
+    const { toolbar: bar, buttons } = toolbar();
+
+    // Mute, Snapshot and Live are three buttons that keep their own width; in a narrow window or
+    // in German the status text used to be squeezed to nothing beside them.
+    expect(resolvedValue(bar, 'flex-wrap')).toBe('wrap');
+    expect(resolvedValue(buttons, 'flex-wrap')).toBe('wrap');
+    expect(resolvedValue(buttons, 'margin-inline-start')).toBe('auto');
+  });
+
+  it('keeps the status text able to shrink, and the buttons from running past the dialog', () => {
+    const { info, buttons } = toolbar();
+
+    expect(resolvedValue(info, 'min-width')).toBe('0');
+    // They may shrink to the row and wrap among themselves; "none" held them at their full width,
+    // and the last button ran past the edge of the dialog.
+    expect(resolvedValue(buttons, 'flex')).toMatch(/^0 1 auto$/);
+    expect(resolvedValue(buttons, 'max-width')).toBe('100%');
+  });
+});
