@@ -940,10 +940,44 @@ describe('dashboard data display', () => {
       );
       // Moving it is the first reading it has.
       inputValue('#light-color-temp-slider', 3000);
-      expect(modal.querySelector('#light-color-temp-value').textContent).toBe('3000K');
+      expect(modal.querySelector('#light-color-temp-value').textContent).toBe('3,000\u00a0K');
       expect(modal.querySelector('#light-color-temp-slider').classList.contains('is-unset')).toBe(
         false
       );
+    });
+
+    it('writes the colour temperature in the language and says it to a screen reader', () => {
+      const lamp = light('on', {
+        supported_color_modes: ['color_temp'],
+        color_temp_kelvin: 3200,
+        min_color_temp_kelvin: 2000,
+        max_color_temp_kelvin: 6500,
+      });
+      const modal = open(lamp);
+      const slider = modal.querySelector('#light-color-temp-slider');
+      const readout = modal.querySelector('#light-color-temp-value');
+      // A unit never wraps onto its own line, so the gap is a no-break space.
+      expect(readout.textContent).toBe('3,200\u00a0K');
+      expect(slider.getAttribute('aria-valuetext')).toBe('3,200\u00a0K');
+      inputValue('#light-color-temp-slider', 4500);
+      expect(readout.textContent).toBe('4,500\u00a0K');
+      expect(slider.getAttribute('aria-valuetext')).toBe('4,500\u00a0K');
+
+      // The same light in German: the thousands separator and the digits are the language's.
+      document.querySelector('.brightness-modal')?.remove();
+      i18n.setLocaleBootstrap({
+        languageSetting: 'de',
+        requestedLocale: 'de',
+        activeLocale: 'de',
+        messages: {},
+      });
+      const german = open(lamp);
+      expect(german.querySelector('#light-color-temp-value').textContent).toMatch(
+        /^3\.200[\u00a0\u202f]K$/
+      );
+      expect(
+        german.querySelector('#light-color-temp-slider').getAttribute('aria-valuetext')
+      ).toMatch(/^3\.200[\u00a0\u202f]K$/);
     });
 
     it('keeps the slider as it was for a live reading that is not a temperature', () => {
@@ -967,7 +1001,7 @@ describe('dashboard data display', () => {
         })
       );
       expect(slider.value).toBe('3200');
-      expect(modal.querySelector('#light-color-temp-value').textContent).toBe('3200K');
+      expect(modal.querySelector('#light-color-temp-value').textContent).toBe('3,200\u00a0K');
       expect(slider.classList.contains('is-unset')).toBe(false);
       state.setEntityState(
         light('on', {
@@ -978,7 +1012,7 @@ describe('dashboard data display', () => {
         })
       );
       expect(slider.value).toBe('4100');
-      expect(modal.querySelector('#light-color-temp-value').textContent).toBe('4100K');
+      expect(modal.querySelector('#light-color-temp-value').textContent).toBe('4,100\u00a0K');
     });
 
     it('still shows a real colour temperature', () => {
@@ -990,7 +1024,7 @@ describe('dashboard data display', () => {
           max_color_temp_kelvin: 6500,
         })
       );
-      expect(modal.querySelector('#light-color-temp-value').textContent).toBe('3200K');
+      expect(modal.querySelector('#light-color-temp-value').textContent).toBe('3,200\u00a0K');
     });
   });
 

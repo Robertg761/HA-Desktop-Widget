@@ -32,6 +32,7 @@ import {
   formatClockTime,
   formatDayAndTime,
   formatDayLabel,
+  formatKelvin,
   formatMeasurement,
   formatNumberEntityValue,
   formatPercent,
@@ -14145,7 +14146,7 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
             <div class="brightness-color-temp">
               <div class="brightness-control-heading">
                 <span>${utils.escapeHtml(t('Color Temperature'))}</span>
-                <span id="light-color-temp-value">${reportedColorTemp === null ? '—' : `${reportedColorTemp}K`}</span>
+                <span id="light-color-temp-value">${reportedColorTemp === null ? '—' : formatKelvin(reportedColorTemp)}</span>
               </div>
               <input
                 type="range"
@@ -14156,7 +14157,7 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
                 id="light-color-temp-slider"
                 class="light-color-temp-slider${reportedColorTemp === null ? ' is-unset' : ''}"
                 aria-label="${escapeHtmlAttribute(t('Color Temperature'))}"
-                ${reportedColorTemp === null ? '' : `aria-valuetext="${reportedColorTemp}K"`}
+                ${reportedColorTemp === null ? '' : `aria-valuetext="${escapeHtmlAttribute(formatKelvin(reportedColorTemp))}"`}
               />
               <div class="brightness-slider-labels">
                 <span>${utils.escapeHtml(translateInContext('Color temperature: Warm', 'Warm'))}</span>
@@ -14271,9 +14272,9 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
       slider?.setAttribute('aria-valuetext', text);
     };
     const showColorTemp = (kelvin) => {
-      if (colorTempValue) colorTempValue.textContent = kelvin === null ? '—' : `${kelvin}K`;
+      if (colorTempValue) colorTempValue.textContent = kelvin === null ? '—' : formatKelvin(kelvin);
       if (kelvin === null) colorTempSlider?.removeAttribute('aria-valuetext');
-      else colorTempSlider?.setAttribute('aria-valuetext', `${kelvin}K`);
+      else colorTempSlider?.setAttribute('aria-valuetext', formatKelvin(kelvin));
     };
     const catchUp = () => syncFromEntity(state.STATES?.[light.entity_id]);
     const isSliderHeld = trackSliderGrip(slider, catchUp);

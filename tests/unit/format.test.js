@@ -298,6 +298,19 @@ describe('units and percentages', () => {
     expect(format.formatPercent(80)).toBe('80%');
   });
 
+  it("writes a light's colour temperature as whole kelvin with a fixed gap", () => {
+    useLocale('en');
+    expect(format.formatKelvin(3200)).toBe(`3,200${NBSP}K`);
+    expect(format.formatKelvin(2700.4)).toBe(`2,700${NBSP}K`);
+
+    useLocale('de');
+    expect(format.formatKelvin(3200)).toMatch(new RegExp(`^3\\.200${FIXED_SPACE}K$`));
+
+    useLocale('ar');
+    const digits = new Intl.NumberFormat('ar', { maximumFractionDigits: 0 }).format(3200);
+    expect(format.formatKelvin(3200)).toBe(`${digits}${NBSP}K`);
+  });
+
   it('puts the percent sign first where the language writes it so', () => {
     // No pack for the computer's language: English text in Turkish number formats ("%50").
     useLocale('en', {
