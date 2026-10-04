@@ -447,9 +447,7 @@ describe('Omarchy tile controls from the keyboard', () => {
   });
 
   it('lets the keyboard reach every button, swatch and slider the pointer can', () => {
-    expect(view).toContain(
-      'if (kid.keyStop === true && kid.effectiveEnabled !== false) out.push(kid)'
-    );
+    expect(view).toContain('if (kid.keyStop === true && kid.enabled !== false) out.push(kid)');
     // Preset, cover, media and climate-mode buttons, the climate step buttons and mute, Open in
     // widget, the colour swatches, and every slider.
     expect(qml).toContain('component KeyButton: Button');
@@ -1123,7 +1121,7 @@ describe('the plugin as a package of files', () => {
   // below are updated together.
   const PUBLISHED = {
     version: '1.3.0',
-    sha256: 'c0c9d64d052f06b90d8a2629b75449a25dcfa8f51aaf4bf7cb7e32d4e09dde31',
+    sha256: '56100cfbf6facbc67c891d13165cc9911b77583a5e0d06d1dc7ef1a35152af22',
   };
 
   function pluginHash() {
@@ -1204,7 +1202,7 @@ describe('the plugin follows the widget as it changes and as it stops', () => {
     expect(qml).toContain("Not connected to Home Assistant. Changes can't be sent right now.");
     expect(qml).toContain("Can't reach the widget. Changes can't be sent right now.");
     expect(qml.match(/enabled: view\.live/g).length).toBeGreaterThanOrEqual(5);
-    expect(qml).toContain('kid.effectiveEnabled !== false');
+    expect(qml).toContain('kid.enabled !== false');
   });
 
   it('shows what was just asked until Home Assistant answers', () => {

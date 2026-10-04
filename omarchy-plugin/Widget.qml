@@ -1098,7 +1098,7 @@ Panel {
       for (var i = 0; i < kids.length; i++) {
         var kid = kids[i]
         if (!kid.visible) continue
-        if (kid.keyStop === true && kid.effectiveEnabled !== false) out.push(kid)
+        if (kid.keyStop === true && kid.enabled !== false) out.push(kid)
         collectStops(kid, out)
       }
     }
