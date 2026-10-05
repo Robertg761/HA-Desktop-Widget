@@ -1,10 +1,10 @@
 name: Website deploy check
 
-# The website is not deployed by GitHub: it is published by hand from website/ with the Vercel CLI
-# (cd website && vercel deploy --prod), so a change merged to main is not live until someone does
-# that. Run this after a deploy to compare every page, asset and response header on the live site
-# with the files on main. A failure means the deploy did not happen, failed, or was made from
-# something other than main's website/.
+# The website is not deployed by GitHub: it is published by hand from website/ with the Vercel CLI,
+# from the repository root: (cd website && vercel deploy --prod). A change merged to main is not
+# live until someone does that. Run this after a deploy to compare every page, asset and response
+# header on the live site with the files on main. A failure means the deploy did not happen,
+# failed, or was made from something other than main's website/.
 
 on:
   workflow_dispatch:

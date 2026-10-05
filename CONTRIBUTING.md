@@ -208,7 +208,7 @@ HA-Desktop-Widget/
 └── dist/                # Build output (generated)
 ```
 
-The website in `website/` is not deployed by GitHub. A change merged to main goes live when someone publishes it with the Vercel CLI from a checkout of main: `cd website && vercel deploy --prod` (link the folder once with `vercel link`). Afterwards, `node scripts/check-website-deploy.cjs --wait 300`, or the Website deploy check workflow, confirms that the live pages, assets and headers match `website/`.
+The website in `website/` is not deployed by GitHub. A change merged to main goes live when someone publishes it with the Vercel CLI from a checkout of main: `(cd website && vercel deploy --prod)` (link the folder once with `vercel link`). Afterwards, `node scripts/check-website-deploy.cjs --wait 300`, or the Website deploy check workflow, confirms that the live pages, assets and headers match `website/`.
 
 ## 🎨 Design Guidelines
 
