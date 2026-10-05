@@ -273,6 +273,27 @@ describe('text contrast of the rules', () => {
     });
   });
 
+  describe("a sensor tile's trend line", () => {
+    const markup = `<div id="quick-controls"><div class="control-item sensor-numeric-entity">
+      <div class="control-sensor-sparkline"></div></div></div>`;
+
+    // The line is the tile's only picture of change; drawn as half the raw accent it was 1.5:1
+    // with Indigo and Rose on the dark tile.
+    describe.each(['dark', 'light', 'high-contrast'])('in the %s theme', (scope) => {
+      it.each(ACCENTS)('is a 3:1 graphic on its tile with %s', (accent) => {
+        applyScope(SCOPES[scope], accent);
+        render(markup);
+        const surfaces = currentSurfaces(SCOPES[scope].highContrast);
+        const line = document.querySelector('.control-sensor-sparkline');
+        const opacity = Number(resolvedValue(line, 'opacity') ?? 1);
+        const [r, g, b, alpha] = parseColor(colorOf(line));
+        expect(
+          contrastRatio(`rgba(${r}, ${g}, ${b}, ${alpha * opacity})`, surfaces['dash tile'])
+        ).toBeGreaterThanOrEqual(NON_TEXT_MINIMUM);
+      });
+    });
+  });
+
   describe('unavailable tiles', () => {
     const markup = `<div id="quick-controls"><div class="control-item" data-unavailable="true">
       <div class="control-info"><div class="control-name"></div>

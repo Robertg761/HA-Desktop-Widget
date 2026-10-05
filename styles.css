@@ -7191,15 +7191,23 @@ body #quick-controls.reorganize-mode .camera-preview-tile {
   color: var(--text-dim);
 }
 
+/* The trend line is the tile's only picture of change, so it is a graphic that has to reach 3:1.
+   Drawn as the raw accent at about half strength it came out at 1.5 to 2.2:1 on the dark tile
+   (Indigo and Rose all but vanished), so it takes the accent solved for a 3:1 ring on that tile.
+   The light theme draws it in its own solved colour (below). */
 #quick-controls .control-item.sensor-numeric-entity .control-sensor-sparkline {
   position: absolute;
   left: 4px;
   right: 4px;
   bottom: 0;
   height: 22px;
-  color: rgba(var(--accent-rgb), 0.72);
-  opacity: 0.64;
+  color: var(--accent-ring-dark, var(--accent));
   pointer-events: none;
+}
+
+/* The Readable preset's accent is its own, and the solved colour is the user's. */
+body.high-contrast #quick-controls .control-item.sensor-numeric-entity .control-sensor-sparkline {
+  color: var(--accent);
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-sensor-sparkline-svg {
@@ -7217,8 +7225,8 @@ body #quick-controls.reorganize-mode .camera-preview-tile {
   stroke-width: 1.5px;
 }
 
-/* The dark tile's faint accent line is about 1.3:1 on the near-white one, so the light theme draws
-   the sparkline and the gauge in the solved accent text. */
+/* The dark theme's pale accent colours are about 1.3:1 on the near-white tile, so the light theme
+   draws the sparkline and the gauge in the solved accent text. */
 body.theme-light:not(.high-contrast)
   #quick-controls
   .control-item.sensor-numeric-entity
