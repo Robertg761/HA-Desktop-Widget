@@ -3213,6 +3213,15 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   opacity: 1;
 }
 
+/* On the Linux tint the light theme's panel is a mid grey wherever the wallpaper behind it is dark,
+   and the dimmed secondary ink of the window controls came out at 2.4:1 on it at the default
+   opacity. They take the full text colour there, as the title beside them does. The solid light
+   panel of the other platforms keeps the quieter controls. */
+body.theme-light.software-glass .header-controls .control-btn:not(.notification-bell-btn) {
+  color: var(--text-primary);
+  opacity: 1;
+}
+
 .notification-bell-btn {
   position: relative;
   width: 28px;

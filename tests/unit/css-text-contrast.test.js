@@ -350,6 +350,56 @@ describe('text contrast of the rules', () => {
     );
   });
 
+  describe('the window controls on the Linux tint', () => {
+    const header = `<div class="widget-header"><div class="header-controls">
+      <button class="control-btn notification-bell-btn"></button>
+      <button class="control-btn" id="settings-btn"></button>
+      <button class="control-btn" id="close-btn"></button></div></div>`;
+    // The light tint over a dark wallpaper with no blur from the compositor, the usual Omarchy
+    // case, at the default opacity.
+    const tintOverDarkWallpaper = () => {
+      window.electronAPI = { platform: 'linux' };
+      applyWindowEffects({ opacity: 0.95, frostedGlass: true });
+      const alpha = resolvedValue(document.body, '--software-acrylic-bg-alpha');
+      return over(
+        `rgba(${resolvedValue(document.body, '--window-bg-rgb')}, ${alpha})`,
+        'rgb(0, 0, 0)'
+      );
+    };
+    const inkOf = (button) => {
+      const [r, g, b, alpha] = parseColor(colorOf(button));
+      return `rgba(${r}, ${g}, ${b}, ${alpha * Number(resolvedValue(button, 'opacity') ?? 1)})`;
+    };
+
+    afterEach(() => {
+      delete window.electronAPI;
+      delete document.body.dataset.platform;
+    });
+
+    it('are 3:1 graphics in the light theme, where their dimmed ink was 2.4:1', () => {
+      applyScope(SCOPES.light, 'original');
+      render(header);
+      const tint = tintOverDarkWallpaper();
+      expect(document.body.classList.contains('software-glass')).toBe(true);
+      for (const id of ['settings-btn', 'close-btn']) {
+        const ratio = contrastRatio(inkOf(document.getElementById(id)), tint);
+        expect({ id, ratio: ratio >= NON_TEXT_MINIMUM }).toEqual({ id, ratio: true });
+      }
+    });
+
+    it('leave the bell its accent, and the solid light panel its quieter controls', () => {
+      applyScope(SCOPES.light, 'original');
+      render(header);
+      tintOverDarkWallpaper();
+      expect(colorOf(document.querySelector('.notification-bell-btn'))).toBe(
+        resolvedValue(document.body, '--accent-text')
+      );
+      applyScope(SCOPES.light, 'original');
+      render(header);
+      expect(resolvedValue(document.getElementById('close-btn'), 'opacity')).toBe('0.8');
+    });
+  });
+
   describe('a pin in the light theme', () => {
     it('keeps the dark dialog its light text is drawn for', () => {
       applyScope(SCOPES.light, 'original');
