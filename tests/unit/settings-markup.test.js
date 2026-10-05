@@ -62,6 +62,42 @@ describe('index.html', () => {
       expect(labels.length).toBeGreaterThan(40);
       expect(labels.filter(titleCased)).toEqual([]);
     });
+
+    // The labels Settings and its hotkey list build as they run are not in the markup: confirm
+    // titles, the profile sync buttons and the hotkey actions. A label is Title Case when every word
+    // of it starts with a capital ("Keep Current", "Brightness Up"), apart from short joining words,
+    // names and abbreviations. A sentence that names a setting or a key ("Press Enter or Space to
+    // record a hotkey") has lower-case words in it and passes.
+    const JOINING_WORDS = /^(a|an|and|at|by|for|from|in|of|on|or|the|to|with|&)$/;
+    const isTitleCaseClause = (clause) => {
+      const words = clause
+        .replace(PROPER_NAMES, ' ')
+        .split(/\s+/)
+        .filter((word) => /\p{L}/u.test(word) && !JOINING_WORDS.test(word))
+        .filter((word) => !/^\p{Lu}{2,}\b/u.test(word));
+      return words.length > 1 && words.every((word) => /^\p{Lu}/u.test(word));
+    };
+    const translatedLiterals = (file) =>
+      [
+        ...fs
+          .readFileSync(path.resolve(__dirname, '../..', file), 'utf8')
+          .matchAll(/\bt\(\s*(?:'((?:[^'\\]|\\.)+)'|"((?:[^"\\]|\\.)+)")/g),
+      ].map((match) => (match[1] ?? match[2]).replace(/\\(.)/g, '$1'));
+
+    test.each(['src/settings.js', 'src/hotkeys.js'])(
+      'the labels %s builds as it runs are written in it',
+      (file) => {
+        // "Retry Conflict Check" and "Keep Current" sat beside "Sync up" and "Cancel", and the light
+        // actions read "Toggle, Turn on, Turn off, Brightness Up" in one list.
+        const titleCase = translatedLiterals(file).filter((text) =>
+          text
+            .replace(/\{\{\w+\}\}/g, ' ')
+            .split(/[.,:;!?·•()]|\s[–—-]\s/)
+            .some(isTitleCaseClause)
+        );
+        expect(titleCase).toEqual([]);
+      }
+    );
   });
 
   describe('the Hotkeys page', () => {

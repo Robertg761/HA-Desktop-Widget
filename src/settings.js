@@ -1523,7 +1523,7 @@ async function removeSelectedCustomColor() {
   // Removing saves at once (Cancel in Settings cannot bring the colour back), and the accent or
   // background using it falls back to the default, so a stray click should not do it.
   const confirmed = await showConfirm(
-    t('Remove Custom Color'),
+    t('Remove custom color'),
     t('Remove "{{name}}" from your custom colors?', { name: selectedTheme.name }),
     { confirmText: t('Remove'), confirmClass: 'btn-danger' }
   );
@@ -3849,7 +3849,7 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
           'The first-time conflict check did not complete. Retry it before syncing.'
         );
       }
-      if (uploadButton) uploadButton.textContent = t('Retry Conflict Check');
+      if (uploadButton) uploadButton.textContent = t('Retry conflict check');
       if (remoteButton) remoteButton.classList.add('hidden');
     } else if (status.damagedConflictSections?.length) {
       // The file's copy is unreadable, so only this computer's can be kept.
@@ -6701,8 +6701,8 @@ async function persistSettings() {
           to: nextFolder,
         }),
         {
-          confirmText: t('Copy & Switch'),
-          cancelText: t('Keep Current'),
+          confirmText: t('Copy & switch'),
+          cancelText: t('Keep current'),
           confirmClass: 'btn-primary',
         }
       );
@@ -6746,8 +6746,8 @@ async function persistSettings() {
               { folder: nextFolder }
             ),
             {
-              confirmText: t('Use That File'),
-              cancelText: t('Keep Current'),
+              confirmText: t('Use that file'),
+              cancelText: t('Keep current'),
               confirmClass: 'btn-primary',
             }
           );

@@ -4358,7 +4358,7 @@ describe('Settings + Config Integration', () => {
 
       // Assert
       expect(mockUiUtils.showConfirm).toHaveBeenLastCalledWith(
-        'Remove Custom Color',
+        'Remove custom color',
         'Remove "My Slate" from your custom colors?',
         expect.objectContaining({ confirmClass: 'btn-danger' })
       );
@@ -5891,7 +5891,7 @@ describe('Settings + Config Integration', () => {
       expect(mockUiUtils.showConfirm).toHaveBeenLastCalledWith(
         'Sync file already exists',
         expect.stringContaining('/tmp/new-sync already has a sync file'),
-        expect.objectContaining({ confirmText: 'Use That File', cancelText: 'Keep Current' })
+        expect.objectContaining({ confirmText: 'Use that file', cancelText: 'Keep current' })
       );
       expect(state.CONFIG.profileSync.cloudFilePath).toBe(
         '/tmp/new-sync/ha-widget-profile-sync.json'
@@ -5956,7 +5956,7 @@ describe('Settings + Config Integration', () => {
       expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
         'Sync folder changed',
         'Copy the existing sync data file from /tmp/old-sync into /tmp/new-sync and switch sync there?',
-        expect.objectContaining({ confirmText: 'Copy & Switch', cancelText: 'Keep Current' })
+        expect.objectContaining({ confirmText: 'Copy & switch', cancelText: 'Keep current' })
       );
       expect(mockUiUtils.showToast).toHaveBeenCalledWith(
         'Kept the current sync folder: /tmp/old-sync',

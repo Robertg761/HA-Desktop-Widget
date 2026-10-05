@@ -2038,6 +2038,15 @@
     "Popup hotkey received. You can use it to bring the widget forward.": "Atajo de ventana emergente recibido. Puedes usarlo para traer el widget al frente.",
     "No popup hotkey received yet. Press your configured hotkey, then check again.": "Aún no se ha recibido ningún atajo de ventana emergente. Pulsa el atajo que configuraste y vuelve a comprobarlo.",
     "Could not check the hotkey. Try again.": "No se pudo comprobar el atajo. Inténtalo de nuevo.",
-    "Set up hotkeys": "Configurar atajos"
+    "Set up hotkeys": "Configurar atajos",
+    "Brightness up": "Subir brillo",
+    "Brightness down": "Bajar brillo",
+    "Increase speed": "Aumentar velocidad",
+    "Decrease speed": "Reducir velocidad",
+    "Remove custom color": "Eliminar color personalizado",
+    "Retry conflict check": "Reintentar comprobación de conflictos",
+    "Copy & switch": "Copiar y cambiar",
+    "Keep current": "Mantener la actual",
+    "Use that file": "Usar ese archivo"
   }
 }

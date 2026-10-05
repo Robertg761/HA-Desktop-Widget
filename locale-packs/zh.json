@@ -2038,6 +2038,15 @@
     "Popup hotkey received. You can use it to bring the widget forward.": "已收到弹出快捷键。你可以用它把小组件置于前台。",
     "No popup hotkey received yet. Press your configured hotkey, then check again.": "尚未收到弹出快捷键。请按下你配置的快捷键，然后再次检查。",
     "Could not check the hotkey. Try again.": "无法检查该快捷键。请重试。",
-    "Set up hotkeys": "设置快捷键"
+    "Set up hotkeys": "设置快捷键",
+    "Brightness up": "提高亮度",
+    "Brightness down": "降低亮度",
+    "Increase speed": "提高速度",
+    "Decrease speed": "降低速度",
+    "Remove custom color": "移除自定义颜色",
+    "Retry conflict check": "重试冲突检查",
+    "Copy & switch": "复制并切换",
+    "Keep current": "保留当前",
+    "Use that file": "使用该文件"
   }
 }

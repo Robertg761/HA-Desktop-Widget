@@ -2038,6 +2038,15 @@
     "Popup hotkey received. You can use it to bring the widget forward.": "تم استلام اختصار النافذة المنبثقة. يمكنك استخدامه لإحضار الأداة إلى الأمام.",
     "No popup hotkey received yet. Press your configured hotkey, then check again.": "لم يُستلم أي اختصار للنافذة المنبثقة بعد. اضغط الاختصار الذي أعددته، ثم تحقق مرة أخرى.",
     "Could not check the hotkey. Try again.": "تعذّر التحقق من الاختصار. حاول مرة أخرى.",
-    "Set up hotkeys": "إعداد الاختصارات"
+    "Set up hotkeys": "إعداد الاختصارات",
+    "Brightness up": "زيادة السطوع",
+    "Brightness down": "خفض السطوع",
+    "Increase speed": "زيادة السرعة",
+    "Decrease speed": "خفض السرعة",
+    "Remove custom color": "إزالة اللون المخصص",
+    "Retry conflict check": "إعادة فحص التعارض",
+    "Copy & switch": "نسخ وتبديل",
+    "Keep current": "الإبقاء على الحالي",
+    "Use that file": "استخدام ذلك الملف"
   }
 }

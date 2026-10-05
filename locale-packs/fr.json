@@ -2038,6 +2038,15 @@
     "Popup hotkey received. You can use it to bring the widget forward.": "Raccourci d'affichage reçu. Vous pouvez l'utiliser pour ramener le widget au premier plan.",
     "No popup hotkey received yet. Press your configured hotkey, then check again.": "Aucun raccourci d'affichage reçu pour l'instant. Appuyez sur le raccourci configuré, puis vérifiez à nouveau.",
     "Could not check the hotkey. Try again.": "Impossible de vérifier le raccourci. Réessayez.",
-    "Set up hotkeys": "Configurer les raccourcis"
+    "Set up hotkeys": "Configurer les raccourcis",
+    "Brightness up": "Augmenter la luminosité",
+    "Brightness down": "Réduire la luminosité",
+    "Increase speed": "Augmenter la vitesse",
+    "Decrease speed": "Réduire la vitesse",
+    "Remove custom color": "Supprimer la couleur personnalisée",
+    "Retry conflict check": "Réessayer la vérification des conflits",
+    "Copy & switch": "Copier et basculer",
+    "Keep current": "Conserver l'actuel",
+    "Use that file": "Utiliser ce fichier"
   }
 }

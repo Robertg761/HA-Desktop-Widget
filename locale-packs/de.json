@@ -2038,6 +2038,15 @@
     "Popup hotkey received. You can use it to bring the widget forward.": "Popup-Tastenkürzel empfangen. Du kannst damit das Widget nach vorn holen.",
     "No popup hotkey received yet. Press your configured hotkey, then check again.": "Noch kein Popup-Tastenkürzel empfangen. Drücke dein konfiguriertes Tastenkürzel und prüfe erneut.",
     "Could not check the hotkey. Try again.": "Tastenkürzel konnte nicht geprüft werden. Versuche es erneut.",
-    "Set up hotkeys": "Tastenkürzel einrichten"
+    "Set up hotkeys": "Tastenkürzel einrichten",
+    "Brightness up": "Helligkeit erhöhen",
+    "Brightness down": "Helligkeit verringern",
+    "Increase speed": "Geschwindigkeit erhöhen",
+    "Decrease speed": "Geschwindigkeit verringern",
+    "Remove custom color": "Eigene Farbe entfernen",
+    "Retry conflict check": "Konfliktprüfung wiederholen",
+    "Copy & switch": "Kopieren & wechseln",
+    "Keep current": "Aktuellen behalten",
+    "Use that file": "Diese Datei verwenden"
   }
 }

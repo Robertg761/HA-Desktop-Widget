@@ -2038,6 +2038,15 @@
     "Popup hotkey received. You can use it to bring the widget forward.": "पॉपअप हॉटकी मिल गई। आप इससे विजेट को सामने ला सकते हैं।",
     "No popup hotkey received yet. Press your configured hotkey, then check again.": "अभी तक कोई पॉपअप हॉटकी नहीं मिली। अपनी कॉन्फ़िगर की हुई हॉटकी दबाएँ, फिर दोबारा जाँचें।",
     "Could not check the hotkey. Try again.": "हॉटकी जाँची नहीं जा सकी। दोबारा कोशिश करें।",
-    "Set up hotkeys": "हॉटकी सेट करें"
+    "Set up hotkeys": "हॉटकी सेट करें",
+    "Brightness up": "ब्राइटनेस बढ़ाएं",
+    "Brightness down": "ब्राइटनेस घटाएं",
+    "Increase speed": "गति बढ़ाएं",
+    "Decrease speed": "गति घटाएं",
+    "Remove custom color": "कस्टम रंग हटाएं",
+    "Retry conflict check": "विरोध-परीक्षण फिर से करें",
+    "Copy & switch": "कॉपी करें और बदलें",
+    "Keep current": "मौजूदा रखें",
+    "Use that file": "वही फ़ाइल उपयोग करें"
   }
 }

@@ -101,8 +101,8 @@ function getActionOptionsForDomain(domain) {
       { value: 'toggle', label: t('Toggle') },
       { value: 'turn_on', label: t('Turn on') },
       { value: 'turn_off', label: t('Turn off') },
-      { value: 'brightness_up', label: t('Brightness Up') },
-      { value: 'brightness_down', label: t('Brightness Down') },
+      { value: 'brightness_up', label: t('Brightness up') },
+      { value: 'brightness_down', label: t('Brightness down') },
     ],
     switch: [
       { value: 'toggle', label: t('Toggle') },
@@ -128,8 +128,8 @@ function getActionOptionsForDomain(domain) {
       { value: 'toggle', label: t('Toggle') },
       { value: 'turn_on', label: t('Turn on') },
       { value: 'turn_off', label: t('Turn off') },
-      { value: 'increase_speed', label: t('Increase Speed') },
-      { value: 'decrease_speed', label: t('Decrease Speed') },
+      { value: 'increase_speed', label: t('Increase speed') },
+      { value: 'decrease_speed', label: t('Decrease speed') },
     ],
   };
 

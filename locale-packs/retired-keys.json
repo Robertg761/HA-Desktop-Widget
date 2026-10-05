@@ -1570,5 +1570,41 @@
   "Set up shortcuts": {
     "retiredIn": "4.0.0",
     "reason": "The first-run Hyprland help calls the popup hotkey by the name Settings gives it (re-audit R-117)."
+  },
+  "Brightness Up": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the Settings labels around it (re-audit R-119)."
+  },
+  "Brightness Down": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the Settings labels around it (re-audit R-119)."
+  },
+  "Increase Speed": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the Settings labels around it (re-audit R-119)."
+  },
+  "Decrease Speed": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the Settings labels around it (re-audit R-119)."
+  },
+  "Remove Custom Color": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the Settings labels around it (re-audit R-119)."
+  },
+  "Retry Conflict Check": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the Settings labels around it (re-audit R-119)."
+  },
+  "Copy & Switch": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the Settings labels around it (re-audit R-119)."
+  },
+  "Keep Current": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the Settings labels around it (re-audit R-119)."
+  },
+  "Use That File": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the Settings labels around it (re-audit R-119)."
   }
 }
