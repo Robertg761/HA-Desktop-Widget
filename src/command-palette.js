@@ -533,11 +533,18 @@ function createResultRow(item, index) {
   const meta = createElement('span', 'command-palette-result-meta');
   // A command row says what kind of row it is, not the entity's state before the command runs (a
   // "Turn on" row showing "Off" read as if it were the result).
-  const domain = createElement(
-    'span',
-    'command-palette-result-domain',
-    item.tabId ? t('Page') : item.service ? t('Command') : utils.getEntityTypeDescription(entity)
-  );
+  const domain = createElement('span', 'command-palette-result-domain');
+  const kind = item.tabId ? t('Page') : item.service ? t('Command') : '';
+  if (kind) {
+    // "Command" and "Page" say what the row does. A narrow window shrinks the pill to its glyph,
+    // and the word stays for screen readers and the tooltip (see styles.css).
+    domain.classList.add('is-row-kind');
+    const glyph = createElement('span', 'command-palette-result-kind-icon');
+    setLineIconContent(glyph, item.tabId ? 'app-window' : 'play');
+    domain.append(glyph, createElement('span', 'command-palette-result-kind-label', kind));
+  } else {
+    domain.textContent = utils.getEntityTypeDescription(entity);
+  }
   const value = createElement(
     'span',
     'command-palette-result-state',
@@ -728,10 +735,30 @@ function closeCommandPalette({ restoreFocus = true } = {}) {
   announce('');
 }
 
-function handleGlobalKeydown(event) {
+// A key that types a letter of a script other than Latin: "л", "ن", "κ", or the vowel sign a
+// Burmese keyboard has there, which is a mark. Punctuation, a digit, a dead key ("Dead"), an
+// accented Latin letter or a bare combining accent is not one.
+function isNonLatinLetter(key) {
+  return (
+    /^[\p{L}\p{M}]+$/u.test(key) &&
+    !/\p{Script=Latin}/u.test(key) &&
+    /[^\p{Script=Common}\p{Script=Inherited}]/u.test(key)
+  );
+}
+
+// The letter K, as printed on the key. A layout that moves K (Dvorak) matches by the letter it
+// types; one without Latin letters (Cyrillic, Arabic, Greek, Hebrew) reports its own letter for
+// Ctrl+K ("л", "ن"), so there the physical key, where K sits on a US keyboard, is the K. A Latin
+// layout whose US K key types something else has its K elsewhere, and that key is the one.
+function isLetterK(event) {
   const key = typeof event.key === 'string' ? event.key.toLowerCase() : '';
+  if (key === 'k') return true;
+  return event.code === 'KeyK' && isNonLatinLetter(key);
+}
+
+function handleGlobalKeydown(event) {
   const isCommandPaletteShortcut =
-    key === 'k' && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
+    isLetterK(event) && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
   if (!isCommandPaletteShortcut) return;
   // Ctrl+K has no meaning in a text field, apart from a Mac's "delete to the end of the line"; the
   // palette opens from there too, and from checkboxes and sliders, which is where the Quick

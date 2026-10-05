@@ -255,5 +255,45 @@ describe('main-process Home Assistant authorization recovery', () => {
       expect(describeCode('OAUTH_STORE_DECRYPT', 'darwin')).toBe('OAUTH_STORE_DECRYPT');
       expect(describeCode(undefined, 'linux')).toBe('');
     });
+
+    // The real pairing handler, against a credential store with no keyring behind it.
+    async function pairWithoutKeyring(platform) {
+      const handlers = {};
+      const context = {
+        ipcMain: { handle: (channel, handler) => (handlers[channel] = handler) },
+        authorizeIpcSender: () => ({ type: 'main' }),
+        rejectUnauthorizedIpc: jest.fn(),
+        windowAutoHide: { suspend: () => () => {} },
+        showMainWindowFromTray: () => {},
+        getHomeAssistantOAuthClient: () => ({
+          pair: () =>
+            Promise.reject(
+              Object.assign(new Error('Secure credential storage is unavailable on this system'), {
+                code: 'OAUTH_SECURE_STORAGE_UNAVAILABLE',
+              })
+            ),
+        }),
+        log: { warn: () => {} },
+      };
+      vm.runInNewContext(
+        `const process = { platform: ${JSON.stringify(platform)} };\n` +
+          extractBlock('function describeLinuxKeyringOAuthError') +
+          extractBlock('function describeLinuxKeyringPairingError') +
+          extractBlock("ipcMain.handle('start-home-assistant-oauth'", '\n});\n'),
+        context
+      );
+      return handlers['start-home-assistant-oauth']({}, 'http://ha.local:8123');
+    }
+
+    it('tells a new pairing the keyring is why it cannot be saved, not that a saved one is unreadable', async () => {
+      // A first run has nothing saved: "cannot be read" would send it looking for one.
+      await expect(pairWithoutKeyring('linux')).resolves.toMatchObject({
+        success: false,
+        code: 'OAUTH_KEYRING_CANNOT_SAVE',
+      });
+      await expect(pairWithoutKeyring('win32')).resolves.toMatchObject({
+        code: 'OAUTH_SECURE_STORAGE_UNAVAILABLE',
+      });
+    });
   });
 });

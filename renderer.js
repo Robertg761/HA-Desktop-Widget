@@ -3,6 +3,7 @@ import { installClippedTextTooltips } from './src/clipped-text-tooltips.js';
 import { installLayerDrag } from './src/layer-drag.js';
 import { installRangeProgress } from './src/range-progress.js';
 import desktopPinResize from './src/desktop-pin-resize.cjs';
+import accelerators from './src/accelerators.cjs';
 // Load all required modules (ES Modules)
 import log from './src/logger.js';
 import {
@@ -20,7 +21,14 @@ import * as commandPalette from './src/command-palette.js';
 import * as settings from './src/settings.js';
 import * as uiUtils from './src/ui-utils.js';
 import * as utils from './src/utils.js';
-import { formatNumber, formatTime, setLocaleBootstrap, t, translateDocument } from './src/i18n.js';
+import {
+  formatNumber,
+  formatTime,
+  getLocaleState,
+  setLocaleBootstrap,
+  t,
+  translateDocument,
+} from './src/i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './src/icons.js';
 import { lineIconMarkup, setLineIconContent } from './src/entity-icons.js';
 import { animateEnter, syncSlidingIndicator } from './src/motion.js';
@@ -234,6 +242,11 @@ let getStatesId, getServicesId, getAreasId, getConfigId;
 
 // WebSocket reconnection state
 let reconnectAttempts = 0;
+// First snapshots in a row that ran out of time. Each one gives the next twice as long (up to
+// four times the first wait): a server that answers the login but needs longer than that to send
+// every entity would otherwise be asked again, from the start, forever.
+let snapshotTimeoutsInARow = 0;
+const MAX_SNAPSHOT_TIMEOUT_GROWTH = 4;
 let reconnectTimerId = null;
 let uiTickTimerId = null;
 let uiTickSchedulerStarted = false;
@@ -356,16 +369,17 @@ function applyDesktopPinConnectionState(connection = {}) {
   if (connection.secureStoragePending === true) {
     setDesktopPinConnectionIssue(t('Unlocking saved Home Assistant credentials...'));
   } else if (connection.hasUrl !== true) {
-    setDesktopPinConnectionIssue(t('Please configure connection settings (gear icon).'));
+    // A pin has no Settings button of its own; the widget is where the connection is set up.
+    setDesktopPinConnectionIssue(
+      t('Not set up yet. Open the widget to connect to Home Assistant.')
+    );
   } else if (oauth && connection.oauthStatus === 'reauth_required') {
     setDesktopPinConnectionIssue(getOAuthReauthRequiredStatus());
   } else if (oauth && connection.hasToken !== true) {
     // Configured, but the saved authorization has not been restored yet (Home Assistant down).
     setDesktopPinConnectionIssue(t('Disconnected from Home Assistant. Retrying automatically.'));
   } else if (connection.hasToken !== true) {
-    setDesktopPinConnectionIssue(
-      t('Please configure your Home Assistant token in Settings (gear icon).')
-    );
+    setDesktopPinConnectionIssue(t('No access token is saved. Open the widget to enter one.'));
   } else if (connection.runtimeState === 'auth-failed') {
     setDesktopPinConnectionIssue(getAuthFailureMessage(oauth));
   } else if (connection.runtimeState && connection.runtimeState !== 'connected') {
@@ -377,6 +391,120 @@ function applyDesktopPinConnectionState(connection = {}) {
 
 function isSecureStoragePending(targetConfig = state.CONFIG) {
   return targetConfig?.secureStoragePending === true;
+}
+
+// Why the saved token could not be used: this computer could not decrypt it ('decryption_failed'),
+// there was no keyring to decrypt it with ('encryption_unavailable'), or there was none to save it
+// to when it was entered ('not_persisted'). Main forgets a keyring reason once told it was seen and
+// keeps 'not_persisted' until a token is saved; this keeps either until a token is entered, because
+// it is what tells a setup that lost its token from a first run.
+let tokenRecoveryReason = '';
+
+// A setup whose server was cleared too is set up again from the start, whatever the reason says.
+function needsTokenReentry() {
+  return (
+    !!tokenRecoveryReason &&
+    !!state.CONFIG?.homeAssistant?.url &&
+    !usesOAuth() &&
+    !isConfigured(state.CONFIG) &&
+    !isSecureStoragePending() &&
+    !IS_DESKTOP_PIN_MODE
+  );
+}
+
+// Takes the reason main sent with a config, tells main it was seen, and forgets it once a token
+// works or the setup moved to browser authorization.
+function noteTokenRecoveryReason() {
+  const reason = state.CONFIG?.tokenResetReason;
+  if (reason) delete state.CONFIG.tokenResetReason;
+  // Main sends 'not_persisted' with every config until a token is saved; it is news only once.
+  if (reason && reason !== tokenRecoveryReason) {
+    log.warn('Saved Home Assistant token cannot be used:', reason);
+    void window.electronAPI.clearTokenResetReason?.().catch((error) => {
+      log.error('Failed to acknowledge token recovery notice:', error);
+      uiUtils.showToast(
+        t('Could not save the token recovery acknowledgement. {{error}}', {
+          error: error?.message || t('Unknown error'),
+        }),
+        'error',
+        10000
+      );
+    });
+  }
+  if (isConfigured(state.CONFIG) || usesOAuth()) tokenRecoveryReason = '';
+  else if (reason) tokenRecoveryReason = reason;
+}
+
+// What the panel says about a token that has to be entered again. Every message ends with what to
+// do, and none names a place: the panel's button goes there, and Settings shows the same words.
+function getTokenRecoveryPanel() {
+  if (!needsTokenReentry()) return null;
+  const linux = window.electronAPI?.platform === 'linux';
+  const enterToken = {
+    label: t('Enter token'),
+    className: 'btn btn-primary',
+    onClick: openTokenSettings,
+  };
+  if (tokenRecoveryReason === 'encryption_unavailable' && linux) {
+    // The encrypted token is still on disk: unlocking the keyring and restarting brings it back.
+    // The title names the locked keyring, so the message starts with what that means for the token.
+    return {
+      tone: 'error',
+      title: t('System keyring is locked'),
+      message: t(
+        'The saved Home Assistant token cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.'
+      ),
+      actions: [
+        { label: t('Restart Widget'), className: 'btn btn-primary', onClick: restartWidget },
+        { ...enterToken, className: 'btn btn-secondary' },
+      ],
+    };
+  }
+  if (tokenRecoveryReason === 'not_persisted') {
+    return {
+      tone: 'error',
+      title: t('Access token was not saved'),
+      message: linux
+        ? t(
+            'No unlocked system keyring (Secret Service) was found when the access token was entered, so it was not saved. Enter it again, and start gnome-keyring or KWallet so it is remembered.'
+          )
+        : t(
+            'Token encryption is not available on this system, so the access token was not saved. Enter it again to reconnect.'
+          ),
+      actions: [enterToken],
+    };
+  }
+  return {
+    tone: 'error',
+    title: t('Saved token cannot be read'),
+    message:
+      tokenRecoveryReason === 'encryption_unavailable'
+        ? t(
+            'Token encryption is not available on this system, so the saved Home Assistant token cannot be read. Enter the token again to reconnect.'
+          )
+        : t(
+            'This computer cannot decrypt the saved Home Assistant token. That happens after moving to another computer or user account. Enter the token again to reconnect.'
+          ),
+    actions: [enterToken],
+  };
+}
+
+// The connection state of a setup whose token has to be entered again: the header and Settings say
+// what the panel says.
+function showTokenRecovery() {
+  const panel = getTokenRecoveryPanel();
+  if (!panel) return false;
+  if (mainConnectionState !== 'disconnected') updateMainConnectionState('disconnected');
+  setDisconnectedStatus(panel.message);
+  uiUtils.showLoading(false);
+  renderMainWidgetState();
+  return true;
+}
+
+// The indicator's words for a setup with no server yet. The wizard is where it is set up, and the
+// header's Settings button is hidden while the wizard is up, so the words do not point at it.
+function getNotSetUpStatus() {
+  return t('Not set up yet. Finish setup to connect to Home Assistant.');
 }
 
 function usesOAuth(targetConfig = state.CONFIG) {
@@ -523,9 +651,11 @@ function publishOmarchyBarTiles({ force = false } = {}) {
     const tile = ui.describeQuickAccessTile(entityId);
     if (!tile) return;
     tiles[entityId] = tile;
-    if (tile.icon?.kind === 'line' && !icons[tile.icon.name]) {
+    // A glyph's line icon goes too, for main to draw where the bar's font lacks the glyph.
+    const lineIcon = tile.icon?.kind === 'line' ? tile.icon.name : tile.icon?.fallback;
+    if (lineIcon && !icons[lineIcon]) {
       // Sized in pixels: the shell draws it as an image, where 1em means nothing.
-      icons[tile.icon.name] = lineIconMarkup(tile.icon.name).replace(
+      icons[lineIcon] = lineIconMarkup(lineIcon).replace(
         'width="1em" height="1em"',
         'width="24" height="24"'
       );
@@ -778,7 +908,12 @@ function getSettingsUiHooks() {
     renderPrimaryCards: ui.renderPrimaryCards,
     updateWeatherEffects: ui.updateWeatherEffects,
     // What the red connection panel is saying, so Settings does not look healthy beside it.
-    getConnectionState: () => ({ status: mainConnectionState, reason: lastDisconnectReason }),
+    getConnectionState: () => ({
+      status: mainConnectionState,
+      reason: lastDisconnectReason,
+      needsToken: needsTokenReentry(),
+      tokenReason: needsTokenReentry() ? tokenRecoveryReason : '',
+    }),
     refreshLocale: async () => {
       await refreshLocaleBootstrap();
       renderCurrentMode();
@@ -795,6 +930,13 @@ function getSettingsUiHooks() {
 function openSettingsModal() {
   dismissConnectionToasts({ includeStartupWarnings: true });
   settings.openSettings(getSettingsUiHooks());
+}
+
+// Settings on General with the access token field open and the cursor in it.
+async function openTokenSettings() {
+  dismissConnectionToasts({ includeStartupWarnings: true });
+  await settings.openSettings(getSettingsUiHooks());
+  settings.revealHomeAssistantToken?.();
 }
 
 function openQuickAccessModal() {
@@ -1084,7 +1226,7 @@ function getOAuthStatePanel() {
         ? [
             {
               label: t('Cancel'),
-              className: 'btn btn-secondary',
+              className: 'btn btn-secondary btn-neutral',
               onClick: cancelOAuthReauthorization,
             },
           ]
@@ -1151,6 +1293,15 @@ function getConfiguredHostLabel() {
   }
 }
 
+// What the offline panel says under its title. The indicator's "Disconnected from Home Assistant.
+// Retrying automatically." is the title said again, so the panel says only what is new.
+function describeDisconnectUnderTitle(title) {
+  const reason = stripSummaryPrefix(title, lastDisconnectReason);
+  return !reason || reason === t('Disconnected from Home Assistant. Retrying automatically.')
+    ? t('The connection was lost. Retrying automatically.')
+    : reason;
+}
+
 function renderMainWidgetState() {
   // An open Settings page shows the same connection problem as the panel, so it follows it.
   settings.refreshHomeAssistantAuthStatus?.();
@@ -1167,9 +1318,11 @@ function renderMainWidgetState() {
     removeWidgetStatePanel();
     return;
   }
-  const oauthStatePanel = getOAuthStatePanel();
-  if (oauthStatePanel) {
-    renderWidgetStatePanel(oauthStatePanel);
+  // A configured setup that cannot connect for want of a credential gets a connection state, not
+  // setup instructions.
+  const credentialPanel = getOAuthStatePanel() || getTokenRecoveryPanel();
+  if (credentialPanel) {
+    renderWidgetStatePanel(credentialPanel);
     return;
   }
   if (!isConfigured(state.CONFIG)) {
@@ -1216,8 +1369,7 @@ function renderMainWidgetState() {
         ? (mainConnectionState === 'connecting' &&
             stripSummaryPrefix(title, lastDisconnectReason)) ||
           t('Waiting for live Home Assistant data...')
-        : stripSummaryPrefix(title, lastDisconnectReason) ||
-          t('Disconnected from Home Assistant. Retrying automatically.'),
+        : describeDisconnectUnderTitle(title),
       host,
       note:
         !connecting && mainConnectionState === 'disconnected' && lastManualRetryAt
@@ -1256,7 +1408,7 @@ function renderMainWidgetState() {
         : t('Add your favorite Home Assistant entities for one-click control.'),
       actions: [
         {
-          label: t('Choose rooms and devices'),
+          label: t('Choose rooms and entities'),
           className: 'btn btn-primary',
           onClick: () => ui.showAddPageModal({ starter: true }),
         },
@@ -1418,6 +1570,58 @@ async function renderFirstRunDesktopHelp(content) {
   }
 }
 
+// A system language the app has as a downloadable pack, not yet downloaded: Auto shows English
+// meanwhile, and the welcome step is the first thing anyone sees, so it offers the pack there.
+// Downloading it switches the wizard to that language at once.
+async function renderFirstRunLanguageOffer(offer) {
+  try {
+    const { languageSetting, usingEnglishFallback, detectedLocale } = getLocaleState();
+    if (languageSetting !== 'auto' || !usingEnglishFallback) return;
+    const packs = await window.electronAPI.getLocalePacks?.();
+    if (!Array.isArray(packs) || !offer.isConnected) return;
+    const language = String(detectedLocale || '')
+      .split('-')[0]
+      .toLowerCase();
+    const pack = packs.find(
+      (entry) => !entry.installed && String(entry.locale || '').toLowerCase() === language
+    );
+    if (!pack) return;
+    // The language's name in its own words: that is how someone who reads it will recognise it.
+    // It is set apart in its own language and direction, so a right-to-left name does not pull the
+    // sentence's full stop to its side and a screen reader says it in that language's voice.
+    const name = pack.displayName || pack.englishName || pack.locale;
+    const line = createTextElement('p', 'first-run-copy', '');
+    const [before, after = ''] = t('HA Desktop Widget is available in {{language}}.', {
+      language: '\u0000',
+    }).split('\u0000');
+    const languageName = createTextElement('bdi', '', name);
+    languageName.lang = pack.locale;
+    line.append(before, languageName, after);
+    offer.appendChild(line);
+    const download = createActionButton(t('Download'), 'btn btn-secondary btn-sm', async () => {
+      download.disabled = true;
+      download.setAttribute('aria-busy', 'true');
+      try {
+        await window.electronAPI.downloadLocalePack(pack.locale);
+        await refreshLocaleBootstrap();
+        renderCurrentMode();
+        renderWizardStep();
+      } catch (error) {
+        log.warn('Could not download the system language pack:', error);
+        if (!download.isConnected) return;
+        download.disabled = false;
+        download.setAttribute('aria-busy', 'false');
+        setWizardStatus(t('Failed to download language pack'), 'error');
+      }
+    });
+    download.setAttribute('aria-label', t('Download {{language}}', { language: name }));
+    offer.appendChild(download);
+    offer.hidden = false;
+  } catch (error) {
+    log.warn('Could not offer the system language at first run:', error);
+  }
+}
+
 // The wizard's heading and lead paragraph name and describe its dialog. They are rebuilt for every
 // step, so only one carries each id at a time.
 function createWizardText(tagName, className, id, text) {
@@ -1477,6 +1681,12 @@ function renderWizardStep() {
         )
       )
     );
+    // Filled in once the pack list is in; placed now so it always sits under the welcome text.
+    const languageOffer = document.createElement('div');
+    languageOffer.id = 'first-run-language-offer';
+    languageOffer.hidden = true;
+    content.appendChild(languageOffer);
+    void renderFirstRunLanguageOffer(languageOffer);
     void renderFirstRunDesktopHelp(content);
   } else if (stepIndex === 1) {
     content.appendChild(
@@ -1520,7 +1730,7 @@ function renderWizardStep() {
     content.appendChild(input);
   } else if (stepIndex === 3) {
     content.appendChild(
-      createWizardText('h2', 'first-run-title', 'first-run-title', t('Choose rooms and devices'))
+      createWizardText('h2', 'first-run-title', 'first-run-title', t('Choose rooms and entities'))
     );
     content.appendChild(
       createWizardText(
@@ -1528,7 +1738,7 @@ function renderWizardStep() {
         'first-run-copy',
         'first-run-copy',
         t(
-          'Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.'
+          'Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard.'
         )
       )
     );
@@ -1567,7 +1777,7 @@ function renderWizardStep() {
   firstRunWizard.skipButton.textContent = stepIndex === 3 ? t('Skip for now') : t('Full Settings');
   if (firstRunWizard.nextButton) {
     firstRunWizard.nextButton.textContent =
-      stepIndex === 3 ? t('Choose rooms and devices') : stepIndex === 2 ? t('Connect') : t('Next');
+      stepIndex === 3 ? t('Choose rooms and entities') : stepIndex === 2 ? t('Connect') : t('Next');
     // Derived from the pairing rather than left wherever the last run put it, so a step change
     // can always recover the button instead of stranding it disabled.
     firstRunWizard.nextButton.disabled = !!firstRunWizard.finishInProgress;
@@ -1790,7 +2000,8 @@ function maybeShowFirstRunWizard() {
     IS_DESKTOP_PIN_MODE ||
     isConfigured(state.CONFIG) ||
     isSecureStoragePending() ||
-    oauthRestorePending
+    oauthRestorePending ||
+    needsTokenReentry()
   ) {
     setFirstRunWizardVisible(false);
     return false;
@@ -1815,10 +2026,12 @@ async function executeDesktopCompanionCommand({ action, payload }) {
       throw new Error(result?.error || 'Profile could not be saved on this desktop');
     }
     // A profile can replace every page, span, name and icon. Keep the layout it replaced, as a
-    // save from Settings does, so Undo and Restore dashboard can bring it back.
+    // save from Settings does, so Undo and Restore dashboard can bring it back. It is not part of
+    // a burst of edits: Restore dashboard keeps that layout however soon after an edit it comes.
     rememberDashboard(
       previousConfig,
-      result?.homeAssistant ? result : { ...previousConfig, ...patch }
+      result?.homeAssistant ? result : { ...previousConfig, ...patch },
+      { wholeLayout: true }
     );
     const mainState = await window.electronAPI.getDesktopCompanionState();
     return {
@@ -2097,13 +2310,24 @@ function showConfigRecoveryNotice(recovery) {
   uiUtils.showToast(message, 'error', 20000);
 }
 
-// The palette opens with the platform's own modifier: Cmd+K on macOS, Ctrl+K elsewhere (it takes
-// either, but the tip should name the one a person there would reach for).
-function applyPaletteShortcutHint() {
-  const hint = document.getElementById('command-palette-hint');
-  if (!hint) return;
-  const shortcut = window.electronAPI?.platform === 'darwin' ? 'Cmd+K' : 'Ctrl+K';
-  hint.setAttribute('data-i18n-vars', JSON.stringify({ shortcut }));
+// Text in index.html that names keys names them as this platform's keyboard prints them, as the
+// hotkey recorders and fields do. The palette opens with the platform's own modifier, Cmd+K on macOS
+// and Ctrl+K elsewhere (it takes either, but the tip names the one a person there would reach for).
+// The entity hotkeys help names the keys a hotkey can start from: Shift alone is refused, and the
+// Meta key is Super, Win or Cmd.
+function applyPlatformKeyNames() {
+  const platform = window.electronAPI?.platform;
+  const keys = (accelerator) => accelerators.formatAccelerator(accelerator, platform);
+  const setVars = (id, vars) =>
+    document.getElementById(id)?.setAttribute('data-i18n-vars', JSON.stringify(vars));
+  setVars('command-palette-hint', { shortcut: keys('CommandOrControl+K') });
+  setVars('entity-hotkeys-help', {
+    ctrl: keys('Ctrl'),
+    alt: keys('Alt'),
+    meta: keys('Super'),
+    shift: keys('Shift'),
+    example: keys('CommandOrControl+Shift+A'),
+  });
 }
 
 // The language the window was last drawn in; null until the first locale is applied.
@@ -2113,7 +2337,7 @@ async function refreshLocaleBootstrap() {
   const bootstrap = await window.electronAPI.getLocaleBootstrap();
   setLocaleBootstrap(bootstrap || {});
   if (!IS_DESKTOP_PIN_MODE) refreshTrayEntityIcons({ force: true });
-  applyPaletteShortcutHint();
+  applyPlatformKeyNames();
   translateDocument(document);
   const locale = bootstrap?.activeLocale || '';
   if (appliedLocale !== null && locale !== appliedLocale) {
@@ -2153,10 +2377,12 @@ function renderCurrentMode() {
     for (const id of ['desktop-pin-content', 'desktop-pin-empty']) {
       document.getElementById(id)?.toggleAttribute('inert', desktopPinEditMode);
     }
-    // The edit-mode hint is drawn by CSS from this attribute so it follows the language.
-    document
-      .getElementById('desktop-pin-content')
-      ?.setAttribute('data-edit-hint', t('Drag or resize'));
+    // The edit-mode hint is drawn by CSS from these attributes so it follows the language. Where
+    // the desktop decides where the tile sits, a drag is not kept, so the stylesheet shows the
+    // resize hint instead of inviting one.
+    const pinContent = document.getElementById('desktop-pin-content');
+    pinContent?.setAttribute('data-edit-hint', t('Drag or resize'));
+    pinContent?.setAttribute('data-resize-hint', t('Resize only'));
     // The notice that the desktop decides where the tile sits is for sessions where nothing in the
     // app can move it. A layer surface on Hyprland is dragged by the app itself.
     document.body.classList.toggle(
@@ -2512,7 +2738,8 @@ websocket.on('message', (msg) => {
   try {
     if (msg.type === 'auth_ok') {
       log.debug('WebSocket authentication successful');
-      reconnectAttempts = 0; // Reset on successful connection
+      // reconnectAttempts is not reset here but once the states arrive: a server that accepts the
+      // login and then cannot send them would otherwise be retried at the shortest delay each time.
       oauthAuthRecoveryAttempted = false;
       if (!IS_DESKTOP_PIN_MODE) setTrayEntityConnectionState(false);
       updateMainConnectionState('connecting');
@@ -2526,7 +2753,11 @@ websocket.on('message', (msg) => {
       // again, so a large instance never finished loading.
       const statesReq = websocket.request(
         { type: 'get_states' },
-        { timeoutMs: WS_INITIAL_STATES_TIMEOUT_MS }
+        {
+          timeoutMs:
+            WS_INITIAL_STATES_TIMEOUT_MS *
+            Math.min(2 ** snapshotTimeoutsInARow, MAX_SNAPSHOT_TIMEOUT_GROWTH),
+        }
       );
       const servicesReq = websocket.request({ type: 'get_services' });
       const areasReq = websocket.request({ type: 'config/area_registry/list' });
@@ -2554,9 +2785,16 @@ websocket.on('message', (msg) => {
             websocket.failConnection(snapshotSocket);
           }
         })
-        .catch((error) =>
-          websocket.failConnection(snapshotSocket, error?.code === 'timeout' ? 'timeout' : '')
-        );
+        .catch((error) => {
+          // Home Assistant answered the login, so it is running and the address is right; it is
+          // the states that are slow. That is said in its own words, not as a server that is down.
+          if (error?.code !== 'timeout') {
+            websocket.failConnection(snapshotSocket);
+            return;
+          }
+          snapshotTimeoutsInARow += 1;
+          websocket.failConnection(snapshotSocket, 'snapshot-timeout');
+        });
       servicesReq.catch(() => {});
       areasReq.catch(() => {});
       configReq.catch((err) => {
@@ -2668,6 +2906,8 @@ websocket.on('message', (msg) => {
             }
             setDesktopPinConnectionIssue('');
             haStatesSnapshotReceived = true;
+            reconnectAttempts = 0;
+            snapshotTimeoutsInARow = 0;
             // No coalescing: this map is fresh from get_states and may drop deleted
             // entities that an in-flight publish still carries.
             refreshDesktopPinStatePublishing({ force: true, coalesce: false });
@@ -2789,14 +3029,19 @@ websocket.on('close', (closeInfo = {}) => {
 
     updateMainConnectionState('disconnected');
     // A host that never answers fails with a close alone, no error, so the reason is in the close.
+    // One that answered the login but not with its states in time is running and at the right
+    // address, so it is not told to check either.
     const unanswered = closeInfo?.reason === 'timeout';
-    const closeMessage = unanswered
-      ? t('Home Assistant did not answer. Check that it is running and that the URL is correct.')
-      : t('Disconnected from Home Assistant. Retrying automatically.');
+    const slowSnapshot = closeInfo?.reason === 'snapshot-timeout';
+    const closeMessage = slowSnapshot
+      ? t('Home Assistant is slow to send its states. Retrying automatically.')
+      : unanswered
+        ? t('Home Assistant did not answer. Check that it is running and that the URL is correct.')
+        : t('Disconnected from Home Assistant. Retrying automatically.');
     // A failed attempt is followed by a close. The reason the error gave ("Check your network or
     // Home Assistant URL") says more than "disconnected", and is what the connection panel shows
     // in place of a toast, so the close must not overwrite it.
-    if (unanswered || !connectionErrorLoggedThisOutage) {
+    if (unanswered || slowSnapshot || !connectionErrorLoggedThisOutage) {
       setDisconnectedStatus(closeMessage);
     }
     setDesktopPinConnectionIssue(closeMessage);
@@ -2830,16 +3075,11 @@ websocket.on('error', (error) => {
 
     // Show user-friendly error message
     const errorMessage = String(error?.message || '');
-    if (errorMessage.includes('default token')) {
-      desktopPinIssueMessage = t(
-        'Please configure your Home Assistant token in Settings (gear icon).'
-      );
+    if (errorMessage.includes('default token') || errorMessage.includes('Invalid configuration')) {
+      // An attempt with nothing to connect with (the network came back during setup, say). The
+      // wizard or the token panel already says what to do; the header says the same.
+      desktopPinIssueMessage = getTokenRecoveryPanel()?.message || getNotSetUpStatus();
       setDisconnectedStatus(desktopPinIssueMessage);
-      showConnectionToast(desktopPinIssueMessage, 20000);
-    } else if (errorMessage.includes('Invalid configuration')) {
-      desktopPinIssueMessage = t('Please configure connection settings (gear icon).');
-      setDisconnectedStatus(desktopPinIssueMessage);
-      showConnectionToast(desktopPinIssueMessage, 20000);
     } else if (!errorMessage.includes('auth_invalid')) {
       // Don't show toast for auth_invalid as it's already handled elsewhere
       const toastInfo = showClassifiedConnectionToast(error);
@@ -2980,6 +3220,7 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
       alerts.initializeEntityAlerts();
     }
     if (change.other || change.quickAccess) renderCurrentMode();
+    noteTokenRecoveryReason();
     const wizardShown = maybeShowFirstRunWizard();
     const nowConfigured = isConfigured(state.CONFIG);
     if (!wizardShown && nowConfigured) {
@@ -2999,8 +3240,23 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
         // failure.
         connectWebSocket();
       }
-    } else if (!nowConfigured && configuredRuntimeStarted && wasConfigured) {
-      closeWebSocket();
+    } else if (!nowConfigured) {
+      if (configuredRuntimeStarted && wasConfigured) closeWebSocket();
+      // A close made on purpose leaves the socket's own close handler silent, so without this the
+      // header went on saying "Connected" over the wizard, as did the tray and the bar. (OAuth
+      // says its own state below.)
+      if (
+        !usesOAuth() &&
+        !isSecureStoragePending() &&
+        !showTokenRecovery() &&
+        (wasConfigured || wasSecureStoragePending)
+      ) {
+        if (!['idle', 'disconnected'].includes(mainConnectionState)) {
+          updateMainConnectionState('disconnected');
+        }
+        setDisconnectedStatus(getNotSetUpStatus());
+        renderMainWidgetState();
+      }
     }
     if (!nowConfigured && usesOAuth() && !IS_DESKTOP_PIN_MODE) {
       setOAuthRestoreStatus();
@@ -3033,9 +3289,10 @@ window.electronAPI.onDesktopPinEditModeEnded?.(() => {
   ui.exitReorganizeMode();
 });
 
-window.electronAPI.onEntityTileHotkeyRequested(({ entityId } = {}) => {
+window.electronAPI.onEntityTileHotkeyRequested(({ entityId, remove } = {}) => {
   if (IS_DESKTOP_PIN_MODE || !entityId) return;
-  hotkeys.assignHotkeyToEntity(entityId);
+  if (remove) void hotkeys.removeEntityHotkey(entityId);
+  else hotkeys.assignHotkeyToEntity(entityId);
 });
 
 window.electronAPI.onDesktopCompanionStateChanged?.((nextState) => {
@@ -3226,7 +3483,7 @@ async function init() {
     const config = await window.electronAPI.getConfig();
     if (!config || !config.homeAssistant) {
       log.error('Configuration is missing or invalid');
-      setDisconnectedStatus(t('Please configure connection settings (gear icon).'));
+      setDisconnectedStatus(getNotSetUpStatus());
       state.setConfig({
         homeAssistant: {
           url: '',
@@ -3256,9 +3513,9 @@ async function init() {
     // Runtime recovery metadata is intentionally not part of renderer state so
     // later update-config calls cannot echo it back into persisted settings.
     delete config.configRecovery;
-    // A token the keyring could not decrypt is reported below with its own remedy. The persistence
-    // warning that arrives with the same config would name that cause a second time, with other advice.
-    if (config.tokenResetReason === 'encryption_unavailable') tokenPersistenceWarningShown = true;
+    // A saved token that cannot be used is explained in the main window with its own remedy. The
+    // persistence warning that arrives with the same config would name that cause a second time.
+    if (config.tokenResetReason) tokenPersistenceWarningShown = true;
     applyRendererConfig(config);
     wireUI();
     replaceEmojiIcons();
@@ -3273,58 +3530,7 @@ async function init() {
       return;
     }
 
-    // Check if token was reset due to encryption issues
-    if (state.CONFIG.tokenResetReason) {
-      const reason = state.CONFIG.tokenResetReason;
-      if (window.electronAPI.clearTokenResetReason) {
-        try {
-          await window.electronAPI.clearTokenResetReason();
-        } catch (error) {
-          log.error('Failed to acknowledge token recovery notice:', error);
-          const acknowledgementMessage = t(
-            'Could not save the token recovery acknowledgement. {{error}}',
-            { error: error?.message || t('Unknown error') }
-          );
-          uiUtils.showToast(acknowledgementMessage, 'error', 10000);
-        }
-      }
-      delete state.CONFIG.tokenResetReason;
-
-      // One full sentence per reason, so translations never have to be pieced together.
-      let message = t(
-        'Your Home Assistant token needs to be re-entered. Click the gear icon to open Settings.'
-      );
-      let detailMessage = '';
-      if (reason === 'encryption_unavailable' && window.electronAPI?.platform === 'linux') {
-        // The encrypted token is kept, so unlocking the keyring and restarting brings it back.
-        message = t(
-          'Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.'
-        );
-        detailMessage = t(
-          'The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.'
-        );
-      } else if (reason === 'encryption_unavailable') {
-        message = t(
-          'Your Home Assistant token needs to be re-entered. Token encryption is not available on this system. Click the gear icon to open Settings.'
-        );
-        detailMessage = t(
-          'Your encrypted token from a previous installation cannot be decrypted on this system. The encrypted token has been preserved in case you move back to a system with encryption support. Please re-enter your token in Settings to continue.'
-        );
-      } else if (reason === 'decryption_failed') {
-        message = t(
-          'Your Home Assistant token needs to be re-entered. The stored token could not be decrypted. Click the gear icon to open Settings.'
-        );
-        detailMessage = t(
-          'The encrypted token appears to be corrupted and cannot be decrypted. The encrypted token has been preserved for recovery attempts. Please re-enter your token in Settings to continue.'
-        );
-      }
-
-      log.warn('[Init] Token reset:', message);
-      log.info('[Init]', detailMessage);
-
-      // Show prominent warning message with extended duration
-      uiUtils.showToast(message, 'warning', 10000, { source: STARTUP_WARNING_TOAST_SOURCE });
-    }
+    noteTokenRecoveryReason();
 
     if (!isConfigured(state.CONFIG)) {
       if (isSecureStoragePending()) {
@@ -3344,8 +3550,15 @@ async function init() {
         return;
       }
 
+      // A saved token this computer cannot use belongs to an existing setup: the main window says
+      // why and offers to enter it again, instead of starting onboarding over.
+      if (showTokenRecovery()) {
+        renderCurrentMode();
+        return;
+      }
+
       log.warn('[Init] Home Assistant is not configured. Showing first-run onboarding.');
-      setDisconnectedStatus(t('Please configure connection settings (gear icon).'));
+      setDisconnectedStatus(getNotSetUpStatus());
       uiUtils.showLoading(false);
       renderCurrentMode();
       maybeShowFirstRunWizard();
@@ -3795,30 +4008,17 @@ function wireUI() {
           await hotkeys.assignHotkeyToEntity(target.dataset.entityId, {
             action: actionSelect?.value,
           });
-        } else if (target.classList.contains('btn-clear-hotkey')) {
-          const container = target.parentElement;
-          const input = container.querySelector('.hotkey-input');
-          const entityId = input.dataset.entityId;
-          try {
-            const result = await window.electronAPI.unregisterHotkey(entityId);
-            if (result?.success !== true) {
-              throw new Error(result?.error || t('Error toggling hotkeys'));
-            }
-            input.value = '';
-            delete state.CONFIG.globalHotkeys.hotkeys[entityId];
-            hotkeys.renderHotkeysTab();
+        } else if (target.closest('.btn-clear-hotkey')) {
+          // The click lands on the icon inside the button as often as on the button.
+          const controls = target.closest('.hotkey-input-container');
+          const entityId = controls?.querySelector('.hotkey-input')?.dataset.entityId;
+          if (!entityId) return;
+          if (await hotkeys.clearEntityHotkey(entityId)) {
             // The list was rebuilt under the Clear button, which is hidden now there is nothing to
             // clear; the row's own field is where the keyboard goes on.
             hotkeysList
               .querySelector(`.hotkey-input[data-focus-key="hotkey-input:${entityId}"]`)
               ?.focus();
-            if (result.warning) {
-              uiUtils.showToast(result.warning, 'warning', 4000);
-            }
-          } catch (error) {
-            log.error('Failed to clear entity hotkey:', error);
-            const errorMessage = error?.message || t('Error toggling hotkeys');
-            uiUtils.showToast(errorMessage, 'error', 3000);
           }
         }
       });

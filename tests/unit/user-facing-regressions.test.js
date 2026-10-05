@@ -772,7 +772,8 @@ describe('User-facing audit regressions', () => {
       ...climate,
       attributes: { ...climate.attributes, current_temperature: 22 },
     });
-    expect(root.querySelector('.desktop-pin-climate-target-value').textContent).toBe('20–24°C');
+    // A range pin prints its range in the header, beside the name.
+    expect(root.querySelector('.desktop-pin-climate-kpi').textContent).toBe('20–24°C');
     await jest.advanceTimersByTimeAsync(300);
     expect(mockCallService).toHaveBeenCalledWith('climate', 'set_temperature', {
       entity_id: climate.entity_id,
@@ -1004,10 +1005,10 @@ describe('User-facing audit regressions', () => {
       mockCallService.mockRejectedValueOnce(new Error('Light rejected'));
 
       document.querySelector('.desktop-pin-light-preset[data-brightness="75"]').click();
-      expect(root.querySelector('.desktop-pin-light-status').textContent).toBe('75% brightness');
+      expect(root.querySelector('.desktop-pin-light-meter-value').textContent).toBe('75%');
       await jest.advanceTimersByTimeAsync(300);
 
-      expect(root.querySelector('.desktop-pin-light-status').textContent).toBe('50% brightness');
+      expect(root.querySelector('.desktop-pin-light-meter-value').textContent).toBe('50%');
       expect(root.querySelector('.desktop-pin-light-slider').value).toBe('50');
       expect(uiUtils.showToast).toHaveBeenCalled();
     });

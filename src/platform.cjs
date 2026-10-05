@@ -8,6 +8,20 @@ function getAppIconPath(baseDir, platform = process.platform) {
   return path.join(baseDir, 'build', 'icon.png');
 }
 
+/**
+ * Whether Chromium draws this window on the CPU: app.getGPUFeatureStatus() reports a feature the GPU
+ * handles as "enabled..." and one it cannot as "disabled_software", "unavailable_software" and the
+ * like. Compositing and canvas are the two a full-window animation leans on.
+ * @param {Record<string, string>|null|undefined} featureStatus
+ */
+function isSoftwareRendering(featureStatus) {
+  if (!featureStatus || typeof featureStatus !== 'object') return false;
+  return ['gpu_compositing', '2d_canvas'].some((feature) => {
+    const status = featureStatus[feature];
+    return typeof status === 'string' && !status.startsWith('enabled');
+  });
+}
+
 function supportsElectronLoginItems(platform = process.platform) {
   return platform === 'win32' || platform === 'darwin';
 }
@@ -341,6 +355,7 @@ module.exports = {
   isDisabledEnvFlag,
   isEnabledEnvFlag,
   isLinuxAppImage,
+  isSoftwareRendering,
   mergeChromiumFeatureList,
   resolveLinuxPasswordStoreBackend,
   resolveNativeThemeSource,

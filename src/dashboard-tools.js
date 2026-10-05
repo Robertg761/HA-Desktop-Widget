@@ -2,7 +2,13 @@ import state from './state.js';
 import websocket from './websocket.js';
 import { restoreDashboard } from './ui.js';
 import { refreshRestoredDashboardSettings } from './settings.js';
-import { readDashboardHistory, writeDashboardHistory } from './dashboard-history.js';
+import {
+  dashboardSnapshot,
+  readDashboardHistory,
+  readRestorePoints,
+  sameLayout,
+  writeDashboardHistory,
+} from './dashboard-history.js';
 import {
   closeDialog,
   copyTextToClipboard,
@@ -137,7 +143,14 @@ function showDashboardHistory() {
     'Restore a saved layout. Your current layout is saved before restoring. Connection settings stay on this device.'
   );
   body.append(description);
-  const entries = readDashboardHistory(state.CONFIG);
+  // Its own coarse list, newest first: one restore point per burst of edits, not every Undo step.
+  // Once the dashboard has been idle, the newest point is the layout already on screen, and
+  // restoring it would change nothing. A point that holds the current layout is left out, compared
+  // as stored, as the list itself compares layouts.
+  const current = dashboardSnapshot(state.CONFIG);
+  const entries = readRestorePoints(state.CONFIG).filter(
+    (entry) => !sameLayout(entry.layout, current)
+  );
   if (!entries.length) {
     description.classList.add('workflow-empty');
     description.textContent = t(
@@ -310,7 +323,12 @@ function initializeDashboardTools() {
   websocket.on('close', (event) => {
     // Closing a socket to reconnect with new settings is not a connection problem.
     if (event?.intentional) return;
-    recordIssue(event?.reason === 'timeout' ? 'connection_timeout' : 'connection_closed');
+    // A first snapshot that ran out of time is a timeout too, only later in the connection.
+    recordIssue(
+      ['timeout', 'snapshot-timeout'].includes(event?.reason)
+        ? 'connection_timeout'
+        : 'connection_closed'
+    );
   });
   websocket.on('error', (error) => {
     recordIssue(
@@ -353,7 +371,7 @@ function initializeDashboardTools() {
       undoInFlight = true;
       refreshDashboardUndoState();
       try {
-        await restoreDashboard(target.layout, { activeTabId: target.activeTabId });
+        await restoreDashboard(target.layout, { activeTabId: target.activeTabId, undo: true });
         refreshRestoredDashboardSettings();
         writeDashboardHistory(
           config,

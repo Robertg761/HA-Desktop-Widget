@@ -1753,14 +1753,16 @@ describe('Camera Module', () => {
       expect(mockWebSocketRequest).toHaveBeenCalledTimes(1);
     });
 
-    it('should show camera status and last updated time', () => {
+    it('should show camera status and, once a picture is up, when it was taken', () => {
       camera.openCamera('camera.front_door');
 
       const modal = document.querySelector('.camera-modal');
       const cameraInfo = modal.querySelector('.camera-info');
 
-      // A readable state label and when the frame was last updated, not the raw "idle".
+      // A readable state label, not the raw "idle", and no time until there is a picture to date.
       expect(cameraInfo.querySelector('.camera-info-state').textContent).toMatch(/^[A-Z]/);
+      expect(cameraInfo.querySelector('.camera-info-updated').textContent).toBe('');
+      modal.querySelector('.camera-img').onload();
       expect(cameraInfo.querySelector('.camera-info-updated').textContent).toMatch(/^Updated /);
     });
 
@@ -1769,13 +1771,16 @@ describe('Camera Module', () => {
       ['24-hour', /\b(?:[01]\d|2[0-3]):\d{2}\b(?!\s?[AP]M)/i],
     ])('writes when the frame was updated in the %s time format', (timeFormat, pattern) => {
       const packageState = require('../../packages/widget-renderer/src/state.js');
+      jest.useFakeTimers({ now: new Date(2026, 6, 17, 9, 5) });
       try {
         packageState.setConfig({ ui: { timeFormat } });
         camera.openCamera('camera.front_door');
+        document.querySelector('.camera-modal .camera-img').onload();
         const text = document.querySelector('.camera-modal .camera-info-updated').textContent;
         expect(text).toMatch(pattern);
       } finally {
         packageState.setConfig({ ui: {} });
+        jest.useRealTimers();
       }
     });
 
@@ -1789,9 +1794,12 @@ describe('Camera Module', () => {
       img.onerror();
       expect(message.hidden).toBe(false);
       expect(img.classList.contains('camera-img-failed')).toBe(true);
+      // No picture, so no time: the camera's own last update would date a picture nobody can see.
+      expect(modal.querySelector('.camera-info-updated').textContent).toBe('');
 
       img.onload();
       expect(message.hidden).toBe(true);
+      expect(modal.querySelector('.camera-info-updated').textContent).toMatch(/^Updated /);
     });
 
     it('clears a failed-frame message when Live is started', async () => {
@@ -2194,6 +2202,11 @@ describe('Camera Module', () => {
       jest.useRealTimers();
     });
 
+    // jsdom's video has no clock; a playing stream's moves forward.
+    const setVideoTime = (video, currentTime) => {
+      Object.defineProperty(video, 'currentTime', { configurable: true, value: currentTime });
+    };
+
     // Opens the viewer, lets the snapshot arrive, and presses Live.
     const openAndGoLive = async () => {
       camera.openCamera('camera.front_door');
@@ -2236,8 +2249,74 @@ describe('Camera Module', () => {
       expect(spinner.classList.contains('show')).toBe(false);
       video.dispatchEvent(new Event('playing'));
       expect(spinner.classList.contains('show')).toBe(false);
-      await jest.advanceTimersByTimeAsync(60000);
+      // A minute of a stream that keeps playing: the start-up timer is not left to fire on it.
+      for (let second = 5; second <= 60; second += 5) {
+        setVideoTime(video, second);
+        await jest.advanceTimersByTimeAsync(5000);
+      }
       expect(mockHlsInstance.destroy).not.toHaveBeenCalled();
+    });
+
+    describe('a stream that stops after it started', () => {
+      const playFirstFrame = async () => {
+        const opened = await openAndGoLive();
+        setVideoTime(opened.video, 10);
+        opened.video.dispatchEvent(new Event('playing'));
+        expect(opened.modal.querySelector('.camera-info-updated').textContent).toBe('Live now');
+        return opened;
+      };
+
+      it('gives up on a picture that stands still for fifteen seconds and tries MJPEG', async () => {
+        const { modal, img, video, spinner } = await playFirstFrame();
+
+        await jest.advanceTimersByTimeAsync(10000);
+        expect(mockHlsInstance.destroy).not.toHaveBeenCalled();
+        await jest.advanceTimersByTimeAsync(5000);
+
+        expect(mockHlsInstance.destroy).toHaveBeenCalledTimes(1);
+        expect(img.getAttribute('src')).toContain('ha://camera_stream/');
+        expect(video.style.display).toBe('none');
+        // The frozen picture is not called live while the MJPEG stream connects.
+        expect(modal.querySelector('.camera-info-updated').textContent).toBe('');
+        expect(spinner.classList.contains('show')).toBe(true);
+        img.onload();
+        expect(spinner.classList.contains('show')).toBe(false);
+        expect(modal.querySelector('.camera-info-updated').textContent).toBe('Live now');
+      });
+
+      it('keeps the stream while its picture moves', async () => {
+        const { video } = await playFirstFrame();
+
+        for (let second = 15; second <= 70; second += 5) {
+          setVideoTime(video, second);
+          await jest.advanceTimersByTimeAsync(5000);
+        }
+
+        expect(mockHlsInstance.destroy).not.toHaveBeenCalled();
+      });
+
+      it('stops watching once the viewer is closed', async () => {
+        const { modal, img } = await playFirstFrame();
+
+        modal.querySelector('.close-btn').click();
+        expect(mockHlsInstance.destroy).toHaveBeenCalledTimes(1);
+        await jest.advanceTimersByTimeAsync(60000);
+
+        expect(mockHlsInstance.destroy).toHaveBeenCalledTimes(1);
+        expect(img.getAttribute('src') || '').not.toContain('ha://camera_stream/');
+      });
+
+      it('stops watching when the stream is left for a snapshot', async () => {
+        const { modal, img } = await playFirstFrame();
+
+        modal.querySelector('#snapshot-btn').click();
+        img.onload();
+        await jest.advanceTimersByTimeAsync(60000);
+
+        expect(mockHlsInstance.destroy).toHaveBeenCalledTimes(1);
+        expect(img.getAttribute('src')).toContain('ha://camera/');
+        expect(modal.querySelector('.camera-info-updated').textContent).toMatch(/^Updated /);
+      });
     });
 
     it('gives up on a stream that never shows a frame and tries the MJPEG stream', async () => {
@@ -2270,9 +2349,12 @@ describe('Camera Module', () => {
 
       img.onload();
       expect(message.hidden).toBe(true);
+      expect(modal.querySelector('.camera-info-updated').textContent).toBe('Live now');
       img.onload(); // the second load is the end of the stream
 
       expect(message.hidden).toBe(false);
+      // The stream is over, so it is no longer live.
+      expect(modal.querySelector('.camera-info-updated').textContent).toBe('');
     });
 
     it('says so when the MJPEG stream does not answer either', async () => {
@@ -2418,8 +2500,8 @@ describe('Camera Module', () => {
       camera.openCamera('camera.front_door');
       const modal = document.querySelector('.camera-modal');
       const updated = modal.querySelector('.camera-info-updated');
-      // The entity's own last update, from last year.
-      expect(updated.textContent).toContain('2025');
+      // Not the entity's own last update (last year), and nothing at all before there is a picture.
+      expect(updated.textContent).toBe('');
 
       modal.querySelector('.camera-img').onload();
 

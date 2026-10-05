@@ -119,6 +119,26 @@ test.each([
     `bind = ${fields}, global, ${APP_ID}:popup-toggle`
   );
 });
+// The recorder writes numpad keys and Print Screen as Electron names them (num0, numadd,
+// PrintScreen); Hyprland only loads a bind whose key is an XKB keysym.
+test.each([
+  ['Ctrl+Alt+num0', 'CTRL + ALT + KP_0', 'CTRL ALT, KP_0'],
+  ['Ctrl+Alt+num7', 'CTRL + ALT + KP_7', 'CTRL ALT, KP_7'],
+  ['Ctrl+Alt+numadd', 'CTRL + ALT + KP_Add', 'CTRL ALT, KP_Add'],
+  ['Ctrl+Alt+numsub', 'CTRL + ALT + KP_Subtract', 'CTRL ALT, KP_Subtract'],
+  ['Ctrl+Alt+nummult', 'CTRL + ALT + KP_Multiply', 'CTRL ALT, KP_Multiply'],
+  ['Ctrl+Alt+numdiv', 'CTRL + ALT + KP_Divide', 'CTRL ALT, KP_Divide'],
+  ['Ctrl+Alt+numdec', 'CTRL + ALT + KP_Decimal', 'CTRL ALT, KP_Decimal'],
+  ['Ctrl+Alt+PrintScreen', 'CTRL + ALT + Print', 'CTRL ALT, Print'],
+  ['Ctrl+Alt+-', 'CTRL + ALT + minus', 'CTRL ALT, minus'],
+])('binds %s on Hyprland by its keysym', (accelerator, keys, fields) => {
+  expect(hyprlandBinding(accelerator, 'popup-toggle')).toBe(
+    `hl.bind("${keys}", hl.dsp.global("${APP_ID}:popup-toggle"))`
+  );
+  expect(hyprlandBinding(accelerator, 'popup-toggle', APP_ID, 'hyprlang')).toBe(
+    `bind = ${fields}, global, ${APP_ID}:popup-toggle`
+  );
+});
 test.each(['Control+H\nbind = , X, exec, bad', 'Control+$key', 'Control+H#comment'])(
   'refuses unsafe legacy key fields: %s',
   (accelerator) => {
@@ -359,6 +379,50 @@ test('AppImage launcher supplies canonical portal identity and repairs only its 
   fs.writeFileSync(file, '[Desktop Entry]\nExec=/custom/widget\n');
   expect(ensureAppImageDesktopEntry({ env, iconPath: icon })).toBe(false);
 });
+describe("the AppImage launcher's icon", () => {
+  function setUp() {
+    const env = {
+      APPIMAGE: path.join(root, 'widget.AppImage'),
+      XDG_DATA_HOME: path.join(root, 'data'),
+      XDG_DATA_DIRS: path.join(root, 'system'),
+    };
+    fs.writeFileSync(env.APPIMAGE, 'app');
+    const oldIcon = path.join(root, 'old-square.png');
+    const newIcon = path.join(root, 'rounded.png');
+    fs.writeFileSync(oldIcon, 'square artwork');
+    fs.writeFileSync(newIcon, 'rounded artwork');
+    const copy = path.join(env.XDG_DATA_HOME, 'icons', `${APP_ID}.png`);
+    return { env, oldIcon, newIcon, copy };
+  }
+
+  // 3.x wrote the launcher with the full-bleed square; an existing launcher used to keep it.
+  test('follows the running build when an older release wrote the launcher', () => {
+    const { env, oldIcon, newIcon, copy } = setUp();
+    expect(ensureAppImageDesktopEntry({ env, iconPath: oldIcon })).toBe(true);
+    expect(fs.readFileSync(copy, 'utf8')).toBe('square artwork');
+
+    ensureAppImageDesktopEntry({ env, iconPath: newIcon });
+
+    expect(fs.readFileSync(copy, 'utf8')).toBe('rounded artwork');
+  });
+
+  test('is left alone when it is already current, or when the launcher is not ours', () => {
+    const { env, newIcon, copy } = setUp();
+    ensureAppImageDesktopEntry({ env, iconPath: newIcon });
+    const copied = fs.statSync(copy).mtimeMs;
+    const copyFileSync = jest.fn();
+    ensureAppImageDesktopEntry({ env, iconPath: newIcon, fsModule: { ...fs, copyFileSync } });
+    expect(copyFileSync).not.toHaveBeenCalled();
+    expect(fs.statSync(copy).mtimeMs).toBe(copied);
+
+    const launcher = path.join(env.XDG_DATA_HOME, 'applications', `${APP_ID}.desktop`);
+    fs.writeFileSync(launcher, `[Desktop Entry]\nExec=/custom/widget\nIcon=${copy}\n`);
+    fs.writeFileSync(copy, 'the user’s own picture');
+    ensureAppImageDesktopEntry({ env, iconPath: newIcon });
+    expect(fs.readFileSync(copy, 'utf8')).toBe('the user’s own picture');
+  });
+});
+
 describe('an AppImage on a system that blocks the Chromium sandbox', () => {
   function writeLauncher({ sandboxDisabled, restriction }) {
     const env = {
@@ -408,6 +472,20 @@ describe('an AppImage on a system that blocks the Chromium sandbox', () => {
     expect(writeLauncher({ sandboxDisabled: true, restriction: undefined })).not.toContain(
       '--no-sandbox'
     );
+  });
+
+  // The launcher only keeps the flag once the AppImage has started. Before that, a double-clicked
+  // AppImage exits without a window, and the README and the download page are all a user has.
+  test('is explained, with a link to the guide, where a user installing it looks', () => {
+    const repo = path.resolve(__dirname, '../..');
+    const read = (file) => fs.readFileSync(path.join(repo, file), 'utf8');
+    expect(fs.existsSync(path.join(repo, 'docs', 'linux-appimage.md'))).toBe(true);
+
+    // Download & Install, and Troubleshooting.
+    expect(read('README.md').match(/\]\(docs\/linux-appimage\.md\)/g)).toHaveLength(2);
+    const guide =
+      'https://github.com/Robertg761/HA-Desktop-Widget/blob/main/docs/linux-appimage.md';
+    expect(read('website/download.html')).toContain(`href="${guide}"`);
   });
 
   describe('with a launcher that is already there', () => {

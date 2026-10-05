@@ -35,7 +35,6 @@
 :root {
   color-scheme: dark;
   --bg: #0a0c10;
-  --bg-raised: #0f1217;
   --surface: rgba(255, 255, 255, 0.028);
   --surface-2: rgba(255, 255, 255, 0.05);
   --line: rgba(255, 255, 255, 0.075);
@@ -272,11 +271,15 @@ h1 {
   font-size: 13.5px;
   color: var(--faint);
 }
-.facts li { display: flex; align-items: center; gap: 8px; }
+/* The check mark is part of the line, not a flex item beside it: a fact that wraps on a phone then
+   keeps its mark next to its first word instead of at the edge of the row it fills. */
 .facts li::before {
   content: '';
+  display: inline-block;
   width: 14px;
   height: 14px;
+  margin-inline-end: 8px;
+  vertical-align: -2px;
   background: currentColor;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
@@ -1153,6 +1156,8 @@ kbd {
   border: 1px solid rgba(var(--accent-rgb), 0.3);
 }
 .install-steps b { color: var(--text); font-weight: 600; }
+.install-steps a { color: var(--accent); text-underline-offset: 3px; }
+.install-steps code { white-space: nowrap; }
 .install-foot { margin: 16px 0 0; font-size: 13px; color: var(--faint); text-align: center; }
 .install-foot a { color: var(--muted); }
 .no-detect { max-width: 440px; margin: 32px auto 0; color: var(--muted); }

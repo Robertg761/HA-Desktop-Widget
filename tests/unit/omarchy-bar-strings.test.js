@@ -8,6 +8,7 @@ const {
   buildOmarchyBarStatus,
   buildOmarchyBarStrings,
 } = require('../../src/omarchy-bar.cjs');
+const { HVAC_MODE_NAMES } = require('../../packages/widget-renderer/src/ha-state-names.cjs');
 
 const root = path.resolve(__dirname, '../..');
 const english = JSON.parse(fs.readFileSync(path.join(root, 'locales', 'en.json'), 'utf8'));
@@ -17,6 +18,15 @@ const packLocales = ['ar', 'de', 'es', 'fr', 'hi', 'zh'];
 const readPack = (locale) =>
   JSON.parse(fs.readFileSync(path.join(root, 'locale-packs', `${locale}.json`), 'utf8')).messages;
 const placeholdersOf = (text) => [...text.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)].map((m) => m[1]);
+
+// The id each thermostat mode's name goes out under, as the plugin's modeLabel asks for it.
+const [, modeLabelSource] = /function modeLabel\(mode\) \{\s*var labels = \{([^}]*)\}/.exec(qml);
+const modeLabels = Object.fromEntries(
+  [...modeLabelSource.matchAll(/(\w+): word\("(\w+)", "([^"]*)"\)/g)].map(
+    ([, mode, id, fallback]) => [mode, { id, fallback }]
+  )
+);
+const modeIds = Object.fromEntries(Object.entries(modeLabels).map(([mode, { id }]) => [mode, id]));
 
 describe('the words the widget sends to the Omarchy bar panel', () => {
   it('are all strings the catalogs have, so a language can translate each', () => {
@@ -94,6 +104,18 @@ describe('the words the widget sends to the Omarchy bar panel', () => {
       }
     );
 
+    it.each(['en', ...packLocales])(
+      'names each thermostat mode in %s as the widget does',
+      (language) => {
+        const strings = stringsFor(language);
+        const catalog = language === 'en' ? english : readPack(language);
+
+        for (const [mode, name] of Object.entries(HVAC_MODE_NAMES)) {
+          expect({ mode, text: strings[modeIds[mode]] }).toEqual({ mode, text: catalog[name] });
+        }
+      }
+    );
+
     it('still translates the words around a placeholder', () => {
       expect(stringsFor('de').now).toBe('Jetzt {{temperature}}');
       expect(stringsFor('en').now).toBe('Now {{temperature}}');
@@ -107,6 +129,22 @@ describe('the words the widget sends to the Omarchy bar panel', () => {
 
     expect(status.strings.connected).toBe('Verbunden');
     expect(buildOmarchyBarStatus({}).strings).toEqual({});
+  });
+});
+
+describe("the plugin's thermostat modes", () => {
+  it("are the widget's own names for them, from HVAC_MODE_NAMES", () => {
+    expect(Object.keys(modeLabels).sort()).toEqual(Object.keys(HVAC_MODE_NAMES).sort());
+    for (const [mode, name] of Object.entries(HVAC_MODE_NAMES)) {
+      const { id, fallback } = modeLabels[mode];
+      expect({ mode, source: OMARCHY_BAR_STRING_SOURCES[id], fallback }).toEqual({
+        mode,
+        source: name,
+        fallback: name,
+      });
+    }
+    // The id plugins up to 1.3.0 already read for fan_only.
+    expect(modeIds.fan_only).toBe('modeFan');
   });
 });
 
@@ -136,5 +174,18 @@ describe('the plugin panel', () => {
     );
     // The product name is not translated.
     expect(literal.filter((text) => text !== 'Home Assistant')).toEqual([]);
+  });
+
+  it('has no English sentence anywhere else in it either, such as in a condition', () => {
+    // Every word() call's own fallback is English on purpose, and comments are not shown; anything
+    // left is shown as it is.
+    const withoutWords = qml
+      .replace(/^\s*\/\/.*$/gm, '')
+      .replace(/(?:root\.)?word\("\w+", "(?:[^"\\]|\\.)*"\)/g, '');
+    const sentences = [...withoutWords.matchAll(/"([A-Z][^"\n]*\s[^"\n]*)"/g)].map(
+      (match) => match[1]
+    );
+    // The product name is not translated ("Home Assistant: " starts the tooltip).
+    expect(sentences.filter((text) => !/^Home Assistant:? ?$/.test(text))).toEqual([]);
   });
 });

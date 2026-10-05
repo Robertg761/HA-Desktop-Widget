@@ -75,6 +75,19 @@ describe('how many blur passes a dialog costs', () => {
       expect(resolvedValue(document.getElementById('playing'), 'filter')).toMatch(/drop-shadow/);
     });
 
+    it("gives the media dialog's filled play button no glow, as on every other platform", () => {
+      render(
+        'linux-performance-mode',
+        `<div class="media-detail-controls">
+           <button class="btn play-pause-btn media-detail-play-btn playing" id="dialog-play"></button>
+         </div>`
+      );
+
+      const button = document.getElementById('dialog-play');
+      expect(resolvedValue(button, 'filter') || 'none').not.toMatch(/drop-shadow/);
+      expect(resolvedValue(button, 'animation')).toBe('none');
+    });
+
     it("lets the playing button's glow pulse everywhere else", () => {
       render('', '<button class="play-pause-btn playing" id="playing"></button>');
 
@@ -100,6 +113,46 @@ describe('how many blur passes a dialog costs', () => {
           <div class="modal-body"></div>
         </div>
       </div>`;
+
+    const SETTINGS_WITH_FOOTER = `
+      <div class="modal" id="settings-modal">
+        <div class="modal-content" id="settings-panel">
+          <div class="modal-body"></div>
+          <div class="modal-footer" id="settings-footer"></div>
+        </div>
+      </div>`;
+
+    describe('in Linux performance mode', () => {
+      afterEach(() => {
+        delete document.body.dataset.platform;
+      });
+
+      it('blurs once, behind the panel, at the radius every other dialog has', () => {
+        render('linux-performance-mode', SETTINGS_WITH_FOOTER);
+        document.body.dataset.platform = 'linux';
+
+        expect(blurOf(document.getElementById('settings-modal'))).toBe('blur(8px)');
+        expect(isNone(blurOf(document.getElementById('settings-panel')))).toBe(true);
+        expect(isNone(blurOf(document.getElementById('settings-footer')))).toBe(true);
+      });
+
+      it('keeps the soft backdrop on Windows without acrylic, where the panel shows it', () => {
+        render('linux-performance-mode', SETTINGS_WITH_FOOTER);
+        document.body.dataset.platform = 'win32';
+
+        expect(blurOf(document.getElementById('settings-modal'))).toMatch(/^blur\(56px\)/);
+        expect(isNone(blurOf(document.getElementById('settings-panel')))).toBe(true);
+        expect(isNone(blurOf(document.getElementById('settings-footer')))).toBe(true);
+      });
+    });
+
+    it('keeps its own blurs where the GPU draws them', () => {
+      render('', SETTINGS_WITH_FOOTER);
+
+      expect(blurOf(document.getElementById('settings-modal'))).toMatch(/^blur\(56px\)/);
+      expect(blurOf(document.getElementById('settings-panel'))).toMatch(/^blur\(48px\)/);
+      expect(blurOf(document.getElementById('settings-footer'))).toMatch(/^blur\(20px\)/);
+    });
 
     it.each(['', 'theme-light', 'frosted-glass', 'linux-performance-mode'])(
       'draws its header and its rail without a blur of their own (%s)',

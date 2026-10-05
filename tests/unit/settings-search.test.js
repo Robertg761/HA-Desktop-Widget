@@ -356,7 +356,7 @@ describe('settings search', () => {
     expect(removeResults()).toBe(before);
   });
   test('searches help text translated as HTML or set by JavaScript, but not status lines', () => {
-    expect(search('Modifiers').length).toBeGreaterThan(0);
+    expect(search('control entities from anywhere').length).toBeGreaterThan(0);
     expect(search('brings the window to front').length).toBeGreaterThan(0);
     document.getElementById('update-status').textContent = 'Version 9.9.9 is ready';
     expect(search('9.9.9')).toHaveLength(0);

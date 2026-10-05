@@ -141,7 +141,9 @@ describe('entity-specific accessible names on row buttons', () => {
         (button) => button.getAttribute('aria-label') || button.textContent.trim()
       );
       // Three buttons said "Close": the header X, the close-cover action and the footer button.
-      expect(names.filter((name) => name === 'Close')).toHaveLength(2);
+      // The action names its cover, and the footer leaves the dialog as Done.
+      expect(names.filter((name) => name === 'Close')).toHaveLength(1);
+      expect(modal.querySelector('#cover-cancel').textContent.trim()).toBe('Done');
       expect(
         modal
           .querySelector('.cover-action-btn[data-action="close_cover"]')

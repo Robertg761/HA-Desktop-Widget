@@ -108,6 +108,11 @@ describe('UI Utilities', () => {
         top: window.innerHeight - 60,
         bottom: window.innerHeight - 16,
       });
+      // Where one toast rests, 20px above the bottom: over the footer.
+      toastContainer.getBoundingClientRect = () => ({
+        top: window.innerHeight - 80,
+        bottom: window.innerHeight - 20,
+      });
 
       uiUtils.showToast('Failed to control Bed Light', 'error', 2000);
       expect(toastContainer.style.bottom).toBe('68px');
@@ -220,28 +225,28 @@ describe('UI Utilities', () => {
       expect(toastContainer.children.length).toBe(0);
     });
 
-    it('should take focus with Tab and be dismissed from the keyboard', () => {
+    it('should take focus with Tab on its close button and be dismissed from the keyboard', () => {
       uiUtils.showToast('Press a key', 'warning', 20000);
       const toast = toastContainer.querySelector('.toast');
-      expect(toast.tabIndex).toBe(0);
+      const close = toast.querySelector('.toast-close');
+      expect(close.tabIndex).toBe(0);
 
-      toast.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+      close.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
       expect(toast.classList.contains('toast-closing')).toBe(false);
 
-      toast.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      close.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       expect(toast.classList.contains('toast-closing')).toBe(true);
       jest.advanceTimersByTime(300);
       expect(toastContainer.children.length).toBe(0);
     });
 
-    it.each(['Enter', ' '])('should dismiss a toast with the %j key', (key) => {
-      uiUtils.showToast('Press a key', 'info', 20000);
+    it('should dismiss a toast when its close button is pressed', () => {
+      uiUtils.showToast('Press a key', 'error', 20000);
       const toast = toastContainer.querySelector('.toast');
-      const keydown = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
 
-      toast.dispatchEvent(keydown);
+      // Enter and Space on a button are its click.
+      toast.querySelector('.toast-close').click();
 
-      expect(keydown.defaultPrevented).toBe(true);
       expect(toast.classList.contains('toast-closing')).toBe(true);
     });
 
@@ -1186,6 +1191,22 @@ describe('UI Utilities', () => {
 
       const tooltips = document.querySelectorAll('#connection-status-tooltip');
       expect(tooltips.length).toBe(1);
+    });
+
+    // What it opens is a tooltip that repeats the dot's own label, not a menu: announced with
+    // aria-haspopup, it was a menu button whose menu never came.
+    it('is a button described by its tooltip, not a menu button', () => {
+      uiUtils.initializeConnectionStatusTooltip();
+      const tooltip = document.getElementById('connection-status-tooltip');
+      expect(statusIndicator.getAttribute('role')).toBe('button');
+
+      [false, true].forEach((open) => {
+        statusIndicator.click();
+        expect(tooltip.classList.contains('visible')).toBe(!open);
+        expect(statusIndicator.hasAttribute('aria-haspopup')).toBe(false);
+        expect(statusIndicator.hasAttribute('aria-expanded')).toBe(false);
+      });
+      expect(tooltip.getAttribute('role')).toBe('tooltip');
     });
 
     it('should show tooltip on mouseenter and hide on mouseleave', () => {
@@ -2265,6 +2286,43 @@ describe('UI Utilities', () => {
         uiUtils.applyAccentTheme(theme.id);
         expect(document.body.dataset.accentNeutral).toBeUndefined();
       }
+    });
+
+    // A tile lit in an accent near the alarm's red or the warning's amber looked like a tile that
+    // needs attention, so the stylesheet gives it a lighter wash with such an accent.
+    it('flags an accent near the red or the amber of a tile that needs attention', () => {
+      const warm = () => document.body.dataset.accentWarm === 'true';
+      const flagged = uiUtils
+        .getAccentThemes()
+        .filter((theme) => {
+          uiUtils.applyAccentTheme(theme.id);
+          return warm();
+        })
+        .map((theme) => theme.id);
+      expect(flagged).toEqual(['rose', 'coral', 'amber']);
+
+      const holidays = SEASONAL_HOLIDAYS.filter((holiday) => {
+        uiUtils.applyAccentThemeFromColor(holiday.colors.accent);
+        return warm();
+      }).map((holiday) => holiday.id);
+      expect(holidays).toEqual([
+        'new-year',
+        'lunar-new-year',
+        'halloween',
+        'thanksgiving',
+        'christmas',
+      ]);
+
+      // A grey has no hue, whatever its channels say, and a seasonal accent is flagged as well.
+      uiUtils.applyAccentThemeFromColor('#8a7f7c');
+      expect(warm()).toBe(false);
+      uiUtils.applyAccentTheme('emerald');
+      expect(warm()).toBe(false);
+      uiUtils.setSeasonalColors({ accent: '#ef4444', background: '#15803d' });
+      expect(warm()).toBe(true);
+      uiUtils.setSeasonalColors(null);
+      uiUtils.applyAccentTheme('original');
+      expect(warm()).toBe(false);
     });
 
     it('sets a text colour for both themes, and a ring colour, on the root', () => {

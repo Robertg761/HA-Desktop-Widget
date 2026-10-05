@@ -1,5 +1,6 @@
 /* global process */
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { appId: APP_ID } = require('../package.json');
 
@@ -73,6 +74,56 @@ function isPortalBindingRegistered(binding) {
   return !!binding && (!!binding.trigger || binding.requiresCompositorBinding === true);
 }
 
+// XKB keysym names, which Hyprland binds and the Global Shortcuts portal's triggers are written in,
+// for the accelerator keys whose own name is not one: punctuation, which the recorder writes as the
+// character itself ("-"), and the numpad keys and Print Screen as Electron names them. Keyed in
+// lower case.
+const XKB_KEYSYMS = Object.freeze({
+  ',': 'comma',
+  '.': 'period',
+  '/': 'slash',
+  '\\': 'backslash',
+  ';': 'semicolon',
+  "'": 'apostrophe',
+  '[': 'bracketleft',
+  ']': 'bracketright',
+  '`': 'grave',
+  '=': 'equal',
+  '-': 'minus',
+  '!': 'exclam',
+  '@': 'at',
+  '#': 'numbersign',
+  $: 'dollar',
+  '%': 'percent',
+  '^': 'asciicircum',
+  '&': 'ampersand',
+  '*': 'asterisk',
+  '(': 'parenleft',
+  ')': 'parenright',
+  _: 'underscore',
+  ':': 'colon',
+  '"': 'quotedbl',
+  '<': 'less',
+  '>': 'greater',
+  '?': 'question',
+  '{': 'braceleft',
+  '}': 'braceright',
+  '~': 'asciitilde',
+  '|': 'bar',
+  ...Object.fromEntries(Array.from({ length: 10 }, (_, digit) => [`num${digit}`, `KP_${digit}`])),
+  numadd: 'KP_Add',
+  numsub: 'KP_Subtract',
+  nummult: 'KP_Multiply',
+  numdiv: 'KP_Divide',
+  numdec: 'KP_Decimal',
+  printscreen: 'Print',
+});
+
+/** The XKB keysym for an accelerator key whose own name is not one, otherwise ''. */
+function xkbKeysym(key) {
+  return XKB_KEYSYMS[String(key).toLowerCase()] || '';
+}
+
 function hyprlandBinding(accelerator, id, appId = APP_ID, format = 'lua') {
   const keys = String(accelerator)
     .split('+')
@@ -101,37 +152,6 @@ function hyprlandBinding(accelerator, id, appId = APP_ID, format = 'lua') {
         VolumeUp: 'XF86AudioRaiseVolume',
         VolumeDown: 'XF86AudioLowerVolume',
         VolumeMute: 'XF86AudioMute',
-        ',': 'comma',
-        '.': 'period',
-        '/': 'slash',
-        '\\': 'backslash',
-        ';': 'semicolon',
-        "'": 'apostrophe',
-        '[': 'bracketleft',
-        ']': 'bracketright',
-        '`': 'grave',
-        '=': 'equal',
-        '-': 'minus',
-        '!': 'exclam',
-        '@': 'at',
-        '#': 'numbersign',
-        $: 'dollar',
-        '%': 'percent',
-        '^': 'asciicircum',
-        '&': 'ampersand',
-        '*': 'asterisk',
-        '(': 'parenleft',
-        ')': 'parenright',
-        _: 'underscore',
-        ':': 'colon',
-        '"': 'quotedbl',
-        '<': 'less',
-        '>': 'greater',
-        '?': 'question',
-        '{': 'braceleft',
-        '}': 'braceright',
-        '~': 'asciitilde',
-        '|': 'bar',
       };
       const extraModifiers = {
         Command: 'SUPER',
@@ -140,7 +160,13 @@ function hyprlandBinding(accelerator, id, appId = APP_ID, format = 'lua') {
         Option: 'ALT',
         CmdOrCtrl: 'CTRL',
       };
-      return aliases[normalized] || extraModifiers[normalized] || names[normalized] || normalized;
+      return (
+        aliases[normalized] ||
+        extraModifiers[normalized] ||
+        names[normalized] ||
+        xkbKeysym(normalized) ||
+        normalized
+      );
     });
   if (format === 'hyprlang') {
     const key = keys.at(-1);
@@ -169,16 +195,163 @@ function legacyPortalBindingNotice({ legacyAppId, id, accelerator = '' } = {}) {
   );
 }
 
+/**
+ * Whether APPIMAGE names the AppImage this process runs from. Its runtime sets APPIMAGE, and APPDIR
+ * to where it mounted the image, and starts the executable from APPDIR. A program started from
+ * inside another AppImage (a terminal or an editor packaged as one) inherits that app's two
+ * variables, and its executable is not in that APPDIR. Without APPDIR there is nothing to check
+ * APPIMAGE against, and it is taken as it is.
+ * @param {Object} [options]
+ * @param {Object} [options.env]
+ * @param {string} [options.execPath] - process.execPath.
+ * @param {(file: string) => string} [options.realpath]
+ * @returns {boolean}
+ */
+function isOwnAppImage({
+  env = process.env,
+  execPath = process.execPath,
+  realpath = fs.realpathSync,
+} = {}) {
+  if (!env.APPIMAGE) return false;
+  if (!env.APPDIR) return true;
+  const isInside = (dir, file) => {
+    const relative = path.relative(dir, file);
+    return (
+      relative !== '' &&
+      relative !== '..' &&
+      !relative.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relative)
+    );
+  };
+  if (isInside(env.APPDIR, execPath)) return true;
+  // The same mount under another name, such as a TMPDIR that is a symlink.
+  try {
+    return isInside(realpath(env.APPDIR), realpath(execPath));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Drop an APPIMAGE and APPDIR this process inherited from another AppImage, before anything reads
+ * them. Left in place, they make that app look like this one: the updater would take its file for
+ * this install, a restart or the desktop-layer handoff would start it, and the menu launcher,
+ * autostart entry, ~/.local/bin command and Omarchy bar would open it.
+ * @param {Object} [options] - As isOwnAppImage takes them; env is changed in place.
+ * @returns {string} The APPIMAGE that was dropped, or '' when nothing was.
+ */
+function forgetInheritedAppImage({
+  env = process.env,
+  execPath = process.execPath,
+  realpath = fs.realpathSync,
+} = {}) {
+  if (!env.APPIMAGE || isOwnAppImage({ env, execPath, realpath })) return '';
+  const inherited = String(env.APPIMAGE);
+  delete env.APPIMAGE;
+  delete env.APPDIR;
+  return inherited;
+}
+
+// The name the Arch package puts on PATH. The .deb links the executable's own name
+// (home-assistant-widget, from package.json), and an AppImage gets a link of this name (below).
+const COMMAND_NAME = 'ha-desktop-widget';
+
+/**
+ * Where an AppImage's command lives: a link in the user's own folder of commands, which
+ * ensureAppImageCommandLink (linux-desktop-entry.cjs) keeps pointed at the AppImage that last ran.
+ * The AppImage's own file name carries its version ("HA Desktop Widget-4.0.0-linux-x64.AppImage"),
+ * and an update installs the next build under its own name and deletes this one, so a key bound to
+ * that path would stop working at the first update. A Linux path, whatever system builds it.
+ * @param {string} [home]
+ */
+function getAppImageCommandLink(home = os.homedir()) {
+  return path.posix.join(home, '.local', 'bin', COMMAND_NAME);
+}
+
+// A word for a shell (and for a compositor's exec line, which goes through one): quoted only when
+// it needs to be, as a path with spaces does ("HA Desktop Widget-4.0.0-linux-x64.AppImage").
+function shellWord(value) {
+  const text = String(value);
+  return /^[\w@%+=:,./-]+$/.test(text) ? text : `'${text.replace(/'/g, "'\\''")}'`;
+}
+
+// The arguments that pick this widget's profile, so a second launch reaches this instance and not
+// the installed one: the single-instance lock lives in the profile.
+function getProfileArgs(argv, isPackaged) {
+  const args = argv.filter((arg) => arg.startsWith('--user-data-dir='));
+  // A run from source with --dev uses a profile of its own beside the installed widget's.
+  if (!isPackaged && argv.includes('--dev')) args.push('--dev');
+  return args;
+}
+
+/**
+ * The command a person binds to a key in their window manager to show or hide this widget, as they
+ * would type it: `ha-desktop-widget --toggle` for the Arch package, `home-assistant-widget --toggle`
+ * for the .deb, the link in ~/.local/bin by its full path for an AppImage (a compositor's PATH may
+ * not have that folder), and the executable's path for anything else. A name on PATH, or the link,
+ * is used only when it leads to this executable or AppImage; an AppImage without one gets its own
+ * path, which lasts until an update renames the file.
+ * @param {Object} [options]
+ * @param {string[]} [options.argv] - This process's argv, for the profile it runs on.
+ * @param {Object} [options.env]
+ * @param {string} options.execPath - process.execPath.
+ * @param {boolean} options.isPackaged - app.isPackaged.
+ * @param {string} [options.appPath] - app.getAppPath(), which a run from source needs.
+ * @param {string} [options.home]
+ * @param {(file: string) => string} [options.realpath]
+ * @returns {string}
+ */
+function getToggleCommand({
+  argv = process.argv,
+  env = process.env,
+  execPath,
+  isPackaged,
+  appPath = '',
+  home = os.homedir(),
+  realpath = fs.realpathSync,
+} = {}) {
+  const resolve = (file) => {
+    try {
+      return realpath(file);
+    } catch {
+      return null;
+    }
+  };
+  let launch;
+  if (isOwnAppImage({ env, execPath, realpath })) {
+    const link = getAppImageCommandLink(home);
+    const linked = resolve(link);
+    launch = [shellWord(linked && linked === resolve(env.APPIMAGE) ? link : env.APPIMAGE)];
+  } else if (!isPackaged) {
+    launch = [shellWord(execPath), shellWord(appPath)];
+  } else {
+    const target = resolve(execPath);
+    const dirs = String(env.PATH || '')
+      .split(path.delimiter)
+      .filter((dir) => path.isAbsolute(dir));
+    const name = [COMMAND_NAME, path.basename(execPath)].find((candidate) =>
+      dirs.some((dir) => target && resolve(path.join(dir, candidate)) === target)
+    );
+    launch = [name || shellWord(execPath)];
+  }
+  return [...launch, ...getProfileArgs(argv, isPackaged).map(shellWord), '--toggle'].join(' ');
+}
+
 module.exports = {
   APP_ID,
   LEGACY_PORTAL_APP_IDS,
   legacyPortalBindingNotice,
+  forgetInheritedAppImage,
   getLaunchAction,
+  getAppImageCommandLink,
   getHyprlandSocketCandidates,
+  getToggleCommand,
   hasIsolatedProfile,
   hasLiveHyprlandInstance,
   isGnome,
   isHyprland,
+  isOwnAppImage,
   isPortalBindingRegistered,
   hyprlandBinding,
+  xkbKeysym,
 };

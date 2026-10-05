@@ -2,20 +2,17 @@
  * @jest-environment jsdom
  */
 
-const { createRendererHarness } = require('../helpers/renderer-harness');
+const { createRendererHarness, warmUpRenderer } = require('../helpers/renderer-harness');
 
 describe('the connection panel on the dashboard', () => {
   const harness = createRendererHarness();
   const title = () => document.querySelector('.widget-state-title')?.textContent;
   const copy = () => document.querySelector('.widget-state-copy')?.textContent;
 
-  // The first load of renderer.js is the slow one: it is when Jest transforms the file, which
-  // under coverage on a busy runner with a cold cache can take longer than the 5 s a test gets.
-  // Load it once here, with room, so no test pays for it.
-  beforeAll(async () => {
-    await harness.load({ config: harness.tokenConfig() });
-    harness.cleanup();
-  }, 60000);
+  warmUpRenderer(
+    () => harness.load({ config: harness.tokenConfig() }),
+    () => harness.cleanup()
+  );
 
   afterEach(() => harness.cleanup());
 
@@ -100,13 +97,18 @@ describe('the connection panel on the dashboard', () => {
       );
     });
 
-    it('still reports a plain close as a disconnect that retries', async () => {
+    it('still reports a plain close as a disconnect that retries, without saying the title again', async () => {
       await harness.load({ config: harness.tokenConfig() });
       harness.websocket.emit('connect-attempt');
 
       harness.websocket.emit('close', { intentional: false });
 
-      expect(copy()).toBe('Disconnected from Home Assistant. Retrying automatically.');
+      // Under "Home Assistant is disconnected", "Disconnected from Home Assistant" says it twice.
+      expect(copy()).toBe('The connection was lost. Retrying automatically.');
+      expect(harness.uiUtils.setStatus).toHaveBeenLastCalledWith(
+        false,
+        'Disconnected from Home Assistant. Retrying automatically.'
+      );
     });
 
     it('does not repeat "Authentication failed" under the title Authentication failed', async () => {
@@ -229,6 +231,24 @@ describe('the connection panel on the dashboard', () => {
       oauthStatus: 'reauth_required',
       oauthAuthorizationId: undefined,
     });
+
+  describe('an authorization the locked keyring keeps from being read', () => {
+    it('goes on from its title instead of saying it again', async () => {
+      await harness.load({
+        config: {
+          ...revokedConfig(),
+          homeAssistant: {
+            ...revokedConfig().homeAssistant,
+            oauthLastErrorCode: 'OAUTH_KEYRING_UNAVAILABLE',
+          },
+        },
+      });
+
+      expect(title()).toBe('System keyring is locked');
+      expect(copy()).toContain('authorization cannot be read until the system keyring is unlocked');
+      expect(copy()).not.toMatch(/keyring is locked/i);
+    });
+  });
 
   describe('reconnecting a revoked authorization', () => {
     it('waits for the answer in the browser, with the waiting bar', async () => {

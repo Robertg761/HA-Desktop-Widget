@@ -694,7 +694,9 @@ describe('number helpers', () => {
     expect(word('heat', { current_temperature: 0, temperature: 21 })).toBe('0°C');
     expect(word('heat', { current_temperature: null, temperature: 0 })).toBe('0°C');
     expect(word('heat', { current_temperature: '', temperature: 21 })).toBe('21°C');
-    expect(word('heat', { current_temperature: null, temperature: null })).toBe('Heating');
+    // With no reading the tile names the mode, as Home Assistant does: 'Heat', not 'Heating',
+    // which an idle thermostat in heat mode is not doing.
+    expect(word('heat', { current_temperature: null, temperature: null })).toBe('Heat');
     expect(word('unknown', { current_temperature: 21 })).toBe('Unknown');
     expect(word('heat', { current_temperature: -5 })).toBe('-5°C');
     expect(

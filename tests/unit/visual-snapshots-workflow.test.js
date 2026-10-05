@@ -1,0 +1,94 @@
+/** @jest-environment node */
+const fs = require('fs');
+const path = require('path');
+const yaml = require('js-yaml');
+const { Minimatch } = require('minimatch');
+const { WINDOW_POSITION } = require('../../scripts/visual-snapshots/fixture.cjs');
+
+// The workflow photographs the app on each OS. A capture is only worth reviewing if the runner can
+// draw its text and nothing of the runner's own sits in the picture.
+describe('the visual snapshot workflow', () => {
+  const workflow = yaml.load(
+    fs.readFileSync(path.resolve(__dirname, '../../.github/workflows/visual-snapshots.yml'), 'utf8')
+  );
+  const steps = workflow.jobs.snapshots.steps;
+  const order = (name) => {
+    const index = steps.findIndex((step) => step.name === name);
+    expect(index).toBeGreaterThanOrEqual(0);
+    return index;
+  };
+
+  // The image has no Devanagari font and the app bundles none, so every Hindi string was boxes.
+  it('installs a Devanagari font on Linux before the snapshots', () => {
+    const install = steps.find(
+      (step) => step.if === "runner.os == 'Linux'" && /apt-get install/.test(step.run)
+    );
+    expect(install.run).toMatch(/\bfonts-noto-core\b/);
+    expect(order(install.name)).toBeLessThan(order('Take snapshots (Linux)'));
+  });
+
+  // The agent's console covered the Windows 11 pin captures, and the pointer, resting where the
+  // widget opens, left a tile's native tooltip in the first capture.
+  it('minimizes the open windows and parks the pointer before the Windows snapshots', () => {
+    const clear = steps[order('Clear the desktop (Windows)')];
+    expect(clear.if).toBe("runner.os == 'Windows'");
+    expect(clear.run).toContain('ShowWindow($_.MainWindowHandle, 6)');
+    expect(clear.run).toContain('SetCursorPos(0, 0)');
+    // After the Windows 11 first-run windows are closed, and before anything is captured.
+    expect(order('Close first-run windows (Windows 11)')).toBeLessThan(
+      order('Clear the desktop (Windows)')
+    );
+    expect(order('Clear the desktop (Windows)')).toBeLessThan(
+      order('Take snapshots (Windows, macOS)')
+    );
+    // The top-left corner is clear of the widget and the 32 px margin its screen capture takes.
+    expect(WINDOW_POSITION.x - 32).toBeGreaterThan(32);
+  });
+
+  // With every scene in one job, a slow windows-latest runner ran past the job's time limit. Each OS
+  // now runs the list in shards, and reviewers still download one artifact per OS.
+  describe('split into shards', () => {
+    const { matrix } = workflow.jobs.snapshots.strategy;
+    const labels = Object.fromEntries(matrix.include.map((entry) => [entry.os, entry.artifact]));
+    const upload = steps[order('Upload snapshots')];
+    const merge = workflow.jobs.merge;
+    const fill = (template, values) =>
+      template.replace(/\$\{\{\s*matrix\.(\w+)\s*\}\}/g, (_, key) => String(values[key]));
+    const shardArtifacts = matrix.os.flatMap((os) =>
+      matrix.shard.map((shard) => fill(upload.with.name, { artifact: labels[os], shard }))
+    );
+
+    it('runs shards 1 to n on every OS and tells each job which one it is', () => {
+      expect(matrix.shard).toEqual(matrix.shard.map((_, i) => i + 1));
+      expect(matrix.shard.length).toBeGreaterThan(1);
+      expect(workflow.jobs.snapshots.env.SNAPSHOT_SHARD).toBe(
+        `\${{ matrix.shard }}/${matrix.shard.length}`
+      );
+    });
+
+    it('gives every OS its own artifact name, as runner.os cannot tell the two Windows apart', () => {
+      expect(Object.keys(labels).sort()).toEqual([...matrix.os].sort());
+      expect(new Set(Object.values(labels)).size).toBe(matrix.os.length);
+      expect(new Set(shardArtifacts).size).toBe(matrix.os.length * matrix.shard.length);
+      expect(upload.if).toBe('always()');
+    });
+
+    it("merges each OS's shards, and only those, into visual-snapshots-<OS>", () => {
+      expect(merge.needs).toBe('snapshots');
+      // Also when a shard failed or ran out of time, so its captures still arrive.
+      expect(merge.if).toBe('always()');
+      expect([...merge.strategy.matrix.artifact].sort()).toEqual(Object.values(labels).sort());
+      const [step] = merge.steps;
+      expect(step.uses).toMatch(/^actions\/upload-artifact\/merge@/);
+      // Kept, so that re-running one failed shard can merge again with the others.
+      expect(step.with['delete-merged']).toBeUndefined();
+      for (const artifact of merge.strategy.matrix.artifact) {
+        expect(fill(step.with.name, { artifact })).toBe(`visual-snapshots-${artifact}`);
+        const pattern = new Minimatch(fill(step.with.pattern, { artifact }));
+        const own = matrix.shard.map((shard) => fill(upload.with.name, { artifact, shard }));
+        // visual-snapshots-Windows-shard-* must not take the Windows 11 shards as well.
+        expect(shardArtifacts.filter((name) => pattern.match(name))).toEqual(own);
+      }
+    });
+  });
+});

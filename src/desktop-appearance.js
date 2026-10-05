@@ -78,6 +78,11 @@ export function applyDesktopAppearance(config) {
     'layer-drag-enabled',
     config.desktopCapabilities?.canDrag === true
   );
+  // Drawn on the CPU: the seasonal art holds still (styles.css, src/seasonal-effects.js).
+  document.body.classList.toggle(
+    'software-rendering',
+    config.desktopCapabilities?.softwareRendering === true
+  );
   // Leave ordinary desktop styles alone until this module has applied a palette.
   if (paletteApplied) paletteProperties.forEach((name) => body.style.removeProperty(name));
   paletteApplied = false;

@@ -8,7 +8,11 @@
  * color-mix(). Interaction states are modelled with attributes: give the element
  * `data-focus-visible`, `data-focus` or `data-hover`. Pass `forcedColors: true`,
  * `prefersContrast: 'more'`, `pointer: 'coarse'` or `reducedMotion: true` (or `false`, for the
- * no-preference blocks) in the options to apply those media blocks.
+ * no-preference blocks) in the options to apply those media blocks. A size container query applies
+ * when the options give the size of the container it asks about (`container: { width: 200 }`);
+ * without one, and for any other kind of container query, it does not. So the rules in a
+ * scroll-state() query, such as the to-do add field's while it is stuck to the top, are never
+ * applied: a test of them would read the unstuck values.
  */
 const fs = require('fs');
 const path = require('path');
@@ -219,10 +223,14 @@ function mediaMatches(
         const [, bound, axis, size] = match;
         return bound === 'max' ? viewport[axis] <= Number(size) : viewport[axis] >= Number(size);
       }
-      match = feature.match(/^(width|height)\s*(<=|>=)\s*(\d+)px$/);
+      match = feature.match(/^(width|height)\s*(<=|>=|<|>)\s*(\d+)px$/);
       if (match) {
         const [, axis, operator, size] = match;
-        return operator === '<=' ? viewport[axis] <= Number(size) : viewport[axis] >= Number(size);
+        const value = viewport[axis];
+        const bound = Number(size);
+        if (operator === '<') return value < bound;
+        if (operator === '>') return value > bound;
+        return operator === '<=' ? value <= bound : value >= bound;
       }
       return false;
     })
@@ -236,6 +244,14 @@ function collectDeclarations(document, property, viewport, features) {
     for (const rule of rules) {
       if (rule.cssRules && rule.media) {
         if (mediaMatches(rule.media.mediaText, viewport, features)) visit(rule.cssRules);
+        continue;
+      }
+      if (rule.cssRules && /^@container\b/.test(rule.cssText)) {
+        const condition = rule.cssText.slice('@container'.length, rule.cssText.indexOf('{'));
+        const sized = /^\s*\(/.test(condition);
+        if (sized && features.container && mediaMatches(condition.trim(), features.container)) {
+          visit(rule.cssRules);
+        }
         continue;
       }
       if (rule.cssRules && rule.conditionText !== undefined) {
@@ -271,10 +287,11 @@ function cascadedDeclaration(
     prefersContrast,
     reducedMotion,
     pointer,
+    container,
   } = {}
 ) {
   let winner = null;
-  const features = { forcedColors, prefersContrast, reducedMotion, pointer };
+  const features = { forcedColors, prefersContrast, reducedMotion, pointer, container };
   for (const declaration of collectDeclarations(
     element.ownerDocument,
     property,

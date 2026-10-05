@@ -20,6 +20,9 @@
  *            desktop pin family has a scene)
  *   keepToasts  leave the toasts the setup raised on screen for the capture (they are cleared
  *               otherwise)
+ *   startup  { config, env } for a scene about how the app starts: it runs on an app of its own
+ *            whose config.json is config(fixture settings), with env added to its environment
+ *   platforms  the process.platform values a scene runs on, when not every one can stage it
  *
  * A setup can also fail its scene with ctx.expect(expression, label), a layout check that compares
  * boxes with each other (a button lies inside its dialog) and so holds on any machine's fonts.
@@ -219,6 +222,150 @@ async function showFirstRunWelcome(ctx) {
   await ctx.waitForExpression(`${back}.hidden`, 'the first-run welcome step');
 }
 
+// Start-ups no change to a running app can show. Each starts an app of its own on the config.json
+// that startup.config makes from the fixture's settings (see run.cjs), after the shared scenes.
+const WIZARD_SHOWN = `document.querySelector('.first-run-onboarding:not(.hidden)')`;
+const HEADER_DISCONNECTED = `!document.getElementById('connection-status').classList.contains('connected')`;
+// A first install: only the window's place and seasonal themes off are saved, so the picture is
+// the same whatever the date.
+const firstInstall = (base) => ({
+  windowPosition: base.windowPosition,
+  ui: { seasonal: { enabled: false } },
+});
+// A saved token this computer cannot read: a profile moved to another computer or user account
+// (Windows, macOS), or no unlocked keyring (Linux, where the check runs once the window is up).
+const unreadableToken = (base) => ({
+  ...base,
+  homeAssistant: {
+    ...base.homeAssistant,
+    token: Buffer.from('not a ciphertext').toString('base64'),
+    tokenEncrypted: true,
+  },
+});
+// Browser authorization set up, and no authorization saved beside it.
+const oauthWithNothingSaved = (base) => ({
+  ...base,
+  homeAssistant: { url: base.homeAssistant.url, authMethod: 'oauth' },
+});
+// An existing setup asked for its token or authorization again opens on a panel that says why,
+// not on Welcome. With a title, it waits past any panel before it (restoring) for that one, and a
+// start-up that drifts to another panel fails instead of capturing it.
+async function showTokenPanel(ctx, title) {
+  const shownTitle = `document.querySelector('#widget-state-panel .widget-state-title')?.textContent`;
+  await ctx.waitForExpression(
+    title ? `${shownTitle} === ${JSON.stringify(title)}` : shownTitle,
+    title ? `the panel titled ${title}` : 'the token panel'
+  );
+  await ctx.expect(`!${WIZARD_SHOWN}`, 'an existing setup is not sent through Welcome');
+}
+const startupScenes = [
+  // The header's dot is the hollow ring of no connection.
+  {
+    name: 'startup-first-run',
+    startup: { config: firstInstall },
+    setup: async (ctx) => {
+      await ctx.waitForSelector('.first-run-onboarding:not(.hidden)');
+      await ctx.expect(HEADER_DISCONNECTED, 'the header does not say connected');
+    },
+  },
+  // A system language the app has as a pack that is not downloaded: the welcome step offers it.
+  // Only Linux takes the system language from the environment of one app.
+  {
+    name: 'startup-first-run-ar-system',
+    platforms: ['linux'],
+    startup: {
+      config: firstInstall,
+      env: { LANGUAGE: 'ar', LANG: 'ar_EG.UTF-8', LC_ALL: '', LC_MESSAGES: '' },
+    },
+    setup: (ctx) => ctx.waitForSelector('#first-run-language-offer:not([hidden]) button'),
+  },
+  {
+    name: 'startup-token-unreadable',
+    keepToasts: true,
+    startup: { config: unreadableToken },
+    setup: (ctx) => showTokenPanel(ctx),
+  },
+  // Its "Enter token" opens Settings on General with the token field open, the reason above it.
+  {
+    name: 'startup-token-unreadable-settings',
+    startup: { config: unreadableToken },
+    setup: async (ctx) => {
+      await showTokenPanel(ctx);
+      await ctx.click('#widget-state-panel .widget-state-actions .btn:last-child');
+      await ctx.waitForExpression(
+        `document.activeElement?.id === 'ha-token'`,
+        'the cursor in the token field'
+      );
+      await ctx.expect(
+        `document.getElementById('secure-storage-notice').classList.contains('hidden')`,
+        'the missing keyring is said once, in the line above the field'
+      );
+      await ctx.expect(
+        `(() => {
+          const page = document.querySelector('#settings-modal .modal-body').getBoundingClientRect();
+          const caption = document.querySelector('#ha-token').closest('.settings-group')
+            .querySelector('.settings-group-caption').getBoundingClientRect();
+          return caption.top - page.top >= 12;
+        })()`,
+        'the Home Assistant caption is clear of the top of the page'
+      );
+    },
+  },
+  // The start after a token was entered on a computer with no keyring, which could not save it.
+  {
+    name: 'startup-token-not-saved',
+    keepToasts: true,
+    startup: {
+      config: (base) => ({
+        ...base,
+        homeAssistant: { url: base.homeAssistant.url, authMethod: 'token' },
+        tokenResetReason: 'not_persisted',
+      }),
+    },
+    setup: (ctx) => showTokenPanel(ctx, 'Access token was not saved'),
+  },
+  // Browser authorization with no saved authorization to restore it from. Windows and macOS find
+  // none and ask to reconnect. Linux under CI has no keyring, so it stops before looking and asks
+  // for the keyring to be unlocked: that is the panel it captures, under a name that says so.
+  {
+    name: 'startup-oauth-reauth',
+    platforms: ['win32', 'darwin'],
+    startup: { config: oauthWithNothingSaved },
+    setup: (ctx) => showTokenPanel(ctx, 'Home Assistant authorization expired'),
+  },
+  {
+    name: 'startup-oauth-keyring',
+    platforms: ['linux'],
+    startup: { config: oauthWithNothingSaved },
+    setup: (ctx) => showTokenPanel(ctx, 'System keyring is locked'),
+  },
+];
+
+// The wizard's authorization step after an attempt on a server address nothing listens on, which
+// fails at once and opens no browser. `says` is a part of the message the failure has to show, so
+// a scene whose failure drifts to another one fails instead of capturing it.
+async function failFirstRunAuthorization(ctx, says) {
+  await showFirstRunWelcome(ctx);
+  await ctx.click('.first-run-actions .btn-primary');
+  await ctx.waitForSelector('.first-run-content input');
+  // The field keeps a draft from a scene before; this one starts from an empty field.
+  await ctx.ev(`(() => {
+    const field = document.querySelector('.first-run-content input');
+    field.value = '';
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    field.focus();
+  })()`);
+  await ctx.insertText('127.0.0.1:9');
+  await ctx.click('.first-run-actions .btn-primary');
+  await ctx.waitForSelector('.first-run-url');
+  await ctx.click('.first-run-actions .btn-primary');
+  await ctx.waitForSelector('.first-run-status[data-status="error"]');
+  await ctx.expect(
+    `document.querySelector('.first-run-status').textContent.includes(${JSON.stringify(says)})`,
+    `the step says ${says}`
+  );
+}
+
 // Settings opens one page at a time; this scrolls the wanted element to the top (or wherever `block`
 // puts it) and opens any disclosure it sits in.
 async function revealInSettings(ctx, selector, block = 'start') {
@@ -299,6 +446,75 @@ const pinScene = (name, entityId, extra = {}) => ({
   config: pinsPage,
   setup: (ctx) => pinEntity(ctx, entityId),
   ...extra,
+});
+
+// Gives an open pin new bounds, as dragging its corner does. Bounds can only change in edit mode;
+// the pin redraws for its new size.
+async function resizePin(ctx, entityId, size) {
+  await ctx.ev(`(async () => {
+    await window.electronAPI.setDesktopPinEditMode(true);
+    await window.electronAPI.updateDesktopPinBounds(${JSON.stringify(entityId)}, ${JSON.stringify(size)});
+    await window.electronAPI.setDesktopPinEditMode(false);
+  })()`);
+  await ctx.sleep(900);
+}
+
+// Every button of a pin lies inside its window, and none has its label cut short.
+const PIN_BUTTONS_FIT = `(() => {
+  const buttons = [...document.querySelectorAll('.desktop-pin-panel-button, .desktop-pin-light-preset')];
+  const labels = [...document.querySelectorAll('.desktop-pin-panel-button-label')];
+  return (
+    buttons.length > 0 &&
+    buttons.every((button) => {
+      const box = button.getBoundingClientRect();
+      return box.bottom <= innerHeight && box.right <= innerWidth;
+    }) &&
+    labels.every((label) => label.scrollWidth <= label.clientWidth)
+  );
+})()`;
+
+// A pin dragged a little bigger than the default 168x148, named for its size. Pins in that band ran
+// their bottom row off the tile and cut its labels to "C...", so the scene fails if that is back.
+const resizedPinScene = (family, entityId, size, extra = {}) =>
+  pinScene(`pin-${family}-${size.width}x${size.height}`, entityId, {
+    ...extra,
+    setup: async (ctx) => {
+      const pin = await ctx.openPin(entityId);
+      await resizePin(ctx, entityId, size);
+      if (!(await pin.evaluate(PIN_BUTTONS_FIT))) {
+        throw new Error('Layout check failed: a pin button is cut off or its label shortened');
+      }
+      return { capture: pin };
+    },
+  });
+
+// A lamp that can only be switched on and off (a relay or a smart plug): no brightness to show.
+// The fixture's own lights all dim, and a light added to it would join every list of lights.
+const onOffLight = (now) => {
+  const stamp = now.toISOString();
+  return [
+    {
+      entity_id: 'light.porch',
+      state: 'on',
+      attributes: {
+        friendly_name: 'Porch light',
+        supported_color_modes: ['onoff'],
+        color_mode: 'onoff',
+      },
+      last_changed: stamp,
+      last_updated: stamp,
+      context: { id: 'light.porch', parent_id: null, user_id: null },
+    },
+  ];
+};
+// A page of the one entity a scene pins, for one the pins page does not hold: only Quick Access
+// entities can be pinned, and a second page keeps the tab strip the runner waits for.
+const pinPage = (entityId) => ({
+  customTabs: [
+    { id: 'pins', name: 'Pins', entityIds: [entityId] },
+    { id: 'default', name: 'Home', entityIds: ['light.desk_lamp'] },
+  ],
+  activeTabId: 'pins',
 });
 
 const pages = (set, activeTabId) => ({ customTabs: PAGE_SETS[set], activeTabId });
@@ -398,6 +614,25 @@ const DIALOG_FITS = `(() => {
     [...content.querySelectorAll('.modal-header .close-btn, .modal-footer .btn')]
       .filter((element) => element.getClientRects().length > 0).every(inside);
 })()`;
+// The alert dialog's errors: under their own field and inside its column, the field marked invalid,
+// the first one focused, no error toast, the duration field still level with the cooldown beside
+// it, and the fields as wide as before the errors made the body scroll (window.__alertFieldEnd).
+const ALERT_ERRORS_UNDER_FIELDS = `(() => {
+  const box = (element) => element.getBoundingClientRect();
+  const under = (id) => {
+    const field = document.getElementById(id);
+    const error = document.getElementById(id + '-error');
+    if (!field || !error || field.getAttribute('aria-invalid') !== 'true') return false;
+    return box(error).top >= box(field).bottom && box(error).left >= box(field).left - 1 &&
+      box(error).right <= box(field).right + 1;
+  };
+  return under('alert-threshold') && under('alert-duration') &&
+    document.activeElement?.id === 'alert-threshold' &&
+    !document.querySelector('#toast-container .toast.error') &&
+    Math.abs(box(document.getElementById('alert-duration')).top -
+      box(document.getElementById('alert-cooldown')).top) < 1 &&
+    Math.abs(box(document.getElementById('alert-threshold')).right - window.__alertFieldEnd) < 0.5;
+})()`;
 const TILES_HOLD_THEIR_CONTENT = `[...document.querySelectorAll('#quick-controls .control-item')].every((tile) => {
   const box = tile.getBoundingClientRect();
   return [...tile.querySelectorAll('.control-icon, .control-name, .control-state')]
@@ -470,6 +705,54 @@ const showOffline = async (ctx) => {
   await ctx.goOffline();
   await ctx.expect(OFFLINE_PANEL_IN_VIEW, 'the connection panel is in view above dimmed tiles');
 };
+// The light's colour swatches lie in full rows, six in one or three in two, never one left alone.
+const SWATCH_ROWS_EVEN = `(() => {
+  const swatches = [...document.querySelectorAll('.brightness-modal .light-color-swatch')];
+  if (swatches.length !== 6) return false;
+  const rows = new Map();
+  swatches.forEach((swatch) => {
+    const top = Math.round(swatch.getBoundingClientRect().top);
+    rows.set(top, (rows.get(top) || 0) + 1);
+  });
+  const counts = [...rows.values()];
+  return counts.every((count) => count === counts[0]);
+})()`;
+// The light pop-up's rows run the same width: a slider capped for the narrower pop-up it once was
+// stopped short of the presets under it on both sides.
+const LIGHT_ROWS_SHARE_EDGES = `(() => {
+  const slider = document.querySelector('.brightness-modal .brightness-slider');
+  const presets = document.querySelector('.brightness-modal .brightness-presets');
+  if (!slider || !presets) return false;
+  const a = slider.getBoundingClientRect();
+  const b = presets.getBoundingClientRect();
+  return Math.abs(a.left - b.left) <= 1 && Math.abs(a.right - b.right) <= 1;
+})()`;
+// An unavailable pop-up shows its note and what is still there to read or use: no block in its body
+// stands empty, with only its padding between the note and the footer.
+const NO_EMPTY_BLOCK_IN_UNAVAILABLE_DIALOG = `(() => {
+  const body = document.querySelector('.modal.entity-unavailable .modal-body');
+  if (!body?.querySelector('.dialog-unavailable-note')) return false;
+  const shown = (element) => element.getClientRects().length > 0;
+  return [...body.children].filter(shown).every((block) =>
+    [...block.querySelectorAll('*')].some((part) => shown(part) && part.children.length === 0));
+})()`;
+const openUnavailable = (open) => async (ctx) => {
+  await open(ctx);
+  await ctx.waitForExpression(
+    NO_EMPTY_BLOCK_IN_UNAVAILABLE_DIALOG,
+    'no empty block under the note'
+  );
+};
+// Every toast lies above or below the connection panel, so none of its words or buttons is covered.
+const TOASTS_CLEAR_OF_OFFLINE_PANEL = `(() => {
+  const panel = document.getElementById('widget-state-panel')?.getBoundingClientRect();
+  const toasts = [...document.querySelectorAll('#toast-container .toast')];
+  return !!panel && toasts.length > 0 && toasts.every((toast) => {
+    const box = toast.getBoundingClientRect();
+    return box.top >= panel.bottom || box.bottom <= panel.top;
+  });
+})()`;
+
 // Every label in a Settings row keeps room to be read, at 150% text size and in a narrow window.
 const SETTING_LABELS_READABLE = `[...document.querySelectorAll('#settings-modal .tab-content.active .setting-text')]
   .filter((text) => text.getClientRects().length > 0).every((text) => text.getBoundingClientRect().width >= 100)`;
@@ -502,6 +785,18 @@ const FORMAT_SIZE = { width: 520, height: 1040 };
 // The list of entities is shown only while the Entity hotkeys switch is on, so every scene that
 // photographs it turns the switch on.
 const hotkeysOn = { globalHotkeys: { enabled: true, hotkeys: {} } };
+// An earlier version let a sensor's tile menu save a hotkey that does nothing.
+const hotkeysWithSensor = {
+  globalHotkeys: { enabled: true, hotkeys: { 'sensor.office_temp': 'Ctrl+Alt+T' } },
+};
+const SENSOR_HOTKEY_ROW = `(() => {
+  const row = document.querySelector('#hotkeys-list .hotkey-item');
+  const field = row?.querySelector('.hotkey-input');
+  return field?.dataset.entityId === 'sensor.office_temp' && field.disabled &&
+    !row.querySelector('.hotkey-action-select') &&
+    row.querySelector('.btn-clear-hotkey')?.checkVisibility() === true &&
+    row.querySelector('.hotkey-item-note')?.textContent.trim().length > 0;
+})()`;
 // Hotkeys for two rows, so the Hotkeys scenes show a row with a hotkey beside one without. The list
 // is in name order, so the second is a row that sits among the first few the "light" search shows
 // (the Colour strip comes before the Desk lamp, whose hotkey fell below the fold).
@@ -641,6 +936,25 @@ async function openPaletteFor(ctx, query) {
   await ctx.waitForSelector('.command-palette-result');
 }
 
+// A command row has its entity's icon, so in a narrow window, where an entity's type pill gives
+// way, its Command mark is all that tells "Arm Home alarm away" from the alarm itself. The mark is a
+// glyph chip no wider than it is tall, so the names in view, which differ only at their ends, are
+// whole. (A word pill cut every one of them off where the commands differ.)
+const COMMAND_ROWS_MARKED = `(() => {
+  const list = document.querySelector('.command-palette-results').getBoundingClientRect();
+  const rows = [...document.querySelectorAll('.command-palette-result')].filter(
+    (row) => row.querySelector('.command-palette-result-domain.is-row-kind') &&
+      row.getBoundingClientRect().bottom <= list.bottom
+  );
+  return rows.length > 0 && rows.every((row) => {
+    const chip = row.querySelector('.command-palette-result-domain').getBoundingClientRect();
+    const glyph = row.querySelector('.command-palette-result-kind-icon svg')?.getBoundingClientRect();
+    const name = row.querySelector('.command-palette-result-name');
+    return glyph?.width > 0 && chip.width <= chip.height + 1 &&
+      name.scrollWidth <= name.clientWidth;
+  });
+})()`;
+
 // The palette with nothing typed: what was used last, the pages, the page on screen, then the rest.
 async function openPaletteEmpty(ctx) {
   await ctx.ev(`document.activeElement?.blur?.()`);
@@ -705,22 +1019,65 @@ const alertsWithMissingEntity = {
   },
 };
 
-// The edit-mode hint is a long toast; a second one stands in for a pair of warnings.
+// A command Home Assistant refuses: the mock turns down every call for the unreachable lamp, and
+// the palette reports the reason in an error toast, as the app does for any failed command. The
+// lamp's name comes from Home Assistant and is never translated, and a command row is the one with
+// no state beside it, so this finds the command in any language.
+const REFUSED_COMMAND_ROW = `[...document.querySelectorAll('.command-palette-result')].find((row) =>
+  row.querySelector('.command-palette-result-name')?.textContent.includes('Unreachable lamp') &&
+  !row.querySelector('.command-palette-result-state')?.textContent)`;
+
+async function raiseRefusedCommand(ctx) {
+  await ctx.ev(`document.activeElement?.blur?.()`);
+  await ctx.pressKey('k', { code: 'KeyK', keyCode: 75, modifiers: ctx.CTRL });
+  await ctx.waitForExpression(
+    `document.activeElement?.classList.contains('command-palette-input')`
+  );
+  await ctx.insertText('unreachable');
+  await ctx.waitForExpression(REFUSED_COMMAND_ROW, 'a command for the unreachable lamp');
+  await ctx.ev(`${REFUSED_COMMAND_ROW}.click()`);
+  await ctx.waitForExpression(
+    `document.querySelector('#toast-container .toast.error')`,
+    'the error toast'
+  );
+}
+
+// A problem toast leads with its status icon and ends with its close button, which sits inside the
+// toast and clear of the text, on either side in either direction.
+const PROBLEM_TOASTS_LAID_OUT = `(() => {
+  const toasts = [...document.querySelectorAll('#toast-container .toast.error, #toast-container .toast.warning')];
+  return toasts.length > 0 && toasts.every((toast) => {
+    const box = toast.getBoundingClientRect();
+    const text = toast.querySelector('.toast-message').getBoundingClientRect();
+    const close = toast.querySelector('.toast-close')?.getBoundingClientRect();
+    return !!toast.querySelector('.toast-icon svg') && !!close &&
+      close.left >= box.left && close.right <= box.right &&
+      close.top >= box.top && close.bottom <= box.bottom &&
+      (close.left >= text.right || close.right <= text.left);
+  });
+})()`;
+
+// The problem toast's text runs onto a second line. Its icon and close button only take room from
+// text that wraps, so a reason short enough for one line would leave them unchecked.
+const PROBLEM_TOAST_WRAPS = `(() => {
+  const range = document.createRange();
+  range.selectNodeContents(document.querySelector('#toast-container .toast.error .toast-message'));
+  return new Set([...range.getClientRects()].map((line) => Math.round(line.top))).size > 1;
+})()`;
+
+// The edit-mode hint is a long notice, and a refused command adds a problem toast to the stack.
+// Both are raised by the app, so the stack has the icons, the close button and the layout the app
+// gives it, which a toast built here by hand did not.
 async function showToasts(ctx) {
   await ctx.ev(
     `document.querySelectorAll('#toast-container .toast').forEach((toast) => toast.remove())`
   );
+  await raiseRefusedCommand(ctx);
   await ctx.click('#reorganize-quick-controls-btn');
-  await ctx.waitForSelector('#toast-container .toast');
-  await ctx.ev(`(() => {
-    const toast = document.createElement('div');
-    toast.className = 'toast warning';
-    toast.innerHTML = '<span class="toast-message"></span>';
-    toast.firstChild.textContent =
-      'The system keyring is locked, so the access token cannot be saved. Unlock it and restart.';
-    document.getElementById('toast-container').appendChild(toast);
-  })()`);
+  await ctx.waitForSelector('#toast-container .toast.info');
   await ctx.sleep(500);
+  await ctx.expect(PROBLEM_TOAST_WRAPS, 'the error toast wrapping onto a second line');
+  await ctx.expect(PROBLEM_TOASTS_LAID_OUT, 'the error toast with its icon and close button');
 }
 
 // The notifications Home Assistant holds arrive over the app's subscription: the bell shows them and
@@ -824,14 +1181,73 @@ async function openLanguagePacks(ctx) {
   await revealInSettings(ctx, '#language-packs-list', 'center');
 }
 
+// A camera Home Assistant has lost. Its page puts it beside the fixture's camera, whose snapshots
+// fail, and a lamp.
+const offlineCamera = (now) => {
+  const stamp = now.toISOString();
+  return [
+    {
+      entity_id: 'camera.porch',
+      state: 'unavailable',
+      attributes: { friendly_name: 'Porch' },
+      last_changed: stamp,
+      last_updated: stamp,
+      context: { id: 'camera.porch', parent_id: null, user_id: null },
+    },
+  ];
+};
+const cameraTilesPage = {
+  customTabs: [
+    {
+      id: 'default',
+      name: 'Cameras',
+      entityIds: ['camera.driveway', 'camera.porch', 'light.desk_lamp'],
+    },
+  ],
+  activeTabId: 'default',
+  quickAccessTileOptions: {
+    'camera.driveway': { cameraPreviewRefresh: '30s' },
+    'camera.porch': { cameraPreviewRefresh: '30s' },
+  },
+};
+// Each camera tile has settled: the failed snapshot and the offline camera have said so.
+const waitForCameraTiles = (ctx) =>
+  ctx.waitForExpression(
+    `!!document.querySelector('${tile('camera.driveway')}[data-camera-preview-state="error"]') &&
+      !!document.querySelector('${tile('camera.porch')}[data-camera-preview-state="unavailable"]')`,
+    'the camera tiles settled on their messages'
+  );
+
+// A radio stream with a programme name longer than the media tile has room for: no length, so its
+// seek row is hidden.
+const radioStream = (now) => {
+  const stamp = now.toISOString();
+  return [
+    {
+      entity_id: 'media_player.kitchen_radio',
+      state: 'playing',
+      attributes: {
+        friendly_name: 'Kitchen radio',
+        media_title: 'The Late Evening Jazz Session with Guests from the Village Vanguard',
+        media_artist: 'Jazz 24',
+        volume_level: 0.4,
+        supported_features: 152463,
+      },
+      last_changed: stamp,
+      last_updated: stamp,
+      context: { id: 'media_player.kitchen_radio', parent_id: null, user_id: null },
+    },
+  ];
+};
+
 // Restore points that differ by what they hold, one of them with a page nobody named. The list is
-// built when the dialog opens, so the history is put back as it was straight after.
+// built when the dialog opens, so the restore points are put back as they were straight after.
 async function openRestoreDashboard(ctx) {
   await openSettingsTab(ctx, 'advanced');
   await ctx.ev(`(async () => {
     const config = await window.electronAPI.getConfig();
     const url = new URL(config.homeAssistant.url);
-    const key = 'dashboard-history:' + url.origin + url.pathname.replace(/\\/+$/, '');
+    const key = 'dashboard-restore-points:' + url.origin + url.pathname.replace(/\\/+$/, '');
     const before = localStorage.getItem(key);
     const hour = 60 * 60 * 1000;
     const layout = (pages) => ({ customTabs: pages, favoriteEntities: [], comparisonGraphs: [] });
@@ -856,7 +1272,14 @@ async function openRestoreDashboard(ctx) {
 const scenes = [
   // The main view and the dialogs opened from it, dark and in English.
   { name: 'main-dark', setup: expectTilesLaidOut },
-  { name: 'popup-brightness', setup: openBrightness },
+  {
+    name: 'popup-brightness',
+    setup: async (ctx) => {
+      await openBrightness(ctx);
+      await ctx.waitForSelector('.brightness-modal .brightness-presets');
+      await ctx.expect(LIGHT_ROWS_SHARE_EDGES, 'the brightness slider as wide as the presets');
+    },
+  },
   { name: 'popup-climate', setup: openClimate },
   { name: 'edit-mode', setup: toggleEditMode },
   { name: 'settings', setup: (ctx) => openSettingsTab(ctx, 'general') },
@@ -1002,20 +1425,20 @@ const scenes = [
   {
     name: 'popup-fan-unavailable',
     config: { activeTabId: 'bedroom' },
-    setup: openDetails('fan.bedroom'),
+    setup: openUnavailable(openDetails('fan.bedroom')),
   },
   // The same for a light and a cover: the banner and the buttons, with no icon or graphic left over.
   {
     name: 'popup-light-unavailable',
     config: unavailablePage,
     extraStates: buildUnavailableDevices,
-    setup: openArrivedDetails('light.hall'),
+    setup: openUnavailable(openArrivedDetails('light.hall')),
   },
   {
     name: 'popup-cover-unavailable',
     config: unavailablePage,
     extraStates: buildUnavailableDevices,
-    setup: openArrivedDetails('cover.side_gate'),
+    setup: openUnavailable(openArrivedDetails('cover.side_gate')),
   },
   // An entity that is gone dims on a primary card as it does in Quick Access.
   { name: 'primary-unavailable-card', config: { primaryCards: ['fan.bedroom', 'time'] } },
@@ -1088,11 +1511,15 @@ const scenes = [
   // Settings pages the first scenes do not reach, and the custom colour editor.
   { name: 'settings-dashboard', setup: (ctx) => openSettingsTab(ctx, 'dashboard') },
   { name: 'settings-hotkeys', setup: (ctx) => openHotkeysPage(ctx) },
-  // The entity list, where each row picks the action its hotkey runs from a select.
+  // The entity list, where each row picks the action its hotkey runs from a select. A hotkey an
+  // earlier version saved on a sensor comes first, with only its Clear button.
   {
     name: 'settings-hotkeys-entities',
-    config: hotkeysOn,
-    setup: (ctx) => openHotkeysFor(ctx, ''),
+    config: hotkeysWithSensor,
+    setup: async (ctx) => {
+      await openHotkeysFor(ctx, '');
+      await ctx.expect(SENSOR_HOTKEY_ROW, "the sensor's hotkey keeps a row with its Clear button");
+    },
   },
   // A home with more lights than one page of the list holds: the last page, with its rows above the
   // pager (Previous available, Next not).
@@ -1162,15 +1589,13 @@ const scenes = [
     'settings-advanced-update-manual',
     {
       status: 'manual',
-      message:
-        'Update available: v4.0.1. This package cannot update itself; use Download Update to get it from GitHub.',
       version: '4.0.1',
       downloadUrl: 'https://github.com/Robertg761/HA-Desktop-Widget/releases/tag/v4.0.1',
     },
     {
       state: 'manual',
-      text: 'Update available: v4.0.1. This package cannot update itself; use Download Update to get it from GitHub.',
-      install: 'Download Update',
+      text: 'Update available: v4.0.1. This package cannot update itself; use “Download update” to get it from GitHub.',
+      install: 'Download update',
     }
   ),
   // The profile sync controls, opened by the switch alone: nothing is saved, so no sync starts and
@@ -1473,21 +1898,7 @@ const scenes = [
     keepToasts: true,
     setup: async (ctx) => {
       await openSettingsTab(ctx, 'general');
-      await ctx.ev(`document.activeElement?.blur?.()`);
-      await ctx.pressKey('k', { code: 'KeyK', keyCode: 75, modifiers: ctx.CTRL });
-      await ctx.waitForExpression(
-        `document.activeElement?.classList.contains('command-palette-input')`
-      );
-      await ctx.insertText('turn off unreachable');
-      await ctx.waitForExpression(
-        `document.querySelector('.command-palette-result.highlighted')?.textContent.includes('Turn off')`,
-        'the Turn off command'
-      );
-      await ctx.pressKey('Enter', { code: 'Enter', keyCode: 13, text: '\r' });
-      await ctx.waitForExpression(
-        `document.querySelector('#toast-container .toast.error')`,
-        'the error toast'
-      );
+      await raiseRefusedCommand(ctx);
       // The toast stack sits above the Save and Cancel pill, clear of both buttons.
       await ctx.waitForExpression(
         `(() => {
@@ -1543,12 +1954,48 @@ const scenes = [
     },
     setup: toggleEditMode,
   },
+  // Camera tiles with a preview and no picture to show: the fixture's snapshot fails, and the porch
+  // camera is offline. Their icon sits above the name like any other tile's, in both themes and at
+  // the compact height.
+  {
+    name: 'camera-tile',
+    config: cameraTilesPage,
+    extraStates: offlineCamera,
+    setup: waitForCameraTiles,
+  },
+  {
+    name: 'camera-tile-light-compact',
+    ui: { theme: 'light', density: 'compact' },
+    config: cameraTilesPage,
+    extraStates: offlineCamera,
+    setup: waitForCameraTiles,
+  },
 
   // What a dashboard says about security and state: a locked, an unlocked and a jammed lock, an
   // alarm that is armed, one that went off and one that is disarmed, an open window, a low battery
   // and a person (a tile that does nothing, so no pointer and no hover).
   { name: 'tiles-security', config: pages('security', 'default') },
   { name: 'tiles-security-light', ui: { theme: 'light' }, config: pages('security', 'default') },
+  // Halloween's orange, Christmas's red and the Amber accent paint an armed alarm in the same family
+  // as an unlocked lock or an alarm that went off. Those keep a badge and an edge of their own, and
+  // the lit tiles a lighter wash. Christmas in the dark theme was the worst: the armed alarm was a
+  // stronger red than the one that went off.
+  {
+    name: 'tiles-security-halloween',
+    ui: { seasonal: holiday('halloween') },
+    config: pages('security', 'default'),
+  },
+  {
+    name: 'tiles-security-christmas',
+    ui: { seasonal: holiday('christmas') },
+    config: pages('security', 'default'),
+  },
+  {
+    name: 'tiles-security-christmas-light',
+    ui: { theme: 'light', seasonal: holiday('christmas') },
+    config: pages('security', 'default'),
+  },
+  { name: 'tiles-security-amber', ui: { accent: 'amber' }, config: pages('security', 'default') },
   // With the accent glow off nothing lights up for being on: the lamp and the playing TV stay plain,
   // and so does a TV Home Assistant calls 'on'. Only what needs attention is coloured.
   {
@@ -1915,17 +2362,11 @@ const scenes = [
     config: pinsPage,
     setup: async (ctx) => {
       const pin = await ctx.openPin('light.desk_lamp');
-      if (size) {
-        await ctx.ev(`(async () => {
-          await window.electronAPI.setDesktopPinEditMode(true);
-          await window.electronAPI.updateDesktopPinBounds('light.desk_lamp', ${JSON.stringify(size)});
-          await window.electronAPI.setDesktopPinEditMode(false);
-        })()`);
-        await ctx.sleep(900);
-      }
+      if (size) await resizePin(ctx, 'light.desk_lamp', size);
+      // The hints are the pin's own (renderCurrentMode sets both); the stylesheet picks the one for
+      // compositor placement.
       await pin.evaluate(`(() => {
         document.body.classList.add('desktop-pin-edit-mode', 'desktop-pin-compositor-placement');
-        document.getElementById('desktop-pin-content')?.setAttribute('data-edit-hint', 'Drag or resize');
       })()`);
       return { capture: pin };
     },
@@ -1944,7 +2385,15 @@ const scenes = [
   // theme, where pins stay dark glass.
   pinScene('pin-light-off', 'light.shelf_leds'),
   pinScene('pin-light-long', 'light.upstairs_hallway_ceiling'),
+  pinScene('pin-light-onoff', 'light.porch', {
+    config: pinPage('light.porch'),
+    extraStates: onOffLight,
+  }),
   pinScene('pin-climate', 'climate.bedroom'),
+  // A thermostat in heat_cool holds a range, which has two sliders where a single target has one,
+  // and its mode button leads the row with Home Assistant's own name for the mode ("Heat/Cool", not
+  // the "Auto" of the auto mode).
+  pinScene('pin-climate-range', 'climate.heat_pump'),
   pinScene('pin-fan', 'fan.office'),
   pinScene('pin-cover', 'cover.garage_door'),
   pinScene('pin-media', 'media_player.kitchen_speaker'),
@@ -1956,13 +2405,33 @@ const scenes = [
   pinScene('pin-scene', 'scene.movie_time'),
   pinScene('pin-script', 'script.goodnight'),
   pinScene('pin-lock', 'lock.back_door'),
+  pinScene('pin-switch', 'switch.coffee_maker'),
   pinScene('pin-action', 'automation.morning_routine'),
   pinScene('pin-presence', 'person.alex'),
   pinScene('pin-vacuum', 'vacuum.robot'),
   pinScene('pin-timer', 'timer.laundry'),
+  // Pins dragged a little bigger, between the default and the roomy 260x190: the four modes or
+  // speeds come back and must still fit their row, and the weather's units keep their case.
+  resizedPinScene('climate', 'climate.bedroom', { width: 200, height: 170 }),
+  resizedPinScene('fan', 'fan.office', { width: 200, height: 170 }),
+  resizedPinScene('cover', 'cover.garage_door', { width: 200, height: 170 }),
+  resizedPinScene('weather', 'weather.home', { width: 200, height: 170 }),
+  resizedPinScene('climate', 'climate.bedroom', { width: 240, height: 180 }),
+  resizedPinScene('weather', 'weather.home', { width: 240, height: 180 }),
+  // A heat/cool range's second slider took the room of the mode row, and a pin just short of the
+  // balanced layout brought back a fourth mode that German cut to "Kü...".
+  resizedPinScene('climate-range', 'climate.heat_pump', { width: 200, height: 170 }),
+  resizedPinScene(
+    'de-climate',
+    'climate.bedroom',
+    { width: 185, height: 158 },
+    { ui: { language: 'de' } }
+  ),
   pinScene('pin-de-cover', 'cover.garage_door', { ui: { language: 'de' } }),
   pinScene('pin-de-weather', 'weather.home', { ui: { language: 'de' } }),
   pinScene('pin-fr-climate', 'climate.bedroom', { ui: { language: 'fr' } }),
+  // The heat_cool thermostat in French, whose "Chaud/Froid" is the longest name for the mode.
+  pinScene('pin-fr-climate-heat-cool', 'climate.heat_pump', { ui: { language: 'fr' } }),
   pinScene('pin-fr-light', 'light.upstairs_hallway_ceiling', { ui: { language: 'fr' } }),
   pinScene('pin-es-fan', 'fan.office', { ui: { language: 'es' } }),
   pinScene('pin-ar-light', 'light.desk_lamp', { ui: { language: 'ar' } }),
@@ -2142,6 +2611,25 @@ const scenes = [
     size: NARROW_SIZE,
     config: { primaryMediaPlayer: 'media_player.theater' },
   },
+  // A stream has no length and its seek row is hidden. The row keeps only the width of its hidden
+  // times, so the bar in it stays at its shortest, and the programme name has the rest of the row.
+  {
+    name: 'layout-media-stream',
+    size: DEFAULT_SIZE,
+    config: { primaryMediaPlayer: 'media_player.kitchen_radio' },
+    extraStates: radioStream,
+    setup: async (ctx) => {
+      await ctx.waitForExpression(
+        `document.querySelector('#media-tile .media-tile-seek')?.dataset.empty === 'true' &&
+          document.getElementById('media-tile-title')?.textContent`,
+        'the stream on the media tile'
+      );
+      await ctx.expect(
+        `document.querySelector('#media-tile .media-tile-seek-bar').getBoundingClientRect().width < 40`,
+        'the hidden seek row of a stream takes no share of the row'
+      );
+    },
+  },
   // The track is a button that opens the player, and a title too long for the tile is still cut
   // off by an ellipsis inside it, with an artist under it or without, at the default width and at
   // 340px, where the grid stacks the rows, in the light theme and right to left.
@@ -2190,6 +2678,7 @@ const scenes = [
     setup: async (ctx) => {
       await openDetails('light.color_strip')(ctx);
       await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
+      await ctx.expect(SWATCH_ROWS_EVEN, 'the colour swatches in full rows');
     },
   },
   {
@@ -2275,6 +2764,7 @@ const scenes = [
     setup: async (ctx) => {
       await openDetails('light.color_strip')(ctx);
       await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
+      await ctx.expect(SWATCH_ROWS_EVEN, 'the colour swatches in full rows');
     },
   },
 
@@ -2360,6 +2850,36 @@ const scenes = [
     config: alertsConfig,
     setup: async (ctx) => {
       await openAlertConfig(ctx, 'binary_sensor.front_door');
+      await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
+    },
+  },
+  // An empty threshold and a wait that is not a whole number of seconds are each said under their
+  // own field, which is marked invalid, and the first takes the focus. A toast said only the first,
+  // was gone in seconds and covered the quiet hours. Toasts are kept, so one would show here. The
+  // errors make the body scroll, and the fields keep their width.
+  {
+    name: 'layout-dialog-alert-config-invalid',
+    size: DEFAULT_SIZE,
+    config: alertsConfig,
+    keepToasts: true,
+    setup: async (ctx) => {
+      await openAlertConfig(ctx);
+      // Measured once the dialog has stopped scaling in.
+      await ctx.waitForExpression(
+        `!document.getElementById('alert-config-modal').getAnimations({ subtree: true }).length`,
+        'the alert dialog to finish opening'
+      );
+      await ctx.ev(
+        `window.__alertFieldEnd = document.getElementById('alert-threshold').getBoundingClientRect().right`
+      );
+      await typeInto(ctx, '#alert-threshold', '');
+      await typeInto(ctx, '#alert-duration', '1.5');
+      await ctx.click('#save-alert');
+      await ctx.waitForSelector('#alert-duration-error');
+      await ctx.expect(
+        ALERT_ERRORS_UNDER_FIELDS,
+        'each error under its own field, and no error toast'
+      );
       await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
     },
   },
@@ -2473,7 +2993,10 @@ const scenes = [
   {
     name: 'layout-palette-narrow',
     size: NARROW_SIZE,
-    setup: (ctx) => openPaletteFor(ctx, 'alarm'),
+    setup: async (ctx) => {
+      await openPaletteFor(ctx, 'alarm');
+      await ctx.expect(COMMAND_ROWS_MARKED, 'every command row is marked, and its name is whole');
+    },
   },
   {
     name: 'layout-palette-de',
@@ -2510,6 +3033,20 @@ const scenes = [
       await showOffline(ctx);
       await ctx.click('.widget-state-actions .btn-secondary');
       await ctx.waitForSelector('.widget-state-note');
+    },
+  },
+  // A command that fails while Home Assistant is away: its error toast waits at the bottom, over
+  // the dimmed tiles, and leaves the panel that says what is wrong in view. It once docked above
+  // the panel's buttons, which put it over the panel's own message until it was dismissed.
+  {
+    name: 'layout-offline-toast',
+    size: DEFAULT_SIZE,
+    config: edgePage,
+    keepToasts: true,
+    setup: async (ctx) => {
+      await showOffline(ctx);
+      await raiseRefusedCommand(ctx);
+      await ctx.waitForExpression(TOASTS_CLEAR_OF_OFFLINE_PANEL, 'the toast clear of the panel');
     },
   },
   { name: 'layout-toast', size: DEFAULT_SIZE, keepToasts: true, setup: showToasts },
@@ -2570,6 +3107,53 @@ const scenes = [
     config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
     setup: showFirstRunWelcome,
   })),
+  // The welcome step where text runs right to left, in the smallest window, with the largest text
+  // and in a contrast theme; and the authorization step when the server cannot be reached.
+  {
+    name: 'wizard-welcome-ar',
+    ui: { language: 'ar' },
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: showFirstRunWelcome,
+  },
+  {
+    name: 'wizard-welcome-minimum',
+    size: MINIMUM_SIZE,
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: showFirstRunWelcome,
+  },
+  {
+    name: 'wizard-welcome-s150',
+    size: DEFAULT_SIZE,
+    ui: { scale: 1.5 },
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: showFirstRunWelcome,
+  },
+  {
+    name: 'wizard-welcome-forced-colors',
+    media: FORCED_COLORS,
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: showFirstRunWelcome,
+  },
+  // Windows and macOS have a keyring, so the attempt gets as far as the server and finds no one
+  // there. Linux under CI has none, so it stops at the keyring, which a first run is told keeps the
+  // new authorization from being saved (it has nothing saved to read). Both go back to the welcome
+  // step for the scenes after them, wherever the failure left the wizard.
+  {
+    name: 'wizard-authorize-error',
+    platforms: ['win32', 'darwin'],
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: (ctx) => failFirstRunAuthorization(ctx, 'Could not reach Home Assistant at that URL.'),
+    teardown: showFirstRunWelcome,
+  },
+  {
+    name: 'wizard-authorize-keyring',
+    platforms: ['linux'],
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: (ctx) => failFirstRunAuthorization(ctx, 'so the authorization cannot be saved.'),
+    teardown: showFirstRunWelcome,
+  },
+
+  ...startupScenes,
 ];
 
 module.exports = { scenes };

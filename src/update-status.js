@@ -6,7 +6,7 @@
  * download finishing. The state therefore lives here, outside the Settings markup, is fed by one
  * subscription made when the renderer starts, and Settings draws whatever it holds when it opens.
  * Without that, the status went back to "Ready to check for updates" on every open while a
- * "Download Update" button for a link it no longer knew stayed on screen, and updates found before
+ * "Download update" button for a link it no longer knew stayed on screen, and updates found before
  * Settings was ever opened were never seen.
  */
 
@@ -43,9 +43,10 @@ function percentOf(progress) {
  */
 function reduceUpdateEvent(previous, event) {
   if (!event || typeof event.status !== 'string') return previous;
-  // A check the app started on its own schedule: nobody asked, so that it began, or that the
-  // network was away, is not something to put in front of the person. What it finds still is.
-  if (event.background && (event.status === 'checking' || event.status === 'error')) {
+  // A check the app started on its own schedule: nobody asked, so that it began, that it found
+  // nothing new, or that the network was away, is not something to put in front of the person.
+  // An update it finds still is.
+  if (event.background && ['checking', 'none', 'error'].includes(event.status)) {
     return previous;
   }
   switch (event.status) {
@@ -68,10 +69,11 @@ function reduceUpdateEvent(previous, event) {
       return { status: 'error', error: event.error || '' };
     case 'portable':
     case 'manual':
+      // The version and the kind of build, not a sentence: the line is worded when it is drawn.
       return {
         status: event.status,
-        message: event.message || '',
         version: event.version || '',
+        prerelease: event.prerelease === true,
         downloadUrl: event.downloadUrl || '',
       };
     case 'dev':
@@ -84,6 +86,32 @@ function reduceUpdateEvent(previous, event) {
     default:
       return previous;
   }
+}
+
+// One sentence with the version inside it, so a language can order it as it needs to, naming the
+// button beside it.
+function describeManualUpdate(update) {
+  const { version } = update;
+  if (!version) {
+    return update.status === 'manual'
+      ? t('Update available')
+      : t('Portable builds do not support in-app updates.');
+  }
+  if (update.status === 'manual') {
+    return t(
+      'Update available: v{{version}}. This package cannot update itself; use “Download update” to get it from GitHub.',
+      { version }
+    );
+  }
+  return update.prerelease
+    ? t(
+        'Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.',
+        { version }
+      )
+    : t(
+        'Portable update available: v{{version}}. Use “Download portable update” to get the Portable build.',
+        { version }
+      );
 }
 
 /**
@@ -153,13 +181,13 @@ function describeUpdateState(update) {
     case 'portable':
     case 'manual':
       return {
-        text: update.message || t('Portable builds do not support in-app updates.'),
+        text: describeManualUpdate(update),
         tone: 'manual',
         busy: false,
         installLabel: update.downloadUrl
           ? update.status === 'manual'
-            ? t('Download Update')
-            : t('Download Portable Update')
+            ? t('Download update')
+            : t('Download portable update')
           : null,
         progress: null,
       };

@@ -186,6 +186,57 @@ describe('SeasonalEffectsManager', () => {
     document.body.classList.remove('theme-light', 'density-compact');
   });
 
+  describe('in a window drawn on the CPU', () => {
+    afterEach(() => {
+      document.body.classList.remove('software-rendering');
+    });
+
+    // Thirty frames a second of the scene and its frost kept a core busy all through October.
+    test('draws the scene once and leaves it, and the holiday still shows by default', () => {
+      document.body.classList.add('software-rendering');
+      manager.apply({});
+
+      expect(document.body.dataset.season).toBe('halloween');
+      expect(window.requestAnimationFrame).not.toHaveBeenCalled();
+      expect(drawing.calls.length).toBeGreaterThan(0);
+    });
+
+    test('stops animating when the GPU goes away and starts again when it is back', async () => {
+      manager.apply({});
+      expect(window.requestAnimationFrame).toHaveBeenCalledTimes(1);
+
+      drawing.calls.length = 0;
+      document.body.classList.add('software-rendering');
+      await Promise.resolve();
+      expect(window.cancelAnimationFrame).toHaveBeenCalled();
+      // The still frame is drawn at once, so the scene does not vanish.
+      expect(drawing.calls.length).toBeGreaterThan(0);
+
+      window.requestAnimationFrame.mockClear();
+      document.body.classList.remove('software-rendering');
+      await Promise.resolve();
+      expect(window.requestAnimationFrame).toHaveBeenCalledTimes(1);
+    });
+
+    test('keeps the CSS decorations still too', () => {
+      const css = require('fs').readFileSync(
+        require('path').resolve(__dirname, '../../styles.css'),
+        'utf8'
+      );
+      // The motion block that animates the holiday art, just above its keyframes.
+      const end = css.indexOf('@keyframes season-spider-dangle');
+      const motion = css.slice(
+        css.lastIndexOf('@media (prefers-reduced-motion: no-preference) {', end),
+        end
+      );
+      const selectors = motion.match(/body[^,{]*/g);
+      expect(selectors.length).toBeGreaterThan(5);
+      for (const selector of selectors) {
+        expect(selector).toMatch(/^body:not\(\.software-rendering\)\[data-season/);
+      }
+    });
+  });
+
   test('stops drawing while forced colours hide the canvas, and resumes after', () => {
     forcedColors = true;
     manager.apply({ seasonal: picked('halloween') });

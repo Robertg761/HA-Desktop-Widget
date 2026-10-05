@@ -2,7 +2,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { APP_ID } = require('./linux-desktop.cjs');
+const { APP_ID, getAppImageCommandLink } = require('./linux-desktop.cjs');
 const { buildDesktopExecPrefix, parseDesktopExecCommand } = require('./linux-startup.cjs');
 
 const APPARMOR_USERNS_RESTRICTION = '/proc/sys/kernel/apparmor_restrict_unprivileged_userns';
@@ -37,6 +37,21 @@ function launcherHasSandboxFlag(command) {
   return /(?:^|\s)--no-sandbox(?:\s|$)/.test(command.suffix);
 }
 
+// The launcher's icon is a copy in the user's icon folder, made when the launcher was written. A
+// launcher from an older release keeps the artwork that release shipped (3.x had the full-bleed
+// square), so the copy is brought up to the running build's icon whenever the two differ.
+function refreshLauncherIcon(fsModule, icon, iconPath) {
+  if (!iconPath || !fsModule.existsSync(icon)) return false;
+  try {
+    const current = fsModule.readFileSync(iconPath);
+    if (fsModule.readFileSync(icon).equals(current)) return false;
+    fsModule.copyFileSync(iconPath, icon);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // AppImages need a desktop identity for the host portal registry. Package-owned
 // entries and user launchers take precedence over this fallback.
 function ensureAppImageDesktopEntry({
@@ -57,9 +72,14 @@ function ensureAppImageDesktopEntry({
     .map((dir) => path.join(dir, 'applications', name));
   if (systemEntries.some((file) => fsModule.existsSync(file))) return false;
   const sandboxFlag = sandboxFlagWhenBlocked(fsModule, sandboxDisabled);
+  const icon = path.join(data, 'icons', `${APP_ID}.png`);
   if (fsModule.existsSync(destination)) {
     const previous = fsModule.readFileSync(destination, 'utf8');
     if (!/^X-HA-Widget-Launcher=true$/m.test(previous)) return false;
+    // Only the copy this launcher points at, which this app wrote.
+    if (previous.split(/\r?\n/).includes(`Icon=${icon}`)) {
+      refreshLauncherIcon(fsModule, icon, iconPath);
+    }
     const command = parseDesktopExecCommand(previous);
     if (!command) return false;
     const stale = !fsModule.existsSync(command.executable);
@@ -82,7 +102,6 @@ function ensureAppImageDesktopEntry({
     fsModule.writeFileSync(destination, updated, { mode: 0o644 });
     return true;
   }
-  const icon = path.join(data, 'icons', `${APP_ID}.png`);
   fsModule.mkdirSync(path.dirname(icon), { recursive: true });
   fsModule.copyFileSync(iconPath, icon);
   fsModule.mkdirSync(path.dirname(destination), { recursive: true });
@@ -91,6 +110,40 @@ function ensureAppImageDesktopEntry({
     `[Desktop Entry]\nType=Application\nName=HA Desktop Widget\nExec=${buildDesktopExecPrefix(env.APPIMAGE)}${sandboxFlag} --show\nIcon=${icon}\nTerminal=false\nCategories=Utility;\nStartupWMClass=${APP_ID}\nX-HA-Widget-Launcher=true\n`,
     { flag: 'wx', mode: 0o644 }
   );
+  return true;
+}
+
+/**
+ * Keep ~/.local/bin/ha-desktop-widget pointed at the running AppImage: the command a window-manager
+ * key is bound to (getToggleCommand), which an update's new file name would otherwise break. Only
+ * a link this app could have made is moved, one to an AppImage or one whose file is gone (an update
+ * deleted it); a file of that name, or a link the user pointed at something else, is theirs. Nor is
+ * one made where the name already leads somewhere else on PATH (the Arch package installed as
+ * well), which the link would hide.
+ * @returns {boolean} Whether the link was made or moved.
+ */
+function ensureAppImageCommandLink({ env = process.env, home = os.homedir(), fsModule = fs } = {}) {
+  const target = env.APPIMAGE;
+  if (!target || !path.posix.isAbsolute(target)) return false;
+  const link = getAppImageCommandLink(home);
+  const dir = path.posix.dirname(link);
+  let current = null;
+  try {
+    if (!fsModule.lstatSync(link).isSymbolicLink()) return false;
+    current = fsModule.readlinkSync(link);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  if (current === target) return false;
+  if (current !== null && fsModule.existsSync(link) && !/\.appimage$/i.test(current)) return false;
+  const shadowed = String(env.PATH || '')
+    .split(path.posix.delimiter)
+    .filter((entry) => path.posix.isAbsolute(entry) && path.posix.resolve(entry) !== dir)
+    .some((entry) => fsModule.existsSync(path.posix.join(entry, path.posix.basename(link))));
+  if (shadowed) return false;
+  fsModule.mkdirSync(dir, { recursive: true });
+  if (current !== null) fsModule.unlinkSync(link);
+  fsModule.symlinkSync(target, link);
   return true;
 }
 
@@ -164,6 +217,7 @@ function repairStaleAppImageLaunchers({
 
 module.exports = {
   appArmorRestrictsUserNamespaces,
+  ensureAppImageCommandLink,
   ensureAppImageDesktopEntry,
   repairStaleAppImageLaunchers,
 };

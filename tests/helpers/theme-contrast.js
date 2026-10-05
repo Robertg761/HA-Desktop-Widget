@@ -63,8 +63,9 @@ const TEXT_TOKENS = [
   '--text-faint',
 ];
 // A status colour is a fill first and text second. Once a theme defines a --<name>-text variant
-// for readable text, that is the token measured; until then the raw colour is.
-const STATUS_TOKENS = ['--success', '--warning', '--danger', '--error'];
+// for readable text, that is the token measured; until then the raw colour is. --danger is only
+// ever a fill (the danger buttons), so it has no text to measure.
+const STATUS_TOKENS = ['--success', '--warning', '--error'];
 const SURFACES = ['window', 'panel', 'tile', 'dash tile', 'dialog'];
 
 function resetDocument() {

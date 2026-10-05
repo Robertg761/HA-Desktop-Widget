@@ -64,6 +64,7 @@ const PIN_ENTITIES = [
   'light.upstairs_hallway_ceiling',
   'climate.living_room',
   'climate.bedroom',
+  'climate.heat_pump',
   'fan.office',
   'cover.garage_door',
   'media_player.kitchen_speaker',
