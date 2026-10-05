@@ -470,6 +470,18 @@ const showOffline = async (ctx) => {
   await ctx.goOffline();
   await ctx.expect(OFFLINE_PANEL_IN_VIEW, 'the connection panel is in view above dimmed tiles');
 };
+// The light's colour swatches lie in full rows, six in one or three in two, never one left alone.
+const SWATCH_ROWS_EVEN = `(() => {
+  const swatches = [...document.querySelectorAll('.brightness-modal .light-color-swatch')];
+  if (swatches.length !== 6) return false;
+  const rows = new Map();
+  swatches.forEach((swatch) => {
+    const top = Math.round(swatch.getBoundingClientRect().top);
+    rows.set(top, (rows.get(top) || 0) + 1);
+  });
+  const counts = [...rows.values()];
+  return counts.every((count) => count === counts[0]);
+})()`;
 // Every toast lies above or below the connection panel, so none of its words or buttons is covered.
 const TOASTS_CLEAR_OF_OFFLINE_PANEL = `(() => {
   const panel = document.getElementById('widget-state-panel')?.getBoundingClientRect();
@@ -2233,6 +2245,7 @@ const scenes = [
     setup: async (ctx) => {
       await openDetails('light.color_strip')(ctx);
       await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
+      await ctx.expect(SWATCH_ROWS_EVEN, 'the colour swatches in full rows');
     },
   },
   {
@@ -2318,6 +2331,7 @@ const scenes = [
     setup: async (ctx) => {
       await openDetails('light.color_strip')(ctx);
       await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
+      await ctx.expect(SWATCH_ROWS_EVEN, 'the colour swatches in full rows');
     },
   },
 

@@ -397,7 +397,7 @@ describe('shared layout rules for narrow windows and long labels', () => {
 
     it('keeps the colour picker its size beside the swatches', () => {
       render('', '<input class="light-color-picker" />');
-      expect(resolvedValue(document.querySelector('.light-color-picker'), 'flex')).toBe('0 0 44px');
+      expect(resolvedValue(document.querySelector('.light-color-picker'), 'flex')).toBe('0 0 32px');
     });
 
     it('lets a long date use a little of the card padding before it wraps', () => {

@@ -577,9 +577,64 @@ describe('stylesheet one-offs', () => {
         '<div class="light-color-swatches"><button class="light-color-swatch"></button></div>'
       );
       const swatch = document.querySelector('.light-color-swatch');
-      expect(resolvedValue(swatch, 'width')).toBe('28px');
-      expect(resolvedValue(swatch, 'height')).toBe('28px');
+      // Up to 28px, and smaller in a narrow column, but always as tall as it is wide.
+      expect(resolvedValue(swatch, 'width')).toBe('min(28px, 100%)');
+      expect(resolvedValue(swatch, 'height')).toBe('auto');
+      expect(resolvedValue(swatch, 'aspect-ratio')).toBe('1');
       expect(resolvedValue(swatch, 'justify-self')).toBe('center');
+    });
+
+    describe('the light pop-up’s colour row', () => {
+      const row = () => {
+        render(
+          '<div class="brightness-color-row"><input type="color" class="light-color-picker"><div class="light-color-swatches"><button class="light-color-swatch"></button></div></div>'
+        );
+        return {
+          row: document.querySelector('.brightness-color-row'),
+          picker: document.querySelector('.light-color-picker'),
+          swatches: document.querySelector('.light-color-swatches'),
+        };
+      };
+      const px = (value) => parseFloat(value) * (String(value).endsWith('rem') ? 16 : 1);
+
+      // A 44x36 well with Chromium's square, bevelled swatch in it stood beside six 28px circles.
+      it('sets the custom colour in a well as tall as the swatches, filled by the colour', () => {
+        const { picker } = row();
+        expect(resolvedValue(picker, 'width')).toBe('32px');
+        expect(resolvedValue(picker, 'height')).toBe('32px');
+
+        const rules = [...document.styleSheets].flatMap((sheet) => [...sheet.cssRules]);
+        const pseudo = (name) =>
+          rules.find((rule) => rule.selectorText === `.light-color-picker::-webkit-color-${name}`);
+        expect(pseudo('swatch-wrapper').style.padding).toMatch(/^0(px)?$/);
+        expect(pseudo('swatch').style.border).toMatch(/^0(px)?$/);
+        expect(pseudo('swatch').style.getPropertyValue('border-radius')).toBe(
+          'calc(var(--radius-md) - 4px)'
+        );
+      });
+
+      // An auto-fit grid took five columns in a narrow dialog and left the sixth swatch alone on a
+      // second row. Six stay in one row and shrink; only a row too narrow even for 24px swatches
+      // goes to two rows of three, never five and one.
+      it('keeps six swatches in a row, and goes to two rows of three only when they cannot fit', () => {
+        const { row: container, picker, swatches } = row();
+        const columns = (width) =>
+          resolvedValue(swatches, 'grid-template-columns', { container: { width } });
+
+        expect(resolvedValue(container, 'container-type')).toBe('inline-size');
+        expect(columns(400)).toBe('repeat(6, minmax(24px, 1fr))');
+        expect(columns(220)).toBe('repeat(6, minmax(24px, 1fr))');
+        expect(columns(219)).toBe('repeat(3, minmax(24px, 1fr))');
+
+        // The switch is where six 24px swatches and their gaps no longer fit beside the picker.
+        const gap = px(resolvedValue(swatches, 'gap'));
+        const needed =
+          px(resolvedValue(picker, 'width')) +
+          px(resolvedValue(container, 'gap')) +
+          6 * 24 +
+          5 * gap;
+        expect(needed).toBeCloseTo(220, 0);
+      });
     });
 
     it('lays the climate fan and preset options out on the same grid as the modes', () => {

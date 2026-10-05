@@ -5508,13 +5508,16 @@ body.theme-light:not(.high-contrast)
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  /* The swatches beside the picker change their layout with the room this row has. */
+  container-type: inline-size;
 }
 
 .light-color-picker {
-  /* It keeps its size, so a narrow dialog wraps the swatches instead of squeezing it to a sliver. */
-  flex: 0 0 44px;
-  width: 44px;
-  height: 36px;
+  /* A well for the custom colour, as tall as the swatches beside it. It keeps its size, so a
+     narrow dialog shrinks the swatches instead of squeezing it to a sliver. */
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   background: var(--surface-2);
@@ -5522,18 +5525,41 @@ body.theme-light:not(.high-contrast)
   padding: 3px;
 }
 
+/* Chromium draws the colour as a square with a grey bevel and its own inset inside the well. The
+   colour fills the well instead, rounded to its corners, as in the Settings colour picker. */
+.light-color-picker::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.light-color-picker::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-md) - 4px);
+}
+
+/* Six in a row, which shrink (to 24px) before any of them wraps: an auto-fit grid left the last
+   swatch alone on a second row in a narrow dialog. */
 .light-color-swatches {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(28px, 1fr));
+  grid-template-columns: repeat(6, minmax(24px, 1fr));
   gap: 0.4rem;
   flex: 1;
   min-width: 0;
 }
 
+/* Too narrow for six even at 24px (a narrow window with large text): two rows of three. The
+   threshold is the picker, the gap and six 24px swatches with their gaps. */
+@container (width < 220px) {
+  .light-color-swatches {
+    grid-template-columns: repeat(3, minmax(24px, 1fr));
+  }
+}
+
 .light-color-swatch {
-  /* A circle: a grid cell stretches the swatch to the column's width, which made it an oval. */
-  width: 28px;
-  height: 28px;
+  /* A circle as wide as its column allows, up to 28px: a grid cell stretched the swatch to the
+     column's width, which made it an oval. */
+  width: min(28px, 100%);
+  height: auto;
+  aspect-ratio: 1;
   justify-self: center;
   border: 2px solid var(--border-color);
   border-radius: 50%;
