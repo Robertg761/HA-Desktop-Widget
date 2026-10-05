@@ -14002,6 +14002,9 @@ body.theme-light #settings-modal .modal-footer {
 
 .settings-group {
   margin-bottom: 22px;
+  /* Scrolled to the top of the page ("Enter token" brings the token's group up), a group keeps the
+     page's top padding above its caption instead of meeting the edge. */
+  scroll-margin-block-start: 18px;
 }
 
 /* The page title, its description and the group captions start where the cards and the search field

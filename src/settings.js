@@ -5919,6 +5919,7 @@ function getHomeAssistantAuthState(homeAssistant) {
     connection.status || '',
     connection.reason || '',
     !!connection.needsToken,
+    connection.tokenReason || '',
   ]);
 }
 
@@ -5965,6 +5966,7 @@ function updateHomeAssistantAuthUi() {
   const oauthNote = document.getElementById('legacy-ha-token-oauth-note');
 
   updateHomeAssistantConnectButton();
+  updateSecureStorageNotice();
   disconnectButton?.classList.toggle('hidden', !usesOAuth);
   if (tokenInput) {
     tokenInput.disabled = usesOAuth;
@@ -8238,14 +8240,17 @@ function renderDesktopBlur(status) {
   };
 }
 
+// Whether this Linux session has no unlocked keyring, as last read from main.
+let secureStorageUnavailable = false;
+// The reasons a token has to be entered again that come down to having no unlocked keyring.
+const KEYRING_TOKEN_REASONS = new Set(['encryption_unavailable', 'not_persisted']);
+
 /**
  * Says so in General while this Linux session has no unlocked keyring. The toast that reports
  * it is gone within seconds, and the condition stays: the token and the sync passphrase
  * cannot be remembered until a keyring is running.
  */
 async function refreshSecureStorageNotice() {
-  const notice = document.getElementById('secure-storage-notice');
-  if (!notice) return;
   let unavailable = false;
   try {
     const info = await window.electronAPI?.getDesktopIntegration?.();
@@ -8253,7 +8258,18 @@ async function refreshSecureStorageNotice() {
   } catch (error) {
     log.warn('Failed to read the secure storage status:', error);
   }
-  notice.classList.toggle('hidden', !unavailable);
+  secureStorageUnavailable = unavailable;
+  updateSecureStorageNotice();
+}
+
+// While the token has to be entered again for want of a keyring, the line above the field already
+// says so and what to do; the notice under it would say the same again in another colour.
+function updateSecureStorageNotice() {
+  const notice = document.getElementById('secure-storage-notice');
+  if (!notice) return;
+  const connection = getLiveConnectionState();
+  const saidAbove = !!connection.needsToken && KEYRING_TOKEN_REASONS.has(connection.tokenReason);
+  notice.classList.toggle('hidden', !secureStorageUnavailable || saidAbove);
 }
 
 /** The name to show for the shortcut the desktop last delivered, whose id is an internal one. */

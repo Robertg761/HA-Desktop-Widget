@@ -294,6 +294,19 @@ const startupScenes = [
         `document.activeElement?.id === 'ha-token'`,
         'the cursor in the token field'
       );
+      await ctx.expect(
+        `document.getElementById('secure-storage-notice').classList.contains('hidden')`,
+        'the missing keyring is said once, in the line above the field'
+      );
+      await ctx.expect(
+        `(() => {
+          const page = document.querySelector('#settings-modal .modal-body').getBoundingClientRect();
+          const caption = document.querySelector('#ha-token').closest('.settings-group')
+            .querySelector('.settings-group-caption').getBoundingClientRect();
+          return caption.top - page.top >= 12;
+        })()`,
+        'the Home Assistant caption is clear of the top of the page'
+      );
     },
   },
   // The start after a token was entered on a computer with no keyring, which could not save it.

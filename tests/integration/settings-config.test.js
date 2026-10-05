@@ -4680,9 +4680,9 @@ describe('Settings + Config Integration', () => {
 
   describe('the keyring notice', () => {
     const notice = () => document.getElementById('secure-storage-notice');
-    const openWithIntegration = async (info) => {
+    const openWithIntegration = async (info, hooks) => {
       window.electronAPI.getDesktopIntegration = jest.fn().mockResolvedValue(info);
-      await settings.openSettings();
+      await settings.openSettings(hooks);
       await new Promise((resolve) => setTimeout(resolve, 0));
     };
 
@@ -4709,6 +4709,59 @@ describe('Settings + Config Integration', () => {
       settings.closeSettings();
       await openWithIntegration({ platform: 'linux', secureStorageAvailable: true });
       expect(notice().classList.contains('hidden')).toBe(true);
+    });
+
+    describe('beside a token that has to be entered again', () => {
+      const noKeyring = { platform: 'linux', secureStorageAvailable: false };
+      const status = () => document.getElementById('ha-oauth-status');
+      let connection;
+      const hooks = { initUpdateUI: jest.fn(), getConnectionState: () => connection };
+      const needsToken = (tokenReason, reason) => ({
+        status: 'disconnected',
+        reason,
+        needsToken: true,
+        tokenReason,
+      });
+
+      test.each([
+        [
+          'encryption_unavailable',
+          'The saved Home Assistant token cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.',
+        ],
+        [
+          'not_persisted',
+          'No unlocked system keyring (Secret Service) was found when the access token was entered, so it was not saved. Enter it again, and start gnome-keyring or KWallet so it is remembered.',
+        ],
+      ])(
+        'says the missing keyring once, in the line above the field (%s)',
+        async (tokenReason, reason) => {
+          connection = needsToken(tokenReason, reason);
+          await openWithIntegration(noKeyring, hooks);
+
+          expect(status().textContent).toBe(reason);
+          expect(notice().classList.contains('hidden')).toBe(true);
+        }
+      );
+
+      test('keeps the notice when the token was lost for another reason', async () => {
+        // The token line says this computer cannot decrypt it; only the notice says a new one
+        // will not be remembered either.
+        connection = needsToken('decryption_failed', 'This computer cannot decrypt the token.');
+        await openWithIntegration(noKeyring, hooks);
+
+        expect(notice().classList.contains('hidden')).toBe(false);
+      });
+
+      test('brings the notice back once a token is entered and the keyring is still missing', async () => {
+        connection = needsToken('not_persisted', 'The access token was not saved.');
+        await openWithIntegration(noKeyring, hooks);
+        expect(notice().classList.contains('hidden')).toBe(true);
+
+        connection = { status: 'connected', reason: '' };
+        settings.refreshHomeAssistantAuthStatus();
+
+        expect(notice().classList.contains('hidden')).toBe(false);
+      });
     });
   });
 

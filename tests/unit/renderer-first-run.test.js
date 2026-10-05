@@ -1577,7 +1577,11 @@ describe('Renderer first-run Home Assistant authorization', () => {
       // Settings is told why, so it can say so beside the field.
       const hooks = mockSettings.openSettings.mock.calls[0][0];
       expect(hooks.getConnectionState()).toEqual(
-        expect.objectContaining({ needsToken: true, status: 'disconnected' })
+        expect.objectContaining({
+          needsToken: true,
+          tokenReason: 'decryption_failed',
+          status: 'disconnected',
+        })
       );
     });
 

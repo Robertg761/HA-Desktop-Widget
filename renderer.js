@@ -906,6 +906,7 @@ function getSettingsUiHooks() {
       status: mainConnectionState,
       reason: lastDisconnectReason,
       needsToken: needsTokenReentry(),
+      tokenReason: needsTokenReentry() ? tokenRecoveryReason : '',
     }),
     refreshLocale: async () => {
       await refreshLocaleBootstrap();
