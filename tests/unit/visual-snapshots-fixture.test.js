@@ -382,6 +382,20 @@ describe('visual snapshot scenes', () => {
     }
   });
 
+  it('draws the Arabic notifications over the real subscription, not with rows made by hand', async () => {
+    // Hand-made rows held plain text, so they hid that the Markdown paragraphs the app draws read
+    // in the wrong order in Arabic.
+    const scene = scenes.find((entry) => entry.name === 'ar-dialog-notifications');
+    const steps = [];
+    await scene.setup({
+      showNotifications: () => steps.push('showNotifications'),
+      waitForSelector: async () => {},
+      click: async (selector) => steps.push(`click ${selector}`),
+      ev: async () => steps.push('ev'),
+    });
+    expect(steps).toEqual(['showNotifications', 'click #persistent-notifications-btn']);
+  });
+
   it('plots the graph the tooltip scenes hover over from history the mock holds', () => {
     const scene = scenes.find((entry) => entry.name === 'graph-hover-left');
     const [graph] = scene.config.comparisonGraphs;

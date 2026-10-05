@@ -17049,7 +17049,9 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
    left-to-right text. In a right-to-left page the bidi algorithm would move the minus sign and the
    unit to the wrong side, so these elements take their direction from their own text instead:
    "15,6 °C" reads left to right, a translated "مفتوح 50%" still reads right to left, and a long
-   English name is cut at its end. */
+   English name is cut at its end. A notification's message is Markdown, drawn as paragraphs, list
+   items and quotes; unicode-bidi is not inherited, so each of those blocks is listed itself, or
+   "2 issues need attention:" would read ":issues need attention 2" under an Arabic interface. */
 [dir='rtl']
   :is(
     .weather-temp,
@@ -17088,6 +17090,10 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
     .quick-access-tab-label,
     .persistent-notification-title,
     .persistent-notification-message,
+    .persistent-notification-message p,
+    .persistent-notification-message li,
+    .persistent-notification-message blockquote,
+    .persistent-notification-message pre,
     .toast-message,
     .modal-header h2,
     .todo-item-summary,

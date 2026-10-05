@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { loadAppStylesheets, resolvedValue } = require('../helpers/css-cascade.js');
+const { renderNotificationMarkdown } = require('../../src/notification-markdown.js');
 
 const stylesheet = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
 
@@ -73,6 +74,32 @@ describe('right-to-left and script-aware typography', () => {
         expect(resolvedValue(document.querySelector(selector), 'unicode-bidi')).toBe('plaintext');
       }
     );
+
+    it('gives every block of a notification message the direction of its own text', () => {
+      // The message is drawn from Markdown as paragraphs, list items, quotes and code, and
+      // unicode-bidi is not inherited: a block left to the page's direction moves the "2" of "2
+      // issues need attention:" to the far end and the colon to the front.
+      render('<div class="persistent-notification-message"></div>', { dir: 'rtl', lang: 'ar' });
+      const message = document.querySelector('.persistent-notification-message');
+      renderNotificationMarkdown(
+        message,
+        '**2 issues need attention.** Open [Repairs](/config/repairs) to fix them:\n\n' +
+          '- The `backup` integration has no recent backup\n- Update available\n\n' +
+          '> Quoted.\n\n```\ncode\n```\n\nSee https://www.home-assistant.io/docs for help.'
+      );
+      const blocks = message.querySelectorAll('p, li, blockquote, pre');
+      expect([...blocks].map((block) => block.tagName)).toEqual([
+        'P',
+        'LI',
+        'LI',
+        'BLOCKQUOTE',
+        'PRE',
+        'P',
+      ]);
+      for (const block of blocks) {
+        expect(resolvedValue(block, 'unicode-bidi')).toBe('plaintext');
+      }
+    });
 
     it('leaves a left-to-right page alone', () => {
       render('<span class="command-palette-result-state">21.4 °C</span>');

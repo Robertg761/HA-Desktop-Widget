@@ -723,12 +723,22 @@ async function showToasts(ctx) {
   await ctx.sleep(500);
 }
 
-// The ar-* scenes fill the notifications panel by hand, the way createNotificationListItem fills
-// it: English text, as Home Assistant writes it, under whatever language the app is in. A bell in
-// every scene's header is not wanted, so they do not subscribe. The notifications-markdown scene
-// uses ctx.showNotifications() instead, which sends the mock's notifications over the real
-// subscription.
-async function showNotificationsPanel(ctx, { footer = false } = {}) {
+// The notifications Home Assistant holds arrive over the app's subscription: the bell shows them and
+// the panel draws their Markdown with its own rows, English text as Home Assistant writes it under
+// whatever language the app is in. Rows drawn by hand once hid that Arabic scrambled the Markdown
+// paragraphs, so the scenes that are about the rows take this way.
+async function openNotifications(ctx) {
+  ctx.showNotifications();
+  await ctx.waitForSelector('#persistent-notifications-btn:not(.hidden)');
+  await ctx.click('#persistent-notifications-btn');
+  await ctx.waitForSelector(
+    '#persistent-notifications-modal:not(.hidden) .persistent-notification-message a'
+  );
+}
+
+// The footer a long list gets: how many there are, and one way to clear them. This scene fills the
+// panel by hand, with the English the app writes, and so has no bell in the header.
+async function showNotificationsFooter(ctx) {
   await ctx.ev(`(() => {
     const notes = [
       ['Front door left open.', 'The front door has been open for 10 minutes. Check /config/automations.yaml.'],
@@ -747,12 +757,8 @@ async function showNotificationsPanel(ctx, { footer = false } = {}) {
       return item;
     }));
     document.getElementById('persistent-notifications-empty').classList.add('hidden');
-    // The footer a long list gets: how many there are, and one way to clear them. The text is the
-    // English the app writes (the rows above are drawn by hand in the same way).
-    if (${footer}) {
-      document.getElementById('persistent-notifications-summary').textContent = '2 notifications';
-      document.getElementById('persistent-notifications-toolbar').classList.remove('hidden');
-    }
+    document.getElementById('persistent-notifications-summary').textContent = '2 notifications';
+    document.getElementById('persistent-notifications-toolbar').classList.remove('hidden');
     document.getElementById('persistent-notifications-modal').classList.remove('hidden');
   })()`);
 }
@@ -1595,19 +1601,7 @@ const scenes = [
   },
   { name: 'graph-hover-left', config: graphTooltipPage, setup: (ctx) => hoverGraph(ctx, 0.25) },
   { name: 'graph-hover-right', config: graphTooltipPage, setup: (ctx) => hoverGraph(ctx, 0.75) },
-  {
-    name: 'notifications-markdown',
-    setup: async (ctx) => {
-      // The notifications Home Assistant holds arrive over the app's subscription: the bell
-      // shows them and the panel draws their Markdown.
-      ctx.showNotifications();
-      await ctx.waitForSelector('#persistent-notifications-btn:not(.hidden)');
-      await ctx.click('#persistent-notifications-btn');
-      await ctx.waitForSelector(
-        '#persistent-notifications-modal:not(.hidden) .persistent-notification-message a'
-      );
-    },
-  },
+  { name: 'notifications-markdown', setup: openNotifications },
 
   // The light theme.
   { name: 'main-light', ui: { theme: 'light' } },
@@ -1756,10 +1750,10 @@ const scenes = [
       await revealInSettings(ctx, '#custom-color-hex', 'center');
     },
   },
-  { name: 'ar-dialog-notifications', ui: { language: 'ar' }, setup: showNotificationsPanel },
+  { name: 'ar-dialog-notifications', ui: { language: 'ar' }, setup: openNotifications },
   {
     name: 'dialog-notifications-footer',
-    setup: (ctx) => showNotificationsPanel(ctx, { footer: true }),
+    setup: showNotificationsFooter,
   },
   { name: 'ar-dialog-diagnostics', ui: { language: 'ar' }, setup: openDiagnostics },
   { name: 'hi-main', ui: { language: 'hi' } },
