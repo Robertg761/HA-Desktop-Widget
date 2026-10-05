@@ -613,15 +613,45 @@ describe('comparison graph tile', () => {
     expect(values).toEqual(['20°C', '5°C']);
   });
 
+  // Puts the real clock back even when the test below fails part way.
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('heads the tooltip with the weekday and the minute, and rounds values as the legend does', async () => {
+    // The day the heading names is checked against the hovered time, so the clock is held at
+    // midday: run just after midnight, the graph's own sample and the test's arithmetic could
+    // land either side of it. Only Date is faked; the timers the graph waits on stay real.
+    const midday = new Date(NOW);
+    midday.setHours(12, 0, 0, 0);
+    const now = midday.getTime();
+    jest.useFakeTimers({
+      now,
+      doNotFake: [
+        'nextTick',
+        'setImmediate',
+        'clearImmediate',
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+        'queueMicrotask',
+        'requestAnimationFrame',
+        'cancelAnimationFrame',
+        'requestIdleCallback',
+        'cancelIdleCallback',
+        'performance',
+        'hrtime',
+      ],
+    });
     const { warmId, coldId } = makeScenario();
     mockRequest.mockResolvedValue(
       historyResponse({
         [warmId]: [
-          [20.04, NOW - 3 * HOUR],
-          [21.4567, NOW - 1 * HOUR],
+          [20.04, now - 3 * HOUR],
+          [21.4567, now - 1 * HOUR],
         ],
-        [coldId]: [[5, NOW - 2 * HOUR]],
+        [coldId]: [[5, now - 2 * HOUR]],
       })
     );
     setupConfig([warmId, coldId]);
@@ -643,7 +673,7 @@ describe('comparison graph tile', () => {
 
     hoverAt(0.5);
     const heading = tile.querySelector('.comparison-graph-tooltip-time').textContent;
-    const hovered = new Date(NOW - 0.5 * HOUR);
+    const hovered = new Date(now - 0.5 * HOUR);
     // A 24 hour graph names the day, and the time has no seconds.
     expect(heading).toContain(hovered.toLocaleDateString('en', { weekday: 'short' }));
     expect(heading).toMatch(/\d{1,2}:\d{2}(\s?[AP]M)?$/i);
