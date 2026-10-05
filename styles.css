@@ -17093,7 +17093,6 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
     .persistent-notification-message p,
     .persistent-notification-message li,
     .persistent-notification-message blockquote,
-    .persistent-notification-message pre,
     .toast-message,
     .modal-header h2,
     .todo-item-summary,
@@ -17126,6 +17125,25 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
     .command-palette-result-name
   ) {
   text-align: right;
+}
+
+/* A notification's lists and quotes take the direction of their own text (dir="auto", see
+   notification-markdown.js), so an English list keeps its bullets, and a quote its bar, at the
+   start of its lines. Aligned to the right like the paragraphs around them, their English lines
+   would sit away from their own bullets; instead each is as wide as its text and sits at the
+   reading edge. */
+[dir='rtl'] .persistent-notification-message :is(ul, ol, blockquote) {
+  width: fit-content;
+  max-width: 100%;
+  margin-left: auto;
+  text-align: start;
+}
+
+/* Code reads left to right in any language. Right-aligned, a YAML snippet's lines lose their
+   indentation to a ragged edge. */
+[dir='rtl'] .persistent-notification-message pre {
+  direction: ltr;
+  text-align: left;
 }
 
 /* A name that is cut after a few lines (the hotkey rows', the pins' and the media dialog's track

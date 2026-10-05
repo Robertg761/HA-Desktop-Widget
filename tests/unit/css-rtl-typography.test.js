@@ -75,30 +75,56 @@ describe('right-to-left and script-aware typography', () => {
       }
     );
 
-    it('gives every block of a notification message the direction of its own text', () => {
-      // The message is drawn from Markdown as paragraphs, list items, quotes and code, and
-      // unicode-bidi is not inherited: a block left to the page's direction moves the "2" of "2
-      // issues need attention:" to the far end and the colon to the front.
-      render('<div class="persistent-notification-message"></div>', { dir: 'rtl', lang: 'ar' });
-      const message = document.querySelector('.persistent-notification-message');
-      renderNotificationMarkdown(
-        message,
-        '**2 issues need attention.** Open [Repairs](/config/repairs) to fix them:\n\n' +
-          '- The `backup` integration has no recent backup\n- Update available\n\n' +
-          '> Quoted.\n\n```\ncode\n```\n\nSee https://www.home-assistant.io/docs for help.'
-      );
-      const blocks = message.querySelectorAll('p, li, blockquote, pre');
-      expect([...blocks].map((block) => block.tagName)).toEqual([
-        'P',
-        'LI',
-        'LI',
-        'BLOCKQUOTE',
-        'PRE',
-        'P',
-      ]);
-      for (const block of blocks) {
-        expect(resolvedValue(block, 'unicode-bidi')).toBe('plaintext');
-      }
+    describe('a notification message', () => {
+      const renderMessage = () => {
+        render('<div class="persistent-notification-message"></div>', { dir: 'rtl', lang: 'ar' });
+        const message = document.querySelector('.persistent-notification-message');
+        renderNotificationMarkdown(
+          message,
+          '**2 issues need attention.** Open [Repairs](/config/repairs) to fix them:\n\n' +
+            '- The `backup` integration has no recent backup\n- Update available\n\n' +
+            '> Quoted.\n\n```yaml\nautomation:\n  - alias: Lights on\n```\n\n' +
+            'See https://www.home-assistant.io/docs for help.'
+        );
+        return message;
+      };
+
+      it('gives every block of text the direction of its own text', () => {
+        // The message is drawn from Markdown as paragraphs, list items and quotes, and
+        // unicode-bidi is not inherited: a block left to the page's direction moves the "2" of "2
+        // issues need attention:" to the far end and the colon to the front.
+        const blocks = renderMessage().querySelectorAll('p, li, blockquote');
+        expect([...blocks].map((block) => block.tagName)).toEqual([
+          'P',
+          'LI',
+          'LI',
+          'BLOCKQUOTE',
+          'P',
+        ]);
+        for (const block of blocks) {
+          expect(resolvedValue(block, 'unicode-bidi')).toBe('plaintext');
+        }
+      });
+
+      it('sets its lists and quotes, which follow their own language, at the reading edge', () => {
+        // Each is as wide as its text, so an English list's lines stay beside their bullets, and
+        // the box sits at the right like the paragraphs around it.
+        for (const block of renderMessage().querySelectorAll('ul, blockquote')) {
+          expect(block.getAttribute('dir')).toBe('auto');
+          expect(resolvedValue(block, 'width')).toBe('fit-content');
+          expect(resolvedValue(block, 'margin-left')).toBe('auto');
+          expect(resolvedValue(block, 'text-align')).toBe('start');
+        }
+      });
+
+      it('writes code left to right from the left edge, keeping its indentation', () => {
+        // Right-aligned, the lines of a YAML snippet end at a ragged right edge and lose their
+        // indentation.
+        const pre = renderMessage().querySelector('pre');
+        expect(resolvedValue(pre, 'direction')).toBe('ltr');
+        expect(resolvedValue(pre, 'text-align')).toBe('left');
+        expect(resolvedValue(pre, 'unicode-bidi')).toBeNull();
+      });
     });
 
     it('leaves a left-to-right page alone', () => {

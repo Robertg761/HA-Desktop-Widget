@@ -143,6 +143,9 @@ describe('visual snapshot mock Home Assistant history and subscriptions', () => 
     const messages = Object.values(events[0].notifications).map((entry) => entry.message);
     expect(messages.some((message) => /\[[^\]]+\]\(\/config\/[a-z]+\)/.test(message))).toBe(true);
     expect(messages.some((message) => message.includes('**'))).toBe(true);
+    // A quote and a code block show how a message's structure reads in Arabic.
+    expect(messages.some((message) => /^> /m.test(message))).toBe(true);
+    expect(messages.some((message) => /^```/m.test(message))).toBe(true);
     expect(buildSubscriptionEvents(now)({ type: 'subscribe_events' })).toEqual([]);
   });
 });

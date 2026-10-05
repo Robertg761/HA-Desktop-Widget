@@ -317,8 +317,10 @@ function buildSubscriptionEvents(now = new Date()) {
               discovered: {
                 notification_id: 'discovered',
                 title: 'New devices found',
+                // A quote and a code block too: code reads left to right in any language, and an
+                // English quote keeps its bar at the start of its line.
                 message:
-                  'Discovered a **Hue bridge**. Set it up in [Integrations](/config/integrations).',
+                  'Discovered a **Hue bridge**. Set it up in [Integrations](/config/integrations).\n\n> Pairing takes 30 seconds.\n\n```yaml\nautomation:\n  - alias: Lights on\n    trigger: sun\n```',
                 created_at: ago(190),
               },
             },

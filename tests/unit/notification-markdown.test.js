@@ -48,6 +48,15 @@ describe('notification Markdown', () => {
       expect(container.querySelector('pre code').textContent).toBe('let x = 1;');
     });
 
+    it('lays out lists and quotes in the language of their own text', () => {
+      // An English list in an Arabic window keeps its bullets, and a quote its bar, at the start of
+      // its lines; paragraphs and code need no attribute (see styles.css).
+      const container = render('Intro\n\n- a\n\n1. first\n\n> quoted\n\n```\ncode\n```');
+      expect(
+        [...container.children].map((node) => `${node.tagName}:${node.getAttribute('dir')}`)
+      ).toEqual(['P:null', 'UL:auto', 'OL:auto', 'BLOCKQUOTE:auto', 'PRE:null']);
+    });
+
     it('leaves snake_case words and unbalanced markers as the text they are', () => {
       expect(render('sensor_living_room_temp is *not closed and 2 * 3').textContent).toBe(
         'sensor_living_room_temp is *not closed and 2 * 3'
