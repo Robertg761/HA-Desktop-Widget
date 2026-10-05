@@ -553,6 +553,15 @@ async function openPrimaryCardsList(ctx) {
   await revealInSettings(ctx, '#primary-cards-section');
 }
 
+// A Settings list with a scroller of its own is shorter than the page that scrolls it, so the page
+// can bring the whole box into view instead of the two taking turns.
+const listFitsSettingsPage = (selector) => `(() => {
+  const list = document.querySelector(${JSON.stringify(selector)});
+  const page = list?.closest('#settings-modal .modal-body');
+  return !!page && list.scrollHeight > list.clientHeight &&
+    list.getBoundingClientRect().height <= page.clientHeight;
+})()`;
+
 // Holding the weather card opens its entity picker.
 async function openWeatherPicker(ctx) {
   await ctx.ev(
@@ -2479,7 +2488,10 @@ const scenes = [
     name: 'layout-settings-primary-cards-s150',
     size: DEFAULT_SIZE,
     ui: { scale: 1.5 },
-    setup: openPrimaryCardsList,
+    setup: async (ctx) => {
+      await openPrimaryCardsList(ctx);
+      await ctx.expect(listFitsSettingsPage('#primary-cards-list'), 'the list fits in the page');
+    },
   },
   {
     name: 'layout-settings-dashboard-de',
@@ -2515,7 +2527,10 @@ const scenes = [
     size: DEFAULT_SIZE,
     ui: { scale: 1.5 },
     config: hotkeyPage,
-    setup: (ctx) => openHotkeysFor(ctx, 'light'),
+    setup: async (ctx) => {
+      await openHotkeysFor(ctx, 'light');
+      await ctx.expect(listFitsSettingsPage('#hotkeys-list'), 'the list fits in the page');
+    },
   },
 
   // The command palette's longest rows, and the toasts at the sizes that capped them at half the

@@ -5103,6 +5103,14 @@ body.theme-light:not(.high-contrast)
   align-items: flex-start;
 }
 
+/* The Settings entity lists keep a scroller of their own, as a page of 50 rows would make Settings
+   very long. Its 400px cap is relative to the window as well: at 150% text the window is 400px tall,
+   and a 400px list inside the scrolling page showed one row with two scrollbars, the page's and
+   the list's, to take turns with. Capped at 55% of the window, the whole box fits in the page. */
+:is(#primary-cards-list, #custom-entity-icons-list) {
+  max-height: min(400px, 55vh);
+}
+
 #custom-entity-icons-list.custom-entity-icons-list-expanded {
   max-height: none;
   overflow: visible;
@@ -11290,8 +11298,9 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
      own scroller inside the Settings page, as do the primary cards and custom icons lists; the
      wheel passes on to the page at either end. The alert rows are a handful the user added and
      scroll with the page. Rows are two lines tall now; 40vh of the default window showed less
-     than three. */
-  max-height: max(40vh, 20rem);
+     than three. At 150% text, where the window is 400px tall, the 20rem floor was most of the
+     page, so the list stops at 60% of the window. */
+  max-height: min(max(40vh, 20rem), 60vh);
   overflow-y: auto;
   overflow-x: hidden;
   border: 1px solid var(--border-color);

@@ -60,4 +60,33 @@ describe('Settings layout', () => {
       expect(resolvedValue(document.querySelector('.alert-name'), 'margin-bottom')).toBeNull();
     });
   });
+  describe('the Settings entity lists', () => {
+    // At 150% text the window is 400px tall, and a 400px list inside the scrolling page showed one
+    // row between two scrollbars.
+    it.each(['primary-cards-list', 'custom-entity-icons-list'])(
+      'caps #%s by the window as well as at 400px',
+      (id) => {
+        render(
+          `<div id="settings-modal"><div id="${id}" class="entity-selector-list"></div></div>`
+        );
+        expect(resolvedValue(document.getElementById(id), 'max-height')).toBe('min(400px, 55vh)');
+      }
+    );
+
+    it('caps the hotkey list at 60% of the window', () => {
+      render('<div id="settings-modal"><div id="hotkeys-list"></div></div>');
+      expect(resolvedValue(document.getElementById('hotkeys-list'), 'max-height')).toBe(
+        'min(max(40vh, 20rem), 60vh)'
+      );
+    });
+
+    it('still lets the icon list grow while an icon grid is open in it', () => {
+      render(
+        '<div id="settings-modal"><div id="custom-entity-icons-list" class="entity-selector-list custom-entity-icons-list-expanded"></div></div>'
+      );
+      expect(resolvedValue(document.getElementById('custom-entity-icons-list'), 'max-height')).toBe(
+        'none'
+      );
+    });
+  });
 });
