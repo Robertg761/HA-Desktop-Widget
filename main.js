@@ -349,7 +349,7 @@ if (
 // --------------------------- end early startup -----------------------------
 
 const profileSyncCore = require('./profile-sync-core.js');
-const { createLocalizationService } = require('./src/i18n-main.cjs');
+const { createLocalizationService, detectSystemLocale } = require('./src/i18n-main.cjs');
 const { createLocalePackRefresher } = require('./src/locale-pack-refresh.cjs');
 const { revealFile } = require('./src/reveal-file.cjs');
 const { toStoredPages } = require('./src/page-names.cjs');
@@ -1209,13 +1209,12 @@ const localizationService = createLocalizationService({
   bundledDir: path.join(__dirname, 'locales'),
   getUserDataDir: () => app.getPath('userData'),
   appVersion: pkg.version,
-  getDetectedLocale: () => {
-    try {
-      return app.getLocale() || app.getSystemLocale() || 'en';
-    } catch {
-      return 'en';
-    }
-  },
+  // From the system's own language list, not app.getLocale(): that is Chromium's pick among the
+  // locale .pak files that ship, so it changes with electronLanguages in electron-builder.yml.
+  getDetectedLocale: () =>
+    detectSystemLocale(app, {
+      isSupported: (locale) => localizationService.isSupportedLanguage(locale),
+    }),
   getSystemLocale: () => {
     try {
       return app.getSystemLocale() || '';

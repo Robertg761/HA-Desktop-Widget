@@ -28,6 +28,73 @@ function getBaseLocale(locale) {
   return normalized.split('-')[0];
 }
 
+// The languages the app can show: English and German are bundled, and the rest are packs it
+// downloads (locale-packs/manifest.json). A test keeps this list in step with both, and with the
+// Chromium locales electron-builder.yml ships, so a new language has to be added in all three.
+const APP_LANGUAGES = Object.freeze(['en', 'de', 'es', 'fr', 'ar', 'hi', 'zh']);
+
+// What an operating system reports when it has no language set (LANG=C), which names no language.
+const PLACEHOLDER_LANGUAGES = new Set(['c', 'posix', 'und']);
+
+// Locale codes in the order given, without repeats, junk or placeholders. Linux lists each language
+// twice and reports "posix" for the C locale; macOS and Windows add a script ("zh-Hans-CN").
+function toLocaleList(value) {
+  const seen = new Set();
+  for (const item of Array.isArray(value) ? value : [value]) {
+    const code = normalizeLocaleCode(item);
+    if (code && !PLACEHOLDER_LANGUAGES.has(getBaseLocale(code))) seen.add(code);
+  }
+  return [...seen];
+}
+
+/**
+ * The language to run in when the setting is Auto, taken from what the operating system asks for.
+ *
+ * Electron's app.getLocale() is not that: it is the locale Chromium settled on after matching the
+ * system's languages against the .pak files that ship in the package's locales folder. Mexican
+ * Spanish comes back as "es-419" only while that pak ships, and a language with no pak at all comes
+ * back as "en-US". Trim the folder and the answer changes with it. Asking the operating system
+ * directly gives the same answer however many paks ship.
+ *
+ * In order, the first of these that names any language decides:
+ *   1. app.getPreferredSystemLanguages(), the user's ordered list. The first entry in a language
+ *      the app has wins, so a Japanese-then-German list gets German, as it would anywhere else.
+ *      If none is one the app has, the first entry stands (Japanese), and the app shows English
+ *      and says which language it found.
+ *   2. app.getSystemLocale(), which is the region setting and is read only when the list is empty.
+ *   3. app.getLocale(), Chromium's pick, for a platform where neither of the others answers.
+ * The code is returned as the system wrote it ("es-MX"), because the localization service picks
+ * the catalog from it the same way as before: the full code, then its language, then English.
+ *
+ * @param {object} app Electron's app, or anything with the same three methods.
+ * @param {{ isSupported?: (locale: string) => boolean }} [options] Whether the app can show a
+ *   language, which defaults to being one of APP_LANGUAGES.
+ * @returns {string} A locale code, "en" when the system names none.
+ */
+function detectSystemLocale(app, options = {}) {
+  const { isSupported = (locale) => APP_LANGUAGES.includes(getBaseLocale(locale)) } = options;
+  const sources = [
+    () => app.getPreferredSystemLanguages(),
+    () => app.getSystemLocale(),
+    () => app.getLocale(),
+  ];
+  for (const read of sources) {
+    let candidates = [];
+    try {
+      candidates = toLocaleList(read());
+    } catch {
+      // Not offered on this platform, or called before the app is ready: try the next source.
+    }
+    if (!candidates.length) continue;
+    try {
+      return candidates.find((candidate) => isSupported(candidate)) || candidates[0];
+    } catch {
+      return candidates[0];
+    }
+  }
+  return 'en';
+}
+
 function formatTemplate(template, vars = {}) {
   if (typeof template !== 'string') return '';
   return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_match, key) => {
@@ -245,6 +312,22 @@ function createLocalizationService(options = {}) {
       })
       .filter(Boolean)
       .sort((a, b) => a.displayName.localeCompare(b.displayName));
+  }
+
+  /**
+   * Whether the app can show a language: one of its own, or one with a catalog on disk. The second
+   * covers a pack added to the remote manifest after this release, which a person can install but
+   * APP_LANGUAGES has never heard of, so a system list of that language and English picks the pack.
+   */
+  function isSupportedLanguage(locale) {
+    const normalized = normalizeLocaleCode(locale);
+    if (!normalized) return false;
+    if (APP_LANGUAGES.includes(getBaseLocale(normalized))) return true;
+    return [normalized, getBaseLocale(normalized)].some(
+      (code) =>
+        fs.existsSync(path.join(bundledDir, `${code}.json`)) ||
+        fs.existsSync(getInstalledPackPath(code))
+    );
   }
 
   function getRequestedLocale(languageSetting = 'auto') {
@@ -543,6 +626,7 @@ function createLocalizationService(options = {}) {
     formatTemplate,
     compareVersions,
     getLocaleBootstrap,
+    isSupportedLanguage,
     listInstalledLocalePacks,
     fetchAvailableLocaleManifest,
     listLocalePacks,
@@ -554,7 +638,9 @@ function createLocalizationService(options = {}) {
 }
 
 module.exports = {
+  APP_LANGUAGES,
   createLocalizationService,
+  detectSystemLocale,
   normalizeLocaleCode,
   getBaseLocale,
   formatTemplate,
