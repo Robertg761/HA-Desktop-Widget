@@ -2548,12 +2548,14 @@ function renderPrimaryCardsEntityRows() {
     const isCardOne = selections[0] === entity.entity_id;
     const isCardTwo = selections[1] === entity.entity_id;
 
-    const cardOneLabel = utils.escapeHtml(
-      isCardOne ? t('Card {{index}} ✓', { index: 1 }) : t('Set Card {{index}}', { index: 1 })
-    );
-    const cardTwoLabel = utils.escapeHtml(
-      isCardTwo ? t('Card {{index}} ✓', { index: 2 }) : t('Set Card {{index}}', { index: 2 })
-    );
+    const cardLabel = (isSet, index) =>
+      utils.escapeHtml(
+        isSet
+          ? t('Card {{index}} ✓', { index: formatNumber(index) })
+          : t('Set Card {{index}}', { index: formatNumber(index) })
+      );
+    const cardOneLabel = cardLabel(isCardOne, 1);
+    const cardTwoLabel = cardLabel(isCardTwo, 2);
     const cardOneClass = isCardOne ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
     const cardTwoClass = isCardTwo ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
     const cardOneDisabled = isCardOne ? 'aria-disabled="true"' : '';
@@ -3881,7 +3883,7 @@ function renderProfileSyncFolderWarnings(status) {
         const count = Array.isArray(status.conflictCopies) ? status.conflictCopies.length : 0;
         return t(
           'Found {{count}} conflict copy file(s) next to the sync file, which means two devices saved at once. Check the folder and delete the copies you do not need.',
-          { count }
+          { count: formatNumber(count) }
         );
       }
       return '';
@@ -6505,7 +6507,7 @@ async function persistSettings() {
       showProfileSyncFieldError(
         profileSyncPassphrase,
         t('Passphrase must be at least {{count}} characters long', {
-          count: PROFILE_SYNC_MIN_PASSPHRASE_LENGTH,
+          count: formatNumber(PROFILE_SYNC_MIN_PASSPHRASE_LENGTH),
         })
       );
       return;

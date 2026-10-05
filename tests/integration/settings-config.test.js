@@ -8782,6 +8782,74 @@ describe('Settings + Config Integration', () => {
     });
   });
 
+  describe('numbers in a region that writes its own digits', () => {
+    const i18n = require('../../src/i18n.js');
+
+    // An Arabic catalog with an Egyptian region writes Arabic-Indic digits; a count passed to t()
+    // raw would stay Latin beside them.
+    beforeEach(() => {
+      i18n.setLocaleBootstrap({
+        languageSetting: 'auto',
+        systemLocale: 'ar-EG',
+        detectedLocale: 'ar',
+        activeLocale: 'ar',
+        messages: {},
+      });
+    });
+
+    afterEach(() => {
+      i18n.setLocaleBootstrap({ systemLocale: '', activeLocale: 'en', messages: {} });
+    });
+
+    test('writes the card numbers of the Primary Cards picker in them', async () => {
+      await settings.openSettings();
+      const toggle = document.getElementById('primary-cards-toggle');
+      if (toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+      const labels = () =>
+        [...document.querySelectorAll('#primary-cards-list [data-primary-assign]')].map(
+          (button) => button.textContent
+        );
+
+      expect(labels()).toEqual(expect.arrayContaining(['Set Card \u0661', 'Set Card \u0662']));
+      document.querySelector('#primary-cards-list [data-primary-assign="0"]').click();
+      expect(labels()).toContain('Card \u0661 \u2713');
+      settings.closeSettings();
+    });
+
+    test('writes the shortest passphrase in them', async () => {
+      state.CONFIG.profileSync = buildProfileSync({ enabled: false, cloudFilePath: '' });
+      await settings.openSettings();
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-folder-path').value = '/tmp/shared-folder';
+      document.getElementById('profile-sync-encryption-enabled').checked = true;
+      document.getElementById('profile-sync-passphrase').value = 'short';
+      await settings.saveSettings();
+
+      expect(fieldError('profile-sync-passphrase')).toBe(
+        'Passphrase must be at least \u0668 characters long'
+      );
+    });
+
+    test('counts the conflict copies next to the sync file in them', async () => {
+      document
+        .getElementById('settings-modal')
+        .insertAdjacentHTML('beforeend', '<p id="profile-sync-provider-hint" class="hidden"></p>');
+      mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce(
+        buildProfileSyncStatus({
+          enabled: true,
+          folderWarnings: ['conflict_copies'],
+          conflictCopies: ['a (conflict).json', 'b (conflict).json'],
+        })
+      );
+      await settings.openSettings();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(document.getElementById('profile-sync-provider-hint').textContent).toMatch(
+        /^Found \u0662 conflict copy file/
+      );
+    });
+  });
+
   describe('Settings translations', () => {
     const i18n = require('../../src/i18n.js');
     const GERMAN = {
