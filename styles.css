@@ -14122,6 +14122,15 @@ textarea::selection {
   border-top: 1px solid var(--tile-border);
 }
 
+/* A field's error belongs to its field's row. Placed after the row, it was a row of its own: 24px
+   below the field with a hairline between them, and it read as another setting. It sits just under
+   the field instead, and the next row's hairline falls under the error. */
+#settings-modal .settings-group-body > p.form-error.field-error {
+  margin-top: -6px;
+  padding-top: 0;
+  border-top: none;
+}
+
 /* --- Rows --- */
 
 #settings-modal .form-group {

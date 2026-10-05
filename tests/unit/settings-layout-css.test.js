@@ -232,4 +232,21 @@ describe('Settings layout', () => {
       expect(resolvedValue(button, 'letter-spacing')).toBe('0.02em');
     });
   });
+  describe('a Settings field error', () => {
+    // Inserted after the field's row, the error was a row of its own: 24px under the field with a
+    // hairline between them.
+    it("stays in its field's row, with the next row's hairline under it", () => {
+      render(`
+        <div id="settings-modal"><div class="settings-group-body">
+          <div class="form-group"><label for="ha-url">Home Assistant URL</label><input id="ha-url" /></div>
+          <p class="form-help form-error field-error" id="ha-url-error">Invalid URL: missing hostname</p>
+          <p class="form-help">Browser authorization is recommended.</p>
+        </div></div>`);
+      const error = document.getElementById('ha-url-error');
+      expect(resolvedValue(error, 'border-top')).toBe('none');
+      expect(resolvedValue(error, 'padding-top')).toBe('0');
+      expect(resolvedValue(error, 'margin-top')).toBe('-6px');
+      expect(resolvedValue(error.nextElementSibling, 'border-top')).toMatch(/^1px solid /);
+    });
+  });
 });

@@ -1380,6 +1380,15 @@ const scenes = [
         `!!document.getElementById('ha-url-error') && document.activeElement?.id === 'ha-url'`,
         'the inline URL error, with the field focused'
       );
+      // The reason is part of the field's row: close under the field, with no divider between.
+      await ctx.expect(
+        `(() => {
+          const error = document.getElementById('ha-url-error');
+          const gap = error.getBoundingClientRect().top - document.getElementById('ha-url').getBoundingClientRect().bottom;
+          return gap >= 0 && gap <= 10 && getComputedStyle(error).borderTopStyle === 'none';
+        })()`,
+        'the error sits under its field, in its row'
+      );
     },
   },
   // The icon editor with a picker open: the home's own icons first, in a list that is paged.
