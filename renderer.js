@@ -395,7 +395,7 @@ function isSecureStoragePending(targetConfig = state.CONFIG) {
 // there was no keyring to decrypt it with ('encryption_unavailable'), or there was none to save it
 // to when it was entered ('not_persisted'). Main forgets the reason once told it was seen; this
 // keeps it until a token is entered, because it is what tells a setup that lost its token from a
-// first run, which is no time to greet anyone with Welcome.
+// first run.
 let tokenRecoveryReason = '';
 
 function needsTokenReentry() {
@@ -495,8 +495,8 @@ function showTokenRecovery() {
   return true;
 }
 
-// The indicator's words for a setup with no server yet. The wizard is the way to set it up, and
-// the header's Settings button is hidden while it is up, so they name neither.
+// The indicator's words for a setup with no server yet. The wizard is where it is set up, and the
+// header's Settings button is hidden while the wizard is up, so the words do not point at it.
 function getNotSetUpStatus() {
   return t('Not set up yet. Finish setup to connect to Home Assistant.');
 }
