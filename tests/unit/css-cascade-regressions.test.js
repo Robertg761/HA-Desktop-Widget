@@ -1242,24 +1242,6 @@ describe('stylesheet cascade regressions', () => {
       expect(resolvedValue(off, 'border', options)).toMatch(/^1px solid /);
     });
 
-    it.each(['weather', 'numeric', 'enum', 'vacuum', 'presence'])(
-      'leaves the %s pin header to the name, because the meter prints the value',
-      (family) => {
-        const kpi = '<div class="desktop-pin-panel-kpi">1</div>';
-        const pin = (layout) =>
-          `<div class="control-item desktop-pin-control desktop-pin-panel-control desktop-pin-${family}-control"
-            data-layout="${layout}"><div class="desktop-pin-panel-topline">${kpi}</div></div>`;
-        render('desktop-pin-mode', pin('compact'));
-        expect(resolvedValue(document.querySelector('.desktop-pin-panel-kpi'), 'display')).toBe(
-          'none'
-        );
-        render('desktop-pin-mode', pin('roomy'));
-        expect(resolvedValue(document.querySelector('.desktop-pin-panel-kpi'), 'display')).not.toBe(
-          'none'
-        );
-      }
-    );
-
     it('sets a word tightly only as much as a number, and keeps digit tracking for numbers', () => {
       render(
         'desktop-pin-mode',
@@ -1431,6 +1413,16 @@ describe('stylesheet cascade regressions', () => {
           '--desktop-pin-tint-rgb'
         )
       ).toBe(tint);
+    });
+
+    it('takes an automation that is switched off out of its tint, like a switch', () => {
+      render('desktop-pin-mode', panel('action', 'compact', 'data-state="off"'));
+      expect(
+        resolvedValue(
+          document.querySelector('.desktop-pin-panel-control'),
+          '--desktop-pin-tint-rgb'
+        )
+      ).toBe('130, 150, 176');
     });
 
     it.each([

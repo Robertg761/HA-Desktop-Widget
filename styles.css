@@ -2146,6 +2146,13 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   white-space: nowrap;
 }
 
+/* A switch pin's button is the power icon alone, drawn at the size of the light and fan pins'
+   power icon rather than at the label's 10px. */
+.desktop-pin-toggle-action .desktop-pin-panel-button-icon {
+  display: grid;
+  font-size: var(--font-size-base);
+}
+
 /* The active mode, speed, level or state differs by more than a faint tint: a brighter label and
    edge. */
 .desktop-pin-panel-button[data-active='true'],
@@ -2405,9 +2412,9 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   --desktop-pin-tint-rgb: 176, 222, 120;
 }
 
-/* A thermostat's tint says what it is doing: warm while it heats, and the blue and teal the cool
-   and auto states have above while it cools or runs on auto. Off, drying or only moving air, it
-   is neutral. */
+/* A thermostat's tint says what it is doing: warm while it heats, and the blue and teal that the
+   climate states get further down while it cools or runs on auto. Off, drying or only moving air,
+   it is neutral, as is an automation that is switched off. */
 .desktop-pin-climate-control[data-state='cool'] {
   --desktop-pin-tint-rgb: 3, 169, 244;
 }
@@ -2419,6 +2426,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 .desktop-pin-toggle-control[data-state='off'],
 .desktop-pin-fan-control[data-state='off'],
 .desktop-pin-climate-control:is([data-state='off'], [data-state='dry'], [data-state='fan_only']),
+.desktop-pin-action-control[data-state='off'],
 .desktop-pin-vacuum-control[data-state='docked'],
 .desktop-pin-camera-control[data-state='idle'] {
   --desktop-pin-tint-rgb: 130, 150, 176;
@@ -2536,20 +2544,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   justify-content: center;
   gap: 8px;
   padding: 4px 10px;
-}
-
-/* The header's value and the meter's would both print the same reading, and the room goes to the
-   name instead. */
-.desktop-pin-panel-control:is(
-    .desktop-pin-weather-control,
-    .desktop-pin-numeric-control,
-    .desktop-pin-enum-control,
-    .desktop-pin-vacuum-control,
-    .desktop-pin-presence-control
-  )[data-layout='compact']
-  .desktop-pin-panel-topline
-  .desktop-pin-panel-kpi {
-  display: none;
 }
 
 .desktop-pin-weather-control[data-layout='compact']
@@ -15976,8 +15970,8 @@ body.desktop-pin-mode
   padding: 6px 8px;
 }
 
-/* A small climate pin shows its target as one row ("TARGET 22°C") and drops the header copy of
-   the same number, so the mode buttons fit above the rounded bottom edge. */
+/* A small climate pin shows its target as one row ("TARGET 22°C"), so the mode buttons fit above
+   the rounded bottom edge. */
 body.desktop-pin-mode
   .desktop-pin-panel-control[data-dense-variant='tight']
   .desktop-pin-climate-target-stat {
@@ -15991,12 +15985,6 @@ body.desktop-pin-mode
   .desktop-pin-panel-control[data-dense-variant='tight']
   .desktop-pin-climate-target-value {
   width: auto;
-}
-
-body.desktop-pin-mode
-  .desktop-pin-panel-control[data-dense-variant='tight']
-  .desktop-pin-climate-kpi {
-  display: none;
 }
 
 /* A toast raised in a pin (a failed command) has 168px to sit in, so it shrinks to the window

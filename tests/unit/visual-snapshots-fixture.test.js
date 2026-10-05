@@ -235,6 +235,7 @@ describe('visual snapshot scenes', () => {
       'pin-light',
       'pin-light-long',
       'pin-light-onoff',
+      'pin-switch',
       'pin-climate-200x170',
       'pin-fan-200x170',
       'pin-cover-200x170',

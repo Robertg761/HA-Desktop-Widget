@@ -2044,6 +2044,7 @@ const scenes = [
   pinScene('pin-scene', 'scene.movie_time'),
   pinScene('pin-script', 'script.goodnight'),
   pinScene('pin-lock', 'lock.back_door'),
+  pinScene('pin-switch', 'switch.coffee_maker'),
   pinScene('pin-action', 'automation.morning_routine'),
   pinScene('pin-presence', 'person.alex'),
   pinScene('pin-vacuum', 'vacuum.robot'),
