@@ -183,13 +183,7 @@ function shellWord(value) {
 // The arguments that pick this widget's profile, so a second launch reaches this instance and not
 // the installed one: the single-instance lock lives in the profile.
 function getProfileArgs(argv, isPackaged) {
-  const args = [];
-  argv.forEach((arg, index) => {
-    if (/^--(?:user-data-dir|isolated-profile)=/.test(arg)) args.push(arg);
-    else if (/^--(?:user-data-dir|isolated-profile)$/.test(arg) && argv[index + 1]) {
-      args.push(arg, argv[index + 1]);
-    }
-  });
+  const args = argv.filter((arg) => arg.startsWith('--user-data-dir='));
   // A run from source with --dev uses a profile of its own beside the installed widget's.
   if (!isPackaged && argv.includes('--dev')) args.push('--dev');
   return args;

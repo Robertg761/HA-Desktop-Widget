@@ -110,9 +110,7 @@ describe('the command that toggles the widget', () => {
     expect(run(['widget', '--user-data-dir=/tmp/test profile'])).toBe(
       `${execPath} '--user-data-dir=/tmp/test profile' --toggle`
     );
-    expect(run(['widget', '--user-data-dir', '/tmp/p'])).toBe(
-      `${execPath} --user-data-dir /tmp/p --toggle`
-    );
+    expect(run(['widget', '--isolated-profile'])).toBe(`${execPath} --toggle`);
     // A run from source names the app folder, and --dev picks its own profile.
     expect(run(['electron', '.', '--dev'], false)).toBe(
       `${execPath} ${path.join(path.sep, 'repo')} --dev --toggle`
