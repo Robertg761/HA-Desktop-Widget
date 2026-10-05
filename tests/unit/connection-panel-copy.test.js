@@ -214,27 +214,25 @@ describe('the connection panel on the dashboard', () => {
     });
   });
 
+  // The config main sends once a refresh is refused: the token is the placeholder again and the
+  // authorization is gone, so there is nothing to connect with until the user signs in again.
+  const revokedConfig = () =>
+    harness.oauthConfig({
+      token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+      oauthStatus: 'reauth_required',
+      oauthAuthorizationId: undefined,
+    });
+
   describe('reconnecting a revoked authorization', () => {
     it('waits for the answer in the browser, with the waiting bar', async () => {
       await harness.load({
-        config: harness.oauthConfig({
-          token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
-          oauthStatus: 'reauth_required',
-          oauthAuthorizationId: undefined,
-        }),
+        config: revokedConfig(),
         configureApi(api) {
           api.startHomeAssistantOAuth.mockReturnValue(new Promise(() => {}));
         },
       });
 
-      // The panel is drawn once the first connection state is known, a little after init is done.
-      // A busy machine (CI on Windows ARM, a full test run) can take several seconds to get there.
-      const drawn = await until(() => harness.findButton('Reconnect with Home Assistant'), 15000);
-      if (!drawn) {
-        throw new Error(
-          `The Reconnect button never appeared; the panel says: ${document.getElementById('widget-state-panel')?.textContent}`
-        );
-      }
+      // init() draws the panel before it tells main the renderer is ready, which load() waits for.
       harness.findButton('Reconnect with Home Assistant').click();
       await harness.flushAsync();
 
@@ -242,6 +240,45 @@ describe('the connection panel on the dashboard', () => {
       const panel = document.getElementById('widget-state-panel');
       expect(panel.querySelector('.connection-progress')).not.toBeNull();
       expect(panel.getAttribute('aria-busy')).toBe('true');
-    }, 30000);
+    });
+  });
+
+  // Every test boots its own renderer into the same window. One left running after its test would
+  // keep drawing into the next test's page from its own config.
+  describe('the renderer of an earlier test', () => {
+    it('does not reconnect, and redraw the panel, once its test is over', async () => {
+      // Its last attempt fails, which schedules the next one 50 ms later.
+      const random = jest.spyOn(Math, 'random').mockReturnValue(0);
+      await harness.load({
+        config: harness.tokenConfig(),
+        constants: { BASE_RECONNECT_DELAY_MS: 50, MAX_RECONNECT_DELAY_MS: 50 },
+      });
+      failAttempt();
+      random.mockRestore();
+      const earlierWebsocket = harness.websocket;
+      const earlierConnects = earlierWebsocket.connect.mock.calls.length;
+      harness.cleanup();
+
+      await harness.load({ config: revokedConfig() });
+      // Timers run in the order they are due, so the earlier renderer's timer has had its turn by now.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(earlierWebsocket.connect).toHaveBeenCalledTimes(earlierConnects);
+      expect(harness.panelText()).not.toContain('Connecting to Home Assistant...');
+      expect(harness.findButton('Reconnect with Home Assistant')).toBeTruthy();
+    });
+
+    it('does not answer the network coming back once its test is over', async () => {
+      await harness.load({ config: harness.tokenConfig() });
+      const earlierWebsocket = harness.websocket;
+      const earlierConnects = earlierWebsocket.connect.mock.calls.length;
+      harness.cleanup();
+
+      await harness.load({ config: revokedConfig() });
+      window.dispatchEvent(new Event('online'));
+
+      expect(earlierWebsocket.connect).toHaveBeenCalledTimes(earlierConnects);
+      expect(harness.findButton('Reconnect with Home Assistant')).toBeTruthy();
+    });
   });
 });

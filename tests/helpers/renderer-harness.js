@@ -9,7 +9,8 @@
  *   const { websocket, electronAPI } = await harness.load({ config });
  *   websocket.emit('error', new Error('...'));
  *
- * Call `harness.cleanup()` in afterEach.
+ * Call `harness.cleanup()` in afterEach. It also stops the renderer the test booted; see
+ * createRendererLifetime.
  */
 const EventEmitter = require('events');
 const {
@@ -54,7 +55,94 @@ const flushAsync = async () => {
   await new Promise((resolve) => setTimeout(resolve, 0));
 };
 
+// Every load() boots a fresh renderer.js into the same jsdom window, and a renderer has no way to
+// be shut down. The timers and window/document listeners started while a test's renderer is loaded
+// are recorded here so cleanup() can stop them. Left running, they act on the next test's page: a
+// reconnect timer from one test's failed attempt fires during the next test and redraws its
+// connection panel from the old renderer's config.
+function createRendererLifetime() {
+  let stops = [];
+
+  // Replaces target[name] until stop(), putting back exactly what was there before.
+  const replace = (target, name, makeReplacement) => {
+    const original = target[name];
+    if (typeof original !== 'function') return;
+    const hadOwn = Object.prototype.hasOwnProperty.call(target, name);
+    const replacement = makeReplacement(original);
+    target[name] = replacement;
+    stops.push(() => {
+      if (target[name] !== replacement) return;
+      if (hadOwn) target[name] = original;
+      else delete target[name];
+    });
+  };
+
+  // A one-shot timer forgets its id once it has run; a repeating one stays until stop().
+  const trackTimer = (setName, clearName, { repeats = false } = {}) => {
+    const clear = window[clearName];
+    const pending = new Set();
+    replace(
+      window,
+      setName,
+      (set) =>
+        function trackedTimer(callback, ...rest) {
+          if (typeof callback !== 'function') return set.call(window, callback, ...rest);
+          const id = set.call(
+            window,
+            (...args) => {
+              if (!repeats) pending.delete(id);
+              callback(...args);
+            },
+            ...rest
+          );
+          pending.add(id);
+          return id;
+        }
+    );
+    stops.push(() => {
+      pending.forEach((id) => clear.call(window, id));
+      pending.clear();
+    });
+  };
+
+  const trackListeners = (target) => {
+    const added = [];
+    replace(
+      target,
+      'addEventListener',
+      (add) =>
+        function trackedAddEventListener(type, listener, options) {
+          added.push({ type, listener, options });
+          return add.call(this, type, listener, options);
+        }
+    );
+    stops.push(() => {
+      added.forEach(({ type, listener, options }) =>
+        target.removeEventListener(type, listener, options)
+      );
+    });
+  };
+
+  return {
+    start() {
+      this.stop();
+      trackTimer('setTimeout', 'clearTimeout');
+      trackTimer('setInterval', 'clearInterval', { repeats: true });
+      trackTimer('requestAnimationFrame', 'cancelAnimationFrame');
+      trackListeners(window);
+      trackListeners(document);
+    },
+    stop() {
+      // Undone last-first, so a property replaced twice ends up as it was before start().
+      const current = stops;
+      stops = [];
+      current.reverse().forEach((stop) => stop());
+    },
+  };
+}
+
 function createRendererHarness() {
+  const lifetime = createRendererLifetime();
   const harness = {
     baseConfig,
     tokenConfig,
@@ -75,6 +163,7 @@ function createRendererHarness() {
      * @param {Object} [options.ui] - Extra members for the mocked src/ui.js.
      * @param {Object} [options.uiUtils] - Extra members for the mocked src/ui-utils.js.
      * @param {string} [options.bodyHtml] - Extra markup in the document body.
+     * @param {Object} [options.constants] - Values that replace the mocked src/constants.js ones.
      */
     async load({
       config = oauthConfig(),
@@ -83,9 +172,12 @@ function createRendererHarness() {
       ui = {},
       uiUtils = {},
       bodyHtml = '',
+      constants = {},
     } = {}) {
+      lifetime.stop();
       jest.resetModules();
       resetMockElectronAPI();
+      lifetime.start();
       document.body.innerHTML =
         '<main class="widget-content"><div id="quick-controls"></div></main>' +
         '<div id="settings-modal" class="hidden"><input id="ha-url" value="" /></div>' +
@@ -250,16 +342,25 @@ function createRendererHarness() {
         __esModule: true,
         BASE_RECONNECT_DELAY_MS: 1000,
         MAX_RECONNECT_DELAY_MS: 8000,
+        ...constants,
       }));
+
+      // The renderer tells main it is ready when init() is done; until then the panel, the toasts
+      // and the status are still being drawn. If init() fails instead, the renderer logs why.
+      const initDone = new Promise((resolve, reject) => {
+        const signalReady = electronAPI.signalRendererReady.getMockImplementation();
+        electronAPI.signalRendererReady.mockImplementation((...args) => {
+          resolve();
+          return signalReady?.(...args);
+        });
+        log.error.mockImplementation((message, error) => {
+          if (message === 'Error in DOMContentLoaded handler:') reject(error);
+        });
+      });
 
       require('../../renderer.js');
       window.dispatchEvent(new Event('DOMContentLoaded'));
-      // The renderer tells main it is ready when init() is done; until then the panel, the toasts
-      // and the status are still being drawn, and a slow machine takes longer than a few ticks.
-      const deadline = Date.now() + 3000;
-      while (!electronAPI.signalRendererReady.mock.calls.length && Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
+      await initDone;
       await flushAsync();
       Object.assign(harness, {
         electronAPI,
@@ -274,6 +375,7 @@ function createRendererHarness() {
 
     cleanup() {
       jest.useRealTimers();
+      lifetime.stop();
       jest.resetModules();
       delete window.electronAPI;
       document.body.innerHTML = '';
