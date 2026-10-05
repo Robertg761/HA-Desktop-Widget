@@ -60,7 +60,9 @@ jobs:
 
       # The app bundles Latin, Cyrillic, Greek and Vietnamese fonts only, and the image has no
       # Devanagari font, so every Hindi string in the hi-* scenes was drawn as boxes. fonts-noto-core
-      # has Noto Sans Devanagari, the font most Linux desktops fall back to for Hindi.
+      # has Noto Sans Devanagari, the font most Linux desktops fall back to for Hindi. It also has
+      # Noto Sans Arabic, as Ubuntu desktops do, so from the first run with it the Linux ar-* captures
+      # may draw Arabic in a different font. That change is the runner's, not the app's.
       - name: Install native build dependencies and fonts (Linux)
         if: runner.os == 'Linux'
         run: |
