@@ -9282,4 +9282,23 @@ describe('Settings + Config Integration', () => {
       });
     });
   });
+  describe('Settings rows', () => {
+    test('a row select carries its whole value as its title, after a change too', async () => {
+      // Its value can end in an ellipsis in a narrow window or a long translation.
+      const select = document.getElementById('time-format');
+      const row = document.createElement('div');
+      row.className = 'form-group setting-row';
+      select.replaceWith(row);
+      row.appendChild(select);
+      state.CONFIG.ui.timeFormat = '24-hour';
+
+      await settings.openSettings();
+      expect(select.title).toBe(select.selectedOptions[0].textContent.trim());
+
+      select.value = '12-hour';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      expect(select.title).toBe('12-hour');
+      settings.closeSettings();
+    });
+  });
 });

@@ -14166,13 +14166,17 @@ textarea::selection {
   min-width: min(9rem, 100%);
 }
 
-/* Every row select is one width, so their left edges line up down a page (Time format, Date
-   format, Sync app, scope and interval) instead of each starting where its own text ends. The
-   width fits the longest English option; a longer value ends in an ellipsis rather than running
-   under the chevron, and a narrow row wraps the select under its label as before. */
+/* Every row select is at least one width, so their left edges line up down a page (Time format,
+   Date format, Sync app, scope and interval) instead of each starting where its own text ends; the
+   width fits the longest English option. A select whose choices are longer, as the sync scope and
+   sync app are in German, French and Spanish, grows to fit them and so drops under its label, where
+   it has the whole row: at a fixed width it cut the value it showed to "Tous les paramètres
+   synchr...". Only a value longer than the row ends in an ellipsis, rather than running under the
+   chevron. */
 #settings-modal .setting-row > select {
   flex: 0 0 auto;
-  width: 13.5rem;
+  width: auto;
+  min-width: min(13.5rem, 100%);
   max-width: 100%;
   text-overflow: ellipsis;
   padding-block: 7px;

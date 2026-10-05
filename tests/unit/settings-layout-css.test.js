@@ -89,4 +89,16 @@ describe('Settings layout', () => {
       );
     });
   });
+  describe('a Settings row select', () => {
+    // At a fixed 13.5rem the sync scope read "Tous les paramètres synchr..." in French.
+    it('is at least the common width, and wider when its choices need it', () => {
+      render(
+        '<div id="settings-modal"><div class="form-group setting-row"><select><option>Tous les paramètres synchronisables</option></select></div></div>'
+      );
+      const select = document.querySelector('select');
+      expect(resolvedValue(select, 'width')).toBe('auto');
+      expect(resolvedValue(select, 'min-width')).toBe('min(13.5rem, 100%)');
+      expect(resolvedValue(select, 'max-width')).toBe('100%');
+    });
+  });
 });

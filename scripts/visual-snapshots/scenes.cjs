@@ -553,6 +553,19 @@ async function openPrimaryCardsList(ctx) {
   await revealInSettings(ctx, '#primary-cards-section');
 }
 
+// The value a select shows fits between its padding: measured in its own font, the selected
+// option's text is no wider than the box it is drawn in.
+const selectShowsItsValue = (selector) => `(() => {
+  const select = document.querySelector(${JSON.stringify(selector)});
+  const text = select?.selectedOptions[0]?.textContent.trim();
+  if (!text) return false;
+  const style = getComputedStyle(select);
+  const context = document.createElement('canvas').getContext('2d');
+  context.font = style.font;
+  const room = select.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  return context.measureText(text).width <= room;
+})()`;
+
 // A Settings list with a scroller of its own is shorter than the page that scrolls it, so the page
 // can bring the whole box into view instead of the two taking turns.
 const listFitsSettingsPage = (selector) => `(() => {
@@ -1225,6 +1238,27 @@ const scenes = [
         'the profile sync controls'
       );
       await revealInSettings(ctx, '#profile-sync-push-now', 'center');
+    },
+  },
+  // French has the longest sync app and sync scope choices. Each select drops under its label and
+  // shows its whole value, which a fixed width cut to "Tous les paramètres synchr...".
+  {
+    name: 'layout-settings-profile-sync-fr',
+    ui: { language: 'fr' },
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'advanced');
+      await ctx.click('#profile-sync-enabled');
+      await ctx.waitForExpression(
+        `!document.getElementById('profile-sync-settings').classList.contains('hidden')`,
+        'the profile sync controls'
+      );
+      await revealInSettings(ctx, '.form-group:has(> #profile-sync-provider)', 'start');
+      await ctx.expect(
+        ['#profile-sync-provider', '#profile-sync-scope-preset']
+          .map(selectShowsItsValue)
+          .join(' && '),
+        'the sync app and scope show their whole value'
+      );
     },
   },
   { name: 'dialog-restore-dashboard', setup: openRestoreDashboard },

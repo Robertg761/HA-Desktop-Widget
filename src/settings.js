@@ -4040,6 +4040,17 @@ function readProfileSyncScopeFromForm() {
   return normalizeProfileSyncScope({ preset, sections });
 }
 
+// A row select's value can still end in an ellipsis (a narrow window, large text, a long
+// translation), so its title says the whole value, as the sync folder field's does.
+function syncRowSelectTitle(select) {
+  if (!select?.matches?.('.setting-row > select')) return;
+  select.title = select.selectedOptions?.[0]?.textContent.trim() || '';
+}
+
+function syncRowSelectTitles(root) {
+  root?.querySelectorAll('.setting-row > select').forEach(syncRowSelectTitle);
+}
+
 /** Sets the folder field. It is cut to its width, so the whole path is its tooltip. */
 function setProfileSyncFolderField(folder) {
   const input = document.getElementById('profile-sync-folder-path');
@@ -5457,6 +5468,7 @@ function relocalizeOpenSettings({ force = false } = {}) {
     if (document.getElementById('entity-alerts-enabled')?.checked) renderAlertsListInline();
     relabelAlertAdvancedOptions();
     relocalizePopupHotkeyText();
+    syncRowSelectTitles(document.getElementById('settings-modal'));
     void refreshDesktopIntegration().catch((error) => {
       log.error('Failed to refresh desktop integration text:', error);
     });
@@ -5601,6 +5613,7 @@ async function openSettings(uiHooks) {
       ['input', 'change'].forEach((type) =>
         modal.addEventListener(type, trackSettingsControlInteraction, true)
       );
+      modal.addEventListener('change', (event) => syncRowSelectTitle(event.target));
     }
 
     // An error from an earlier Save would otherwise greet the next visit.
@@ -5870,6 +5883,7 @@ async function openSettings(uiHooks) {
     const tokenRejected =
       state.CONFIG.homeAssistant?.authMethod !== 'oauth' &&
       getLiveConnectionState().status === 'auth-failed';
+    syncRowSelectTitles(modal);
     openDialog(modal, {
       initialFocus: () => {
         const token = document.getElementById('ha-token');
