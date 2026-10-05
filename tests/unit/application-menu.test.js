@@ -22,9 +22,39 @@ describe('application edit menus', () => {
     expect(Menu.buildFromTemplate).toHaveBeenCalledWith([
       { role: 'appMenu' },
       { role: 'editMenu' },
-      { role: 'windowMenu' },
+      expect.objectContaining({ role: 'windowMenu' }),
     ]);
     expect(Menu.setApplicationMenu).toHaveBeenCalledWith(builtMenu);
+  });
+
+  describe("macOS's Window menu", () => {
+    const windowMenu = (options) => createApplicationMenuTemplate('darwin', options).at(-1);
+
+    // The system's own Minimize miniaturizes the window, which leaves a tile in the Dock behind a
+    // widget that is then hidden.
+    test('hides the widget on Cmd+M the way its minimize button does', () => {
+      const onMinimize = jest.fn();
+      const minimize = windowMenu({ onMinimize }).submenu.find(
+        (item) => item.accelerator === 'Command+M'
+      );
+      expect(minimize.role).toBeUndefined();
+
+      const widget = { id: 1 };
+      minimize.click({}, widget);
+      expect(onMinimize).toHaveBeenCalledWith(widget);
+      expect(windowMenu({ onMinimize }).submenu).not.toContainEqual(
+        expect.objectContaining({ role: 'minimize' })
+      );
+    });
+
+    // The system's own Window menu has no Close, so Cmd+W did nothing.
+    test('closes the window on Cmd+W, which hides the widget like the title-bar X', () => {
+      expect(windowMenu().submenu).toContainEqual({ role: 'close' });
+    });
+
+    test('has nothing that zooms the window, which the widget undoes', () => {
+      expect(windowMenu().submenu).not.toContainEqual(expect.objectContaining({ role: 'zoom' }));
+    });
   });
 
   test('keeps the Edit and Window menus on Windows and Linux, and nothing that zooms or reloads', () => {
@@ -49,7 +79,7 @@ describe('application edit menus', () => {
       { role: 'appMenu' },
       { role: 'editMenu' },
       { role: 'viewMenu' },
-      { role: 'windowMenu' },
+      expect.objectContaining({ role: 'windowMenu' }),
     ]);
     const Menu = { buildFromTemplate: jest.fn(() => ({})), setApplicationMenu: jest.fn() };
     installApplicationMenu(Menu, 'win32', { isDev: true });

@@ -566,16 +566,15 @@ Capture: Which of the three ways did nothing.
 
 Ref: MP-21
 
-### MAC-4 Minimize and the app menu
+### MAC-4 Minimize, Cmd+M and Cmd+W
 
-1. Click the widget's Minimize button, then press Cmd+M. Look at the Dock and Mission Control.
-2. Bring the widget back from the menu-bar icon.
-3. Focus the widget and look at the app menu in the menu bar (the menu to the right of the Apple menu).
-4. Set Settings > General > Language to a different language from macOS (for example German on an English macOS) and look at the menu again.
+1. Click the widget's Minimize button. Look at the Dock and Mission Control, then bring the widget back from the menu-bar icon.
+2. Click the widget so it has focus and press Cmd+M. Look again, and bring it back.
+3. Click the widget and press Cmd+W. Look again, and bring it back.
 
-Expected: Minimize puts the widget away without leaving a tile in the Dock or a window stuck in Mission Control, and you can bring it back. The menu names the app "HA Desktop Widget". Its labels follow the app's language, or at least the macOS language; report which.
+Expected: Each of the three puts the widget away without leaving a tile in the Dock or a window stuck in Mission Control, the app keeps running, and the menu-bar icon brings the widget back. The app shows no menu bar of its own: it lives in the menu bar, so its menus only supply these keys.
 
-Capture: A screenshot of the Dock and Mission Control after Minimize, and of the app menu in both languages.
+Capture: A screenshot of the Dock and Mission Control after each.
 
 Ref: MP-76
 

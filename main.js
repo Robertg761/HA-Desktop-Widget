@@ -13342,7 +13342,13 @@ app
       }
     }
 
-    installApplicationMenu(Menu, process.platform, { isDev: IS_DEV_MODE });
+    installApplicationMenu(Menu, process.platform, {
+      isDev: IS_DEV_MODE,
+      // Cmd+M on macOS: the main window hides as its minimize button does; a pin has nothing to do.
+      onMinimize: (browserWindow) => {
+        if (browserWindow && browserWindow === mainWindow) minimizeMainWindow();
+      },
+    });
     protectAutoHideDuringMenu(Menu.getApplicationMenu());
     installSessionPermissionPolicy(session.defaultSession, {
       rendererEntryPath: path.join(__dirname, 'index.html'),
