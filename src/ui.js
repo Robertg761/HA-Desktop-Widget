@@ -41,6 +41,7 @@ import {
   formatDayAndTime,
   formatDayLabel,
   formatKelvin,
+  formatList,
   formatMeasurement,
   formatNumberEntityValue,
   formatPercent,
@@ -1402,7 +1403,7 @@ function showAddPageModal({ starter = false } = {}) {
     title.textContent =
       selected.length === 1
         ? t('Page preview: 1 entity')
-        : t('Page preview: {{count}} entities', { count: selected.length });
+        : t('Page preview: {{count}} entities', { count: formatNumber(selected.length) });
     clearPreviewRows();
     selected.slice(0, 8).forEach(({ value }) => {
       const tile = document.createElement('div');
@@ -1417,7 +1418,7 @@ function showAddPageModal({ starter = false } = {}) {
       more.textContent =
         remaining === 1
           ? t('And 1 more entity')
-          : t('And {{count}} more entities', { count: remaining });
+          : t('And {{count}} more entities', { count: formatNumber(remaining) });
       preview.appendChild(more);
     }
   };
@@ -1755,8 +1756,8 @@ function moveQuickAccessTile(tile, target) {
   saveQuickAccessOrder(tile);
   announceQuickAccessChange(
     t('Moved to position {{position}} of {{total}}', {
-      position: getQuickAccessTiles().indexOf(tile) + 1,
-      total: tiles.length,
+      position: formatNumber(getQuickAccessTiles().indexOf(tile) + 1),
+      total: formatNumber(tiles.length),
     })
   );
   return true;
@@ -5242,7 +5243,7 @@ function showComparisonGraphModal(graphId) {
   COMPARISON_GRAPH_SPAN_OPTIONS.forEach((option) => {
     const optionEl = document.createElement('option');
     optionEl.value = String(option);
-    optionEl.textContent = t('{{count}} tiles wide', { count: option });
+    optionEl.textContent = t('{{count}} tiles wide', { count: formatNumber(option) });
     widthSelect.appendChild(optionEl);
   });
   widthSelect.value = String(normalizeComparisonGraphSpan(initial.span));
@@ -5356,7 +5357,7 @@ function showComparisonGraphModal(graphId) {
 
     warning.hidden = !hasMismatch;
     if (hasMismatch) {
-      const units = groups.map((group) => group.unit || t('no unit')).join(', ');
+      const units = formatList(groups.map((group) => group.unit || t('no unit')));
       warning.textContent = t(
         'Mixed units ({{units}}). Each unit is scaled separately, so compare curves within a unit only.',
         { units }
@@ -5369,8 +5370,8 @@ function showComparisonGraphModal(graphId) {
       graph.entityIds.length >= MAX_COMPARISON_GRAPH_SERIES
         ? t('Maximum reached. Remove a sensor to add another.')
         : t('Up to {{max}} sensors. Selected: {{count}}.', {
-            count: graph.entityIds.length,
-            max: MAX_COMPARISON_GRAPH_SERIES,
+            count: formatNumber(graph.entityIds.length),
+            max: formatNumber(MAX_COMPARISON_GRAPH_SERIES),
           });
   };
 

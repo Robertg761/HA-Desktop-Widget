@@ -10,8 +10,8 @@ import {
   openDialog,
   showToast,
 } from './ui-utils.js';
-import { formatClockDateTime } from './format.js';
-import { t } from './i18n.js';
+import { formatClockDateTime, formatList } from './format.js';
+import { formatNumber, t } from './i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './icons.js';
 import pageNameRules from './page-names.cjs';
 
@@ -156,19 +156,18 @@ function showDashboardHistory() {
     pages.className = 'dashboard-restore-pages';
     // A page nobody named is saved either with the name of the language of the day or, as the
     // server stores it, with no name at all; both are shown with today's default name.
-    pages.textContent = entry.layout.customTabs
-      .map((tab, index) =>
+    pages.textContent = formatList(
+      entry.layout.customTabs.map((tab, index) =>
         tab.nameIsDefault || !String(tab.name ?? '').trim() ? defaultPageName(index, t) : tab.name
       )
-      .join(', ');
+    );
     // Near-identical rows are told apart by how much each holds, not only by when it was saved.
     const count = document.createElement('span');
     count.className = 'dashboard-restore-count';
     count.textContent = t('Pages: {{pages}} · Tiles: {{tiles}}', {
-      pages: entry.layout.customTabs.length,
-      tiles: entry.layout.customTabs.reduce(
-        (total, tab) => total + (tab.entityIds?.length || 0),
-        0
+      pages: formatNumber(entry.layout.customTabs.length),
+      tiles: formatNumber(
+        entry.layout.customTabs.reduce((total, tab) => total + (tab.entityIds?.length || 0), 0)
       ),
     });
     const arrow = document.createElement('span');

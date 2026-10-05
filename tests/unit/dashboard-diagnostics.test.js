@@ -244,6 +244,32 @@ describe('tool dialogs and the keyboard', () => {
     ]);
   });
 
+  test('lists the pages and counts what they hold in the way of the language', async () => {
+    const { rememberDashboard } = require('../../src/dashboard-history.js');
+    const i18n = require('../../src/i18n.js');
+    const layout = (tabs) => ({ homeAssistant: { url: 'http://server' }, customTabs: tabs });
+    rememberDashboard(
+      layout([
+        { id: 'home', name: 'Home', entityIds: ['light.a', 'light.b'] },
+        { id: 'spare', name: 'Spare', entityIds: [] },
+      ]),
+      layout([])
+    );
+    // Arabic writes its own comma between items, and on a computer set to Egypt, Arabic-Indic
+    // digits; a hard-coded ", " and raw counts put Latin ones beside them.
+    i18n.setLocaleBootstrap({ systemLocale: 'ar-EG', activeLocale: 'ar', messages: {} });
+    try {
+      tools.showDashboardHistory();
+      await tick();
+      expect(document.querySelector('.dashboard-restore-pages').textContent).toBe('Home، Spare');
+      expect(document.querySelector('.dashboard-restore-count').textContent).toBe(
+        'Pages: ٢ · Tiles: ٢'
+      );
+    } finally {
+      i18n.setLocaleBootstrap({ systemLocale: '', activeLocale: 'en', messages: {} });
+    }
+  });
+
   test('names a restore point’s unnamed pages in today’s language, not the one it was saved in', async () => {
     const { rememberDashboard } = require('../../src/dashboard-history.js');
     const layout = (tabs) => ({ homeAssistant: { url: 'http://server' }, customTabs: tabs });

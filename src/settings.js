@@ -2644,7 +2644,7 @@ function updateCustomEntityIconSummary() {
   summaryEl.textContent =
     count === 1
       ? t('1 custom icon configured.')
-      : t('{{count}} custom icons configured.', { count });
+      : t('{{count}} custom icons configured.', { count: formatNumber(count) });
 }
 
 function getCustomEntityIconChoiceLabel(choice) {

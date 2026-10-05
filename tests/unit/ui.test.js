@@ -8929,6 +8929,49 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         expect(hint.textContent).toBe('Up to 7 sensors. Selected: 1.');
       });
 
+      it('writes the counts and the width choices in the digits of the language', async () => {
+        const i18n = require('../../src/i18n.js');
+        // An Arabic interface on a computer set to Egypt writes Arabic-Indic digits.
+        i18n.setLocaleBootstrap({ systemLocale: 'ar-EG', activeLocale: 'ar', messages: {} });
+        try {
+          const { modal, hint } = await openEditor(sensors(3));
+          expect(hint.textContent).toBe('Up to ٧ sensors. Selected: ٠.');
+          const widths = [...modal.querySelectorAll('option')]
+            .map((option) => option.textContent)
+            .filter((text) => text.endsWith('tiles wide'));
+          expect(widths.length).toBeGreaterThan(0);
+          for (const text of widths) expect(text).toMatch(/^[٠-٩]+ tiles wide$/);
+        } finally {
+          i18n.setLocaleBootstrap({ systemLocale: '', activeLocale: 'en', messages: {} });
+        }
+      });
+
+      it('lists mixed units with the comma of the language', async () => {
+        const i18n = require('../../src/i18n.js');
+        const home = {
+          ...sensors(1),
+          'sensor.humidity': {
+            entity_id: 'sensor.humidity',
+            state: '40',
+            attributes: { friendly_name: 'Humidity', unit_of_measurement: '%' },
+          },
+        };
+        i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: {} });
+        try {
+          const { modal, list } = await openEditor(home);
+          for (let added = 0; added < 2; added += 1) {
+            addButtons(list)[0].click();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            await new Promise((resolve) => setTimeout(resolve, 0));
+          }
+          const warning = modal.querySelector('.comparison-graph-warning');
+          expect(warning.hidden).toBe(false);
+          expect(warning.textContent).toMatch(/^Mixed units \((°C، %|%، °C)\)/);
+        } finally {
+          i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+        }
+      });
+
       it('says why every Add is disabled once the limit is reached', async () => {
         const home = sensors(10);
         const { hint, list } = await openEditor(home);

@@ -15,6 +15,7 @@ jest.mock('../../src/i18n.js', () => ({
   t: jest.fn((key, vars = {}) =>
     key.replace(/\{\{\s*(\w+)\s*\}\}/g, (_match, name) => String(vars[name] ?? ''))
   ),
+  formatNumber: require('../../packages/widget-renderer/src/i18n.js').formatNumber,
 }));
 
 jest.mock('../../src/ui-utils.js', () => ({
@@ -325,6 +326,36 @@ describe('persistent notification helpers', () => {
 
         send({ type: 'removed', notifications: { b: {} } });
         expect(toolbar().classList).toContain('hidden');
+      });
+
+      test('writes the counts in the digits of the language', async () => {
+        const i18n = require('../../packages/widget-renderer/src/i18n.js');
+        // An Arabic interface on a computer set to Egypt writes Arabic-Indic digits; a raw count
+        // put Latin ones beside them.
+        i18n.setLocaleBootstrap({
+          systemLocale: 'ar-EG',
+          detectedLocale: 'ar',
+          activeLocale: 'ar',
+          messages: {},
+        });
+        try {
+          load('a', 'b', 'c');
+          confirm.mockResolvedValue(false);
+          expect(summary().textContent).toBe('٣ notifications');
+          expect(document.getElementById('persistent-notifications-count').textContent).toBe('٣');
+          dismissAll().click();
+          await nextTick();
+          expect(confirm.mock.calls[0][1]).toBe(
+            'This clears ٣ notifications in Home Assistant, on every device.'
+          );
+        } finally {
+          i18n.setLocaleBootstrap({
+            systemLocale: '',
+            detectedLocale: 'en',
+            activeLocale: 'en',
+            messages: {},
+          });
+        }
       });
 
       test('asks before clearing everything, and does nothing when declined', async () => {

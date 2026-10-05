@@ -228,6 +228,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
         )
       ),
       translateDocument: jest.fn(),
+      formatNumber: jest.fn((value) => String(value)),
     }));
     jest.doMock('../../src/icons.js', () => ({
       __esModule: true,

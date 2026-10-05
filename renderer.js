@@ -20,7 +20,7 @@ import * as commandPalette from './src/command-palette.js';
 import * as settings from './src/settings.js';
 import * as uiUtils from './src/ui-utils.js';
 import * as utils from './src/utils.js';
-import { formatTime, setLocaleBootstrap, t, translateDocument } from './src/i18n.js';
+import { formatNumber, formatTime, setLocaleBootstrap, t, translateDocument } from './src/i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './src/icons.js';
 import { lineIconMarkup, setLineIconContent } from './src/entity-icons.js';
 import { animateEnter, syncSlidingIndicator } from './src/motion.js';
@@ -1451,7 +1451,10 @@ function renderWizardStep() {
   const stepLabel = createTextElement(
     'div',
     'first-run-step-label',
-    t('Step {{current}} of {{total}}', { current: stepIndex + 1, total: 4 })
+    t('Step {{current}} of {{total}}', {
+      current: formatNumber(stepIndex + 1),
+      total: formatNumber(4),
+    })
   );
   content.appendChild(stepLabel);
 

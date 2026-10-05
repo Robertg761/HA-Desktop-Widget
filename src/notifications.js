@@ -1,7 +1,7 @@
 import websocket from './websocket.js';
 import state from './state.js';
 import { formatClockDateTime, formatRelativeTime as formatAge } from './format.js';
-import { t } from './i18n.js';
+import { formatNumber, t } from './i18n.js';
 import {
   notificationMarkdownToPlainText,
   renderNotificationMarkdown,
@@ -177,7 +177,7 @@ async function dismissAllPersistentNotifications(button) {
   const confirmed = await showConfirm(
     t('Dismiss all notifications?'),
     t('This clears {{count}} notifications in Home Assistant, on every device.', {
-      count: ids.length,
+      count: formatNumber(ids.length),
     }),
     { confirmText: t('Dismiss all'), confirmClass: 'btn-danger' }
   );
@@ -268,7 +268,8 @@ function renderPersistentNotifications() {
   }
 
   if (countElement) {
-    countElement.textContent = count > MAX_BELL_COUNT ? `${MAX_BELL_COUNT}+` : String(count);
+    countElement.textContent =
+      count > MAX_BELL_COUNT ? `${formatNumber(MAX_BELL_COUNT)}+` : formatNumber(count);
   }
 
   // A long backlog gets its size and one way to clear it; one or two notifications do not need either.
@@ -276,7 +277,7 @@ function renderPersistentNotifications() {
   if (toolbar) {
     toolbar.classList.toggle('hidden', count < 2);
     const summary = document.getElementById('persistent-notifications-summary');
-    if (summary) summary.textContent = t('{{count}} notifications', { count });
+    if (summary) summary.textContent = t('{{count}} notifications', { count: formatNumber(count) });
   }
 
   const list = document.getElementById('persistent-notifications-list');

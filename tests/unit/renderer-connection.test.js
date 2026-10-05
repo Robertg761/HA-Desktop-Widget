@@ -220,6 +220,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
         )
       ),
       translateDocument: jest.fn(),
+      formatNumber: jest.fn((value) => String(value)),
       formatTime: jest.fn(
         (date) => `${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`
       ),
