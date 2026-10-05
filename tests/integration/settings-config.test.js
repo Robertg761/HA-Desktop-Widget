@@ -8336,6 +8336,49 @@ describe('Settings + Config Integration', () => {
         );
       });
 
+      describe('whose saved token this computer cannot read', () => {
+        const reason =
+          'This computer cannot decrypt the saved Home Assistant token. That happens after moving to another computer or user account. Enter the token again to reconnect.';
+        const recovery = () => ({
+          initUpdateUI: jest.fn(),
+          getConnectionState: () => ({ status: 'disconnected', reason, needsToken: true }),
+        });
+
+        test('says why beside the open token field, and puts the cursor in it', async () => {
+          await settings.openSettings(recovery());
+          await new Promise((resolve) => setTimeout(resolve, 0));
+
+          const status = document.getElementById('ha-oauth-status');
+          expect(status.dataset.status).toBe('error');
+          expect(status.textContent).toBe(reason);
+          expect(document.getElementById('legacy-ha-token-settings').open).toBe(true);
+          expect(document.activeElement).toBe(document.getElementById('ha-token'));
+          // The status line says it; a toast on opening used to say it a third time.
+          expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+        });
+
+        test('is brought to General with the token field when Settings was left on another page', async () => {
+          await settings.openSettings(recovery());
+          const generalTab = document.createElement('button');
+          generalTab.className = 'tab-link';
+          generalTab.dataset.tab = 'general';
+          const tabs = document.createElement('div');
+          tabs.className = 'modal-tabs';
+          tabs.appendChild(generalTab);
+          document.getElementById('settings-modal').appendChild(tabs);
+          const openedTab = jest.fn();
+          generalTab.addEventListener('click', openedTab);
+          document.getElementById('legacy-ha-token-settings').open = false;
+          document.body.focus();
+
+          settings.revealHomeAssistantToken();
+
+          expect(openedTab).toHaveBeenCalled();
+          expect(document.getElementById('legacy-ha-token-settings').open).toBe(true);
+          expect(document.activeElement).toBe(document.getElementById('ha-token'));
+        });
+      });
+
       test('follows the connection while Settings is open', async () => {
         let current = { status: 'connected', reason: '' };
         await settings.openSettings({ initUpdateUI: jest.fn(), getConnectionState: () => current });

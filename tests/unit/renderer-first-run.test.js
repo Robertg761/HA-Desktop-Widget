@@ -47,6 +47,11 @@ describe('Renderer first-run Home Assistant authorization', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
   };
 
+  const findButtonByText = (label) =>
+    Array.from(document.querySelectorAll('button')).find(
+      (candidate) => candidate.textContent === label
+    );
+
   const clickButton = async (label) => {
     const button = Array.from(document.querySelectorAll('button')).find(
       (candidate) => candidate.textContent === label
@@ -193,6 +198,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       renderAlertsListInline: jest.fn(),
       reapplySettingsPreviews: jest.fn(),
       handleProfileSyncStatusUpdate: jest.fn(),
+      revealHomeAssistantToken: jest.fn(),
       profileSyncNeedsAttention: (status) =>
         jest.requireActual('../../src/settings.js').profileSyncNeedsAttention(status),
     };
@@ -1361,68 +1367,216 @@ describe('Renderer first-run Home Assistant authorization', () => {
     );
   });
 
-  it('does not add a second toast for a keyring problem the startup toast already reported', async () => {
+  describe('a saved token this computer cannot read', () => {
+    // An existing setup: its server and pages are saved, only the token could not be used.
+    const recoveryConfig = (tokenResetReason) => ({
+      ...unconfiguredConfig(),
+      homeAssistant: {
+        url: 'http://ha.local:8123',
+        token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+        authMethod: 'token',
+      },
+      customTabs: [{ id: 'home', name: 'Home', entityIds: ['light.desk'] }],
+      activeTabId: 'home',
+      ...(tokenResetReason ? { tokenResetReason } : {}),
+    });
+    const panel = () => document.getElementById('widget-state-panel');
+    const wizardShown = () =>
+      !!document.querySelector('#first-run-onboarding:not(.hidden)') ||
+      document.body.classList.contains('first-run-active');
+    const everythingSaid = () => [
+      ...mockUiUtils.showToast.mock.calls.map(([message]) => message),
+      ...mockUiUtils.setStatus.mock.calls.map(([, detail]) => detail),
+      panel()?.textContent || '',
+    ];
+
+    it('says why and offers to enter it again, instead of the Welcome wizard', async () => {
+      await loadRenderer({ config: recoveryConfig('decryption_failed') });
+
+      expect(wizardShown()).toBe(false);
+      expect(panel().querySelector('.widget-state-title').textContent).toBe(
+        'Saved token cannot be read'
+      );
+      expect(panel().querySelector('.widget-state-copy').textContent).toContain(
+        'This computer cannot decrypt the saved Home Assistant token.'
+      );
+      expect(findButtonByText('Enter token')).toBeTruthy();
+      // The header says the same, and main is told the notice was seen.
+      expect(mockUiUtils.setStatus).toHaveBeenLastCalledWith(
+        false,
+        expect.stringContaining('cannot decrypt the saved Home Assistant token')
+      );
+      expect(mockElectronAPI.clearTokenResetReason).toHaveBeenCalledTimes(1);
+      // The panel says it; a toast over it would say it twice.
+      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+    });
+
+    it('never points at a gear icon, which the wizard hides and desktop pins do not have', async () => {
+      for (const reason of ['decryption_failed', 'encryption_unavailable', 'not_persisted']) {
+        await loadRenderer({ config: recoveryConfig(reason) });
+        expect(everythingSaid().join(' ')).not.toMatch(/gear/i);
+      }
+      await loadRenderer();
+      expect(everythingSaid().join(' ')).not.toMatch(/gear/i);
+    });
+
+    it('names a locked keyring on Linux, where unlocking it and restarting brings the token back', async () => {
+      await loadRenderer({
+        config: recoveryConfig('encryption_unavailable'),
+        configureApi(api) {
+          api.platform = 'linux';
+        },
+      });
+
+      expect(panel().querySelector('.widget-state-title').textContent).toBe(
+        'System keyring is locked'
+      );
+      expect(findButtonByText('Restart Widget')).toBeTruthy();
+      expect(findButtonByText('Enter token')).toBeTruthy();
+    });
+
+    it('says a token that was never saved was not saved, without promising a restart brings it back', async () => {
+      await loadRenderer({
+        config: recoveryConfig('not_persisted'),
+        configureApi(api) {
+          api.platform = 'linux';
+        },
+      });
+
+      const copy = panel().textContent;
+      expect(copy).toContain('Access token was not saved');
+      expect(copy).toContain('start gnome-keyring or KWallet so it is remembered');
+      expect(copy).not.toMatch(/restart the widget|has been kept/i);
+      expect(findButtonByText('Restart Widget')).toBeUndefined();
+    });
+
+    it('keeps the panel when main echoes the config back without the reason', async () => {
+      await loadRenderer({ config: recoveryConfig('decryption_failed') });
+
+      // Acknowledging the notice clears main's copy, and main broadcasts the config again.
+      triggerMockEvent('configUpdated', recoveryConfig());
+      await flushAsync();
+
+      expect(wizardShown()).toBe(false);
+      expect(panel().textContent).toContain('Saved token cannot be read');
+    });
+
+    it('explains a reason that arrives once the deferred keyring check has run', async () => {
+      await loadRenderer({
+        config: { ...recoveryConfig(), secureStoragePending: true },
+        configureApi(api) {
+          api.platform = 'linux';
+          api.publishHaConnectionState = jest.fn().mockResolvedValue({ success: true });
+        },
+      });
+      expect(wizardShown()).toBe(false);
+
+      triggerMockEvent('configUpdated', recoveryConfig('encryption_unavailable'));
+      await flushAsync();
+
+      expect(wizardShown()).toBe(false);
+      expect(panel().textContent).toContain('System keyring is locked');
+      expect(mockElectronAPI.publishHaConnectionState).toHaveBeenLastCalledWith('disconnected');
+    });
+
+    it('opens Settings on the token field', async () => {
+      await loadRenderer({ config: recoveryConfig('decryption_failed') });
+
+      findButtonByText('Enter token').click();
+      await flushAsync();
+
+      expect(mockSettings.openSettings).toHaveBeenCalledTimes(1);
+      expect(mockSettings.revealHomeAssistantToken).toHaveBeenCalledTimes(1);
+      // Settings is told why, so it can say so beside the field.
+      const hooks = mockSettings.openSettings.mock.calls[0][0];
+      expect(hooks.getConnectionState()).toEqual(
+        expect.objectContaining({ needsToken: true, status: 'disconnected' })
+      );
+    });
+
+    it('goes away and connects once a token is entered', async () => {
+      await loadRenderer({ config: recoveryConfig('decryption_failed') });
+
+      triggerMockEvent('configUpdated', {
+        ...recoveryConfig(),
+        homeAssistant: { url: 'http://ha.local:8123', token: 'new-token', authMethod: 'token' },
+      });
+      await flushAsync();
+
+      expect(panel()?.textContent || '').not.toContain('Saved token cannot be read');
+      expect(mockWebsocket.connect).toHaveBeenCalled();
+      expect(wizardShown()).toBe(false);
+    });
+
+    it('says a missing keyring once when the config also carries the persistence warning', async () => {
+      await loadRenderer({
+        config: {
+          ...recoveryConfig('encryption_unavailable'),
+          persistenceWarnings: [{ code: 'home_assistant_token_not_persisted' }],
+        },
+        configureApi(api) {
+          api.platform = 'linux';
+        },
+      });
+      triggerMockEvent('configPersistenceWarning', [
+        { code: 'home_assistant_token_not_persisted' },
+      ]);
+      await flushAsync();
+
+      // The panel names the keyring; a toast with another remedy beside it would say it twice.
+      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(panel().textContent).toContain('System keyring is locked');
+    });
+
+    it('continues startup but reports when the acknowledgement is not saved', async () => {
+      await loadRenderer({
+        config: recoveryConfig('decryption_failed'),
+        configureApi(api) {
+          api.clearTokenResetReason.mockRejectedValueOnce(new Error('config is read-only'));
+        },
+      });
+
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        expect.stringContaining('config is read-only'),
+        'error',
+        10000
+      );
+      expect(panel().textContent).toContain('Saved token cannot be read');
+      expect(mockElectronAPI.signalRendererReady).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('tells the header, tray and bar the connection is gone when the setup is cleared', async () => {
     await loadRenderer({
-      config: { ...unconfiguredConfig(), tokenResetReason: 'encryption_unavailable' },
+      config: {
+        ...unconfiguredConfig(),
+        homeAssistant: { url: 'http://ha.local:8123', token: 'legacy-token', authMethod: 'token' },
+      },
       configureApi(api) {
-        api.platform = 'linux';
+        api.publishHaConnectionState = jest.fn().mockResolvedValue({ success: true });
       },
     });
-    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-      expect.stringContaining('Your system keyring is locked or not running'),
-      'warning',
-      10000,
-      { source: 'startup-warning' }
-    );
-    mockUiUtils.showToast.mockClear();
+    let requestId = 10;
+    mockWebsocket.request.mockImplementation(() => {
+      const request = new Promise(() => {});
+      request.id = requestId++;
+      return request;
+    });
+    mockWebsocket.emit('message', { type: 'auth_ok' });
+    mockWebsocket.emit('message', { type: 'result', id: 10, success: true, result: [] });
+    expect(mockUiUtils.setStatus).toHaveBeenLastCalledWith(true, expect.any(String));
 
-    triggerMockEvent('configPersistenceWarning', [{ code: 'home_assistant_token_not_persisted' }]);
+    // Settings saved with the address and token emptied.
+    triggerMockEvent('configUpdated', unconfiguredConfig());
     await flushAsync();
 
-    expect(mockUiUtils.showToast).not.toHaveBeenCalled();
-  });
-
-  it('says a missing keyring once when the config carries both the reset notice and the persistence warning', async () => {
-    await loadRenderer({
-      config: {
-        ...unconfiguredConfig(),
-        tokenResetReason: 'encryption_unavailable',
-        persistenceWarnings: [{ code: 'home_assistant_token_not_persisted' }],
-      },
-      configureApi(api) {
-        api.platform = 'linux';
-      },
-    });
-
-    // Two toasts for one cause, with two different remedies, used to arrive together at startup.
-    const warnings = mockUiUtils.showToast.mock.calls.filter(([, type]) => type === 'warning');
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0][0]).toContain('Your system keyring is locked or not running');
-  });
-
-  it('continues startup but reports when token recovery acknowledgement is not persisted', async () => {
-    await loadRenderer({
-      config: {
-        ...unconfiguredConfig(),
-        tokenResetReason: 'decryption_failed',
-      },
-      configureApi(api) {
-        api.clearTokenResetReason.mockRejectedValueOnce(new Error('config is read-only'));
-      },
-    });
-
-    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-      expect.stringContaining('config is read-only'),
-      'error',
-      10000
+    expect(mockWebsocket.close).toHaveBeenCalled();
+    expect(document.body.classList.contains('first-run-active')).toBe(true);
+    expect(mockUiUtils.setStatus).toHaveBeenLastCalledWith(
+      false,
+      'Not set up yet. Finish setup to connect to Home Assistant.'
     );
-    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-      expect.stringContaining('needs to be re-entered'),
-      'warning',
-      10000,
-      { source: 'startup-warning' }
-    );
-    expect(mockElectronAPI.signalRendererReady).toHaveBeenCalledTimes(1);
+    expect(mockElectronAPI.publishHaConnectionState).toHaveBeenLastCalledWith('disconnected');
   });
 
   it('names the first page only after the interface language has loaded', async () => {

@@ -1398,5 +1398,49 @@
   "What’s new": {
     "retiredIn": "4.0.0",
     "reason": "Spelled with a straight apostrophe like the rest of the catalog"
+  },
+  "Your Home Assistant token needs to be re-entered. Click the gear icon to open Settings.": {
+    "retiredIn": "4.0.0",
+    "reason": "The start-up token notice became the main window's token panel, which names no gear icon"
+  },
+  "Your Home Assistant token needs to be re-entered. Token encryption is not available on this system. Click the gear icon to open Settings.": {
+    "retiredIn": "4.0.0",
+    "reason": "The start-up token notice became the main window's token panel, which names no gear icon"
+  },
+  "Your Home Assistant token needs to be re-entered. The stored token could not be decrypted. Click the gear icon to open Settings.": {
+    "retiredIn": "4.0.0",
+    "reason": "The start-up token notice became the main window's token panel, which names no gear icon"
+  },
+  "The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.": {
+    "retiredIn": "4.0.0",
+    "reason": "The start-up token notice became the main window's token panel, which names no gear icon"
+  },
+  "Your encrypted token from a previous installation cannot be decrypted on this system. The encrypted token has been preserved in case you move back to a system with encryption support. Please re-enter your token in Settings to continue.": {
+    "retiredIn": "4.0.0",
+    "reason": "The start-up token notice became the main window's token panel, which names no gear icon"
+  },
+  "The encrypted token appears to be corrupted and cannot be decrypted. The encrypted token has been preserved for recovery attempts. Please re-enter your token in Settings to continue.": {
+    "retiredIn": "4.0.0",
+    "reason": "The start-up token notice became the main window's token panel, which names no gear icon"
+  },
+  "Your access token needs to be re-entered.": {
+    "retiredIn": "4.0.0",
+    "reason": "Settings explains a token to enter again in its status line instead of a toast on opening"
+  },
+  "Your access token needs to be re-entered. Encryption is not available on this system.": {
+    "retiredIn": "4.0.0",
+    "reason": "Settings explains a token to enter again in its status line instead of a toast on opening"
+  },
+  "Your access token needs to be re-entered. Token decryption failed.": {
+    "retiredIn": "4.0.0",
+    "reason": "Settings explains a token to enter again in its status line instead of a toast on opening"
+  },
+  "Please configure connection settings (gear icon).": {
+    "retiredIn": "4.0.0",
+    "reason": "Pins and the header no longer point at a gear icon the wizard hides and pins do not have"
+  },
+  "Please configure your Home Assistant token in Settings (gear icon).": {
+    "retiredIn": "4.0.0",
+    "reason": "Pins and the header no longer point at a gear icon the wizard hides and pins do not have"
   }
 }

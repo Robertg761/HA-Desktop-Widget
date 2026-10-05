@@ -296,6 +296,18 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       expect(JSON.stringify(mockUiUtils.showToast.mock.calls)).not.toMatch(/token/i);
     });
 
+    it('closes the connection when main says the authorization is gone while connected', async () => {
+      await loadRenderer();
+      connectSuccessfully();
+      mockWebsocket.close.mockClear();
+
+      triggerMockEvent('configUpdated', reauthConfig());
+      await flushAsync();
+
+      expect(mockWebsocket.close).toHaveBeenCalled();
+      expect(panelText()).toContain('Home Assistant authorization expired');
+    });
+
     it('asks to reconnect when Home Assistant revoked the authorization', async () => {
       Element.prototype.scrollIntoView = jest.fn();
       await loadRenderer({

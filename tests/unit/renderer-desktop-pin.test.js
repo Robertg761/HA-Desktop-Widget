@@ -393,7 +393,8 @@ describe('Renderer desktop pin waiting escape hatch', () => {
 
     expect(mockUi.renderDesktopPinnedTile).toHaveBeenLastCalledWith('light.bedroom', null, {
       hasSnapshot: false,
-      connectionIssue: 'Please configure your Home Assistant token in Settings (gear icon).',
+      // A pin has no Settings button; it sends the person to the widget.
+      connectionIssue: 'No access token is saved. Open the widget to enter one.',
     });
     expect(mockElectronAPI.getConfig).not.toHaveBeenCalled();
   });

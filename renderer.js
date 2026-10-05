@@ -361,16 +361,17 @@ function applyDesktopPinConnectionState(connection = {}) {
   if (connection.secureStoragePending === true) {
     setDesktopPinConnectionIssue(t('Unlocking saved Home Assistant credentials...'));
   } else if (connection.hasUrl !== true) {
-    setDesktopPinConnectionIssue(t('Please configure connection settings (gear icon).'));
+    // A pin has no Settings button of its own; the widget is where the connection is set up.
+    setDesktopPinConnectionIssue(
+      t('Not set up yet. Open the widget to connect to Home Assistant.')
+    );
   } else if (oauth && connection.oauthStatus === 'reauth_required') {
     setDesktopPinConnectionIssue(getOAuthReauthRequiredStatus());
   } else if (oauth && connection.hasToken !== true) {
     // Configured, but the saved authorization has not been restored yet (Home Assistant down).
     setDesktopPinConnectionIssue(t('Disconnected from Home Assistant. Retrying automatically.'));
   } else if (connection.hasToken !== true) {
-    setDesktopPinConnectionIssue(
-      t('Please configure your Home Assistant token in Settings (gear icon).')
-    );
+    setDesktopPinConnectionIssue(t('No access token is saved. Open the widget to enter one.'));
   } else if (connection.runtimeState === 'auth-failed') {
     setDesktopPinConnectionIssue(getAuthFailureMessage(oauth));
   } else if (connection.runtimeState && connection.runtimeState !== 'connected') {
@@ -382,6 +383,116 @@ function applyDesktopPinConnectionState(connection = {}) {
 
 function isSecureStoragePending(targetConfig = state.CONFIG) {
   return targetConfig?.secureStoragePending === true;
+}
+
+// Why the saved token could not be used: this computer could not decrypt it ('decryption_failed'),
+// there was no keyring to decrypt it with ('encryption_unavailable'), or there was none to save it
+// to when it was entered ('not_persisted'). Main forgets the reason once told it was seen; this
+// keeps it until a token is entered, because it is what tells a setup that lost its token from a
+// first run, which is no time to greet anyone with Welcome.
+let tokenRecoveryReason = '';
+
+function needsTokenReentry() {
+  return (
+    !!tokenRecoveryReason &&
+    !usesOAuth() &&
+    !isConfigured(state.CONFIG) &&
+    !isSecureStoragePending() &&
+    !IS_DESKTOP_PIN_MODE
+  );
+}
+
+// Takes the reason main sent with a config, tells main it was seen, and forgets it once a token
+// works or the setup moved to browser authorization.
+function noteTokenRecoveryReason() {
+  const reason = state.CONFIG?.tokenResetReason;
+  if (reason) {
+    delete state.CONFIG.tokenResetReason;
+    log.warn('Saved Home Assistant token cannot be used:', reason);
+    void window.electronAPI.clearTokenResetReason?.().catch((error) => {
+      log.error('Failed to acknowledge token recovery notice:', error);
+      uiUtils.showToast(
+        t('Could not save the token recovery acknowledgement. {{error}}', {
+          error: error?.message || t('Unknown error'),
+        }),
+        'error',
+        10000
+      );
+    });
+  }
+  if (isConfigured(state.CONFIG) || usesOAuth()) tokenRecoveryReason = '';
+  else if (reason) tokenRecoveryReason = reason;
+}
+
+// What the panel says about a token that has to be entered again. Every message ends with what to
+// do, and none names a place: the panel's button goes there, and Settings shows the same words.
+function getTokenRecoveryPanel() {
+  if (!needsTokenReentry()) return null;
+  const linux = window.electronAPI?.platform === 'linux';
+  const enterToken = {
+    label: t('Enter token'),
+    className: 'btn btn-primary',
+    onClick: openTokenSettings,
+  };
+  if (tokenRecoveryReason === 'encryption_unavailable' && linux) {
+    // The encrypted token is still on disk: unlocking the keyring and restarting brings it back.
+    return {
+      tone: 'error',
+      title: t('System keyring is locked'),
+      message: t(
+        'Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.'
+      ),
+      actions: [
+        { label: t('Restart Widget'), className: 'btn btn-primary', onClick: restartWidget },
+        { ...enterToken, className: 'btn btn-secondary' },
+      ],
+    };
+  }
+  if (tokenRecoveryReason === 'not_persisted') {
+    return {
+      tone: 'error',
+      title: t('Access token was not saved'),
+      message: linux
+        ? t(
+            'No unlocked system keyring (Secret Service) was found when the access token was entered, so it was not saved. Enter it again, and start gnome-keyring or KWallet so it is remembered.'
+          )
+        : t(
+            'Token encryption is not available on this system, so the access token was not saved. Enter it again to reconnect.'
+          ),
+      actions: [enterToken],
+    };
+  }
+  return {
+    tone: 'error',
+    title: t('Saved token cannot be read'),
+    message:
+      tokenRecoveryReason === 'encryption_unavailable'
+        ? t(
+            'Token encryption is not available on this system, so the saved Home Assistant token cannot be read. Enter the token again to reconnect.'
+          )
+        : t(
+            'This computer cannot decrypt the saved Home Assistant token. That happens after moving to another computer or user account. Enter the token again to reconnect.'
+          ),
+    actions: [enterToken],
+  };
+}
+
+// The connection state of a setup whose token has to be entered again: the header and Settings say
+// what the panel says.
+function showTokenRecovery() {
+  const panel = getTokenRecoveryPanel();
+  if (!panel) return false;
+  if (mainConnectionState !== 'disconnected') updateMainConnectionState('disconnected');
+  setDisconnectedStatus(panel.message);
+  uiUtils.showLoading(false);
+  renderMainWidgetState();
+  return true;
+}
+
+// The indicator's words for a setup with no server yet. The wizard is the way to set it up, and
+// the header's Settings button is hidden while it is up, so they name neither.
+function getNotSetUpStatus() {
+  return t('Not set up yet. Finish setup to connect to Home Assistant.');
 }
 
 function usesOAuth(targetConfig = state.CONFIG) {
@@ -783,7 +894,11 @@ function getSettingsUiHooks() {
     renderPrimaryCards: ui.renderPrimaryCards,
     updateWeatherEffects: ui.updateWeatherEffects,
     // What the red connection panel is saying, so Settings does not look healthy beside it.
-    getConnectionState: () => ({ status: mainConnectionState, reason: lastDisconnectReason }),
+    getConnectionState: () => ({
+      status: mainConnectionState,
+      reason: lastDisconnectReason,
+      needsToken: needsTokenReentry(),
+    }),
     refreshLocale: async () => {
       await refreshLocaleBootstrap();
       renderCurrentMode();
@@ -800,6 +915,13 @@ function getSettingsUiHooks() {
 function openSettingsModal() {
   dismissConnectionToasts({ includeStartupWarnings: true });
   settings.openSettings(getSettingsUiHooks());
+}
+
+// Settings on General with the access token field open and the cursor in it.
+async function openTokenSettings() {
+  dismissConnectionToasts({ includeStartupWarnings: true });
+  await settings.openSettings(getSettingsUiHooks());
+  settings.revealHomeAssistantToken?.();
 }
 
 function openQuickAccessModal() {
@@ -1181,9 +1303,11 @@ function renderMainWidgetState() {
     removeWidgetStatePanel();
     return;
   }
-  const oauthStatePanel = getOAuthStatePanel();
-  if (oauthStatePanel) {
-    renderWidgetStatePanel(oauthStatePanel);
+  // A configured setup that cannot connect for want of a credential gets a connection state, not
+  // setup instructions.
+  const credentialPanel = getOAuthStatePanel() || getTokenRecoveryPanel();
+  if (credentialPanel) {
+    renderWidgetStatePanel(credentialPanel);
     return;
   }
   if (!isConfigured(state.CONFIG)) {
@@ -1800,7 +1924,8 @@ function maybeShowFirstRunWizard() {
     IS_DESKTOP_PIN_MODE ||
     isConfigured(state.CONFIG) ||
     isSecureStoragePending() ||
-    oauthRestorePending
+    oauthRestorePending ||
+    needsTokenReentry()
   ) {
     setFirstRunWizardVisible(false);
     return false;
@@ -2859,16 +2984,11 @@ websocket.on('error', (error) => {
 
     // Show user-friendly error message
     const errorMessage = String(error?.message || '');
-    if (errorMessage.includes('default token')) {
-      desktopPinIssueMessage = t(
-        'Please configure your Home Assistant token in Settings (gear icon).'
-      );
+    if (errorMessage.includes('default token') || errorMessage.includes('Invalid configuration')) {
+      // An attempt with nothing to connect with (the network came back during setup, say). The
+      // wizard or the token panel already says what to do; the header says the same.
+      desktopPinIssueMessage = getTokenRecoveryPanel()?.message || getNotSetUpStatus();
       setDisconnectedStatus(desktopPinIssueMessage);
-      showConnectionToast(desktopPinIssueMessage, 20000);
-    } else if (errorMessage.includes('Invalid configuration')) {
-      desktopPinIssueMessage = t('Please configure connection settings (gear icon).');
-      setDisconnectedStatus(desktopPinIssueMessage);
-      showConnectionToast(desktopPinIssueMessage, 20000);
     } else if (!errorMessage.includes('auth_invalid')) {
       // Don't show toast for auth_invalid as it's already handled elsewhere
       const toastInfo = showClassifiedConnectionToast(error);
@@ -3009,6 +3129,7 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
       alerts.initializeEntityAlerts();
     }
     if (change.other || change.quickAccess) renderCurrentMode();
+    noteTokenRecoveryReason();
     const wizardShown = maybeShowFirstRunWizard();
     const nowConfigured = isConfigured(state.CONFIG);
     if (!wizardShown && nowConfigured) {
@@ -3028,8 +3149,23 @@ window.electronAPI.onConfigUpdated(async (nextConfig) => {
         // failure.
         connectWebSocket();
       }
-    } else if (!nowConfigured && configuredRuntimeStarted && wasConfigured) {
-      closeWebSocket();
+    } else if (!nowConfigured) {
+      if (configuredRuntimeStarted && wasConfigured) closeWebSocket();
+      // A close made on purpose leaves the socket's own close handler silent, so without this the
+      // header went on saying "Connected" over the wizard, as did the tray and the bar. (OAuth
+      // says its own state below.)
+      if (
+        !usesOAuth() &&
+        !isSecureStoragePending() &&
+        !showTokenRecovery() &&
+        (wasConfigured || wasSecureStoragePending)
+      ) {
+        if (!['idle', 'disconnected'].includes(mainConnectionState)) {
+          updateMainConnectionState('disconnected');
+        }
+        setDisconnectedStatus(getNotSetUpStatus());
+        renderMainWidgetState();
+      }
     }
     if (!nowConfigured && usesOAuth() && !IS_DESKTOP_PIN_MODE) {
       setOAuthRestoreStatus();
@@ -3255,7 +3391,7 @@ async function init() {
     const config = await window.electronAPI.getConfig();
     if (!config || !config.homeAssistant) {
       log.error('Configuration is missing or invalid');
-      setDisconnectedStatus(t('Please configure connection settings (gear icon).'));
+      setDisconnectedStatus(getNotSetUpStatus());
       state.setConfig({
         homeAssistant: {
           url: '',
@@ -3285,9 +3421,9 @@ async function init() {
     // Runtime recovery metadata is intentionally not part of renderer state so
     // later update-config calls cannot echo it back into persisted settings.
     delete config.configRecovery;
-    // A token the keyring could not decrypt is reported below with its own remedy. The persistence
-    // warning that arrives with the same config would name that cause a second time, with other advice.
-    if (config.tokenResetReason === 'encryption_unavailable') tokenPersistenceWarningShown = true;
+    // A saved token that cannot be used is explained in the main window with its own remedy. The
+    // persistence warning that arrives with the same config would name that cause a second time.
+    if (config.tokenResetReason) tokenPersistenceWarningShown = true;
     applyRendererConfig(config);
     wireUI();
     replaceEmojiIcons();
@@ -3302,58 +3438,7 @@ async function init() {
       return;
     }
 
-    // Check if token was reset due to encryption issues
-    if (state.CONFIG.tokenResetReason) {
-      const reason = state.CONFIG.tokenResetReason;
-      if (window.electronAPI.clearTokenResetReason) {
-        try {
-          await window.electronAPI.clearTokenResetReason();
-        } catch (error) {
-          log.error('Failed to acknowledge token recovery notice:', error);
-          const acknowledgementMessage = t(
-            'Could not save the token recovery acknowledgement. {{error}}',
-            { error: error?.message || t('Unknown error') }
-          );
-          uiUtils.showToast(acknowledgementMessage, 'error', 10000);
-        }
-      }
-      delete state.CONFIG.tokenResetReason;
-
-      // One full sentence per reason, so translations never have to be pieced together.
-      let message = t(
-        'Your Home Assistant token needs to be re-entered. Click the gear icon to open Settings.'
-      );
-      let detailMessage = '';
-      if (reason === 'encryption_unavailable' && window.electronAPI?.platform === 'linux') {
-        // The encrypted token is kept, so unlocking the keyring and restarting brings it back.
-        message = t(
-          'Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.'
-        );
-        detailMessage = t(
-          'The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.'
-        );
-      } else if (reason === 'encryption_unavailable') {
-        message = t(
-          'Your Home Assistant token needs to be re-entered. Token encryption is not available on this system. Click the gear icon to open Settings.'
-        );
-        detailMessage = t(
-          'Your encrypted token from a previous installation cannot be decrypted on this system. The encrypted token has been preserved in case you move back to a system with encryption support. Please re-enter your token in Settings to continue.'
-        );
-      } else if (reason === 'decryption_failed') {
-        message = t(
-          'Your Home Assistant token needs to be re-entered. The stored token could not be decrypted. Click the gear icon to open Settings.'
-        );
-        detailMessage = t(
-          'The encrypted token appears to be corrupted and cannot be decrypted. The encrypted token has been preserved for recovery attempts. Please re-enter your token in Settings to continue.'
-        );
-      }
-
-      log.warn('[Init] Token reset:', message);
-      log.info('[Init]', detailMessage);
-
-      // Show prominent warning message with extended duration
-      uiUtils.showToast(message, 'warning', 10000, { source: STARTUP_WARNING_TOAST_SOURCE });
-    }
+    noteTokenRecoveryReason();
 
     if (!isConfigured(state.CONFIG)) {
       if (isSecureStoragePending()) {
@@ -3373,8 +3458,15 @@ async function init() {
         return;
       }
 
+      // A saved token this computer cannot use belongs to an existing setup: the main window says
+      // why and offers to enter it again, instead of starting onboarding over.
+      if (showTokenRecovery()) {
+        renderCurrentMode();
+        return;
+      }
+
       log.warn('[Init] Home Assistant is not configured. Showing first-run onboarding.');
-      setDisconnectedStatus(t('Please configure connection settings (gear icon).'));
+      setDisconnectedStatus(getNotSetUpStatus());
       uiUtils.showLoading(false);
       renderCurrentMode();
       maybeShowFirstRunWizard();

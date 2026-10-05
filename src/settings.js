@@ -5463,21 +5463,9 @@ async function openSettings(uiHooks) {
     if (haUrl) haUrl.value = state.CONFIG.homeAssistant.url || '';
     if (haToken) {
       const tokenValue = state.CONFIG.homeAssistant.token || '';
-      // Don't display default token - show empty field instead to prompt user to enter real token
+      // Don't display default token - show empty field instead to prompt user to enter real token.
+      // A token that has to be entered again is explained in the status line above the field.
       haToken.value = tokenValue === 'YOUR_LONG_LIVED_ACCESS_TOKEN' ? '' : tokenValue;
-
-      // Show warning if token was reset due to decryption failure
-      if (state.CONFIG.tokenResetReason) {
-        let warningMessage = t('Your access token needs to be re-entered.');
-        if (state.CONFIG.tokenResetReason === 'encryption_unavailable') {
-          warningMessage = t(
-            'Your access token needs to be re-entered. Encryption is not available on this system.'
-          );
-        } else if (state.CONFIG.tokenResetReason === 'decryption_failed') {
-          warningMessage = t('Your access token needs to be re-entered. Token decryption failed.');
-        }
-        uiHooks?.showToast?.(warningMessage, 'warning', 10000);
-      }
     }
     void refreshSecureStorageNotice();
     bindHomeAssistantOAuthUi();
@@ -5704,12 +5692,13 @@ async function openSettings(uiHooks) {
 
     // Focus starts on the page the user is on, not on the header's Close button, where a stray Enter
     // or Space would discard every unsaved edit. Only Escape and the buttons close Settings: a
-    // click that misses a control must not throw away a form this large. The one exception is the
-    // red connection panel's "Open Settings" with a rejected token: the token field is what to fix,
-    // and it is open on screen, so the cursor goes there.
+    // click that misses a control must not throw away a form this large. The one exception is a
+    // token to fix, rejected or no longer readable: the field is open on screen, so the cursor goes
+    // there.
+    const liveConnection = getLiveConnectionState();
     const tokenRejected =
       state.CONFIG.homeAssistant?.authMethod !== 'oauth' &&
-      getLiveConnectionState().status === 'auth-failed';
+      (liveConnection.status === 'auth-failed' || !!liveConnection.needsToken);
     openDialog(modal, {
       initialFocus: () => {
         const token = document.getElementById('ha-token');
@@ -5906,6 +5895,7 @@ function getHomeAssistantAuthState(homeAssistant) {
     homeAssistant.oauthLastErrorCode || '',
     connection.status || '',
     connection.reason || '',
+    !!connection.needsToken,
   ]);
 }
 
@@ -5972,6 +5962,10 @@ function updateHomeAssistantAuthUi() {
           t('Authentication failed. Check your long-lived access token in Settings.'),
         'error'
       );
+      if (legacySettings) legacySettings.open = true;
+    } else if (connection.needsToken) {
+      // The saved token could not be read: the main window's reason, and the field to enter it in.
+      setHomeAssistantOAuthStatus(connection.reason, 'error');
       if (legacySettings) legacySettings.open = true;
     } else if (connection.status === 'disconnected' && connection.reason) {
       setHomeAssistantOAuthStatus(connection.reason, 'error');
@@ -8112,6 +8106,18 @@ function showProfileSyncFieldError(field, message) {
   });
 }
 
+/** Shows General with the access token field open and focused: where a lost token is entered. */
+function revealHomeAssistantToken() {
+  document.querySelector('.modal-tabs .tab-link[data-tab="general"]')?.click();
+  const legacySettings = document.getElementById('legacy-ha-token-settings');
+  if (legacySettings) legacySettings.open = true;
+  const token = document.getElementById('ha-token');
+  if (!token || token.disabled) return;
+  // From the top of the Home Assistant group, so the line saying why is in view above the field.
+  (token.closest('.settings-group') || token).scrollIntoView?.({ block: 'start' });
+  token.focus({ preventScroll: true });
+}
+
 /** Shows the Advanced page with the update status in view: where a tray check reports. */
 function revealUpdateStatus() {
   document.querySelector('.modal-tabs .tab-link[data-tab="advanced"]')?.click();
@@ -8155,6 +8161,7 @@ export {
   profileSyncNeedsAttention,
   waitForLanguagePackRefresh,
   refreshHomeAssistantAuthStatus,
+  revealHomeAssistantToken,
 };
 
 // Hyprland blurs the widget only while its own blur is on, and Omarchy ships with it off. Say so
