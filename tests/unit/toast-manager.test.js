@@ -380,6 +380,11 @@ describe('the same toast twice, and too many', () => {
 });
 
 describe('keeping clear of what the toast belongs to', () => {
+  // One toast, resting 20px above the bottom of the window, where the stylesheet puts the stack.
+  beforeEach(() => {
+    setRect(container(), { top: window.innerHeight - 80, bottom: window.innerHeight - 20 });
+  });
+
   const footer = (top) => {
     const modal = document.createElement('div');
     modal.className = 'modal';
@@ -510,7 +515,7 @@ describe('keeping clear of what the toast belongs to', () => {
     expect(container().style.bottom).toBe('');
   });
 
-  it('stays above the first-run wizard buttons and the connection panel buttons', () => {
+  it('stays above the first-run wizard buttons', () => {
     document.body.insertAdjacentHTML(
       'beforeend',
       '<div class="first-run-onboarding"><div class="first-run-actions"></div></div>'
@@ -521,18 +526,57 @@ describe('keeping clear of what the toast belongs to', () => {
     });
     uiUtils.showToast('Over the wizard', 'error');
     expect(container().style.bottom).toBe('98px');
+  });
 
-    document.querySelector('.first-run-onboarding').remove();
+  const connectionPanel = (top) => {
     document.body.insertAdjacentHTML(
       'beforeend',
-      '<div class="widget-state-panel"><div class="widget-state-actions"></div></div>'
+      '<div class="widget-state-panel"><p class="widget-state-copy"></p><div class="widget-state-actions"></div></div>'
     );
-    setRect(document.querySelector('.widget-state-actions'), {
-      top: window.innerHeight - 140,
-      bottom: window.innerHeight - 100,
-    });
-    uiUtils.showToast('Over the panel', 'error');
-    expect(container().style.bottom).toBe('148px');
+    setRect(document.querySelector('.widget-state-actions'), { top, bottom: top + 40 });
+  };
+
+  // The panel sits above Quick Access, so its buttons are usually halfway up the window. Docking
+  // above them put the stack over the panel's own title and message, and an error stays until it
+  // is dismissed.
+  it('stays down, over the dimmed tiles, when the connection panel is higher up the window', () => {
+    connectionPanel(window.innerHeight - 260);
+    uiUtils.showToast('Could not run command', 'error');
+
+    expect(container().style.bottom).toBe('');
+  });
+
+  it('moves above the connection panel buttons where it would cover them, in a short window', () => {
+    connectionPanel(window.innerHeight - 70);
+    uiUtils.showToast('Could not run command', 'error');
+
+    expect(container().style.bottom).toBe('78px');
+  });
+
+  it('keeps its gap from buttons that end just above it', () => {
+    // The buttons end 4px above the stack: closer than the 8px gap, so it moves.
+    connectionPanel(window.innerHeight - 124);
+    uiUtils.showToast('Could not run command', 'error');
+
+    expect(container().style.bottom).toBe('132px');
+  });
+
+  it('stays down below a short dialog whose footer is higher up the window', () => {
+    // Under the footer there is only the backdrop; above it, the dialog's own question.
+    const modal = footer(window.innerHeight / 2);
+    uiUtils.openDialog(modal);
+    uiUtils.showToast('Over the backdrop', 'error');
+
+    expect(container().style.bottom).toBe('');
+  });
+
+  it('moves above each footer it would meet on the way up, with one dialog over another', () => {
+    uiUtils.openDialog(footer(window.innerHeight - 60));
+    // Lifted above the lower footer, the 60px stack would reach this one.
+    uiUtils.openDialog(footer(window.innerHeight - 150));
+    uiUtils.showToast('Over both', 'error');
+
+    expect(container().style.bottom).toBe('158px');
   });
 
   it('leaves a surface that has scrolled out of view alone', () => {

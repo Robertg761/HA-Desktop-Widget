@@ -470,6 +470,35 @@ const showOffline = async (ctx) => {
   await ctx.goOffline();
   await ctx.expect(OFFLINE_PANEL_IN_VIEW, 'the connection panel is in view above dimmed tiles');
 };
+// Every toast lies above or below the connection panel, so none of its words or buttons is covered.
+const TOASTS_CLEAR_OF_OFFLINE_PANEL = `(() => {
+  const panel = document.getElementById('widget-state-panel')?.getBoundingClientRect();
+  const toasts = [...document.querySelectorAll('#toast-container .toast')];
+  return !!panel && toasts.length > 0 && toasts.every((toast) => {
+    const box = toast.getBoundingClientRect();
+    return box.top >= panel.bottom || box.bottom <= panel.top;
+  });
+})()`;
+
+// Runs the command for the lamp the mock server refuses, from the command palette, which raises the
+// "Could not run command" error toast: a real one, placed by the app's own toast manager.
+async function runRefusedCommand(ctx) {
+  await ctx.ev(`document.activeElement?.blur?.()`);
+  await ctx.pressKey('k', { code: 'KeyK', keyCode: 75, modifiers: ctx.CTRL });
+  await ctx.waitForExpression(
+    `document.activeElement?.classList.contains('command-palette-input')`
+  );
+  await ctx.insertText('turn off unreachable');
+  await ctx.waitForExpression(
+    `document.querySelector('.command-palette-result.highlighted')?.textContent.includes('Turn off')`,
+    'the Turn off command'
+  );
+  await ctx.pressKey('Enter', { code: 'Enter', keyCode: 13, text: '\r' });
+  await ctx.waitForExpression(
+    `document.querySelector('#toast-container .toast.error')`,
+    'the error toast'
+  );
+}
 // Every label in a Settings row keeps room to be read, at 150% text size and in a narrow window.
 const SETTING_LABELS_READABLE = `[...document.querySelectorAll('#settings-modal .tab-content.active .setting-text')]
   .filter((text) => text.getClientRects().length > 0).every((text) => text.getBoundingClientRect().width >= 100)`;
@@ -1494,21 +1523,7 @@ const scenes = [
     keepToasts: true,
     setup: async (ctx) => {
       await openSettingsTab(ctx, 'general');
-      await ctx.ev(`document.activeElement?.blur?.()`);
-      await ctx.pressKey('k', { code: 'KeyK', keyCode: 75, modifiers: ctx.CTRL });
-      await ctx.waitForExpression(
-        `document.activeElement?.classList.contains('command-palette-input')`
-      );
-      await ctx.insertText('turn off unreachable');
-      await ctx.waitForExpression(
-        `document.querySelector('.command-palette-result.highlighted')?.textContent.includes('Turn off')`,
-        'the Turn off command'
-      );
-      await ctx.pressKey('Enter', { code: 'Enter', keyCode: 13, text: '\r' });
-      await ctx.waitForExpression(
-        `document.querySelector('#toast-container .toast.error')`,
-        'the error toast'
-      );
+      await runRefusedCommand(ctx);
       // The toast stack sits above the Save and Cancel pill, clear of both buttons.
       await ctx.waitForExpression(
         `(() => {
@@ -2538,6 +2553,20 @@ const scenes = [
       await showOffline(ctx);
       await ctx.click('.widget-state-actions .btn-secondary');
       await ctx.waitForSelector('.widget-state-note');
+    },
+  },
+  // A command that fails while Home Assistant is away: its error toast waits at the bottom, over
+  // the dimmed tiles, and leaves the panel that says what is wrong in view. It once docked above
+  // the panel's buttons, which put it over the panel's own message until it was dismissed.
+  {
+    name: 'layout-offline-toast',
+    size: DEFAULT_SIZE,
+    config: edgePage,
+    keepToasts: true,
+    setup: async (ctx) => {
+      await showOffline(ctx);
+      await runRefusedCommand(ctx);
+      await ctx.waitForExpression(TOASTS_CLEAR_OF_OFFLINE_PANEL, 'the toast clear of the panel');
     },
   },
   { name: 'layout-toast', size: DEFAULT_SIZE, keepToasts: true, setup: showToasts },

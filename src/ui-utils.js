@@ -1055,36 +1055,45 @@ function getToastLifetime(type, message, timeout, inPin = false) {
  * Keep the toast stack clear of the controls its surface is waiting on.
  *
  * Toasts sit at the bottom of the window, which is also where a dialog keeps its footer buttons
- * (Close, Save, Turn On), where the first-run wizard keeps Next, and where the connection panel
- * keeps Retry. The stack is lifted above whichever of those is showing. It is recomputed whenever
- * one of them opens or closes, as well as when a toast is added, so a stack that was already up
- * does not end up covering a footer that appeared afterwards, or float where one used to be.
+ * (Close, Save, Turn On), where the first-run wizard keeps Next, and, in a short window, where the
+ * connection panel keeps Retry. A stack that would cover one of those where it rests is lifted
+ * above it. One that would not stays down: lifting it above buttons higher up the window put it
+ * over what they belong to, such as the connection panel's own message, which sits above Quick
+ * Access. The layout is recomputed whenever one of them opens or closes, as well as when a toast
+ * is added, so a stack that was already up does not end up covering a footer that appeared
+ * afterwards, or float where one used to be.
  */
 function layoutToasts() {
   if (typeof document === 'undefined') return;
   const container = document.getElementById('toast-container');
   if (!container) return;
-  if (!container.querySelector('.toast')) {
-    container.style.removeProperty('bottom');
-    return;
-  }
-  const tops = (selector) =>
+  container.style.removeProperty('bottom');
+  if (!container.querySelector('.toast')) return;
+  const boxes = (selector) =>
     Array.from(document.querySelectorAll(selector))
       .filter((element) => element.getClientRects().length > 0)
       .map((element) => element.getBoundingClientRect())
       // A surface scrolled out of view has nothing for a toast to cover.
-      .filter((rect) => rect.bottom > 0 && rect.top < window.innerHeight)
-      .map((rect) => rect.top);
-  let avoid = tops(TOAST_DIALOG_AVOID_SELECTOR);
+      .filter((rect) => rect.bottom > 0 && rect.top < window.innerHeight);
+  let avoid = boxes(TOAST_DIALOG_AVOID_SELECTOR);
   if (!avoid.length && !document.querySelector('.modal:not(.hidden):not(.modal-closing)')) {
-    avoid = tops(TOAST_SURFACE_AVOID_SELECTOR);
+    avoid = boxes(TOAST_SURFACE_AVOID_SELECTOR);
   }
-  if (!avoid.length) {
-    container.style.removeProperty('bottom');
-    return;
-  }
-  const bottom = Math.max(0, window.innerHeight - Math.min(...avoid)) + TOAST_FOOTER_GAP_PX;
-  container.style.bottom = `${Math.round(bottom)}px`;
+  if (!avoid.length) return;
+  // Where the stack rests, then from the lowest control up: each one it would cover, or come
+  // closer to than the gap, moves it above that control.
+  const rest = container.getBoundingClientRect();
+  const height = rest.bottom - rest.top;
+  let floor = rest.bottom;
+  avoid
+    .sort((a, b) => b.bottom - a.bottom)
+    .forEach((rect) => {
+      if (rect.top < floor && rect.bottom + TOAST_FOOTER_GAP_PX > floor - height) {
+        floor = rect.top - TOAST_FOOTER_GAP_PX;
+      }
+    });
+  if (floor === rest.bottom) return;
+  container.style.bottom = `${Math.round(Math.max(0, window.innerHeight - floor))}px`;
 }
 
 let toastLayoutWired = false;
