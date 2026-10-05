@@ -1999,6 +1999,8 @@
     "Remove Hotkey": "Tastenkürzel entfernen",
     "Hotkey removed for {{name}}": "Tastenkürzel für {{name}} entfernt",
     "Hotkeys cannot control this kind of entity": "Tastenkürzel können diese Art von Entität nicht steuern",
-    "Failed to clear hotkey": "Tastenkürzel konnte nicht gelöscht werden"
+    "Failed to clear hotkey": "Tastenkürzel konnte nicht gelöscht werden",
+    "Toggle or control entities from anywhere. Hold {{ctrl}}, {{alt}} or {{meta}} with the key, and {{shift}} too if you like (for example <code>{{example}}</code>).": "Schalte oder steuere Entitäten von überall aus. Halte {{ctrl}}, {{alt}} oder {{meta}} zur Taste gedrückt, auf Wunsch auch {{shift}} (zum Beispiel <code>{{example}}</code>).",
+    "Reorganize mode on. Drag or press {{modifier}}+arrow keys to reorder. Esc to finish.": "Neu-Anordnen aktiv. Ziehen oder {{modifier}}+Pfeiltasten zum Sortieren. Esc zum Beenden."
   }
 }

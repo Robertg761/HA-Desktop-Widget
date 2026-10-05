@@ -3,6 +3,7 @@ import { installClippedTextTooltips } from './src/clipped-text-tooltips.js';
 import { installLayerDrag } from './src/layer-drag.js';
 import { installRangeProgress } from './src/range-progress.js';
 import desktopPinResize from './src/desktop-pin-resize.cjs';
+import accelerators from './src/accelerators.cjs';
 // Load all required modules (ES Modules)
 import log from './src/logger.js';
 import {
@@ -2094,13 +2095,24 @@ function showConfigRecoveryNotice(recovery) {
   uiUtils.showToast(message, 'error', 20000);
 }
 
-// The palette opens with the platform's own modifier: Cmd+K on macOS, Ctrl+K elsewhere (it takes
-// either, but the tip should name the one a person there would reach for).
-function applyPaletteShortcutHint() {
-  const hint = document.getElementById('command-palette-hint');
-  if (!hint) return;
-  const shortcut = window.electronAPI?.platform === 'darwin' ? 'Cmd+K' : 'Ctrl+K';
-  hint.setAttribute('data-i18n-vars', JSON.stringify({ shortcut }));
+// Text in index.html that names keys names them as this platform's keyboard prints them, as the
+// hotkey recorders and fields do. The palette opens with the platform's own modifier, Cmd+K on macOS
+// and Ctrl+K elsewhere (it takes either, but the tip names the one a person there would reach for).
+// The entity hotkeys help names the keys a hotkey can start from: Shift alone is refused, and the
+// Meta key is Super, Win or Cmd.
+function applyPlatformKeyNames() {
+  const platform = window.electronAPI?.platform;
+  const keys = (accelerator) => accelerators.formatAccelerator(accelerator, platform);
+  const setVars = (id, vars) =>
+    document.getElementById(id)?.setAttribute('data-i18n-vars', JSON.stringify(vars));
+  setVars('command-palette-hint', { shortcut: keys('CommandOrControl+K') });
+  setVars('entity-hotkeys-help', {
+    ctrl: keys('Ctrl'),
+    alt: keys('Alt'),
+    meta: keys('Super'),
+    shift: keys('Shift'),
+    example: keys('CommandOrControl+Shift+A'),
+  });
 }
 
 // The language the window was last drawn in; null until the first locale is applied.
@@ -2110,7 +2122,7 @@ async function refreshLocaleBootstrap() {
   const bootstrap = await window.electronAPI.getLocaleBootstrap();
   setLocaleBootstrap(bootstrap || {});
   if (!IS_DESKTOP_PIN_MODE) refreshTrayEntityIcons({ force: true });
-  applyPaletteShortcutHint();
+  applyPlatformKeyNames();
   translateDocument(document);
   const locale = bootstrap?.activeLocale || '';
   if (appliedLocale !== null && locale !== appliedLocale) {

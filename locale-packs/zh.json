@@ -1999,6 +1999,8 @@
     "Remove Hotkey": "移除快捷键",
     "Hotkey removed for {{name}}": "已移除 {{name}} 的快捷键",
     "Hotkeys cannot control this kind of entity": "快捷键无法控制此类实体",
-    "Failed to clear hotkey": "无法清除快捷键"
+    "Failed to clear hotkey": "无法清除快捷键",
+    "Toggle or control entities from anywhere. Hold {{ctrl}}, {{alt}} or {{meta}} with the key, and {{shift}} too if you like (for example <code>{{example}}</code>).": "随时随地切换或控制实体。按住 {{ctrl}}、{{alt}} 或 {{meta}} 再按键，也可以加上 {{shift}}（例如 <code>{{example}}</code>）。",
+    "Reorganize mode on. Drag or press {{modifier}}+arrow keys to reorder. Esc to finish.": "已启用整理模式。拖动或按 {{modifier}}+方向键以重新排序。按 Esc 完成。"
   }
 }

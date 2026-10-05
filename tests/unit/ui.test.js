@@ -3897,6 +3897,28 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
     });
 
+    it.each([
+      ['darwin', 'Option'],
+      ['win32', 'Alt'],
+      ['linux', 'Alt'],
+    ])('names the reorder key as a %s keyboard prints it', (platform, key) => {
+      const previousPlatform = window.electronAPI.platform;
+      window.electronAPI.platform = platform;
+      try {
+        ui.renderActiveTab();
+        ui.toggleReorganizeMode();
+
+        expect(uiUtils.showToast).toHaveBeenCalledWith(
+          `Reorganize mode on. Drag or press ${key}+arrow keys to reorder. Esc to finish.`,
+          'info',
+          4500,
+          { passive: true }
+        );
+      } finally {
+        window.electronAPI.platform = previousPlatform;
+      }
+    });
+
     it('saves the camera snapshot cadence from Tile Settings', async () => {
       const config = state.CONFIG;
       config.favoriteEntities = ['camera.front_door'];

@@ -1999,6 +1999,8 @@
     "Remove Hotkey": "Quitar atajo",
     "Hotkey removed for {{name}}": "Se quitó el atajo de {{name}}",
     "Hotkeys cannot control this kind of entity": "Los atajos no pueden controlar este tipo de entidad",
-    "Failed to clear hotkey": "No se pudo borrar el atajo"
+    "Failed to clear hotkey": "No se pudo borrar el atajo",
+    "Toggle or control entities from anywhere. Hold {{ctrl}}, {{alt}} or {{meta}} with the key, and {{shift}} too if you like (for example <code>{{example}}</code>).": "Activa o controla entidades desde cualquier lugar. Mantén {{ctrl}}, {{alt}} o {{meta}} con la tecla, y también {{shift}} si quieres (por ejemplo <code>{{example}}</code>).",
+    "Reorganize mode on. Drag or press {{modifier}}+arrow keys to reorder. Esc to finish.": "Modo de reorganización activado. Arrastra o pulsa {{modifier}}+flechas para reordenar. Pulsa Esc para finalizar."
   }
 }

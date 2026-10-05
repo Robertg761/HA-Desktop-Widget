@@ -1999,6 +1999,8 @@
     "Remove Hotkey": "إزالة الاختصار",
     "Hotkey removed for {{name}}": "تمت إزالة اختصار {{name}}",
     "Hotkeys cannot control this kind of entity": "لا يمكن للاختصارات التحكم في هذا النوع من الكيانات",
-    "Failed to clear hotkey": "تعذّر مسح الاختصار"
+    "Failed to clear hotkey": "تعذّر مسح الاختصار",
+    "Toggle or control entities from anywhere. Hold {{ctrl}}, {{alt}} or {{meta}} with the key, and {{shift}} too if you like (for example <code>{{example}}</code>).": "بدّل الكيانات أو تحكّم بها من أي مكان. اضغط {{ctrl}} أو {{alt}} أو {{meta}} مع المفتاح، ويمكنك إضافة {{shift}} أيضًا (مثل <code>{{example}}</code>).",
+    "Reorganize mode on. Drag or press {{modifier}}+arrow keys to reorder. Esc to finish.": "وضع إعادة الترتيب مفعّل. اسحب أو اضغط {{modifier}} مع مفاتيح الأسهم لإعادة الترتيب. اضغط Esc للإنهاء."
   }
 }

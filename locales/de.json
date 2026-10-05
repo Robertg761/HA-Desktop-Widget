@@ -1430,7 +1430,6 @@
   "Discard color edits": "Farbänderungen verwerfen",
   "Keep editing": "Weiter bearbeiten",
   "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Die ersten {{shown}} von {{count}} Symbolen werden angezeigt. Tippe, um sie einzugrenzen.",
-  "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "Neu-Anordnen aktiv. Ziehen oder Alt+Pfeiltasten zum Sortieren. Esc zum Beenden.",
   "Showing {{shown}} of {{total}} icons for “{{query}}”.": "{{shown}} von {{total}} Symbolen für „{{query}}“ werden angezeigt.",
   "No icons match “{{query}}”. Try a simpler word, or paste an emoji.": "Keine Symbole passen zu „{{query}}“. Versuche ein einfacheres Wort oder füge ein Emoji ein.",
   "The sync file's {{sections}} settings are damaged. Keep this computer's settings to repair them; the damaged copy is backed up first.": "Die Einstellungen für {{sections}} in der Sync-Datei sind beschädigt. Behalte die dieses Computers, um sie zu reparieren; die beschädigte Kopie wird vorher gesichert.",
@@ -1502,7 +1501,6 @@
   "Showing {{shown}} of {{total}} results": "{{shown}} von {{total}} Ergebnissen werden angezeigt",
   "Command": "Befehl",
   "Try a device name, a command like \"turn on\", or a page name": "Probiere einen Gerätenamen, einen Befehl wie „einschalten“ oder einen Seitennamen",
-  "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).": "Schalte oder steuere Entitäten von überall aus. Modifikatortasten: Ctrl, Alt, Shift, Win, Command, Super (zum Beispiel <code>Ctrl+Shift+A</code>).",
   "Action chosen: {{action}}. It applies once you record a hotkey.": "Aktion gewählt: {{action}}. Sie gilt, sobald du ein Tastenkürzel aufzeichnest.",
   "Notify when unavailable or unknown": "Benachrichtigen, wenn nicht verfügbar oder unbekannt",
   "Waits 30 seconds first, and tells you at most once every 15 minutes per device.": "Wartet zuerst 30 Sekunden und benachrichtigt höchstens alle 15 Minuten pro Gerät.",
@@ -1643,5 +1641,7 @@
   "Remove Hotkey": "Tastenkürzel entfernen",
   "Hotkey removed for {{name}}": "Tastenkürzel für {{name}} entfernt",
   "Hotkeys cannot control this kind of entity": "Tastenkürzel können diese Art von Entität nicht steuern",
-  "Failed to clear hotkey": "Tastenkürzel konnte nicht gelöscht werden"
+  "Failed to clear hotkey": "Tastenkürzel konnte nicht gelöscht werden",
+  "Toggle or control entities from anywhere. Hold {{ctrl}}, {{alt}} or {{meta}} with the key, and {{shift}} too if you like (for example <code>{{example}}</code>).": "Schalte oder steuere Entitäten von überall aus. Halte {{ctrl}}, {{alt}} oder {{meta}} zur Taste gedrückt, auf Wunsch auch {{shift}} (zum Beispiel <code>{{example}}</code>).",
+  "Reorganize mode on. Drag or press {{modifier}}+arrow keys to reorder. Esc to finish.": "Neu-Anordnen aktiv. Ziehen oder {{modifier}}+Pfeiltasten zum Sortieren. Esc zum Beenden."
 }

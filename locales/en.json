@@ -1430,7 +1430,6 @@
   "Discard color edits": "Discard color edits",
   "Keep editing": "Keep editing",
   "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Showing the first {{shown}} of {{count}} icons. Type to narrow them.",
-  "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.",
   "Showing {{shown}} of {{total}} icons for “{{query}}”.": "Showing {{shown}} of {{total}} icons for “{{query}}”.",
   "No icons match “{{query}}”. Try a simpler word, or paste an emoji.": "No icons match “{{query}}”. Try a simpler word, or paste an emoji.",
   "The sync file's {{sections}} settings are damaged. Keep this computer's settings to repair them; the damaged copy is backed up first.": "The sync file's {{sections}} settings are damaged. Keep this computer's settings to repair them; the damaged copy is backed up first.",
@@ -1502,7 +1501,6 @@
   "Showing {{shown}} of {{total}} results": "Showing {{shown}} of {{total}} results",
   "Command": "Command",
   "Try a device name, a command like \"turn on\", or a page name": "Try a device name, a command like \"turn on\", or a page name",
-  "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).": "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).",
   "Action chosen: {{action}}. It applies once you record a hotkey.": "Action chosen: {{action}}. It applies once you record a hotkey.",
   "Notify when unavailable or unknown": "Notify when unavailable or unknown",
   "Waits 30 seconds first, and tells you at most once every 15 minutes per device.": "Waits 30 seconds first, and tells you at most once every 15 minutes per device.",
@@ -1643,5 +1641,7 @@
   "Remove Hotkey": "Remove Hotkey",
   "Hotkey removed for {{name}}": "Hotkey removed for {{name}}",
   "Hotkeys cannot control this kind of entity": "Hotkeys cannot control this kind of entity",
-  "Failed to clear hotkey": "Failed to clear hotkey"
+  "Failed to clear hotkey": "Failed to clear hotkey",
+  "Toggle or control entities from anywhere. Hold {{ctrl}}, {{alt}} or {{meta}} with the key, and {{shift}} too if you like (for example <code>{{example}}</code>).": "Toggle or control entities from anywhere. Hold {{ctrl}}, {{alt}} or {{meta}} with the key, and {{shift}} too if you like (for example <code>{{example}}</code>).",
+  "Reorganize mode on. Drag or press {{modifier}}+arrow keys to reorder. Esc to finish.": "Reorganize mode on. Drag or press {{modifier}}+arrow keys to reorder. Esc to finish."
 }

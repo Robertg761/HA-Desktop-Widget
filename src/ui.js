@@ -83,6 +83,7 @@ import {
 } from './sensor-gauge.js';
 import trayEntitySupport from './tray-entities.cjs';
 import desktopPinSupport from './desktop-pin-support.cjs';
+import accelerators from './accelerators.cjs';
 import climateControls from './climate-controls.cjs';
 import pageNameRules from './page-names.cjs';
 import { DEV_CLIMATE_DEMO_ENTITY_ID, isClimateDemoOverlayConfig } from '@dev-climate-demo';
@@ -2204,9 +2205,12 @@ function toggleReorganizeMode() {
       window.electronAPI.setDesktopPinEditMode(true).catch((error) => {
         console.error('Failed to enable desktop pin edit mode:', error);
       });
-      // A notice, not a question: passive, so it cannot swallow the first drag it sits over.
+      // A notice, not a question: passive, so it cannot swallow the first drag it sits over. The
+      // Alt key is named as this keyboard prints it: Option on a Mac.
       uiUtils.showToast(
-        t('Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.'),
+        t('Reorganize mode on. Drag or press {{modifier}}+arrow keys to reorder. Esc to finish.', {
+          modifier: accelerators.formatAccelerator('Alt', window.electronAPI?.platform),
+        }),
         'info',
         4500,
         { passive: true }

@@ -772,6 +772,24 @@ describe('Renderer first-run Home Assistant authorization', () => {
         JSON.parse(document.getElementById('command-palette-hint').getAttribute('data-i18n-vars'))
       ).toEqual({ shortcut });
     });
+
+    it.each([
+      ['darwin', { ctrl: 'Control', alt: 'Option', meta: 'Cmd', example: 'Shift+Cmd+A' }],
+      ['win32', { ctrl: 'Ctrl', alt: 'Alt', meta: 'Win', example: 'Ctrl+Shift+A' }],
+      ['linux', { ctrl: 'Ctrl', alt: 'Alt', meta: 'Super', example: 'Ctrl+Shift+A' }],
+    ])('names the entity hotkey modifiers as a %s keyboard prints them', async (platform, keys) => {
+      await loadRenderer({
+        configureApi(api) {
+          api.platform = platform;
+        },
+        bodyHtml:
+          '<main class="widget-content"></main><p id="entity-hotkeys-help" data-i18n-vars="{}"></p>',
+      });
+
+      expect(
+        JSON.parse(document.getElementById('entity-hotkeys-help').getAttribute('data-i18n-vars'))
+      ).toEqual({ ...keys, shift: 'Shift' });
+    });
   });
 
   it('starts fresh installs with an empty URL and the Home Assistant 2026.8 address hint', async () => {

@@ -1398,5 +1398,13 @@
   "What’s new": {
     "retiredIn": "4.0.0",
     "reason": "Spelled with a straight apostrophe like the rest of the catalog"
+  },
+  "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).": {
+    "retiredIn": "4.0.0",
+    "reason": "Replaced by help that names this platform's modifier keys and leaves out Shift alone"
+  },
+  "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": {
+    "retiredIn": "4.0.0",
+    "reason": "Replaced by the same notice with the platform's name for the Alt key (Option on macOS)"
   }
 }
