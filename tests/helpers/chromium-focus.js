@@ -18,8 +18,10 @@ function blurFocusedControlsOnDisable(window = global.window) {
     Object.defineProperty(prototype, 'disabled', {
       ...descriptor,
       set(value) {
-        descriptor.set.call(this, value);
+        // Blur first: jsdom's blur() ignores an element that is no longer focusable, and a
+        // disabled control is not, so blurring after the change would leave focus where it was.
         if (value && this.ownerDocument.activeElement === this) this.blur();
+        descriptor.set.call(this, value);
       },
     });
     return [prototype, descriptor];
