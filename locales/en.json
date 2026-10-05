@@ -1639,5 +1639,22 @@
   "Set the range in the widget.": "Set the range in the widget.",
   "1 more tile is not shown here. Open the widget to see it.": "1 more tile is not shown here. Open the widget to see it.",
   "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} more tiles are not shown here. Open the widget to see them.",
-  "What's new": "What's new"
+  "What's new": "What's new",
+  "Not set up yet. Finish setup to connect to Home Assistant.": "Not set up yet. Finish setup to connect to Home Assistant.",
+  "Not set up yet. Open the widget to connect to Home Assistant.": "Not set up yet. Open the widget to connect to Home Assistant.",
+  "No access token is saved. Open the widget to enter one.": "No access token is saved. Open the widget to enter one.",
+  "Enter token": "Enter token",
+  "Access token was not saved": "Access token was not saved",
+  "No unlocked system keyring (Secret Service) was found when the access token was entered, so it was not saved. Enter it again, and start gnome-keyring or KWallet so it is remembered.": "No unlocked system keyring (Secret Service) was found when the access token was entered, so it was not saved. Enter it again, and start gnome-keyring or KWallet so it is remembered.",
+  "Token encryption is not available on this system, so the access token was not saved. Enter it again to reconnect.": "Token encryption is not available on this system, so the access token was not saved. Enter it again to reconnect.",
+  "Saved token cannot be read": "Saved token cannot be read",
+  "Token encryption is not available on this system, so the saved Home Assistant token cannot be read. Enter the token again to reconnect.": "Token encryption is not available on this system, so the saved Home Assistant token cannot be read. Enter the token again to reconnect.",
+  "This computer cannot decrypt the saved Home Assistant token. That happens after moving to another computer or user account. Enter the token again to reconnect.": "This computer cannot decrypt the saved Home Assistant token. That happens after moving to another computer or user account. Enter the token again to reconnect.",
+  "The connection was lost. Retrying automatically.": "The connection was lost. Retrying automatically.",
+  "Home Assistant is slow to send its states. Retrying automatically.": "Home Assistant is slow to send its states. Retrying automatically.",
+  "Using English until the {{language}} language pack is downloaded.": "Using English until the {{language}} language pack is downloaded.",
+  "HA Desktop Widget is available in {{language}}.": "HA Desktop Widget is available in {{language}}.",
+  "Choose rooms and entities": "Choose rooms and entities",
+  "My entities": "My entities",
+  "Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard.": "Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard."
 }

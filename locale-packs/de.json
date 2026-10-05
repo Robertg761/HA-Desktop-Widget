@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.64",
+  "version": "1.2.65",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget.",
   "messages": {
@@ -1995,6 +1995,23 @@
     "Set the range in the widget.": "Stelle den Bereich im Widget ein.",
     "1 more tile is not shown here. Open the widget to see it.": "Eine weitere Kachel wird hier nicht angezeigt. Öffne das Widget, um sie zu sehen.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} weitere Kacheln werden hier nicht angezeigt. Öffne das Widget, um sie zu sehen.",
-    "What's new": "Neuerungen"
+    "What's new": "Neuerungen",
+    "Not set up yet. Finish setup to connect to Home Assistant.": "Noch nicht eingerichtet. Schließe die Einrichtung ab, um dich mit Home Assistant zu verbinden.",
+    "Not set up yet. Open the widget to connect to Home Assistant.": "Noch nicht eingerichtet. Öffne das Widget, um dich mit Home Assistant zu verbinden.",
+    "No access token is saved. Open the widget to enter one.": "Es ist kein Zugriffstoken gespeichert. Öffne das Widget, um eines einzugeben.",
+    "Enter token": "Token eingeben",
+    "Access token was not saved": "Zugriffstoken wurde nicht gespeichert",
+    "No unlocked system keyring (Secret Service) was found when the access token was entered, so it was not saved. Enter it again, and start gnome-keyring or KWallet so it is remembered.": "Beim Eingeben des Zugriffstokens wurde kein entsperrter Systemschlüsselbund (Secret Service) gefunden, daher wurde es nicht gespeichert. Gib es erneut ein und starte gnome-keyring oder KWallet, damit es gespeichert bleibt.",
+    "Token encryption is not available on this system, so the access token was not saved. Enter it again to reconnect.": "Token-Verschlüsselung ist auf diesem System nicht verfügbar, daher wurde das Zugriffstoken nicht gespeichert. Gib es erneut ein, um dich wieder zu verbinden.",
+    "Saved token cannot be read": "Gespeichertes Token kann nicht gelesen werden",
+    "Token encryption is not available on this system, so the saved Home Assistant token cannot be read. Enter the token again to reconnect.": "Token-Verschlüsselung ist auf diesem System nicht verfügbar, daher kann das gespeicherte Home Assistant-Token nicht gelesen werden. Gib das Token erneut ein, um dich wieder zu verbinden.",
+    "This computer cannot decrypt the saved Home Assistant token. That happens after moving to another computer or user account. Enter the token again to reconnect.": "Dieser Computer kann das gespeicherte Home Assistant-Token nicht entschlüsseln. Das passiert nach einem Wechsel auf einen anderen Computer oder ein anderes Benutzerkonto. Gib das Token erneut ein, um dich wieder zu verbinden.",
+    "The connection was lost. Retrying automatically.": "Die Verbindung wurde unterbrochen. Wird automatisch wiederholt.",
+    "Home Assistant is slow to send its states. Retrying automatically.": "Home Assistant sendet seine Zustände nur langsam. Wird automatisch wiederholt.",
+    "Using English until the {{language}} language pack is downloaded.": "Englisch wird verwendet, bis das Sprachpaket {{language}} heruntergeladen ist.",
+    "HA Desktop Widget is available in {{language}}.": "HA Desktop Widget ist auf {{language}} verfügbar.",
+    "Choose rooms and entities": "Räume und Entitäten auswählen",
+    "My entities": "Meine Entitäten",
+    "Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard.": "Deine Verbindung ist gespeichert. Sieh dir die Vorschau eines Raums an oder wähle Entitäten aus, um deine erste Seite zu erstellen. Du kannst dies auch später über das leere Dashboard tun."
   }
 }

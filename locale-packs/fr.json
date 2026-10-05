@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.64",
+  "version": "1.2.65",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1995,6 +1995,23 @@
     "Set the range in the widget.": "Réglez la plage dans le widget.",
     "1 more tile is not shown here. Open the widget to see it.": "1 vignette de plus n'est pas affichée ici. Ouvrez le widget pour la voir.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} vignettes de plus ne sont pas affichées ici. Ouvrez le widget pour les voir.",
-    "What's new": "Nouveautés"
+    "What's new": "Nouveautés",
+    "Not set up yet. Finish setup to connect to Home Assistant.": "Pas encore configuré. Terminez la configuration pour vous connecter à Home Assistant.",
+    "Not set up yet. Open the widget to connect to Home Assistant.": "Pas encore configuré. Ouvrez le widget pour vous connecter à Home Assistant.",
+    "No access token is saved. Open the widget to enter one.": "Aucun jeton d'accès n'est enregistré. Ouvrez le widget pour en saisir un.",
+    "Enter token": "Saisir le jeton",
+    "Access token was not saved": "Le jeton d'accès n'a pas été enregistré",
+    "No unlocked system keyring (Secret Service) was found when the access token was entered, so it was not saved. Enter it again, and start gnome-keyring or KWallet so it is remembered.": "Aucun trousseau de clés du système déverrouillé (Secret Service) n'a été trouvé lors de la saisie du jeton d'accès, il n'a donc pas été enregistré. Saisissez-le à nouveau et démarrez gnome-keyring ou KWallet pour qu'il soit mémorisé.",
+    "Token encryption is not available on this system, so the access token was not saved. Enter it again to reconnect.": "Le chiffrement du jeton n'est pas disponible sur ce système, le jeton d'accès n'a donc pas été enregistré. Saisissez-le à nouveau pour vous reconnecter.",
+    "Saved token cannot be read": "Le jeton enregistré ne peut pas être lu",
+    "Token encryption is not available on this system, so the saved Home Assistant token cannot be read. Enter the token again to reconnect.": "Le chiffrement du jeton n'est pas disponible sur ce système, le jeton Home Assistant enregistré ne peut donc pas être lu. Saisissez à nouveau le jeton pour vous reconnecter.",
+    "This computer cannot decrypt the saved Home Assistant token. That happens after moving to another computer or user account. Enter the token again to reconnect.": "Cet ordinateur ne peut pas déchiffrer le jeton Home Assistant enregistré. Cela arrive après un passage à un autre ordinateur ou à un autre compte utilisateur. Saisissez à nouveau le jeton pour vous reconnecter.",
+    "The connection was lost. Retrying automatically.": "La connexion a été perdue. Nouvelle tentative automatique.",
+    "Home Assistant is slow to send its states. Retrying automatically.": "Home Assistant met du temps à envoyer ses états. Nouvelle tentative automatique.",
+    "Using English until the {{language}} language pack is downloaded.": "L'anglais est utilisé jusqu'au téléchargement du pack de langue {{language}}.",
+    "HA Desktop Widget is available in {{language}}.": "HA Desktop Widget est disponible en {{language}}.",
+    "Choose rooms and entities": "Choisir des pièces et des entités",
+    "My entities": "Mes entités",
+    "Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard.": "Votre connexion est enregistrée. Prévisualisez une pièce ou choisissez des entités pour créer votre première page. Vous pourrez aussi le faire plus tard depuis le tableau de bord vide."
   }
 }

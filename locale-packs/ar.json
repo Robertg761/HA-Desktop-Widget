@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.65",
+  "version": "1.2.66",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1995,6 +1995,23 @@
     "Set the range in the widget.": "اضبط النطاق في الأداة.",
     "1 more tile is not shown here. Open the widget to see it.": "هناك بطاقة واحدة أخرى غير معروضة هنا. افتح الأداة لمشاهدتها.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "هناك {{count}} بطاقات أخرى غير معروضة هنا. افتح الأداة لمشاهدتها.",
-    "What's new": "الجديد"
+    "What's new": "الجديد",
+    "Not set up yet. Finish setup to connect to Home Assistant.": "لم يتم الإعداد بعد. أكمل الإعداد للاتصال بـ Home Assistant.",
+    "Not set up yet. Open the widget to connect to Home Assistant.": "لم يتم الإعداد بعد. افتح الأداة للاتصال بـ Home Assistant.",
+    "No access token is saved. Open the widget to enter one.": "لا يوجد رمز وصول محفوظ. افتح الأداة لإدخال واحد.",
+    "Enter token": "إدخال الرمز",
+    "Access token was not saved": "لم يُحفظ رمز الوصول",
+    "No unlocked system keyring (Secret Service) was found when the access token was entered, so it was not saved. Enter it again, and start gnome-keyring or KWallet so it is remembered.": "لم يتم العثور على سلسلة مفاتيح نظام مفتوحة (Secret Service) عند إدخال رمز الوصول، لذا لم يُحفظ. أدخله من جديد، وشغّل gnome-keyring أو KWallet ليُحفظ.",
+    "Token encryption is not available on this system, so the access token was not saved. Enter it again to reconnect.": "تشفير الرمز غير متوفر على هذا النظام، لذا لم يُحفظ رمز الوصول. أدخله من جديد لإعادة الاتصال.",
+    "Saved token cannot be read": "لا يمكن قراءة الرمز المحفوظ",
+    "Token encryption is not available on this system, so the saved Home Assistant token cannot be read. Enter the token again to reconnect.": "تشفير الرمز غير متوفر على هذا النظام، لذا لا يمكن قراءة رمز Home Assistant المحفوظ. أدخل الرمز من جديد لإعادة الاتصال.",
+    "This computer cannot decrypt the saved Home Assistant token. That happens after moving to another computer or user account. Enter the token again to reconnect.": "لا يستطيع هذا الحاسوب فك تشفير رمز Home Assistant المحفوظ. يحدث ذلك بعد الانتقال إلى حاسوب أو حساب مستخدم آخر. أدخل الرمز من جديد لإعادة الاتصال.",
+    "The connection was lost. Retrying automatically.": "انقطع الاتصال. ستتم إعادة المحاولة تلقائيًا.",
+    "Home Assistant is slow to send its states. Retrying automatically.": "يتأخر Home Assistant في إرسال حالاته. ستتم إعادة المحاولة تلقائيًا.",
+    "Using English until the {{language}} language pack is downloaded.": "سيتم استخدام الإنجليزية حتى يتم تنزيل حزمة اللغة {{language}}.",
+    "HA Desktop Widget is available in {{language}}.": "HA Desktop Widget متوفر باللغة {{language}}.",
+    "Choose rooms and entities": "اختيار الغرف والكيانات",
+    "My entities": "كياناتي",
+    "Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard.": "تم حفظ اتصالك. عاين غرفة أو اختر كيانات لإنشاء صفحتك الأولى. يمكنك أيضاً القيام بذلك لاحقاً من لوحة التحكم الفارغة."
   }
 }
