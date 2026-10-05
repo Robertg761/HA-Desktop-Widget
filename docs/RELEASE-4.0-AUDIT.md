@@ -86,10 +86,16 @@ for the starting commit, not for the Electron update made during this audit.
   `[4.0.0] - Unreleased` changelog section. The Tag Release workflow requires these
   on main. Replace the changelog's Unreleased date with the actual release date
   after completing the checks below. Preparation does not create a release tag.
-- Check that the website is deployed from the commit being released: run
-  `node scripts/check-website-deploy.cjs` (the Website deploy check workflow does it after each
-  change to `website/` on main). The site deploys when main changes, before the release is tagged,
-  so it reads correctly on both sides of the release; it needs no edit on release day.
+- Check that the website is deployed from the commit being released. The live site was serving
+  copy from before the audit fixes, which only a deploy of main replaces. After the website
+  changes are merged, confirm in Vercel that the production branch is main, then run
+  `node scripts/check-website-deploy.cjs --wait 600` (or dispatch the Website deploy check
+  workflow, which also runs after each change to `website/` on main) and see it pass before the
+  release is tagged. The site deploys when main changes, so it reads correctly on both sides of
+  the release; it needs no edit on release day.
+- Read the new app and website sections of [privacy.html](../website/privacy.html) before the
+  release. They are legal wording written from what the app and the site request, and the
+  maintainer should approve them.
 - Run CI on the final release commit. In particular, the Electron update needs new
   Windows and universal macOS package and smoke results.
 - Check a real Home Assistant login, reconnect after sleep, and profile sync between
@@ -99,6 +105,11 @@ for the starting commit, not for the Electron update made during this audit.
   shortcuts, monitor changes, scaling, and suspend/resume. Follow the existing
   [native Hyprland verification guide](TESTING.md#native-hyprland-verification) and
   [desktop pin checklist](DESKTOP_PIN_QA.md).
+- In the release pull request, the last change before the tag: date the `## [4.0.0]` changelog
+  heading, because the published release page and the changelog link read "Unreleased"
+  otherwise, and change the Supported Versions in [SECURITY.md](../SECURITY.md) to 4.x
+  supported and 3.x not. Until then that table says "After" and "Until the stable 4.0
+  release", which is true while 3.11 is the latest stable release.
 
 The behavioral fixes above address reproduced defects. These results do not establish
 that every platform, device integration, or external sync provider is defect-free.

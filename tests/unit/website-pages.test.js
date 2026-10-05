@@ -1,6 +1,7 @@
 /** @jest-environment node */
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 
 const site = path.resolve(__dirname, '../../website');
 const read = (file) => fs.readFileSync(path.join(site, file), 'utf8');
@@ -109,6 +110,75 @@ describe('the legal pages', () => {
     for (const page of ['privacy', 'terms']) {
       expect(html[page]).not.toMatch(/4\.0 desktop app/);
     }
+  });
+});
+
+// The alpha of every pixel of an 8-bit RGBA PNG that is not interlaced, which is what the icons are.
+function pngAlpha(file) {
+  const png = fs.readFileSync(file);
+  let offset = 8;
+  let header;
+  const data = [];
+  while (offset < png.length) {
+    const length = png.readUInt32BE(offset);
+    const type = png.toString('latin1', offset + 4, offset + 8);
+    const body = png.subarray(offset + 8, offset + 8 + length);
+    if (type === 'IHDR') header = body;
+    if (type === 'IDAT') data.push(body);
+    offset += 12 + length;
+  }
+  const width = header.readUInt32BE(0);
+  const height = header.readUInt32BE(4);
+  expect([header[8], header[9], header[12]]).toEqual([8, 6, 0]);
+  const raw = zlib.inflateSync(Buffer.concat(data));
+  const stride = width * 4;
+  const rows = [];
+  for (let y = 0; y < height; y += 1) {
+    const filter = raw[y * (stride + 1)];
+    const row = Buffer.from(raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1)));
+    const above = rows[y - 1] || Buffer.alloc(stride);
+    for (let i = 0; i < stride; i += 1) {
+      const left = i >= 4 ? row[i - 4] : 0;
+      const up = above[i];
+      const upLeft = i >= 4 ? above[i - 4] : 0;
+      const p = left + up - upLeft;
+      const [pa, pb, pc] = [Math.abs(p - left), Math.abs(p - up), Math.abs(p - upLeft)];
+      const paeth = pa <= pb && pa <= pc ? left : pb <= pc ? up : upLeft;
+      row[i] = (row[i] + [0, left, up, (left + up) >> 1, paeth][filter]) & 255;
+    }
+    rows.push(row);
+  }
+  return { width, height, alphaAt: (x, y) => rows[y][x * 4 + 3] };
+}
+
+describe('the website images', () => {
+  const shareImages = (page) => [
+    html[page].match(/property="og:image" content="([^"]+)"/)?.[1],
+    html[page].match(/name="twitter:image" content="([^"]+)"/)?.[1],
+  ];
+
+  it.each(pages)(
+    '%s names its share card with a version, so cached link previews refresh',
+    (page) => {
+      // The card was redrawn at the same address; Slack, X and other link previews keep an image they
+      // have seen for a long time, so the address changes whenever the picture does.
+      const [openGraph, twitter] = shareImages(page);
+      expect(openGraph).toMatch(/^https:\/\/hadesktopwidget\.com\/assets\/og\.png\?v=\d{8}$/);
+      expect(twitter).toBe(openGraph);
+    }
+  );
+
+  it('shows the app icon of the packages, not the old square one', () => {
+    const packaged = path.resolve(__dirname, '../../build/icons/64x64.png');
+    expect(fs.readFileSync(path.join(site, 'assets/icon.png'))).toEqual(fs.readFileSync(packaged));
+    for (const file of ['assets/icon.png', 'assets/icon-180.png']) {
+      const icon = pngAlpha(path.join(site, file));
+      const { width, height, alphaAt } = icon;
+      // Rounded with a margin: transparent in the corners, opaque in the middle.
+      expect([alphaAt(0, 0), alphaAt(width - 1, height - 1)]).toEqual([0, 0]);
+      expect(alphaAt(width >> 1, height >> 1)).toBe(255);
+    }
+    expect(pngAlpha(path.join(site, 'assets/icon-180.png')).width).toBe(180);
   });
 });
 

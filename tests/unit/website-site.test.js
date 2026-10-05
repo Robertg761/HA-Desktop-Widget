@@ -238,6 +238,26 @@ describe('scroll reveals', () => {
     ).toBe(true);
   });
 
+  it('keeps content the stylesheet fallback already showed when the script arrives late', async () => {
+    global.IntersectionObserver = class {
+      observe() {}
+      unobserve() {}
+    };
+    try {
+      await loadPage(
+        '<section><div id="shown" class="reveal" style="opacity: 1"></div>' +
+          '<div id="fading" class="reveal" style="opacity: 0.4"></div>' +
+          '<div id="waiting" class="reveal" style="opacity: 0"></div></section>'
+      );
+    } finally {
+      delete global.IntersectionObserver;
+    }
+    const revealed = (id) => document.getElementById(id).classList.contains('in');
+    expect(revealed('shown')).toBe(true);
+    expect(revealed('fading')).toBe(true);
+    expect(revealed('waiting')).toBe(false);
+  });
+
   it('marks the page script-driven, which ends the stylesheet fallback for blocked scripts', async () => {
     await loadPage('');
     expect(document.documentElement.classList.contains('js-ready')).toBe(true);

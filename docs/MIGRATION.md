@@ -11,7 +11,7 @@ Version 4.0 retains the desktop app's local configuration and upgrades folder Pr
    - macOS: `~/Library/Application Support/home-assistant-widget`
    - Linux: `~/.config/home-assistant-widget` (or `$XDG_CONFIG_HOME/home-assistant-widget`)
 
-   Settings → Advanced → View logs opens the separate log location, not this directory.
+   Settings → Advanced → Show log file shows the log file, not this directory.
 
 4. Upgrade every computer that writes to the same profile before resuming sync. Keep the backups until you have verified the layout, connection, and sync on each computer.
 

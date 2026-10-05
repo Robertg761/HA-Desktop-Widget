@@ -2,14 +2,14 @@
 
 ## Supported Versions
 
-Security fixes target the latest stable release line of HA Desktop Widget, which is 4.x. Users on 3.x should upgrade; see the [4.0 migration guidance](docs/MIGRATION.md) first.
+Security fixes target the latest stable release line of HA Desktop Widget. That is 4.x once 4.0 is released; until then it is the latest 3.x. After the stable 4.0 release, users on 3.x should upgrade; see the [4.0 migration guidance](docs/MIGRATION.md) first.
 
-| Version | Supported |
-| ------- | --------- |
-| 4.x     | Yes       |
-| 3.x     | No        |
-| 2.x     | No        |
-| < 2.0   | No        |
+| Version | Supported                    |
+| ------- | ---------------------------- |
+| 4.x     | After the stable 4.0 release |
+| 3.x     | Until the stable 4.0 release |
+| 2.x     | No                           |
+| < 2.0   | No                           |
 
 ## Reporting a Vulnerability
 

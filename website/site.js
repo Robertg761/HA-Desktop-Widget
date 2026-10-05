@@ -119,6 +119,13 @@ const info = platform.os ? PLATFORMS[platform.os] : null;
 
 /* ---------------- Every page ---------------- */
 
+// If this script was late enough for the stylesheet's fallback to start showing the page, keep what
+// it showed: ending the fallback below would otherwise hide that content again until the observer
+// reached it.
+document.querySelectorAll('.reveal').forEach((el) => {
+  if (Number.parseFloat(getComputedStyle(el).opacity) > 0) el.classList.add('in');
+});
+
 // From here the page is script-driven: the reveal styles take over from their no-script fallback.
 document.documentElement.classList.add('js-ready');
 

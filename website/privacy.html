@@ -12,14 +12,14 @@
   <link rel="apple-touch-icon" href="/assets/icon-180.png">
   <meta property="og:title" content="Privacy | HA Desktop Widget">
   <meta property="og:description" content="What HA Desktop Widget and this website do with your data: Home Assistant sign-in, update checks, language packs and the site's own requests. Includes the draft policy for the planned Cloud Sync service.">
-  <meta property="og:image" content="https://hadesktopwidget.com/assets/og.png">
+  <meta property="og:image" content="https://hadesktopwidget.com/assets/og.png?v=20261004">
   <meta property="og:url" content="https://hadesktopwidget.com/privacy">
   <meta property="og:site_name" content="HA Desktop Widget">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Privacy | HA Desktop Widget">
   <meta name="twitter:description" content="What HA Desktop Widget and this website do with your data: Home Assistant sign-in, update checks, language packs and the site's own requests. Includes the draft policy for the planned Cloud Sync service.">
-  <meta name="twitter:image" content="https://hadesktopwidget.com/assets/og.png">
+  <meta name="twitter:image" content="https://hadesktopwidget.com/assets/og.png?v=20261004">
   <link rel="preload" href="/assets/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/assets/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/styles.css">
@@ -59,9 +59,9 @@
     <h3>Home Assistant</h3>
     <p>The app connects to the Home Assistant address you enter and shows what that server reports: entities, cameras and media. You sign in on Home Assistant's own page in your browser, so the app never sees your password. It keeps the sign-in it receives, or a long-lived access token you paste, encrypted with your operating system's secure storage (Windows, the macOS Keychain, or a Linux keyring such as GNOME Keyring or KWallet). Where secure storage is not available, the app does not save the sign-in.</p>
     <h3>Update checks (GitHub)</h3>
-    <p>The app asks GitHub Releases for new versions about 30 seconds after it starts, about every six hours, and when the computer wakes up if a check is due. The Windows installer and the Linux AppImage download updates from GitHub and install them when you quit or restart to update. The portable, macOS, .deb and Arch builds cannot update themselves: they show one notice for each new version and link to the download on GitHub. Beta releases are included only if you turn on Receive beta updates in Settings. GitHub sees your IP address and the request itself, as with any download. The app adds no account or device identifier of its own.</p>
+    <p>The app asks GitHub Releases for new versions about 30 seconds after it starts, about every six hours, and when the computer wakes up if a check is due. The Windows installer and the Linux AppImage download and install updates themselves. The portable, macOS, .deb and Arch builds show one notice for each new version and link to the download on GitHub. Beta releases are included only if you turn on Receive beta updates in Settings. GitHub sees your IP address and the request, as with any download. The app adds no account or device identifier of its own.</p>
     <h3>Language packs (GitHub)</h3>
-    <p>English and German are built in. Other languages are packs that the app downloads from raw.githubusercontent.com when you choose them. It fetches the list of available packs when Settings shows the language packs. Once a pack is installed, the app checks for a newer version about 30 seconds after it starts and then daily, and replaces the pack when one is published. That background check makes no request when no pack is installed. Each download is checked against a SHA-256 hash from the list before it is used.</p>
+    <p>English and German are built in. Other languages are packs that the app downloads from raw.githubusercontent.com when you choose them, and it fetches the list of available packs when Settings shows them. Installed packs are checked for a newer version about 30 seconds after the app starts and then daily, with no request when none is installed. Each download is checked against a SHA-256 hash from the list before it is used.</p>
     <h3>Artwork from other websites</h3>
     <p>A media player can point to album art on another website. The app downloads that picture itself and refuses addresses on your own network or other private or reserved ranges. The site that hosts the picture sees your IP address. Your Home Assistant sign-in is sent only to your own Home Assistant server.</p>
     <h3>Links and Profile Sync</h3>

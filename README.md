@@ -73,7 +73,7 @@ See the [Omarchy guide](docs/omarchy.md) for native desktop layers, independent 
 ### Advanced Features
 
 - **Updates**: Windows installer and Linux AppImage builds download and install updates themselves; portable, macOS, and Linux deb builds are told once per new version and open the GitHub Releases download
-- **System Tray**: Minimize to tray with quick access menu
+- **System Tray**: Hide to tray with quick access menu
 - **Tray Entity Icons (Beta only)**: Show any entity's live value (battery %, temperature, ON/OFF, timer countdown, …) as its own icon in the system tray, CPU-Z style
 - **Start at Login**: Optional OS login startup control
 - **Configuration**: Native Home Assistant browser authorization; legacy access-token setup remains available as an advanced fallback
@@ -159,7 +159,7 @@ Planned for a future release:
    connect button stops waiting and closes the loopback callback.
 4. **Add entities**: Choose a room to start from, or click the "+" button to add your favorite entities to Quick Access.
 
-The legacy long-lived access-token form remains under **Settings > Legacy access token
+The legacy long-lived access-token form remains under **Settings > General > Legacy access token
 (advanced)** for compatibility. New setups should use browser authorization.
 
 ### Home Assistant Companion Integration
