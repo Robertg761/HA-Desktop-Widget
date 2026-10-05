@@ -3,6 +3,7 @@ import { getAlertStateSuggestions, normalizeAlertState } from './alert-rules.js'
 import { initializeSettingsSearch } from './settings-search.js';
 import { initializeSettingsFiles } from './settings-files-ui.js';
 import { createEmojiSupportCheck } from './emoji-support.js';
+import { getEmojiNameLanguage, loadEmojiNames } from './emoji-names.js';
 import { clearFieldError, clearFieldErrors, showFieldError } from './field-errors.js';
 import { paginate, renderListPager } from './list-pager.js';
 import { linkSettingsHelpText, setDescribedByLine } from './settings-help-links.js';
@@ -592,8 +593,13 @@ const CUSTOM_ENTITY_ICON_TERM_SYNONYMS = {
   insects: ['insect', 'animal'],
 };
 const CUSTOM_ENTITY_ICON_GROUP_ALIASES = buildCustomEntityIconGroupAliases();
+// The icons and their search words, for the language in customEntityIconChoicesLanguage. The icon
+// list itself (customEntityIconCatalog) is checked against the computer's fonts once; only the
+// words change with the language.
 let customEntityIconChoices = null;
+let customEntityIconChoicesLanguage = null;
 let customEntityIconChoicesPromise = null;
+let customEntityIconCatalog = null;
 let rgiEmojiDataCache = null;
 
 function normalizeHexColor(hex) {
@@ -773,13 +779,15 @@ function tokenizeEmojiSearchInput(value) {
     });
 }
 
-function expandEmojiSearchToken(token) {
+// A word as typed and its stem, and with `related` the words it stands for ("mice" for "mouse").
+function expandEmojiSearchToken(token, { related = true } = {}) {
   const normalized = normalizeEmojiSearchToken(token);
   if (!normalized) return [];
 
   const expanded = new Set([normalized]);
   const stemmed = stemEmojiSearchToken(normalized);
   if (stemmed) expanded.add(stemmed);
+  if (!related) return Array.from(expanded);
 
   const mapped =
     CUSTOM_ENTITY_ICON_TERM_SYNONYMS[normalized] || CUSTOM_ENTITY_ICON_TERM_SYNONYMS[stemmed] || [];
@@ -794,9 +802,9 @@ function expandEmojiSearchToken(token) {
   return Array.from(expanded);
 }
 
-function buildEmojiSearchAlternativeGroups(filterValue) {
+function buildEmojiSearchAlternativeGroups(filterValue, options) {
   return tokenizeEmojiSearchInput(filterValue)
-    .map((token) => expandEmojiSearchToken(token))
+    .map((token) => expandEmojiSearchToken(token, options))
     .filter((group) => group.length > 0);
 }
 
@@ -806,10 +814,12 @@ function isNearMatchByEditDistance(left, right) {
   if (!a || !b) return false;
 
   if (a === b) return true;
-  // A short word inside a long one ("tv" in "activity") is not a near match.
-  if (a.includes(b)) return true;
-
-  const maxDistance = a.length <= 4 || b.length <= 4 ? 1 : 2;
+  // A short word inside a long one ("tv" in "activity") is not a near match: a word found inside
+  // another is the exact search's to rank, not a spelling slip. A slip is one letter, or two in a
+  // long word, and not the first letter, which is rarely the one mistyped. Any looser and the names
+  // of four thousand emoji always hold a word close enough: "offline" found "office" and "feline".
+  if (a[0] !== b[0]) return false;
+  const maxDistance = Math.min(a.length, b.length) < 8 ? 1 : 2;
   if (Math.abs(a.length - b.length) > maxDistance) return false;
 
   const prev = new Array(b.length + 1);
@@ -875,36 +885,43 @@ function getCustomEntityIconSearchAliases(icon) {
   return Array.from(new Set([...directAliases, ...groupedAliases]));
 }
 
-function buildCustomEntityIconSearchTerms(icon, aliases, codepointTerms) {
-  const searchTerms = new Set([String(icon || '').toLowerCase()]);
-  const stripped = stripEmojiVariationSelectors(icon);
-  if (stripped) searchTerms.add(stripped.toLowerCase());
+// Chinese and Japanese are written without spaces, so a single character is a word and a word is
+// found inside a longer one ("灯" in "电灯泡", light bulb).
+const UNSPACED_SCRIPT_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
 
-  [...aliases, ...codepointTerms].forEach((term) => {
-    const rawTerm = String(term || '').toLowerCase();
+// The words an icon is found by, folded and stemmed like a query: whole names and keywords are cut
+// into words (a hyphenated one also into its parts, so "eyes" finds "heart-eyes"), and a code point
+// is a word of its own.
+function addCustomEntityIconSearchWords(searchTerms, phrases) {
+  phrases.forEach((phrase) => {
+    const rawTerm = String(phrase || '').toLowerCase();
     if (!rawTerm) return;
-    searchTerms.add(rawTerm);
-    tokenizeEmojiSearchInput(rawTerm).forEach((token) => {
-      if (token.length < 2) return;
-      searchTerms.add(token);
-      const stemmed = stemEmojiSearchToken(token);
-      if (stemmed) searchTerms.add(stemmed);
+    const tokens = tokenizeEmojiSearchInput(rawTerm);
+    tokens.forEach((token) => {
+      const parts = token.includes('-') ? [token, ...token.split('-')] : [token];
+      parts.forEach((part) => {
+        if (part.length < 2 && !UNSPACED_SCRIPT_PATTERN.test(part)) return;
+        searchTerms.add(part);
+        const stemmed = stemEmojiSearchToken(part);
+        if (stemmed) searchTerms.add(stemmed);
+      });
     });
   });
-
-  return Array.from(searchTerms);
+  return searchTerms;
 }
 
 // Skin tones, joined people and objects (family, profession), flags and their tag sequences are
 // about three quarters of the emoji list and near-duplicates of one another. They stay findable by
 // searching and by pasting, but the list a person scrolls through does not open with them.
 const ICON_VARIANT_PATTERN = /[\u{1F3FB}-\u{1F3FF}\u{1F1E6}-\u{1F1FF}\u{E0020}-\u{E007F}]|\u200D/u;
+const SKIN_TONE_PATTERN = /[\u{1F3FB}-\u{1F3FF}]/u;
 
 function isCustomEntityIconVariant(icon) {
   return ICON_VARIANT_PATTERN.test(icon);
 }
 
-function buildCustomEntityIconChoices(rgiEmojiData) {
+// The icons in the order the picker lists them, each checked once against the computer's fonts.
+function buildCustomEntityIconCatalog(rgiEmojiData) {
   // The icons made for the home first, in the order they were written, then the rest of Unicode's
   // emoji. A sorted catalogue opened on copyright signs and keycap digits.
   const curatedIcons = new Set(CUSTOM_ENTITY_ICON_FALLBACKS);
@@ -938,42 +955,92 @@ function buildCustomEntityIconChoices(rgiEmojiData) {
 
   // Unicode order keeps the neighbours together (faces, animals, food, travel).
   const byCodepoint = (a, b) => a.codePointAt(0) - b.codePointAt(0) || (a < b ? -1 : a > b ? 1 : 0);
-  return [...curatedIcons, ...[...otherIcons].sort(byCodepoint)].map((icon) => {
+  return [...curatedIcons, ...[...otherIcons].sort(byCodepoint)].map((icon) => ({
+    icon,
+    variant: !curatedIcons.has(icon) && isCustomEntityIconVariant(icon),
+  }));
+}
+
+/**
+ * The catalog with what each icon is called and found by. `describers` look an icon up in CLDR's
+ * names, the interface's language first; the first one that knows the icon names it.
+ */
+function buildCustomEntityIconChoices(catalog, describers = []) {
+  return catalog.map(({ icon, variant }, order) => {
     const stripped = stripEmojiVariationSelectors(icon);
     const aliases = getCustomEntityIconSearchAliases(icon);
     const codepointTerms = getIconCodepointTerms(icon);
-    const searchTerms = buildCustomEntityIconSearchTerms(icon, aliases, codepointTerms);
-    const searchText = [icon, stripped, ...aliases, ...codepointTerms, ...searchTerms]
-      .join(' ')
-      .toLowerCase();
+    const names = describers.map((describe) => describe(icon)).filter(Boolean);
+    const searchTerms = addCustomEntityIconSearchWords(new Set(), [
+      ...aliases,
+      ...names.flatMap((entry) => entry.words),
+    ]);
+    const toneTerms = addCustomEntityIconSearchWords(
+      new Set(),
+      names.flatMap((entry) => entry.toneWords)
+    );
 
     return {
       icon,
+      stripped,
+      order,
+      label: names[0]?.name || '',
       aliases,
       codepointTerms,
-      searchTerms,
-      searchText,
-      variant: !curatedIcons.has(icon) && isCustomEntityIconVariant(icon),
+      searchTerms: Array.from(searchTerms),
+      toneTerms: Array.from(toneTerms),
+      variant,
+      toned: SKIN_TONE_PATTERN.test(icon),
     };
   });
 }
 
+// English as well as the interface's language: the words written into this file are English, and
+// so are most guides and forum posts people copy names from.
+async function loadCustomEntityIconDescribers(language) {
+  const languages = [...new Set([language, 'en'])];
+  try {
+    return (await Promise.all(languages.map((code) => loadEmojiNames(code)))).filter(Boolean);
+  } catch (error) {
+    // The picker still works by the English words above and by pasting.
+    log.warn('Could not load the emoji names:', error);
+    return [];
+  }
+}
+
+function getCustomEntityIconNameLanguage() {
+  return getEmojiNameLanguage(getLocaleState().activeLocale) || 'en';
+}
+
+function isCustomEntityIconCatalogCurrent() {
+  return (
+    Array.isArray(customEntityIconChoices) &&
+    customEntityIconChoicesLanguage === getCustomEntityIconNameLanguage()
+  );
+}
+
 async function ensureCustomEntityIconChoicesLoaded() {
-  if (Array.isArray(customEntityIconChoices)) {
+  if (isCustomEntityIconCatalogCurrent()) {
     return customEntityIconChoices;
   }
   if (customEntityIconChoicesPromise) {
     return customEntityIconChoicesPromise;
   }
 
+  const language = getCustomEntityIconNameLanguage();
   customEntityIconChoicesPromise = (async () => {
     if (!rgiEmojiDataCache) {
       const rgiEmojiDataModule =
         await import('regenerate-unicode-properties/Property_of_Strings/RGI_Emoji.js');
       rgiEmojiDataCache = rgiEmojiDataModule?.default || rgiEmojiDataModule;
     }
+    if (!customEntityIconCatalog) {
+      customEntityIconCatalog = buildCustomEntityIconCatalog(rgiEmojiDataCache);
+    }
 
-    customEntityIconChoices = buildCustomEntityIconChoices(rgiEmojiDataCache);
+    const describers = await loadCustomEntityIconDescribers(language);
+    customEntityIconChoices = buildCustomEntityIconChoices(customEntityIconCatalog, describers);
+    customEntityIconChoicesLanguage = language;
     return customEntityIconChoices;
   })();
 
@@ -982,6 +1049,74 @@ async function ensureCustomEntityIconChoicesLoaded() {
   } finally {
     customEntityIconChoicesPromise = null;
   }
+}
+
+// How well a query word matches an icon's words: 3 when it is one of them, 2 when one starts with
+// it, 1 when it is inside one. A word of fewer than four letters only counts whole unless
+// `relaxed`: "car" found "card", "carrot" and "cartwheel" and buried the cars. Inside a word only
+// counts from five letters ("Lampe" in "Taschenlampe"), or in a script written without spaces.
+function getEmojiWordMatchLevel(terms, word, relaxed) {
+  const unspaced = UNSPACED_SCRIPT_PATTERN.test(word);
+  const wholeOnly = word.length < 4 && !unspaced && !relaxed;
+  const inside = word.length >= 5 || unspaced;
+  let level = 0;
+  for (const term of terms) {
+    if (term === word) return 3;
+    if (wholeOnly) continue;
+    if (term.startsWith(word)) level = 2;
+    else if (level < 1 && inside && term.includes(word)) level = 1;
+  }
+  return level;
+}
+
+/**
+ * The sum of how well each query word (with its synonyms) matches, or 0 when one does not. A
+ * skin-tone variant has to be asked for by its tone as well as by what it shows: "thumbs up" finds
+ * one thumb rather than six, and "thumbs up dark" finds the dark one.
+ */
+function scoreCustomEntityIconChoice(choice, groups, relaxed) {
+  let score = 0;
+  let matchedWhat = false;
+  let matchedTone = false;
+  for (const group of groups) {
+    let what = 0;
+    let tone = 0;
+    for (const word of group) {
+      what = Math.max(what, getEmojiWordMatchLevel(choice.searchTerms, word, relaxed));
+      if (choice.toned)
+        tone = Math.max(tone, getEmojiWordMatchLevel(choice.toneTerms, word, relaxed));
+    }
+    if (!what && !tone) return 0;
+    matchedWhat ||= what > 0;
+    matchedTone ||= tone > 0;
+    score += Math.max(what, tone);
+  }
+  return choice.toned && !(matchedWhat && matchedTone) ? 0 : score;
+}
+
+// A code point, as written in a character table: "1f600", "U+1F600". A word that happens to be
+// made of the letters a to f ("bed", "cafe") has no digit and is not one.
+const CODEPOINT_QUERY_PATTERN = /^(?:u\+)?[0-9a-f]*\d[0-9a-f]*$/;
+
+function matchesCustomEntityIconText(choice, rawFilter) {
+  const pasted = stripEmojiVariationSelectors(rawFilter);
+  if (pasted && (choice.icon.includes(rawFilter) || choice.stripped.includes(pasted))) return true;
+  return (
+    CODEPOINT_QUERY_PATTERN.test(rawFilter) &&
+    choice.codepointTerms.some((term) => term.includes(rawFilter))
+  );
+}
+
+// Best match first; then the icons the picker lists before the variants; then catalog order.
+function rankCustomEntityIconMatches(matches) {
+  return matches
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        Number(a.choice.variant) - Number(b.choice.variant) ||
+        a.choice.order - b.choice.order
+    )
+    .map(({ choice }) => choice);
 }
 
 function getFilteredCustomEntityIconChoices(filterValue = '') {
@@ -993,24 +1128,37 @@ function getFilteredCustomEntityIconChoices(filterValue = '') {
     .toLowerCase();
   if (!rawFilter) return choices.filter((choice) => !choice.variant);
 
+  // A pasted emoji or a code point finds itself even though it has no letters to make a word of.
+  const textMatches = choices.filter((choice) => matchesCustomEntityIconText(choice, rawFilter));
   const alternativeGroups = buildEmojiSearchAlternativeGroups(rawFilter);
-
-  // The text as typed is checked first, so a pasted emoji finds itself even though it has no
-  // letters to make a keyword of.
-  const strictMatches = choices.filter((choice) => {
-    if (choice.searchText.includes(rawFilter)) return true;
-    return (
-      alternativeGroups.length > 0 &&
-      alternativeGroups.every((group) => choiceMatchesAlternativeGroup(choice, group, false))
-    );
-  });
-  if (strictMatches.length) return strictMatches;
   // A query with nothing to search by matches nothing, not everything.
-  if (!alternativeGroups.length) return [];
+  if (!alternativeGroups.length) return textMatches;
 
-  // Fallback: fuzzy category search when exact tokens miss.
-  return choices.filter((choice) =>
-    alternativeGroups.every((group) => choiceMatchesAlternativeGroup(choice, group, true))
+  const textMatched = new Set(textMatches);
+  const scoreAll = (groups, relaxed) =>
+    choices
+      .filter((choice) => !textMatched.has(choice))
+      .map((choice) => ({ choice, score: scoreCustomEntityIconChoice(choice, groups, relaxed) }))
+      .filter(({ score }) => score > 0);
+  // The words as typed first; the words they stand for only when those find nothing, since "rat"
+  // standing for "animal" listed every animal; and short words from their start only after that.
+  const typedGroups = buildEmojiSearchAlternativeGroups(rawFilter, { related: false });
+  const passes = [
+    [typedGroups, false],
+    [alternativeGroups, false],
+    [alternativeGroups, true],
+  ];
+  for (const [groups, relaxed] of passes) {
+    const wordMatches = scoreAll(groups, relaxed);
+    if (wordMatches.length) return [...textMatches, ...rankCustomEntityIconMatches(wordMatches)];
+  }
+  if (textMatches.length) return textMatches;
+
+  // Fallback: a near spelling ("televison") when nothing matches as typed.
+  return choices.filter(
+    (choice) =>
+      !choice.toned &&
+      alternativeGroups.every((group) => choiceMatchesAlternativeGroup(choice, group, true))
   );
 }
 
@@ -2628,7 +2776,10 @@ function updateCustomEntityIconSummary() {
       : t('{{count}} custom icons configured.', { count });
 }
 
+// What CLDR calls the emoji in the interface's language ("Glühbirne"), else the English words
+// written for it here, else its code point.
 function getCustomEntityIconChoiceLabel(choice) {
+  if (choice.label) return choice.label;
   if (choice.aliases.length) {
     const visibleAliases = choice.aliases.slice(0, 4).join(', ');
     return choice.aliases.length > 4 ? `${visibleAliases}, ...` : visibleAliases;
@@ -2645,7 +2796,8 @@ function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '
   if (!pickerEl) return;
   const choices = Array.isArray(customEntityIconChoices) ? customEntityIconChoices : [];
 
-  if (!choices.length) {
+  // Not loaded yet, or loaded with the names of the language the interface showed before.
+  if (!isCustomEntityIconCatalogCurrent()) {
     pickerEl.innerHTML = '';
     const loadingState = document.createElement('div');
     loadingState.className = 'custom-entity-icon-picker-meta';

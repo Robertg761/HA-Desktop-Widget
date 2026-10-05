@@ -60,6 +60,8 @@ describe('after-pack hook', () => {
       'Apache License',
       'hls.js',
       'SortableJS',
+      'Unicode Common Locale Data Repository (CLDR)',
+      'UNICODE LICENSE V3',
     ]) {
       expect(notices).toContain(name);
     }

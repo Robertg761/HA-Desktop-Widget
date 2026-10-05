@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Suggest the entity's real states while you type a Specific State alert, and accept them the way Home Assistant spells them ("Not home" becomes `not_home`). The alert dialog shows the current reading and explains what duration and cooldown do.
 - Show a Mute button, muted by default, for live camera streams.
 - Show alert notifications with the entity's icon, or the app icon when it cannot be drawn.
+- Find a custom icon by its emoji name in your language. The icon picker searches the names and keywords Unicode CLDR gives every emoji in English, German, Spanish, French, Arabic, Hindi, and Chinese, so "Glühbirne" finds the light bulb and "germany" the German flag, and it reads each icon's name to screen readers.
 
 ### Changed
 

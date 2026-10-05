@@ -3053,6 +3053,99 @@ describe('Settings + Config Integration', () => {
         expect(found.length).toBeLessThan(40);
         expect(picker.querySelector('.custom-entity-icon-picker-empty')).toBeNull();
       });
+
+      // The words written into settings.js cover a few hundred icons, in English. Every other emoji,
+      // and every other language, is found by the names Unicode CLDR gives it.
+      const choicesOf = (picker) =>
+        [...picker.querySelectorAll('.custom-entity-icon-choice')].map(
+          (button) => button.dataset.customIconChoice
+        );
+      // Settings watches <html lang> and redraws itself in the new language. The watcher runs a
+      // moment after the change, so each change is let settle before going on.
+      const setLanguage = async (activeLocale) => {
+        require('../../src/i18n.js').setLocaleBootstrap({ activeLocale, messages: {} });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      };
+      const inLanguage = async (activeLocale, run) => {
+        await setLanguage(activeLocale);
+        try {
+          await openSettingsWithCustomIconsExpanded();
+          await run();
+        } finally {
+          await setLanguage('en');
+        }
+      };
+
+      test.each([
+        ['de', 'Lampe', '💡'],
+        ['de', 'Glühbirne', '💡'],
+        ['de', 'Fernseher', '📺'],
+        ['fr', 'ampoule', '💡'],
+        ['es', 'bombilla', '💡'],
+        ['ar', 'مصباح', '💡'],
+        ['hi', 'बल्ब', '💡'],
+        ['zh', '灯泡', '💡'],
+        ['zh', '灯', '💡'],
+        // English words keep working whatever the interface's language.
+        ['de', 'lamp', '💡'],
+      ])('in %s, finds an icon by the word "%s"', async (locale, query, icon) => {
+        await inLanguage(locale, async () => {
+          const found = choicesOf(await type(query));
+          expect(found).toContain(icon);
+          expect(found.length).toBeLessThan(40);
+        });
+      });
+
+      test('names each icon in the interface language', async () => {
+        await inLanguage('de', async () => {
+          const bulb = (await type('Lampe')).querySelector('[data-custom-icon-choice="💡"]');
+          expect(bulb.getAttribute('aria-label')).toBe('Glühbirne (💡)');
+          expect(bulb.title).toBe('Glühbirne');
+        });
+      });
+
+      test.each([
+        ['grinning', '😀'],
+        ['germany', '🇩🇪'],
+        ['firefighter', '🧑‍🚒'],
+        ['heart eyes', '😍'],
+      ])('finds an emoji outside the hand-picked ones by its name, "%s"', async (query, icon) => {
+        const found = choicesOf(await search(query));
+        expect(found).toContain(icon);
+        expect(found.length).toBeLessThan(40);
+      });
+
+      test('puts a whole-word match before a word that only starts the same', async () => {
+        // "car" once found "card", "carrot" and "cartwheel" as well, in catalog order.
+        const found = choicesOf(await search('car'));
+        expect(found).toEqual(expect.arrayContaining(['🚗', '🚓', '🏎️']));
+        expect(found).not.toContain('🃏');
+        expect(found).not.toContain('🥕');
+      });
+
+      test('lists skin-tone variants only when the tone is asked for', async () => {
+        await openSettingsWithCustomIconsExpanded();
+        const plain = choicesOf(await type('thumbs up'));
+        expect(plain).toContain('👍');
+        expect(plain.some((icon) => /[\u{1F3FB}-\u{1F3FF}]/u.test(icon))).toBe(false);
+
+        const toned = choicesOf(await type('thumbs up medium'));
+        expect(toned).toContain('👍🏽');
+        expect(toned).not.toContain('👍');
+        const label = document
+          .querySelector('[data-custom-icon-choice="👍🏽"]')
+          .getAttribute('aria-label');
+        expect(label).toBe('thumbs up: medium skin tone (👍🏽)');
+      });
+
+      test('searches in the new language after the interface changes language', async () => {
+        await inLanguage('fr', async () => {
+          expect(choicesOf(await type('ampoule'))).toContain('💡');
+          await setLanguage('es');
+          expect(choicesOf(await type('bombilla'))).toContain('💡');
+          expect(choicesOf(await type('ampoule'))).not.toContain('💡');
+        });
+      });
     });
 
     test('should match natural language keywords like tree', async () => {
