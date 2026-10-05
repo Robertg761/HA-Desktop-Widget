@@ -9,28 +9,6 @@ const MAX_COMPARISON_GRAPH_SERIES = 7;
 const COMPARISON_GRAPH_SPAN_OPTIONS = [2, 3, 4];
 const DEFAULT_COMPARISON_GRAPH_SPAN = 2;
 
-// Series colours are assigned by slot, never generated or cycled. Both columns were validated
-// against the widget's composited card surfaces (light #f7f7fa, dark #212127) for lightness band,
-// chroma floor, colour-vision separation and contrast. Changing a value means re-validating the set.
-const SERIES_COLORS_LIGHT = [
-  '#2a78d6',
-  '#1baf7a',
-  '#eda100',
-  '#4a3aa7',
-  '#e34948',
-  '#e87ba4',
-  '#eb6834',
-];
-const SERIES_COLORS_DARK = [
-  '#3987e5',
-  '#199e70',
-  '#c98500',
-  '#9085e9',
-  '#e66767',
-  '#d55181',
-  '#d95926',
-];
-
 // Some entities carry the number you want to plot in an attribute rather than in their state — a
 // weather entity's state is "partlycloudy" and its temperature is an attribute. Without this, the
 // outside temperature (the whole point of a comparison graph) would not be graphable at all.
@@ -602,8 +580,6 @@ export {
   DEFAULT_COMPARISON_GRAPH_SPAN,
   GRAPH_SERIES_ATTRIBUTE_BY_DOMAIN,
   MAX_COMPARISON_GRAPH_SERIES,
-  SERIES_COLORS_DARK,
-  SERIES_COLORS_LIGHT,
   addComparisonGraph,
   getGraphSeriesAttribute,
   isGraphableEntity,

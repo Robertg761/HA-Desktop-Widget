@@ -166,8 +166,6 @@ html {
   --window-bg-alpha: 1;
   --bg-elevated: rgba(24, 28, 37, 0.9);
   --bg-primary: rgba(13, 16, 22, 0.95);
-  --bg-secondary: rgba(24, 28, 37, 0.9);
-  --bg-tertiary: rgba(30, 35, 45, 0.85);
 
   /* Text Colors */
   --text-color: #f0f0f0;
@@ -223,7 +221,6 @@ html {
   --success-text: var(--success);
   --warning-text: var(--warning);
   --error-text: #ff8a80;
-  --danger-text: var(--error-text);
   /* The two states of the connection: the dot in the header and the one in the diagnostics dialog. */
   --connection-ok: #4ade80;
   --connection-bad: var(--error);
@@ -413,12 +410,7 @@ html {
   /* Anything painted at window scale stacks here. Values below 100 are left as
      raw integers on purpose: those are local stacking order inside a single
      component, not app-wide layering. */
-  --z-base: 1;
-  --z-dropdown: 1000;
-  --z-sticky: 1100;
-  --z-fixed: 1200;
   --z-modal-backdrop: 1300;
-  --z-modal: 1400;
   --z-popover: 1500;
   --z-tooltip: 1600;
   /* Full-window blocking overlays: the connection/loading overlay and the
@@ -477,8 +469,6 @@ body {
   --window-bg-rgb: 250, 250, 250;
   --bg-elevated: rgba(255, 255, 255, 0.9);
   --bg-primary: rgba(245, 245, 250, 0.95);
-  --bg-secondary: rgba(255, 255, 255, 0.9);
-  --bg-tertiary: rgba(240, 240, 245, 0.85);
 
   /* Surfaces */
   --surface-1: rgba(250, 250, 255, 0.8);
@@ -512,7 +502,6 @@ body {
   --success-text: #1f6b2a;
   --warning-text: #8a5300;
   --error-text: #b71c1c;
-  --danger-text: #b71c1c;
   /* The pastel dot colours are 1.7:1 and 2.2:1 on the light header; these are past 3:1 there. */
   --connection-ok: #15803d;
   --connection-bad: var(--error-text);
@@ -600,8 +589,6 @@ body.frosted-glass {
   --bg-color: rgba(var(--frosted-bg-rgb, 20, 20, 25), var(--frosted-bg-alpha, 0.45));
   --bg-elevated: rgba(var(--frosted-elevated-rgb, 30, 30, 35), var(--frosted-elevated-alpha, 0.5));
   --bg-primary: rgba(var(--frosted-bg-rgb, 20, 20, 25), var(--frosted-bg-alpha, 0.5));
-  --bg-secondary: rgba(var(--frosted-elevated-rgb, 30, 30, 35), var(--frosted-elevated-alpha, 0.5));
-  --bg-tertiary: rgba(var(--frosted-tertiary-rgb, 40, 40, 45), var(--frosted-bg-alpha, 0.45));
 
   --surface-1: rgba(var(--frosted-surface-rgb, 25, 25, 30), var(--frosted-surface-alpha, 0.45));
   --surface-2: rgba(var(--frosted-elevated-rgb, 35, 35, 40), var(--frosted-elevated-alpha, 0.5));
@@ -655,11 +642,6 @@ body.theme-light.frosted-glass {
     var(--frosted-elevated-alpha, 0.55)
   );
   --bg-primary: rgba(var(--frosted-bg-rgb, 245, 245, 250), var(--frosted-bg-alpha, 0.55));
-  --bg-secondary: rgba(
-    var(--frosted-elevated-rgb, 255, 255, 255),
-    var(--frosted-elevated-alpha, 0.6)
-  );
-  --bg-tertiary: rgba(var(--frosted-tertiary-rgb, 240, 240, 245), var(--frosted-bg-alpha, 0.5));
 
   --surface-1: rgba(var(--frosted-surface-rgb, 250, 250, 255), var(--frosted-surface-alpha, 0.5));
   --surface-2: rgba(
@@ -12374,11 +12356,8 @@ body.high-contrast {
   --success-text: #a5d6a7 !important;
   --warning-text: #ffcc80 !important;
   --error-text: #ff9e99 !important;
-  --danger-text: #ff9e99 !important;
   --bg-color: #141414 !important;
   --bg-primary: #141414 !important;
-  --bg-secondary: #202020 !important;
-  --bg-tertiary: #282828 !important;
   --bg-elevated: #202020 !important;
   --card-bg: #202020 !important;
   --surface-1: #141414 !important;
@@ -15846,7 +15825,6 @@ body.desktop-pin-mode.theme-light {
   --success-text: var(--success);
   --warning-text: var(--warning);
   --error-text: #ff8a80;
-  --danger-text: #ff8a80;
   --accent-text: var(--accent-text-dark, var(--accent));
   --accent-text-hover: var(--accent-text-dark-hover, var(--accent-hover));
   --desktop-pin-ink-rgb: 255, 255, 255;

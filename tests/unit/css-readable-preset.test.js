@@ -209,7 +209,7 @@ describe('the Readable preset', () => {
       '--muted-text',
     ]) {
       const [r, g, b] = parseColor(resolvedValue(document.body, token));
-      for (const surface of ['--bg-primary', '--bg-secondary']) {
+      for (const surface of ['--bg-primary', '--bg-elevated']) {
         const dimmed = `rgba(${r}, ${g}, ${b}, ${opacity})`;
         const ratio = contrastRatio(dimmed, resolvedValue(document.body, surface));
         expect({ token, surface, enough: ratio >= 7 }).toEqual({ token, surface, enough: true });

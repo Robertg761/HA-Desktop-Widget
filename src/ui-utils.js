@@ -84,8 +84,6 @@ const BACKGROUND_BASES = {
     bgColor: { r: 18, g: 22, b: 30, a: 0.8 },
     bgElevated: { r: 24, g: 28, b: 37, a: 0.9 },
     bgPrimary: { r: 13, g: 16, b: 22, a: 0.95 },
-    bgSecondary: { r: 24, g: 28, b: 37, a: 0.9 },
-    bgTertiary: { r: 30, g: 35, b: 45, a: 0.85 },
     surface1: { r: 20, g: 24, b: 32, a: 0.8 },
     surface2: { r: 28, g: 33, b: 42, a: 0.85 },
     surface3: { r: 36, g: 41, b: 51, a: 0.9 },
@@ -100,8 +98,6 @@ const BACKGROUND_BASES = {
     bgColor: { r: 250, g: 250, b: 250, a: 0.8 },
     bgElevated: { r: 255, g: 255, b: 255, a: 0.9 },
     bgPrimary: { r: 245, g: 245, b: 250, a: 0.95 },
-    bgSecondary: { r: 255, g: 255, b: 255, a: 0.9 },
-    bgTertiary: { r: 240, g: 240, b: 245, a: 0.85 },
     surface1: { r: 250, g: 250, b: 255, a: 0.8 },
     surface2: { r: 255, g: 255, b: 255, a: 0.85 },
     surface3: { r: 255, g: 255, b: 255, a: 0.9 },
@@ -567,8 +563,6 @@ function applyBackgroundColor(
   root.style.setProperty('--window-bg-rgb', `${bgColor.r}, ${bgColor.g}, ${bgColor.b}`);
   const bgElevated = setRgbaVar('--bg-elevated', base.bgElevated);
   setRgbaVar('--bg-primary', base.bgPrimary);
-  setRgbaVar('--bg-secondary', base.bgSecondary);
-  const bgTertiary = setRgbaVar('--bg-tertiary', base.bgTertiary);
   const surface1 = setRgbaVar('--surface-1', base.surface1);
   setRgbaVar('--surface-2', base.surface2);
   setRgbaVar('--surface-3', base.surface3);
@@ -584,7 +578,6 @@ function applyBackgroundColor(
 
   setBodyRgb('--frosted-bg-rgb', bgColor);
   setBodyRgb('--frosted-elevated-rgb', bgElevated);
-  setBodyRgb('--frosted-tertiary-rgb', bgTertiary);
   setBodyRgb('--frosted-surface-rgb', surface1);
   setBodyRgb('--frosted-surface-hover-rgb', surfaceHover);
   setBodyRgb('--frosted-card-rgb', cardBg);
