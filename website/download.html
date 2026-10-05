@@ -12,18 +12,21 @@
   <link rel="apple-touch-icon" href="/assets/icon-180.png">
   <meta property="og:title" content="Download HA Desktop Widget">
   <meta property="og:description" content="Download HA Desktop Widget for Windows, macOS or Linux. Free, open source, and it recommends the right build for your computer.">
-  <meta property="og:image" content="https://hadesktopwidget.com/assets/og.png">
+  <meta property="og:image" content="https://hadesktopwidget.com/assets/og.png?v=20261004">
   <meta property="og:url" content="https://hadesktopwidget.com/download">
   <meta property="og:site_name" content="HA Desktop Widget">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Download HA Desktop Widget">
+  <meta name="twitter:description" content="Download HA Desktop Widget for Windows, macOS or Linux. Free, open source, and it recommends the right build for your computer.">
+  <meta name="twitter:image" content="https://hadesktopwidget.com/assets/og.png?v=20261004">
   <link rel="preconnect" href="https://api.github.com" crossorigin>
   <link rel="preload" href="/assets/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/assets/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/styles.css">
-  <script>document.documentElement.classList.add('js')</script>
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to content</a>
   <header class="nav">
     <div class="nav-inner">
       <a class="brand" href="/" aria-label="HA Desktop Widget home">
@@ -34,8 +37,6 @@
         <a href="/#features">Features</a>
         <a href="/#screenshots">Screenshots</a>
         <a href="/companion">Companion</a>
-        <a href="/privacy">Privacy</a>
-        <a href="/terms">Terms</a>
       </nav>
       <div class="nav-actions">
         <a class="nav-icon" href="https://github.com/Robertg761/HA-Desktop-Widget" target="_blank" rel="noopener" aria-label="GitHub repository">
@@ -49,7 +50,7 @@
     </div>
   </header>
 
-  <main>
+  <main id="main">
     <section class="page-hero dl-hero">
       <h1>Download HA Desktop Widget</h1>
       <p class="lede">Free for Windows, macOS and Linux.</p>
@@ -59,13 +60,19 @@
           <svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-download"/></svg>
           <span data-download-label>Choose your platform</span>
         </a>
-        <p class="rec-sub">Version <span data-version>v3.11.0</span></p>
-        <p class="rec-beta" id="beta-line" hidden>Want the new look? <a id="beta-link" href="https://github.com/Robertg761/HA-Desktop-Widget/releases"></a></p>
+        <p class="rec-sub" data-version data-version-prefix="Version " hidden></p>
+        <p class="rec-req">Windows 10 or later, macOS 12 or later, or 64-bit Linux.</p>
+        <p class="rec-beta" id="beta-line" hidden>Want to test upcoming changes? <a id="beta-link" href="https://github.com/Robertg761/HA-Desktop-Widget/releases"></a></p>
         <p class="rec-arch" id="rec-arch" hidden></p>
         <details class="install-help" id="install-help">
           <summary id="install-summary">How to install</summary>
           <p class="install-started" id="install-started" hidden>Your download has started.</p>
-          <ol class="install-steps" id="install-steps"></ol>
+          <ol class="install-steps" id="install-steps">
+            <li><b>Windows:</b> run the installer, or double-click the portable .exe.</li>
+            <li><b>macOS:</b> open the .dmg and drag the app into <b>Applications</b>. The first time, Control-click it and choose <b>Open</b>.</li>
+            <li><b>Linux:</b> allow the AppImage to run as a program and double-click it, or install the .deb. Remembering your sign-in needs a running keyring, such as GNOME Keyring or KWallet.</li>
+            <li>Enter your Home Assistant address and approve it in your browser.</li>
+          </ol>
           <p class="install-foot" id="install-foot" hidden>Didn’t start? <a id="install-retry" href="#">Try again</a>.</p>
         </details>
       </div>
@@ -106,18 +113,20 @@
       <div class="footer-brand">
         <img src="/assets/icon.png" alt="" width="20" height="20">
         <span>HA Desktop Widget</span>
-        <span class="footer-version" data-version>v3.11.0</span>
+        <span class="footer-version" data-version hidden></span>
       </div>
       <nav class="footer-links" aria-label="Project links">
         <a href="/download">Download</a>
         <a href="/companion">Companion</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
         <a href="https://github.com/Robertg761/HA-Desktop-Widget" target="_blank" rel="noopener">GitHub</a>
         <a href="https://github.com/Robertg761/HA-Desktop-Widget/issues" target="_blank" rel="noopener">Issues</a>
         <a href="https://github.com/Robertg761/HA-Desktop-Widget/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
         <a href="https://github.com/sponsors/robertg761" target="_blank" rel="noopener">Sponsor</a>
       </nav>
     </div>
-    <p class="fine-print">MIT licensed. HA Desktop Widget is an independent project and is not affiliated with or endorsed by Home Assistant or the Open Home Foundation.</p>
+    <p class="fine-print">MIT licensed, with <a href="/licenses.txt">third-party font and icon licenses</a>. HA Desktop Widget is an independent project and is not affiliated with or endorsed by Home Assistant or the Open Home Foundation.</p>
   </footer>
 
   <script type="module" src="/site.js"></script>

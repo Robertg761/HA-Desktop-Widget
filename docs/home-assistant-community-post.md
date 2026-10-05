@@ -25,7 +25,7 @@ https://github.com/Robertg761/HA-Desktop-Widget
 
 ## What it does
 
-HA Desktop Widget gives you a transparent, Rainmeter-style desktop widget for controlling and monitoring your most-used Home Assistant entities without opening a browser.
+HA Desktop Widget gives you a frosted-glass desktop widget for controlling and monitoring your most-used Home Assistant entities without opening a browser.
 
 Some highlights:
 
@@ -43,17 +43,16 @@ Some highlights:
 
 ## Screenshots
 
-The README includes screenshots of the main widget, edit/reorganize mode, light controls, personalization settings, and weather effects. I kept this first post light on media because of the forum's new-user link limits.
+The README includes screenshots of the main widget, edit/reorganize mode, light controls, appearance settings, and weather effects. I kept this first post light on media because of the forum's new-user link limits.
 
 ## Setup
 
 1. Download the latest build for your OS from the releases page.
-2. Open the app and go to Settings.
-3. Enter your Home Assistant URL.
-4. Create a long-lived access token in Home Assistant and paste it into the app.
-5. Add the entities you want in Quick Access.
+2. Open the app and enter your Home Assistant URL.
+3. Approve the connection in your browser. You sign in on Home Assistant's own page, so the app never sees your password.
+4. Pick a room to start from, or add the entities you want to Quick Access.
 
-Tokens are stored locally and encrypted at rest when supported by the OS. Profile sync is opt-in, and Home Assistant URL/token data stays local rather than being written into the sync file.
+Your sign-in is stored locally and encrypted at rest with the OS's secure storage. A long-lived access token is still available as an advanced option. Profile sync is opt-in, and Home Assistant URL and sign-in data stay local rather than being written into the sync file.
 
 ## Feedback welcome
 
