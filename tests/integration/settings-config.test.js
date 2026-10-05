@@ -7825,6 +7825,22 @@ describe('Settings + Config Integration', () => {
           expect(document.querySelector('.no-alerts-message')).toBeNull();
         });
 
+        test('wraps a long id at its dots and underscores, not inside its words', () => {
+          // With no break opportunity of its own, the id broke anywhere: "sensor.living_room_nor" /
+          // "th_wall_temperature_s".
+          const id = 'sensor.living_room_north_wall_temperature';
+          state.CONFIG.entityAlerts.alerts[id] = { onStateChange: true };
+          state.setStates({});
+          settings.renderAlertsListInline();
+
+          const name = row(id).querySelector('.alert-name');
+          expect(name.textContent).toBe(id);
+          expect(name.innerHTML).toBe(
+            'sensor.<wbr>living_<wbr>room_<wbr>north_<wbr>wall_<wbr>temperature'
+          );
+          expect(row(id).querySelector('.alert-actions').getAttribute('aria-label')).toBe(id);
+        });
+
         test('does not mark an entity that is listed', () => {
           expect(row('switch.kitchen').querySelector('.alert-missing')).toBeNull();
           expect(row('switch.kitchen').querySelector('.alert-name').textContent).toBe('Kitchen');

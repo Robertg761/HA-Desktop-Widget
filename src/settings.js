@@ -7153,6 +7153,13 @@ function findAlertControl(entityId = '') {
   );
 }
 
+// A raw entity id has no space to wrap at, so a long one broke anywhere ("sensor.living_room_nor" /
+// "th_wall_temperature_s"). The escaped id gets a break opportunity after each dot and underscore,
+// so it wraps between its words; overflow-wrap: anywhere still breaks a part longer than the row.
+function entityIdMarkup(entityId) {
+  return utils.escapeHtml(entityId).replace(/[._]/g, '$&<wbr>');
+}
+
 function renderAlertsListInline() {
   try {
     const alertsList = document.getElementById('inline-alerts-list');
@@ -7202,7 +7209,7 @@ function renderAlertsListInline() {
         <div class="alert-item-info">
           <span class="alert-icon">${entity ? entityIconMarkup(entity) : lineIconMarkup('bell')}</span>
           <div class="alert-details">
-            <span class="alert-name">${utils.escapeHtml(entity ? utils.getEntityDisplayName(entity) : entityId)}</span>
+            <span class="alert-name">${entity ? utils.escapeHtml(utils.getEntityDisplayName(entity)) : entityIdMarkup(entityId)}</span>
             <span class="alert-type">${utils.escapeHtml(alertType)}</span>
             ${entity ? '' : `<span class="alert-missing">${utils.escapeHtml(t('Unavailable'))}</span>`}
           </div>
