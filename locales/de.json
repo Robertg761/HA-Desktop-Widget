@@ -488,7 +488,6 @@
   "Entity is unavailable": "Entität ist nicht verfügbar",
   "History period": "Verlaufszeitraum",
   "Load rooms": "Räume laden",
-  "Minimum {{min}} · Maximum {{max}} · Sample average {{average}}": "Minimum {{min}} · Maximum {{max}} · Durchschnitt {{average}}",
   "No available entities in this room.": "Keine verfügbaren Entitäten in diesem Raum.",
   "No recorded values in this period.": "Keine aufgezeichneten Werte in diesem Zeitraum.",
   "No restore points yet. Dashboard edits create local restore points automatically.": "Noch keine Wiederherstellungspunkte. Dashboard-Änderungen erstellen automatisch lokale Wiederherstellungspunkte.",
@@ -1637,5 +1636,8 @@
   "Set the range in the widget.": "Stelle den Bereich im Widget ein.",
   "1 more tile is not shown here. Open the widget to see it.": "Eine weitere Kachel wird hier nicht angezeigt. Öffne das Widget, um sie zu sehen.",
   "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} weitere Kacheln werden hier nicht angezeigt. Öffne das Widget, um sie zu sehen.",
-  "What's new": "Neuerungen"
+  "What's new": "Neuerungen",
+  "Minimum {{value}}": "Minimum {{value}}",
+  "Maximum {{value}}": "Maximum {{value}}",
+  "Sample average {{value}}": "Durchschnitt {{value}}"
 }

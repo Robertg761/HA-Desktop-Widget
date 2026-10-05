@@ -1406,5 +1406,9 @@
   "Persistent Notifications": {
     "retiredIn": "4.0.0",
     "reason": "The bell and its panel now use the Settings switch's name, Home Assistant notifications"
+  },
+  "Minimum {{min}} · Maximum {{max}} · Sample average {{average}}": {
+    "retiredIn": "4.0.0",
+    "reason": "Split into one string per figure, so each figure wraps as a whole"
   }
 }

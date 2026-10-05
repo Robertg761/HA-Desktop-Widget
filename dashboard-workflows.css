@@ -265,6 +265,13 @@
   overflow-wrap: anywhere;
 }
 
+/* "Minimum 18.2 °C" moves to the next line as a whole rather than leaving its value behind; only a
+   figure wider than the whole line wraps inside. */
+.sensor-history-figure {
+  display: inline-block;
+  max-width: 100%;
+}
+
 /* Keep the previous chart in place while a new period loads so the dialog does not collapse
    and re-centre on every request. */
 .sensor-detail-sparkline.is-loading {

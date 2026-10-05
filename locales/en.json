@@ -488,7 +488,6 @@
   "Entity is unavailable": "Entity is unavailable",
   "History period": "History period",
   "Load rooms": "Load rooms",
-  "Minimum {{min}} · Maximum {{max}} · Sample average {{average}}": "Minimum {{min}} · Maximum {{max}} · Sample average {{average}}",
   "No available entities in this room.": "No available entities in this room.",
   "No recorded values in this period.": "No recorded values in this period.",
   "No restore points yet. Dashboard edits create local restore points automatically.": "No restore points yet. Dashboard edits create local restore points automatically.",
@@ -1637,5 +1636,8 @@
   "Set the range in the widget.": "Set the range in the widget.",
   "1 more tile is not shown here. Open the widget to see it.": "1 more tile is not shown here. Open the widget to see it.",
   "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} more tiles are not shown here. Open the widget to see them.",
-  "What's new": "What's new"
+  "What's new": "What's new",
+  "Minimum {{value}}": "Minimum {{value}}",
+  "Maximum {{value}}": "Maximum {{value}}",
+  "Sample average {{value}}": "Sample average {{value}}"
 }

@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.64",
+  "version": "1.2.65",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget.",
   "messages": {
@@ -1995,6 +1995,9 @@
     "Set the range in the widget.": "Stelle den Bereich im Widget ein.",
     "1 more tile is not shown here. Open the widget to see it.": "Eine weitere Kachel wird hier nicht angezeigt. Öffne das Widget, um sie zu sehen.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} weitere Kacheln werden hier nicht angezeigt. Öffne das Widget, um sie zu sehen.",
-    "What's new": "Neuerungen"
+    "What's new": "Neuerungen",
+    "Minimum {{value}}": "Minimum {{value}}",
+    "Maximum {{value}}": "Maximum {{value}}",
+    "Sample average {{value}}": "Durchschnitt {{value}}"
   }
 }
