@@ -1550,7 +1550,8 @@ describe('stylesheet cascade regressions', () => {
         const button = document.querySelector('.desktop-pin-panel-button');
         expect(resolvedValue(button, 'flex')).toBe('1 1 auto');
         expect(resolvedValue(button, 'min-width')).toBe('0');
-        expect(resolvedValue(button, 'text-transform')).toBe('none');
+        // Sentence case is every pin button's own; nothing turns it to capitals here.
+        expect(resolvedValue(button, 'text-transform') ?? 'none').toBe('none');
         // The label span cuts what the button cannot hold.
         expect(
           resolvedValue(document.querySelector('.desktop-pin-panel-button-label'), 'text-overflow')

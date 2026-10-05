@@ -2085,8 +2085,10 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   font-family: var(--desktop-pin-ui-font);
   font-size: var(--font-size-xs);
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  /* Sentence case with light tracking at every size, as the default-size pins draw it. Capitals with
+     wide tracking were left to every pin larger than that, so a media pin said PLAY beside pins
+     that say Play. */
+  letter-spacing: 0.02em;
   cursor: pointer;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
@@ -2387,7 +2389,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 .desktop-pin-weather-focus,
 .desktop-pin-presence-focus {
   font-weight: 800;
-  letter-spacing: 0.1em;
 }
 
 .desktop-pin-weather-stats .desktop-pin-panel-stat,
@@ -2438,15 +2439,12 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   padding: 6px 8px;
 }
 
-/* Sentence case, tight tracking and little padding: capitals and wide tracking cannot hold a word
-   like "Désactivé" in a third of 150px. */
+/* Little padding: a word like "Désactivé" has to fit in a third of 150px. */
 .desktop-pin-panel-control:is([data-layout='compact'], [data-dense-variant='tight'])
   .desktop-pin-panel-button {
   min-height: 24px;
   padding: 4px 3px;
   border-radius: var(--radius-md);
-  letter-spacing: 0.02em;
-  text-transform: none;
 }
 
 .desktop-pin-panel-control:is([data-layout='compact'], [data-dense-variant='tight'])
@@ -2726,8 +2724,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 .desktop-pin-panel-control[data-layout='micro'] .desktop-pin-panel-button {
   min-height: 22px;
   padding: 2px 5px;
-  letter-spacing: 0.02em;
-  text-transform: none;
   border-radius: var(--radius-md);
 }
 

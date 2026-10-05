@@ -214,4 +214,22 @@ describe('Settings layout', () => {
       expect(resolvedValue(note, 'color')).toBe(resolvedValue(note, '--text-dim'));
     });
   });
+  describe('desktop pin buttons', () => {
+    // Sentence case was kept for compact and micro pins only, so a roomy media pin said PLAY in
+    // tracked capitals beside pins that say Play.
+    it.each([
+      ['a roomy media pin', 'roomy', 'desktop-pin-panel-button desktop-pin-media-play'],
+      ['a balanced pin', 'balanced', 'desktop-pin-panel-button'],
+      ['a compact pin', 'compact', 'desktop-pin-panel-button'],
+      ['a micro pin', 'micro', 'desktop-pin-panel-button'],
+    ])('writes %s button in sentence case with light tracking', (_label, layout, className) => {
+      render(
+        `<div class="desktop-pin-panel-control desktop-pin-media-control" data-layout="${layout}"><button class="${className}">Play</button></div>`,
+        { bodyClass: 'desktop-pin-mode' }
+      );
+      const button = document.querySelector('button');
+      expect(resolvedValue(button, 'text-transform') ?? 'none').toBe('none');
+      expect(resolvedValue(button, 'letter-spacing')).toBe('0.02em');
+    });
+  });
 });
