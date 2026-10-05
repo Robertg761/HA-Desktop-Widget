@@ -14048,10 +14048,18 @@ function renderMediaTileArtwork(artworkTarget) {
   const retryKey = artworkTarget ? utils.base64Encode(artworkTarget) : '';
   const now = Date.now();
   pruneExpiredArtworkRetryEntries(now);
+  // The picture this card already shows for the same target stays. The retry marker below is
+  // shared with the player's Quick Access tile, whose own request can fail while this one loaded,
+  // and a marker of its making only holds back new requests.
+  if (
+    artworkTarget &&
+    artworkContainer.querySelector('img') &&
+    lastMediaTileArtworkSrc === artworkTarget
+  ) {
+    return;
+  }
   // A picture that failed is not asked for again at every state change.
   if (artworkTarget && (failedMediaArtworkRetryAtByUrl.get(retryKey) || 0) <= now) {
-    const existingImg = artworkContainer.querySelector('img');
-    if (existingImg && lastMediaTileArtworkSrc === artworkTarget) return;
     const img = document.createElement('img');
     img.src = buildMediaArtworkProxyUrl(artworkTarget);
     img.alt = t('Album art');

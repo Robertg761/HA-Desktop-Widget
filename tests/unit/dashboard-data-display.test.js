@@ -587,6 +587,22 @@ describe('dashboard data display', () => {
         expect(document.querySelector('.media-tile-artwork-placeholder')).toBeNull();
       });
 
+      it("keeps its picture when the player's Quick Access tile fails to load the same one", () => {
+        const player = playerWith('shared-a');
+        show(player);
+        const shown = artworkImage();
+        expect(shown).not.toBeNull();
+        // The same player as a tile asks for the same picture on its own, and that request fails.
+        renderTiles([player]);
+        const tileImage = tile('media_player.den').querySelector('.media-player-artwork');
+        expect(tileImage).not.toBeNull();
+        fail(tileImage);
+
+        update(playerWith('shared-a', { volume_level: 0.3 }));
+        expect(artworkImage()).toBe(shown);
+        expect(document.querySelector('.media-tile-artwork-placeholder')).toBeNull();
+      });
+
       it('leaves the newer picture alone when an older one fails late', () => {
         show(playerWith('late-a'));
         const older = artworkImage();
