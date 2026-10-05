@@ -759,6 +759,43 @@ describe('comparison graph tile', () => {
       await wait(REDRAW_DEBOUNCE_MS + 100);
       expect(legendOf('graph:a')).toBe('29°C');
     });
+
+    it('keeps the crosshair and the tooltip under a pointer that has not moved', async () => {
+      const { a } = twoGraphs();
+      ui.renderActiveTab();
+      await flush();
+      // jsdom lays nothing out, so every plot, the ones a repaint builds included, is given the
+      // size it renders at.
+      const box = { left: 0, top: 0, right: 260, bottom: 90, width: 260, height: 90 };
+      const layout = jest.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(box);
+      const graphA = () =>
+        document.querySelector('.comparison-graph-tile[data-entity-id="graph:a"]');
+      try {
+        const before = graphA().querySelector('.comparison-graph-frame');
+        // At the right edge, which is now.
+        before.dispatchEvent(new MouseEvent('pointermove', { clientX: 260, bubbles: true }));
+        expect(before.querySelector('.comparison-graph-tooltip').hidden).toBe(false);
+
+        report(a, 25);
+        await wait(REDRAW_DEBOUNCE_MS + 100);
+
+        // A new chart, with the readout still showing, and showing the new reading.
+        const frame = graphA().querySelector('.comparison-graph-frame');
+        expect(frame).not.toBe(before);
+        expect(frame.querySelector('.comparison-graph-tooltip').hidden).toBe(false);
+        expect(frame.querySelector('.comparison-graph-tooltip-value').textContent).toBe('25°C');
+        const crosshair = frame.querySelector('.comparison-graph-crosshair');
+        expect(crosshair.getAttribute('visibility')).toBe('visible');
+
+        // Once the pointer has left, a repaint brings nothing back.
+        frame.dispatchEvent(new MouseEvent('pointerleave'));
+        report(a, 26);
+        await wait(REDRAW_DEBOUNCE_MS + 100);
+        expect(graphA().querySelector('.comparison-graph-tooltip').hidden).toBe(true);
+      } finally {
+        layout.mockRestore();
+      }
+    });
   });
 
   describe('the hover readout', () => {

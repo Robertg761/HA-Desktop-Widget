@@ -4772,9 +4772,11 @@ function buildComparisonGraphLegend(entries) {
  * @param {HTMLElement} frame - The positioned container the tooltip is placed in.
  * @param {{svg: SVGElement, crosshair: SVGElement, timeDomain: Object, plotWidth: number}} plot
  * @param {Array<Object>} entries - Resolved series.
- * @returns {void}
+ * @param {{clientX: ?number}} pointer - Where the pointer is over the tile, kept across repaints;
+ *   null while it is elsewhere.
+ * @returns {function({clientX: number}): void} The move handler, to show the readout at a point.
  */
-function attachComparisonGraphHover(frame, plot, entries) {
+function attachComparisonGraphHover(frame, plot, entries, pointer) {
   const { svg, crosshair, timeDomain, plotWidth } = plot;
   const spansDays = timeDomain.end - timeDomain.start >= 24 * 60 * 60 * 1000;
 
@@ -4784,6 +4786,7 @@ function attachComparisonGraphHover(frame, plot, entries) {
   frame.appendChild(tooltip);
 
   const hide = () => {
+    pointer.clientX = null;
     tooltip.hidden = true;
     crosshair.setAttribute('visibility', 'hidden');
   };
@@ -4827,6 +4830,7 @@ function attachComparisonGraphHover(frame, plot, entries) {
   };
 
   const move = (event) => {
+    pointer.clientX = event.clientX;
     const bounds = svg.getBoundingClientRect();
     if (!bounds.width) return;
 
@@ -4893,7 +4897,12 @@ function attachComparisonGraphHover(frame, plot, entries) {
 
   frame.addEventListener('pointermove', move);
   frame.addEventListener('pointerleave', hide);
+  return move;
 }
+
+// Where the pointer is over each graph tile. A repaint builds a new chart under a pointer that has
+// not moved, so it fires no event of its own; this is how the readout follows it across.
+const comparisonGraphPointers = new WeakMap();
 
 /**
  * Renders (or re-renders) a graph tile's chart and legend.
@@ -4921,21 +4930,32 @@ function renderComparisonGraphBody(tile, graph) {
     return;
   }
 
+  let pointer = comparisonGraphPointers.get(tile);
+  if (!pointer) {
+    pointer = { clientX: null };
+    comparisonGraphPointers.set(tile, pointer);
+  }
+  const hoveredX = pointer.clientX;
+
   body.textContent = '';
 
   const frame = document.createElement('div');
   frame.className = 'comparison-graph-frame';
   frame.appendChild(plot.svg);
-  attachComparisonGraphHover(frame, plot, entries);
+  const showReadoutAt = attachComparisonGraphHover(frame, plot, entries, pointer);
 
   body.appendChild(frame);
   body.appendChild(buildComparisonGraphLegend(entries));
+  // A live reading repaints the chart while someone is reading it. The crosshair and the tooltip
+  // are put back under the pointer, with the new values, or they vanished every time one of the
+  // graphed sensors reported, which for a busy power sensor is every few seconds.
+  if (hoveredX !== null) showReadoutAt({ clientX: hoveredX });
 }
 
 /**
- * The tile's reconciliation key. Structural only: live value changes are repainted in place by
- * refreshComparisonGraphTiles(), so a state update doesn't tear down the node (and the hover
- * state) on every tick.
+ * The tile's reconciliation key. Structural only: a live value change keeps the tile and has
+ * refreshComparisonGraphTiles() repaint its chart and legend, which puts the hover readout back
+ * under the pointer (see renderComparisonGraphBody).
  *
  * @param {{id: string, name: string, span: number, entityIds: string[]}} graph
  * @returns {string}
