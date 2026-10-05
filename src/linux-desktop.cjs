@@ -73,6 +73,56 @@ function isPortalBindingRegistered(binding) {
   return !!binding && (!!binding.trigger || binding.requiresCompositorBinding === true);
 }
 
+// XKB keysym names, which Hyprland binds and the Global Shortcuts portal's triggers are written in,
+// for the accelerator keys whose own name is not one: punctuation, which the recorder writes as the
+// character itself ("-"), and the numpad keys and Print Screen as Electron names them. Keyed in
+// lower case.
+const XKB_KEYSYMS = Object.freeze({
+  ',': 'comma',
+  '.': 'period',
+  '/': 'slash',
+  '\\': 'backslash',
+  ';': 'semicolon',
+  "'": 'apostrophe',
+  '[': 'bracketleft',
+  ']': 'bracketright',
+  '`': 'grave',
+  '=': 'equal',
+  '-': 'minus',
+  '!': 'exclam',
+  '@': 'at',
+  '#': 'numbersign',
+  $: 'dollar',
+  '%': 'percent',
+  '^': 'asciicircum',
+  '&': 'ampersand',
+  '*': 'asterisk',
+  '(': 'parenleft',
+  ')': 'parenright',
+  _: 'underscore',
+  ':': 'colon',
+  '"': 'quotedbl',
+  '<': 'less',
+  '>': 'greater',
+  '?': 'question',
+  '{': 'braceleft',
+  '}': 'braceright',
+  '~': 'asciitilde',
+  '|': 'bar',
+  ...Object.fromEntries(Array.from({ length: 10 }, (_, digit) => [`num${digit}`, `KP_${digit}`])),
+  numadd: 'KP_Add',
+  numsub: 'KP_Subtract',
+  nummult: 'KP_Multiply',
+  numdiv: 'KP_Divide',
+  numdec: 'KP_Decimal',
+  printscreen: 'Print',
+});
+
+/** The XKB keysym for an accelerator key whose own name is not one, otherwise ''. */
+function xkbKeysym(key) {
+  return XKB_KEYSYMS[String(key).toLowerCase()] || '';
+}
+
 function hyprlandBinding(accelerator, id, appId = APP_ID, format = 'lua') {
   const keys = String(accelerator)
     .split('+')
@@ -101,37 +151,6 @@ function hyprlandBinding(accelerator, id, appId = APP_ID, format = 'lua') {
         VolumeUp: 'XF86AudioRaiseVolume',
         VolumeDown: 'XF86AudioLowerVolume',
         VolumeMute: 'XF86AudioMute',
-        ',': 'comma',
-        '.': 'period',
-        '/': 'slash',
-        '\\': 'backslash',
-        ';': 'semicolon',
-        "'": 'apostrophe',
-        '[': 'bracketleft',
-        ']': 'bracketright',
-        '`': 'grave',
-        '=': 'equal',
-        '-': 'minus',
-        '!': 'exclam',
-        '@': 'at',
-        '#': 'numbersign',
-        $: 'dollar',
-        '%': 'percent',
-        '^': 'asciicircum',
-        '&': 'ampersand',
-        '*': 'asterisk',
-        '(': 'parenleft',
-        ')': 'parenright',
-        _: 'underscore',
-        ':': 'colon',
-        '"': 'quotedbl',
-        '<': 'less',
-        '>': 'greater',
-        '?': 'question',
-        '{': 'braceleft',
-        '}': 'braceright',
-        '~': 'asciitilde',
-        '|': 'bar',
       };
       const extraModifiers = {
         Command: 'SUPER',
@@ -140,7 +159,13 @@ function hyprlandBinding(accelerator, id, appId = APP_ID, format = 'lua') {
         Option: 'ALT',
         CmdOrCtrl: 'CTRL',
       };
-      return aliases[normalized] || extraModifiers[normalized] || names[normalized] || normalized;
+      return (
+        aliases[normalized] ||
+        extraModifiers[normalized] ||
+        names[normalized] ||
+        xkbKeysym(normalized) ||
+        normalized
+      );
     });
   if (format === 'hyprlang') {
     const key = keys.at(-1);
@@ -181,4 +206,5 @@ module.exports = {
   isHyprland,
   isPortalBindingRegistered,
   hyprlandBinding,
+  xkbKeysym,
 };
