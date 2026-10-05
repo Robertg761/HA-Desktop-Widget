@@ -23,6 +23,8 @@ jest.mock('../../src/ui-utils.js', () => ({
   showConfirm: jest.fn(),
 }));
 
+const { blurFocusedControlsOnDisable } = require('../helpers/chromium-focus.js');
+
 const {
   applyPersistentNotificationEvent,
   formatRelativeTime,
@@ -136,6 +138,13 @@ describe('persistent notification helpers', () => {
     let websocket;
     let showToast;
 
+    // Focus leaves a button as it is disabled, as it does in the app (see chromium-focus.js).
+    let restoreDisable;
+    beforeEach(() => {
+      restoreDisable = blurFocusedControlsOnDisable();
+    });
+    afterEach(() => restoreDisable());
+
     // A fresh module per test: the panel wires itself to its elements once, and each test builds new ones.
     beforeEach(() => {
       jest.resetModules();
@@ -210,18 +219,32 @@ describe('persistent notification helpers', () => {
       document.getElementById('persistent-notifications-btn').click();
       await nextTick();
       const buttons = () => [...document.querySelectorAll('.persistent-notification-dismiss')];
-      buttons()[0].focus();
+      const pressed = buttons()[0];
+      const next = buttons()[1].dataset.focusKey;
+      const id = pressed.dataset.focusKey.replace('notification:', '');
+      pressed.focus();
       websocket.callService.mockResolvedValue({});
 
-      buttons()[0].click();
+      pressed.click();
+      // Waiting on Home Assistant, the button keeps focus and says it is busy.
+      expect(document.activeElement).toBe(pressed);
+      expect(pressed.getAttribute('aria-disabled')).toBe('true');
       // Home Assistant answers with the removal, which rebuilds the list.
-      send({ type: 'removed', notifications: { c: {} } });
+      send({ type: 'removed', notifications: { [id]: {} } });
 
       expect(buttons()).toHaveLength(2);
-      expect(document.activeElement).toBe(buttons()[0]);
-      expect(
-        document.getElementById('persistent-notifications-modal').contains(document.activeElement)
-      ).toBe(true);
+      expect(document.activeElement.dataset.focusKey).toBe(next);
+    });
+
+    test('ignores a second press while the dismissal is on its way', () => {
+      load('a', 'b');
+      websocket.callService.mockReturnValue(new Promise(() => {}));
+      const dismiss = document.querySelector('.persistent-notification-dismiss');
+
+      dismiss.click();
+      dismiss.click();
+
+      expect(websocket.callService).toHaveBeenCalledTimes(1);
     });
 
     test('keeps focus on the same notification when the list is rebuilt around it', async () => {
@@ -244,12 +267,14 @@ describe('persistent notification helpers', () => {
       websocket.callService.mockRejectedValue(new Error('offline'));
       const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
       const dismiss = document.querySelector('.persistent-notification-dismiss');
+      dismiss.focus();
 
       dismiss.click();
-      expect(dismiss.disabled).toBe(true);
+      expect(dismiss.getAttribute('aria-disabled')).toBe('true');
       await nextTick();
 
-      expect(dismiss.disabled).toBe(false);
+      expect(dismiss.hasAttribute('aria-disabled')).toBe(false);
+      expect(document.activeElement).toBe(dismiss);
       expect(showToast).toHaveBeenCalledWith('Could not dismiss notification', 'error');
       consoleError.mockRestore();
     });
@@ -356,7 +381,7 @@ describe('persistent notification helpers', () => {
           'dismiss_all',
           {}
         );
-        expect(dismissAll().disabled).toBe(false);
+        expect(dismissAll().hasAttribute('aria-disabled')).toBe(false);
       });
 
       test('dismisses them one by one when Home Assistant has no dismiss_all', async () => {
@@ -383,12 +408,29 @@ describe('persistent notification helpers', () => {
         websocket.callService.mockRejectedValue(new Error('offline'));
         const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
 
+        dismissAll().focus();
         dismissAll().click();
         await nextTick();
 
         expect(showToast).toHaveBeenCalledWith('Could not dismiss notifications', 'error');
-        expect(dismissAll().disabled).toBe(false);
+        expect(dismissAll().hasAttribute('aria-disabled')).toBe(false);
+        expect(document.activeElement).toBe(dismissAll());
         consoleError.mockRestore();
+      });
+
+      test('says it is busy while it clears them, and takes no second press', async () => {
+        load('a', 'b');
+        confirm.mockResolvedValue(true);
+        websocket.callService.mockReturnValue(new Promise(() => {}));
+
+        dismissAll().click();
+        await nextTick();
+        expect(dismissAll().getAttribute('aria-disabled')).toBe('true');
+        dismissAll().click();
+        await nextTick();
+
+        expect(confirm).toHaveBeenCalledTimes(1);
+        expect(websocket.callService).toHaveBeenCalledTimes(1);
       });
     });
 
