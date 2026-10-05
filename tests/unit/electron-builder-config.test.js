@@ -196,13 +196,25 @@ describe('what the packages contain', () => {
 
   it('gives each platform list package.json and exclusions, so the allowlist bounds the rest', () => {
     expect(positives(config.files).length).toBeGreaterThan(0);
-    for (const platform of ['mac', 'win']) {
+    for (const platform of ['linux', 'mac', 'win']) {
       expect(positives(config[platform].files)).toEqual(['package.json']);
     }
   });
 
-  it('shares one list between macOS and Windows', () => {
-    expect(config.win.files).toBe(config.mac.files);
+  it('strips the same D-Bus packages from macOS and Windows, whose two lists differ only in uiohook', () => {
+    // YAML cannot join two lists, so each platform holds its own copy of the dbus-next list.
+    const dbusPart = (list) => list.filter((entry) => !entry.includes('/uiohook-napi/'));
+    expect(dbusPart(config.mac.files).length).toBeGreaterThan(10);
+    expect(dbusPart(config.win.files)).toEqual(dbusPart(config.mac.files));
+    for (const platform of ['mac', 'win', 'linux']) {
+      for (const entry of config[platform].files.filter((item) =>
+        item.includes('/uiohook-napi/')
+      )) {
+        expect(entry).toMatch(
+          /^!node_modules\/uiohook-napi\/prebuilds\/[a-z0-9]+-[a-z0-9*]+\/\*\*\/\*$/
+        );
+      }
+    }
   });
 
   it('strips the Linux-only D-Bus library from both, and only from them', () => {
@@ -749,5 +761,130 @@ describe('the icon font that ships', () => {
     // verify.js is what @mdi/font runs before it publishes, not something a stylesheet loads.
     const mdiPackage = JSON.parse(fs.readFileSync(path.join(mdiRoot, 'package.json'), 'utf8'));
     expect(mdiPackage.scripts.prepublish).toBe('node scripts/verify.js');
+  });
+});
+
+describe('the uiohook-napi files that ship', () => {
+  const pkg = require('../../package.json');
+  const uiohookRoot = path.join(root, 'node_modules', 'uiohook-napi');
+  // An optional dependency, so an install can be without it.
+  const hasUiohook = fs.existsSync(path.join(uiohookRoot, 'prebuilds'));
+  const itWithUiohook = hasUiohook ? it : it.skip;
+  // electron-builder's name for each system, and the one node-gyp-build gives its prebuilds.
+  const systems = { linux: 'linux', mac: 'darwin', win: 'win32' };
+  const prebuildsOf = (files) =>
+    [
+      ...new Set(
+        files.filter((file) => file.startsWith('prebuilds/')).map((file) => file.split('/')[1])
+      ),
+    ].sort();
+
+  /** The architectures a platform's release packages are built for. */
+  function releasedArchitectures(platform) {
+    if (platform === 'mac') {
+      // npm run dist:mac builds one universal app, which holds the x64 and the arm64 app.
+      return pkg.scripts['dist:mac'].includes('--universal') ? ['arm64', 'x64'] : [];
+    }
+    return [...new Set(config[platform].target.flatMap((target) => target.arch))].sort();
+  }
+
+  itWithUiohook.each(['linux', 'mac', 'win'])(
+    "keeps the x64 and arm64 builds of the %s package's own system and no other",
+    (platform) => {
+      const kept = prebuildsOf(packedFiles('uiohook-napi', platform));
+      expect(kept).toEqual([`${systems[platform]}-arm64`, `${systems[platform]}-x64`]);
+      // Every architecture a release of the platform is built for has its build.
+      const released = releasedArchitectures(platform);
+      expect(released.length).toBeGreaterThan(0);
+      for (const arch of released) expect(kept).toContain(`${systems[platform]}-${arch}`);
+    }
+  );
+
+  itWithUiohook('drops on every platform only the prebuild that no package is built for', () => {
+    const installed = fs.readdirSync(path.join(uiohookRoot, 'prebuilds')).sort();
+    const kept = new Set(
+      ['linux', 'mac', 'win'].flatMap((platform) =>
+        prebuildsOf(packedFiles('uiohook-napi', platform))
+      )
+    );
+    // A prebuild a later uiohook-napi adds turns up in the test above, on the platform it is for.
+    expect(installed.filter((folder) => !kept.has(folder))).toEqual(['linux-loong64']);
+  });
+
+  itWithUiohook.each(['linux', 'mac', 'win'])(
+    'packs no C sources on %s, and keeps what loads',
+    (platform) => {
+      // build/ is what electron-builder's rebuild step compiled on this machine, if it ran, and
+      // what electron-builder's own filters leave of it (on Linux, the .node alone).
+      const packed = packedFiles('uiohook-napi', platform).filter(
+        (file) => !file.startsWith('build/')
+      );
+      expect(packed.filter((file) => /\.(?:c|h|cc|cpp|gyp)$/.test(file))).toEqual([]);
+      expect(packed.filter((file) => /^(?:src|libuiohook)\//.test(file))).toEqual([]);
+      expect(packed).toEqual(expect.arrayContaining(['package.json', 'dist/index.js']));
+      // The sources are installed, so the checks above are not passing on an empty folder.
+      expect(fs.existsSync(path.join(uiohookRoot, 'binding.gyp'))).toBe(true);
+      expect(fs.readdirSync(path.join(uiohookRoot, 'libuiohook', 'src')).length).toBeGreaterThan(0);
+      // The loader the package uses ships with it.
+      expect(fs.readFileSync(path.join(uiohookRoot, 'dist', 'index.js'), 'utf8')).toMatch(
+        /require\(['"]node-gyp-build['"]\)\(/
+      );
+      expect(packedFiles('node-gyp-build', platform)).toEqual(
+        expect.arrayContaining(['index.js', 'node-gyp-build.js', 'package.json'])
+      );
+    }
+  );
+
+  // node-gyp-build reads the system and architecture when it is first required, from these two
+  // variables if they are set. The package is laid out without build/Release, as one whose rebuild
+  // step compiled nothing, so the prebuild is the only build there is to find.
+  itWithUiohook.each([
+    ['linux', 'x64'],
+    ['linux', 'arm64'],
+    ['mac', 'x64'],
+    ['mac', 'arm64'],
+    ['win', 'x64'],
+    ['win', 'arm64'],
+  ])('lets node-gyp-build find a build in the %s package on %s', (platform, arch) => {
+    const os = require('os');
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'uiohook-packed-'));
+    const saved = { platform: process.env.npm_config_platform, arch: process.env.npm_config_arch };
+    try {
+      for (const file of packedFiles('uiohook-napi', platform)) {
+        if (file !== 'package.json' && !file.startsWith('prebuilds/')) continue;
+        fs.mkdirSync(path.join(folder, path.dirname(file)), { recursive: true });
+        fs.copyFileSync(path.join(uiohookRoot, file), path.join(folder, file));
+      }
+      process.env.npm_config_platform = systems[platform];
+      process.env.npm_config_arch = arch;
+      let found = null;
+      jest.isolateModules(() => {
+        found = require('node-gyp-build').resolve(folder);
+      });
+      expect(path.relative(folder, found).split(path.sep).join('/')).toBe(
+        `prebuilds/${systems[platform]}-${arch}/uiohook-napi.node`
+      );
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[`npm_config_${key}`];
+        else process.env[`npm_config_${key}`] = value;
+      }
+      fs.rmSync(folder, { recursive: true, force: true });
+    }
+  });
+
+  itWithUiohook('has the macOS universal merge take both darwin builds as they are', () => {
+    // @electron/universal matches x64ArchFiles against each Mach-O file's path in the app. Each
+    // darwin build is the same file in the x64 and the arm64 app, which it can only take as is.
+    const universal = path.dirname(require.resolve('@electron/universal'));
+    const { minimatch } = require(require.resolve('minimatch', { paths: [universal] }));
+    const darwin = packedFiles('uiohook-napi', 'mac').filter((file) =>
+      file.startsWith('prebuilds/darwin-')
+    );
+    expect(darwin).toHaveLength(2);
+    for (const file of darwin) {
+      const inApp = `Contents/Resources/app.asar.unpacked/node_modules/uiohook-napi/${file}`;
+      expect(minimatch(inApp, config.mac.x64ArchFiles, { matchBase: true })).toBe(true);
+    }
   });
 });

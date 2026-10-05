@@ -1,5 +1,4 @@
-# electron-builder configuration (moved out of package.json's "build" key so the
-# dbus-next exclusion list below can be defined once and shared via a YAML anchor).
+# electron-builder configuration, formerly the "build" key of package.json.
 productName: HA Desktop Widget
 # Keep in sync with the top-level "appId" in package.json: src/windows-startup.cjs and
 # src/linux-startup.cjs read it at runtime to name the Windows Run-key value and the
@@ -9,8 +8,8 @@ directories:
   buildResources: build
   output: dist
 afterPack: scripts/after-pack-mac-adhoc-sign.cjs
-# The app's own files are this allowlist. mac and win each have a `files` list as well, for what
-# only that platform drops, and electron-builder does not add one to the other: once it has
+# The app's own files are this allowlist. linux, mac and win each have a `files` list as well, for
+# what only that platform drops, and electron-builder does not add one to the other: once it has
 # loaded this file, the top-level list is a file set of its own and the platform list another, and a
 # set made only of exclusions packs everything but them, the whole repository with its tests, docs,
 # website and vendored sources. So every platform list also names package.json, which ships anyway,
@@ -83,6 +82,14 @@ files:
   - '!node_modules/@mdi/font/fonts/*.woff'
   - '!node_modules/@mdi/font/scss/**/*'
   - '!node_modules/@mdi/font/css/*.map'
+  # uiohook-napi, the keyboard hook behind the popup hotkey on Windows and macOS. Its loader,
+  # node-gyp-build, takes build/Release/uiohook_napi.node when electron-builder's rebuild step
+  # compiled one on the build machine, and prebuilds/<platform>-<arch>/uiohook-napi.node when it
+  # did not. The C sources and binding.gyp are only for that compile, which runs in node_modules
+  # before anything is packed. The prebuilds for other systems are dropped per platform below.
+  - '!node_modules/uiohook-napi/binding.gyp'
+  - '!node_modules/uiohook-napi/libuiohook/**/*'
+  - '!node_modules/uiohook-napi/src/**/*'
 asar: true
 compression: normal
 # Chromium draws its own interface (the right-click menu in a text field, the spelling menu, the
@@ -179,16 +186,18 @@ mac:
   # dbus-next and its exclusive transitive dependency subtree (per package-lock.json:
   # event-stream and its stream helpers, xml2js/xmlbuilder, long, jsbi, hexy,
   # @nornagon/put). It is only required lazily by src/portal-global-shortcuts.cjs on
-  # Linux Wayland, so mac/win packages strip it (win reuses this list via the YAML
-  # alias below). Do NOT hoist these into the top-level `files` list: top-level and
-  # per-platform lists are additive, so that would strip dbus-next from Linux builds
-  # too and break portal global shortcuts at runtime. When upgrading dbus-next,
-  # re-derive this list from package-lock.json. The alias makes mac.files and
-  # win.files one shared array instance; do not reuse the anchor under top-level
-  # files/extraFiles/extraResources — app-builder-lib normalizes those in place,
-  # which would corrupt the shared list for the platform sections. package.json is here so
-  # that the list is not exclusions alone (see the top-level `files`).
-  files: &macWinFiles
+  # Linux Wayland, so mac/win packages strip it. win.files repeats the list, because YAML
+  # cannot join two lists and the two differ in their uiohook-napi lines;
+  # tests/unit/electron-builder-config.test.js keeps the copies equal. Do NOT hoist these
+  # into the top-level `files` list: top-level and per-platform lists are additive, so that
+  # would strip dbus-next from Linux builds too and break portal global shortcuts at
+  # runtime. When upgrading dbus-next, re-derive this list from package-lock.json.
+  #
+  # Then the uiohook-napi prebuilds of the other systems. Every package keeps the x64 and arm64
+  # builds of its own system and no other, which also drops linux-loong64. The macOS app is
+  # universal and needs both darwin builds; x64ArchFiles above has the merge take them as they are.
+  # package.json is here so that the list is not exclusions alone (see the top-level `files`).
+  files:
     - package.json
     - '!node_modules/dbus-next/**/*'
     - '!node_modules/event-stream/**/*'
@@ -205,9 +214,32 @@ mac:
     - '!node_modules/pause-stream/**/*'
     - '!node_modules/split/**/*'
     - '!node_modules/stream-combiner/**/*'
+    - '!node_modules/uiohook-napi/prebuilds/linux-*/**/*'
+    - '!node_modules/uiohook-napi/prebuilds/win32-*/**/*'
 win:
   icon: build/icon.ico
-  files: *macWinFiles
+  # package.json and the dbus-next list of mac.files, then the uiohook-napi prebuilds of the other
+  # systems. The release is x64 only (target below), and Windows on Arm runs it under emulation
+  # with the win32-x64 build; win32-arm64 is for an arm64 package.
+  files:
+    - package.json
+    - '!node_modules/dbus-next/**/*'
+    - '!node_modules/event-stream/**/*'
+    - '!node_modules/hexy/**/*'
+    - '!node_modules/jsbi/**/*'
+    - '!node_modules/long/**/*'
+    - '!node_modules/@nornagon/put/**/*'
+    - '!node_modules/xml2js/**/*'
+    - '!node_modules/xmlbuilder/**/*'
+    - '!node_modules/through/**/*'
+    - '!node_modules/duplexer/**/*'
+    - '!node_modules/from/**/*'
+    - '!node_modules/map-stream/**/*'
+    - '!node_modules/pause-stream/**/*'
+    - '!node_modules/split/**/*'
+    - '!node_modules/stream-combiner/**/*'
+    - '!node_modules/uiohook-napi/prebuilds/darwin-*/**/*'
+    - '!node_modules/uiohook-napi/prebuilds/linux-*/**/*'
   target:
     - target: nsis
       arch: [x64]
@@ -247,6 +279,16 @@ linux:
     # "Add to Omarchy Bar" item (src/omarchy-bar.cjs).
     - from: omarchy-plugin
       to: omarchy-plugin
+  # package.json (see the top-level `files`), then the uiohook-napi prebuilds of the other systems
+  # and linux-loong64. main.js does not load uiohook on Linux, where the popup hotkey goes through
+  # globalShortcut or the desktop portal (src/linux-popup-hotkey.cjs,
+  # src/portal-global-shortcuts.cjs), so the two Linux builds that stay, 70 KB each, only keep the
+  # package whole should that change.
+  files:
+    - package.json
+    - '!node_modules/uiohook-napi/prebuilds/darwin-*/**/*'
+    - '!node_modules/uiohook-napi/prebuilds/win32-*/**/*'
+    - '!node_modules/uiohook-napi/prebuilds/linux-loong64/**/*'
   # Match Electron's runtime app id, the installed launcher, and the app's
   # existing XDG autostart file so desktop environments associate its windows.
   syncDesktopName: true
