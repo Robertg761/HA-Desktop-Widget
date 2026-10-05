@@ -707,6 +707,26 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       );
     });
 
+    it('does not say its title again under it when Home Assistant closes the connection', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      connectSuccessfully();
+
+      // Home Assistant restarting: the socket closes with no error first.
+      mockWebsocket.emit('close', { intentional: false });
+
+      expect(document.querySelector('#widget-state-panel .widget-state-title').textContent).toBe(
+        'Home Assistant is disconnected'
+      );
+      expect(document.querySelector('#widget-state-panel .widget-state-copy').textContent).toBe(
+        'The connection was lost. Retrying automatically.'
+      );
+      // The indicator has no title of its own, so it keeps the whole sentence.
+      expect(mockUiUtils.setStatus).toHaveBeenLastCalledWith(
+        false,
+        'Disconnected from Home Assistant. Retrying automatically.'
+      );
+    });
+
     it('toasts the failure once per outage where there is no connection panel to say it', async () => {
       await loadRenderer({ config: tokenConfig() });
       const now = jest.spyOn(Date, 'now');
@@ -1036,6 +1056,81 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       );
       expect(others.length).toBeGreaterThan(0);
       others.forEach(([, options]) => expect(options).toBeUndefined());
+    });
+  });
+
+  describe('a first snapshot that runs out of time', () => {
+    const snapshotTimeouts = () =>
+      mockWebsocket.request.mock.calls
+        .filter(([payload]) => payload.type === 'get_states')
+        .map(([, options]) => options.timeoutMs);
+    // The reconnect backoff in this test's constants: 1 s doubling to 8 s, with no jitter.
+    const reconnectDelays = () =>
+      timerSpy.mock.calls
+        .map(([, delay]) => delay)
+        .filter((delay) => [1000, 2000, 4000, 8000].includes(delay));
+
+    // Home Assistant accepts the login every time, then does not send its states in time.
+    const loginThenTimeOut = async () => {
+      let failSnapshot;
+      mockWebsocket.request.mockImplementation((payload) => {
+        const request = new Promise((resolve, reject) => {
+          if (payload.type === 'get_states') {
+            failSnapshot = () =>
+              reject(Object.assign(new Error('WebSocket request timeout'), { code: 'timeout' }));
+          }
+        });
+        request.id = payload.type === 'get_states' ? 10 : 11;
+        request.catch(() => {});
+        return request;
+      });
+      mockWebsocket.emit('message', { type: 'auth_ok' });
+      failSnapshot();
+      await flushAsync();
+      mockWebsocket.emit('close', { intentional: false, reason: 'snapshot-timeout' });
+    };
+
+    beforeEach(() => {
+      jest.spyOn(Math, 'random').mockReturnValue(0);
+    });
+    afterEach(() => {
+      Math.random.mockRestore();
+    });
+
+    it('says Home Assistant is slow, not that it did not answer or that the URL is wrong', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      mockWebsocket.ws = {};
+      mockWebsocket.failConnection = jest.fn();
+
+      await loginThenTimeOut();
+
+      expect(mockWebsocket.failConnection).toHaveBeenCalledWith(
+        expect.anything(),
+        'snapshot-timeout'
+      );
+      const copy = document.querySelector('#widget-state-panel .widget-state-copy').textContent;
+      expect(copy).toBe('Home Assistant is slow to send its states. Retrying automatically.');
+      expect(copy).not.toMatch(/URL/);
+    });
+
+    it('waits longer each time, and backs off between attempts, until the states arrive', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      mockWebsocket.ws = {};
+      mockWebsocket.failConnection = jest.fn();
+
+      for (let attempt = 0; attempt < 4; attempt += 1) await loginThenTimeOut();
+
+      // Twice as long after each timeout, up to four times the first wait.
+      expect(snapshotTimeouts()).toEqual([90000, 180000, 360000, 360000]);
+      // The login succeeding each time no longer puts the retry back to its shortest delay.
+      expect(reconnectDelays()).toEqual([1000, 2000, 4000, 8000]);
+
+      // Once the states arrive, both start over.
+      connectSuccessfully();
+      mockWebsocket.emit('close', { intentional: false });
+      mockWebsocket.emit('message', { type: 'auth_ok' });
+      expect(snapshotTimeouts().at(-1)).toBe(90000);
+      expect(reconnectDelays().at(-1)).toBe(1000);
     });
   });
 

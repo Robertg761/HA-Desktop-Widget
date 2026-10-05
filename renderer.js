@@ -234,6 +234,11 @@ let getStatesId, getServicesId, getAreasId, getConfigId;
 
 // WebSocket reconnection state
 let reconnectAttempts = 0;
+// First snapshots in a row that ran out of time. Each one gives the next twice as long (up to
+// four times the first wait): a server that answers the login but needs longer than that to send
+// every entity would otherwise be asked again, from the start, forever.
+let snapshotTimeoutsInARow = 0;
+const MAX_SNAPSHOT_TIMEOUT_GROWTH = 4;
 let reconnectTimerId = null;
 let uiTickTimerId = null;
 let uiTickSchedulerStarted = false;
@@ -1151,6 +1156,15 @@ function getConfiguredHostLabel() {
   }
 }
 
+// What the offline panel says under its title. The indicator's "Disconnected from Home Assistant.
+// Retrying automatically." is the title said again, so the panel says only what is new.
+function describeDisconnectUnderTitle(title) {
+  const reason = stripSummaryPrefix(title, lastDisconnectReason);
+  return !reason || reason === t('Disconnected from Home Assistant. Retrying automatically.')
+    ? t('The connection was lost. Retrying automatically.')
+    : reason;
+}
+
 function renderMainWidgetState() {
   // An open Settings page shows the same connection problem as the panel, so it follows it.
   settings.refreshHomeAssistantAuthStatus?.();
@@ -1216,8 +1230,7 @@ function renderMainWidgetState() {
         ? (mainConnectionState === 'connecting' &&
             stripSummaryPrefix(title, lastDisconnectReason)) ||
           t('Waiting for live Home Assistant data...')
-        : stripSummaryPrefix(title, lastDisconnectReason) ||
-          t('Disconnected from Home Assistant. Retrying automatically.'),
+        : describeDisconnectUnderTitle(title),
       host,
       note:
         !connecting && mainConnectionState === 'disconnected' && lastManualRetryAt
@@ -2509,7 +2522,8 @@ websocket.on('message', (msg) => {
   try {
     if (msg.type === 'auth_ok') {
       log.debug('WebSocket authentication successful');
-      reconnectAttempts = 0; // Reset on successful connection
+      // reconnectAttempts is not reset here but once the states arrive: a server that accepts the
+      // login and then cannot send them would otherwise be retried at the shortest delay each time.
       oauthAuthRecoveryAttempted = false;
       if (!IS_DESKTOP_PIN_MODE) setTrayEntityConnectionState(false);
       updateMainConnectionState('connecting');
@@ -2523,7 +2537,11 @@ websocket.on('message', (msg) => {
       // again, so a large instance never finished loading.
       const statesReq = websocket.request(
         { type: 'get_states' },
-        { timeoutMs: WS_INITIAL_STATES_TIMEOUT_MS }
+        {
+          timeoutMs:
+            WS_INITIAL_STATES_TIMEOUT_MS *
+            Math.min(2 ** snapshotTimeoutsInARow, MAX_SNAPSHOT_TIMEOUT_GROWTH),
+        }
       );
       const servicesReq = websocket.request({ type: 'get_services' });
       const areasReq = websocket.request({ type: 'config/area_registry/list' });
@@ -2551,9 +2569,16 @@ websocket.on('message', (msg) => {
             websocket.failConnection(snapshotSocket);
           }
         })
-        .catch((error) =>
-          websocket.failConnection(snapshotSocket, error?.code === 'timeout' ? 'timeout' : '')
-        );
+        .catch((error) => {
+          // Home Assistant answered the login, so it is running and the address is right; it is
+          // the states that are slow. That is said in its own words, not as a server that is down.
+          if (error?.code !== 'timeout') {
+            websocket.failConnection(snapshotSocket);
+            return;
+          }
+          snapshotTimeoutsInARow += 1;
+          websocket.failConnection(snapshotSocket, 'snapshot-timeout');
+        });
       servicesReq.catch(() => {});
       areasReq.catch(() => {});
       configReq.catch((err) => {
@@ -2665,6 +2690,8 @@ websocket.on('message', (msg) => {
             }
             setDesktopPinConnectionIssue('');
             haStatesSnapshotReceived = true;
+            reconnectAttempts = 0;
+            snapshotTimeoutsInARow = 0;
             // No coalescing: this map is fresh from get_states and may drop deleted
             // entities that an in-flight publish still carries.
             refreshDesktopPinStatePublishing({ force: true, coalesce: false });
@@ -2786,14 +2813,19 @@ websocket.on('close', (closeInfo = {}) => {
 
     updateMainConnectionState('disconnected');
     // A host that never answers fails with a close alone, no error, so the reason is in the close.
+    // One that answered the login but not with its states in time is running and at the right
+    // address, so it is not told to check either.
     const unanswered = closeInfo?.reason === 'timeout';
-    const closeMessage = unanswered
-      ? t('Home Assistant did not answer. Check that it is running and that the URL is correct.')
-      : t('Disconnected from Home Assistant. Retrying automatically.');
+    const slowSnapshot = closeInfo?.reason === 'snapshot-timeout';
+    const closeMessage = slowSnapshot
+      ? t('Home Assistant is slow to send its states. Retrying automatically.')
+      : unanswered
+        ? t('Home Assistant did not answer. Check that it is running and that the URL is correct.')
+        : t('Disconnected from Home Assistant. Retrying automatically.');
     // A failed attempt is followed by a close. The reason the error gave ("Check your network or
     // Home Assistant URL") says more than "disconnected", and is what the connection panel shows
     // in place of a toast, so the close must not overwrite it.
-    if (unanswered || !connectionErrorLoggedThisOutage) {
+    if (unanswered || slowSnapshot || !connectionErrorLoggedThisOutage) {
       setDisconnectedStatus(closeMessage);
     }
     setDesktopPinConnectionIssue(closeMessage);

@@ -1644,7 +1644,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
   it.each([
     ['rejected', ''],
     ['invalid', ''],
-    ['timed out', 'timeout'],
+    ['timed out', 'snapshot-timeout'],
   ])('recovers when the initial snapshot is %s', async (failure, reason) => {
     await loadRenderer({ config: oauthConfig() });
     const socket = {};
@@ -1666,7 +1666,8 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockWebsocket.failConnection).toHaveBeenCalledTimes(1);
     const [failedSocket, failedReason = ''] = mockWebsocket.failConnection.mock.calls[0];
     expect(failedSocket).toBe(socket);
-    // Diagnostics record a snapshot request that timed out as a timeout, not a closed socket.
+    // A snapshot that timed out has its own reason: the server answered the login, so it is not
+    // "did not answer". Diagnostics still record it as a timeout, not a closed socket.
     expect(failedReason).toBe(reason);
   });
 

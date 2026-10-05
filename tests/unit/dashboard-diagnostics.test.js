@@ -111,6 +111,20 @@ test('diagnostics tell a timed-out connection from a closed one', () => {
   currentSocket.removeAllListeners();
 });
 
+test('diagnostics count a first snapshot that ran out of time as a timeout', () => {
+  jest.resetModules();
+  const {
+    initializeDashboardTools: initialize,
+    diagnosticsReport: report,
+  } = require('../../src/dashboard-tools.js');
+  const currentSocket = require('../../src/websocket.js').default;
+  initialize();
+
+  currentSocket.emit('close', { intentional: false, reason: 'snapshot-timeout' });
+  expect(report().recentIssues.map((issue) => issue.reason)).toEqual(['connection_timeout']);
+  currentSocket.removeAllListeners();
+});
+
 test('the open report refreshes when the reconnect state snapshot arrives', () => {
   jest.resetModules();
   jest.useFakeTimers({ now: new Date('2026-09-23T10:00:00Z') });

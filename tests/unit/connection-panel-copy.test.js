@@ -100,13 +100,18 @@ describe('the connection panel on the dashboard', () => {
       );
     });
 
-    it('still reports a plain close as a disconnect that retries', async () => {
+    it('still reports a plain close as a disconnect that retries, without saying the title again', async () => {
       await harness.load({ config: harness.tokenConfig() });
       harness.websocket.emit('connect-attempt');
 
       harness.websocket.emit('close', { intentional: false });
 
-      expect(copy()).toBe('Disconnected from Home Assistant. Retrying automatically.');
+      // Under "Home Assistant is disconnected", "Disconnected from Home Assistant" says it twice.
+      expect(copy()).toBe('The connection was lost. Retrying automatically.');
+      expect(harness.uiUtils.setStatus).toHaveBeenLastCalledWith(
+        false,
+        'Disconnected from Home Assistant. Retrying automatically.'
+      );
     });
 
     it('does not repeat "Authentication failed" under the title Authentication failed', async () => {
