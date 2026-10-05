@@ -646,11 +646,14 @@ Run this on the `.dmg` or `.zip` from the Releases page, not a build from source
 2. Open Settings > General > Language & Localization and read the line about the system language. Under Offline language packs, download Spanish.
 3. Right-click the Search settings field at the top of Settings, once while it is empty and once with a word typed in it.
 4. Settings > Hotkeys > Popup hotkey: set a hotkey, then hold it while another app is in front. The app needs the Accessibility permission for this (see MAC-5).
-5. Do steps 1 to 3 again with 繁體中文（台灣）, Chinese Traditional (Taiwan), at the top of the list and the Chinese pack. When you finish, put your own language back at the top.
+5. Do steps 1 to 3 again with 繁體中文（台灣）, Chinese Traditional (Taiwan), at the top of the list and the Chinese pack.
+6. Put Português (Brasil), a language the app does not have, at the top, quit and reopen the app. Open Settings > Advanced > Export settings, look at the save panel, and cancel it. When you finish, put your own language back at the top.
 
 Expected: The app starts with its menu-bar icon and window. The line names Spanish (Mexico), and once the pack is downloaded the whole app is in Spanish without picking it in Language. The app draws the right-click menu from the same pack, so it is in Spanish too: Deshacer, Rehacer, Cortar, Copiar, Pegar, Eliminar, Seleccionar todo. With Chinese (Taiwan) the line names it, and the app and the menu are in Chinese (撤销, 剪切, 复制, 粘贴, 全选). The Chinese pack is written in simplified characters, so Taiwan gets those too. Holding the hotkey brings the widget to the front and releasing it sends it back. The log (Settings > Advanced > Show log file) has the line "uiohook-napi loaded successfully" near the start.
 
-Capture: A screenshot of the language line and of the right-click menu in each language, and which kind of Mac you used. If the hotkey does nothing, the log lines that mention uiohook-napi.
+With Portuguese (Brazil) the app starts and works, in English, and the save panel is in English too. That is expected: the package lists only the app's own languages to macOS, which shows its own panels and message boxes in the first of your languages on that list. It cannot list the others without their Chromium language files, which 4.0 leaves out to keep the package small: Chromium takes its own language from the same list and needs that language's file.
+
+Capture: A screenshot of the language line and of the right-click menu in each language, of the save panel in Portuguese (Brazil), and which kind of Mac you used. If the hotkey does nothing, the log lines that mention uiohook-napi.
 
 Ref: MP-78
 
