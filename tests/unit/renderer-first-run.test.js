@@ -846,7 +846,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
     });
     await reachAuthorizationStep('ha.local:8123');
     await clickButton('Connect');
-    await clickButton('Choose rooms and devices');
+    await clickButton('Choose rooms and entities');
     expect(require('../../src/ui.js').showAddPageModal).toHaveBeenCalledWith({ starter: true });
     expect(document.getElementById('first-run-onboarding').classList).toContain('hidden');
   });
@@ -868,7 +868,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
     mockWebsocket.emit('message', { type: 'auth_ok' });
     mockWebsocket.emit('message', { type: 'result', id: 123, success: true, result: [] });
     await flushAsync();
-    await clickButton('Choose rooms and devices');
+    await clickButton('Choose rooms and entities');
     expect(require('../../src/ui.js').showAddPageModal).toHaveBeenCalledWith({ starter: true });
   });
 
@@ -905,7 +905,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       expect(panel.textContent).toContain('This page is empty');
       expect(panel.textContent).toContain('Add entities to Garage for one-click control.');
       expect(panel.textContent).not.toContain('No Quick Access entities yet');
-      expect(panel.textContent).toContain('Choose rooms and devices');
+      expect(panel.textContent).toContain('Choose rooms and entities');
     });
 
     it('keeps the first-run wording when the empty page is the only one', async () => {
@@ -1114,7 +1114,9 @@ describe('Renderer first-run Home Assistant authorization', () => {
       config: oauthConfig(),
     });
     await clickButton('Connect');
-    expect(document.querySelector('.first-run-title').textContent).toBe('Choose rooms and devices');
+    expect(document.querySelector('.first-run-title').textContent).toBe(
+      'Choose rooms and entities'
+    );
     expect(wizardButton('Back').hidden).toBe(true);
   });
 

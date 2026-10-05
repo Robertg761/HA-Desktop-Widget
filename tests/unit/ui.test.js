@@ -11,7 +11,6 @@ const {
   getMockConfig,
 } = require('../mocks/electron.js');
 const desktopPinStyles = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
-const { loadAppStylesheets, resolvedValue } = require('../helpers/css-cascade.js');
 global.TextEncoder = global.TextEncoder || nodeUtil.TextEncoder;
 global.TextDecoder = global.TextDecoder || nodeUtil.TextDecoder;
 const { getRendererHost, setRendererHost } = require('@hadw/renderer/host.js');
@@ -241,6 +240,13 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     const flush = async () => {
       for (let i = 0; i < 20; i += 1) await Promise.resolve();
     };
+    // The search narrows the list a moment after typing pauses (150 ms).
+    const searchFor = async (text) => {
+      const search = document.querySelector('.room-device-search');
+      search.value = text;
+      search.dispatchEvent(new Event('input'));
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    };
     const entities = [
       { entity_id: 'light.desk', state: 'on', attributes: { friendly_name: 'Desk lamp' } },
       {
@@ -442,7 +448,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
       ui.showAddPageModal({ starter: true });
       await flush();
-      expect(document.querySelector('#add-page-name').value).toBe('My devices');
+      expect(document.querySelector('#add-page-name').value).toBe('My entities');
       // It opens on what a first page is made of; the sensor and the button wait behind a switch.
       expect(
         [...document.querySelectorAll('.room-entity-list input')].map((input) => input.value)
@@ -486,26 +492,19 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(preview.querySelector('[role="status"]')).toBe(count);
       expect(removed).not.toContain(count);
       expect(count.textContent).toBe('Page preview: 2 entities');
-      const search = document.querySelector('.room-device-search');
-      search.value = 'desk';
-      search.dispatchEvent(new Event('input'));
-      expect(sensor.parentElement.hidden).toBe(true);
-      // The pick list styles its rows as flex; the hidden attribute must still win.
-      document.head.innerHTML = '';
-      loadAppStylesheets(document);
-      expect(resolvedValue(sensor.parentElement, 'display')).toBe('none');
-      expect(
-        resolvedValue(document.querySelector('input[value="light.desk"]').parentElement, 'display')
-      ).toBe('flex');
+      await searchFor('desk');
+      // The search draws the rows that match; a tick on one it leaves out still counts.
+      expect(document.querySelector('input[value="sensor.temperature"]')).toBeNull();
+      expect(document.querySelector('input[value="light.desk"]').checked).toBe(true);
+      expect(count.textContent).toBe('Page preview: 2 entities');
       document.querySelector('#add-page-save-btn').click();
       await flush();
       expect(state.CONFIG.customTabs.find((page) => page.id === 'existing').entityIds).toEqual([
         'light.kept',
       ]);
-      expect(state.CONFIG.customTabs.find((page) => page.name === 'My devices').entityIds).toEqual([
-        'light.desk',
-        'sensor.temperature',
-      ]);
+      expect(state.CONFIG.customTabs.find((page) => page.name === 'My entities').entityIds).toEqual(
+        ['light.desk', 'sensor.temperature']
+      );
     });
     const registryResponses = (overrides = {}) =>
       mockRequest.mockImplementation(({ type }) =>
@@ -582,14 +581,11 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       await flush();
       const status = document.querySelector('.room-dashboard [role="status"]');
       const hint = status.textContent;
-      const search = document.querySelector('.room-device-search');
 
-      search.value = 'nothing like this';
-      search.dispatchEvent(new Event('input'));
+      await searchFor('nothing like this');
       expect(status.textContent).toBe('No matching entities found.');
 
-      search.value = 'sto';
-      search.dispatchEvent(new Event('input'));
+      await searchFor('sto');
       expect(status.textContent).toBe(hint);
     });
 
@@ -653,11 +649,10 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           (input) => input.value
         )
       ).toEqual(['light.desk']);
-      const search = document.querySelector('.room-device-search');
-      expect(search.hidden).toBe(false);
-      search.value = 'temp';
-      search.dispatchEvent(new Event('input'));
-      expect(document.querySelector('input[value="light.desk"]').parentElement.hidden).toBe(true);
+      expect(document.querySelector('.room-device-search').hidden).toBe(false);
+      await searchFor('temp');
+      expect(document.querySelector('input[value="light.desk"]')).toBeNull();
+      expect(document.querySelector('input[value="sensor.temperature"]')).not.toBeNull();
     });
 
     it('explains refused room access without offering a retry that cannot work', async () => {
@@ -763,7 +758,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       await flush();
 
       expect(document.querySelector('#add-page-room').value).toBe('');
-      expect(document.querySelector('#add-page-name').value).toBe('My devices');
+      // One noun with the list it names: the page is of entities.
+      expect(document.querySelector('#add-page-name').value).toBe('My entities');
     });
 
     it('excludes hidden and disabled devices from All entities and its defaults', async () => {
@@ -834,34 +830,64 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(mockRequest).not.toHaveBeenCalled();
       jest.useRealTimers();
     });
-    it('caps the preview for large selections while preserving every selected device', async () => {
+    describe('in a home with a thousand entities', () => {
       const many = Array.from({ length: 1000 }, (_, index) => ({
-        entity_id: `light.device_${index}`,
+        entity_id: `light.device_${String(index).padStart(4, '0')}`,
         state: 'off',
         attributes: {},
       }));
-      mockRequest.mockImplementation(({ type }) =>
-        Promise.resolve(
-          type === 'get_states' ? { success: true, result: many } : { success: false }
-        )
-      );
-      ui.showAddPageModal({ starter: true });
-      await flush();
-      const checkboxes = [...document.querySelectorAll('.room-entity-list input')];
-      expect(checkboxes).toHaveLength(1000);
-      checkboxes.forEach((input) => {
-        input.checked = true;
+      const rows = () => document.querySelectorAll('.room-entity-list input');
+      beforeEach(() => {
+        mockRequest.mockImplementation(({ type }) =>
+          Promise.resolve(
+            type === 'get_states' ? { success: true, result: many } : { success: false }
+          )
+        );
       });
-      checkboxes[0].dispatchEvent(new Event('change', { bubbles: true }));
-      expect(document.querySelectorAll('.room-preview-tile')).toHaveLength(8);
-      expect(document.querySelector('.room-dashboard-preview').textContent).toContain(
-        'And 992 more entities'
-      );
-      document.querySelector('#add-page-save-btn').click();
-      await flush();
-      expect(
-        state.CONFIG.customTabs.find((page) => page.name === 'My devices').entityIds
-      ).toHaveLength(1000);
+
+      it('draws the first hundred and says how many there are, and keeps every tick', async () => {
+        ui.showAddPageModal({ starter: true });
+        await flush();
+
+        expect(rows()).toHaveLength(100);
+        expect(document.querySelector('.room-list-note').textContent).toBe(
+          'Showing the first 100 of 1,000 entities. Type to narrow them.'
+        );
+        rows().forEach((input) => {
+          if (!input.checked) input.click();
+        });
+        // A row past the hundred is ticked from a search, and its tick stays once it is cleared.
+        await searchFor('device_0999');
+        expect(rows()).toHaveLength(1);
+        expect(document.querySelector('.room-list-note').textContent).toBe('');
+        rows()[0].click();
+        await searchFor('');
+
+        expect(document.querySelectorAll('.room-preview-tile')).toHaveLength(8);
+        expect(document.querySelector('.room-dashboard-preview').textContent).toContain(
+          'And 93 more entities'
+        );
+        document.querySelector('#add-page-save-btn').click();
+        await flush();
+        const saved = state.CONFIG.customTabs.find((page) => page.name === 'My entities');
+        expect(saved.entityIds).toHaveLength(101);
+        expect(saved.entityIds).toContain('light.device_0999');
+      });
+
+      it('narrows the list once typing pauses, not on every key', async () => {
+        ui.showAddPageModal({ starter: true });
+        await flush();
+        const search = document.querySelector('.room-device-search');
+
+        for (const text of ['d', 'de', 'dev', 'device_000']) {
+          search.value = text;
+          search.dispatchEvent(new Event('input'));
+        }
+        expect(rows()).toHaveLength(100);
+
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        expect(rows()).toHaveLength(10);
+      });
     });
     it('offers retry when device states are not ready', async () => {
       mockRequest.mockRejectedValueOnce(new Error('not connected'));

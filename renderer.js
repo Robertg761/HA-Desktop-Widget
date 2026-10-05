@@ -1399,7 +1399,7 @@ function renderMainWidgetState() {
         : t('Add your favorite Home Assistant entities for one-click control.'),
       actions: [
         {
-          label: t('Choose rooms and devices'),
+          label: t('Choose rooms and entities'),
           className: 'btn btn-primary',
           onClick: () => ui.showAddPageModal({ starter: true }),
         },
@@ -1718,7 +1718,7 @@ function renderWizardStep() {
     content.appendChild(input);
   } else if (stepIndex === 3) {
     content.appendChild(
-      createWizardText('h2', 'first-run-title', 'first-run-title', t('Choose rooms and devices'))
+      createWizardText('h2', 'first-run-title', 'first-run-title', t('Choose rooms and entities'))
     );
     content.appendChild(
       createWizardText(
@@ -1726,7 +1726,7 @@ function renderWizardStep() {
         'first-run-copy',
         'first-run-copy',
         t(
-          'Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.'
+          'Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard.'
         )
       )
     );
@@ -1765,7 +1765,7 @@ function renderWizardStep() {
   firstRunWizard.skipButton.textContent = stepIndex === 3 ? t('Skip for now') : t('Full Settings');
   if (firstRunWizard.nextButton) {
     firstRunWizard.nextButton.textContent =
-      stepIndex === 3 ? t('Choose rooms and devices') : stepIndex === 2 ? t('Connect') : t('Next');
+      stepIndex === 3 ? t('Choose rooms and entities') : stepIndex === 2 ? t('Connect') : t('Next');
     // Derived from the pairing rather than left wherever the last run put it, so a step change
     // can always recover the button instead of stranding it disabled.
     firstRunWizard.nextButton.disabled = !!firstRunWizard.finishInProgress;

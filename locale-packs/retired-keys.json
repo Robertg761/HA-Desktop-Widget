@@ -1442,5 +1442,17 @@
   "Please configure your Home Assistant token in Settings (gear icon).": {
     "retiredIn": "4.0.0",
     "reason": "Pins and the header no longer point at a gear icon the wizard hides and pins do not have"
+  },
+  "Choose rooms and devices": {
+    "retiredIn": "4.0.0",
+    "reason": "The starter dialog calls what it lists entities"
+  },
+  "My devices": {
+    "retiredIn": "4.0.0",
+    "reason": "The starter dialog calls what it lists entities"
+  },
+  "Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.": {
+    "retiredIn": "4.0.0",
+    "reason": "The starter dialog calls what it lists entities"
   }
 }

@@ -582,7 +582,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
 
       expect(mockElectronAPI.startHomeAssistantOAuth).toHaveBeenCalledWith('http://ha.local:8123');
       expect(document.getElementById('first-run-onboarding').classList).toContain('hidden');
-      expect(findButton('Choose rooms and devices')).toBeUndefined();
+      expect(findButton('Choose rooms and entities')).toBeUndefined();
       expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
     });
   });

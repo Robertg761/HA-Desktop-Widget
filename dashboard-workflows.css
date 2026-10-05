@@ -70,10 +70,10 @@
   grid-column: 1 / -1;
 }
 
+/* The list grows with the dialog, whose body is the one thing that scrolls: a list with a scroll
+   bar of its own inside a scrolling dialog left two to work in a small window. It draws at most
+   a hundred rows (see showAddPageModal), so growing is bounded. */
 .room-entity-list {
-  max-height: 220px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   background: var(--glass-surface);
@@ -468,12 +468,6 @@
 }
 
 .room-device-search[hidden] {
-  display: none;
-}
-
-/* Search hides rows with the hidden attribute. `.form-group label:has(input[type='checkbox'])` in
-   styles.css sets display: flex at higher specificity, so this rule has to outrank it. */
-.room-dashboard .room-entity-list > label[hidden] {
   display: none;
 }
 

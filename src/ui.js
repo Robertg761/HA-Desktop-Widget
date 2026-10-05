@@ -1274,6 +1274,13 @@ function createQuickAccessPage(name, entityIds = [], { fillEmptyPage = false } =
   });
 }
 
+// The room and starter lists can name every entity in a large home, and the first dialog a new
+// user without rooms sees lists them all. Like the other pickers it draws the first rows of the
+// list and narrows it a moment after typing pauses, instead of building and filtering thousands
+// of rows on every key.
+const ROOM_LIST_MAX_ROWS = 100;
+const ROOM_SEARCH_DELAY_MS = 150;
+
 // Teardown rather than a user-facing dismissal: this runs before re-opening the dialog and when
 // reorganize mode exits, so it detaches immediately instead of animating out over a replacement.
 function closeAddPageModal() {
@@ -1350,16 +1357,40 @@ function showAddPageModal({ starter = false } = {}) {
   deviceSearch.className = 'form-control room-device-search';
   deviceSearch.placeholder = t('Search entities');
   deviceSearch.setAttribute('aria-label', t('Search entities'));
-  const filterDevices = () => {
+  // Under the list: how many rows a long list leaves out.
+  const roomListNote = document.createElement('p');
+  roomListNote.className = 'room-list-note';
+  roomListNote.setAttribute('role', 'status');
+  roomEntities.after(roomListNote);
+  // The list as data: every entity the room (or "All entities") offers, named once, in name order,
+  // and the ones ticked. A tick belongs to its entity, so it outlives a search that hides its row
+  // and a long list that does not draw it.
+  let listRows = [];
+  let ticked = new Set();
+  let statusBeforeNoMatches = null;
+  const renderRoomRows = () => {
     const query = normalizeSearchText(deviceSearch.value);
-    const labels = [...roomEntities.querySelectorAll('label')];
-    labels.forEach((label) => {
-      label.hidden = !normalizeSearchText(
-        `${label.textContent} ${label.querySelector('input').value}`
-      ).includes(query);
-    });
-    // Say so when the search hides every device, and bring the previous hint back after.
-    if (labels.length && labels.every((label) => label.hidden)) {
+    const matches = query ? listRows.filter((row) => row.searchText.includes(query)) : listRows;
+    roomEntities.replaceChildren(
+      ...matches.slice(0, ROOM_LIST_MAX_ROWS).map(({ id, name }) => {
+        const label = document.createElement('label');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = id;
+        checkbox.checked = ticked.has(id);
+        label.append(checkbox, document.createTextNode(name));
+        return label;
+      })
+    );
+    roomListNote.textContent =
+      matches.length > ROOM_LIST_MAX_ROWS
+        ? t('Showing the first {{shown}} of {{count}} entities. Type to narrow them.', {
+            shown: formatNumber(ROOM_LIST_MAX_ROWS),
+            count: formatNumber(matches.length),
+          })
+        : '';
+    // Say so when the search matches nothing, and bring the previous hint back after.
+    if (listRows.length && !matches.length) {
       statusBeforeNoMatches ??= roomStatus.textContent;
       roomStatus.textContent = t('No matching entities found.');
     } else if (statusBeforeNoMatches !== null) {
@@ -1367,8 +1398,11 @@ function showAddPageModal({ starter = false } = {}) {
       statusBeforeNoMatches = null;
     }
   };
-  let statusBeforeNoMatches = null;
-  deviceSearch.addEventListener('input', filterDevices);
+  let searchTimer = null;
+  deviceSearch.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(renderRoomRows, ROOM_SEARCH_DELAY_MS);
+  });
   deviceSearch.hidden = true;
   roomGroup.insertBefore(deviceSearch, roomEntities);
   // With no room chosen the starter lists every entity Home Assistant has: persons, automations,
@@ -1397,14 +1431,16 @@ function showAddPageModal({ starter = false } = {}) {
     while (preview.lastChild !== title) preview.lastChild.remove();
   };
   roomGroup.appendChild(preview);
+  // What the page gets: the ticked entities of this list, searched away or not.
+  const selectedIds = () => listRows.filter((row) => ticked.has(row.id)).map((row) => row.id);
   const updatePreview = () => {
-    const selected = [...roomEntities.querySelectorAll('input:checked')];
+    const selected = selectedIds();
     title.textContent =
       selected.length === 1
         ? t('Page preview: 1 entity')
         : t('Page preview: {{count}} entities', { count: selected.length });
     clearPreviewRows();
-    selected.slice(0, 8).forEach(({ value }) => {
+    selected.slice(0, 8).forEach((value) => {
       const tile = document.createElement('div');
       tile.className = 'room-preview-tile';
       const entity = availableStates[value];
@@ -1421,25 +1457,24 @@ function showAddPageModal({ starter = false } = {}) {
       preview.appendChild(more);
     }
   };
-  roomEntities.addEventListener('change', updatePreview);
-  // Showing more or fewer entities rebuilds the list. A tick belongs to its entity, not to the
-  // list: what was ticked stays ticked and what was cleared stays cleared, and an entity the list
-  // stops showing keeps its tick (out of the page and the preview while hidden) for when it is
-  // shown again.
-  let hiddenTicks = new Set();
+  roomEntities.addEventListener('change', (event) => {
+    const box = event.target;
+    if (box?.type !== 'checkbox') return;
+    if (box.checked) ticked.add(box.value);
+    else ticked.delete(box.value);
+    updatePreview();
+  });
+  // Showing more or fewer entities rebuilds the list but keeps the ticks: what was ticked stays
+  // ticked and what was cleared stays cleared, and an entity the list stops showing keeps its tick
+  // (out of the page and the preview while hidden) for when it is shown again.
   showAll.addEventListener('change', () => {
-    const ticked = new Set(hiddenTicks);
-    roomEntities.querySelectorAll('input:checked').forEach((box) => ticked.add(box.value));
+    const keptTicks = ticked;
     // The status line (rooms unavailable, say) is about the rooms, not about this list.
     const status = roomStatus.textContent;
     roomSelect.onchange();
     roomStatus.textContent = status;
-    const shown = new Set();
-    roomEntities.querySelectorAll('input').forEach((box) => {
-      shown.add(box.value);
-      box.checked = ticked.has(box.value);
-    });
-    hiddenTicks = new Set([...ticked].filter((id) => !shown.has(id)));
+    ticked = keptTicks;
+    renderRoomRows();
     updatePreview();
   });
   // Remember the name we filled in from a room so a name the user typed is never overwritten.
@@ -1520,11 +1555,13 @@ function showAddPageModal({ starter = false } = {}) {
     // Starter mode owns its explicit get_states snapshot instead.
     if (!starter) availableStates = state.STATES;
     roomEntities.replaceChildren();
+    roomListNote.textContent = '';
     title.textContent = '';
     clearPreviewRows();
     statusBeforeNoMatches = null;
-    // A different room is a different list; ticks kept from the last one do not follow it.
-    hiddenTicks.clear();
+    // A different room is a different list; ticks from the last one do not follow it.
+    listRows = [];
+    ticked = new Set();
     if ((!roomSelect.value && !starter) || !registry) {
       roomStatus.textContent = '';
       deviceSearch.hidden = true;
@@ -1532,7 +1569,7 @@ function showAddPageModal({ starter = false } = {}) {
     }
     const area = registry.areas.find((entry) => entry.area_id === roomSelect.value);
     if (!input.value.trim() || input.value === autoFilledName) {
-      setPageName(area?.name || (starter ? t('My devices') : ''));
+      setPageName(area?.name || (starter ? t('My entities') : ''));
       autoFilledName = input.value;
     }
     const unscoped = !roomSelect.value && starter;
@@ -1546,29 +1583,19 @@ function showAddPageModal({ starter = false } = {}) {
     roomStatus.textContent = ids.length
       ? t('Choose the entities to include.')
       : t('No available entities in this room.');
-    ids.sort((a, b) =>
-      compareNames(
-        utils.getEntityDisplayName(availableStates[a]),
-        utils.getEntityDisplayName(availableStates[b])
-      )
-    );
+    // Each name is worked out once: sorting asked for it again at every comparison.
+    listRows = ids
+      .map((id) => {
+        const name = utils.getEntityDisplayName(availableStates[id]);
+        return { id, name, searchText: normalizeSearchText(`${name} ${id}`) };
+      })
+      .sort((a, b) => compareNames(a.name, b.name));
     // Suggest up to eight available devices you can control; sensors, buttons and a device's own
     // settings stay optional.
-    const defaults = new Set(defaultPageEntityIds(ids, registry.entities, availableStates, 8));
+    const sortedIds = listRows.map((row) => row.id);
+    ticked = new Set(defaultPageEntityIds(sortedIds, registry.entities, availableStates, 8));
     deviceSearch.hidden = !ids.length;
-    ids.forEach((id) => {
-      const label = document.createElement('label');
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
-      checkbox.value = id;
-      checkbox.checked = defaults.has(id);
-      label.append(
-        checkbox,
-        document.createTextNode(utils.getEntityDisplayName(availableStates[id]))
-      );
-      roomEntities.appendChild(label);
-    });
-    filterDevices();
+    renderRoomRows();
     updatePreview();
   };
   const input = modal.querySelector('#add-page-name');
@@ -1606,7 +1633,13 @@ function showAddPageModal({ starter = false } = {}) {
       else focusActiveQuickAccessPage();
     }, 0);
   };
-  const closeOptions = { remove: true, onClosed: restoreLauncherFocus };
+  const closeOptions = {
+    remove: true,
+    onClosed: () => {
+      clearTimeout(searchTimer);
+      restoreLauncherFocus();
+    },
+  };
   const close = () => {
     if (!submissionInFlight) void uiUtils.closeDialog(modal, closeOptions);
   };
@@ -1622,11 +1655,7 @@ function showAddPageModal({ starter = false } = {}) {
       return;
     }
     setSubmissionInFlight(true);
-    const selectedIds = Array.from(
-      roomEntities.querySelectorAll('input:checked'),
-      (checkbox) => checkbox.value
-    );
-    const result = await createQuickAccessPage(name, selectedIds, { fillEmptyPage: starter });
+    const result = await createQuickAccessPage(name, selectedIds(), { fillEmptyPage: starter });
     if (result.success) {
       void uiUtils.closeDialog(modal, closeOptions);
       return;
